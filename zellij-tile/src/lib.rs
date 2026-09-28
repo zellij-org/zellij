@@ -21,7 +21,9 @@ pub mod ui_components;
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use zellij_utils::data::{ClientId, Event, EventContext, PipeMessage, RenderResponse, Slot, SlotId};
+use zellij_utils::data::{
+    ClientId, Event, EventContext, PipeMessage, RenderResponse, Slot, SlotId,
+};
 
 // use zellij_tile::shim::plugin_api::event::ProtobufEvent;
 

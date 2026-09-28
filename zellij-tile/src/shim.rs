@@ -44,8 +44,8 @@ use zellij_utils::plugin_api::plugin_command::{
     ProtobufOpenTerminalPaneInPlaceOfPaneIdResponse, ProtobufOpenTerminalResponse,
     ProtobufParseLayoutResponse, ProtobufPluginCommand, ProtobufRenameLayoutResponse,
     ProtobufSaveLayoutResponse, ProtobufSaveSessionResponse, ProtobufShowFloatingPanesResponse,
-    ProtobufSlotCommandResponse,
-    RenameWebTokenResponse, RevokeAllWebTokensResponse, RevokeTokenResponse,
+    ProtobufSlotCommandResponse, RenameWebTokenResponse, RevokeAllWebTokensResponse,
+    RevokeTokenResponse,
 };
 use zellij_utils::plugin_api::plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion};
 

@@ -158,7 +158,10 @@ pub fn pane_slot_ids(running_plugin: &RunningPlugin) -> Vec<PluginId> {
         .unwrap_or_default()
 }
 
-pub fn call_client_connected(running_plugin: &mut RunningPlugin, client_id: ClientId) -> Result<()> {
+pub fn call_client_connected(
+    running_plugin: &mut RunningPlugin,
+    client_id: ClientId,
+) -> Result<()> {
     let is_new = running_plugin
         .store
         .data_mut()
@@ -237,9 +240,9 @@ pub fn call_slot_removed(running_plugin: &mut RunningPlugin, slot_id: PluginId) 
 }
 
 fn read_render_request(running_plugin: &RunningPlugin) -> RenderResponse {
-    match wasi_read_bytes(running_plugin.store.data()).and_then(|bytes| {
-        ProtobufRenderRequest::decode(bytes.as_slice()).map_err(|e| anyhow!(e))
-    }) {
+    match wasi_read_bytes(running_plugin.store.data())
+        .and_then(|bytes| ProtobufRenderRequest::decode(bytes.as_slice()).map_err(|e| anyhow!(e)))
+    {
         Ok(request) => RenderResponse::from(request),
         Err(e) => {
             log::error!("Failed to read render request from shared plugin: {:?}", e);
@@ -265,7 +268,10 @@ pub fn call_update(
     let protobuf_context: ProtobufEventContext = context.into();
     let protobuf_event: ProtobufEvent = event_to_protobuf_with_keybinds(event.clone(), keybinds)
         .map_err(|e| anyhow!("Failed to convert to protobuf: {:?}", e))?;
-    wasi_write_object(running_plugin.store.data(), &protobuf_context.encode_to_vec())?;
+    wasi_write_object(
+        running_plugin.store.data(),
+        &protobuf_context.encode_to_vec(),
+    )?;
     wasi_write_object(running_plugin.store.data(), &protobuf_event.encode_to_vec())?;
     set_call_context(running_plugin, context.slot_id, context.client_id, false);
     let result = call_returning_i32(running_plugin, "shared_update");
@@ -283,7 +289,10 @@ pub fn call_pipe(
         .clone()
         .try_into()
         .map_err(|e| anyhow!("Failed to convert to protobuf: {:?}", e))?;
-    wasi_write_object(running_plugin.store.data(), &protobuf_context.encode_to_vec())?;
+    wasi_write_object(
+        running_plugin.store.data(),
+        &protobuf_context.encode_to_vec(),
+    )?;
     wasi_write_object(
         running_plugin.store.data(),
         &protobuf_pipe_message.encode_to_vec(),
@@ -337,7 +346,10 @@ pub fn render_targets(
     Ok(assets)
 }
 
-fn targets_for(running_plugin: &RunningPlugin, render: &RenderResponse) -> Vec<(PluginId, ClientId)> {
+fn targets_for(
+    running_plugin: &RunningPlugin,
+    render: &RenderResponse,
+) -> Vec<(PluginId, ClientId)> {
     running_plugin
         .store
         .data()
@@ -387,7 +399,8 @@ fn send_pipe_changes(
 ) {
     let changes = pipes_to_block_or_unblock(running_plugin, current_pipe);
     if !changes.is_empty() {
-        let asset = PluginRenderAsset::new(instance_id, SHARED_PIPE_CLIENT, vec![]).with_pipes(changes);
+        let asset =
+            PluginRenderAsset::new(instance_id, SHARED_PIPE_CLIENT, vec![]).with_pipes(changes);
         let _ = senders.send_to_plugin(PluginInstruction::UnblockCliPipes(vec![asset]));
     }
 }
@@ -396,7 +409,8 @@ fn release_pipe(senders: &ThreadSenders, instance_id: PluginId, pipe_message: &P
     if let PipeSource::Cli(pipe_id) = &pipe_message.source {
         let mut changes = HashMap::new();
         changes.insert(pipe_id.to_owned(), PipeStateChange::NoChange);
-        let asset = PluginRenderAsset::new(instance_id, SHARED_PIPE_CLIENT, vec![]).with_pipes(changes);
+        let asset =
+            PluginRenderAsset::new(instance_id, SHARED_PIPE_CLIENT, vec![]).with_pipes(changes);
         let _ = senders.send_to_plugin(PluginInstruction::UnblockCliPipes(vec![asset]));
     }
 }
@@ -405,7 +419,10 @@ fn lookup(
     plugin_map: &Arc<Mutex<PluginMap>>,
     instance_id: PluginId,
 ) -> Option<(Arc<Mutex<RunningPlugin>>, Arc<Mutex<Subscriptions>>)> {
-    plugin_map.lock().unwrap().shared_running_plugin(instance_id)
+    plugin_map
+        .lock()
+        .unwrap()
+        .shared_running_plugin(instance_id)
 }
 
 fn is_deduplicated_event(event_type: EventType) -> bool {
@@ -561,7 +578,11 @@ pub fn add_slot_job(
     let added = call_slot_added(&mut running_plugin, slot_id, slot);
     let _ = slot_added.send(());
     let result = added.and_then(|_| {
-        render_request(&senders, &mut running_plugin, RenderResponse::Slots(vec![slot_id]))
+        render_request(
+            &senders,
+            &mut running_plugin,
+            RenderResponse::Slots(vec![slot_id]),
+        )
     });
     match result {
         Ok(()) => {
@@ -569,7 +590,8 @@ pub fn add_slot_job(
             handle_plugin_successful_loading(&senders, slot_id, plugin_list);
         },
         Err(e) => {
-            let _ = senders.send_to_background_jobs(BackgroundJob::StopPluginLoadingAnimation(slot_id));
+            let _ =
+                senders.send_to_background_jobs(BackgroundJob::StopPluginLoadingAnimation(slot_id));
             report_error(&senders, vec![slot_id], e);
         },
     }
@@ -585,7 +607,11 @@ pub fn remove_slot_job(
     if let Some((running_plugin, _subscriptions)) = lookup(&plugin_map, instance_id) {
         let mut running_plugin = running_plugin.lock().unwrap();
         if let Err(e) = call_slot_removed(&mut running_plugin, slot_id) {
-            log::error!("Failed to remove slot {} from shared plugin: {:?}", slot_id, e);
+            log::error!(
+                "Failed to remove slot {} from shared plugin: {:?}",
+                slot_id,
+                e
+            );
         }
     }
     if tear_down {
@@ -652,8 +678,13 @@ pub fn client_job(
     };
     let mut running_plugin = running_plugin.lock().unwrap();
     let result = if connected {
-        call_client_connected(&mut running_plugin, client_id)
-            .and_then(|_| render_request(&senders, &mut running_plugin, RenderResponse::Client(client_id)))
+        call_client_connected(&mut running_plugin, client_id).and_then(|_| {
+            render_request(
+                &senders,
+                &mut running_plugin,
+                RenderResponse::Client(client_id),
+            )
+        })
     } else {
         call_client_disconnected(&mut running_plugin, client_id)
     };
@@ -688,8 +719,11 @@ pub fn resize_job(
         None => false,
     };
     if changed {
-        if let Err(e) = render_request(&senders, &mut running_plugin, RenderResponse::Slots(vec![slot_id]))
-        {
+        if let Err(e) = render_request(
+            &senders,
+            &mut running_plugin,
+            RenderResponse::Slots(vec![slot_id]),
+        ) {
             let pane_slots = pane_slot_ids(&running_plugin);
             report_error(&senders, pane_slots, e);
         }
@@ -706,15 +740,17 @@ pub fn visibility_job(
         return;
     };
     let mut running_plugin = running_plugin.lock().unwrap();
-    let before: HashSet<(PluginId, ClientId)> =
-        targets_for(&running_plugin, &RenderResponse::All).into_iter().collect();
+    let before: HashSet<(PluginId, ClientId)> = targets_for(&running_plugin, &RenderResponse::All)
+        .into_iter()
+        .collect();
     if let Some(shared) = running_plugin.store.data_mut().shared.as_mut() {
         shared.visible_slots = visible_slots;
     }
-    let newly_visible: Vec<(PluginId, ClientId)> = targets_for(&running_plugin, &RenderResponse::All)
-        .into_iter()
-        .filter(|target| !before.contains(target))
-        .collect();
+    let newly_visible: Vec<(PluginId, ClientId)> =
+        targets_for(&running_plugin, &RenderResponse::All)
+            .into_iter()
+            .filter(|target| !before.contains(target))
+            .collect();
     if let Err(e) = render_and_send(&senders, &mut running_plugin, newly_visible) {
         let pane_slots = pane_slot_ids(&running_plugin);
         report_error(&senders, pane_slots, e);
@@ -869,6 +905,9 @@ mod tests {
 
     #[test]
     fn garbage_is_not_shared() {
-        assert!(!wasm_module_exports_function(b"not a wasm module", SHARED_MARKER_EXPORT));
+        assert!(!wasm_module_exports_function(
+            b"not a wasm module",
+            SHARED_MARKER_EXPORT
+        ));
     }
 }

@@ -13,8 +13,8 @@ use crate::{thread_bus::ThreadSenders, ClientId, SharedKeybinds};
 
 use tokio::sync::mpsc::UnboundedSender;
 use zellij_utils::{
-    data::{Event, EventType, RenderResponse, SlotKind},
     data::InputMode,
+    data::{Event, EventType, RenderResponse, SlotKind},
     input::command::TerminalAction,
     input::layout::{PluginUserConfiguration, RunPlugin, RunPluginLocation},
     input::plugins::PluginConfig,
@@ -89,7 +89,9 @@ impl PluginMap {
     ) -> Option<(Arc<Mutex<RunningPlugin>>, Arc<Mutex<Subscriptions>>)> {
         self.shared_assets
             .get(&instance_id)
-            .map(|(running_plugin, subscriptions, _)| (running_plugin.clone(), subscriptions.clone()))
+            .map(|(running_plugin, subscriptions, _)| {
+                (running_plugin.clone(), subscriptions.clone())
+            })
     }
     pub fn remove_metadata(&mut self, plugin_id: PluginId) {
         self.plugin_metadata.remove(&plugin_id);

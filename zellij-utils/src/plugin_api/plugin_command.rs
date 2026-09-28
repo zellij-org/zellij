@@ -123,13 +123,14 @@ pub use super::generated_api::api::{
         SessionListSnapshot as ProtobufSessionListSnapshot, SetFloatingPanePinnedPayload,
         SetPaneBorderStylePayload, SetPaneBorderlessPayload, SetPaneColorPayload,
         SetPaneFrameStylePayload as ProtobufSetPaneFrameStylePayload,
-        SetPaneRegexHighlightsPayload, SetSelectableSlotPayload, SetSelfMouseSelectionSupportPayload,
-        ShowSlotPayload, SlotCommandResponse as ProtobufSlotCommandResponse,
+        SetPaneRegexHighlightsPayload, SetSelectableSlotPayload,
+        SetSelfMouseSelectionSupportPayload,
         SetSoftKeyboardPayload as ProtobufSetSoftKeyboardPayload, SetTimeoutPayload,
         ShowCursorPayload, ShowFloatingPanesPayload as ProtobufShowFloatingPanesPayload,
         ShowFloatingPanesResponse as ProtobufShowFloatingPanesResponse, ShowPaneWithIdPayload,
-        StackPanesPayload, SubscribePayload, SwitchSessionPayload, SwitchTabToIdPayload,
-        SwitchTabToPayload, ToggleFloatingPanesPayload, TogglePaneBorderlessPayload,
+        ShowSlotPayload, SlotCommandResponse as ProtobufSlotCommandResponse, StackPanesPayload,
+        SubscribePayload, SwitchSessionPayload, SwitchTabToIdPayload, SwitchTabToPayload,
+        ToggleFloatingPanesPayload, TogglePaneBorderlessPayload,
         TogglePaneEmbedOrEjectForPaneIdPayload, TogglePaneIdFullscreenPayload, UnsubscribePayload,
         WebRequestPayload, WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
     },
@@ -4357,24 +4358,24 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             }),
             PluginCommand::SetSelectableSlot(slot_id, selectable) => Ok(ProtobufPluginCommand {
                 name: CommandName::SetSelectableSlot as i32,
-                payload: Some(Payload::SetSelectableSlotPayload(SetSelectableSlotPayload {
-                    slot_id,
-                    selectable,
-                })),
+                payload: Some(Payload::SetSelectableSlotPayload(
+                    SetSelectableSlotPayload {
+                        slot_id,
+                        selectable,
+                    },
+                )),
             }),
             PluginCommand::HideSlot(slot_id) => Ok(ProtobufPluginCommand {
                 name: CommandName::HideSlot as i32,
                 payload: Some(Payload::HideSlotPayload(slot_id)),
             }),
-            PluginCommand::ShowSlot(slot_id, should_float_if_hidden) => {
-                Ok(ProtobufPluginCommand {
-                    name: CommandName::ShowSlot as i32,
-                    payload: Some(Payload::ShowSlotPayload(ShowSlotPayload {
-                        slot_id,
-                        should_float_if_hidden,
-                    })),
-                })
-            },
+            PluginCommand::ShowSlot(slot_id, should_float_if_hidden) => Ok(ProtobufPluginCommand {
+                name: CommandName::ShowSlot as i32,
+                payload: Some(Payload::ShowSlotPayload(ShowSlotPayload {
+                    slot_id,
+                    should_float_if_hidden,
+                })),
+            }),
             PluginCommand::CloseSlot(slot_id) => Ok(ProtobufPluginCommand {
                 name: CommandName::CloseSlot as i32,
                 payload: Some(Payload::CloseSlotPayload(slot_id)),
@@ -5527,7 +5528,9 @@ mod tests {
 
 impl From<Result<(), String>> for ProtobufSlotCommandResponse {
     fn from(result: Result<(), String>) -> Self {
-        ProtobufSlotCommandResponse { error: result.err() }
+        ProtobufSlotCommandResponse {
+            error: result.err(),
+        }
     }
 }
 

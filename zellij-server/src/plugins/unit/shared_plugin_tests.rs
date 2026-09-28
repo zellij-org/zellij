@@ -221,14 +221,23 @@ pub fn shared_plugin_one_instance_many_slots() {
     assert_eq!(instances.len(), 1, "all slots are served by one instance");
     for slot_id in &slots {
         let rendered = &screen.renders[&(*slot_id, client_id)];
-        assert_eq!(field(rendered, "loads"), "1", "load runs once: {}", rendered);
+        assert_eq!(
+            field(rendered, "loads"),
+            "1",
+            "load runs once: {}",
+            rendered
+        );
         assert_eq!(field(rendered, "slot"), slot_id.to_string());
     }
     let names: HashSet<&str> = slots
         .iter()
         .map(|slot_id| field(&screen.renders[&(*slot_id, client_id)], "label"))
         .collect();
-    assert_eq!(names, HashSet::from(["a", "b", "c"]), "each slot keeps its own configuration");
+    assert_eq!(
+        names,
+        HashSet::from(["a", "b", "c"]),
+        "each slot keeps its own configuration"
+    );
 }
 
 #[test]
@@ -237,9 +246,24 @@ pub fn shared_plugin_instance_key_creates_separate_instances() {
     let (sender, mut screen, teardown, _temp_folder) = start();
     let client_id = 1;
     let _ = sender.send(PluginInstruction::AddClient(client_id));
-    load(&sender, shared_fixture(&[("instance", "one"), ("label", "a")]), 0, client_id);
-    load(&sender, shared_fixture(&[("instance", "two"), ("label", "b")]), 0, client_id);
-    load(&sender, shared_fixture(&[("instance", "one"), ("label", "c")]), 1, client_id);
+    load(
+        &sender,
+        shared_fixture(&[("instance", "one"), ("label", "a")]),
+        0,
+        client_id,
+    );
+    load(
+        &sender,
+        shared_fixture(&[("instance", "two"), ("label", "b")]),
+        0,
+        client_id,
+    );
+    load(
+        &sender,
+        shared_fixture(&[("instance", "one"), ("label", "c")]),
+        1,
+        client_id,
+    );
     screen.wait_until("three slots rendered", |renders| {
         slots_of_client(renders, client_id).len() == 3
     });
@@ -250,29 +274,38 @@ pub fn shared_plugin_instance_key_creates_separate_instances() {
             key_event(),
         )]));
     }
-    screen.wait_until("instance one has two slots and instance two has one", |renders| {
-        let slots = slots_of_client(renders, client_id);
-        slots.len() == 3 && {
-            let mut slot_list_lengths: Vec<usize> = slots
-                .iter()
-                .map(|slot_id| {
-                    field(&renders[&(*slot_id, client_id)], "slots")
-                        .split(',')
-                        .count()
-                })
-                .collect();
-            slot_list_lengths.sort();
-            slot_list_lengths == vec![1, 2, 2]
-        }
-    });
+    screen.wait_until(
+        "instance one has two slots and instance two has one",
+        |renders| {
+            let slots = slots_of_client(renders, client_id);
+            slots.len() == 3 && {
+                let mut slot_list_lengths: Vec<usize> = slots
+                    .iter()
+                    .map(|slot_id| {
+                        field(&renders[&(*slot_id, client_id)], "slots")
+                            .split(',')
+                            .count()
+                    })
+                    .collect();
+                slot_list_lengths.sort();
+                slot_list_lengths == vec![1, 2, 2]
+            }
+        },
+    );
     teardown();
     let by_name: HashMap<&str, &str> = screen
         .renders
         .values()
         .map(|rendered| (field(rendered, "label"), field(rendered, "instance")))
         .collect();
-    assert_eq!(by_name["a"], by_name["c"], "same instance name shares an instance");
-    assert_ne!(by_name["a"], by_name["b"], "different instance names do not share");
+    assert_eq!(
+        by_name["a"], by_name["c"],
+        "same instance name shares an instance"
+    );
+    assert_ne!(
+        by_name["a"], by_name["b"],
+        "different instance names do not share"
+    );
 }
 
 #[test]
@@ -330,11 +363,14 @@ pub fn shared_plugin_slot_removed_when_pane_closes() {
         Some(client_id),
         key_event(),
     )]));
-    screen.wait_until("remaining slot knows the other slot was removed", |renders| {
-        let rendered = &renders[&(remaining_slot, client_id)];
-        field(rendered, "removed") == format!("[{}]", closed_slot)
-            && field(rendered, "slots") == format!("[{}]", remaining_slot)
-    });
+    screen.wait_until(
+        "remaining slot knows the other slot was removed",
+        |renders| {
+            let rendered = &renders[&(remaining_slot, client_id)];
+            field(rendered, "removed") == format!("[{}]", closed_slot)
+                && field(rendered, "slots") == format!("[{}]", remaining_slot)
+        },
+    );
     screen.settle(Duration::from_millis(300));
     teardown();
     assert!(
@@ -343,7 +379,10 @@ pub fn shared_plugin_slot_removed_when_pane_closes() {
             .all(|(slot_id, _, _)| *slot_id != closed_slot),
         "a removed slot is not rendered"
     );
-    assert_eq!(field(&screen.renders[&(remaining_slot, client_id)], "loads"), "1");
+    assert_eq!(
+        field(&screen.renders[&(remaining_slot, client_id)], "loads"),
+        "1"
+    );
 }
 
 #[test]
@@ -419,8 +458,16 @@ pub fn shared_plugin_slot_commands_are_checked() {
     teardown();
     let rendered = &screen.renders[&(slot_id, client_id)];
     let results = field(rendered, "self_commands");
-    assert!(results.starts_with("[\"Ok(())\""), "own slot is accepted: {}", results);
-    assert!(results.contains("does not belong"), "foreign slot is rejected: {}", results);
+    assert!(
+        results.starts_with("[\"Ok(())\""),
+        "own slot is accepted: {}",
+        results
+    );
+    assert!(
+        results.contains("does not belong"),
+        "foreign slot is rejected: {}",
+        results
+    );
 }
 
 #[test]
@@ -430,7 +477,11 @@ pub fn legacy_plugin_keeps_one_instance_per_client() {
     let _ = sender.send(PluginInstruction::AddClient(1));
     let _ = sender.send(PluginInstruction::AddClient(2));
     load(&sender, legacy_fixture(), 0, 1);
-    let _ = sender.send(PluginInstruction::Update(vec![(None, None, Event::InputReceived)]));
+    let _ = sender.send(PluginInstruction::Update(vec![(
+        None,
+        None,
+        Event::InputReceived,
+    )]));
     screen.wait_until("legacy plugin rendered for both clients", |renders| {
         slots_of_client(renders, 1).len() == 1 && slots_of_client(renders, 2).len() == 1
     });

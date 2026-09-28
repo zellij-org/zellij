@@ -1,9 +1,10 @@
 pub use super::generated_api::api::{
-    action::{NameAndValue as ProtobufNameAndValue, PluginConfiguration as ProtobufPluginConfiguration},
+    action::{
+        NameAndValue as ProtobufNameAndValue, PluginConfiguration as ProtobufPluginConfiguration,
+    },
     shared_plugin::{
         EventContext as ProtobufEventContext, RenderKind as ProtobufRenderKind,
-        RenderRequest as ProtobufRenderRequest, Slot as ProtobufSlot,
-        SlotKind as ProtobufSlotKind,
+        RenderRequest as ProtobufRenderRequest, Slot as ProtobufSlot, SlotKind as ProtobufSlotKind,
     },
 };
 use crate::data::{EventContext, RenderResponse, Slot, SlotKind};

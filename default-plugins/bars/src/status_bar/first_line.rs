@@ -365,10 +365,7 @@ fn swap_layout_status(
                 prefix_separator, swap_layout_name, suffix_separator
             );
             let (part, full_len) = if mode_info.mode == InputMode::Locked {
-                (
-                    format!("{}", swap_layout_indicator),
-                    swap_layout_name_len,
-                )
+                (format!("{}", swap_layout_indicator), swap_layout_name_len)
             } else {
                 (
                     format!(

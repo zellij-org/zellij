@@ -10,8 +10,8 @@ use crate::plugins::plugin_map::{
 };
 use crate::plugins::shared::{
     add_slot_job, apply_events_job, apply_pipes_job, client_job, host_settings_job,
-    remove_slot_job, resize_job, start_instance_job, visibility_job,
-    wasm_module_exports_function, SharedKey, SHARED_MARKER_EXPORT, SHARED_PIPE_CLIENT,
+    remove_slot_job, resize_job, start_instance_job, visibility_job, wasm_module_exports_function,
+    SharedKey, SHARED_MARKER_EXPORT, SHARED_PIPE_CLIENT,
 };
 
 use crate::plugins::plugin_worker::MessageToWorker;
@@ -1112,7 +1112,13 @@ impl WasmBridge {
                 .unwrap()
                 .shared_running_plugin(instance_id)
                 .map(|(running_plugin, _)| {
-                    running_plugin.lock().unwrap().store.data().plugin_cwd.clone()
+                    running_plugin
+                        .lock()
+                        .unwrap()
+                        .store
+                        .data()
+                        .plugin_cwd
+                        .clone()
                 });
         }
         self.plugin_map
@@ -2846,12 +2852,9 @@ impl WasmBridge {
             for (instance_id, slot_id) in targets {
                 let context = EventContext { slot_id, client_id };
                 let batch = batches.entry(instance_id).or_default();
-                if batch
-                    .iter()
-                    .any(|(existing, existing_context)| {
-                        existing == &pipe_message && existing_context == &context
-                    })
-                {
+                if batch.iter().any(|(existing, existing_context)| {
+                    existing == &pipe_message && existing_context == &context
+                }) {
                     continue;
                 }
                 if let PipeSource::Cli(pipe_id) = &pipe_message.source {

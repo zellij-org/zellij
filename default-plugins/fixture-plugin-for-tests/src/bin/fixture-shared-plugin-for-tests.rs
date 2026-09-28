@@ -19,7 +19,13 @@ struct State {
 register_shared_plugin!(State);
 
 #[allow(dead_code)]
-fn render_line(state: &State, rows: usize, cols: usize, slot_id: SlotId, client_id: ClientId) -> String {
+fn render_line(
+    state: &State,
+    rows: usize,
+    cols: usize,
+    slot_id: SlotId,
+    client_id: ClientId,
+) -> String {
     let slot_ids: Vec<SlotId> = state.slots.keys().copied().collect();
     let clients: Vec<ClientId> = state.clients.iter().copied().collect();
     let label = state

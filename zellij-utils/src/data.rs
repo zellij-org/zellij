@@ -3077,7 +3077,9 @@ impl RenderResponse {
             (RenderResponse::Nothing, other) => other,
             (this, RenderResponse::Nothing) => this,
             (RenderResponse::All, _) | (_, RenderResponse::All) => RenderResponse::All,
-            (RenderResponse::Client(a), RenderResponse::Client(b)) if a == b => RenderResponse::Client(a),
+            (RenderResponse::Client(a), RenderResponse::Client(b)) if a == b => {
+                RenderResponse::Client(a)
+            },
             (RenderResponse::Slots(mut a), RenderResponse::Slots(b)) => {
                 for slot_id in b {
                     if !a.contains(&slot_id) {

@@ -448,7 +448,12 @@ impl CompactBar {
     }
 
     fn handle_mouse_event(&mut self, slot_id: SlotId, client_id: ClientId, mouse_event: &Mouse) {
-        if self.slots.get(&slot_id).map(|s| s.is_tooltip).unwrap_or(true) {
+        if self
+            .slots
+            .get(&slot_id)
+            .map(|s| s.is_tooltip)
+            .unwrap_or(true)
+        {
             return;
         }
         let Some(client) = self.clients.get(&client_id) else {
@@ -521,7 +526,12 @@ impl CompactBar {
         keybinds: &mut KeybindStore,
     ) -> RenderResponse {
         if let Some(slot_id) = context.slot_id {
-            if self.slots.get(&slot_id).map(|s| s.is_tooltip).unwrap_or(false) {
+            if self
+                .slots
+                .get(&slot_id)
+                .map(|s| s.is_tooltip)
+                .unwrap_or(false)
+            {
                 if message.is_private {
                     self.handle_tooltip_pipe(slot_id, &message);
                 }
@@ -633,7 +643,8 @@ impl CompactBar {
             new_tab_index.saturating_sub(1),
             false,
         );
-        self.slot_tabs.insert(slot_id, new_tab_index.saturating_sub(1));
+        self.slot_tabs
+            .insert(slot_id, new_tab_index.saturating_sub(1));
     }
 
     fn calculate_tooltip_coordinates(&self, client_id: ClientId) -> FloatingPaneCoordinates {
@@ -663,7 +674,11 @@ impl CompactBar {
         for (_tab_index, panes) in &pane_manifest.panes {
             for pane in panes {
                 if pane.is_plugin
-                    && self.slots.get(&pane.id).map(|s| s.is_tooltip).unwrap_or(false)
+                    && self
+                        .slots
+                        .get(&pane.id)
+                        .map(|s| s.is_tooltip)
+                        .unwrap_or(false)
                     && pane.pane_x != pane.pane_content_x
                 {
                     return true;

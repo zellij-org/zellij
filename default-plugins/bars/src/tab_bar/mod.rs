@@ -282,11 +282,8 @@ impl TabBar {
                             }
                         }
                         if !new_hovered_new_tab_button {
-                            new_hovered_tab_idx = get_tab_to_focus(
-                                &slot_client.tab_line,
-                                client.active_tab_idx,
-                                col,
-                            );
+                            new_hovered_tab_idx =
+                                get_tab_to_focus(&slot_client.tab_line, client.active_tab_idx, col);
                         }
                     }
                     if client.hovered_new_tab_button != new_hovered_new_tab_button

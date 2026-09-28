@@ -2,11 +2,11 @@ use super::PluginInstruction;
 use crate::background_jobs::BackgroundJob;
 use crate::global_async_runtime::get_tokio_runtime;
 use crate::plugins::plugin_map::PluginEnv;
-use crate::plugins::PluginId;
-use crate::ClientId;
 use crate::plugins::wasm_bridge::handle_plugin_crash;
+use crate::plugins::PluginId;
 use crate::pty::{ClientTabIndexOrPaneId, PtyInstruction};
 use crate::route::{route_action, wait_for_action_completion, NotificationEnd};
+use crate::ClientId;
 use crate::ServerInstruction;
 use log::warn;
 use serde::Serialize;
@@ -3386,7 +3386,10 @@ fn toggle_focus_no_ui_fullscreen(env: &PluginEnv) {
 
 fn focus_host_session(env: &PluginEnv) {
     env.senders
-        .send_to_screen(ScreenInstruction::FocusHostSession(acting_client(env), None))
+        .send_to_screen(ScreenInstruction::FocusHostSession(
+            acting_client(env),
+            None,
+        ))
         .with_context(|| format!("failed to focus host session from plugin {}", env.name()))
         .non_fatal();
 }
@@ -3680,7 +3683,9 @@ fn rename_session(env: &PluginEnv, new_session_name: String) {
 fn disconnect_other_clients(env: &PluginEnv) {
     let _ = env
         .senders
-        .send_to_server(ServerInstruction::DisconnectAllClientsExcept(acting_client(env)))
+        .send_to_server(ServerInstruction::DisconnectAllClientsExcept(
+            acting_client(env),
+        ))
         .context("failed to send disconnect other clients instruction");
 }
 
@@ -4200,9 +4205,11 @@ fn set_floating_pane_pinned(env: &PluginEnv, pane_id: PaneId, should_be_pinned: 
 }
 
 fn stack_panes(env: &PluginEnv, pane_ids: Vec<PaneId>) {
-    let _ =
-        env.senders
-            .send_to_screen(ScreenInstruction::StackPanes(pane_ids, acting_client(env), None));
+    let _ = env.senders.send_to_screen(ScreenInstruction::StackPanes(
+        pane_ids,
+        acting_client(env),
+        None,
+    ));
 }
 
 fn change_floating_panes_coordinates(
@@ -5382,7 +5389,9 @@ fn share_current_session(env: &PluginEnv) {
 fn stop_sharing_current_session(env: &PluginEnv) {
     let _ = env
         .senders
-        .send_to_server(ServerInstruction::StopSharingCurrentSession(acting_client(env)));
+        .send_to_server(ServerInstruction::StopSharingCurrentSession(acting_client(
+            env,
+        )));
 }
 
 fn group_and_ungroup_panes(
@@ -5596,7 +5605,9 @@ fn clear_key_presses_intercepts(env: &mut PluginEnv) {
     env.intercepting_key_presses = false;
     let _ = env
         .senders
-        .send_to_screen(ScreenInstruction::ClearKeyPressesIntercepts(acting_client(env)));
+        .send_to_screen(ScreenInstruction::ClearKeyPressesIntercepts(acting_client(
+            env,
+        )));
 }
 
 fn replace_pane_with_existing_pane(

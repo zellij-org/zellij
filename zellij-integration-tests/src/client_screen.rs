@@ -370,11 +370,7 @@ impl GridSnapshot {
     pub fn bars_partially_drawn(&self) -> bool {
         let lines: Vec<&str> = self.text.lines().collect();
         let first_line_blank = lines.first().map_or(false, |line| line.trim().is_empty());
-        let status_bar_at_bottom = lines
-            .iter()
-            .rev()
-            .take(2)
-            .any(|line| line.contains("LOCK"));
+        let status_bar_at_bottom = lines.iter().rev().take(2).any(|line| line.contains("LOCK"));
         first_line_blank && status_bar_at_bottom
     }
     pub fn lines(&self) -> Vec<String> {
