@@ -292,7 +292,7 @@ macro_rules! grant_permissions_and_log_actions_in_thread_struct_variant {
     };
 }
 
-fn create_plugin_thread(
+pub(super) fn create_plugin_thread(
     zellij_cwd: Option<PathBuf>,
     session_env_vars: Option<std::collections::BTreeMap<String, String>>,
 ) -> (
@@ -371,7 +371,7 @@ fn create_plugin_thread(
                 default_shell_action,
                 plugin_aliases,
                 InputMode::Normal,
-                Keybinds::default(),
+                Default::default(),
                 Default::default(),
                 initiating_client_id,
             )
@@ -459,7 +459,7 @@ fn create_plugin_thread_with_server_receiver(
                 default_shell_action,
                 PluginAliases::default(),
                 InputMode::Normal,
-                Keybinds::default(),
+                Default::default(),
                 Default::default(),
                 initiating_client_id,
             )
@@ -555,7 +555,7 @@ fn create_plugin_thread_with_pty_receiver(
                 default_shell_action,
                 PluginAliases::default(),
                 InputMode::Normal,
-                Keybinds::default(),
+                Default::default(),
                 Default::default(),
                 initiating_client_id,
             )
@@ -644,7 +644,7 @@ fn create_plugin_thread_with_background_jobs_receiver(
                 default_shell_action,
                 PluginAliases::default(),
                 InputMode::Normal,
-                Keybinds::default(),
+                Default::default(),
                 Default::default(),
                 initiating_client_id,
             )
@@ -13018,7 +13018,7 @@ pub fn mode_update_payload_is_lightweight_for_opted_in_plugins() {
 
     let _ = plugin_thread_sender.send(PluginInstruction::Reconfigure {
         client_id,
-        keybinds: Some(test_keybinds),
+        keybinds: Some(std::sync::Arc::new(test_keybinds.to_keybinds_vec())),
         default_mode: None,
         default_shell: None,
         layout_dir: None,
@@ -13172,7 +13172,7 @@ pub fn reconfiguration_resends_keybinds_to_opted_in_plugins() {
     // Send Reconfigure
     let _ = plugin_thread_sender.send(PluginInstruction::Reconfigure {
         client_id,
-        keybinds: Some(new_keybinds),
+        keybinds: Some(std::sync::Arc::new(new_keybinds.to_keybinds_vec())),
         default_mode: None,
         default_shell: None,
         layout_dir: None,

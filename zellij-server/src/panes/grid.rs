@@ -763,6 +763,40 @@ fn highlight_match<'t>(captures: &regex::Captures<'t>) -> Option<regex::Match<'t
     captures.get(1).or_else(|| captures.get(0))
 }
 
+fn highlight_matches<'r, 't>(
+    regex: &'r regex::Regex,
+    text: &'t str,
+) -> impl Iterator<Item = regex::Match<'t>> + 'r
+where
+    't: 'r,
+{
+    let mut pos = 0;
+    std::iter::from_fn(move || {
+        while pos <= text.len() {
+            let captures = regex.captures_at(text, pos)?;
+            let mat = highlight_match(&captures);
+            let end = match (mat, captures.get(0)) {
+                (Some(m), _) => m.end(),
+                (None, Some(whole)) => whole.end(),
+                (None, None) => return None,
+            };
+            pos = if end > pos {
+                end
+            } else {
+                text[pos..]
+                    .chars()
+                    .next()
+                    .map(|c| pos + c.len_utf8())
+                    .unwrap_or(text.len() + 1)
+            };
+            if mat.is_some() {
+                return mat;
+            }
+        }
+        None
+    })
+}
+
 /// Check whether a (row, col) position falls within a display span.
 /// The span is inclusive at start and exclusive at end.
 fn position_in_span(
@@ -2944,10 +2978,7 @@ impl Grid {
         )> = None;
         for (plugin_id, pattern_map) in &self.plugin_highlights {
             for (pattern, compiled) in pattern_map {
-                for captures in compiled.regex.captures_iter(&logical_text) {
-                    let Some(mat) = highlight_match(&captures) else {
-                        continue;
-                    };
+                for mat in highlight_matches(&compiled.regex, &logical_text) {
                     if let Some((_sel, start_row, start_col, end_row, end_col)) =
                         match_to_selection(&mat, &boundaries, &self.viewport)
                     {
@@ -3045,10 +3076,7 @@ impl Grid {
                 if !compiled.on_hover || compiled.tooltip_text.is_none() {
                     continue;
                 }
-                for captures in compiled.regex.captures_iter(&logical_text) {
-                    let Some(mat) = highlight_match(&captures) else {
-                        continue;
-                    };
+                for mat in highlight_matches(&compiled.regex, &logical_text) {
                     if let Some((_sel, start_row, start_col, end_row, end_col)) =
                         match_to_selection(&mat, &boundaries, &self.viewport)
                     {
@@ -3104,10 +3132,7 @@ impl Grid {
                                 if !compiled.on_hover || !compiled.has_visual_effect() {
                                     continue;
                                 }
-                                for captures in compiled.regex.captures_iter(&logical_text) {
-                                    let Some(mat) = highlight_match(&captures) else {
-                                        continue;
-                                    };
+                                for mat in highlight_matches(&compiled.regex, &logical_text) {
                                     if let Some((sel, start_row, start_col, end_row, end_col)) =
                                         match_to_selection(&mat, &boundaries, &self.viewport)
                                     {
@@ -3141,10 +3166,7 @@ impl Grid {
                     if compiled.on_hover || !compiled.has_visual_effect() {
                         continue;
                     }
-                    for captures in compiled.regex.captures_iter(&logical_text) {
-                        let Some(mat) = highlight_match(&captures) else {
-                            continue;
-                        };
+                    for mat in highlight_matches(&compiled.regex, &logical_text) {
                         if let Some((sel, _, _, _, _)) =
                             match_to_selection(&mat, &boundaries, &self.viewport)
                         {

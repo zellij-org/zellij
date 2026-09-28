@@ -29,8 +29,8 @@ use crate::{
 use stacked_panes::StackedPanes;
 use zellij_utils::{
     data::{
-        BorderStyle, BorderStyleOverride, Direction, LineStyle, ModeInfo, PaneInfo, Resize,
-        ResizeStrategy, Style, Styling,
+        BorderStyle, BorderStyleOverride, Direction, InputMode, LineStyle, ModeInfo, PaneInfo,
+        Resize, ResizeStrategy, Style, Styling,
     },
     errors::prelude::*,
     input::{
@@ -78,7 +78,7 @@ pub struct TiledPanes {
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     stacked_resize: Rc<RefCell<bool>>,
     reserved_top_rows: Rc<RefCell<HashMap<PaneId, usize>>>,
-    default_mode_info: ModeInfo,
+    default_mode: InputMode,
     style: Style,
     session_is_mirrored: bool,
     active_panes: ActivePanes,
@@ -109,7 +109,7 @@ impl TiledPanes {
         fullscreen_covers_ui: Rc<RefCell<bool>>,
         session_is_mirrored: bool,
         pane_frame_style: PaneFrameStyle,
-        default_mode_info: ModeInfo,
+        default_mode: InputMode,
         style: Style,
         os_api: Box<dyn ServerOsApi>,
         senders: ThreadSenders,
@@ -125,7 +125,7 @@ impl TiledPanes {
             character_cell_size,
             stacked_resize,
             reserved_top_rows,
-            default_mode_info,
+            default_mode,
             style,
             session_is_mirrored,
             active_panes: ActivePanes::new(&os_api),
@@ -1294,8 +1294,8 @@ impl TiledPanes {
                         .mode_info
                         .borrow()
                         .get(client_id)
-                        .unwrap_or(&self.default_mode_info)
-                        .mode;
+                        .map(|mode_info| mode_info.mode)
+                        .unwrap_or(self.default_mode);
                     let err_context =
                         || format!("failed to render tiled panes for client {client_id}");
                     if let PaneId::Plugin(..) = kind {

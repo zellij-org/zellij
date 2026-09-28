@@ -383,6 +383,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "bars"
+version = "0.1.0"
+dependencies = [
+ "ansi_term",
+ "lazy_static",
+ "rand 0.10.2",
+ "regex",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.19",
+ "unicode-width 0.2.2",
+ "zellij-tile",
+ "zellij-tile-utils",
+]
+
+[[package]]
 name = "base64"
 version = "0.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -655,16 +671,6 @@ name = "colorsys"
 version = "0.6.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4dfdf9179d546b55ff3f88c9d93ecfaa3e9760163da5a1080af5243230dbbb70"
-
-[[package]]
-name = "compact-bar"
-version = "0.1.0"
-dependencies = [
- "ansi_term",
- "unicode-width 0.2.2",
- "zellij-tile",
- "zellij-tile-utils",
-]
 
 [[package]]
 name = "concurrent-queue"
@@ -2122,13 +2128,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "link"
-version = "0.1.0"
-dependencies = [
- "zellij-tile",
-]
-
-[[package]]
 name = "linux-raw-sys"
 version = "0.4.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2938,9 +2937,21 @@ dependencies = [
 
 [[package]]
 name = "regex"
-version = "1.8.1"
+version = "1.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "af83e617f331cc6ae2da5443c602dfa5af81e517212d9d611a5b3ba1777b5370"
+checksum = "f020237b6c8eed93db2e2cb53c00c60a8e1bc73da7d073199a1180401450218d"
+dependencies = [
+ "aho-corasick",
+ "memchr",
+ "regex-automata",
+ "regex-syntax",
+]
+
+[[package]]
+name = "regex-automata"
+version = "0.4.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ad8553b9b26413251cbf30e620595c7a41b3887f03da04579c0e6b0d6a06b4b2"
 dependencies = [
  "aho-corasick",
  "memchr",
@@ -2949,9 +2960,9 @@ dependencies = [
 
 [[package]]
 name = "regex-syntax"
-version = "0.7.1"
+version = "0.8.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a5996294f19bd3aae0453a862ad728f60e6600695733dd5df01da90c54363a3c"
+checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "ring"
@@ -3461,22 +3472,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
-name = "status-bar"
-version = "0.1.0"
-dependencies = [
- "ansi_term",
- "lazy_static",
- "rand 0.10.2",
- "regex",
- "serde",
- "serde_json",
- "thiserror 2.0.19",
- "unicode-width 0.2.2",
- "zellij-tile",
- "zellij-tile-utils",
-]
-
-[[package]]
 name = "strider"
 version = "0.2.0"
 dependencies = [
@@ -3643,16 +3638,6 @@ dependencies = [
  "rustix 0.38.44",
  "windows-sys 0.52.0",
  "winx",
-]
-
-[[package]]
-name = "tab-bar"
-version = "0.1.0"
-dependencies = [
- "ansi_term",
- "unicode-width 0.2.2",
- "zellij-tile",
- "zellij-tile-utils",
 ]
 
 [[package]]

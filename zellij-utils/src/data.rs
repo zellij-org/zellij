@@ -3041,6 +3041,65 @@ pub struct PluginIds {
     pub client_id: ClientId,
 }
 
+pub type SlotId = u32;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
+pub enum SlotKind {
+    Pane,
+    Background,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct Slot {
+    pub id: SlotId,
+    pub kind: SlotKind,
+    pub configuration: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Deserialize, Serialize)]
+pub struct EventContext {
+    pub slot_id: Option<SlotId>,
+    pub client_id: Option<ClientId>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub enum RenderResponse {
+    #[default]
+    Nothing,
+    All,
+    Client(ClientId),
+    Slots(Vec<SlotId>),
+}
+
+impl RenderResponse {
+    pub fn merge(self, other: RenderResponse) -> RenderResponse {
+        match (self, other) {
+            (RenderResponse::Nothing, other) => other,
+            (this, RenderResponse::Nothing) => this,
+            (RenderResponse::All, _) | (_, RenderResponse::All) => RenderResponse::All,
+            (RenderResponse::Client(a), RenderResponse::Client(b)) if a == b => {
+                RenderResponse::Client(a)
+            },
+            (RenderResponse::Slots(mut a), RenderResponse::Slots(b)) => {
+                for slot_id in b {
+                    if !a.contains(&slot_id) {
+                        a.push(slot_id);
+                    }
+                }
+                RenderResponse::Slots(a)
+            },
+            _ => RenderResponse::All,
+        }
+    }
+    pub fn from_bool(should_render: bool) -> RenderResponse {
+        if should_render {
+            RenderResponse::All
+        } else {
+            RenderResponse::Nothing
+        }
+    }
+}
+
 /// Tag used to identify the plugin in layout and config kdl files
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Deserialize, Serialize, PartialOrd, Ord)]
 pub struct PluginTag(String);
@@ -4061,6 +4120,10 @@ pub enum PluginCommand {
     SetSoftKeyboard(bool),
     FocusHostSession,
     GetNestedSessionKeybinds(PaneId),
+    SetSelectableSlot(SlotId, bool),
+    HideSlot(SlotId),
+    ShowSlot(SlotId, bool),
+    CloseSlot(SlotId),
 }
 
 // Response type for plugin API methods that open a pane in a new tab

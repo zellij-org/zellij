@@ -2,21 +2,20 @@ use crate::plugins::plugin_worker::MessageToWorker;
 use crate::plugins::PluginId;
 use std::io::Write;
 use std::{
-    collections::{BTreeMap, HashMap, HashSet, VecDeque},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
     path::PathBuf,
     sync::{Arc, Mutex},
 };
 use wasmi::{Instance, Store, StoreLimits};
 use wasmi_wasi::WasiCtx;
 
-use crate::{thread_bus::ThreadSenders, ClientId};
+use crate::{thread_bus::ThreadSenders, ClientId, SharedKeybinds};
 
 use tokio::sync::mpsc::UnboundedSender;
 use zellij_utils::{
-    data::EventType,
     data::InputMode,
+    data::{Event, EventType, RenderResponse, SlotKind},
     input::command::TerminalAction,
-    input::keybinds::Keybinds,
     input::layout::{PluginUserConfiguration, RunPlugin, RunPluginLocation},
     input::plugins::PluginConfig,
 };
@@ -49,6 +48,7 @@ pub struct PluginMetadata {
 pub struct PluginMap {
     plugin_assets: HashMap<PluginKey, PluginAssets>,
     plugin_metadata: HashMap<PluginId, PluginMetadata>,
+    shared_assets: HashMap<PluginId, PluginAssets>,
 }
 
 impl PluginMap {
@@ -76,6 +76,25 @@ impl PluginMap {
             }
         }
         removed
+    }
+    pub fn insert_shared(&mut self, instance_id: PluginId, assets: PluginAssets) {
+        self.shared_assets.insert(instance_id, assets);
+    }
+    pub fn remove_shared(&mut self, instance_id: PluginId) -> Option<PluginAssets> {
+        self.shared_assets.remove(&instance_id)
+    }
+    pub fn shared_running_plugin(
+        &self,
+        instance_id: PluginId,
+    ) -> Option<(Arc<Mutex<RunningPlugin>>, Arc<Mutex<Subscriptions>>)> {
+        self.shared_assets
+            .get(&instance_id)
+            .map(|(running_plugin, subscriptions, _)| {
+                (running_plugin.clone(), subscriptions.clone())
+            })
+    }
+    pub fn remove_metadata(&mut self, plugin_id: PluginId) {
+        self.plugin_metadata.remove(&plugin_id);
     }
     pub fn insert_metadata(&mut self, plugin_id: PluginId, metadata: PluginMetadata) {
         self.plugin_metadata.insert(plugin_id, metadata);
@@ -168,6 +187,9 @@ impl PluginMap {
         client_id: ClientId,
         worker_name: &str,
     ) -> Option<UnboundedSender<MessageToWorker>> {
+        if let Some((_, _, workers)) = self.shared_assets.get(&plugin_id) {
+            return workers.get(&format!("{}_worker", worker_name)).cloned();
+        }
         self.plugin_assets
             .iter()
             .find(|((p_id, c_id), _)| p_id == &plugin_id && c_id == &client_id)
@@ -311,9 +333,80 @@ pub struct PluginEnv {
     pub subscriptions: Arc<Mutex<Subscriptions>>,
     pub stdin_pipe: Arc<Mutex<VecDeque<u8>>>,
     pub stdout_pipe: Arc<Mutex<VecDeque<u8>>>,
-    pub keybinds: Keybinds,
+    pub keybinds: SharedKeybinds,
     pub intercepting_key_presses: bool,
     pub store_limits: StoreLimits,
+    pub shared: Option<SharedEnv>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SharedSlot {
+    pub kind: SlotKind,
+    pub configuration: BTreeMap<String, String>,
+    pub rows: usize,
+    pub columns: usize,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SharedEnv {
+    pub current_slot: Option<PluginId>,
+    pub current_client: Option<ClientId>,
+    pub self_commands_allowed: bool,
+    pub slots: BTreeMap<PluginId, SharedSlot>,
+    pub clients: BTreeSet<ClientId>,
+    pub visible_slots: HashMap<ClientId, HashSet<PluginId>>,
+    pub last_events: HashMap<(EventType, Option<ClientId>), (Event, Option<SharedKeybinds>)>,
+}
+
+impl SharedEnv {
+    pub fn first_pane_slot(&self) -> Option<PluginId> {
+        self.slots
+            .iter()
+            .find(|(_, slot)| slot.kind == SlotKind::Pane)
+            .map(|(id, _)| *id)
+    }
+    pub fn pane_slot_ids(&self) -> Vec<PluginId> {
+        self.slots
+            .iter()
+            .filter(|(_, slot)| slot.kind == SlotKind::Pane)
+            .map(|(id, _)| *id)
+            .collect()
+    }
+    pub fn client_can_see(&self, client_id: ClientId, slot_id: PluginId) -> bool {
+        match self.visible_slots.get(&client_id) {
+            Some(visible) => visible.contains(&slot_id),
+            None => true,
+        }
+    }
+    pub fn renderable_slot(&self, slot_id: PluginId) -> Option<(usize, usize)> {
+        self.slots.get(&slot_id).and_then(|slot| {
+            if slot.kind == SlotKind::Pane && slot.rows > 0 && slot.columns > 0 {
+                Some((slot.rows, slot.columns))
+            } else {
+                None
+            }
+        })
+    }
+    pub fn render_targets(&self, render: &RenderResponse) -> Vec<(PluginId, ClientId)> {
+        let mut targets = vec![];
+        for client_id in self.clients.iter() {
+            for slot_id in self.slots.keys() {
+                let wanted = match render {
+                    RenderResponse::Nothing => false,
+                    RenderResponse::All => true,
+                    RenderResponse::Client(c) => c == client_id,
+                    RenderResponse::Slots(slot_ids) => slot_ids.contains(slot_id),
+                };
+                if wanted
+                    && self.renderable_slot(*slot_id).is_some()
+                    && self.client_can_see(*client_id, *slot_id)
+                {
+                    targets.push((*slot_id, *client_id));
+                }
+            }
+        }
+        targets
+    }
 }
 
 #[derive(Clone)]
@@ -412,7 +505,7 @@ impl RunningPlugin {
             false
         }
     }
-    pub fn update_keybinds(&mut self, keybinds: Keybinds) {
+    pub fn update_keybinds(&mut self, keybinds: SharedKeybinds) {
         self.store.data_mut().keybinds = keybinds;
     }
     pub fn update_default_mode(&mut self, default_mode: InputMode) {
