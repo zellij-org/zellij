@@ -1,7 +1,6 @@
 mod search;
 
 use super::{KeyResponse, OptimisticUpdate, Screen};
-use crate::text_input::InputAction;
 use crate::ui::{Controls, LayoutDetail, LayoutsTable};
 use crate::DisplayLayout;
 use search::SearchState;
@@ -182,14 +181,14 @@ impl LayoutListScreen {
         }
 
         // Pass remaining keys to TextInput
-        let action = self.search_state.get_filter_input_mut().handle_key(key);
+        let action = self.search_state.get_filter_input_mut().handle_key(&key);
 
         match action {
-            InputAction::Continue => {
+            UiResponse::Changed(_) | UiResponse::Consumed => {
                 self.update_filter(display_layouts);
                 KeyResponse::render()
             },
-            InputAction::Cancel => {
+            UiResponse::Cancelled => {
                 // Ctrl-C - clear text first; only exit to management mode if already empty
                 if self.search_state.get_filter_input().is_empty() {
                     self.clear_filter();
@@ -199,12 +198,7 @@ impl LayoutListScreen {
                 }
                 KeyResponse::render()
             },
-            InputAction::Submit => {
-                // Enter handled above
-                KeyResponse::none()
-            },
-            InputAction::Complete => KeyResponse::none(),
-            InputAction::NoAction => KeyResponse::none(),
+            _ => KeyResponse::none(),
         }
     }
 
@@ -224,7 +218,7 @@ impl LayoutListScreen {
         match dump_session_layout() {
             Ok((session_layout, Some(session_layout_metadata))) => {
                 Screen::NewLayoutFromSession(super::NewLayoutFromCurrentSessionScreen {
-                    name_input: crate::text_input::TextInput::empty(),
+                    name_input: TextInput::empty(),
                     session_layout,
                     current_layout_metadata: session_layout_metadata,
                     editing_name: false,

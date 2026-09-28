@@ -1,40 +1,60 @@
-// This is a duplicate of the same file in the sequence (and possibly other) plugins
-// Right now there's no good place to put them for shared logic except the zellij-tile-utils crate
-// (which I'd rather eliminate), hence the duplication.
-use zellij_tile::prelude::*;
+use super::widget_common::{
+    char_width, default_label_width, encode_text, is_plain, state_flag, state_value, text_width,
+    typed_char, update_hover, widget_dcs, Rect, UiResponse, UiValue, Widget,
+};
+use std::fmt;
+use std::rc::Rc;
+use zellij_utils::data::{BareKey, KeyModifier, KeyWithModifier, Mouse};
 
 const MAX_UNDO_STACK_SIZE: usize = 100;
+const MIN_FIELD_WIDTH: usize = 5;
 
-/// Action returned by TextInput after handling a key event
-#[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(test, derive(Eq))]
-pub enum InputAction {
-    /// Continue editing
-    Continue,
-    /// User pressed Enter to submit
-    Submit,
-    /// User pressed Esc to cancel
-    Cancel,
-    /// User pressed Tab to request completion
-    Complete,
-    /// Key was not handled by the input
-    NoAction,
-}
+pub type Validator = Rc<dyn Fn(&str) -> Result<(), String>>;
 
-/// A reusable text input component with cursor support and standard editing keybindings
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct TextInput {
     buffer: String,
-    cursor_position: usize, // Character position (0-based), NOT byte position
-    undo_stack: Vec<(String, usize)>, // (buffer, cursor) snapshots
+    cursor_position: usize,
+    undo_stack: Vec<(String, usize)>,
     redo_stack: Vec<(String, usize)>,
-    last_edit_was_insert: bool, // For coalescing consecutive inserts
+    last_edit_was_insert: bool,
+    label: String,
+    label_width: Option<usize>,
+    placeholder: Option<String>,
+    validator: Option<Validator>,
+    accept: Option<fn(char) -> bool>,
+    search_mode: bool,
+    match_count: Option<usize>,
+    focused: bool,
+    disabled: bool,
+    hovered: bool,
+    scroll_offset: usize,
+    area: Option<Rect>,
+    text_start_x: usize,
+    text_area_width: usize,
+}
+
+impl fmt::Debug for TextInput {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TextInput")
+            .field("buffer", &self.buffer)
+            .field("cursor_position", &self.cursor_position)
+            .field("label", &self.label)
+            .field("placeholder", &self.placeholder)
+            .field("has_validator", &self.validator.is_some())
+            .field("search_mode", &self.search_mode)
+            .field("match_count", &self.match_count)
+            .field("focused", &self.focused)
+            .field("disabled", &self.disabled)
+            .field("scroll_offset", &self.scroll_offset)
+            .field("area", &self.area)
+            .finish()
+    }
 }
 
 impl TextInput {
-    /// Create a new TextInput with the given initial text
-    /// Cursor is positioned at the end of the text
-    pub fn new(initial_text: String) -> Self {
+    pub fn new(initial_text: impl Into<String>) -> Self {
+        let initial_text = initial_text.into();
         let cursor_position = initial_text.chars().count();
         Self {
             buffer: initial_text,
@@ -42,58 +62,135 @@ impl TextInput {
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
             last_edit_was_insert: false,
+            label: String::new(),
+            label_width: None,
+            placeholder: None,
+            validator: None,
+            accept: None,
+            search_mode: false,
+            match_count: None,
+            focused: false,
+            disabled: false,
+            hovered: false,
+            scroll_offset: 0,
+            area: None,
+            text_start_x: 0,
+            text_area_width: 0,
         }
     }
 
-    /// Create an empty TextInput
     pub fn empty() -> Self {
         Self::new(String::new())
     }
 
-    /// Get the current text
+    pub fn label(mut self, label: impl Into<String>) -> Self {
+        self.label = label.into();
+        self
+    }
+
+    pub fn label_width(mut self, label_width: usize) -> Self {
+        self.label_width = Some(label_width);
+        self
+    }
+
+    pub fn placeholder(mut self, placeholder: impl Into<String>) -> Self {
+        self.placeholder = Some(placeholder.into());
+        self
+    }
+
+    pub fn validator(mut self, validator: impl Fn(&str) -> Result<(), String> + 'static) -> Self {
+        self.validator = Some(Rc::new(validator));
+        self
+    }
+
+    pub fn accept(mut self, accept: fn(char) -> bool) -> Self {
+        self.accept = Some(accept);
+        self
+    }
+
+    pub fn search_mode(mut self) -> Self {
+        self.search_mode = true;
+        self
+    }
+
+    pub fn focused(mut self) -> Self {
+        self.focused = true;
+        self
+    }
+
+    pub fn disabled(mut self) -> Self {
+        self.disabled = true;
+        self
+    }
+
+    pub fn hovered(mut self) -> Self {
+        self.hovered = true;
+        self
+    }
+
+    pub fn set_disabled(&mut self, disabled: bool) {
+        self.disabled = disabled;
+    }
+
+    pub fn set_match_count(&mut self, match_count: Option<usize>) {
+        self.match_count = match_count;
+    }
+
+    pub fn is_search_mode(&self) -> bool {
+        self.search_mode
+    }
+
+    pub fn validation_error(&self) -> Option<String> {
+        self.validator
+            .as_ref()
+            .and_then(|validator| validator(&self.buffer).err())
+    }
+
+    pub fn is_valid(&self) -> bool {
+        self.validation_error().is_none()
+    }
+
+    pub fn height(&self) -> usize {
+        if self.validator.is_some() {
+            2
+        } else {
+            1
+        }
+    }
+
     pub fn get_text(&self) -> &str {
         &self.buffer
     }
 
-    /// Get the cursor position (in characters, not bytes)
     pub fn get_cursor_position(&self) -> usize {
         self.cursor_position
     }
 
-    /// Check if the input is empty
     pub fn is_empty(&self) -> bool {
         self.buffer.is_empty()
     }
 
-    /// Get a shorthand for cursor_position
-    #[allow(unused)]
     pub fn cursor_position(&self) -> usize {
         self.cursor_position
     }
 
-    /// Get mutable access to the underlying buffer for direct manipulation
-    #[allow(unused)]
     pub fn get_text_mut(&mut self) -> &mut String {
         &mut self.buffer
     }
 
-    /// Set the text and move cursor to the end
-    #[allow(unused)]
-    pub fn set_text(&mut self, text: String) {
+    pub fn set_text(&mut self, text: impl Into<String>) {
+        let text = text.into();
         self.break_coalescing();
         self.save_undo_state();
         self.cursor_position = text.chars().count();
         self.buffer = text;
     }
 
-    /// Set cursor position (clamped to text length)
-    #[allow(unused)]
     pub fn set_cursor_position(&mut self, pos: usize) {
         let text_len = self.buffer.chars().count();
         self.cursor_position = pos.min(text_len);
     }
 
-    /// Clear all text and reset cursor
     pub fn clear(&mut self) {
         self.break_coalescing();
         self.save_undo_state();
@@ -101,16 +198,13 @@ impl TextInput {
         self.cursor_position = 0;
     }
 
-    /// Insert a character at the current cursor position
     pub fn insert_char(&mut self, c: char) {
         self.save_undo_state_unless_coalescing();
-        // Convert cursor position (char index) to byte index
         let byte_index = self.char_index_to_byte_index(self.cursor_position);
         self.buffer.insert(byte_index, c);
         self.cursor_position += 1;
     }
 
-    /// Delete the character before the cursor (backspace)
     pub fn backspace(&mut self) {
         if self.cursor_position > 0 {
             self.break_coalescing();
@@ -121,7 +215,6 @@ impl TextInput {
         }
     }
 
-    /// Delete the character at the cursor position (delete key)
     pub fn delete(&mut self) {
         let len = self.buffer.chars().count();
         if self.cursor_position < len {
@@ -132,57 +225,41 @@ impl TextInput {
         }
     }
 
-    /// Delete the word before the cursor (Ctrl/Alt + Backspace)
     pub fn delete_word_backward(&mut self) {
         if self.cursor_position == 0 {
             return;
         }
-
         self.break_coalescing();
         self.save_undo_state();
-
         let old_position = self.cursor_position;
         self.move_word_left();
         let new_position = self.cursor_position;
-
-        // Delete from new position to old position
         let start_byte = self.char_index_to_byte_index(new_position);
         let end_byte = self.char_index_to_byte_index(old_position);
         self.buffer.drain(start_byte..end_byte);
     }
 
-    /// Delete the word after the cursor (Ctrl/Alt + Delete)
     pub fn delete_word_forward(&mut self) {
         let chars: Vec<char> = self.buffer.chars().collect();
         let len = chars.len();
-
         if self.cursor_position >= len {
             return;
         }
-
         self.break_coalescing();
         self.save_undo_state();
-
         let start_position = self.cursor_position;
         let mut end_position = start_position;
-
-        // Skip the current word
         while end_position < len && !chars[end_position].is_whitespace() {
             end_position += 1;
         }
-
-        // Skip any whitespace after the word
         while end_position < len && chars[end_position].is_whitespace() {
             end_position += 1;
         }
-
-        // Delete from start to end position
         let start_byte = self.char_index_to_byte_index(start_position);
         let end_byte = self.char_index_to_byte_index(end_position);
         self.buffer.drain(start_byte..end_byte);
     }
 
-    /// Move cursor one position to the left
     pub fn move_left(&mut self) {
         if self.cursor_position > 0 {
             self.break_coalescing();
@@ -190,7 +267,6 @@ impl TextInput {
         }
     }
 
-    /// Move cursor one position to the right
     pub fn move_right(&mut self) {
         let len = self.buffer.chars().count();
         if self.cursor_position < len {
@@ -199,189 +275,49 @@ impl TextInput {
         }
     }
 
-    /// Move cursor to the start of the text (Ctrl-A / Home)
     pub fn move_to_start(&mut self) {
         self.break_coalescing();
         self.cursor_position = 0;
     }
 
-    /// Move cursor to the end of the text (Ctrl-E / End)
     pub fn move_to_end(&mut self) {
         self.break_coalescing();
         self.cursor_position = self.buffer.chars().count();
     }
 
-    /// Move cursor to the start of the previous word (Ctrl/Alt + Left)
     pub fn move_word_left(&mut self) {
         if self.cursor_position == 0 {
             return;
         }
-
         self.break_coalescing();
-
         let chars: Vec<char> = self.buffer.chars().collect();
         let mut pos = self.cursor_position;
-
-        // Skip any whitespace immediately to the left
         while pos > 0 && chars[pos - 1].is_whitespace() {
             pos -= 1;
         }
-
-        // Skip the word characters
         while pos > 0 && !chars[pos - 1].is_whitespace() {
             pos -= 1;
         }
-
         self.cursor_position = pos;
     }
 
-    /// Move cursor to the start of the next word (Ctrl/Alt + Right)
     pub fn move_word_right(&mut self) {
         let chars: Vec<char> = self.buffer.chars().collect();
         let len = chars.len();
-
         if self.cursor_position >= len {
             return;
         }
-
         self.break_coalescing();
-
         let mut pos = self.cursor_position;
-
-        // Skip the current word
         while pos < len && !chars[pos].is_whitespace() {
             pos += 1;
         }
-
-        // Skip any whitespace
         while pos < len && chars[pos].is_whitespace() {
             pos += 1;
         }
-
         self.cursor_position = pos;
     }
 
-    /// Handle a key event and return the appropriate action
-    /// This is the main entry point for key handling
-    pub fn handle_key(&mut self, key: KeyWithModifier) -> InputAction {
-        // Check for Ctrl modifiers
-        if key.has_modifiers(&[KeyModifier::Ctrl]) {
-            match key.bare_key {
-                BareKey::Char('a') => {
-                    self.move_to_start();
-                    return InputAction::Continue;
-                },
-                BareKey::Char('e') => {
-                    self.move_to_end();
-                    return InputAction::Continue;
-                },
-                BareKey::Char('c') => {
-                    // Ctrl-C clears the prompt
-                    return InputAction::Cancel;
-                },
-                BareKey::Char('z') => {
-                    // Ctrl-Z: Undo
-                    self.undo();
-                    return InputAction::Continue;
-                },
-                BareKey::Char('y') => {
-                    // Ctrl-Y: Redo
-                    self.redo();
-                    return InputAction::Continue;
-                },
-                BareKey::Left => {
-                    self.move_word_left();
-                    return InputAction::Continue;
-                },
-                BareKey::Right => {
-                    self.move_word_right();
-                    return InputAction::Continue;
-                },
-                BareKey::Backspace => {
-                    self.delete_word_backward();
-                    return InputAction::Continue;
-                },
-                BareKey::Delete => {
-                    self.delete_word_forward();
-                    return InputAction::Continue;
-                },
-                _ => {},
-            }
-        }
-
-        // Check for Ctrl+Shift modifiers (alternative redo: Ctrl+Shift+Z)
-        if key.has_modifiers(&[KeyModifier::Ctrl, KeyModifier::Shift]) {
-            match key.bare_key {
-                BareKey::Char('Z') => {
-                    // Ctrl-Shift-Z: Redo (alternative)
-                    self.redo();
-                    return InputAction::Continue;
-                },
-                _ => {},
-            }
-        }
-
-        // Check for Alt modifiers
-        if key.has_modifiers(&[KeyModifier::Alt]) {
-            match key.bare_key {
-                BareKey::Left => {
-                    self.move_word_left();
-                    return InputAction::Continue;
-                },
-                BareKey::Right => {
-                    self.move_word_right();
-                    return InputAction::Continue;
-                },
-                BareKey::Backspace => {
-                    self.delete_word_backward();
-                    return InputAction::Continue;
-                },
-                BareKey::Delete => {
-                    self.delete_word_forward();
-                    return InputAction::Continue;
-                },
-                _ => {},
-            }
-        }
-
-        // Handle bare keys (no modifiers)
-        match key.bare_key {
-            BareKey::Enter => InputAction::Submit,
-            BareKey::Esc => InputAction::Cancel,
-            BareKey::Tab => InputAction::Complete,
-            BareKey::Backspace => {
-                self.backspace();
-                InputAction::Continue
-            },
-            BareKey::Delete => {
-                self.delete();
-                InputAction::Continue
-            },
-            BareKey::Left => {
-                self.move_left();
-                InputAction::Continue
-            },
-            BareKey::Right => {
-                self.move_right();
-                InputAction::Continue
-            },
-            BareKey::Home => {
-                self.move_to_start();
-                InputAction::Continue
-            },
-            BareKey::End => {
-                self.move_to_end();
-                InputAction::Continue
-            },
-            BareKey::Char(c) => {
-                self.insert_char(c);
-                InputAction::Continue
-            },
-            _ => InputAction::NoAction,
-        }
-    }
-
-    /// Helper: Convert character index to byte index
     fn char_index_to_byte_index(&self, char_index: usize) -> usize {
         self.buffer
             .char_indices()
@@ -390,7 +326,6 @@ impl TextInput {
             .unwrap_or(self.buffer.len())
     }
 
-    /// Save current state to undo stack before making changes
     fn save_undo_state(&mut self) {
         if self.undo_stack.len() >= MAX_UNDO_STACK_SIZE {
             self.undo_stack.remove(0);
@@ -400,7 +335,6 @@ impl TextInput {
         self.redo_stack.clear();
     }
 
-    /// Save state only if not coalescing with previous insert
     fn save_undo_state_unless_coalescing(&mut self) {
         if !self.last_edit_was_insert {
             self.save_undo_state();
@@ -408,12 +342,10 @@ impl TextInput {
         self.last_edit_was_insert = true;
     }
 
-    /// Mark that a non-insert edit occurred (breaks coalescing)
     fn break_coalescing(&mut self) {
         self.last_edit_was_insert = false;
     }
 
-    /// Undo last change
     pub fn undo(&mut self) -> bool {
         if let Some((buffer, cursor)) = self.undo_stack.pop() {
             self.redo_stack
@@ -427,7 +359,6 @@ impl TextInput {
         }
     }
 
-    /// Redo last undone change
     pub fn redo(&mut self) -> bool {
         if let Some((buffer, cursor)) = self.redo_stack.pop() {
             self.undo_stack
@@ -441,28 +372,255 @@ impl TextInput {
         }
     }
 
-    /// Check if undo is available
-    #[allow(unused)]
     pub fn can_undo(&self) -> bool {
         !self.undo_stack.is_empty()
     }
 
-    /// Check if redo is available
-    #[allow(unused)]
     pub fn can_redo(&self) -> bool {
         !self.redo_stack.is_empty()
     }
 
-    #[allow(unused)]
     pub fn drain_text(&mut self) -> String {
         self.cursor_position = 0;
         self.buffer.drain(..).collect()
     }
+
+    fn effective_label_width(&self) -> usize {
+        self.label_width
+            .unwrap_or_else(|| default_label_width(&self.label))
+    }
+
+    fn suffix(&self) -> String {
+        match self.match_count {
+            Some(1) => "1 match".to_owned(),
+            Some(count) => format!("{} matches", count),
+            None => String::new(),
+        }
+    }
+
+    fn keep_cursor_visible(&mut self, text_area_width: usize) {
+        let chars: Vec<char> = self.buffer.chars().collect();
+        let cursor = self.cursor_position.min(chars.len());
+        if cursor < self.scroll_offset {
+            self.scroll_offset = cursor;
+        }
+        let width_between = |from: usize, to: usize| -> usize {
+            chars[from..to]
+                .iter()
+                .map(|c| char_width(*c))
+                .sum::<usize>()
+        };
+        while self.scroll_offset < cursor
+            && width_between(self.scroll_offset, cursor) + 1 > text_area_width
+        {
+            self.scroll_offset += 1;
+        }
+        while self.scroll_offset > 0
+            && width_between(self.scroll_offset - 1, chars.len()) + 1 <= text_area_width
+        {
+            self.scroll_offset -= 1;
+        }
+    }
+
+    fn visible_text(&self, text_area_width: usize) -> String {
+        let mut visible = String::new();
+        let mut used = 0;
+        for character in self.buffer.chars().skip(self.scroll_offset) {
+            let width = char_width(character);
+            if used + width > text_area_width {
+                break;
+            }
+            used += width;
+            visible.push(character);
+        }
+        visible
+    }
+
+    pub fn serialize(&mut self, x: usize, y: usize, width: usize) -> String {
+        let label_width = self.effective_label_width();
+        let field_width = width.saturating_sub(label_width).max(MIN_FIELD_WIDTH);
+        let inner_width = field_width - 4;
+        let suffix = self.suffix();
+        let suffix_width = if suffix.is_empty() || text_width(&suffix) + 2 > inner_width {
+            0
+        } else {
+            text_width(&suffix) + 1
+        };
+        let text_area_width = inner_width - suffix_width;
+        self.keep_cursor_visible(text_area_width);
+        let height = self.height();
+        self.area = Some(Rect::new(x, y, label_width + field_width, height));
+        self.text_start_x = x + label_width + 2;
+        self.text_area_width = text_area_width;
+        let show_placeholder = self.buffer.is_empty() && self.placeholder.is_some();
+        let error = self.validation_error();
+        let mut state = vec![];
+        state_flag(&mut state, "f", self.focused);
+        state_flag(&mut state, "d", self.disabled);
+        state_flag(&mut state, "ph", show_placeholder);
+        state_flag(&mut state, "err", error.is_some());
+        state_flag(&mut state, "h", self.hovered && !self.disabled);
+        state_value(&mut state, "lw", label_width);
+        if self.focused && !self.disabled {
+            let cursor = if show_placeholder {
+                0
+            } else {
+                self.cursor_position.saturating_sub(self.scroll_offset)
+            };
+            state_value(&mut state, "cur", cursor);
+        }
+        let text = if show_placeholder {
+            self.placeholder.clone().unwrap_or_default()
+        } else {
+            self.visible_text(text_area_width)
+        };
+        widget_dcs(
+            "text_input",
+            x,
+            y,
+            Some(label_width + field_width),
+            Some(height),
+            &state,
+            &[
+                encode_text(&self.label),
+                encode_text(&text),
+                encode_text(&error.unwrap_or_default()),
+                encode_text(&suffix),
+            ],
+        )
+    }
+
+    pub fn render(&mut self, x: usize, y: usize, width: usize) {
+        print!("{}", self.serialize(x, y, width));
+    }
+
+    fn edited(&mut self, before: &str) -> UiResponse {
+        if self.buffer != before {
+            UiResponse::Changed(UiValue::Text(self.buffer.clone()))
+        } else {
+            UiResponse::Consumed
+        }
+    }
+
+    fn apply_key(&mut self, key: &KeyWithModifier) -> Option<()> {
+        let ctrl = key.has_modifiers(&[KeyModifier::Ctrl]);
+        let alt = key.has_modifiers(&[KeyModifier::Alt]);
+        let shift = key.has_modifiers(&[KeyModifier::Shift]);
+        match key.bare_key {
+            BareKey::Char('Z') if ctrl => {
+                self.redo();
+            },
+            BareKey::Char('z') if ctrl && shift => {
+                self.redo();
+            },
+            BareKey::Char('a') if ctrl => self.move_to_start(),
+            BareKey::Char('e') if ctrl => self.move_to_end(),
+            BareKey::Char('z') if ctrl => {
+                self.undo();
+            },
+            BareKey::Char('y') if ctrl => {
+                self.redo();
+            },
+            BareKey::Left if ctrl || alt => self.move_word_left(),
+            BareKey::Right if ctrl || alt => self.move_word_right(),
+            BareKey::Backspace if ctrl || alt => self.delete_word_backward(),
+            BareKey::Delete if ctrl || alt => self.delete_word_forward(),
+            BareKey::Backspace if key.has_no_modifiers() => self.backspace(),
+            BareKey::Delete if key.has_no_modifiers() => self.delete(),
+            BareKey::Left if key.has_no_modifiers() => self.move_left(),
+            BareKey::Right if key.has_no_modifiers() => self.move_right(),
+            BareKey::Home if key.has_no_modifiers() => self.move_to_start(),
+            BareKey::End if key.has_no_modifiers() => self.move_to_end(),
+            _ => match typed_char(key) {
+                Some(character) => {
+                    if self.accept.map(|accept| accept(character)).unwrap_or(true) {
+                        self.insert_char(character);
+                    }
+                },
+                None => return None,
+            },
+        }
+        Some(())
+    }
 }
 
-// run with:
-// cargo test --lib --target x86_64-unknown-linux-gnu
-//
+impl Widget for TextInput {
+    fn handle_key(&mut self, key: &KeyWithModifier) -> UiResponse {
+        if self.disabled {
+            return UiResponse::NotHandled;
+        }
+        let is_cancel =
+            is_plain(key, BareKey::Esc) || key.is_key_with_ctrl_modifier(BareKey::Char('c'));
+        if is_cancel {
+            if self.search_mode && !self.buffer.is_empty() {
+                self.clear();
+                return UiResponse::Changed(UiValue::Text(String::new()));
+            }
+            return UiResponse::Cancelled;
+        }
+        if is_plain(key, BareKey::Enter) {
+            return if self.is_valid() {
+                UiResponse::Submitted(UiValue::Text(self.buffer.clone()))
+            } else {
+                UiResponse::Consumed
+            };
+        }
+        let before = self.buffer.clone();
+        match self.apply_key(key) {
+            Some(()) => self.edited(&before),
+            None => UiResponse::NotHandled,
+        }
+    }
+    fn handle_mouse(&mut self, mouse: Mouse) -> UiResponse {
+        match mouse {
+            Mouse::LeftClick(line, column) if self.hit_test(line, column) => {
+                if self.disabled {
+                    return UiResponse::Consumed;
+                }
+                let area = self.area.unwrap_or_default();
+                if line as usize == area.y
+                    && column >= self.text_start_x
+                    && column < self.text_start_x + self.text_area_width
+                {
+                    let mut used = 0;
+                    let mut position = self.scroll_offset;
+                    for character in self.buffer.chars().skip(self.scroll_offset) {
+                        let width = char_width(character);
+                        if self.text_start_x + used + width > column {
+                            break;
+                        }
+                        used += width;
+                        position += 1;
+                    }
+                    self.break_coalescing();
+                    self.set_cursor_position(position);
+                }
+                UiResponse::Consumed
+            },
+            Mouse::Hover(line, column) => {
+                let hit = self.hit_test(line, column);
+                update_hover(&mut self.hovered, hit)
+            },
+            _ => UiResponse::NotHandled,
+        }
+    }
+    fn set_focused(&mut self, focused: bool) {
+        self.focused = focused;
+    }
+    fn is_focused(&self) -> bool {
+        self.focused
+    }
+    fn is_disabled(&self) -> bool {
+        self.disabled
+    }
+    fn last_area(&self) -> Option<Rect> {
+        self.area
+    }
+    fn clear_area(&mut self) {
+        self.area = None;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -481,7 +639,7 @@ mod tests {
     #[test]
     fn test_insert_char() {
         let mut input = TextInput::new("helo".to_string());
-        input.cursor_position = 3; // Position after "hel"
+        input.cursor_position = 3;
         input.insert_char('l');
         assert_eq!(input.get_text(), "hello");
         assert_eq!(input.get_cursor_position(), 4);
@@ -494,7 +652,6 @@ mod tests {
         assert_eq!(input.get_text(), "hell");
         assert_eq!(input.get_cursor_position(), 4);
 
-        // Backspace at start does nothing
         input.cursor_position = 0;
         input.backspace();
         assert_eq!(input.get_text(), "hell");
@@ -509,7 +666,6 @@ mod tests {
         assert_eq!(input.get_text(), "ello");
         assert_eq!(input.get_cursor_position(), 0);
 
-        // Delete at end does nothing
         input.move_to_end();
         input.delete();
         assert_eq!(input.get_text(), "ello");
@@ -536,9 +692,9 @@ mod tests {
     #[test]
     fn test_unicode_support() {
         let mut input = TextInput::new("hello 🦀 world".to_string());
-        assert_eq!(input.get_cursor_position(), 13); // 13 characters
+        assert_eq!(input.get_cursor_position(), 13);
 
-        input.cursor_position = 6; // After "hello "
+        input.cursor_position = 6;
         input.insert_char('🐱');
         assert_eq!(input.get_text(), "hello 🐱🦀 world");
     }
@@ -548,21 +704,17 @@ mod tests {
         let mut input = TextInput::new("hello world foo bar".to_string());
         input.cursor_position = 0;
 
-        // Jump from start to "world"
         input.move_word_right();
-        assert_eq!(input.get_cursor_position(), 6); // After "hello "
+        assert_eq!(input.get_cursor_position(), 6);
 
-        // Jump to "foo"
         input.move_word_right();
-        assert_eq!(input.get_cursor_position(), 12); // After "world "
+        assert_eq!(input.get_cursor_position(), 12);
 
-        // Jump to "bar"
         input.move_word_right();
-        assert_eq!(input.get_cursor_position(), 16); // After "foo "
+        assert_eq!(input.get_cursor_position(), 16);
 
-        // Jump to end
         input.move_word_right();
-        assert_eq!(input.get_cursor_position(), 19); // At end
+        assert_eq!(input.get_cursor_position(), 19);
     }
 
     #[test]
@@ -571,21 +723,17 @@ mod tests {
         input.move_to_end();
         assert_eq!(input.get_cursor_position(), 19);
 
-        // Jump back to "bar"
         input.move_word_left();
-        assert_eq!(input.get_cursor_position(), 16); // Start of "bar"
+        assert_eq!(input.get_cursor_position(), 16);
 
-        // Jump back to "foo"
         input.move_word_left();
-        assert_eq!(input.get_cursor_position(), 12); // Start of "foo"
+        assert_eq!(input.get_cursor_position(), 12);
 
-        // Jump back to "world"
         input.move_word_left();
-        assert_eq!(input.get_cursor_position(), 6); // Start of "world"
+        assert_eq!(input.get_cursor_position(), 6);
 
-        // Jump back to "hello"
         input.move_word_left();
-        assert_eq!(input.get_cursor_position(), 0); // Start of "hello"
+        assert_eq!(input.get_cursor_position(), 0);
     }
 
     #[test]
@@ -593,25 +741,21 @@ mod tests {
         let mut input = TextInput::new("hello   world".to_string());
         input.cursor_position = 0;
 
-        // Jump over multiple spaces
         input.move_word_right();
-        assert_eq!(input.get_cursor_position(), 8); // After "hello   ", at start of "world"
+        assert_eq!(input.get_cursor_position(), 8);
 
-        // Jump back should skip spaces
         input.move_word_left();
-        assert_eq!(input.get_cursor_position(), 0); // Back to start of "hello"
+        assert_eq!(input.get_cursor_position(), 0);
     }
 
     #[test]
     fn test_word_jump_boundaries() {
         let mut input = TextInput::new("test".to_string());
 
-        // At start - word left does nothing
         input.cursor_position = 0;
         input.move_word_left();
         assert_eq!(input.get_cursor_position(), 0);
 
-        // At end - word right does nothing
         input.move_to_end();
         let end_pos = input.get_cursor_position();
         input.move_word_right();
@@ -622,18 +766,14 @@ mod tests {
     fn test_up_down_arrows() {
         let mut input = TextInput::new("hello world".to_string());
 
-        // Start in the middle
         input.cursor_position = 5;
         assert_eq!(input.get_cursor_position(), 5);
 
-        // Up arrow should go to start
         input.move_to_start();
         assert_eq!(input.get_cursor_position(), 0);
 
-        // Move back to middle
         input.cursor_position = 5;
 
-        // Down arrow should go to end
         input.move_to_end();
         assert_eq!(input.get_cursor_position(), 11);
     }
@@ -642,23 +782,19 @@ mod tests {
     fn test_delete_word_backward() {
         let mut input = TextInput::new("hello world foo".to_string());
 
-        // Delete "foo" from end
         input.move_to_end();
         input.delete_word_backward();
         assert_eq!(input.get_text(), "hello world ");
         assert_eq!(input.get_cursor_position(), 12);
 
-        // Delete "world "
         input.delete_word_backward();
         assert_eq!(input.get_text(), "hello ");
         assert_eq!(input.get_cursor_position(), 6);
 
-        // Delete "hello "
         input.delete_word_backward();
         assert_eq!(input.get_text(), "");
         assert_eq!(input.get_cursor_position(), 0);
 
-        // Delete on empty buffer does nothing
         input.delete_word_backward();
         assert_eq!(input.get_text(), "");
         assert_eq!(input.get_cursor_position(), 0);
@@ -668,34 +804,29 @@ mod tests {
     fn test_delete_word_backward_middle() {
         let mut input = TextInput::new("hello world foo".to_string());
 
-        // Position in middle of "world"
-        input.cursor_position = 8; // After "hello wo"
+        input.cursor_position = 8;
         input.delete_word_backward();
         assert_eq!(input.get_text(), "hello rld foo");
-        assert_eq!(input.get_cursor_position(), 6); // After "hello "
+        assert_eq!(input.get_cursor_position(), 6);
     }
 
     #[test]
     fn test_delete_word_forward() {
         let mut input = TextInput::new("hello world foo".to_string());
 
-        // Delete "hello " from start
         input.cursor_position = 0;
         input.delete_word_forward();
         assert_eq!(input.get_text(), "world foo");
         assert_eq!(input.get_cursor_position(), 0);
 
-        // Delete "world "
         input.delete_word_forward();
         assert_eq!(input.get_text(), "foo");
         assert_eq!(input.get_cursor_position(), 0);
 
-        // Delete "foo"
         input.delete_word_forward();
         assert_eq!(input.get_text(), "");
         assert_eq!(input.get_cursor_position(), 0);
 
-        // Delete on empty buffer does nothing
         input.delete_word_forward();
         assert_eq!(input.get_text(), "");
         assert_eq!(input.get_cursor_position(), 0);
@@ -705,18 +836,16 @@ mod tests {
     fn test_delete_word_forward_middle() {
         let mut input = TextInput::new("hello world foo".to_string());
 
-        // Position in middle of "world"
-        input.cursor_position = 8; // After "hello wo"
+        input.cursor_position = 8;
         input.delete_word_forward();
         assert_eq!(input.get_text(), "hello wofoo");
-        assert_eq!(input.get_cursor_position(), 8); // Same position, text deleted forward
+        assert_eq!(input.get_cursor_position(), 8);
     }
 
     #[test]
     fn test_delete_word_with_multiple_spaces() {
         let mut input = TextInput::new("hello   world".to_string());
 
-        // Delete forward includes trailing spaces
         input.cursor_position = 0;
         input.delete_word_forward();
         assert_eq!(input.get_text(), "world");
@@ -727,7 +856,6 @@ mod tests {
     fn test_undo_redo_basic() {
         let mut input = TextInput::empty();
 
-        // Type "hello"
         input.insert_char('h');
         input.insert_char('e');
         input.insert_char('l');
@@ -735,13 +863,11 @@ mod tests {
         input.insert_char('o');
         assert_eq!(input.get_text(), "hello");
 
-        // Undo should remove all characters (coalesced into one undo entry)
         assert!(input.can_undo());
         assert!(input.undo());
         assert_eq!(input.get_text(), "");
         assert_eq!(input.get_cursor_position(), 0);
 
-        // Redo should restore "hello"
         assert!(input.can_redo());
         assert!(input.redo());
         assert_eq!(input.get_text(), "hello");
@@ -752,25 +878,20 @@ mod tests {
     fn test_undo_coalescing_breaks_on_cursor_move() {
         let mut input = TextInput::empty();
 
-        // Type "he"
         input.insert_char('h');
         input.insert_char('e');
 
-        // Move cursor to start (breaks coalescing)
         input.move_to_start();
 
-        // Type "llo"
         input.insert_char('l');
         input.insert_char('l');
         input.insert_char('o');
 
         assert_eq!(input.get_text(), "llohe");
 
-        // First undo removes "llo" (second coalesced group)
         input.undo();
         assert_eq!(input.get_text(), "he");
 
-        // Second undo removes "he" (first coalesced group)
         input.undo();
         assert_eq!(input.get_text(), "");
     }
@@ -779,11 +900,9 @@ mod tests {
     fn test_undo_backspace() {
         let mut input = TextInput::new("hello".to_string());
 
-        // Backspace once
         input.backspace();
         assert_eq!(input.get_text(), "hell");
 
-        // Undo should restore "hello"
         input.undo();
         assert_eq!(input.get_text(), "hello");
         assert_eq!(input.get_cursor_position(), 5);
@@ -794,11 +913,9 @@ mod tests {
         let mut input = TextInput::new("hello".to_string());
         input.cursor_position = 0;
 
-        // Delete first character
         input.delete();
         assert_eq!(input.get_text(), "ello");
 
-        // Undo should restore "hello"
         input.undo();
         assert_eq!(input.get_text(), "hello");
         assert_eq!(input.get_cursor_position(), 0);
@@ -808,11 +925,9 @@ mod tests {
     fn test_undo_word_delete() {
         let mut input = TextInput::new("hello world".to_string());
 
-        // Delete "world" backward
         input.delete_word_backward();
         assert_eq!(input.get_text(), "hello ");
 
-        // Undo should restore "hello world"
         input.undo();
         assert_eq!(input.get_text(), "hello world");
         assert_eq!(input.get_cursor_position(), 11);
@@ -822,11 +937,9 @@ mod tests {
     fn test_undo_clear() {
         let mut input = TextInput::new("hello world".to_string());
 
-        // Clear the buffer
         input.clear();
         assert_eq!(input.get_text(), "");
 
-        // Undo should restore the text
         input.undo();
         assert_eq!(input.get_text(), "hello world");
     }
@@ -835,11 +948,9 @@ mod tests {
     fn test_undo_set_text() {
         let mut input = TextInput::new("hello".to_string());
 
-        // Replace with new text
         input.set_text("goodbye".to_string());
         assert_eq!(input.get_text(), "goodbye");
 
-        // Undo should restore "hello"
         input.undo();
         assert_eq!(input.get_text(), "hello");
     }
@@ -848,19 +959,16 @@ mod tests {
     fn test_redo_clears_on_new_edit() {
         let mut input = TextInput::empty();
 
-        // Type "hello"
         input.insert_char('h');
         input.insert_char('e');
         input.insert_char('l');
         input.insert_char('l');
         input.insert_char('o');
 
-        // Undo
         input.undo();
         assert_eq!(input.get_text(), "");
         assert!(input.can_redo());
 
-        // Make a new edit (should clear redo stack)
         input.insert_char('x');
         assert!(!input.can_redo());
     }
@@ -869,34 +977,27 @@ mod tests {
     fn test_multiple_undo_redo() {
         let mut input = TextInput::empty();
 
-        // First edit: type "hello"
         for c in "hello".chars() {
             input.insert_char(c);
         }
 
-        // Break coalescing
         input.move_left();
 
-        // Second edit: type "world"
         for c in "world".chars() {
             input.insert_char(c);
         }
 
         assert_eq!(input.get_text(), "hellworldo");
 
-        // Undo "world"
         input.undo();
         assert_eq!(input.get_text(), "hello");
 
-        // Undo "hello"
         input.undo();
         assert_eq!(input.get_text(), "");
 
-        // Redo "hello"
         input.redo();
         assert_eq!(input.get_text(), "hello");
 
-        // Redo "world"
         input.redo();
         assert_eq!(input.get_text(), "hellworldo");
     }
@@ -905,20 +1006,16 @@ mod tests {
     fn test_undo_stack_limit() {
         let mut input = TextInput::empty();
 
-        // Perform 102 separate edits (breaking coalescing each time)
         for _i in 0..102 {
-            input.backspace(); // Break coalescing
+            input.backspace();
             input.insert_char('x');
         }
 
-        // Should have at most 100 undo entries
         let mut undo_count = 0;
         while input.undo() {
             undo_count += 1;
         }
 
-        // We should have 100 undo entries (the stack limit)
-        // Plus the final state change from the last coalescing break
         assert!(
             undo_count <= 100,
             "Undo count should be at most 100, got {}",
@@ -930,11 +1027,9 @@ mod tests {
     fn test_undo_redo_empty_stack() {
         let mut input = TextInput::empty();
 
-        // Undo on empty stack should return false
         assert!(!input.can_undo());
         assert!(!input.undo());
 
-        // Redo on empty stack should return false
         assert!(!input.can_redo());
         assert!(!input.redo());
     }
@@ -943,15 +1038,12 @@ mod tests {
     fn test_undo_restores_cursor_position() {
         let mut input = TextInput::new("hello world".to_string());
 
-        // Move cursor to position 5 (before "world")
         input.cursor_position = 5;
 
-        // Insert a space
         input.insert_char(' ');
         assert_eq!(input.get_text(), "hello  world");
         assert_eq!(input.get_cursor_position(), 6);
 
-        // Undo should restore both text and cursor position
         input.undo();
         assert_eq!(input.get_text(), "hello world");
         assert_eq!(input.get_cursor_position(), 5);
@@ -961,18 +1053,15 @@ mod tests {
     fn test_coalescing_consecutive_inserts() {
         let mut input = TextInput::empty();
 
-        // Type several characters
         input.insert_char('a');
         input.insert_char('b');
         input.insert_char('c');
 
         assert_eq!(input.get_text(), "abc");
 
-        // Single undo should remove all three (they were coalesced)
         input.undo();
         assert_eq!(input.get_text(), "");
 
-        // No more undo available
         assert!(!input.can_undo());
     }
 
@@ -980,27 +1069,21 @@ mod tests {
     fn test_backspace_breaks_coalescing() {
         let mut input = TextInput::empty();
 
-        // Type "ab"
         input.insert_char('a');
         input.insert_char('b');
 
-        // Backspace
         input.backspace();
         assert_eq!(input.get_text(), "a");
 
-        // Type "c"
         input.insert_char('c');
         assert_eq!(input.get_text(), "ac");
 
-        // Undo should remove just "c"
         input.undo();
         assert_eq!(input.get_text(), "a");
 
-        // Undo should remove backspace operation
         input.undo();
         assert_eq!(input.get_text(), "ab");
 
-        // Undo should remove "ab"
         input.undo();
         assert_eq!(input.get_text(), "");
     }

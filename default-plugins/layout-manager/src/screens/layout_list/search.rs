@@ -1,4 +1,3 @@
-use crate::text_input::TextInput;
 use crate::DisplayLayout;
 use fuzzy_matcher::skim::SkimMatcherV2;
 use fuzzy_matcher::FuzzyMatcher;

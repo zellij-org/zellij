@@ -86,6 +86,11 @@ fn workspace_members() -> &'static Vec<WorkspaceMember> {
                 extra_artifacts: &[],
             },
             WorkspaceMember {
+                crate_name: "default-plugins/storybook",
+                build: true,
+                extra_artifacts: &[],
+            },
+            WorkspaceMember {
                 crate_name: "zellij-utils",
                 build: false,
                 extra_artifacts: &[],
