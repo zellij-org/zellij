@@ -280,7 +280,7 @@ impl CompactBar {
         event: &Event,
         context: EventContext,
         keybinds: &mut KeybindStore,
-    ) -> Render {
+    ) -> RenderResponse {
         match event {
             Event::ModeUpdate(_) | Event::TabUpdate(_) | Event::InitialKeybinds(_) => {
                 for slot in self.slots.values_mut() {
@@ -292,16 +292,16 @@ impl CompactBar {
         match event {
             Event::PaneUpdate(pane_manifest) => {
                 if self.handle_pane_update(pane_manifest) {
-                    Render::Slots(self.main_slot_ids())
+                    RenderResponse::Slots(self.main_slot_ids())
                 } else {
-                    Render::Nothing
+                    RenderResponse::Nothing
                 }
             },
             Event::Mouse(mouse_event) => {
                 if let (Some(slot_id), Some(client_id)) = (context.slot_id, context.client_id) {
                     self.handle_mouse_event(slot_id, client_id, mouse_event);
                 }
-                Render::Nothing
+                RenderResponse::Nothing
             },
             _ => {
                 let target_clients: Vec<ClientId> = match context.client_id {
@@ -315,11 +315,11 @@ impl CompactBar {
                     }
                 }
                 if !should_render {
-                    Render::Nothing
+                    RenderResponse::Nothing
                 } else if let Some(client_id) = context.client_id {
-                    Render::Client(client_id)
+                    RenderResponse::Client(client_id)
                 } else {
-                    Render::Slots(self.slots.keys().copied().collect())
+                    RenderResponse::Slots(self.slots.keys().copied().collect())
                 }
             },
         }
@@ -519,13 +519,13 @@ impl CompactBar {
         message: PipeMessage,
         context: EventContext,
         keybinds: &mut KeybindStore,
-    ) -> Render {
+    ) -> RenderResponse {
         if let Some(slot_id) = context.slot_id {
             if self.slots.get(&slot_id).map(|s| s.is_tooltip).unwrap_or(false) {
                 if message.is_private {
                     self.handle_tooltip_pipe(slot_id, &message);
                 }
-                return Render::Nothing;
+                return RenderResponse::Nothing;
             }
         }
         if message.name == MSG_TOGGLE_TOOLTIP && message.is_private {
@@ -558,7 +558,7 @@ impl CompactBar {
                 self.handle_tooltip_pipe(slot_id, &message);
             }
         }
-        Render::Nothing
+        RenderResponse::Nothing
     }
 
     fn handle_tooltip_pipe(&mut self, slot_id: SlotId, message: &PipeMessage) {

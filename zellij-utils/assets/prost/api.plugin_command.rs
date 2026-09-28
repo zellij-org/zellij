@@ -329,7 +329,7 @@ pub mod plugin_command {
         #[prost(message, tag="175")]
         GetNestedSessionKeybindsPayload(super::GetNestedSessionKeybindsPayload),
         #[prost(message, tag="176")]
-        SetSelectableForPayload(super::SetSelectableForPayload),
+        SetSelectableSlotPayload(super::SetSelectableSlotPayload),
         #[prost(uint32, tag="177")]
         HideSlotPayload(u32),
         #[prost(message, tag="178")]
@@ -340,7 +340,7 @@ pub mod plugin_command {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct SetSelectableForPayload {
+pub struct SetSelectableSlotPayload {
     #[prost(uint32, tag="1")]
     pub slot_id: u32,
     #[prost(bool, tag="2")]
@@ -2285,7 +2285,7 @@ pub enum CommandName {
     ApplyFloatingSwapLayout = 230,
     SetPaneBorderStyle = 231,
     GetNestedSessionKeybinds = 232,
-    SetSelectableFor = 233,
+    SetSelectableSlot = 233,
     HideSlot = 234,
     ShowSlot = 235,
     CloseSlot = 236,
@@ -2504,7 +2504,7 @@ impl CommandName {
             CommandName::ApplyFloatingSwapLayout => "ApplyFloatingSwapLayout",
             CommandName::SetPaneBorderStyle => "SetPaneBorderStyle",
             CommandName::GetNestedSessionKeybinds => "GetNestedSessionKeybinds",
-            CommandName::SetSelectableFor => "SetSelectableFor",
+            CommandName::SetSelectableSlot => "SetSelectableSlot",
             CommandName::HideSlot => "HideSlot",
             CommandName::ShowSlot => "ShowSlot",
             CommandName::CloseSlot => "CloseSlot",
@@ -2720,7 +2720,7 @@ impl CommandName {
             "ApplyFloatingSwapLayout" => Some(Self::ApplyFloatingSwapLayout),
             "SetPaneBorderStyle" => Some(Self::SetPaneBorderStyle),
             "GetNestedSessionKeybinds" => Some(Self::GetNestedSessionKeybinds),
-            "SetSelectableFor" => Some(Self::SetSelectableFor),
+            "SetSelectableSlot" => Some(Self::SetSelectableSlot),
             "HideSlot" => Some(Self::HideSlot),
             "ShowSlot" => Some(Self::ShowSlot),
             "CloseSlot" => Some(Self::CloseSlot),

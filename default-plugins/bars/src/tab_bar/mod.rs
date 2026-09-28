@@ -146,23 +146,23 @@ impl TabBar {
         }
     }
 
-    fn render_request(&self, context: &EventContext, should_render: bool) -> Render {
+    fn render_request(&self, context: &EventContext, should_render: bool) -> RenderResponse {
         if !should_render {
-            Render::Nothing
+            RenderResponse::Nothing
         } else if let Some(client_id) = context.client_id {
-            Render::Client(client_id)
+            RenderResponse::Client(client_id)
         } else {
-            Render::Slots(self.slots.keys().copied().collect())
+            RenderResponse::Slots(self.slots.keys().copied().collect())
         }
     }
 
-    pub fn update(&mut self, event: &Event, context: EventContext) -> Render {
+    pub fn update(&mut self, event: &Event, context: EventContext) -> RenderResponse {
         if let Event::Timer(_) = event {
             let Some(client_id) = self.hint_timeout_queue.pop_front() else {
-                return Render::Nothing;
+                return RenderResponse::Nothing;
             };
             let Some(client) = self.clients.get_mut(&client_id) else {
-                return Render::Nothing;
+                return RenderResponse::Nothing;
             };
             let mut should_render = false;
             client.outstanding_hint_timeouts = client.outstanding_hint_timeouts.saturating_sub(1);
@@ -174,9 +174,9 @@ impl TabBar {
                 should_render = false;
             }
             return if should_render {
-                Render::Client(client_id)
+                RenderResponse::Client(client_id)
             } else {
-                Render::Nothing
+                RenderResponse::Nothing
             };
         }
         let mut should_render = false;

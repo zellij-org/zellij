@@ -194,7 +194,7 @@ impl ZellijSharedPlugin for State {
         self.compact_bar.client_disconnected(client_id);
     }
 
-    fn update(&mut self, mut event: Event, context: EventContext) -> Render {
+    fn update(&mut self, mut event: Event, context: EventContext) -> RenderResponse {
         self.compact_bar.ensure_toggle_keybinds(context.client_id);
         self.store_keybinds(&mut event, context.client_id);
         match &event {
@@ -208,11 +208,11 @@ impl ZellijSharedPlugin for State {
                     Some(Role::CompactBar) => {
                         self.compact_bar.update(&event, context, &mut self.keybinds)
                     },
-                    _ => Render::Nothing,
+                    _ => RenderResponse::Nothing,
                 }
             },
             _ => {
-                let mut render = Render::Nothing;
+                let mut render = RenderResponse::Nothing;
                 if !self.any_bar_has_slots() {
                     if let Some(client_id) = context.client_id {
                         if matches!(
@@ -244,13 +244,13 @@ impl ZellijSharedPlugin for State {
         }
     }
 
-    fn pipe(&mut self, pipe_message: PipeMessage, context: EventContext) -> Render {
+    fn pipe(&mut self, pipe_message: PipeMessage, context: EventContext) -> RenderResponse {
         self.compact_bar.ensure_toggle_keybinds(context.client_id);
         if self.compact_bar.has_slots() {
             self.compact_bar
                 .pipe(pipe_message, context, &mut self.keybinds)
         } else {
-            Render::Nothing
+            RenderResponse::Nothing
         }
     }
 

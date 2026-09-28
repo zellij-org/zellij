@@ -6,7 +6,7 @@ pub use super::generated_api::api::{
         SlotKind as ProtobufSlotKind,
     },
 };
-use crate::data::{EventContext, Render, Slot, SlotKind};
+use crate::data::{EventContext, RenderResponse, Slot, SlotKind};
 
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
@@ -68,25 +68,25 @@ impl From<ProtobufSlot> for Slot {
     }
 }
 
-impl From<Render> for ProtobufRenderRequest {
-    fn from(render: Render) -> Self {
+impl From<RenderResponse> for ProtobufRenderRequest {
+    fn from(render: RenderResponse) -> Self {
         match render {
-            Render::Nothing => ProtobufRenderRequest {
+            RenderResponse::Nothing => ProtobufRenderRequest {
                 kind: ProtobufRenderKind::Nothing as i32,
                 client_id: None,
                 slot_ids: vec![],
             },
-            Render::All => ProtobufRenderRequest {
+            RenderResponse::All => ProtobufRenderRequest {
                 kind: ProtobufRenderKind::All as i32,
                 client_id: None,
                 slot_ids: vec![],
             },
-            Render::Client(client_id) => ProtobufRenderRequest {
+            RenderResponse::Client(client_id) => ProtobufRenderRequest {
                 kind: ProtobufRenderKind::Client as i32,
                 client_id: Some(client_id),
                 slot_ids: vec![],
             },
-            Render::Slots(slot_ids) => ProtobufRenderRequest {
+            RenderResponse::Slots(slot_ids) => ProtobufRenderRequest {
                 kind: ProtobufRenderKind::Slots as i32,
                 client_id: None,
                 slot_ids,
@@ -95,16 +95,16 @@ impl From<Render> for ProtobufRenderRequest {
     }
 }
 
-impl From<ProtobufRenderRequest> for Render {
+impl From<ProtobufRenderRequest> for RenderResponse {
     fn from(request: ProtobufRenderRequest) -> Self {
         match ProtobufRenderKind::try_from(request.kind) {
-            Ok(ProtobufRenderKind::All) => Render::All,
+            Ok(ProtobufRenderKind::All) => RenderResponse::All,
             Ok(ProtobufRenderKind::Client) => match request.client_id {
-                Some(client_id) => Render::Client(client_id),
-                None => Render::All,
+                Some(client_id) => RenderResponse::Client(client_id),
+                None => RenderResponse::All,
             },
-            Ok(ProtobufRenderKind::Slots) => Render::Slots(request.slot_ids),
-            _ => Render::Nothing,
+            Ok(ProtobufRenderKind::Slots) => RenderResponse::Slots(request.slot_ids),
+            _ => RenderResponse::Nothing,
         }
     }
 }

@@ -123,7 +123,7 @@ pub use super::generated_api::api::{
         SessionListSnapshot as ProtobufSessionListSnapshot, SetFloatingPanePinnedPayload,
         SetPaneBorderStylePayload, SetPaneBorderlessPayload, SetPaneColorPayload,
         SetPaneFrameStylePayload as ProtobufSetPaneFrameStylePayload,
-        SetPaneRegexHighlightsPayload, SetSelectableForPayload, SetSelfMouseSelectionSupportPayload,
+        SetPaneRegexHighlightsPayload, SetSelectableSlotPayload, SetSelfMouseSelectionSupportPayload,
         ShowSlotPayload, SlotCommandResponse as ProtobufSlotCommandResponse,
         SetSoftKeyboardPayload as ProtobufSetSoftKeyboardPayload, SetTimeoutPayload,
         ShowCursorPayload, ShowFloatingPanesPayload as ProtobufShowFloatingPanesPayload,
@@ -2522,11 +2522,11 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
             Some(CommandName::CurrentSessionLastSavedTime) => {
                 Ok(PluginCommand::CurrentSessionLastSavedTime)
             },
-            Some(CommandName::SetSelectableFor) => match protobuf_plugin_command.payload {
-                Some(Payload::SetSelectableForPayload(payload)) => Ok(
-                    PluginCommand::SetSelectableFor(payload.slot_id, payload.selectable),
+            Some(CommandName::SetSelectableSlot) => match protobuf_plugin_command.payload {
+                Some(Payload::SetSelectableSlotPayload(payload)) => Ok(
+                    PluginCommand::SetSelectableSlot(payload.slot_id, payload.selectable),
                 ),
-                _ => Err("Mismatched payload for SetSelectableFor"),
+                _ => Err("Mismatched payload for SetSelectableSlot"),
             },
             Some(CommandName::HideSlot) => match protobuf_plugin_command.payload {
                 Some(Payload::HideSlotPayload(slot_id)) => Ok(PluginCommand::HideSlot(slot_id)),
@@ -4355,9 +4355,9 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     CurrentSessionLastSavedTimePayload {},
                 )),
             }),
-            PluginCommand::SetSelectableFor(slot_id, selectable) => Ok(ProtobufPluginCommand {
-                name: CommandName::SetSelectableFor as i32,
-                payload: Some(Payload::SetSelectableForPayload(SetSelectableForPayload {
+            PluginCommand::SetSelectableSlot(slot_id, selectable) => Ok(ProtobufPluginCommand {
+                name: CommandName::SetSelectableSlot as i32,
+                payload: Some(Payload::SetSelectableSlotPayload(SetSelectableSlotPayload {
                     slot_id,
                     selectable,
                 })),

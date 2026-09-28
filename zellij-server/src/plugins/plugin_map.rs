@@ -13,7 +13,7 @@ use crate::{thread_bus::ThreadSenders, ClientId, SharedKeybinds};
 
 use tokio::sync::mpsc::UnboundedSender;
 use zellij_utils::{
-    data::{Event, EventType, Render, SlotKind},
+    data::{Event, EventType, RenderResponse, SlotKind},
     data::InputMode,
     input::command::TerminalAction,
     input::layout::{PluginUserConfiguration, RunPlugin, RunPluginLocation},
@@ -385,15 +385,15 @@ impl SharedEnv {
             }
         })
     }
-    pub fn render_targets(&self, render: &Render) -> Vec<(PluginId, ClientId)> {
+    pub fn render_targets(&self, render: &RenderResponse) -> Vec<(PluginId, ClientId)> {
         let mut targets = vec![];
         for client_id in self.clients.iter() {
             for slot_id in self.slots.keys() {
                 let wanted = match render {
-                    Render::Nothing => false,
-                    Render::All => true,
-                    Render::Client(c) => c == client_id,
-                    Render::Slots(slot_ids) => slot_ids.contains(slot_id),
+                    RenderResponse::Nothing => false,
+                    RenderResponse::All => true,
+                    RenderResponse::Client(c) => c == client_id,
+                    RenderResponse::Slots(slot_ids) => slot_ids.contains(slot_id),
                 };
                 if wanted
                     && self.renderable_slot(*slot_id).is_some()

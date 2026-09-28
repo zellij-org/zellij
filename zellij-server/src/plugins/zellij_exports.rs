@@ -255,7 +255,7 @@ fn write_slot_command_response(env: &PluginEnv, result: std::result::Result<(), 
         .non_fatal();
 }
 
-fn set_selectable_for(env: &PluginEnv, slot_id: PluginId, selectable: bool) {
+fn set_selectable_slot(env: &PluginEnv, slot_id: PluginId, selectable: bool) {
     let result = slot_command_target(env, slot_id).and_then(|_| {
         env.senders
             .send_to_screen(ScreenInstruction::SetSelectable(
@@ -336,8 +336,8 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
             }
             match check_command_permission(&env, &command) {
                 (PermissionStatus::Granted, _) => match command {
-                    PluginCommand::SetSelectableFor(slot_id, selectable) => {
-                        set_selectable_for(env, slot_id, selectable)
+                    PluginCommand::SetSelectableSlot(slot_id, selectable) => {
+                        set_selectable_slot(env, slot_id, selectable)
                     },
                     PluginCommand::HideSlot(slot_id) => hide_slot(env, slot_id),
                     PluginCommand::ShowSlot(slot_id, should_float_if_hidden) => {

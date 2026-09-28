@@ -70,49 +70,49 @@ impl ZellijSharedPlugin for State {
         self.clients.remove(&client_id);
         self.disconnected_clients.push(client_id);
     }
-    fn update(&mut self, event: Event, context: EventContext) -> Render {
+    fn update(&mut self, event: Event, context: EventContext) -> RenderResponse {
         match event {
             Event::Key(_) => {
                 self.key_events.push((context.slot_id, context.client_id));
                 match context.client_id {
-                    Some(client_id) => Render::Client(client_id),
-                    None => Render::All,
+                    Some(client_id) => RenderResponse::Client(client_id),
+                    None => RenderResponse::All,
                 }
             },
-            _ => Render::Nothing,
+            _ => RenderResponse::Nothing,
         }
     }
-    fn pipe(&mut self, pipe_message: PipeMessage, context: EventContext) -> Render {
+    fn pipe(&mut self, pipe_message: PipeMessage, context: EventContext) -> RenderResponse {
         match pipe_message.name.as_str() {
-            "render_all" => Render::All,
+            "render_all" => RenderResponse::All,
             "render_slot" => match pipe_message.payload.and_then(|p| p.parse::<SlotId>().ok()) {
-                Some(slot_id) => Render::Slots(vec![slot_id]),
-                None => Render::Nothing,
+                Some(slot_id) => RenderResponse::Slots(vec![slot_id]),
+                None => RenderResponse::Nothing,
             },
-            "selectable_for" => {
+            "selectable_slot" => {
                 let results: Vec<String> = self
                     .slots
                     .keys()
                     .copied()
                     .collect::<Vec<_>>()
                     .into_iter()
-                    .map(|slot_id| format!("{:?}", set_selectable_for(slot_id, false)))
+                    .map(|slot_id| format!("{:?}", set_selectable_slot(slot_id, false)))
                     .collect();
                 self.self_command_results.extend(results);
                 self.self_command_results
-                    .push(format!("{:?}", set_selectable_for(u32::MAX, false)));
-                Render::All
+                    .push(format!("{:?}", set_selectable_slot(u32::MAX, false)));
+                RenderResponse::All
             },
             "close_first_slot" => {
                 if let Some(slot_id) = self.slots.keys().next().copied() {
                     let result = close_slot(slot_id);
                     self.self_command_results.push(format!("{:?}", result));
                 }
-                Render::All
+                RenderResponse::All
             },
             _ => {
                 let _ = context;
-                Render::Nothing
+                RenderResponse::Nothing
             },
         }
     }

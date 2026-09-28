@@ -315,7 +315,7 @@ impl StatusBar {
         }
     }
 
-    pub fn update(&mut self, event: &Event, context: EventContext) -> Render {
+    pub fn update(&mut self, event: &Event, context: EventContext) -> RenderResponse {
         let target_clients: Vec<ClientId> = match context.client_id {
             Some(client_id) => vec![client_id],
             None => self.clients.keys().copied().collect(),
@@ -327,11 +327,11 @@ impl StatusBar {
             }
         }
         if !should_render {
-            Render::Nothing
+            RenderResponse::Nothing
         } else if let Some(client_id) = context.client_id {
-            Render::Client(client_id)
+            RenderResponse::Client(client_id)
         } else {
-            Render::Slots(self.slots.keys().copied().collect())
+            RenderResponse::Slots(self.slots.keys().copied().collect())
         }
     }
 

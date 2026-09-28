@@ -21,7 +21,7 @@ pub mod ui_components;
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use zellij_utils::data::{ClientId, Event, EventContext, PipeMessage, Render, Slot, SlotId};
+use zellij_utils::data::{ClientId, Event, EventContext, PipeMessage, RenderResponse, Slot, SlotId};
 
 // use zellij_tile::shim::plugin_api::event::ProtobufEvent;
 
@@ -55,11 +55,11 @@ pub trait ZellijSharedPlugin: Default {
     fn slot_removed(&mut self, slot_id: SlotId) {}
     fn client_connected(&mut self, client_id: ClientId) {}
     fn client_disconnected(&mut self, client_id: ClientId) {}
-    fn update(&mut self, event: Event, context: EventContext) -> Render {
-        Render::Nothing
+    fn update(&mut self, event: Event, context: EventContext) -> RenderResponse {
+        RenderResponse::Nothing
     }
-    fn pipe(&mut self, pipe_message: PipeMessage, context: EventContext) -> Render {
-        Render::Nothing
+    fn pipe(&mut self, pipe_message: PipeMessage, context: EventContext) -> RenderResponse {
+        RenderResponse::Nothing
     }
     fn render(&mut self, rows: usize, cols: usize, slot_id: SlotId, client_id: ClientId) {}
 }
@@ -83,12 +83,12 @@ pub fn read_shared_slot() -> Slot {
 }
 
 #[doc(hidden)]
-pub fn write_render_request(render: Render) -> i32 {
+pub fn write_render_request(render: RenderResponse) -> i32 {
     use prost::Message;
     use zellij_utils::plugin_api::shared_plugin::ProtobufRenderRequest;
     match render {
-        Render::Nothing => 0,
-        Render::All => 1,
+        RenderResponse::Nothing => 0,
+        RenderResponse::All => 1,
         render => {
             let request: ProtobufRenderRequest = render.into();
             shim::object_to_stdout(&request.encode_to_vec());

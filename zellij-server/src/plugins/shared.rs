@@ -21,7 +21,7 @@ use std::sync::{Arc, Mutex};
 use wasmi::Engine;
 use zellij_utils::data::KeybindsVec;
 use zellij_utils::data::{
-    Event, EventContext, EventType, PermissionStatus, PipeMessage, PipeSource, Render, Slot,
+    Event, EventContext, EventType, PermissionStatus, PipeMessage, PipeSource, RenderResponse, Slot,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::TerminalAction;
@@ -236,22 +236,22 @@ pub fn call_slot_removed(running_plugin: &mut RunningPlugin, slot_id: PluginId) 
     Ok(slots_left)
 }
 
-fn read_render_request(running_plugin: &RunningPlugin) -> Render {
+fn read_render_request(running_plugin: &RunningPlugin) -> RenderResponse {
     match wasi_read_bytes(running_plugin.store.data()).and_then(|bytes| {
         ProtobufRenderRequest::decode(bytes.as_slice()).map_err(|e| anyhow!(e))
     }) {
-        Ok(request) => Render::from(request),
+        Ok(request) => RenderResponse::from(request),
         Err(e) => {
             log::error!("Failed to read render request from shared plugin: {:?}", e);
-            Render::All
+            RenderResponse::All
         },
     }
 }
 
-fn render_from_return_value(running_plugin: &RunningPlugin, value: i32) -> Render {
+fn render_from_return_value(running_plugin: &RunningPlugin, value: i32) -> RenderResponse {
     match value {
-        0 => Render::Nothing,
-        1 => Render::All,
+        0 => RenderResponse::Nothing,
+        1 => RenderResponse::All,
         _ => read_render_request(running_plugin),
     }
 }
@@ -261,7 +261,7 @@ pub fn call_update(
     event: &Event,
     keybinds: Option<&KeybindsVec>,
     context: EventContext,
-) -> Result<Render> {
+) -> Result<RenderResponse> {
     let protobuf_context: ProtobufEventContext = context.into();
     let protobuf_event: ProtobufEvent = event_to_protobuf_with_keybinds(event.clone(), keybinds)
         .map_err(|e| anyhow!("Failed to convert to protobuf: {:?}", e))?;
@@ -277,7 +277,7 @@ pub fn call_pipe(
     running_plugin: &mut RunningPlugin,
     pipe_message: &PipeMessage,
     context: EventContext,
-) -> Result<Render> {
+) -> Result<RenderResponse> {
     let protobuf_context: ProtobufEventContext = context.into();
     let protobuf_pipe_message: ProtobufPipeMessage = pipe_message
         .clone()
@@ -337,7 +337,7 @@ pub fn render_targets(
     Ok(assets)
 }
 
-fn targets_for(running_plugin: &RunningPlugin, render: &Render) -> Vec<(PluginId, ClientId)> {
+fn targets_for(running_plugin: &RunningPlugin, render: &RenderResponse) -> Vec<(PluginId, ClientId)> {
     running_plugin
         .store
         .data()
@@ -365,7 +365,7 @@ fn render_and_send(
 fn render_request(
     senders: &ThreadSenders,
     running_plugin: &mut RunningPlugin,
-    render: Render,
+    render: RenderResponse,
 ) -> Result<()> {
     let targets = targets_for(running_plugin, &render);
     render_and_send(senders, running_plugin, targets)
@@ -426,7 +426,7 @@ pub fn apply_events_job(
     };
     let subscriptions = subscriptions.lock().unwrap().clone();
     let mut running_plugin = running_plugin.lock().unwrap();
-    let mut render = Render::Nothing;
+    let mut render = RenderResponse::Nothing;
     let strip_keybinds = subscriptions.contains(&EventType::InitialKeybinds);
     for (mut event, context, mut keybinds) in events {
         let Ok(event_type) = EventType::from_str(&event.to_string()) else {
@@ -478,7 +478,7 @@ pub fn apply_events_job(
             Ok(requested) => {
                 render = render.merge(requested);
                 if event_type == EventType::PermissionRequestResult {
-                    render = render.merge(Render::All);
+                    render = render.merge(RenderResponse::All);
                 }
             },
             Err(e) => {
@@ -508,7 +508,7 @@ pub fn apply_pipes_job(
         return;
     };
     let mut running_plugin = running_plugin.lock().unwrap();
-    let mut render = Render::Nothing;
+    let mut render = RenderResponse::Nothing;
     let mut messages = messages.into_iter();
     while let Some((pipe_message, context)) = messages.next() {
         match call_pipe(&mut running_plugin, &pipe_message, context) {
@@ -561,7 +561,7 @@ pub fn add_slot_job(
     let added = call_slot_added(&mut running_plugin, slot_id, slot);
     let _ = slot_added.send(());
     let result = added.and_then(|_| {
-        render_request(&senders, &mut running_plugin, Render::Slots(vec![slot_id]))
+        render_request(&senders, &mut running_plugin, RenderResponse::Slots(vec![slot_id]))
     });
     match result {
         Ok(()) => {
@@ -653,7 +653,7 @@ pub fn client_job(
     let mut running_plugin = running_plugin.lock().unwrap();
     let result = if connected {
         call_client_connected(&mut running_plugin, client_id)
-            .and_then(|_| render_request(&senders, &mut running_plugin, Render::Client(client_id)))
+            .and_then(|_| render_request(&senders, &mut running_plugin, RenderResponse::Client(client_id)))
     } else {
         call_client_disconnected(&mut running_plugin, client_id)
     };
@@ -688,7 +688,7 @@ pub fn resize_job(
         None => false,
     };
     if changed {
-        if let Err(e) = render_request(&senders, &mut running_plugin, Render::Slots(vec![slot_id]))
+        if let Err(e) = render_request(&senders, &mut running_plugin, RenderResponse::Slots(vec![slot_id]))
         {
             let pane_slots = pane_slot_ids(&running_plugin);
             report_error(&senders, pane_slots, e);
@@ -707,11 +707,11 @@ pub fn visibility_job(
     };
     let mut running_plugin = running_plugin.lock().unwrap();
     let before: HashSet<(PluginId, ClientId)> =
-        targets_for(&running_plugin, &Render::All).into_iter().collect();
+        targets_for(&running_plugin, &RenderResponse::All).into_iter().collect();
     if let Some(shared) = running_plugin.store.data_mut().shared.as_mut() {
         shared.visible_slots = visible_slots;
     }
-    let newly_visible: Vec<(PluginId, ClientId)> = targets_for(&running_plugin, &Render::All)
+    let newly_visible: Vec<(PluginId, ClientId)> = targets_for(&running_plugin, &RenderResponse::All)
         .into_iter()
         .filter(|target| !before.contains(target))
         .collect();
@@ -814,7 +814,7 @@ pub fn start_instance_job(
         }
     }
     if result.is_ok() {
-        result = render_request(&senders, &mut running_plugin, Render::All);
+        result = render_request(&senders, &mut running_plugin, RenderResponse::All);
     }
     match result {
         Ok(()) => {

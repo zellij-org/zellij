@@ -102,8 +102,8 @@ fn run_slot_command(plugin_command: PluginCommand) -> Result<(), String> {
     response.into()
 }
 
-pub fn set_selectable_for(slot_id: SlotId, selectable: bool) -> Result<(), String> {
-    run_slot_command(PluginCommand::SetSelectableFor(slot_id, selectable))
+pub fn set_selectable_slot(slot_id: SlotId, selectable: bool) -> Result<(), String> {
+    run_slot_command(PluginCommand::SetSelectableSlot(slot_id, selectable))
 }
 
 pub fn hide_slot(slot_id: SlotId) -> Result<(), String> {

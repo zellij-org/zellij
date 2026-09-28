@@ -306,7 +306,7 @@ pub fn shared_plugin_renders_per_client() {
     assert_eq!(
         clients_rendered_after_key,
         HashSet::from([2]),
-        "Render::Client only re-renders the named client"
+        "RenderResponse::Client only re-renders the named client"
     );
 }
 
@@ -399,7 +399,7 @@ pub fn shared_plugin_slot_commands_are_checked() {
     });
     let slot_id = slots_of_client(&screen.renders, client_id)[0];
     let _ = sender.send(PluginInstruction::KeybindPipe {
-        name: "selectable_for".to_owned(),
+        name: "selectable_slot".to_owned(),
         payload: None,
         plugin: None,
         args: None,

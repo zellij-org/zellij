@@ -3063,7 +3063,7 @@ pub struct EventContext {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
-pub enum Render {
+pub enum RenderResponse {
     #[default]
     Nothing,
     All,
@@ -3071,29 +3071,29 @@ pub enum Render {
     Slots(Vec<SlotId>),
 }
 
-impl Render {
-    pub fn merge(self, other: Render) -> Render {
+impl RenderResponse {
+    pub fn merge(self, other: RenderResponse) -> RenderResponse {
         match (self, other) {
-            (Render::Nothing, other) => other,
-            (this, Render::Nothing) => this,
-            (Render::All, _) | (_, Render::All) => Render::All,
-            (Render::Client(a), Render::Client(b)) if a == b => Render::Client(a),
-            (Render::Slots(mut a), Render::Slots(b)) => {
+            (RenderResponse::Nothing, other) => other,
+            (this, RenderResponse::Nothing) => this,
+            (RenderResponse::All, _) | (_, RenderResponse::All) => RenderResponse::All,
+            (RenderResponse::Client(a), RenderResponse::Client(b)) if a == b => RenderResponse::Client(a),
+            (RenderResponse::Slots(mut a), RenderResponse::Slots(b)) => {
                 for slot_id in b {
                     if !a.contains(&slot_id) {
                         a.push(slot_id);
                     }
                 }
-                Render::Slots(a)
+                RenderResponse::Slots(a)
             },
-            _ => Render::All,
+            _ => RenderResponse::All,
         }
     }
-    pub fn from_bool(should_render: bool) -> Render {
+    pub fn from_bool(should_render: bool) -> RenderResponse {
         if should_render {
-            Render::All
+            RenderResponse::All
         } else {
-            Render::Nothing
+            RenderResponse::Nothing
         }
     }
 }
@@ -4118,7 +4118,7 @@ pub enum PluginCommand {
     SetSoftKeyboard(bool),
     FocusHostSession,
     GetNestedSessionKeybinds(PaneId),
-    SetSelectableFor(SlotId, bool),
+    SetSelectableSlot(SlotId, bool),
     HideSlot(SlotId),
     ShowSlot(SlotId, bool),
     CloseSlot(SlotId),
