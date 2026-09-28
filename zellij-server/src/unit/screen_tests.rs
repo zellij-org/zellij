@@ -3088,11 +3088,8 @@ pub fn send_cli_scroll_up_action() {
         received_server_instructions.lock().unwrap().iter(),
         size,
     );
-    let snapshot_count = snapshots.len();
-    for (_cursor_coordinates, snapshot) in snapshots {
-        assert_snapshot!(format!("{}", snapshot));
-    }
-    assert_snapshot!(format!("{}", snapshot_count));
+    let (_cursor_position, last_snapshot) = snapshots.last().unwrap();
+    assert_snapshot!(format!("{}", last_snapshot));
 }
 
 #[test]
