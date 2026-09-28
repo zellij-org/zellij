@@ -3550,7 +3550,10 @@ mod web_client_tests {
             .await;
         wait_until(Duration::from_secs(10), || {
             client.sent_to_session().iter().any(|msg| {
-                matches!(msg, ClientToServerMsg::ForwardedReplyFromHost { token: 11, .. })
+                matches!(
+                    msg,
+                    ClientToServerMsg::ForwardedReplyFromHost { token: 11, .. }
+                )
             })
         })
         .await;
@@ -3593,12 +3596,14 @@ mod web_client_tests {
             .send_control(WebClientToWebServerControlMessagePayload::Detach)
             .await;
         wait_until(Duration::from_secs(10), || {
-            client.sent_to_session().contains(&ClientToServerMsg::Action {
-                action: zellij_utils::input::actions::Action::Detach,
-                terminal_id: None,
-                client_id: None,
-                is_cli_client: false,
-            })
+            client
+                .sent_to_session()
+                .contains(&ClientToServerMsg::Action {
+                    action: zellij_utils::input::actions::Action::Detach,
+                    terminal_id: None,
+                    client_id: None,
+                    is_cli_client: false,
+                })
         })
         .await;
         let typed = client.sent_to_session();

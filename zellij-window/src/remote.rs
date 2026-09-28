@@ -286,12 +286,7 @@ pub fn open(
     let (inbound_tx, inbound_rx) = mpsc::channel();
     let config_changes =
         local_config.map(|config| watch_local_config(runtime.handle(), config.clone()));
-    runtime.spawn(pump(
-        connections,
-        outbound_rx,
-        inbound_tx,
-        config_changes,
-    ));
+    runtime.spawn(pump(connections, outbound_rx, inbound_tx, config_changes));
 
     Ok(Connection {
         sender: Arc::new(WebSocketSink {
@@ -420,10 +415,7 @@ async fn pump(
     let _ = terminal_ws.close(None).await;
 }
 
-fn deliver(
-    inbound_tx: &Sender<ServerToClientMsg>,
-    wire: Inbound,
-) -> std::result::Result<(), ()> {
+fn deliver(inbound_tx: &Sender<ServerToClientMsg>, wire: Inbound) -> std::result::Result<(), ()> {
     match inbound(wire) {
         Ok(msg) => inbound_tx.send(msg).map_err(|_| ()),
         Err(_) => Ok(()),

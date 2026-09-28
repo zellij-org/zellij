@@ -1710,10 +1710,9 @@ mod tests {
             let entry = entry_of(&mut cache, FaceStyle::Regular, character);
             let x = ((2 + offset) * metrics.width) as i32;
             assert!(
-                scene
-                    .glyphs
-                    .iter()
-                    .any(|quad| quad.entry == entry && quad.x >= x && quad.x < x + metrics.width as i32),
+                scene.glyphs.iter().any(|quad| quad.entry == entry
+                    && quad.x >= x
+                    && quad.x < x + metrics.width as i32),
                 "{} is not drawn in the cell the composition occupies",
                 character
             );
@@ -1794,8 +1793,9 @@ mod tests {
         let preedit = Preedit::new("ni", None);
         let scene = composing(&state, &mut cache, Some(&preedit));
         assert!(
-            !scene.rects.iter().any(|rect| rect.height == metrics.height
-                && rect.color == color::DEFAULT_FOREGROUND),
+            !scene.rects.iter().any(
+                |rect| rect.height == metrics.height && rect.color == color::DEFAULT_FOREGROUND
+            ),
             "winit asks for the cursor to be hidden when it reports no range"
         );
     }
