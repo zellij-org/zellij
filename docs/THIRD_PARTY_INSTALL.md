@@ -26,10 +26,10 @@ paru -S zellij-git
 ```
 
 ### Fedora Linux
-You can install the `zellij` package from the [COPR](https://copr.fedorainfracloud.org/coprs/varlad/zellij/)
+You can install the `zellij` package from the [COPR](https://copr.fedorainfracloud.org/coprs/frodo/zellij/)
 
 ```
-sudo dnf copr enable varlad/zellij 
+sudo dnf copr enable frodo/zellij 
 sudo dnf install zellij
 ```
 
