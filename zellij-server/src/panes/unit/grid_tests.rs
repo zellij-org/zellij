@@ -124,7 +124,11 @@ fn erase_line_start_through_wide_character_keeps_row_width() {
             original_width,
             "content={content:?}, to={to}"
         );
-        assert_eq!(row_to_string(&row), expected, "content={content:?}, to={to}");
+        assert_eq!(
+            row_to_string(&row),
+            expected,
+            "content={content:?}, to={to}"
+        );
     }
 }
 
