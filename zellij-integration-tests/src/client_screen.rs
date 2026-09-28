@@ -185,14 +185,19 @@ impl ClientScreen {
         loop {
             let size = *self.size.lock().unwrap();
             let grid_snapshot = render_bytes(&received_bytes.bytes, size);
-            if predicate(&grid_snapshot) {
+            if !grid_snapshot.bars_partially_drawn() && predicate(&grid_snapshot) {
                 return grid_snapshot;
             }
             let now = Instant::now();
             if now >= deadline {
                 panic!(
-                    "timed out waiting for: {}\ncursor: {:?}\nlast rendered grid:\n{}\n=== (received {} stdout bytes, generation {}) ===\n=== zellij log tail ({}) ===\n{}",
+                    "timed out waiting for: {}{}\ncursor: {:?}\nlast rendered grid:\n{}\n=== (received {} stdout bytes, generation {}) ===\n=== zellij log tail ({}) ===\n{}",
                     what,
+                    if grid_snapshot.bars_partially_drawn() {
+                        " (the status bar drew but the tab bar row stayed blank)"
+                    } else {
+                        ""
+                    },
                     grid_snapshot.cursor,
                     grid_snapshot.text,
                     received_bytes.bytes.len(),
@@ -361,6 +366,16 @@ impl GridSnapshot {
     }
     pub fn tab_bar_appears(&self) -> bool {
         self.text.contains("Tab #1")
+    }
+    pub fn bars_partially_drawn(&self) -> bool {
+        let lines: Vec<&str> = self.text.lines().collect();
+        let first_line_blank = lines.first().map_or(false, |line| line.trim().is_empty());
+        let status_bar_at_bottom = lines
+            .iter()
+            .rev()
+            .take(2)
+            .any(|line| line.contains("LOCK"));
+        first_line_blank && status_bar_at_bottom
     }
     pub fn lines(&self) -> Vec<String> {
         self.text.lines().map(|l| l.to_owned()).collect()
