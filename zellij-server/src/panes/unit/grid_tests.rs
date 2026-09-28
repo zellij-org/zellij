@@ -49,6 +49,85 @@ fn erase_line_end_pads_wide_characters_to_display_width() {
     }
 }
 
+fn row_from_str(content: &str) -> crate::panes::grid::Row {
+    use crate::panes::terminal_character::TerminalCharacter;
+    crate::panes::grid::Row::from_columns(
+        content
+            .chars()
+            .map(|character| TerminalCharacter::new_styled(character, Default::default()))
+            .collect(),
+    )
+}
+
+fn row_to_string(row: &crate::panes::grid::Row) -> String {
+    row.columns.iter().map(|cell| cell.character).collect()
+}
+
+#[test]
+fn erase_line_end_from_second_half_of_wide_character_before_another_wide_character() {
+    use crate::panes::terminal_character::EMPTY_TERMINAL_CHARACTER;
+
+    for (content, from, to, expected) in [
+        ("ab你c好", 3, 8, "ab      "),
+        ("ab你c好", 2, 8, "ab      "),
+        ("ab你c好", 5, 8, "ab你c   "),
+        ("你好你好", 3, 8, "你      "),
+    ] {
+        let mut row = row_from_str(content);
+        row.replace_and_pad_end(from, to, EMPTY_TERMINAL_CHARACTER);
+        assert_eq!(row.width_cached(), to, "content={content:?}, from={from}");
+        assert_eq!(
+            row_to_string(&row),
+            expected,
+            "content={content:?}, from={from}"
+        );
+    }
+}
+
+#[test]
+fn erase_line_end_past_row_end_styles_only_cells_from_cursor() {
+    use crate::panes::terminal_character::{AnsiCode, EMPTY_TERMINAL_CHARACTER};
+
+    let mut erase_character = EMPTY_TERMINAL_CHARACTER;
+    erase_character
+        .styles
+        .update(|styles| styles.background = Some(AnsiCode::ColorIndex(1)));
+
+    let mut row = row_from_str("ab");
+    row.replace_and_pad_end(4, 6, erase_character.clone());
+
+    assert_eq!(row.width_cached(), 6);
+    assert_eq!(row_to_string(&row), "ab    ");
+    assert!(row
+        .columns
+        .range(2..4)
+        .all(|cell| *cell == EMPTY_TERMINAL_CHARACTER));
+    assert!(row.columns.range(4..6).all(|cell| *cell == erase_character));
+}
+
+#[test]
+fn erase_line_start_through_wide_character_keeps_row_width() {
+    use crate::panes::terminal_character::EMPTY_TERMINAL_CHARACTER;
+
+    for (content, to, expected) in [
+        ("ab你c好", 2, "    c好"),
+        ("ab你c好", 3, "    c好"),
+        ("ab你c好", 4, "     好"),
+        ("你好你好", 3, "    你好"),
+        ("ab", 0, " b"),
+    ] {
+        let mut row = row_from_str(content);
+        let original_width = row.width();
+        row.replace_and_pad_beginning(to, EMPTY_TERMINAL_CHARACTER);
+        assert_eq!(
+            row.width_cached(),
+            original_width,
+            "content={content:?}, to={to}"
+        );
+        assert_eq!(row_to_string(&row), expected, "content={content:?}, to={to}");
+    }
+}
+
 fn read_fixture(fixture_name: &str) -> Vec<u8> {
     let mut path_to_file = std::path::PathBuf::new();
     path_to_file.push("../src");

@@ -6066,16 +6066,18 @@ impl Row {
         self.width = None;
     }
     pub fn position_accounting_for_widechars(&self, x: usize) -> usize {
-        let mut position = x;
+        self.character_index_and_start_column(x).0
+    }
+    fn character_index_and_start_column(&self, x: usize) -> (usize, usize) {
+        let mut column = 0;
         for (index, terminal_character) in self.columns.iter().enumerate() {
-            if index == position {
-                break;
+            let character_width = terminal_character.width();
+            if column + character_width > x {
+                return (index, column);
             }
-            if terminal_character.width() > 1 {
-                position = position.saturating_sub(terminal_character.width().saturating_sub(1));
-            }
+            column += character_width;
         }
-        position
+        (self.columns.len() + (x - column), x)
     }
     pub fn replace_and_pad_end(
         &mut self,
@@ -6084,9 +6086,19 @@ impl Row {
         terminal_character: TerminalCharacter,
     ) {
         self.osc133_markers.retain(|marker| marker.column <= from);
-        let from_position_accounting_for_widechars = self.position_accounting_for_widechars(from);
-        self.columns
-            .truncate(from_position_accounting_for_widechars);
+        let (from_index, _) = self.character_index_and_start_column(from);
+        self.columns.truncate(from_index);
+        let retained_width = self.width();
+        if retained_width < from {
+            let mut gap_fill = EMPTY_TERMINAL_CHARACTER;
+            if let Some(bg_color) = self.bg_color {
+                gap_fill
+                    .styles
+                    .update(|styles| styles.background = Some(bg_color));
+            }
+            self.columns
+                .extend(std::iter::repeat(gap_fill).take(from - retained_width));
+        }
         let replacement_length = to.saturating_sub(self.width());
         let mut replace_with = VecDeque::from(vec![terminal_character; replacement_length]);
         self.columns.append(&mut replace_with);
@@ -6121,17 +6133,17 @@ impl Row {
         drained_part
     }
     pub fn replace_and_pad_beginning(&mut self, to: usize, terminal_character: TerminalCharacter) {
-        let to_position_accounting_for_widechars = self.position_accounting_for_widechars(to);
+        let (to_position_accounting_for_widechars, character_start_column) =
+            self.character_index_and_start_column(to);
         let width_of_current_character = self
             .columns
             .get(to_position_accounting_for_widechars)
             .map(|character| character.width())
             .unwrap_or(1);
-        let replaced_end = to + width_of_current_character;
+        let replaced_end = character_start_column + width_of_current_character;
         self.osc133_markers
             .retain(|marker| marker.column >= replaced_end);
-        let mut replace_with =
-            VecDeque::from(vec![terminal_character; to + width_of_current_character]);
+        let mut replace_with = VecDeque::from(vec![terminal_character; replaced_end]);
         if to_position_accounting_for_widechars > self.columns.len() {
             self.columns.clear();
         } else if to_position_accounting_for_widechars >= self.columns.len() {
