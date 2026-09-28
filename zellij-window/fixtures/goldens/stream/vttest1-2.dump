@@ -1,0 +1,45 @@
+size: 40x120
+cursor: row=21 col=13 visible shape=Default
+grid:
+|Test of autowrap, mixing control and print characters.                                                                  |
+|The left/right margins should have letters in order:                                                                    |
+|I                                                                              iJ                                       |
+|                                                                                j                                       |
+|K                                                                              K        k                               |
+|L                                                                              l                                        |
+|M                                                                              mN                                       |
+|                                                                                n                                       |
+|O                                                                              O        o                               |
+|P                                                                              p                                        |
+|Q                                                                              qR                                       |
+|                                                                                r                                       |
+|S                                                                              S        s                               |
+|T                                                                              t                                        |
+|U                                                                              uV                                       |
+|                                                                                v                                       |
+|W                                                                              W        w                               |
+|X                                                                              x                                        |
+|Y                                                                              yZ                                       |
+|                                                                                z                                       |
+|                                                                                                                        |
+|Push <RETURN>                                                                                                           |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+styles:
+images:

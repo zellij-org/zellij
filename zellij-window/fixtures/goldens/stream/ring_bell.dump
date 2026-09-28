@@ -1,0 +1,66 @@
+size: 40x120
+cursor: row=5 col=2 visible shape=Default
+grid:
+|                                                                                                                        |
+|zellij on  main [!] is 📦  v0.24.0 via 🦀  v1.57.0                                                                       |
+|❯ bell                                                                                                                  |
+|                                                                                                                        |
+|zellij on  main [!] is 📦  v0.24.0 via 🦀  v1.57.0 took 5s                                                               |
+|❯                                                                                                                       |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+styles:
+row 1: cols 0-5 fg=Cyan bg=Background flags=BOLD
+row 1: cols 10-15 fg=Magenta bg=Background flags=BOLD
+row 1: cols 17-19 fg=Red bg=Background flags=BOLD
+row 1: cols 24-24 fg=idx208 bg=Background flags=BOLD|WIDE_CHAR
+row 1: cols 25-25 fg=idx208 bg=Background flags=BOLD|WIDE_CHAR_SPACER
+row 1: cols 26-33 fg=idx208 bg=Background flags=BOLD
+row 1: cols 39-39 fg=Red bg=Background flags=BOLD|WIDE_CHAR
+row 1: cols 40-40 fg=Red bg=Background flags=BOLD|WIDE_CHAR_SPACER
+row 1: cols 41-49 fg=Red bg=Background flags=BOLD
+row 2: cols 0-0 fg=Green bg=Background flags=BOLD
+row 4: cols 0-5 fg=Cyan bg=Background flags=BOLD
+row 4: cols 10-15 fg=Magenta bg=Background flags=BOLD
+row 4: cols 17-19 fg=Red bg=Background flags=BOLD
+row 4: cols 24-24 fg=idx208 bg=Background flags=BOLD|WIDE_CHAR
+row 4: cols 25-25 fg=idx208 bg=Background flags=BOLD|WIDE_CHAR_SPACER
+row 4: cols 26-33 fg=idx208 bg=Background flags=BOLD
+row 4: cols 39-39 fg=Red bg=Background flags=BOLD|WIDE_CHAR
+row 4: cols 40-40 fg=Red bg=Background flags=BOLD|WIDE_CHAR_SPACER
+row 4: cols 41-49 fg=Red bg=Background flags=BOLD
+row 4: cols 55-56 fg=Yellow bg=Background flags=BOLD
+row 5: cols 0-0 fg=Green bg=Background flags=BOLD
+images:

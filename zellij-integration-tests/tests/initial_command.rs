@@ -68,7 +68,10 @@ fn an_initial_command_pane_is_held_open_when_the_command_exits() {
 
     initial_terminal.exit(Some(42));
     let grid_snapshot = zellij.wait_until("exited command pane held open", |grid_snapshot| {
-        grid_snapshot.contains("EXIT CODE: 42")
+        grid_snapshot.status_bar_appears()
+            && grid_snapshot.contains("Tab #1 [ EXIT CODE: 42 ]")
+            && grid_snapshot
+                .contains("[ EXIT CODE: 42 ] <ENTER> re-run, <ESC> drop to shell, <Ctrl-c> exit")
     });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();

@@ -47,6 +47,11 @@ register_plugin!(State);
 #[cfg(target_family = "wasm")]
 register_worker!(TestWorker, test_worker, TEST_WORKER);
 
+#[cfg(not(target_family = "wasm"))]
+fn main() {
+    eprintln!("fixture-plugin-for-tests runs as a wasm plugin, not as a host binary");
+}
+
 #[cfg(target_family = "wasm")]
 impl ZellijPlugin for State {
     fn load(&mut self, configuration: BTreeMap<String, String>) {

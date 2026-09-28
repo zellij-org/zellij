@@ -116,5 +116,24 @@ themes {
             player_9 0
             player_10 0
         }
+        // terminal_colors: https://github.com/cocopon/iceberg.vim/blob/master/colors/iceberg.vim (terminal_ansi_colors, dark)
+        terminal_colors {
+            black 30 33 50
+            red 226 120 120
+            green 180 190 130
+            yellow 226 164 120
+            blue 132 160 198
+            magenta 160 147 199
+            cyan 137 184 194
+            white 198 200 209
+            bright_black 107 112 137
+            bright_red 233 137 137
+            bright_green 192 202 142
+            bright_yellow 233 177 137
+            bright_blue 145 172 209
+            bright_magenta 173 160 211
+            bright_cyan 149 196 206
+            bright_white 210 212 222
+        }
     }
 }

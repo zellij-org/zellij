@@ -1,0 +1,87 @@
+size: 40x120
+cursor: row=39 col=2 visible shape=Default
+grid:
+|  src/tests/fixtures/fish_and_bandwhich                                                                                 |
+|  src/tests/fixtures/exa_plus_omf_theme                                                                                 |
+|  src/tests/fixtures/emacs_longbuf_tutorial                                                                             |
+|  src/tests/fixtures/clear_scroll_region                                                                                |
+|  src/tests/fixtures/bash_cursor_linewrap                                                                               |
+|  example/themes/tokyo-night.yaml                                                                                       |
+|  example/default.yaml                                                                                                  |
+|  example/alt-centered-config.yaml                                                                                      |
+|  example/tmux-overview.yaml                                                                                            |
+|  example/layouts/run_htop_layout_with_plugins.yaml                                                                     |
+|  example/layouts/multiple_tabs_layout_htop_command.yaml                                                                |
+|  example/layouts/multiple_tabs_layout.yaml                                                                             |
+|  example/layouts/run_htop_layout.yaml                                                                                  |
+|  example/config.yaml                                                                                                   |
+|  example/tmux.nonfunctional                                                                                            |
+|  example/screen.nonfunctional                                                                                          |
+|  example/screen-overview.yaml                                                                                          |
+|  example/README.md                                                                                                     |
+|  docs/MANPAGE.md                                                                                                       |
+|  docs/ARCHITECTURE.md                                                                                                  |
+|  docs/TERMINOLOGY.md                                                                                                   |
+|  default-plugins/tab-bar/Cargo.toml                                                                                    |
+|  default-plugins/tab-bar/src/tab.rs                                                                                    |
+|  default-plugins/tab-bar/src/main.rs                                                                                   |
+|  default-plugins/tab-bar/src/line.rs                                                                                   |
+|  default-plugins/tab-bar/LICENSE.md                                                                                    |
+|  default-plugins/strider/Cargo.toml                                                                                    |
+|  default-plugins/strider/src/state.rs                                                                                  |
+|  default-plugins/strider/src/main.rs                                                                                   |
+|  default-plugins/strider/LICENSE.md                                                                                    |
+|  default-plugins/status-bar/Cargo.toml                                                                                 |
+|  default-plugins/status-bar/src/second_line.rs                                                                         |
+|  default-plugins/status-bar/src/first_line.rs                                                                          |
+|  default-plugins/status-bar/src/main.rs                                                                                |
+|  default-plugins/status-bar/src/tip/utils.rs                                                                           |
+|  default-plugins/status-bar/src/tip/mod.rs                                                                             |
+|  default-plugins/status-bar/src/tip/data.rs                                                                            |
+|  default-plugins/status-bar/src/tip/consts.rs                                                                          |
+|  12363/12363                                                                                                           |
+|> CODE_OF_CONDUCT.mdider.wasmasmfNSE.md                                                                                 |
+styles:
+row 0: cols 0-0 fg=Foreground bg=idx236
+row 1: cols 0-0 fg=Foreground bg=idx236
+row 2: cols 0-0 fg=Foreground bg=idx236
+row 3: cols 0-0 fg=Foreground bg=idx236
+row 4: cols 0-0 fg=Foreground bg=idx236
+row 5: cols 0-0 fg=Foreground bg=idx236
+row 6: cols 0-0 fg=Foreground bg=idx236
+row 7: cols 0-0 fg=Foreground bg=idx236
+row 8: cols 0-0 fg=Foreground bg=idx236
+row 9: cols 0-0 fg=Foreground bg=idx236
+row 10: cols 0-0 fg=Foreground bg=idx236
+row 11: cols 0-0 fg=Foreground bg=idx236
+row 12: cols 0-0 fg=Foreground bg=idx236
+row 13: cols 0-0 fg=Foreground bg=idx236
+row 14: cols 0-0 fg=Foreground bg=idx236
+row 15: cols 0-0 fg=Foreground bg=idx236
+row 16: cols 0-0 fg=Foreground bg=idx236
+row 17: cols 0-0 fg=Foreground bg=idx236
+row 18: cols 0-0 fg=Foreground bg=idx236
+row 19: cols 0-0 fg=Foreground bg=idx236
+row 20: cols 0-0 fg=Foreground bg=idx236
+row 21: cols 0-0 fg=Foreground bg=idx236
+row 22: cols 0-0 fg=Foreground bg=idx236
+row 23: cols 0-0 fg=Foreground bg=idx236
+row 24: cols 0-0 fg=Foreground bg=idx236
+row 25: cols 0-0 fg=Foreground bg=idx236
+row 26: cols 0-0 fg=Foreground bg=idx236
+row 27: cols 0-0 fg=Foreground bg=idx236
+row 28: cols 0-0 fg=Foreground bg=idx236
+row 29: cols 0-0 fg=Foreground bg=idx236
+row 30: cols 0-0 fg=Foreground bg=idx236
+row 31: cols 0-0 fg=Foreground bg=idx236
+row 32: cols 0-0 fg=Foreground bg=idx236
+row 33: cols 0-0 fg=Foreground bg=idx236
+row 34: cols 0-0 fg=Foreground bg=idx236
+row 35: cols 0-0 fg=Foreground bg=idx236
+row 36: cols 0-0 fg=Foreground bg=idx236
+row 37: cols 0-0 fg=Foreground bg=idx236
+row 38: cols 2-12 fg=idx144 bg=Background
+row 39: cols 0-0 fg=idx161 bg=idx236 flags=BOLD
+row 39: cols 1-1 fg=Foreground bg=idx236
+row 39: cols 2-19 fg=idx254 bg=idx236 flags=BOLD
+images:

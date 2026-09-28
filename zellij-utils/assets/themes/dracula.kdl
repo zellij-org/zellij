@@ -116,5 +116,24 @@ themes {
             player_9 0
             player_10 0
         }
+        // terminal_colors: https://github.com/dracula/alacritty/blob/master/dracula.toml
+        terminal_colors {
+            black 33 34 44
+            red 255 85 85
+            green 80 250 123
+            yellow 241 250 140
+            blue 189 147 249
+            magenta 255 121 198
+            cyan 139 233 253
+            white 248 248 242
+            bright_black 98 114 164
+            bright_red 255 110 110
+            bright_green 105 255 148
+            bright_yellow 255 255 165
+            bright_blue 214 172 255
+            bright_magenta 255 146 223
+            bright_cyan 164 255 255
+            bright_white 255 255 255
+        }
     }
 }
