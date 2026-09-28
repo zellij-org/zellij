@@ -22,7 +22,7 @@ type BorderAndPaneIds = (usize, Vec<PaneId>);
 
 // For error reporting
 fn no_pane_id(pane_id: &PaneId) -> String {
-    format!("no floating pane with ID {:?} found", pane_id)
+    format!("no tiled pane with ID {:?} found", pane_id)
 }
 
 pub struct TiledPaneGrid<'a> {
@@ -612,7 +612,7 @@ impl<'a> TiledPaneGrid<'a> {
         }
     }
     fn reduce_pane_width(&mut self, id: &PaneId, percent: f64) {
-        if self.can_reduce_pane_width(id, percent).unwrap() {
+        if self.can_reduce_pane_width(id, percent).unwrap_or(false) {
             let current_pane_is_stacked = self
                 .panes
                 .borrow()
@@ -648,7 +648,7 @@ impl<'a> TiledPaneGrid<'a> {
         for pid in panes.keys() {
             let pane = self
                 .get_pane_geom(pid)
-                .with_context(|| no_pane_id(id))
+                .with_context(|| no_pane_id(pid))
                 .with_context(err_context)?;
             if seen.contains(&pane) {
                 continue;
@@ -832,8 +832,9 @@ impl<'a> TiledPaneGrid<'a> {
         left_border_x: usize,
         right_border_x: usize,
     ) -> bool {
-        let pane = self.get_pane_geom(id).unwrap();
-        pane.x >= left_border_x && pane.x + pane.cols.as_usize() <= right_border_x
+        self.get_pane_geom(id).map_or(false, |pane| {
+            pane.x >= left_border_x && pane.x + pane.cols.as_usize() <= right_border_x
+        })
     }
 
     fn pane_is_between_horizontal_borders(
@@ -842,8 +843,9 @@ impl<'a> TiledPaneGrid<'a> {
         top_border_y: usize,
         bottom_border_y: usize,
     ) -> bool {
-        let pane = self.get_pane_geom(id).unwrap();
-        pane.y >= top_border_y && pane.y + pane.rows.as_usize() <= bottom_border_y
+        self.get_pane_geom(id).map_or(false, |pane| {
+            pane.y >= top_border_y && pane.y + pane.rows.as_usize() <= bottom_border_y
+        })
     }
 
     fn viewport_pane_ids_directly_above(&self, pane_id: &PaneId) -> Vec<PaneId> {
@@ -1144,17 +1146,9 @@ impl<'a> TiledPaneGrid<'a> {
     }
     fn horizontal_borders(&self, pane_ids: &[PaneId]) -> HashSet<usize> {
         pane_ids.iter().fold(HashSet::new(), |mut borders, p| {
-            let panes = self.panes.borrow();
-            let pane = panes.get(p).unwrap();
-            if pane.current_geom().is_stacked() {
-                let pane_geom = StackedPanes::new(self.panes.clone())
-                    .position_and_size_of_stack(&pane.pid())
-                    .unwrap();
+            if let Some(pane_geom) = self.get_pane_geom(p) {
                 borders.insert(pane_geom.y);
                 borders.insert(pane_geom.y + pane_geom.rows.as_usize());
-            } else {
-                borders.insert(pane.y());
-                borders.insert(pane.y() + pane.rows());
             }
             borders
         })
@@ -1168,15 +1162,16 @@ impl<'a> TiledPaneGrid<'a> {
             borders
         })
     }
-    fn panes_to_the_left_between_aligning_borders(&self, id: PaneId) -> Option<Vec<PaneId>> {
+    fn panes_to_the_left_between_aligning_borders(
+        &self,
+        id: PaneId,
+    ) -> Result<Option<Vec<PaneId>>> {
         let panes = self.panes.borrow();
         if let Some(pane) = panes.get(&id) {
             let upper_close_border = pane.y();
             let lower_close_border = pane.y() + pane.rows();
 
-            let panes_to_the_left = self
-                .pane_ids_directly_next_to(&id, &Direction::Left)
-                .unwrap();
+            let panes_to_the_left = self.pane_ids_directly_next_to(&id, &Direction::Left)?;
             let mut selectable_panes: Vec<_> = panes_to_the_left
                 .into_iter()
                 .filter(|pid| panes.get(pid).unwrap().selectable())
@@ -1192,20 +1187,21 @@ impl<'a> TiledPaneGrid<'a> {
                         lower_close_border,
                     )
                 });
-                return Some(selectable_panes);
+                return Ok(Some(selectable_panes));
             }
         }
-        None
+        Ok(None)
     }
-    fn panes_to_the_right_between_aligning_borders(&self, id: PaneId) -> Option<Vec<PaneId>> {
+    fn panes_to_the_right_between_aligning_borders(
+        &self,
+        id: PaneId,
+    ) -> Result<Option<Vec<PaneId>>> {
         let panes = self.panes.borrow();
         if let Some(pane) = panes.get(&id) {
             let upper_close_border = pane.y();
             let lower_close_border = pane.y() + pane.rows();
 
-            let panes_to_the_right = self
-                .pane_ids_directly_next_to(&id, &Direction::Right)
-                .unwrap();
+            let panes_to_the_right = self.pane_ids_directly_next_to(&id, &Direction::Right)?;
             let mut selectable_panes: Vec<_> = panes_to_the_right
                 .into_iter()
                 .filter(|pid| panes.get(pid).unwrap().selectable())
@@ -1221,18 +1217,18 @@ impl<'a> TiledPaneGrid<'a> {
                         lower_close_border,
                     )
                 });
-                return Some(selectable_panes);
+                return Ok(Some(selectable_panes));
             }
         }
-        None
+        Ok(None)
     }
-    fn panes_above_between_aligning_borders(&self, id: PaneId) -> Option<Vec<PaneId>> {
+    fn panes_above_between_aligning_borders(&self, id: PaneId) -> Result<Option<Vec<PaneId>>> {
         let panes = self.panes.borrow();
         if let Some(pane) = panes.get(&id) {
             let left_close_border = pane.x();
             let right_close_border = pane.x() + pane.cols();
 
-            let panes_above = self.pane_ids_directly_next_to(&id, &Direction::Up).unwrap();
+            let panes_above = self.pane_ids_directly_next_to(&id, &Direction::Up)?;
             let mut selectable_panes: Vec<_> = panes_above
                 .into_iter()
                 .filter(|pid| panes.get(pid).unwrap().selectable())
@@ -1244,20 +1240,18 @@ impl<'a> TiledPaneGrid<'a> {
                 selectable_panes.retain(|t| {
                     self.pane_is_between_vertical_borders(t, left_close_border, right_close_border)
                 });
-                return Some(selectable_panes);
+                return Ok(Some(selectable_panes));
             }
         }
-        None
+        Ok(None)
     }
-    fn panes_below_between_aligning_borders(&self, id: PaneId) -> Option<Vec<PaneId>> {
+    fn panes_below_between_aligning_borders(&self, id: PaneId) -> Result<Option<Vec<PaneId>>> {
         let panes = self.panes.borrow();
         if let Some(pane) = panes.get(&id) {
             let left_close_border = pane.x();
             let right_close_border = pane.x() + pane.cols();
 
-            let panes_below = self
-                .pane_ids_directly_next_to(&id, &Direction::Down)
-                .unwrap();
+            let panes_below = self.pane_ids_directly_next_to(&id, &Direction::Down)?;
             let mut selectable_panes: Vec<_> = panes_below
                 .into_iter()
                 .filter(|pid| panes[pid].selectable())
@@ -1269,27 +1263,31 @@ impl<'a> TiledPaneGrid<'a> {
                 selectable_panes.retain(|t| {
                     self.pane_is_between_vertical_borders(t, left_close_border, right_close_border)
                 });
-                return Some(selectable_panes);
+                return Ok(Some(selectable_panes));
             }
         }
-        None
+        Ok(None)
     }
-    fn find_panes_to_grow(&self, id: PaneId) -> Option<(Vec<PaneId>, SplitDirection)> {
-        if let Some(panes) = self
-            .panes_to_the_left_between_aligning_borders(id)
-            .or_else(|| self.panes_to_the_right_between_aligning_borders(id))
-        {
-            return Some((panes, SplitDirection::Horizontal));
+    fn find_panes_to_grow(&self, id: PaneId) -> Result<Option<(Vec<PaneId>, SplitDirection)>> {
+        let horizontal = match self.panes_to_the_left_between_aligning_borders(id)? {
+            Some(panes) => Some(panes),
+            None => self.panes_to_the_right_between_aligning_borders(id)?,
+        };
+        if let Some(panes) = horizontal {
+            return Ok(Some((panes, SplitDirection::Horizontal)));
         }
 
-        if let Some(panes) = self
-            .panes_above_between_aligning_borders(id)
-            .or_else(|| self.panes_below_between_aligning_borders(id))
-        {
-            return Some((panes, SplitDirection::Vertical));
-        }
-
-        None
+        let vertical = match self.panes_above_between_aligning_borders(id)? {
+            Some(panes) => Some(panes),
+            None => self.panes_below_between_aligning_borders(id)?,
+        };
+        Ok(vertical.map(|panes| (panes, SplitDirection::Vertical)))
+    }
+    fn remove_pane_and_relayout(&mut self, id: PaneId) {
+        self.panes.borrow_mut().remove(&id);
+        let mut pane_resizer = PaneResizer::new(self.panes.clone());
+        let _ = pane_resizer.layout(SplitDirection::Horizontal, self.display_area.cols);
+        let _ = pane_resizer.layout(SplitDirection::Vertical, self.display_area.rows);
     }
     fn grow_panes(
         &mut self,
@@ -1333,24 +1331,29 @@ impl<'a> TiledPaneGrid<'a> {
             }
         }
         if let (Some(freed_width), Some(freed_height)) = (freed_width, freed_height) {
-            if let Some((panes_to_grow, direction)) = self.find_panes_to_grow(id) {
-                self.grow_panes(&panes_to_grow, direction, (freed_width, freed_height));
-                let side_length = match direction {
-                    SplitDirection::Vertical => self.display_area.rows,
-                    SplitDirection::Horizontal => self.display_area.cols,
-                };
-                self.panes.borrow_mut().remove(&id);
-                let mut pane_resizer = PaneResizer::new(self.panes.clone());
-                let _ = pane_resizer.layout(direction, side_length);
-                return true;
+            match self.find_panes_to_grow(id) {
+                Ok(Some((panes_to_grow, direction))) => {
+                    self.grow_panes(&panes_to_grow, direction, (freed_width, freed_height));
+                    let side_length = match direction {
+                        SplitDirection::Vertical => self.display_area.rows,
+                        SplitDirection::Horizontal => self.display_area.cols,
+                    };
+                    self.panes.borrow_mut().remove(&id);
+                    let mut pane_resizer = PaneResizer::new(self.panes.clone());
+                    let _ = pane_resizer.layout(direction, side_length);
+                    return true;
+                },
+                Ok(None) => {},
+                Err(e) => {
+                    log::error!("Failed to find panes to grow over {:?}: {:?}", id, e);
+                    self.remove_pane_and_relayout(id);
+                    return true;
+                },
             }
         } else {
             // best effort resize - we just remove the pane and relayout everything
             // this might happen if we are closing a fixed pane
-            self.panes.borrow_mut().remove(&id);
-            let mut pane_resizer = PaneResizer::new(self.panes.clone());
-            let _ = pane_resizer.layout(SplitDirection::Horizontal, self.display_area.cols);
-            let _ = pane_resizer.layout(SplitDirection::Vertical, self.display_area.rows);
+            self.remove_pane_and_relayout(id);
             return true;
         }
         false
@@ -2321,6 +2324,13 @@ impl<'a> TiledPaneGrid<'a> {
             .ok_or_else(|| anyhow!("Failed to get pane geom"))?
             .set_geom(geom_of_active_pane);
         Ok(())
+    }
+    pub fn unstack_pane(&mut self, pane_id: &PaneId) {
+        if let Some(pane) = self.panes.borrow_mut().get_mut(pane_id) {
+            let mut geom = pane.current_geom();
+            geom.stacked = None;
+            pane.set_geom(geom);
+        }
     }
 }
 

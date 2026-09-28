@@ -426,7 +426,7 @@ impl TiledPanes {
             None => {
                 // we couldn't add the pane normally, let's see if there's room in one of the
                 // stacks...
-                let _ = pane_grid.make_pane_stacked(active_pane_id);
+                let newly_stacked = pane_grid.make_pane_stacked(active_pane_id).is_ok();
                 match pane_grid.make_room_in_stack_of_pane_id_for_pane(active_pane_id) {
                     Ok(new_pane_geom) => {
                         pane.set_geom(new_pane_geom);
@@ -434,6 +434,9 @@ impl TiledPanes {
                         return;
                     },
                     Err(_e) => {
+                        if newly_stacked {
+                            pane_grid.unstack_pane(active_pane_id);
+                        }
                         return self.add_pane_without_stacked_resize(
                             pane_id,
                             pane,
@@ -464,9 +467,8 @@ impl TiledPanes {
             .get_pane_geom(active_pane_id)
             .map(|p| p.is_stacked())
             .unwrap_or(false);
-        if !pane_id_is_stacked {
-            let _ = pane_grid.make_pane_stacked(&active_pane_id);
-        }
+        let newly_stacked =
+            !pane_id_is_stacked && pane_grid.make_pane_stacked(&active_pane_id).is_ok();
         match pane_grid.make_room_in_stack_of_pane_id_for_pane(active_pane_id) {
             Ok(new_pane_geom) => {
                 pane.set_geom(new_pane_geom);
@@ -475,6 +477,9 @@ impl TiledPanes {
                 return;
             },
             Err(e) => {
+                if newly_stacked {
+                    pane_grid.unstack_pane(active_pane_id);
+                }
                 log::error!("Failed to add pane to stack: {}", e);
             },
         }
@@ -495,9 +500,11 @@ impl TiledPanes {
             .get_pane_geom(&root_pane_id)
             .map(|p| p.is_stacked())
             .unwrap_or(false);
+        let mut newly_stacked = false;
         if !pane_id_is_stacked {
-            if let Err(e) = pane_grid.make_pane_stacked(&root_pane_id) {
-                log::error!("Failed to make pane stacked: {:?}", e);
+            match pane_grid.make_pane_stacked(&root_pane_id) {
+                Ok(()) => newly_stacked = true,
+                Err(e) => log::error!("Failed to make pane stacked: {:?}", e),
             }
         }
         match pane_grid.make_room_in_stack_of_pane_id_for_pane(&root_pane_id) {
@@ -508,6 +515,9 @@ impl TiledPanes {
                 return;
             },
             Err(e) => {
+                if newly_stacked {
+                    pane_grid.unstack_pane(&root_pane_id);
+                }
                 log::error!("Failed to add pane to stack: {}", e);
             },
         }
