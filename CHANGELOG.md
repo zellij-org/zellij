@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: compress kitty images if the host terminal supports it (https://github.com/zellij-org/zellij/pull/5608)
 * fix: add websocket heartbeat to webserver to prevernt idle disconnect through proxies (https://github.com/zellij-org/zellij/pull/4633)
 * fix: memory-usage optimizations and multiple-pane-single-instance-plugins (https://github.com/zellij-org/zellij/pull/5662)
+* fix: erasing wide CJK character correctness (https://github.com/zellij-org/zellij/pull/5657)
 
 ## [0.45.1] - 2026-08-28
 * fix: nested-session detection over SSH (https://github.com/zellij-org/zellij/pull/5522)
