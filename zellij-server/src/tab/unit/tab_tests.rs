@@ -1053,7 +1053,7 @@ fn tiled_pane_is_stacked(tab: &Tab, pane_id: PaneId) -> bool {
 }
 
 #[test]
-pub fn new_pane_next_to_small_fixed_pane_does_not_leave_it_stacked() {
+pub fn new_pane_next_to_small_fixed_pane_keeps_it_unstacked() {
     let mut tab = create_tab_with_small_fixed_top_left_pane();
     tab.new_pane(
         PaneId::Terminal(3),
@@ -1083,7 +1083,7 @@ pub fn new_pane_next_to_small_fixed_pane_does_not_leave_it_stacked() {
 }
 
 #[test]
-pub fn failed_stacked_pane_on_small_fixed_pane_does_not_leave_it_stacked() {
+pub fn failed_stacked_pane_on_small_fixed_pane_keeps_it_unstacked() {
     let mut tab = create_tab_with_small_fixed_top_left_pane();
     tab.new_pane(
         PaneId::Terminal(3),
@@ -1116,7 +1116,64 @@ pub fn failed_stacked_pane_on_small_fixed_pane_does_not_leave_it_stacked() {
 }
 
 #[test]
-pub fn closing_pane_next_to_stack_without_flexible_pane_does_not_panic() {
+pub fn moving_suppressed_pane_leaves_tiled_panes_in_place() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
+    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
+        .unwrap();
+    tab.replace_active_pane_with_editor_pane(PaneId::Terminal(3), 1)
+        .unwrap();
+    assert!(
+        tab.suppressed_panes
+            .values()
+            .any(|(_, p)| p.pid() == PaneId::Terminal(2)),
+        "pane is suppressed"
+    );
+    assert!(
+        !tab.tiled_panes.panes.contains_key(&PaneId::Terminal(2)),
+        "suppressed pane is not tiled"
+    );
+    let geoms_before: Vec<_> = tab
+        .tiled_panes
+        .panes
+        .iter()
+        .map(|(id, p)| (*id, p.position_and_size()))
+        .collect();
+    tab.move_pane(PaneId::Terminal(2));
+    let geoms_after: Vec<_> = tab
+        .tiled_panes
+        .panes
+        .iter()
+        .map(|(id, p)| (*id, p.position_and_size()))
+        .collect();
+    assert_eq!(geoms_before, geoms_after, "tiled panes did not move");
+}
+
+#[test]
+pub fn moving_pane_hidden_by_fullscreen_keeps_both_panes() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let stacked_resize = false;
+    let mut tab = create_new_tab(size, stacked_resize);
+    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
+        .unwrap();
+    tab.toggle_active_pane_fullscreen(1);
+    let search_backwards = false;
+    tab.tiled_panes
+        .move_pane(search_backwards, PaneId::Terminal(1));
+    tab.tiled_panes
+        .move_pane(!search_backwards, PaneId::Terminal(1));
+    assert_eq!(tab.tiled_panes.panes.len(), 2, "both panes remain");
+}
+
+#[test]
+pub fn closing_pane_next_to_stack_without_flexible_pane_removes_it() {
     let mut tab = create_tab_with_small_fixed_top_left_pane();
     tab.focus_pane_with_id(PaneId::Terminal(2), false, false, 1)
         .unwrap();

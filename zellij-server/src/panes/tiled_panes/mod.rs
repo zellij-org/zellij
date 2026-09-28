@@ -2047,6 +2047,9 @@ impl TiledPanes {
             );
             pane_grid.next_selectable_pane_id(&active_pane_id)
         };
+        let Some(next_active_pane_id) = next_active_pane_id else {
+            return;
+        };
         if self
             .panes
             .get(&next_active_pane_id)
@@ -2076,6 +2079,9 @@ impl TiledPanes {
                 *self.viewport.borrow(),
             );
             pane_grid.previous_selectable_pane_id(&active_pane_id)
+        };
+        let Some(next_active_pane_id) = next_active_pane_id else {
+            return;
         };
 
         if self
@@ -2457,6 +2463,12 @@ impl TiledPanes {
                 pane_grid.next_selectable_pane_id(&pane_id)
             }
         };
+        let Some(new_position_id) = new_position_id else {
+            return;
+        };
+        if !self.panes.contains_key(&new_position_id) {
+            return;
+        }
         if self
             .panes
             .get(&new_position_id)
@@ -2468,11 +2480,15 @@ impl TiledPanes {
             self.reapply_pane_frames();
         }
 
-        let current_position = self.panes.get(&pane_id).unwrap();
+        let Some(current_position) = self.panes.get(&pane_id) else {
+            return;
+        };
         let prev_geom = current_position.position_and_size();
         let prev_geom_override = current_position.geom_override();
 
-        let new_position = self.panes.get_mut(&new_position_id).unwrap();
+        let Some(new_position) = self.panes.get_mut(&new_position_id) else {
+            return;
+        };
         let next_geom = new_position.position_and_size();
         let next_geom_override = new_position.geom_override();
         new_position.set_geom(prev_geom);
@@ -2488,7 +2504,9 @@ impl TiledPanes {
         .unwrap();
         new_position.set_should_render(true);
 
-        let current_position = self.panes.get_mut(&pane_id).unwrap();
+        let Some(current_position) = self.panes.get_mut(&pane_id) else {
+            return;
+        };
         current_position.set_geom(next_geom);
         if let Some(geom) = next_geom_override {
             current_position.set_geom_override(geom);
