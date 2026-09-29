@@ -6361,6 +6361,9 @@ Config {
         bell: None,
         notifications: None,
         startup_mode: None,
+        opacity: None,
+        opacity_mode: None,
+        blur: None,
         theme: None,
     },
 }
