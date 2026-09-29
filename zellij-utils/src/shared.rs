@@ -102,24 +102,24 @@ pub mod colors {
 }
 
 pub mod default_theme_colors {
-    pub const BACKGROUND: (u8, u8, u8) = (11, 11, 14);
-    pub const SURFACE: (u8, u8, u8) = (58, 51, 88);
-    pub const SHADOW: (u8, u8, u8) = (34, 29, 51);
-    pub const RIBBON: (u8, u8, u8) = (154, 149, 179);
-    pub const RIBBON_HOVER: (u8, u8, u8) = (180, 175, 201);
-    pub const FOREGROUND: (u8, u8, u8) = (216, 213, 230);
-    pub const MUTED: (u8, u8, u8) = (138, 134, 163);
-    pub const DIM: (u8, u8, u8) = (107, 102, 130);
-    pub const GREEN: (u8, u8, u8) = (162, 188, 140);
-    pub const GOLD: (u8, u8, u8) = (233, 202, 138);
-    pub const BLUE: (u8, u8, u8) = (135, 165, 194);
-    pub const ROSE: (u8, u8, u8) = (216, 143, 151);
+    pub const BACKGROUND: (u8, u8, u8) = (11, 11, 11);
+    pub const SURFACE: (u8, u8, u8) = (56, 56, 56);
+    pub const SHADOW: (u8, u8, u8) = (32, 32, 32);
+    pub const RIBBON: (u8, u8, u8) = (152, 152, 152);
+    pub const RIBBON_HOVER: (u8, u8, u8) = (220, 220, 220);
+    pub const FOREGROUND: (u8, u8, u8) = (215, 215, 215);
+    pub const MUTED: (u8, u8, u8) = (137, 137, 137);
+    pub const DIM: (u8, u8, u8) = (105, 105, 105);
+    pub const GREEN: (u8, u8, u8) = (150, 220, 90);
+    pub const GOLD: (u8, u8, u8) = (255, 205, 80);
+    pub const BLUE: (u8, u8, u8) = (70, 175, 255);
+    pub const ROSE: (u8, u8, u8) = (255, 95, 110);
     pub const VIOLET: (u8, u8, u8) = (217, 140, 255);
-    pub const TEAL: (u8, u8, u8) = (143, 199, 192);
-    pub const PINK: (u8, u8, u8) = (211, 160, 199);
-    pub const PURPLE: (u8, u8, u8) = (176, 163, 217);
-    pub const ORANGE: (u8, u8, u8) = (229, 169, 133);
-    pub const SAND: (u8, u8, u8) = (217, 194, 168);
+    pub const TEAL: (u8, u8, u8) = (60, 215, 200);
+    pub const PINK: (u8, u8, u8) = (255, 130, 200);
+    pub const PURPLE: (u8, u8, u8) = (160, 150, 255);
+    pub const ORANGE: (u8, u8, u8) = (255, 145, 70);
+    pub const SAND: (u8, u8, u8) = (240, 190, 140);
     pub const WINE: (u8, u8, u8) = (79, 26, 34);
     pub const NAVY: (u8, u8, u8) = (20, 49, 79);
     pub const BELL: (u8, u8, u8) = (99, 11, 20);

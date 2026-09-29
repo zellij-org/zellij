@@ -746,37 +746,74 @@ impl Renderer {
     }
 }
 
-fn upload_atlas(gl: &glow::Context, target: &mut AtlasTexture, atlas: &GlyphAtlas) {
-    if target.revision == Some(atlas.revision()) {
-        return;
-    }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AtlasUpload {
+    Nothing,
+    Rows { top: u32, bottom: u32 },
+    Whole,
+}
+
+fn plan_atlas_upload(
+    uploaded_revision: Option<u64>,
+    uploaded_size: (u32, u32),
+    atlas: &GlyphAtlas,
+) -> AtlasUpload {
     let size = (atlas.width(), atlas.height());
+    let Some(revision) = uploaded_revision else {
+        return AtlasUpload::Whole;
+    };
+    if size != uploaded_size {
+        return AtlasUpload::Whole;
+    }
+    if revision == atlas.revision() {
+        return AtlasUpload::Nothing;
+    }
+    match atlas.dirty_rows_since(revision) {
+        Some((top, bottom)) if bottom > top => AtlasUpload::Rows { top, bottom },
+        Some(_) => AtlasUpload::Nothing,
+        None => AtlasUpload::Rows {
+            top: 0,
+            bottom: size.1,
+        },
+    }
+}
+
+fn upload_atlas(gl: &glow::Context, target: &mut AtlasTexture, atlas: &GlyphAtlas) {
+    let size = (atlas.width(), atlas.height());
+    let plan = plan_atlas_upload(target.revision, target.size, atlas);
     unsafe {
-        gl.bind_texture(glow::TEXTURE_2D, Some(target.texture));
-        if size == target.size {
-            gl.tex_sub_image_2d(
-                glow::TEXTURE_2D,
-                0,
-                0,
-                0,
-                size.0 as i32,
-                size.1 as i32,
-                target.format,
-                glow::UNSIGNED_BYTE,
-                glow::PixelUnpackData::Slice(Some(atlas.coverage())),
-            );
-        } else {
-            gl.tex_image_2d(
-                glow::TEXTURE_2D,
-                0,
-                target.internal_format,
-                size.0 as i32,
-                size.1 as i32,
-                0,
-                target.format,
-                glow::UNSIGNED_BYTE,
-                glow::PixelUnpackData::Slice(Some(atlas.coverage())),
-            );
+        match plan {
+            AtlasUpload::Nothing => {},
+            AtlasUpload::Rows { top, bottom } => {
+                gl.bind_texture(glow::TEXTURE_2D, Some(target.texture));
+                let row_bytes = (size.0 * atlas.channels()) as usize;
+                let rows = &atlas.coverage()[top as usize * row_bytes..bottom as usize * row_bytes];
+                gl.tex_sub_image_2d(
+                    glow::TEXTURE_2D,
+                    0,
+                    0,
+                    top as i32,
+                    size.0 as i32,
+                    (bottom - top) as i32,
+                    target.format,
+                    glow::UNSIGNED_BYTE,
+                    glow::PixelUnpackData::Slice(Some(rows)),
+                );
+            },
+            AtlasUpload::Whole => {
+                gl.bind_texture(glow::TEXTURE_2D, Some(target.texture));
+                gl.tex_image_2d(
+                    glow::TEXTURE_2D,
+                    0,
+                    target.internal_format,
+                    size.0 as i32,
+                    size.1 as i32,
+                    0,
+                    target.format,
+                    glow::UNSIGNED_BYTE,
+                    glow::PixelUnpackData::Slice(Some(atlas.coverage())),
+                );
+            },
         }
     }
     target.size = size;
@@ -924,6 +961,86 @@ mod tests {
         assert_eq!(vertices.len(), 6 * 7);
         assert_eq!(&vertices[..7], &[10.0, 20.0, 0.25, 0.5, 1.0, 1.0, 1.0]);
         assert_eq!(&vertices[14..21], &[14.0, 25.0, 0.75, 1.0, 1.0, 1.0, 1.0]);
+    }
+
+    fn glyph(width: u32, height: u32) -> crate::font::GlyphBitmap {
+        crate::font::GlyphBitmap {
+            left: 0,
+            top: 0,
+            width,
+            height,
+            coverage: vec![255; (width * height) as usize],
+            content: crate::font::GlyphContent::Mask,
+        }
+    }
+
+    #[test]
+    fn a_fresh_or_resized_atlas_texture_is_uploaded_whole() {
+        let mut atlas = GlyphAtlas::new(1);
+        let size = (atlas.width(), atlas.height());
+        assert_eq!(plan_atlas_upload(None, (0, 0), &atlas), AtlasUpload::Whole);
+        let revision = atlas.revision();
+        while atlas.height() == size.1 {
+            atlas.insert(&glyph(64, 64)).unwrap();
+        }
+        assert_eq!(
+            plan_atlas_upload(Some(revision), size, &atlas),
+            AtlasUpload::Whole
+        );
+    }
+
+    #[test]
+    fn an_unchanged_atlas_is_not_uploaded_again() {
+        let mut atlas = GlyphAtlas::new(1);
+        atlas.insert(&glyph(8, 16)).unwrap();
+        let size = (atlas.width(), atlas.height());
+        assert_eq!(
+            plan_atlas_upload(Some(atlas.revision()), size, &atlas),
+            AtlasUpload::Nothing
+        );
+    }
+
+    #[test]
+    fn a_new_glyph_uploads_only_the_rows_it_landed_on() {
+        let mut atlas = GlyphAtlas::new(1);
+        for _ in 0..200 {
+            atlas.insert(&glyph(8, 16)).unwrap();
+        }
+        let size = (atlas.width(), atlas.height());
+        let revision = atlas.revision();
+        let entry = atlas.insert(&glyph(8, 16)).unwrap();
+        assert_eq!(
+            plan_atlas_upload(Some(revision), size, &atlas),
+            AtlasUpload::Rows {
+                top: entry.y,
+                bottom: entry.y + 16
+            }
+        );
+    }
+
+    #[test]
+    fn a_screenful_of_new_glyphs_uploads_a_small_part_of_the_atlas() {
+        let mut atlas = GlyphAtlas::new(1);
+        let size = (atlas.width(), atlas.height());
+        let revision = atlas.revision();
+        for _ in 0..300 {
+            atlas.insert(&glyph(8, 20)).unwrap();
+        }
+        assert_eq!(
+            atlas.height(),
+            size.1,
+            "the atlas grew, pick a smaller batch"
+        );
+        let AtlasUpload::Rows { top, bottom } = plan_atlas_upload(Some(revision), size, &atlas)
+        else {
+            panic!("new glyphs must be uploaded as a band of rows");
+        };
+        assert!(
+            (bottom - top) * 4 <= size.1,
+            "{} of {} rows were uploaded for one screenful",
+            bottom - top,
+            size.1
+        );
     }
 
     #[test]
