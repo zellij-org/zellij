@@ -6,11 +6,45 @@ const FILE_PATH_REGEX: &str = r#"(?:^|\s)((?:(?:\./|\.\./|/)[A-Za-z0-9_./\-+@%,#
 
 const CWD_CONTEXT_KEY: &str = "cwd";
 
-/// Paths handed to the host must be prefixed with the mount point of the host
-/// filesystem, otherwise a path that happens to start with one of the sandbox
-/// prefixes (`/tmp`, `/data`, `/cache`) is resolved against the wrong root.
-fn host_path(absolute_path: &Path) -> PathBuf {
-    Path::new("/host").join(absolute_path.strip_prefix("/").unwrap_or(absolute_path))
+const HOST_PREFIX: &str = "/host";
+
+/// Resolves a clicked path to the address the host should act on.
+///
+/// The host strips the first matching sandbox mount prefix (`/host`, `/data`,
+/// `/cache`, `/tmp`) off whatever it is handed, so a path that is *not* prefixed
+/// with the host mount point gets re-rooted onto the plugin's sandbox — an
+/// absolute `/tmp/test.txt` would be opened as `<server tmp>/test.txt`. Every
+/// path that leaves the plugin therefore goes through here.
+fn resolve_clicked_path(
+    matched_string: &str,
+    context: &BTreeMap<String, String>,
+    env_vars: &BTreeMap<String, String>,
+) -> (PathBuf, Option<usize>) {
+    let (path_str, line_number) = parse_path_and_line(matched_string);
+    let expanded = expand_path(path_str.trim(), env_vars);
+
+    let absolute_path = if expanded.starts_with('/') {
+        PathBuf::from(&expanded)
+    } else if let Some(cwd) = context.get(CWD_CONTEXT_KEY) {
+        PathBuf::from(cwd).join(&expanded)
+    } else {
+        PathBuf::from(&expanded)
+    };
+
+    let host_path = Path::new(HOST_PREFIX).join(
+        absolute_path
+            .strip_prefix("/")
+            .unwrap_or(absolute_path.as_path()),
+    );
+    (host_path, line_number)
+}
+
+/// A host address as the user knows it, for pane titles and plugin config.
+fn display_path(path: &Path) -> PathBuf {
+    match path.strip_prefix(HOST_PREFIX) {
+        Ok(stripped) => Path::new("/").join(stripped),
+        Err(_) => path.to_path_buf(),
+    }
 }
 
 #[derive(Default)]
@@ -113,26 +147,15 @@ impl Link {
     }
 
     fn handle_highlight_clicked(&self, matched_string: String, context: BTreeMap<String, String>) {
-        let (path_str, line_number) = parse_path_and_line(&matched_string);
-        let path_str = path_str.trim();
-        let expanded = expand_path(path_str, &self.env_vars);
-        let path_str = expanded.as_str();
-
-        let absolute_path = if path_str.starts_with('/') {
-            PathBuf::from(path_str)
-        } else if let Some(cwd) = context.get(CWD_CONTEXT_KEY) {
-            PathBuf::from(cwd).join(path_str)
-        } else {
-            PathBuf::from(path_str)
-        };
-
-        let host_path = host_path(&absolute_path);
+        let (host_path, line_number) =
+            resolve_clicked_path(&matched_string, &context, &self.env_vars);
         let metadata = match std::fs::metadata(&host_path) {
             Ok(m) => m,
             Err(_) => return,
         };
 
         if metadata.is_dir() {
+            let absolute_path = display_path(&host_path);
             let mut args = BTreeMap::new();
             let mut configuration = BTreeMap::new();
             args.insert("open_directly".to_owned(), "true".to_owned());
@@ -467,22 +490,44 @@ mod tests {
     }
 
     #[test]
-    fn host_path_prefixes_paths_under_sandbox_mounts() {
+    fn clicked_paths_under_sandbox_mounts_are_addressed_via_the_host_prefix() {
+        let no_env = BTreeMap::new();
+        for path in ["/tmp/test.txt", "/data/x", "/cache/y", "/etc/passwd"] {
+            let (resolved, line) = resolve_clicked_path(path, &no_env, &no_env);
+            assert_eq!(
+                resolved,
+                PathBuf::from("/host").join(path.trim_start_matches('/'))
+            );
+            assert_eq!(line, None);
+        }
+    }
+
+    #[test]
+    fn clicked_relative_paths_resolve_against_the_pane_cwd() {
+        let mut context = BTreeMap::new();
+        context.insert(CWD_CONTEXT_KEY.to_owned(), "/home/user/project".to_owned());
+        let no_env = BTreeMap::new();
+
+        let (resolved, line) = resolve_clicked_path("src/main.rs:42", &context, &no_env);
         assert_eq!(
-            host_path(Path::new("/tmp/test.txt")),
-            PathBuf::from("/host/tmp/test.txt")
+            resolved,
+            PathBuf::from("/host/home/user/project/src/main.rs")
+        );
+        assert_eq!(line, Some(42));
+
+        let (resolved, _) = resolve_clicked_path("/tmp/test.txt", &context, &no_env);
+        assert_eq!(resolved, PathBuf::from("/host/tmp/test.txt"));
+    }
+
+    #[test]
+    fn display_path_drops_the_host_prefix() {
+        assert_eq!(
+            display_path(Path::new("/host/tmp/test.txt")),
+            PathBuf::from("/tmp/test.txt")
         );
         assert_eq!(
-            host_path(Path::new("/data/x")),
-            PathBuf::from("/host/data/x")
-        );
-        assert_eq!(
-            host_path(Path::new("/cache/y")),
-            PathBuf::from("/host/cache/y")
-        );
-        assert_eq!(
-            host_path(Path::new("/etc/passwd")),
-            PathBuf::from("/host/etc/passwd")
+            display_path(Path::new("/tmp/test.txt")),
+            PathBuf::from("/tmp/test.txt")
         );
     }
 
