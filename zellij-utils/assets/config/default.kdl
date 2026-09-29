@@ -738,6 +738,12 @@ web_client {
 //     // Plasma, and ignored elsewhere.
 //     blur false
 //
+//     // How a new window opens: "windowed", "maximized", "fullscreen", or
+//     // "remember" (the default), which reopens at the size, counted in rows
+//     // and columns, and in the state the last window was closed in. With
+//     // nothing remembered yet, "remember" opens windowed at 120x40.
+//     startup_mode "remember"
+//
 //     // Colors the window paints itself. `foreground` and
 //     // `background` default to the active Zellij theme; the sixteen ANSI
 //     // colors have no theme equivalent and default to the standard table.

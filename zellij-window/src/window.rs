@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -45,6 +46,7 @@ use crate::retained::{self, Damage, RetainedScene};
 use crate::scene::{self, BlinkPhase, Transparency};
 use crate::settings::Settings;
 use crate::terminal::{self, FrameError, TerminalState};
+use crate::window_state::{self, Shown, Startup, WindowState};
 use zellij_utils::input::window::{NotificationMode, StartupMode};
 
 const BLINK_INTERVAL: Duration = Duration::from_millis(500);
@@ -130,7 +132,11 @@ struct App {
     blink_since: Instant,
     pacer: Pacer,
     display_checked: Instant,
-    initial_size: (u32, u32),
+    startup: Startup,
+    state_path: Option<PathBuf>,
+    shown: Shown,
+    windowed_cells: (usize, usize),
+    windowed_known: bool,
     surfaces: Option<Surfaces>,
     failure: Option<anyhow::Error>,
     session: Option<Session>,
@@ -270,16 +276,73 @@ impl App {
         );
     }
 
-    fn reflow(&mut self, width: u32, height: u32) {
+    fn fitted(&self, width: u32, height: u32) -> Geometry {
         let cols = (width / self.metrics.width) as usize;
         let rows = (height / self.metrics.height) as usize;
         let clamped = terminal::clamped(rows, cols);
-        let next = Geometry {
+        Geometry {
             rows: clamped.rows,
             cols: clamped.cols,
             cell_width: self.metrics.width as usize,
             cell_height: self.metrics.height as usize,
+        }
+    }
+
+    fn resized(&mut self, width: u32, height: u32) {
+        self.observe_window();
+        if self.shown == Shown::Windowed {
+            let fitted = self.fitted(width, height);
+            self.windowed_cells = (fitted.cols, fitted.rows);
+            self.windowed_known = true;
+        }
+        self.reflow(width, height);
+    }
+
+    fn observe_window(&mut self) {
+        let Some(surfaces) = &self.surfaces else {
+            return;
         };
+        let window = &surfaces.window;
+        self.shown = if window.fullscreen().is_some() {
+            Shown::Fullscreen
+        } else if window.is_maximized() {
+            Shown::Maximized
+        } else {
+            Shown::Windowed
+        };
+        if self.shown == Shown::Windowed {
+            let size = window.inner_size();
+            let fitted = self.fitted(size.width, size.height);
+            self.windowed_cells = (fitted.cols, fitted.rows);
+            self.windowed_known = true;
+        }
+    }
+
+    fn window_state(&self) -> WindowState {
+        WindowState {
+            cols: self.windowed_cells.0,
+            rows: self.windowed_cells.1,
+            state: self.shown,
+        }
+    }
+
+    fn remember(&mut self) {
+        let Some(path) = self.state_path.clone() else {
+            return;
+        };
+        self.observe_window();
+        let mut state = self.window_state();
+        if !self.windowed_known {
+            if let Some(previous) = window_state::load_from(&path) {
+                state.cols = previous.cols;
+                state.rows = previous.rows;
+            }
+        }
+        window_state::store(&path, state);
+    }
+
+    fn reflow(&mut self, width: u32, height: u32) {
+        let next = self.fitted(width, height);
         self.state
             .set_cell_size(self.metrics.width, self.metrics.height);
         if let Some(sender) = &self.sender {
@@ -795,6 +858,11 @@ impl App {
         }
     }
 
+    fn close_requested(&mut self) -> bool {
+        self.remember();
+        self.closing()
+    }
+
     fn stranded(&mut self, failure: anyhow::Error) {
         let message = format!("{:#}", failure);
         eprintln!("zellij-window: {}", message);
@@ -814,6 +882,32 @@ impl App {
         self.schedule_draw();
     }
 
+    fn requested_size(&self) -> winit::dpi::Size {
+        let width = self.metrics.width * self.startup.cols as u32;
+        let height = self.metrics.height * self.startup.rows as u32;
+        if self.startup.restored {
+            winit::dpi::LogicalSize::new(width as f64 / self.scale, height as f64 / self.scale)
+                .into()
+        } else {
+            winit::dpi::PhysicalSize::new(width, height).into()
+        }
+    }
+
+    fn open_window(&mut self, event_loop: &ActiveEventLoop) -> Result<()> {
+        let surfaces = self.bring_up(event_loop)?;
+        let size = surfaces.window.inner_size();
+        let scale = surfaces.window.scale_factor();
+        self.surfaces = Some(surfaces);
+        self.shown = Shown::of(self.startup.mode);
+        self.windowed_cells = (self.startup.cols, self.startup.rows);
+        self.windowed_known = self.startup.mode == StartupMode::Windowed;
+        self.follow_display();
+        self.schedule_draw();
+        self.rescale(scale);
+        self.resized(size.width, size.height);
+        Ok(())
+    }
+
     fn bring_up(&mut self, event_loop: &ActiveEventLoop) -> Result<Surfaces> {
         let attributes = named(startup_attributes(
             WindowAttributes::default()
@@ -821,11 +915,8 @@ impl App {
                 .with_window_icon(window_icon())
                 .with_transparent(true)
                 .with_blur(self.options.blur)
-                .with_inner_size(winit::dpi::PhysicalSize::new(
-                    self.initial_size.0,
-                    self.initial_size.1,
-                )),
-            self.options.startup_mode,
+                .with_inner_size(self.requested_size()),
+            self.startup.mode,
         ));
 
         let (window, config) = DisplayBuilder::new()
@@ -886,21 +977,10 @@ impl ApplicationHandler<Wake> for App {
         if self.surfaces.is_some() {
             return;
         }
-        match self.bring_up(event_loop) {
-            Ok(surfaces) => {
-                let size = surfaces.window.inner_size();
-                let scale = surfaces.window.scale_factor();
-                self.surfaces = Some(surfaces);
-                self.follow_display();
-                self.schedule_draw();
-                self.rescale(scale);
-                self.reflow(size.width, size.height);
-            },
-            Err(e) => {
-                self.failure = Some(e);
-                let _ = self.detach();
-                event_loop.exit();
-            },
+        if let Err(e) = self.open_window(event_loop) {
+            self.failure = Some(e);
+            let _ = self.detach();
+            event_loop.exit();
         }
     }
 
@@ -919,6 +999,7 @@ impl ApplicationHandler<Wake> for App {
             },
             Wake::Finished(switch_to) => {
                 if !self.follow(switch_to) {
+                    self.remember();
                     event_loop.exit();
                 }
             },
@@ -928,7 +1009,7 @@ impl ApplicationHandler<Wake> for App {
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         match event {
             WindowEvent::CloseRequested => {
-                if self.closing() {
+                if self.close_requested() {
                     event_loop.exit();
                 }
             },
@@ -939,7 +1020,7 @@ impl ApplicationHandler<Wake> for App {
                         .resize_surface(&surfaces.surface, &surfaces.context);
                 }
                 self.schedule_draw();
-                self.reflow(size.width, size.height);
+                self.resized(size.width, size.height);
             },
             WindowEvent::Moved(_) => self.follow_display_occasionally(),
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
@@ -1015,11 +1096,15 @@ pub struct WindowOptions {
     pub options: Options,
     pub settings: Settings,
     pub detacher: Detacher,
+    pub startup: Startup,
 }
 
-fn startup_attributes(attributes: WindowAttributes, mode: StartupMode) -> WindowAttributes {
+pub(crate) fn startup_attributes(
+    attributes: WindowAttributes,
+    mode: StartupMode,
+) -> WindowAttributes {
     match mode {
-        StartupMode::Windowed => attributes,
+        StartupMode::Windowed | StartupMode::Remember => attributes,
         StartupMode::Maximized => attributes.with_maximized(true),
         StartupMode::Fullscreen => {
             attributes.with_fullscreen(Some(winit::window::Fullscreen::Borderless(None)))
@@ -1034,13 +1119,14 @@ pub fn run(
     fonts: FontStack,
     switching: Switching,
 ) -> Result<LoopOutcome> {
-    let renderer = Rendering::bring_up(&window.options, fonts, connection.geometry.get());
+    let renderer = Rendering::bring_up(&window.options, fonts, window.startup);
     let windowing = Windowing::bring_up()?;
     let geometry = connection.geometry.clone();
     let role = connection.role;
     let sender = connection.sender.clone();
     let title = window_title(&connection.session_name);
     let clipboard: ClipboardHandle = Arc::new(Mutex::new(Clipboard::open()));
+    let state_path = loop_options.record_path.is_none().then(window_state::path);
     loop_options.clipboard = Some(clipboard.clone());
 
     let mut session = Session {
@@ -1062,6 +1148,7 @@ pub fn run(
         clipboard,
         Some(session),
     );
+    app.state_path = state_path;
     let outcome = windowing.drive(&mut app);
     let mut session = app.session.take();
     if let Some(session) = session.as_mut() {
@@ -1080,7 +1167,13 @@ pub fn run_notice(
     options: &Options,
 ) -> Result<()> {
     let windowing = Windowing::bring_up()?;
-    let mut app = Rendering::from_state(state, options, fonts, geometry).into_app(
+    let startup = Startup::resolve(
+        options.startup_mode,
+        None,
+        Some(geometry.rows),
+        Some(geometry.cols),
+    );
+    let mut app = Rendering::from_state(state, options, fonts, startup).into_app(
         None,
         Role::Watcher,
         GeometryHandle::new(geometry),
@@ -1136,24 +1229,21 @@ struct Rendering {
     cache: GlyphCache,
     metrics: CellMetrics,
     options: Options,
-    initial_size: (u32, u32),
+    startup: Startup,
 }
 
 impl Rendering {
-    fn bring_up(options: &Options, fonts: FontStack, geometry: Geometry) -> Self {
+    fn bring_up(options: &Options, fonts: FontStack, startup: Startup) -> Self {
         let cache = GlyphCache::new(fonts);
         let metrics = cache.metrics();
-        let mut state = TerminalState::new(geometry.rows, geometry.cols);
+        let mut state = TerminalState::new(startup.rows, startup.cols);
         state.set_cell_size(metrics.width, metrics.height);
         Self {
             state,
             cache,
             metrics,
             options: options.clone(),
-            initial_size: (
-                metrics.width * geometry.cols as u32,
-                metrics.height * geometry.rows as u32,
-            ),
+            startup,
         }
     }
 
@@ -1161,7 +1251,7 @@ impl Rendering {
         state: TerminalState,
         options: &Options,
         fonts: FontStack,
-        geometry: Geometry,
+        startup: Startup,
     ) -> Self {
         let cache = GlyphCache::new(fonts);
         let metrics = cache.metrics();
@@ -1170,10 +1260,7 @@ impl Rendering {
             cache,
             metrics,
             options: options.clone(),
-            initial_size: (
-                metrics.width * geometry.cols as u32,
-                metrics.height * geometry.rows as u32,
-            ),
+            startup,
         }
     }
 
@@ -1213,7 +1300,11 @@ impl Rendering {
             blink_since: Instant::now(),
             pacer: Pacer::new(None),
             display_checked: Instant::now(),
-            initial_size: self.initial_size,
+            startup: self.startup,
+            state_path: None,
+            shown: Shown::of(self.startup.mode),
+            windowed_cells: (self.startup.cols, self.startup.rows),
+            windowed_known: self.startup.mode == StartupMode::Windowed,
             surfaces: None,
             failure: None,
             session,
@@ -1438,7 +1529,8 @@ mod tests {
             let clipboard: ClipboardHandle = Arc::new(Mutex::new(owned));
 
             let fonts = options.font.stack(1.0).unwrap();
-            let app = Rendering::bring_up(&options, fonts, geometry()).into_app(
+            let startup = Startup::windowed(geometry().rows, geometry().cols);
+            let app = Rendering::bring_up(&options, fonts, startup).into_app(
                 Some(connection.sender.clone()),
                 connection.role,
                 connection.geometry.clone(),
@@ -1637,6 +1729,88 @@ mod tests {
             Some(winit::window::Fullscreen::Borderless(None)),
             "a terminal must never change the display's video mode"
         );
+
+        let remembered = startup_attributes(WindowAttributes::default(), StartupMode::Remember);
+        assert!(!remembered.maximized);
+        assert!(remembered.fullscreen.is_none());
+    }
+
+    fn remembering(harness: &mut Harness) -> tempfile::TempDir {
+        let dir = tempfile::TempDir::new().unwrap();
+        harness.app.state_path = Some(dir.path().join("window-state.json"));
+        dir
+    }
+
+    fn remembered(dir: &tempfile::TempDir) -> Option<WindowState> {
+        window_state::load_from(&dir.path().join("window-state.json"))
+    }
+
+    #[test]
+    fn closing_after_a_resize_remembers_the_new_size_in_cells() {
+        let mut harness = Harness::new(3, true, "");
+        let dir = remembering(&mut harness);
+        harness.app.resized(720, 600);
+        assert!(
+            !harness.app.close_requested(),
+            "a window showing a live session waits for the server"
+        );
+        assert_eq!(
+            remembered(&dir),
+            Some(WindowState {
+                cols: 90,
+                rows: 30,
+                state: Shown::Windowed,
+            })
+        );
+        let sent = harness.sent();
+        assert_eq!(
+            sent[0],
+            ClientToServerMsg::TerminalResize {
+                new_size: zellij_utils::pane_size::Size { rows: 30, cols: 90 },
+            }
+        );
+        assert!(matches!(
+            sent[2],
+            ClientToServerMsg::Action {
+                action: Action::Detach,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn a_maximized_close_keeps_the_windowed_size_already_saved() {
+        let mut harness = Harness::new(0, true, "");
+        let dir = remembering(&mut harness);
+        window_state::save_to(
+            harness.app.state_path.as_deref().unwrap(),
+            WindowState {
+                cols: 70,
+                rows: 20,
+                state: Shown::Windowed,
+            },
+        )
+        .unwrap();
+        harness.app.shown = Shown::Maximized;
+        harness.app.windowed_known = false;
+        harness.app.remember();
+        assert_eq!(
+            remembered(&dir),
+            Some(WindowState {
+                cols: 70,
+                rows: 20,
+                state: Shown::Maximized,
+            })
+        );
+    }
+
+    #[test]
+    fn without_a_state_path_nothing_is_remembered() {
+        let mut harness = Harness::new(0, true, "");
+        let dir = tempfile::TempDir::new().unwrap();
+        harness.app.remember();
+        assert!(std::fs::read_dir(dir.path()).unwrap().next().is_none());
+        assert!(harness.app.state_path.is_none());
     }
 
     #[test]

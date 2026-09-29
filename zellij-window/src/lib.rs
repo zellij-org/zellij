@@ -58,6 +58,7 @@ mod test_server;
 #[cfg(test)]
 mod vte_terminal;
 mod window;
+mod window_state;
 
 use std::path::PathBuf;
 use std::time::Duration;
@@ -77,6 +78,8 @@ use crate::client_loop::{detach_after, detach_on_signal, LoopOptions};
 use crate::connection::{Capabilities, Detacher, Geometry, Opening};
 use crate::font::FontStack;
 use crate::options::Options;
+use crate::window_state::{Startup, WindowState};
+use zellij_utils::input::window::StartupMode;
 
 const WELCOME_LAYOUT: &str = "welcome";
 
@@ -97,10 +100,19 @@ struct Plan {
     geometry: Geometry,
     capabilities: connection::Capabilities,
     fonts: Option<FontStack>,
+    startup: Startup,
 }
 
-fn plan(args: &WindowArgs, options: &Options) -> Result<Plan> {
-    if args.rows == 0 || args.cols == 0 {
+fn remembered(args: &WindowArgs, options: &Options) -> Option<WindowState> {
+    if args.headless || options.startup_mode != StartupMode::Remember {
+        return None;
+    }
+    window_state::load_from(&window_state::path())
+}
+
+fn plan(args: &WindowArgs, options: &Options, saved: Option<WindowState>) -> Result<Plan> {
+    let startup = Startup::resolve(options.startup_mode, saved, args.rows, args.cols);
+    if startup.rows == 0 || startup.cols == 0 {
         bail!("rows and cols must both be greater than zero");
     }
     if args.cell_width == 0 || args.cell_height == 0 {
@@ -123,8 +135,8 @@ fn plan(args: &WindowArgs, options: &Options) -> Result<Plan> {
 
     Ok(Plan {
         geometry: Geometry {
-            rows: args.rows,
-            cols: args.cols,
+            rows: startup.rows,
+            cols: startup.cols,
             cell_width,
             cell_height,
         },
@@ -133,6 +145,7 @@ fn plan(args: &WindowArgs, options: &Options) -> Result<Plan> {
             paints: options.paints,
         },
         fonts,
+        startup,
     })
 }
 
@@ -375,12 +388,14 @@ fn open(args: WindowArgs, opts: CliArgs) -> Result<()> {
         settings::Settings::default()
     };
     let options = configured(&settings, &args);
+    let saved = remembered(&args, &options);
 
     let Plan {
         geometry,
         capabilities,
         fonts,
-    } = plan(&args, &options)?;
+        startup,
+    } = plan(&args, &options, saved)?;
 
     let target = match resolve(&args, &config_options, capabilities) {
         Ok(target) => target,
@@ -416,6 +431,7 @@ fn open(args: WindowArgs, opts: CliArgs) -> Result<()> {
         settings,
         opts,
         config_options,
+        startup,
     )
 }
 
@@ -463,6 +479,7 @@ fn drive(
     settings: settings::Settings,
     opts: CliArgs,
     config_options: SessionOptions,
+    startup: Startup,
 ) -> Result<()> {
     let windowed = fonts.is_some();
     let detacher = Detacher::new(connection.sender.clone(), connection.role);
@@ -487,6 +504,7 @@ fn drive(
                 options,
                 settings,
                 detacher,
+                startup,
             };
             let switching = move |to: &ConnectToSession, geometry: Geometry| {
                 switch(to, &opts, &config_options, geometry, capabilities)
@@ -512,8 +530,8 @@ mod tests {
 
     fn args() -> WindowArgs {
         WindowArgs {
-            rows: 40,
-            cols: 120,
+            rows: Some(40),
+            cols: Some(120),
             cell_width: 10,
             cell_height: 20,
             ..Default::default()
@@ -536,7 +554,7 @@ mod tests {
     }
 
     fn planned_with(args: &WindowArgs, settings: &settings::Settings) -> Result<Plan> {
-        plan(args, &options::resolve(settings, None))
+        plan(args, &options::resolve(settings, None), None)
     }
 
     #[test]
@@ -567,8 +585,137 @@ mod tests {
         );
         assert_eq!(
             configured(&settings::Settings::default(), &args()).startup_mode,
+            StartupMode::Remember
+        );
+        assert_eq!(
+            configured(
+                &configured_fullscreen,
+                &WindowArgs {
+                    startup_mode: Some(StartupMode::Remember),
+                    ..args()
+                }
+            )
+            .startup_mode,
+            StartupMode::Remember
+        );
+        let configured_remember = settings::Settings {
+            section: zellij_utils::input::window::WindowConfig {
+                startup_mode: Some(StartupMode::Remember),
+                ..Default::default()
+            },
+            ..settings::Settings::default()
+        };
+        assert_eq!(
+            configured(
+                &configured_remember,
+                &WindowArgs {
+                    startup_mode: Some(StartupMode::Windowed),
+                    ..args()
+                }
+            )
+            .startup_mode,
             StartupMode::Windowed
         );
+    }
+
+    fn remembering(startup_mode: StartupMode) -> Options {
+        let mut options = options::resolve(&sized(16.0), None);
+        options.startup_mode = startup_mode;
+        options
+    }
+
+    fn saved(cols: usize, rows: usize, shown: window_state::Shown) -> Option<WindowState> {
+        Some(WindowState {
+            cols,
+            rows,
+            state: shown,
+        })
+    }
+
+    fn no_size() -> WindowArgs {
+        WindowArgs {
+            rows: None,
+            cols: None,
+            ..args()
+        }
+    }
+
+    #[test]
+    fn remember_opens_at_the_saved_size() {
+        let plan = plan(
+            &no_size(),
+            &remembering(StartupMode::Remember),
+            saved(90, 30, window_state::Shown::Windowed),
+        )
+        .unwrap();
+        assert_eq!((plan.geometry.cols, plan.geometry.rows), (90, 30));
+        assert_eq!(plan.startup.mode, StartupMode::Windowed);
+        assert!(plan.startup.restored);
+    }
+
+    #[test]
+    fn a_saved_maximized_state_opens_maximized() {
+        let plan = plan(
+            &no_size(),
+            &remembering(StartupMode::Remember),
+            saved(90, 30, window_state::Shown::Maximized),
+        )
+        .unwrap();
+        assert_eq!(plan.startup.mode, StartupMode::Maximized);
+        let attributes = window::startup_attributes(
+            winit::window::WindowAttributes::default(),
+            plan.startup.mode,
+        );
+        assert!(attributes.maximized);
+        assert!(attributes.fullscreen.is_none());
+    }
+
+    #[test]
+    fn remember_with_nothing_saved_opens_windowed_at_the_defaults() {
+        let plan = plan(&no_size(), &remembering(StartupMode::Remember), None).unwrap();
+        assert_eq!((plan.geometry.cols, plan.geometry.rows), (120, 40));
+        assert_eq!(plan.startup.mode, StartupMode::Windowed);
+        assert!(!plan.startup.restored);
+    }
+
+    #[test]
+    fn windowed_ignores_the_saved_state() {
+        let plan = plan(
+            &no_size(),
+            &remembering(StartupMode::Windowed),
+            saved(90, 30, window_state::Shown::Maximized),
+        )
+        .unwrap();
+        assert_eq!((plan.geometry.cols, plan.geometry.rows), (120, 40));
+        assert_eq!(plan.startup.mode, StartupMode::Windowed);
+    }
+
+    #[test]
+    fn explicit_rows_and_cols_win_over_the_remembered_size() {
+        let plan = plan(
+            &WindowArgs {
+                rows: Some(24),
+                cols: Some(80),
+                ..args()
+            },
+            &remembering(StartupMode::Remember),
+            saved(90, 30, window_state::Shown::Windowed),
+        )
+        .unwrap();
+        assert_eq!((plan.geometry.cols, plan.geometry.rows), (80, 24));
+    }
+
+    #[test]
+    fn a_headless_run_never_consults_the_remembered_size() {
+        assert!(remembered(
+            &WindowArgs {
+                headless: true,
+                ..args()
+            },
+            &remembering(StartupMode::Remember)
+        )
+        .is_none());
+        assert!(remembered(&args(), &remembering(StartupMode::Windowed)).is_none());
     }
 
     #[test]
@@ -629,8 +776,14 @@ mod tests {
     #[test]
     fn a_degenerate_geometry_is_refused_before_anything_is_spawned() {
         for args in [
-            WindowArgs { rows: 0, ..args() },
-            WindowArgs { cols: 0, ..args() },
+            WindowArgs {
+                rows: Some(0),
+                ..args()
+            },
+            WindowArgs {
+                cols: Some(0),
+                ..args()
+            },
             WindowArgs {
                 cell_width: 0,
                 headless: true,
