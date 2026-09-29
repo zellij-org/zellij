@@ -280,3 +280,75 @@ fn no_theme_is_err() {
     let theme = Themes::from_path(path);
     assert!(theme.is_err());
 }
+
+fn lab(color: PaletteColor) -> (f64, f64, f64) {
+    let (r, g, b) = match color {
+        PaletteColor::Rgb(rgb) => rgb,
+        PaletteColor::EightBit(index) => panic!("color {} is not an rgb value", index),
+    };
+    let linear = |c: u8| {
+        let c = c as f64 / 255.0;
+        if c <= 0.04045 {
+            c / 12.92
+        } else {
+            ((c + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    let (r, g, b) = (linear(r), linear(g), linear(b));
+    let x = (0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047;
+    let y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    let z = (0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883;
+    let f = |t: f64| {
+        if t > 0.008856 {
+            t.cbrt()
+        } else {
+            7.787 * t + 16.0 / 116.0
+        }
+    };
+    (
+        116.0 * f(y) - 16.0,
+        500.0 * (f(x) - f(y)),
+        200.0 * (f(y) - f(z)),
+    )
+}
+
+fn color_difference(a: PaletteColor, b: PaletteColor) -> f64 {
+    let (a, b) = (lab(a), lab(b));
+    ((a.0 - b.0).powi(2) + (a.1 - b.1).powi(2) + (a.2 - b.2).powi(2)).sqrt()
+}
+
+#[test]
+fn the_bundled_default_themes_set_emphasis_apart_from_body_text() {
+    const LEAST_DIFFERENCE: f64 = 35.0;
+    let themes = bundled_themes();
+    for name in [DEFAULT_THEME_NAME, DEFAULT_LIGHT_THEME_NAME] {
+        let styling = themes.get_theme(name).expect("theme is bundled").palette;
+        let body_text = [
+            ("text_unselected", styling.text_unselected),
+            ("text_selected", styling.text_selected),
+            ("table_cell_unselected", styling.table_cell_unselected),
+            ("table_cell_selected", styling.table_cell_selected),
+            ("list_unselected", styling.list_unselected),
+            ("list_selected", styling.list_selected),
+        ];
+        for (field, declaration) in body_text {
+            for (part, color) in [
+                ("emphasis_0", declaration.emphasis_0),
+                ("emphasis_1", declaration.emphasis_1),
+                ("emphasis_2", declaration.emphasis_2),
+                ("emphasis_3", declaration.emphasis_3),
+            ] {
+                let difference = color_difference(color, declaration.base);
+                assert!(
+                    difference >= LEAST_DIFFERENCE,
+                    "{}: {}.{} differs from the base text by only {:.1}, below {:.1}",
+                    name,
+                    field,
+                    part,
+                    difference,
+                    LEAST_DIFFERENCE
+                );
+            }
+        }
+    }
+}

@@ -78,7 +78,7 @@ use zellij_utils::{
     position::Position,
 };
 
-use crate::background_jobs::{BackgroundJob, REPAINT_DELAY_MS};
+use crate::background_jobs::BackgroundJob;
 use crate::notifications::NotificationProtocol;
 use crate::os_input_output::ResizeCache;
 use crate::pane_groups::PaneGroups;
@@ -9054,8 +9054,6 @@ fn find_already_running_panes(
 // The box is here in order to make the
 // NewClient enum smaller
 #[allow(clippy::boxed_local)]
-const RENDER_JOB_COALESCE: Duration = Duration::from_millis(REPAINT_DELAY_MS / 2);
-
 pub(crate) fn screen_thread_main(
     bus: Bus<ScreenInstruction>,
     max_panes: Option<usize>,
@@ -9234,7 +9232,6 @@ pub(crate) fn screen_thread_main(
         HashMap::new();
     let mut plugin_loading_message_cache = HashMap::new();
     let mut keybind_intercepts = HashMap::new();
-    let mut last_render_job_at = Instant::now() - RENDER_JOB_COALESCE;
     loop {
         let (event, mut err_ctx) = screen
             .bus
@@ -9268,13 +9265,10 @@ pub(crate) fn screen_thread_main(
                         .or_default()
                         .push(ScreenInstruction::PtyBytes(pid, vte_bytes));
                 }
-                if last_render_job_at.elapsed() >= RENDER_JOB_COALESCE {
-                    last_render_job_at = Instant::now();
-                    let _ = screen
-                        .bus
-                        .senders
-                        .send_to_background_jobs(BackgroundJob::RenderToClients);
-                }
+                let _ = screen
+                    .bus
+                    .senders
+                    .send_to_background_jobs(BackgroundJob::RenderToClients);
             },
             ScreenInstruction::PluginBytes(mut plugin_render_assets) => {
                 for plugin_render_asset in plugin_render_assets.iter_mut() {

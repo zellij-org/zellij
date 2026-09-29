@@ -51,6 +51,7 @@ mod screen_buffer;
 mod settings;
 mod sixel;
 mod spawn;
+mod sprites;
 mod terminal;
 #[cfg(test)]
 mod test_server;

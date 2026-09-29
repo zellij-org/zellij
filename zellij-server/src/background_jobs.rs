@@ -137,37 +137,105 @@ static PLUGIN_ANIMATION_OFFSET_DURATION_MD: u64 = 500;
 static SESSION_METADATA_WRITE_INTERVAL_MS: u64 = 1000;
 static UPDATE_AND_REPORT_CWDS_INTERVAL_MS: u64 = 1000;
 static DEFAULT_SERIALIZATION_INTERVAL: u64 = 60000;
-pub static REPAINT_DELAY_MS: u64 = 10;
+pub const RENDER_QUIET_PERIOD: Duration = Duration::from_millis(1);
+pub const RENDER_MAX_DELAY: Duration = Duration::from_millis(8);
 
-#[derive(Debug, PartialEq, Eq)]
-enum RepaintWindowStep {
-    Render,
-    Close,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PendingRender {
+    first_request: Instant,
+    last_request: Instant,
 }
 
-fn repaint_window_step(
-    last_render_request: &mut Option<Instant>,
-    window_start: &mut Instant,
-    owed_trailing_renders: &mut u8,
-    now: Instant,
-) -> RepaintWindowStep {
-    match *last_render_request {
-        Some(request) if request > *window_start => {
-            *window_start = now;
-            *last_render_request = Some(now);
-            *owed_trailing_renders = 1;
-            RepaintWindowStep::Render
-        },
-        _ if *owed_trailing_renders > 0 => {
-            *owed_trailing_renders -= 1;
-            RepaintWindowStep::Render
-        },
-        _ => {
-            *last_render_request = None;
-            RepaintWindowStep::Close
-        },
+impl PendingRender {
+    fn due(&self) -> Instant {
+        (self.last_request + RENDER_QUIET_PERIOD).min(self.first_request + RENDER_MAX_DELAY)
     }
 }
+
+#[derive(Debug, Default)]
+struct RenderSchedule {
+    pending: Option<PendingRender>,
+    exiting: bool,
+}
+
+impl RenderSchedule {
+    fn request(&mut self, now: Instant) -> bool {
+        match self.pending.as_mut() {
+            Some(pending) => {
+                pending.last_request = now;
+                false
+            },
+            None => {
+                self.pending = Some(PendingRender {
+                    first_request: now,
+                    last_request: now,
+                });
+                true
+            },
+        }
+    }
+
+    fn step(&mut self, now: Instant) -> RenderStep {
+        if self.exiting {
+            return RenderStep::Exit;
+        }
+        match self.pending {
+            None => RenderStep::Idle,
+            Some(pending) if now >= pending.due() => {
+                self.pending = None;
+                RenderStep::Render
+            },
+            Some(pending) => RenderStep::WaitFor(pending.due() - now),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum RenderStep {
+    Render,
+    WaitFor(Duration),
+    Idle,
+    Exit,
+}
+
+type SharedRenderSchedule = Arc<(Mutex<RenderSchedule>, std::sync::Condvar)>;
+
+fn spawn_render_scheduler(senders: crate::thread_bus::ThreadSenders) -> SharedRenderSchedule {
+    let schedule: SharedRenderSchedule = Arc::new((
+        Mutex::new(RenderSchedule::default()),
+        std::sync::Condvar::new(),
+    ));
+    let _ = thread::Builder::new().name("repaint".to_string()).spawn({
+        let schedule = schedule.clone();
+        move || {
+            let (lock, wake) = &*schedule;
+            let mut state = lock.lock().unwrap();
+            loop {
+                match state.step(Instant::now()) {
+                    RenderStep::Exit => break,
+                    RenderStep::Idle => {
+                        state = wake.wait(state).unwrap();
+                    },
+                    RenderStep::WaitFor(duration) => {
+                        state = wake.wait_timeout(state, duration).unwrap().0;
+                    },
+                    RenderStep::Render => {
+                        drop(state);
+                        if senders
+                            .send_to_screen(ScreenInstruction::RenderToClients)
+                            .is_err()
+                        {
+                            break;
+                        }
+                        state = lock.lock().unwrap();
+                    },
+                }
+            }
+        }
+    });
+    schedule
+}
+
 static HELP_TEXT_DEBOUNCE_DURATION: u64 = 5000;
 static COMMAND_OUTPUT_FLASH_DURATION_MS: u64 = 400;
 
@@ -208,7 +276,7 @@ pub(crate) fn background_jobs_main(
     let last_serialization_time = Arc::new(Mutex::new(Instant::now()));
     let serialization_interval = serialization_interval.map(|s| s * 1000); // convert to
                                                                            // milliseconds
-    let last_render_request: Arc<Mutex<Option<Instant>>> = Arc::new(Mutex::new(None));
+    let render_schedule = spawn_render_scheduler(bus.senders.clone());
     let pending_help_text_clear: Arc<Mutex<HashMap<ClientId, Instant>>> =
         Arc::new(Mutex::new(HashMap::new()));
     let pending_command_output_flash_clear: Arc<Mutex<HashMap<PaneId, Instant>>> =
@@ -503,40 +571,9 @@ pub(crate) fn background_jobs_main(
                 }
             },
             BackgroundJob::RenderToClients => {
-                let (window_is_closed, current_time) = {
-                    let mut last_render_request = last_render_request.lock().unwrap();
-                    let window_is_closed = last_render_request.is_none();
-                    let current_time = Instant::now();
-                    *last_render_request = Some(current_time);
-                    (window_is_closed, current_time)
-                };
-                if window_is_closed {
-                    let _ = bus
-                        .senders
-                        .send_to_screen_priority(ScreenInstruction::RenderToClients);
-                    let _ = thread::Builder::new().name("repaint".to_string()).spawn({
-                        let senders = bus.senders.clone();
-                        let last_render_request = last_render_request.clone();
-                        let mut window_start = current_time;
-                        let mut owed_trailing_renders = 1u8;
-                        move || loop {
-                            thread::sleep(Duration::from_millis(REPAINT_DELAY_MS));
-                            let step = {
-                                let mut last_render_request = last_render_request.lock().unwrap();
-                                repaint_window_step(
-                                    &mut last_render_request,
-                                    &mut window_start,
-                                    &mut owed_trailing_renders,
-                                    Instant::now(),
-                                )
-                            };
-                            if step == RepaintWindowStep::Close {
-                                break;
-                            }
-                            let _ =
-                                senders.send_to_screen_priority(ScreenInstruction::RenderToClients);
-                        }
-                    });
+                let (lock, wake) = &*render_schedule;
+                if lock.lock().unwrap().request(Instant::now()) {
+                    wake.notify_one();
                 }
             },
             BackgroundJob::HighlightPanesWithMessage(pane_ids, text) => {
@@ -791,6 +828,11 @@ pub(crate) fn background_jobs_main(
                 }
             },
             BackgroundJob::Exit => {
+                {
+                    let (lock, wake) = &*render_schedule;
+                    lock.lock().unwrap().exiting = true;
+                    wake.notify_one();
+                }
                 for loading_plugin in loading_plugins.values() {
                     loading_plugin.store(false, Ordering::SeqCst);
                 }
@@ -1102,85 +1144,64 @@ mod tests {
 }
 
 #[cfg(test)]
-mod repaint_window_tests {
+mod render_schedule_tests {
     use super::*;
 
-    fn step(
-        last_render_request: &mut Option<Instant>,
-        window_start: &mut Instant,
-        owed: &mut u8,
-    ) -> RepaintWindowStep {
-        let now = *window_start + Duration::from_millis(REPAINT_DELAY_MS);
-        repaint_window_step(last_render_request, window_start, owed, now)
+    #[test]
+    fn a_lone_request_renders_after_the_quiet_period() {
+        let start = Instant::now();
+        let mut schedule = RenderSchedule::default();
+        assert!(schedule.request(start));
+        assert_eq!(
+            schedule.step(start),
+            RenderStep::WaitFor(RENDER_QUIET_PERIOD)
+        );
+        assert_eq!(
+            schedule.step(start + RENDER_QUIET_PERIOD),
+            RenderStep::Render
+        );
+        assert_eq!(schedule.step(start + RENDER_QUIET_PERIOD), RenderStep::Idle);
     }
 
     #[test]
-    fn a_window_with_no_further_requests_pays_one_trailing_render_before_closing() {
-        let opened_at = Instant::now();
-        let mut last_render_request = Some(opened_at);
-        let mut window_start = opened_at;
-        let mut owed = 1;
-
+    fn requests_arriving_within_the_quiet_period_postpone_the_render() {
+        let start = Instant::now();
+        let mut schedule = RenderSchedule::default();
+        assert!(schedule.request(start));
+        let later = start + RENDER_QUIET_PERIOD / 2;
+        assert!(!schedule.request(later));
         assert_eq!(
-            step(&mut last_render_request, &mut window_start, &mut owed),
-            RepaintWindowStep::Render,
-            "the render emitted when the window opened may have preempted unparsed output"
+            schedule.step(start + RENDER_QUIET_PERIOD),
+            RenderStep::WaitFor(RENDER_QUIET_PERIOD / 2)
         );
         assert_eq!(
-            step(&mut last_render_request, &mut window_start, &mut owed),
-            RepaintWindowStep::Close
-        );
-        assert_eq!(last_render_request, None);
-    }
-
-    #[test]
-    fn a_newer_request_keeps_the_window_open_and_re_arms_the_trailing_render() {
-        let opened_at = Instant::now();
-        let mut window_start = opened_at;
-        let mut owed = 1;
-
-        let mut last_render_request = Some(opened_at + Duration::from_millis(1));
-        assert_eq!(
-            step(&mut last_render_request, &mut window_start, &mut owed),
-            RepaintWindowStep::Render
-        );
-        assert_eq!(
-            owed, 1,
-            "a coalesced render must re-arm the trailing render"
-        );
-        assert_eq!(
-            step(&mut last_render_request, &mut window_start, &mut owed),
-            RepaintWindowStep::Render
-        );
-        assert_eq!(
-            step(&mut last_render_request, &mut window_start, &mut owed),
-            RepaintWindowStep::Close
+            schedule.step(later + RENDER_QUIET_PERIOD),
+            RenderStep::Render
         );
     }
 
     #[test]
-    fn a_request_arriving_during_the_trailing_render_reopens_the_window() {
-        let opened_at = Instant::now();
-        let mut last_render_request = Some(opened_at);
-        let mut window_start = opened_at;
-        let mut owed = 1;
+    fn continuous_requests_still_render_once_the_maximum_delay_passes() {
+        let start = Instant::now();
+        let mut schedule = RenderSchedule::default();
+        let step = RENDER_QUIET_PERIOD / 2;
+        let mut now = start;
+        schedule.request(now);
+        while now < start + RENDER_MAX_DELAY {
+            assert_ne!(schedule.step(now), RenderStep::Render);
+            now += step;
+            schedule.request(now);
+        }
+        assert_eq!(schedule.step(start + RENDER_MAX_DELAY), RenderStep::Render);
+        assert!(schedule.request(now));
+    }
 
-        assert_eq!(
-            step(&mut last_render_request, &mut window_start, &mut owed),
-            RepaintWindowStep::Render
-        );
-        last_render_request = Some(window_start + Duration::from_micros(1));
-        assert_eq!(
-            step(&mut last_render_request, &mut window_start, &mut owed),
-            RepaintWindowStep::Render
-        );
-        assert_eq!(
-            step(&mut last_render_request, &mut window_start, &mut owed),
-            RepaintWindowStep::Render
-        );
-        assert_eq!(
-            step(&mut last_render_request, &mut window_start, &mut owed),
-            RepaintWindowStep::Close
-        );
+    #[test]
+    fn exiting_stops_the_scheduler_even_with_a_pending_render() {
+        let start = Instant::now();
+        let mut schedule = RenderSchedule::default();
+        schedule.request(start);
+        schedule.exiting = true;
+        assert_eq!(schedule.step(start + RENDER_MAX_DELAY), RenderStep::Exit);
     }
 }

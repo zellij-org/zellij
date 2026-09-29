@@ -42,9 +42,9 @@ grid:
 |                                                                                                                        |
 |                                                                                                                        |
 styles:
-row 4: cols 4-14 fg=#a2bc8c bg=Background flags=BOLD
-row 5: cols 4-4 fg=#d8d5e6 bg=Background flags=BOLD
-row 5: cols 5-8 fg=#e5a985 bg=Background flags=BOLD
-row 5: cols 9-14 fg=#d8d5e6 bg=Background flags=BOLD
-row 6: cols 4-14 fg=#d8d5e6 bg=#3a3358 flags=BOLD
+row 4: cols 4-14 fg=#96dc5a bg=Background flags=BOLD
+row 5: cols 4-4 fg=#d7d7d7 bg=Background flags=BOLD
+row 5: cols 5-8 fg=#ff9146 bg=Background flags=BOLD
+row 5: cols 9-14 fg=#d7d7d7 bg=Background flags=BOLD
+row 6: cols 4-14 fg=#d7d7d7 bg=#383838 flags=BOLD
 images:
