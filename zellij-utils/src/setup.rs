@@ -148,6 +148,12 @@ pub const ZSH_AUTO_START_SCRIPT: &[u8] = include_bytes!(concat!(
     "assets/shell/auto-start.zsh"
 ));
 
+pub const POWERSHELL_AUTO_START_SCRIPT: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/",
+    "assets/shell/auto-start.ps1"
+));
+
 pub fn add_layout_ext(s: &str) -> String {
     match s {
         c if s.ends_with(".kdl") => c.to_owned(),
@@ -667,6 +673,9 @@ impl Setup {
             },
             Shell::Zsh => {
                 let _ = out.write_all(ZSH_AUTO_START_SCRIPT);
+            },
+            Shell::PowerShell => {
+                let _ = out.write_all(POWERSHELL_AUTO_START_SCRIPT);
             },
             _ => {},
         }
