@@ -194,10 +194,16 @@ impl ClientSender {
         std::thread::spawn(move || {
             let err_context = || format!("failed to send message to client {client_id}");
             for msg in client_buffer_receiver.iter() {
-                sender
-                    .send_server_msg(msg)
-                    .with_context(err_context)
-                    .non_fatal();
+                if let Err(e) = sender.send_server_msg(msg) {
+                    // The client's socket is gone (a killed `zellij attach`, a closed web
+                    // client) or cannot be written any more. Every message still queued
+                    // behind this one would fail the same way, so log this ONE line and
+                    // stop — the old per-message log put 42,708 of 44,710 lines in the live
+                    // server log (zellient#22). Returning drops the receiver, so the next
+                    // `send_or_buffer` for this client fails and the router removes it.
+                    log::error!("{}: {:#}", err_context(), e);
+                    return;
+                }
             }
             let _ = sender.send_server_msg(ServerToClientMsg::Exit {
                 exit_reason: ExitReason::Disconnect,

@@ -276,10 +276,16 @@ impl<T: Serialize> IpcSenderWithContext<T> {
     }
 
     pub fn send_server_msg(&mut self, msg: ServerToClientMsg) -> Result<()> {
+        // A failed write or flush is RETURNED, never logged here (zellient#22): a socket whose
+        // peer has gone away fails on every message, and the one caller that keeps handing
+        // messages to such a socket is the server's per-client forwarding thread, which
+        // stops at the first error. Logging here cost it one line per buffered message
+        // (42,708 of 44,710 lines in a live server log).
         let proto_msg: ProtoServerToClientMsg = msg.into();
         write_protobuf_message(&mut self.sender, &proto_msg)?;
-        let _ = self.sender.flush();
-        Ok(())
+        self.sender
+            .flush()
+            .map_err(|e| anyhow!("Failed to flush ipc sender: {}", e))
     }
 
     /// Returns an [`IpcReceiverWithContext`] with the same socket as this sender.
