@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Result};
 
@@ -7,11 +8,16 @@ use crate::font::{
     CellMetrics, FaceStyle, FontId, FontStack, Glyph, GlyphBitmap, GlyphContent, GlyphId,
     ShapedGlyph,
 };
+use crate::sprites;
 
-const INITIAL_SIDE: u32 = 512;
-const MAX_SIDE: u32 = 4096;
+const ATLAS_WIDTH: u32 = 4096;
+const INITIAL_HEIGHT: u32 = 256;
+const MAX_HEIGHT: u32 = 4096;
 const PADDING: u32 = 1;
-const ATLAS_BUDGET_BYTES: usize = 8 << 20;
+const MASK_BUDGET_BYTES: usize = 16 << 20;
+const COLOR_BUDGET_BYTES: usize = 16 << 20;
+const MAX_DIRTY_LOG: usize = 4096;
+const OVERFLOW_RETRY: Duration = Duration::from_secs(1);
 const MAX_ENTRIES: usize = 32_768;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -48,6 +54,7 @@ pub enum Lookup {
 pub struct GlyphAtlas {
     side: u32,
     height: u32,
+    initial_height: u32,
     channels: u32,
     budget: usize,
     coverage: Vec<u8>,
@@ -55,6 +62,8 @@ pub struct GlyphAtlas {
     shelf_height: u32,
     shelf_cursor: u32,
     revision: u64,
+    reshaped_at: u64,
+    dirty_log: Vec<(u64, u32, u32)>,
 }
 
 fn next_revision() -> u64 {
@@ -65,25 +74,51 @@ fn next_revision() -> u64 {
 
 impl GlyphAtlas {
     pub fn new(channels: u32) -> Self {
-        Self::sized(channels, INITIAL_SIDE, ATLAS_BUDGET_BYTES)
+        let budget = if channels == 1 {
+            MASK_BUDGET_BYTES
+        } else {
+            COLOR_BUDGET_BYTES
+        };
+        Self::sized(channels, ATLAS_WIDTH, INITIAL_HEIGHT, budget)
     }
 
-    fn sized(channels: u32, side: u32, budget: usize) -> Self {
+    fn sized(channels: u32, side: u32, height: u32, budget: usize) -> Self {
+        let revision = next_revision();
         Self {
             side,
-            height: side,
+            height,
+            initial_height: height,
             channels,
             budget,
-            coverage: vec![0; (side * side * channels) as usize],
+            coverage: vec![0; (side * height * channels) as usize],
             shelf_top: PADDING,
             shelf_height: 0,
             shelf_cursor: PADDING,
-            revision: next_revision(),
+            revision,
+            reshaped_at: revision,
+            dirty_log: Vec::new(),
         }
     }
 
     fn renewed(&self) -> Self {
-        Self::sized(self.channels, self.side, self.budget)
+        Self::sized(self.channels, self.side, self.initial_height, self.budget)
+    }
+
+    pub fn dirty_rows_since(&self, revision: u64) -> Option<(u32, u32)> {
+        if revision < self.reshaped_at {
+            return None;
+        }
+        let mut rows: Option<(u32, u32)> = None;
+        for (changed_at, top, bottom) in self.dirty_log.iter().rev() {
+            if *changed_at <= revision {
+                break;
+            }
+            rows = Some(match rows {
+                Some((low, high)) => (low.min(*top), high.max(*bottom)),
+                None => (*top, *bottom),
+            });
+        }
+        Some(rows.unwrap_or((0, 0)))
     }
 
     pub fn width(&self) -> u32 {
@@ -94,7 +129,6 @@ impl GlyphAtlas {
         self.height
     }
 
-    #[cfg(test)]
     pub fn channels(&self) -> u32 {
         self.channels
     }
@@ -162,14 +196,21 @@ impl GlyphAtlas {
         self.shelf_cursor += bitmap.width + PADDING;
         self.shelf_height = self.shelf_height.max(bitmap.height);
         self.revision = next_revision();
+        if self.dirty_log.len() >= MAX_DIRTY_LOG {
+            self.dirty_log.clear();
+            self.reshaped_at = self.revision;
+        } else {
+            self.dirty_log
+                .push((self.revision, entry.y, entry.y + entry.height));
+        }
 
         Ok(entry)
     }
 
     fn grow(&mut self) -> Result<()> {
         let grown = self.height * 2;
-        if grown > MAX_SIDE {
-            return Err(anyhow!("glyph atlas exceeded {} px", MAX_SIDE));
+        if grown > MAX_HEIGHT {
+            return Err(anyhow!("glyph atlas exceeded {} px", MAX_HEIGHT));
         }
         let grown_bytes = (self.side * grown * self.channels) as usize;
         if grown_bytes > self.budget {
@@ -183,6 +224,8 @@ impl GlyphAtlas {
         self.coverage
             .resize((self.side * self.height * self.channels) as usize, 0);
         self.revision = next_revision();
+        self.reshaped_at = self.revision;
+        self.dirty_log.clear();
         Ok(())
     }
 }
@@ -199,6 +242,7 @@ pub struct GlyphCache {
     entries: HashMap<GlyphKey, Option<RenderedGlyph>>,
     generation: u64,
     exhausted: bool,
+    overflowed_at: Option<Instant>,
     flushes: u64,
 }
 
@@ -218,8 +262,8 @@ impl GlyphCache {
         const SIDE: u32 = 64;
         Self::bounded(
             fonts,
-            GlyphAtlas::sized(1, SIDE, (SIDE * SIDE) as usize),
-            GlyphAtlas::sized(4, SIDE, (SIDE * SIDE * 4) as usize),
+            GlyphAtlas::sized(1, SIDE, SIDE, (SIDE * SIDE) as usize),
+            GlyphAtlas::sized(4, SIDE, SIDE, (SIDE * SIDE * 4) as usize),
         )
     }
 
@@ -231,6 +275,7 @@ impl GlyphCache {
             entries: HashMap::new(),
             generation: next_revision(),
             exhausted: false,
+            overflowed_at: None,
             flushes: 0,
         }
     }
@@ -256,6 +301,27 @@ impl GlyphCache {
     #[cfg(test)]
     pub fn flushes(&self) -> u64 {
         self.flushes
+    }
+
+    pub fn may_flush(&self, now: Instant) -> bool {
+        self.overflowed_at
+            .is_none_or(|overflowed_at| now.duration_since(overflowed_at) >= OVERFLOW_RETRY)
+    }
+
+    pub fn note_overflow(&mut self, now: Instant) {
+        if self.overflowed_at.is_none() {
+            eprintln!(
+                "zellij-window: the screen holds more distinct glyphs than the glyph atlas can; \
+                 some will be drawn blank until it changes"
+            );
+        }
+        self.overflowed_at = Some(now);
+    }
+
+    pub fn settled(&mut self) {
+        if !self.exhausted {
+            self.overflowed_at = None;
+        }
     }
 
     pub fn flush(&mut self) {
@@ -319,6 +385,9 @@ impl GlyphCache {
         budget: u32,
         spill: u32,
     ) -> Lookup {
+        if sprites::is_sprite(character) {
+            return self.sprite(character, budget);
+        }
         let Some(glyph) = self.fonts.lookup(style, character) else {
             return Lookup::Missing;
         };
@@ -328,6 +397,31 @@ impl GlyphCache {
             spill
         };
         self.rendered_with_room(glyph, budget, spill)
+    }
+
+    fn sprite(&mut self, character: char, budget: u32) -> Lookup {
+        let Ok(glyph) = GlyphId::try_from(character as u32) else {
+            return Lookup::Missing;
+        };
+        let key = GlyphKey {
+            font: FontId::SPRITES,
+            glyph,
+            budget,
+            spill: 0,
+        };
+        if let Some(cached) = self.entries.get(&key) {
+            return match cached {
+                Some(rendered) => Lookup::Rendered(*rendered),
+                None => Lookup::Blank,
+            };
+        }
+        if self.exhausted {
+            return Lookup::Blank;
+        }
+        let Some(bitmap) = sprites::draw(character, self.fonts.metrics(), budget) else {
+            return Lookup::Missing;
+        };
+        self.place(key, &bitmap)
     }
 
     fn rendered(&mut self, glyph: Glyph, budget: u32) -> Lookup {
@@ -347,12 +441,19 @@ impl GlyphCache {
                 None => Lookup::Blank,
             };
         }
+        if self.exhausted {
+            return Lookup::Blank;
+        }
 
         let Some(bitmap) = self.fonts.rasterize_with_room(glyph, budget, spill) else {
             self.remember(key, None);
             return Lookup::Blank;
         };
-        match self.insert(&bitmap) {
+        self.place(key, &bitmap)
+    }
+
+    fn place(&mut self, key: GlyphKey, bitmap: &GlyphBitmap) -> Lookup {
+        match self.insert(bitmap) {
             Insertion::Placed(rendered) => {
                 self.remember(key, Some(rendered));
                 Lookup::Rendered(rendered)
@@ -386,13 +487,7 @@ impl GlyphCache {
                 entry,
                 content: bitmap.content,
             }),
-            Err(e) if width_fits => {
-                eprintln!(
-                    "zellij-window: the glyph atlas is full and will be rebuilt: {}",
-                    e
-                );
-                Insertion::OutOfRoom
-            },
+            Err(_) if width_fits => Insertion::OutOfRoom,
             Err(e) => {
                 eprintln!("zellij-window: glyph atlas insertion failed: {}", e);
                 Insertion::Impossible
@@ -484,7 +579,7 @@ mod tests {
         let mut atlas = GlyphAtlas::new(1);
         let mut previous = atlas.insert(&bitmap(8, 8, 1)).unwrap();
         let mut wrapped = false;
-        for _ in 0..200 {
+        for _ in 0..(ATLAS_WIDTH / 8) {
             let entry = atlas.insert(&bitmap(8, 8, 1)).unwrap();
             if entry.y > previous.y {
                 wrapped = true;
@@ -502,14 +597,14 @@ mod tests {
         for _ in 0..5000 {
             atlas.insert(&bitmap(16, 16, 7)).unwrap();
         }
-        assert!(atlas.height() > atlas.width());
+        assert!(atlas.height() > INITIAL_HEIGHT);
         assert_eq!(read(&atlas, first), vec![42; 16]);
     }
 
     #[test]
     fn a_glyph_wider_than_the_atlas_is_rejected() {
         let mut atlas = GlyphAtlas::new(1);
-        assert!(atlas.insert(&bitmap(INITIAL_SIDE, 1, 0)).is_err());
+        assert!(atlas.insert(&bitmap(ATLAS_WIDTH, 1, 0)).is_err());
     }
 
     #[test]
@@ -546,6 +641,30 @@ mod tests {
         let narrow = rendered(cache.glyph(FaceStyle::Regular, '\u{4f60}', 1)).entry;
         assert_ne!((wide.x, wide.y), (narrow.x, narrow.y));
         assert!(narrow.width < wide.width);
+    }
+
+    #[test]
+    fn block_and_box_characters_are_drawn_to_fill_the_cell() {
+        let mut cache = cache();
+        let metrics = cache.metrics();
+        for character in ['\u{2588}', '\u{2500}', '\u{2502}', '\u{e0b0}'] {
+            let sprite = rendered(cache.glyph(FaceStyle::Regular, character, 1));
+            assert_eq!(sprite.content, GlyphContent::Mask);
+            assert_eq!(
+                (sprite.entry.width, sprite.entry.height),
+                (metrics.width, metrics.height),
+                "{:?}",
+                character
+            );
+            assert_eq!(
+                (sprite.entry.left, sprite.entry.top),
+                (0, metrics.baseline as i32)
+            );
+        }
+        let block = rendered(cache.glyph(FaceStyle::Bold, '\u{2588}', 1));
+        assert!(read(&cache.mask, block.entry)
+            .iter()
+            .all(|alpha| *alpha == 255));
     }
 
     #[test]
@@ -595,7 +714,7 @@ mod tests {
 
     #[test]
     fn an_atlas_that_cannot_grow_past_its_budget_says_so_instead_of_growing() {
-        let mut atlas = GlyphAtlas::sized(1, 64, (64 * 64) as usize);
+        let mut atlas = GlyphAtlas::sized(1, 64, 64, (64 * 64) as usize);
         let mut refused = false;
         for _ in 0..1000 {
             if atlas.insert(&bitmap(16, 16, 3)).is_err() {
@@ -676,6 +795,116 @@ mod tests {
             }
         }
         assert!(out_of_room, "the tiny atlas never reported itself full");
+    }
+
+    #[test]
+    fn only_the_rows_touched_since_an_upload_are_reported_dirty() {
+        let mut atlas = GlyphAtlas::new(1);
+        let uploaded = atlas.revision();
+        assert_eq!(atlas.dirty_rows_since(uploaded), Some((0, 0)));
+        let first = atlas.insert(&bitmap(4, 6, 1)).unwrap();
+        assert_eq!(
+            atlas.dirty_rows_since(uploaded),
+            Some((first.y, first.y + 6))
+        );
+        let seen = atlas.revision();
+        for _ in 0..2000 {
+            atlas.insert(&bitmap(8, 8, 1)).unwrap();
+        }
+        let (top, bottom) = atlas.dirty_rows_since(seen).unwrap();
+        assert!(top >= first.y && bottom > top);
+        assert_eq!(
+            atlas.dirty_rows_since(uploaded),
+            atlas.dirty_rows_since(uploaded),
+        );
+    }
+
+    #[test]
+    fn growth_forces_a_whole_upload() {
+        let mut atlas = GlyphAtlas::new(1);
+        let uploaded = atlas.revision();
+        while atlas.height() == INITIAL_HEIGHT {
+            atlas.insert(&bitmap(64, 64, 1)).unwrap();
+        }
+        assert_eq!(atlas.dirty_rows_since(uploaded), None);
+    }
+
+    #[test]
+    fn an_exhausted_cache_stops_rasterizing_until_it_is_flushed() {
+        let mut cache = tiny();
+        fill_until_exhausted(&mut cache);
+        let entries = cache.entries();
+        for letter in letters() {
+            cache.glyph(FaceStyle::Bold, letter, 1);
+        }
+        assert_eq!(cache.entries(), entries);
+    }
+
+    #[test]
+    fn an_overflowing_screen_is_not_flushed_again_straight_away() {
+        let mut cache = tiny();
+        let now = Instant::now();
+        assert!(cache.may_flush(now));
+        fill_until_exhausted(&mut cache);
+        cache.note_overflow(now);
+        assert!(!cache.may_flush(now));
+        assert!(cache.may_flush(now + OVERFLOW_RETRY));
+        cache.flush();
+        cache.settled();
+        assert!(cache.may_flush(now));
+    }
+
+    fn every_nerd_font_icon() -> impl Iterator<Item = char> {
+        ('\u{e000}'..='\u{f8ff}').chain('\u{f0000}'..='\u{f1af0}')
+    }
+
+    #[test]
+    fn every_nerd_font_icon_fits_in_the_atlas_at_once_at_normal_and_doubled_sizes() {
+        for size in [DEFAULT_FONT_SIZE, DEFAULT_FONT_SIZE * 2.0] {
+            let mut cache = GlyphCache::new(FontStack::embedded(size).unwrap());
+            let mut drawn = 0;
+            for icon in every_nerd_font_icon() {
+                if matches!(
+                    cache.glyph_with_room(FaceStyle::Regular, icon, 1, 1),
+                    Lookup::Rendered(_)
+                ) {
+                    drawn += 1;
+                }
+                assert!(
+                    !cache.exhausted(),
+                    "the atlas filled up at {:?} after {} icons at size {}",
+                    icon,
+                    drawn,
+                    size
+                );
+            }
+            assert!(
+                drawn > 10_000,
+                "only {} icons were drawn at size {}",
+                drawn,
+                size
+            );
+        }
+    }
+
+    #[test]
+    fn a_warm_cache_rasterizes_nothing_new_for_a_screen_it_has_seen() {
+        let mut cache = cache();
+        let icons: Vec<char> = every_nerd_font_icon().take(2000).collect();
+        for icon in &icons {
+            cache.glyph_with_room(FaceStyle::Regular, *icon, 1, 1);
+        }
+        let (entries, mask, color) = (
+            cache.entries(),
+            cache.atlases().mask.revision(),
+            cache.atlases().color.revision(),
+        );
+        for icon in &icons {
+            cache.glyph_with_room(FaceStyle::Regular, *icon, 1, 1);
+        }
+        assert_eq!(cache.entries(), entries);
+        assert_eq!(cache.atlases().mask.revision(), mask);
+        assert_eq!(cache.atlases().color.revision(), color);
     }
 
     #[test]

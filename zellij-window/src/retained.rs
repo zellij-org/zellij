@@ -9,6 +9,7 @@ use crate::scene::{
     self, BlinkPhase, CursorOptions, ImageKey, ImageQuad, RowContext, RowScene, RowScratch,
 };
 use crate::terminal::{GraphicsStamp, TerminalState};
+use std::time::Instant;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Damage {
@@ -149,10 +150,15 @@ impl RetainedScene {
         preedit: Option<&Preedit>,
     ) {
         self.refresh_once(state, cache, phase, paints, cursor, hovered_link, preedit);
-        if cache.exhausted() {
+        let now = Instant::now();
+        if cache.exhausted() && cache.may_flush(now) {
             cache.flush();
             self.refresh_once(state, cache, phase, paints, cursor, hovered_link, preedit);
+            if cache.exhausted() {
+                cache.note_overflow(now);
+            }
         }
+        cache.settled();
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -428,6 +434,45 @@ mod tests {
         assert_eq!(cache.flushes(), 1, "a full atlas must be renewed once");
         assert!(retained.rebuilt_everything());
         assert_eq!(retained.flatten(), rebuilt(&state, &mut tiny_cache()));
+    }
+
+    fn overflowing() -> crate::terminal::TerminalState {
+        Painter::state(6, 40, |painter| {
+            painter.text(0, 0, "abcdefghijklmnopqrstuvwxyz0123456789");
+            painter.text(1, 0, "ABCDEFGHIJKLMNOPQRSTUVWXYZ!?#$%&*+-=");
+            painter.text(
+                2,
+                0,
+                "\u{4f60}\u{597d}\u{4e16}\u{754c}\u{6f22}\u{5b57}\u{4e2d}\u{6587}\u{65e5}\u{672c}",
+            );
+            painter.text(
+                3,
+                0,
+                "\u{3042}\u{3044}\u{3046}\u{3048}\u{304a}\u{30a2}\u{30a4}\u{30a6}\u{30a8}\u{30aa}",
+            );
+        })
+    }
+
+    #[test]
+    fn a_screen_the_atlas_cannot_hold_is_not_flushed_on_every_refresh() {
+        let mut cache = tiny_cache();
+        let state = overflowing();
+        let mut retained = RetainedScene::new();
+        refreshed(&mut retained, &state, &mut cache);
+        assert!(
+            cache.exhausted(),
+            "the screen must overflow even a freshly flushed tiny atlas for this test to mean anything"
+        );
+        let flushes = cache.flushes();
+        for _ in 0..20 {
+            retained.mark(&Damage::Everything);
+            refreshed(&mut retained, &state, &mut cache);
+        }
+        assert_eq!(
+            cache.flushes(),
+            flushes,
+            "an overflowing screen flushed the atlas again straight away"
+        );
     }
 
     #[test]

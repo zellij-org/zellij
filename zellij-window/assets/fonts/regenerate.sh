@@ -15,6 +15,8 @@ EMOJI_RANGES='U+FE0F,U+20E3,U+00A9,U+00AE,U+2122,U+2139,U+2194-2199,U+21A9-21AA,
 
 CJK_URL="${CJK_URL:-https://github.com/notofonts/noto-cjk/raw/main/Sans/Mono/NotoSansMonoCJKsc-Regular.otf}"
 EMOJI_URL="${EMOJI_URL:-https://github.com/googlefonts/noto-emoji/raw/main/fonts/NotoColorEmoji.ttf}"
+NERD_FONTS_VERSION="${NERD_FONTS_VERSION:-3.5.1}"
+SYMBOLS_URL="${SYMBOLS_URL:-https://github.com/ryanoasis/nerd-fonts/releases/download/v${NERD_FONTS_VERSION}/NerdFontsSymbolsOnly.zip}"
 
 if command -v pyftsubset >/dev/null; then
     subset() { pyftsubset "$@"; }
@@ -83,5 +85,15 @@ subset "$WORK/emoji.ttf" \
 
 curl -fsSL -o "$HERE/LICENSE-NotoColorEmoji.md" \
     "https://raw.githubusercontent.com/googlefonts/noto-emoji/main/fonts/LICENSE"
+
+echo "fetching $SYMBOLS_URL"
+curl -fsSL -o "$WORK/symbols.zip" "$SYMBOLS_URL"
+python3 - "$WORK" "$HERE" <<'PY'
+import sys, zipfile
+work, here = sys.argv[1], sys.argv[2]
+z = zipfile.ZipFile(work + "/symbols.zip")
+open(here + "/SymbolsNerdFontMono-Regular.ttf", "wb").write(z.read("SymbolsNerdFontMono-Regular.ttf"))
+open(here + "/LICENSE-SymbolsNerdFont.md", "wb").write(z.read("LICENSE"))
+PY
 
 echo "done; regenerate PNG goldens with UPDATE_GOLDENS=1 cargo test -p zellij-window"

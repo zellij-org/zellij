@@ -36,6 +36,8 @@ const ITALIC: &[u8] = include_bytes!("../assets/fonts/IosevkaTerm-Italic.ttf");
 const BOLD_ITALIC: &[u8] = include_bytes!("../assets/fonts/IosevkaTerm-BoldItalic.ttf");
 const CJK: &[u8] = include_bytes!("../assets/fonts/NotoSansMonoCJK-Regular.otf");
 const EMOJI: &[u8] = include_bytes!("../assets/fonts/NotoColorEmoji.ttf");
+const SYMBOLS: &[u8] = include_bytes!("../assets/fonts/SymbolsNerdFontMono-Regular.ttf");
+const SYMBOLS_FONT: FontId = FontId(6);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FaceStyle {
@@ -85,6 +87,10 @@ pub struct CellMetrics {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FontId(usize);
+
+impl FontId {
+    pub const SPRITES: FontId = FontId(usize::MAX);
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Glyph {
@@ -164,7 +170,7 @@ pub struct FontStack {
     faces: Vec<FontRef<'static>>,
     color_capable: Vec<bool>,
     primary: [FontId; 4],
-    embedded_fallbacks: [FontId; 2],
+    embedded_fallbacks: [FontId; 3],
     size: f32,
     ligatures: bool,
     metrics: CellMetrics,
@@ -174,6 +180,8 @@ pub struct FontStack {
     loaded: HashMap<(PathBuf, u32), FontId>,
     resolved: HashMap<(FaceStyle, char), Option<Glyph>>,
     shaped: HashMap<FontId, HashMap<String, Rc<[ShapedGlyph]>>>,
+    #[cfg(test)]
+    discovery_queries: usize,
 }
 
 impl FontStack {
@@ -218,6 +226,7 @@ impl FontStack {
             face(BOLD_ITALIC, "IosevkaTerm-BoldItalic")?,
             face(CJK, "NotoSansMonoCJK-Regular")?,
             face(EMOJI, "NotoColorEmoji")?,
+            face(SYMBOLS, "SymbolsNerdFontMono-Regular")?,
         ];
         let mut color_capable: Vec<bool> = faces.iter().map(is_color_capable).collect();
         let mut loaded = HashMap::new();
@@ -248,7 +257,7 @@ impl FontStack {
             faces,
             color_capable,
             primary,
-            embedded_fallbacks: [FontId(4), FontId(5)],
+            embedded_fallbacks: [FontId(4), FontId(5), SYMBOLS_FONT],
             size,
             ligatures: options.ligatures,
             metrics,
@@ -258,6 +267,8 @@ impl FontStack {
             loaded,
             resolved: HashMap::new(),
             shaped: HashMap::new(),
+            #[cfg(test)]
+            discovery_queries: 0,
         })
     }
 
@@ -427,6 +438,11 @@ impl FontStack {
         if let Some(glyph) = self.map(self.primary[style.index()], character) {
             return Some(glyph);
         }
+        if is_private_use(character) {
+            if let Some(glyph) = self.map(SYMBOLS_FONT, character) {
+                return Some(glyph);
+            }
+        }
 
         let discovered = self
             .discovered(style, character)
@@ -451,6 +467,10 @@ impl FontStack {
     }
 
     fn discovered(&mut self, style: FaceStyle, character: char) -> Option<Glyph> {
+        #[cfg(test)]
+        {
+            self.discovery_queries += 1;
+        }
         let (path, index) = self.discovery.as_ref()?.match_codepoint(style, character)?;
         let font = adopt(
             &mut self.faces,
@@ -614,6 +634,10 @@ fn adopt(
     faces.push(parsed);
     loaded.insert((path, index), font);
     Some(font)
+}
+
+fn is_private_use(character: char) -> bool {
+    matches!(character, '\u{e000}'..='\u{f8ff}' | '\u{f0000}'..='\u{ffffd}' | '\u{100000}'..='\u{10fffd}')
 }
 
 fn choose(discovered: Option<(Glyph, bool)>, fallbacks: &[(Glyph, bool)]) -> Option<Glyph> {
@@ -1010,6 +1034,44 @@ mod tests {
             &[candidate(4, false), candidate(5, true)],
         );
         assert_eq!(chosen.unwrap().font, FontId(5));
+    }
+
+    #[test]
+    fn nerd_font_icons_resolve_to_the_embedded_symbols_font() {
+        let mut fonts = fonts();
+        for icon in ['\u{e62b}', '\u{f07b}', '\u{f0520}', '\u{f16a0}', '\u{e0b0}'] {
+            let glyph = glyph_of(&mut fonts, FaceStyle::Regular, icon);
+            assert!(
+                fonts.rasterize(glyph, 1).is_some(),
+                "{:?} rendered nothing",
+                icon
+            );
+        }
+        let glyph = glyph_of(&mut fonts, FaceStyle::Regular, '\u{f16a0}');
+        assert_eq!(glyph.font, FontId(6));
+    }
+
+    #[test]
+    fn private_use_icons_skip_system_font_discovery() {
+        let mut fonts = FontStack::build(&FontOptions::default()).unwrap();
+        for icon in ['\u{e62b}', '\u{f07b}', '\u{f0520}', '\u{f16a0}'] {
+            for style in [FaceStyle::Regular, FaceStyle::Bold] {
+                let glyph = glyph_of(&mut fonts, style, icon);
+                assert_eq!(glyph.font, SYMBOLS_FONT);
+            }
+        }
+        assert_eq!(
+            fonts.discovery_queries, 0,
+            "system fonts were searched for icons the bundled symbols font has"
+        );
+        glyph_of(&mut fonts, FaceStyle::Regular, '\u{4f60}');
+        fonts.lookup(FaceStyle::Regular, '\u{10fffd}');
+        assert!(
+            fonts.discovery_queries > 0,
+            "characters outside the icon ranges must still reach system fonts"
+        );
+        assert!(is_private_use('\u{e62b}'));
+        assert!(!is_private_use('\u{4f60}'));
     }
 
     #[test]
