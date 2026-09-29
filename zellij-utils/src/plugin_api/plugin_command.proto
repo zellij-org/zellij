@@ -227,6 +227,10 @@ enum CommandName {
   HideSlot = 234;
   ShowSlot = 235;
   CloseSlot = 236;
+  OpenContextMenu = 237;
+  OpenPluginPopup = 238;
+  SetPopupSize = 239;
+  RunContextMenuItem = 240;
 }
 
 message PluginCommand {
@@ -395,7 +399,32 @@ message PluginCommand {
     uint32 hide_slot_payload = 177;
     ShowSlotPayload show_slot_payload = 178;
     uint32 close_slot_payload = 179;
+    OpenContextMenuPayload open_context_menu_payload = 180;
+    OpenPluginPopupPayload open_plugin_popup_payload = 181;
+    SetPopupSizePayload set_popup_size_payload = 182;
+    uint32 run_context_menu_item_payload = 183;
   }
+}
+
+message OpenContextMenuPayload {
+  bool target_is_tab = 1;
+  uint32 tab_index = 2;
+  uint32 line = 3;
+  uint32 column = 4;
+}
+
+message OpenPluginPopupPayload {
+  string plugin_url = 1;
+  repeated ContextItem configuration = 2;
+  uint32 line = 3;
+  uint32 column = 4;
+  uint32 width = 5;
+  uint32 height = 6;
+}
+
+message SetPopupSizePayload {
+  uint32 width = 1;
+  uint32 height = 2;
 }
 
 message SetSelectableSlotPayload {

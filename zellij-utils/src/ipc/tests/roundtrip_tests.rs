@@ -3783,7 +3783,7 @@ fn test_client_messages() {
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::ToggleFocusFullscreenByPaneId {
-            pane_id: PaneId::Terminal(1),
+            pane_id: Some(PaneId::Terminal(1)),
         },
         terminal_id: Some(1),
         client_id: Some(100),
@@ -3799,7 +3799,7 @@ fn test_client_messages() {
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::TogglePaneEmbedOrFloatingByPaneId {
-            pane_id: PaneId::Terminal(1),
+            pane_id: Some(PaneId::Terminal(1)),
         },
         terminal_id: Some(1),
         client_id: Some(100),
@@ -3807,7 +3807,7 @@ fn test_client_messages() {
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::CloseFocusByPaneId {
-            pane_id: PaneId::Terminal(1),
+            pane_id: Some(PaneId::Terminal(1)),
         },
         terminal_id: Some(1),
         client_id: Some(100),
@@ -3832,7 +3832,7 @@ fn test_client_messages() {
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::TogglePanePinnedByPaneId {
-            pane_id: PaneId::Terminal(1),
+            pane_id: Some(PaneId::Terminal(1)),
         },
         terminal_id: Some(1),
         client_id: Some(100),
@@ -3896,7 +3896,7 @@ fn test_client_messages() {
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::MoveTabByTabId {
-            id: 1,
+            id: Some(1),
             direction: Direction::Left,
         },
         terminal_id: Some(1),

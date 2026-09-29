@@ -9,6 +9,8 @@ pub use super::generated_api::api::{
         ClientInfo as ProtobufClientInfo, ClientPaneHistory as ProtobufClientPaneHistory,
         ClientTabHistory as ProtobufClientTabHistory,
         CommandChangedPayload as ProtobufCommandChangedPayload, ContextItem as ProtobufContextItem,
+        ContextMenuEntry as ProtobufContextMenuEntry, ContextMenuKind as ProtobufContextMenuKind,
+        ContextMenuPayload as ProtobufContextMenuPayload,
         CopyDestination as ProtobufCopyDestination, CwdChangedPayload as ProtobufCwdChangedPayload,
         Event as ProtobufEvent, EventNameList as ProtobufEventNameList,
         EventType as ProtobufEventType, FileMetadata as ProtobufFileMetadata,
@@ -46,12 +48,13 @@ pub use super::generated_api::api::{
 };
 #[allow(hidden_glob_reexports)]
 use crate::data::{
-    ClientId, ClientInfo, CopyDestination, Event, EventType, FileMetadata, HostTerminalThemeMode,
-    InputMode, KeyWithModifier, KeybindsVec, LayoutInfo, LayoutMetadata, ModeInfo, Mouse,
-    NestedSessionEndReason, NestedSessionKeybinds, NestedSessionKeybindsError,
-    NestedSessionKeybindsResponse, PaneContents, PaneId, PaneInfo, PaneManifest, PaneMetadata,
-    PaneScrollbackResponse, PermissionStatus, PluginCapabilities, PluginInfo, SelectedText,
-    SessionInfo, Style, StyledText, TabInfo, TabMetadata, WebServerStatus, WebSharing,
+    ClientId, ClientInfo, ContextMenuContext, ContextMenuEntry, ContextMenuKind, CopyDestination,
+    Event, EventType, FileMetadata, HostTerminalThemeMode, InputMode, KeyWithModifier, KeybindsVec,
+    LayoutInfo, LayoutMetadata, ModeInfo, Mouse, NestedSessionEndReason, NestedSessionKeybinds,
+    NestedSessionKeybindsError, NestedSessionKeybindsResponse, PaneContents, PaneId, PaneInfo,
+    PaneManifest, PaneMetadata, PaneScrollbackResponse, PermissionStatus, PluginCapabilities,
+    PluginInfo, SelectedText, SessionInfo, Style, StyledText, TabInfo, TabMetadata,
+    WebServerStatus, WebSharing,
 };
 
 use crate::errors::prelude::*;
@@ -717,6 +720,51 @@ impl TryFrom<ProtobufEvent> for Event {
                     })
                 },
                 _ => Err("Malformed payload for the NestedSessionModeUpdate Event"),
+            },
+            Some(ProtobufEventType::ContextMenu) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::ContextMenuPayload(payload)) => {
+                    let kind = match ProtobufContextMenuKind::try_from(payload.kind) {
+                        Ok(ProtobufContextMenuKind::Pane) => ContextMenuKind::Pane,
+                        Ok(ProtobufContextMenuKind::PaneFrame) => ContextMenuKind::PaneFrame,
+                        Ok(ProtobufContextMenuKind::Tab) => ContextMenuKind::Tab,
+                        Ok(ProtobufContextMenuKind::Bar) => ContextMenuKind::Bar,
+                        Err(_) => return Err("Unknown kind in the ContextMenu Event"),
+                    };
+                    let pane_id = match payload.pane_id {
+                        Some(pane_id) => Some(PaneId::try_from(pane_id)?),
+                        None => None,
+                    };
+                    let mut entries = vec![];
+                    for entry in payload.entries {
+                        if entry.is_separator {
+                            entries.push(ContextMenuEntry::Separator);
+                        } else {
+                            let mut actions = vec![];
+                            for action in entry.actions {
+                                actions.push(Action::try_from(action)?);
+                            }
+                            entries.push(ContextMenuEntry::Item {
+                                label: entry.label,
+                                actions,
+                            });
+                        }
+                    }
+                    Ok(Event::ContextMenu(
+                        ContextMenuContext {
+                            kind,
+                            pane_id,
+                            pane_is_floating: payload.pane_is_floating,
+                            tab_index: payload.tab_index.map(|t| t as usize),
+                            tab_id: payload.tab_id.map(|t| t as usize),
+                            tab_count: payload.tab_count as usize,
+                            line: payload.line as usize,
+                            column: payload.column as usize,
+                            client_id: payload.client_id as ClientId,
+                        },
+                        entries,
+                    ))
+                },
+                _ => Err("Malformed payload for the ContextMenu Event"),
             },
             Some(ProtobufEventType::NestedSessionEnded) => match protobuf_event.payload {
                 Some(ProtobufEventPayload::NestedSessionEndedPayload(payload)) => {
@@ -1397,6 +1445,58 @@ impl TryFrom<Event> for ProtobufEvent {
                         NestedSessionEndedPayload {
                             pane_id: Some(pane_id.try_into()?),
                             reason: protobuf_reason as i32,
+                        },
+                    )),
+                })
+            },
+            Event::ContextMenu(context, entries) => {
+                let kind = match context.kind {
+                    ContextMenuKind::Pane => ProtobufContextMenuKind::Pane,
+                    ContextMenuKind::PaneFrame => ProtobufContextMenuKind::PaneFrame,
+                    ContextMenuKind::Tab => ProtobufContextMenuKind::Tab,
+                    ContextMenuKind::Bar => ProtobufContextMenuKind::Bar,
+                };
+                let pane_id = match context.pane_id {
+                    Some(pane_id) => Some(pane_id.try_into()?),
+                    None => None,
+                };
+                let mut protobuf_entries = vec![];
+                for entry in entries {
+                    match entry {
+                        ContextMenuEntry::Separator => {
+                            protobuf_entries.push(ProtobufContextMenuEntry {
+                                is_separator: true,
+                                label: String::new(),
+                                actions: vec![],
+                            });
+                        },
+                        ContextMenuEntry::Item { label, actions } => {
+                            let mut protobuf_actions = vec![];
+                            for action in actions {
+                                protobuf_actions.push(ProtobufAction::try_from(action)?);
+                            }
+                            protobuf_entries.push(ProtobufContextMenuEntry {
+                                is_separator: false,
+                                label,
+                                actions: protobuf_actions,
+                            });
+                        },
+                    }
+                }
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::ContextMenu as i32,
+                    payload: Some(event::Payload::ContextMenuPayload(
+                        ProtobufContextMenuPayload {
+                            kind: kind as i32,
+                            pane_id,
+                            pane_is_floating: context.pane_is_floating,
+                            tab_index: context.tab_index.map(|t| t as u32),
+                            tab_id: context.tab_id.map(|t| t as u32),
+                            tab_count: context.tab_count as u32,
+                            line: context.line as u32,
+                            column: context.column as u32,
+                            client_id: context.client_id as u32,
+                            entries: protobuf_entries,
                         },
                     )),
                 })
@@ -2388,6 +2488,7 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::ActivePaneScroll => EventType::ActivePaneScroll,
             ProtobufEventType::NestedSessionModeUpdate => EventType::NestedSessionModeUpdate,
             ProtobufEventType::NestedSessionEnded => EventType::NestedSessionEnded,
+            ProtobufEventType::ContextMenu => EventType::ContextMenu,
         })
     }
 }
@@ -2448,6 +2549,7 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::ActivePaneScroll => ProtobufEventType::ActivePaneScroll,
             EventType::NestedSessionModeUpdate => ProtobufEventType::NestedSessionModeUpdate,
             EventType::NestedSessionEnded => ProtobufEventType::NestedSessionEnded,
+            EventType::ContextMenu => ProtobufEventType::ContextMenu,
         })
     }
 }

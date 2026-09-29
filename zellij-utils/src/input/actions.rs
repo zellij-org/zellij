@@ -554,7 +554,7 @@ pub enum Action {
         id: u64,
     },
     CloseTabById {
-        id: u64,
+        id: Option<u64>,
     },
     RenameTabById {
         id: u64,
@@ -683,16 +683,16 @@ pub enum Action {
         ansi: bool,
     },
     ToggleFocusFullscreenByPaneId {
-        pane_id: PaneId,
+        pane_id: Option<PaneId>,
     },
     ToggleFocusNoUiFullscreenByPaneId {
         pane_id: PaneId,
     },
     TogglePaneEmbedOrFloatingByPaneId {
-        pane_id: PaneId,
+        pane_id: Option<PaneId>,
     },
     CloseFocusByPaneId {
-        pane_id: PaneId,
+        pane_id: Option<PaneId>,
     },
     RenamePaneByPaneId {
         pane_id: Option<PaneId>,
@@ -702,10 +702,16 @@ pub enum Action {
         pane_id: PaneId,
     },
     TogglePanePinnedByPaneId {
-        pane_id: PaneId,
+        pane_id: Option<PaneId>,
     },
     FocusPaneByPaneId {
         pane_id: PaneId,
+    },
+    TogglePaneInGroupByPaneId {
+        pane_id: Option<PaneId>,
+    },
+    StartRenamePaneByPaneId {
+        pane_id: Option<PaneId>,
     },
     // Tab-targeting CLI-only variants
     UndoRenameTabByTabId {
@@ -732,8 +738,11 @@ pub enum Action {
         name: String,
     },
     MoveTabByTabId {
-        id: u64,
+        id: Option<u64>,
         direction: Direction,
+    },
+    StartRenameTabByTabId {
+        id: Option<u64>,
     },
 }
 
@@ -764,6 +773,69 @@ impl Action {
             (Action::LaunchPlugin { .. }, Action::LaunchPlugin { .. }) => true,
             (Action::OverrideLayout { .. }, Action::OverrideLayout { .. }) => true,
             _ => self == other_action,
+        }
+    }
+
+    pub fn has_missing_target(&self) -> bool {
+        match self {
+            Action::CloseFocusByPaneId { pane_id }
+            | Action::ToggleFocusFullscreenByPaneId { pane_id }
+            | Action::TogglePaneEmbedOrFloatingByPaneId { pane_id }
+            | Action::TogglePanePinnedByPaneId { pane_id }
+            | Action::TogglePaneInGroupByPaneId { pane_id }
+            | Action::StartRenamePaneByPaneId { pane_id } => pane_id.is_none(),
+            Action::CloseTabById { id }
+            | Action::MoveTabByTabId { id, .. }
+            | Action::StartRenameTabByTabId { id } => id.is_none(),
+            _ => false,
+        }
+    }
+
+    pub fn targets_pane(&self) -> bool {
+        matches!(
+            self,
+            Action::CloseFocusByPaneId { .. }
+                | Action::ToggleFocusFullscreenByPaneId { .. }
+                | Action::TogglePaneEmbedOrFloatingByPaneId { .. }
+                | Action::TogglePanePinnedByPaneId { .. }
+                | Action::TogglePaneInGroupByPaneId { .. }
+                | Action::StartRenamePaneByPaneId { .. }
+        )
+    }
+
+    pub fn targets_tab(&self) -> bool {
+        matches!(
+            self,
+            Action::CloseTabById { .. }
+                | Action::MoveTabByTabId { .. }
+                | Action::StartRenameTabByTabId { .. }
+        )
+    }
+
+    pub fn fill_context_menu_target(
+        &mut self,
+        target_pane_id: Option<PaneId>,
+        target_tab_id: Option<u64>,
+    ) {
+        match self {
+            Action::CloseFocusByPaneId { pane_id }
+            | Action::ToggleFocusFullscreenByPaneId { pane_id }
+            | Action::TogglePaneEmbedOrFloatingByPaneId { pane_id }
+            | Action::TogglePanePinnedByPaneId { pane_id }
+            | Action::TogglePaneInGroupByPaneId { pane_id }
+            | Action::StartRenamePaneByPaneId { pane_id } => {
+                if pane_id.is_none() {
+                    *pane_id = target_pane_id;
+                }
+            },
+            Action::CloseTabById { id }
+            | Action::MoveTabByTabId { id, .. }
+            | Action::StartRenameTabByTabId { id } => {
+                if id.is_none() {
+                    *id = target_tab_id;
+                }
+            },
+            _ => {},
         }
     }
 
@@ -942,7 +1014,7 @@ impl Action {
             },
             CliAction::MoveTab { direction, tab_id } => match tab_id {
                 Some(id) => Ok(vec![Action::MoveTabByTabId {
-                    id: id as u64,
+                    id: Some(id as u64),
                     direction,
                 }]),
                 None => Ok(vec![Action::MoveTab { direction }]),
@@ -1087,7 +1159,9 @@ impl Action {
                         .map_err(|_| format!(
                             "Malformed pane id: {pane_id_str}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)"
                         ))?;
-                    Ok(vec![Action::ToggleFocusFullscreenByPaneId { pane_id }])
+                    Ok(vec![Action::ToggleFocusFullscreenByPaneId {
+                        pane_id: Some(pane_id),
+                    }])
                 },
                 None => Ok(vec![Action::ToggleFocusFullscreen]),
             },
@@ -1452,7 +1526,9 @@ impl Action {
                         .map_err(|_| format!(
                             "Malformed pane id: {pane_id_str}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)"
                         ))?;
-                    Ok(vec![Action::TogglePaneEmbedOrFloatingByPaneId { pane_id }])
+                    Ok(vec![Action::TogglePaneEmbedOrFloatingByPaneId {
+                        pane_id: Some(pane_id),
+                    }])
                 },
                 None => Ok(vec![Action::TogglePaneEmbedOrFloating]),
             },
@@ -1475,7 +1551,9 @@ impl Action {
                         .map_err(|_| format!(
                             "Malformed pane id: {pane_id_str}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)"
                         ))?;
-                    Ok(vec![Action::CloseFocusByPaneId { pane_id }])
+                    Ok(vec![Action::CloseFocusByPaneId {
+                        pane_id: Some(pane_id),
+                    }])
                 },
                 None => Ok(vec![Action::CloseFocus]),
             },
@@ -1506,7 +1584,9 @@ impl Action {
             CliAction::GoToNextTab => Ok(vec![Action::GoToNextTab]),
             CliAction::GoToPreviousTab => Ok(vec![Action::GoToPreviousTab]),
             CliAction::CloseTab { tab_id } => match tab_id {
-                Some(id) => Ok(vec![Action::CloseTabById { id: id as u64 }]),
+                Some(id) => Ok(vec![Action::CloseTabById {
+                    id: Some(id as u64),
+                }]),
                 None => Ok(vec![Action::CloseTab]),
             },
             CliAction::GoToTab { index } => Ok(vec![Action::GoToTab { index }]),
@@ -1530,7 +1610,7 @@ impl Action {
                 None => Ok(vec![Action::UndoRenameTab]),
             },
             CliAction::GoToTabById { id } => Ok(vec![Action::GoToTabById { id }]),
-            CliAction::CloseTabById { id } => Ok(vec![Action::CloseTabById { id }]),
+            CliAction::CloseTabById { id } => Ok(vec![Action::CloseTabById { id: Some(id) }]),
             CliAction::RenameTabById { id, name } => Ok(vec![Action::RenameTabById { id, name }]),
             CliAction::NewTab {
                 name,
@@ -2067,7 +2147,9 @@ impl Action {
                         .map_err(|_| format!(
                             "Malformed pane id: {pane_id_str}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)"
                         ))?;
-                    Ok(vec![Action::TogglePanePinnedByPaneId { pane_id }])
+                    Ok(vec![Action::TogglePanePinnedByPaneId {
+                        pane_id: Some(pane_id),
+                    }])
                 },
                 None => Ok(vec![Action::TogglePanePinned]),
             },
@@ -2983,7 +3065,7 @@ mod tests {
         assert_eq!(actions.len(), 1);
         match &actions[0] {
             Action::ToggleFocusFullscreenByPaneId { pane_id } => {
-                assert!(matches!(pane_id, PaneId::Terminal(16)));
+                assert!(matches!(pane_id, Some(PaneId::Terminal(16))));
             },
             _ => panic!("Expected ToggleFocusFullscreenByPaneId action"),
         }
@@ -3038,7 +3120,7 @@ mod tests {
         assert_eq!(actions.len(), 1);
         match &actions[0] {
             Action::TogglePaneEmbedOrFloatingByPaneId { pane_id } => {
-                assert!(matches!(pane_id, PaneId::Terminal(17)));
+                assert!(matches!(pane_id, Some(PaneId::Terminal(17))));
             },
             _ => panic!("Expected TogglePaneEmbedOrFloatingByPaneId action"),
         }
@@ -3066,7 +3148,7 @@ mod tests {
         assert_eq!(actions.len(), 1);
         match &actions[0] {
             Action::CloseFocusByPaneId { pane_id } => {
-                assert!(matches!(pane_id, PaneId::Terminal(18)));
+                assert!(matches!(pane_id, Some(PaneId::Terminal(18))));
             },
             _ => panic!("Expected CloseFocusByPaneId action"),
         }
@@ -3161,7 +3243,7 @@ mod tests {
         assert_eq!(actions.len(), 1);
         match &actions[0] {
             Action::TogglePanePinnedByPaneId { pane_id } => {
-                assert!(matches!(pane_id, PaneId::Terminal(21)));
+                assert!(matches!(pane_id, Some(PaneId::Terminal(21))));
             },
             _ => panic!("Expected TogglePanePinnedByPaneId action"),
         }
@@ -3237,7 +3319,7 @@ mod tests {
         assert_eq!(actions.len(), 1);
         match &actions[0] {
             Action::CloseTabById { id } => {
-                assert_eq!(*id, 5u64);
+                assert_eq!(*id, Some(5u64));
             },
             _ => panic!("Expected CloseTabById action"),
         }
@@ -3466,7 +3548,7 @@ mod tests {
         assert_eq!(actions.len(), 1);
         match &actions[0] {
             Action::MoveTabByTabId { id, direction } => {
-                assert_eq!(*id, 10u64);
+                assert_eq!(*id, Some(10u64));
                 assert!(matches!(direction, Direction::Right));
             },
             _ => panic!("Expected MoveTabByTabId action"),

@@ -1,5 +1,6 @@
 mod kdl_layout_parser;
 use crate::data::ClientId;
+use crate::data::ContextMenuEntry;
 use crate::data::{
     BareKey, BorderStyleOverride, Direction, FloatingPaneCoordinates, InputMode, KeyWithModifier,
     LayoutInfo, LayoutMetadata, LineStyle, MultiplayerColors, Palette, PaletteColor, PaneId,
@@ -9,6 +10,9 @@ use crate::data::{
 use crate::envs::EnvironmentVariables;
 use crate::home::{find_default_config_dir, get_layout_dir};
 use crate::input::config::{Config, ConfigError, KdlError};
+use crate::input::context_menu::{
+    merge_context_menu_entries, ContextMenuConfig, CONTEXT_MENU_SECTIONS,
+};
 use crate::input::keybinds::Keybinds;
 use crate::input::layout::{
     Layout, PercentOrFixed, PluginUserConfiguration, RunPlugin, RunPluginOrAlias, TabLayoutInfo,
@@ -935,6 +939,13 @@ impl Action {
                 Some(node)
             },
             Action::NewFloatingPane {
+                command: None,
+                pane_name: None,
+                coordinates: None,
+                near_current_pane: false,
+                ..
+            } => Some(KdlNode::new("NewFloatingPane")),
+            Action::NewFloatingPane {
                 command: run_command_action,
                 pane_name: name,
                 coordinates: floating_pane_coordinates,
@@ -1382,6 +1393,53 @@ impl Action {
             Action::FocusHostSession => Some(KdlNode::new("FocusHostSession")),
             Action::FocusGuestSession => Some(KdlNode::new("FocusGuestSession")),
             Action::ToggleHostFullscreen => Some(KdlNode::new("ToggleHostFullscreen")),
+            Action::CloseFocusByPaneId { pane_id }
+            | Action::ToggleFocusFullscreenByPaneId { pane_id }
+            | Action::TogglePaneEmbedOrFloatingByPaneId { pane_id }
+            | Action::TogglePanePinnedByPaneId { pane_id }
+            | Action::TogglePaneInGroupByPaneId { pane_id }
+            | Action::StartRenamePaneByPaneId { pane_id } => {
+                let name = match self {
+                    Action::CloseFocusByPaneId { .. } => "CloseFocusByPaneId",
+                    Action::ToggleFocusFullscreenByPaneId { .. } => "ToggleFocusFullscreenByPaneId",
+                    Action::TogglePaneEmbedOrFloatingByPaneId { .. } => {
+                        "TogglePaneEmbedOrFloatingByPaneId"
+                    },
+                    Action::TogglePanePinnedByPaneId { .. } => "TogglePanePinnedByPaneId",
+                    Action::TogglePaneInGroupByPaneId { .. } => "TogglePaneInGroupByPaneId",
+                    _ => "StartRenamePaneByPaneId",
+                };
+                let mut node = KdlNode::new(name);
+                if let Some(pane_id) = pane_id {
+                    node.push(pane_id.to_string());
+                }
+                Some(node)
+            },
+            Action::CloseTabById { id } | Action::StartRenameTabByTabId { id } => {
+                let name = match self {
+                    Action::CloseTabById { .. } => "CloseTabById",
+                    _ => "StartRenameTabByTabId",
+                };
+                let mut node = KdlNode::new(name);
+                if let Some(id) = id {
+                    node.push(KdlValue::Base10(*id as i64));
+                }
+                Some(node)
+            },
+            Action::MoveTabByTabId { id, direction } => {
+                let mut node = KdlNode::new("MoveTabByTabId");
+                let direction = match direction {
+                    Direction::Left => "left",
+                    Direction::Right => "right",
+                    Direction::Up => "up",
+                    Direction::Down => "down",
+                };
+                node.push(direction);
+                if let Some(id) = id {
+                    node.push(KdlValue::Base10(*id as i64));
+                }
+                Some(node)
+            },
             _ => None,
         }
     }
@@ -2370,6 +2428,90 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 })
             },
             "TogglePanePinned" => Ok(Action::TogglePanePinned),
+            "NewFloatingPane" => Ok(Action::NewFloatingPane {
+                command: None,
+                pane_name: None,
+                coordinates: None,
+                near_current_pane: false,
+                no_focus: false,
+                tab_id: None,
+            }),
+            "CloseFocusByPaneId"
+            | "ToggleFocusFullscreenByPaneId"
+            | "TogglePaneEmbedOrFloatingByPaneId"
+            | "TogglePanePinnedByPaneId"
+            | "TogglePaneInGroupByPaneId"
+            | "StartRenamePaneByPaneId" => {
+                let pane_id = match action_arguments.first() {
+                    Some(entry) => {
+                        let pane_id_string = entry.value().as_string().ok_or_else(|| {
+                            kdl_parsing_error!(
+                                format!("{} expects a pane id such as \"terminal_1\"", action_name),
+                                entry
+                            )
+                        })?;
+                        Some(PaneId::from_str(pane_id_string).map_err(|_| {
+                            kdl_parsing_error!(
+                                format!("Malformed pane id: {}", pane_id_string),
+                                entry
+                            )
+                        })?)
+                    },
+                    None => None,
+                };
+                Ok(match action_name {
+                    "CloseFocusByPaneId" => Action::CloseFocusByPaneId { pane_id },
+                    "ToggleFocusFullscreenByPaneId" => {
+                        Action::ToggleFocusFullscreenByPaneId { pane_id }
+                    },
+                    "TogglePaneEmbedOrFloatingByPaneId" => {
+                        Action::TogglePaneEmbedOrFloatingByPaneId { pane_id }
+                    },
+                    "TogglePanePinnedByPaneId" => Action::TogglePanePinnedByPaneId { pane_id },
+                    "TogglePaneInGroupByPaneId" => Action::TogglePaneInGroupByPaneId { pane_id },
+                    _ => Action::StartRenamePaneByPaneId { pane_id },
+                })
+            },
+            "CloseTabById" | "StartRenameTabByTabId" => {
+                let id = match action_arguments.first() {
+                    Some(entry) => Some(entry.value().as_i64().ok_or_else(|| {
+                        kdl_parsing_error!(format!("{} expects a tab id", action_name), entry)
+                    })? as u64),
+                    None => None,
+                };
+                if action_name == "CloseTabById" {
+                    Ok(Action::CloseTabById { id })
+                } else {
+                    Ok(Action::StartRenameTabByTabId { id })
+                }
+            },
+            "MoveTabByTabId" => {
+                let direction_entry = action_arguments.first().ok_or_else(|| {
+                    ConfigError::new_kdl_error(
+                        "MoveTabByTabId expects a direction".into(),
+                        kdl_action.span().offset(),
+                        kdl_action.span().len(),
+                    )
+                })?;
+                let direction = direction_entry
+                    .value()
+                    .as_string()
+                    .and_then(|d| Direction::from_str(d).ok())
+                    .filter(|d| !d.is_vertical())
+                    .ok_or_else(|| {
+                        kdl_parsing_error!(
+                            "MoveTabByTabId expects \"left\" or \"right\"".into(),
+                            direction_entry
+                        )
+                    })?;
+                let id = match action_arguments.get(1) {
+                    Some(entry) => Some(entry.value().as_i64().ok_or_else(|| {
+                        kdl_parsing_error!("MoveTabByTabId expects a tab id".into(), entry)
+                    })? as u64),
+                    None => None,
+                };
+                Ok(Action::MoveTabByTabId { id, direction })
+            },
             "TogglePaneInGroup" => Ok(Action::TogglePaneInGroup),
             "ToggleGroupMarking" => Ok(Action::ToggleGroupMarking),
             _ => Err(ConfigError::new_kdl_error(
@@ -5218,6 +5360,13 @@ impl Keybinds {
     ) -> Result<(), ConfigError> {
         let keys: Vec<KeyWithModifier> = keys_from_kdl!(key_block);
         let actions: Vec<Action> = actions_from_kdl!(key_block, config_options);
+        if actions.iter().any(|a| a.has_missing_target()) {
+            return Err(ConfigError::new_kdl_error(
+                "Actions bound to keys must name their target pane or tab explicitly (the target can only be omitted inside context_menu)".into(),
+                key_block.span().offset(),
+                key_block.span().len(),
+            ));
+        }
         for key in keys {
             input_mode_keybinds.insert(key, actions.clone());
         }
@@ -5502,6 +5651,13 @@ impl Config {
             let config_web_client = WebClientConfig::from_kdl(&web_client_config)?;
             config.web_client = config.web_client.merge(config_web_client);
         }
+        if let Some(context_menu_config) = kdl_config.get("context_menu") {
+            config.context_menu = ContextMenuConfig::from_kdl(
+                context_menu_config,
+                std::mem::take(&mut config.context_menu),
+                &config.options,
+            )?;
+        }
         Ok(config)
     }
     pub fn to_string(&self, add_comments: bool) -> String {
@@ -5531,11 +5687,149 @@ impl Config {
 
         document.nodes_mut().push(self.web_client.to_kdl());
 
+        if let Some(context_menu) = self.context_menu.to_kdl() {
+            document.nodes_mut().push(context_menu);
+        }
+
         document
             .nodes_mut()
             .append(&mut self.options.to_kdl(add_comments));
 
         document.to_string()
+    }
+}
+
+impl ContextMenuConfig {
+    pub fn from_kdl(
+        kdl_context_menu: &KdlNode,
+        base: ContextMenuConfig,
+        config_options: &Options,
+    ) -> Result<ContextMenuConfig, ConfigError> {
+        let clear_all_defaults = kdl_arg_is_truthy!(kdl_context_menu, "clear-defaults");
+        let mut context_menu = if clear_all_defaults {
+            ContextMenuConfig::default()
+        } else {
+            base
+        };
+        if let Some(sections) = kdl_children_nodes!(kdl_context_menu) {
+            for section_node in sections {
+                let section_name = kdl_name!(section_node);
+                let clear_section_defaults = kdl_arg_is_truthy!(section_node, "clear-defaults");
+                let mut entries = vec![];
+                if let Some(entry_nodes) = kdl_children_nodes!(section_node) {
+                    for entry_node in entry_nodes {
+                        entries.push(Self::entry_from_kdl(entry_node, config_options)?);
+                    }
+                }
+                let section = context_menu.section_mut(section_name).ok_or_else(|| {
+                    ConfigError::new_kdl_error(
+                        format!(
+                            "Unknown context_menu section '{}', expected one of: {}",
+                            section_name,
+                            CONTEXT_MENU_SECTIONS.join(", ")
+                        ),
+                        section_node.span().offset(),
+                        section_node.span().len(),
+                    )
+                })?;
+                if clear_section_defaults {
+                    *section = entries;
+                } else {
+                    *section = merge_context_menu_entries(section, entries);
+                }
+            }
+        }
+        Ok(context_menu)
+    }
+    fn entry_from_kdl(
+        entry_node: &KdlNode,
+        config_options: &Options,
+    ) -> Result<ContextMenuEntry, ConfigError> {
+        match kdl_name!(entry_node) {
+            "separator" => Ok(ContextMenuEntry::Separator),
+            "item" => {
+                let label = kdl_first_entry_as_string!(entry_node).ok_or_else(|| {
+                    ConfigError::new_kdl_error(
+                        "A context_menu item needs a label, eg. item \"Close pane\" { CloseFocusByPaneId; }".into(),
+                        entry_node.span().offset(),
+                        entry_node.span().len(),
+                    )
+                })?;
+                let actions: Vec<Action> = kdl_children_nodes_or_error!(
+                    entry_node,
+                    "no actions found for context_menu item"
+                )
+                .iter()
+                .map(|kdl_action| Action::try_from((kdl_action, config_options)))
+                .collect::<Result<_, _>>()?;
+                Ok(ContextMenuEntry::Item {
+                    label: label.to_owned(),
+                    actions,
+                })
+            },
+            other => Err(ConfigError::new_kdl_error(
+                format!(
+                    "Unknown context_menu entry '{}', expected 'item' or 'separator'",
+                    other
+                ),
+                entry_node.span().offset(),
+                entry_node.span().len(),
+            )),
+        }
+    }
+    pub fn to_kdl(&self) -> Option<KdlNode> {
+        if self == &ContextMenuConfig::default() {
+            return None;
+        }
+        let mut context_menu_node = KdlNode::new("context_menu");
+        context_menu_node.insert("clear-defaults", true);
+        let mut sections = KdlDocument::new();
+        for section_name in CONTEXT_MENU_SECTIONS {
+            let entries = match self.section(section_name) {
+                Some(entries) => entries,
+                None => continue,
+            };
+            if entries.is_empty() {
+                continue;
+            }
+            let mut section_node = KdlNode::new(section_name);
+            let mut section_children = KdlDocument::new();
+            for entry in entries {
+                match entry {
+                    ContextMenuEntry::Separator => {
+                        section_children.nodes_mut().push(KdlNode::new("separator"));
+                    },
+                    ContextMenuEntry::Item { label, actions } => {
+                        let mut item_node = KdlNode::new("item");
+                        item_node.push(label.clone());
+                        let mut action_nodes = KdlDocument::new();
+                        let mut actions_have_children = false;
+                        for action in actions {
+                            if let Some(kdl_action) = action.to_kdl() {
+                                if kdl_action.children().is_some() {
+                                    actions_have_children = true;
+                                }
+                                action_nodes.nodes_mut().push(kdl_action);
+                            }
+                        }
+                        if !actions_have_children {
+                            for action in action_nodes.nodes_mut() {
+                                action.set_leading("");
+                                action.set_trailing("; ");
+                            }
+                            action_nodes.set_leading(" ");
+                            action_nodes.set_trailing("");
+                        }
+                        item_node.set_children(action_nodes);
+                        section_children.nodes_mut().push(item_node);
+                    },
+                }
+            }
+            section_node.set_children(section_children);
+            sections.nodes_mut().push(section_node);
+        }
+        context_menu_node.set_children(sections);
+        Some(context_menu_node)
     }
 }
 
@@ -8323,4 +8617,356 @@ fn osc8_hyperlinks_config_parsing() {
     let serialized = config.to_string(false);
     let deserialized = Config::from_kdl(&serialized, None).unwrap();
     assert_eq!(deserialized.options.osc8_hyperlinks, Some(true));
+}
+
+#[cfg(test)]
+fn context_menu_from(
+    config: &str,
+    base: ContextMenuConfig,
+) -> Result<ContextMenuConfig, ConfigError> {
+    let document: KdlDocument = config.parse().unwrap();
+    ContextMenuConfig::from_kdl(
+        document.get("context_menu").unwrap(),
+        base,
+        &Options::default(),
+    )
+}
+
+#[cfg(test)]
+fn context_menu_base() -> ContextMenuConfig {
+    context_menu_from(
+        r#"
+        context_menu {
+            pane {
+                item "New pane" { NewPane; }
+                separator
+                item "Close pane" { CloseFocusByPaneId; }
+            }
+            tab {
+                item "Close tab" { CloseTabById; }
+            }
+            common {
+                item "Detach" { Detach; }
+            }
+        }"#,
+        ContextMenuConfig::default(),
+    )
+    .unwrap()
+}
+
+#[test]
+fn context_menu_parses_items_separators_and_target_less_actions() {
+    let context_menu = context_menu_base();
+    assert_eq!(
+        context_menu.pane,
+        vec![
+            ContextMenuEntry::item(
+                "New pane",
+                vec![Action::NewPane {
+                    direction: None,
+                    pane_name: None,
+                    start_suppressed: false,
+                }]
+            ),
+            ContextMenuEntry::Separator,
+            ContextMenuEntry::item(
+                "Close pane",
+                vec![Action::CloseFocusByPaneId { pane_id: None }]
+            ),
+        ]
+    );
+    assert_eq!(
+        context_menu.tab,
+        vec![ContextMenuEntry::item(
+            "Close tab",
+            vec![Action::CloseTabById { id: None }]
+        )]
+    );
+    assert!(context_menu.bar.is_empty());
+    assert_eq!(
+        context_menu.common,
+        vec![ContextMenuEntry::item("Detach", vec![Action::Detach])]
+    );
+}
+
+#[test]
+fn context_menu_parses_explicit_targets_and_new_by_id_actions() {
+    let context_menu = context_menu_from(
+        r#"
+        context_menu {
+            pane {
+                item "a" { ToggleFocusFullscreenByPaneId "terminal_3"; }
+                item "b" { TogglePaneEmbedOrFloatingByPaneId; }
+                item "c" { TogglePanePinnedByPaneId "plugin_2"; }
+                item "d" { TogglePaneInGroupByPaneId; }
+                item "e" { StartRenamePaneByPaneId; }
+                item "f" { NewFloatingPane; }
+            }
+            tab {
+                item "g" { MoveTabByTabId "left"; }
+                item "h" { MoveTabByTabId "right" 4; }
+                item "i" { StartRenameTabByTabId; }
+                item "j" { CloseTabById 2; }
+            }
+        }"#,
+        ContextMenuConfig::default(),
+    )
+    .unwrap();
+    let actions: Vec<Vec<Action>> = context_menu
+        .pane
+        .iter()
+        .chain(context_menu.tab.iter())
+        .filter_map(|entry| match entry {
+            ContextMenuEntry::Item { actions, .. } => Some(actions.clone()),
+            ContextMenuEntry::Separator => None,
+        })
+        .collect();
+    assert_eq!(
+        actions,
+        vec![
+            vec![Action::ToggleFocusFullscreenByPaneId {
+                pane_id: Some(PaneId::Terminal(3))
+            }],
+            vec![Action::TogglePaneEmbedOrFloatingByPaneId { pane_id: None }],
+            vec![Action::TogglePanePinnedByPaneId {
+                pane_id: Some(PaneId::Plugin(2))
+            }],
+            vec![Action::TogglePaneInGroupByPaneId { pane_id: None }],
+            vec![Action::StartRenamePaneByPaneId { pane_id: None }],
+            vec![Action::NewFloatingPane {
+                command: None,
+                pane_name: None,
+                coordinates: None,
+                near_current_pane: false,
+                no_focus: false,
+                tab_id: None,
+            }],
+            vec![Action::MoveTabByTabId {
+                id: None,
+                direction: Direction::Left
+            }],
+            vec![Action::MoveTabByTabId {
+                id: Some(4),
+                direction: Direction::Right
+            }],
+            vec![Action::StartRenameTabByTabId { id: None }],
+            vec![Action::CloseTabById { id: Some(2) }],
+        ]
+    );
+}
+
+#[test]
+fn context_menu_user_items_merge_with_defaults() {
+    let context_menu = context_menu_from(
+        r#"
+        context_menu {
+            pane {
+                item "Close pane" { CloseFocus; }
+                item "Clear" { Clear; }
+            }
+        }"#,
+        context_menu_base(),
+    )
+    .unwrap();
+    let labels: Vec<Option<&str>> = context_menu.pane.iter().map(|e| e.label()).collect();
+    assert_eq!(
+        labels,
+        vec![Some("New pane"), None, Some("Close pane"), Some("Clear")]
+    );
+    assert_eq!(
+        context_menu.pane[2],
+        ContextMenuEntry::item("Close pane", vec![Action::CloseFocus])
+    );
+    assert_eq!(context_menu.tab, context_menu_base().tab);
+    assert_eq!(context_menu.common, context_menu_base().common);
+}
+
+#[test]
+fn context_menu_clear_defaults_for_one_section() {
+    let context_menu = context_menu_from(
+        r#"
+        context_menu {
+            pane clear-defaults=true {
+                item "Clear" { Clear; }
+            }
+        }"#,
+        context_menu_base(),
+    )
+    .unwrap();
+    assert_eq!(
+        context_menu.pane,
+        vec![ContextMenuEntry::item("Clear", vec![Action::ClearScreen])]
+    );
+    assert_eq!(context_menu.tab, context_menu_base().tab);
+    assert_eq!(context_menu.common, context_menu_base().common);
+}
+
+#[test]
+fn context_menu_clear_defaults_for_whole_block() {
+    let context_menu = context_menu_from(
+        r#"
+        context_menu clear-defaults=true {
+            bar {
+                item "Clear" { Clear; }
+            }
+        }"#,
+        context_menu_base(),
+    )
+    .unwrap();
+    assert!(context_menu.pane.is_empty());
+    assert!(context_menu.tab.is_empty());
+    assert!(context_menu.common.is_empty());
+    assert_eq!(
+        context_menu.bar,
+        vec![ContextMenuEntry::item("Clear", vec![Action::ClearScreen])]
+    );
+}
+
+#[test]
+fn context_menu_rejects_unknown_sections_and_entries() {
+    assert!(context_menu_from(
+        r#"
+        context_menu {
+            panes {
+                item "a" { Detach; }
+            }
+        }"#,
+        ContextMenuConfig::default()
+    )
+    .is_err());
+    assert!(context_menu_from(
+        r#"
+        context_menu {
+            pane {
+                entry "a" { Detach; }
+            }
+        }"#,
+        ContextMenuConfig::default()
+    )
+    .is_err());
+    assert!(context_menu_from(
+        r#"
+        context_menu {
+            pane {
+                item "a"
+            }
+        }"#,
+        ContextMenuConfig::default()
+    )
+    .is_err());
+}
+
+#[test]
+fn context_menu_to_kdl_round_trip() {
+    let context_menu = context_menu_from(
+        r#"
+        context_menu {
+            pane {
+                item "New pane" { NewPane; }
+                item "Float" { NewFloatingPane; }
+                separator
+                item "Rename" { StartRenamePaneByPaneId; }
+                item "Close" { CloseFocusByPaneId "terminal_1"; }
+            }
+            tab {
+                item "Left" { MoveTabByTabId "left"; }
+                item "Close" { CloseTabById; }
+            }
+            bar {
+                item "New tab" { NewTab; }
+            }
+            common {
+                item "Settings" {
+                    LaunchOrFocusPlugin "configuration" {
+                        floating true
+                        move_to_focused_tab true
+                    }
+                }
+                item "Detach" { Detach; }
+            }
+        }"#,
+        ContextMenuConfig::default(),
+    )
+    .unwrap();
+    let serialized = context_menu.to_kdl().unwrap().to_string();
+    assert!(serialized.contains("clear-defaults=true"));
+    let reparsed = context_menu_from(&serialized, context_menu_base()).unwrap();
+    assert_eq!(context_menu, reparsed);
+}
+
+#[test]
+fn empty_context_menu_is_not_written() {
+    assert_eq!(ContextMenuConfig::default().to_kdl(), None);
+}
+
+#[test]
+fn keybinds_reject_by_id_actions_without_a_target() {
+    let config = r#"
+        keybinds {
+            normal {
+                bind "Alt x" { CloseFocusByPaneId; }
+            }
+        }"#;
+    assert!(Config::from_kdl(config, None).is_err());
+}
+
+#[test]
+fn keybinds_accept_by_id_actions_with_a_target() {
+    let config = r#"
+        keybinds {
+            normal {
+                bind "Alt x" { CloseFocusByPaneId "terminal_1"; }
+            }
+        }"#;
+    let config = Config::from_kdl(config, None).unwrap();
+    let actions = config
+        .keybinds
+        .0
+        .get(&InputMode::Normal)
+        .and_then(|binds| binds.get(&KeyWithModifier::from_str("Alt x").unwrap()))
+        .cloned();
+    assert_eq!(
+        actions,
+        Some(vec![Action::CloseFocusByPaneId {
+            pane_id: Some(PaneId::Terminal(1))
+        }])
+    );
+}
+
+#[test]
+fn default_config_context_menu_round_trips_through_config_to_string() {
+    let config = Config::from_default_assets().unwrap();
+    let close_pane = config
+        .context_menu
+        .pane
+        .iter()
+        .find(|entry| entry.label() == Some("Close pane"))
+        .cloned();
+    assert_eq!(
+        close_pane,
+        Some(ContextMenuEntry::item(
+            "Close pane",
+            vec![Action::CloseFocusByPaneId { pane_id: None }]
+        ))
+    );
+    assert!(!config.context_menu.tab.is_empty());
+    assert!(!config.context_menu.bar.is_empty());
+    assert!(!config.context_menu.common.is_empty());
+    let serialized = config.to_string(false);
+    let reparsed = Config::from_kdl(&serialized, None).unwrap();
+    assert_eq!(config.context_menu, reparsed.context_menu);
+}
+
+#[test]
+fn config_merge_takes_non_empty_context_menu_sections_from_the_other_config() {
+    let mut config = Config::default();
+    config.context_menu = context_menu_base();
+    let mut other = Config::default();
+    other.context_menu.bar = vec![ContextMenuEntry::item("Clear", vec![Action::ClearScreen])];
+    config.merge(other).unwrap();
+    assert_eq!(config.context_menu.pane, context_menu_base().pane);
+    assert_eq!(
+        config.context_menu.bar,
+        vec![ContextMenuEntry::item("Clear", vec![Action::ClearScreen])]
+    );
 }

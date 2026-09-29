@@ -74,7 +74,7 @@ fn make_plugin_url_path_safe(url: String) -> String {
 
 #[derive(Debug, Clone)]
 pub enum EventOrPipeMessage {
-    Event(Event),
+    Event(Event, Option<ClientId>),
     PipeMessage(PipeMessage),
 }
 
@@ -1106,10 +1106,10 @@ impl WasmBridge {
 
         // loop once more to update the cached events for the pending plugins (probably currently
         // being loaded, we'll send them these events when they load)
-        for (pid, _cid, event) in updates.drain(..) {
+        for (pid, cid, event) in updates.drain(..) {
             for (plugin_id, cached_events) in self.cached_events_for_pending_plugins.iter_mut() {
                 if pid.is_none() || pid.as_ref() == Some(plugin_id) {
-                    cached_events.push(EventOrPipeMessage::Event(event.clone()));
+                    cached_events.push(EventOrPipeMessage::Event(event.clone(), cid));
                 }
             }
         }
@@ -1823,7 +1823,13 @@ impl WasmBridge {
                             let _s = _s; // guard to allow the task to complete before cleanup/shutdown
                             for event_or_pipe_message in events_or_pipe_messages {
                                 match event_or_pipe_message {
-                                    EventOrPipeMessage::Event(event) => {
+                                    EventOrPipeMessage::Event(event, target_client_id) => {
+                                        if target_client_id
+                                            .map(|target| target != client_id)
+                                            .unwrap_or(false)
+                                        {
+                                            continue;
+                                        }
                                         match EventType::from_str(&event.to_string())
                                             .with_context(err_context)
                                         {
@@ -3030,6 +3036,7 @@ pub fn check_event_permission(
         | Event::ActivePaneScroll(..)
         | Event::NestedSessionModeUpdate { .. }
         | Event::NestedSessionEnded { .. }
+        | Event::ContextMenu(..)
         | Event::InputReceived => PermissionType::ReadApplicationState,
         Event::WebServerStatus(..) => PermissionType::StartWebServer,
         Event::PaneRenderReport(..) => PermissionType::ReadPaneContents,

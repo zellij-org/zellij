@@ -1,5 +1,5 @@
 use std::time::Instant;
-use zellij_utils::data::{Direction, Resize, ResizeStrategy};
+use zellij_utils::data::{ContextMenuKind, Direction, Resize, ResizeStrategy};
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
 use zellij_utils::pane_size::PaneGeom;
@@ -33,6 +33,14 @@ fn clear_hover_for_client(tab: &mut Tab, client_id: ClientId) -> bool {
     cleared
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ContextMenuRequest {
+    pub kind: ContextMenuKind,
+    pub pane_id: PaneId,
+    pub is_floating: bool,
+    pub position: Position,
+}
+
 #[derive(Debug, Default, Copy, Clone)]
 pub struct MouseEffect {
     pub state_changed: bool,
@@ -40,61 +48,54 @@ pub struct MouseEffect {
     pub group_toggle: Option<PaneId>,
     pub group_add: Option<PaneId>,
     pub ungroup: bool,
+    pub open_context_menu: Option<ContextMenuRequest>,
 }
 
 impl MouseEffect {
     pub fn state_changed() -> Self {
         MouseEffect {
             state_changed: true,
-            leave_clipboard_message: false,
-            group_toggle: None,
-            group_add: None,
-            ungroup: false,
+            ..Default::default()
         }
     }
     pub fn leave_clipboard_message() -> Self {
         MouseEffect {
-            state_changed: false,
             leave_clipboard_message: true,
-            group_toggle: None,
-            group_add: None,
-            ungroup: false,
+            ..Default::default()
         }
     }
     pub fn state_changed_and_leave_clipboard_message() -> Self {
         MouseEffect {
             state_changed: true,
             leave_clipboard_message: true,
-            group_toggle: None,
-            group_add: None,
-            ungroup: false,
+            ..Default::default()
         }
     }
     pub fn group_toggle(pane_id: PaneId) -> Self {
         MouseEffect {
             state_changed: true,
-            leave_clipboard_message: false,
             group_toggle: Some(pane_id),
-            group_add: None,
-            ungroup: false,
+            ..Default::default()
         }
     }
     pub fn group_add(pane_id: PaneId) -> Self {
         MouseEffect {
             state_changed: true,
-            leave_clipboard_message: false,
-            group_toggle: None,
             group_add: Some(pane_id),
-            ungroup: false,
+            ..Default::default()
         }
     }
     pub fn ungroup() -> Self {
         MouseEffect {
             state_changed: true,
-            leave_clipboard_message: false,
-            group_toggle: None,
-            group_add: None,
             ungroup: true,
+            ..Default::default()
+        }
+    }
+    pub fn open_context_menu(request: ContextMenuRequest) -> Self {
+        MouseEffect {
+            open_context_menu: Some(request),
+            ..Default::default()
         }
     }
 }
@@ -190,6 +191,16 @@ enum MouseAction {
     FrameIntercepted {
         pane_id: PaneId,
     },
+    OpenContextMenu {
+        kind: ContextMenuKind,
+        pane_id: PaneId,
+        is_floating: bool,
+        position: Position,
+    },
+    ForwardRightClickToPlugin {
+        pane_id: PaneId,
+        position: Position,
+    },
     NoAction,
 }
 
@@ -222,6 +233,7 @@ struct ClickedPaneDetails {
     edge: Option<PaneEdge>,
     is_floating: bool,
     terminal_wants_mouse: bool,
+    is_unselectable_plugin: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -497,7 +509,10 @@ impl MouseHandler {
         let pane = Self::get_pane_at(tab, position, false).ok()??;
 
         let on_frame = !is_hidden_stack_list_member && pane.position_is_on_frame(position);
-        let frame_intercepted = on_frame && pane.intercept_mouse_event_on_frame(event, client_id);
+        let frame_intercepted = on_frame
+            && event.event_type == MouseEventType::Press
+            && pane.position_is_on_pin_button(position, client_id);
+        let is_unselectable_plugin = matches!(pane.pid(), PaneId::Plugin(_)) && !pane.selectable();
         let edge = if on_frame {
             pane.get_edge_at_position(position)
         } else {
@@ -517,6 +532,7 @@ impl MouseHandler {
             edge,
             is_floating,
             terminal_wants_mouse,
+            is_unselectable_plugin,
         })
     }
 
@@ -907,9 +923,30 @@ impl MouseHandler {
             MouseAction::SendToTerminal { pane_id, event } => {
                 Self::execute_send_to_terminal(tab, pane_id, event, client_id)
             },
-            MouseAction::FrameIntercepted { pane_id: _ } => {
+            MouseAction::FrameIntercepted { pane_id } => {
+                if let Some(pane) = tab.get_pane_with_id_mut(pane_id) {
+                    pane.intercept_mouse_event_on_frame(event, client_id);
+                }
                 tab.set_force_render();
                 Ok(MouseEffect::state_changed())
+            },
+            MouseAction::OpenContextMenu {
+                kind,
+                pane_id,
+                is_floating,
+                position,
+            } => Ok(MouseEffect::open_context_menu(ContextMenuRequest {
+                kind,
+                pane_id,
+                is_floating,
+                position,
+            })),
+            MouseAction::ForwardRightClickToPlugin { pane_id, position } => {
+                if let Some(pane) = tab.get_pane_with_id_mut(pane_id) {
+                    let relative_position = pane.relative_position(&position);
+                    pane.handle_right_click(&relative_position, client_id);
+                }
+                Ok(MouseEffect::default())
             },
             MouseAction::NoAction => Ok(MouseEffect::default()),
         }
@@ -1420,6 +1457,10 @@ impl MouseHandler {
             return Ok(MouseAction::NoAction);
         }
 
+        if event.right {
+            return Ok(Self::determine_right_button_action(event, ctx));
+        }
+
         if event.wheel_up || event.wheel_down {
             if event.ctrl && !ctx.mouse_scroll_resize {
                 return Ok(MouseAction::NoAction);
@@ -1553,20 +1594,6 @@ impl MouseHandler {
             }
         }
 
-        if event.right {
-            let Some(pane_id) = ctx.pane_id_at_position else {
-                return Ok(MouseAction::NoAction);
-            };
-            let is_active_pane = Some(pane_id) == ctx.active_pane_id;
-            if is_active_pane {
-                return Ok(MouseAction::SendToTerminal {
-                    pane_id,
-                    event: *event,
-                });
-            }
-            return Ok(MouseAction::NoAction);
-        }
-
         if event.middle {
             let Some(pane_id) = ctx.pane_id_at_position else {
                 return Ok(MouseAction::NoAction);
@@ -1629,6 +1656,39 @@ impl MouseHandler {
         }
 
         Ok(MouseAction::NoAction)
+    }
+
+    fn determine_right_button_action(event: &MouseEvent, ctx: &MouseEventContext) -> MouseAction {
+        let Some(details) = ctx.clicked_pane.as_ref() else {
+            return MouseAction::NoAction;
+        };
+        let pane_may_receive_mouse = ctx.active_pane_id == Some(details.pane_id);
+        if pane_may_receive_mouse && !details.on_frame && details.terminal_wants_mouse {
+            return MouseAction::SendToTerminal {
+                pane_id: details.pane_id,
+                event: *event,
+            };
+        }
+        if event.event_type != MouseEventType::Press {
+            return MouseAction::NoAction;
+        }
+        if details.is_unselectable_plugin {
+            return MouseAction::ForwardRightClickToPlugin {
+                pane_id: details.pane_id,
+                position: event.position,
+            };
+        }
+        let kind = if details.on_frame {
+            ContextMenuKind::PaneFrame
+        } else {
+            ContextMenuKind::Pane
+        };
+        MouseAction::OpenContextMenu {
+            kind,
+            pane_id: details.pane_id,
+            is_floating: details.is_floating,
+            position: event.position,
+        }
     }
 
     fn unselectable_pane_at_position<'a>(
@@ -1976,5 +2036,196 @@ mod tests {
                 MouseAction::NoAction
             );
         }
+    }
+
+    fn clicked(pane_id: PaneId) -> ClickedPaneDetails {
+        ClickedPaneDetails {
+            pane_id,
+            on_frame: false,
+            frame_intercepted: false,
+            edge: None,
+            is_floating: false,
+            terminal_wants_mouse: false,
+            is_unselectable_plugin: false,
+        }
+    }
+
+    fn context_with(details: ClickedPaneDetails) -> MouseEventContext {
+        let mut context = mouse_event_context(true);
+        context.pane_id_at_position = Some(details.pane_id);
+        context.clicked_pane = Some(details);
+        context
+    }
+
+    fn open_menu(kind: ContextMenuKind, pane_id: PaneId, position: Position) -> MouseAction {
+        MouseAction::OpenContextMenu {
+            kind,
+            pane_id,
+            is_floating: false,
+            position,
+        }
+    }
+
+    #[test]
+    fn right_press_on_focused_pane_without_mouse_reporting_opens_menu() {
+        let position = Position::new(3, 4);
+        let context = context_with(clicked(PaneId::Terminal(1)));
+        let event = MouseEvent::new_right_press_event(position);
+        assert_eq!(
+            MouseHandler::determine_mouse_action(&event, &context).unwrap(),
+            open_menu(ContextMenuKind::Pane, PaneId::Terminal(1), position)
+        );
+    }
+
+    #[test]
+    fn right_button_events_go_to_a_focused_program_that_wants_the_mouse() {
+        let position = Position::new(3, 4);
+        let mut details = clicked(PaneId::Terminal(1));
+        details.terminal_wants_mouse = true;
+        let context = context_with(details);
+        for event in [
+            MouseEvent::new_right_press_event(position),
+            MouseEvent::new_right_motion_event(position),
+            MouseEvent::new_right_release_event(position),
+        ] {
+            assert_eq!(
+                MouseHandler::determine_mouse_action(&event, &context).unwrap(),
+                MouseAction::SendToTerminal {
+                    pane_id: PaneId::Terminal(1),
+                    event,
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn right_motion_and_release_without_mouse_reporting_do_nothing() {
+        let position = Position::new(3, 4);
+        let context = context_with(clicked(PaneId::Terminal(1)));
+        for event in [
+            MouseEvent::new_right_motion_event(position),
+            MouseEvent::new_right_release_event(position),
+        ] {
+            assert_eq!(
+                MouseHandler::determine_mouse_action(&event, &context).unwrap(),
+                MouseAction::NoAction
+            );
+        }
+    }
+
+    #[test]
+    fn right_press_on_unfocused_pane_opens_menu_without_focusing_it() {
+        let position = Position::new(3, 4);
+        let context = context_with(clicked(PaneId::Terminal(2)));
+        let event = MouseEvent::new_right_press_event(position);
+        assert_eq!(
+            MouseHandler::determine_mouse_action(&event, &context).unwrap(),
+            open_menu(ContextMenuKind::Pane, PaneId::Terminal(2), position)
+        );
+    }
+
+    #[test]
+    fn right_press_on_frame_of_mouse_program_opens_frame_menu() {
+        let position = Position::new(0, 4);
+        let mut details = clicked(PaneId::Terminal(1));
+        details.terminal_wants_mouse = true;
+        details.on_frame = true;
+        let context = context_with(details);
+        let event = MouseEvent::new_right_press_event(position);
+        assert_eq!(
+            MouseHandler::determine_mouse_action(&event, &context).unwrap(),
+            open_menu(ContextMenuKind::PaneFrame, PaneId::Terminal(1), position)
+        );
+    }
+
+    #[test]
+    fn right_press_on_pin_button_opens_frame_menu_instead_of_toggling_pin() {
+        let position = Position::new(0, 4);
+        let mut details = clicked(PaneId::Terminal(1));
+        details.on_frame = true;
+        details.frame_intercepted = true;
+        details.is_floating = true;
+        let context = context_with(details);
+        let event = MouseEvent::new_right_press_event(position);
+        assert_eq!(
+            MouseHandler::determine_mouse_action(&event, &context).unwrap(),
+            MouseAction::OpenContextMenu {
+                kind: ContextMenuKind::PaneFrame,
+                pane_id: PaneId::Terminal(1),
+                is_floating: true,
+                position,
+            }
+        );
+    }
+
+    #[test]
+    fn right_press_on_bar_is_forwarded_to_the_bar_plugin() {
+        let position = Position::new(0, 10);
+        let mut details = clicked(PaneId::Plugin(7));
+        details.is_unselectable_plugin = true;
+        let context = context_with(details);
+        let event = MouseEvent::new_right_press_event(position);
+        assert_eq!(
+            MouseHandler::determine_mouse_action(&event, &context).unwrap(),
+            MouseAction::ForwardRightClickToPlugin {
+                pane_id: PaneId::Plugin(7),
+                position,
+            }
+        );
+    }
+
+    #[test]
+    fn right_press_outside_any_pane_does_nothing() {
+        let mut context = mouse_event_context(true);
+        context.pane_id_at_position = None;
+        let event = MouseEvent::new_right_press_event(Position::new(3, 4));
+        assert_eq!(
+            MouseHandler::determine_mouse_action(&event, &context).unwrap(),
+            MouseAction::NoAction
+        );
+    }
+
+    #[test]
+    fn alt_right_press_still_ungroups() {
+        let position = Position::new(3, 4);
+        let context = context_with(clicked(PaneId::Terminal(1)));
+        assert_eq!(
+            MouseHandler::determine_mouse_action(
+                &MouseEvent::new_right_press_with_alt_event(position),
+                &context
+            )
+            .unwrap(),
+            MouseAction::Ungroup
+        );
+    }
+
+    #[test]
+    fn plain_middle_press_on_focused_pane_is_still_sent_to_the_pane() {
+        let position = Position::new(3, 4);
+        let context = context_with(clicked(PaneId::Terminal(1)));
+        let event = MouseEvent::new_middle_press_event(position);
+        assert_eq!(
+            MouseHandler::determine_mouse_action(&event, &context).unwrap(),
+            MouseAction::SendToTerminal {
+                pane_id: PaneId::Terminal(1),
+                event,
+            }
+        );
+    }
+
+    #[test]
+    fn left_press_on_pin_button_still_toggles_pin() {
+        let position = Position::new(0, 4);
+        let mut details = clicked(PaneId::Terminal(1));
+        details.on_frame = true;
+        details.frame_intercepted = true;
+        let context = context_with(details);
+        let event = MouseEvent::new_left_press_event(position);
+        assert_eq!(
+            MouseHandler::determine_mouse_action(&event, &context).unwrap(),
+            MouseAction::FrameIntercepted {
+                pane_id: PaneId::Terminal(1),
+            }
+        );
     }
 }

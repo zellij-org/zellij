@@ -886,6 +886,15 @@ impl Pane for PluginPane {
         }
         false
     }
+    fn position_is_on_pin_button(&self, position: &Position, client_id: ClientId) -> bool {
+        if self.position_is_on_frame(position) {
+            let relative_position = self.relative_position(position);
+            if let Some(client_frame) = self.frame.get(&client_id) {
+                return client_frame.clicked_on_pinned(relative_position);
+            }
+        }
+        false
+    }
     fn intercept_mouse_event_on_frame(&mut self, event: &MouseEvent, client_id: ClientId) -> bool {
         if self.position_is_on_frame(&event.position) {
             let relative_position = self.relative_position(&event.position);

@@ -16,6 +16,7 @@ use thiserror::Error;
 
 use std::convert::TryFrom;
 
+use super::context_menu::ContextMenuConfig;
 use super::keybinds::Keybinds;
 use super::layout::RunPluginOrAlias;
 use super::options::Options;
@@ -42,6 +43,8 @@ pub struct Config {
     pub env: EnvironmentVariables,
     pub background_plugins: HashSet<RunPluginOrAlias>,
     pub web_client: WebClientConfig,
+    #[serde(default)]
+    pub context_menu: ContextMenuConfig,
 }
 
 mod shared_keybinds {
@@ -310,6 +313,7 @@ impl Config {
         self.plugins.merge(other.plugins);
         self.ui = self.ui.merge(other.ui);
         self.env = self.env.merge(other.env);
+        self.context_menu = self.context_menu.merge(other.context_menu);
         Ok(())
     }
     pub fn config_file_path(opts: &CliArgs) -> Option<PathBuf> {

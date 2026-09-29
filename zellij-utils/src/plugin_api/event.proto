@@ -74,6 +74,7 @@ enum EventType {
     ActivePaneScroll = 49;
     NestedSessionModeUpdate = 50;
     NestedSessionEnded = 51;
+    ContextMenu = 52;
 }
 
 message EventNameList {
@@ -127,6 +128,7 @@ message Event {
     ActivePaneScrollPayload active_pane_scroll_payload = 43;
     NestedSessionModeUpdatePayload nested_session_mode_update_payload = 44;
     NestedSessionEndedPayload nested_session_ended_payload = 45;
+    ContextMenuPayload context_menu_payload = 46;
   }
 }
 
@@ -141,6 +143,32 @@ message NestedSessionModeUpdatePayload {
 enum NestedSessionEndReason {
   NestedSessionExited = 0;
   NestedSessionUnresponsive = 1;
+}
+
+enum ContextMenuKind {
+  ContextMenuKindPane = 0;
+  ContextMenuKindPaneFrame = 1;
+  ContextMenuKindTab = 2;
+  ContextMenuKindBar = 3;
+}
+
+message ContextMenuEntry {
+  bool is_separator = 1;
+  string label = 2;
+  repeated action.Action actions = 3;
+}
+
+message ContextMenuPayload {
+  ContextMenuKind kind = 1;
+  optional PaneId pane_id = 2;
+  bool pane_is_floating = 3;
+  optional uint32 tab_index = 4;
+  optional uint32 tab_id = 5;
+  uint32 tab_count = 6;
+  uint32 line = 7;
+  uint32 column = 8;
+  uint32 client_id = 9;
+  repeated ContextMenuEntry entries = 10;
 }
 
 message NestedSessionEndedPayload {

@@ -253,7 +253,23 @@ message Action {
     string apply_tiled_swap_layout_payload = 62;
     string apply_floating_swap_layout_payload = 63;
     SetPaneBorderStylePayload set_pane_border_style_payload = 64;
+    TargetPaneIdPayload target_pane_id_payload = 65;
+    TargetTabIdPayload target_tab_id_payload = 66;
+    MoveTabByTabIdPayload move_tab_by_tab_id_payload = 67;
   }
+}
+
+message TargetPaneIdPayload {
+  optional PaneId pane_id = 1;
+}
+
+message TargetTabIdPayload {
+  optional uint64 tab_id = 1;
+}
+
+message MoveTabByTabIdPayload {
+  optional uint64 tab_id = 1;
+  MoveTabDirection direction = 2;
 }
 
 message SetPaneBorderStylePayload {
@@ -524,6 +540,14 @@ enum ActionName {
     ApplyTiledSwapLayout = 114;
     ApplyFloatingSwapLayout = 115;
     SetPaneBorderStyle = 116;
+    CloseFocusByPaneId = 117;
+    ToggleFocusFullscreenByPaneId = 118;
+    TogglePaneEmbedOrFloatingByPaneId = 119;
+    TogglePanePinnedByPaneId = 120;
+    TogglePaneInGroupByPaneId = 121;
+    StartRenamePaneByPaneId = 122;
+    MoveTabByTabId = 123;
+    StartRenameTabByTabId = 124;
 }
 
 message Position {

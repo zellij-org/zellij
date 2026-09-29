@@ -222,6 +222,15 @@ pub enum PluginInstruction {
         matched_string: String,
         context: BTreeMap<String, String>,
     },
+    LoadPopup {
+        run_plugin_or_alias: RunPluginOrAlias,
+        tab_id: usize,
+        tab_index: usize,
+        client_id: ClientId,
+        anchor: zellij_utils::position::Position,
+        size: Size,
+        initial_event: Option<Event>,
+    },
     Exit,
 }
 
@@ -230,6 +239,7 @@ impl From<&PluginInstruction> for PluginContext {
         match *plugin_instruction {
             PluginInstruction::Load(..) => PluginContext::Load,
             PluginInstruction::LoadBackgroundPlugin(..) => PluginContext::LoadBackgroundPlugin,
+            PluginInstruction::LoadPopup { .. } => PluginContext::LoadPopup,
             PluginInstruction::Update(..) => PluginContext::Update,
             PluginInstruction::Unload(..) => PluginContext::Unload,
             PluginInstruction::Reload(..) => PluginContext::Reload,
@@ -414,6 +424,54 @@ pub(crate) fn plugin_thread_main(
                     },
                     Err(e) => {
                         log::error!("Failed to load plugin: {e}");
+                    },
+                }
+            },
+            PluginInstruction::LoadPopup {
+                mut run_plugin_or_alias,
+                tab_id,
+                tab_index,
+                client_id,
+                anchor,
+                size,
+                initial_event,
+            } => {
+                run_plugin_or_alias.populate_run_plugin_if_needed(&plugin_aliases);
+                let run_plugin = run_plugin_or_alias.get_run_plugin().or_else(|| {
+                    RunPlugin::from_url(&format!(
+                        "zellij:{}",
+                        run_plugin_or_alias.location_string()
+                    ))
+                    .ok()
+                });
+                let skip_cache = false;
+                match wasm_bridge.load_plugin(
+                    &run_plugin,
+                    Some(tab_index),
+                    size,
+                    None,
+                    skip_cache,
+                    Some(client_id),
+                ) {
+                    Ok((plugin_id, client_id)) => {
+                        drop(bus.senders.send_to_screen(ScreenInstruction::AddPopup {
+                            plugin_id,
+                            client_id,
+                            tab_id,
+                            run_plugin_or_alias,
+                            anchor,
+                            width: size.cols,
+                            height: size.rows,
+                        }));
+                        if let Some(initial_event) = initial_event {
+                            wasm_bridge.update_plugins(
+                                vec![(Some(plugin_id), Some(client_id), initial_event)],
+                                shutdown_send.clone(),
+                            )?;
+                        }
+                    },
+                    Err(e) => {
+                        log::error!("Failed to load popup plugin: {e}");
                     },
                 }
             },

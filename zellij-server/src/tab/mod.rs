@@ -5,11 +5,13 @@ mod clipboard;
 mod copy_command;
 mod layout_applier;
 mod mouse_handler;
+mod popup;
 mod swap_layouts;
 
 use crate::plugins::PluginId;
 use copy_command::CopyCommand;
-pub use mouse_handler::{MouseEffect, MouseHandler, PaneEdge, PaneResizeState};
+pub use mouse_handler::{ContextMenuRequest, MouseEffect, MouseHandler, PaneEdge, PaneResizeState};
+pub use popup::{place_popup, PopupMouseOutcome, POPUP_Z_INDEX};
 use std::env::temp_dir;
 use std::net::IpAddr;
 use std::path::PathBuf;
@@ -344,6 +346,7 @@ pub(crate) struct Tab {
     pub tab_bell_flash: bool, // currently in mid-notification-flash
     pub tab_bell_ring: bool,  // need to send ANSI BEL to the controlling terminal
     tab_visible: bool,
+    popups: HashMap<ClientId, popup::Popup>,
 }
 
 // FIXME: Use a struct that has a pane_type enum, to reduce all of the duplication
@@ -690,6 +693,9 @@ pub trait Pane {
     ) -> bool {
         let intercepted = false;
         intercepted
+    }
+    fn position_is_on_pin_button(&self, _position: &Position, _client_id: ClientId) -> bool {
+        false
     }
     fn store_pane_name(&mut self);
     fn load_pane_name(&mut self);
@@ -1120,6 +1126,7 @@ impl Tab {
             tab_bell_ring: false,
             dimmed_clients: HashSet::new(),
             tab_visible: true,
+            popups: HashMap::new(),
         }
     }
 
@@ -4241,7 +4248,8 @@ impl Tab {
                 .any(|s_p| s_p.1.pid() == PaneId::Terminal(pid))
     }
     pub fn has_plugin(&self, plugin_id: u32) -> bool {
-        self.tiled_panes.panes_contain(&PaneId::Plugin(plugin_id))
+        self.has_popup_plugin(plugin_id)
+            || self.tiled_panes.panes_contain(&PaneId::Plugin(plugin_id))
             || self
                 .floating_panes
                 .panes_contain(&PaneId::Plugin(plugin_id))
@@ -4548,6 +4556,10 @@ impl Tab {
         client_id: ClientId,
         bytes: VteBytes,
     ) -> Result<()> {
+        if let Some(popup_pane) = self.popup_pane_mut(pid) {
+            popup_pane.handle_plugin_bytes(client_id, bytes);
+            return Ok(());
+        }
         if let Some(plugin_pane) = self
             .tiled_panes
             .get_pane_mut(PaneId::Plugin(pid))
@@ -5194,6 +5206,7 @@ impl Tab {
     pub fn set_force_render(&mut self) {
         self.tiled_panes.set_force_render();
         self.floating_panes.set_force_render();
+        self.mark_popups_for_full_render();
         for member in self.stack_list_of_member.keys() {
             if let Some((_is_scrollback_editor, pane)) = self.suppressed_panes.get_mut(member) {
                 pane.set_should_render(true);
@@ -5205,6 +5218,7 @@ impl Tab {
         self.should_clear_display_before_rendering = true;
         self.floating_panes.set_force_render(); // we do this to make sure pinned panes are
                                                 // rendered even if their surface is not visible
+        self.mark_popups_for_full_render();
     }
     pub fn is_sync_panes_active(&self) -> bool {
         self.synchronize_is_active
@@ -5263,6 +5277,8 @@ impl Tab {
             self.link_handler.clone(),
             floating_panes_stack,
         );
+        self.set_popup_covers(output);
+        let display_will_be_cleared = self.should_clear_display_before_rendering;
 
         let current_pane_group: HashMap<ClientId, Vec<PaneId>> =
             { self.current_pane_group.borrow().clone_inner() };
@@ -5301,6 +5317,8 @@ impl Tab {
                 .with_context(err_context)
                 .non_fatal();
         }
+        self.render_popups(output, display_will_be_cleared)
+            .with_context(err_context)?;
 
         self.render_cursor(output);
         if output.has_rendered_assets() {
@@ -5336,6 +5354,10 @@ impl Tab {
         let connected_clients: Vec<ClientId> =
             { self.connected_clients.borrow().iter().copied().collect() };
         for client_id in connected_clients {
+            if self.has_popup_for_client(client_id) {
+                output.add_post_vte_instruction_to_client(client_id, "\u{1b}[?25l");
+                continue;
+            }
             match self.get_active_terminal_cursor_position(client_id) {
                 Some((cursor_position_x, cursor_position_y, is_cursor_visible)) => {
                     let active_pane_z_index = self
@@ -5555,6 +5577,7 @@ impl Tab {
             }
         }
         self.resize_all_stack_list_hidden_members();
+        self.relayout_popups();
         Ok(())
     }
     pub fn resize(&mut self, client_id: ClientId, strategy: ResizeStrategy) -> Result<()> {

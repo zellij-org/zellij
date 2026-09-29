@@ -762,6 +762,7 @@ impl MockScreen {
             web_sharing: WebSharing::Off,
             config_file_path: self.session_metadata.config_file_path.clone(),
             key_passthrough_clients: self.session_metadata.key_passthrough_clients.clone(),
+            popup_clients: self.session_metadata.popup_clients.clone(),
         }
     }
 }
@@ -816,6 +817,7 @@ impl MockScreen {
             web_sharing: WebSharing::Off,
             config_file_path: None,
             key_passthrough_clients: Default::default(),
+            popup_clients: Default::default(),
         };
 
         let os_input = FakeInputOutput::default();

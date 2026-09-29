@@ -4,7 +4,7 @@
 pub struct PluginCommand {
     #[prost(enumeration="CommandName", tag="1")]
     pub name: i32,
-    #[prost(oneof="plugin_command::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179")]
+    #[prost(oneof="plugin_command::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183")]
     pub payload: ::core::option::Option<plugin_command::Payload>,
 }
 /// Nested message and enum types in `PluginCommand`.
@@ -336,7 +336,51 @@ pub mod plugin_command {
         ShowSlotPayload(super::ShowSlotPayload),
         #[prost(uint32, tag="179")]
         CloseSlotPayload(u32),
+        #[prost(message, tag="180")]
+        OpenContextMenuPayload(super::OpenContextMenuPayload),
+        #[prost(message, tag="181")]
+        OpenPluginPopupPayload(super::OpenPluginPopupPayload),
+        #[prost(message, tag="182")]
+        SetPopupSizePayload(super::SetPopupSizePayload),
+        #[prost(uint32, tag="183")]
+        RunContextMenuItemPayload(u32),
     }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenContextMenuPayload {
+    #[prost(bool, tag="1")]
+    pub target_is_tab: bool,
+    #[prost(uint32, tag="2")]
+    pub tab_index: u32,
+    #[prost(uint32, tag="3")]
+    pub line: u32,
+    #[prost(uint32, tag="4")]
+    pub column: u32,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenPluginPopupPayload {
+    #[prost(string, tag="1")]
+    pub plugin_url: ::prost::alloc::string::String,
+    #[prost(message, repeated, tag="2")]
+    pub configuration: ::prost::alloc::vec::Vec<ContextItem>,
+    #[prost(uint32, tag="3")]
+    pub line: u32,
+    #[prost(uint32, tag="4")]
+    pub column: u32,
+    #[prost(uint32, tag="5")]
+    pub width: u32,
+    #[prost(uint32, tag="6")]
+    pub height: u32,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SetPopupSizePayload {
+    #[prost(uint32, tag="1")]
+    pub width: u32,
+    #[prost(uint32, tag="2")]
+    pub height: u32,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -2289,6 +2333,10 @@ pub enum CommandName {
     HideSlot = 234,
     ShowSlot = 235,
     CloseSlot = 236,
+    OpenContextMenu = 237,
+    OpenPluginPopup = 238,
+    SetPopupSize = 239,
+    RunContextMenuItem = 240,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -2508,6 +2556,10 @@ impl CommandName {
             CommandName::HideSlot => "HideSlot",
             CommandName::ShowSlot => "ShowSlot",
             CommandName::CloseSlot => "CloseSlot",
+            CommandName::OpenContextMenu => "OpenContextMenu",
+            CommandName::OpenPluginPopup => "OpenPluginPopup",
+            CommandName::SetPopupSize => "SetPopupSize",
+            CommandName::RunContextMenuItem => "RunContextMenuItem",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -2724,6 +2776,10 @@ impl CommandName {
             "HideSlot" => Some(Self::HideSlot),
             "ShowSlot" => Some(Self::ShowSlot),
             "CloseSlot" => Some(Self::CloseSlot),
+            "OpenContextMenu" => Some(Self::OpenContextMenu),
+            "OpenPluginPopup" => Some(Self::OpenPluginPopup),
+            "SetPopupSize" => Some(Self::SetPopupSize),
+            "RunContextMenuItem" => Some(Self::RunContextMenuItem),
             _ => None,
         }
     }

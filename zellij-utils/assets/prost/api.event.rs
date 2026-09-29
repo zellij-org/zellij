@@ -10,7 +10,7 @@ pub struct EventNameList {
 pub struct Event {
     #[prost(enumeration="EventType", tag="1")]
     pub name: i32,
-    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 38, 39, 40, 41, 42, 43, 44, 45")]
+    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 38, 39, 40, 41, 42, 43, 44, 45, 46")]
     pub payload: ::core::option::Option<event::Payload>,
 }
 /// Nested message and enum types in `Event`.
@@ -104,6 +104,8 @@ pub mod event {
         NestedSessionModeUpdatePayload(super::NestedSessionModeUpdatePayload),
         #[prost(message, tag="45")]
         NestedSessionEndedPayload(super::NestedSessionEndedPayload),
+        #[prost(message, tag="46")]
+        ContextMenuPayload(super::ContextMenuPayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -119,6 +121,40 @@ pub struct NestedSessionModeUpdatePayload {
     pub base_mode: ::core::option::Option<i32>,
     #[prost(uint64, tag="5")]
     pub keybinds_generation: u64,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ContextMenuEntry {
+    #[prost(bool, tag="1")]
+    pub is_separator: bool,
+    #[prost(string, tag="2")]
+    pub label: ::prost::alloc::string::String,
+    #[prost(message, repeated, tag="3")]
+    pub actions: ::prost::alloc::vec::Vec<super::action::Action>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ContextMenuPayload {
+    #[prost(enumeration="ContextMenuKind", tag="1")]
+    pub kind: i32,
+    #[prost(message, optional, tag="2")]
+    pub pane_id: ::core::option::Option<PaneId>,
+    #[prost(bool, tag="3")]
+    pub pane_is_floating: bool,
+    #[prost(uint32, optional, tag="4")]
+    pub tab_index: ::core::option::Option<u32>,
+    #[prost(uint32, optional, tag="5")]
+    pub tab_id: ::core::option::Option<u32>,
+    #[prost(uint32, tag="6")]
+    pub tab_count: u32,
+    #[prost(uint32, tag="7")]
+    pub line: u32,
+    #[prost(uint32, tag="8")]
+    pub column: u32,
+    #[prost(uint32, tag="9")]
+    pub client_id: u32,
+    #[prost(message, repeated, tag="10")]
+    pub entries: ::prost::alloc::vec::Vec<ContextMenuEntry>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -959,6 +995,7 @@ pub enum EventType {
     ActivePaneScroll = 49,
     NestedSessionModeUpdate = 50,
     NestedSessionEnded = 51,
+    ContextMenu = 52,
 }
 impl EventType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1017,6 +1054,7 @@ impl EventType {
             EventType::ActivePaneScroll => "ActivePaneScroll",
             EventType::NestedSessionModeUpdate => "NestedSessionModeUpdate",
             EventType::NestedSessionEnded => "NestedSessionEnded",
+            EventType::ContextMenu => "ContextMenu",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1072,6 +1110,7 @@ impl EventType {
             "ActivePaneScroll" => Some(Self::ActivePaneScroll),
             "NestedSessionModeUpdate" => Some(Self::NestedSessionModeUpdate),
             "NestedSessionEnded" => Some(Self::NestedSessionEnded),
+            "ContextMenu" => Some(Self::ContextMenu),
             _ => None,
         }
     }
@@ -1098,6 +1137,38 @@ impl NestedSessionEndReason {
         match value {
             "NestedSessionExited" => Some(Self::NestedSessionExited),
             "NestedSessionUnresponsive" => Some(Self::NestedSessionUnresponsive),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum ContextMenuKind {
+    Pane = 0,
+    PaneFrame = 1,
+    Tab = 2,
+    Bar = 3,
+}
+impl ContextMenuKind {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            ContextMenuKind::Pane => "ContextMenuKindPane",
+            ContextMenuKind::PaneFrame => "ContextMenuKindPaneFrame",
+            ContextMenuKind::Tab => "ContextMenuKindTab",
+            ContextMenuKind::Bar => "ContextMenuKindBar",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "ContextMenuKindPane" => Some(Self::Pane),
+            "ContextMenuKindPaneFrame" => Some(Self::PaneFrame),
+            "ContextMenuKindTab" => Some(Self::Tab),
+            "ContextMenuKindBar" => Some(Self::Bar),
             _ => None,
         }
     }

@@ -715,6 +715,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "context-menu"
+version = "0.1.0"
+dependencies = [
+ "zellij-tile",
+]
+
+[[package]]
 name = "cookie"
 version = "0.18.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

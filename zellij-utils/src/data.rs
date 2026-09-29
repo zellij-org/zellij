@@ -1058,6 +1058,67 @@ pub enum Event {
         pane_id: PaneId,
         reason: NestedSessionEndReason,
     },
+    ContextMenu(ContextMenuContext, Vec<ContextMenuEntry>),
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ContextMenuKind {
+    Pane,
+    PaneFrame,
+    Tab,
+    Bar,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ContextMenuContext {
+    pub kind: ContextMenuKind,
+    pub pane_id: Option<PaneId>,
+    pub pane_is_floating: bool,
+    pub tab_index: Option<usize>,
+    pub tab_id: Option<usize>,
+    pub tab_count: usize,
+    pub line: usize,
+    pub column: usize,
+    pub client_id: ClientId,
+}
+
+impl ContextMenuContext {
+    pub fn target_pane_id(&self) -> Option<PaneId> {
+        match self.kind {
+            ContextMenuKind::Pane | ContextMenuKind::PaneFrame => self.pane_id,
+            _ => None,
+        }
+    }
+    pub fn target_tab_id(&self) -> Option<u64> {
+        self.tab_id.map(|id| id as u64)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum ContextMenuEntry {
+    Item { label: String, actions: Vec<Action> },
+    Separator,
+}
+
+impl ContextMenuEntry {
+    pub fn item(label: impl Into<String>, actions: Vec<Action>) -> Self {
+        ContextMenuEntry::Item {
+            label: label.into(),
+            actions,
+        }
+    }
+    pub fn label(&self) -> Option<&str> {
+        match self {
+            ContextMenuEntry::Item { label, .. } => Some(label.as_str()),
+            ContextMenuEntry::Separator => None,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ContextMenuTarget {
+    Tab(usize),
+    Bar,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -4124,6 +4185,24 @@ pub enum PluginCommand {
     HideSlot(SlotId),
     ShowSlot(SlotId, bool),
     CloseSlot(SlotId),
+    OpenContextMenu {
+        target: ContextMenuTarget,
+        line: usize,
+        column: usize,
+    },
+    OpenPluginPopup {
+        plugin_url: String,
+        configuration: BTreeMap<String, String>,
+        line: usize,
+        column: usize,
+        width: usize,
+        height: usize,
+    },
+    SetPopupSize {
+        width: usize,
+        height: usize,
+    },
+    RunContextMenuItem(usize),
 }
 
 // Response type for plugin API methods that open a pane in a new tab

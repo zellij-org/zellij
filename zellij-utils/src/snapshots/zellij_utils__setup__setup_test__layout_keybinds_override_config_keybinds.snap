@@ -191,6 +191,18 @@ Config {
                 ),
                 initial_cwd: None,
             },
+            "context-menu": RunPlugin {
+                _allow_exec_host_cmd: false,
+                location: Zellij(
+                    PluginTag(
+                        "context-menu",
+                    ),
+                ),
+                configuration: PluginUserConfiguration(
+                    {},
+                ),
+                initial_cwd: None,
+            },
             "filepicker": RunPlugin {
                 _allow_exec_host_cmd: false,
                 location: Zellij(
@@ -335,5 +347,213 @@ Config {
         mac_option_is_meta: true,
         base_url: None,
         font_size: None,
+    },
+    context_menu: ContextMenuConfig {
+        pane: [
+            Item {
+                label: "New pane",
+                actions: [
+                    NewPane {
+                        direction: None,
+                        pane_name: None,
+                        start_suppressed: false,
+                    },
+                ],
+            },
+            Item {
+                label: "New floating pane",
+                actions: [
+                    NewFloatingPane {
+                        command: None,
+                        pane_name: None,
+                        coordinates: None,
+                        near_current_pane: false,
+                        no_focus: false,
+                        tab_id: None,
+                    },
+                ],
+            },
+            Separator,
+            Item {
+                label: "Fullscreen",
+                actions: [
+                    ToggleFocusFullscreenByPaneId {
+                        pane_id: None,
+                    },
+                ],
+            },
+            Item {
+                label: "Float / Embed",
+                actions: [
+                    TogglePaneEmbedOrFloatingByPaneId {
+                        pane_id: None,
+                    },
+                ],
+            },
+            Item {
+                label: "Rename pane",
+                actions: [
+                    StartRenamePaneByPaneId {
+                        pane_id: None,
+                    },
+                ],
+            },
+            Item {
+                label: "Add to group",
+                actions: [
+                    TogglePaneInGroupByPaneId {
+                        pane_id: None,
+                    },
+                ],
+            },
+            Separator,
+            Item {
+                label: "Close pane",
+                actions: [
+                    CloseFocusByPaneId {
+                        pane_id: None,
+                    },
+                ],
+            },
+        ],
+        tab: [
+            Item {
+                label: "New tab",
+                actions: [
+                    NewTab {
+                        tiled_layout: None,
+                        floating_layouts: [],
+                        swap_tiled_layouts: None,
+                        swap_floating_layouts: None,
+                        tab_name: None,
+                        should_change_focus_to_new_tab: true,
+                        cwd: None,
+                        initial_panes: None,
+                        first_pane_unblock_condition: None,
+                    },
+                ],
+            },
+            Item {
+                label: "Rename tab",
+                actions: [
+                    StartRenameTabByTabId {
+                        id: None,
+                    },
+                ],
+            },
+            Item {
+                label: "Move tab left",
+                actions: [
+                    MoveTabByTabId {
+                        id: None,
+                        direction: Left,
+                    },
+                ],
+            },
+            Item {
+                label: "Move tab right",
+                actions: [
+                    MoveTabByTabId {
+                        id: None,
+                        direction: Right,
+                    },
+                ],
+            },
+            Separator,
+            Item {
+                label: "Close tab",
+                actions: [
+                    CloseTabById {
+                        id: None,
+                    },
+                ],
+            },
+        ],
+        bar: [
+            Item {
+                label: "New pane",
+                actions: [
+                    NewPane {
+                        direction: None,
+                        pane_name: None,
+                        start_suppressed: false,
+                    },
+                ],
+            },
+            Item {
+                label: "New tab",
+                actions: [
+                    NewTab {
+                        tiled_layout: None,
+                        floating_layouts: [],
+                        swap_tiled_layouts: None,
+                        swap_floating_layouts: None,
+                        tab_name: None,
+                        should_change_focus_to_new_tab: true,
+                        cwd: None,
+                        initial_panes: None,
+                        first_pane_unblock_condition: None,
+                    },
+                ],
+            },
+        ],
+        common: [
+            Item {
+                label: "Settings…",
+                actions: [
+                    LaunchOrFocusPlugin {
+                        plugin: Alias(
+                            PluginAlias {
+                                name: "configuration",
+                                configuration: Some(
+                                    PluginUserConfiguration(
+                                        {},
+                                    ),
+                                ),
+                                initial_cwd: None,
+                                run_plugin: None,
+                            },
+                        ),
+                        should_float: true,
+                        move_to_focused_tab: true,
+                        should_open_in_place: false,
+                        close_replaced_pane: false,
+                        skip_cache: false,
+                        tab_id: None,
+                    },
+                ],
+            },
+            Item {
+                label: "Session manager",
+                actions: [
+                    LaunchOrFocusPlugin {
+                        plugin: Alias(
+                            PluginAlias {
+                                name: "session-manager",
+                                configuration: Some(
+                                    PluginUserConfiguration(
+                                        {},
+                                    ),
+                                ),
+                                initial_cwd: None,
+                                run_plugin: None,
+                            },
+                        ),
+                        should_float: true,
+                        move_to_focused_tab: true,
+                        should_open_in_place: false,
+                        close_replaced_pane: false,
+                        skip_cache: false,
+                        tab_id: None,
+                    },
+                ],
+            },
+            Item {
+                label: "Detach",
+                actions: [
+                    Detach,
+                ],
+            },
+        ],
     },
 }

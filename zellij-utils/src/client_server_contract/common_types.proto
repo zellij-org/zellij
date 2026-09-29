@@ -321,6 +321,9 @@ message Action {
     ApplyFloatingSwapLayoutAction apply_floating_swap_layout = 153;
     ApplyTiledSwapLayoutByTabIdAction apply_tiled_swap_layout_by_tab_id = 154;
     ApplyFloatingSwapLayoutByTabIdAction apply_floating_swap_layout_by_tab_id = 155;
+    TogglePaneInGroupByPaneIdAction toggle_pane_in_group_by_pane_id = 157;
+    StartRenamePaneByPaneIdAction start_rename_pane_by_pane_id = 158;
+    StartRenameTabByTabIdAction start_rename_tab_by_tab_id = 159;
   }
 }
 
@@ -723,6 +726,7 @@ message GoToTabByIdAction {
 
 message CloseTabByIdAction {
   uint64 id = 1;
+  bool id_is_omitted = 2;
 }
 
 message RenameTabByIdAction {
@@ -1349,4 +1353,7 @@ message PreviousSwapLayoutByTabIdAction { uint64 id = 1; }
 message NextSwapLayoutByTabIdAction { uint64 id = 1; }
 message ApplyTiledSwapLayoutByTabIdAction { uint64 id = 1; string name = 2; }
 message ApplyFloatingSwapLayoutByTabIdAction { uint64 id = 1; string name = 2; }
-message MoveTabByTabIdAction { uint64 id = 1; Direction direction = 2; }
+message MoveTabByTabIdAction { uint64 id = 1; Direction direction = 2; bool id_is_omitted = 3; }
+message TogglePaneInGroupByPaneIdAction { PaneId pane_id = 1; }
+message StartRenamePaneByPaneIdAction { PaneId pane_id = 1; }
+message StartRenameTabByTabIdAction { optional uint64 id = 1; }

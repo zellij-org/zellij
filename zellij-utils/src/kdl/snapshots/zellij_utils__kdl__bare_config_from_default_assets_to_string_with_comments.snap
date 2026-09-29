@@ -272,6 +272,7 @@ plugins {
         role "compact-bar"
     }
     configuration location="zellij:configuration"
+    context-menu location="zellij:context-menu"
     filepicker location="zellij:strider" {
         cwd "/"
     }
@@ -299,6 +300,46 @@ load_plugins {
 }
 web_client {
     font "monospace"
+}
+context_menu clear-defaults=true {
+    pane {
+        item "New pane" { NewPane; }
+        item "New floating pane" { NewFloatingPane; }
+        separator
+        item "Fullscreen" { ToggleFocusFullscreenByPaneId; }
+        item "Float / Embed" { TogglePaneEmbedOrFloatingByPaneId; }
+        item "Rename pane" { StartRenamePaneByPaneId; }
+        item "Add to group" { TogglePaneInGroupByPaneId; }
+        separator
+        item "Close pane" { CloseFocusByPaneId; }
+    }
+    tab {
+        item "New tab" { NewTab; }
+        item "Rename tab" { StartRenameTabByTabId; }
+        item "Move tab left" { MoveTabByTabId "left"; }
+        item "Move tab right" { MoveTabByTabId "right"; }
+        separator
+        item "Close tab" { CloseTabById; }
+    }
+    bar {
+        item "New pane" { NewPane; }
+        item "New tab" { NewTab; }
+    }
+    common {
+        item "Settings…" {
+            LaunchOrFocusPlugin "configuration" {
+                floating true
+                move_to_focused_tab true
+            }
+        }
+        item "Session manager" {
+            LaunchOrFocusPlugin "session-manager" {
+                floating true
+                move_to_focused_tab true
+            }
+        }
+        item "Detach" { Detach; }
+    }
 }
  
 // Use a simplified UI without special fonts (arrow glyphs)

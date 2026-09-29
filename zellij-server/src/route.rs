@@ -1163,13 +1163,40 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
-        Action::CloseTabById { id } => {
-            senders
-                .send_to_screen(ScreenInstruction::CloseTabWithId(
-                    id as usize,
-                    Some(NotificationEnd::new(completion_tx)),
-                ))
-                .with_context(err_context)?;
+        Action::CloseTabById { id } => match id {
+            Some(id) => {
+                senders
+                    .send_to_screen(ScreenInstruction::CloseTabWithId(
+                        id as usize,
+                        Some(NotificationEnd::new(completion_tx)),
+                    ))
+                    .with_context(err_context)?;
+            },
+            None => {
+                log::error!("CloseTabById requires a tab id");
+                drop(completion_tx);
+            },
+        },
+        Action::StartRenameTabByTabId { id } => match id {
+            Some(id) => {
+                senders
+                    .send_to_screen(ScreenInstruction::StartRenameTabWithTabId(
+                        id as usize,
+                        client_id,
+                    ))
+                    .with_context(err_context)?;
+                senders
+                    .send_to_server(ServerInstruction::ChangeMode(
+                        client_id,
+                        InputMode::RenameTab,
+                        Some(NotificationEnd::new(completion_tx)),
+                    ))
+                    .with_context(err_context)?;
+            },
+            None => {
+                log::error!("StartRenameTabByTabId requires a tab id");
+                drop(completion_tx);
+            },
         },
         Action::RenameTabById { id, name } => {
             senders
@@ -2103,13 +2130,19 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
-        Action::ToggleFocusFullscreenByPaneId { pane_id } => {
-            senders
-                .send_to_screen(ScreenInstruction::ToggleFullscreenWithPaneId(
-                    pane_id.into(),
-                    Some(NotificationEnd::new(completion_tx)),
-                ))
-                .with_context(err_context)?;
+        Action::ToggleFocusFullscreenByPaneId { pane_id } => match pane_id {
+            Some(pane_id) => {
+                senders
+                    .send_to_screen(ScreenInstruction::ToggleFullscreenWithPaneId(
+                        pane_id.into(),
+                        Some(NotificationEnd::new(completion_tx)),
+                    ))
+                    .with_context(err_context)?;
+            },
+            None => {
+                log::error!("ToggleFocusFullscreenByPaneId requires a pane id");
+                drop(completion_tx);
+            },
         },
         Action::ToggleFocusNoUiFullscreenByPaneId { pane_id } => {
             senders
@@ -2119,21 +2152,33 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
-        Action::TogglePaneEmbedOrFloatingByPaneId { pane_id } => {
-            senders
-                .send_to_screen(ScreenInstruction::TogglePaneEmbedOrFloatingWithPaneId(
-                    pane_id.into(),
-                    Some(NotificationEnd::new(completion_tx)),
-                ))
-                .with_context(err_context)?;
+        Action::TogglePaneEmbedOrFloatingByPaneId { pane_id } => match pane_id {
+            Some(pane_id) => {
+                senders
+                    .send_to_screen(ScreenInstruction::TogglePaneEmbedOrFloatingWithPaneId(
+                        pane_id.into(),
+                        Some(NotificationEnd::new(completion_tx)),
+                    ))
+                    .with_context(err_context)?;
+            },
+            None => {
+                log::error!("TogglePaneEmbedOrFloatingByPaneId requires a pane id");
+                drop(completion_tx);
+            },
         },
-        Action::CloseFocusByPaneId { pane_id } => {
-            senders
-                .send_to_screen(ScreenInstruction::CloseFocusWithPaneId(
-                    pane_id.into(),
-                    Some(NotificationEnd::new(completion_tx)),
-                ))
-                .with_context(err_context)?;
+        Action::CloseFocusByPaneId { pane_id } => match pane_id {
+            Some(pane_id) => {
+                senders
+                    .send_to_screen(ScreenInstruction::CloseFocusWithPaneId(
+                        pane_id.into(),
+                        Some(NotificationEnd::new(completion_tx)),
+                    ))
+                    .with_context(err_context)?;
+            },
+            None => {
+                log::error!("CloseFocusByPaneId requires a pane id");
+                drop(completion_tx);
+            },
         },
         Action::RenamePaneByPaneId { pane_id, name } => {
             let instruction = match pane_id {
@@ -2160,13 +2205,19 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
-        Action::TogglePanePinnedByPaneId { pane_id } => {
-            senders
-                .send_to_screen(ScreenInstruction::TogglePanePinnedWithPaneId(
-                    pane_id.into(),
-                    Some(NotificationEnd::new(completion_tx)),
-                ))
-                .with_context(err_context)?;
+        Action::TogglePanePinnedByPaneId { pane_id } => match pane_id {
+            Some(pane_id) => {
+                senders
+                    .send_to_screen(ScreenInstruction::TogglePanePinnedWithPaneId(
+                        pane_id.into(),
+                        Some(NotificationEnd::new(completion_tx)),
+                    ))
+                    .with_context(err_context)?;
+            },
+            None => {
+                log::error!("TogglePanePinnedByPaneId requires a pane id");
+                drop(completion_tx);
+            },
         },
         // Tab-targeting CLI-only variants
         Action::UndoRenameTabByTabId { id } => {
@@ -2228,14 +2279,56 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
-        Action::MoveTabByTabId { id, direction } => {
-            senders
-                .send_to_screen(ScreenInstruction::MoveTabWithTabId(
-                    id as usize,
-                    direction,
-                    Some(NotificationEnd::new(completion_tx)),
-                ))
-                .with_context(err_context)?;
+        Action::MoveTabByTabId { id, direction } => match id {
+            Some(id) => {
+                senders
+                    .send_to_screen(ScreenInstruction::MoveTabWithTabId(
+                        id as usize,
+                        direction,
+                        Some(NotificationEnd::new(completion_tx)),
+                    ))
+                    .with_context(err_context)?;
+            },
+            None => {
+                log::error!("MoveTabByTabId requires a tab id");
+                drop(completion_tx);
+            },
+        },
+        Action::TogglePaneInGroupByPaneId { pane_id } => match pane_id {
+            Some(pane_id) => {
+                senders
+                    .send_to_screen(ScreenInstruction::TogglePaneIdInGroup(
+                        pane_id.into(),
+                        client_id,
+                        Some(NotificationEnd::new(completion_tx)),
+                    ))
+                    .with_context(err_context)?;
+            },
+            None => {
+                log::error!("TogglePaneInGroupByPaneId requires a pane id");
+                drop(completion_tx);
+            },
+        },
+        Action::StartRenamePaneByPaneId { pane_id } => match pane_id {
+            Some(pane_id) => {
+                senders
+                    .send_to_screen(ScreenInstruction::StartRenamePaneWithPaneId(
+                        pane_id.into(),
+                        client_id,
+                    ))
+                    .with_context(err_context)?;
+                senders
+                    .send_to_server(ServerInstruction::ChangeMode(
+                        client_id,
+                        InputMode::RenamePane,
+                        Some(NotificationEnd::new(completion_tx)),
+                    ))
+                    .with_context(err_context)?;
+            },
+            None => {
+                log::error!("StartRenamePaneByPaneId requires a pane id");
+                drop(completion_tx);
+            },
         },
     }
     let result = wait_for_action_completion(completion_rx, &action_name, wait_forever);
@@ -2437,7 +2530,8 @@ pub(crate) fn route_thread_main(
                             let dispatch_inputs =
                                 session_data.read().unwrap().as_ref().and_then(|s| {
                                     let in_passthrough =
-                                        s.key_passthrough_clients.contains_key(&client_id);
+                                        s.key_passthrough_clients.contains_key(&client_id)
+                                            || s.popup_clients.contains(&client_id);
                                     if in_passthrough {
                                         return Some((
                                             s.senders.clone(),

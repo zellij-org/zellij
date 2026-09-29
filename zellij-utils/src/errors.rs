@@ -438,6 +438,16 @@ pub enum ScreenContext {
     FloatMultiplePanes,
     EmbedMultiplePanes,
     TogglePaneInGroup,
+    TogglePaneIdInGroup,
+    StartRenamePaneWithPaneId,
+    StartRenameTabWithTabId,
+    OpenContextMenu,
+    OpenContextMenuFromPlugin,
+    OpenPluginPopup,
+    AddPopup,
+    SetPopupSize,
+    UpdateContextMenuConfig,
+    GetContextMenuItemActions,
     ToggleGroupMarking,
     SessionSharingStatusChange,
     SetMouseSelectionSupport,
@@ -537,6 +547,7 @@ pub enum PluginContext {
     Update,
     Render,
     Unload,
+    LoadPopup,
     Reload,
     ReloadPluginWithId,
     Resize,
@@ -643,6 +654,7 @@ pub enum ServerContext {
     ForwardQueryToHost,
     KeyPassthroughChanged,
     EmitNestedSessionFrameToClient,
+    PopupStateChanged,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]

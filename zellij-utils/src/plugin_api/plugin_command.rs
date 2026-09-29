@@ -82,7 +82,7 @@ pub use super::generated_api::api::{
         OpenCommandPaneNearPluginPayload,
         OpenCommandPaneNearPluginResponse as ProtobufOpenCommandPaneNearPluginResponse,
         OpenCommandPanePayload, OpenCommandPaneResponse as ProtobufOpenCommandPaneResponse,
-        OpenEditPaneInPlaceOfPaneIdPayload,
+        OpenContextMenuPayload, OpenEditPaneInPlaceOfPaneIdPayload,
         OpenEditPaneInPlaceOfPaneIdResponse as ProtobufOpenEditPaneInPlaceOfPaneIdResponse,
         OpenFileFloatingNearPluginPayload,
         OpenFileFloatingNearPluginResponse as ProtobufOpenFileFloatingNearPluginResponse,
@@ -96,7 +96,7 @@ pub use super::generated_api::api::{
         OpenPluginPaneFloatingPayload,
         OpenPluginPaneFloatingResponse as ProtobufOpenPluginPaneFloatingResponse,
         OpenPluginPaneInNewTabPayload as ProtobufOpenPluginPaneInNewTabPayload,
-        OpenTerminalFloatingNearPluginPayload,
+        OpenPluginPopupPayload, OpenTerminalFloatingNearPluginPayload,
         OpenTerminalFloatingNearPluginResponse as ProtobufOpenTerminalFloatingNearPluginResponse,
         OpenTerminalFloatingResponse as ProtobufOpenTerminalFloatingResponse,
         OpenTerminalInPlaceOfPluginPayload,
@@ -123,7 +123,7 @@ pub use super::generated_api::api::{
         SessionListSnapshot as ProtobufSessionListSnapshot, SetFloatingPanePinnedPayload,
         SetPaneBorderStylePayload, SetPaneBorderlessPayload, SetPaneColorPayload,
         SetPaneFrameStylePayload as ProtobufSetPaneFrameStylePayload,
-        SetPaneRegexHighlightsPayload, SetSelectableSlotPayload,
+        SetPaneRegexHighlightsPayload, SetPopupSizePayload, SetSelectableSlotPayload,
         SetSelfMouseSelectionSupportPayload,
         SetSoftKeyboardPayload as ProtobufSetSoftKeyboardPayload, SetTimeoutPayload,
         ShowCursorPayload, ShowFloatingPanesPayload as ProtobufShowFloatingPanesPayload,
@@ -139,7 +139,7 @@ pub use super::generated_api::api::{
 };
 
 use crate::data::{
-    ConnectToSession, DeleteAllDeadSessionsResponse, DeleteDeadSessionResponse,
+    ConnectToSession, ContextMenuTarget, DeleteAllDeadSessionsResponse, DeleteDeadSessionResponse,
     DeleteLayoutResponse, EditLayoutResponse, FloatingPaneCoordinates, GetFocusedPaneInfoResponse,
     GetPaneCwdResponse, GetPanePidResponse, GetPaneRunningCommandResponse, GetSessionListResponse,
     HighlightLayer, HighlightStyle, HttpVerb, InputMode, KeyWithModifier, KillSessionsResponse,
@@ -2544,6 +2544,51 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 Some(Payload::CloseSlotPayload(slot_id)) => Ok(PluginCommand::CloseSlot(slot_id)),
                 _ => Err("Mismatched payload for CloseSlot"),
             },
+            Some(CommandName::OpenContextMenu) => match protobuf_plugin_command.payload {
+                Some(Payload::OpenContextMenuPayload(payload)) => {
+                    let target = if payload.target_is_tab {
+                        ContextMenuTarget::Tab(payload.tab_index as usize)
+                    } else {
+                        ContextMenuTarget::Bar
+                    };
+                    Ok(PluginCommand::OpenContextMenu {
+                        target,
+                        line: payload.line as usize,
+                        column: payload.column as usize,
+                    })
+                },
+                _ => Err("Mismatched payload for OpenContextMenu"),
+            },
+            Some(CommandName::OpenPluginPopup) => match protobuf_plugin_command.payload {
+                Some(Payload::OpenPluginPopupPayload(payload)) => {
+                    Ok(PluginCommand::OpenPluginPopup {
+                        plugin_url: payload.plugin_url,
+                        configuration: payload
+                            .configuration
+                            .into_iter()
+                            .map(|item| (item.name, item.value))
+                            .collect(),
+                        line: payload.line as usize,
+                        column: payload.column as usize,
+                        width: payload.width as usize,
+                        height: payload.height as usize,
+                    })
+                },
+                _ => Err("Mismatched payload for OpenPluginPopup"),
+            },
+            Some(CommandName::SetPopupSize) => match protobuf_plugin_command.payload {
+                Some(Payload::SetPopupSizePayload(payload)) => Ok(PluginCommand::SetPopupSize {
+                    width: payload.width as usize,
+                    height: payload.height as usize,
+                }),
+                _ => Err("Mismatched payload for SetPopupSize"),
+            },
+            Some(CommandName::RunContextMenuItem) => match protobuf_plugin_command.payload {
+                Some(Payload::RunContextMenuItemPayload(index)) => {
+                    Ok(PluginCommand::RunContextMenuItem(index as usize))
+                },
+                _ => Err("Mismatched payload for RunContextMenuItem"),
+            },
             Some(CommandName::GetNestedSessionKeybinds) => match protobuf_plugin_command.payload {
                 Some(Payload::GetNestedSessionKeybindsPayload(payload)) => {
                     let pane_id = payload
@@ -4379,6 +4424,57 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             PluginCommand::CloseSlot(slot_id) => Ok(ProtobufPluginCommand {
                 name: CommandName::CloseSlot as i32,
                 payload: Some(Payload::CloseSlotPayload(slot_id)),
+            }),
+            PluginCommand::OpenContextMenu {
+                target,
+                line,
+                column,
+            } => {
+                let (target_is_tab, tab_index) = match target {
+                    ContextMenuTarget::Tab(tab_index) => (true, tab_index as u32),
+                    ContextMenuTarget::Bar => (false, 0),
+                };
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::OpenContextMenu as i32,
+                    payload: Some(Payload::OpenContextMenuPayload(OpenContextMenuPayload {
+                        target_is_tab,
+                        tab_index,
+                        line: line as u32,
+                        column: column as u32,
+                    })),
+                })
+            },
+            PluginCommand::OpenPluginPopup {
+                plugin_url,
+                configuration,
+                line,
+                column,
+                width,
+                height,
+            } => Ok(ProtobufPluginCommand {
+                name: CommandName::OpenPluginPopup as i32,
+                payload: Some(Payload::OpenPluginPopupPayload(OpenPluginPopupPayload {
+                    plugin_url,
+                    configuration: configuration
+                        .into_iter()
+                        .map(|(name, value)| ContextItem { name, value })
+                        .collect(),
+                    line: line as u32,
+                    column: column as u32,
+                    width: width as u32,
+                    height: height as u32,
+                })),
+            }),
+            PluginCommand::RunContextMenuItem(index) => Ok(ProtobufPluginCommand {
+                name: CommandName::RunContextMenuItem as i32,
+                payload: Some(Payload::RunContextMenuItemPayload(index as u32)),
+            }),
+            PluginCommand::SetPopupSize { width, height } => Ok(ProtobufPluginCommand {
+                name: CommandName::SetPopupSize as i32,
+                payload: Some(Payload::SetPopupSizePayload(SetPopupSizePayload {
+                    width: width as u32,
+                    height: height as u32,
+                })),
             }),
             PluginCommand::GetNestedSessionKeybinds(pane_id) => {
                 let protobuf_pane_id: ProtobufPaneId = pane_id.try_into()?;

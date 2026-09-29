@@ -905,6 +905,52 @@ pub fn web_request<S: AsRef<str>>(
 }
 
 /// Hide the plugin pane (suppress it) from the UI
+pub fn open_context_menu(target: ContextMenuTarget, line: usize, column: usize) {
+    let plugin_command = PluginCommand::OpenContextMenu {
+        target,
+        line,
+        column,
+    };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn open_plugin_popup(
+    plugin_url: impl Into<String>,
+    configuration: BTreeMap<String, String>,
+    line: usize,
+    column: usize,
+    width: usize,
+    height: usize,
+) {
+    let plugin_command = PluginCommand::OpenPluginPopup {
+        plugin_url: plugin_url.into(),
+        configuration,
+        line,
+        column,
+        width,
+        height,
+    };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn run_context_menu_item(index: usize) {
+    let plugin_command = PluginCommand::RunContextMenuItem(index);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn set_popup_size(width: usize, height: usize) {
+    let plugin_command = PluginCommand::SetPopupSize { width, height };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 pub fn hide_self() {
     let plugin_command = PluginCommand::HideSelf;
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();

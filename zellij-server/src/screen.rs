@@ -40,20 +40,24 @@ use std::time::{Duration, Instant};
 use crate::route::NotificationEnd;
 use crate::SharedKeybinds;
 
+mod popups;
+
 use log::{debug, warn};
 use zellij_utils::data::{
-    BorderStyle, BorderStyleOverride, CommandOrPlugin, Direction, EventType,
-    FloatingPaneCoordinates, GetFocusedPaneInfoResponse, HostTerminalThemeMode, KeyWithModifier,
-    KeybindsVec, LayoutInfo, LayoutWithError, ListPanesResponse, ListTabsResponse,
-    NestedSessionEndReason, NestedSessionKeybinds, NestedSessionKeybindsError,
-    NestedSessionKeybindsResponse, NewPanePlacement, PaneContents, PaneInfo, PaneListEntry,
-    PaneManifest, PaneRenderReport, PaneScrollbackResponse, PluginPermission, RegexHighlight,
-    Resize, ResizeStrategy, SessionInfo, Styling, TabInfo, ThemeHue, WebSharing,
+    BorderStyle, BorderStyleOverride, CommandOrPlugin, ContextMenuContext, ContextMenuEntry,
+    ContextMenuTarget, Direction, EventType, FloatingPaneCoordinates, GetFocusedPaneInfoResponse,
+    HostTerminalThemeMode, KeyWithModifier, KeybindsVec, LayoutInfo, LayoutWithError,
+    ListPanesResponse, ListTabsResponse, NestedSessionEndReason, NestedSessionKeybinds,
+    NestedSessionKeybindsError, NestedSessionKeybindsResponse, NewPanePlacement, PaneContents,
+    PaneInfo, PaneListEntry, PaneManifest, PaneRenderReport, PaneScrollbackResponse,
+    PluginPermission, RegexHighlight, Resize, ResizeStrategy, SessionInfo, Styling, TabInfo,
+    ThemeHue, WebSharing,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::actions::Action;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::config::Config;
+use zellij_utils::input::context_menu::ContextMenuConfig;
 use zellij_utils::input::keybinds::{shortcut_for_action, Keybinds};
 use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
 use zellij_utils::input::options::{
@@ -920,6 +924,46 @@ pub enum ScreenInstruction {
     SetMouseSelectionSupport(PaneId, bool),
     InterceptKeyPresses(PluginId, ClientId),
     ClearKeyPressesIntercepts(ClientId),
+    TogglePaneIdInGroup(PaneId, ClientId, Option<NotificationEnd>),
+    StartRenamePaneWithPaneId(PaneId, ClientId),
+    StartRenameTabWithTabId(usize, ClientId),
+    OpenContextMenuFromPlugin {
+        plugin_id: u32,
+        client_id: ClientId,
+        target: ContextMenuTarget,
+        line: usize,
+        column: usize,
+    },
+    OpenPluginPopup {
+        requesting_plugin_id: u32,
+        client_id: ClientId,
+        run_plugin_or_alias: RunPluginOrAlias,
+        line: usize,
+        column: usize,
+        width: usize,
+        height: usize,
+    },
+    AddPopup {
+        plugin_id: u32,
+        client_id: ClientId,
+        tab_id: usize,
+        run_plugin_or_alias: RunPluginOrAlias,
+        anchor: Position,
+        width: usize,
+        height: usize,
+    },
+    SetPopupSize {
+        plugin_id: u32,
+        width: usize,
+        height: usize,
+    },
+    UpdateContextMenuConfig(ClientId, ContextMenuConfig),
+    GetContextMenuItemActions {
+        plugin_id: u32,
+        client_id: ClientId,
+        index: usize,
+        response_channel: crossbeam::channel::Sender<Vec<Action>>,
+    },
     ReplacePaneWithExistingPane(PaneId, PaneId, bool, Option<NotificationEnd>), // bool -> suppress_replaced_pane
     AddWatcherClient(ClientId, Size),
     RemoveWatcherClient(ClientId),
@@ -1305,6 +1349,25 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ClearKeyPressesIntercepts(..) => {
                 ScreenContext::ClearKeyPressesIntercepts
             },
+            ScreenInstruction::TogglePaneIdInGroup(..) => ScreenContext::TogglePaneIdInGroup,
+            ScreenInstruction::StartRenamePaneWithPaneId(..) => {
+                ScreenContext::StartRenamePaneWithPaneId
+            },
+            ScreenInstruction::StartRenameTabWithTabId(..) => {
+                ScreenContext::StartRenameTabWithTabId
+            },
+            ScreenInstruction::OpenContextMenuFromPlugin { .. } => {
+                ScreenContext::OpenContextMenuFromPlugin
+            },
+            ScreenInstruction::OpenPluginPopup { .. } => ScreenContext::OpenPluginPopup,
+            ScreenInstruction::AddPopup { .. } => ScreenContext::AddPopup,
+            ScreenInstruction::SetPopupSize { .. } => ScreenContext::SetPopupSize,
+            ScreenInstruction::UpdateContextMenuConfig(..) => {
+                ScreenContext::UpdateContextMenuConfig
+            },
+            ScreenInstruction::GetContextMenuItemActions { .. } => {
+                ScreenContext::GetContextMenuItemActions
+            },
             ScreenInstruction::ReplacePaneWithExistingPane(..) => {
                 ScreenContext::ReplacePaneWithExistingPane
             },
@@ -1609,6 +1672,11 @@ pub(crate) struct Screen {
     default_mode_info: ModeInfo, // TODO: restructure ModeInfo to prevent this duplication
     default_keybinds: SharedKeybinds,
     client_keybinds: BTreeMap<ClientId, SharedKeybinds>,
+    default_context_menu_config: ContextMenuConfig,
+    context_menu_configs: HashMap<ClientId, ContextMenuConfig>,
+    open_context_menus: HashMap<ClientId, (ContextMenuContext, Vec<ContextMenuEntry>)>,
+    rename_pane_targets: HashMap<ClientId, PaneId>,
+    rename_tab_targets: HashMap<ClientId, usize>,
     style: Style,
     pane_frame_style: PaneFrameStyle,
     auto_layout: bool,
@@ -1843,6 +1911,11 @@ impl Screen {
             mode_info: BTreeMap::new(),
             default_keybinds: Arc::new(std::mem::take(&mut mode_info.keybinds)),
             client_keybinds: BTreeMap::new(),
+            default_context_menu_config: ContextMenuConfig::default(),
+            context_menu_configs: HashMap::new(),
+            open_context_menus: HashMap::new(),
+            rename_pane_targets: HashMap::new(),
+            rename_tab_targets: HashMap::new(),
             default_mode_info: mode_info,
             pane_frame_style,
             auto_layout,
@@ -2129,6 +2202,9 @@ impl Screen {
     }
 
     fn update_client_tab_focus(&mut self, client_id: ClientId, new_tab_index: usize) {
+        if self.active_tab_ids.get(&client_id) != Some(&new_tab_index) {
+            self.close_popup_for_client(client_id);
+        }
         match self.active_tab_ids.remove(&client_id) {
             Some(old_active_index) => {
                 self.active_tab_ids.insert(client_id, new_tab_index);
@@ -2363,6 +2439,8 @@ impl Screen {
         let err_context = || format!("failed to close tab at index {tab_id:?}");
 
         let mut tab_to_close = self.tabs.remove(&tab_id).with_context(err_context)?;
+        let popups_of_closed_tab = tab_to_close.drain_popups();
+        self.close_popups_of_closed_tab(popups_of_closed_tab);
         let mut pane_ids = tab_to_close.get_all_pane_ids();
 
         // here we extract the suppressed panes (these are background panes that don't care which
@@ -5701,6 +5779,10 @@ impl Screen {
         self.highest_client_id_seen = self.highest_client_id_seen.max(client_id);
 
         self.set_client_dimmed(client_id, false, None);
+        self.close_popup_for_client(client_id);
+        self.rename_pane_targets.remove(&client_id);
+        self.rename_tab_targets.remove(&client_id);
+        self.context_menu_configs.remove(&client_id);
         let passthrough_panes: Vec<PaneId> = self
             .nested_guest_choices
             .iter()
@@ -6454,9 +6536,93 @@ impl Screen {
         self.cached_layout_errors = errors;
     }
 
+    pub fn start_rename_pane_with_pane_id(&mut self, pane_id: PaneId, client_id: ClientId) {
+        let already_focused = self.get_active_pane_id(&client_id) == Some(pane_id);
+        if !already_focused {
+            self.focus_pane_with_id(pane_id, true, false, client_id)
+                .non_fatal();
+        }
+        let mut found = false;
+        for tab in self.tabs.values_mut() {
+            if let Some(pane) = tab.get_pane_with_id_mut(pane_id) {
+                pane.store_pane_name();
+                pane.update_name("\0");
+                pane.set_should_render(true);
+                found = true;
+                break;
+            }
+        }
+        if found {
+            self.rename_pane_targets.insert(client_id, pane_id);
+            self.log_and_report_session_state().non_fatal();
+        }
+    }
+    pub fn start_rename_tab_with_tab_id(&mut self, tab_id: usize, client_id: ClientId) {
+        if let Some(tab) = self.tabs.get_mut(&tab_id) {
+            tab.prev_name = tab.name.clone();
+            tab.name = String::new();
+            self.rename_tab_targets.insert(client_id, tab_id);
+            self.log_and_report_session_state().non_fatal();
+        }
+    }
+    fn update_rename_target_pane_name(&mut self, buf: Vec<u8>, client_id: ClientId) -> bool {
+        let Some(pane_id) = self.rename_pane_targets.get(&client_id).copied() else {
+            return false;
+        };
+        let Ok(s) = str::from_utf8(&buf) else {
+            return true;
+        };
+        let to_update = match s {
+            "\0" | "\u{007F}" | "\u{0008}" => s.to_owned(),
+            _ => clean_string_from_control_and_linebreak(s).to_string(),
+        };
+        for tab in self.tabs.values_mut() {
+            if let Some(pane) = tab.get_pane_with_id_mut(pane_id) {
+                pane.update_name(&to_update);
+                pane.set_should_render(true);
+                break;
+            }
+        }
+        true
+    }
+    fn undo_rename_of_target_pane(&mut self, client_id: ClientId) -> bool {
+        let Some(pane_id) = self.rename_pane_targets.get(&client_id).copied() else {
+            return false;
+        };
+        for tab in self.tabs.values_mut() {
+            if let Some(pane) = tab.get_pane_with_id_mut(pane_id) {
+                pane.load_pane_name();
+                pane.set_should_render(true);
+                break;
+            }
+        }
+        true
+    }
     pub fn update_active_tab_name(&mut self, buf: Vec<u8>, client_id: ClientId) -> Result<()> {
         let err_context =
             || format!("failed to update active tabs name for client id: {client_id:?}");
+        if let Some(tab_id) = self.rename_tab_targets.get(&client_id).copied() {
+            let s = str::from_utf8(&buf)
+                .with_context(|| format!("failed to construct tab name from buf: {buf:?}"))
+                .with_context(err_context)?;
+            if let Some(tab) = self.tabs.get_mut(&tab_id) {
+                match s {
+                    "\0" => {
+                        tab.name = String::new();
+                    },
+                    "\u{007F}" | "\u{0008}" => {
+                        tab.name.pop();
+                    },
+                    c => {
+                        tab.name
+                            .push_str(&clean_string_from_control_and_linebreak(c));
+                    },
+                }
+            }
+            return self
+                .log_and_report_session_state()
+                .with_context(err_context);
+        }
 
         let client_id = if self.get_active_tab(client_id).is_ok() {
             Some(client_id)
@@ -6499,6 +6665,16 @@ impl Screen {
     }
     pub fn undo_active_rename_tab(&mut self, client_id: ClientId) -> Result<()> {
         let err_context = || format!("failed to undo active tab rename for client {}", client_id);
+        if let Some(tab_id) = self.rename_tab_targets.get(&client_id).copied() {
+            if let Some(tab) = self.tabs.get_mut(&tab_id) {
+                if tab.name != tab.prev_name {
+                    tab.name = tab.prev_name.clone();
+                }
+            }
+            return self
+                .log_and_report_session_state()
+                .context("failed to undo renaming of target tab");
+        }
 
         let client_id = if self.get_active_tab(client_id).is_ok() {
             Some(client_id)
@@ -6711,13 +6887,24 @@ impl Screen {
             active_tab!(self, client_id, |tab: &mut Tab| tab.clear_search(client_id));
         }
 
-        if mode_info.mode == InputMode::RenameTab {
+        if mode_info.mode != InputMode::RenameTab {
+            self.rename_tab_targets.remove(&client_id);
+        }
+        if mode_info.mode != InputMode::RenamePane {
+            self.rename_pane_targets.remove(&client_id);
+        }
+
+        if mode_info.mode == InputMode::RenameTab
+            && !self.rename_tab_targets.contains_key(&client_id)
+        {
             if let Ok(active_tab) = self.get_active_tab_mut(client_id) {
                 active_tab.prev_name = active_tab.name.clone();
             }
         }
 
-        if mode_info.mode == InputMode::RenamePane {
+        if mode_info.mode == InputMode::RenamePane
+            && !self.rename_pane_targets.contains_key(&client_id)
+        {
             if let Ok(active_tab) = self.get_active_tab_mut(client_id) {
                 if let Some(active_pane) =
                     active_tab.get_active_pane_or_floating_pane_mut(client_id)
@@ -8273,6 +8460,9 @@ impl Screen {
         false
     }
     pub fn handle_mouse_event(&mut self, event: MouseEvent, client_id: ClientId) {
+        if self.handle_popup_mouse_event(&event, client_id) {
+            return;
+        }
         let is_bare_motion = event.event_type == MouseEventType::Motion
             && !event.left
             && !event.right
@@ -8308,6 +8498,9 @@ impl Screen {
                         self.clear_pane_group(&client_id);
                         should_render = true;
                     }
+                }
+                if let Some(request) = mouse_effect.open_context_menu {
+                    self.open_context_menu_for_pane(request, client_id);
                 }
                 if mouse_effect.state_changed {
                     if !is_bare_motion {
@@ -9214,6 +9407,7 @@ pub(crate) fn screen_thread_main(
         nested_session_handling,
     );
     screen.default_keybinds = default_keybinds;
+    screen.default_context_menu_config = config.context_menu.clone();
     screen.host_theme_dark_styling = host_theme_dark_styling;
     screen.host_theme_light_styling = host_theme_light_styling;
     screen.paste_buffer_read_enabled = dangerously_enable_paste_buffer_read;
@@ -9608,6 +9802,9 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                if screen.send_key_to_popup(client_id, key_with_modifier.clone()) {
+                    continue;
+                }
                 if let Some(plugin_id) = keybind_intercepts.get(&client_id) {
                     if let Some(key_with_modifier) = key_with_modifier {
                         let _ = screen
@@ -9628,6 +9825,15 @@ pub(crate) fn screen_thread_main(
                         if !(raw_bytes == BRACKETED_PASTE_BEGIN || raw_bytes == BRACKETED_PASTE_END)
                         {
                             screen.update_active_tab_name(raw_bytes, client_id)?;
+                            state_changed = true;
+                        }
+                    },
+                    Some(InputMode::RenamePane)
+                        if screen.rename_pane_targets.contains_key(&client_id) =>
+                    {
+                        if !(raw_bytes == BRACKETED_PASTE_BEGIN || raw_bytes == BRACKETED_PASTE_END)
+                        {
+                            screen.update_rename_target_pane_name(raw_bytes, client_id);
                             state_changed = true;
                         }
                     },
@@ -10656,6 +10862,12 @@ pub(crate) fn screen_thread_main(
                 // waiting for it
                 exit_status,
             ) => {
+                if let PaneId::Plugin(plugin_id) = id {
+                    if screen.close_popup_with_plugin_id(plugin_id) {
+                        screen.render(None)?;
+                        continue;
+                    }
+                }
                 match client_id {
                     Some(client_id) => {
                         active_tab!(screen, client_id, |tab: &mut Tab| tab.close_pane(
@@ -10731,6 +10943,11 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                if screen.update_rename_target_pane_name(c.clone(), client_id) {
+                    screen.render(None)?;
+                    screen.log_and_report_session_state()?;
+                    continue;
+                }
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -10744,6 +10961,10 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                if screen.undo_rename_of_target_pane(client_id) {
+                    screen.render(None)?;
+                    continue;
+                }
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
@@ -13400,6 +13621,85 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::InterceptKeyPresses(plugin_id, client_id) => {
                 keybind_intercepts.insert(client_id, plugin_id);
+            },
+            ScreenInstruction::TogglePaneIdInGroup(pane_id, client_id, _completion_tx) => {
+                screen.toggle_pane_id_in_group(pane_id, &client_id);
+                screen.log_and_report_session_state().non_fatal();
+                screen.render(None)?;
+            },
+            ScreenInstruction::StartRenamePaneWithPaneId(pane_id, client_id) => {
+                screen.start_rename_pane_with_pane_id(pane_id, client_id);
+                screen.render(None)?;
+            },
+            ScreenInstruction::StartRenameTabWithTabId(tab_id, client_id) => {
+                screen.start_rename_tab_with_tab_id(tab_id, client_id);
+                screen.render(None)?;
+            },
+            ScreenInstruction::OpenContextMenuFromPlugin {
+                plugin_id,
+                client_id,
+                target,
+                line,
+                column,
+            } => {
+                screen.open_context_menu_from_plugin(plugin_id, client_id, target, line, column);
+            },
+            ScreenInstruction::OpenPluginPopup {
+                requesting_plugin_id,
+                client_id,
+                run_plugin_or_alias,
+                line,
+                column,
+                width,
+                height,
+            } => {
+                screen.open_plugin_popup_for_plugin(
+                    requesting_plugin_id,
+                    client_id,
+                    run_plugin_or_alias,
+                    line,
+                    column,
+                    width,
+                    height,
+                );
+            },
+            ScreenInstruction::AddPopup {
+                plugin_id,
+                client_id,
+                tab_id,
+                run_plugin_or_alias,
+                anchor,
+                width,
+                height,
+            } => {
+                screen.add_popup(
+                    plugin_id,
+                    client_id,
+                    tab_id,
+                    run_plugin_or_alias,
+                    anchor,
+                    width,
+                    height,
+                )?;
+            },
+            ScreenInstruction::SetPopupSize {
+                plugin_id,
+                width,
+                height,
+            } => {
+                screen.set_popup_size(plugin_id, width, height)?;
+            },
+            ScreenInstruction::UpdateContextMenuConfig(client_id, context_menu_config) => {
+                screen.update_context_menu_config(client_id, context_menu_config);
+            },
+            ScreenInstruction::GetContextMenuItemActions {
+                plugin_id,
+                client_id,
+                index,
+                response_channel,
+            } => {
+                let actions = screen.context_menu_item_actions(plugin_id, client_id, index);
+                let _ = response_channel.send(actions);
             },
             ScreenInstruction::ClearKeyPressesIntercepts(client_id) => {
                 keybind_intercepts.remove(&client_id);

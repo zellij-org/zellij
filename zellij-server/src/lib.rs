@@ -151,6 +151,7 @@ pub enum ServerInstruction {
     ForwardQueryToHost(u32, Vec<u8>, bool),
     KeyPassthroughChanged(ClientId, PaneId, PaneId, bool, Option<Direction>, bool),
     EmitNestedSessionFrameToClient(ClientId, Vec<u8>),
+    PopupStateChanged(ClientId, bool),
 }
 
 impl From<&ServerInstruction> for ServerContext {
@@ -207,6 +208,7 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::EmitNestedSessionFrameToClient(..) => {
                 ServerContext::EmitNestedSessionFrameToClient
             },
+            ServerInstruction::PopupStateChanged(..) => ServerContext::PopupStateChanged,
         }
     }
 }
@@ -389,6 +391,7 @@ pub(crate) struct SessionMetaData {
     pub current_input_modes: HashMap<ClientId, InputMode>,
     pub session_configuration: SessionConfiguration,
     pub key_passthrough_clients: HashMap<ClientId, PaneId>,
+    pub popup_clients: HashSet<ClientId>,
     pub web_sharing: WebSharing, // this is a special attribute explicitly set on session
     // initialization because we don't want it to be overridden by
     // configuration changes, the only way it can be overwritten is by
@@ -420,6 +423,7 @@ impl SessionMetaData {
         }
     }
     pub fn remove_key_passthrough_client(&mut self, client_id: ClientId) {
+        self.popup_clients.remove(&client_id);
         self.remove_key_passthrough_client_with_notify(client_id, true);
     }
     pub fn remove_key_passthrough_client_with_notify(
@@ -504,6 +508,12 @@ impl SessionMetaData {
                     shared_keybinds
                 },
             };
+            self.senders
+                .send_to_screen(ScreenInstruction::UpdateContextMenuConfig(
+                    client_id,
+                    new_config.context_menu.clone(),
+                ))
+                .unwrap();
             self.senders
                 .send_to_screen(ScreenInstruction::Reconfigure {
                     client_id,
@@ -2227,6 +2237,16 @@ pub fn start_server_impl(
                     }
                 }
             },
+            ServerInstruction::PopupStateChanged(client_id, is_open) => {
+                let mut session_data = session_data.write().unwrap();
+                if let Some(session_data) = session_data.as_mut() {
+                    if is_open {
+                        session_data.popup_clients.insert(client_id);
+                    } else {
+                        session_data.popup_clients.remove(&client_id);
+                    }
+                }
+            },
             ServerInstruction::KeyPassthroughChanged(
                 client_id,
                 _old_pane_id,
@@ -2581,6 +2601,7 @@ fn init_session(
         #[cfg(not(feature = "web_server_capability"))]
         web_sharing: WebSharing::Disabled,
         key_passthrough_clients: HashMap::new(),
+        popup_clients: HashSet::new(),
         config_file_path: cli_assets.config_file_path,
     }
 }

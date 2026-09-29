@@ -12745,19 +12745,17 @@ fn test_scroll_on_inactive_pane_scrolls_that_pane() {
 }
 
 #[test]
-fn test_right_click_forwards_to_active_pane() {
+fn test_right_click_on_active_pane_without_mouse_reporting_opens_context_menu() {
     let size = Size {
         cols: 121,
         rows: 20,
     };
     let client_id = 1;
     let mut tab = create_new_tab(size, ModeInfo::default());
-    let _output = Output::default();
 
     tab.handle_pty_bytes(1, Vec::from("Active pane".as_bytes()))
         .unwrap();
 
-    // Right click on the active pane
     let effect = tab
         .handle_mouse_event(
             &MouseEvent::new_right_press_event(Position::new(10, 60)),
@@ -12765,9 +12763,296 @@ fn test_right_click_forwards_to_active_pane() {
         )
         .unwrap();
 
-    // Event should be forwarded (verified via MouseEffect or no error)
-    // The effect may not indicate state change, but should succeed
-    assert!(effect.group_toggle.is_none());
+    let request = effect.open_context_menu.expect("context menu request");
+    assert_eq!(request.pane_id, PaneId::Terminal(1));
+    assert_eq!(request.kind, zellij_utils::data::ContextMenuKind::Pane);
+    assert_eq!(request.position, Position::new(10, 60));
+    assert!(tab.selecting_with_mouse_in_pane.is_none());
+}
+
+#[test]
+fn test_right_click_on_active_pane_with_mouse_reporting_is_forwarded() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+
+    let mut pty_instruction_bus = MockPtyInstructionBus::new();
+    let mut tab = create_new_tab_with_mock_pty_writer(
+        size,
+        ModeInfo::default(),
+        pty_instruction_bus.pty_write_sender(),
+    );
+    pty_instruction_bus.start();
+
+    tab.handle_pty_bytes(1, Vec::from("\u{1b}[?1002h\u{1b}[?1006h".as_bytes()))
+        .unwrap();
+
+    let effect = tab
+        .handle_mouse_event(
+            &MouseEvent::new_right_press_event(Position::new(5, 71)),
+            client_id,
+        )
+        .unwrap();
+
+    pty_instruction_bus.exit();
+
+    assert_eq!(
+        pty_instruction_bus.clone_output(),
+        vec!["\u{1b}[<2;71;5M".to_string()],
+    );
+    assert!(effect.open_context_menu.is_none());
+}
+
+#[test]
+fn test_right_click_on_unfocused_pane_opens_menu_without_changing_focus() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    tab.vertical_split(PaneId::Terminal(2), None, client_id, None, None)
+        .unwrap();
+    assert_eq!(tab.get_active_pane_id(client_id), Some(PaneId::Terminal(2)));
+
+    let effect = tab
+        .handle_mouse_event(
+            &MouseEvent::new_right_press_event(Position::new(5, 30)),
+            client_id,
+        )
+        .unwrap();
+
+    let request = effect.open_context_menu.expect("context menu request");
+    assert_eq!(request.pane_id, PaneId::Terminal(1));
+    assert_eq!(tab.get_active_pane_id(client_id), Some(PaneId::Terminal(2)));
+}
+
+fn tab_with_floating_pane(size: Size, client_id: ClientId) -> Tab {
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    tab.toggle_floating_panes(Some(client_id), None, None)
+        .unwrap();
+    tab.new_pane(
+        PaneId::Terminal(2),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+    tab
+}
+
+fn pin_button_position(tab: &Tab, pane_id: PaneId) -> Position {
+    let geom = tab.get_pane_with_id(pane_id).unwrap().current_geom();
+    Position::new(geom.y as i32, (geom.x + geom.cols.as_usize() - 4) as u16)
+}
+
+#[test]
+fn test_right_click_on_pin_button_does_not_toggle_pin() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = tab_with_floating_pane(size, client_id);
+    let pin_position = pin_button_position(&tab, PaneId::Terminal(2));
+
+    let effect = tab
+        .handle_mouse_event(&MouseEvent::new_right_press_event(pin_position), client_id)
+        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_right_release_event(pin_position),
+        client_id,
+    )
+    .unwrap();
+
+    assert!(!tab.floating_panes.has_pinned_panes());
+    let request = effect.open_context_menu.expect("context menu request");
+    assert_eq!(request.kind, zellij_utils::data::ContextMenuKind::PaneFrame);
+    assert!(request.is_floating);
+    assert!(!tab.floating_panes.pane_is_being_moved_with_mouse());
+}
+
+#[test]
+fn test_left_click_on_pin_button_still_toggles_pin() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = tab_with_floating_pane(size, client_id);
+    let pin_position = pin_button_position(&tab, PaneId::Terminal(2));
+
+    tab.handle_mouse_event(&MouseEvent::new_left_press_event(pin_position), client_id)
+        .unwrap();
+
+    assert!(tab.floating_panes.has_pinned_panes());
+}
+
+fn open_test_popup(tab: &mut Tab, client_id: ClientId, plugin_id: u32) {
+    let (plugin_sender, _plugin_receiver) = channels::unbounded();
+    tab.senders
+        .replace_to_plugin(SenderWithContext::new(plugin_sender));
+    tab.open_popup(
+        client_id,
+        plugin_id,
+        Position::new(3, 3),
+        20,
+        6,
+        None,
+        String::from("popup"),
+    )
+    .unwrap();
+}
+
+#[test]
+fn popup_is_left_out_of_pane_lists_and_floating_state() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let pane_ids_before = tab.get_all_pane_ids();
+    let pane_infos_before = tab.pane_infos().len();
+    let floating_visible_before = tab.are_floating_panes_visible();
+
+    open_test_popup(&mut tab, client_id, 42);
+
+    assert!(tab.has_popup_for_client(client_id));
+    assert!(tab.has_plugin(42));
+    assert_eq!(tab.get_all_pane_ids(), pane_ids_before);
+    assert_eq!(tab.pane_infos().len(), pane_infos_before);
+    assert!(tab
+        .pane_infos()
+        .iter()
+        .all(|pane_info| !(pane_info.is_plugin && pane_info.id == 42)));
+    assert_eq!(tab.are_floating_panes_visible(), floating_visible_before);
+    assert_eq!(tab.get_selectable_floating_panes_count(), 0);
+    assert_eq!(tab.get_floating_panes().count(), 0);
+    assert!(!tab.get_plugin_ids().contains(&42));
+    assert_eq!(tab.get_active_pane_id(client_id), Some(PaneId::Terminal(1)));
+}
+
+#[test]
+fn popup_keeps_hidden_floating_panes_hidden_and_visible_ones_visible() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = tab_with_floating_pane(size, client_id);
+    assert!(tab.are_floating_panes_visible());
+    open_test_popup(&mut tab, client_id, 42);
+    assert!(tab.are_floating_panes_visible());
+    tab.close_popup(client_id);
+
+    tab.toggle_floating_panes(Some(client_id), None, None)
+        .unwrap();
+    assert!(!tab.are_floating_panes_visible());
+    open_test_popup(&mut tab, client_id, 43);
+    assert!(!tab.are_floating_panes_visible());
+}
+
+#[test]
+fn popup_is_drawn_only_for_the_client_that_opened_it() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let other_client_id = 2;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    tab.add_client(other_client_id, None).unwrap();
+    open_test_popup(&mut tab, client_id, 42);
+    tab.handle_plugin_bytes(42, client_id, Vec::from("POPUP-CONTENT".as_bytes()))
+        .unwrap();
+
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+    let serialized = output.serialize().unwrap();
+    let owner_snapshot = take_snapshot(
+        serialized.get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    let other_snapshot = take_snapshot(
+        serialized.get(&other_client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert!(owner_snapshot.contains("POPUP-CONTENT"));
+    assert!(!other_snapshot.contains("POPUP-CONTENT"));
+}
+
+#[test]
+fn popup_is_placed_inside_the_screen_and_resized_on_request() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let (plugin_sender, _plugin_receiver) = channels::unbounded();
+    tab.senders
+        .replace_to_plugin(SenderWithContext::new(plugin_sender));
+    tab.open_popup(
+        client_id,
+        42,
+        Position::new(18, 115),
+        20,
+        6,
+        None,
+        String::from("popup"),
+    )
+    .unwrap();
+    let geom = tab.popup_geom(client_id).unwrap();
+    assert_eq!((geom.x, geom.y), (101, 14));
+    assert_eq!((geom.cols.as_usize(), geom.rows.as_usize()), (20, 6));
+
+    tab.resize_popup(42, 30, 4);
+    let geom = tab.popup_geom(client_id).unwrap();
+    assert_eq!((geom.x, geom.y), (91, 16));
+    assert_eq!((geom.cols.as_usize(), geom.rows.as_usize()), (30, 4));
+}
+
+#[test]
+fn click_outside_popup_requests_close_and_click_inside_is_consumed() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    open_test_popup(&mut tab, client_id, 42);
+
+    assert_eq!(
+        tab.handle_popup_mouse_event(
+            &MouseEvent::new_left_press_event(Position::new(4, 5)),
+            client_id
+        ),
+        Some(crate::tab::PopupMouseOutcome::Consumed)
+    );
+    assert_eq!(
+        tab.handle_popup_mouse_event(
+            &MouseEvent::new_left_press_event(Position::new(15, 80)),
+            client_id
+        ),
+        Some(crate::tab::PopupMouseOutcome::CloseRequested)
+    );
+    assert_eq!(
+        tab.handle_popup_mouse_event(&MouseEvent::new_left_press_event(Position::new(15, 80)), 2),
+        None
+    );
 }
 
 #[test]

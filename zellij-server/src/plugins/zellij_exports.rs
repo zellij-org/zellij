@@ -24,13 +24,13 @@ use wasmi::{Caller, Linker};
 use zellij_utils::consts::ipc_connect;
 use zellij_utils::data::{
     BorderStyleOverride, BreakPanesToNewTabResponse, BreakPanesToTabWithIdResponse,
-    BreakPanesToTabWithIndexResponse, CommandType, ConnectToSession, DeleteAllDeadSessionsResponse,
-    DeleteDeadSessionResponse, DeleteLayoutResponse, EditLayoutResponse, Event,
-    FloatingPaneCoordinates, FocusOrCreateTabResponse, GetFocusedPaneInfoResponse,
-    GetPaneCwdResponse, GetPanePidResponse, GetPaneRunningCommandResponse, HttpVerb,
-    KeyWithModifier, KillSessionsResponse, LayoutInfo, LayoutMetadata, LayoutParsingError,
-    MessageToPlugin, NewPanePlacement, NewTabResponse, NewTabUnfocusedResponse,
-    NewTiledPaneInTabResponse, OpenCommandPaneBackgroundResponse,
+    BreakPanesToTabWithIndexResponse, CommandType, ConnectToSession, ContextMenuTarget,
+    DeleteAllDeadSessionsResponse, DeleteDeadSessionResponse, DeleteLayoutResponse,
+    EditLayoutResponse, Event, FloatingPaneCoordinates, FocusOrCreateTabResponse,
+    GetFocusedPaneInfoResponse, GetPaneCwdResponse, GetPanePidResponse,
+    GetPaneRunningCommandResponse, HttpVerb, KeyWithModifier, KillSessionsResponse, LayoutInfo,
+    LayoutMetadata, LayoutParsingError, MessageToPlugin, NewPanePlacement, NewTabResponse,
+    NewTabUnfocusedResponse, NewTiledPaneInTabResponse, OpenCommandPaneBackgroundResponse,
     OpenCommandPaneFloatingNearPluginResponse, OpenCommandPaneFloatingResponse,
     OpenCommandPaneInPlaceOfPaneIdResponse, OpenCommandPaneInPlaceOfPluginResponse,
     OpenCommandPaneInPlaceResponse, OpenCommandPaneNearPluginResponse, OpenCommandPaneResponse,
@@ -309,6 +309,111 @@ fn close_slot(env: &PluginEnv, slot_id: PluginId) {
     write_slot_command_response(env, result);
 }
 
+fn open_context_menu(env: &PluginEnv, target: ContextMenuTarget, line: usize, column: usize) {
+    env.senders
+        .send_to_screen(ScreenInstruction::OpenContextMenuFromPlugin {
+            plugin_id: self_pane_id(env),
+            client_id: acting_client(env),
+            target,
+            line,
+            column,
+        })
+        .with_context(|| format!("failed to open context menu"))
+        .non_fatal();
+}
+
+fn open_plugin_popup(
+    env: &PluginEnv,
+    plugin_url: String,
+    configuration: BTreeMap<String, String>,
+    line: usize,
+    column: usize,
+    width: usize,
+    height: usize,
+) {
+    let run_plugin_or_alias = match RunPluginOrAlias::from_url(
+        &plugin_url,
+        &Some(configuration),
+        None,
+        Some(env.plugin_cwd.clone()),
+    ) {
+        Ok(run_plugin_or_alias) => run_plugin_or_alias,
+        Err(e) => {
+            log::error!("Failed to open popup: {}", e);
+            return;
+        },
+    };
+    env.senders
+        .send_to_screen(ScreenInstruction::OpenPluginPopup {
+            requesting_plugin_id: self_pane_id(env),
+            client_id: acting_client(env),
+            run_plugin_or_alias,
+            line,
+            column,
+            width,
+            height,
+        })
+        .with_context(|| format!("failed to open popup"))
+        .non_fatal();
+}
+
+fn run_context_menu_item(env: &PluginEnv, index: usize) {
+    let client_id = acting_client(env);
+    let plugin_id = env.plugin_id;
+    let (response_sender, response_receiver) = crossbeam::channel::bounded(1);
+    if env
+        .senders
+        .send_to_screen(ScreenInstruction::GetContextMenuItemActions {
+            plugin_id,
+            client_id,
+            index,
+            response_channel: response_sender,
+        })
+        .is_err()
+    {
+        log::error!("Failed to request context menu item {}", index);
+        return;
+    }
+    let actions = match response_receiver.recv_timeout(Duration::from_secs(5)) {
+        Ok(actions) => actions,
+        Err(e) => {
+            log::error!("Failed to get context menu item {}: {:?}", index, e);
+            return;
+        },
+    };
+    let senders = env.senders.clone();
+    let default_shell = env.default_shell.clone();
+    let default_mode = env.default_mode.clone();
+    thread::spawn(move || {
+        for action in actions {
+            if let Err(e) = route_action(
+                action,
+                client_id,
+                None,
+                Some(PaneId::Plugin(plugin_id)),
+                senders.clone(),
+                default_shell.clone(),
+                None,
+                default_mode,
+                None,
+            ) {
+                log::error!("Failed to run context menu action: {:?}", e);
+            }
+        }
+    });
+}
+
+fn set_popup_size(env: &PluginEnv, width: usize, height: usize) {
+    env.senders
+        .send_to_screen(ScreenInstruction::SetPopupSize {
+            plugin_id: env.plugin_id,
+            width,
+            height,
+        })
+        .with_context(|| format!("failed to set popup size"))
+        .non_fatal();
+}
+
 pub fn zellij_exports(linker: &mut Linker<PluginEnv>) {
     linker
         .func_wrap("zellij", "host_run_plugin_command", host_run_plugin_command)
@@ -344,6 +449,33 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         show_slot(env, slot_id, should_float_if_hidden)
                     },
                     PluginCommand::CloseSlot(slot_id) => close_slot(env, slot_id),
+                    PluginCommand::OpenContextMenu {
+                        target,
+                        line,
+                        column,
+                    } => open_context_menu(env, target, line, column),
+                    PluginCommand::OpenPluginPopup {
+                        plugin_url,
+                        configuration,
+                        line,
+                        column,
+                        width,
+                        height,
+                    } => open_plugin_popup(
+                        env,
+                        plugin_url,
+                        configuration,
+                        line,
+                        column,
+                        width,
+                        height,
+                    ),
+                    PluginCommand::SetPopupSize { width, height } => {
+                        set_popup_size(env, width, height)
+                    },
+                    PluginCommand::RunContextMenuItem(index) => {
+                        run_context_menu_item(env, index)
+                    },
                     PluginCommand::Subscribe(event_list) => subscribe(env, event_list)?,
                     PluginCommand::Unsubscribe(event_list) => unsubscribe(env, event_list)?,
                     PluginCommand::SetSelectable(selectable) => set_selectable(env, selectable),
@@ -5890,7 +6022,11 @@ fn check_command_permission(
         | PluginCommand::HideFloatingPanes { .. }
         | PluginCommand::SetPaneRegexHighlights(..)
         | PluginCommand::ClearPaneHighlights(..)
-        | PluginCommand::SetSoftKeyboard(..) => PermissionType::ChangeApplicationState,
+        | PluginCommand::SetSoftKeyboard(..)
+        | PluginCommand::OpenContextMenu { .. }
+        | PluginCommand::OpenPluginPopup { .. }
+        | PluginCommand::SetPopupSize { .. } => PermissionType::ChangeApplicationState,
+        PluginCommand::RunContextMenuItem(..) => PermissionType::RunActionsAsUser,
         PluginCommand::UnblockCliPipeInput(..)
         | PluginCommand::BlockCliPipeInput(..)
         | PluginCommand::CliPipeOutput(..) => PermissionType::ReadCliPipes,

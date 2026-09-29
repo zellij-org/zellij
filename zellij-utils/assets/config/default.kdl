@@ -260,6 +260,7 @@ plugins {
     configuration location="zellij:configuration"
     plugin-manager location="zellij:plugin-manager"
     about location="zellij:about"
+    context-menu location="zellij:context-menu"
 }
 
 // Plugins to load in the background when a new session starts
@@ -269,6 +270,51 @@ load_plugins {
     }
     // "file:/path/to/my-plugin.wasm"
     // "https://example.com/my-plugin.wasm"
+}
+
+// Right-click menu items, per clicked target: "pane", "tab", "bar" (tab bar or status bar background)
+// "common" items are added to the end of every menu
+// Actions ending in "ByPaneId"/"ById"/"ByTabId" apply to the clicked pane or tab when no id is given
+// Add clear-defaults=true to the block or to a section to replace the default items
+context_menu {
+    pane {
+        item "New pane" { NewPane; }
+        item "New floating pane" { NewFloatingPane; }
+        separator
+        item "Fullscreen" { ToggleFocusFullscreenByPaneId; }
+        item "Float / Embed" { TogglePaneEmbedOrFloatingByPaneId; }
+        item "Rename pane" { StartRenamePaneByPaneId; }
+        item "Add to group" { TogglePaneInGroupByPaneId; }
+        separator
+        item "Close pane" { CloseFocusByPaneId; }
+    }
+    tab {
+        item "New tab" { NewTab; }
+        item "Rename tab" { StartRenameTabByTabId; }
+        item "Move tab left" { MoveTabByTabId "left"; }
+        item "Move tab right" { MoveTabByTabId "right"; }
+        separator
+        item "Close tab" { CloseTabById; }
+    }
+    bar {
+        item "New pane" { NewPane; }
+        item "New tab" { NewTab; }
+    }
+    common {
+        item "Settings…" {
+            LaunchOrFocusPlugin "configuration" {
+                floating true
+                move_to_focused_tab true
+            }
+        }
+        item "Session manager" {
+            LaunchOrFocusPlugin "session-manager" {
+                floating true
+                move_to_focused_tab true
+            }
+        }
+        item "Detach" { Detach; }
+    }
 }
 
 // Choose what to do when zellij receives SIGTERM, SIGINT, SIGQUIT or SIGHUP
