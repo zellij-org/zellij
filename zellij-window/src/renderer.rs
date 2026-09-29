@@ -281,7 +281,11 @@ impl Renderer {
         self.build_vertices(scene, &atlases);
         self.retained = None;
 
-        self.clear_target(scene.clear, crate::scene::Transparency::OPAQUE.clear_alpha(), target);
+        self.clear_target(
+            scene.clear,
+            crate::scene::Transparency::OPAQUE.clear_alpha(),
+            target,
+        );
         let viewport = (target.0 as f32, target.1 as f32);
         unsafe {
             draw_pass(

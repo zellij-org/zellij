@@ -558,9 +558,10 @@ fn opacity_from_kdl(node: &KdlNode) -> Result<f32, ConfigError> {
         .ok_or_else(|| error("opacity needs a value between 0.0 and 1.0".to_owned()))?;
     let opacity = match value {
         KdlValue::Base10Float(opacity) => *opacity,
-        other => other.as_i64().map(|opacity| opacity as f64).ok_or_else(|| {
-            error("opacity must be a number between 0.0 and 1.0".to_owned())
-        })?,
+        other => other
+            .as_i64()
+            .map(|opacity| opacity as f64)
+            .ok_or_else(|| error("opacity must be a number between 0.0 and 1.0".to_owned()))?,
     };
     if !(opacity.is_finite() && (0.0..=1.0).contains(&opacity)) {
         return Err(error(format!(
@@ -958,7 +959,12 @@ mod tests {
         }
         for text in ["-0.1", "1.5", "2", "\"high\"", ""] {
             let err = section(&format!("window {{\n opacity {}\n}}", text)).unwrap_err();
-            assert!(format!("{:?}", err).contains("opacity"), "{}: {:?}", text, err);
+            assert!(
+                format!("{:?}", err).contains("opacity"),
+                "{}: {:?}",
+                text,
+                err
+            );
         }
     }
 
@@ -999,8 +1005,7 @@ mod tests {
     #[test]
     fn a_later_section_supersedes_the_see_through_settings_field_by_field() {
         let first =
-            section("window {\n opacity 0.5\n opacity_mode \"everything\"\n blur true\n}")
-                .unwrap();
+            section("window {\n opacity 0.5\n opacity_mode \"everything\"\n blur true\n}").unwrap();
         let second = section("window {\n opacity 0.9\n}").unwrap();
         let merged = first.merge(second);
         assert_eq!(merged.opacity, Some(0.9));
