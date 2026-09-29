@@ -50,7 +50,7 @@ in vec3 v_color;
 out vec4 o_color;
 void main() {
     float coverage = texture(u_atlas, v_texcoord).r;
-    o_color = vec4(v_color, coverage);
+    o_color = vec4(v_color * coverage, coverage);
 }
 "#;
 
@@ -60,7 +60,8 @@ in vec3 v_color;
 out vec4 o_color;
 void main() {
     vec4 texel = texture(u_atlas, v_texcoord);
-    o_color = vec4(texel.rgb * v_color, texel.a);
+    vec3 tinted = texel.rgb * v_color;
+    o_color = vec4(tinted * texel.a, texel.a);
 }
 "#;
 
@@ -143,6 +144,7 @@ pub struct Renderer {
     glyph: Pass,
     color: Pass,
     image: Pass,
+    fade: Pass,
     mask_atlas: AtlasTexture,
     color_atlas: AtlasTexture,
     images: HashMap<ImageKey, ImageTexture>,
@@ -218,18 +220,24 @@ impl Renderer {
             attribute(&gl, color_program, "a_texcoord", 2, GLYPH_STRIDE, 2 * 4);
             attribute(&gl, color_program, "a_color", 3, GLYPH_STRIDE, 4 * 4);
 
+            let fade = Pass {
+                viewport: gl.get_uniform_location(solid_program, "u_viewport"),
+                program: solid_program,
+                vertex_array: gl.create_vertex_array().map_err(|e| anyhow!(e))?,
+                buffer: gl.create_buffer().map_err(|e| anyhow!(e))?,
+            };
+            gl.bind_vertex_array(Some(fade.vertex_array));
+            gl.bind_buffer(glow::ARRAY_BUFFER, Some(fade.buffer));
+            attribute(&gl, solid_program, "a_position", 2, SOLID_STRIDE, 0);
+            attribute(&gl, solid_program, "a_color", 3, SOLID_STRIDE, 2 * 4);
+
             let mask_atlas = atlas_texture(&gl, glow::RED, glow::R8 as i32)?;
             let color_atlas = atlas_texture(&gl, glow::RGBA, glow::RGBA8 as i32)?;
 
             gl.bind_vertex_array(None);
             gl.disable(glow::DEPTH_TEST);
             gl.enable(glow::BLEND);
-            gl.blend_func_separate(
-                glow::SRC_ALPHA,
-                glow::ONE_MINUS_SRC_ALPHA,
-                glow::ZERO,
-                glow::ONE,
-            );
+            premultiplied_blending(&gl);
             gl.pixel_store_i32(glow::UNPACK_ALIGNMENT, 1);
 
             Ok(Self {
@@ -238,6 +246,7 @@ impl Renderer {
                 glyph,
                 color,
                 image,
+                fade,
                 mask_atlas,
                 color_atlas,
                 images: HashMap::new(),
@@ -272,7 +281,7 @@ impl Renderer {
         self.build_vertices(scene, &atlases);
         self.retained = None;
 
-        self.clear_target(scene.clear, target);
+        self.clear_target(scene.clear, crate::scene::Transparency::OPAQUE.clear_alpha(), target);
         let viewport = (target.0 as f32, target.1 as f32);
         unsafe {
             draw_pass(
@@ -360,7 +369,8 @@ impl Renderer {
             |row, out| push_glyph_vertices(out, &row.color_glyphs, atlases.color),
         );
 
-        self.clear_target(scene.clear(), target);
+        let transparency = scene.transparency();
+        self.clear_target(scene.clear(), transparency.clear_alpha(), target);
         let viewport = (target.0 as f32, target.1 as f32);
         unsafe {
             draw_rows(&self.gl, &self.solid, &self.solid_rows, viewport);
@@ -373,19 +383,39 @@ impl Renderer {
                 .bind_texture(glow::TEXTURE_2D, Some(self.color_atlas.texture));
             draw_rows(&self.gl, &self.color, &self.color_rows, viewport);
             self.draw_images(viewport, false);
+            if let Some(opacity) = transparency.fade() {
+                self.fade_everything(opacity, viewport);
+            }
             self.gl.bind_vertex_array(None);
         }
     }
 
-    fn clear_target(&self, clear: crate::color::Srgb, target: (u32, u32)) {
+    unsafe fn fade_everything(&self, opacity: f32, viewport: (f32, f32)) {
+        let (width, height) = viewport;
+        let mut vertices = Vec::with_capacity(VERTICES_PER_QUAD * SOLID_STRIDE as usize / 4);
+        for (x, y) in quad_corners(0.0, 0.0, width, height) {
+            vertices.extend_from_slice(&[x, y, 0.0, 0.0, 0.0]);
+        }
+        self.gl.blend_color(0.0, 0.0, 0.0, opacity);
+        self.gl.blend_func_separate(
+            glow::ZERO,
+            glow::CONSTANT_ALPHA,
+            glow::ZERO,
+            glow::CONSTANT_ALPHA,
+        );
+        draw_pass(&self.gl, &self.fade, &vertices, SOLID_STRIDE, viewport);
+        premultiplied_blending(&self.gl);
+    }
+
+    fn clear_target(&self, clear: crate::color::Srgb, alpha: f32, target: (u32, u32)) {
         let [red, green, blue] = clear;
         unsafe {
             self.gl.viewport(0, 0, target.0 as i32, target.1 as i32);
             self.gl.clear_color(
-                red as f32 / 255.0,
-                green as f32 / 255.0,
-                blue as f32 / 255.0,
-                1.0,
+                red as f32 / 255.0 * alpha,
+                green as f32 / 255.0 * alpha,
+                blue as f32 / 255.0 * alpha,
+                alpha,
             );
             self.gl.clear(glow::COLOR_BUFFER_BIT);
         }
@@ -702,6 +732,15 @@ fn push_glyph_vertices(
             vertices.extend_from_slice(&[x, y, u, v, red, green, blue]);
         }
     }
+}
+
+unsafe fn premultiplied_blending(gl: &glow::Context) {
+    gl.blend_func_separate(
+        glow::ONE,
+        glow::ONE_MINUS_SRC_ALPHA,
+        glow::ONE,
+        glow::ONE_MINUS_SRC_ALPHA,
+    );
 }
 
 unsafe fn atlas_texture(

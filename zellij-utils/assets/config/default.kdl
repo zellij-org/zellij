@@ -618,6 +618,20 @@ web_client {
 //     // "none" ignores them.
 //     notifications "desktop"
 //
+//     // How opaque the window is, from 0.0 (invisible) to 1.0 (solid). Needs
+//     // a compositor; without one the window stays solid.
+//     opacity 1.0
+//
+//     // What the opacity applies to. "background" lets only the default
+//     // background show through and keeps text, colored cells, the cursor and
+//     // images solid. "everything" fades the whole window evenly.
+//     opacity_mode "background"
+//
+//     // Whether to ask the compositor to blur what is behind the window. Only
+//     // visible with an opacity below 1.0; supported on macOS, Windows and KDE
+//     // Plasma, and ignored elsewhere.
+//     blur false
+//
 //     // Colors the window paints itself. `foreground` and
 //     // `background` default to the active Zellij theme; the sixteen ANSI
 //     // colors have no theme equivalent and default to the standard table.
