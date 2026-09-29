@@ -53,7 +53,7 @@ use crate::data::{
     LayoutInfo, LayoutMetadata, ModeInfo, Mouse, NestedSessionEndReason, NestedSessionKeybinds,
     NestedSessionKeybindsError, NestedSessionKeybindsResponse, PaneContents, PaneId, PaneInfo,
     PaneManifest, PaneMetadata, PaneScrollbackResponse, PermissionStatus, PluginCapabilities,
-    PluginInfo, SelectedText, SessionInfo, Style, StyledText, TabInfo, TabMetadata,
+    PluginInfo, SelectedText, SessionInfo, SettingKey, Style, StyledText, TabInfo, TabMetadata,
     WebServerStatus, WebSharing,
 };
 
@@ -765,6 +765,18 @@ impl TryFrom<ProtobufEvent> for Event {
                     ))
                 },
                 _ => Err("Malformed payload for the ContextMenu Event"),
+            },
+            Some(ProtobufEventType::ConfigChangesDropped) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::ConfigChangesDroppedPayload(payload)) => {
+                    Ok(Event::ConfigChangesDropped(
+                        payload
+                            .keys
+                            .iter()
+                            .filter_map(|key| SettingKey::from_id(key))
+                            .collect(),
+                    ))
+                },
+                _ => Err("Malformed payload for the ConfigChangesDropped Event"),
             },
             Some(ProtobufEventType::NestedSessionEnded) => match protobuf_event.payload {
                 Some(ProtobufEventPayload::NestedSessionEndedPayload(payload)) => {
@@ -1501,6 +1513,14 @@ impl TryFrom<Event> for ProtobufEvent {
                     )),
                 })
             },
+            Event::ConfigChangesDropped(keys) => Ok(ProtobufEvent {
+                name: ProtobufEventType::ConfigChangesDropped as i32,
+                payload: Some(event::Payload::ConfigChangesDroppedPayload(
+                    ConfigChangesDroppedPayload {
+                        keys: keys.iter().map(|key| key.id()).collect(),
+                    },
+                )),
+            }),
             Event::InitialKeybinds(keybinds) => {
                 let protobuf_keybinds = keybinds_to_protobuf(keybinds);
                 Ok(ProtobufEvent {
@@ -2489,6 +2509,7 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::NestedSessionModeUpdate => EventType::NestedSessionModeUpdate,
             ProtobufEventType::NestedSessionEnded => EventType::NestedSessionEnded,
             ProtobufEventType::ContextMenu => EventType::ContextMenu,
+            ProtobufEventType::ConfigChangesDropped => EventType::ConfigChangesDropped,
         })
     }
 }
@@ -2550,6 +2571,7 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::NestedSessionModeUpdate => ProtobufEventType::NestedSessionModeUpdate,
             EventType::NestedSessionEnded => ProtobufEventType::NestedSessionEnded,
             EventType::ContextMenu => ProtobufEventType::ContextMenu,
+            EventType::ConfigChangesDropped => ProtobufEventType::ConfigChangesDropped,
         })
     }
 }

@@ -75,6 +75,7 @@ enum EventType {
     NestedSessionModeUpdate = 50;
     NestedSessionEnded = 51;
     ContextMenu = 52;
+    ConfigChangesDropped = 53;
 }
 
 message EventNameList {
@@ -129,7 +130,12 @@ message Event {
     NestedSessionModeUpdatePayload nested_session_mode_update_payload = 44;
     NestedSessionEndedPayload nested_session_ended_payload = 45;
     ContextMenuPayload context_menu_payload = 46;
+    ConfigChangesDroppedPayload config_changes_dropped_payload = 47;
   }
+}
+
+message ConfigChangesDroppedPayload {
+  repeated string keys = 1;
 }
 
 message NestedSessionModeUpdatePayload {

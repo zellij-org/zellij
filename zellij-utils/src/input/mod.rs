@@ -2,6 +2,7 @@ pub mod actions;
 pub mod cli_assets;
 pub mod command;
 pub mod config;
+pub mod config_settings;
 pub mod context_menu;
 pub mod keybinds;
 pub mod layout;

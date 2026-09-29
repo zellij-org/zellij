@@ -33,7 +33,7 @@ use zellij_utils::{
     data::{
         ClientInfo, CommandOrPlugin, Event, EventType, FloatingPaneCoordinates, InputMode,
         LayoutInfo, LayoutWithError, MessageToPlugin, PermissionStatus, PermissionType,
-        PipeMessage, PipeSource, WebServerStatus,
+        PipeMessage, PipeSource, SettingKey, WebServerStatus,
     },
     errors::{prelude::*, ContextType, PluginContext},
     input::{
@@ -195,6 +195,8 @@ pub enum PluginInstruction {
     FailedToWriteConfigToDisk {
         file_path: Option<PathBuf>,
     },
+    ConfigWasWrittenToDisk,
+    ConfigChangesDropped(ClientId, Vec<SettingKey>),
     WatchFilesystem,
     ListClientsToPlugin(SessionLayoutMetadata, PluginId, ClientId),
     ChangePluginHostDir(PathBuf, PluginId, ClientId),
@@ -282,6 +284,8 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::FailedToWriteConfigToDisk { .. } => {
                 PluginContext::FailedToWriteConfigToDisk
             },
+            PluginInstruction::ConfigWasWrittenToDisk => PluginContext::ConfigWasWrittenToDisk,
+            PluginInstruction::ConfigChangesDropped(..) => PluginContext::ConfigChangesDropped,
             PluginInstruction::ListClientsToPlugin(..) => PluginContext::ListClientsToPlugin,
             PluginInstruction::ChangePluginHostDir(..) => PluginContext::ChangePluginHostDir,
             PluginInstruction::WebServerStarted(..) => PluginContext::WebServerStarted,
@@ -1250,6 +1254,22 @@ pub(crate) fn plugin_thread_main(
                     None,
                     None,
                     Event::FailedToWriteConfigToDisk(file_path.map(|f| f.display().to_string())),
+                )];
+                wasm_bridge
+                    .update_plugins(updates, shutdown_send.clone())
+                    .non_fatal();
+            },
+            PluginInstruction::ConfigWasWrittenToDisk => {
+                let updates = vec![(None, None, Event::ConfigWasWrittenToDisk)];
+                wasm_bridge
+                    .update_plugins(updates, shutdown_send.clone())
+                    .non_fatal();
+            },
+            PluginInstruction::ConfigChangesDropped(client_id, dropped_settings) => {
+                let updates = vec![(
+                    None,
+                    Some(client_id),
+                    Event::ConfigChangesDropped(dropped_settings),
                 )];
                 wasm_bridge
                     .update_plugins(updates, shutdown_send.clone())

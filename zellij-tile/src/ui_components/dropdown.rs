@@ -104,6 +104,13 @@ impl Dropdown {
     pub fn is_open(&self) -> bool {
         self.open
     }
+    pub fn highlighted_index(&self) -> Option<usize> {
+        if self.open {
+            self.menu.highlighted_index()
+        } else {
+            None
+        }
+    }
     pub fn opens_upward(&self) -> bool {
         self.opens_upward
     }

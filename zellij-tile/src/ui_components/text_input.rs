@@ -32,6 +32,7 @@ pub struct TextInput {
     area: Option<Rect>,
     text_start_x: usize,
     text_area_width: usize,
+    show_cursor: bool,
 }
 
 impl fmt::Debug for TextInput {
@@ -76,6 +77,7 @@ impl TextInput {
             area: None,
             text_start_x: 0,
             text_area_width: 0,
+            show_cursor: true,
         }
     }
 
@@ -130,6 +132,10 @@ impl TextInput {
 
     pub fn set_disabled(&mut self, disabled: bool) {
         self.disabled = disabled;
+    }
+
+    pub fn set_show_cursor(&mut self, show_cursor: bool) {
+        self.show_cursor = show_cursor;
     }
 
     pub fn set_match_count(&mut self, match_count: Option<usize>) {
@@ -461,7 +467,7 @@ impl TextInput {
         state_flag(&mut state, "err", error.is_some());
         state_flag(&mut state, "h", self.hovered && !self.disabled);
         state_value(&mut state, "lw", label_width);
-        if self.focused && !self.disabled {
+        if self.focused && self.show_cursor && !self.disabled {
             let cursor = if show_placeholder {
                 0
             } else {

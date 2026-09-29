@@ -42,7 +42,8 @@ use zellij_utils::plugin_api::plugin_command::{
     ProtobufOpenTerminalFloatingResponse, ProtobufOpenTerminalInPlaceOfPluginResponse,
     ProtobufOpenTerminalInPlaceResponse, ProtobufOpenTerminalNearPluginResponse,
     ProtobufOpenTerminalPaneInPlaceOfPaneIdResponse, ProtobufOpenTerminalResponse,
-    ProtobufParseLayoutResponse, ProtobufPluginCommand, ProtobufRenameLayoutResponse,
+    ProtobufParseLayoutResponse, ProtobufPluginCommand, ProtobufReadConfigResponse,
+    ProtobufRenameLayoutResponse,
     ProtobufSaveLayoutResponse, ProtobufSaveSessionResponse, ProtobufShowFloatingPanesResponse,
     ProtobufSlotCommandResponse, RenameWebTokenResponse, RevokeAllWebTokensResponse,
     RevokeTokenResponse,
@@ -1918,6 +1919,39 @@ pub fn list_clients() {
 /// Change configuration for the current user
 pub fn reconfigure(new_config: String, save_configuration_file: bool) {
     let plugin_command = PluginCommand::Reconfigure(new_config, save_configuration_file);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn read_config() -> ConfigSnapshot {
+    let plugin_command = PluginCommand::ReadConfig;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+    bytes_from_stdin()
+        .ok()
+        .and_then(|bytes| ProtobufReadConfigResponse::decode(bytes.as_slice()).ok())
+        .map(ConfigSnapshot::from)
+        .unwrap_or_default()
+}
+
+pub fn revert_config(key: Option<SettingKey>) {
+    let plugin_command = PluginCommand::RevertConfig(key);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn unset_config_setting(key: SettingKey) {
+    let plugin_command = PluginCommand::UnsetConfigSetting(key);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn save_config() {
+    let plugin_command = PluginCommand::SaveConfig;
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };

@@ -1,47 +1,69 @@
-use crate::{Screen, WIDTH_BREAKPOINTS};
+use crate::WIDTH_BREAKPOINTS;
+use std::cell::Cell;
 use zellij_tile::prelude::*;
 
-pub fn top_tab_menu(cols: usize, current_screen: &Screen, colors: &Styling) {
-    let background = colors.text_unselected.background;
-    let bg_color = match background {
-        PaletteColor::Rgb((r, g, b)) => format!("\u{1b}[48;2;{};{};{}m\u{1b}[0K", r, g, b),
-        PaletteColor::EightBit(color) => format!("\u{1b}[48;5;{}m\u{1b}[0K", color),
-    };
-    let first_ribbon_text_long = "Rebind leader keys";
-    let second_ribbon_text_long = "Change mode behavior";
-    let first_ribbon_text_short = "Rebind keys";
-    let second_ribbon_text_short = "Mode behavior";
-    let (first_ribbon_is_selected, second_ribbon_is_selected) = match current_screen {
-        Screen::RebindLeaders(_) => (true, false),
-        Screen::Presets(_) => (false, true),
-    };
-    let (first_ribbon_text, second_ribbon_text, starting_positions) = if cols
-        >= first_ribbon_text_long.chars().count() + second_ribbon_text_long.chars().count() + 14
-    {
-        (first_ribbon_text_long, second_ribbon_text_long, (6, 28))
-    } else {
-        (first_ribbon_text_short, second_ribbon_text_short, (6, 21))
-    };
-    let mut first_ribbon = Text::from(first_ribbon_text);
-    let mut second_ribbon = Text::from(second_ribbon_text);
-    if first_ribbon_is_selected {
-        first_ribbon = first_ribbon.selected();
-    }
-    if second_ribbon_is_selected {
-        second_ribbon = second_ribbon.selected();
-    }
-    let switch_key = Text::from("<TAB>").color_range(3, ..).opaque();
-    print_text_with_coordinates(switch_key, 0, 0, None, None);
-    print!("\u{1b}[{};{}H{}", 0, starting_positions.0, bg_color);
-    print_ribbon_with_coordinates(first_ribbon, starting_positions.0, 0, None, None);
-    print_ribbon_with_coordinates(second_ribbon, starting_positions.1, 0, None, None);
+thread_local! {
+    static ORIGIN: Cell<(usize, usize)> = Cell::new((0, 0));
+    static CLOSE_REQUESTED: Cell<bool> = Cell::new(false);
+    static CLOSE_DIRECTLY: Cell<bool> = Cell::new(true);
 }
 
-pub fn back_to_presets() {
-    let esc = Text::from("<ESC>").color_range(3, ..);
-    let first_ribbon = Text::from("Back to Presets");
-    print_text_with_coordinates(esc, 0, 0, None, None);
-    print_ribbon_with_coordinates(first_ribbon, 6, 0, None, None);
+pub fn set_origin(x: usize, y: usize) {
+    ORIGIN.with(|origin| origin.set((x, y)));
+}
+
+fn origin() -> (usize, usize) {
+    ORIGIN.with(|origin| origin.get())
+}
+
+pub fn set_close_directly(close_directly: bool) {
+    CLOSE_DIRECTLY.with(|c| c.set(close_directly));
+}
+
+pub fn request_close() {
+    if CLOSE_DIRECTLY.with(|c| c.get()) {
+        close_self();
+    } else {
+        CLOSE_REQUESTED.with(|c| c.set(true));
+    }
+}
+
+pub fn take_close_request() -> bool {
+    CLOSE_REQUESTED.with(|c| c.replace(false))
+}
+
+pub fn print_text_with_coordinates(
+    text: Text,
+    x: usize,
+    y: usize,
+    width: Option<usize>,
+    height: Option<usize>,
+) {
+    let (origin_x, origin_y) = origin();
+    zellij_tile::prelude::print_text_with_coordinates(
+        text,
+        x + origin_x,
+        y + origin_y,
+        width,
+        height,
+    );
+}
+
+pub fn print_nested_list_with_coordinates(
+    items: Vec<NestedListItem>,
+    x: usize,
+    y: usize,
+    width: Option<usize>,
+    height: Option<usize>,
+) {
+    let (origin_x, origin_y) = origin();
+    zellij_tile::prelude::print_nested_list_with_coordinates(
+        items,
+        x + origin_x,
+        y + origin_y,
+        width,
+        height,
+    );
 }
 
 pub fn info_line(

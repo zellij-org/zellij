@@ -3038,6 +3038,7 @@ pub fn check_event_permission(
         | Event::NestedSessionEnded { .. }
         | Event::ContextMenu(..)
         | Event::InputReceived => PermissionType::ReadApplicationState,
+        Event::ConfigChangesDropped(..) => PermissionType::Reconfigure,
         Event::WebServerStatus(..) => PermissionType::StartWebServer,
         Event::PaneRenderReport(..) => PermissionType::ReadPaneContents,
         Event::UserAction(..) => PermissionType::InterceptInput,

@@ -579,6 +579,10 @@ impl TestSession {
         self.fake_server_os_api.written_files()
     }
 
+    pub fn config_file_path(&self) -> Option<std::path::PathBuf> {
+        self.cli_args.config.clone()
+    }
+
     pub fn attach_client(&self, size: Size) -> TestClient {
         let (fake_client_os_api, fake_client_handle) = FakeClientOsApi::new(size, None);
         let thread = spawn_client_thread(

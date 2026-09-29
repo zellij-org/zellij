@@ -41,7 +41,8 @@ use zellij_utils::data::{
     OpenTerminalFloatingResponse, OpenTerminalInPlaceOfPluginResponse, OpenTerminalInPlaceResponse,
     OpenTerminalNearPluginResponse, OpenTerminalPaneInPlaceOfPaneIdResponse, OpenTerminalResponse,
     OriginatingPlugin, PaneFrameStyle, PaneScrollbackResponse, PermissionStatus, PermissionType,
-    PluginPermission, RegexHighlight, RenameLayoutResponse, SaveLayoutResponse, TabMetadata,
+    PluginPermission, RegexHighlight, RenameLayoutResponse, SaveLayoutResponse, SettingKey,
+    TabMetadata, ConfigSnapshot,
 };
 use zellij_utils::home::default_layout_dir;
 use zellij_utils::input::permission::PermissionCache;
@@ -108,7 +109,8 @@ use zellij_utils::{
             ProtobufOpenTerminalInPlaceOfPluginResponse, ProtobufOpenTerminalInPlaceResponse,
             ProtobufOpenTerminalNearPluginResponse,
             ProtobufOpenTerminalPaneInPlaceOfPaneIdResponse, ProtobufOpenTerminalResponse,
-            ProtobufParseLayoutResponse, ProtobufPluginCommand, ProtobufRenameLayoutResponse,
+            ProtobufParseLayoutResponse, ProtobufPluginCommand, ProtobufReadConfigResponse,
+            ProtobufRenameLayoutResponse,
             ProtobufSaveLayoutResponse, ProtobufSaveSessionResponse,
             ProtobufShowFloatingPanesResponse, ProtobufSlotCommandResponse,
         },
@@ -476,6 +478,10 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::RunContextMenuItem(index) => {
                         run_context_menu_item(env, index)
                     },
+                    PluginCommand::ReadConfig => read_config(env),
+                    PluginCommand::RevertConfig(key) => revert_config(env, key),
+                    PluginCommand::UnsetConfigSetting(key) => unset_config_setting(env, key),
+                    PluginCommand::SaveConfig => save_config(env),
                     PluginCommand::Subscribe(event_list) => subscribe(env, event_list)?,
                     PluginCommand::Unsubscribe(event_list) => unsubscribe(env, event_list)?,
                     PluginCommand::SetSelectable(selectable) => set_selectable(env, selectable),
@@ -3052,6 +3058,54 @@ fn reconfigure(env: &PluginEnv, new_config: String, write_config_to_disk: bool) 
         })
         .with_context(err_context)?;
     Ok(())
+}
+
+fn read_config(env: &PluginEnv) {
+    let client_id = acting_client(env);
+    let (response_sender, response_receiver) = crossbeam::channel::bounded(1);
+    let snapshot = match env.senders.send_to_server(ServerInstruction::ReadConfig {
+        client_id,
+        response_channel: response_sender,
+    }) {
+        Ok(()) => response_receiver
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap_or_else(|e| {
+                log::error!("Failed to read config: {:?}", e);
+                ConfigSnapshot::default()
+            }),
+        Err(e) => {
+            log::error!("Failed to request config: {:?}", e);
+            ConfigSnapshot::default()
+        },
+    };
+    let response: ProtobufReadConfigResponse = snapshot.into();
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to send config to plugin {}", env.name()))
+        .non_fatal();
+}
+
+fn revert_config(env: &PluginEnv, key: Option<SettingKey>) {
+    let client_id = acting_client(env);
+    env.senders
+        .send_to_server(ServerInstruction::RevertConfig { client_id, key })
+        .with_context(|| "Failed to revert config")
+        .non_fatal();
+}
+
+fn unset_config_setting(env: &PluginEnv, key: SettingKey) {
+    let client_id = acting_client(env);
+    env.senders
+        .send_to_server(ServerInstruction::UnsetConfigSetting { client_id, key })
+        .with_context(|| "Failed to unset config setting")
+        .non_fatal();
+}
+
+fn save_config(env: &PluginEnv) {
+    let client_id = acting_client(env);
+    env.senders
+        .send_to_server(ServerInstruction::SaveConfig { client_id })
+        .with_context(|| "Failed to save config")
+        .non_fatal();
 }
 
 fn rebind_keys(
@@ -6047,9 +6101,12 @@ fn check_command_permission(
         | PluginCommand::GetTabInfo(..)
         | PluginCommand::GetNestedSessionKeybinds(..)
         | PluginCommand::GetSessionList => PermissionType::ReadApplicationState,
-        PluginCommand::RebindKeys { .. } | PluginCommand::Reconfigure(..) => {
-            PermissionType::Reconfigure
-        },
+        PluginCommand::RebindKeys { .. }
+        | PluginCommand::Reconfigure(..)
+        | PluginCommand::ReadConfig
+        | PluginCommand::RevertConfig(..)
+        | PluginCommand::UnsetConfigSetting(..)
+        | PluginCommand::SaveConfig => PermissionType::Reconfigure,
         PluginCommand::ChangeHostFolder(..) | PluginCommand::ListWindowsVolumes => {
             PermissionType::FullHdAccess
         },

@@ -110,7 +110,9 @@ pub use super::generated_api::api::{
         PageScrollDownInPaneIdPayload, PageScrollUpInPaneIdPayload, PaneId as ProtobufPaneId,
         PaneIdAndFloatingPaneCoordinates, PaneType as ProtobufPaneType, ParseLayoutPayload,
         ParseLayoutResponse as ProtobufParseLayoutResponse, PluginCommand as ProtobufPluginCommand,
-        PluginMessagePayload, RebindKeysPayload, ReconfigurePayload,
+        PluginMessagePayload, ReadConfigPayload, ReadConfigResponse as ProtobufReadConfigResponse,
+        RebindKeysPayload, ReconfigurePayload, RevertConfigPayload, SaveConfigPayload,
+        ConfigSettingState as ProtobufConfigSettingState,
         RegexHighlight as ProtobufRegexHighlight, ReloadPluginPayload, RenameLayoutPayload,
         RenameLayoutResponse as ProtobufRenameLayoutResponse, RenameTabWithIdPayload,
         RenameWebLoginTokenPayload, RenameWebTokenResponse, ReplacePaneWithExistingPanePayload,
@@ -144,7 +146,8 @@ use crate::data::{
     GetPaneCwdResponse, GetPanePidResponse, GetPaneRunningCommandResponse, GetSessionListResponse,
     HighlightLayer, HighlightStyle, HttpVerb, InputMode, KeyWithModifier, KillSessionsResponse,
     MessageToPlugin, NewPluginArgs, PaneId, PermissionType, PluginCommand, RegexHighlight,
-    RenameLayoutResponse, SaveLayoutResponse, SessionInfo, SessionListSnapshot,
+    RenameLayoutResponse, SaveLayoutResponse, SessionInfo, SessionListSnapshot, SettingKey,
+    ConfigSettingState, ConfigSnapshot,
 };
 use crate::input::actions::Action;
 use crate::input::layout::PercentOrFixed;
@@ -2589,6 +2592,29 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for RunContextMenuItem"),
             },
+            Some(CommandName::ReadConfig) => match protobuf_plugin_command.payload {
+                Some(Payload::ReadConfigPayload(_)) => Ok(PluginCommand::ReadConfig),
+                _ => Err("Mismatched payload for ReadConfig"),
+            },
+            Some(CommandName::RevertConfig) => match protobuf_plugin_command.payload {
+                Some(Payload::RevertConfigPayload(payload)) => match payload.key {
+                    Some(key) => SettingKey::from_id(&key)
+                        .map(|key| PluginCommand::RevertConfig(Some(key)))
+                        .ok_or("Unknown setting for RevertConfig"),
+                    None => Ok(PluginCommand::RevertConfig(None)),
+                },
+                _ => Err("Mismatched payload for RevertConfig"),
+            },
+            Some(CommandName::UnsetConfigSetting) => match protobuf_plugin_command.payload {
+                Some(Payload::UnsetConfigSettingPayload(key)) => SettingKey::from_id(&key)
+                    .map(PluginCommand::UnsetConfigSetting)
+                    .ok_or("Unknown setting for UnsetConfigSetting"),
+                _ => Err("Mismatched payload for UnsetConfigSetting"),
+            },
+            Some(CommandName::SaveConfig) => match protobuf_plugin_command.payload {
+                Some(Payload::SaveConfigPayload(_)) => Ok(PluginCommand::SaveConfig),
+                _ => Err("Mismatched payload for SaveConfig"),
+            },
             Some(CommandName::GetNestedSessionKeybinds) => match protobuf_plugin_command.payload {
                 Some(Payload::GetNestedSessionKeybindsPayload(payload)) => {
                     let pane_id = payload
@@ -4465,6 +4491,24 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     height: height as u32,
                 })),
             }),
+            PluginCommand::ReadConfig => Ok(ProtobufPluginCommand {
+                name: CommandName::ReadConfig as i32,
+                payload: Some(Payload::ReadConfigPayload(ReadConfigPayload {})),
+            }),
+            PluginCommand::RevertConfig(key) => Ok(ProtobufPluginCommand {
+                name: CommandName::RevertConfig as i32,
+                payload: Some(Payload::RevertConfigPayload(RevertConfigPayload {
+                    key: key.map(|key| key.id()),
+                })),
+            }),
+            PluginCommand::UnsetConfigSetting(key) => Ok(ProtobufPluginCommand {
+                name: CommandName::UnsetConfigSetting as i32,
+                payload: Some(Payload::UnsetConfigSettingPayload(key.id())),
+            }),
+            PluginCommand::SaveConfig => Ok(ProtobufPluginCommand {
+                name: CommandName::SaveConfig as i32,
+                payload: Some(Payload::SaveConfigPayload(SaveConfigPayload {})),
+            }),
             PluginCommand::RunContextMenuItem(index) => Ok(ProtobufPluginCommand {
                 name: CommandName::RunContextMenuItem as i32,
                 payload: Some(Payload::RunContextMenuItemPayload(index as u32)),
@@ -5635,6 +5679,66 @@ impl From<ProtobufSlotCommandResponse> for Result<(), String> {
         match response.error {
             Some(error) => Err(error),
             None => Ok(()),
+        }
+    }
+}
+
+impl From<ConfigSnapshot> for ProtobufReadConfigResponse {
+    fn from(snapshot: ConfigSnapshot) -> Self {
+        ProtobufReadConfigResponse {
+            settings: snapshot
+                .settings
+                .into_iter()
+                .map(|setting| ProtobufConfigSettingState {
+                    key: setting.key.id(),
+                    saved_value: setting.saved_value,
+                    current_value: setting.current_value,
+                    set_in_file: setting.set_in_file,
+                })
+                .collect(),
+            config_file_path: snapshot.config_file_path,
+            backup_file_path: snapshot.backup_file_path,
+            pending_restart_settings: snapshot
+                .pending_restart_settings
+                .iter()
+                .map(|key| key.id())
+                .collect(),
+            theme_names: snapshot.theme_names,
+            plugin_aliases: snapshot.plugin_aliases,
+            load_plugins: snapshot.load_plugins,
+            env_vars: snapshot.env_vars,
+            context_menu_items: snapshot.context_menu_items,
+        }
+    }
+}
+
+impl From<ProtobufReadConfigResponse> for ConfigSnapshot {
+    fn from(response: ProtobufReadConfigResponse) -> Self {
+        ConfigSnapshot {
+            settings: response
+                .settings
+                .into_iter()
+                .filter_map(|setting| {
+                    SettingKey::from_id(&setting.key).map(|key| ConfigSettingState {
+                        key,
+                        saved_value: setting.saved_value,
+                        current_value: setting.current_value,
+                        set_in_file: setting.set_in_file,
+                    })
+                })
+                .collect(),
+            config_file_path: response.config_file_path,
+            backup_file_path: response.backup_file_path,
+            pending_restart_settings: response
+                .pending_restart_settings
+                .iter()
+                .filter_map(|key| SettingKey::from_id(key))
+                .collect(),
+            theme_names: response.theme_names,
+            plugin_aliases: response.plugin_aliases,
+            load_plugins: response.load_plugins,
+            env_vars: response.env_vars,
+            context_menu_items: response.context_menu_items,
         }
     }
 }

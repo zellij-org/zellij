@@ -231,6 +231,10 @@ enum CommandName {
   OpenPluginPopup = 238;
   SetPopupSize = 239;
   RunContextMenuItem = 240;
+  ReadConfig = 241;
+  RevertConfig = 242;
+  UnsetConfigSetting = 243;
+  SaveConfig = 244;
 }
 
 message PluginCommand {
@@ -403,7 +407,38 @@ message PluginCommand {
     OpenPluginPopupPayload open_plugin_popup_payload = 181;
     SetPopupSizePayload set_popup_size_payload = 182;
     uint32 run_context_menu_item_payload = 183;
+    ReadConfigPayload read_config_payload = 184;
+    RevertConfigPayload revert_config_payload = 185;
+    string unset_config_setting_payload = 186;
+    SaveConfigPayload save_config_payload = 187;
   }
+}
+
+message ReadConfigPayload {}
+
+message RevertConfigPayload {
+  optional string key = 1;
+}
+
+message SaveConfigPayload {}
+
+message ConfigSettingState {
+  string key = 1;
+  optional string saved_value = 2;
+  optional string current_value = 3;
+  bool set_in_file = 4;
+}
+
+message ReadConfigResponse {
+  repeated ConfigSettingState settings = 1;
+  optional string config_file_path = 2;
+  optional string backup_file_path = 3;
+  repeated string pending_restart_settings = 4;
+  repeated string theme_names = 5;
+  repeated string plugin_aliases = 6;
+  repeated string load_plugins = 7;
+  repeated string env_vars = 8;
+  repeated string context_menu_items = 9;
 }
 
 message OpenContextMenuPayload {

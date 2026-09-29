@@ -399,7 +399,7 @@ impl Config {
             }
         }
     }
-    fn find_free_backup_file_name(config_file_path: &PathBuf) -> Option<PathBuf> {
+    pub fn find_free_backup_file_name(config_file_path: &PathBuf) -> Option<PathBuf> {
         let mut backup_config_path = None;
         let config_file_name = config_file_path
             .file_name()

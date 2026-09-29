@@ -12,10 +12,13 @@ fn open_presets_screen(zellij: &TestSession) {
     zellij.wait_until("configuration plugin opened", |grid_snapshot| {
         grid_snapshot.contains("Configuration")
     });
-    zellij.send_stdin(&keys::TAB);
+    for _ in 0..3 {
+        zellij.send_stdin(ARROW_DOWN);
+    }
     zellij.wait_until("presets screen opened", |grid_snapshot| {
         grid_snapshot.contains("1. Default") && grid_snapshot.contains("2. Unlock First")
     });
+    zellij.send_stdin(&keys::TAB);
 }
 
 fn apply_selected_preset_and_close(

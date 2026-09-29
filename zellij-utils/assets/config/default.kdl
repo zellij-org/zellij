@@ -469,7 +469,8 @@ context_menu {
 //
 // default_layout "compact"
 
-// Choose the mode that zellij uses when starting up.
+// Choose the mode that zellij uses when starting up and returns to after actions.
+// Changes apply to the running session without a restart.
 // Default: normal
 //
 // default_mode "locked"
@@ -536,7 +537,7 @@ context_menu {
 // layout_dir "/path/to/my/layout_dir"
 
 // The folder in which Zellij will look for themes
-// (Requires restart)
+// Changes apply to the running session without a restart.
 //
 // theme_dir "/path/to/my/theme_dir"
 
@@ -709,6 +710,43 @@ context_menu {
 // typically work best. Set to 0 to use the number of (physical) CPU cores.
 // NOTE: This only applies to web clients at the moment."#;
 // client_async_worker_tasks 4
+
+// How often (in seconds) sessions are saved to disk so they can be resurrected
+// (Requires restart)
+// Default: 60
+//
+// serialization_interval 60
+
+// Whether to show a startup tip when a new session starts
+// (Requires restart)
+// Default: true
+//
+// show_startup_tips false
+
+// Whether to flash pane and tab frames (and add a [!] suffix) when a terminal bell rings
+// Default: true
+//
+// visual_bell false
+
+// Whether hovering the mouse over a pane focuses it
+// Default: false
+//
+// focus_follows_mouse true
+
+// Whether the click that focuses a pane is also sent to the program running in it
+// Default: false
+//
+// mouse_click_through true
+
+// How notifications from programs inside Zellij are passed to the outer terminal
+// Options:
+//   - auto (Default - pick the best protocol the terminal supports)
+//   - osc9
+//   - osc99
+//   - bell
+//   - off
+//
+// host_notification_protocol "auto"
 
 
 web_client {

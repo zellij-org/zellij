@@ -1,5 +1,5 @@
 use super::widget_common::{
-    bold, colored, decode_text, disabled_look, field_bracket_styles, gray, label_width, move_to,
+    bold, colored, decode_text, disabled_look, field_bracket_styles, fit, gray, label_width, move_to,
     paint, plain_styles, render_label, WidgetState,
 };
 use super::Coordinates;
@@ -41,12 +41,16 @@ pub fn toggle(
     } else {
         inner_styles
     };
-    let inner = if on { "on " } else { "off" };
+    let inner_width = width - label_width - 2;
+    let inner = if inner_width > TOGGLE_WIDTH - 2 {
+        format!(" {} ", fit(if on { "on" } else { "off" }, inner_width - 2))
+    } else {
+        fit(if on { "on" } else { "off" }, inner_width)
+    };
     let mut output = move_to(coordinates, 0, 0);
     output.push_str(&render_label(&label, label_width, focused, disabled, style));
     output.push_str(&paint(bracket_styles, "["));
-    output.push_str(&paint(inner_styles, inner));
+    output.push_str(&paint(inner_styles, &inner));
     output.push_str(&paint(bracket_styles, "]"));
-    output.push_str(&" ".repeat(width - label_width - TOGGLE_WIDTH));
     output.into_bytes()
 }

@@ -1,7 +1,9 @@
 use std::collections::BTreeSet;
 use zellij_tile::prelude::*;
 
-use crate::ui_components::{back_to_presets, info_line};
+use crate::ui_components::{
+    info_line, print_nested_list_with_coordinates, print_text_with_coordinates, request_close,
+};
 
 use crate::{POSSIBLE_MODIFIERS, WIDTH_BREAKPOINTS};
 
@@ -18,7 +20,6 @@ pub struct RebindLeadersScreen {
     secondary_modifier: BTreeSet<KeyModifier>,
     latest_mode_info: Option<ModeInfo>,
     notification: Option<String>,
-    is_rebinding_for_presets: bool,
     ui_is_dirty: bool,
 }
 
@@ -40,38 +41,18 @@ impl Default for RebindLeadersScreen {
             secondary_modifier,
             latest_mode_info: None,
             notification: None,
-            is_rebinding_for_presets: false,
             ui_is_dirty: false,
         }
     }
 }
 
 impl RebindLeadersScreen {
-    // temporarily commented out for the time being because the extra leaders screen was deemed a bit
-    // confusing, see comment in <l> key
-    //     pub fn with_rebinding_for_presets(mut self) -> Self {
-    //         self.is_rebinding_for_presets = true;
-    //         self
-    //     }
-    pub fn with_mode_info(mut self, latest_mode_info: Option<ModeInfo>) -> Self {
-        self.latest_mode_info = latest_mode_info;
-        self.hard_reset_ui_state();
-        self
-    }
     pub fn update_mode_info(&mut self, mode_info: ModeInfo) {
         self.latest_mode_info = Some(mode_info);
         if !self.ui_is_dirty {
             self.set_main_leader_from_keybindings();
             self.set_primary_and_secondary_modifiers_from_keybindings();
         }
-    }
-    pub fn primary_and_secondary_modifiers(
-        &self,
-    ) -> (BTreeSet<KeyModifier>, BTreeSet<KeyModifier>) {
-        (
-            self.primary_modifier.clone(),
-            self.secondary_modifier.clone(),
-        )
     }
     fn set_main_leader_from_keybindings(&mut self) {
         self.main_leader = self.latest_mode_info.as_ref().and_then(|mode_info| {
@@ -273,9 +254,6 @@ impl RebindLeadersScreen {
         ui_size: usize,
         notification: Option<String>,
     ) {
-        if self.is_rebinding_for_presets {
-            back_to_presets();
-        }
         let notification = notification.clone().or_else(|| self.notification.clone());
         if self.currently_in_unlock_first() {
             self.render_unlock_first(rows, cols);
@@ -567,9 +545,6 @@ impl RebindLeadersScreen {
         }
     }
     fn render_help_text(&self, rows: usize, cols: usize) {
-        if self.is_rebinding_for_presets {
-            return self.render_help_text_for_presets_rebinding(rows, cols);
-        }
         let help_text_long = "Help: <←↓↑→> - navigate, <SPACE> - select, <ENTER> - apply, <Ctrl a> - save, <Ctrl c> - reset, <ESC> - close";
         let help_text_medium = "Help: <←↓↑→/SPACE> - navigate/select, <ENTER/Ctrl a> - apply/save, <Ctrl c> - reset, <ESC> - close";
         let help_text_short =
@@ -631,57 +606,6 @@ impl RebindLeadersScreen {
             );
         }
     }
-    fn render_help_text_for_presets_rebinding(&self, rows: usize, cols: usize) {
-        let help_text_long = "Help: <←↓↑→> - navigate, <SPACE> - select, <ENTER> - apply to presets in previous screen";
-        let help_text_medium = "Help: <←↓↑→> - navigate, <SPACE> - select, <ENTER> - apply";
-        let help_text_short = "<←↓↑→/SPACE> - navigate/select, <ENTER> - apply";
-        let help_text_minimum = "<←↓↑→>/<SPACE>/<ENTER>";
-        if cols >= help_text_long.chars().count() {
-            print_text_with_coordinates(
-                Text::from(help_text_long)
-                    .color_range(2, 6..=12)
-                    .color_range(2, 25..=31)
-                    .color_range(2, 43..=49),
-                0,
-                rows,
-                None,
-                None,
-            );
-        } else if cols >= help_text_medium.chars().count() {
-            print_text_with_coordinates(
-                Text::from(help_text_medium)
-                    .color_range(2, 6..=12)
-                    .color_range(2, 25..=31)
-                    .color_range(2, 43..=49),
-                0,
-                rows,
-                None,
-                None,
-            );
-        } else if cols >= help_text_short.chars().count() {
-            print_text_with_coordinates(
-                Text::from(help_text_short)
-                    .color_range(2, 1..=4)
-                    .color_range(2, 6..=10)
-                    .color_range(2, 32..=38),
-                0,
-                rows,
-                None,
-                None,
-            );
-        } else {
-            print_text_with_coordinates(
-                Text::from(help_text_minimum)
-                    .color_range(2, ..=5)
-                    .color_range(2, 7..=13)
-                    .color_range(2, 15..=21),
-                0,
-                rows,
-                None,
-                None,
-            );
-        }
-    }
     pub fn handle_key(&mut self, key: KeyWithModifier) -> bool {
         if let Some(notification) = self.notification.take() {
             drop(notification);
@@ -698,22 +622,18 @@ impl RebindLeadersScreen {
     pub fn set_notification(&mut self, notification: Option<String>) {
         self.notification = notification;
     }
+    pub fn is_capturing_keys(&self) -> bool {
+        self.rebinding_main_leader
+    }
     fn currently_in_unlock_first(&self) -> bool {
-        if self.is_rebinding_for_presets {
-            false
-        } else {
-            self.latest_mode_info
-                .as_ref()
-                .map(|m| m.base_mode == Some(InputMode::Locked))
-                .unwrap_or(false)
-        }
+        self.latest_mode_info
+            .as_ref()
+            .map(|m| m.base_mode == Some(InputMode::Locked))
+            .unwrap_or(false)
     }
     fn handle_default_preset_key(&mut self, key: KeyWithModifier) -> bool {
         let should_render = true;
-        if key.bare_key == BareKey::Char('a')
-            && key.has_modifiers(&[KeyModifier::Ctrl])
-            && !self.is_rebinding_for_presets
-        {
+        if key.bare_key == BareKey::Char('a') && key.has_modifiers(&[KeyModifier::Ctrl]) {
             let write_to_disk = true;
             self.rebind_keys(write_to_disk);
             self.hard_reset_ui_state();
@@ -724,7 +644,7 @@ impl RebindLeadersScreen {
         } else if key.is_key_with_ctrl_modifier(BareKey::Char('c')) {
             self.hard_reset_ui_state();
         } else if key.bare_key == BareKey::Esc && key.has_no_modifiers() {
-            close_self();
+            request_close();
         } else if key.bare_key == BareKey::Char(' ') && key.has_no_modifiers() {
             if self.browsing_primary_modifier {
                 let selected_primary_key_index = self.selected_primary_key_index;
@@ -1251,7 +1171,6 @@ impl RebindLeadersScreen {
         let secondary_modifier = self.secondary_modifier.clone();
         let main_leader = self.main_leader.clone();
         let ui_is_dirty = self.ui_is_dirty;
-        let is_rebinding_for_presets = self.is_rebinding_for_presets;
         *self = Default::default();
         if let Some(latest_mode_info) = latest_mode_info.take() {
             self.update_mode_info(latest_mode_info);
@@ -1261,24 +1180,18 @@ impl RebindLeadersScreen {
         self.secondary_modifier = secondary_modifier;
         self.main_leader = main_leader;
         self.ui_is_dirty = ui_is_dirty;
-        self.is_rebinding_for_presets = is_rebinding_for_presets;
     }
     fn hard_reset_ui_state(&mut self) {
         let mut latest_mode_info = self.latest_mode_info.take();
         let notification = self.notification.take();
-        let is_rebinding_for_presets = self.is_rebinding_for_presets;
         *self = Default::default();
         if let Some(latest_mode_info) = latest_mode_info.take() {
             self.update_mode_info(latest_mode_info);
         }
         self.notification = notification;
-        self.is_rebinding_for_presets = is_rebinding_for_presets;
     }
     fn handle_unlock_first_key(&mut self, key: KeyWithModifier) -> bool {
-        if key.bare_key == BareKey::Char('a')
-            && key.has_modifiers(&[KeyModifier::Ctrl])
-            && !self.is_rebinding_for_presets
-        {
+        if key.bare_key == BareKey::Char('a') && key.has_modifiers(&[KeyModifier::Ctrl]) {
             let write_to_disk = true;
             self.rebind_keys(write_to_disk);
             self.hard_reset_ui_state();
@@ -1292,7 +1205,7 @@ impl RebindLeadersScreen {
             if self.rebinding_main_leader {
                 self.soft_reset_ui_state();
             } else {
-                close_self();
+                request_close();
             }
         } else if key.bare_key == BareKey::Char(' ') && key.has_no_modifiers() {
             if self.main_leader_selected {

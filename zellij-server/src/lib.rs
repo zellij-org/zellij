@@ -61,8 +61,8 @@ use zellij_utils::{
         DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE, ZELLIJ_SEEN_RELEASE_NOTES_CACHE_FILE,
     },
     data::{
-        ConnectToSession, Direction, InputMode, KeyWithModifier, LayoutInfo, LayoutWithError,
-        Style, WebSharing,
+        ConfigSnapshot, ConnectToSession, Direction, InputMode, KeyWithModifier, LayoutInfo,
+        LayoutWithError, SettingKey, Style, WebSharing,
     },
     errors::{prelude::*, ContextType, ErrorInstruction, FatalError, ServerContext},
     home::{default_layout_dir, get_default_data_dir},
@@ -70,6 +70,7 @@ use zellij_utils::{
         actions::Action,
         command::{RunCommand, TerminalAction},
         config::{watch_config_file_changes, watch_layout_dir_changes, Config},
+        config_settings,
         keybinds::Keybinds,
         layout::{FloatingPaneLayout, Layout, PluginAlias, Run, RunPluginOrAlias},
         options::Options,
@@ -132,6 +133,21 @@ pub enum ServerInstruction {
     },
     ConfigWrittenToDisk(Config),
     FailedToWriteConfigToDisk(ClientId, Option<PathBuf>), // Pathbuf - file we failed to write
+    ReadConfig {
+        client_id: ClientId,
+        response_channel: crossbeam::channel::Sender<ConfigSnapshot>,
+    },
+    RevertConfig {
+        client_id: ClientId,
+        key: Option<SettingKey>,
+    },
+    UnsetConfigSetting {
+        client_id: ClientId,
+        key: SettingKey,
+    },
+    SaveConfig {
+        client_id: ClientId,
+    },
     RebindKeys {
         client_id: ClientId,
         keys_to_rebind: Vec<(InputMode, KeyWithModifier, Vec<Action>)>,
@@ -188,6 +204,10 @@ impl From<&ServerInstruction> for ServerContext {
                 ServerContext::FailedToWriteConfigToDisk
             },
             ServerInstruction::RebindKeys { .. } => ServerContext::RebindKeys,
+            ServerInstruction::ReadConfig { .. } => ServerContext::ReadConfig,
+            ServerInstruction::RevertConfig { .. } => ServerContext::RevertConfig,
+            ServerInstruction::UnsetConfigSetting { .. } => ServerContext::UnsetConfigSetting,
+            ServerInstruction::SaveConfig { .. } => ServerContext::SaveConfig,
             ServerInstruction::StartWebServer(..) => ServerContext::StartWebServer,
             ServerInstruction::ShareCurrentSession(..) => ServerContext::ShareCurrentSession,
             ServerInstruction::StopSharingCurrentSession(..) => {
@@ -229,17 +249,118 @@ pub(crate) struct SessionConfiguration {
 }
 
 impl SessionConfiguration {
-    pub fn change_saved_config(&mut self, new_saved_config: Config) -> Vec<(ClientId, Config)> {
-        self.saved_config = new_saved_config.clone();
-
+    pub fn change_saved_config(
+        &mut self,
+        new_saved_config: Config,
+    ) -> (Vec<(ClientId, Config)>, Vec<(ClientId, Vec<SettingKey>)>) {
+        let old_saved_config = std::mem::replace(&mut self.saved_config, new_saved_config.clone());
+        let changed_in_file: HashSet<SettingKey> =
+            config_settings::differing_settings(&old_saved_config, &new_saved_config)
+                .into_iter()
+                .collect();
         let mut config_changes = vec![];
-        for (client_id, current_runtime_config) in self.runtime_config.iter_mut() {
-            if *current_runtime_config != new_saved_config {
-                *current_runtime_config = new_saved_config.clone();
-                config_changes.push((*client_id, new_saved_config.clone()))
+        let mut dropped_changes = vec![];
+        let mut client_ids: Vec<ClientId> = self.runtime_config.keys().copied().collect();
+        client_ids.sort();
+        for client_id in client_ids {
+            let Some(current_runtime_config) = self.runtime_config.get(&client_id).cloned() else {
+                continue;
+            };
+            let mut rebased_config = new_saved_config.clone();
+            let mut dropped = vec![];
+            for key in
+                config_settings::differing_settings(&current_runtime_config, &old_saved_config)
+            {
+                if !changed_in_file.contains(&key) {
+                    config_settings::copy_setting(&mut rebased_config, &current_runtime_config, key);
+                } else if config_settings::settings_differ(
+                    &current_runtime_config,
+                    &new_saved_config,
+                    key,
+                ) {
+                    dropped.push(key);
+                }
+            }
+            self.share_keybinds(&mut rebased_config);
+            if rebased_config != current_runtime_config {
+                self.runtime_config
+                    .insert(client_id, rebased_config.clone());
+                config_changes.push((client_id, rebased_config));
+            }
+            if !dropped.is_empty() {
+                dropped_changes.push((client_id, dropped));
             }
         }
-        config_changes
+        (config_changes, dropped_changes)
+    }
+    pub fn config_snapshot(
+        &self,
+        client_id: &ClientId,
+        config_file_path: Option<&PathBuf>,
+    ) -> ConfigSnapshot {
+        let current = self.get_client_configuration(client_id);
+        let saved = &self.saved_config;
+        let set_in_file = config_file_path
+            .map(|path| config_settings::settings_set_in_file_at(path))
+            .unwrap_or_default();
+        let settings = config_settings::setting_states(saved, &current, &set_in_file);
+        let pending_restart_settings = settings
+            .iter()
+            .filter(|setting| setting.key.requires_restart() && setting.is_unsaved())
+            .map(|setting| setting.key)
+            .collect();
+        ConfigSnapshot {
+            settings,
+            config_file_path: config_file_path.map(|path| path.display().to_string()),
+            backup_file_path: config_file_path
+                .and_then(|path| Config::find_free_backup_file_name(path))
+                .map(|path| path.display().to_string()),
+            pending_restart_settings,
+            theme_names: config_settings::theme_names(&current),
+            plugin_aliases: config_settings::plugin_alias_lines(&current),
+            load_plugins: config_settings::load_plugin_lines(&current),
+            env_vars: config_settings::env_lines(&current),
+            context_menu_items: config_settings::context_menu_lines(&current),
+        }
+    }
+    fn replace_runtime_config_if_changed(
+        &mut self,
+        client_id: &ClientId,
+        current: Config,
+        mut new_config: Config,
+    ) -> Option<Config> {
+        self.share_keybinds(&mut new_config);
+        if new_config == current {
+            return None;
+        }
+        self.runtime_config.insert(*client_id, new_config.clone());
+        Some(new_config)
+    }
+    pub fn revert_runtime_config(
+        &mut self,
+        client_id: &ClientId,
+        key: Option<SettingKey>,
+    ) -> Option<Config> {
+        let current = self.get_client_configuration(client_id);
+        let mut reverted = current.clone();
+        let keys = match key {
+            Some(key) => vec![key],
+            None => SettingKey::all(),
+        };
+        for key in keys {
+            config_settings::copy_setting(&mut reverted, &self.saved_config, key);
+        }
+        self.replace_runtime_config_if_changed(client_id, current, reverted)
+    }
+    pub fn unset_runtime_config_setting(
+        &mut self,
+        client_id: &ClientId,
+        key: SettingKey,
+    ) -> Option<Config> {
+        let current = self.get_client_configuration(client_id);
+        let mut unset = current.clone();
+        config_settings::unset_setting(&mut unset, key);
+        self.replace_runtime_config_if_changed(client_id, current, unset)
     }
     pub fn set_saved_configuration(&mut self, config: Config) {
         self.saved_config = config;
@@ -1014,8 +1135,20 @@ mod session_state_tests {
             .get_actions_for_key_in_mode(&InputMode::Normal, &alt_f1)
             .is_some());
 
-        let config_changes = session_configuration.change_saved_config(config.clone());
+        let file_binding = r#"
+            keybinds {
+                normal {
+                    bind "Alt F2" { NewTab; }
+                }
+            }
+        "#;
+        let new_saved_config = Config::from_kdl(file_binding, Some(config.clone())).unwrap();
+        let (config_changes, dropped_changes) =
+            session_configuration.change_saved_config(new_saved_config);
         assert!(config_changes.iter().any(|(client_id, _)| *client_id == 1));
+        assert!(dropped_changes
+            .iter()
+            .all(|(_, dropped)| dropped == &vec![SettingKey::Keybinds]));
         let saved_keybinds = session_configuration.saved_config.keybinds.clone();
         assert!(Arc::ptr_eq(
             &keybinds_of(&session_configuration, 1),
@@ -1025,6 +1158,186 @@ mod session_state_tests {
             &keybinds_of(&session_configuration, 2),
             &saved_keybinds
         ));
+    }
+
+    fn session_configuration_with_one_client(file_contents: &str) -> SessionConfiguration {
+        let saved_config =
+            Config::from_kdl(file_contents, Some(Config::from_default_assets().unwrap())).unwrap();
+        let mut session_configuration = SessionConfiguration::default();
+        session_configuration.set_saved_configuration(saved_config.clone());
+        session_configuration.set_client_runtime_configuration(1, saved_config);
+        session_configuration
+    }
+
+    fn current_value(session_configuration: &SessionConfiguration, key: SettingKey) -> Option<String> {
+        config_settings::setting_value(&session_configuration.get_client_configuration(&1), key)
+    }
+
+    #[test]
+    fn reading_config_reports_saved_and_current_values_and_what_the_file_sets() {
+        let file_contents = "mouse_mode false\nui {\n    pane_frames {\n        rounded_corners true\n    }\n}\n";
+        let config_dir = tempfile::tempdir().unwrap();
+        let config_file_path = config_dir.path().join("config.kdl");
+        std::fs::write(&config_file_path, file_contents).unwrap();
+        let mut session_configuration = session_configuration_with_one_client(file_contents);
+        session_configuration.reconfigure_runtime_config(&1, "simplified_ui true".to_owned());
+        session_configuration.reconfigure_runtime_config(&1, "mouse_mode true".to_owned());
+
+        let snapshot = session_configuration.config_snapshot(&1, Some(&config_file_path));
+
+        let simplified_ui = snapshot.setting(SettingKey::SimplifiedUi).unwrap();
+        assert_eq!(simplified_ui.saved_value, None);
+        assert_eq!(simplified_ui.current_value, Some("true".to_owned()));
+        assert!(!simplified_ui.set_in_file);
+        assert!(simplified_ui.is_unsaved());
+        let mouse_mode = snapshot.setting(SettingKey::MouseMode).unwrap();
+        assert_eq!(mouse_mode.saved_value, Some("false".to_owned()));
+        assert_eq!(mouse_mode.current_value, Some("true".to_owned()));
+        assert!(mouse_mode.set_in_file);
+        let rounded_corners = snapshot.setting(SettingKey::FrameRoundedCorners).unwrap();
+        assert!(rounded_corners.set_in_file);
+        assert!(!rounded_corners.is_unsaved());
+        assert!(!snapshot.setting(SettingKey::Keybinds).unwrap().is_unsaved());
+        assert_eq!(snapshot.pending_restart_settings, vec![SettingKey::MouseMode]);
+        assert_eq!(snapshot.unsaved_count(), 2);
+        assert_eq!(
+            snapshot.config_file_path,
+            Some(config_file_path.display().to_string())
+        );
+        assert_eq!(
+            snapshot.backup_file_path,
+            Some(config_dir.path().join("config.kdl.bak").display().to_string())
+        );
+        assert!(snapshot
+            .plugin_aliases
+            .iter()
+            .any(|alias| alias.starts_with("configuration")));
+    }
+
+    #[test]
+    fn reverting_one_setting_restores_its_saved_value_and_keeps_other_changes() {
+        let mut session_configuration = session_configuration_with_one_client("mouse_mode false");
+        session_configuration.reconfigure_runtime_config(&1, "mouse_mode true".to_owned());
+        session_configuration.reconfigure_runtime_config(&1, "simplified_ui true".to_owned());
+
+        let reverted = session_configuration.revert_runtime_config(&1, Some(SettingKey::MouseMode));
+
+        assert!(reverted.is_some());
+        assert_eq!(
+            current_value(&session_configuration, SettingKey::MouseMode),
+            Some("false".to_owned())
+        );
+        assert_eq!(
+            current_value(&session_configuration, SettingKey::SimplifiedUi),
+            Some("true".to_owned())
+        );
+        assert!(session_configuration
+            .revert_runtime_config(&1, Some(SettingKey::MouseMode))
+            .is_none());
+    }
+
+    #[test]
+    fn reverting_all_settings_restores_the_saved_config_including_unset_values() {
+        let mut session_configuration = session_configuration_with_one_client("mouse_mode false");
+        session_configuration.reconfigure_runtime_config(&1, "mouse_mode true".to_owned());
+        session_configuration.reconfigure_runtime_config(&1, "theme \"dracula\"".to_owned());
+        session_configuration.reconfigure_runtime_config(
+            &1,
+            "keybinds {\n normal {\n bind \"Alt F1\" { NewPane; }\n }\n}".to_owned(),
+        );
+
+        let reverted = session_configuration.revert_runtime_config(&1, None);
+
+        assert!(reverted.is_some());
+        let snapshot = session_configuration.config_snapshot(&1, None);
+        assert_eq!(snapshot.unsaved_count(), 0);
+        assert_eq!(current_value(&session_configuration, SettingKey::Theme), None);
+        assert_eq!(
+            session_configuration.get_client_keybinds(&1),
+            session_configuration.saved_config.keybinds.as_ref()
+        );
+    }
+
+    #[test]
+    fn unsetting_a_setting_removes_it_from_the_runtime_config() {
+        let mut session_configuration =
+            session_configuration_with_one_client("explicit_theme_hue \"dark\"");
+        let unset =
+            session_configuration.unset_runtime_config_setting(&1, SettingKey::ExplicitThemeHue);
+        assert!(unset.is_some());
+        assert_eq!(
+            current_value(&session_configuration, SettingKey::ExplicitThemeHue),
+            None
+        );
+        let snapshot = session_configuration.config_snapshot(&1, None);
+        assert!(snapshot
+            .setting(SettingKey::ExplicitThemeHue)
+            .unwrap()
+            .is_unsaved());
+    }
+
+    #[test]
+    fn unsaved_changes_are_applied_again_on_top_of_a_changed_file() {
+        let mut session_configuration = session_configuration_with_one_client("mouse_mode false");
+        session_configuration.reconfigure_runtime_config(&1, "simplified_ui true".to_owned());
+        let new_saved_config = Config::from_kdl(
+            "mouse_mode false\nscroll_buffer_size 5000",
+            Some(Config::from_default_assets().unwrap()),
+        )
+        .unwrap();
+
+        let (config_changes, dropped_changes) =
+            session_configuration.change_saved_config(new_saved_config);
+
+        assert_eq!(config_changes.len(), 1);
+        assert!(dropped_changes.is_empty());
+        assert_eq!(
+            current_value(&session_configuration, SettingKey::SimplifiedUi),
+            Some("true".to_owned())
+        );
+        assert_eq!(
+            current_value(&session_configuration, SettingKey::ScrollBufferSize),
+            Some("5000".to_owned())
+        );
+        let snapshot = session_configuration.config_snapshot(&1, None);
+        assert_eq!(snapshot.unsaved_count(), 1);
+    }
+
+    #[test]
+    fn the_file_wins_when_it_changes_a_setting_with_an_unsaved_change_and_the_change_is_reported() {
+        let mut session_configuration = session_configuration_with_one_client("mouse_mode false");
+        session_configuration.set_client_runtime_configuration(
+            2,
+            session_configuration.saved_config.clone(),
+        );
+        session_configuration.reconfigure_runtime_config(&1, "mouse_mode true".to_owned());
+        session_configuration.reconfigure_runtime_config(&1, "simplified_ui true".to_owned());
+        session_configuration.reconfigure_runtime_config(&2, "pane_frames false".to_owned());
+        let new_saved_config = Config::from_kdl(
+            "mouse_mode false\nsimplified_ui true\npane_frames true",
+            Some(Config::from_default_assets().unwrap()),
+        )
+        .unwrap();
+
+        let (_config_changes, dropped_changes) =
+            session_configuration.change_saved_config(new_saved_config);
+
+        assert_eq!(
+            current_value(&session_configuration, SettingKey::MouseMode),
+            Some("true".to_owned())
+        );
+        assert_eq!(
+            current_value(&session_configuration, SettingKey::SimplifiedUi),
+            Some("true".to_owned())
+        );
+        assert_eq!(
+            config_settings::setting_value(
+                &session_configuration.get_client_configuration(&2),
+                SettingKey::PaneFrames
+            ),
+            Some("true".to_owned())
+        );
+        assert_eq!(dropped_changes, vec![(2, vec![SettingKey::PaneFrames])]);
     }
 
     #[test]
@@ -2000,20 +2313,7 @@ pub fn start_server_impl(
                 );
             },
             ServerInstruction::ConfigWrittenToDisk(new_config) => {
-                let changes = session_data
-                    .write()
-                    .unwrap()
-                    .as_mut()
-                    .unwrap()
-                    .session_configuration
-                    .change_saved_config(new_config);
-                let config_was_written_to_disk = true;
-                session_data
-                    .write()
-                    .unwrap()
-                    .as_mut()
-                    .unwrap()
-                    .propagate_configuration_changes(changes, config_was_written_to_disk);
+                apply_new_saved_config(new_config, &session_data);
                 let client_ids = session_state.read().unwrap().client_ids();
                 for client_id in client_ids {
                     send_to_client!(
@@ -2034,6 +2334,42 @@ pub fn start_server_impl(
                     .senders
                     .send_to_plugin(PluginInstruction::FailedToWriteConfigToDisk { file_path })
                     .unwrap();
+            },
+            ServerInstruction::ReadConfig {
+                client_id,
+                response_channel,
+            } => {
+                let snapshot = session_data.read().unwrap().as_ref().map(|session_data| {
+                    session_data
+                        .session_configuration
+                        .config_snapshot(&client_id, session_data.config_file_path.as_ref())
+                });
+                if let Some(snapshot) = snapshot {
+                    let _ = response_channel.send(snapshot);
+                }
+            },
+            ServerInstruction::RevertConfig { client_id, key } => {
+                let reverted_config = session_data
+                    .write()
+                    .unwrap()
+                    .as_mut()
+                    .unwrap()
+                    .session_configuration
+                    .revert_runtime_config(&client_id, key);
+                propagate_runtime_config_change(reverted_config, &session_data, client_id);
+            },
+            ServerInstruction::UnsetConfigSetting { client_id, key } => {
+                let unset_config = session_data
+                    .write()
+                    .unwrap()
+                    .as_mut()
+                    .unwrap()
+                    .session_configuration
+                    .unset_runtime_config_setting(&client_id, key);
+                propagate_runtime_config_change(unset_config, &session_data, client_id);
+            },
+            ServerInstruction::SaveConfig { client_id } => {
+                save_client_config_to_disk(&session_data, client_id);
             },
             ServerInstruction::RebindKeys {
                 client_id,
@@ -2731,6 +3067,74 @@ fn report_changes_in_layout_dir(
     });
 }
 
+fn apply_new_saved_config(
+    new_saved_config: Config,
+    session_data: &Arc<RwLock<Option<SessionMetaData>>>,
+) -> bool {
+    let (changes, dropped_changes) = session_data
+        .write()
+        .unwrap()
+        .as_mut()
+        .unwrap()
+        .session_configuration
+        .change_saved_config(new_saved_config);
+    let propagated_changes = !changes.is_empty();
+    let config_was_written_to_disk = true;
+    let mut session_data = session_data.write().unwrap();
+    let session_data = session_data.as_mut().unwrap();
+    session_data.propagate_configuration_changes(changes, config_was_written_to_disk);
+    for (client_id, dropped_settings) in dropped_changes {
+        let _ = session_data
+            .senders
+            .send_to_plugin(PluginInstruction::ConfigChangesDropped(
+                client_id,
+                dropped_settings,
+            ));
+    }
+    propagated_changes
+}
+
+fn propagate_runtime_config_change(
+    new_config: Option<Config>,
+    session_data: &Arc<RwLock<Option<SessionMetaData>>>,
+    client_id: ClientId,
+) {
+    if let Some(new_config) = new_config {
+        let config_was_written_to_disk = false;
+        session_data
+            .write()
+            .unwrap()
+            .as_mut()
+            .unwrap()
+            .propagate_configuration_changes(
+                vec![(client_id, new_config)],
+                config_was_written_to_disk,
+            );
+    }
+}
+
+fn save_client_config_to_disk(
+    session_data: &Arc<RwLock<Option<SessionMetaData>>>,
+    client_id: ClientId,
+) {
+    let client_config = session_data
+        .read()
+        .unwrap()
+        .as_ref()
+        .unwrap()
+        .session_configuration
+        .get_client_configuration(&client_id);
+    let write_config_to_disk = true;
+    let runtime_config_changed = false;
+    update_new_saved_config(
+        Some(client_config),
+        write_config_to_disk,
+        runtime_config_changed,
+        session_data,
+        client_id,
+    );
+}
+
 fn update_new_saved_config(
     new_config: Option<Config>,
     write_config_to_disk: bool,
@@ -2768,20 +3172,17 @@ fn update_new_saved_config(
                 &config_file_path,
             ) {
                 Ok(written_config) => {
-                    let changes = session_data
-                        .write()
-                        .unwrap()
-                        .as_mut()
-                        .unwrap()
-                        .session_configuration
-                        .change_saved_config(written_config);
-                    let config_was_written_to_disk = true;
-                    session_data
-                        .write()
-                        .unwrap()
-                        .as_mut()
-                        .unwrap()
-                        .propagate_configuration_changes(changes, config_was_written_to_disk);
+                    let propagated_changes = apply_new_saved_config(written_config, &session_data);
+                    if !propagated_changes {
+                        session_data
+                            .read()
+                            .unwrap()
+                            .as_ref()
+                            .unwrap()
+                            .senders
+                            .send_to_plugin(PluginInstruction::ConfigWasWrittenToDisk)
+                            .unwrap();
+                    }
                 },
                 Err(e) => {
                     let error_path = e

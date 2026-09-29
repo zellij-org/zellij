@@ -1059,6 +1059,7 @@ pub enum Event {
         reason: NestedSessionEndReason,
     },
     ContextMenu(ContextMenuContext, Vec<ContextMenuEntry>),
+    ConfigChangesDropped(Vec<SettingKey>),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -4203,6 +4204,189 @@ pub enum PluginCommand {
         height: usize,
     },
     RunContextMenuItem(usize),
+    ReadConfig,
+    RevertConfig(Option<SettingKey>),
+    UnsetConfigSetting(SettingKey),
+    SaveConfig,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum SettingSection {
+    TopLevel,
+    PaneFrames,
+    WebClient,
+    Keybinds,
+}
+
+macro_rules! setting_keys {
+    ($($variant:ident => ($section:ident, $kdl_name:literal, $requires_restart:literal)),* $(,)?) => {
+        #[derive(
+            Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, EnumIter,
+        )]
+        pub enum SettingKey {
+            $($variant),*
+        }
+        impl SettingKey {
+            pub fn kdl_name(&self) -> &'static str {
+                match self {
+                    $(SettingKey::$variant => $kdl_name),*
+                }
+            }
+            pub fn section(&self) -> SettingSection {
+                match self {
+                    $(SettingKey::$variant => SettingSection::$section),*
+                }
+            }
+            pub fn requires_restart(&self) -> bool {
+                match self {
+                    $(SettingKey::$variant => $requires_restart),*
+                }
+            }
+        }
+    };
+}
+
+setting_keys! {
+    SimplifiedUi => (TopLevel, "simplified_ui", false),
+    Theme => (TopLevel, "theme", false),
+    ThemeDark => (TopLevel, "theme_dark", false),
+    ThemeLight => (TopLevel, "theme_light", false),
+    ExplicitThemeHue => (TopLevel, "explicit_theme_hue", false),
+    DefaultMode => (TopLevel, "default_mode", false),
+    DefaultShell => (TopLevel, "default_shell", false),
+    DefaultCwd => (TopLevel, "default_cwd", false),
+    DefaultLayout => (TopLevel, "default_layout", true),
+    LayoutDir => (TopLevel, "layout_dir", false),
+    ThemeDir => (TopLevel, "theme_dir", false),
+    MouseMode => (TopLevel, "mouse_mode", true),
+    PaneFrames => (TopLevel, "pane_frames", false),
+    PaneFrameStyle => (TopLevel, "pane_frame_style", false),
+    MirrorSession => (TopLevel, "mirror_session", true),
+    OnForceClose => (TopLevel, "on_force_close", true),
+    ScrollBufferSize => (TopLevel, "scroll_buffer_size", true),
+    CopyCommand => (TopLevel, "copy_command", false),
+    CopyClipboard => (TopLevel, "copy_clipboard", false),
+    CopyOnSelect => (TopLevel, "copy_on_select", false),
+    Osc8Hyperlinks => (TopLevel, "osc8_hyperlinks", true),
+    ScrollbackEditor => (TopLevel, "scrollback_editor", false),
+    SessionName => (TopLevel, "session_name", true),
+    AttachToSession => (TopLevel, "attach_to_session", true),
+    AutoLayout => (TopLevel, "auto_layout", false),
+    SessionSerialization => (TopLevel, "session_serialization", true),
+    SerializePaneViewport => (TopLevel, "serialize_pane_viewport", true),
+    ScrollbackLinesToSerialize => (TopLevel, "scrollback_lines_to_serialize", true),
+    StyledUnderlines => (TopLevel, "styled_underlines", true),
+    SerializationInterval => (TopLevel, "serialization_interval", true),
+    DisableSessionMetadata => (TopLevel, "disable_session_metadata", true),
+    SupportKittyKeyboardProtocol => (TopLevel, "support_kitty_keyboard_protocol", true),
+    SupportKittyGraphicsProtocol => (TopLevel, "support_kitty_graphics_protocol", true),
+    WebServer => (TopLevel, "web_server", true),
+    WebSharing => (TopLevel, "web_sharing", true),
+    StackedResize => (TopLevel, "stacked_resize", false),
+    StackedPaneList => (TopLevel, "stacked_pane_list", false),
+    ShowStartupTips => (TopLevel, "show_startup_tips", true),
+    ShowReleaseNotes => (TopLevel, "show_release_notes", true),
+    AdvancedMouseActions => (TopLevel, "advanced_mouse_actions", false),
+    MouseScrollResize => (TopLevel, "mouse_scroll_resize", false),
+    ScrollModeSync => (TopLevel, "scroll_mode_sync", false),
+    MouseHoverEffects => (TopLevel, "mouse_hover_effects", false),
+    MouseHoverTips => (TopLevel, "mouse_hover_tips", false),
+    VisualBell => (TopLevel, "visual_bell", false),
+    FocusFollowsMouse => (TopLevel, "focus_follows_mouse", false),
+    MouseClickThrough => (TopLevel, "mouse_click_through", false),
+    Osc133CommandSelection => (TopLevel, "osc133_command_selection", false),
+    WordSeparators => (TopLevel, "word_separators", false),
+    HostNotificationProtocol => (TopLevel, "host_notification_protocol", false),
+    WebServerIp => (TopLevel, "web_server_ip", true),
+    WebServerPort => (TopLevel, "web_server_port", true),
+    WebServerCert => (TopLevel, "web_server_cert", true),
+    WebServerKey => (TopLevel, "web_server_key", true),
+    EnforceHttpsForLocalhost => (TopLevel, "enforce_https_for_localhost", true),
+    PostCommandDiscoveryHook => (TopLevel, "post_command_discovery_hook", false),
+    ClientAsyncWorkerTasks => (TopLevel, "client_async_worker_tasks", true),
+    NestedSessionHandling => (TopLevel, "nested_session_handling", false),
+    DangerouslyEnablePasteBufferRead => (TopLevel, "dangerously_enable_paste_buffer_read", false),
+    FrameRoundedCorners => (PaneFrames, "rounded_corners", false),
+    FrameHideSessionName => (PaneFrames, "hide_session_name", false),
+    FrameBorderStyle => (PaneFrames, "border_style", false),
+    FrameBorderTop => (PaneFrames, "border_top", false),
+    FrameBorderRight => (PaneFrames, "border_right", false),
+    FrameBorderBottom => (PaneFrames, "border_bottom", false),
+    FrameBorderLeft => (PaneFrames, "border_left", false),
+    FrameBorderRoundedCorners => (PaneFrames, "border_rounded_corners", false),
+    FrameFloatingBorderStyle => (PaneFrames, "floating_border_style", false),
+    FrameFloatingBorderTop => (PaneFrames, "floating_border_top", false),
+    FrameFloatingBorderRight => (PaneFrames, "floating_border_right", false),
+    FrameFloatingBorderBottom => (PaneFrames, "floating_border_bottom", false),
+    FrameFloatingBorderLeft => (PaneFrames, "floating_border_left", false),
+    FrameFloatingBorderRoundedCorners => (PaneFrames, "floating_border_rounded_corners", false),
+    WebClientFont => (WebClient, "font", true),
+    WebClientFontSize => (WebClient, "font_size", true),
+    WebClientCursorBlink => (WebClient, "cursor_blink", true),
+    WebClientCursorStyle => (WebClient, "cursor_style", true),
+    WebClientCursorInactiveStyle => (WebClient, "cursor_inactive_style", true),
+    WebClientMacOptionIsMeta => (WebClient, "mac_option_is_meta", true),
+    WebClientBaseUrl => (WebClient, "base_url", true),
+    Keybinds => (Keybinds, "keybinds", false),
+}
+
+impl SettingKey {
+    pub fn all() -> Vec<SettingKey> {
+        use strum::IntoEnumIterator;
+        SettingKey::iter().collect()
+    }
+    pub fn id(&self) -> String {
+        match self.section() {
+            SettingSection::TopLevel | SettingSection::Keybinds => self.kdl_name().to_owned(),
+            SettingSection::PaneFrames => format!("ui.pane_frames.{}", self.kdl_name()),
+            SettingSection::WebClient => format!("web_client.{}", self.kdl_name()),
+        }
+    }
+    pub fn from_id(id: &str) -> Option<SettingKey> {
+        SettingKey::all().into_iter().find(|key| key.id() == id)
+    }
+}
+
+impl fmt::Display for SettingKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.id())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConfigSettingState {
+    pub key: SettingKey,
+    pub saved_value: Option<String>,
+    pub current_value: Option<String>,
+    pub set_in_file: bool,
+}
+
+impl ConfigSettingState {
+    pub fn is_unsaved(&self) -> bool {
+        self.saved_value != self.current_value
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConfigSnapshot {
+    pub settings: Vec<ConfigSettingState>,
+    pub config_file_path: Option<String>,
+    pub backup_file_path: Option<String>,
+    pub pending_restart_settings: Vec<SettingKey>,
+    pub theme_names: Vec<String>,
+    pub plugin_aliases: Vec<String>,
+    pub load_plugins: Vec<String>,
+    pub env_vars: Vec<String>,
+    pub context_menu_items: Vec<String>,
+}
+
+impl ConfigSnapshot {
+    pub fn setting(&self, key: SettingKey) -> Option<&ConfigSettingState> {
+        self.settings.iter().find(|setting| setting.key == key)
+    }
+    pub fn unsaved_count(&self) -> usize {
+        self.settings.iter().filter(|s| s.is_unsaved()).count()
+    }
 }
 
 // Response type for plugin API methods that open a pane in a new tab

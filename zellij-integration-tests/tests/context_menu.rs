@@ -135,6 +135,56 @@ fn choosing_close_pane_closes_the_clicked_pane_and_not_the_focused_one() {
     zellij.quit();
 }
 
+fn columns_of_name(grid_snapshot: &GridSnapshot, needle: &str) -> Vec<usize> {
+    (0..grid_snapshot.lines().len())
+        .filter_map(|row| column_of(grid_snapshot, row, needle))
+        .collect()
+}
+
+#[test]
+fn choosing_rename_pane_renames_the_clicked_pane_and_not_the_focused_one() {
+    let mut zellij = start_zellij();
+    let left_terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
+    let right_terminal = split_right_and_wait_for_prompt(&zellij);
+    left_terminal.output(b"LEFT-MARKER");
+    right_terminal.output(b"RIGHT-MARKER");
+    zellij.wait_until("both markers rendered", |grid_snapshot| {
+        grid_snapshot.contains("LEFT-MARKER") && grid_snapshot.contains("RIGHT-MARKER")
+    });
+
+    right_click(&zellij, 10, 12);
+    let grid_snapshot = wait_for_pane_menu(&zellij);
+    click_menu_item(&zellij, &grid_snapshot, "Rename pane");
+    zellij.wait_until("rename pane mode entered", |grid_snapshot| {
+        !grid_snapshot.contains(COMMON_MENU_MARKER) && grid_snapshot.contains("RENAMING PANE")
+    });
+    for character in "CLICKED".chars() {
+        zellij.send_stdin(&keys::key(character));
+    }
+    zellij.send_stdin(&keys::ENTER);
+
+    let grid_snapshot = zellij.wait_until(
+        "the clicked pane shows the new name",
+        |grid_snapshot| {
+            !grid_snapshot.contains("RENAMING PANE") && grid_snapshot.contains("CLICKED")
+        },
+    );
+    let middle = (TERMINAL_SIZE.cols / 2) as usize;
+    let new_name_columns = columns_of_name(&grid_snapshot, "CLICKED");
+    assert!(
+        !new_name_columns.is_empty() && new_name_columns.iter().all(|column| *column < middle),
+        "the new name is only on the left (clicked) pane, found at columns {:?}",
+        new_name_columns
+    );
+    assert!(
+        columns_of_name(&grid_snapshot, "Pane #2")
+            .iter()
+            .any(|column| *column >= middle),
+        "the focused right pane keeps its name"
+    );
+    zellij.quit();
+}
+
 fn tab_names_in_tab_bar(grid_snapshot: &GridSnapshot) -> usize {
     grid_snapshot
         .lines()

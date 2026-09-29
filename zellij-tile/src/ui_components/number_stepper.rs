@@ -100,6 +100,9 @@ impl NumberStepper {
         self.value = self.clamp(value);
         self.editing = false;
     }
+    pub fn set_field_width(&mut self, field_width: usize) {
+        self.field_width = Some(field_width.max(MIN_FIELD_WIDTH));
+    }
     pub fn set_disabled(&mut self, disabled: bool) {
         self.disabled = disabled;
     }

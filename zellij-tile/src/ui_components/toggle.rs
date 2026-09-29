@@ -11,6 +11,7 @@ pub struct Toggle {
     label: String,
     on: bool,
     label_width: Option<usize>,
+    field_width: Option<usize>,
     focused: bool,
     disabled: bool,
     hovered: bool,
@@ -23,6 +24,7 @@ impl Toggle {
             label: label.into(),
             on,
             label_width: None,
+            field_width: None,
             focused: false,
             disabled: false,
             hovered: false,
@@ -57,8 +59,11 @@ impl Toggle {
     pub fn label(&self) -> &str {
         &self.label
     }
+    pub fn set_field_width(&mut self, field_width: usize) {
+        self.field_width = Some(field_width.max(TOGGLE_WIDTH));
+    }
     pub fn width(&self) -> usize {
-        self.effective_label_width() + TOGGLE_WIDTH
+        self.effective_label_width() + self.field_width.unwrap_or(TOGGLE_WIDTH)
     }
     fn effective_label_width(&self) -> usize {
         self.label_width

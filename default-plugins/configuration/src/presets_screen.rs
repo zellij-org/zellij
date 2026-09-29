@@ -1,8 +1,9 @@
 use zellij_tile::prelude::*;
 
-use crate::ui_components::info_line;
+use crate::ui_components::{
+    info_line, print_nested_list_with_coordinates, print_text_with_coordinates, request_close,
+};
 
-use crate::rebind_leaders_screen::RebindLeadersScreen;
 use std::collections::BTreeSet;
 
 use crate::presets::{default_keybinds, unlock_first_keybinds};
@@ -14,7 +15,6 @@ pub struct PresetsScreen {
     notification: Option<String>,
     primary_modifier: BTreeSet<KeyModifier>,
     secondary_modifier: BTreeSet<KeyModifier>,
-    rebind_leaders_screen: Option<RebindLeadersScreen>,
 }
 
 impl Default for PresetsScreen {
@@ -29,7 +29,6 @@ impl Default for PresetsScreen {
             selected_index: None,
             latest_mode_info: None,
             notification: None,
-            rebind_leaders_screen: None,
         }
     }
 }
@@ -41,31 +40,7 @@ impl PresetsScreen {
             ..Default::default()
         }
     }
-    pub fn rebinding_leaders(&self) -> bool {
-        self.rebind_leaders_screen.is_some()
-    }
     pub fn handle_presets_key(&mut self, key: KeyWithModifier) -> bool {
-        if let Some(rebind_leaders_screen) = self.rebind_leaders_screen.as_mut() {
-            match key.bare_key {
-                BareKey::Esc if key.has_no_modifiers() => {
-                    // consume screen without applying its modifiers
-                    drop(self.rebind_leaders_screen.take());
-                    return true;
-                },
-                BareKey::Enter if key.has_no_modifiers() => {
-                    // consume screen and apply its modifiers
-                    let (primary_modifier, secondary_modifier) =
-                        rebind_leaders_screen.primary_and_secondary_modifiers();
-                    self.primary_modifier = primary_modifier;
-                    self.secondary_modifier = secondary_modifier;
-                    drop(self.rebind_leaders_screen.take());
-                    return true;
-                },
-                _ => {
-                    return rebind_leaders_screen.handle_key(key);
-                },
-            }
-        }
         let mut should_render = false;
         if self.notification.is_some() {
             self.notification = None;
@@ -92,50 +67,15 @@ impl PresetsScreen {
                 self.notification = Some("Configuration applied and saved to disk.".to_owned());
                 should_render = true;
             }
-        } else if key.bare_key == BareKey::Char('l') && key.has_no_modifiers() {
-            // for the time being this screen has been disabled because it was deemed too confusing
-            // and its use-cases are very limited (it's possible to achieve the same results by
-            // applying a preset and then rebinding the leader keys)
-            //
-            // the code is left here in case someone feels strongly about implementing this on
-            // their own, and because at the time of writing I'm a little ambiguous about this
-            // decision. At some point it should be refactored away
-            //             self.rebind_leaders_screen = Some(
-            //                 RebindLeadersScreen::default()
-            //                     .with_rebinding_for_presets()
-            //                     .with_mode_info(self.latest_mode_info.clone()),
-            //             );
-            //            should_render = true;
         } else if (key.bare_key == BareKey::Esc && key.has_no_modifiers())
             || key.is_key_with_ctrl_modifier(BareKey::Char('c'))
         {
-            close_self();
+            request_close();
             should_render = true;
         }
         should_render
     }
     pub fn handle_setup_wizard_key(&mut self, key: KeyWithModifier) -> bool {
-        if let Some(rebind_leaders_screen) = self.rebind_leaders_screen.as_mut() {
-            match key.bare_key {
-                BareKey::Esc if key.has_no_modifiers() => {
-                    // consume screen without applying its modifiers
-                    drop(self.rebind_leaders_screen.take());
-                    return true;
-                },
-                BareKey::Enter if key.has_no_modifiers() => {
-                    // consume screen and apply its modifiers
-                    let (primary_modifier, secondary_modifier) =
-                        rebind_leaders_screen.primary_and_secondary_modifiers();
-                    self.primary_modifier = primary_modifier;
-                    self.secondary_modifier = secondary_modifier;
-                    drop(self.rebind_leaders_screen.take());
-                    return true;
-                },
-                _ => {
-                    return rebind_leaders_screen.handle_key(key);
-                },
-            }
-        }
         let mut should_render = false;
         if self.notification.is_some() {
             self.notification = None;
@@ -150,34 +90,20 @@ impl PresetsScreen {
             if let Some(selected_index) = self.take_selected_index() {
                 let write_to_disk = true;
                 self.reconfigure(selected_index, write_to_disk);
-                close_self();
+                request_close();
             } else {
                 self.reset_selected_index();
                 should_render = true;
             }
-        } else if key.bare_key == BareKey::Char('l') && key.has_no_modifiers() {
-            // for the time being this screen has been disabled because it was deemed too confusing
-            // and its use-cases are very limited (it's possible to achieve the same results by
-            // applying a preset and then rebinding the leader keys)
-            //
-            // the code is left here in case someone feels strongly about implementing this on
-            // their own, and because at the time of writing I'm a little ambiguous about this
-            // decision. At some point it should be refactored away
-            //             self.rebind_leaders_screen =
-            //                 Some(RebindLeadersScreen::default().with_rebinding_for_presets());
-            //            should_render = true;
         } else if (key.bare_key == BareKey::Esc && key.has_no_modifiers())
             || key.is_key_with_ctrl_modifier(BareKey::Char('c'))
         {
-            close_self();
+            request_close();
             should_render = true;
         }
         should_render
     }
     pub fn update_mode_info(&mut self, mode_info: ModeInfo) {
-        if let Some(rebind_leaders_screen) = self.rebind_leaders_screen.as_mut() {
-            rebind_leaders_screen.update_mode_info(mode_info.clone());
-        }
         self.latest_mode_info = Some(mode_info);
     }
     pub fn move_selected_index_down(&mut self) {
@@ -258,9 +184,6 @@ impl PresetsScreen {
         ui_size: usize,
         notification: Option<String>,
     ) {
-        if let Some(rebind_leaders_screen) = self.rebind_leaders_screen.as_mut() {
-            return rebind_leaders_screen.render(rows, cols, ui_size, notification);
-        }
         let primary_modifier_key_text = self.primary_modifier_text();
         let secondary_modifier_key_text = self.secondary_modifier_text();
         self.render_setup_wizard_title(rows, cols, &primary_modifier_key_text, ui_size);
@@ -281,7 +204,6 @@ impl PresetsScreen {
             self.warning_text(cols),
             Some(self.main_screen_widths(&primary_modifier_key_text)),
         );
-        // self.render_info_line(rows + 8, cols);
         self.render_help_text_setup_wizard(rows + 8, cols);
     }
     pub fn render_reset_keybindings_screen(
@@ -291,9 +213,6 @@ impl PresetsScreen {
         ui_size: usize,
         notification: Option<String>,
     ) {
-        if let Some(rebind_leaders_screen) = self.rebind_leaders_screen.as_mut() {
-            return rebind_leaders_screen.render(rows, cols, ui_size, notification);
-        }
         let primary_modifier_key_text = self.primary_modifier_text();
         let secondary_modifier_key_text = self.secondary_modifier_text();
         self.render_override_title(rows, cols, &primary_modifier_key_text, ui_size);

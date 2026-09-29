@@ -5640,16 +5640,15 @@ impl Config {
             config.background_plugins = load_plugins;
         }
         if let Some(kdl_ui_config) = kdl_config.get("ui") {
-            let config_ui = UiConfig::from_kdl(&kdl_ui_config)?;
-            config.ui = config.ui.merge(config_ui);
+            config.ui = UiConfig::from_kdl_over(&kdl_ui_config, &config.ui)?;
         }
         if let Some(env_config) = kdl_config.get("env") {
             let config_env = EnvironmentVariables::from_kdl(&env_config)?;
             config.env = config.env.merge(config_env);
         }
         if let Some(web_client_config) = kdl_config.get("web_client") {
-            let config_web_client = WebClientConfig::from_kdl(&web_client_config)?;
-            config.web_client = config.web_client.merge(config_web_client);
+            config.web_client =
+                WebClientConfig::from_kdl_over(&web_client_config, &config.web_client)?;
         }
         if let Some(context_menu_config) = kdl_config.get("context_menu") {
             config.context_menu = ContextMenuConfig::from_kdl(
@@ -6083,16 +6082,24 @@ pub fn border_style_override_to_kdl_children(
 
 impl UiConfig {
     pub fn from_kdl(kdl_ui_config: &KdlNode) -> Result<UiConfig, ConfigError> {
-        let mut ui_config = UiConfig::default();
+        UiConfig::from_kdl_over(kdl_ui_config, &UiConfig::default())
+    }
+    pub fn from_kdl_over(kdl_ui_config: &KdlNode, base: &UiConfig) -> Result<UiConfig, ConfigError> {
+        let mut ui_config = base.clone();
         if let Some(pane_frames) = kdl_get_child!(kdl_ui_config, "pane_frames") {
+            let base_frames = base.pane_frames;
             let rounded_corners =
                 kdl_children_property_first_arg_as_bool!(pane_frames, "rounded_corners")
-                    .unwrap_or(false);
+                    .unwrap_or(base_frames.rounded_corners);
             let hide_session_name =
-                kdl_get_child_entry_bool_value!(pane_frames, "hide_session_name").unwrap_or(false);
-            let border_style = border_style_override_from_kdl_children(pane_frames, "border")?;
-            let floating_border_style =
-                border_style_override_from_kdl_children(pane_frames, "floating_border")?;
+                kdl_get_child_entry_bool_value!(pane_frames, "hide_session_name")
+                    .unwrap_or(base_frames.hide_session_name);
+            let border_style = base_frames
+                .border_style
+                .merge(&border_style_override_from_kdl_children(pane_frames, "border")?);
+            let floating_border_style = base_frames.floating_border_style.merge(
+                &border_style_override_from_kdl_children(pane_frames, "floating_border")?,
+            );
             let frame_config = FrameConfig {
                 rounded_corners,
                 hide_session_name,
