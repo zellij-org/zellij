@@ -2,9 +2,9 @@
 //! # This module contain everything you'll need to access local system paths
 //! containing configuration and layouts
 
-use crate::consts::{SYSTEM_DEFAULT_CONFIG_DIR, ZELLIJ_PROJ_DIR};
+use crate::consts::{system_default_config_dir, ZELLIJ_PROJ_DIR};
 
-use std::{path::Path, path::PathBuf};
+use std::path::PathBuf;
 
 #[cfg(not(windows))]
 use crate::home_unix as platform;
@@ -32,7 +32,7 @@ pub(crate) fn default_config_dirs() -> Vec<Option<PathBuf>> {
     vec![
         home_config_dir(),
         Some(xdg_config_dir()),
-        Some(Path::new(SYSTEM_DEFAULT_CONFIG_DIR).to_path_buf()),
+        Some(system_default_config_dir()),
     ]
 }
 

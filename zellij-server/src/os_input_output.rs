@@ -30,34 +30,45 @@ use std::{
     io::{self, Write},
     path::PathBuf,
     process::Command,
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc, Mutex,
+    },
 };
 
 pub use async_trait::async_trait;
 
 /// Check whether a candidate path refers to an executable file, considering
 /// PATHEXT extensions on Windows (e.g. `.exe`, `.cmd`).
+///
+/// On Windows, when the candidate has no extension we try each PATHEXT
+/// variant BEFORE the bare match, mirroring cmd.exe's resolution. Tools like
+/// Composer install both `composer` (a Unix launcher) and `composer.bat`
+/// (the Windows launcher) side by side; returning the bare file would send
+/// a non-PE binary to CreateProcessW and fail with ERROR_BAD_EXE_FORMAT.
 fn find_executable(candidate: &std::path::Path) -> Option<PathBuf> {
-    if candidate.exists() && candidate.is_file() {
-        return Some(candidate.to_path_buf());
-    }
     #[cfg(windows)]
     {
-        if let Some(pathext) = env::var_os("PATHEXT") {
-            let pathext = pathext.to_string_lossy();
-            for ext in pathext.split(';') {
-                let ext = ext.trim();
-                if ext.is_empty() {
-                    continue;
-                }
-                let mut with_ext = candidate.as_os_str().to_os_string();
-                with_ext.push(ext);
-                let with_ext_path = PathBuf::from(with_ext);
-                if with_ext_path.exists() && with_ext_path.is_file() {
-                    return Some(with_ext_path);
+        if candidate.extension().is_none() {
+            if let Some(pathext) = env::var_os("PATHEXT") {
+                let pathext = pathext.to_string_lossy();
+                for ext in pathext.split(';') {
+                    let ext = ext.trim();
+                    if ext.is_empty() {
+                        continue;
+                    }
+                    let mut with_ext = candidate.as_os_str().to_os_string();
+                    with_ext.push(ext);
+                    let with_ext_path = PathBuf::from(with_ext);
+                    if with_ext_path.exists() && with_ext_path.is_file() {
+                        return Some(with_ext_path);
+                    }
                 }
             }
         }
+    }
+    if candidate.exists() && candidate.is_file() {
+        return Some(candidate.to_path_buf());
     }
     None
 }
@@ -203,10 +214,58 @@ fn build_command(
 // this client and we'll stop sending messages to it.
 // If the client ever becomes responsive again, we'll send one final "Buffer full" message so it
 // knows what happened.
+const CLIENT_BUFFER_LIMIT: usize = 5000;
+
+#[derive(Clone)]
+struct ClientBuffer {
+    sender: channels::Sender<ServerToClientMsg>,
+    queued: Arc<AtomicUsize>,
+    limit: usize,
+}
+
+struct ClientBufferReceiver {
+    receiver: channels::Receiver<ServerToClientMsg>,
+    queued: Arc<AtomicUsize>,
+}
+
+fn client_buffer(limit: usize) -> (ClientBuffer, ClientBufferReceiver) {
+    let (sender, receiver) = channels::unbounded();
+    let queued = Arc::new(AtomicUsize::new(0));
+    (
+        ClientBuffer {
+            sender,
+            queued: queued.clone(),
+            limit,
+        },
+        ClientBufferReceiver { receiver, queued },
+    )
+}
+
+impl ClientBuffer {
+    fn try_send(&self, msg: ServerToClientMsg) -> Result<(), TrySendError<ServerToClientMsg>> {
+        if self.queued.fetch_add(1, Ordering::AcqRel) >= self.limit {
+            self.queued.fetch_sub(1, Ordering::AcqRel);
+            return Err(TrySendError::Full(msg));
+        }
+        self.sender.send(msg).map_err(|err| {
+            self.queued.fetch_sub(1, Ordering::AcqRel);
+            TrySendError::Disconnected(err.0)
+        })
+    }
+}
+
+impl ClientBufferReceiver {
+    fn recv(&self) -> Option<ServerToClientMsg> {
+        let msg = self.receiver.recv().ok()?;
+        self.queued.fetch_sub(1, Ordering::AcqRel);
+        Some(msg)
+    }
+}
+
 #[derive(Clone)]
 struct ClientSender {
     client_id: ClientId,
-    client_buffer_sender: channels::Sender<ServerToClientMsg>,
+    client_buffer_sender: ClientBuffer,
 }
 
 impl ClientSender {
@@ -215,16 +274,16 @@ impl ClientSender {
         // client. If it fills up, the client is disconnected with a "Buffer full" sort of error
         // message. It was previously found to be too small (with depth 50), so it was increased to
         // 5000 instead. This decision was made because it was found that a queue of depth 5000
-        // doesn't cause noticable increase in RAM usage, but there's no reason beyond that. If in
+        // doesn't cause noticeable increase in RAM usage, but there's no reason beyond that. If in
         // the future this is found to fill up too quickly again, it may be worthwhile to increase
         // the size even further (or better yet, implement a redraw-on-backpressure mechanism).
         // We, the zellij maintainers, have decided against an unbounded
         // queue for the time being because we want to prevent e.g. the whole session being killed
         // (by OOM-killers or some other mechanism) just because a single client doesn't respond.
-        let (client_buffer_sender, client_buffer_receiver) = channels::bounded(5000);
+        let (client_buffer_sender, client_buffer_receiver) = client_buffer(CLIENT_BUFFER_LIMIT);
         std::thread::spawn(move || {
             let err_context = || format!("failed to send message to client {client_id}");
-            for msg in client_buffer_receiver.iter() {
+            while let Some(msg) = client_buffer_receiver.recv() {
                 sender
                     .send_server_msg(msg)
                     .with_context(err_context)
@@ -276,13 +335,13 @@ pub(crate) struct NullAsyncReader;
 // used. See https://smallcultfollowing.com/babysteps/blog/2019/10/26/async-fn-in-traits-are-hard/
 #[async_trait]
 pub trait AsyncReader: Send + Sync {
-    async fn read(&mut self, buf: &mut [u8]) -> Result<usize, io::Error>;
+    async fn read_chunk(&mut self, max: usize) -> Result<Vec<u8>, io::Error>;
 }
 
 #[async_trait]
 impl AsyncReader for NullAsyncReader {
-    async fn read(&mut self, _buf: &mut [u8]) -> Result<usize, io::Error> {
-        Ok(0) // EOF
+    async fn read_chunk(&mut self, _max: usize) -> Result<Vec<u8>, io::Error> {
+        Ok(Vec::new())
     }
 }
 
@@ -324,18 +383,16 @@ pub trait ServerOsApi: Send + Sync {
     /// Returns a [`Box`] pointer to this [`ServerOsApi`] struct.
     fn box_clone(&self) -> Box<dyn ServerOsApi>;
     fn send_to_client(&self, client_id: ClientId, msg: ServerToClientMsg) -> Result<()>;
-    fn new_client(
+    fn register_client(
         &mut self,
         client_id: ClientId,
-        stream: LocalSocketStream,
-    ) -> Result<IpcReceiverWithContext<ClientToServerMsg>>;
-    /// Create a new client with a separate reply stream (Windows dual-pipe IPC).
-    fn new_client_with_reply(
+        receiver: &IpcReceiverWithContext<ClientToServerMsg>,
+    ) -> Result<()>;
+    fn register_client_with_reply(
         &mut self,
         client_id: ClientId,
-        stream: LocalSocketStream,
         reply_stream: LocalSocketStream,
-    ) -> Result<IpcReceiverWithContext<ClientToServerMsg>>;
+    ) -> Result<()>;
     fn remove_client(&mut self, client_id: ClientId) -> Result<()>;
     fn load_palette(&self) -> Palette;
     /// Returns the current working directory for a given pid
@@ -453,35 +510,32 @@ impl ServerOsApi for ServerOsInputOutput {
         }
     }
 
-    fn new_client(
+    fn register_client(
         &mut self,
         client_id: ClientId,
-        stream: LocalSocketStream,
-    ) -> Result<IpcReceiverWithContext<ClientToServerMsg>> {
-        let receiver = IpcReceiverWithContext::new(stream);
+        receiver: &IpcReceiverWithContext<ClientToServerMsg>,
+    ) -> Result<()> {
         let sender = ClientSender::new(client_id, receiver.get_sender());
         self.client_senders
             .lock()
             .to_anyhow()
             .with_context(|| format!("failed to create new client {client_id}"))?
             .insert(client_id, sender);
-        Ok(receiver)
+        Ok(())
     }
 
-    fn new_client_with_reply(
+    fn register_client_with_reply(
         &mut self,
         client_id: ClientId,
-        stream: LocalSocketStream,
         reply_stream: LocalSocketStream,
-    ) -> Result<IpcReceiverWithContext<ClientToServerMsg>> {
-        let receiver = IpcReceiverWithContext::new(stream);
+    ) -> Result<()> {
         let sender = ClientSender::new(client_id, IpcSenderWithContext::new(reply_stream));
         self.client_senders
             .lock()
             .to_anyhow()
             .with_context(|| format!("failed to create new client {client_id}"))?
             .insert(client_id, sender);
-        Ok(receiver)
+        Ok(())
     }
 
     fn remove_client(&mut self, client_id: ClientId) -> Result<()> {

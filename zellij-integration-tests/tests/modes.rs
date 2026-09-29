@@ -217,6 +217,57 @@ fn bracketed_paste() {
 }
 
 #[test]
+fn keystroke_after_split_bracketed_paste_arrives_intact() {
+    let mut zellij = start_zellij();
+    let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
+
+    zellij.send_stdin(&keys::BRACKETED_PASTE_START);
+    zellij.send_stdin(b"hello\x1b[201~");
+    zellij.send_stdin(&keys::key('x'));
+
+    terminal.wait_for_stdin(
+        "keystroke following a split bracketed paste reached the pane unshifted",
+        |stdin_bytes| stdin_bytes.windows(6).any(|window| window == b"hellox"),
+    );
+    zellij.quit();
+}
+
+#[test]
+fn keystrokes_sharing_a_read_with_mouse_motion_reach_the_pane_clean() {
+    let mut zellij = start_zellij();
+    let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
+
+    zellij.send_stdin(b"a\x1b[<35;30;10M\x1b[<35;31;10M\x1b[<35;32;10Mb");
+    zellij.send_stdin(&keys::key('c'));
+
+    let stdin_bytes = terminal
+        .wait_for_stdin("all three keystrokes reached the pane", |stdin_bytes| {
+            stdin_bytes.windows(3).any(|window| window == b"abc")
+        });
+    assert!(
+        !stdin_bytes.windows(3).any(|window| window == b"\x1b[<"),
+        "mouse report bytes must not be forwarded to the pane: {:?}",
+        stdin_bytes
+    );
+    zellij.quit();
+}
+
+#[test]
+fn multibyte_key_split_across_reads_after_parked_esc_arrives_intact() {
+    let mut zellij = start_zellij();
+    let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
+
+    zellij.send_stdin(b"\x1b\xc3");
+    zellij.send_stdin(b"\xa9");
+
+    terminal.wait_for_stdin(
+        "the utf-8 bytes of the alt-modified key reached the pane",
+        |stdin_bytes| stdin_bytes.windows(2).any(|window| window == [0xc3, 0xa9]),
+    );
+    zellij.quit();
+}
+
+#[test]
 fn scrolling_inside_a_pane() {
     let mut zellij = start_zellij();
     claim_first_terminal_and_wait_for_prompt(&zellij);

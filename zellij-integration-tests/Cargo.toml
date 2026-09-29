@@ -9,15 +9,20 @@ version.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-zellij-client = { path = "../zellij-client", version = "0.45.0" }
-zellij-server = { path = "../zellij-server", version = "0.45.0" }
+zellij-client = { path = "../zellij-client", version = "0.46.0" }
+zellij-server = { path = "../zellij-server", version = "0.46.0" }
 zellij-utils = { workspace = true }
 anyhow = { workspace = true }
 async-trait = { workspace = true }
 crossbeam = { version = "0.8", default-features = false, features = ["crossbeam-channel", "std"] }
 interprocess = { workspace = true }
-insta = { version = "1.6.0", features = ["backtrace"] }
+insta = "1.48"
 log = { workspace = true }
 regex = { workspace = true }
 tokio = { workspace = true }
 vte = { workspace = true }
+
+[dev-dependencies]
+base64 = { version = "0.22", default-features = false, features = ["std"] }
+flate2 = { version = "1.1.9", default-features = false, features = ["rust_backend"] }
+tempfile = { workspace = true }

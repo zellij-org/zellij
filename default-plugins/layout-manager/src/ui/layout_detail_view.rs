@@ -120,7 +120,7 @@ impl<'a> LayoutDetail<'a> {
         let wrapped_lines = wrap_text_to_width(error_message, max_cols);
         let available_rows = max_rows.saturating_sub(3);
 
-        let mut current_y = y + 1; // + 1 (and saturating_sub(3) above) to be aligned witht he
+        let mut current_y = y + 1; // + 1 (and saturating_sub(3) above) to be aligned with the
                                    // table on the left
         for line in wrapped_lines.iter().take(available_rows) {
             let text = Text::new(line).error_color_all();

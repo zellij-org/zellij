@@ -964,6 +964,14 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
+                    ';',
+                ),
+                key_modifiers: {},
+            }: [
+                FocusLastPane,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     '=',
                 ),
                 key_modifiers: {
@@ -1070,6 +1078,19 @@ Config {
                 },
             }: [
                 ToggleFloatingPanes,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'f',
+                ),
+                key_modifiers: {
+                    Shift,
+                },
+            }: [
+                ToggleFocusNoUiFullscreen,
+                SwitchToMode {
+                    input_mode: Normal,
+                },
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -1349,6 +1370,7 @@ Config {
                     command: None,
                     pane_name: None,
                     near_current_pane: false,
+                    no_focus: false,
                     tab_id: None,
                 },
                 SwitchToMode {
@@ -2159,11 +2181,27 @@ Config {
                 bare_key: Char(
                     '[',
                 ),
+                key_modifiers: {},
+            }: [
+                ScrollToPreviousPrompt,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    '[',
+                ),
                 key_modifiers: {
                     Alt,
                 },
             }: [
                 PreviousSwapLayout,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    ']',
+                ),
+                key_modifiers: {},
+            }: [
+                ScrollToNextPrompt,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -2184,6 +2222,17 @@ Config {
                 },
             }: [
                 PageScrollUp,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'c',
+                ),
+                key_modifiers: {},
+            }: [
+                CopyLastCommandOutput,
+                SwitchToMode {
+                    input_mode: Normal,
+                },
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -2354,6 +2403,14 @@ Config {
                 MoveFocusOrTab {
                     direction: Right,
                 },
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'm',
+                ),
+                key_modifiers: {},
+            }: [
+                SelectCommandAtScrollPosition,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -2984,11 +3041,27 @@ Config {
                 bare_key: Char(
                     '[',
                 ),
+                key_modifiers: {},
+            }: [
+                ScrollToPreviousPrompt,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    '[',
+                ),
                 key_modifiers: {
                     Alt,
                 },
             }: [
                 PreviousSwapLayout,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    ']',
+                ),
+                key_modifiers: {},
+            }: [
+                ScrollToNextPrompt,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -3176,6 +3249,14 @@ Config {
                 MoveFocusOrTab {
                     direction: Right,
                 },
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'm',
+                ),
+                key_modifiers: {},
+            }: [
+                SelectCommandAtScrollPosition,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -4149,11 +4230,33 @@ Config {
                 bare_key: Char(
                     '[',
                 ),
+                key_modifiers: {},
+            }: [
+                FocusGuestSession,
+                SwitchToMode {
+                    input_mode: Normal,
+                },
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    '[',
+                ),
                 key_modifiers: {
                     Alt,
                 },
             }: [
                 PreviousSwapLayout,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    ']',
+                ),
+                key_modifiers: {},
+            }: [
+                FocusHostSession,
+                SwitchToMode {
+                    input_mode: Normal,
+                },
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -4246,6 +4349,17 @@ Config {
                 key_modifiers: {},
             }: [
                 Detach,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'f',
+                ),
+                key_modifiers: {},
+            }: [
+                ToggleHostFullscreen,
+                SwitchToMode {
+                    input_mode: Normal,
+                },
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -5985,6 +6099,7 @@ Config {
         theme: None,
         theme_dark: None,
         theme_light: None,
+        explicit_theme_hue: None,
         default_mode: None,
         default_shell: None,
         default_cwd: None,
@@ -6012,6 +6127,7 @@ Config {
         serialization_interval: None,
         disable_session_metadata: None,
         support_kitty_keyboard_protocol: None,
+        support_kitty_graphics_protocol: None,
         web_server: None,
         web_sharing: None,
         stacked_resize: None,
@@ -6019,10 +6135,16 @@ Config {
         show_startup_tips: None,
         show_release_notes: None,
         advanced_mouse_actions: None,
+        mouse_scroll_resize: None,
+        scroll_mode_sync: None,
         mouse_hover_effects: None,
+        mouse_hover_tips: None,
         visual_bell: None,
         focus_follows_mouse: None,
         mouse_click_through: None,
+        osc133_command_selection: None,
+        word_separators: None,
+        host_notification_protocol: None,
         web_server_ip: None,
         web_server_port: None,
         web_server_cert: None,
@@ -6030,9 +6152,8 @@ Config {
         enforce_https_for_localhost: None,
         post_command_discovery_hook: None,
         client_async_worker_tasks: None,
-        mobile_layout: None,
-        mobile_threshold_cols: None,
-        mobile_threshold_rows: None,
+        nested_session_handling: None,
+        dangerously_enable_paste_buffer_read: None,
     },
     themes: {},
     plugins: PluginAliases {
@@ -6053,11 +6174,13 @@ Config {
                 _allow_exec_host_cmd: false,
                 location: Zellij(
                     PluginTag(
-                        "compact-bar",
+                        "bars",
                     ),
                 ),
                 configuration: PluginUserConfiguration(
-                    {},
+                    {
+                        "role": "compact-bar",
+                    },
                 ),
                 initial_cwd: None,
             },
@@ -6087,18 +6210,6 @@ Config {
                     "/",
                 ),
             },
-            "mobile": RunPlugin {
-                _allow_exec_host_cmd: false,
-                location: Zellij(
-                    PluginTag(
-                        "mobile",
-                    ),
-                ),
-                configuration: PluginUserConfiguration(
-                    {},
-                ),
-                initial_cwd: None,
-            },
             "plugin-manager": RunPlugin {
                 _allow_exec_host_cmd: false,
                 location: Zellij(
@@ -6127,11 +6238,13 @@ Config {
                 _allow_exec_host_cmd: false,
                 location: Zellij(
                     PluginTag(
-                        "status-bar",
+                        "bars",
                     ),
                 ),
                 configuration: PluginUserConfiguration(
-                    {},
+                    {
+                        "role": "status-bar",
+                    },
                 ),
                 initial_cwd: None,
             },
@@ -6151,11 +6264,13 @@ Config {
                 _allow_exec_host_cmd: false,
                 location: Zellij(
                     PluginTag(
-                        "tab-bar",
+                        "bars",
                     ),
                 ),
                 configuration: PluginUserConfiguration(
-                    {},
+                    {
+                        "role": "tab-bar",
+                    },
                 ),
                 initial_cwd: None,
             },
@@ -6179,6 +6294,22 @@ Config {
         pane_frames: FrameConfig {
             rounded_corners: true,
             hide_session_name: false,
+            border_style: BorderStyleOverride {
+                all: None,
+                top: None,
+                right: None,
+                bottom: None,
+                left: None,
+                rounded_corners: None,
+            },
+            floating_border_style: BorderStyleOverride {
+                all: None,
+                top: None,
+                right: None,
+                bottom: None,
+                left: None,
+                rounded_corners: None,
+            },
         },
     },
     env: {},
@@ -6188,11 +6319,13 @@ Config {
                 _allow_exec_host_cmd: false,
                 location: Zellij(
                     PluginTag(
-                        "link",
+                        "bars",
                     ),
                 ),
                 configuration: PluginUserConfiguration(
-                    {},
+                    {
+                        "role": "link",
+                    },
                 ),
                 initial_cwd: None,
             },

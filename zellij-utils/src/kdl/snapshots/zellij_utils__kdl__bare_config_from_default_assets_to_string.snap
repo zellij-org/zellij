@@ -11,10 +11,12 @@ keybinds clear-defaults=true {
         bind "down" { MoveFocus "down"; }
         bind "up" { MoveFocus "up"; }
         bind "right" { MoveFocus "right"; }
+        bind ";" { FocusLastPane; }
         bind "c" { SwitchToMode "renamepane"; PaneNameInput 0; }
         bind "d" { NewPane "down"; SwitchToMode "normal"; }
         bind "e" { TogglePaneEmbedOrFloating; SwitchToMode "normal"; }
         bind "f" { ToggleFocusFullscreen; SwitchToMode "normal"; }
+        bind "Shift f" { ToggleFocusNoUiFullscreen; SwitchToMode "normal"; }
         bind "h" { MoveFocus "left"; }
         bind "i" { TogglePanePinned; SwitchToMode "normal"; }
         bind "j" { MoveFocus "down"; }
@@ -89,6 +91,7 @@ keybinds clear-defaults=true {
         bind "tab" { MovePane; }
     }
     scroll {
+        bind "c" { CopyLastCommandOutput; SwitchToMode "normal"; }
         bind "e" { EditScrollback; SwitchToMode "normal"; }
         bind "s" { SwitchToMode "entersearch"; SearchInput 0; }
     }
@@ -100,6 +103,8 @@ keybinds clear-defaults=true {
         bind "w" { SearchToggleOption "Wrap"; }
     }
     session {
+        bind "[" { FocusGuestSession; SwitchToMode "normal"; }
+        bind "]" { FocusHostSession; SwitchToMode "normal"; }
         bind "a" {
             LaunchOrFocusPlugin "zellij:about" {
                 floating true
@@ -114,6 +119,7 @@ keybinds clear-defaults=true {
             }
             SwitchToMode "normal"
         }
+        bind "f" { ToggleHostFullscreen; SwitchToMode "normal"; }
         bind "l" {
             LaunchOrFocusPlugin "zellij:layout-manager" {
                 floating true
@@ -204,6 +210,8 @@ keybinds clear-defaults=true {
         bind "down" { ScrollDown; }
         bind "up" { ScrollUp; }
         bind "right" { PageScrollDown; }
+        bind "[" { ScrollToPreviousPrompt; }
+        bind "]" { ScrollToNextPrompt; }
         bind "Ctrl b" { PageScrollUp; }
         bind "Ctrl c" { ScrollToBottom; SwitchToMode "normal"; }
         bind "d" { HalfPageScrollDown; }
@@ -212,6 +220,7 @@ keybinds clear-defaults=true {
         bind "j" { ScrollDown; }
         bind "k" { ScrollUp; }
         bind "l" { PageScrollDown; }
+        bind "m" { SelectCommandAtScrollPosition; }
         bind "Ctrl s" { SwitchToMode "normal"; }
         bind "u" { HalfPageScrollUp; }
     }
@@ -256,23 +265,30 @@ keybinds clear-defaults=true {
 }
 plugins {
     about location="zellij:about"
-    compact-bar location="zellij:compact-bar"
+    compact-bar location="zellij:bars" {
+        role "compact-bar"
+    }
     configuration location="zellij:configuration"
     filepicker location="zellij:strider" {
         cwd "/"
     }
-    mobile location="zellij:mobile"
     plugin-manager location="zellij:plugin-manager"
     session-manager location="zellij:session-manager"
-    status-bar location="zellij:status-bar"
+    status-bar location="zellij:bars" {
+        role "status-bar"
+    }
     strider location="zellij:strider"
-    tab-bar location="zellij:tab-bar"
+    tab-bar location="zellij:bars" {
+        role "tab-bar"
+    }
     welcome-screen location="zellij:session-manager" {
         welcome_screen true
     }
 }
 load_plugins {
-    zellij:link
+    zellij:bars {
+        role "link"
+    }
 }
 web_client {
     font "monospace"

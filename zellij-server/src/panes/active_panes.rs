@@ -1,12 +1,11 @@
 use crate::tab::Pane;
 
 use crate::{os_input_output::ServerOsApi, panes::PaneId, ClientId};
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 
 #[derive(Clone)]
 pub struct ActivePanes {
     active_panes: HashMap<ClientId, PaneId>,
-    shadow_clients: HashSet<ClientId>,
     last_panes: HashMap<ClientId, PaneId>,
     os_api: Box<dyn ServerOsApi>,
 }
@@ -22,20 +21,9 @@ impl ActivePanes {
         let os_api = os_api.clone();
         ActivePanes {
             active_panes: HashMap::new(),
-            shadow_clients: HashSet::new(),
             last_panes: HashMap::new(),
             os_api,
         }
-    }
-    pub fn is_shadow_client(&self, client_id: &ClientId) -> bool {
-        self.shadow_clients.contains(client_id)
-    }
-    pub fn iter_shadow_clients(&self) -> impl Iterator<Item = &ClientId> {
-        self.shadow_clients.iter()
-    }
-    pub fn has_shadow_focus_on(&self, client_id: ClientId, pane_id: PaneId) -> bool {
-        self.shadow_clients.contains(&client_id)
-            && self.active_panes.get(&client_id) == Some(&pane_id)
     }
     pub fn get(&self, client_id: &ClientId) -> Option<&PaneId> {
         self.active_panes.get(client_id)
@@ -49,18 +37,9 @@ impl ActivePanes {
         pane_id: PaneId,
         panes: &mut BTreeMap<PaneId, Box<dyn Pane>>,
     ) {
-        self.shadow_clients.remove(&client_id);
         self.unfocus_pane_for_client(client_id, panes);
         self.active_panes.insert(client_id, pane_id);
         self.focus_pane(pane_id, panes);
-    }
-    pub fn insert_silent(&mut self, client_id: ClientId, pane_id: PaneId) {
-        self.active_panes.insert(client_id, pane_id);
-        self.shadow_clients.insert(client_id);
-    }
-    pub fn remove_silent(&mut self, client_id: &ClientId) -> Option<PaneId> {
-        self.shadow_clients.remove(client_id);
-        self.active_panes.remove(client_id)
     }
     pub fn set_last_pane(&mut self, client_id: ClientId, pane_id: PaneId) {
         self.last_panes.insert(client_id, pane_id);
@@ -70,7 +49,6 @@ impl ActivePanes {
             self.unfocus_pane(*pane_id, panes);
         }
         self.active_panes.clear();
-        self.shadow_clients.clear();
     }
     pub fn is_empty(&self) -> bool {
         self.active_panes.is_empty()
@@ -89,7 +67,6 @@ impl ActivePanes {
         if let Some(pane_id_to_unfocus) = self.active_panes.get(&client_id) {
             self.unfocus_pane(*pane_id_to_unfocus, panes);
         }
-        self.shadow_clients.remove(client_id);
         self.active_panes.remove(client_id)
     }
     pub fn unfocus_all_panes(&self, panes: &mut BTreeMap<PaneId, Box<dyn Pane>>) {

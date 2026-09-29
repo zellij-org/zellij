@@ -17,12 +17,14 @@ use unicode_width::UnicodeWidthStr;
 use uuid::Uuid;
 use zellij_utils::data::PaneContents;
 use zellij_utils::data::{
-    Direction, KeyWithModifier, NewPanePlacement, PaneInfo, PermissionStatus, PermissionType,
-    PluginPermission, RegexHighlight, ResizeStrategy, Style, StyledText, WebSharing,
+    BorderStyle, BorderStyleOverride, Direction, KeyWithModifier, NewPanePlacement, PaneInfo,
+    PermissionStatus, PermissionType, PluginPermission, RegexHighlight, ResizeStrategy, Style,
+    StyledText, WebSharing,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::mouse::MouseEvent;
+use zellij_utils::input::options::DEFAULT_WORD_SEPARATORS;
 use zellij_utils::position::Position;
 use zellij_utils::position::{Column, Line};
 use zellij_utils::shared::clean_string_from_control_and_linebreak;
@@ -30,7 +32,7 @@ use zellij_utils::shared::clean_string_from_control_and_linebreak;
 use crate::background_jobs::BackgroundJob;
 use crate::pane_groups::PaneGroups;
 use crate::pty_writer::PtyWriteInstruction;
-use crate::screen::{CopyOptions, ScreenInstruction};
+use crate::screen::{CopyOptions, GuestModalOutcome, ScreenInstruction};
 use crate::ui::hint_text::{
     held_hint_variants, hover_hint_variants, resize_hint_variants, HintExitStatus,
 };
@@ -45,9 +47,11 @@ use self::clipboard::ClipboardProvider;
 use crate::route::NotificationEnd;
 use crate::{
     os_input_output::ServerOsApi,
-    output::{CharacterChunk, Output, SixelImageChunk},
+    output::{CharacterChunk, KittyImageChunk, Output, SixelImageChunk},
     panes::floating_panes::floating_pane_grid::half_size_middle_geom,
-    panes::grid::namespace_notification_id,
+    panes::grid::PendingNotification,
+    panes::kitty_graphics::{KittyHostSupport, KittyImageStore},
+    panes::nested_session_modal::GuestModalShortcuts,
     panes::sixel::SixelImageStore,
     panes::{FloatingPanes, TiledPanes},
     panes::{LinkHandler, PaneId, PluginPane, TerminalPane, EMPTY_TERMINAL_CHARACTER},
@@ -68,12 +72,13 @@ use zellij_utils::{
     input::{
         command::TerminalAction,
         layout::{
-            FloatingPaneLayout, Run, RunPluginOrAlias, SwapFloatingLayout, SwapTiledLayout,
-            TiledPaneLayout,
+            FloatingPaneLayout, Run, RunPluginOrAlias, SplitDirection, SwapFloatingLayout,
+            SwapTiledLayout, TiledPaneLayout,
         },
         options::PaneFrameStyle,
         parse_keys,
     },
+    nested_session::NestedSessionMessage,
     pane_size::{Dimension, Offset, PaneGeom, Size, SizeInPixels, Viewport},
 };
 
@@ -188,7 +193,6 @@ pub(crate) struct Tab {
     pub prev_name: String,
     default_name: String,
     pub size: Size,
-    pub visible_to: Option<HashSet<ClientId>>,
     tiled_panes: TiledPanes,
     floating_panes: FloatingPanes,
     suppressed_panes: SuppressedPanes,
@@ -204,6 +208,7 @@ pub(crate) struct Tab {
     display_area: Rc<RefCell<Size>>, // includes all panes (including eg. the status bar and tab bar in the default layout)
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     sixel_image_store: Rc<RefCell<SixelImageStore>>,
+    kitty_image_store: Rc<RefCell<KittyImageStore>>,
     os_api: Box<dyn ServerOsApi>,
     pub senders: ThreadSenders,
     synchronize_is_active: bool,
@@ -237,12 +242,15 @@ pub(crate) struct Tab {
     default_editor: Option<PathBuf>,
     debug: bool,
     arrow_fonts: bool,
+    kitty_host_support: Option<KittyHostSupport>,
+    sixel_host_support: Option<bool>,
     styled_underlines: bool,
     osc8_hyperlinks: bool,
     explicitly_disable_kitty_keyboard_protocol: bool,
     web_clients_allowed: bool,
     web_sharing: WebSharing,
     mouse_hover_pane_id: HashMap<ClientId, PaneId>,
+    dimmed_clients: HashSet<ClientId>,
     plugin_hover_pane_id: HashMap<ClientId, PaneId>,
     mouse_last_pane_id: HashMap<ClientId, PaneId>,
     mouse_help_text_visible: HashMap<ClientId, bool>,
@@ -251,11 +259,16 @@ pub(crate) struct Tab {
     last_active_pane_scroll: HashMap<ClientId, Option<(usize, usize)>>,
     current_pane_group: Rc<RefCell<PaneGroups>>,
     advanced_mouse_actions: bool,
+    mouse_scroll_resize: bool,
     mouse_hover_effects: bool,
+    mouse_hover_tips: bool,
     focus_follows_mouse: bool,
     mouse_click_through: bool,
+    osc133_command_selection: bool,
+    word_separators: String,
     currently_marking_pane_group: Rc<RefCell<HashMap<ClientId, bool>>>,
     connected_clients_in_app: Rc<RefCell<HashMap<ClientId, bool>>>, // bool -> is_web_client
+    client_display_slots: Rc<RefCell<HashMap<ClientId, usize>>>,
     // the below are the configured values - the ones that will be set if and when the web server
     // is brought online
     web_server_ip: IpAddr,
@@ -264,6 +277,7 @@ pub(crate) struct Tab {
     pub tab_has_pending_bell: bool,
     pub tab_bell_flash: bool, // currently in mid-notification-flash
     pub tab_bell_ring: bool,  // need to send ANSI BEL to the controlling terminal
+    tab_visible: bool,
 }
 
 // FIXME: Use a struct that has a pane_type enum, to reduce all of the duplication
@@ -311,7 +325,14 @@ pub trait Pane {
     fn render(
         &mut self,
         client_id: Option<ClientId>,
-    ) -> Result<Option<(Vec<CharacterChunk>, Option<String>, Vec<SixelImageChunk>)>>; // TODO: better
+    ) -> Result<
+        Option<(
+            Vec<CharacterChunk>,
+            Option<String>,
+            Vec<SixelImageChunk>,
+            Vec<KittyImageChunk>,
+        )>,
+    >; // TODO: better
     fn render_frame(
         &mut self,
         client_id: ClientId,
@@ -345,6 +366,13 @@ pub trait Pane {
     fn scroll_down(&mut self, count: usize, client_id: ClientId);
     fn scroll_left(&mut self, _count: usize, _client_id: ClientId) {}
     fn scroll_right(&mut self, _count: usize, _client_id: ClientId) {}
+    fn scroll_to_previous_prompt(&mut self, _client_id: ClientId) {}
+    fn scroll_to_next_prompt(&mut self, _client_id: ClientId) {}
+    fn select_command_at_scroll_position(&mut self, _client_id: ClientId) {}
+    fn copy_last_command_output(&mut self) -> Option<String> {
+        None
+    }
+    fn clear_command_output_flash(&mut self) {}
     fn clear_scroll(&mut self);
     fn is_scrolled(&self) -> bool;
     fn active_at(&self) -> Instant;
@@ -458,6 +486,40 @@ pub trait Pane {
         // plugin panes have no such concept.
         vec![]
     }
+    fn drain_nested_session_messages(&mut self) -> Vec<NestedSessionMessage> {
+        vec![]
+    }
+    fn is_nested_guest(&self) -> bool {
+        false
+    }
+    fn set_is_nested_guest(&mut self, _is_nested_guest: bool) {}
+    fn set_guest_modal(&mut self, _client_ids: &[ClientId]) {}
+    fn clear_guest_modal(&mut self, _client_id: ClientId) {}
+    fn clear_all_guest_modals(&mut self) {}
+    fn guest_modal_selection(&self, _client_id: ClientId) -> Option<usize> {
+        None
+    }
+    fn has_guest_modal_for_any_client(&self) -> bool {
+        false
+    }
+    fn set_guest_choice_indicator(
+        &mut self,
+        _client_id: ClientId,
+        _indicator: Option<GuestChoiceIndicator>,
+    ) {
+    }
+    fn guest_choice_indicator(&self, _client_id: ClientId) -> Option<GuestChoiceIndicator> {
+        None
+    }
+    fn clear_all_guest_choice_indicators(&mut self) {}
+    fn set_guest_session_name(&mut self, _session_name: Option<String>) {}
+    fn guest_session_name(&self) -> Option<String> {
+        None
+    }
+    fn set_guest_modal_shortcuts(&mut self, _shortcuts: GuestModalShortcuts) {}
+    fn guest_modal_shortcuts(&self) -> GuestModalShortcuts {
+        GuestModalShortcuts::default()
+    }
     /// Mark this pane as awaiting a host-terminal reply for a forward
     /// it just dispatched. While paused, vte byte feeding is buffered
     /// so that the eventual host reply lands on the pane's stdin in
@@ -488,7 +550,7 @@ pub trait Pane {
     fn drain_clipboard_update(&mut self) -> Option<String> {
         None
     }
-    fn drain_desktop_notifications(&mut self) -> Vec<(String, String)> {
+    fn drain_desktop_notifications(&mut self) -> Vec<PendingNotification> {
         vec![]
     }
     fn drain_osc7_cwd(&mut self) -> Option<std::path::PathBuf> {
@@ -567,6 +629,10 @@ pub trait Pane {
     fn load_pane_name(&mut self);
     fn set_borderless(&mut self, borderless: bool);
     fn borderless(&self) -> bool;
+    fn set_border_style_override(&mut self, _border_style: BorderStyleOverride) {}
+    fn border_style_override(&self) -> BorderStyleOverride {
+        BorderStyleOverride::default()
+    }
     fn set_exclude_from_sync(&mut self, exclude_from_sync: bool);
     fn exclude_from_sync(&self) -> bool;
 
@@ -640,6 +706,9 @@ pub trait Pane {
         false
     }
     fn consume_bell(&mut self) {}
+    fn osc7_payload(&self) -> Option<&str> {
+        None
+    }
     fn set_bell_notification(&mut self, _val: bool) {}
     fn get_bell_notification(&self) -> bool {
         false
@@ -686,8 +755,12 @@ pub trait Pane {
         None
     } // only relevant to terminal panes
     fn update_theme(&mut self, _theme: Styling) {}
+    fn set_selection_options(&mut self, _osc133_command_selection: bool, _word_separators: &str) {}
     fn update_arrow_fonts(&mut self, _should_support_arrow_fonts: bool) {}
+    fn update_kitty_host_support(&mut self, _supported: KittyHostSupport) {}
+    fn update_sixel_host_support(&mut self, _supported: bool) {}
     fn update_rounded_corners(&mut self, _rounded_corners: bool) {}
+    fn invalidate_frame_cache(&mut self) {}
     fn set_should_be_suppressed(&mut self, _should_be_suppressed: bool) {}
     fn query_should_be_suppressed(&self) -> bool {
         false
@@ -739,6 +812,12 @@ pub trait Pane {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GuestChoiceIndicator {
+    Descended,
+    Dismissed,
+}
+
 #[derive(Clone, Debug)]
 pub enum AdjustedInput {
     WriteBytesToTerminal(Vec<u8>),
@@ -747,6 +826,9 @@ pub enum AdjustedInput {
     CloseThisPane,
     DropToShellInThisPane { working_dir: Option<PathBuf> },
     WriteKeyToPlugin(KeyWithModifier),
+    GuestModalSelectionChanged,
+    GuestModalZoom,
+    GuestModalDescend,
 }
 pub fn get_next_terminal_position(
     tiled_panes: &TiledPanes,
@@ -781,6 +863,7 @@ impl Tab {
         stacked_resize: Rc<RefCell<bool>>,
         stacked_pane_list: Rc<RefCell<bool>>,
         sixel_image_store: Rc<RefCell<SixelImageStore>>,
+        kitty_image_store: Rc<RefCell<KittyImageStore>>,
         os_api: Box<dyn ServerOsApi>,
         senders: ThreadSenders,
         max_panes: Option<usize>,
@@ -789,6 +872,7 @@ impl Tab {
         pane_frame_style: PaneFrameStyle,
         auto_layout: bool,
         connected_clients_in_app: Rc<RefCell<HashMap<ClientId, bool>>>, // bool -> is_web_client
+        client_display_slots: Rc<RefCell<HashMap<ClientId, usize>>>,
         session_is_mirrored: bool,
         client_id: Option<ClientId>,
         copy_options: CopyOptions,
@@ -807,15 +891,16 @@ impl Tab {
         current_pane_group: Rc<RefCell<PaneGroups>>,
         currently_marking_pane_group: Rc<RefCell<HashMap<ClientId, bool>>>,
         advanced_mouse_actions: bool,
+        mouse_scroll_resize: bool,
         mouse_hover_effects: bool,
+        mouse_hover_tips: bool,
         focus_follows_mouse: bool,
         mouse_click_through: bool,
         web_server_ip: IpAddr,
         web_server_port: u16,
-        mobile_tab_count: usize,
     ) -> Self {
         let default_name = if name.is_empty() {
-            format!("Tab #{}", (id + 1).saturating_sub(mobile_tab_count))
+            format!("Tab #{}", id + 1)
         } else {
             String::new()
         };
@@ -837,20 +922,22 @@ impl Tab {
         let mode_info = Rc::new(RefCell::new(HashMap::new()));
         let reserved_top_rows: Rc<RefCell<HashMap<PaneId, usize>>> =
             Rc::new(RefCell::new(HashMap::new()));
+        let fullscreen_covers_ui = Rc::new(RefCell::new(false));
 
         let tiled_panes = TiledPanes::new(
             display_area.clone(),
             viewport.clone(),
             connected_clients.clone(),
             connected_clients_in_app.clone(),
+            client_display_slots.clone(),
             mode_info.clone(),
             character_cell_size.clone(),
             stacked_resize.clone(),
-            stacked_pane_list.clone(),
             reserved_top_rows.clone(),
+            fullscreen_covers_ui.clone(),
             session_is_mirrored,
             pane_frame_style,
-            default_mode_info.clone(),
+            default_mode_info.mode,
             style,
             os_api.clone(),
             senders.clone(),
@@ -860,10 +947,13 @@ impl Tab {
             viewport.clone(),
             connected_clients.clone(),
             connected_clients_in_app.clone(),
+            client_display_slots.clone(),
             mode_info.clone(),
             character_cell_size.clone(),
+            fullscreen_covers_ui.clone(),
+            pane_frame_style,
             session_is_mirrored,
-            default_mode_info.clone(),
+            default_mode_info.mode,
             style,
             os_api.clone(),
             senders.clone(),
@@ -892,12 +982,12 @@ impl Tab {
             prev_name: name,
             default_name,
             size: initial_size,
-            visible_to: None,
             max_panes,
             viewport,
             display_area,
             character_cell_size,
             sixel_image_store,
+            kitty_image_store,
             synchronize_is_active: false,
             os_api,
             senders,
@@ -925,6 +1015,8 @@ impl Tab {
             default_shell,
             debug,
             arrow_fonts,
+            kitty_host_support: None,
+            sixel_host_support: None,
             styled_underlines,
             osc8_hyperlinks,
             explicitly_disable_kitty_keyboard_protocol,
@@ -941,17 +1033,34 @@ impl Tab {
             current_pane_group,
             currently_marking_pane_group,
             advanced_mouse_actions,
+            mouse_scroll_resize,
             mouse_hover_effects,
+            mouse_hover_tips,
             focus_follows_mouse,
             mouse_click_through,
+            osc133_command_selection: true,
+            word_separators: DEFAULT_WORD_SEPARATORS.to_owned(),
             connected_clients_in_app,
+            client_display_slots,
             web_server_ip,
             web_server_port,
             panes_with_pending_bell: HashSet::new(),
             tab_has_pending_bell: false,
             tab_bell_flash: false,
             tab_bell_ring: false,
+            dimmed_clients: HashSet::new(),
+            tab_visible: true,
         }
+    }
+
+    pub fn set_client_dimmed(&mut self, client_id: ClientId, dimmed: bool) {
+        if dimmed {
+            self.dimmed_clients.insert(client_id);
+        } else {
+            self.dimmed_clients.remove(&client_id);
+        }
+        self.tiled_panes.set_client_dimmed(client_id, dimmed);
+        self.floating_panes.set_client_dimmed(client_id, dimmed);
     }
 
     pub fn stacked_pane_list_is_active(&self) -> bool {
@@ -1583,6 +1692,10 @@ impl Tab {
                     current_pane_group.clone(),
                     false,
                     false,
+                    self.mouse_scroll_resize,
+                    self.mouse_hover_tips,
+                    self.dimmed_clients.clone(),
+                    &self.client_display_slots.borrow(),
                 );
                 pane_contents_and_ui.set_frame_geom_override(Some(header_geom));
                 pane_contents_and_ui.set_stack_list_entry(
@@ -1631,6 +1744,7 @@ impl Tab {
             &self.viewport,
             &self.senders,
             &self.sixel_image_store,
+            &self.kitty_image_store,
             &self.link_handler,
             &self.terminal_emulator_colors,
             &self.terminal_emulator_color_codes,
@@ -1681,6 +1795,16 @@ impl Tab {
                 self.apply_buffered_instructions().non_fatal();
             },
         }
+        if let Some(supported) = self.kitty_host_support {
+            self.tiled_panes.update_pane_kitty_host_support(supported);
+            self.floating_panes
+                .update_pane_kitty_host_support(supported);
+        }
+        if let Some(supported) = self.sixel_host_support {
+            self.tiled_panes.update_pane_sixel_host_support(supported);
+            self.floating_panes
+                .update_pane_sixel_host_support(supported);
+        }
         Ok(())
     }
     pub fn override_layout(
@@ -1709,6 +1833,7 @@ impl Tab {
             &self.viewport,
             &self.senders,
             &self.sixel_image_store,
+            &self.kitty_image_store,
             &self.link_handler,
             &self.terminal_emulator_colors,
             &self.terminal_emulator_color_codes,
@@ -1794,14 +1919,21 @@ impl Tab {
         }
     }
     fn relayout_floating_panes(&mut self, search_backwards: bool) -> Result<()> {
-        if let Some(layout_candidate) = self
+        let layout_candidate = self
             .swap_layouts
-            .swap_floating_panes(&self.floating_panes, search_backwards)
-        {
+            .swap_floating_panes(&self.floating_panes, search_backwards);
+        self.apply_floating_layout_candidate(layout_candidate)
+    }
+    fn apply_floating_layout_candidate(
+        &mut self,
+        layout_candidate: Option<Vec<FloatingPaneLayout>>,
+    ) -> Result<()> {
+        if let Some(layout_candidate) = layout_candidate {
             LayoutApplier::new(
                 &self.viewport,
                 &self.senders,
                 &self.sixel_image_store,
+                &self.kitty_image_store,
                 &self.link_handler,
                 &self.terminal_emulator_colors,
                 &self.terminal_emulator_color_codes,
@@ -1825,9 +1957,6 @@ impl Tab {
             .non_fatal();
         }
         self.set_force_render();
-        self.senders
-            .send_to_pty_writer(PtyWriteInstruction::ApplyCachedResizes)
-            .with_context(|| format!("failed to apply cached resizes"))?;
         Ok(())
     }
     fn relayout_tiled_panes(&mut self, search_backwards: bool) -> Result<()> {
@@ -1835,14 +1964,21 @@ impl Tab {
             self.tiled_panes.unset_fullscreen();
         }
         self.dissolve_stack_lists_for_classic_mutation();
-        if let Some(layout_candidate) = self
+        let layout_candidate = self
             .swap_layouts
-            .swap_tiled_panes(&self.tiled_panes, search_backwards)
-        {
+            .swap_tiled_panes(&self.tiled_panes, search_backwards);
+        self.apply_tiled_layout_candidate(layout_candidate)
+    }
+    fn apply_tiled_layout_candidate(
+        &mut self,
+        layout_candidate: Option<TiledPaneLayout>,
+    ) -> Result<()> {
+        if let Some(layout_candidate) = layout_candidate {
             let application_res = LayoutApplier::new(
                 &self.viewport,
                 &self.senders,
                 &self.sixel_image_store,
+                &self.kitty_image_store,
                 &self.link_handler,
                 &self.terminal_emulator_colors,
                 &self.terminal_emulator_color_codes,
@@ -1875,10 +2011,47 @@ impl Tab {
         // we do this so that the new swap layout has a chance to pass through the constraint system
         self.tiled_panes.resize(display_area);
         self.set_should_clear_display_before_rendering();
-        self.senders
-            .send_to_pty_writer(PtyWriteInstruction::ApplyCachedResizes)
-            .with_context(|| format!("failed to apply cached resizes"))?;
         Ok(())
+    }
+    fn settled_tiled_pane_count(&self) -> usize {
+        let mut pane_count = self.tiled_panes.visible_panes_count();
+        if self.tiled_panes.fullscreen_is_active() {
+            pane_count += self.tiled_panes.panes_to_hide_count();
+        }
+        if self.stacked_pane_list_is_active() {
+            pane_count += self.suppressed_stack_list_members().count();
+        }
+        pane_count
+    }
+    pub fn apply_tiled_swap_layout(&mut self, layout_name: &str) -> Result<bool> {
+        let Some((position, layout_candidate)) = self
+            .swap_layouts
+            .tiled_layout_candidate_by_name(layout_name, self.settled_tiled_pane_count())
+        else {
+            return Ok(false);
+        };
+        if self.tiled_panes.fullscreen_is_active() {
+            self.tiled_panes.unset_fullscreen();
+        }
+        self.dissolve_stack_lists_for_classic_mutation();
+        self.swap_layouts
+            .set_current_tiled_layout_position(position);
+        self.apply_tiled_layout_candidate(Some(layout_candidate))?;
+        Ok(true)
+    }
+    pub fn apply_floating_swap_layout(&mut self, layout_name: &str) -> Result<bool> {
+        let Some((position, layout_candidate)) =
+            self.swap_layouts.floating_layout_candidate_by_name(
+                layout_name,
+                self.floating_panes.visible_panes_count(),
+            )
+        else {
+            return Ok(false);
+        };
+        self.swap_layouts
+            .set_current_floating_layout_position(position);
+        self.apply_floating_layout_candidate(Some(layout_candidate))?;
+        Ok(true)
     }
     pub fn previous_swap_layout(&mut self) -> Result<()> {
         let search_backwards = true;
@@ -1979,9 +2152,11 @@ impl Tab {
     fn resolve_hint_text(&self, client_id: ClientId) -> BTreeMap<usize, StyledText> {
         let focused_pane_id = self.get_active_pane_id(client_id);
         let hovered_pane_id = self.mouse_hover_pane_id.get(&client_id).copied();
-        if let Some(hovered_pane_id) = hovered_pane_id {
-            if Some(hovered_pane_id) != focused_pane_id {
-                return hover_hint_variants();
+        if self.mouse_hover_tips {
+            if let Some(hovered_pane_id) = hovered_pane_id {
+                if Some(hovered_pane_id) != focused_pane_id {
+                    return hover_hint_variants();
+                }
             }
         }
         if let Some(focused_pane) = self.get_active_pane(client_id) {
@@ -2004,12 +2179,12 @@ impl Tab {
             .get(&client_id)
             .copied()
             .unwrap_or(false);
-        if resize_help_visible {
+        if resize_help_visible && self.mouse_hover_tips {
             let selectable_pane_count = self.get_selectable_tiled_panes().count()
                 + self.get_selectable_floating_panes().count();
             if selectable_pane_count > 1 && !self.is_fullscreen_active() {
                 let focused_pane_is_floating = self.floating_panes.panes_are_visible();
-                return resize_hint_variants(focused_pane_is_floating);
+                return resize_hint_variants(focused_pane_is_floating, self.mouse_scroll_resize);
             }
         }
         BTreeMap::new()
@@ -2166,15 +2341,21 @@ impl Tab {
         Ok(())
     }
     pub fn remove_client(&mut self, client_id: ClientId) {
-        self.focus_pane_id = None;
-        self.mode_info
-            .borrow_mut()
-            .get_mut(&client_id)
-            .map(|c| c.change_to_default_mode()); // TODO: no races?
+        let is_connected_to_this_tab = self.connected_clients.borrow().contains(&client_id);
+        if is_connected_to_this_tab {
+            let is_last_connected_client = self.connected_clients.borrow().len() == 1;
+            self.focus_pane_id = if is_last_connected_client {
+                self.tiled_panes.focused_pane_id(client_id)
+            } else {
+                None
+            };
+        }
+        self.mode_info.borrow_mut().remove(&client_id);
         self.connected_clients.borrow_mut().remove(&client_id);
         self.mouse_help_text_visible.remove(&client_id);
         self.mouse_last_pane_id.remove(&client_id);
         self.last_mouse_activity_time.remove(&client_id);
+        self.set_client_dimmed(client_id, false);
         self.set_force_render();
     }
     pub fn drain_connected_clients(
@@ -2365,8 +2546,9 @@ impl Tab {
         blocking_notification: Option<NotificationEnd>,
     ) -> Result<()> {
         let invoked_with = self.normalize_invoked_with_for_default_shell(invoked_with);
-        match new_pane_placement {
-            NewPanePlacement::NoPreference { borderless } => self.new_no_preference_pane(
+        let border_style = new_pane_placement.get_border_style();
+        let result = match new_pane_placement {
+            NewPanePlacement::NoPreference { borderless, .. } => self.new_no_preference_pane(
                 pid,
                 initial_pane_title,
                 invoked_with,
@@ -2379,6 +2561,7 @@ impl Tab {
             NewPanePlacement::Tiled {
                 direction: None,
                 borderless,
+                ..
             } => self.new_tiled_pane(
                 pid,
                 initial_pane_title,
@@ -2392,25 +2575,69 @@ impl Tab {
             NewPanePlacement::Tiled {
                 direction: Some(direction),
                 borderless,
+                ..
             } => {
-                if let Some(client_id) = client_id {
-                    if direction == Direction::Left || direction == Direction::Right {
-                        self.vertical_split(
-                            pid,
-                            initial_pane_title,
-                            client_id,
-                            blocking_notification,
-                            borderless,
-                        )?;
-                    } else {
-                        self.horizontal_split(
-                            pid,
-                            initial_pane_title,
-                            client_id,
-                            blocking_notification,
-                            borderless,
-                        )?;
-                    }
+                let is_vertical = direction == Direction::Left || direction == Direction::Right;
+                let focused_client_id = client_id.filter(|_| should_focus_pane);
+                match focused_client_id {
+                    Some(client_id) => {
+                        if is_vertical {
+                            self.vertical_split(
+                                pid,
+                                initial_pane_title,
+                                client_id,
+                                blocking_notification,
+                                borderless,
+                            )?;
+                        } else {
+                            self.horizontal_split(
+                                pid,
+                                initial_pane_title,
+                                client_id,
+                                blocking_notification,
+                                borderless,
+                            )?;
+                        }
+                    },
+                    None => {
+                        let target_pane_id = client_id
+                            .and_then(|client_id| self.tiled_panes.get_active_pane_id(client_id))
+                            .or_else(|| self.tiled_panes.first_selectable_pane_id());
+                        match target_pane_id {
+                            Some(target_pane_id) if is_vertical => {
+                                self.vertical_split_of_pane_id(
+                                    pid,
+                                    initial_pane_title,
+                                    invoked_with,
+                                    target_pane_id,
+                                    blocking_notification,
+                                    borderless,
+                                )?;
+                            },
+                            Some(target_pane_id) => {
+                                self.horizontal_split_of_pane_id(
+                                    pid,
+                                    initial_pane_title,
+                                    invoked_with,
+                                    target_pane_id,
+                                    blocking_notification,
+                                    borderless,
+                                )?;
+                            },
+                            None => {
+                                self.new_tiled_pane(
+                                    pid,
+                                    initial_pane_title,
+                                    invoked_with,
+                                    start_suppressed,
+                                    should_focus_pane,
+                                    client_id,
+                                    blocking_notification,
+                                    borderless,
+                                )?;
+                            },
+                        }
+                    },
                 }
                 Ok(())
             },
@@ -2427,6 +2654,7 @@ impl Tab {
                 pane_id_to_replace,
                 close_replaced_pane,
                 borderless,
+                ..
             } => self.new_in_place_pane(
                 pid,
                 initial_pane_title,
@@ -2440,6 +2668,7 @@ impl Tab {
             NewPanePlacement::Stacked {
                 pane_id_to_stack_under,
                 borderless,
+                ..
             } => self.new_stacked_pane(
                 pid,
                 initial_pane_title,
@@ -2451,7 +2680,11 @@ impl Tab {
                 blocking_notification,
                 borderless,
             ),
+        };
+        if let Some(border_style) = border_style {
+            self.set_pane_border_style(pid, border_style);
         }
+        result
     }
     pub fn new_no_preference_pane(
         &mut self,
@@ -2479,6 +2712,7 @@ impl Tab {
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.sixel_image_store.clone(),
+                    self.kitty_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
                     initial_pane_title,
@@ -2503,6 +2737,7 @@ impl Tab {
                     initial_pane_title.unwrap_or("".to_owned()),
                     String::new(),
                     self.sixel_image_store.clone(),
+                    self.kitty_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
                     self.link_handler.clone(),
@@ -2559,7 +2794,7 @@ impl Tab {
             if self.floating_panes.panes_are_visible() {
                 self.add_floating_pane(new_pane, pid, None, false, client_id)
             } else {
-                self.add_tiled_pane(new_pane, pid, false, client_id)
+                self.add_tiled_pane(new_pane, pid, false, None)
             }
         }
     }
@@ -2592,6 +2827,7 @@ impl Tab {
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.sixel_image_store.clone(),
+                    self.kitty_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
                     initial_pane_title,
@@ -2616,6 +2852,7 @@ impl Tab {
                     initial_pane_title.unwrap_or("".to_owned()),
                     String::new(),
                     self.sixel_image_store.clone(),
+                    self.kitty_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
                     self.link_handler.clone(),
@@ -2663,7 +2900,8 @@ impl Tab {
                 .insert(pid, (is_scrollback_editor, new_pane));
             Ok(())
         } else {
-            self.add_tiled_pane(new_pane, pid, false, client_id)
+            let focus_client_id = if should_focus_pane { client_id } else { None };
+            self.add_tiled_pane(new_pane, pid, false, focus_client_id)
         }
     }
     pub fn new_floating_pane(
@@ -2694,6 +2932,7 @@ impl Tab {
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.sixel_image_store.clone(),
+                    self.kitty_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
                     initial_pane_title,
@@ -2718,6 +2957,7 @@ impl Tab {
                     initial_pane_title.unwrap_or("".to_owned()),
                     String::new(),
                     self.sixel_image_store.clone(),
+                    self.kitty_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
                     self.link_handler.clone(),
@@ -2846,6 +3086,7 @@ impl Tab {
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.sixel_image_store.clone(),
+                    self.kitty_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
                     initial_pane_title,
@@ -2870,6 +3111,7 @@ impl Tab {
                     initial_pane_title.unwrap_or("".to_owned()),
                     String::new(),
                     self.sixel_image_store.clone(),
+                    self.kitty_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
                     self.link_handler.clone(),
@@ -2918,11 +3160,14 @@ impl Tab {
             Ok(())
         } else {
             if let Some(pane_id_to_stack_under) = pane_id_to_stack_under {
-                // TODO: also focus pane if should_focus_pane? in cases where we did this from the CLI in an unfocused
-                // pane...
-                self.add_stacked_pane_to_pane_id(new_pane, pid, pane_id_to_stack_under)
+                self.add_stacked_pane_to_pane_id(
+                    new_pane,
+                    pid,
+                    pane_id_to_stack_under,
+                    should_focus_pane,
+                )
             } else if let Some(client_id) = client_id {
-                self.add_stacked_pane_to_active_pane(new_pane, pid, client_id)
+                self.add_stacked_pane_to_active_pane(new_pane, pid, client_id, should_focus_pane)
             } else {
                 log::error!("Must have client id or pane id to stack pane");
                 return Ok(());
@@ -2989,7 +3234,7 @@ impl Tab {
         pid: PaneId,
         pane_id_to_replace: PaneId,
     ) -> Result<()> {
-        // this method creates a new pane from pid and replaces it with the pane iwth the given pane_id_to_replace
+        // this method creates a new pane from pid and replaces it with the pane with the given pane_id_to_replace
         // the pane with the given pane_id_to_replace is then suppressed (hidden and not rendered) until the current
         // created pane is closed, in which case it will be replaced back by it
         let err_context = || format!("failed to suppress pane");
@@ -3069,6 +3314,7 @@ impl Tab {
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.sixel_image_store.clone(),
+                    self.kitty_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
                     None,
@@ -3080,6 +3326,12 @@ impl Tab {
                     self.explicitly_disable_kitty_keyboard_protocol,
                     completion_tx,
                 );
+                if let Some(supported) = self.kitty_host_support {
+                    new_pane.update_kitty_host_support(supported);
+                }
+                if let Some(supported) = self.sixel_host_support {
+                    new_pane.update_sixel_host_support(supported);
+                }
                 if let Some(borderless) = borderless {
                     new_pane.set_borderless(borderless);
                 }
@@ -3141,6 +3393,7 @@ impl Tab {
                     String::new(),
                     String::new(),
                     self.sixel_image_store.clone(),
+                    self.kitty_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
                     self.link_handler.clone(),
@@ -3272,7 +3525,7 @@ impl Tab {
         self.close_down_to_max_terminals()
             .with_context(err_context)?;
         if self.tiled_panes.fullscreen_is_active() {
-            self.toggle_active_pane_fullscreen(client_id);
+            self.unset_fullscreen();
         }
         self.dissolve_stack_lists_for_classic_mutation();
         if self.tiled_panes.can_split_pane_horizontally(client_id) {
@@ -3287,6 +3540,7 @@ impl Tab {
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.sixel_image_store.clone(),
+                    self.kitty_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
                     initial_pane_title,
@@ -3298,6 +3552,12 @@ impl Tab {
                     self.explicitly_disable_kitty_keyboard_protocol,
                     completion_tx,
                 );
+                if let Some(supported) = self.kitty_host_support {
+                    new_terminal.update_kitty_host_support(supported);
+                }
+                if let Some(supported) = self.sixel_host_support {
+                    new_terminal.update_sixel_host_support(supported);
+                }
                 if let Some(borderless) = borderless {
                     new_terminal.set_borderless(borderless);
                 }
@@ -3340,7 +3600,7 @@ impl Tab {
         self.close_down_to_max_terminals()
             .with_context(err_context)?;
         if self.tiled_panes.fullscreen_is_active() {
-            self.toggle_active_pane_fullscreen(client_id);
+            self.unset_fullscreen();
         }
         self.dissolve_stack_lists_for_classic_mutation();
         if self.tiled_panes.can_split_pane_vertically(client_id) {
@@ -3355,6 +3615,7 @@ impl Tab {
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.sixel_image_store.clone(),
+                    self.kitty_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
                     initial_pane_title,
@@ -3366,6 +3627,12 @@ impl Tab {
                     self.explicitly_disable_kitty_keyboard_protocol,
                     completion_tx,
                 );
+                if let Some(supported) = self.kitty_host_support {
+                    new_terminal.update_kitty_host_support(supported);
+                }
+                if let Some(supported) = self.sixel_host_support {
+                    new_terminal.update_sixel_host_support(supported);
+                }
                 if let Some(borderless) = borderless {
                     new_terminal.set_borderless(borderless);
                 }
@@ -3393,6 +3660,132 @@ impl Tab {
         Ok(())
     }
 
+    pub fn horizontal_split_of_pane_id(
+        &mut self,
+        pid: PaneId,
+        initial_pane_title: Option<String>,
+        invoked_with: Option<Run>,
+        target_pane_id: PaneId,
+        completion_tx: Option<NotificationEnd>,
+        borderless: Option<bool>,
+    ) -> Result<()> {
+        self.split_of_pane_id(
+            pid,
+            initial_pane_title,
+            invoked_with,
+            target_pane_id,
+            SplitDirection::Horizontal,
+            completion_tx,
+            borderless,
+        )
+    }
+    pub fn vertical_split_of_pane_id(
+        &mut self,
+        pid: PaneId,
+        initial_pane_title: Option<String>,
+        invoked_with: Option<Run>,
+        target_pane_id: PaneId,
+        completion_tx: Option<NotificationEnd>,
+        borderless: Option<bool>,
+    ) -> Result<()> {
+        self.split_of_pane_id(
+            pid,
+            initial_pane_title,
+            invoked_with,
+            target_pane_id,
+            SplitDirection::Vertical,
+            completion_tx,
+            borderless,
+        )
+    }
+    fn split_of_pane_id(
+        &mut self,
+        pid: PaneId,
+        initial_pane_title: Option<String>,
+        invoked_with: Option<Run>,
+        target_pane_id: PaneId,
+        split_direction: SplitDirection,
+        completion_tx: Option<NotificationEnd>,
+        borderless: Option<bool>,
+    ) -> Result<()> {
+        let err_context =
+            || format!("failed to split pane {target_pane_id:?} without changing focus");
+        if self.floating_panes.panes_are_visible() {
+            return Ok(());
+        }
+        if !self.tiled_panes.panes_contain(&target_pane_id) {
+            return Ok(());
+        }
+        self.close_down_to_max_terminals()
+            .with_context(err_context)?;
+        if self.tiled_panes.fullscreen_is_active() {
+            self.tiled_panes.unset_fullscreen();
+        }
+        self.dissolve_stack_lists_for_classic_mutation();
+        let can_split = match split_direction {
+            SplitDirection::Horizontal => self
+                .tiled_panes
+                .can_split_pane_id_horizontally(target_pane_id),
+            SplitDirection::Vertical => self
+                .tiled_panes
+                .can_split_pane_id_vertically(target_pane_id),
+        };
+        if !can_split {
+            self.senders
+                .send_to_pty(PtyInstruction::ClosePane(pid, completion_tx))
+                .with_context(err_context)?;
+            return Ok(());
+        }
+        if let PaneId::Terminal(term_pid) = pid {
+            let next_terminal_position = self.get_next_terminal_position();
+            let mut new_terminal = TerminalPane::new(
+                term_pid,
+                PaneGeom::default(),
+                self.style,
+                next_terminal_position,
+                String::new(),
+                self.link_handler.clone(),
+                self.character_cell_size.clone(),
+                self.sixel_image_store.clone(),
+                self.kitty_image_store.clone(),
+                self.terminal_emulator_colors.clone(),
+                self.terminal_emulator_color_codes.clone(),
+                initial_pane_title,
+                invoked_with,
+                self.debug,
+                self.arrow_fonts,
+                self.styled_underlines,
+                self.osc8_hyperlinks,
+                self.explicitly_disable_kitty_keyboard_protocol,
+                completion_tx,
+            );
+            if let Some(supported) = self.kitty_host_support {
+                new_terminal.update_kitty_host_support(supported);
+            }
+            if let Some(supported) = self.sixel_host_support {
+                new_terminal.update_sixel_host_support(supported);
+            }
+            if let Some(borderless) = borderless {
+                new_terminal.set_borderless(borderless);
+            }
+            match split_direction {
+                SplitDirection::Horizontal => self.tiled_panes.split_pane_id_horizontally(
+                    pid,
+                    Box::new(new_terminal),
+                    target_pane_id,
+                ),
+                SplitDirection::Vertical => self.tiled_panes.split_pane_id_vertically(
+                    pid,
+                    Box::new(new_terminal),
+                    target_pane_id,
+                ),
+            }
+            self.set_should_clear_display_before_rendering();
+            self.swap_layouts.set_is_tiled_damaged();
+        }
+        Ok(())
+    }
+
     pub fn get_active_pane(&self, client_id: ClientId) -> Option<&dyn Pane> {
         self.get_active_pane_id(client_id).and_then(|ap| {
             if self.floating_panes.panes_are_visible() {
@@ -3401,6 +3794,11 @@ impl Tab {
                 self.tiled_panes.get_pane(ap).map(Box::as_ref)
             }
         })
+    }
+    pub fn active_pane_is_scrolled(&self, client_id: ClientId) -> bool {
+        self.get_active_pane(client_id)
+            .map(|pane| pane.is_scrolled())
+            .unwrap_or(false)
     }
     pub fn get_pane_with_id(&self, pane_id: PaneId) -> Option<&dyn Pane> {
         self.floating_panes
@@ -3445,11 +3843,32 @@ impl Tab {
             self.tiled_panes.get_active_pane_id(client_id)
         }
     }
+    pub fn get_active_pane_id_or_first_selectable(&self, client_id: ClientId) -> Option<PaneId> {
+        self.get_active_pane_id(client_id)
+            .or_else(|| self.tiled_panes.first_selectable_pane_id())
+    }
     fn get_active_terminal_id(&self, client_id: ClientId) -> Option<u32> {
         if let Some(PaneId::Terminal(pid)) = self.get_active_pane_id(client_id) {
             Some(pid)
         } else {
             None
+        }
+    }
+    pub fn send_host_focus_event_to_pane(&mut self, pane_id: PaneId, focused: bool) {
+        let PaneId::Terminal(terminal_id) = pane_id else {
+            return;
+        };
+        let focus_event = self.get_pane_with_id(pane_id).and_then(|pane| {
+            if focused {
+                pane.focus_event()
+            } else {
+                pane.unfocus_event()
+            }
+        });
+        if let Some(focus_event) = focus_event {
+            let _ = self
+                .os_api
+                .write_to_tty_stdin(terminal_id, focus_event.as_bytes());
         }
     }
     pub fn check_and_handle_bell_notifications(
@@ -3541,24 +3960,6 @@ impl Tab {
                 .values()
                 .any(|s_p| s_p.1.pid() == PaneId::Terminal(pid))
     }
-    /// Whether the pane with `pane_id` (if owned by this tab) is
-    /// currently waiting for a host-forward reply. Used by the
-    /// `ColorPaletteMode` short-circuit to decide whether an empty
-    /// "host mode unknown" answer needs to drive an unblock cycle:
-    /// if the pane is not paused, no work is owed.
-    pub fn is_pane_forward_paused(&self, pane_id: PaneId) -> bool {
-        self.tiled_panes
-            .get_pane(pane_id)
-            .or_else(|| self.floating_panes.get_pane(pane_id))
-            .or_else(|| {
-                self.suppressed_panes
-                    .values()
-                    .find(|s_p| s_p.1.pid() == pane_id)
-                    .map(|s_p| &s_p.1)
-            })
-            .map(|p| p.is_forward_paused())
-            .unwrap_or(false)
-    }
     pub fn has_plugin(&self, plugin_id: u32) -> bool {
         self.tiled_panes.panes_contain(&PaneId::Plugin(plugin_id))
             || self
@@ -3596,35 +3997,188 @@ impl Tab {
     pub fn has_non_suppressed_pane_with_pid(&self, pid: &PaneId) -> bool {
         self.tiled_panes.panes_contain(pid) || self.floating_panes.panes_contain(pid)
     }
-    pub fn set_shadow_focus(&mut self, client_id: ClientId, pane_id: PaneId) -> bool {
-        if self.tiled_panes.panes_contain(&pane_id) {
-            self.tiled_panes.set_shadow_focus(client_id, pane_id);
-            true
-        } else if self.floating_panes.panes_contain(&pane_id) {
-            self.floating_panes.set_shadow_focus(client_id, pane_id);
-            true
+    pub fn set_pane_is_nested_guest(&mut self, pane_id: PaneId, is_nested_guest: bool) {
+        if let Some(pane) = self
+            .tiled_panes
+            .get_pane_mut(pane_id)
+            .or_else(|| self.floating_panes.get_pane_mut(pane_id))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|s_p| s_p.1.pid() == pane_id)
+                    .map(|s_p| &mut s_p.1)
+            })
+        {
+            pane.set_is_nested_guest(is_nested_guest);
+        }
+    }
+    pub fn is_pane_nested_guest(&self, pane_id: PaneId) -> bool {
+        if let Some(pane) = self
+            .tiled_panes
+            .get_pane(pane_id)
+            .or_else(|| self.floating_panes.get_pane(pane_id))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values()
+                    .find(|s_p| s_p.1.pid() == pane_id)
+                    .map(|s_p| &s_p.1)
+            })
+        {
+            pane.is_nested_guest()
         } else {
             false
         }
     }
-    pub fn clear_shadow_focus(&mut self, client_id: ClientId) {
-        if self.tiled_panes.is_shadow_focus_client(&client_id) {
-            self.tiled_panes.clear_shadow_focus(client_id);
-        }
-        if self.floating_panes.is_shadow_focus_client(&client_id) {
-            self.floating_panes.clear_shadow_focus(client_id);
+    pub fn nested_guest_pane_ids(&self) -> Vec<PaneId> {
+        self.get_all_pane_ids()
+            .into_iter()
+            .filter(|pane_id| self.is_pane_nested_guest(*pane_id))
+            .collect()
+    }
+    pub fn set_guest_modal_on_pane(&mut self, pane_id: PaneId, client_ids: &[ClientId]) {
+        if let Some(pane) = self
+            .tiled_panes
+            .get_pane_mut(pane_id)
+            .or_else(|| self.floating_panes.get_pane_mut(pane_id))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|s_p| s_p.1.pid() == pane_id)
+                    .map(|s_p| &mut s_p.1)
+            })
+        {
+            pane.set_guest_modal(client_ids);
         }
     }
-    pub fn shadow_focus_clients(&self) -> Vec<ClientId> {
-        let mut out = self.tiled_panes.shadow_focus_clients();
-        out.extend(self.floating_panes.shadow_focus_clients());
-        out.sort_unstable();
-        out.dedup();
-        out
+    pub fn clear_guest_modal_on_pane(&mut self, pane_id: PaneId, client_id: ClientId) {
+        if let Some(pane) = self
+            .tiled_panes
+            .get_pane_mut(pane_id)
+            .or_else(|| self.floating_panes.get_pane_mut(pane_id))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|s_p| s_p.1.pid() == pane_id)
+                    .map(|s_p| &mut s_p.1)
+            })
+        {
+            pane.clear_guest_modal(client_id);
+        }
     }
-    pub fn has_shadow_focus_on(&self, client_id: ClientId, pane_id: PaneId) -> bool {
-        self.tiled_panes.has_shadow_focus_on(client_id, pane_id)
-            || self.floating_panes.has_shadow_focus_on(client_id, pane_id)
+    pub fn clear_all_guest_modals_on_pane(&mut self, pane_id: PaneId) {
+        if let Some(pane) = self
+            .tiled_panes
+            .get_pane_mut(pane_id)
+            .or_else(|| self.floating_panes.get_pane_mut(pane_id))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|s_p| s_p.1.pid() == pane_id)
+                    .map(|s_p| &mut s_p.1)
+            })
+        {
+            pane.clear_all_guest_modals();
+        }
+    }
+    pub fn set_guest_choice_indicator_on_pane(
+        &mut self,
+        pane_id: PaneId,
+        client_id: ClientId,
+        indicator: Option<GuestChoiceIndicator>,
+    ) {
+        if let Some(pane) = self
+            .tiled_panes
+            .get_pane_mut(pane_id)
+            .or_else(|| self.floating_panes.get_pane_mut(pane_id))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|s_p| s_p.1.pid() == pane_id)
+                    .map(|s_p| &mut s_p.1)
+            })
+        {
+            pane.set_guest_choice_indicator(client_id, indicator);
+        }
+    }
+    pub fn clear_all_guest_choice_indicators_on_pane(&mut self, pane_id: PaneId) {
+        if let Some(pane) = self
+            .tiled_panes
+            .get_pane_mut(pane_id)
+            .or_else(|| self.floating_panes.get_pane_mut(pane_id))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|s_p| s_p.1.pid() == pane_id)
+                    .map(|s_p| &mut s_p.1)
+            })
+        {
+            pane.clear_all_guest_choice_indicators();
+        }
+    }
+    pub fn pane_has_guest_modal_for_client(&self, pane_id: PaneId, client_id: ClientId) -> bool {
+        if let Some(pane) = self
+            .tiled_panes
+            .get_pane(pane_id)
+            .or_else(|| self.floating_panes.get_pane(pane_id))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values()
+                    .find(|s_p| s_p.1.pid() == pane_id)
+                    .map(|s_p| &s_p.1)
+            })
+        {
+            pane.guest_modal_selection(client_id).is_some()
+        } else {
+            false
+        }
+    }
+    pub fn clear_guest_modal_for_client_on_all_panes(&mut self, client_id: ClientId) {
+        for pane_id in self.get_all_pane_ids() {
+            self.clear_guest_modal_on_pane(pane_id, client_id);
+        }
+    }
+    pub fn clear_guest_choice_indicator_for_client_on_all_panes(&mut self, client_id: ClientId) {
+        for pane_id in self.get_all_pane_ids() {
+            self.set_guest_choice_indicator_on_pane(pane_id, client_id, None);
+        }
+    }
+    pub fn set_guest_session_name_on_pane(
+        &mut self,
+        pane_id: PaneId,
+        session_name: Option<String>,
+    ) {
+        if let Some(pane) = self
+            .tiled_panes
+            .get_pane_mut(pane_id)
+            .or_else(|| self.floating_panes.get_pane_mut(pane_id))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|s_p| s_p.1.pid() == pane_id)
+                    .map(|s_p| &mut s_p.1)
+            })
+        {
+            pane.set_guest_session_name(session_name);
+        }
+    }
+    pub fn set_guest_modal_shortcuts_on_pane(
+        &mut self,
+        pane_id: PaneId,
+        shortcuts: GuestModalShortcuts,
+    ) {
+        if let Some(pane) = self
+            .tiled_panes
+            .get_pane_mut(pane_id)
+            .or_else(|| self.floating_panes.get_pane_mut(pane_id))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|s_p| s_p.1.pid() == pane_id)
+                    .map(|s_p| &mut s_p.1)
+            })
+        {
+            pane.set_guest_modal_shortcuts(shortcuts);
+        }
     }
     pub fn handle_pty_bytes(&mut self, pid: u32, bytes: VteBytes) -> Result<()> {
         if self.is_pending {
@@ -3772,6 +4326,7 @@ impl Tab {
             if !forwarded_queries.is_empty() {
                 terminal_output.arm_forward_pause();
             }
+            let nested_session_messages = terminal_output.drain_nested_session_messages();
             let clipboard_update = terminal_output.drain_clipboard_update();
             let desktop_notifications = terminal_output.drain_desktop_notifications();
             let osc7_cwd = terminal_output.drain_osc7_cwd();
@@ -3787,13 +4342,25 @@ impl Tab {
                         query,
                     });
             }
+            for message in nested_session_messages {
+                let _ =
+                    self.senders
+                        .send_to_screen(ScreenInstruction::NestedSessionMessageFromPane {
+                            pane_id: PaneId::Terminal(pid),
+                            message,
+                        });
+            }
             if let Some(string) = clipboard_update {
                 self.write_selection_to_clipboard(&string)
                     .with_context(err_context)?;
             }
             if !desktop_notifications.is_empty() {
-                self.forward_desktop_notifications(desktop_notifications, pid)
-                    .with_context(err_context)?;
+                let _ =
+                    self.senders
+                        .send_to_screen(ScreenInstruction::ForwardDesktopNotifications {
+                            pane_id: pid,
+                            notifications: desktop_notifications,
+                        });
             }
             if let Some(path) = osc7_cwd {
                 let _ = self
@@ -4020,6 +4587,31 @@ impl Tab {
                             .with_context(err_context)?;
                         should_update_ui = true;
                     },
+                    Some(AdjustedInput::GuestModalSelectionChanged) => {
+                        should_update_ui = true;
+                    },
+                    Some(AdjustedInput::GuestModalZoom) => {
+                        if let Some(client_id) = client_id {
+                            let _ =
+                                self.senders
+                                    .send_to_screen(ScreenInstruction::GuestModalChoice {
+                                        client_id,
+                                        pane_id: PaneId::Terminal(active_terminal_id),
+                                        outcome: GuestModalOutcome::Zoom,
+                                    });
+                        }
+                    },
+                    Some(AdjustedInput::GuestModalDescend) => {
+                        if let Some(client_id) = client_id {
+                            let _ =
+                                self.senders
+                                    .send_to_screen(ScreenInstruction::GuestModalChoice {
+                                        client_id,
+                                        pane_id: PaneId::Terminal(active_terminal_id),
+                                        outcome: GuestModalOutcome::Descend,
+                                    });
+                        }
+                    },
                     Some(_) => {},
                     None => {},
                 }
@@ -4137,6 +4729,14 @@ impl Tab {
         )
     }
     pub fn toggle_active_pane_fullscreen(&mut self, client_id: ClientId) {
+        if self.floating_panes.fullscreen_is_active()
+            || (self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes())
+        {
+            self.floating_panes.toggle_active_pane_fullscreen(client_id);
+            self.set_force_render();
+            self.set_should_clear_display_before_rendering();
+            return;
+        }
         if self.floating_panes.panes_are_visible() {
             return;
         }
@@ -4144,6 +4744,12 @@ impl Tab {
         self.tiled_panes.toggle_active_pane_fullscreen(client_id);
     }
     pub fn toggle_pane_fullscreen(&mut self, pane_id: PaneId) {
+        if self.floating_panes.panes_contain(&pane_id) {
+            self.floating_panes.toggle_pane_fullscreen(pane_id);
+            self.set_force_render();
+            self.set_should_clear_display_before_rendering();
+            return;
+        }
         if self.pane_is_hidden_stack_list_member(&pane_id) {
             self.make_hidden_stack_list_member_visible(pane_id);
         }
@@ -4154,11 +4760,63 @@ impl Tab {
             log::error!("No tiled pane with id: {:?} found", pane_id);
         }
     }
+    pub fn toggle_active_pane_no_ui_fullscreen(&mut self, client_id: ClientId) {
+        if self.floating_panes.fullscreen_is_active()
+            || (self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes())
+        {
+            self.floating_panes
+                .toggle_active_pane_no_ui_fullscreen(client_id);
+            self.set_force_render();
+            self.set_should_clear_display_before_rendering();
+            return;
+        }
+        if self.floating_panes.panes_are_visible() {
+            return;
+        }
+        self.dissolve_stack_lists_for_classic_mutation();
+        self.tiled_panes
+            .toggle_active_pane_no_ui_fullscreen(client_id);
+    }
+    pub fn toggle_pane_no_ui_fullscreen(&mut self, pane_id: PaneId) {
+        if self.floating_panes.panes_contain(&pane_id) {
+            self.floating_panes.toggle_pane_no_ui_fullscreen(pane_id);
+            self.set_force_render();
+            self.set_should_clear_display_before_rendering();
+            return;
+        }
+        if self.pane_is_hidden_stack_list_member(&pane_id) {
+            self.make_hidden_stack_list_member_visible(pane_id);
+        }
+        self.dissolve_stack_lists_for_classic_mutation();
+        if self.tiled_panes.panes_contain(&pane_id) {
+            self.tiled_panes.toggle_pane_no_ui_fullscreen(pane_id);
+        } else {
+            log::error!("No tiled pane with id: {:?} found", pane_id);
+        }
+    }
+    pub fn unset_fullscreen(&mut self) {
+        if self.floating_panes.fullscreen_is_active() {
+            self.floating_panes.unset_fullscreen();
+            self.set_force_render();
+            self.set_should_clear_display_before_rendering();
+            return;
+        }
+        if self.floating_panes.panes_are_visible() {
+            return;
+        }
+        self.dissolve_stack_lists_for_classic_mutation();
+        self.tiled_panes.unset_fullscreen();
+    }
     pub fn is_fullscreen_active(&self) -> bool {
-        self.tiled_panes.fullscreen_is_active()
+        self.tiled_panes.fullscreen_is_active() || self.floating_panes.fullscreen_is_active()
+    }
+    pub fn fullscreen_covers_ui(&self) -> bool {
+        self.tiled_panes.fullscreen_covers_ui() || self.floating_panes.fullscreen_covers_ui()
     }
     pub fn fullscreen_pane_id(&self) -> Option<PaneId> {
-        self.tiled_panes.fullscreen_pane_id()
+        self.tiled_panes
+            .fullscreen_pane_id()
+            .or_else(|| self.floating_panes.fullscreen_pane_id())
     }
     pub fn are_floating_panes_visible(&self) -> bool {
         self.floating_panes.panes_are_visible()
@@ -4177,19 +4835,19 @@ impl Tab {
 
         return self.tiled_panes.focus_pane_right_fullscreen(client_id);
     }
-    pub fn focus_pane_up_fullscreen(&mut self, client_id: ClientId) {
+    pub fn focus_pane_up_fullscreen(&mut self, client_id: ClientId) -> bool {
         if !self.is_fullscreen_active() {
-            return;
+            return false;
         }
 
-        self.tiled_panes.focus_pane_up_fullscreen(client_id);
+        return self.tiled_panes.focus_pane_up_fullscreen(client_id);
     }
-    pub fn focus_pane_down_fullscreen(&mut self, client_id: ClientId) {
+    pub fn focus_pane_down_fullscreen(&mut self, client_id: ClientId) -> bool {
         if !self.is_fullscreen_active() {
-            return;
+            return false;
         }
 
-        self.tiled_panes.focus_pane_down_fullscreen(client_id);
+        return self.tiled_panes.focus_pane_down_fullscreen(client_id);
     }
     pub fn switch_next_pane_fullscreen(&mut self, client_id: ClientId) {
         if !self.is_fullscreen_active() {
@@ -4223,10 +4881,6 @@ impl Tab {
         self.should_clear_display_before_rendering = true;
         self.floating_panes.set_force_render(); // we do this to make sure pinned panes are
                                                 // rendered even if their surface is not visible
-    }
-    #[cfg(test)]
-    pub fn should_clear_display_before_rendering(&self) -> bool {
-        self.should_clear_display_before_rendering
     }
     pub fn is_sync_panes_active(&self) -> bool {
         self.synchronize_is_active
@@ -4296,12 +4950,16 @@ impl Tab {
                 current_pane_group.clone(),
                 client_id_override,
                 &self.mouse_help_text_visible,
+                self.mouse_scroll_resize,
+                self.mouse_hover_tips,
             )
             .with_context(err_context)?;
         self.render_stack_list_headers(output, client_id_override)
             .with_context(err_context)?;
-        if (self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes())
-            || self.floating_panes.has_pinned_panes()
+        let no_ui_fullscreen_active = self.tiled_panes.fullscreen_covers_ui();
+        if !no_ui_fullscreen_active
+            && ((self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes())
+                || self.floating_panes.has_pinned_panes())
         {
             self.floating_panes
                 .render(
@@ -4310,6 +4968,8 @@ impl Tab {
                     current_pane_group,
                     client_id_override,
                     &self.mouse_help_text_visible,
+                    self.mouse_scroll_resize,
+                    self.mouse_hover_tips,
                 )
                 .with_context(err_context)?;
         }
@@ -4340,6 +5000,7 @@ impl Tab {
                 connected_clients.iter().copied(),
                 clear_display,
             );
+            output.mark_host_display_cleared_for_clients(connected_clients.iter().copied());
             self.should_clear_display_before_rendering = false;
         }
     }
@@ -4488,6 +5149,20 @@ impl Tab {
         let selectable_tiled_panes = self.tiled_panes.get_panes().filter(|(_, p)| p.selectable());
         selectable_tiled_panes.count() > 0
     }
+    pub fn resize_pty_all_panes(&mut self) -> Result<()> {
+        let err_context = || format!("failed to resize PTYs of all panes in tab {}", self.id);
+        self.tiled_panes
+            .resize_pty_all_panes()
+            .with_context(err_context)?;
+        self.floating_panes
+            .resize_pty_all_panes(&mut self.os_api)
+            .with_context(err_context)?;
+        for (_is_scrollback_editor, pane) in self.suppressed_panes.values_mut() {
+            resize_pty!(pane, self.os_api, self.senders, self.character_cell_size)
+                .with_context(err_context)?;
+        }
+        Ok(())
+    }
     pub fn resize_whole_tab(&mut self, new_screen_size: Size) -> Result<()> {
         let err_context = || format!("failed to resize whole tab (id {})", self.id);
         self.size = new_screen_size;
@@ -4498,8 +5173,14 @@ impl Tab {
         // panes retain stale geometry from before the resize and the layout
         // solver fails when fullscreen is later toggled off.
         let fullscreen_pane_to_restore = self.tiled_panes.fullscreen_pane_id();
+        let fullscreen_covered_ui = self.tiled_panes.fullscreen_covers_ui();
         if fullscreen_pane_to_restore.is_some() {
             self.tiled_panes.unset_fullscreen();
+        }
+        let floating_fullscreen_pane_to_restore = self.floating_panes.fullscreen_pane_id();
+        let floating_fullscreen_covered_ui = self.floating_panes.fullscreen_covers_ui();
+        if floating_fullscreen_pane_to_restore.is_some() {
+            self.floating_panes.unset_fullscreen();
         }
         self.floating_panes.resize(new_screen_size);
         // we need to do this explicitly because floating_panes.resize does not do this
@@ -4521,9 +5202,6 @@ impl Tab {
             let _ = self.relayout_tiled_panes(false);
         }
         self.set_should_clear_display_before_rendering();
-        self.senders
-            .send_to_pty_writer(PtyWriteInstruction::ApplyCachedResizes)
-            .with_context(|| format!("failed to update plugins with mode info"))?;
         LayoutApplier::offset_viewport(
             self.viewport.clone(),
             self.display_area.clone(),
@@ -4532,7 +5210,20 @@ impl Tab {
         );
         if let Some(pane_id) = fullscreen_pane_to_restore {
             if self.tiled_panes.panes_contain(&pane_id) {
-                self.tiled_panes.toggle_pane_fullscreen(pane_id);
+                if fullscreen_covered_ui {
+                    self.tiled_panes.toggle_pane_no_ui_fullscreen(pane_id);
+                } else {
+                    self.tiled_panes.toggle_pane_fullscreen(pane_id);
+                }
+            }
+        }
+        if let Some(pane_id) = floating_fullscreen_pane_to_restore {
+            if self.floating_panes.panes_contain(&pane_id) {
+                if floating_fullscreen_covered_ui {
+                    self.floating_panes.toggle_pane_no_ui_fullscreen(pane_id);
+                } else {
+                    self.floating_panes.toggle_pane_fullscreen(pane_id);
+                }
             }
         }
         self.resize_all_stack_list_hidden_members();
@@ -4540,6 +5231,9 @@ impl Tab {
     }
     pub fn resize(&mut self, client_id: ClientId, strategy: ResizeStrategy) -> Result<()> {
         let err_context = || format!("unable to resize pane");
+        if self.floating_panes.fullscreen_is_active() {
+            return Ok(());
+        }
         if self.floating_panes.panes_are_visible() {
             let successfully_resized = self
                 .floating_panes
@@ -4611,6 +5305,7 @@ impl Tab {
         }
         if self.floating_panes.panes_are_visible() {
             self.floating_panes.focus_last_pane(client_id);
+            return;
         } else if self.tiled_panes.fullscreen_is_active() {
             self.switch_last_pane_fullscreen(client_id);
             return;
@@ -4623,6 +5318,23 @@ impl Tab {
         } else if self.has_selectable_panes() && !self.tiled_panes.fullscreen_is_active() {
             self.tiled_panes.focus_pane_on_edge(direction, client_id);
         }
+    }
+    pub fn focus_pane_adjacent_to(
+        &mut self,
+        pane_id: PaneId,
+        direction: Direction,
+        client_id: ClientId,
+    ) -> Option<PaneId> {
+        if self.floating_panes.panes_are_visible() {
+            return self
+                .floating_panes
+                .focus_pane_adjacent_to(pane_id, direction, client_id);
+        }
+        if self.tiled_panes.fullscreen_is_active() {
+            return None;
+        }
+        self.tiled_panes
+            .focus_pane_adjacent_to(pane_id, direction, client_id)
     }
     // returns a boolean that indicates whether the focus moved
     pub fn move_focus_left(&mut self, client_id: ClientId) -> Result<bool> {
@@ -4662,8 +5374,7 @@ impl Tab {
                 return Ok(false);
             }
             if self.tiled_panes.fullscreen_is_active() {
-                self.focus_pane_down_fullscreen(client_id);
-                return Ok(true);
+                return Ok(self.focus_pane_down_fullscreen(client_id));
             }
             if self.stacked_pane_list_is_active()
                 && self.move_focus_within_stack_list(client_id, true)
@@ -4689,8 +5400,7 @@ impl Tab {
                 return Ok(false);
             }
             if self.tiled_panes.fullscreen_is_active() {
-                self.focus_pane_up_fullscreen(client_id);
-                return Ok(true);
+                return Ok(self.focus_pane_up_fullscreen(client_id));
             }
             if self.stacked_pane_list_is_active()
                 && self.move_focus_within_stack_list(client_id, false)
@@ -4915,6 +5625,12 @@ impl Tab {
     pub fn get_tiled_pane_ids(&self) -> Vec<PaneId> {
         self.get_tiled_panes().map(|(&pid, _)| pid).collect()
     }
+    pub fn kitty_visible_pane_ids(&self) -> HashSet<PaneId> {
+        let mut pane_ids: HashSet<PaneId> =
+            self.tiled_panes.rendered_pane_ids().into_iter().collect();
+        pane_ids.extend(self.floating_panes.rendered_pane_ids());
+        pane_ids
+    }
     pub fn get_all_pane_ids(&self) -> Vec<PaneId> {
         let mut static_and_floating_pane_ids = self.get_static_and_floating_pane_ids();
         let mut suppressed_pane_ids = self
@@ -4961,7 +5677,7 @@ impl Tab {
         if let Some(pane) = self.floating_panes.get_pane(pane_id) {
             let mut info = pane_info_for_pane(&pane_id, pane, &current_pane_group);
             info.is_focused = false;
-            info.is_fullscreen = false;
+            info.is_fullscreen = self.floating_panes.fullscreen_pane_id() == Some(pane_id);
             info.is_floating = true;
             info.is_suppressed = false;
             return Some(info);
@@ -5050,6 +5766,9 @@ impl Tab {
             };
         }
         let closed_pane = if self.floating_panes.panes_contain(&id) {
+            if self.floating_panes.fullscreen_pane_id() == Some(id) {
+                self.floating_panes.unset_fullscreen();
+            }
             let closed_pane = self.floating_panes.remove_pane(id);
             self.floating_panes.move_clients_out_of_pane(id);
             if !self.floating_panes.has_selectable_panes() {
@@ -5136,6 +5855,9 @@ impl Tab {
             };
         }
         if self.floating_panes.panes_contain(&id) {
+            if self.floating_panes.fullscreen_pane_id() == Some(id) {
+                self.floating_panes.unset_fullscreen();
+            }
             let mut closed_pane = self.floating_panes.remove_pane(id);
             self.floating_panes.move_clients_out_of_pane(id);
             if !self.floating_panes.has_panes() {
@@ -5516,6 +6238,47 @@ impl Tab {
         }
     }
 
+    pub fn scroll_active_terminal_to_previous_prompt(&mut self, client_id: ClientId) {
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            active_pane.scroll_to_previous_prompt(client_id);
+        }
+    }
+
+    pub fn scroll_active_terminal_to_next_prompt(&mut self, client_id: ClientId) {
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            active_pane.scroll_to_next_prompt(client_id);
+        }
+    }
+
+    pub fn select_command_at_scroll_position(&mut self, client_id: ClientId) {
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            active_pane.select_command_at_scroll_position(client_id);
+        }
+    }
+
+    pub fn copy_last_command_output(&mut self, client_id: ClientId) -> Result<()> {
+        let err_context = || format!("failed to copy last command output for client {client_id}");
+        let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) else {
+            return Ok(());
+        };
+        let pane_id = active_pane.pid();
+        let Some(output) = active_pane.copy_last_command_output() else {
+            return Ok(());
+        };
+        self.copy_text_to_clipboard(&output)
+            .with_context(err_context)?;
+        self.senders
+            .send_to_background_jobs(BackgroundJob::ClearCommandOutputFlash { pane_id })
+            .with_context(err_context)?;
+        Ok(())
+    }
+
+    pub fn clear_command_output_flash(&mut self, pane_id: PaneId) {
+        if let Some(pane) = self.get_pane_with_id_mut(pane_id) {
+            pane.clear_command_output_flash();
+        }
+    }
+
     pub fn scroll_terminal_up(&mut self, terminal_pane_id: u32) -> Result<()> {
         let pane_id = PaneId::Terminal(terminal_pane_id);
         let err_context = || format!("failed to scroll up pane {pane_id:?}");
@@ -5756,19 +6519,12 @@ impl Tab {
         let err_context = || format!("failed to get id of pane at position {point:?}");
 
         if self.tiled_panes.fullscreen_is_active()
-            && self
-                .is_position_inside_viewport(point)
-                .with_context(err_context)?
+            && (self.tiled_panes.fullscreen_covers_ui()
+                || self
+                    .is_position_inside_viewport(point)
+                    .with_context(err_context)?)
         {
-            // TODO: instead of doing this, record the pane that is in fullscreen
-            let first_client_id = self
-                .connected_clients
-                .borrow()
-                .iter()
-                .copied()
-                .next()
-                .with_context(err_context)?;
-            return Ok(self.tiled_panes.get_active_pane_id(first_client_id));
+            return Ok(self.tiled_panes.fullscreen_pane_id());
         }
 
         let (stacked_pane_ids_under_flexible_pane, _stacked_pane_ids_over_flexible_pane) = {
@@ -5827,12 +6583,22 @@ impl Tab {
         }
     }
 
+    #[cfg(test)]
     pub fn handle_mouse_event(
         &mut self,
         event: &MouseEvent,
         client_id: ClientId,
     ) -> Result<MouseEffect> {
-        MouseHandler::handle_mouse_event(self, event, client_id)
+        MouseHandler::handle_mouse_event(self, event, client_id, None)
+    }
+
+    pub fn handle_mouse_event_with_passthrough(
+        &mut self,
+        event: &MouseEvent,
+        client_id: ClientId,
+        passthrough_pane_id: Option<PaneId>,
+    ) -> Result<MouseEffect> {
+        MouseHandler::handle_mouse_event(self, event, client_id, passthrough_pane_id)
     }
 
     pub fn copy_selection(&self, client_id: ClientId) -> Result<()> {
@@ -5912,56 +6678,24 @@ impl Tab {
 
         Ok(())
     }
-    fn forward_desktop_notifications(
-        &self,
-        notifications: Vec<(String, String)>,
-        pane_id: u32,
-    ) -> Result<()> {
-        let err_context = || "failed to forward desktop notifications to host terminal".to_string();
-        let mut output = Output::default();
-        // Use all clients in the app, not just those viewing this tab —
-        // desktop notifications should reach the host terminal regardless
-        // of which tab is currently focused.
-        let all_clients: HashSet<ClientId> = {
-            self.connected_clients_in_app
-                .borrow()
-                .keys()
-                .copied()
-                .collect()
-        };
-        output.add_clients(&all_clients, self.link_handler.clone(), None);
-        for (payload, terminator) in notifications {
-            // Apply identifier namespacing (Phase 3)
-            // The first semicolon-delimited part of payload is the metadata
-            let (metadata, rest) = match payload.find(';') {
-                Some(idx) => (
-                    payload.get(..idx).unwrap_or_default(),
-                    payload.get(idx..).unwrap_or_default(),
-                ),
-                None => (payload.as_str(), ""),
-            };
-            let namespaced_metadata = namespace_notification_id(metadata, pane_id);
-            let raw = if rest.is_empty() {
-                format!("\x1b]99;{}{}", namespaced_metadata, terminator)
-            } else {
-                format!("\x1b]99;{}{}{}", namespaced_metadata, rest, terminator)
-            };
-            output.add_post_vte_instruction_to_multiple_clients(all_clients.iter().copied(), &raw);
-        }
-        let serialized_output = output.serialize().with_context(err_context)?;
-        self.senders
-            .send_to_server(ServerInstruction::Render(Some(serialized_output)))
-            .with_context(err_context)?;
-        Ok(())
-    }
     pub fn visible(&mut self, visible: bool) -> Result<()> {
-        let pids_in_this_tab = self.tiled_panes.pane_ids().filter_map(|p| match p {
-            PaneId::Plugin(pid) => Some(pid),
+        // Floating panes must be included here as well: a plugin in a floating pane is just as
+        // hidden as a tiled one when its tab goes away, and plugins that idle on a timer (eg. the
+        // session-manager, which polls the session list once a second) keep that timer armed until
+        // they are told otherwise.
+        self.tab_visible = visible;
+        let floating_panes_are_shown = self.floating_panes.panes_are_shown();
+        let tiled_pids = self.tiled_panes.pane_ids().filter_map(|p| match p {
+            PaneId::Plugin(pid) => Some(*pid),
+            _ => None,
+        });
+        let floating_pids = self.floating_panes.pane_ids().filter_map(|p| match p {
+            PaneId::Plugin(pid) if !visible || floating_panes_are_shown => Some(*pid),
             _ => None,
         });
         let mut plugin_updates = vec![];
-        for pid in pids_in_this_tab {
-            plugin_updates.push((Some(*pid), None, Event::Visible(visible)));
+        for pid in tiled_pids.chain(floating_pids) {
+            plugin_updates.push((Some(pid), None, Event::Visible(visible)));
         }
         self.senders
             .send_to_plugin(PluginInstruction::Update(plugin_updates))
@@ -5985,6 +6719,7 @@ impl Tab {
             .with_context(|| format!("no active pane found for client {client_id}"))
             .map(|active_pane| {
                 let to_update = match s {
+                    "\0" => s, // pane name terminator
                     "\u{007F}" | "\u{0008}" => {
                         // delete and backspace keys
                         s
@@ -6060,6 +6795,7 @@ impl Tab {
 
     pub fn set_pane_frames(&mut self, pane_frame_style: PaneFrameStyle) {
         self.tiled_panes.set_pane_frames(pane_frame_style);
+        self.floating_panes.set_pane_frame_style(pane_frame_style);
         self.pane_frame_style = pane_frame_style;
         self.set_should_clear_display_before_rendering();
         self.set_force_render();
@@ -6282,17 +7018,49 @@ impl Tab {
     }
     pub fn show_floating_panes(&mut self) {
         // this function is to be preferred to directly invoking floating_panes.toggle_show_panes(true)
+        let were_shown = self.floating_panes.panes_are_shown();
         self.floating_panes.toggle_show_panes(true);
         self.tiled_panes.unfocus_all_panes();
         self.set_force_render();
+        if !were_shown {
+            self.notify_floating_plugins_of_visibility(true);
+        }
     }
 
     pub fn hide_floating_panes(&mut self) {
         // this function is to be preferred to directly invoking
         // floating_panes.toggle_show_panes(false)
+        let were_shown = self.floating_panes.panes_are_shown();
+        if self.floating_panes.fullscreen_is_active() {
+            self.floating_panes.unset_fullscreen();
+        }
         self.floating_panes.toggle_show_panes(false);
         self.tiled_panes.focus_all_panes();
         self.set_force_render();
+        if were_shown {
+            self.notify_floating_plugins_of_visibility(false);
+        }
+    }
+
+    fn notify_floating_plugins_of_visibility(&self, visible: bool) {
+        if !self.tab_visible {
+            return;
+        }
+        let plugin_updates: Vec<_> = self
+            .floating_panes
+            .pane_ids()
+            .filter_map(|p| match p {
+                PaneId::Plugin(pid) => Some((Some(*pid), None, Event::Visible(visible))),
+                _ => None,
+            })
+            .collect();
+        if plugin_updates.is_empty() {
+            return;
+        }
+        self.senders
+            .send_to_plugin(PluginInstruction::Update(plugin_updates))
+            .with_context(|| format!("failed to set visibility of floating panes to {visible}"))
+            .non_fatal();
     }
 
     pub fn show_floating_panes_atomic(&mut self, mut completion: Option<NotificationEnd>) {
@@ -6426,7 +7194,7 @@ impl Tab {
                 self.floating_panes.focus_pane_for_all_clients(pane_id);
             },
             None => {
-                log::error!("Could not find suppressed pane wiht id: {:?}", pane_id);
+                log::error!("Could not find suppressed pane with id: {:?}", pane_id);
             },
         }
     }
@@ -6540,6 +7308,17 @@ impl Tab {
         }
     }
 
+    pub fn pane_last_activity(&self) -> HashMap<PaneId, u64> {
+        let now = Instant::now();
+        let mut activity = HashMap::new();
+        for pane_id in self.get_all_pane_ids() {
+            if let Some(pane) = self.get_pane_with_id(pane_id) {
+                let secs_ago = now.saturating_duration_since(pane.active_at()).as_secs();
+                activity.insert(pane_id, secs_ago);
+            }
+        }
+        activity
+    }
     pub fn pane_infos(&self) -> Vec<PaneInfo> {
         let mut pane_info = vec![];
         let current_pane_group = { self.current_pane_group.borrow().clone_inner() };
@@ -6569,6 +7348,9 @@ impl Tab {
         client_id: Option<ClientId>,
     ) -> Result<()> {
         let err_context = || format!("failed to add floating pane");
+        if self.floating_panes.fullscreen_is_active() {
+            self.floating_panes.unset_fullscreen();
+        }
         if let Some(mut new_pane_geom) = self.floating_panes.find_room_for_new_pane() {
             if let Some(floating_pane_coordinates) = &floating_pane_coordinates {
                 let viewport = self.viewport.borrow();
@@ -6633,7 +7415,15 @@ impl Tab {
             } else {
                 self.tiled_panes.insert_pane(pane_id, pane, client_id);
             }
-            self.tiled_panes.reapply_pane_frames();
+            if !self.is_pending {
+                // if this tab is pending, the geometry of the panes inside it (including the one we
+                // just added) is provisional - the real one will be assigned when the layout is
+                // applied to this tab, and so we do not want to reapply the frames here because
+                // doing so would send this transient size to the pane's pty, causing it to receive
+                // two resizes in quick succession (this one and the real one) - which some
+                // terminal applications (eg. vim) coalesce and thus miss the real one
+                self.tiled_panes.reapply_pane_frames();
+            }
             self.set_should_clear_display_before_rendering();
             if let Some(client_id) = client_id {
                 self.tiled_panes.focus_pane(pane_id, client_id);
@@ -6653,6 +7443,7 @@ impl Tab {
         pane: Box<dyn Pane>,
         pane_id: PaneId,
         root_pane_id: PaneId,
+        should_focus: bool,
     ) -> Result<()> {
         if self.tiled_panes.fullscreen_is_active() {
             self.tiled_panes.unset_fullscreen();
@@ -6661,8 +7452,16 @@ impl Tab {
         self.tiled_panes
             .add_pane_to_stack_of_pane_id(pane_id, pane, root_pane_id);
         self.set_should_clear_display_before_rendering();
-        self.tiled_panes.expand_pane_in_stack(pane_id); // so that it will get focused by all
-                                                        // clients
+        // Groupify BEFORE the focus/frame re-application so the just-collapsed
+        // in-grid stack member is moved to `suppressed_panes` before
+        // `reapply_pane_frames` sends a `resize_pty!` at the 1-row collapsed
+        // size. Without this, the shell inside that pane sees two rapid
+        // WINCH events (1 row → visible-size rows) and redraws its prompt
+        // twice, blanking out the visible rows of previous output.
+        self.sync_stacked_pane_list_mode();
+        if should_focus {
+            self.tiled_panes.expand_pane_in_stack(pane_id);
+        }
         self.swap_layouts.set_is_tiled_damaged();
         Ok(())
     }
@@ -6671,6 +7470,7 @@ impl Tab {
         pane: Box<dyn Pane>,
         pane_id: PaneId,
         client_id: ClientId,
+        should_focus: bool,
     ) -> Result<()> {
         if self.tiled_panes.fullscreen_is_active() {
             self.tiled_panes.unset_fullscreen();
@@ -6678,7 +7478,13 @@ impl Tab {
         self.dissolve_stack_lists_for_classic_mutation();
         self.tiled_panes
             .add_pane_to_stack_of_active_pane(pane_id, pane, client_id);
-        self.tiled_panes.focus_pane(pane_id, client_id);
+        // See comment in `add_stacked_pane_to_pane_id` — groupify before
+        // focusing so the collapsed member is suppressed before
+        // `reapply_pane_frames` fires its intermediate `resize_pty!`.
+        self.sync_stacked_pane_list_mode();
+        if should_focus {
+            self.tiled_panes.focus_pane(pane_id, client_id);
+        }
         self.swap_layouts.set_is_tiled_damaged();
         Ok(())
     }
@@ -6821,6 +7627,21 @@ impl Tab {
             pane.update_rounded_corners(rounded_corners);
         }
     }
+    pub fn update_border_styles(
+        &mut self,
+        border_style: BorderStyle,
+        floating_border_style: BorderStyle,
+    ) {
+        self.style.border_style = border_style;
+        self.style.floating_border_style = floating_border_style;
+        self.floating_panes
+            .update_border_styles(border_style, floating_border_style);
+        self.tiled_panes
+            .update_border_styles(border_style, floating_border_style);
+        for (_, pane) in self.suppressed_panes.values_mut() {
+            pane.invalidate_frame_cache();
+        }
+    }
     pub fn update_arrow_fonts(&mut self, should_support_arrow_fonts: bool) {
         self.arrow_fonts = should_support_arrow_fonts;
         self.floating_panes
@@ -6829,6 +7650,24 @@ impl Tab {
             .update_pane_arrow_fonts(should_support_arrow_fonts);
         for (_, pane) in self.suppressed_panes.values_mut() {
             pane.update_arrow_fonts(should_support_arrow_fonts);
+        }
+    }
+    pub fn update_kitty_host_support(&mut self, supported: KittyHostSupport) {
+        self.kitty_host_support = Some(supported);
+        self.floating_panes
+            .update_pane_kitty_host_support(supported);
+        self.tiled_panes.update_pane_kitty_host_support(supported);
+        for (_, pane) in self.suppressed_panes.values_mut() {
+            pane.update_kitty_host_support(supported);
+        }
+    }
+    pub fn update_sixel_host_support(&mut self, supported: bool) {
+        self.sixel_host_support = Some(supported);
+        self.floating_panes
+            .update_pane_sixel_host_support(supported);
+        self.tiled_panes.update_pane_sixel_host_support(supported);
+        for (_, pane) in self.suppressed_panes.values_mut() {
+            pane.update_sixel_host_support(supported);
         }
     }
     pub fn update_default_shell(&mut self, mut default_shell: Option<PathBuf>) {
@@ -6854,14 +7693,28 @@ impl Tab {
     pub fn update_advanced_mouse_actions(&mut self, advanced_mouse_actions: bool) {
         self.advanced_mouse_actions = advanced_mouse_actions;
     }
+    pub fn update_mouse_scroll_resize(&mut self, mouse_scroll_resize: bool) {
+        self.mouse_scroll_resize = mouse_scroll_resize;
+    }
     pub fn update_mouse_hover_effects(&mut self, mouse_hover_effects: bool) {
         self.mouse_hover_effects = mouse_hover_effects;
+    }
+    pub fn update_mouse_hover_tips(&mut self, mouse_hover_tips: bool) {
+        self.mouse_hover_tips = mouse_hover_tips;
     }
     pub fn update_focus_follows_mouse(&mut self, focus_follows_mouse: bool) {
         self.focus_follows_mouse = focus_follows_mouse;
     }
     pub fn update_mouse_click_through(&mut self, mouse_click_through: bool) {
         self.mouse_click_through = mouse_click_through;
+    }
+    pub fn update_selection_options(
+        &mut self,
+        osc133_command_selection: bool,
+        word_separators: String,
+    ) {
+        self.osc133_command_selection = osc133_command_selection;
+        self.word_separators = word_separators;
     }
     pub fn clear_mouse_hover_state(&mut self) {
         self.mouse_hover_pane_id.clear();
@@ -7064,6 +7917,27 @@ impl Tab {
         log::error!("Pane with id {:?} not found", pane_id);
         Ok(())
     }
+    pub fn set_pane_border_style(
+        &mut self,
+        pane_id: PaneId,
+        border_style: BorderStyleOverride,
+    ) -> bool {
+        if let Some(pane) = self.floating_panes.get_pane_mut(pane_id) {
+            pane.set_border_style_override(border_style);
+            self.set_force_render();
+            return true;
+        }
+        if let Some(pane) = self.tiled_panes.get_pane_mut(pane_id) {
+            pane.set_border_style_override(border_style);
+            self.set_force_render();
+            return true;
+        }
+        if let Some(pane) = self.suppressed_panes.get_mut(&pane_id) {
+            pane.1.set_border_style_override(border_style);
+            return true;
+        }
+        false
+    }
     pub fn get_viewport(&self) -> Viewport {
         self.viewport.borrow().clone()
     }
@@ -7088,6 +7962,7 @@ impl Tab {
             self.link_handler.clone(),
             self.character_cell_size.clone(),
             self.sixel_image_store.clone(),
+            self.kitty_image_store.clone(),
             self.terminal_emulator_colors.clone(),
             self.terminal_emulator_color_codes.clone(),
             None,
@@ -7099,8 +7974,14 @@ impl Tab {
             self.explicitly_disable_kitty_keyboard_protocol,
             None,
         );
+        if let Some(supported) = self.kitty_host_support {
+            new_pane.update_kitty_host_support(supported);
+        }
+        if let Some(supported) = self.sixel_host_support {
+            new_pane.update_sixel_host_support(supported);
+        }
         new_pane.update_name("EDITING SCROLLBACK"); // we do this here and not in the
-                                                    // constructor so it won't be overrided
+                                                    // constructor so it won't be overridden
                                                     // by the editor
         new_pane
     }
@@ -7282,6 +8163,9 @@ impl Tab {
     pub fn toggle_fullscreen_by_pane_id(&mut self, pane_id: PaneId) {
         self.toggle_pane_fullscreen(pane_id);
     }
+    pub fn toggle_no_ui_fullscreen_by_pane_id(&mut self, pane_id: PaneId) {
+        self.toggle_pane_no_ui_fullscreen(pane_id);
+    }
     pub fn close_pane_by_pane_id(
         &mut self,
         pane_id: PaneId,
@@ -7348,6 +8232,9 @@ pub fn pane_info_for_pane(
     let (default_fg, default_bg) = pane.get_pane_default_colors();
     pane_info.default_fg = default_fg;
     pane_info.default_bg = default_bg;
+    if pane.is_nested_guest() {
+        pane_info.nested_session_name = pane.guest_session_name();
+    }
 
     match pane_id {
         PaneId::Terminal(terminal_id) => {

@@ -164,6 +164,24 @@ jobs:
       - name: Test without web support
         run: cargo xtask test --no-web
 
+  assets:
+    name: Check Bundled Assets
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
+
+      - name: Test xtask
+        run: cargo test -p xtask
+
+      - name: Check bundled assets
+        run: cargo xtask assets --check
+
   format:
     name: Check Formatting
     runs-on: ubuntu-latest

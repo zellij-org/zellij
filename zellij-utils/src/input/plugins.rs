@@ -8,9 +8,8 @@ use serde::{Deserialize, Serialize};
 use url::Url;
 
 use super::layout::{PluginUserConfiguration, RunPlugin, RunPluginLocation};
-#[cfg(not(target_family = "wasm"))]
-use crate::consts::ASSET_MAP;
 pub use crate::data::PluginTag;
+use crate::distribution;
 use crate::errors::prelude::*;
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
@@ -55,22 +54,12 @@ impl PluginConfig {
                 initial_userspace_configuration: run_plugin.configuration.clone(),
                 initial_cwd: run_plugin.initial_cwd.clone(),
             }),
+            RunPluginLocation::Zellij(tag) if legacy_bars_role(&tag.to_string()).is_some() => {
+                Self::from_run_plugin(&canonical_run_plugin(run_plugin))
+            },
             RunPluginLocation::Zellij(tag) => {
                 let tag = tag.to_string();
-                if tag == "status-bar"
-                    || tag == "tab-bar"
-                    || tag == "compact-bar"
-                    || tag == "strider"
-                    || tag == "session-manager"
-                    || tag == "configuration"
-                    || tag == "plugin-manager"
-                    || tag == "about"
-                    || tag == "share"
-                    || tag == "multiple-select"
-                    || tag == "layout-manager"
-                    || tag == "link"
-                    || tag == "mobile"
-                {
+                if distribution::is_builtin_plugin_name(&tag) {
                     Some(PluginConfig {
                         path: PathBuf::from(&tag),
                         _allow_exec_host_cmd: run_plugin._allow_exec_host_cmd,
@@ -94,33 +83,62 @@ impl PluginConfig {
     }
     /// Resolve wasm plugin bytes for the plugin path and given plugin directory.
     ///
-    /// If zellij was built without the 'disable_automatic_asset_installation' feature, builtin
-    /// plugins (Starting with 'zellij:' in the layout file) are loaded directly from the
-    /// binary-internal asset map. Otherwise:
+    /// Builtin plugins (starting with 'zellij:' in the layout file) are bundled into the
+    /// executable by the running distribution (see [`crate::distribution`]) and are loaded
+    /// directly from memory. Builds using the 'disable_automatic_asset_installation' feature
+    /// embed no plugin bytes, in which case:
     ///
     /// Attempts to first resolve the plugin path as an absolute path, then adds a ".wasm"
-    /// extension to the path and resolves that, finally we use the plugin directory joined with
-    /// the path with an appended ".wasm" extension. So if our path is "tab-bar" and the given
-    /// plugin dir is "/home/bob/.zellij/plugins" the lookup chain will be this:
+    /// extension to the path and resolves that, then the plugin directory joined with the path
+    /// with an appended ".wasm" extension, and finally the system data directory joined with
+    /// "plugins" and the same file name. So if our path is "tab-bar" and the given plugin dir is
+    /// "/home/bob/.local/share/zellij/plugins" the lookup chain will be this:
     ///
     /// ```bash
-    ///   /tab-bar
-    ///   /tab-bar.wasm
+    ///   tab-bar
+    ///   tab-bar.wasm
+    ///   /home/bob/.local/share/zellij/plugins/tab-bar.wasm
+    ///   /usr/share/zellij/plugins/tab-bar.wasm
     /// ```
     ///
     pub fn resolve_wasm_bytes(&self, plugin_dir: &Path) -> Result<Vec<u8>> {
         let err_context =
             |err: std::io::Error, path: &PathBuf| format!("{}: '{}'", err, path.display());
 
+        if self.is_builtin() {
+            if let Some(name) = self.path.file_stem().and_then(|stem| stem.to_str()) {
+                if let Some(bytes) = distribution::builtin_plugin_bytes(name) {
+                    log::debug!("Loaded plugin '{}' from internal assets", name);
+
+                    if plugin_dir.join(name).with_extension("wasm").exists() {
+                        log::info!(
+                            "Plugin '{}' exists in the 'PLUGIN DIR' at '{}' but is being ignored",
+                            name,
+                            plugin_dir.display()
+                        );
+                    }
+
+                    return Ok(bytes.to_vec());
+                }
+            }
+        }
+
         // Locations we check for valid plugins
-        let paths_arr = [
-            &self.path,
-            &self.path.with_extension("wasm"),
-            &plugin_dir.join(&self.path).with_extension("wasm"),
+        #[allow(unused_mut)]
+        let mut paths: Vec<PathBuf> = vec![
+            self.path.clone(),
+            self.path.with_extension("wasm"),
+            plugin_dir.join(&self.path).with_extension("wasm"),
         ];
+        #[cfg(not(target_family = "wasm"))]
+        paths.push(
+            crate::home::system_data_dir()
+                .join("plugins")
+                .join(&self.path)
+                .with_extension("wasm"),
+        );
         // Throw out dupes, because it's confusing to read that zellij checked the same plugin
         // location multiple times. Do NOT sort the vector here, because it will break the lookup!
-        let mut paths = paths_arr.to_vec();
         paths.dedup();
 
         // This looks weird and usually we would handle errors like this differently, but in this
@@ -130,26 +148,6 @@ impl PluginConfig {
         // spell it out right here.
         let mut last_err: Result<Vec<u8>> = Err(anyhow!("failed to load plugin from disk"));
         for path in paths {
-            // Check if the plugin path matches an entry in the asset map. If so, load it directly
-            // from memory, don't bother with the disk.
-            #[cfg(not(target_family = "wasm"))]
-            if !cfg!(feature = "disable_automatic_asset_installation") && self.is_builtin() {
-                let asset_path = PathBuf::from("plugins").join(path);
-                if let Some(bytes) = ASSET_MAP.get(&asset_path) {
-                    log::debug!("Loaded plugin '{}' from internal assets", path.display());
-
-                    if plugin_dir.join(path).with_extension("wasm").exists() {
-                        log::info!(
-                            "Plugin '{}' exists in the 'PLUGIN DIR' at '{}' but is being ignored",
-                            path.display(),
-                            plugin_dir.display()
-                        );
-                    }
-
-                    return Ok(bytes.to_vec());
-                }
-            }
-
             // Try to read from disk
             match fs::read(&path) {
                 Ok(val) => {
@@ -168,9 +166,7 @@ impl PluginConfig {
             // Layout requested a builtin plugin that wasn't found
             let plugin_path = self.path.with_extension("wasm");
 
-            if cfg!(feature = "disable_automatic_asset_installation")
-                && ASSET_MAP.contains_key(&PathBuf::from("plugins").join(&plugin_path))
-            {
+            if cfg!(feature = "disable_automatic_asset_installation") && self.is_builtin_name() {
                 return Err(ZellijError::BuiltinPluginMissing {
                     plugin_path,
                     plugin_dir: plugin_dir.to_owned(),
@@ -192,6 +188,61 @@ impl PluginConfig {
     pub fn is_builtin(&self) -> bool {
         matches!(self.location, RunPluginLocation::Zellij(_))
     }
+
+    pub fn is_builtin_name(&self) -> bool {
+        self.path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .map(|name| distribution::is_builtin_plugin_name(name))
+            .unwrap_or(false)
+    }
+}
+
+pub const BARS_PLUGIN_NAME: &str = "bars";
+pub const SHARED_INSTANCE_KEY: &str = "instance";
+
+pub fn legacy_bars_role(tag: &str) -> Option<&'static str> {
+    match tag {
+        "tab-bar" => Some("tab-bar"),
+        "status-bar" => Some("status-bar"),
+        "compact-bar" => Some("compact-bar"),
+        "link" => Some("link"),
+        _ => None,
+    }
+}
+
+pub fn canonical_plugin_location(location: &RunPluginLocation) -> RunPluginLocation {
+    match location {
+        RunPluginLocation::Zellij(tag) if legacy_bars_role(&tag.to_string()).is_some() => {
+            RunPluginLocation::Zellij(PluginTag::new(BARS_PLUGIN_NAME))
+        },
+        other => other.clone(),
+    }
+}
+
+pub fn canonical_run_plugin(run_plugin: &RunPlugin) -> RunPlugin {
+    let mut canonical = run_plugin.clone();
+    canonical.configuration = PluginUserConfiguration::new(slot_configuration(
+        &run_plugin.location,
+        &run_plugin.configuration,
+    ));
+    canonical.location = canonical_plugin_location(&run_plugin.location);
+    canonical
+}
+
+pub fn slot_configuration(
+    location: &RunPluginLocation,
+    configuration: &PluginUserConfiguration,
+) -> BTreeMap<String, String> {
+    let mut configuration = configuration.inner().clone();
+    if let RunPluginLocation::Zellij(tag) = location {
+        if let Some(role) = legacy_bars_role(&tag.to_string()) {
+            configuration
+                .entry("role".to_owned())
+                .or_insert_with(|| role.to_owned());
+        }
+    }
+    configuration
 }
 
 #[derive(Error, Debug, PartialEq)]

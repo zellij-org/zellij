@@ -1061,6 +1061,7 @@ impl State {
                         return; // s that we don't hide self
                     }
                 }
+                let mut switched_session = false;
                 if let Some(selected_session_name) = self.sessions.get_selected_session_name() {
                     let selected_tab = self.sessions.get_selected_tab_position();
                     let selected_pane = self.sessions.get_selected_pane_id();
@@ -1083,6 +1084,7 @@ impl State {
                             selected_tab,
                             selected_pane,
                         );
+                        switched_session = true;
                     }
                 }
                 self.reset_selected_index();
@@ -1093,6 +1095,8 @@ impl State {
                     // the welcome screen has done its job and now we need to quit this temporary
                     // session so as not to leave garbage sessions behind
                     quit_zellij();
+                } else if switched_session {
+                    close_self();
                 } else {
                     hide_self();
                 }
@@ -1107,7 +1111,7 @@ impl State {
                         // session so as not to leave garbage sessions behind
                         quit_zellij();
                     } else {
-                        hide_self();
+                        close_self();
                     }
                 }
             },
@@ -1144,6 +1148,7 @@ impl State {
                         if let Some(result) = self.single_screen_state.get_selected_result() {
                             // User navigated to a specific result
                             let session_name = result.session_name().to_owned();
+                            let mut switched_session = false;
                             match result {
                                 UnifiedSearchResult::ActiveSession {
                                     is_current_session, ..
@@ -1152,16 +1157,20 @@ impl State {
                                         self.show_error("Already attached...");
                                     } else {
                                         switch_session_with_focus(&session_name, None, None);
+                                        switched_session = true;
                                     }
                                 },
                                 UnifiedSearchResult::ResurrectableSession { .. } => {
                                     switch_session(Some(&session_name));
+                                    switched_session = true;
                                 },
                             }
                             self.single_screen_state.search_term.clear();
                             self.single_screen_state.selected_index = None;
                             if self.is_welcome_screen {
                                 quit_zellij();
+                            } else if switched_session {
+                                close_self();
                             } else {
                                 hide_self();
                             }
@@ -1194,7 +1203,7 @@ impl State {
                                     if self.is_welcome_screen {
                                         quit_zellij();
                                     } else {
-                                        hide_self();
+                                        close_self();
                                     }
                                 }
                                 return;
@@ -1205,7 +1214,7 @@ impl State {
                                 if self.is_welcome_screen {
                                     quit_zellij();
                                 } else {
-                                    hide_self();
+                                    close_self();
                                 }
                                 return;
                             }
@@ -1222,7 +1231,9 @@ impl State {
                         let layout = self.single_screen_state.layout_list.selected_layout_info();
                         let cwd = self.single_screen_state.new_session_folder.clone();
 
-                        if new_session_name != self.session_name.as_ref().map(|s| s.as_str()) {
+                        let switched_session =
+                            new_session_name != self.session_name.as_ref().map(|s| s.as_str());
+                        if switched_session {
                             match layout {
                                 Some(layout_info) => {
                                     switch_session_with_layout(new_session_name, layout_info, cwd);
@@ -1236,6 +1247,8 @@ impl State {
                         self.single_screen_state.transition_to_search();
                         if self.is_welcome_screen {
                             quit_zellij();
+                        } else if switched_session {
+                            close_self();
                         } else {
                             hide_self();
                         }

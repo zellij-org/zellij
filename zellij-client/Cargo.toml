@@ -14,8 +14,8 @@ license.workspace = true
 # so let's see how that works out before rocking the boat
 futures = { version = "0.3.30", optional = true }
 axum = { version = "0.8.4", features = ["ws"], optional = true }
-axum-extra = { version = "0.10.1", features = ["cookie"], optional = true }
-axum-server = { version = "0.7", features = ["tls-rustls"], optional = true }
+axum-extra = { version = "0.12", features = ["cookie"], optional = true }
+axum-server = { version = "0.8", features = ["tls-rustls"], optional = true }
 time = { version = "0.3", optional = true }
 tower-http = { version = "0.6.4", features = ["cors"], optional = true }
 
@@ -26,12 +26,10 @@ dialoguer = { workspace = true }
 interprocess = { workspace = true }
 lazy_static = { workspace = true }
 log = { workspace = true }
-notify = { workspace = true }
 num_cpus = { workspace = true }
 regex = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-serde_yaml = { version = "0.8", default-features = false }
 url = { workspace = true }
 uuid = { workspace = true }
 include_dir = { workspace = true }
@@ -39,7 +37,7 @@ zellij-utils = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 isahc = { workspace = true }
-tokio-tungstenite = "0.20"
+tokio-tungstenite = "0.28"
 rustls = { version = "0.23", default-features = false, features = ["std"] }
 tokio-rustls = "0.26"
 rustls-pemfile = "2"
@@ -53,7 +51,7 @@ signal-hook = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 daemonize = { workspace = true }
-nix = { workspace = true }
+nix = { workspace = true, features = ["fs"] }
 
 [target.'cfg(windows)'.dependencies]
 crossterm = { workspace = true }
@@ -64,8 +62,8 @@ windows-sys = { workspace = true, features = [
 ] }
 
 [dev-dependencies]
-insta = "1.6.0"
-rcgen = "0.13"
+insta = "1.48"
+rcgen = "0.14"
 serde_json = "1.0"
 serial_test = "3.0"
 tempfile = "3"

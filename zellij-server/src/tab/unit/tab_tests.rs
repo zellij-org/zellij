@@ -1,18 +1,21 @@
 use super::Tab;
 use crate::pane_groups::PaneGroups;
+use crate::panes::kitty_graphics::KittyImageStore;
 use crate::panes::sixel::SixelImageStore;
+use crate::plugins::PluginInstruction;
 use crate::pty_writer::PtyWriteInstruction;
 use crate::screen::CopyOptions;
 use crate::{os_input_output::ServerOsApi, panes::PaneId, thread_bus::ThreadSenders, ClientId};
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
-use zellij_utils::channels::{unbounded, Receiver, SenderWithContext};
-use zellij_utils::data::{Direction, NewPanePlacement, Resize, ResizeStrategy, WebSharing};
+use zellij_utils::channels::{unbounded, ChannelWithContext, Receiver, SenderWithContext};
+use zellij_utils::data::{Direction, Event, NewPanePlacement, Resize, ResizeStrategy, WebSharing};
 use zellij_utils::errors::prelude::*;
+use zellij_utils::errors::ErrorContext;
 use zellij_utils::input::layout::{SplitDirection, SplitSize, TiledPaneLayout};
 use zellij_utils::input::options::PaneFrameStyle;
 use zellij_utils::ipc::IpcReceiverWithContext;
-use zellij_utils::pane_size::{Size, SizeInPixels};
+use zellij_utils::pane_size::{PaneGeom, Size, SizeInPixels};
 
 use crate::os_input_output::AsyncReader;
 use std::cell::RefCell;
@@ -67,19 +70,18 @@ impl ServerOsApi for FakeInputOutput {
     fn send_to_client(&self, _client_id: ClientId, _msg: ServerToClientMsg) -> Result<()> {
         unimplemented!()
     }
-    fn new_client(
+    fn register_client(
         &mut self,
         _client_id: ClientId,
-        _stream: LocalSocketStream,
-    ) -> Result<IpcReceiverWithContext<ClientToServerMsg>> {
+        _receiver: &IpcReceiverWithContext<ClientToServerMsg>,
+    ) -> Result<()> {
         unimplemented!()
     }
-    fn new_client_with_reply(
+    fn register_client_with_reply(
         &mut self,
         _client_id: ClientId,
-        _stream: LocalSocketStream,
         _reply_stream: LocalSocketStream,
-    ) -> Result<IpcReceiverWithContext<ClientToServerMsg>> {
+    ) -> Result<()> {
         unimplemented!()
     }
     fn remove_client(&mut self, _client_id: ClientId) -> Result<()> {
@@ -149,11 +151,20 @@ fn tab_resize_right(tab: &mut Tab, id: ClientId) {
 }
 
 fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
+    create_new_tab_with_plugin_receiver(size, stacked_resize).0
+}
+
+fn create_new_tab_with_plugin_receiver(
+    size: Size,
+    stacked_resize: bool,
+) -> (Tab, Receiver<(PluginInstruction, ErrorContext)>) {
     let index = 0;
     let position = 0;
     let name = String::new();
     let os_api = Box::new(FakeInputOutput {});
-    let senders = ThreadSenders::default().silently_fail_on_send();
+    let mut senders = ThreadSenders::default().silently_fail_on_send();
+    let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> = unbounded();
+    senders.replace_to_plugin(SenderWithContext::new(to_plugin));
     let max_panes = None;
     let mode_info = ModeInfo::default();
     let style = Style::default();
@@ -178,6 +189,7 @@ fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
+    let mouse_scroll_resize = true;
     let web_sharing = WebSharing::Off;
     let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
     let web_server_port = 8080;
@@ -190,6 +202,7 @@ fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
         stacked_resize,
         Rc::new(RefCell::new(false)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
         senders,
         max_panes,
@@ -198,6 +211,7 @@ fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
         draw_pane_frames,
         auto_layout,
         connected_clients,
+        Rc::new(RefCell::new(HashMap::new())),
         session_is_mirrored,
         Some(client_id),
         copy_options,
@@ -216,12 +230,13 @@ fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
         current_pane_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
-        true,  // mouse_hover_effects
+        mouse_scroll_resize,
+        true, // mouse_hover_effects
+        true,
         false, // focus_follows_mouse
         false, // mouse_click_through
         web_server_ip,
         web_server_port,
-        0, // mobile_tab_count
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -233,7 +248,7 @@ fn create_new_tab(size: Size, stacked_resize: bool) -> Tab {
         None,
     )
     .unwrap();
-    tab
+    (tab, plugin_receiver)
 }
 
 fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
@@ -266,6 +281,7 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
+    let mouse_scroll_resize = true;
     let web_sharing = WebSharing::Off;
     let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
     let web_server_port = 8080;
@@ -278,6 +294,7 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
         stacked_resize,
         Rc::new(RefCell::new(false)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
         senders,
         max_panes,
@@ -286,6 +303,7 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
         draw_pane_frames,
         auto_layout,
         connected_clients,
+        Rc::new(RefCell::new(HashMap::new())),
         session_is_mirrored,
         Some(client_id),
         copy_options,
@@ -304,12 +322,13 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
         current_pane_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
-        true,  // mouse_hover_effects
+        mouse_scroll_resize,
+        true, // mouse_hover_effects
+        true,
         false, // focus_follows_mouse
         false, // mouse_click_through
         web_server_ip,
         web_server_port,
-        0, // mobile_tab_count
     );
     let mut new_terminal_ids = vec![];
     for i in 0..layout.extract_run_instructions().len() {
@@ -360,6 +379,7 @@ fn create_new_tab_with_cell_size(
     let osc8_hyperlinks = true;
     let explicitly_disable_kitty_keyboard_protocol = false;
     let advanced_mouse_actions = true;
+    let mouse_scroll_resize = true;
     let web_sharing = WebSharing::Off;
     let web_server_ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
     let web_server_port = 8080;
@@ -372,6 +392,7 @@ fn create_new_tab_with_cell_size(
         stacked_resize,
         Rc::new(RefCell::new(false)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         os_api,
         senders,
         max_panes,
@@ -380,6 +401,7 @@ fn create_new_tab_with_cell_size(
         draw_pane_frames,
         auto_layout,
         connected_clients,
+        Rc::new(RefCell::new(HashMap::new())),
         session_is_mirrored,
         Some(client_id),
         copy_options,
@@ -398,12 +420,13 @@ fn create_new_tab_with_cell_size(
         current_pane_group,
         currently_marking_pane_group,
         advanced_mouse_actions,
-        true,  // mouse_hover_effects
+        mouse_scroll_resize,
+        true, // mouse_hover_effects
+        true,
         false, // focus_follows_mouse
         false, // mouse_click_through
         web_server_ip,
         web_server_port,
-        0, // mobile_tab_count
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -872,6 +895,84 @@ pub fn cannot_split_panes_horizontally_when_active_pane_is_too_small() {
 }
 
 #[test]
+pub fn split_in_direction_without_a_connected_client_still_creates_the_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
+    tab.remove_client(1);
+    tab.new_pane(
+        PaneId::Terminal(2),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::Tiled {
+            direction: Some(Direction::Down),
+            borderless: None,
+            border_style: None,
+        },
+        None,
+        None,
+    )
+    .unwrap();
+    assert_eq!(
+        tab.tiled_panes.panes.len(),
+        2,
+        "the pane is created even though no client is attached"
+    );
+}
+
+#[test]
+pub fn split_in_direction_without_a_connected_client_splits_the_existing_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
+    tab.remove_client(1);
+    tab.new_pane(
+        PaneId::Terminal(2),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::Tiled {
+            direction: Some(Direction::Right),
+            borderless: None,
+            border_style: None,
+        },
+        None,
+        None,
+    )
+    .unwrap();
+    let first_pane_geom = tab
+        .tiled_panes
+        .panes
+        .get(&PaneId::Terminal(1))
+        .unwrap()
+        .position_and_size();
+    let new_pane_geom = tab
+        .tiled_panes
+        .panes
+        .get(&PaneId::Terminal(2))
+        .unwrap()
+        .position_and_size();
+    assert_eq!(first_pane_geom.x, 0, "the existing pane keeps its position");
+    assert!(
+        new_pane_geom.x > first_pane_geom.x,
+        "the new pane is placed to the right of the existing one"
+    );
+    assert_eq!(
+        first_pane_geom.y, new_pane_geom.y,
+        "both panes share the same row"
+    );
+}
+
+#[test]
 pub fn cannot_split_largest_pane_when_there_is_no_room() {
     let size = Size { cols: 8, rows: 4 };
     let stacked_resize = true;
@@ -920,6 +1021,185 @@ pub fn cannot_split_panes_horizontally_when_active_pane_has_fixed_rows() {
     tab.horizontal_split(PaneId::Terminal(3), None, 1, None, None)
         .unwrap();
     assert_eq!(tab.tiled_panes.panes.len(), 2, "Tab still has two panes");
+}
+
+fn create_tab_with_small_fixed_top_left_pane() -> Tab {
+    let size = Size {
+        cols: 120,
+        rows: 40,
+    };
+    let mut fixed_cols_child = TiledPaneLayout::default();
+    fixed_cols_child.split_size = Some(SplitSize::Fixed(24));
+    let mut top_row = TiledPaneLayout::default();
+    top_row.split_size = Some(SplitSize::Fixed(7));
+    top_row.children_split_direction = SplitDirection::Vertical;
+    top_row.children = vec![fixed_cols_child, TiledPaneLayout::default()];
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Horizontal;
+    initial_layout.children = vec![top_row, TiledPaneLayout::default()];
+    let mut tab = create_new_tab_with_layout(size, initial_layout);
+    tab.focus_pane_with_id(PaneId::Terminal(0), false, false, 1)
+        .unwrap();
+    tab
+}
+
+fn tiled_pane_is_stacked(tab: &Tab, pane_id: PaneId) -> bool {
+    tab.tiled_panes
+        .panes
+        .get(&pane_id)
+        .unwrap()
+        .position_and_size()
+        .is_stacked()
+}
+
+#[test]
+pub fn new_pane_next_to_small_fixed_pane_keeps_it_unstacked() {
+    let mut tab = create_tab_with_small_fixed_top_left_pane();
+    tab.new_pane(
+        PaneId::Terminal(3),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(1),
+        None,
+    )
+    .unwrap();
+    assert!(
+        tab.tiled_panes.panes.contains_key(&PaneId::Terminal(3)),
+        "new pane was added"
+    );
+    assert!(
+        !tiled_pane_is_stacked(&tab, PaneId::Terminal(0)),
+        "small fixed pane is not left in a stack"
+    );
+    tab.close_pane(PaneId::Terminal(3), false, None);
+    assert!(
+        !tab.tiled_panes.panes.contains_key(&PaneId::Terminal(3)),
+        "new pane was closed"
+    );
+    assert_eq!(tab.tiled_panes.panes.len(), 3, "original panes remain");
+}
+
+#[test]
+pub fn failed_stacked_pane_on_small_fixed_pane_keeps_it_unstacked() {
+    let mut tab = create_tab_with_small_fixed_top_left_pane();
+    tab.new_pane(
+        PaneId::Terminal(3),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::Stacked {
+            pane_id_to_stack_under: None,
+            borderless: None,
+            border_style: None,
+        },
+        Some(1),
+        None,
+    )
+    .unwrap();
+    assert!(
+        !tiled_pane_is_stacked(&tab, PaneId::Terminal(0)),
+        "small fixed pane is not left in a stack"
+    );
+    tab.close_pane(PaneId::Terminal(1), false, None);
+    assert!(
+        tab.tiled_panes.panes.contains_key(&PaneId::Terminal(0)),
+        "small fixed pane remains"
+    );
+    assert!(
+        !tab.tiled_panes.panes.contains_key(&PaneId::Terminal(1)),
+        "neighbouring pane was closed"
+    );
+}
+
+#[test]
+pub fn moving_suppressed_pane_leaves_tiled_panes_in_place() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
+    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
+        .unwrap();
+    tab.replace_active_pane_with_editor_pane(PaneId::Terminal(3), 1)
+        .unwrap();
+    assert!(
+        tab.suppressed_panes
+            .values()
+            .any(|(_, p)| p.pid() == PaneId::Terminal(2)),
+        "pane is suppressed"
+    );
+    assert!(
+        !tab.tiled_panes.panes.contains_key(&PaneId::Terminal(2)),
+        "suppressed pane is not tiled"
+    );
+    let geoms_before: Vec<_> = tab
+        .tiled_panes
+        .panes
+        .iter()
+        .map(|(id, p)| (*id, p.position_and_size()))
+        .collect();
+    tab.move_pane(PaneId::Terminal(2));
+    let geoms_after: Vec<_> = tab
+        .tiled_panes
+        .panes
+        .iter()
+        .map(|(id, p)| (*id, p.position_and_size()))
+        .collect();
+    assert_eq!(geoms_before, geoms_after, "tiled panes did not move");
+}
+
+#[test]
+pub fn moving_pane_hidden_by_fullscreen_keeps_both_panes() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let stacked_resize = false;
+    let mut tab = create_new_tab(size, stacked_resize);
+    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
+        .unwrap();
+    tab.toggle_active_pane_fullscreen(1);
+    let search_backwards = false;
+    tab.tiled_panes
+        .move_pane(search_backwards, PaneId::Terminal(1));
+    tab.tiled_panes
+        .move_pane(!search_backwards, PaneId::Terminal(1));
+    assert_eq!(tab.tiled_panes.panes.len(), 2, "both panes remain");
+}
+
+#[test]
+pub fn closing_pane_next_to_stack_without_flexible_pane_removes_it() {
+    let mut tab = create_tab_with_small_fixed_top_left_pane();
+    tab.focus_pane_with_id(PaneId::Terminal(2), false, false, 1)
+        .unwrap();
+    tab.new_pane(
+        PaneId::Terminal(3),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(1),
+        None,
+    )
+    .unwrap();
+    {
+        let small_fixed_pane = tab.tiled_panes.panes.get_mut(&PaneId::Terminal(0)).unwrap();
+        let mut geom = small_fixed_pane.position_and_size();
+        geom.stacked = Some(999);
+        small_fixed_pane.set_geom(geom);
+    }
+    tab.close_pane(PaneId::Terminal(3), false, None);
+    assert!(
+        !tab.tiled_panes.panes.contains_key(&PaneId::Terminal(3)),
+        "pane was closed"
+    );
+    assert_eq!(tab.tiled_panes.panes.len(), 3, "original panes remain");
 }
 
 #[test]
@@ -1153,7 +1433,7 @@ pub fn resize_while_fullscreen_updates_hidden_pane_geometry() {
     // When a host-terminal resize arrives while a pane is fullscreen, every
     // hidden pane's geometry must be updated to match the new display area.
     // Otherwise their `inner` cell counts stay sized for the old display and
-    // toggling fullscreen off hands the cassowary solver coordinates that
+    // toggling fullscreen off hands the layout solver coordinates that
     // fall outside the viewport, producing layout-solve failures and a
     // corrupt render.
     //
@@ -1191,7 +1471,7 @@ pub fn resize_while_fullscreen_updates_hidden_pane_geometry() {
 
     // Collect the panes hidden by the fullscreen state and verify each one
     // already fits the new display area; if any extends beyond it, exiting
-    // fullscreen would hand the cassowary solver an unsatisfiable layout.
+    // fullscreen would hand the layout solver an unsatisfiable layout.
     let hidden_pane_ids: Vec<PaneId> = tab
         .tiled_panes
         .panes
@@ -1223,6 +1503,930 @@ pub fn resize_while_fullscreen_updates_hidden_pane_geometry() {
             new_size.rows,
         );
     }
+}
+
+#[test]
+pub fn toggle_no_ui_fullscreen_covers_whole_display_and_restores() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let stacked_resize = false;
+    let mut tab = create_new_tab(size, stacked_resize);
+    for i in 2..5 {
+        let new_pane_id = PaneId::Terminal(i);
+        tab.new_pane(
+            new_pane_id,
+            None,
+            None,
+            false,
+            true,
+            NewPanePlacement::default(),
+            Some(1),
+            None,
+        )
+        .unwrap();
+    }
+    tab.toggle_active_pane_no_ui_fullscreen(1);
+    assert!(tab.is_fullscreen_active(), "NoUi fullscreen is active");
+    assert!(
+        tab.fullscreen_covers_ui(),
+        "NoUi fullscreen covers the UI rows"
+    );
+    let active_pane = tab.tiled_panes.panes.get(&PaneId::Terminal(4)).unwrap();
+    assert_eq!(active_pane.x(), 0, "Pane x is on display edge");
+    assert_eq!(active_pane.y(), 0, "Pane y is on display edge");
+    assert_eq!(active_pane.cols(), 121, "Pane cols match display cols");
+    assert_eq!(active_pane.rows(), 20, "Pane rows match display rows");
+    tab.toggle_active_pane_no_ui_fullscreen(1);
+    assert!(!tab.is_fullscreen_active(), "NoUi fullscreen toggled off");
+    assert!(
+        !tab.fullscreen_covers_ui(),
+        "NoUi flag cleared after toggle off"
+    );
+    let active_pane = tab.tiled_panes.panes.get(&PaneId::Terminal(4)).unwrap();
+    assert_eq!(active_pane.x(), 61, "Pane x restored");
+    assert_eq!(active_pane.y(), 10, "Pane y restored");
+    assert_eq!(active_pane.cols(), 60, "Pane cols restored");
+    assert_eq!(active_pane.rows(), 10, "Pane rows restored");
+}
+
+#[test]
+pub fn regular_fullscreen_switches_to_no_ui_fullscreen() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let stacked_resize = false;
+    let mut tab = create_new_tab(size, stacked_resize);
+    for i in 2..5 {
+        let new_pane_id = PaneId::Terminal(i);
+        tab.new_pane(
+            new_pane_id,
+            None,
+            None,
+            false,
+            true,
+            NewPanePlacement::default(),
+            Some(1),
+            None,
+        )
+        .unwrap();
+    }
+    tab.toggle_active_pane_fullscreen(1);
+    assert!(tab.is_fullscreen_active(), "Regular fullscreen is active");
+    assert!(
+        !tab.fullscreen_covers_ui(),
+        "Regular fullscreen leaves the UI rows"
+    );
+    tab.toggle_active_pane_no_ui_fullscreen(1);
+    assert!(
+        tab.is_fullscreen_active(),
+        "Fullscreen stays active after switching kinds"
+    );
+    assert!(
+        tab.fullscreen_covers_ui(),
+        "Fullscreen switched to covering the UI rows"
+    );
+    tab.toggle_active_pane_no_ui_fullscreen(1);
+    assert!(
+        !tab.is_fullscreen_active(),
+        "Fullscreen toggled off entirely"
+    );
+}
+
+#[test]
+pub fn no_ui_fullscreen_downgrades_to_regular_fullscreen() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let stacked_resize = false;
+    let mut tab = create_new_tab(size, stacked_resize);
+    for i in 2..5 {
+        let new_pane_id = PaneId::Terminal(i);
+        tab.new_pane(
+            new_pane_id,
+            None,
+            None,
+            false,
+            true,
+            NewPanePlacement::default(),
+            Some(1),
+            None,
+        )
+        .unwrap();
+    }
+    let viewport = *tab.viewport.borrow();
+    tab.toggle_active_pane_no_ui_fullscreen(1);
+    assert!(
+        tab.is_fullscreen_active() && tab.fullscreen_covers_ui(),
+        "NoUi fullscreen is active"
+    );
+
+    tab.toggle_active_pane_fullscreen(1);
+
+    assert!(
+        tab.is_fullscreen_active(),
+        "Fullscreen stays active after the downgrade"
+    );
+    assert!(
+        !tab.fullscreen_covers_ui(),
+        "The downgrade restores the UI rows"
+    );
+    assert_eq!(
+        tab.fullscreen_pane_id(),
+        Some(PaneId::Terminal(4)),
+        "The same pane remains fullscreen"
+    );
+    let active_pane = tab.tiled_panes.panes.get(&PaneId::Terminal(4)).unwrap();
+    assert_eq!(active_pane.x(), viewport.x, "Pane x matches the viewport");
+    assert_eq!(active_pane.y(), viewport.y, "Pane y matches the viewport");
+    assert_eq!(
+        active_pane.cols(),
+        viewport.cols,
+        "Pane cols match the viewport cols"
+    );
+    assert_eq!(
+        active_pane.rows(),
+        viewport.rows,
+        "Pane rows match the viewport rows"
+    );
+
+    tab.toggle_active_pane_fullscreen(1);
+    assert!(
+        !tab.is_fullscreen_active(),
+        "The next regular toggle leaves fullscreen entirely"
+    );
+}
+
+#[test]
+pub fn resize_whole_tab_while_no_ui_fullscreen_preserves_no_ui() {
+    let initial_size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let stacked_resize = false;
+    let mut tab = create_new_tab(initial_size, stacked_resize);
+    for i in 2..5 {
+        let new_pane_id = PaneId::Terminal(i);
+        tab.new_pane(
+            new_pane_id,
+            None,
+            None,
+            false,
+            true,
+            NewPanePlacement::default(),
+            Some(1),
+            None,
+        )
+        .unwrap();
+    }
+    tab.toggle_active_pane_no_ui_fullscreen(1);
+    assert!(
+        tab.fullscreen_covers_ui(),
+        "NoUi fullscreen is active before the resize"
+    );
+
+    let new_size = Size { cols: 80, rows: 30 };
+    tab.resize_whole_tab(new_size).unwrap();
+
+    assert!(
+        tab.is_fullscreen_active(),
+        "Fullscreen is preserved across a host-terminal resize"
+    );
+    assert!(
+        tab.fullscreen_covers_ui(),
+        "NoUi kind is preserved across a host-terminal resize"
+    );
+    let active_pane = tab
+        .tiled_panes
+        .panes
+        .get(&PaneId::Terminal(4))
+        .expect("Active fullscreen pane is still present");
+    assert_eq!(
+        active_pane.cols(),
+        new_size.cols,
+        "NoUi fullscreen pane cols match the new display cols"
+    );
+    assert_eq!(
+        active_pane.rows(),
+        new_size.rows,
+        "NoUi fullscreen pane rows match the new display rows"
+    );
+    assert_eq!(
+        active_pane.x(),
+        0,
+        "NoUi fullscreen pane x is at display edge"
+    );
+    assert_eq!(
+        active_pane.y(),
+        0,
+        "NoUi fullscreen pane y is at display edge"
+    );
+}
+
+fn create_tab_with_two_floating_panes() -> Tab {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let stacked_resize = false;
+    let mut tab = create_new_tab(size, stacked_resize);
+    tab.new_floating_pane(PaneId::Terminal(2), None, None, false, true, None, None)
+        .unwrap();
+    tab.new_floating_pane(PaneId::Terminal(3), None, None, false, true, None, None)
+        .unwrap();
+    tab
+}
+
+fn floating_pane_geom(tab: &Tab, pane_id: PaneId) -> PaneGeom {
+    tab.floating_panes
+        .get(&pane_id)
+        .expect("floating pane exists")
+        .current_geom()
+}
+
+#[test]
+pub fn toggle_floating_pane_fullscreen_expands_over_viewport() {
+    let mut tab = create_tab_with_two_floating_panes();
+    let viewport = *tab.viewport.borrow();
+    let active_pane_id = tab
+        .floating_panes
+        .active_pane_id(1)
+        .expect("a floating pane is focused");
+
+    tab.toggle_active_pane_fullscreen(1);
+
+    assert!(tab.is_fullscreen_active(), "Floating fullscreen is active");
+    assert!(
+        !tab.fullscreen_covers_ui(),
+        "Regular floating fullscreen leaves the UI rows"
+    );
+    assert_eq!(
+        tab.fullscreen_pane_id(),
+        Some(active_pane_id),
+        "Fullscreen tracks the active floating pane"
+    );
+    let geom = floating_pane_geom(&tab, active_pane_id);
+    assert_eq!(geom.x, viewport.x, "Fullscreen pane x matches viewport");
+    assert_eq!(geom.y, viewport.y, "Fullscreen pane y matches viewport");
+    assert_eq!(
+        geom.cols.as_usize(),
+        viewport.cols,
+        "Fullscreen pane cols match viewport cols"
+    );
+    assert_eq!(
+        geom.rows.as_usize(),
+        viewport.rows,
+        "Fullscreen pane rows match viewport rows"
+    );
+}
+
+#[test]
+pub fn toggle_floating_pane_no_ui_fullscreen_covers_whole_display() {
+    let mut tab = create_tab_with_two_floating_panes();
+    let display_area = *tab.display_area.borrow();
+    let active_pane_id = tab
+        .floating_panes
+        .active_pane_id(1)
+        .expect("a floating pane is focused");
+
+    tab.toggle_active_pane_no_ui_fullscreen(1);
+
+    assert!(
+        tab.is_fullscreen_active(),
+        "Floating no-ui fullscreen is active"
+    );
+    assert!(
+        tab.fullscreen_covers_ui(),
+        "Floating no-ui fullscreen covers the UI rows"
+    );
+    let geom = floating_pane_geom(&tab, active_pane_id);
+    assert_eq!(geom.x, 0, "No-ui fullscreen pane x is on display edge");
+    assert_eq!(geom.y, 0, "No-ui fullscreen pane y is on display edge");
+    assert_eq!(
+        geom.cols.as_usize(),
+        display_area.cols,
+        "No-ui fullscreen pane cols match display cols"
+    );
+    assert_eq!(
+        geom.rows.as_usize(),
+        display_area.rows,
+        "No-ui fullscreen pane rows match display rows"
+    );
+}
+
+#[test]
+pub fn toggle_floating_pane_fullscreen_off_restores_geometry() {
+    let mut tab = create_tab_with_two_floating_panes();
+    let active_pane_id = tab
+        .floating_panes
+        .active_pane_id(1)
+        .expect("a floating pane is focused");
+    let geom_before = floating_pane_geom(&tab, active_pane_id);
+
+    tab.toggle_active_pane_fullscreen(1);
+    assert!(tab.is_fullscreen_active(), "Fullscreen active after toggle");
+    tab.toggle_active_pane_fullscreen(1);
+
+    assert!(
+        !tab.is_fullscreen_active(),
+        "Fullscreen cleared after toggling off"
+    );
+    assert_eq!(
+        floating_pane_geom(&tab, active_pane_id),
+        geom_before,
+        "Floating pane geometry restored after fullscreen off"
+    );
+}
+
+#[test]
+pub fn regular_floating_fullscreen_switches_to_no_ui() {
+    let mut tab = create_tab_with_two_floating_panes();
+    tab.toggle_active_pane_fullscreen(1);
+    assert!(
+        tab.is_fullscreen_active() && !tab.fullscreen_covers_ui(),
+        "Regular floating fullscreen active"
+    );
+
+    tab.toggle_active_pane_no_ui_fullscreen(1);
+    assert!(
+        tab.is_fullscreen_active(),
+        "Fullscreen stays active when switching kinds"
+    );
+    assert!(
+        tab.fullscreen_covers_ui(),
+        "Fullscreen switched to covering the UI rows"
+    );
+
+    tab.toggle_active_pane_no_ui_fullscreen(1);
+    assert!(
+        !tab.is_fullscreen_active(),
+        "Fullscreen toggled off entirely"
+    );
+}
+
+#[test]
+pub fn floating_no_ui_fullscreen_downgrades_to_regular_fullscreen() {
+    let mut tab = create_tab_with_two_floating_panes();
+    let viewport = *tab.viewport.borrow();
+    let active_pane_id = tab
+        .floating_panes
+        .active_pane_id(1)
+        .expect("a floating pane is focused");
+    tab.toggle_active_pane_no_ui_fullscreen(1);
+    assert!(
+        tab.is_fullscreen_active() && tab.fullscreen_covers_ui(),
+        "Floating no-ui fullscreen is active"
+    );
+
+    tab.toggle_active_pane_fullscreen(1);
+
+    assert!(
+        tab.is_fullscreen_active(),
+        "Fullscreen stays active after the downgrade"
+    );
+    assert!(
+        !tab.fullscreen_covers_ui(),
+        "The downgrade restores the UI rows"
+    );
+    let geom = floating_pane_geom(&tab, active_pane_id);
+    assert_eq!(geom.x, viewport.x, "Pane x matches the viewport");
+    assert_eq!(geom.y, viewport.y, "Pane y matches the viewport");
+    assert_eq!(
+        geom.cols.as_usize(),
+        viewport.cols,
+        "Pane cols match the viewport cols"
+    );
+    assert_eq!(
+        geom.rows.as_usize(),
+        viewport.rows,
+        "Pane rows match the viewport rows"
+    );
+
+    tab.toggle_active_pane_fullscreen(1);
+    assert!(
+        !tab.is_fullscreen_active(),
+        "The next regular toggle leaves fullscreen entirely"
+    );
+}
+
+#[test]
+pub fn floating_fullscreen_on_lone_floating_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let stacked_resize = false;
+    let mut tab = create_new_tab(size, stacked_resize);
+    tab.new_floating_pane(PaneId::Terminal(2), None, None, false, true, None, None)
+        .unwrap();
+    let viewport = *tab.viewport.borrow();
+
+    tab.toggle_active_pane_fullscreen(1);
+
+    assert!(
+        tab.is_fullscreen_active(),
+        "A lone floating pane still enters fullscreen"
+    );
+    let geom = floating_pane_geom(&tab, PaneId::Terminal(2));
+    assert_eq!(
+        geom.cols.as_usize(),
+        viewport.cols,
+        "Lone floating fullscreen pane covers the viewport cols"
+    );
+    assert_eq!(
+        geom.rows.as_usize(),
+        viewport.rows,
+        "Lone floating fullscreen pane covers the viewport rows"
+    );
+}
+
+#[test]
+pub fn floating_and_tiled_fullscreen_are_mutually_exclusive() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let stacked_resize = false;
+    let mut tab = create_new_tab(size, stacked_resize);
+    tab.new_pane(
+        PaneId::Terminal(2),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(1),
+        None,
+    )
+    .unwrap();
+    tab.new_floating_pane(PaneId::Terminal(3), None, None, false, true, None, None)
+        .unwrap();
+
+    tab.toggle_active_pane_fullscreen(1);
+    assert_eq!(
+        tab.fullscreen_pane_id(),
+        Some(PaneId::Terminal(3)),
+        "The focused floating pane is fullscreen"
+    );
+    assert!(
+        !tab.tiled_panes.fullscreen_is_active(),
+        "No tiled fullscreen while a floating pane is fullscreen"
+    );
+
+    tab.hide_floating_panes();
+    tab.toggle_active_pane_fullscreen(1);
+    assert!(
+        tab.tiled_panes.fullscreen_is_active(),
+        "A tiled pane can be fullscreen after floating is hidden"
+    );
+    assert!(
+        !tab.floating_panes.fullscreen_is_active(),
+        "No floating fullscreen while a tiled pane is fullscreen"
+    );
+}
+
+#[test]
+pub fn move_focus_while_floating_fullscreen_transfers_fullscreen() {
+    let mut tab = create_tab_with_two_floating_panes();
+    let first = tab
+        .floating_panes
+        .active_pane_id(1)
+        .expect("a floating pane is focused");
+
+    tab.toggle_active_pane_fullscreen(1);
+    assert_eq!(
+        tab.fullscreen_pane_id(),
+        Some(first),
+        "Fullscreen starts on the focused floating pane"
+    );
+
+    let _ = tab.move_focus_left(1);
+
+    assert!(
+        tab.is_fullscreen_active(),
+        "Fullscreen stays active after moving focus"
+    );
+    let new_active = tab
+        .floating_panes
+        .active_pane_id(1)
+        .expect("a floating pane is focused after the move");
+    assert_eq!(
+        tab.fullscreen_pane_id(),
+        Some(new_active),
+        "Fullscreen transferred to the newly focused floating pane"
+    );
+}
+
+#[test]
+pub fn resize_while_floating_fullscreen_is_noop() {
+    let mut tab = create_tab_with_two_floating_panes();
+    let active_pane_id = tab
+        .floating_panes
+        .active_pane_id(1)
+        .expect("a floating pane is focused");
+    tab.toggle_active_pane_fullscreen(1);
+    let geom_before = floating_pane_geom(&tab, active_pane_id);
+
+    tab.resize(1, ResizeStrategy::new(Resize::Increase, None))
+        .unwrap();
+
+    assert_eq!(
+        floating_pane_geom(&tab, active_pane_id),
+        geom_before,
+        "Resizing a floating fullscreen pane does not change its geometry"
+    );
+}
+
+#[test]
+pub fn move_pane_while_floating_fullscreen_is_noop() {
+    let mut tab = create_tab_with_two_floating_panes();
+    let active_pane_id = tab
+        .floating_panes
+        .active_pane_id(1)
+        .expect("a floating pane is focused");
+    tab.toggle_active_pane_fullscreen(1);
+    let geom_before = floating_pane_geom(&tab, active_pane_id);
+
+    tab.move_active_pane_down(1);
+    tab.move_active_pane_up(1);
+    tab.move_active_pane_left(1);
+    tab.move_active_pane_right(1);
+
+    assert_eq!(
+        floating_pane_geom(&tab, active_pane_id),
+        geom_before,
+        "Moving a floating fullscreen pane does not change its geometry"
+    );
+}
+
+#[test]
+pub fn closing_floating_fullscreen_pane_clears_state() {
+    let mut tab = create_tab_with_two_floating_panes();
+    let active_pane_id = tab
+        .floating_panes
+        .active_pane_id(1)
+        .expect("a floating pane is focused");
+    tab.toggle_active_pane_fullscreen(1);
+    assert!(tab.is_fullscreen_active(), "Fullscreen active before close");
+
+    tab.close_pane(active_pane_id, false, None);
+
+    assert!(
+        !tab.floating_panes.fullscreen_is_active(),
+        "Closing the fullscreen floating pane clears fullscreen state"
+    );
+}
+
+#[test]
+pub fn adding_floating_pane_while_fullscreen_unsets_fullscreen() {
+    let mut tab = create_tab_with_two_floating_panes();
+    tab.toggle_active_pane_fullscreen(1);
+    assert!(tab.is_fullscreen_active(), "Fullscreen active before add");
+
+    tab.new_floating_pane(PaneId::Terminal(4), None, None, false, true, None, None)
+        .unwrap();
+
+    assert!(
+        !tab.floating_panes.fullscreen_is_active(),
+        "Adding a floating pane breaks out of floating fullscreen"
+    );
+}
+
+#[test]
+pub fn hiding_floating_layer_while_fullscreen_unsets_fullscreen() {
+    let mut tab = create_tab_with_two_floating_panes();
+    tab.toggle_active_pane_fullscreen(1);
+    assert!(tab.is_fullscreen_active(), "Fullscreen active before hide");
+
+    tab.hide_floating_panes();
+
+    assert!(
+        !tab.floating_panes.fullscreen_is_active(),
+        "Hiding the floating layer clears floating fullscreen"
+    );
+}
+
+#[test]
+pub fn embed_floating_fullscreen_pane_unsets_and_embeds() {
+    let mut tab = create_tab_with_two_floating_panes();
+    let active_pane_id = tab
+        .floating_panes
+        .active_pane_id(1)
+        .expect("a floating pane is focused");
+    tab.toggle_active_pane_fullscreen(1);
+    assert!(tab.is_fullscreen_active(), "Fullscreen active before embed");
+
+    tab.toggle_pane_embed_or_floating(1).unwrap();
+
+    assert!(
+        !tab.floating_panes.fullscreen_is_active(),
+        "Embedding clears floating fullscreen state"
+    );
+    assert!(
+        tab.tiled_panes.panes_contain(&active_pane_id),
+        "The embedded pane is now a tiled pane"
+    );
+}
+
+#[test]
+pub fn resize_whole_tab_while_floating_fullscreen_preserves_regular() {
+    let mut tab = create_tab_with_two_floating_panes();
+    let active_pane_id = tab
+        .floating_panes
+        .active_pane_id(1)
+        .expect("a floating pane is focused");
+    tab.toggle_active_pane_fullscreen(1);
+
+    let new_size = Size { cols: 80, rows: 30 };
+    tab.resize_whole_tab(new_size).unwrap();
+
+    assert!(
+        tab.is_fullscreen_active() && !tab.fullscreen_covers_ui(),
+        "Regular floating fullscreen preserved across resize"
+    );
+    let viewport = *tab.viewport.borrow();
+    let geom = floating_pane_geom(&tab, active_pane_id);
+    assert_eq!(
+        geom.cols.as_usize(),
+        viewport.cols,
+        "Floating fullscreen pane re-expands to the new viewport cols"
+    );
+    assert_eq!(
+        geom.rows.as_usize(),
+        viewport.rows,
+        "Floating fullscreen pane re-expands to the new viewport rows"
+    );
+}
+
+#[test]
+pub fn resize_whole_tab_while_floating_no_ui_fullscreen_preserves_no_ui() {
+    let mut tab = create_tab_with_two_floating_panes();
+    let active_pane_id = tab
+        .floating_panes
+        .active_pane_id(1)
+        .expect("a floating pane is focused");
+    tab.toggle_active_pane_no_ui_fullscreen(1);
+
+    let new_size = Size { cols: 80, rows: 30 };
+    tab.resize_whole_tab(new_size).unwrap();
+
+    assert!(
+        tab.fullscreen_covers_ui(),
+        "Floating no-ui fullscreen preserved across resize"
+    );
+    let geom = floating_pane_geom(&tab, active_pane_id);
+    assert_eq!(
+        geom.cols.as_usize(),
+        new_size.cols,
+        "Floating no-ui fullscreen pane re-expands to the new display cols"
+    );
+    assert_eq!(
+        geom.rows.as_usize(),
+        new_size.rows,
+        "Floating no-ui fullscreen pane re-expands to the new display rows"
+    );
+}
+
+#[test]
+pub fn pane_info_reports_floating_fullscreen() {
+    let mut tab = create_tab_with_two_floating_panes();
+    let active_pane_id = tab
+        .floating_panes
+        .active_pane_id(1)
+        .expect("a floating pane is focused");
+    tab.toggle_active_pane_fullscreen(1);
+
+    let fullscreen_info = tab
+        .get_pane_info(active_pane_id)
+        .expect("pane info for the fullscreen floating pane");
+    assert!(
+        fullscreen_info.is_fullscreen,
+        "The fullscreen floating pane reports is_fullscreen"
+    );
+    assert!(
+        fullscreen_info.is_floating,
+        "The fullscreen pane still reports is_floating"
+    );
+
+    let other_pane_id = if active_pane_id == PaneId::Terminal(2) {
+        PaneId::Terminal(3)
+    } else {
+        PaneId::Terminal(2)
+    };
+    let other_info = tab
+        .get_pane_info(other_pane_id)
+        .expect("pane info for the other floating pane");
+    assert!(
+        !other_info.is_fullscreen,
+        "A non-fullscreen floating pane does not report is_fullscreen"
+    );
+}
+
+#[test]
+pub fn toggle_floating_fullscreen_by_pane_id() {
+    let mut tab = create_tab_with_two_floating_panes();
+
+    tab.toggle_pane_fullscreen(PaneId::Terminal(2));
+    assert_eq!(
+        tab.fullscreen_pane_id(),
+        Some(PaneId::Terminal(2)),
+        "By-id fullscreen targets the requested floating pane"
+    );
+
+    tab.toggle_pane_fullscreen(PaneId::Terminal(2));
+    assert!(
+        !tab.is_fullscreen_active(),
+        "By-id toggle off clears floating fullscreen"
+    );
+}
+
+fn create_tab_with_four_panes() -> Tab {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let stacked_resize = false;
+    let mut tab = create_new_tab(size, stacked_resize);
+    for i in 2..5 {
+        let new_pane_id = PaneId::Terminal(i);
+        tab.new_pane(
+            new_pane_id,
+            None,
+            None,
+            false,
+            true,
+            NewPanePlacement::default(),
+            Some(1),
+            None,
+        )
+        .unwrap();
+    }
+    tab
+}
+
+fn tiled_pane_geoms(tab: &Tab) -> Vec<(PaneId, PaneGeom)> {
+    tab.tiled_panes
+        .panes
+        .iter()
+        .map(|(pane_id, pane)| (*pane_id, pane.position_and_size()))
+        .collect()
+}
+
+fn open_pane_five(tab: &mut Tab) {
+    tab.new_pane(
+        PaneId::Terminal(5),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(1),
+        None,
+    )
+    .unwrap();
+}
+
+fn assert_panes_tile_the_whole_display(tab: &Tab, display: Size) {
+    let geoms = tiled_pane_geoms(tab);
+    let mut total_pane_area = 0;
+    for (pane_id, geom) in &geoms {
+        let right_edge = geom.x + geom.cols.as_usize();
+        let bottom_edge = geom.y + geom.rows.as_usize();
+        assert!(
+            right_edge <= display.cols && bottom_edge <= display.rows,
+            "{pane_id:?} fits inside the display: {geom:?}"
+        );
+        total_pane_area += geom.rows.as_usize() * geom.cols.as_usize();
+    }
+    for (pane_id, geom) in &geoms {
+        for (other_pane_id, other_geom) in &geoms {
+            if pane_id == other_pane_id {
+                continue;
+            }
+            let overlap_horizontally = geom.x < other_geom.x + other_geom.cols.as_usize()
+                && other_geom.x < geom.x + geom.cols.as_usize();
+            let overlap_vertically = geom.y < other_geom.y + other_geom.rows.as_usize()
+                && other_geom.y < geom.y + geom.rows.as_usize();
+            assert!(
+                !(overlap_horizontally && overlap_vertically),
+                "{pane_id:?} and {other_pane_id:?} do not overlap"
+            );
+        }
+    }
+    assert_eq!(
+        total_pane_area,
+        display.rows * display.cols,
+        "Panes cover the whole display with no gaps"
+    );
+}
+
+#[test]
+pub fn opening_new_pane_while_fullscreen_unsets_fullscreen() {
+    let mut tab = create_tab_with_four_panes();
+    tab.toggle_active_pane_fullscreen(1);
+    assert!(tab.is_fullscreen_active(), "Fullscreen active before split");
+    open_pane_five(&mut tab);
+
+    assert!(
+        !tab.is_fullscreen_active(),
+        "Opening a new pane breaks out of fullscreen"
+    );
+    assert_eq!(
+        tiled_pane_geoms(&tab).len(),
+        5,
+        "All panes including the new one are tiled"
+    );
+    assert_panes_tile_the_whole_display(
+        &tab,
+        Size {
+            cols: 121,
+            rows: 20,
+        },
+    );
+}
+
+#[test]
+pub fn opening_new_pane_while_no_ui_fullscreen_unsets_fullscreen() {
+    let mut tab = create_tab_with_four_panes();
+    tab.toggle_active_pane_no_ui_fullscreen(1);
+    assert!(
+        tab.fullscreen_covers_ui(),
+        "NoUi fullscreen active before split"
+    );
+    open_pane_five(&mut tab);
+
+    assert!(
+        !tab.is_fullscreen_active(),
+        "Opening a new pane breaks out of no-ui fullscreen"
+    );
+    assert!(
+        !tab.fullscreen_covers_ui(),
+        "NoUi flag cleared after breaking out"
+    );
+    assert_eq!(
+        tiled_pane_geoms(&tab).len(),
+        5,
+        "All panes including the new one are tiled"
+    );
+    assert_panes_tile_the_whole_display(
+        &tab,
+        Size {
+            cols: 121,
+            rows: 20,
+        },
+    );
+}
+
+#[test]
+pub fn closing_the_fullscreen_pane_restores_remaining_layout() {
+    let mut tab_without_fullscreen = create_tab_with_four_panes();
+    tab_without_fullscreen.close_pane(PaneId::Terminal(4), false, None);
+
+    let mut tab = create_tab_with_four_panes();
+    tab.toggle_active_pane_fullscreen(1);
+    assert!(tab.is_fullscreen_active(), "Fullscreen active before close");
+    tab.close_pane(PaneId::Terminal(4), false, None);
+
+    assert!(
+        !tab.is_fullscreen_active(),
+        "Closing the fullscreen pane leaves fullscreen"
+    );
+    assert_eq!(
+        tiled_pane_geoms(&tab),
+        tiled_pane_geoms(&tab_without_fullscreen),
+        "Remaining panes match a close that never went through fullscreen"
+    );
+}
+
+#[test]
+pub fn closing_the_no_ui_fullscreen_pane_restores_remaining_layout() {
+    let mut tab_without_fullscreen = create_tab_with_four_panes();
+    tab_without_fullscreen.close_pane(PaneId::Terminal(4), false, None);
+
+    let mut tab = create_tab_with_four_panes();
+    tab.toggle_active_pane_no_ui_fullscreen(1);
+    assert!(
+        tab.fullscreen_covers_ui(),
+        "NoUi fullscreen active before close"
+    );
+    tab.close_pane(PaneId::Terminal(4), false, None);
+
+    assert!(
+        !tab.is_fullscreen_active(),
+        "Closing the no-ui fullscreen pane leaves fullscreen"
+    );
+    assert!(
+        !tab.fullscreen_covers_ui(),
+        "NoUi flag cleared after the close"
+    );
+    assert_eq!(
+        tiled_pane_geoms(&tab),
+        tiled_pane_geoms(&tab_without_fullscreen),
+        "Remaining panes match a close that never went through no-ui fullscreen"
+    );
 }
 
 #[test]
@@ -1417,6 +2621,119 @@ pub fn opening_scrollback_editor_on_fullscreen_pane_retargets_fullscreen() {
             size.rows,
         );
     }
+}
+
+#[test]
+pub fn opening_scrollback_editor_on_fullscreen_floating_pane_retargets_fullscreen() {
+    let client_id = 1;
+    let mut tab = create_tab_with_two_floating_panes();
+    let viewport = *tab.viewport.borrow();
+    let active_pane_id = tab
+        .floating_panes
+        .active_pane_id(client_id)
+        .expect("a floating pane is focused");
+    let original_geom = tab
+        .floating_panes
+        .get(&active_pane_id)
+        .expect("focused floating pane exists")
+        .position_and_size();
+
+    tab.toggle_active_pane_fullscreen(client_id);
+    assert_eq!(
+        tab.floating_panes.fullscreen_pane_id(),
+        Some(active_pane_id),
+        "fullscreen tracks the original floating pane",
+    );
+
+    let editor_pane_id = PaneId::Terminal(99);
+    tab.replace_active_pane_with_editor_pane(editor_pane_id, client_id)
+        .unwrap();
+    assert_eq!(
+        tab.floating_panes.fullscreen_pane_id(),
+        Some(editor_pane_id),
+        "fullscreen now tracks the editor pane id, not the suppressed one",
+    );
+    let editor_geom = floating_pane_geom(&tab, editor_pane_id);
+    assert_eq!(
+        editor_geom.cols.as_usize(),
+        viewport.cols,
+        "the editor pane covers the viewport cols",
+    );
+    assert_eq!(
+        editor_geom.rows.as_usize(),
+        viewport.rows,
+        "the editor pane covers the viewport rows",
+    );
+
+    tab.toggle_active_pane_fullscreen(client_id);
+    assert!(
+        !tab.floating_panes.fullscreen_is_active(),
+        "fullscreen is cleared after the second toggle",
+    );
+    let editor_pane = tab
+        .floating_panes
+        .get(&editor_pane_id)
+        .expect("editor pane is present in floating panes");
+    assert!(
+        editor_pane.geom_override().is_none(),
+        "editor pane no longer carries the fullscreen geom_override",
+    );
+    assert_eq!(
+        editor_pane.position_and_size(),
+        original_geom,
+        "editor pane falls back to the replaced pane's original geometry",
+    );
+}
+
+#[test]
+pub fn closing_fullscreen_floating_scrollback_editor_restores_geometry() {
+    let client_id = 1;
+    let mut tab = create_tab_with_two_floating_panes();
+    let active_pane_id = tab
+        .floating_panes
+        .active_pane_id(client_id)
+        .expect("a floating pane is focused");
+    let original_geom = tab
+        .floating_panes
+        .get(&active_pane_id)
+        .expect("focused floating pane exists")
+        .position_and_size();
+
+    let editor_pane_id = PaneId::Terminal(99);
+    tab.replace_active_pane_with_editor_pane(editor_pane_id, client_id)
+        .unwrap();
+    tab.toggle_active_pane_fullscreen(client_id);
+    assert_eq!(
+        tab.floating_panes.fullscreen_pane_id(),
+        Some(editor_pane_id),
+        "fullscreen tracks the editor pane",
+    );
+
+    tab.close_pane(editor_pane_id, false, None);
+    assert_eq!(
+        tab.floating_panes.fullscreen_pane_id(),
+        Some(active_pane_id),
+        "fullscreen now tracks the restored suppressed pane",
+    );
+
+    tab.toggle_active_pane_fullscreen(client_id);
+    assert!(
+        !tab.floating_panes.fullscreen_is_active(),
+        "fullscreen is cleared after the second toggle",
+    );
+    let restored_pane = tab
+        .floating_panes
+        .get(&active_pane_id)
+        .expect("restored pane is present");
+    assert!(
+        restored_pane.geom_override().is_none(),
+        "restored pane no longer carries the fullscreen geom_override",
+    );
+    assert_eq!(
+        restored_pane.position_and_size(),
+        original_geom,
+        "restored pane is back to its original geometry",
+    );
 }
 
 #[test]
@@ -16187,6 +17504,40 @@ pub fn interactive_rename_appends_to_existing_name() {
 }
 
 #[test]
+pub fn interactive_rename_nul_clears_existing_name() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let client_id = 1;
+    let pane_id = PaneId::Terminal(1);
+    let _ = tab.rename_pane_by_pane_id(pane_id, "flame".as_bytes().to_vec());
+    let _ = tab.update_active_pane_name(vec![0], client_id);
+    let pane = tab.get_pane_with_id(pane_id).unwrap();
+    assert_eq!(pane.custom_title(), None);
+
+    let _ = tab.update_active_pane_name(b"spark".to_vec(), client_id);
+    let pane = tab.get_pane_with_id(pane_id).unwrap();
+    assert_eq!(pane.custom_title(), Some("spark".to_owned()));
+}
+
+#[test]
+pub fn interactive_rename_sanitizes_other_control_characters() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let client_id = 1;
+    let pane_id = PaneId::Terminal(1);
+    let _ = tab.rename_pane_by_pane_id(pane_id, "flame".as_bytes().to_vec());
+    let _ = tab.update_active_pane_name(vec![0x01, 0x07, b'\n', b'\r', 0x1b], client_id);
+    let pane = tab.get_pane_with_id(pane_id).unwrap();
+    assert_eq!(pane.custom_title(), Some("flame".to_owned()));
+}
+
+#[test]
 pub fn interactive_rename_backspace_removes_chars() {
     let size = Size {
         cols: 121,
@@ -16589,208 +17940,157 @@ pub fn scroll_terminal_down_nonexistent_pane_id_is_a_noop() {
 }
 
 #[test]
-pub fn set_shadow_focus_returns_true_when_pane_is_in_tab() {
+fn floating_plugin_panes_are_notified_when_their_tab_is_hidden() {
+    // Regression test: Tab::visible() used to only walk the tiled panes, so a plugin living in a
+    // floating pane never learned that its tab had gone away. Plugins that idle on a timer (the
+    // session-manager re-reads the whole session list once a second) went on doing that work
+    // forever, even with no client attached to the session at all.
     let size = Size {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size, true);
-    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
-        .unwrap();
+    let (mut tab, plugin_receiver) = create_new_tab_with_plugin_receiver(size, true);
+    let plugin_pane_id = PaneId::Plugin(1);
+    tab.new_pane(
+        plugin_pane_id,
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::Floating(None),
+        Some(1),
+        None,
+    )
+    .unwrap();
 
-    let placed = tab.set_shadow_focus(99, PaneId::Terminal(2));
+    tab.visible(false).unwrap();
 
+    let mut told_the_floating_plugin = false;
+    while let Ok((instruction, _)) = plugin_receiver.try_recv() {
+        if let PluginInstruction::Update(updates) = instruction {
+            for (pid, _client_id, event) in updates {
+                if pid == Some(1) && matches!(event, Event::Visible(false)) {
+                    told_the_floating_plugin = true;
+                }
+            }
+        }
+    }
     assert!(
-        placed,
-        "pane is in the tab — should report a successful placement"
-    );
-    assert!(
-        tab.has_shadow_focus_on(99, PaneId::Terminal(2)),
-        "shadow focus must be recorded on the target pane",
+        told_the_floating_plugin,
+        "a plugin in a floating pane should be sent Event::Visible(false) when its tab is hidden"
     );
 }
 
-#[test]
-pub fn set_shadow_focus_returns_false_when_pane_not_in_tab() {
+fn drain_visible_events(
+    plugin_receiver: &Receiver<(PluginInstruction, ErrorContext)>,
+) -> Vec<(Option<u32>, bool)> {
+    let mut visible_events = vec![];
+    while let Ok((instruction, _)) = plugin_receiver.try_recv() {
+        if let PluginInstruction::Update(updates) = instruction {
+            for (pid, _client_id, event) in updates {
+                if let Event::Visible(is_visible) = event {
+                    visible_events.push((pid, is_visible));
+                }
+            }
+        }
+    }
+    visible_events
+}
+
+fn tab_with_floating_plugin_pane(
+    plugin_pid: u32,
+) -> (Tab, Receiver<(PluginInstruction, ErrorContext)>) {
     let size = Size {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size, true);
-
-    let placed = tab.set_shadow_focus(99, PaneId::Terminal(42));
-
-    assert!(!placed, "no pane 42 in this tab — placement must fail");
-    assert!(
-        !tab.has_shadow_focus_on(99, PaneId::Terminal(42)),
-        "nothing should have been recorded",
-    );
-    assert!(
-        tab.shadow_focus_clients().is_empty(),
-        "no shadow markers should exist",
-    );
+    let (mut tab, plugin_receiver) = create_new_tab_with_plugin_receiver(size, true);
+    tab.new_pane(
+        PaneId::Plugin(plugin_pid),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::Floating(None),
+        Some(1),
+        None,
+    )
+    .unwrap();
+    (tab, plugin_receiver)
 }
 
 #[test]
-pub fn clear_shadow_focus_removes_marker_and_entry() {
-    let size = Size {
-        cols: 121,
-        rows: 20,
-    };
-    let mut tab = create_new_tab(size, true);
-    tab.set_shadow_focus(99, PaneId::Terminal(1));
-    assert_eq!(tab.shadow_focus_clients(), vec![99]);
+fn floating_plugin_panes_are_notified_when_the_floating_surface_is_hidden() {
+    let (mut tab, plugin_receiver) = tab_with_floating_plugin_pane(1);
+    drain_visible_events(&plugin_receiver);
 
-    tab.clear_shadow_focus(99);
+    tab.hide_floating_panes();
 
-    assert!(
-        tab.shadow_focus_clients().is_empty(),
-        "marker should be gone after clear",
-    );
-    assert!(
-        !tab.has_shadow_focus_on(99, PaneId::Terminal(1)),
-        "the active_panes entry should be gone too",
-    );
-}
-
-#[test]
-pub fn clear_shadow_focus_is_a_noop_when_absent() {
-    let size = Size {
-        cols: 121,
-        rows: 20,
-    };
-    let mut tab = create_new_tab(size, true);
-
-    tab.clear_shadow_focus(99);
-
-    assert!(
-        tab.tiled_panes.pane_id_is_focused(&PaneId::Terminal(1)),
-        "real client's focus on pane 1 must survive an unrelated clear",
-    );
-}
-
-#[test]
-pub fn has_shadow_focus_on_is_pane_specific() {
-    let size = Size {
-        cols: 121,
-        rows: 20,
-    };
-    let mut tab = create_new_tab(size, true);
-    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
-        .unwrap();
-
-    tab.set_shadow_focus(99, PaneId::Terminal(2));
-
-    assert!(tab.has_shadow_focus_on(99, PaneId::Terminal(2)));
-    assert!(
-        !tab.has_shadow_focus_on(99, PaneId::Terminal(1)),
-        "must NOT match a different pane id",
-    );
-    assert!(
-        !tab.has_shadow_focus_on(7, PaneId::Terminal(2)),
-        "must NOT match a different client id",
-    );
-}
-
-#[test]
-pub fn has_shadow_focus_on_does_not_match_real_focus() {
-    let size = Size {
-        cols: 121,
-        rows: 20,
-    };
-    let tab = create_new_tab(size, true);
-
-    assert!(
-        tab.tiled_panes.pane_id_is_focused(&PaneId::Terminal(1)),
-        "precondition: client 1 has real focus on pane 1",
-    );
-    assert!(
-        !tab.has_shadow_focus_on(1, PaneId::Terminal(1)),
-        "real focus must not register as shadow focus",
-    );
-}
-
-#[test]
-pub fn shadow_focus_clients_lists_only_marked_clients() {
-    let size = Size {
-        cols: 121,
-        rows: 20,
-    };
-    let mut tab = create_new_tab(size, true);
-    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
-        .unwrap();
-
-    tab.set_shadow_focus(99, PaneId::Terminal(1));
-    tab.set_shadow_focus(100, PaneId::Terminal(2));
-
-    let mut clients = tab.shadow_focus_clients();
-    clients.sort_unstable();
-    assert_eq!(clients, vec![99, 100]);
-}
-
-#[test]
-pub fn real_focus_supersedes_shadow_marker() {
-    let size = Size {
-        cols: 121,
-        rows: 20,
-    };
-    let mut tab = create_new_tab(size, true);
-    tab.set_shadow_focus(99, PaneId::Terminal(1));
-    assert_eq!(tab.shadow_focus_clients(), vec![99]);
-
-    tab.tiled_panes.focus_pane(PaneId::Terminal(1), 99);
-
-    assert!(
-        tab.shadow_focus_clients().is_empty(),
-        "real focus must clear any prior shadow marker for the same client",
-    );
-    assert!(
-        tab.tiled_panes.pane_id_is_focused(&PaneId::Terminal(1)),
-        "real focus must still be recorded",
-    );
-}
-
-#[test]
-pub fn moving_shadow_focus_updates_pane_target() {
-    let size = Size {
-        cols: 121,
-        rows: 20,
-    };
-    let mut tab = create_new_tab(size, true);
-    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
-        .unwrap();
-
-    tab.set_shadow_focus(99, PaneId::Terminal(1));
-    tab.set_shadow_focus(99, PaneId::Terminal(2));
-
-    assert!(tab.has_shadow_focus_on(99, PaneId::Terminal(2)));
-    assert!(
-        !tab.has_shadow_focus_on(99, PaneId::Terminal(1)),
-        "previous shadow target must be overwritten",
-    );
     assert_eq!(
-        tab.shadow_focus_clients(),
-        vec![99],
-        "still only one shadow client",
+        drain_visible_events(&plugin_receiver),
+        vec![(Some(1), false)],
+        "a plugin in a floating pane should be sent Event::Visible(false) when the floating surface is hidden"
     );
 }
 
 #[test]
-pub fn closing_a_pane_silently_drops_shadow_clients() {
-    let size = Size {
-        cols: 121,
-        rows: 20,
-    };
-    let mut tab = create_new_tab(size, true);
-    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
-        .unwrap();
-    tab.set_shadow_focus(99, PaneId::Terminal(2));
-    assert!(tab.has_shadow_focus_on(99, PaneId::Terminal(2)));
+fn floating_plugin_panes_are_notified_when_the_floating_surface_is_shown() {
+    let (mut tab, plugin_receiver) = tab_with_floating_plugin_pane(1);
+    tab.hide_floating_panes();
+    drain_visible_events(&plugin_receiver);
 
-    tab.close_pane(PaneId::Terminal(2), false, None);
+    tab.show_floating_panes();
+
+    assert_eq!(
+        drain_visible_events(&plugin_receiver),
+        vec![(Some(1), true)],
+        "a plugin in a floating pane should be sent Event::Visible(true) when the floating surface is shown"
+    );
+}
+
+#[test]
+fn toggling_the_floating_surface_twice_does_not_repeat_the_visibility_event() {
+    let (mut tab, plugin_receiver) = tab_with_floating_plugin_pane(1);
+    drain_visible_events(&plugin_receiver);
+
+    tab.hide_floating_panes();
+    tab.hide_floating_panes();
+    tab.show_floating_panes();
+    tab.show_floating_panes();
+
+    assert_eq!(
+        drain_visible_events(&plugin_receiver),
+        vec![(Some(1), false), (Some(1), true)],
+        "only actual visibility transitions of the floating surface should be reported"
+    );
+}
+
+#[test]
+fn floating_surface_toggles_in_a_hidden_tab_do_not_notify_plugins() {
+    let (mut tab, plugin_receiver) = tab_with_floating_plugin_pane(1);
+    tab.visible(false).unwrap();
+    drain_visible_events(&plugin_receiver);
+
+    tab.hide_floating_panes();
+    tab.show_floating_panes();
 
     assert!(
-        tab.shadow_focus_clients().is_empty(),
-        "shadow client must be dropped when its pane is closed",
+        drain_visible_events(&plugin_receiver).is_empty(),
+        "a plugin in a hidden tab should not be told it became visible because the floating surface was toggled"
+    );
+}
+
+#[test]
+fn floating_plugin_panes_are_not_shown_again_when_their_tab_returns_with_the_surface_hidden() {
+    let (mut tab, plugin_receiver) = tab_with_floating_plugin_pane(1);
+    tab.hide_floating_panes();
+    tab.visible(false).unwrap();
+    drain_visible_events(&plugin_receiver);
+
+    tab.visible(true).unwrap();
+
+    assert!(
+        !drain_visible_events(&plugin_receiver).contains(&(Some(1), true)),
+        "a plugin whose floating surface is hidden should not be told it is visible when its tab returns"
     );
 }

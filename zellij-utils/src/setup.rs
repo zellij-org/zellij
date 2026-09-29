@@ -1,5 +1,3 @@
-#[cfg(not(target_family = "wasm"))]
-use crate::consts::ASSET_MAP;
 use crate::input::theme::Themes;
 #[allow(unused_imports)]
 use crate::{
@@ -14,7 +12,7 @@ use crate::{
         options::Options,
     },
 };
-use clap::{Args, IntoApp};
+use clap::Args;
 use clap_complete::Shell;
 use log::info;
 use serde::{Deserialize, Serialize};
@@ -166,6 +164,9 @@ pub fn dump_default_config() -> std::io::Result<()> {
 }
 
 pub fn dump_specified_layout(layout: &str) -> std::io::Result<()> {
+    if let Some(bundled_layout) = crate::distribution::builtin_layout(layout) {
+        return dump_asset(bundled_layout.layout.as_bytes());
+    }
     match layout {
         "strider" => dump_asset(STRIDER_LAYOUT),
         "default" => dump_asset(DEFAULT_LAYOUT),
@@ -194,6 +195,15 @@ pub fn dump_specified_layout(layout: &str) -> std::io::Result<()> {
 }
 
 pub fn dump_specified_swap_layout(swap_layout: &str) -> std::io::Result<()> {
+    if let Some(bundled_layout) = crate::distribution::builtin_layout(swap_layout) {
+        return match bundled_layout.swap_layout {
+            Some(swap_layout) => dump_asset(swap_layout.as_bytes()),
+            None => Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Swap Layout not found for: {}", bundled_layout.name),
+            )),
+        };
+    }
     match swap_layout {
         "strider" => dump_asset(STRIDER_SWAP_LAYOUT),
         "default" => dump_asset(DEFAULT_SWAP_LAYOUT),
@@ -208,8 +218,9 @@ pub fn dump_specified_swap_layout(swap_layout: &str) -> std::io::Result<()> {
 
 #[cfg(not(target_family = "wasm"))]
 pub fn dump_builtin_plugins(path: &PathBuf) -> Result<()> {
-    for (asset_path, bytes) in ASSET_MAP.iter() {
-        let plugin_path = path.join(asset_path);
+    for (name, bytes) in crate::distribution::embedded_plugins() {
+        let asset_path = PathBuf::from("plugins").join(format!("{}.wasm", name));
+        let plugin_path = path.join(&asset_path);
         plugin_path
             .parent()
             .with_context(|| {
@@ -271,8 +282,7 @@ pub struct Setup {
         value_name = "DIR",
         value_parser,
         exclusive = true,
-        min_values = 0,
-        max_values = 1
+        num_args(0..=1)
     )]
     pub dump_plugins: Option<Option<PathBuf>>,
 
@@ -288,8 +298,8 @@ pub struct Setup {
 impl Setup {
     /// Entrypoint from main
     /// Merges options from the config file and the command line options
-    /// into `[Options]`, the command line options superceeding the layout
-    /// file options, superceeding the config file options:
+    /// into `[Options]`, the command line options superseding the layout
+    /// file options, superseding the config file options:
     /// 1. command line options (`zellij options`)
     /// 2. layout options
     ///    (`layout.kdl` / `zellij --layout`)
@@ -403,6 +413,15 @@ impl Setup {
         }
 
         if let Some(maybe_path) = &self.dump_plugins {
+            if crate::distribution::embedded_plugins().is_empty() {
+                return Err(anyhow!(
+                    "This zellij was built without bundled plugins (feature \
+                     'disable_automatic_asset_installation'). Builtin plugins are provided by the \
+                     distributor of this build and must be placed in the plugin directory, \
+                     visible in the output of `zellij setup --check`."
+                ))
+                .context("failed to dump plugins");
+            }
             let data_dir = &opts.data_dir.clone().unwrap_or_else(get_default_data_dir);
             let dir = match maybe_path {
                 Some(path) => path,
@@ -440,6 +459,46 @@ impl Setup {
         let mut message = String::new();
 
         writeln!(&mut message, "[Version]: {:?}", VERSION).unwrap();
+        let distribution = crate::distribution::distribution();
+        if !distribution.is_stock_zellij() {
+            writeln!(
+                &mut message,
+                "[DISTRIBUTION]: {} {} (paths and command name: '{}')",
+                distribution.display_name, distribution.version, distribution.name
+            )
+            .unwrap();
+            let bundled_plugins = crate::distribution::own_plugin_names();
+            if !bundled_plugins.is_empty() {
+                writeln!(
+                    &mut message,
+                    "[DISTRIBUTION PLUGINS]: {}",
+                    bundled_plugins.join(", ")
+                )
+                .unwrap();
+            }
+            let removed_plugins = crate::distribution::removed_builtin_plugin_names();
+            if !removed_plugins.is_empty() {
+                writeln!(
+                    &mut message,
+                    "[REMOVED BUILTIN PLUGINS]: {}",
+                    removed_plugins.join(", ")
+                )
+                .unwrap();
+            }
+            let bundled_layouts: Vec<&str> = distribution
+                .layouts
+                .iter()
+                .map(|layout| layout.name)
+                .collect();
+            if !bundled_layouts.is_empty() {
+                writeln!(
+                    &mut message,
+                    "[DISTRIBUTION LAYOUTS]: {}",
+                    bundled_layouts.join(", ")
+                )
+                .unwrap();
+            }
+        }
         if let Some(config_dir) = config_dir {
             writeln!(&mut message, "[CONFIG DIR]: \"{}\"", config_dir.display()).unwrap();
         } else {
@@ -484,7 +543,7 @@ impl Setup {
         writeln!(&mut message, "[CACHE DIR]: {}", ZELLIJ_CACHE_DIR.display()).unwrap();
         writeln!(&mut message, "[DATA DIR]: \"{}\"", data_dir.display()).unwrap();
         writeln!(&mut message, "[PLUGIN DIR]: \"{}\"", plugin_dir.display()).unwrap();
-        if !cfg!(feature = "disable_automatic_asset_installation") {
+        if !crate::distribution::embedded_plugins().is_empty() {
             writeln!(
                 &mut message,
                 " Builtin, default plugins will not be loaded from disk."
@@ -493,6 +552,18 @@ impl Setup {
             writeln!(
                 &mut message,
                 " Create a custom layout if you require this behavior."
+            )
+            .unwrap();
+        } else {
+            writeln!(
+                &mut message,
+                " This zellij was built without bundled plugins."
+            )
+            .unwrap();
+            writeln!(
+                &mut message,
+                " Builtin plugins are loaded from the 'PLUGIN DIR' above, or from '{}'.",
+                system_data_dir.join("plugins").display()
             )
             .unwrap();
         }
@@ -554,7 +625,12 @@ impl Setup {
             },
         };
         let mut out = std::io::stdout();
-        clap_complete::generate(shell, &mut CliArgs::command(), "zellij", &mut out);
+        clap_complete::generate(
+            shell,
+            &mut CliArgs::command_for_distribution(),
+            crate::distribution::name(),
+            &mut out,
+        );
         // add shell dependent extra completion
         match shell {
             Shell::Bash => {

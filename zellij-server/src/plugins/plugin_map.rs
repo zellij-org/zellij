@@ -2,21 +2,20 @@ use crate::plugins::plugin_worker::MessageToWorker;
 use crate::plugins::PluginId;
 use std::io::Write;
 use std::{
-    collections::{BTreeMap, HashMap, HashSet, VecDeque},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
     path::PathBuf,
     sync::{Arc, Mutex},
 };
 use wasmi::{Instance, Store, StoreLimits};
 use wasmi_wasi::WasiCtx;
 
-use crate::{thread_bus::ThreadSenders, ClientId};
+use crate::{thread_bus::ThreadSenders, ClientId, SharedKeybinds};
 
 use tokio::sync::mpsc::UnboundedSender;
 use zellij_utils::{
-    data::EventType,
     data::InputMode,
+    data::{Event, EventType, RenderResponse, SlotKind},
     input::command::TerminalAction,
-    input::keybinds::Keybinds,
     input::layout::{PluginUserConfiguration, RunPlugin, RunPluginLocation},
     input::plugins::PluginConfig,
 };
@@ -27,33 +26,36 @@ use zellij_utils::{data::PermissionType, errors::prelude::*};
 // so when adding/removing from the map - everything is halted, that's life
 // but when cloning the internal RunningPlugin and Subscriptions atomics, we can call methods on
 // them without blocking other instances
+pub type PluginKey = (PluginId, ClientId);
+pub type PluginAssets = (
+    Arc<Mutex<RunningPlugin>>,
+    Arc<Mutex<Subscriptions>>,
+    HashMap<String, UnboundedSender<MessageToWorker>>,
+);
+pub type RemovedPluginAssets = HashMap<PluginKey, PluginAssets>;
+
+#[derive(Clone, Debug)]
+pub struct PluginMetadata {
+    pub plugin_config: PluginConfig,
+    pub tab_index: Option<usize>,
+    pub rows: usize,
+    pub columns: usize,
+    pub cwd: PathBuf,
+    pub is_background: bool,
+}
+
 #[derive(Default)]
 pub struct PluginMap {
-    plugin_assets: HashMap<
-        (PluginId, ClientId),
-        (
-            Arc<Mutex<RunningPlugin>>,
-            Arc<Mutex<Subscriptions>>,
-            HashMap<String, UnboundedSender<MessageToWorker>>,
-        ),
-    >,
+    plugin_assets: HashMap<PluginKey, PluginAssets>,
+    plugin_metadata: HashMap<PluginId, PluginMetadata>,
+    shared_assets: HashMap<PluginId, PluginAssets>,
 }
 
 impl PluginMap {
-    pub fn remove_plugins(
-        &mut self,
-        pid: PluginId,
-    ) -> HashMap<
-        (PluginId, ClientId),
-        (
-            Arc<Mutex<RunningPlugin>>,
-            Arc<Mutex<Subscriptions>>,
-            HashMap<String, UnboundedSender<MessageToWorker>>,
-        ),
-    > {
+    pub fn remove_plugins(&mut self, pid: PluginId) -> RemovedPluginAssets {
+        self.plugin_metadata.remove(&pid);
         let mut removed = HashMap::new();
-        let ids_in_plugin_map: Vec<(PluginId, ClientId)> =
-            self.plugin_assets.keys().copied().collect();
+        let ids_in_plugin_map: Vec<PluginKey> = self.plugin_assets.keys().copied().collect();
         for (plugin_id, client_id) in ids_in_plugin_map {
             if pid == plugin_id {
                 if let Some(plugin_asset) = self.plugin_assets.remove(&(plugin_id, client_id)) {
@@ -63,13 +65,63 @@ impl PluginMap {
         }
         removed
     }
+    pub fn remove_plugin_clients(&mut self, client_id: ClientId) -> RemovedPluginAssets {
+        let mut removed = HashMap::new();
+        let ids_in_plugin_map: Vec<PluginKey> = self.plugin_assets.keys().copied().collect();
+        for key in ids_in_plugin_map {
+            if key.1 == client_id {
+                if let Some(plugin_asset) = self.plugin_assets.remove(&key) {
+                    removed.insert(key, plugin_asset);
+                }
+            }
+        }
+        removed
+    }
+    pub fn insert_shared(&mut self, instance_id: PluginId, assets: PluginAssets) {
+        self.shared_assets.insert(instance_id, assets);
+    }
+    pub fn remove_shared(&mut self, instance_id: PluginId) -> Option<PluginAssets> {
+        self.shared_assets.remove(&instance_id)
+    }
+    pub fn shared_running_plugin(
+        &self,
+        instance_id: PluginId,
+    ) -> Option<(Arc<Mutex<RunningPlugin>>, Arc<Mutex<Subscriptions>>)> {
+        self.shared_assets
+            .get(&instance_id)
+            .map(|(running_plugin, subscriptions, _)| {
+                (running_plugin.clone(), subscriptions.clone())
+            })
+    }
+    pub fn remove_metadata(&mut self, plugin_id: PluginId) {
+        self.plugin_metadata.remove(&plugin_id);
+    }
+    pub fn insert_metadata(&mut self, plugin_id: PluginId, metadata: PluginMetadata) {
+        self.plugin_metadata.insert(plugin_id, metadata);
+    }
+    pub fn metadata(&self, plugin_id: PluginId) -> Option<&PluginMetadata> {
+        self.plugin_metadata.get(&plugin_id)
+    }
+    pub fn set_tab_index(&mut self, plugin_id: PluginId, tab_index: usize) {
+        if let Some(metadata) = self.plugin_metadata.get_mut(&plugin_id) {
+            if !metadata.is_background {
+                metadata.tab_index = Some(tab_index);
+            }
+        }
+    }
+    pub fn set_size(&mut self, plugin_id: PluginId, rows: usize, columns: usize) {
+        if let Some(metadata) = self.plugin_metadata.get_mut(&plugin_id) {
+            metadata.rows = rows;
+            metadata.columns = columns;
+        }
+    }
+    pub fn set_cwd(&mut self, plugin_id: PluginId, cwd: PathBuf) {
+        if let Some(metadata) = self.plugin_metadata.get_mut(&plugin_id) {
+            metadata.cwd = cwd;
+        }
+    }
     pub fn plugin_ids(&self) -> Vec<PluginId> {
-        let mut unique_plugins: HashSet<PluginId> = self
-            .plugin_assets
-            .keys()
-            .map(|(plugin_id, _client_id)| *plugin_id)
-            .collect();
-        unique_plugins.drain().into_iter().collect()
+        self.plugin_metadata.keys().copied().collect()
     }
     pub fn running_plugins(&mut self) -> Vec<(PluginId, ClientId, Arc<Mutex<RunningPlugin>>)> {
         self.plugin_assets
@@ -135,6 +187,9 @@ impl PluginMap {
         client_id: ClientId,
         worker_name: &str,
     ) -> Option<UnboundedSender<MessageToWorker>> {
+        if let Some((_, _, workers)) = self.shared_assets.get(&plugin_id) {
+            return workers.get(&format!("{}_worker", worker_name)).cloned();
+        }
         self.plugin_assets
             .iter()
             .find(|((p_id, c_id), _)| p_id == &plugin_id && c_id == &client_id)
@@ -154,17 +209,14 @@ impl PluginMap {
     ) -> Result<Vec<PluginId>> {
         let err_context = || format!("Failed to get plugin ids for location {plugin_location}");
         let plugin_ids: Vec<PluginId> = self
-            .plugin_assets
+            .plugin_metadata
             .iter()
-            .filter(|(_, (running_plugin, _subscriptions, _workers))| {
-                let running_plugin = running_plugin.lock().unwrap();
-                let plugin_config = &running_plugin.store.data().plugin;
-                let running_plugin_location = &plugin_config.location;
-                let running_plugin_configuration = &plugin_config.initial_userspace_configuration;
-                running_plugin_location == plugin_location
-                    && running_plugin_configuration == plugin_configuration
+            .filter(|(_plugin_id, metadata)| {
+                &metadata.plugin_config.location == plugin_location
+                    && &metadata.plugin_config.initial_userspace_configuration
+                        == plugin_configuration
             })
-            .map(|((plugin_id, _client_id), _)| *plugin_id)
+            .map(|(plugin_id, _metadata)| *plugin_id)
             .collect();
         if plugin_ids.is_empty() {
             return Err(ZellijError::PluginDoesNotExist).with_context(err_context);
@@ -208,6 +260,9 @@ impl PluginMap {
         }
         cloned_plugin_assets
     }
+    pub fn contains(&self, plugin_id: PluginId, client_id: ClientId) -> bool {
+        self.plugin_assets.contains_key(&(plugin_id, client_id))
+    }
     pub fn all_plugin_ids(&self) -> Vec<(PluginId, ClientId)> {
         self.plugin_assets
             .iter()
@@ -228,39 +283,25 @@ impl PluginMap {
         );
     }
     pub fn run_plugin_of_plugin_id(&self, plugin_id: PluginId) -> Option<RunPlugin> {
-        self.plugin_assets
-            .iter()
-            .find_map(|((p_id, _), (running_plugin, _, _))| {
-                if *p_id == plugin_id {
-                    let running_plugin = running_plugin.lock().unwrap();
-                    let plugin_config = &running_plugin.store.data().plugin;
-                    let run_plugin_location = plugin_config.location.clone();
-                    let run_plugin_configuration =
-                        plugin_config.initial_userspace_configuration.clone();
-                    let initial_cwd = plugin_config.initial_cwd.clone();
-                    Some(RunPlugin {
-                        _allow_exec_host_cmd: false,
-                        location: run_plugin_location,
-                        configuration: run_plugin_configuration,
-                        initial_cwd,
-                    })
-                } else {
-                    None
-                }
+        self.plugin_metadata
+            .get(&plugin_id)
+            .map(|metadata| RunPlugin {
+                _allow_exec_host_cmd: false,
+                location: metadata.plugin_config.location.clone(),
+                configuration: metadata
+                    .plugin_config
+                    .initial_userspace_configuration
+                    .clone(),
+                initial_cwd: metadata.plugin_config.initial_cwd.clone(),
             })
     }
     pub fn list_plugins(&self) -> BTreeMap<PluginId, RunPlugin> {
-        let all_plugin_ids: HashSet<PluginId> = self
-            .all_plugin_ids()
-            .into_iter()
-            .map(|(plugin_id, _client_id)| plugin_id)
-            .collect();
         let mut plugin_ids_to_cmds: BTreeMap<u32, RunPlugin> = BTreeMap::new();
-        for plugin_id in all_plugin_ids {
-            let plugin_cmd = self.run_plugin_of_plugin_id(plugin_id);
+        for plugin_id in self.plugin_metadata.keys() {
+            let plugin_cmd = self.run_plugin_of_plugin_id(*plugin_id);
             match plugin_cmd {
                 Some(plugin_cmd) => {
-                    plugin_ids_to_cmds.insert(plugin_id, plugin_cmd.clone());
+                    plugin_ids_to_cmds.insert(*plugin_id, plugin_cmd.clone());
                 },
                 None => log::error!("Plugin with id: {plugin_id} not found"),
             }
@@ -277,7 +318,6 @@ pub struct PluginEnv {
     pub permissions: Arc<Mutex<Option<HashSet<PermissionType>>>>,
     pub senders: ThreadSenders,
     pub wasi_ctx: WasiCtx,
-    pub tab_index: Option<usize>,
     pub client_id: ClientId,
     #[allow(dead_code)]
     pub plugin_own_data_dir: PathBuf,
@@ -293,9 +333,80 @@ pub struct PluginEnv {
     pub subscriptions: Arc<Mutex<Subscriptions>>,
     pub stdin_pipe: Arc<Mutex<VecDeque<u8>>>,
     pub stdout_pipe: Arc<Mutex<VecDeque<u8>>>,
-    pub keybinds: Keybinds,
+    pub keybinds: SharedKeybinds,
     pub intercepting_key_presses: bool,
     pub store_limits: StoreLimits,
+    pub shared: Option<SharedEnv>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SharedSlot {
+    pub kind: SlotKind,
+    pub configuration: BTreeMap<String, String>,
+    pub rows: usize,
+    pub columns: usize,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SharedEnv {
+    pub current_slot: Option<PluginId>,
+    pub current_client: Option<ClientId>,
+    pub self_commands_allowed: bool,
+    pub slots: BTreeMap<PluginId, SharedSlot>,
+    pub clients: BTreeSet<ClientId>,
+    pub visible_slots: HashMap<ClientId, HashSet<PluginId>>,
+    pub last_events: HashMap<(EventType, Option<ClientId>), (Event, Option<SharedKeybinds>)>,
+}
+
+impl SharedEnv {
+    pub fn first_pane_slot(&self) -> Option<PluginId> {
+        self.slots
+            .iter()
+            .find(|(_, slot)| slot.kind == SlotKind::Pane)
+            .map(|(id, _)| *id)
+    }
+    pub fn pane_slot_ids(&self) -> Vec<PluginId> {
+        self.slots
+            .iter()
+            .filter(|(_, slot)| slot.kind == SlotKind::Pane)
+            .map(|(id, _)| *id)
+            .collect()
+    }
+    pub fn client_can_see(&self, client_id: ClientId, slot_id: PluginId) -> bool {
+        match self.visible_slots.get(&client_id) {
+            Some(visible) => visible.contains(&slot_id),
+            None => true,
+        }
+    }
+    pub fn renderable_slot(&self, slot_id: PluginId) -> Option<(usize, usize)> {
+        self.slots.get(&slot_id).and_then(|slot| {
+            if slot.kind == SlotKind::Pane && slot.rows > 0 && slot.columns > 0 {
+                Some((slot.rows, slot.columns))
+            } else {
+                None
+            }
+        })
+    }
+    pub fn render_targets(&self, render: &RenderResponse) -> Vec<(PluginId, ClientId)> {
+        let mut targets = vec![];
+        for client_id in self.clients.iter() {
+            for slot_id in self.slots.keys() {
+                let wanted = match render {
+                    RenderResponse::Nothing => false,
+                    RenderResponse::All => true,
+                    RenderResponse::Client(c) => c == client_id,
+                    RenderResponse::Slots(slot_ids) => slot_ids.contains(slot_id),
+                };
+                if wanted
+                    && self.renderable_slot(*slot_id).is_some()
+                    && self.client_can_see(*client_id, *slot_id)
+                {
+                    targets.push((*slot_id, *client_id));
+                }
+            }
+        }
+        targets
+    }
 }
 
 #[derive(Clone)]
@@ -394,7 +505,7 @@ impl RunningPlugin {
             false
         }
     }
-    pub fn update_keybinds(&mut self, keybinds: Keybinds) {
+    pub fn update_keybinds(&mut self, keybinds: SharedKeybinds) {
         self.store.data_mut().keybinds = keybinds;
     }
     pub fn update_default_mode(&mut self, default_mode: InputMode) {

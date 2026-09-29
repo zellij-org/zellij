@@ -13,7 +13,7 @@ use zellij_utils::{
     position::{Column, Line, Position},
 };
 
-use rand::Rng;
+use rand::RngExt;
 use regex::Regex;
 
 use std::fmt::Write;
@@ -23,7 +23,7 @@ use super::remote_runner::{RemoteRunner, RemoteTerminal, Step};
 
 pub const QUIT: [u8; 1] = [17]; // ctrl-q
 pub const ESC: [u8; 1] = [27];
-pub const ENTER: [u8; 2] = [10, 13]; // '\n\r'
+pub const ENTER: [u8; 1] = [13]; // '\r'
 pub const SPACE: [u8; 1] = [32];
 pub const LOCK_MODE: [u8; 1] = [7]; // ctrl-g
 
@@ -364,6 +364,18 @@ pub fn send_blocking_command_through_the_cli() {
                         remote_terminal
                             .send_blocking_command_through_the_cli("bash -c 'sleep 2 && exit 42'");
                         std::thread::sleep(std::time::Duration::from_millis(100));
+                        step_is_complete = true;
+                    }
+                    step_is_complete
+                },
+            })
+            .add_step(Step {
+                name: "Wait for the typed command to be echoed on a single line",
+                instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                    let mut step_is_complete = false;
+                    if remote_terminal.snapshot_contains(
+                        "$ /usr/src/zellij/zellij run --blocking --floating --close-on-exit -- bash -c 'sleep 2 && exit 42'",
+                    ) {
                         remote_terminal.send_key(&ENTER);
                         std::thread::sleep(std::time::Duration::from_millis(100));
                         step_is_complete = true;

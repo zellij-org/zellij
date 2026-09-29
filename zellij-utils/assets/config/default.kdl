@@ -27,12 +27,14 @@ keybinds {
         bind "j" "Down" { MoveFocus "Down"; }
         bind "k" "Up" { MoveFocus "Up"; }
         bind "p" { SwitchFocus; }
+        bind ";" { FocusLastPane; }
         bind "n" { NewPane; SwitchToMode "Normal"; }
         bind "d" { NewPane "Down"; SwitchToMode "Normal"; }
         bind "r" { NewPane "Right"; SwitchToMode "Normal"; }
         bind "s" { NewPane "stacked"; SwitchToMode "Normal"; }
         bind "x" { CloseFocus; SwitchToMode "Normal"; }
         bind "f" { ToggleFocusFullscreen; SwitchToMode "Normal"; }
+        bind "Shift f" { ToggleFocusNoUiFullscreen; SwitchToMode "Normal"; }
         bind "z" { TogglePaneFrames; SwitchToMode "Normal"; }
         bind "w" { ToggleFloatingPanes; SwitchToMode "Normal"; }
         bind "e" { TogglePaneEmbedOrFloating; SwitchToMode "Normal"; }
@@ -81,6 +83,10 @@ keybinds {
         bind "Ctrl b" "PageUp" "Left" "h" { PageScrollUp; }
         bind "d" { HalfPageScrollDown; }
         bind "u" { HalfPageScrollUp; }
+        bind "[" { ScrollToPreviousPrompt; }
+        bind "]" { ScrollToNextPrompt; }
+        bind "m" { SelectCommandAtScrollPosition; }
+        bind "c" { CopyLastCommandOutput; SwitchToMode "Normal"; }
         // uncomment this and adjust key if using copy_on_select=false
         // bind "Alt c" { Copy; }
     }
@@ -93,6 +99,9 @@ keybinds {
         bind "Ctrl b" "PageUp" "Left" "h" { PageScrollUp; }
         bind "d" { HalfPageScrollDown; }
         bind "u" { HalfPageScrollUp; }
+        bind "[" { ScrollToPreviousPrompt; }
+        bind "]" { ScrollToNextPrompt; }
+        bind "m" { SelectCommandAtScrollPosition; }
         bind "n" { Search "down"; }
         bind "p" { Search "up"; }
         bind "c" { SearchToggleOption "CaseSensitivity"; }
@@ -115,6 +124,9 @@ keybinds {
         bind "Ctrl o" { SwitchToMode "Normal"; }
         bind "Ctrl s" { SwitchToMode "Scroll"; }
         bind "d" { Detach; }
+        bind "]" { FocusHostSession; SwitchToMode "Normal"; }
+        bind "[" { FocusGuestSession; SwitchToMode "Normal"; }
+        bind "f" { ToggleHostFullscreen; SwitchToMode "Normal"; }
         bind "w" {
             LaunchOrFocusPlugin "session-manager" {
                 floating true
@@ -228,10 +240,16 @@ keybinds {
 // Plugin aliases - can be used to change the implementation of Zellij
 // changing these requires a restart to take effect
 plugins {
-    tab-bar location="zellij:tab-bar"
-    status-bar location="zellij:status-bar"
+    tab-bar location="zellij:bars" {
+        role "tab-bar"
+    }
+    status-bar location="zellij:bars" {
+        role "status-bar"
+    }
     strider location="zellij:strider"
-    compact-bar location="zellij:compact-bar"
+    compact-bar location="zellij:bars" {
+        role "compact-bar"
+    }
     session-manager location="zellij:session-manager"
     welcome-screen location="zellij:session-manager" {
         welcome_screen true
@@ -242,12 +260,13 @@ plugins {
     configuration location="zellij:configuration"
     plugin-manager location="zellij:plugin-manager"
     about location="zellij:about"
-    mobile location="zellij:mobile"
 }
 
 // Plugins to load in the background when a new session starts
 load_plugins {
-    "zellij:link"
+    "zellij:bars" {
+        role "link"
+    }
     // "file:/path/to/my-plugin.wasm"
     // "https://example.com/my-plugin.wasm"
 }
@@ -260,6 +279,15 @@ load_plugins {
 //   - quit
 //
 // on_force_close "quit"
+
+// Choose how to handle a nested Zellij session detected running inside a pane
+// Options:
+//   - ask (Default - prompt with a modal to zoom in or control on focus)
+//   - fullscreen (always zoom into the nested session)
+//   - descend (always control the nested session on focus)
+//   - never (never prompt or descend; do it manually)
+//
+// nested_session_handling "ask"
 
 //  Send a request for a simplified ui (without arrow fonts) to plugins
 //  Options:
@@ -283,6 +311,41 @@ load_plugins {
 //   - false
 //
 // pane_frames true
+
+// Set the pane frame style when pane_frames is enabled
+// Options:
+//   - titles (default - draw a title above each pane)
+//   - full (draw a full frame around each pane)
+//   - none (equivalent to pane_frames false)
+//
+// pane_frame_style "titles"
+
+// Configure the look of the pane frame borders
+//
+// ui {
+//     pane_frames {
+//         // round the corners of single-line borders
+//         rounded_corners true
+//         // line style for all four sides of tiled pane frames
+//         // one of: single, double, heavy, dashed, heavy_dashed
+//         border_style "single"
+//         // per-side overrides, eg. a double top border with single sides
+//         border_top "double"
+//         border_right "single"
+//         border_bottom "single"
+//         border_left "single"
+//         // when two neighbouring panes disagree about a shared grid line
+//         // (pane frames off), that line falls back to border_style above
+//         // the same keys prefixed with "floating_" apply to floating panes,
+//         // they default to the values above
+//         floating_border_style "double"
+//         floating_border_top "double"
+//         floating_border_right "double"
+//         floating_border_bottom "double"
+//         floating_border_left "double"
+//         floating_border_rounded_corners false
+//     }
+// }
 
 // Toggle between having Zellij lay out panes according to a predefined set of layouts whenever possible
 // Options:
@@ -338,6 +401,21 @@ load_plugins {
 // Default: default
 //
 // theme "default"
+
+// Themes to use when the host terminal reports a dark or light color palette.
+// Both must be set for automatic switching to take place, otherwise `theme`
+// remains authoritative. Until the host terminal reports (or if it never does),
+// the dark theme is used.
+//
+// theme_dark "nightfox"
+// theme_light "dayfox"
+
+// Pin the session to a dark or light appearance, ignoring what the host
+// terminal reports. Resolved before the first render. When unset, the host
+// terminal decides.
+// Options: dark, light
+//
+// explicit_theme_hue "dark"
 
 // The name of the default layout to load on startup
 // Default: "default"
@@ -436,6 +514,12 @@ load_plugins {
 //
 // support_kitty_keyboard_protocol false
 
+// Enable or disable support for the Kitty Graphics Protocol, used to display images (the host terminal must also support it)
+// (Requires restart)
+// Default: true (if the host terminal supports it)
+//
+// support_kitty_graphics_protocol false
+
 // Whether to make sure a local web server is running when a new Zellij session starts.
 // This web server will allow creating new sessions and attaching to existing ones that have
 // opted in to being shared in the browser.
@@ -505,6 +589,14 @@ load_plugins {
 //
 // stacked_resize false
 
+// Whether to let programs running inside panes read the paste buffer (clipboard)
+// with the OSC 52 escape sequence. When enabled, any program in any pane -
+// including one running on a remote machine over SSH - can read the clipboard
+// without the user being asked.
+// Default: false
+//
+// dangerously_enable_paste_buffer_read true
+
 // Whether stacked panes display as a list with the expanded pane pinned to the bottom
 // Default: true
 //
@@ -520,10 +612,37 @@ load_plugins {
 //
 // advanced_mouse_actions false
 
+// Whether Ctrl+ScrollWheel resizes panes
+// Default: true
+//
+// mouse_scroll_resize false
+
+// Whether scrolling a pane implicitly enters and exits Scroll mode
+// Default: true
+//
+// scroll_mode_sync false
+
 // Whether to enable mouse hover visual effects (frame highlight and help text)
 // Default: true
 //
 // mouse_hover_effects false
+
+// Whether to show mouse hover help-text tips (resize help and group shortcuts)
+// Default: true
+//
+// mouse_hover_tips false
+
+// Whether triple-clicking inside command output marked by the shell (OSC 133) selects
+// the command and its output instead of the logical line
+// Default: true
+//
+// osc133_command_selection false
+
+// Characters that terminate a word when double-clicking to select it
+// whitespace is always a separator and need not be listed here
+// Default: "[]{}<>()"
+//
+// word_separators "[]{}<>()"
 
 // Whether to output OSC8 hyperlink sequences
 // Default: true

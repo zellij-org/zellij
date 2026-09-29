@@ -61,6 +61,8 @@ impl<'a> StackedPanes<'a> {
             let destination_pane = panes
                 .get_mut(&destination_pane_id)
                 .with_context(err_context)?;
+            destination_pane_geom.logical_position =
+                destination_pane.position_and_size().logical_position;
             destination_pane.set_geom(destination_pane_geom);
         } else if destination_pane_stack_id.is_some() {
             // we're moving down to the highest pane in the stack, we need to expand it and shrink the
@@ -97,6 +99,8 @@ impl<'a> StackedPanes<'a> {
             let destination_pane = panes
                 .get_mut(&destination_pane_id)
                 .with_context(err_context)?;
+            destination_pane_geom.logical_position =
+                destination_pane.position_and_size().logical_position;
             destination_pane.set_geom(destination_pane_geom);
         } else if destination_pane_stack_id.is_some() {
             // we're moving up to the lowest pane in the stack, we need to expand it and shrink the
@@ -174,15 +178,17 @@ impl<'a> StackedPanes<'a> {
     }
     pub fn position_and_size_of_stack(&self, id: &PaneId) -> Option<PaneGeom> {
         let all_stacked_pane_positions = self.positions_in_stack(id).ok()?;
-        let position_of_flexible_pane = self
-            .position_of_flexible_pane(&all_stacked_pane_positions)
-            .ok()?;
-        let (_flexible_pane_id, flexible_pane) = all_stacked_pane_positions
-            .iter()
-            .nth(position_of_flexible_pane)?;
         let (_, first_pane_in_stack) = all_stacked_pane_positions.first()?;
         let (_, last_pane_in_stack) = all_stacked_pane_positions.last()?;
-        let mut rows = flexible_pane.rows;
+        let mut rows = match self.position_of_flexible_pane(&all_stacked_pane_positions) {
+            Ok(position_of_flexible_pane) => {
+                all_stacked_pane_positions
+                    .get(position_of_flexible_pane)?
+                    .1
+                    .rows
+            },
+            Err(_) => first_pane_in_stack.rows,
+        };
         rows.set_inner(
             (last_pane_in_stack.y - first_pane_in_stack.y) + last_pane_in_stack.rows.as_usize(),
         );
@@ -1053,6 +1059,8 @@ impl<'a> StackedPanes<'a> {
                 pane_to_close_position_and_size.stacked = None;
             }
             let pane_below = panes.get_mut(&pane_id_below).with_context(err_context)?;
+            pane_to_close_position_and_size.logical_position =
+                pane_below.position_and_size().logical_position;
             pane_below.set_geom(pane_to_close_position_and_size);
             return Ok(true);
         } else if position_of_current_pane > 0 {
@@ -1070,6 +1078,8 @@ impl<'a> StackedPanes<'a> {
                 pane_to_close_position_and_size.stacked = None;
             }
             let pane_above = panes.get_mut(&pane_id_above).with_context(err_context)?;
+            pane_to_close_position_and_size.logical_position =
+                pane_above.position_and_size().logical_position;
             pane_above.set_geom(pane_to_close_position_and_size);
             return Ok(true);
         } else {

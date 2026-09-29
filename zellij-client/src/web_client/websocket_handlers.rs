@@ -1,37 +1,103 @@
 use crate::web_client::authentication::SessionTokenHash;
 use crate::web_client::control_message::{
-    SetConfigPayload, TerminalMetricsPayload, WebClientToWebServerControlMessage,
-    WebClientToWebServerControlMessagePayload, WebServerToWebClientControlMessage,
+    TerminalMetricsPayload, WebClientToWebServerControlMessage,
+    WebClientToWebServerControlMessagePayload,
 };
 use crate::web_client::message_handlers::{
     parse_stdin, render_to_client, send_control_messages_to_client, StdinSession,
 };
 use crate::web_client::server_listener::zellij_server_listener;
-use crate::web_client::types::{AppState, TerminalParams};
+use crate::web_client::types::{AppState, ControlParams, TerminalParams};
 
 use axum::{
     extract::{
-        ws::{Message, WebSocket, WebSocketUpgrade},
+        ws::{close_code, CloseFrame, Message, WebSocket, WebSocketUpgrade},
         Path as AxumPath, Query, State,
     },
-    response::IntoResponse,
+    http::StatusCode,
+    response::{IntoResponse, Response},
 };
 use futures::StreamExt;
 use std::sync::{atomic::AtomicBool, Arc};
+use std::time::Duration;
+use tokio::time::{Instant, Interval, MissedTickBehavior};
 use tokio_util::sync::CancellationToken;
 use zellij_utils::{
+    data::PaneId,
+    input::actions::Action,
     input::mouse::MouseEvent,
-    ipc::{ClientToServerMsg, PixelDimensions, ResizeCause},
-    pane_size::SizeInPixels,
+    ipc::{ClientToServerMsg, PixelDimensions},
+    pane_size::{Size, SizeInPixels},
 };
+
+const PING_INTERVAL: Duration = Duration::from_secs(30);
+const PONG_TIMEOUT: Duration = Duration::from_secs(45);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HeartbeatTick {
+    SendPing,
+    TimedOut,
+}
+
+struct Heartbeat {
+    interval: Interval,
+    last_pong: Instant,
+    pong_timeout: Duration,
+}
+
+impl Heartbeat {
+    fn new(ping_interval: Duration, pong_timeout: Duration) -> Self {
+        let now = Instant::now();
+        let mut interval = tokio::time::interval_at(now + ping_interval, ping_interval);
+        interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        Heartbeat {
+            interval,
+            last_pong: now,
+            pong_timeout,
+        }
+    }
+
+    async fn tick(&mut self) -> HeartbeatTick {
+        self.interval.tick().await;
+        if self.last_pong.elapsed() > self.pong_timeout {
+            HeartbeatTick::TimedOut
+        } else {
+            HeartbeatTick::SendPing
+        }
+    }
+
+    fn pong_received(&mut self) {
+        self.last_pong = Instant::now();
+    }
+}
+
+enum TerminalSocketEvent {
+    Frame(Message),
+    Closed,
+    FinalizeIdle,
+    Heartbeat(HeartbeatTick),
+}
 
 pub async fn ws_handler_control(
     ws: WebSocketUpgrade,
     _path: Option<AxumPath<String>>,
+    Query(params): Query<ControlParams>,
     State(state): State<AppState>,
     axum::Extension(session_token_hash): axum::Extension<SessionTokenHash>,
-) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| handle_ws_control(socket, state, session_token_hash))
+) -> Response {
+    if !state
+        .connection_table
+        .lock()
+        .unwrap()
+        .verify_client_ownership(&params.web_client_id, &session_token_hash.0)
+    {
+        log::error!(
+            "Control WebSocket: client does not own web_client_id {}",
+            params.web_client_id
+        );
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    ws.on_upgrade(move |socket| handle_ws_control(socket, params, state))
 }
 
 pub async fn ws_handler_terminal(
@@ -46,22 +112,22 @@ pub async fn ws_handler_terminal(
     })
 }
 
-async fn handle_ws_control(
-    socket: WebSocket,
-    state: AppState,
-    session_token_hash: SessionTokenHash,
-) {
-    let payload = SetConfigPayload::from(&*state.config.lock().unwrap());
-    let set_config_msg = WebServerToWebClientControlMessage::SetConfig(payload);
+async fn handle_ws_control(socket: WebSocket, params: ControlParams, state: AppState) {
+    let web_client_id = params.web_client_id;
 
     let (control_socket_tx, mut control_socket_rx) = socket.split();
 
     let (control_channel_tx, control_channel_rx) = tokio::sync::mpsc::unbounded_channel();
     send_control_messages_to_client(control_channel_rx, control_socket_tx);
+    let heartbeat_tx = control_channel_tx.clone();
 
-    let _ = control_channel_tx.send(Message::Text(
-        serde_json::to_string(&set_config_msg).unwrap().into(),
-    ));
+    state
+        .connection_table
+        .lock()
+        .unwrap()
+        .add_client_control_tx(&web_client_id, control_channel_tx);
+
+    let mut heartbeat = Heartbeat::new(PING_INTERVAL, PONG_TIMEOUT);
 
     let send_message_to_server = |deserialized_msg: WebClientToWebServerControlMessage| {
         let Some(client_connection) = state
@@ -74,70 +140,51 @@ async fn handle_ws_control(
             log::error!("Unknown web_client_id: {}", deserialized_msg.web_client_id);
             return;
         };
-        let client_msg = match deserialized_msg.payload {
-            WebClientToWebServerControlMessagePayload::TerminalResize(size) => {
-                ClientToServerMsg::TerminalResize {
-                    new_size: size,
-                    cause: ResizeCause::Viewport,
-                }
-            },
-            WebClientToWebServerControlMessagePayload::TerminalResizeRendering(size) => {
-                ClientToServerMsg::TerminalResize {
-                    new_size: size,
-                    cause: ResizeCause::RenderingPreference,
-                }
-            },
-            WebClientToWebServerControlMessagePayload::TerminalSizeSettled(size) => {
-                ClientToServerMsg::TerminalResize {
-                    new_size: size,
-                    cause: ResizeCause::SizeSettled,
-                }
-            },
-            WebClientToWebServerControlMessagePayload::TerminalMetrics(metrics) => {
-                terminal_metrics_to_ipc(metrics)
-            },
-            WebClientToWebServerControlMessagePayload::SoftKeyboardVisibilityChanged {
-                visible,
-            } => ClientToServerMsg::SoftKeyboardVisibilityChanged { visible },
+        let Some(client_msg) = control_payload_to_server_msg(deserialized_msg.payload) else {
+            return;
         };
 
         let _ = client_connection.send_to_server(client_msg);
     };
 
-    let mut set_client_control_channel = false;
-
-    while let Some(Ok(msg)) = control_socket_rx.next().await {
+    loop {
+        let msg = tokio::select! {
+            msg = control_socket_rx.next() => match msg {
+                Some(Ok(msg)) => msg,
+                _ => break,
+            },
+            tick = heartbeat.tick() => {
+                match tick {
+                    HeartbeatTick::SendPing => {
+                        let _ = heartbeat_tx.send(Message::Ping(Default::default()));
+                    },
+                    HeartbeatTick::TimedOut => {
+                        log::warn!(
+                            "Control WebSocket for web_client_id {} timed out (no Pong received)",
+                            web_client_id
+                        );
+                        let _ = heartbeat_tx.send(Message::Close(Some(CloseFrame {
+                            code: close_code::NORMAL,
+                            reason: "Connection timed out".into(),
+                        })));
+                        break;
+                    },
+                }
+                continue;
+            },
+        };
         match msg {
             Message::Text(msg) => {
                 let deserialized_msg: Result<WebClientToWebServerControlMessage, _> =
                     serde_json::from_str(&msg);
                 match deserialized_msg {
                     Ok(deserialized_msg) => {
-                        if !state
-                            .connection_table
-                            .lock()
-                            .unwrap()
-                            .verify_client_ownership(
-                                &deserialized_msg.web_client_id,
-                                &session_token_hash.0,
-                            )
-                        {
+                        if deserialized_msg.web_client_id != web_client_id {
                             log::error!(
-                                "Client attempted to use web_client_id {} that does not belong to their session",
+                                "Client attempted to use web_client_id {} that does not belong to their connection",
                                 deserialized_msg.web_client_id
                             );
                             return;
-                        }
-                        if !set_client_control_channel {
-                            set_client_control_channel = true;
-                            state
-                                .connection_table
-                                .lock()
-                                .unwrap()
-                                .add_client_control_tx(
-                                    &deserialized_msg.web_client_id,
-                                    control_channel_tx.clone(),
-                                );
                         }
                         send_message_to_server(deserialized_msg);
                     },
@@ -145,6 +192,9 @@ async fn handle_ws_control(
                         log::error!("Failed to deserialize client msg: {:?}", e);
                     },
                 }
+            },
+            Message::Pong(_) => {
+                heartbeat.pong_received();
             },
             Message::Close(_) => {
                 return;
@@ -163,6 +213,20 @@ async fn handle_ws_terminal(
     state: AppState,
     session_token_hash: SessionTokenHash,
 ) {
+    let client_size = match (params.rows, params.cols) {
+        (Some(rows), Some(cols)) if rows > 0 && cols > 0 => Some(Size {
+            rows: rows as usize,
+            cols: cols as usize,
+        }),
+        _ => None,
+    };
+    let client_pixel_dims = match (params.cell_width, params.cell_height) {
+        (Some(width), Some(height)) if width > 0 && height > 0 => Some(SizeInPixels {
+            width: width as usize,
+            height: height as usize,
+        }),
+        _ => None,
+    };
     let web_client_id = params.web_client_id;
 
     // Verify the session token owns this web_client_id
@@ -192,6 +256,7 @@ async fn handle_ws_terminal(
 
     let (client_terminal_channel_tx, mut client_terminal_channel_rx) = socket.split();
     let (stdout_channel_tx, stdout_channel_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (terminal_frame_tx, terminal_frame_rx) = tokio::sync::mpsc::unbounded_channel();
     state
         .connection_table
         .lock()
@@ -210,6 +275,9 @@ async fn handle_ws_terminal(
         web_client_id.clone(),
         state.session_manager.clone(),
         Some(attachment_complete_tx),
+        client_size,
+        client_pixel_dims,
+        state.pending_welcome_sessions.clone(),
     );
 
     let terminal_channel_cancellation_token = CancellationToken::new();
@@ -221,6 +289,7 @@ async fn handle_ws_terminal(
         .unwrap_or_else(|| Arc::new(AtomicBool::new(false)));
     render_to_client(
         stdout_channel_rx,
+        terminal_frame_rx,
         client_terminal_channel_tx,
         terminal_channel_cancellation_token.clone(),
         should_not_reconnect,
@@ -250,23 +319,42 @@ async fn handle_ws_terminal(
     // split across two WebSocket frames resolves on the second frame.
     let mut stdin_session = StdinSession::new(explicitly_disable_kitty_keyboard_protocol);
     let finalize_idle = std::time::Duration::from_millis(50);
+    let mut heartbeat = Heartbeat::new(PING_INTERVAL, PONG_TIMEOUT);
     loop {
         // When termwiz is holding ambiguous-but-complete events from
         // the previous frame, race the next frame against an idle
         // timeout so the held events still drain if no further frame
         // arrives.
-        let result = if stdin_session.pending_finalize() {
-            tokio::select! {
-                msg = client_terminal_channel_rx.next() => Some(msg),
-                _ = tokio::time::sleep(finalize_idle) => None,
-            }
-        } else {
-            Some(client_terminal_channel_rx.next().await)
+        let event = tokio::select! {
+            msg = client_terminal_channel_rx.next() => match msg {
+                Some(Ok(m)) => TerminalSocketEvent::Frame(m),
+                _ => TerminalSocketEvent::Closed,
+            },
+            _ = tokio::time::sleep(finalize_idle), if stdin_session.pending_finalize() => {
+                TerminalSocketEvent::FinalizeIdle
+            },
+            tick = heartbeat.tick() => TerminalSocketEvent::Heartbeat(tick),
         };
-        let msg = match result {
-            Some(Some(Ok(m))) => m,
-            Some(_) => break,
-            None => {
+        let msg = match event {
+            TerminalSocketEvent::Frame(m) => m,
+            TerminalSocketEvent::Closed => break,
+            TerminalSocketEvent::Heartbeat(HeartbeatTick::SendPing) => {
+                let _ = terminal_frame_tx.send(Message::Ping(Default::default()));
+                continue;
+            },
+            TerminalSocketEvent::Heartbeat(HeartbeatTick::TimedOut) => {
+                log::warn!(
+                    "Terminal WebSocket for web_client_id {} timed out (no Pong received)",
+                    web_client_id
+                );
+                state
+                    .connection_table
+                    .lock()
+                    .unwrap()
+                    .remove_client(&web_client_id);
+                break;
+            },
+            TerminalSocketEvent::FinalizeIdle => {
                 // Idle timeout fired with `pending_finalize` set:
                 // drain any ambiguous-but-complete events termwiz held
                 // back on the previous frame.
@@ -323,6 +411,9 @@ async fn handle_ws_terminal(
                     &mut stdin_session,
                 );
             },
+            Message::Pong(_) => {
+                heartbeat.pong_received();
+            },
             Message::Close(_) => {
                 state
                     .connection_table
@@ -338,6 +429,83 @@ async fn handle_ws_terminal(
         }
     }
     os_input.send_to_server(ClientToServerMsg::ClientExited);
+}
+
+fn control_payload_to_server_msg(
+    payload: WebClientToWebServerControlMessagePayload,
+) -> Option<ClientToServerMsg> {
+    let client_msg = match payload {
+        WebClientToWebServerControlMessagePayload::TerminalResize(size) => {
+            ClientToServerMsg::TerminalResize { new_size: size }
+        },
+        WebClientToWebServerControlMessagePayload::TerminalMetrics(metrics) => {
+            terminal_metrics_to_ipc(metrics)
+        },
+        WebClientToWebServerControlMessagePayload::SoftKeyboardVisibilityChanged { visible } => {
+            ClientToServerMsg::SoftKeyboardVisibilityChanged { visible }
+        },
+        WebClientToWebServerControlMessagePayload::NestedSessionFrameFromHost { payload_bytes } => {
+            ClientToServerMsg::NestedSessionFrameFromHost { payload_bytes }
+        },
+        WebClientToWebServerControlMessagePayload::RequestSessionList => {
+            ClientToServerMsg::RequestSessionList
+        },
+        WebClientToWebServerControlMessagePayload::FocusPane { pane_id, is_plugin } => {
+            let pane_id = if is_plugin {
+                PaneId::Plugin(pane_id)
+            } else {
+                PaneId::Terminal(pane_id)
+            };
+            ClientToServerMsg::Action {
+                action: Action::FocusPaneByPaneId { pane_id },
+                terminal_id: None,
+                client_id: None,
+                is_cli_client: false,
+            }
+        },
+        WebClientToWebServerControlMessagePayload::NewPaneInTab { .. } => {
+            ClientToServerMsg::Action {
+                action: Action::NewTiledPane {
+                    direction: None,
+                    command: None,
+                    pane_name: None,
+                    near_current_pane: false,
+                    no_focus: false,
+                    borderless: None,
+                    tab_id: None,
+                    border_style: None,
+                },
+                terminal_id: None,
+                client_id: None,
+                is_cli_client: false,
+            }
+        },
+        WebClientToWebServerControlMessagePayload::NewTab => ClientToServerMsg::Action {
+            action: Action::NewTab {
+                tiled_layout: None,
+                floating_layouts: vec![],
+                swap_tiled_layouts: None,
+                swap_floating_layouts: None,
+                tab_name: None,
+                should_change_focus_to_new_tab: true,
+                cwd: None,
+                initial_panes: None,
+                first_pane_unblock_condition: None,
+            },
+            terminal_id: None,
+            client_id: None,
+            is_cli_client: false,
+        },
+        WebClientToWebServerControlMessagePayload::SetMobileRenderPreferences {
+            single_pane,
+            fit,
+        } => ClientToServerMsg::SetMobileRenderPreferences { single_pane, fit },
+        WebClientToWebServerControlMessagePayload::Unknown => {
+            log::warn!("Ignoring unknown control message type from web client");
+            return None;
+        },
+    };
+    Some(client_msg)
 }
 
 fn terminal_metrics_to_ipc(metrics: TerminalMetricsPayload) -> ClientToServerMsg {
@@ -434,5 +602,153 @@ mod tests {
             },
             other => panic!("expected TerminalResize, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn focus_pane_payload_deserializes() {
+        let raw = serde_json::json!({
+            "web_client_id": "abc",
+            "payload": {
+                "type": "FocusPane",
+                "pane_id": 7,
+                "is_plugin": true,
+            }
+        });
+        let parsed: WebClientToWebServerControlMessage =
+            serde_json::from_value(raw).expect("parse");
+        match parsed.payload {
+            WebClientToWebServerControlMessagePayload::FocusPane { pane_id, is_plugin } => {
+                assert_eq!(pane_id, 7);
+                assert!(is_plugin);
+            },
+            other => panic!("expected FocusPane, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn new_pane_in_tab_payload_deserializes() {
+        let raw = serde_json::json!({
+            "web_client_id": "abc",
+            "payload": {
+                "type": "NewPaneInTab",
+                "tab_id": 2,
+            }
+        });
+        let parsed: WebClientToWebServerControlMessage =
+            serde_json::from_value(raw).expect("parse");
+        match parsed.payload {
+            WebClientToWebServerControlMessagePayload::NewPaneInTab { tab_id } => {
+                assert_eq!(tab_id, 2);
+            },
+            other => panic!("expected NewPaneInTab, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn new_tab_payload_deserializes() {
+        let raw = serde_json::json!({
+            "web_client_id": "abc",
+            "payload": { "type": "NewTab" }
+        });
+        let parsed: WebClientToWebServerControlMessage =
+            serde_json::from_value(raw).expect("parse");
+        assert!(matches!(
+            parsed.payload,
+            WebClientToWebServerControlMessagePayload::NewTab
+        ));
+    }
+
+    #[test]
+    fn set_mobile_render_preferences_payload_deserializes() {
+        let raw = serde_json::json!({
+            "web_client_id": "abc",
+            "payload": {
+                "type": "SetMobileRenderPreferences",
+                "single_pane": false,
+                "fit": true,
+            }
+        });
+        let parsed: WebClientToWebServerControlMessage =
+            serde_json::from_value(raw).expect("parse");
+        match parsed.payload {
+            WebClientToWebServerControlMessagePayload::SetMobileRenderPreferences {
+                single_pane,
+                fit,
+            } => {
+                assert!(!single_pane);
+                assert!(fit);
+            },
+            other => panic!("expected SetMobileRenderPreferences, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn new_pane_in_tab_is_routed_to_the_requesting_client() {
+        let client_msg = control_payload_to_server_msg(
+            WebClientToWebServerControlMessagePayload::NewPaneInTab { tab_id: 2 },
+        )
+        .expect("message dropped");
+        match client_msg {
+            ClientToServerMsg::Action {
+                action:
+                    Action::NewTiledPane {
+                        tab_id, no_focus, ..
+                    },
+                ..
+            } => {
+                assert_eq!(
+                    tab_id, None,
+                    "The pane is opened in the client's own tab so that it is focused for it, \
+                     keeping single-pane mode attached to the new pane"
+                );
+                assert!(!no_focus, "The new pane takes focus");
+            },
+            other => panic!("expected a NewTiledPane action, got {:?}", other),
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn heartbeat_does_not_ping_before_the_first_interval() {
+        let mut heartbeat = Heartbeat::new(PING_INTERVAL, PONG_TIMEOUT);
+        let early =
+            tokio::time::timeout(PING_INTERVAL - Duration::from_millis(1), heartbeat.tick()).await;
+        assert!(early.is_err(), "no ping may be sent right after connecting");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn heartbeat_pings_on_each_interval_while_pongs_arrive() {
+        let mut heartbeat = Heartbeat::new(PING_INTERVAL, PONG_TIMEOUT);
+        let start = Instant::now();
+        for round in 1..=5u32 {
+            assert_eq!(heartbeat.tick().await, HeartbeatTick::SendPing);
+            assert_eq!(start.elapsed(), PING_INTERVAL * round);
+            heartbeat.pong_received();
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn heartbeat_times_out_when_no_pong_arrives() {
+        let mut heartbeat = Heartbeat::new(PING_INTERVAL, PONG_TIMEOUT);
+        assert_eq!(heartbeat.tick().await, HeartbeatTick::SendPing);
+        assert_eq!(heartbeat.tick().await, HeartbeatTick::TimedOut);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn heartbeat_late_pong_within_the_limit_keeps_the_connection() {
+        let mut heartbeat = Heartbeat::new(PING_INTERVAL, PONG_TIMEOUT);
+        assert_eq!(heartbeat.tick().await, HeartbeatTick::SendPing);
+        tokio::time::sleep(Duration::from_secs(20)).await;
+        heartbeat.pong_received();
+        assert_eq!(heartbeat.tick().await, HeartbeatTick::SendPing);
+        assert_eq!(heartbeat.tick().await, HeartbeatTick::SendPing);
+        assert_eq!(heartbeat.tick().await, HeartbeatTick::TimedOut);
+    }
+
+    #[test]
+    fn unknown_control_message_is_dropped() {
+        assert!(
+            control_payload_to_server_msg(WebClientToWebServerControlMessagePayload::Unknown)
+                .is_none()
+        );
     }
 }

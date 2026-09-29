@@ -8,7 +8,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs::File;
 use std::io::{self, Read};
-use std::path::{Path, PathBuf};
+#[cfg(not(target_family = "wasm"))]
+use std::path::Path;
+use std::path::PathBuf;
+use std::sync::Arc;
 use thiserror::Error;
 
 use std::convert::TryFrom;
@@ -30,7 +33,8 @@ type ConfigResult = Result<Config, ConfigError>;
 /// Main configuration.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct Config {
-    pub keybinds: Keybinds,
+    #[serde(with = "shared_keybinds")]
+    pub keybinds: Arc<Keybinds>,
     pub options: Options,
     pub themes: Themes,
     pub plugins: PluginAliases,
@@ -40,11 +44,30 @@ pub struct Config {
     pub web_client: WebClientConfig,
 }
 
+mod shared_keybinds {
+    use super::Keybinds;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use std::sync::Arc;
+
+    pub fn serialize<S: Serializer>(
+        keybinds: &Arc<Keybinds>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        keybinds.as_ref().serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Arc<Keybinds>, D::Error> {
+        Keybinds::deserialize(deserializer).map(Arc::new)
+    }
+}
+
 #[derive(Error, Debug, Serialize, Deserialize)]
 pub struct KdlError {
     pub error_message: String,
     #[serde(skip)]
-    pub src: Option<NamedSource>,
+    pub src: Option<NamedSource<String>>,
     pub offset: Option<usize>,
     pub len: Option<usize>,
     pub help_message: Option<String>,
@@ -205,15 +228,32 @@ impl Config {
             None => self.themes.get_theme("default").map(|theme| theme.palette),
         }
     }
-    /// Gets default configuration from assets
+    /// Gets default configuration from assets, layered with the configuration bundled by the
+    /// running distribution (if any)
     pub fn from_default_assets() -> ConfigResult {
         let cfg = String::from_utf8(setup::DEFAULT_CONFIG.to_vec())?;
-        match Self::from_kdl(&cfg, None) {
-            Ok(config) => Ok(config),
-            Err(ConfigError::KdlError(kdl_error)) => Err(ConfigError::KdlError(
-                kdl_error.add_src("Default built-in-configuration".into(), cfg),
-            )),
-            Err(e) => Err(e),
+        let config = match Self::from_kdl(&cfg, None) {
+            Ok(config) => config,
+            Err(ConfigError::KdlError(kdl_error)) => {
+                return Err(ConfigError::KdlError(
+                    kdl_error.add_src("Default built-in-configuration".into(), cfg),
+                ))
+            },
+            Err(e) => return Err(e),
+        };
+        let distribution = crate::distribution::distribution();
+        match distribution.config {
+            Some(distribution_config) => match Self::from_kdl(distribution_config, Some(config)) {
+                Ok(config) => Ok(config),
+                Err(ConfigError::KdlError(kdl_error)) => {
+                    Err(ConfigError::KdlError(kdl_error.add_src(
+                        format!("{} bundled configuration", distribution.name),
+                        distribution_config.to_owned(),
+                    )))
+                },
+                Err(e) => Err(e),
+            },
+            None => Ok(config),
         }
     }
     pub fn from_path(path: &PathBuf, default_config: Option<Config>) -> ConfigResult {
@@ -263,7 +303,9 @@ impl Config {
     }
     pub fn merge(&mut self, other: Config) -> Result<(), ConfigError> {
         self.options = self.options.merge(other.options);
-        self.keybinds.merge(other.keybinds.clone());
+        if !other.keybinds.0.is_empty() && !Arc::ptr_eq(&self.keybinds, &other.keybinds) {
+            Arc::make_mut(&mut self.keybinds).merge(Arc::unwrap_or_clone(other.keybinds));
+        }
         self.themes = self.themes.merge(other.themes);
         self.plugins.merge(other.plugins);
         self.ui = self.ui.merge(other.ui);
@@ -328,7 +370,7 @@ impl Config {
                 }
             })
     }
-    // returns true if the config was not previouly written to disk and we successfully wrote it
+    // returns true if the config was not previously written to disk and we successfully wrote it
     pub fn write_config_to_disk_if_it_does_not_exist(
         config: String,
         config_file_path: &Option<PathBuf>,
@@ -1407,6 +1449,7 @@ mod config_test {
             pane_frames: FrameConfig {
                 rounded_corners: true,
                 hide_session_name: true,
+                ..Default::default()
             },
         };
         assert_eq!(config.ui, expected_ui_config, "Ui config defined in config");

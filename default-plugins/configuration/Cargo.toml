@@ -6,6 +6,4 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-ansi_term = "0.12.1"
 zellij-tile = { path = "../../zellij-tile" }
-chrono = "0.4.0"

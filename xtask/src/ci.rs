@@ -1,6 +1,6 @@
 //! Tasks related to zellij CI
 use crate::{
-    build,
+    assets, build,
     flags::{self, BuildRelease, CiCmd, Cross, E2e},
     metadata,
 };
@@ -55,6 +55,7 @@ fn e2e_build(sh: &Shell) -> anyhow::Result<()> {
             no_plugins: false,
             plugins_only: true,
             no_web: false,
+            args: vec![],
         },
     )
     .context(err_context)?;
@@ -62,7 +63,7 @@ fn e2e_build(sh: &Shell) -> anyhow::Result<()> {
     // Copy plugins to e2e data-dir
     let plugin_dir = crate::asset_dir().join("plugins");
     let project_root = crate::project_root();
-    let data_dir = project_root.join("target").join("e2e-data");
+    let data_dir = crate::target_dir().join("e2e-data");
     let plugins: Vec<_> = std::fs::read_dir(plugin_dir)
         .context(err_context)?
         .filter_map(|dir_entry| {
@@ -145,6 +146,8 @@ fn e2e_build(sh: &Shell) -> anyhow::Result<()> {
 fn build_release(sh: &Shell, no_web: bool) -> anyhow::Result<()> {
     let err_context = "failed to perform native release build";
 
+    assets::assets(sh, flags::Assets { check: true }).context(err_context)?;
+
     // Build plugins and generate protobufs
     build::build(
         sh,
@@ -153,6 +156,7 @@ fn build_release(sh: &Shell, no_web: bool) -> anyhow::Result<()> {
             no_plugins: false,
             plugins_only: true,
             no_web,
+            args: vec![],
         },
     )
     .context(err_context)?;
@@ -228,10 +232,6 @@ fn cross_compile(sh: &Shell, target: &OsString, no_web: bool) -> anyhow::Result<
 
     crate::cargo()
         .and_then(|cargo| {
-            cmd!(sh, "{cargo} install mandown").run()?;
-            Ok(cargo)
-        })
-        .and_then(|cargo| {
             cmd!(sh, "{cargo} install cross")
                 .run()
                 .map_err(anyhow::Error::new)
@@ -245,9 +245,9 @@ fn cross_compile(sh: &Shell, target: &OsString, no_web: bool) -> anyhow::Result<
             no_plugins: false,
             plugins_only: true,
             no_web,
+            args: vec![],
         },
     )
-    .and_then(|_| build::manpage(sh))
     .with_context(err_context)?;
 
     cross()

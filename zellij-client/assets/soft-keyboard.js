@@ -95,8 +95,21 @@ export function installSoftKeyboardCapture(term, sendFunction) {
     captureShadow.appendChild(div);
     state.element = div;
 
-    div.addEventListener("focus", () => { state.isFocused = true; });
-    div.addEventListener("blur", () => { state.isFocused = false; });
+    const emitVisibility = (visible) => {
+        window.dispatchEvent(
+            new CustomEvent("zellij:soft-keyboard-visibility", {
+                detail: { visible },
+            })
+        );
+    };
+    div.addEventListener("focus", () => {
+        state.isFocused = true;
+        emitVisibility(true);
+    });
+    div.addEventListener("blur", () => {
+        state.isFocused = false;
+        emitVisibility(false);
+    });
 
     const setCaretToMiddle = () => {
         try {
@@ -211,8 +224,16 @@ export function installSoftKeyboardCapture(term, sendFunction) {
 
     // Mobile browsers honor programmatic focus() only inside a user gesture, so
     // re-focus the capture on every gesture to keep the OS keyboard summoned.
-    const ensureCaptureFocused = () => {
+    const ensureCaptureFocused = (ev) => {
         if (!window.__zjSoftKbdEnabled) {
+            return;
+        }
+        const target = ev && ev.target;
+        if (
+            target &&
+            typeof target.closest === "function" &&
+            target.closest(".zj-mobile-chrome")
+        ) {
             return;
         }
         if (state.isFocused) {

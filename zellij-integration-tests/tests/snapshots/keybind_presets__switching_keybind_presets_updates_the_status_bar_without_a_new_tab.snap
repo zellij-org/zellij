@@ -1,0 +1,7 @@
+---
+source: zellij-integration-tests/tests/keybind_presets.rs
+expression: normalized(&grid_snapshot)
+---
+ Zellij (test)  Tab #1  + 
+$ █
+ Ctrl g  UNLOCK  p  PANE  t  TAB  r  RESIZE  m  MOVE  s  SEARCH  o  SESSION  Ctrl q  QUIT            ...

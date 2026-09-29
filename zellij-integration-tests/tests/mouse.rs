@@ -45,7 +45,7 @@ fn scrolling_inside_a_pane_with_mouse() {
 
     zellij.send_stdin(&sgr_mouse_report(64, 2, 64));
     let grid_snapshot = zellij.wait_until("scrolled up inside the right pane", |grid_snapshot| {
-        grid_snapshot.status_bar_appears()
+        grid_snapshot.contains("PgDn|PgUp")
             && grid_snapshot.contains("SCROLL:")
             && grid_snapshot.contains("line1 ")
     });

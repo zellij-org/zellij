@@ -10,10 +10,12 @@ import "plugin_permission.proto";
 import "input_mode.proto";
 import "key.proto";
 import "pane_frame_style.proto";
+import "style.proto";
 
 package api.plugin_command;
 
 enum CommandName {
+  reserved 216, 219, 222;
   Subscribe = 0;
   Unsubscribe = 1;
   SetSelectable = 2;
@@ -209,18 +211,26 @@ enum CommandName {
   DeleteDeadSessionAndReply = 213;
   DeleteAllDeadSessionsAndReply = 214;
   SetSoftKeyboard = 215;
-  SetTabFit = 216;
-  SetShadowFocus = 219;
   NewTabUnfocused = 220;
   NewTiledPaneInTab = 221;
-  ExitMobileMode = 222;
   FocusLastPane = 223;
   SetPaneFrameStyle = 224;
   ToggleFloatingPanes = 225;
   NewPane = 226;
+  ToggleFocusNoUiFullscreen = 227;
+  FocusHostSession = 228;
+  ApplyTiledSwapLayout = 229;
+  ApplyFloatingSwapLayout = 230;
+  SetPaneBorderStyle = 231;
+  GetNestedSessionKeybinds = 232;
+  SetSelectableSlot = 233;
+  HideSlot = 234;
+  ShowSlot = 235;
+  CloseSlot = 236;
 }
 
 message PluginCommand {
+  reserved 165, 167;
   CommandName name = 1;
   oneof payload {
     SubscribePayload subscribe_payload = 2;
@@ -373,13 +383,37 @@ message PluginCommand {
     KillSessionsPayload kill_sessions_and_reply_payload = 162;
     string delete_dead_session_and_reply_payload = 163;
     SetSoftKeyboardPayload set_soft_keyboard_payload = 164;
-    SetTabFitPayload set_tab_fit_payload = 165;
-    PaneId set_shadow_focus_payload = 167;
     NewTabUnfocusedPayload new_tab_unfocused_payload = 168;
     NewTiledPaneInTabPayload new_tiled_pane_in_tab_payload = 169;
     SetPaneFrameStylePayload set_pane_frame_style_payload = 170;
     ToggleFloatingPanesPayload toggle_floating_panes_payload = 171;
+    string apply_tiled_swap_layout_payload = 172;
+    string apply_floating_swap_layout_payload = 173;
+    SetPaneBorderStylePayload set_pane_border_style_payload = 174;
+    GetNestedSessionKeybindsPayload get_nested_session_keybinds_payload = 175;
+    SetSelectableSlotPayload set_selectable_slot_payload = 176;
+    uint32 hide_slot_payload = 177;
+    ShowSlotPayload show_slot_payload = 178;
+    uint32 close_slot_payload = 179;
   }
+}
+
+message SetSelectableSlotPayload {
+  uint32 slot_id = 1;
+  bool selectable = 2;
+}
+
+message ShowSlotPayload {
+  uint32 slot_id = 1;
+  bool should_float_if_hidden = 2;
+}
+
+message SlotCommandResponse {
+  optional string error = 1;
+}
+
+message GetNestedSessionKeybindsPayload {
+  PaneId pane_id = 1;
 }
 
 message SetPaneFrameStylePayload {
@@ -534,6 +568,11 @@ message TogglePaneBorderlessPayload {
 message SetPaneBorderlessPayload {
   PaneId pane_id = 1;
   bool borderless = 2;
+}
+
+message SetPaneBorderStylePayload {
+  PaneId pane_id = 1;
+  style.BorderStyleOverride border_style = 2;
 }
 
 message ChangeHostFolderPayload {
@@ -816,6 +855,7 @@ message FloatingPaneCoordinates {
   optional FixedOrPercentValue height = 4;
   optional bool pinned = 5;
   optional bool borderless = 6;
+  optional style.BorderStyleOverride border_style = 7;
 }
 
 message FixedOrPercentValue {
@@ -1379,13 +1419,3 @@ message SetSoftKeyboardPayload {
   bool on = 1;
 }
 
-message Size {
-  uint32 rows = 1;
-  uint32 cols = 2;
-}
-
-message SetTabFitPayload {
-  uint32 tab_id = 1;
-  PaneId pane_id = 2;
-  Size size = 3;
-}

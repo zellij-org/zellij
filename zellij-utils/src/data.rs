@@ -6,10 +6,10 @@ use crate::input::layout::{
     Layout, PercentOrFixed, Run, RunPlugin, RunPluginLocation, RunPluginOrAlias,
 };
 pub use crate::input::options::PaneFrameStyle;
-use crate::pane_size::{PaneGeom, Size};
+use crate::pane_size::PaneGeom;
 use crate::position::Position;
 use crate::shared::{colors as default_colors, eightbit_to_rgb};
-use clap::ArgEnum;
+use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt;
@@ -28,7 +28,7 @@ use crate::vendored::termwiz::{
     input::{KeyCode, KeyCodeEncodeModes, KeyboardEncoding, Modifiers},
 };
 
-pub type ClientId = u16; // TODO: merge with crate type?
+pub type ClientId = u32;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum UnblockCondition {
@@ -64,13 +64,13 @@ impl CommandOrPlugin {
     }
 }
 
-pub fn client_id_to_colors(
-    client_id: ClientId,
+pub fn client_slot_to_colors(
+    display_slot: usize,
     colors: MultiplayerColors,
 ) -> Option<(PaletteColor, PaletteColor)> {
     // (primary color, secondary color)
     let black = PaletteColor::EightBit(default_colors::BLACK);
-    match client_id {
+    match display_slot {
         1 => Some((colors.player_1, black)),
         2 => Some((colors.player_2, black)),
         3 => Some((colors.player_3, black)),
@@ -83,6 +83,13 @@ pub fn client_id_to_colors(
         10 => Some((colors.player_10, black)),
         _ => None,
     }
+}
+
+pub fn client_id_to_colors(
+    client_id: ClientId,
+    colors: MultiplayerColors,
+) -> Option<(PaletteColor, PaletteColor)> {
+    client_slot_to_colors(client_id as usize, colors)
 }
 
 pub fn single_client_color(colors: Palette) -> (PaletteColor, PaletteColor) {
@@ -254,6 +261,7 @@ impl FromStr for BareKey {
             "end" => Ok(BareKey::End),
             "backspace" => Ok(BareKey::Backspace),
             "delete" => Ok(BareKey::Delete),
+            "del" => Ok(BareKey::Delete),
             "insert" => Ok(BareKey::Insert),
             "f1" => Ok(BareKey::F(1)),
             "f2" => Ok(BareKey::F(2)),
@@ -1019,7 +1027,6 @@ pub enum Event {
     /// An action was performed by the user (requires InterceptInput permission)
     UserAction(Action, ClientId, Option<u32>, Option<ClientId>), // Action, client_id, terminal_id, cli_client_id
     PaneRenderReport(HashMap<PaneId, PaneContents>),
-    PaneRenderReportWithAnsi(HashMap<PaneId, PaneContents>),
     ActionComplete(Action, Option<PaneId>, BTreeMap<String, String>), // Action, pane_id, context
     CwdChanged(PaneId, PathBuf, Vec<ClientId>), // pane_id, cwd, focused_client_ids
     CommandChanged(PaneId, Vec<String>, bool, Vec<ClientId>), // pane_id, command, is_foreground, focused_client_ids
@@ -1040,7 +1047,63 @@ pub enum Event {
     SoftKeyboardVisibilityChanged(bool),
     HintText(BTreeMap<usize, StyledText>),
     ActivePaneScroll(Option<(usize, usize)>),
+    NestedSessionModeUpdate {
+        pane_id: PaneId,
+        session_path: Vec<String>,
+        mode: InputMode,
+        base_mode: Option<InputMode>,
+        keybinds_generation: u64,
+    },
+    NestedSessionEnded {
+        pane_id: PaneId,
+        reason: NestedSessionEndReason,
+    },
 }
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum NestedSessionEndReason {
+    Exited,
+    Unresponsive,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NestedSessionKeybinds {
+    pub session_path: Vec<String>,
+    pub mode: InputMode,
+    pub base_mode: Option<InputMode>,
+    pub keybinds: KeybindsVec,
+    pub keybinds_generation: u64,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum NestedSessionKeybindsError {
+    NotANestedSession,
+    NotSupported,
+    GuestUnresponsive,
+    GuestGone,
+    TooLarge,
+    Timeout,
+}
+
+impl fmt::Display for NestedSessionKeybindsError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let description = match self {
+            NestedSessionKeybindsError::NotANestedSession => "no nested session in this pane",
+            NestedSessionKeybindsError::NotSupported => {
+                "the nested session cannot report its keybindings"
+            },
+            NestedSessionKeybindsError::GuestUnresponsive => "the nested session is not responding",
+            NestedSessionKeybindsError::GuestGone => "the nested session has ended",
+            NestedSessionKeybindsError::TooLarge => {
+                "the nested session's keybindings are too large to send"
+            },
+            NestedSessionKeybindsError::Timeout => "the nested session did not answer in time",
+        };
+        write!(f, "{}", description)
+    }
+}
+
+pub type NestedSessionKeybindsResponse = Result<NestedSessionKeybinds, NestedSessionKeybindsError>;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum HostTerminalThemeMode {
@@ -1151,7 +1214,7 @@ impl PluginPermission {
     EnumIter,
     Serialize,
     Deserialize,
-    ArgEnum,
+    ValueEnum,
     PartialOrd,
     Ord,
 )]
@@ -1208,14 +1271,57 @@ impl Default for InputMode {
     }
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ValueEnum)]
 pub enum ThemeHue {
+    #[serde(alias = "light")]
     Light,
+    #[serde(alias = "dark")]
     Dark,
 }
 impl Default for ThemeHue {
     fn default() -> ThemeHue {
         ThemeHue::Dark
+    }
+}
+
+impl FromStr for ThemeHue {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_lowercase().as_str() {
+            "light" => Ok(ThemeHue::Light),
+            "dark" => Ok(ThemeHue::Dark),
+            e => Err(format!(
+                "Unknown theme hue: '{}' (expected 'dark' or 'light')",
+                e
+            )),
+        }
+    }
+}
+
+impl fmt::Display for ThemeHue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ThemeHue::Light => write!(f, "light"),
+            ThemeHue::Dark => write!(f, "dark"),
+        }
+    }
+}
+
+impl From<ThemeHue> for HostTerminalThemeMode {
+    fn from(hue: ThemeHue) -> Self {
+        match hue {
+            ThemeHue::Light => HostTerminalThemeMode::Light,
+            ThemeHue::Dark => HostTerminalThemeMode::Dark,
+        }
+    }
+}
+
+impl From<HostTerminalThemeMode> for ThemeHue {
+    fn from(mode: HostTerminalThemeMode) -> Self {
+        match mode {
+            HostTerminalThemeMode::Light => ThemeHue::Light,
+            HostTerminalThemeMode::Dark => ThemeHue::Dark,
+        }
     }
 }
 
@@ -1384,10 +1490,209 @@ pub struct Palette {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+pub enum LineStyle {
+    #[default]
+    Single,
+    Double,
+    Heavy,
+    Dashed,
+    HeavyDashed,
+}
+
+impl LineStyle {
+    pub fn is_heavy(&self) -> bool {
+        matches!(self, LineStyle::Heavy | LineStyle::HeavyDashed)
+    }
+    pub fn is_double(&self) -> bool {
+        matches!(self, LineStyle::Double)
+    }
+    pub fn is_single(&self) -> bool {
+        matches!(self, LineStyle::Single | LineStyle::Dashed)
+    }
+}
+
+impl FromStr for LineStyle {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_lowercase().as_str() {
+            "single" | "light" | "normal" => Ok(LineStyle::Single),
+            "double" => Ok(LineStyle::Double),
+            "heavy" | "bold" | "thick" => Ok(LineStyle::Heavy),
+            "dashed" => Ok(LineStyle::Dashed),
+            "heavy_dashed" | "heavy-dashed" | "heavydashed" => Ok(LineStyle::HeavyDashed),
+            _ => Err(format!(
+                "Unknown line style: '{}', expected one of: single, double, heavy, dashed, heavy_dashed",
+                s
+            )),
+        }
+    }
+}
+
+impl fmt::Display for LineStyle {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let name = match self {
+            LineStyle::Single => "single",
+            LineStyle::Double => "double",
+            LineStyle::Heavy => "heavy",
+            LineStyle::Dashed => "dashed",
+            LineStyle::HeavyDashed => "heavy_dashed",
+        };
+        write!(f, "{}", name)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+pub struct BorderStyle {
+    pub top: LineStyle,
+    pub right: LineStyle,
+    pub bottom: LineStyle,
+    pub left: LineStyle,
+    pub rounded_corners: bool,
+}
+
+impl BorderStyle {
+    pub fn with_rounded_corners(rounded_corners: bool) -> Self {
+        BorderStyle {
+            rounded_corners,
+            ..Default::default()
+        }
+    }
+    pub fn uniform_style(&self) -> Option<LineStyle> {
+        if self.top == self.right && self.right == self.bottom && self.bottom == self.left {
+            Some(self.top)
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+pub struct BorderStyleOverride {
+    pub all: Option<LineStyle>,
+    pub top: Option<LineStyle>,
+    pub right: Option<LineStyle>,
+    pub bottom: Option<LineStyle>,
+    pub left: Option<LineStyle>,
+    pub rounded_corners: Option<bool>,
+}
+
+impl BorderStyleOverride {
+    pub fn is_empty(&self) -> bool {
+        self.all.is_none()
+            && self.top.is_none()
+            && self.right.is_none()
+            && self.bottom.is_none()
+            && self.left.is_none()
+            && self.rounded_corners.is_none()
+    }
+    pub fn none_if_empty(self) -> Option<Self> {
+        if self.is_empty() {
+            None
+        } else {
+            Some(self)
+        }
+    }
+    pub fn from_cli_string(value: &str) -> Result<Self, String> {
+        let mut border_style_override = BorderStyleOverride::default();
+        for token in value.split(',') {
+            let token = token.trim();
+            if token.is_empty() {
+                continue;
+            }
+            let (key, value) = match token.split_once(|c| c == ':' || c == '=') {
+                Some((key, value)) => (key.trim().to_lowercase(), Some(value.trim())),
+                None => (token.to_lowercase(), None),
+            };
+            match (key.as_str(), value) {
+                ("rounded" | "rounded_corners" | "rounded-corners", value) => {
+                    let rounded = match value {
+                        None => true,
+                        Some(value) => value.parse::<bool>().map_err(|_| {
+                            format!("Expected true or false for rounded corners, got '{}'", value)
+                        })?,
+                    };
+                    border_style_override.rounded_corners = Some(rounded);
+                },
+                ("all", Some(value)) => border_style_override.all = Some(LineStyle::from_str(value)?),
+                ("top", Some(value)) => border_style_override.top = Some(LineStyle::from_str(value)?),
+                ("right", Some(value)) => {
+                    border_style_override.right = Some(LineStyle::from_str(value)?)
+                },
+                ("bottom", Some(value)) => {
+                    border_style_override.bottom = Some(LineStyle::from_str(value)?)
+                },
+                ("left", Some(value)) => {
+                    border_style_override.left = Some(LineStyle::from_str(value)?)
+                },
+                (_, Some(_)) => {
+                    return Err(format!(
+                        "Unknown border side: '{}', expected one of: all, top, right, bottom, left, rounded",
+                        key
+                    ))
+                },
+                (line_style, None) => border_style_override.all = Some(LineStyle::from_str(line_style)?),
+            }
+        }
+        Ok(border_style_override)
+    }
+    pub fn from_optional_cli_string(value: Option<&str>) -> Result<Option<Self>, String> {
+        match value {
+            Some(value) => Self::from_cli_string(value).map(|b| b.none_if_empty()),
+            None => Ok(None),
+        }
+    }
+    pub fn from_strings(
+        all: Option<String>,
+        top: Option<String>,
+        right: Option<String>,
+        bottom: Option<String>,
+        left: Option<String>,
+        rounded_corners: Option<bool>,
+    ) -> Result<Self, String> {
+        let parse = |value: Option<String>| -> Result<Option<LineStyle>, String> {
+            match value {
+                Some(value) => LineStyle::from_str(&value).map(Some),
+                None => Ok(None),
+            }
+        };
+        Ok(BorderStyleOverride {
+            all: parse(all)?,
+            top: parse(top)?,
+            right: parse(right)?,
+            bottom: parse(bottom)?,
+            left: parse(left)?,
+            rounded_corners,
+        })
+    }
+    pub fn apply_to(&self, base: BorderStyle) -> BorderStyle {
+        let all = self.all;
+        BorderStyle {
+            top: self.top.or(all).unwrap_or(base.top),
+            right: self.right.or(all).unwrap_or(base.right),
+            bottom: self.bottom.or(all).unwrap_or(base.bottom),
+            left: self.left.or(all).unwrap_or(base.left),
+            rounded_corners: self.rounded_corners.unwrap_or(base.rounded_corners),
+        }
+    }
+    pub fn merge(&self, other: &BorderStyleOverride) -> BorderStyleOverride {
+        BorderStyleOverride {
+            all: other.all.or(self.all),
+            top: other.top.or(self.top),
+            right: other.right.or(self.right),
+            bottom: other.bottom.or(self.bottom),
+            left: other.left.or(self.left),
+            rounded_corners: other.rounded_corners.or(self.rounded_corners),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 pub struct Style {
     pub colors: Styling,
     pub rounded_corners: bool,
     pub hide_session_name: bool,
+    pub border_style: BorderStyle,
+    pub floating_border_style: BorderStyle,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
@@ -1751,6 +2056,12 @@ pub struct ModeInfo {
     pub web_server_port: Option<u16>,
     pub web_server_capability: Option<bool>,
     pub pane_frame_style: Option<PaneFrameStyle>,
+    pub session_dimmed: Option<bool>,
+    pub session_ancestry: Vec<String>,
+    pub host_fullscreen: Option<bool>,
+    pub nested_ascend_keys: Vec<KeyWithModifier>,
+    pub session_ascended: Option<bool>,
+    pub nested_descend_keys: Vec<KeyWithModifier>,
 }
 
 impl ModeInfo {
@@ -1777,6 +2088,14 @@ impl ModeInfo {
     }
     pub fn update_rounded_corners(&mut self, rounded_corners: bool) {
         self.style.rounded_corners = rounded_corners;
+    }
+    pub fn update_border_styles(
+        &mut self,
+        border_style: BorderStyle,
+        floating_border_style: BorderStyle,
+    ) {
+        self.style.border_style = border_style;
+        self.style.floating_border_style = floating_border_style;
     }
     pub fn update_arrow_fonts(&mut self, should_support_arrow_fonts: bool) {
         // it is honestly quite baffling to me how "arrow_fonts: false" can mean "I support arrow
@@ -2262,12 +2581,13 @@ pub struct TabInfo {
     pub is_sync_panes_active: bool,
     pub are_floating_panes_visible: bool,
     pub other_focused_clients: Vec<ClientId>,
+    pub other_focused_client_slots: Vec<usize>,
     pub active_swap_layout_name: Option<String>,
     /// Whether the user manually changed the layout, moving out of the swap layout scheme
     pub is_swap_layout_dirty: bool,
-    /// Row count in the viewport (including all non-ui panes, eg. will excluse the status bar)
+    /// Row count in the viewport (including all non-ui panes, eg. will exclude the status bar)
     pub viewport_rows: usize,
-    /// Column count in the viewport (including all non-ui panes, eg. will excluse the status bar)
+    /// Column count in the viewport (including all non-ui panes, eg. will exclude the status bar)
     pub viewport_columns: usize,
     /// Row count in the display area (including all panes, will typically be larger than the
     /// viewport)
@@ -2357,6 +2677,7 @@ pub struct PaneInfo {
     pub default_fg: Option<String>,
     /// The default background color of this pane, if set (e.g. "#001a3a")
     pub default_bg: Option<String>,
+    pub nested_session_name: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
@@ -2720,6 +3041,65 @@ pub struct PluginIds {
     pub client_id: ClientId,
 }
 
+pub type SlotId = u32;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
+pub enum SlotKind {
+    Pane,
+    Background,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct Slot {
+    pub id: SlotId,
+    pub kind: SlotKind,
+    pub configuration: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Deserialize, Serialize)]
+pub struct EventContext {
+    pub slot_id: Option<SlotId>,
+    pub client_id: Option<ClientId>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub enum RenderResponse {
+    #[default]
+    Nothing,
+    All,
+    Client(ClientId),
+    Slots(Vec<SlotId>),
+}
+
+impl RenderResponse {
+    pub fn merge(self, other: RenderResponse) -> RenderResponse {
+        match (self, other) {
+            (RenderResponse::Nothing, other) => other,
+            (this, RenderResponse::Nothing) => this,
+            (RenderResponse::All, _) | (_, RenderResponse::All) => RenderResponse::All,
+            (RenderResponse::Client(a), RenderResponse::Client(b)) if a == b => {
+                RenderResponse::Client(a)
+            },
+            (RenderResponse::Slots(mut a), RenderResponse::Slots(b)) => {
+                for slot_id in b {
+                    if !a.contains(&slot_id) {
+                        a.push(slot_id);
+                    }
+                }
+                RenderResponse::Slots(a)
+            },
+            _ => RenderResponse::All,
+        }
+    }
+    pub fn from_bool(should_render: bool) -> RenderResponse {
+        if should_render {
+            RenderResponse::All
+        } else {
+            RenderResponse::Nothing
+        }
+    }
+}
+
 /// Tag used to identify the plugin in layout and config kdl files
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Deserialize, Serialize, PartialOrd, Ord)]
 pub struct PluginTag(String);
@@ -2772,6 +3152,8 @@ pub struct FileToOpen {
     pub path: PathBuf,
     pub line_number: Option<usize>,
     pub cwd: Option<PathBuf>,
+    #[serde(default)]
+    pub border_style: Option<BorderStyleOverride>,
 }
 
 impl FileToOpen {
@@ -2789,6 +3171,10 @@ impl FileToOpen {
         self.cwd = Some(cwd);
         self
     }
+    pub fn with_border_style(mut self, border_style: BorderStyleOverride) -> Self {
+        self.border_style = Some(border_style);
+        self
+    }
 }
 
 #[derive(Debug, Default, Clone)]
@@ -2796,6 +3182,7 @@ pub struct CommandToRun {
     pub path: PathBuf,
     pub args: Vec<String>,
     pub cwd: Option<PathBuf>,
+    pub border_style: Option<BorderStyleOverride>,
 }
 
 impl CommandToRun {
@@ -2811,6 +3198,10 @@ impl CommandToRun {
             args: args.into_iter().map(|a| a.as_ref().to_owned()).collect(),
             ..Default::default()
         }
+    }
+    pub fn with_border_style(mut self, border_style: BorderStyleOverride) -> Self {
+        self.border_style = Some(border_style);
+        self
     }
 }
 
@@ -3046,6 +3437,8 @@ pub struct FloatingPaneCoordinates {
     pub height: Option<PercentOrFixed>,
     pub pinned: Option<bool>,
     pub borderless: Option<bool>,
+    #[serde(default)]
+    pub border_style: Option<BorderStyleOverride>,
 }
 
 impl FloatingPaneCoordinates {
@@ -3097,7 +3490,25 @@ impl FloatingPaneCoordinates {
                 height,
                 pinned,
                 borderless,
+                border_style: None,
             })
+        }
+    }
+    pub fn with_border_style(mut self, border_style: Option<BorderStyleOverride>) -> Self {
+        self.border_style = border_style;
+        self
+    }
+    pub fn merge_border_style(
+        coordinates: Option<Self>,
+        border_style: Option<BorderStyleOverride>,
+    ) -> Option<Self> {
+        match border_style {
+            Some(border_style) => Some(
+                coordinates
+                    .unwrap_or_default()
+                    .with_border_style(Some(border_style)),
+            ),
+            None => coordinates,
         }
     }
     pub fn with_x_fixed(mut self, x: usize) -> Self {
@@ -3159,6 +3570,7 @@ impl From<PaneGeom> for FloatingPaneCoordinates {
             height: Some(PercentOrFixed::Fixed(pane_geom.rows.as_usize())),
             pinned: Some(pane_geom.is_pinned),
             borderless: None,
+            border_style: None,
         }
     }
 }
@@ -3180,7 +3592,7 @@ impl OriginatingPlugin {
     }
 }
 
-#[derive(ArgEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(ValueEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WebSharing {
     #[serde(alias = "on")]
     On,
@@ -3255,26 +3667,33 @@ impl FromStr for WebSharing {
 pub enum NewPanePlacement {
     NoPreference {
         borderless: Option<bool>,
+        border_style: Option<BorderStyleOverride>,
     },
     Tiled {
         direction: Option<Direction>,
         borderless: Option<bool>,
+        border_style: Option<BorderStyleOverride>,
     },
     Floating(Option<FloatingPaneCoordinates>),
     InPlace {
         pane_id_to_replace: Option<PaneId>,
         close_replaced_pane: bool,
         borderless: Option<bool>,
+        border_style: Option<BorderStyleOverride>,
     },
     Stacked {
         pane_id_to_stack_under: Option<PaneId>,
         borderless: Option<bool>,
+        border_style: Option<BorderStyleOverride>,
     },
 }
 
 impl Default for NewPanePlacement {
     fn default() -> Self {
-        NewPanePlacement::NoPreference { borderless: None }
+        NewPanePlacement::NoPreference {
+            borderless: None,
+            border_style: None,
+        }
     }
 }
 
@@ -3294,6 +3713,7 @@ impl NewPanePlacement {
                 pane_id_to_replace: None,
                 close_replaced_pane,
                 borderless: None,
+                border_style: None,
             }
         } else {
             self
@@ -3307,6 +3727,7 @@ impl NewPanePlacement {
             pane_id_to_replace,
             close_replaced_pane,
             borderless: None,
+            border_style: None,
         }
     }
     pub fn should_float(&self) -> Option<bool> {
@@ -3341,11 +3762,65 @@ impl NewPanePlacement {
     }
     pub fn get_borderless(&self) -> Option<bool> {
         match self {
-            NewPanePlacement::NoPreference { borderless } => *borderless,
+            NewPanePlacement::NoPreference { borderless, .. } => *borderless,
             NewPanePlacement::Tiled { borderless, .. } => *borderless,
             NewPanePlacement::Floating(coords) => coords.as_ref().and_then(|c| c.borderless),
             NewPanePlacement::InPlace { borderless, .. } => *borderless,
             NewPanePlacement::Stacked { borderless, .. } => *borderless,
+        }
+    }
+    pub fn get_border_style(&self) -> Option<BorderStyleOverride> {
+        match self {
+            NewPanePlacement::NoPreference { border_style, .. } => *border_style,
+            NewPanePlacement::Tiled { border_style, .. } => *border_style,
+            NewPanePlacement::Floating(coords) => {
+                coords.as_ref().and_then(|c| c.border_style.clone())
+            },
+            NewPanePlacement::InPlace { border_style, .. } => *border_style,
+            NewPanePlacement::Stacked { border_style, .. } => *border_style,
+        }
+    }
+    pub fn with_border_style(self, border_style: Option<BorderStyleOverride>) -> Self {
+        if border_style.is_none() {
+            return self;
+        }
+        match self {
+            NewPanePlacement::NoPreference { borderless, .. } => NewPanePlacement::NoPreference {
+                borderless,
+                border_style,
+            },
+            NewPanePlacement::Tiled {
+                direction,
+                borderless,
+                ..
+            } => NewPanePlacement::Tiled {
+                direction,
+                borderless,
+                border_style,
+            },
+            NewPanePlacement::Floating(coords) => NewPanePlacement::Floating(Some(
+                coords.unwrap_or_default().with_border_style(border_style),
+            )),
+            NewPanePlacement::InPlace {
+                pane_id_to_replace,
+                close_replaced_pane,
+                borderless,
+                ..
+            } => NewPanePlacement::InPlace {
+                pane_id_to_replace,
+                close_replaced_pane,
+                borderless,
+                border_style,
+            },
+            NewPanePlacement::Stacked {
+                pane_id_to_stack_under,
+                borderless,
+                ..
+            } => NewPanePlacement::Stacked {
+                pane_id_to_stack_under,
+                borderless,
+                border_style,
+            },
         }
     }
 }
@@ -3416,6 +3891,7 @@ pub enum PluginCommand {
     PageScrollUp,
     PageScrollDown,
     ToggleFocusFullscreen,
+    ToggleFocusNoUiFullscreen,
     TogglePaneFrames,
     SetPaneFrameStyle(PaneFrameStyle),
     TogglePaneEmbedOrEject,
@@ -3427,6 +3903,8 @@ pub enum PluginCommand {
     QuitZellij,
     PreviousSwapLayout,
     NextSwapLayout,
+    ApplyTiledSwapLayout(String),
+    ApplyFloatingSwapLayout(String),
     GoToTabName(String),
     FocusOrCreateTab(String),
     GoToTab(u32),                       // tab index
@@ -3541,6 +4019,7 @@ pub enum PluginCommand {
     ChangeFloatingPanesCoordinates(Vec<(PaneId, FloatingPaneCoordinates)>),
     TogglePaneBorderless(PaneId),
     SetPaneBorderless(PaneId, bool),
+    SetPaneBorderStyle(PaneId, BorderStyleOverride),
     OpenCommandPaneNearPlugin(CommandToRun, Context),
     OpenTerminalNearPlugin(FileToOpen),
     OpenTerminalFloatingNearPlugin(FileToOpen, Option<FloatingPaneCoordinates>),
@@ -3639,12 +4118,12 @@ pub enum PluginCommand {
     DeleteDeadSessionAndReply(String), // session name; sends a response back
     DeleteAllDeadSessionsAndReply,     // no payload; sends a response back
     SetSoftKeyboard(bool),
-    SetTabFit {
-        tab_id: usize,
-        fit: Option<(PaneId, Size)>,
-    },
-    SetShadowFocus(PaneId),
-    ExitMobileMode,
+    FocusHostSession,
+    GetNestedSessionKeybinds(PaneId),
+    SetSelectableSlot(SlotId, bool),
+    HideSlot(SlotId),
+    ShowSlot(SlotId, bool),
+    CloseSlot(SlotId),
 }
 
 // Response type for plugin API methods that open a pane in a new tab
@@ -3711,4 +4190,186 @@ pub fn can_parse_unicode_bare_keys() {
         Some(BareKey::Char('ъ')),
         "Can parse a bare 'ъ' keypress"
     );
+}
+
+#[test]
+fn line_style_names_round_trip() {
+    for line_style in [
+        LineStyle::Single,
+        LineStyle::Double,
+        LineStyle::Heavy,
+        LineStyle::Dashed,
+        LineStyle::HeavyDashed,
+    ] {
+        assert_eq!(LineStyle::from_str(&line_style.to_string()), Ok(line_style));
+    }
+    assert!(LineStyle::from_str("squiggly").is_err());
+}
+
+#[test]
+fn border_style_override_from_a_bare_cli_style() {
+    assert_eq!(
+        BorderStyleOverride::from_cli_string("double"),
+        Ok(BorderStyleOverride {
+            all: Some(LineStyle::Double),
+            ..Default::default()
+        })
+    );
+}
+
+#[test]
+fn border_style_override_from_a_compound_cli_string() {
+    assert_eq!(
+        BorderStyleOverride::from_cli_string("top:double, left=heavy ,rounded"),
+        Ok(BorderStyleOverride {
+            top: Some(LineStyle::Double),
+            left: Some(LineStyle::Heavy),
+            rounded_corners: Some(true),
+            ..Default::default()
+        })
+    );
+    assert_eq!(
+        BorderStyleOverride::from_cli_string("all:dashed,rounded:false"),
+        Ok(BorderStyleOverride {
+            all: Some(LineStyle::Dashed),
+            rounded_corners: Some(false),
+            ..Default::default()
+        })
+    );
+}
+
+#[test]
+fn border_style_override_rejects_unknown_cli_input() {
+    assert!(BorderStyleOverride::from_cli_string("diagonal:double").is_err());
+    assert!(BorderStyleOverride::from_cli_string("top:squiggly").is_err());
+    assert!(BorderStyleOverride::from_cli_string("rounded:maybe").is_err());
+}
+
+#[test]
+fn empty_cli_border_style_is_treated_as_no_override() {
+    assert_eq!(
+        BorderStyleOverride::from_optional_cli_string(Some("")),
+        Ok(None)
+    );
+    assert_eq!(
+        BorderStyleOverride::from_optional_cli_string(None),
+        Ok(None)
+    );
+}
+
+#[test]
+fn border_style_override_applies_per_side_over_the_shorthand() {
+    let base = BorderStyle::with_rounded_corners(true);
+    let applied = BorderStyleOverride {
+        all: Some(LineStyle::Double),
+        top: Some(LineStyle::Heavy),
+        ..Default::default()
+    }
+    .apply_to(base);
+    assert_eq!(
+        applied,
+        BorderStyle {
+            top: LineStyle::Heavy,
+            right: LineStyle::Double,
+            bottom: LineStyle::Double,
+            left: LineStyle::Double,
+            rounded_corners: true,
+        }
+    );
+}
+
+#[test]
+fn an_empty_border_style_override_leaves_the_base_untouched() {
+    let base = BorderStyle {
+        top: LineStyle::Double,
+        right: LineStyle::Heavy,
+        bottom: LineStyle::Dashed,
+        left: LineStyle::Single,
+        rounded_corners: true,
+    };
+    assert!(BorderStyleOverride::default().is_empty());
+    assert_eq!(BorderStyleOverride::default().apply_to(base), base);
+}
+
+#[test]
+fn border_style_overrides_merge_with_the_later_one_winning() {
+    let merged = BorderStyleOverride {
+        all: Some(LineStyle::Single),
+        top: Some(LineStyle::Single),
+        ..Default::default()
+    }
+    .merge(&BorderStyleOverride {
+        top: Some(LineStyle::Double),
+        rounded_corners: Some(true),
+        ..Default::default()
+    });
+    assert_eq!(
+        merged,
+        BorderStyleOverride {
+            all: Some(LineStyle::Single),
+            top: Some(LineStyle::Double),
+            rounded_corners: Some(true),
+            ..Default::default()
+        }
+    );
+}
+
+#[test]
+fn a_uniform_border_style_reports_its_line_style() {
+    assert_eq!(
+        BorderStyle {
+            top: LineStyle::Double,
+            right: LineStyle::Double,
+            bottom: LineStyle::Double,
+            left: LineStyle::Double,
+            rounded_corners: false,
+        }
+        .uniform_style(),
+        Some(LineStyle::Double)
+    );
+    assert_eq!(
+        BorderStyle {
+            top: LineStyle::Double,
+            ..Default::default()
+        }
+        .uniform_style(),
+        None
+    );
+}
+
+#[test]
+fn new_pane_placement_carries_a_border_style() {
+    let placement = NewPanePlacement::Tiled {
+        direction: None,
+        borderless: None,
+        border_style: None,
+    }
+    .with_border_style(Some(BorderStyleOverride {
+        all: Some(LineStyle::Heavy),
+        ..Default::default()
+    }));
+    assert_eq!(
+        placement.get_border_style(),
+        Some(BorderStyleOverride {
+            all: Some(LineStyle::Heavy),
+            ..Default::default()
+        })
+    );
+}
+
+#[test]
+fn a_floating_placement_carries_its_border_style_in_the_coordinates() {
+    let placement = NewPanePlacement::Floating(None).with_border_style(Some(BorderStyleOverride {
+        all: Some(LineStyle::Double),
+        ..Default::default()
+    }));
+    let coordinates = placement.floating_pane_coordinates().unwrap();
+    assert_eq!(
+        coordinates.border_style,
+        Some(BorderStyleOverride {
+            all: Some(LineStyle::Double),
+            ..Default::default()
+        })
+    );
+    assert_eq!(placement.get_border_style(), coordinates.border_style);
 }

@@ -10,7 +10,7 @@ use zellij_utils::pane_size::{Dimension, PaneGeom};
 
 use crate::ui::pane_boundaries_frame::FrameParams;
 use crate::{
-    output::{CharacterChunk, SixelImageChunk},
+    output::{CharacterChunk, KittyImageChunk, SixelImageChunk},
     pty::VteBytes,
     ClientId,
 };
@@ -1118,7 +1118,14 @@ impl Pane for MockPane {
     fn render(
         &mut self,
         _client_id: Option<ClientId>,
-    ) -> Result<Option<(Vec<CharacterChunk>, Option<String>, Vec<SixelImageChunk>)>> {
+    ) -> Result<
+        Option<(
+            Vec<CharacterChunk>,
+            Option<String>,
+            Vec<SixelImageChunk>,
+            Vec<KittyImageChunk>,
+        )>,
+    > {
         unimplemented!()
     }
     fn render_frame(

@@ -44,7 +44,8 @@ use zellij_utils::input::{config::Config, options::Options};
 
 use authentication::auth_middleware;
 use http_handlers::{
-    create_new_client, get_static_asset, login_handler, serve_html, version_handler,
+    create_new_client, get_static_asset, list_sessions_handler, login_handler, serve_html,
+    version_handler,
 };
 use ipc_listener::listen_to_web_server_instructions;
 
@@ -216,6 +217,7 @@ pub async fn serve_web_client(
         session_manager,
         client_os_api_factory,
         is_https,
+        pending_welcome_sessions: Arc::new(Mutex::new(std::collections::VecDeque::new())),
     };
 
     tokio::spawn({
@@ -237,6 +239,7 @@ pub async fn serve_web_client(
         .route("/ws/terminal", any(ws_handler_terminal))
         .route("/ws/terminal/{session}", any(ws_handler_terminal))
         .route("/session", post(create_new_client))
+        .route("/session-list", get(list_sessions_handler))
         .route_layer(middleware::from_fn(auth_middleware))
         .route("/", get(serve_html))
         .route("/{session}", get(serve_html))
@@ -265,15 +268,34 @@ pub async fn serve_web_client(
             }
         }));
 
+    if let Err(e) = listener.set_nonblocking(true) {
+        log::error!("Failed to set web server listener to non-blocking: {}", e);
+        return;
+    }
+
     match rustls_config {
         Some(rustls_config) => {
-            let _ = axum_server::from_tcp_rustls(listener, rustls_config)
+            let server = match axum_server::from_tcp_rustls(listener, rustls_config) {
+                Ok(server) => server,
+                Err(e) => {
+                    log::error!("Failed to create TLS web server from listener: {}", e);
+                    return;
+                },
+            };
+            let _ = server
                 .handle(server_handle)
                 .serve(app.into_make_service())
                 .await;
         },
         None => {
-            let _ = axum_server::from_tcp(listener)
+            let server = match axum_server::from_tcp(listener) {
+                Ok(server) => server,
+                Err(e) => {
+                    log::error!("Failed to create web server from listener: {}", e);
+                    return;
+                },
+            };
+            let _ = server
                 .handle(server_handle)
                 .serve(app.into_make_service())
                 .await;

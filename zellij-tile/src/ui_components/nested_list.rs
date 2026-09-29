@@ -38,6 +38,29 @@ impl NestedListItem {
         self.content = self.content.color_range(index_level, indices);
         self
     }
+    pub fn color_substring<S: AsRef<str>>(mut self, index_level: usize, substr: S) -> Self {
+        self.content = self.content.color_substring(index_level, substr);
+        self
+    }
+    pub fn color_nth_substring<S: AsRef<str>>(
+        mut self,
+        index_level: usize,
+        substr: S,
+        occurrence_index: usize,
+    ) -> Self {
+        self.content = self
+            .content
+            .color_nth_substring(index_level, substr, occurrence_index);
+        self
+    }
+    pub fn color_last_substring<S: AsRef<str>>(mut self, index_level: usize, substr: S) -> Self {
+        self.content = self.content.color_last_substring(index_level, substr);
+        self
+    }
+    pub fn color_all(mut self, index_level: usize) -> Self {
+        self.content = self.content.color_all(index_level);
+        self
+    }
     pub fn error_color_indices(mut self, indices: Vec<usize>) -> Self {
         self.content = self.content.error_color_indices(indices);
         self
@@ -58,6 +81,10 @@ impl NestedListItem {
         self.content = self
             .content
             .error_color_nth_substring(substr, occurrence_index);
+        self
+    }
+    pub fn error_color_last_substring<S: AsRef<str>>(mut self, substr: S) -> Self {
+        self.content = self.content.error_color_last_substring(substr);
         self
     }
     pub fn error_color_all(mut self) -> Self {
@@ -84,6 +111,10 @@ impl NestedListItem {
         self.content = self
             .content
             .success_color_nth_substring(substr, occurrence_index);
+        self
+    }
+    pub fn success_color_last_substring<S: AsRef<str>>(mut self, substr: S) -> Self {
+        self.content = self.content.success_color_last_substring(substr);
         self
     }
     pub fn success_color_all(mut self) -> Self {

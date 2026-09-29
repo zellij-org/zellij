@@ -27,6 +27,53 @@ fn start_full_frame_zellij_with_mouse(cols: usize) -> TestSession {
         .start()
 }
 
+const TIPS_DISABLED_CONFIG: &str =
+    "mouse_mode true\nadvanced_mouse_actions true\nmouse_hover_effects true\nmouse_hover_tips false";
+
+const FULL_FRAME_TIPS_DISABLED_CONFIG: &str =
+    "pane_frame_style \"full\"\nmouse_mode true\nadvanced_mouse_actions true\nmouse_hover_effects true\nmouse_hover_tips false";
+
+fn two_pane_session_with_config(config: &str) -> (TestSession, FakePtyHandle, FakePtyHandle) {
+    let zellij = TestRunner::new(Size {
+        cols: 120,
+        rows: 24,
+    })
+    .with_config(config)
+    .start();
+    let left_terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
+    let right_terminal = split_right_and_wait_for_prompt(&zellij);
+    zellij.wait_until("two panes settled in locked base mode", |grid_snapshot| {
+        grid_snapshot.status_bar_appears() && grid_snapshot.tab_bar_appears()
+    });
+    (zellij, left_terminal, right_terminal)
+}
+
+fn full_frame_two_pane_session_with_handles(
+    cols: usize,
+    config: &str,
+) -> (TestSession, FakePtyHandle, FakePtyHandle) {
+    let zellij = TestRunner::new(Size { cols, rows: 24 })
+        .with_config(config)
+        .start();
+    let left_terminal = zellij.expect_pty_spawn();
+    left_terminal.output(PROMPT);
+    zellij.wait_until("first full-frame pane rendered", |grid_snapshot| {
+        grid_snapshot.status_bar_appears()
+            && grid_snapshot.contains("┌")
+            && grid_snapshot.contains("$ ")
+    });
+    zellij.send_stdin(&keys::ctrl('p'));
+    zellij.send_stdin(&keys::key('r'));
+    let right_terminal = zellij.expect_pty_spawn();
+    right_terminal.output(PROMPT);
+    zellij.wait_until("two full-frame panes rendered", |grid_snapshot| {
+        grid_snapshot.contains("Pane #1")
+            && grid_snapshot.contains("Pane #2")
+            && grid_snapshot.status_bar_appears()
+    });
+    (zellij, left_terminal, right_terminal)
+}
+
 fn sgr_motion(column: usize, line: usize) -> Vec<u8> {
     format!("\u{1b}[<35;{};{}M", column, line).into_bytes()
 }
@@ -247,6 +294,107 @@ fn resize_hint_absent_with_a_single_pane() {
                 && grid_snapshot.status_bar_appears()
                 && !grid_snapshot.contains("resize")
         },
+    );
+
+    zellij.quit();
+}
+
+#[test]
+fn disabled_tips_suppress_the_group_tip_but_keep_the_hovered_frame_highlight() {
+    let (mut zellij, _left_terminal, _right_terminal) =
+        full_frame_two_pane_session_with_handles(120, FULL_FRAME_TIPS_DISABLED_CONFIG);
+
+    let before_hover = zellij.wait_until("the non-focused pane frame settled", |grid_snapshot| {
+        grid_snapshot.row_of_line("Pane #1").is_some()
+    });
+    let frame_row = before_hover.row_of_line("Pane #1").unwrap();
+    let unhovered_frame_color = before_hover.cell_foreground(0, frame_row);
+
+    zellij.send_stdin(&sgr_motion(OTHER_PANE_COLUMN, HOVER_LINE));
+    let hovered = zellij.wait_until(
+        "the hovered non-focused pane frame is still highlighted",
+        |grid_snapshot| grid_snapshot.cell_foreground(0, frame_row) != unhovered_frame_color,
+    );
+
+    assert!(
+        !hovered.contains("group"),
+        "mouse_hover_tips false must suppress the group tip on the pane frame:\n{}",
+        hovered.text
+    );
+    assert!(
+        !tab_bar_line(&hovered).contains("group"),
+        "mouse_hover_tips false must suppress the group tip on the tab bar:\n{}",
+        hovered.text
+    );
+
+    zellij.quit();
+}
+
+#[test]
+fn disabled_tips_suppress_the_tab_bar_hint_when_hovering_a_non_focused_pane() {
+    let (mut zellij, left_terminal, _right_terminal) =
+        two_pane_session_with_config(TIPS_DISABLED_CONFIG);
+
+    zellij.send_stdin(&sgr_motion(OTHER_PANE_COLUMN, HOVER_LINE));
+    left_terminal.output(b"HOVER_SYNC_MARKER");
+    let settled = zellij.wait_until("a render settles after hovering", |grid_snapshot| {
+        grid_snapshot.contains("HOVER_SYNC_MARKER")
+    });
+
+    assert!(
+        !settled.contains("group"),
+        "mouse_hover_tips false must suppress the group tip everywhere:\n{}",
+        settled.text
+    );
+    assert!(
+        !tab_bar_line(&settled).contains("resize"),
+        "mouse_hover_tips false must suppress the resize tip on the tab bar:\n{}",
+        settled.text
+    );
+
+    zellij.quit();
+}
+
+#[test]
+fn disabled_tips_suppress_the_full_frame_resize_help() {
+    let (mut zellij, left_terminal, _right_terminal) =
+        full_frame_two_pane_session_with_handles(120, FULL_FRAME_TIPS_DISABLED_CONFIG);
+
+    zellij.send_stdin(&sgr_motion(FOCUSED_PANE_COLUMN, HOVER_LINE));
+    left_terminal.output(b"RESIZE_SYNC_MARKER");
+    let settled = zellij.wait_until(
+        "a render settles after motion inside the focused pane",
+        |grid_snapshot| grid_snapshot.contains("RESIZE_SYNC_MARKER"),
+    );
+
+    assert!(
+        !settled.contains("to resize"),
+        "mouse_hover_tips false must suppress the resize help undertitle:\n{}",
+        settled.text
+    );
+    assert!(
+        !settled.contains("drag borders"),
+        "mouse_hover_tips false must suppress every resize help tier:\n{}",
+        settled.text
+    );
+
+    zellij.quit();
+}
+
+#[test]
+fn hints_are_shown_when_mouse_hover_tips_is_absent_from_the_config() {
+    let mut zellij = two_pane_session();
+
+    zellij.send_stdin(&sgr_motion(FOCUSED_PANE_COLUMN, HOVER_LINE));
+    zellij.wait_until(
+        "resize hint shown by default when the option is absent",
+        |grid_snapshot| tab_bar_line(grid_snapshot).contains("resize"),
+    );
+
+    zellij.send_stdin(&sgr_motion(OTHER_PANE_COLUMN, HOVER_LINE));
+    zellij.wait_until(
+        "group hint shown by default when the option is absent",
+        |grid_snapshot| tab_bar_line(grid_snapshot).contains("group"),
     );
 
     zellij.quit();

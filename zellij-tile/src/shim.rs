@@ -7,9 +7,11 @@ use std::{
 use zellij_utils::data::*;
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::actions::Action;
-use zellij_utils::pane_size::Size;
 pub use zellij_utils::plugin_api;
-use zellij_utils::plugin_api::event::ProtobufPaneScrollbackResponse;
+use zellij_utils::plugin_api::event::{
+    nested_session_keybinds_response_from_protobuf, ProtobufNestedSessionKeybindsResponse,
+    ProtobufPaneScrollbackResponse,
+};
 use zellij_utils::plugin_api::generated_api::api::plugin_command::{
     hide_floating_panes_response, save_session_response, show_floating_panes_response,
 };
@@ -42,7 +44,8 @@ use zellij_utils::plugin_api::plugin_command::{
     ProtobufOpenTerminalPaneInPlaceOfPaneIdResponse, ProtobufOpenTerminalResponse,
     ProtobufParseLayoutResponse, ProtobufPluginCommand, ProtobufRenameLayoutResponse,
     ProtobufSaveLayoutResponse, ProtobufSaveSessionResponse, ProtobufShowFloatingPanesResponse,
-    RenameWebTokenResponse, RevokeAllWebTokensResponse, RevokeTokenResponse,
+    ProtobufSlotCommandResponse, RenameWebTokenResponse, RevokeAllWebTokensResponse,
+    RevokeTokenResponse,
 };
 use zellij_utils::plugin_api::plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion};
 
@@ -88,6 +91,31 @@ pub fn show_cursor(cursor_position: Option<(usize, usize)>) {
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+}
+
+fn run_slot_command(plugin_command: PluginCommand) -> Result<(), String> {
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+    let response =
+        ProtobufSlotCommandResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    response.into()
+}
+
+pub fn set_selectable_slot(slot_id: SlotId, selectable: bool) -> Result<(), String> {
+    run_slot_command(PluginCommand::SetSelectableSlot(slot_id, selectable))
+}
+
+pub fn hide_slot(slot_id: SlotId) -> Result<(), String> {
+    run_slot_command(PluginCommand::HideSlot(slot_id))
+}
+
+pub fn show_slot(slot_id: SlotId, should_float_if_hidden: bool) -> Result<(), String> {
+    run_slot_command(PluginCommand::ShowSlot(slot_id, should_float_if_hidden))
+}
+
+pub fn close_slot(slot_id: SlotId) -> Result<(), String> {
+    run_slot_command(PluginCommand::CloseSlot(slot_id))
 }
 
 pub fn request_permission(permissions: &[PermissionType]) {
@@ -503,7 +531,7 @@ pub fn open_terminal<P: AsRef<Path>>(path: P) -> Option<PaneId> {
 }
 
 /// Open a new terminal pane to the specified location on the host filesystem
-/// This variant is identical to open_terminal, excpet it opens it near the plugin regardless of
+/// This variant is identical to open_terminal, except it opens it near the plugin regardless of
 /// whether the user was focused on it or not
 pub fn open_terminal_near_plugin<P: AsRef<Path>>(path: P) -> Option<PaneId> {
     let file_to_open = FileToOpen::new(path.as_ref().to_path_buf());
@@ -536,7 +564,7 @@ pub fn open_terminal_floating<P: AsRef<Path>>(
 }
 
 /// Open a new floating terminal pane to the specified location on the host filesystem
-/// This variant is identical to open_terminal_floating, excpet it opens it near the plugin regardless of
+/// This variant is identical to open_terminal_floating, except it opens it near the plugin regardless of
 /// whether the user was focused on it or not
 pub fn open_terminal_floating_near_plugin<P: AsRef<Path>>(
     path: P,
@@ -1292,6 +1320,31 @@ pub fn toggle_focus_fullscreen() {
     unsafe { host_run_plugin_command() };
 }
 
+pub fn toggle_focus_no_ui_fullscreen() {
+    let plugin_command = PluginCommand::ToggleFocusNoUiFullscreen;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn focus_host_session() {
+    let plugin_command = PluginCommand::FocusHostSession;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn get_nested_session_keybinds(pane_id: PaneId) -> NestedSessionKeybindsResponse {
+    let plugin_command = PluginCommand::GetNestedSessionKeybinds(pane_id);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+    let response_bytes = bytes_from_stdin().unwrap();
+    let protobuf_response =
+        ProtobufNestedSessionKeybindsResponse::decode(response_bytes.as_slice()).unwrap();
+    nested_session_keybinds_response_from_protobuf(protobuf_response).unwrap()
+}
+
 /// Toggle the UI pane frames on or off
 pub fn toggle_pane_frames() {
     let plugin_command = PluginCommand::TogglePaneFrames;
@@ -1367,7 +1420,7 @@ pub fn undo_rename_tab() {
     unsafe { host_run_plugin_command() };
 }
 
-/// Compeltely quit Zellij for this and all other connected clients
+/// Completely quit Zellij for this and all other connected clients
 pub fn quit_zellij() {
     let plugin_command = PluginCommand::QuitZellij;
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
@@ -1386,6 +1439,24 @@ pub fn previous_swap_layout() {
 /// Change to the next [swap layout](https://zellij.dev/documentation/swap-layouts.html)
 pub fn next_swap_layout() {
     let plugin_command = PluginCommand::NextSwapLayout;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Applies the named tiled [swap layout](https://zellij.dev/documentation/swap-layouts.html)
+/// without changing floating pane visibility or focus. Unknown or incompatible names are a no-op.
+pub fn apply_tiled_swap_layout(layout_name: &str) {
+    let plugin_command = PluginCommand::ApplyTiledSwapLayout(layout_name.to_owned());
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Applies the named floating [swap layout](https://zellij.dev/documentation/swap-layouts.html)
+/// without changing floating pane visibility or focus. Unknown or incompatible names are a no-op.
+pub fn apply_floating_swap_layout(layout_name: &str) {
+    let plugin_command = PluginCommand::ApplyFloatingSwapLayout(layout_name.to_owned());
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
@@ -1636,7 +1707,7 @@ pub fn block_cli_pipe_input(pipe_name: &str) {
     unsafe { host_run_plugin_command() };
 }
 
-/// Send output to the output side of a pipe, ths does not affect the input side of same pipe
+/// Send output to the output side of a pipe, this does not affect the input side of same pipe
 pub fn cli_pipe_output(pipe_name: &str, output: &str) {
     let plugin_command = PluginCommand::CliPipeOutput(pipe_name.to_owned(), output.to_owned());
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
@@ -1709,27 +1780,6 @@ pub fn scan_host_folder<S: AsRef<Path>>(folder_to_scan: &S) {
 
 pub fn set_soft_keyboard(on: bool) {
     let plugin_command = PluginCommand::SetSoftKeyboard(on);
-    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
-    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
-    unsafe { host_run_plugin_command() };
-}
-
-pub fn set_tab_fit(tab_id: usize, fit: Option<(PaneId, Size)>) {
-    let plugin_command = PluginCommand::SetTabFit { tab_id, fit };
-    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
-    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
-    unsafe { host_run_plugin_command() };
-}
-
-pub fn exit_mobile_mode() {
-    let plugin_command = PluginCommand::ExitMobileMode;
-    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
-    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
-    unsafe { host_run_plugin_command() };
-}
-
-pub fn set_shadow_focus(pane_id: PaneId) {
-    let plugin_command = PluginCommand::SetShadowFocus(pane_id);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
@@ -2593,6 +2643,13 @@ pub fn set_pane_borderless(pane_id: PaneId, borderless: bool) {
     unsafe { host_run_plugin_command() };
 }
 
+pub fn set_pane_border_style(pane_id: PaneId, border_style: BorderStyleOverride) {
+    let plugin_command = PluginCommand::SetPaneBorderStyle(pane_id, border_style);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 /// Set the default foreground and/or background color of a pane
 ///
 /// # Arguments
@@ -2875,6 +2932,101 @@ pub fn bytes_from_stdin() -> Result<Vec<u8>> {
 }
 
 #[doc(hidden)]
+pub fn protobuf_bytes_from_stdin() -> Result<Vec<u8>> {
+    let stdin = io::stdin();
+    let mut stdin = stdin.lock();
+    read_json_byte_array_line(&mut stdin)
+        .with_context(|| "failed to deserialize bytes from stdin".to_string())
+}
+
+enum JsonBytesPosition {
+    BeforeArray,
+    InArray,
+    AfterArray,
+}
+
+struct JsonBytesParser {
+    position: JsonBytesPosition,
+    bytes: Vec<u8>,
+    current: Option<u16>,
+}
+
+impl JsonBytesParser {
+    fn feed(&mut self, byte: u8) -> std::result::Result<(), &'static str> {
+        match self.position {
+            JsonBytesPosition::BeforeArray => match byte {
+                b'[' => self.position = JsonBytesPosition::InArray,
+                byte if byte.is_ascii_whitespace() => {},
+                _ => return Err("expected a byte array"),
+            },
+            JsonBytesPosition::InArray => match byte {
+                b'0'..=b'9' => {
+                    let value = self.current.unwrap_or(0) * 10 + (byte - b'0') as u16;
+                    if value > u8::MAX as u16 {
+                        return Err("byte value out of range");
+                    }
+                    self.current = Some(value);
+                },
+                b',' | b']' => {
+                    match self.current.take() {
+                        Some(value) => self.bytes.push(value as u8),
+                        None if byte == b']' && self.bytes.is_empty() => {},
+                        None => return Err("missing byte value"),
+                    }
+                    if byte == b']' {
+                        self.position = JsonBytesPosition::AfterArray;
+                    }
+                },
+                byte if byte.is_ascii_whitespace() && self.current.is_none() => {},
+                _ => return Err("unexpected character in byte array"),
+            },
+            JsonBytesPosition::AfterArray => {
+                if !byte.is_ascii_whitespace() {
+                    return Err("unexpected character after byte array");
+                }
+            },
+        }
+        Ok(())
+    }
+}
+
+fn read_json_byte_array_line(reader: &mut impl io::BufRead) -> Result<Vec<u8>> {
+    let mut parser = JsonBytesParser {
+        position: JsonBytesPosition::BeforeArray,
+        bytes: Vec::new(),
+        current: None,
+    };
+    let mut error: Option<&'static str> = None;
+    loop {
+        let chunk = reader.fill_buf()?;
+        if chunk.is_empty() {
+            break;
+        }
+        let mut consumed = 0;
+        let mut line_ended = false;
+        for byte in chunk {
+            consumed += 1;
+            if *byte == b'\n' {
+                line_ended = true;
+                break;
+            }
+            if error.is_none() {
+                error = parser.feed(*byte).err();
+            }
+        }
+        reader.consume(consumed);
+        if line_ended {
+            break;
+        }
+    }
+    match (error, parser.position) {
+        (Some(error), _) => Err(anyhow!(error)),
+        (None, JsonBytesPosition::AfterArray) => Ok(parser.bytes),
+        (None, _) => Err(anyhow!("incomplete byte array")),
+    }
+}
+
+#[doc(hidden)]
 pub fn object_to_stdout(object: &impl Serialize) {
     // TODO: no crashy
     println!("{}", serde_json::to_string(object).unwrap());
@@ -2994,3 +3146,47 @@ extern "C" {
 
 #[cfg(not(target_arch = "wasm32"))]
 unsafe fn host_run_plugin_command() {}
+
+#[cfg(test)]
+mod tests {
+    use super::read_json_byte_array_line;
+    use std::io::{BufRead, BufReader, Cursor};
+
+    fn read_all(input: &str, capacity: usize) -> Vec<Result<Vec<u8>, String>> {
+        let mut reader = BufReader::with_capacity(capacity, Cursor::new(input.as_bytes().to_vec()));
+        let mut results = vec![];
+        while !reader.fill_buf().unwrap().is_empty() {
+            results.push(read_json_byte_array_line(&mut reader).map_err(|e| e.to_string()));
+        }
+        results
+    }
+
+    #[test]
+    fn reads_serde_json_byte_arrays_line_by_line() {
+        let first: Vec<u8> = (0..=255).collect();
+        let second: Vec<u8> = vec![];
+        let third: Vec<u8> = vec![7, 42, 255];
+        let input = format!(
+            "{}\r\n{}\r\n{}\r\n",
+            serde_json::to_string(&first).unwrap(),
+            serde_json::to_string(&second).unwrap(),
+            serde_json::to_string(&third).unwrap()
+        );
+        for capacity in [1, 3, 8192] {
+            assert_eq!(
+                read_all(&input, capacity),
+                vec![Ok(first.clone()), Ok(second.clone()), Ok(third.clone())]
+            );
+        }
+    }
+
+    #[test]
+    fn malformed_line_is_consumed_and_reported() {
+        let results = read_all("[1,256]\r\n{\"a\":1}\r\n[1,,2]\r\n[3]\r\n", 4);
+        assert_eq!(results.len(), 4);
+        assert!(results[0].is_err());
+        assert!(results[1].is_err());
+        assert!(results[2].is_err());
+        assert_eq!(results[3], Ok(vec![3]));
+    }
+}

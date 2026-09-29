@@ -150,6 +150,7 @@ fn a_layout_stack_renders_as_a_title_list() {
             && grid_snapshot.contains(&selected_entry("Pane #1"))
             && grid_snapshot.contains("Pane #2")
             && grid_snapshot.contains("Pane #3")
+            && grid_snapshot.cursor_is_at(col(2).row(5))
     });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
@@ -443,8 +444,10 @@ fn entries_share_a_uniform_width_sized_by_the_widest_title() {
     }
     let grid_snapshot = zellij.wait_until("mixed-width entries rendered", |grid_snapshot| {
         grid_snapshot.status_bar_appears()
+            && grid_snapshot.tab_bar_appears()
             && grid_snapshot.contains("member-command")
             && grid_snapshot.contains(&selected_entry("Pane #1"))
+            && grid_snapshot.cursor_is_at(col(2).row(4))
     });
 
     let lines = grid_snapshot.lines();
@@ -669,6 +672,7 @@ fn splitting_a_new_pane_reforms_the_list_around_it() {
             && grid_snapshot.contains("Pane #2")
             && grid_snapshot.contains(&selected_entry("Pane #3"))
             && grid_snapshot.contains("Pane #4")
+            && grid_snapshot.cursor_is_at(col(2).row(13))
     });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
@@ -760,6 +764,7 @@ fn a_stack_list_survives_session_resurrection() {
             && grid_snapshot.contains("Pane #1")
             && grid_snapshot.contains("Pane #2")
             && grid_snapshot.contains(&selected_entry("Pane #3"))
+            && grid_snapshot.cursor_is_at(col(2).row(5))
     });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();

@@ -12,6 +12,8 @@ pub fn integration_test(sh: &Shell, flags: flags::IntegrationTest) -> anyhow::Re
     crate::status(msg);
     println!("{}", msg);
 
+    crate::build::ensure_plugin_assets(sh).context(err_context)?;
+
     let profile = if flags.no_opt { "dev" } else { "dev-opt" };
 
     let nextest_available = cmd!(sh, "{cargo} nextest --version")

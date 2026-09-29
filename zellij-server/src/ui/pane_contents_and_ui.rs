@@ -1,18 +1,31 @@
-use crate::output::Output;
+use crate::output::{CharacterChunk, Output};
+use crate::panes::terminal_character::AnsiCode;
 use crate::panes::PaneId;
 use crate::tab::Pane;
 use crate::ui::boundaries::Boundaries;
 use crate::ui::pane_boundaries_frame::{FrameParams, StackListEntry};
 use crate::ClientId;
 use std::collections::{HashMap, HashSet};
-use zellij_utils::data::{client_id_to_colors, InputMode, PaletteColor, Style};
+use zellij_utils::data::{client_slot_to_colors, BorderStyle, InputMode, PaletteColor, Style};
 use zellij_utils::errors::prelude::*;
 use zellij_utils::pane_size::PaneGeom;
+
+pub fn dim_character_chunks(character_chunks: &mut Vec<CharacterChunk>) {
+    for chunk in character_chunks.iter_mut() {
+        for terminal_character in chunk.terminal_characters.iter_mut() {
+            terminal_character.styles.update(|styles| {
+                styles.dim = Some(AnsiCode::On);
+            });
+        }
+    }
+}
+
 pub struct PaneContentsAndUi<'a> {
     pane: &'a mut Box<dyn Pane>,
     output: &'a mut Output,
     style: Style,
     focused_clients: Vec<ClientId>,
+    client_display_slots: HashMap<ClientId, usize>,
     multiple_users_exist_in_session: bool,
     z_index: Option<usize>,
     pane_is_stacked_under: bool,
@@ -27,6 +40,9 @@ pub struct PaneContentsAndUi<'a> {
     stack_list_entry_is_selected: bool,
     stack_list_entry_stack_is_focused: bool,
     blank_title: bool,
+    mouse_scroll_resize: bool,
+    mouse_hover_tips: bool,
+    dimmed_for_clients: HashSet<ClientId>,
 }
 
 impl<'a> PaneContentsAndUi<'a> {
@@ -44,6 +60,10 @@ impl<'a> PaneContentsAndUi<'a> {
         current_pane_group: HashMap<ClientId, Vec<PaneId>>,
         show_help_text: bool,
         omit_title: bool,
+        mouse_scroll_resize: bool,
+        mouse_hover_tips: bool,
+        dimmed_for_clients: HashSet<ClientId>,
+        client_display_slots: &HashMap<ClientId, usize>,
     ) -> Self {
         let mut focused_clients: Vec<ClientId> = active_panes
             .iter()
@@ -51,6 +71,7 @@ impl<'a> PaneContentsAndUi<'a> {
             .map(|(c_id, _p_id)| *c_id)
             .collect();
         focused_clients.sort_unstable();
+        let client_display_slots = client_display_slots.clone();
         let mouse_is_hovering_over_pane_for_clients = mouse_hover_pane_id
             .iter()
             .filter_map(|(client_id, pane_id)| {
@@ -66,6 +87,7 @@ impl<'a> PaneContentsAndUi<'a> {
             output,
             style,
             focused_clients,
+            client_display_slots,
             multiple_users_exist_in_session,
             z_index,
             pane_is_stacked_under,
@@ -80,7 +102,19 @@ impl<'a> PaneContentsAndUi<'a> {
             stack_list_entry_is_selected: false,
             stack_list_entry_stack_is_focused: false,
             blank_title: false,
+            mouse_scroll_resize,
+            mouse_hover_tips,
+            dimmed_for_clients,
         }
+    }
+    fn display_slot_of(&self, client_id: ClientId) -> usize {
+        self.client_display_slots
+            .get(&client_id)
+            .copied()
+            .unwrap_or(0)
+    }
+    fn frame_is_dimmed_for_client(&self, client_id: ClientId) -> bool {
+        self.dimmed_for_clients.contains(&client_id) && !self.focused_clients.contains(&client_id)
     }
     pub fn set_frame_geom_override(&mut self, frame_geom_override: Option<PaneGeom>) {
         self.frame_geom_override = frame_geom_override;
@@ -108,7 +142,7 @@ impl<'a> PaneContentsAndUi<'a> {
         // and we can clear them from the UI below
         drop(self.pane.drain_fake_cursors());
 
-        if let Some((character_chunks, raw_vte_output, sixel_image_chunks)) =
+        if let Some((character_chunks, raw_vte_output, sixel_image_chunks, kitty_image_chunks)) =
             self.pane.render(None).context(err_context)?
         {
             let clients: Vec<ClientId> = clients.collect();
@@ -121,6 +155,12 @@ impl<'a> PaneContentsAndUi<'a> {
                 .context(err_context)?;
             self.output.add_sixel_image_chunks_to_multiple_clients(
                 sixel_image_chunks,
+                clients.iter().copied(),
+                self.z_index,
+            );
+            self.output.add_kitty_image_chunks_to_multiple_clients(
+                self.pane.pid(),
+                kitty_image_chunks,
                 clients.iter().copied(),
                 self.z_index,
             );
@@ -143,10 +183,10 @@ impl<'a> PaneContentsAndUi<'a> {
     pub fn render_pane_contents_for_client(&mut self, client_id: ClientId) -> Result<()> {
         let err_context = || format!("failed to render pane contents for client {client_id}");
 
-        if let Some((character_chunks, raw_vte_output, sixel_image_chunks)) = self
-            .pane
-            .render(Some(client_id))
-            .with_context(err_context)?
+        if let Some((character_chunks, raw_vte_output, sixel_image_chunks, kitty_image_chunks)) =
+            self.pane
+                .render(Some(client_id))
+                .with_context(err_context)?
         {
             self.output
                 .add_character_chunks_to_client(client_id, character_chunks, self.z_index)
@@ -154,6 +194,12 @@ impl<'a> PaneContentsAndUi<'a> {
             self.output.add_sixel_image_chunks_to_client(
                 client_id,
                 sixel_image_chunks,
+                self.z_index,
+            );
+            self.output.add_kitty_image_chunks_to_client(
+                client_id,
+                self.pane.pid(),
+                kitty_image_chunks,
                 self.z_index,
             );
             if let Some(raw_vte_output) = raw_vte_output {
@@ -168,6 +214,40 @@ impl<'a> PaneContentsAndUi<'a> {
                 );
             }
         }
+        Ok(())
+    }
+    pub fn client_has_guest_modal(&self, client_id: ClientId) -> bool {
+        self.pane.guest_modal_selection(client_id).is_some()
+    }
+    pub fn drain_pane_render_state(&mut self) {
+        drop(self.pane.drain_fake_cursors());
+        let _ = self.pane.render(None);
+    }
+    pub fn render_guest_modal_for_client(&mut self, client_id: ClientId) -> Result<()> {
+        let err_context = || format!("failed to render guest modal for client {client_id}");
+        let selection = self.pane.guest_modal_selection(client_id).unwrap_or(0);
+        let session_name = self
+            .pane
+            .guest_session_name()
+            .unwrap_or_else(|| String::from("unknown"));
+        let columns = self.pane.get_content_columns();
+        let rows = self.pane.get_content_rows();
+        let content_x = self.pane.get_content_x();
+        let content_y = self.pane.get_content_y();
+        let shortcuts = self.pane.guest_modal_shortcuts();
+        let chunks = crate::panes::nested_session_modal::guest_modal_chunks(
+            columns,
+            rows,
+            content_x,
+            content_y,
+            &self.style,
+            &session_name,
+            selection,
+            &shortcuts,
+        );
+        self.output
+            .add_character_chunks_to_client(client_id, chunks, self.z_index)
+            .with_context(err_context)?;
         Ok(())
     }
     pub fn render_fake_cursor_if_needed(&mut self, client_id: ClientId) -> Result<()> {
@@ -186,8 +266,8 @@ impl<'a> PaneContentsAndUi<'a> {
                 .with_context(|| {
                     format!("failed to render fake cursor if needed for client {client_id}")
                 })?;
-            if let Some(colors) = client_id_to_colors(
-                *fake_cursor_client_id,
+            if let Some(colors) = client_slot_to_colors(
+                self.display_slot_of(*fake_cursor_client_id),
                 self.style.colors.multiplayer_user_colors,
             ) {
                 let cursor_is_visible = self
@@ -286,12 +366,17 @@ impl<'a> PaneContentsAndUi<'a> {
                     .contains(&client_id)
                     && !pane_focused_for_client_id),
         });
+        let frame_is_dimmed = self.frame_is_dimmed_for_client(client_id);
+        let guest_choice_indicator = self.pane.guest_choice_indicator(client_id);
+        let border_style = self.border_style(pane_is_floating);
         let frame_params = if session_is_mirrored {
             FrameParams {
                 focused_client,
                 is_main_client: pane_focused_for_client_id,
                 other_focused_clients: vec![],
+                other_focused_client_slots: vec![],
                 style: self.style,
+                border_style,
                 color: frame_color.map(|c| c.0),
                 other_cursors_exist_in_session: false,
                 pane_is_stacked_over: self.pane_is_stacked_over,
@@ -310,13 +395,22 @@ impl<'a> PaneContentsAndUi<'a> {
                 frame_geom_override: self.frame_geom_override,
                 stack_list_entry: stack_list_entry.clone(),
                 blank_title: self.blank_title,
+                mouse_scroll_resize: self.mouse_scroll_resize,
+                mouse_hover_tips: self.mouse_hover_tips,
+                dimmed: frame_is_dimmed,
+                guest_choice_indicator,
             }
         } else {
             FrameParams {
                 focused_client,
                 is_main_client: pane_focused_for_client_id,
+                other_focused_client_slots: other_focused_clients
+                    .iter()
+                    .map(|c_id| self.display_slot_of(*c_id))
+                    .collect(),
                 other_focused_clients,
                 style: self.style,
+                border_style,
                 color: frame_color.map(|c| c.0),
                 other_cursors_exist_in_session: self.multiple_users_exist_in_session,
                 pane_is_stacked_over: self.pane_is_stacked_over,
@@ -335,14 +429,21 @@ impl<'a> PaneContentsAndUi<'a> {
                 frame_geom_override: self.frame_geom_override,
                 stack_list_entry,
                 blank_title: self.blank_title,
+                mouse_scroll_resize: self.mouse_scroll_resize,
+                mouse_hover_tips: self.mouse_hover_tips,
+                dimmed: frame_is_dimmed,
+                guest_choice_indicator,
             }
         };
 
-        if let Some((frame_terminal_characters, vte_output)) = self
+        if let Some((mut frame_terminal_characters, vte_output)) = self
             .pane
             .render_frame(client_id, frame_params, client_mode)
             .with_context(err_context)?
         {
+            if self.frame_is_dimmed_for_client(client_id) {
+                dim_character_chunks(&mut frame_terminal_characters);
+            }
             self.output
                 .add_character_chunks_to_client(client_id, frame_terminal_characters, self.z_index)
                 .with_context(err_context)?;
@@ -354,6 +455,14 @@ impl<'a> PaneContentsAndUi<'a> {
 
         Ok(())
     }
+    pub fn border_style(&self, pane_is_floating: bool) -> BorderStyle {
+        let base = if pane_is_floating {
+            self.style.floating_border_style
+        } else {
+            self.style.border_style
+        };
+        self.pane.border_style_override().apply_to(base)
+    }
     pub fn render_pane_boundaries(
         &self,
         client_id: ClientId,
@@ -364,9 +473,11 @@ impl<'a> PaneContentsAndUi<'a> {
         pane_is_on_bottom_of_stack: bool,
     ) {
         let color = self.frame_color(client_id, client_mode, session_is_mirrored);
+        let pane_is_floating = false;
         boundaries.add_rect(
             self.pane.as_ref(),
             color,
+            self.border_style(pane_is_floating),
             pane_is_on_top_of_stack,
             pane_is_on_bottom_of_stack,
             self.pane_is_stacked_under,
@@ -400,8 +511,8 @@ impl<'a> PaneContentsAndUi<'a> {
                     if session_is_mirrored || !self.multiple_users_exist_in_session {
                         Some((self.style.colors.frame_selected.base, 3))
                     } else {
-                        let colors = client_id_to_colors(
-                            client_id,
+                        let colors = client_slot_to_colors(
+                            self.display_slot_of(client_id),
                             self.style.colors.multiplayer_user_colors,
                         );
                         colors.map(|colors| (colors.0, 3))

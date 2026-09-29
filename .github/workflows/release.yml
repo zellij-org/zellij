@@ -19,7 +19,7 @@ jobs:
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && '' || github.ref }}
           release_name: Release ${{ github.event_name == 'workflow_dispatch' && 'main' || github.ref }}
-          draft: ${{ github.event_name == 'workflow_dispatch' }}
+          draft: true
           prerelease: false
 
   build-release-normal:

@@ -7,8 +7,8 @@ use super::layout::{
 };
 use crate::cli::CliAction;
 use crate::data::{
-    CommandOrPlugin, Direction, KeyWithModifier, LayoutInfo, NewPanePlacement, OriginatingPlugin,
-    PaneId, Resize, UnblockCondition,
+    BorderStyleOverride, CommandOrPlugin, Direction, KeyWithModifier, LayoutInfo, NewPanePlacement,
+    OriginatingPlugin, PaneId, Resize, UnblockCondition,
 };
 use crate::data::{FloatingPaneCoordinates, InputMode};
 use crate::home::{find_default_config_dir, get_layout_dir};
@@ -24,6 +24,50 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use crate::position::Position;
+
+pub fn initial_panes_from_cli(
+    initial_command: Vec<String>,
+    initial_plugin: Option<String>,
+    cwd: Option<PathBuf>,
+    caller_cwd: PathBuf,
+    close_on_exit: bool,
+    start_suspended: bool,
+) -> Option<Vec<CommandOrPlugin>> {
+    if let Some(plugin_url) = initial_plugin {
+        let plugin = match RunPluginLocation::parse(&plugin_url, cwd.clone()) {
+            Ok(location) => RunPluginOrAlias::RunPlugin(RunPlugin {
+                _allow_exec_host_cmd: false,
+                location,
+                configuration: Default::default(),
+                initial_cwd: cwd,
+            }),
+            Err(_) => {
+                let mut plugin_alias = PluginAlias::new(&plugin_url, &None, cwd);
+                plugin_alias.set_caller_cwd_if_not_set(Some(caller_cwd));
+                RunPluginOrAlias::Alias(plugin_alias)
+            },
+        };
+        Some(vec![CommandOrPlugin::Plugin(plugin)])
+    } else if !initial_command.is_empty() {
+        let mut initial_command = initial_command;
+        let (command, args) = (
+            PathBuf::from(initial_command.remove(0)),
+            initial_command.into_iter().collect(),
+        );
+        let run_command_action = RunCommandAction {
+            command,
+            args,
+            cwd,
+            direction: None,
+            hold_on_close: !close_on_exit,
+            hold_on_start: start_suspended,
+            ..Default::default()
+        };
+        Some(vec![CommandOrPlugin::Command(run_command_action)])
+    } else {
+        None
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub enum ResizeDirection {
@@ -202,6 +246,10 @@ pub enum Action {
     ScrollDownAt {
         position: Position,
     },
+    ScrollToPreviousPrompt,
+    ScrollToNextPrompt,
+    SelectCommandAtScrollPosition,
+    CopyLastCommandOutput,
     /// Scroll down to bottom in focus pane.
     ScrollToBottom,
     /// Scroll up to top in focus pane.
@@ -216,6 +264,7 @@ pub enum Action {
     HalfPageScrollDown,
     /// Toggle between fullscreen focus pane and normal layout.
     ToggleFocusFullscreen,
+    ToggleFocusNoUiFullscreen,
     /// Toggle frames around panes in the UI
     TogglePaneFrames,
     SetPaneFrameStyle(PaneFrameStyle),
@@ -235,6 +284,7 @@ pub enum Action {
         command: Option<RunCommandAction>,
         unblock_condition: Option<UnblockCondition>,
         near_current_pane: bool,
+        no_focus: bool,
         tab_id: Option<usize>,
     },
     /// Open the file in a new pane using the default editor
@@ -248,6 +298,7 @@ pub enum Action {
         start_suppressed: bool,
         coordinates: Option<FloatingPaneCoordinates>,
         near_current_pane: bool,
+        no_focus: bool,
         tab_id: Option<usize>,
     },
     /// Open a new floating pane
@@ -257,6 +308,7 @@ pub enum Action {
         pane_name: Option<String>,
         coordinates: Option<FloatingPaneCoordinates>,
         near_current_pane: bool,
+        no_focus: bool,
         tab_id: Option<usize>,
     },
     /// Open a new tiled (embedded, non-floating) pane
@@ -266,7 +318,9 @@ pub enum Action {
         command: Option<RunCommandAction>,
         pane_name: Option<String>,
         near_current_pane: bool,
+        no_focus: bool,
         borderless: Option<bool>,
+        border_style: Option<BorderStyleOverride>,
         tab_id: Option<usize>,
     },
     /// Open a new pane in place of the focused one, suppressing it instead
@@ -275,6 +329,7 @@ pub enum Action {
         command: Option<RunCommandAction>,
         pane_name: Option<String>,
         near_current_pane: bool,
+        no_focus: bool,
         pane_id_to_replace: Option<PaneId>,
         close_replaced_pane: bool,
         tab_id: Option<usize>,
@@ -284,6 +339,7 @@ pub enum Action {
         command: Option<RunCommandAction>,
         pane_name: Option<String>,
         near_current_pane: bool,
+        no_focus: bool,
         tab_id: Option<usize>,
     },
     /// Embed focused pane in tab if floating or float focused pane if embedded
@@ -347,6 +403,7 @@ pub enum Action {
     Run {
         command: RunCommandAction,
         near_current_pane: bool,
+        no_focus: bool,
     },
     /// Set pane default foreground/background color
     SetPaneColor {
@@ -388,6 +445,7 @@ pub enum Action {
         close_replaced_pane: bool,
         skip_cache: bool,
         cwd: Option<PathBuf>,
+        no_focus: bool,
         tab_id: Option<usize>,
     },
     MouseEvent {
@@ -415,9 +473,14 @@ pub enum Action {
         option: SearchOption,
     },
     ToggleMouseMode,
-    ToggleMobileMode,
     PreviousSwapLayout,
     NextSwapLayout,
+    ApplyTiledSwapLayout {
+        name: String,
+    },
+    ApplyFloatingSwapLayout {
+        name: String,
+    },
     /// Override the layout of the active tab
     OverrideLayout {
         tabs: Vec<TabLayoutInfo>,
@@ -434,6 +497,7 @@ pub enum Action {
         pane_name: Option<String>,
         skip_cache: bool,
         cwd: Option<PathBuf>,
+        no_focus: bool,
         tab_id: Option<usize>,
     },
     /// Returns: Created pane ID (format: plugin_<id>)
@@ -443,6 +507,7 @@ pub enum Action {
         skip_cache: bool,
         cwd: Option<PathBuf>,
         coordinates: Option<FloatingPaneCoordinates>,
+        no_focus: bool,
         tab_id: Option<usize>,
     },
     /// Returns: Created pane ID (format: plugin_<id>)
@@ -451,6 +516,7 @@ pub enum Action {
         pane_name: Option<String>,
         skip_cache: bool,
         close_replaced_pane: bool,
+        no_focus: bool,
         tab_id: Option<usize>,
     },
     StartOrReloadPlugin {
@@ -497,6 +563,9 @@ pub enum Action {
     BreakPane,
     BreakPaneRight,
     BreakPaneLeft,
+    FocusHostSession,
+    FocusGuestSession,
+    ToggleHostFullscreen,
     RenameSession {
         name: String,
     },
@@ -519,7 +588,7 @@ pub enum Action {
         payload: Option<String>,
         args: Option<BTreeMap<String, String>>,
         plugin: Option<String>,
-        plugin_id: Option<u32>, // supercedes plugin if present
+        plugin_id: Option<u32>, // supersedes plugin if present
         configuration: Option<BTreeMap<String, String>>,
         launch_new: bool,
         skip_cache: bool,
@@ -562,6 +631,10 @@ pub enum Action {
     SetPaneBorderless {
         pane_id: PaneId,
         borderless: bool,
+    },
+    SetPaneBorderStyle {
+        pane_id: PaneId,
+        border_style: BorderStyleOverride,
     },
     TogglePaneInGroup,
     ToggleGroupMarking,
@@ -612,6 +685,9 @@ pub enum Action {
     ToggleFocusFullscreenByPaneId {
         pane_id: PaneId,
     },
+    ToggleFocusNoUiFullscreenByPaneId {
+        pane_id: PaneId,
+    },
     TogglePaneEmbedOrFloatingByPaneId {
         pane_id: PaneId,
     },
@@ -646,6 +722,14 @@ pub enum Action {
     },
     NextSwapLayoutByTabId {
         id: u64,
+    },
+    ApplyTiledSwapLayoutByTabId {
+        id: u64,
+        name: String,
+    },
+    ApplyFloatingSwapLayoutByTabId {
+        id: u64,
+        name: String,
     },
     MoveTabByTabId {
         id: u64,
@@ -1007,6 +1091,16 @@ impl Action {
                 },
                 None => Ok(vec![Action::ToggleFocusFullscreen]),
             },
+            CliAction::ToggleNoUiFullscreen { pane_id } => match pane_id {
+                Some(pane_id_str) => {
+                    let pane_id = PaneId::from_str(&pane_id_str)
+                        .map_err(|_| format!(
+                            "Malformed pane id: {pane_id_str}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)"
+                        ))?;
+                    Ok(vec![Action::ToggleFocusNoUiFullscreenByPaneId { pane_id }])
+                },
+                None => Ok(vec![Action::ToggleFocusNoUiFullscreen]),
+            },
             CliAction::TogglePaneFrames => Ok(vec![Action::TogglePaneFrames]),
             CliAction::SetPaneFrameStyle { style } => Ok(vec![Action::SetPaneFrameStyle(style)]),
             CliAction::ToggleActiveSyncTab { tab_id } => match tab_id {
@@ -1039,9 +1133,13 @@ impl Action {
                 block_until_exit,
                 unblock_condition,
                 near_current_pane,
+                no_focus,
                 borderless,
+                border_style,
                 tab_id,
             } => {
+                let border_style =
+                    BorderStyleOverride::from_optional_cli_string(border_style.as_deref())?;
                 let pane_id_to_replace = match pane_id {
                     Some(pane_id_str) => match PaneId::from_str(&pane_id_str) {
                         Ok(parsed_pane_id) => Some(parsed_pane_id),
@@ -1097,24 +1195,28 @@ impl Action {
                     };
 
                     let placement = if floating {
-                        NewPanePlacement::Floating(FloatingPaneCoordinates::new(
-                            x, y, width, height, pinned, borderless,
+                        NewPanePlacement::Floating(FloatingPaneCoordinates::merge_border_style(
+                            FloatingPaneCoordinates::new(x, y, width, height, pinned, borderless),
+                            border_style,
                         ))
                     } else if in_place {
                         NewPanePlacement::InPlace {
                             pane_id_to_replace,
                             close_replaced_pane,
                             borderless,
+                            border_style,
                         }
                     } else if stacked {
                         NewPanePlacement::Stacked {
                             pane_id_to_stack_under: None,
                             borderless,
+                            border_style,
                         }
                     } else {
                         NewPanePlacement::Tiled {
                             direction,
                             borderless,
+                            border_style,
                         }
                     };
 
@@ -1124,6 +1226,7 @@ impl Action {
                         command,
                         unblock_condition,
                         near_current_pane,
+                        no_focus,
                         tab_id,
                     }])
                 } else if let Some(plugin) = plugin {
@@ -1153,9 +1256,13 @@ impl Action {
                             pane_name: name,
                             skip_cache: skip_plugin_cache,
                             cwd,
-                            coordinates: FloatingPaneCoordinates::new(
-                                x, y, width, height, pinned, borderless,
+                            coordinates: FloatingPaneCoordinates::merge_border_style(
+                                FloatingPaneCoordinates::new(
+                                    x, y, width, height, pinned, borderless,
+                                ),
+                                border_style,
                             ),
+                            no_focus,
                             tab_id,
                         }])
                     } else if in_place {
@@ -1164,6 +1271,7 @@ impl Action {
                             pane_name: name,
                             skip_cache: skip_plugin_cache,
                             close_replaced_pane,
+                            no_focus,
                             tab_id,
                         }])
                     } else {
@@ -1180,6 +1288,7 @@ impl Action {
                             pane_name: name,
                             skip_cache: skip_plugin_cache,
                             cwd,
+                            no_focus,
                             tab_id,
                         }])
                     }
@@ -1201,10 +1310,14 @@ impl Action {
                         Ok(vec![Action::NewFloatingPane {
                             command: Some(run_command_action),
                             pane_name: name,
-                            coordinates: FloatingPaneCoordinates::new(
-                                x, y, width, height, pinned, borderless,
+                            coordinates: FloatingPaneCoordinates::merge_border_style(
+                                FloatingPaneCoordinates::new(
+                                    x, y, width, height, pinned, borderless,
+                                ),
+                                border_style,
                             ),
                             near_current_pane,
+                            no_focus,
                             tab_id,
                         }])
                     } else if in_place {
@@ -1212,6 +1325,7 @@ impl Action {
                             command: Some(run_command_action),
                             pane_name: name,
                             near_current_pane,
+                            no_focus,
                             pane_id_to_replace,
                             close_replaced_pane,
                             tab_id,
@@ -1221,6 +1335,7 @@ impl Action {
                             command: Some(run_command_action),
                             pane_name: name,
                             near_current_pane,
+                            no_focus,
                             tab_id,
                         }])
                     } else {
@@ -1229,7 +1344,9 @@ impl Action {
                             command: Some(run_command_action),
                             pane_name: name,
                             near_current_pane,
+                            no_focus,
                             borderless,
+                            border_style,
                             tab_id,
                         }])
                     }
@@ -1238,10 +1355,14 @@ impl Action {
                         Ok(vec![Action::NewFloatingPane {
                             command: None,
                             pane_name: name,
-                            coordinates: FloatingPaneCoordinates::new(
-                                x, y, width, height, pinned, borderless,
+                            coordinates: FloatingPaneCoordinates::merge_border_style(
+                                FloatingPaneCoordinates::new(
+                                    x, y, width, height, pinned, borderless,
+                                ),
+                                border_style,
                             ),
                             near_current_pane,
+                            no_focus,
                             tab_id,
                         }])
                     } else if in_place {
@@ -1249,6 +1370,7 @@ impl Action {
                             command: None,
                             pane_name: name,
                             near_current_pane,
+                            no_focus,
                             pane_id_to_replace,
                             close_replaced_pane,
                             tab_id,
@@ -1258,6 +1380,7 @@ impl Action {
                             command: None,
                             pane_name: name,
                             near_current_pane,
+                            no_focus,
                             tab_id,
                         }])
                     } else {
@@ -1266,7 +1389,9 @@ impl Action {
                             command: None,
                             pane_name: name,
                             near_current_pane,
+                            no_focus,
                             borderless,
+                            border_style,
                             tab_id,
                         }])
                     }
@@ -1286,9 +1411,13 @@ impl Action {
                 height,
                 pinned,
                 near_current_pane,
+                no_focus,
                 borderless,
+                border_style,
                 tab_id,
             } => {
+                let border_style =
+                    BorderStyleOverride::from_optional_cli_string(border_style.as_deref())?;
                 let mut file = file;
                 let current_dir = get_current_dir();
                 let cwd = cwd
@@ -1307,10 +1436,12 @@ impl Action {
                     in_place,
                     close_replaced_pane,
                     start_suppressed,
-                    coordinates: FloatingPaneCoordinates::new(
-                        x, y, width, height, pinned, borderless,
+                    coordinates: FloatingPaneCoordinates::merge_border_style(
+                        FloatingPaneCoordinates::new(x, y, width, height, pinned, borderless),
+                        border_style,
                     ),
                     near_current_pane,
+                    no_focus,
                     tab_id,
                 }])
             },
@@ -1414,6 +1545,7 @@ impl Action {
                 block_until_exit_success,
                 block_until_exit_failure,
                 block_until_exit,
+                no_focus,
             } => {
                 let current_dir = get_current_dir();
                 let cwd = cwd
@@ -1431,44 +1563,14 @@ impl Action {
                     None
                 };
 
-                // Parse initial_panes from initial_command or initial_plugin
-                let initial_panes = if let Some(plugin_url) = initial_plugin {
-                    let plugin = match RunPluginLocation::parse(&plugin_url, cwd.clone()) {
-                        Ok(location) => RunPluginOrAlias::RunPlugin(RunPlugin {
-                            _allow_exec_host_cmd: false,
-                            location,
-                            configuration: Default::default(),
-                            initial_cwd: cwd.clone(),
-                        }),
-                        Err(_) => {
-                            let mut plugin_alias =
-                                PluginAlias::new(&plugin_url, &None, cwd.clone());
-                            plugin_alias.set_caller_cwd_if_not_set(Some(current_dir.clone()));
-                            RunPluginOrAlias::Alias(plugin_alias)
-                        },
-                    };
-                    Some(vec![CommandOrPlugin::Plugin(plugin)])
-                } else if !initial_command.is_empty() {
-                    let mut command: Vec<String> = initial_command.clone();
-                    let (command, args) = (
-                        PathBuf::from(command.remove(0)),
-                        command.into_iter().collect(),
-                    );
-                    let hold_on_close = !close_on_exit;
-                    let hold_on_start = start_suspended;
-                    let run_command_action = RunCommandAction {
-                        command,
-                        args,
-                        cwd: cwd.clone(),
-                        direction: None,
-                        hold_on_close,
-                        hold_on_start,
-                        ..Default::default()
-                    };
-                    Some(vec![CommandOrPlugin::Command(run_command_action)])
-                } else {
-                    None
-                };
+                let initial_panes = initial_panes_from_cli(
+                    initial_command,
+                    initial_plugin,
+                    cwd.clone(),
+                    current_dir.clone(),
+                    close_on_exit,
+                    start_suspended,
+                );
                 if let Some(raw_layout) = layout_string {
                     let layout_source_name = "layout-string".to_owned();
                     let path_to_raw_layout = layout_source_name.clone();
@@ -1520,8 +1622,8 @@ impl Action {
                             .any(|(_, layout, _)| layout.focus.unwrap_or(false));
                         for (tab_name, layout, floating_panes_layout) in tabs.drain(..) {
                             let name = tab_name.or_else(|| name.clone());
-                            let should_change_focus_to_new_tab =
-                                layout.focus.unwrap_or_else(|| {
+                            let should_change_focus_to_new_tab = !no_focus
+                                && layout.focus.unwrap_or_else(|| {
                                     if !has_focused_tab {
                                         has_focused_tab = true;
                                         true
@@ -1546,7 +1648,7 @@ impl Action {
                         let swap_tiled_layouts = Some(layout.swap_tiled_layouts.clone());
                         let swap_floating_layouts = Some(layout.swap_floating_layouts.clone());
                         let (layout, floating_panes_layout) = layout.new_tab();
-                        let should_change_focus_to_new_tab = true;
+                        let should_change_focus_to_new_tab = !no_focus;
                         Ok(vec![Action::NewTab {
                             tiled_layout: Some(layout),
                             floating_layouts: floating_panes_layout,
@@ -1636,8 +1738,8 @@ impl Action {
                             .any(|(_, layout, _)| layout.focus.unwrap_or(false));
                         for (tab_name, layout, floating_panes_layout) in tabs.drain(..) {
                             let name = tab_name.or_else(|| name.clone());
-                            let should_change_focus_to_new_tab =
-                                layout.focus.unwrap_or_else(|| {
+                            let should_change_focus_to_new_tab = !no_focus
+                                && layout.focus.unwrap_or_else(|| {
                                     if !has_focused_tab {
                                         has_focused_tab = true;
                                         true
@@ -1662,7 +1764,7 @@ impl Action {
                         let swap_tiled_layouts = Some(layout.swap_tiled_layouts.clone());
                         let swap_floating_layouts = Some(layout.swap_floating_layouts.clone());
                         let (layout, floating_panes_layout) = layout.new_tab();
-                        let should_change_focus_to_new_tab = true;
+                        let should_change_focus_to_new_tab = !no_focus;
                         Ok(vec![Action::NewTab {
                             tiled_layout: Some(layout),
                             floating_layouts: floating_panes_layout,
@@ -1676,7 +1778,7 @@ impl Action {
                         }])
                     }
                 } else {
-                    let should_change_focus_to_new_tab = true;
+                    let should_change_focus_to_new_tab = !no_focus;
                     Ok(vec![Action::NewTab {
                         tiled_layout: None,
                         floating_layouts: vec![],
@@ -1697,6 +1799,20 @@ impl Action {
             CliAction::NextSwapLayout { tab_id } => match tab_id {
                 Some(id) => Ok(vec![Action::NextSwapLayoutByTabId { id: id as u64 }]),
                 None => Ok(vec![Action::NextSwapLayout]),
+            },
+            CliAction::ApplyTiledSwapLayout { name, tab_id } => match tab_id {
+                Some(id) => Ok(vec![Action::ApplyTiledSwapLayoutByTabId {
+                    id: id as u64,
+                    name,
+                }]),
+                None => Ok(vec![Action::ApplyTiledSwapLayout { name }]),
+            },
+            CliAction::ApplyFloatingSwapLayout { name, tab_id } => match tab_id {
+                Some(id) => Ok(vec![Action::ApplyFloatingSwapLayoutByTabId {
+                    id: id as u64,
+                    name,
+                }]),
+                None => Ok(vec![Action::ApplyFloatingSwapLayout { name }]),
             },
             CliAction::OverrideLayout {
                 layout,
@@ -1854,6 +1970,7 @@ impl Action {
                 close_replaced_pane,
                 configuration,
                 skip_plugin_cache,
+                no_focus,
                 tab_id,
             } => {
                 let current_dir = get_current_dir();
@@ -1870,6 +1987,7 @@ impl Action {
                     close_replaced_pane,
                     skip_cache: skip_plugin_cache,
                     cwd: Some(current_dir),
+                    no_focus,
                     tab_id,
                 }])
             },
@@ -1986,10 +2104,14 @@ impl Action {
                 height,
                 pinned,
                 borderless,
+                border_style,
             } => {
-                let Some(coordinates) =
-                    FloatingPaneCoordinates::new(x, y, width, height, pinned, borderless)
-                else {
+                let border_style =
+                    BorderStyleOverride::from_optional_cli_string(border_style.as_deref())?;
+                let Some(coordinates) = FloatingPaneCoordinates::merge_border_style(
+                    FloatingPaneCoordinates::new(x, y, width, height, pinned, borderless),
+                    border_style,
+                ) else {
                     return Err(format!("Failed to parse floating pane coordinates"));
                 };
                 let parsed_pane_id = PaneId::from_str(&pane_id);
@@ -2003,6 +2125,29 @@ impl Action {
                     Err(_e) => {
                         Err(format!(
                             "Malformed pane id: {}, expecting a space separated list of either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)",
+                            pane_id
+                        ))
+                    }
+                }
+            },
+            CliAction::SetPaneBorderStyle {
+                pane_id,
+                border_style,
+            } => {
+                let border_style =
+                    BorderStyleOverride::from_optional_cli_string(border_style.as_deref())?
+                        .unwrap_or_default();
+                let parsed_pane_id = PaneId::from_str(&pane_id);
+                match parsed_pane_id {
+                    Ok(parsed_pane_id) => {
+                        Ok(vec![Action::SetPaneBorderStyle {
+                            pane_id: parsed_pane_id,
+                            border_style,
+                        }])
+                    },
+                    Err(_e) => {
+                        Err(format!(
+                            "Malformed pane id: {}, expecting either a bare integer (eg. 1), a terminal pane id (eg. terminal_1) or a plugin pane id (eg. plugin_1)",
                             pane_id
                         ))
                     }
@@ -2854,6 +2999,33 @@ mod tests {
         assert!(matches!(actions[0], Action::ToggleFocusFullscreen));
     }
 
+    #[test]
+    fn test_toggle_no_ui_fullscreen_with_pane_id() {
+        let cli_action = CliAction::ToggleNoUiFullscreen {
+            pane_id: Some("terminal_16".to_string()),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::ToggleFocusNoUiFullscreenByPaneId { pane_id } => {
+                assert!(matches!(pane_id, PaneId::Terminal(16)));
+            },
+            _ => panic!("Expected ToggleFocusNoUiFullscreenByPaneId action"),
+        }
+    }
+
+    #[test]
+    fn test_toggle_no_ui_fullscreen_without_pane_id() {
+        let cli_action = CliAction::ToggleNoUiFullscreen { pane_id: None };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        assert!(result.is_ok());
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(actions[0], Action::ToggleFocusNoUiFullscreen));
+    }
+
     // 15. TogglePaneEmbedOrFloating
     #[test]
     fn test_toggle_pane_embed_or_floating_with_pane_id() {
@@ -3474,6 +3646,7 @@ mod tests {
             block_until_exit: false,
             block_until_exit_success: false,
             block_until_exit_failure: false,
+            no_focus: false,
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
@@ -3510,6 +3683,7 @@ mod tests {
             block_until_exit: false,
             block_until_exit_success: false,
             block_until_exit_failure: false,
+            no_focus: false,
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_err());
@@ -3578,6 +3752,194 @@ mod tests {
         assert!(result.is_err());
     }
 
+    fn new_pane_cli_action(floating: bool, border_style: Option<&str>) -> CliAction {
+        CliAction::NewPane {
+            direction: None,
+            command: vec![],
+            plugin: None,
+            cwd: None,
+            floating,
+            in_place: false,
+            close_replaced_pane: false,
+            pane_id: None,
+            name: None,
+            close_on_exit: false,
+            start_suspended: false,
+            configuration: None,
+            skip_plugin_cache: false,
+            x: None,
+            y: None,
+            width: None,
+            height: None,
+            pinned: None,
+            stacked: false,
+            blocking: false,
+            block_until_exit_success: false,
+            block_until_exit_failure: false,
+            block_until_exit: false,
+            unblock_condition: None,
+            near_current_pane: false,
+            no_focus: false,
+            borderless: None,
+            tab_id: None,
+            border_style: border_style.map(|s| s.to_string()),
+        }
+    }
+
+    #[test]
+    fn test_new_tiled_pane_with_border_style() {
+        let result = Action::actions_from_cli(
+            new_pane_cli_action(false, Some("top:double,rounded")),
+            Box::new(|| PathBuf::from("/tmp")),
+            None,
+        );
+        let actions = result.unwrap();
+        match &actions[0] {
+            Action::NewTiledPane { border_style, .. } => {
+                assert_eq!(
+                    *border_style,
+                    Some(BorderStyleOverride {
+                        top: Some(crate::data::LineStyle::Double),
+                        rounded_corners: Some(true),
+                        ..Default::default()
+                    })
+                );
+            },
+            other => panic!("Expected NewTiledPane action, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_new_floating_pane_with_border_style() {
+        let result = Action::actions_from_cli(
+            new_pane_cli_action(true, Some("heavy")),
+            Box::new(|| PathBuf::from("/tmp")),
+            None,
+        );
+        let actions = result.unwrap();
+        match &actions[0] {
+            Action::NewFloatingPane { coordinates, .. } => {
+                assert_eq!(
+                    coordinates.as_ref().unwrap().border_style,
+                    Some(BorderStyleOverride {
+                        all: Some(crate::data::LineStyle::Heavy),
+                        ..Default::default()
+                    })
+                );
+            },
+            other => panic!("Expected NewFloatingPane action, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_new_pane_without_border_style() {
+        let result = Action::actions_from_cli(
+            new_pane_cli_action(false, None),
+            Box::new(|| PathBuf::from("/tmp")),
+            None,
+        );
+        let actions = result.unwrap();
+        match &actions[0] {
+            Action::NewTiledPane { border_style, .. } => assert_eq!(*border_style, None),
+            other => panic!("Expected NewTiledPane action, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_new_pane_with_malformed_border_style_is_an_error() {
+        let result = Action::actions_from_cli(
+            new_pane_cli_action(false, Some("squiggly")),
+            Box::new(|| PathBuf::from("/tmp")),
+            None,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_set_pane_border_style() {
+        let cli_action = CliAction::SetPaneBorderStyle {
+            pane_id: "plugin_4".to_string(),
+            border_style: Some("bottom:heavy".to_string()),
+        };
+        let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
+        let actions = result.unwrap();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::SetPaneBorderStyle {
+                pane_id,
+                border_style,
+            } => {
+                assert_eq!(*pane_id, PaneId::Plugin(4));
+                assert_eq!(
+                    *border_style,
+                    BorderStyleOverride {
+                        bottom: Some(crate::data::LineStyle::Heavy),
+                        ..Default::default()
+                    }
+                );
+            },
+            other => panic!("Expected SetPaneBorderStyle action, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_set_pane_border_style_without_a_style_clears_the_override() {
+        let cli_action = CliAction::SetPaneBorderStyle {
+            pane_id: "3".to_string(),
+            border_style: None,
+        };
+        let actions =
+            Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None).unwrap();
+        match &actions[0] {
+            Action::SetPaneBorderStyle { border_style, .. } => {
+                assert!(border_style.is_empty());
+            },
+            other => panic!("Expected SetPaneBorderStyle action, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_set_pane_border_style_with_a_malformed_pane_id_is_an_error() {
+        let cli_action = CliAction::SetPaneBorderStyle {
+            pane_id: "not_a_pane".to_string(),
+            border_style: None,
+        };
+        assert!(
+            Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None).is_err()
+        );
+    }
+
+    #[test]
+    fn test_change_floating_pane_coordinates_with_border_style() {
+        let cli_action = CliAction::ChangeFloatingPaneCoordinates {
+            pane_id: "terminal_2".to_string(),
+            x: Some("10".to_string()),
+            y: None,
+            width: None,
+            height: None,
+            pinned: None,
+            borderless: None,
+            border_style: Some("double".to_string()),
+        };
+        let actions =
+            Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None).unwrap();
+        match &actions[0] {
+            Action::ChangeFloatingPaneCoordinates { coordinates, .. } => {
+                assert_eq!(
+                    coordinates.border_style,
+                    Some(BorderStyleOverride {
+                        all: Some(crate::data::LineStyle::Double),
+                        ..Default::default()
+                    })
+                );
+            },
+            other => panic!(
+                "Expected ChangeFloatingPaneCoordinates action, got {:?}",
+                other
+            ),
+        }
+    }
+
     // Tab-targeting for pane creation commands
 
     #[test]
@@ -3608,8 +3970,10 @@ mod tests {
             block_until_exit: false,
             unblock_condition: None,
             near_current_pane: false,
+            no_focus: false,
             borderless: None,
             tab_id: Some(3),
+            border_style: None,
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
@@ -3651,8 +4015,10 @@ mod tests {
             block_until_exit: false,
             unblock_condition: None,
             near_current_pane: false,
+            no_focus: false,
             borderless: None,
             tab_id: None,
+            border_style: None,
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
@@ -3694,8 +4060,10 @@ mod tests {
             block_until_exit: false,
             unblock_condition: None,
             near_current_pane: false,
+            no_focus: false,
             borderless: None,
             tab_id: None,
+            border_style: None,
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
@@ -3739,8 +4107,10 @@ mod tests {
             block_until_exit: false,
             unblock_condition: None,
             near_current_pane: false,
+            no_focus: false,
             borderless: None,
             tab_id: None,
+            border_style: None,
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_err());
@@ -3775,8 +4145,10 @@ mod tests {
             block_until_exit: false,
             unblock_condition: None,
             near_current_pane: false,
+            no_focus: false,
             borderless: None,
             tab_id: Some(5),
+            border_style: None,
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
@@ -3818,8 +4190,10 @@ mod tests {
             block_until_exit: false,
             unblock_condition: None,
             near_current_pane: false,
+            no_focus: false,
             borderless: None,
             tab_id: Some(1),
+            border_style: None,
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
@@ -3861,8 +4235,10 @@ mod tests {
             block_until_exit: false,
             unblock_condition: None,
             near_current_pane: false,
+            no_focus: false,
             borderless: None,
             tab_id: Some(2),
+            border_style: None,
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
@@ -3892,8 +4268,10 @@ mod tests {
             height: None,
             pinned: None,
             near_current_pane: false,
+            no_focus: false,
             borderless: None,
             tab_id: Some(4),
+            border_style: None,
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
@@ -3923,8 +4301,10 @@ mod tests {
             height: None,
             pinned: None,
             near_current_pane: false,
+            no_focus: false,
             borderless: None,
             tab_id: None,
+            border_style: None,
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
@@ -3966,8 +4346,10 @@ mod tests {
             block_until_exit: false,
             unblock_condition: None,
             near_current_pane: false,
+            no_focus: false,
             borderless: None,
             tab_id: Some(2),
+            border_style: None,
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
@@ -4009,8 +4391,10 @@ mod tests {
             block_until_exit: false,
             unblock_condition: None,
             near_current_pane: false,
+            no_focus: false,
             borderless: None,
             tab_id: Some(1),
+            border_style: None,
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());

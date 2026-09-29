@@ -4,6 +4,8 @@ use std::rc::Rc;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Instant;
 
+use zellij_server::panes::kitty_graphics::KittyImageStore;
+pub use zellij_server::panes::terminal_character::AnsiCode;
 use zellij_server::panes::{LinkHandler, TerminalPane};
 use zellij_utils::data::{Palette, Style};
 use zellij_utils::pane_size::{Dimension, PaneGeom, Size, SizeInPixels};
@@ -18,6 +20,79 @@ struct ReceivedBytes {
 struct ReceivedBytesWithChangeSignal {
     received_bytes: Mutex<ReceivedBytes>,
     change_signal: Condvar,
+    stdout_tap: Mutex<Option<crossbeam::channel::Sender<Vec<u8>>>>,
+    host_responder: Mutex<Option<HostResponder>>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HostTerminal {
+    Basic,
+    Kitty,
+    KittyZlib,
+    Manual,
+}
+
+const PRIMARY_DA_QUERY: &[u8] = b"\x1b[c";
+const PRIMARY_DA_REPLY: &[u8] = b"\x1b[?62;22c";
+const KITTY_GRAPHICS_PROBE_PREFIX: &[u8] = b"\x1b_Ga=q,i=31,";
+const KITTY_GRAPHICS_PROBE_REPLY: &[u8] = b"\x1b_Gi=31;OK\x1b\\";
+const KITTY_ZLIB_PROBE_PREFIX: &[u8] = b"\x1b_Ga=q,i=32,";
+const KITTY_ZLIB_PROBE_REPLY: &[u8] = b"\x1b_Gi=32;OK\x1b\\";
+const CELL_SIZE_QUERY: &[u8] = b"\x1b[16t";
+const CELL_SIZE_REPLY: &[u8] = b"\x1b[6;21;8t";
+
+struct HostResponder {
+    host_terminal: HostTerminal,
+    stdin_tx: crossbeam::channel::Sender<Vec<u8>>,
+    carry: Vec<u8>,
+}
+
+impl HostResponder {
+    fn answers(&self) -> &'static [(&'static [u8], &'static [u8])] {
+        match self.host_terminal {
+            HostTerminal::Basic => &[(PRIMARY_DA_QUERY, PRIMARY_DA_REPLY)],
+            HostTerminal::Kitty => &[
+                (PRIMARY_DA_QUERY, PRIMARY_DA_REPLY),
+                (KITTY_GRAPHICS_PROBE_PREFIX, KITTY_GRAPHICS_PROBE_REPLY),
+                (CELL_SIZE_QUERY, CELL_SIZE_REPLY),
+            ],
+            HostTerminal::KittyZlib => &[
+                (PRIMARY_DA_QUERY, PRIMARY_DA_REPLY),
+                (KITTY_GRAPHICS_PROBE_PREFIX, KITTY_GRAPHICS_PROBE_REPLY),
+                (KITTY_ZLIB_PROBE_PREFIX, KITTY_ZLIB_PROBE_REPLY),
+                (CELL_SIZE_QUERY, CELL_SIZE_REPLY),
+            ],
+            HostTerminal::Manual => &[],
+        }
+    }
+
+    fn observe(&mut self, bytes: &[u8]) {
+        let answers = self.answers();
+        let mut data = std::mem::take(&mut self.carry);
+        data.extend_from_slice(bytes);
+        let mut replies = Vec::new();
+        let mut index = 0;
+        while index < data.len() {
+            if data[index] == 0x1b {
+                let rest = &data[index..];
+                if let Some((query, reply)) =
+                    answers.iter().find(|(query, _)| rest.starts_with(query))
+                {
+                    replies.extend_from_slice(reply);
+                    index += query.len();
+                    continue;
+                }
+                if answers.iter().any(|(query, _)| query.starts_with(rest)) {
+                    self.carry = rest.to_vec();
+                    break;
+                }
+            }
+            index += 1;
+        }
+        if !replies.is_empty() {
+            let _ = self.stdin_tx.send(replies);
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -40,10 +115,64 @@ impl ClientScreen {
         })
     }
 
+    pub fn set_host_terminal(
+        &self,
+        host_terminal: HostTerminal,
+        stdin_tx: crossbeam::channel::Sender<Vec<u8>>,
+    ) {
+        *self.inner.host_responder.lock().unwrap() = Some(HostResponder {
+            host_terminal,
+            stdin_tx,
+            carry: Vec::new(),
+        });
+    }
+
+    pub fn set_stdout_tap(&self, sender: crossbeam::channel::Sender<Vec<u8>>) {
+        *self.inner.stdout_tap.lock().unwrap() = Some(sender);
+    }
+
     pub fn snapshot(&self) -> GridSnapshot {
         let size = *self.size.lock().unwrap();
         let bytes = self.inner.received_bytes.lock().unwrap().bytes.clone();
         render_bytes(&bytes, size)
+    }
+
+    pub fn raw_bytes(&self) -> Vec<u8> {
+        self.inner.received_bytes.lock().unwrap().bytes.clone()
+    }
+
+    pub fn wait_until_raw_output(&self, what: &str, predicate: impl Fn(&[u8]) -> bool) -> Vec<u8> {
+        let deadline = Instant::now() + crate::default_timeout();
+        let mut received_bytes = self.inner.received_bytes.lock().unwrap();
+        loop {
+            if predicate(&received_bytes.bytes) {
+                return received_bytes.bytes.clone();
+            }
+            let now = Instant::now();
+            if now >= deadline {
+                let size = *self.size.lock().unwrap();
+                let grid_snapshot = render_bytes(&received_bytes.bytes, size);
+                panic!(
+                    "timed out waiting for: {}\nlast rendered grid:\n{}\n=== (received {} stdout bytes, generation {}) ===\n=== zellij log tail ({}) ===\n{}",
+                    what,
+                    grid_snapshot.text,
+                    received_bytes.bytes.len(),
+                    received_bytes.generation,
+                    crate::test_env::log_file_path().display(),
+                    crate::test_env::log_tail(40),
+                );
+            }
+            let last_generation = received_bytes.generation;
+            let (guard, _) = self
+                .inner
+                .change_signal
+                .wait_timeout(received_bytes, deadline - now)
+                .unwrap();
+            received_bytes = guard;
+            if received_bytes.generation == last_generation {
+                continue;
+            }
+        }
     }
 
     pub fn wait_until(
@@ -56,14 +185,19 @@ impl ClientScreen {
         loop {
             let size = *self.size.lock().unwrap();
             let grid_snapshot = render_bytes(&received_bytes.bytes, size);
-            if predicate(&grid_snapshot) {
+            if !grid_snapshot.bars_partially_drawn() && predicate(&grid_snapshot) {
                 return grid_snapshot;
             }
             let now = Instant::now();
             if now >= deadline {
                 panic!(
-                    "timed out waiting for: {}\ncursor: {:?}\nlast rendered grid:\n{}\n=== (received {} stdout bytes, generation {}) ===\n=== zellij log tail ({}) ===\n{}",
+                    "timed out waiting for: {}{}\ncursor: {:?}\nlast rendered grid:\n{}\n=== (received {} stdout bytes, generation {}) ===\n=== zellij log tail ({}) ===\n{}",
                     what,
+                    if grid_snapshot.bars_partially_drawn() {
+                        " (the status bar drew but the tab bar row stayed blank)"
+                    } else {
+                        ""
+                    },
                     grid_snapshot.cursor,
                     grid_snapshot.text,
                     received_bytes.bytes.len(),
@@ -95,7 +229,14 @@ impl std::io::Write for ClientScreenWriter {
         let mut received_bytes = self.inner.received_bytes.lock().unwrap();
         received_bytes.bytes.extend_from_slice(buf);
         received_bytes.generation += 1;
+        if let Some(stdout_tap) = self.inner.stdout_tap.lock().unwrap().as_ref() {
+            let _ = stdout_tap.send(buf.to_vec());
+        }
         self.inner.change_signal.notify_all();
+        drop(received_bytes);
+        if let Some(host_responder) = self.inner.host_responder.lock().unwrap().as_mut() {
+            host_responder.observe(buf);
+        }
         Ok(buf.len())
     }
     fn flush(&mut self) -> std::io::Result<()> {
@@ -129,15 +270,89 @@ impl CoordBuilder {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CellStyle {
+    pub dim: bool,
+    pub italic: bool,
+    pub bold: bool,
+    pub foreground: Option<AnsiCode>,
+}
+
 #[derive(Clone, Debug)]
 pub struct GridSnapshot {
     pub text: String,
     pub cursor: Option<CursorPosition>,
+    pub styles: Vec<Vec<CellStyle>>,
 }
 
 impl GridSnapshot {
     pub fn contains(&self, needle: &str) -> bool {
         self.text.contains(needle)
+    }
+    pub fn cell_style(&self, x: usize, y: usize) -> CellStyle {
+        self.styles
+            .get(y)
+            .and_then(|row| row.get(x))
+            .copied()
+            .unwrap_or_default()
+    }
+    pub fn cell_foreground(&self, x: usize, y: usize) -> Option<AnsiCode> {
+        self.cell_style(x, y).foreground
+    }
+    pub fn char_is_dim(&self, x: usize, y: usize) -> bool {
+        self.cell_style(x, y).dim
+    }
+    pub fn char_is_italic(&self, x: usize, y: usize) -> bool {
+        self.cell_style(x, y).italic
+    }
+    pub fn char_is_bold(&self, x: usize, y: usize) -> bool {
+        self.cell_style(x, y).bold
+    }
+    pub fn row_has_italic(&self, y: usize) -> bool {
+        self.styles
+            .get(y)
+            .map_or(false, |row| row.iter().any(|cell| cell.italic))
+    }
+    pub fn row_has_bold(&self, y: usize) -> bool {
+        self.styles
+            .get(y)
+            .map_or(false, |row| row.iter().any(|cell| cell.bold))
+    }
+    pub fn row_count(&self) -> usize {
+        self.styles.len()
+    }
+    pub fn row_of_line(&self, needle: &str) -> Option<usize> {
+        self.text.lines().position(|line| line.contains(needle))
+    }
+    pub fn region_has_dim(
+        &self,
+        x_range: std::ops::Range<usize>,
+        y_range: std::ops::Range<usize>,
+    ) -> bool {
+        for y in y_range {
+            for x in x_range.clone() {
+                if self.char_is_dim(x, y) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+    pub fn line_has_dim(&self, needle: &str) -> bool {
+        match self.row_of_line(needle) {
+            Some(y) => self
+                .styles
+                .get(y)
+                .map_or(false, |row| row.iter().any(|cell| cell.dim)),
+            None => false,
+        }
+    }
+    pub fn char_dim_of(&self, needle: &str) -> Option<bool> {
+        self.text.lines().enumerate().find_map(|(y, line)| {
+            line.find(needle)
+                .map(|byte_index| line[..byte_index].chars().count())
+                .map(|x| self.char_is_dim(x, y))
+        })
     }
     pub fn cursor_is_at(&self, coord: Coord) -> bool {
         self.cursor
@@ -151,6 +366,12 @@ impl GridSnapshot {
     }
     pub fn tab_bar_appears(&self) -> bool {
         self.text.contains("Tab #1")
+    }
+    pub fn bars_partially_drawn(&self) -> bool {
+        let lines: Vec<&str> = self.text.lines().collect();
+        let first_line_blank = lines.first().map_or(false, |line| line.trim().is_empty());
+        let status_bar_at_bottom = lines.iter().rev().take(2).any(|line| line.contains("LOCK"));
+        first_line_blank && status_bar_at_bottom
     }
     pub fn lines(&self) -> Vec<String> {
         self.text.lines().map(|l| l.to_owned()).collect()
@@ -166,9 +387,7 @@ impl std::fmt::Display for GridSnapshot {
 fn render_bytes(bytes: &[u8], win_size: Size) -> GridSnapshot {
     let mut terminal_pane = build_terminal_pane(win_size);
     let mut vte_parser = vte::Parser::new();
-    for &byte in bytes {
-        vte_parser.advance(&mut terminal_pane.grid, byte);
-    }
+    vte_parser.advance(&mut terminal_pane.grid, bytes);
 
     let cursor = terminal_pane
         .cursor_coordinates()
@@ -180,9 +399,18 @@ fn render_bytes(bytes: &[u8], win_size: Size) -> GridSnapshot {
             }
         });
     let mut text = String::new();
+    let mut styles: Vec<Vec<CellStyle>> = Vec::new();
     let output_lines = terminal_pane.read_buffer_as_lines();
     for (line_index, line) in output_lines.iter().enumerate() {
+        let mut style_row: Vec<CellStyle> = Vec::with_capacity(line.len());
         for (character_index, terminal_character) in line.iter().enumerate() {
+            let character_style = &terminal_character.styles;
+            style_row.push(CellStyle {
+                dim: matches!(character_style.dim, Some(AnsiCode::On)),
+                italic: matches!(character_style.italic, Some(AnsiCode::On)),
+                bold: matches!(character_style.bold, Some(AnsiCode::On)),
+                foreground: character_style.foreground,
+            });
             let character_position = CursorPosition {
                 x: character_index,
                 y: line_index,
@@ -193,11 +421,16 @@ fn render_bytes(bytes: &[u8], win_size: Size) -> GridSnapshot {
             }
             text.push(terminal_character.character);
         }
+        styles.push(style_row);
         if line_index != output_lines.len() - 1 {
             text.push('\n');
         }
     }
-    GridSnapshot { text, cursor }
+    GridSnapshot {
+        text,
+        cursor,
+        styles,
+    }
 }
 
 fn build_terminal_pane(win_size: Size) -> TerminalPane {
@@ -242,6 +475,7 @@ fn build_terminal_pane(win_size: Size) -> TerminalPane {
         link_handler,
         character_cell_size,
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         initial_pane_title,

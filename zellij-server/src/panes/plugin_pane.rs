@@ -1,9 +1,10 @@
 use std::collections::{BTreeSet, HashMap};
 use std::time::Instant;
 
-use crate::output::{CharacterChunk, SixelImageChunk};
+use crate::output::{CharacterChunk, KittyImageChunk, SixelImageChunk};
 use crate::panes::{
     grid::Grid,
+    kitty_graphics::KittyImageStore,
     sixel::SixelImageStore,
     terminal_pane::{BRACKETED_PASTE_BEGIN, BRACKETED_PASTE_END},
     LinkHandler, PaneId,
@@ -21,7 +22,8 @@ use std::rc::Rc;
 use vte;
 use zellij_utils::data::PaneContents;
 use zellij_utils::data::{
-    BareKey, KeyWithModifier, PermissionStatus, PermissionType, PluginPermission,
+    BareKey, BorderStyleOverride, KeyWithModifier, PermissionStatus, PermissionType,
+    PluginPermission,
 };
 use zellij_utils::pane_size::{Offset, SizeInPixels};
 use zellij_utils::position::Position;
@@ -60,6 +62,7 @@ macro_rules! get_or_create_grid {
                 $self.link_handler.clone(),
                 $self.character_cell_size.clone(),
                 $self.sixel_image_store.clone(),
+                $self.kitty_image_store.clone(),
                 $self.style.clone(),
                 $self.debug,
                 $self.arrow_fonts,
@@ -86,6 +89,7 @@ pub(crate) struct PluginPane {
     pub pane_name: String,
     pub style: Style,
     sixel_image_store: Rc<RefCell<SixelImageStore>>,
+    kitty_image_store: Rc<RefCell<KittyImageStore>>,
     terminal_emulator_colors: Rc<RefCell<Palette>>,
     terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
     link_handler: Rc<RefCell<LinkHandler>>,
@@ -96,6 +100,7 @@ pub(crate) struct PluginPane {
     prev_pane_name: String,
     frame: HashMap<ClientId, PaneFrame>,
     borderless: bool,
+    border_style_override: BorderStyleOverride,
     exclude_from_sync: bool,
     pane_frame_color_override: Option<(PaletteColor, Option<String>)>,
     invoked_with: Option<Run>,
@@ -117,6 +122,7 @@ impl PluginPane {
         title: String,
         pane_name: String,
         sixel_image_store: Rc<RefCell<SixelImageStore>>,
+        kitty_image_store: Rc<RefCell<KittyImageStore>>,
         terminal_emulator_colors: Rc<RefCell<Palette>>,
         terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
         link_handler: Rc<RefCell<LinkHandler>>,
@@ -142,6 +148,7 @@ impl PluginPane {
             content_offset: Offset::default(),
             pane_title: title,
             borderless: false,
+            border_style_override: BorderStyleOverride::default(),
             pane_name: pane_name.clone(),
             prev_pane_name: pane_name,
             terminal_emulator_colors,
@@ -150,6 +157,7 @@ impl PluginPane {
             link_handler,
             character_cell_size,
             sixel_image_store,
+            kitty_image_store,
             vte_parsers: HashMap::new(),
             grids: HashMap::new(),
             cursor_visibility: HashMap::new(),
@@ -246,9 +254,7 @@ impl Pane for PluginPane {
             .entry(client_id)
             .or_insert_with(|| vte::Parser::new());
 
-        for &byte in &vte_bytes {
-            vte_parser.advance(grid, byte);
-        }
+        vte_parser.advance(grid, &vte_bytes);
 
         self.should_render.insert(client_id, true);
     }
@@ -393,7 +399,14 @@ impl Pane for PluginPane {
     fn render(
         &mut self,
         client_id: Option<ClientId>,
-    ) -> Result<Option<(Vec<CharacterChunk>, Option<String>, Vec<SixelImageChunk>)>> {
+    ) -> Result<
+        Option<(
+            Vec<CharacterChunk>,
+            Option<String>,
+            Vec<SixelImageChunk>,
+            Vec<KittyImageChunk>,
+        )>,
+    > {
         if client_id.is_none() {
             return Ok(None);
         }
@@ -623,6 +636,11 @@ impl Pane for PluginPane {
     fn clear_scroll(&mut self) {
         // noop
     }
+    fn set_selection_options(&mut self, osc133_command_selection: bool, word_separators: &str) {
+        for grid in self.grids.values_mut() {
+            grid.set_selection_options(osc133_command_selection, word_separators);
+        }
+    }
     fn start_selection(&mut self, start: &Position, client_id: ClientId) {
         if self.supports_mouse_selection {
             if let Some(grid) = self.grids.get_mut(&client_id) {
@@ -732,6 +750,14 @@ impl Pane for PluginPane {
     fn borderless(&self) -> bool {
         self.borderless
     }
+    fn set_border_style_override(&mut self, border_style_override: BorderStyleOverride) {
+        self.border_style_override = border_style_override;
+        self.frame.clear();
+        self.set_should_render(true);
+    }
+    fn border_style_override(&self) -> BorderStyleOverride {
+        self.border_style_override
+    }
     fn set_exclude_from_sync(&mut self, exclude_from_sync: bool) {
         self.exclude_from_sync = exclude_from_sync;
     }
@@ -831,6 +857,10 @@ impl Pane for PluginPane {
     fn update_rounded_corners(&mut self, rounded_corners: bool) {
         self.style.rounded_corners = rounded_corners;
         self.frame.clear();
+    }
+    fn invalidate_frame_cache(&mut self) {
+        self.frame.clear();
+        self.set_should_render(true);
     }
     fn set_should_be_suppressed(&mut self, should_be_suppressed: bool) {
         self.should_be_suppressed = should_be_suppressed;

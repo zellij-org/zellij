@@ -205,24 +205,34 @@ pub async fn establish_websocket_connections(
     let ws_protocol = if is_tls { "wss" } else { "ws" };
     let base_host = format!("{}:{}", host, port);
 
+    let terminal_size = crate::os_input_output::get_terminal_size();
+    let size_query = format!("&rows={}&cols={}", terminal_size.rows, terminal_size.cols);
+
     let terminal_url = if session_name.is_empty() {
         format!(
-            "{}://{}{WS_TERMINAL_ENDPOINT}?web_client_id={}",
+            "{}://{}{WS_TERMINAL_ENDPOINT}?web_client_id={}{}",
             ws_protocol,
             base_host,
-            urlencoding::encode(web_client_id)
+            urlencoding::encode(web_client_id),
+            size_query
         )
     } else {
         format!(
-            "{}://{}{WS_TERMINAL_ENDPOINT}/{}?web_client_id={}",
+            "{}://{}{WS_TERMINAL_ENDPOINT}/{}?web_client_id={}{}",
             ws_protocol,
             base_host,
             urlencoding::encode(session_name),
-            urlencoding::encode(web_client_id)
+            urlencoding::encode(web_client_id),
+            size_query
         )
     };
 
-    let control_url = format!("{}://{}{WS_CONTROL_ENDPOINT}", ws_protocol, base_host);
+    let control_url = format!(
+        "{}://{}{WS_CONTROL_ENDPOINT}?web_client_id={}",
+        ws_protocol,
+        base_host,
+        urlencoding::encode(web_client_id)
+    );
 
     log::info!("Connecting to terminal WebSocket: {}", terminal_url);
     log::info!("Connecting to control WebSocket: {}", control_url);

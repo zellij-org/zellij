@@ -32,6 +32,12 @@ theme "dracula"
 // 
 // theme_light "solarized-light"
  
+// Pin the session to a dark or light appearance, ignoring what the
+// host terminal reports. When unset, the host terminal decides.
+// Options: dark, light
+// 
+// explicit_theme_hue "dark"
+ 
 // Choose the base input mode of zellij.
 // Default: normal
 // 
@@ -203,6 +209,12 @@ disable_session_metadata true
 // Default: true (if the host terminal supports it)
 // 
 support_kitty_keyboard_protocol false
+ 
+// Enable or disable support for the Kitty Graphics Protocol, used to display images (the host terminal must also support it)
+// (Requires restart)
+// Default: true (if the host terminal supports it)
+// 
+// support_kitty_graphics_protocol false
 // Whether to make sure a local web server is running when a new Zellij session starts.
 // This web server will allow creating new sessions and attaching to existing ones that have
 // opted in to being shared in the browser.
@@ -274,9 +286,21 @@ web_sharing "disabled"
 // default is true
 // advanced_mouse_actions false
  
+// Whether Ctrl+ScrollWheel resizes panes
+// default is true
+// mouse_scroll_resize false
+ 
+// Whether scrolling a pane implicitly enters and exits Scroll mode
+// default is true
+// scroll_mode_sync false
+ 
 // Whether to enable mouse hover visual effects (frame highlight and help text)
 // default is true
 // mouse_hover_effects false
+ 
+// Whether to show mouse hover help-text tips (resize help and group shortcuts)
+// default is true
+// mouse_hover_tips false
  
 // Whether to show visual bell indicators (pane/tab frame flash and [!] suffix)
 // default is true
@@ -289,6 +313,16 @@ web_sharing "disabled"
 // Whether clicking a pane to focus it also sends the click into the pane
 // default is false
 // mouse_click_through false
+ 
+// Whether triple-clicking inside command output marked by the shell (OSC 133) selects
+// the command and its output instead of the logical line
+// default is true
+// osc133_command_selection false
+ 
+// Characters that terminate a word when double-clicking to select it
+// whitespace is always a separator and need not be listed here
+// default is "[]{}<>()"
+// word_separators "[]{}<>()"
  
 // The ip address the web server should listen on when it starts
 // Default: "127.0.0.1"
@@ -314,18 +348,29 @@ web_sharing "disabled"
 // Note: This only applies to web clients at the moment.
 // client_async_worker_tasks 4
  
-// When attached clients land in the mobile UI plugin.
+// Whether to let programs running inside panes read the paste buffer
+// (clipboard) with the OSC 52 escape sequence. When enabled, any program
+// in any pane - including one running on a remote machine over SSH - can
+// read the clipboard without the user being asked.
+// Default: false
+// dangerously_enable_paste_buffer_read false
+ 
+// How to handle a nested Zellij session detected inside a pane.
 // Options:
-//   - "web" (Default — web clients only, gated on mobile_threshold_cols/rows)
-//   - "always" (any client, gated on mobile_threshold_cols/rows)
-//   - "never"
+//   - "ask" (Default — prompt with a modal)
+//   - "fullscreen" (always zoom into the nested session)
+//   - "descend" (always control the nested session on focus)
+//   - "never" (never prompt or descend; do it manually)
 // 
-mobile_layout "always"
+// nested_session_handling "ask"
  
-// Column breakpoint for mobile_layout (web/always). 0 = always match.
-// Default: 60
-mobile_threshold_cols 72
- 
-// Row breakpoint for mobile_layout (web/always). 0 = always match.
-// Default: 30
-mobile_threshold_rows 0
+// Which escape sequence desktop notifications coming from panes are
+// forwarded to the host terminal with.
+// Options:
+//   - "auto" (Default — detect from the host terminal environment)
+//   - "osc9" (the legacy iTerm2 protocol, understood by most terminals)
+//   - "osc99" (kitty's notification protocol)
+//   - "bell" (ring the terminal bell instead)
+//   - "off" (do not forward notifications to the host terminal)
+// 
+// host_notification_protocol "auto"

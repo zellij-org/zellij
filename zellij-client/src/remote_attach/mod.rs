@@ -115,6 +115,12 @@ fn try_to_connect_with_saved_session_token(
     Ok(None)
 }
 
+fn dialoguer_error_to_client_error(error: dialoguer::Error) -> RemoteClientError {
+    match error {
+        dialoguer::Error::IO(error) => RemoteClientError::IoError(error),
+    }
+}
+
 fn authenticate_with_retry(
     runtime: Handle,
     remote_session_url: &str,
@@ -136,7 +142,7 @@ fn authenticate_with_retry(
             None => Password::new()
                 .with_prompt("Enter authentication token")
                 .interact()
-                .map_err(|e| RemoteClientError::IoError(e))?,
+                .map_err(dialoguer_error_to_client_error)?,
         };
 
         let ca_cert_owned = ca_cert.map(|p| p.to_path_buf());
@@ -182,7 +188,7 @@ fn authenticate_with_retry(
                         return Err(RemoteClientError::InvalidAuthToken);
                     },
                     Err(e) => {
-                        return Err(RemoteClientError::IoError(e));
+                        return Err(dialoguer_error_to_client_error(e));
                     },
                 }
             },
@@ -202,8 +208,15 @@ async fn remote_attach(
 ) -> Result<(websockets::WebSocketConnections, Option<String>), RemoteClientError> {
     let server_base_url = extract_server_url(server_url)?;
     let session_name = extract_session_name(server_url)?;
-    let (web_client_id, http_client, session_token) =
-        auth::authenticate(&server_base_url, auth_token, remember_me, ca_cert, insecure).await?;
+    let (web_client_id, http_client, session_token) = auth::authenticate(
+        &server_base_url,
+        auth_token,
+        remember_me,
+        &session_name,
+        ca_cert,
+        insecure,
+    )
+    .await?;
     let connections = websockets::establish_websocket_connections(
         &web_client_id,
         &http_client,
@@ -225,8 +238,14 @@ async fn remote_attach_with_session_token(
 ) -> Result<websockets::WebSocketConnections, RemoteClientError> {
     let server_base_url = extract_server_url(server_url)?;
     let session_name = extract_session_name(server_url)?;
-    let (web_client_id, http_client) =
-        auth::validate_session_token(&server_base_url, session_token, ca_cert, insecure).await?;
+    let (web_client_id, http_client) = auth::validate_session_token(
+        &server_base_url,
+        session_token,
+        &session_name,
+        ca_cert,
+        insecure,
+    )
+    .await?;
     let connections = websockets::establish_websocket_connections(
         &web_client_id,
         &http_client,

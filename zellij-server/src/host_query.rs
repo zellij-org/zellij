@@ -56,6 +56,10 @@ pub enum HostQuery {
         index: u8,
         terminator: OscTerminator,
     },
+    ClipboardContent {
+        selection: char,
+        terminator: OscTerminator,
+    },
     /// `CSI ? 996 n` — query the host terminal's color-palette theme
     /// mode (light or dark). NOT forwarded to the host. Zellij has
     /// already queried the host once at startup (via the client's
@@ -90,12 +94,34 @@ impl HostQuery {
                 v.extend_from_slice(terminator.as_bytes());
                 v
             },
+            HostQuery::ClipboardContent {
+                selection,
+                terminator,
+            } => {
+                let mut v = format!("\x1b]52;{};?", selection).into_bytes();
+                v.extend_from_slice(terminator.as_bytes());
+                v
+            },
             // `ColorPaletteMode` is answered locally by Zellij and never
             // sent on the wire. Returning empty bytes keeps the call
             // total without dirtying the wire format. Callers that
             // bypass `Screen::forward_host_query` for this variant
             // shouldn't be calling `to_query_bytes` on it at all.
             HostQuery::ColorPaletteMode => Vec::new(),
+        }
+    }
+
+    pub fn empty_reply_bytes(&self) -> Vec<u8> {
+        match self {
+            HostQuery::ClipboardContent {
+                selection,
+                terminator,
+            } => {
+                let mut v = format!("\x1b]52;{};", selection).into_bytes();
+                v.extend_from_slice(terminator.as_bytes());
+                v
+            },
+            _ => Vec::new(),
         }
     }
 }
@@ -164,6 +190,56 @@ mod tests {
             .to_query_bytes(),
             b"\x1b]4;255;?\x1b\\",
         );
+    }
+
+    #[test]
+    fn clipboard_content_carries_selection_and_terminator() {
+        assert_eq!(
+            HostQuery::ClipboardContent {
+                selection: 'c',
+                terminator: OscTerminator::Bel,
+            }
+            .to_query_bytes(),
+            b"\x1b]52;c;?\x07",
+        );
+        assert_eq!(
+            HostQuery::ClipboardContent {
+                selection: 'p',
+                terminator: OscTerminator::St,
+            }
+            .to_query_bytes(),
+            b"\x1b]52;p;?\x1b\\",
+        );
+    }
+
+    #[test]
+    fn clipboard_content_empty_reply_mirrors_the_query_shape() {
+        assert_eq!(
+            HostQuery::ClipboardContent {
+                selection: 'c',
+                terminator: OscTerminator::Bel,
+            }
+            .empty_reply_bytes(),
+            b"\x1b]52;c;\x07",
+        );
+        assert_eq!(
+            HostQuery::ClipboardContent {
+                selection: 'p',
+                terminator: OscTerminator::St,
+            }
+            .empty_reply_bytes(),
+            b"\x1b]52;p;\x1b\\",
+        );
+    }
+
+    #[test]
+    fn non_clipboard_queries_have_no_empty_reply() {
+        assert!(HostQuery::TextAreaPixelSize.empty_reply_bytes().is_empty());
+        assert!(HostQuery::DefaultBackground {
+            terminator: OscTerminator::St,
+        }
+        .empty_reply_bytes()
+        .is_empty());
     }
 
     #[test]

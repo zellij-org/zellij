@@ -1,6 +1,5 @@
 ---
 source: zellij-utils/src/input/./unit/layout_test.rs
-assertion_line: 942
-expression: "format!(\"{:?}\", layout_error)"
+expression: "normalize_layout_debug(format!(\"{:?}\", layout_error))"
 ---
-KdlError(KdlError { error_message: "Unknown pane property: spit_size", src: Some(NamedSource { name: "layout_file_name", source: "<redacted>"), offset: Some(68), len: Some(11), help_message: Some("For more information, please see our layout guide: https://zellij.dev/documentation/creating-a-layout.html") })
+KdlError(KdlError { error_message: "Unknown pane property: spit_size", src: Some(NamedSource { name: "layout_file_name", source: "<redacted>", language: None), offset: Some(68), len: Some(11), help_message: Some("For more information, please see our layout guide: https://zellij.dev/documentation/creating-a-layout.html") })

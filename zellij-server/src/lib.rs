@@ -14,7 +14,9 @@ pub mod tab;
 pub mod background_jobs;
 mod global_async_runtime;
 mod logging_pipe;
-mod mobile_mode;
+mod mobile_web;
+pub mod nested_guest;
+pub mod notifications;
 mod pane_groups;
 mod plugins;
 mod pty;
@@ -40,12 +42,13 @@ use zellij_utils::envs;
 use zellij_utils::pane_size::Size;
 
 use zellij_utils::input::cli_assets::CliAssets;
-use zellij_utils::input::options::PaneFrameStyle;
+use zellij_utils::input::options::{PaneFrameStyle, DEFAULT_WORD_SEPARATORS};
 
 use wasmi::Engine;
 
 use crate::{
     os_input_output::ServerOsApi,
+    panes::PaneId,
     plugins::{plugin_thread_main, PluginInstruction},
     pty::{get_default_shell, pty_thread_main, Pty, PtyInstruction},
     screen::{screen_thread_main, ScreenInstruction},
@@ -58,8 +61,8 @@ use zellij_utils::{
         DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE, ZELLIJ_SEEN_RELEASE_NOTES_CACHE_FILE,
     },
     data::{
-        ConnectToSession, InputMode, KeyWithModifier, LayoutInfo, LayoutWithError, Style,
-        WebSharing,
+        ConnectToSession, Direction, InputMode, KeyWithModifier, LayoutInfo, LayoutWithError,
+        Style, WebSharing,
     },
     errors::{prelude::*, ContextType, ErrorInstruction, FatalError, ServerContext},
     home::{default_layout_dir, get_default_data_dir},
@@ -72,11 +75,19 @@ use zellij_utils::{
         options::Options,
         plugins::PluginAliases,
     },
-    ipc::{ClientAttributes, ExitReason, ServerToClientMsg},
+    ipc::{
+        ClientAttributes, ClientToServerMsg, ExitReason, IpcReceiverWithContext, ServerToClientMsg,
+    },
     shared::{default_palette, web_server_base_url},
 };
 
-pub type ClientId = u16;
+pub use zellij_utils::data::ClientId;
+
+pub(crate) type SharedKeybinds = Arc<zellij_utils::data::KeybindsVec>;
+
+const ACCEPT_ERROR_BACKOFF: std::time::Duration = std::time::Duration::from_millis(100);
+
+const PRE_HANDSHAKE_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// Instructions related to server-side application
 #[derive(Debug, Clone)]
@@ -134,10 +145,12 @@ pub enum ServerInstruction {
     WebServerStarted(String), // String -> base_url
     FailedToStartWebServer(String),
     ClearMouseHelpText(ClientId),
+    ClearCommandOutputFlash(PaneId),
     /// Relay a forwarded-query dispatch from Screen to the server main
     /// loop. The main loop writes `ServerToClientMsg::ForwardQueryToHost`
-    /// to any connected regular client.
-    ForwardQueryToHost(u32, Vec<u8>),
+    ForwardQueryToHost(u32, Vec<u8>, bool),
+    KeyPassthroughChanged(ClientId, PaneId, PaneId, bool, Option<Direction>, bool),
+    EmitNestedSessionFrameToClient(ClientId, Vec<u8>),
 }
 
 impl From<&ServerInstruction> for ServerContext {
@@ -186,7 +199,14 @@ impl From<&ServerInstruction> for ServerContext {
                 ServerContext::SendWebClientsForbidden
             },
             ServerInstruction::ClearMouseHelpText(..) => ServerContext::ClearMouseHelpText,
+            ServerInstruction::ClearCommandOutputFlash(..) => {
+                ServerContext::ClearCommandOutputFlash
+            },
             ServerInstruction::ForwardQueryToHost(..) => ServerContext::ForwardQueryToHost,
+            ServerInstruction::KeyPassthroughChanged(..) => ServerContext::KeyPassthroughChanged,
+            ServerInstruction::EmitNestedSessionFrameToClient(..) => {
+                ServerContext::EmitNestedSessionFrameToClient
+            },
         }
     }
 }
@@ -222,14 +242,32 @@ impl SessionConfiguration {
     pub fn set_saved_configuration(&mut self, config: Config) {
         self.saved_config = config;
     }
-    pub fn set_client_runtime_configuration(&mut self, client_id: ClientId, client_config: Config) {
+    pub fn set_client_runtime_configuration(
+        &mut self,
+        client_id: ClientId,
+        mut client_config: Config,
+    ) {
+        self.share_keybinds(&mut client_config);
         self.runtime_config.insert(client_id, client_config);
+    }
+    fn share_keybinds(&self, config: &mut Config) {
+        let known_configs =
+            || std::iter::once(&self.saved_config).chain(self.runtime_config.values());
+        if known_configs().any(|known| Arc::ptr_eq(&known.keybinds, &config.keybinds)) {
+            return;
+        }
+        if let Some(known) = known_configs().find(|known| known.keybinds == config.keybinds) {
+            config.keybinds = known.keybinds.clone();
+        }
+    }
+    pub fn remove_client(&mut self, client_id: &ClientId) {
+        self.runtime_config.remove(client_id);
     }
     pub fn get_client_keybinds(&self, client_id: &ClientId) -> &Keybinds {
         self.runtime_config
             .get(client_id)
-            .map(|c| &c.keybinds)
-            .unwrap_or(&self.saved_config.keybinds)
+            .map(|c| c.keybinds.as_ref())
+            .unwrap_or(self.saved_config.keybinds.as_ref())
     }
     pub fn get_client_default_input_mode(&self, client_id: &ClientId) -> InputMode {
         self.runtime_config
@@ -258,7 +296,8 @@ impl SessionConfiguration {
             &stringified_config,
             Some(current_client_configuration.clone()),
         ) {
-            Ok(new_config) => {
+            Ok(mut new_config) => {
+                self.share_keybinds(&mut new_config);
                 config_changed = current_client_configuration != new_config;
                 full_reconfigured_config = Some(new_config.clone());
                 self.runtime_config.insert(*client_id, new_config);
@@ -282,11 +321,20 @@ impl SessionConfiguration {
             self.runtime_config
                 .insert(*client_id, self.saved_config.clone());
         }
+        let mut rebound_config = None;
         match self.runtime_config.get_mut(client_id) {
             Some(config) => {
                 for (input_mode, key_with_modifier) in keys_to_unbind {
-                    let keys_in_mode = config
+                    let needs_change = config
                         .keybinds
+                        .0
+                        .get(&input_mode)
+                        .map(|keys_in_mode| keys_in_mode.contains_key(&key_with_modifier))
+                        .unwrap_or(true);
+                    if !needs_change {
+                        continue;
+                    }
+                    let keys_in_mode = Arc::make_mut(&mut config.keybinds)
                         .0
                         .entry(input_mode)
                         .or_insert_with(Default::default);
@@ -296,8 +344,16 @@ impl SessionConfiguration {
                     }
                 }
                 for (input_mode, key_with_modifier, actions) in keys_to_rebind {
-                    let keys_in_mode = config
+                    let needs_change = config
                         .keybinds
+                        .0
+                        .get(&input_mode)
+                        .map(|keys_in_mode| keys_in_mode.get(&key_with_modifier) != Some(&actions))
+                        .unwrap_or(true);
+                    if !needs_change {
+                        continue;
+                    }
+                    let keys_in_mode = Arc::make_mut(&mut config.keybinds)
                         .0
                         .entry(input_mode)
                         .or_insert_with(Default::default);
@@ -307,7 +363,7 @@ impl SessionConfiguration {
                     }
                 }
                 if config_changed {
-                    full_reconfigured_config = Some(config.clone());
+                    rebound_config = Some(config.clone());
                 }
             },
             None => {
@@ -315,6 +371,12 @@ impl SessionConfiguration {
                     "Could not find runtime or saved configuration for client, cannot rebind keys"
                 );
             },
+        }
+        if let Some(mut config) = rebound_config {
+            self.runtime_config.remove(client_id);
+            self.share_keybinds(&mut config);
+            self.runtime_config.insert(*client_id, config.clone());
+            full_reconfigured_config = Some(config);
         }
 
         (full_reconfigured_config, config_changed)
@@ -326,6 +388,7 @@ pub(crate) struct SessionMetaData {
     pub default_shell: Option<TerminalAction>,
     pub current_input_modes: HashMap<ClientId, InputMode>,
     pub session_configuration: SessionConfiguration,
+    pub key_passthrough_clients: HashMap<ClientId, PaneId>,
     pub web_sharing: WebSharing, // this is a special attribute explicitly set on session
     // initialization because we don't want it to be overridden by
     // configuration changes, the only way it can be overwritten is by
@@ -356,6 +419,30 @@ impl SessionMetaData {
             _ => None,
         }
     }
+    pub fn remove_key_passthrough_client(&mut self, client_id: ClientId) {
+        self.remove_key_passthrough_client_with_notify(client_id, true);
+    }
+    pub fn remove_key_passthrough_client_with_notify(
+        &mut self,
+        client_id: ClientId,
+        notify_guest: bool,
+    ) {
+        if let Some(pane_id) = self.key_passthrough_clients.remove(&client_id) {
+            let pane_still_active = self.key_passthrough_clients.values().any(|p| *p == pane_id);
+            if !pane_still_active && notify_guest {
+                if let PaneId::Terminal(terminal_id) = pane_id {
+                    let frame = zellij_utils::nested_session::encode_frame(
+                        &zellij_utils::nested_session::NestedSessionMessage::FocusLost,
+                    );
+                    let _ = self.senders.send_to_pty_writer(PtyWriteInstruction::Write(
+                        frame,
+                        terminal_id,
+                        None,
+                    ));
+                }
+            }
+        }
+    }
     pub fn change_mode_for_all_clients(&mut self, input_mode: InputMode) {
         let all_clients: Vec<ClientId> = self.current_input_modes.keys().copied().collect();
         for client_id in all_clients {
@@ -368,6 +455,7 @@ impl SessionMetaData {
         config_was_written_to_disk: bool,
     ) {
         let mut new_plugin_config = None;
+        let mut converted_keybinds: Vec<(Arc<Keybinds>, SharedKeybinds)> = vec![];
         for (client_id, new_config) in config_changes {
             if new_plugin_config.is_none() {
                 new_plugin_config = Some(new_config.plugins.clone());
@@ -404,10 +492,22 @@ impl SessionMetaData {
                 );
             }
             let pane_frame_style = PaneFrameStyle::from_options(&new_config.options);
+            let shared_keybinds = match converted_keybinds
+                .iter()
+                .find(|(keybinds, _)| Arc::ptr_eq(keybinds, &new_config.keybinds))
+            {
+                Some((_, shared_keybinds)) => shared_keybinds.clone(),
+                None => {
+                    let shared_keybinds: SharedKeybinds =
+                        Arc::new(new_config.keybinds.to_keybinds_vec());
+                    converted_keybinds.push((new_config.keybinds.clone(), shared_keybinds.clone()));
+                    shared_keybinds
+                },
+            };
             self.senders
                 .send_to_screen(ScreenInstruction::Reconfigure {
                     client_id,
-                    keybinds: new_config.keybinds.clone(),
+                    keybinds: shared_keybinds.clone(),
                     default_mode: new_config
                         .options
                         .default_mode
@@ -417,6 +517,7 @@ impl SessionMetaData {
                         .unwrap_or_else(|| default_palette().into()),
                     host_theme_dark,
                     host_theme_light,
+                    explicit_theme_hue: new_config.options.explicit_theme_hue,
                     simplified_ui: new_config.options.simplified_ui.unwrap_or(false),
                     default_shell: new_config.options.default_shell,
                     pane_frame_style,
@@ -426,6 +527,11 @@ impl SessionMetaData {
                     auto_layout: new_config.options.auto_layout.unwrap_or(true),
                     rounded_corners: new_config.ui.pane_frames.rounded_corners,
                     hide_session_name: new_config.ui.pane_frames.hide_session_name,
+                    border_style: new_config.ui.pane_frames.resolved_border_style(),
+                    floating_border_style: new_config
+                        .ui
+                        .pane_frames
+                        .resolved_floating_border_style(),
                     stacked_resize: new_config.options.stacked_resize.unwrap_or(true),
                     stacked_pane_list: new_config.options.stacked_pane_list.unwrap_or(true),
                     default_editor: new_config.options.scrollback_editor.clone(),
@@ -433,16 +539,40 @@ impl SessionMetaData {
                         .options
                         .advanced_mouse_actions
                         .unwrap_or(true),
+                    mouse_scroll_resize: new_config.options.mouse_scroll_resize.unwrap_or(true),
+                    scroll_mode_sync: new_config.options.scroll_mode_sync.unwrap_or(true),
                     mouse_hover_effects: new_config.options.mouse_hover_effects.unwrap_or(true),
+                    mouse_hover_tips: new_config.options.mouse_hover_tips.unwrap_or(true),
                     visual_bell: new_config.options.visual_bell.unwrap_or(true),
                     focus_follows_mouse: new_config.options.focus_follows_mouse.unwrap_or(false),
                     mouse_click_through: new_config.options.mouse_click_through.unwrap_or(false),
+                    osc133_command_selection: new_config
+                        .options
+                        .osc133_command_selection
+                        .unwrap_or(true),
+                    dangerously_enable_paste_buffer_read: new_config
+                        .options
+                        .dangerously_enable_paste_buffer_read
+                        .unwrap_or(false),
+                    word_separators: new_config
+                        .options
+                        .word_separators
+                        .clone()
+                        .unwrap_or_else(|| DEFAULT_WORD_SEPARATORS.to_owned()),
+                    host_notification_protocol: new_config
+                        .options
+                        .host_notification_protocol
+                        .unwrap_or_default(),
+                    nested_session_handling: new_config
+                        .options
+                        .nested_session_handling
+                        .unwrap_or_default(),
                 })
                 .unwrap();
             self.senders
                 .send_to_plugin(PluginInstruction::Reconfigure {
                     client_id,
-                    keybinds: Some(new_config.keybinds),
+                    keybinds: Some(shared_keybinds),
                     default_mode: new_config.options.default_mode,
                     default_shell: self.default_shell.clone(),
                     layout_dir: new_config.options.layout_dir,
@@ -578,6 +708,7 @@ pub(crate) struct SessionState {
     /// empty synthetic reply so `Screen`'s `forward_in_flight` slot
     /// releases and the queued forwards keep moving.
     forwards_in_flight: HashMap<u32, ClientId>,
+    next_client_id: ClientId,
 }
 
 impl SessionState {
@@ -588,26 +719,33 @@ impl SessionState {
             watchers: HashMap::new(),
             last_active_client: None,
             forwards_in_flight: HashMap::new(),
+            next_client_id: 1,
         }
     }
     pub fn new_client(&mut self) -> ClientId {
-        let all_ids: HashSet<ClientId> = self
+        let client_id = match self.next_client_id.checked_add(1) {
+            Some(following_client_id) => {
+                let client_id = self.next_client_id;
+                self.next_client_id = following_client_id;
+                client_id
+            },
+            None => self.lowest_unused_client_id(),
+        };
+        self.clients.insert(client_id, None);
+        client_id
+    }
+    fn lowest_unused_client_id(&self) -> ClientId {
+        let taken: HashSet<ClientId> = self
             .clients
             .keys()
             .copied()
             .chain(self.watchers.keys().copied())
             .collect();
-
-        let mut next_client_id = 1;
-        loop {
-            if all_ids.contains(&next_client_id) {
-                next_client_id += 1;
-            } else {
-                break;
-            }
+        let mut client_id = 1;
+        while taken.contains(&client_id) {
+            client_id += 1;
         }
-        self.clients.insert(next_client_id, None);
-        next_client_id
+        client_id
     }
     pub fn associate_pipe_with_client(&mut self, pipe_id: String, client_id: ClientId) {
         self.pipes.insert(pipe_id, client_id);
@@ -761,6 +899,125 @@ mod session_state_tests {
     }
 
     #[test]
+    fn session_configuration_remove_client_drops_runtime_config() {
+        let mut session_configuration = SessionConfiguration::default();
+        session_configuration.set_client_runtime_configuration(1, Config::default());
+        session_configuration.set_client_runtime_configuration(2, Config::default());
+        session_configuration.remove_client(&1);
+        assert!(!session_configuration.runtime_config.contains_key(&1));
+        assert!(session_configuration.runtime_config.contains_key(&2));
+    }
+
+    #[test]
+    fn session_configuration_shares_keybinds_until_a_client_changes_them() {
+        use zellij_utils::data::BareKey;
+        let config = Config::from_default_assets().unwrap();
+        assert!(Arc::ptr_eq(&config.keybinds, &config.clone().keybinds));
+        let mut session_configuration = SessionConfiguration::default();
+        session_configuration.set_saved_configuration(config.clone());
+        session_configuration.set_client_runtime_configuration(1, config.clone());
+        session_configuration.set_client_runtime_configuration(2, config.clone());
+        let keybinds_of = |session_configuration: &SessionConfiguration, client_id: ClientId| {
+            session_configuration.runtime_config[&client_id]
+                .keybinds
+                .clone()
+        };
+        let saved_keybinds = session_configuration.saved_config.keybinds.clone();
+        assert!(Arc::ptr_eq(
+            &keybinds_of(&session_configuration, 1),
+            &saved_keybinds
+        ));
+        assert!(Arc::ptr_eq(
+            &keybinds_of(&session_configuration, 2),
+            &saved_keybinds
+        ));
+
+        let (_, changed) =
+            session_configuration.reconfigure_runtime_config(&1, "simplified_ui true".to_owned());
+        assert!(changed);
+        assert!(Arc::ptr_eq(
+            &keybinds_of(&session_configuration, 1),
+            &saved_keybinds
+        ));
+
+        let client_2_keybinds_before = (*keybinds_of(&session_configuration, 2)).clone();
+        let new_binding = r#"
+            keybinds {
+                normal {
+                    bind "Alt F1" { NewPane; }
+                }
+            }
+        "#;
+        let (_, changed) =
+            session_configuration.reconfigure_runtime_config(&1, new_binding.to_owned());
+        assert!(changed);
+        assert!(!Arc::ptr_eq(
+            &keybinds_of(&session_configuration, 1),
+            &saved_keybinds
+        ));
+        assert!(Arc::ptr_eq(
+            &keybinds_of(&session_configuration, 2),
+            &saved_keybinds
+        ));
+        assert_eq!(
+            *keybinds_of(&session_configuration, 2),
+            client_2_keybinds_before
+        );
+        assert_ne!(
+            session_configuration.get_client_keybinds(&1),
+            session_configuration.get_client_keybinds(&2)
+        );
+        let alt_f1 = KeyWithModifier::new(BareKey::F(1)).with_alt_modifier();
+        assert!(session_configuration
+            .get_client_keybinds(&1)
+            .get_actions_for_key_in_mode(&InputMode::Normal, &alt_f1)
+            .is_some());
+        assert_eq!(
+            session_configuration
+                .get_client_keybinds(&2)
+                .get_actions_for_key_in_mode(&InputMode::Normal, &alt_f1),
+            config
+                .keybinds
+                .get_actions_for_key_in_mode(&InputMode::Normal, &alt_f1)
+        );
+
+        let (_, changed) =
+            session_configuration.reconfigure_runtime_config(&2, new_binding.to_owned());
+        assert!(changed);
+        assert!(Arc::ptr_eq(
+            &keybinds_of(&session_configuration, 1),
+            &keybinds_of(&session_configuration, 2)
+        ));
+
+        let (_, changed) = session_configuration.rebind_keys(
+            &2,
+            vec![],
+            vec![(InputMode::Normal, alt_f1.clone())],
+        );
+        assert!(changed);
+        assert!(!Arc::ptr_eq(
+            &keybinds_of(&session_configuration, 1),
+            &keybinds_of(&session_configuration, 2)
+        ));
+        assert!(session_configuration
+            .get_client_keybinds(&1)
+            .get_actions_for_key_in_mode(&InputMode::Normal, &alt_f1)
+            .is_some());
+
+        let config_changes = session_configuration.change_saved_config(config.clone());
+        assert!(config_changes.iter().any(|(client_id, _)| *client_id == 1));
+        let saved_keybinds = session_configuration.saved_config.keybinds.clone();
+        assert!(Arc::ptr_eq(
+            &keybinds_of(&session_configuration, 1),
+            &saved_keybinds
+        ));
+        assert!(Arc::ptr_eq(
+            &keybinds_of(&session_configuration, 2),
+            &saved_keybinds
+        ));
+    }
+
+    #[test]
     fn pick_forward_target_none_when_no_clients() {
         let s = SessionState::new();
         assert_eq!(s.pick_forward_target(), None);
@@ -831,6 +1088,54 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
     start_server_impl(os_input, socket_path, true);
 }
 
+fn handle_new_connection(
+    session_data: Arc<RwLock<Option<SessionMetaData>>>,
+    session_state: Arc<RwLock<SessionState>>,
+    mut os_input: Box<dyn ServerOsApi>,
+    to_server: SenderWithContext<ServerInstruction>,
+    stream: interprocess::local_socket::Stream,
+    #[cfg(windows)] reply_stream: interprocess::local_socket::Stream,
+) -> Result<()> {
+    let mut receiver: IpcReceiverWithContext<ClientToServerMsg> =
+        IpcReceiverWithContext::new(stream);
+
+    let _ = receiver.set_read_timeout(Some(PRE_HANDSHAKE_READ_TIMEOUT));
+    let first_instruction = match receiver.try_recv_client_msg() {
+        Ok((instruction, _err_ctx)) => instruction,
+        Err(_) => return Ok(()),
+    };
+    let _ = receiver.set_read_timeout(None);
+
+    if let ClientToServerMsg::ConnStatus = first_instruction {
+        let mut sender = receiver.get_sender::<ServerToClientMsg>();
+        let _ = sender.send_server_msg(ServerToClientMsg::Connected);
+        return Ok(());
+    }
+
+    let client_id = session_state.write().unwrap().new_client();
+
+    #[cfg(windows)]
+    let registered = os_input.register_client_with_reply(client_id, reply_stream);
+    #[cfg(not(windows))]
+    let registered = os_input.register_client(client_id, &receiver);
+
+    if let Err(err) = registered {
+        log::error!("Failed to register client {}: {:?}", client_id, err);
+        let _ = session_state.write().unwrap().remove_client(client_id);
+        return Ok(());
+    }
+
+    route_thread_main(
+        session_data,
+        session_state,
+        os_input,
+        to_server,
+        receiver,
+        client_id,
+        Some(first_instruction),
+    )
+}
+
 pub fn start_server_impl(
     mut os_input: Box<dyn ServerOsApi>,
     socket_path: PathBuf,
@@ -884,41 +1189,41 @@ pub fn start_server_impl(
                 for stream in listener.incoming() {
                     match stream {
                         Ok(stream) => {
-                            let mut os_input = os_input.clone();
-                            let client_id = session_state.write().unwrap().new_client();
+                            let os_input = os_input.clone();
 
                             #[cfg(windows)]
-                            let reply_stream = reply_listener
-                                .accept()
-                                .expect("failed to accept reply connection");
-
-                            #[cfg(windows)]
-                            let receiver = os_input
-                                .new_client_with_reply(client_id, stream, reply_stream)
-                                .unwrap();
-                            #[cfg(not(windows))]
-                            let receiver = os_input.new_client(client_id, stream).unwrap();
+                            let reply_stream = match reply_listener.accept() {
+                                Ok(reply_stream) => reply_stream,
+                                Err(err) => {
+                                    log::error!("Failed to accept reply connection: {:?}", err);
+                                    continue;
+                                },
+                            };
 
                             let session_data = session_data.clone();
                             let session_state = session_state.clone();
                             let to_server = to_server.clone();
-                            thread::Builder::new()
+                            let spawn_result = thread::Builder::new()
                                 .name("server_router".to_string())
                                 .spawn(move || {
-                                    route_thread_main(
+                                    handle_new_connection(
                                         session_data,
                                         session_state,
                                         os_input,
                                         to_server,
-                                        receiver,
-                                        client_id,
+                                        stream,
+                                        #[cfg(windows)]
+                                        reply_stream,
                                     )
                                     .fatal()
-                                })
-                                .unwrap();
+                                });
+                            if let Err(err) = spawn_result {
+                                log::error!("Failed to spawn router thread: {:?}", err);
+                            }
                         },
                         Err(err) => {
-                            panic!("err {:?}", err);
+                            log::error!("Failed to accept connection: {:?}", err);
+                            thread::sleep(ACCEPT_ERROR_BACKOFF);
                         },
                     }
                 }
@@ -930,15 +1235,22 @@ pub fn start_server_impl(
         err_ctx.add_call(ContextType::IPCServer((&instruction).into()));
         match instruction {
             ServerInstruction::FirstClientConnected(cli_assets, is_web_client, client_id) => {
+                let host_terminal_env = cli_assets.host_terminal_env.clone();
+                let mut initial_panes = cli_assets.initial_panes.clone();
                 let (config, layout) = cli_assets.load_config_and_layout();
                 let layout_is_welcome_screen = cli_assets.layout
                     == Some(LayoutInfo::BuiltIn("welcome".to_owned()))
                     || config.options.default_layout == Some(PathBuf::from("welcome"));
 
-                let successfully_written_config = Config::write_config_to_disk_if_it_does_not_exist(
-                    config.to_string(true),
-                    &cli_assets.config_file_path,
-                );
+                let successfully_written_config =
+                    if zellij_utils::distribution::bundled_config().is_some() {
+                        false
+                    } else {
+                        Config::write_config_to_disk_if_it_does_not_exist(
+                            config.to_string(true),
+                            &cli_assets.config_file_path,
+                        )
+                    };
                 // if we successfully wrote the config to disk, it means two things:
                 // 1. It did not exist beforehand
                 // 2. The config folder is writeable
@@ -962,6 +1274,11 @@ pub fn start_server_impl(
                             .unwrap_or_else(|| default_palette().into()),
                         rounded_corners: config.ui.pane_frames.rounded_corners,
                         hide_session_name: config.ui.pane_frames.hide_session_name,
+                        border_style: config.ui.pane_frames.resolved_border_style(),
+                        floating_border_style: config
+                            .ui
+                            .pane_frames
+                            .resolved_floating_border_style(),
                     },
                 };
 
@@ -998,21 +1315,17 @@ pub fn start_server_impl(
                     is_web_client,
                 );
 
-                let should_enter_mobile = should_enter_mobile_on_connect(
-                    &runtime_config_options,
-                    is_web_client,
-                    client_attributes.size,
-                );
-                if should_enter_mobile {
-                    session_data
-                        .read()
-                        .unwrap()
-                        .as_ref()
-                        .unwrap()
-                        .senders
-                        .send_to_screen(ScreenInstruction::SuppressRenderUntilMobile(client_id))
-                        .unwrap();
-                }
+                session_data
+                    .read()
+                    .unwrap()
+                    .as_ref()
+                    .unwrap()
+                    .senders
+                    .send_to_screen(ScreenInstruction::RecomputeTabSize(
+                        client_id,
+                        client_attributes.size,
+                    ))
+                    .unwrap();
 
                 let default_shell = runtime_config_options.default_shell.map(|shell| {
                     TerminalAction::RunCommand(RunCommand {
@@ -1026,11 +1339,16 @@ pub fn start_server_impl(
                     .cwd
                     .or_else(|| runtime_config_options.default_cwd);
 
-                let spawn_tabs = |tab_layout,
-                                  floating_panes_layout,
-                                  tab_name,
-                                  swap_layouts,
-                                  should_focus_tab| {
+                let mut spawn_tabs = |tab_layout,
+                                      floating_panes_layout,
+                                      tab_name,
+                                      swap_layouts,
+                                      should_focus_tab| {
+                    let initial_panes = if should_focus_tab {
+                        initial_panes.take()
+                    } else {
+                        None
+                    };
                     session_data
                         .read()
                         .unwrap()
@@ -1044,7 +1362,7 @@ pub fn start_server_impl(
                             floating_panes_layout,
                             tab_name,
                             swap_layouts,
-                            None,  // initial_panes
+                            initial_panes,
                             false, // block_on_first_terminal
                             should_focus_tab,
                             (client_id, is_web_client),
@@ -1102,23 +1420,19 @@ pub fn start_server_impl(
                         true,
                     );
                 }
-                session_data
-                    .read()
-                    .unwrap()
-                    .as_ref()
-                    .unwrap()
-                    .senders
-                    .send_to_plugin(PluginInstruction::AddClient(client_id))
-                    .unwrap();
-
-                if should_enter_mobile {
+                {
+                    let rlock = session_data.read().unwrap();
+                    let session_data = rlock.as_ref().unwrap();
                     session_data
-                        .read()
-                        .unwrap()
-                        .as_ref()
-                        .unwrap()
                         .senders
-                        .send_to_screen(ScreenInstruction::EnterMobileMode(client_id, None))
+                        .send_to_plugin(PluginInstruction::AddClient(client_id))
+                        .unwrap();
+                    session_data
+                        .senders
+                        .send_to_screen(ScreenInstruction::SetClientHostTerminalEnv(
+                            client_id,
+                            host_terminal_env,
+                        ))
                         .unwrap();
                 }
             },
@@ -1132,6 +1446,7 @@ pub fn start_server_impl(
                 let mut rlock = session_data.write().unwrap();
                 let session_data = rlock.as_mut().unwrap();
                 let config = session_data.session_configuration.saved_config.clone();
+                let host_terminal_env = cli_assets.host_terminal_env.clone();
                 let runtime_config_options = match cli_assets.configuration_options {
                     Some(configuration_options) => config.options.merge(configuration_options),
                     None => config.options.clone(),
@@ -1145,6 +1460,11 @@ pub fn start_server_impl(
                             .unwrap_or_else(|| default_palette().into()),
                         rounded_corners: config.ui.pane_frames.rounded_corners,
                         hide_session_name: config.ui.pane_frames.hide_session_name,
+                        border_style: config.ui.pane_frames.resolved_border_style(),
+                        floating_border_style: config
+                            .ui
+                            .pane_frames
+                            .resolved_floating_border_style(),
                     },
                 };
 
@@ -1165,18 +1485,13 @@ pub fn start_server_impl(
                     is_web_client,
                 );
 
-                let should_enter_mobile = should_enter_mobile_on_connect(
-                    &runtime_config_options,
-                    is_web_client,
-                    client_attributes.size,
-                );
-                if should_enter_mobile {
-                    session_data
-                        .senders
-                        .send_to_screen(ScreenInstruction::SuppressRenderUntilMobile(client_id))
-                        .unwrap();
-                }
-
+                session_data
+                    .senders
+                    .send_to_screen(ScreenInstruction::SetClientHostTerminalEnv(
+                        client_id,
+                        host_terminal_env,
+                    ))
+                    .unwrap();
                 session_data
                     .senders
                     .send_to_screen(ScreenInstruction::AddClient(
@@ -1203,13 +1518,6 @@ pub fn start_server_impl(
                         None,
                     ))
                     .unwrap();
-
-                if should_enter_mobile {
-                    session_data
-                        .senders
-                        .send_to_screen(ScreenInstruction::EnterMobileMode(client_id, None))
-                        .unwrap();
-                }
             },
             ServerInstruction::AttachWatcherClient(client_id, terminal_size, is_web_client) => {
                 // the client_id was inserted into clients upon ipc tunnel initialization
@@ -1333,25 +1641,21 @@ pub fn start_server_impl(
 
                     os_input.remove_client(client_id).unwrap();
                 } else {
+                    if let Some(session_data) = session_data.write().unwrap().as_mut() {
+                        session_data.remove_key_passthrough_client(client_id);
+                    }
                     // Handle regular client removal
                     remove_client!(client_id, os_input, session_state, session_data);
                     drop(completion_tx); // prevent deadlock with route thread
-                    session_data
-                        .write()
-                        .unwrap()
-                        .as_ref()
-                        .unwrap()
-                        .senders
-                        .send_to_screen(ScreenInstruction::RemoveClient(client_id))
-                        .unwrap();
-                    session_data
-                        .write()
-                        .unwrap()
-                        .as_ref()
-                        .unwrap()
-                        .senders
-                        .send_to_plugin(PluginInstruction::RemoveClient(client_id))
-                        .unwrap();
+                    if let Some(session_data) = session_data.write().unwrap().as_mut() {
+                        session_data.session_configuration.remove_client(&client_id);
+                        let _ = session_data
+                            .senders
+                            .send_to_screen(ScreenInstruction::RemoveClient(client_id));
+                        let _ = session_data
+                            .senders
+                            .send_to_plugin(PluginInstruction::RemoveClient(client_id));
+                    }
                     if !session_state.read().unwrap().active_clients_are_connected() {
                         *session_data.write().unwrap() = None;
                         let client_ids_to_cleanup: Vec<ClientId> = session_state
@@ -1397,24 +1701,20 @@ pub fn start_server_impl(
 
                     os_input.remove_client(client_id).unwrap();
                 } else {
+                    if let Some(session_data) = session_data.write().unwrap().as_mut() {
+                        session_data.remove_key_passthrough_client(client_id);
+                    }
                     // Handle regular client removal
                     remove_client!(client_id, os_input, session_state, session_data);
-                    session_data
-                        .write()
-                        .unwrap()
-                        .as_ref()
-                        .unwrap()
-                        .senders
-                        .send_to_screen(ScreenInstruction::RemoveClient(client_id))
-                        .unwrap();
-                    session_data
-                        .write()
-                        .unwrap()
-                        .as_ref()
-                        .unwrap()
-                        .senders
-                        .send_to_plugin(PluginInstruction::RemoveClient(client_id))
-                        .unwrap();
+                    if let Some(session_data) = session_data.write().unwrap().as_mut() {
+                        session_data.session_configuration.remove_client(&client_id);
+                        let _ = session_data
+                            .senders
+                            .send_to_screen(ScreenInstruction::RemoveClient(client_id));
+                        let _ = session_data
+                            .senders
+                            .send_to_plugin(PluginInstruction::RemoveClient(client_id));
+                    }
                 }
             },
             ServerInstruction::SendWebClientsForbidden(client_id) => {
@@ -1449,6 +1749,9 @@ pub fn start_server_impl(
                     .filter(|c| c != &client_id)
                     .collect();
                 for client_id in client_ids {
+                    if let Some(session_data) = session_data.write().unwrap().as_mut() {
+                        session_data.remove_key_passthrough_client(client_id);
+                    }
                     let _ = os_input.send_to_client(
                         client_id,
                         ServerToClientMsg::Exit {
@@ -1460,6 +1763,9 @@ pub fn start_server_impl(
             },
             ServerInstruction::DetachSession(client_ids, completion_tx) => {
                 for client_id in &client_ids {
+                    if let Some(session_data) = session_data.write().unwrap().as_mut() {
+                        session_data.remove_key_passthrough_client(*client_id);
+                    }
                     let _ = os_input.send_to_client(
                         *client_id,
                         ServerToClientMsg::Exit {
@@ -1473,22 +1779,15 @@ pub fn start_server_impl(
                                      // by us having to wait for session_data to send cleanup
                                      // signals to the various threads
                 for client_id in client_ids {
-                    session_data
-                        .write()
-                        .unwrap()
-                        .as_ref()
-                        .unwrap()
-                        .senders
-                        .send_to_screen(ScreenInstruction::RemoveClient(client_id))
-                        .unwrap();
-                    session_data
-                        .write()
-                        .unwrap()
-                        .as_ref()
-                        .unwrap()
-                        .senders
-                        .send_to_plugin(PluginInstruction::RemoveClient(client_id))
-                        .unwrap();
+                    if let Some(session_data) = session_data.write().unwrap().as_mut() {
+                        session_data.session_configuration.remove_client(&client_id);
+                        let _ = session_data
+                            .senders
+                            .send_to_screen(ScreenInstruction::RemoveClient(client_id));
+                        let _ = session_data
+                            .senders
+                            .send_to_plugin(PluginInstruction::RemoveClient(client_id));
+                    }
                 }
             },
             ServerInstruction::Render(serialized_output) => {
@@ -1554,7 +1853,6 @@ pub fn start_server_impl(
             },
             ServerInstruction::ConnStatus(client_id) => {
                 let _ = os_input.send_to_client(client_id, ServerToClientMsg::Connected);
-                remove_client!(client_id, os_input, session_state, session_data);
             },
             ServerInstruction::Log(
                 lines_to_log,
@@ -1617,6 +1915,9 @@ pub fn start_server_impl(
                     remove_client!(client_id, os_input, session_state, session_data);
                     drop(completion_tx); // do not deadlock with route thread
 
+                    if let Some(session_data) = session_data.write().unwrap().as_mut() {
+                        session_data.session_configuration.remove_client(&client_id);
+                    }
                     session_data
                         .write()
                         .unwrap()
@@ -1867,7 +2168,17 @@ pub fn start_server_impl(
                     .send_to_screen(ScreenInstruction::ClearMouseHelpText(client_id))
                     .unwrap();
             },
-            ServerInstruction::ForwardQueryToHost(token, query_bytes) => {
+            ServerInstruction::ClearCommandOutputFlash(pane_id) => {
+                session_data
+                    .write()
+                    .unwrap()
+                    .as_ref()
+                    .unwrap()
+                    .senders
+                    .send_to_screen(ScreenInstruction::ClearCommandOutputFlash(pane_id))
+                    .unwrap();
+            },
+            ServerInstruction::ForwardQueryToHost(token, query_bytes, resolve_async) => {
                 // Pick a regular (non-watcher) client to carry the
                 // forward. Preference is the most recently active
                 // client (whichever last sent input); falls back to
@@ -1887,7 +2198,11 @@ pub fn start_server_impl(
                     send_to_client!(
                         client_id,
                         os_input,
-                        ServerToClientMsg::ForwardQueryToHost { token, query_bytes },
+                        ServerToClientMsg::ForwardQueryToHost {
+                            token,
+                            query_bytes,
+                            resolve_async
+                        },
                         session_state,
                         session_data
                     );
@@ -1911,6 +2226,77 @@ pub fn start_server_impl(
                         );
                     }
                 }
+            },
+            ServerInstruction::KeyPassthroughChanged(
+                client_id,
+                _old_pane_id,
+                new_pane_id,
+                should_route,
+                entered_from_direction,
+                notify_guest,
+            ) => {
+                let mut session_data = session_data.write().unwrap();
+                if let Some(session_data) = session_data.as_mut() {
+                    let previous_pane = session_data
+                        .key_passthrough_clients
+                        .get(&client_id)
+                        .copied();
+
+                    if should_route {
+                        if previous_pane != Some(new_pane_id) {
+                            if let Some(previous_pane_id) = previous_pane {
+                                session_data.key_passthrough_clients.remove(&client_id);
+                                let pane_still_active = session_data
+                                    .key_passthrough_clients
+                                    .values()
+                                    .any(|p| *p == previous_pane_id);
+                                if !pane_still_active && notify_guest {
+                                    if let crate::panes::PaneId::Terminal(terminal_id) =
+                                        previous_pane_id
+                                    {
+                                        let frame = zellij_utils::nested_session::encode_frame(
+                                            &zellij_utils::nested_session::NestedSessionMessage::FocusLost,
+                                        );
+                                        let _ = session_data.senders.send_to_pty_writer(
+                                            PtyWriteInstruction::Write(frame, terminal_id, None),
+                                        );
+                                    }
+                                }
+                            }
+                            let pane_already_active = session_data
+                                .key_passthrough_clients
+                                .values()
+                                .any(|p| *p == new_pane_id);
+                            session_data
+                                .key_passthrough_clients
+                                .insert(client_id, new_pane_id);
+                            if !pane_already_active {
+                                if let crate::panes::PaneId::Terminal(terminal_id) = new_pane_id {
+                                    let frame = zellij_utils::nested_session::encode_frame(
+                                        &zellij_utils::nested_session::NestedSessionMessage::FocusGained {
+                                            from_direction: entered_from_direction,
+                                        },
+                                    );
+                                    let _ = session_data.senders.send_to_pty_writer(
+                                        PtyWriteInstruction::Write(frame, terminal_id, None),
+                                    );
+                                }
+                            }
+                        }
+                    } else if previous_pane.is_some() {
+                        session_data
+                            .remove_key_passthrough_client_with_notify(client_id, notify_guest);
+                    }
+                }
+            },
+            ServerInstruction::EmitNestedSessionFrameToClient(client_id, payload_bytes) => {
+                send_to_client!(
+                    client_id,
+                    os_input,
+                    ServerToClientMsg::EmitNestedSessionFrame { payload_bytes },
+                    session_state,
+                    session_data
+                );
             },
         }
     }
@@ -1986,7 +2372,7 @@ fn init_session(
         .unwrap_or_else(|| get_default_shell());
 
     let default_mode = config_options.default_mode.unwrap_or_default();
-    let default_keybinds = config.keybinds.clone();
+    let default_keybinds: SharedKeybinds = Arc::new(config.keybinds.to_keybinds_vec());
 
     let pty_thread = thread::Builder::new()
         .name("pty".to_string())
@@ -2032,6 +2418,7 @@ fn init_session(
             let debug = cli_assets.is_debug;
             let layout = layout.clone();
             let config = config.clone();
+            let default_keybinds = default_keybinds.clone();
             move || {
                 screen_thread_main(
                     screen_bus,
@@ -2040,6 +2427,7 @@ fn init_session(
                     config,
                     debug,
                     layout,
+                    default_keybinds,
                 )
                 .fatal();
             }
@@ -2192,6 +2580,7 @@ fn init_session(
         web_sharing: config.options.web_sharing.unwrap_or(WebSharing::Off),
         #[cfg(not(feature = "web_server_capability"))]
         web_sharing: WebSharing::Disabled,
+        key_passthrough_clients: HashMap::new(),
         config_file_path: cli_assets.config_file_path,
     }
 }
@@ -2269,21 +2658,6 @@ fn should_show_startup_tip(
         false
     } else {
         should_show_startup_tip_config.unwrap_or(true)
-    }
-}
-
-fn should_enter_mobile_on_connect(options: &Options, is_web_client: bool, viewport: Size) -> bool {
-    let mobile_layout = options.mobile_layout.unwrap_or_default();
-    if is_web_client {
-        mobile_layout.may_route_web_client_to_mobile()
-    } else {
-        mobile_layout.should_route_to_mobile(
-            is_web_client,
-            viewport.cols,
-            viewport.rows,
-            options.mobile_threshold_cols.unwrap_or(60),
-            options.mobile_threshold_rows.unwrap_or(30),
-        )
     }
 }
 

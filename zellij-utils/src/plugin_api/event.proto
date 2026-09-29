@@ -8,6 +8,7 @@ import "action.proto";
 package api.event;
 
 enum EventType {
+    reserved 43;
     /// The input mode or relevant metadata changed
     ModeUpdate = 0;
     /// The tab state in the app was changed
@@ -65,13 +66,14 @@ enum EventType {
     AvailableLayoutInfo = 40;
     PluginConfigurationChanged = 41;
     HighlightClicked = 42;
-    PaneRenderReportWithAnsi = 43;
     InitialKeybinds = 44;
     CommandChanged = 45;
     HostTerminalThemeChanged = 46;
     SoftKeyboardVisibilityChanged = 47;
     HintText = 48;
     ActivePaneScroll = 49;
+    NestedSessionModeUpdate = 50;
+    NestedSessionEnded = 51;
 }
 
 message EventNameList {
@@ -79,6 +81,7 @@ message EventNameList {
 }
 
 message Event {
+  reserved 37;
   EventType name = 1;
   oneof payload {
     ModeUpdatePayload mode_update_payload = 2;
@@ -116,13 +119,56 @@ message Event {
     AvailableLayoutInfoPayload available_layout_info_payload = 34;
     PluginConfigurationChangedPayload plugin_configuration_changed_payload = 35;
     HighlightClickedPayload highlight_clicked_payload = 36;
-    PaneRenderReportPayload pane_render_report_with_ansi_payload = 37;
     InitialKeybindsPayload initial_keybinds_payload = 38;
     CommandChangedPayload command_changed_payload = 39;
     HostTerminalThemeChangedPayload host_terminal_theme_changed_payload = 40;
     SoftKeyboardVisibilityChangedPayload soft_keyboard_visibility_changed_payload = 41;
     HintTextPayload hint_text_payload = 42;
     ActivePaneScrollPayload active_pane_scroll_payload = 43;
+    NestedSessionModeUpdatePayload nested_session_mode_update_payload = 44;
+    NestedSessionEndedPayload nested_session_ended_payload = 45;
+  }
+}
+
+message NestedSessionModeUpdatePayload {
+  PaneId pane_id = 1;
+  repeated string session_path = 2;
+  input_mode.InputMode mode = 3;
+  optional input_mode.InputMode base_mode = 4;
+  uint64 keybinds_generation = 5;
+}
+
+enum NestedSessionEndReason {
+  NestedSessionExited = 0;
+  NestedSessionUnresponsive = 1;
+}
+
+message NestedSessionEndedPayload {
+  PaneId pane_id = 1;
+  NestedSessionEndReason reason = 2;
+}
+
+enum NestedSessionKeybindsError {
+  NestedKeybindsNotANestedSession = 0;
+  NestedKeybindsNotSupported = 1;
+  NestedKeybindsGuestUnresponsive = 2;
+  NestedKeybindsGuestGone = 3;
+  NestedKeybindsTooLarge = 4;
+  NestedKeybindsTimeout = 5;
+}
+
+message NestedSessionKeybindsResult {
+  repeated string session_path = 1;
+  input_mode.InputMode mode = 2;
+  optional input_mode.InputMode base_mode = 3;
+  repeated InputModeKeybinds keybinds = 4;
+  uint64 keybinds_generation = 5;
+}
+
+message NestedSessionKeybindsResponse {
+  oneof response {
+    NestedSessionKeybindsResult ok = 1;
+    NestedSessionKeybindsError err = 2;
   }
 }
 
@@ -465,6 +511,7 @@ message PaneInfo {
     repeated IndexInPaneGroup index_in_pane_group = 23;
     optional string default_fg = 24;
     optional string default_bg = 25;
+    optional string nested_session_name = 26;
 }
 
 message IndexInPaneGroup {
@@ -492,6 +539,7 @@ message TabInfo {
     uint32 tab_id = 17;
     bool has_bell_notification = 18;
     bool is_flashing_bell = 19;
+    repeated uint32 other_focused_client_slots = 20;
 }
 
 message ModeUpdatePayload {
@@ -511,6 +559,12 @@ message ModeUpdatePayload {
   optional uint32 web_server_port = 14;
   optional bool web_server_capability = 15;
   optional PaneFrameStyle pane_frame_style = 16;
+  optional bool session_dimmed = 17;
+  repeated string ancestry = 18;
+  optional bool host_fullscreen = 19;
+  repeated string nested_ascend_keys = 20;
+  optional bool session_ascended = 21;
+  repeated string nested_descend_keys = 22;
 }
 
 enum WebSharing {

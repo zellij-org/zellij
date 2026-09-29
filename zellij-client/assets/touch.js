@@ -2,6 +2,8 @@ import { clampFontSize } from "./terminal.js";
 import { toggleSoftKeyboard } from "./soft-keyboard.js";
 
 const SGR_COORD_BASE = 1;
+const panActive = () =>
+    !!(window.__zjMobilePan && window.__zjMobilePan.isActive());
 export function installTouchGestures({ term, terminalElement, sendFunction, pinch }) {
     let last_touch_y = null;
     let last_touch_x = null;
@@ -22,11 +24,19 @@ export function installTouchGestures({ term, terminalElement, sendFunction, pinc
     const two_finger_tap_max_ms = 600;
     const pinch_activation_threshold = 18;
 
-    const reportCoords = (clientX, clientY) =>
-        term._core._mouseService.getMouseReportCoords(
-            { clientX, clientY },
+    const reportCoords = (clientX, clientY) => {
+        let x = clientX;
+        let y = clientY;
+        if (panActive()) {
+            const off = window.__zjMobilePan.getOffset();
+            x += off.x;
+            y += off.y;
+        }
+        return term._core._mouseService.getMouseReportCoords(
+            { clientX: x, clientY: y },
             terminalElement
         );
+    };
 
     const cancelLongPress = () => {
         if (long_press_timer !== null) {
@@ -188,6 +198,12 @@ export function installTouchGestures({ term, terminalElement, sendFunction, pinc
                 last_touch_x === null ? 0 : touch.clientX - last_touch_x;
             last_touch_y = touch.clientY;
             last_touch_x = touch.clientX;
+
+            if (panActive()) {
+                window.__zjMobilePan.panBy(-delta_x, -delta_y);
+                return;
+            }
+
             pending_scroll += delta_y;
             pending_h_scroll += delta_x;
             while (pending_scroll <= -touch_scroll_threshold) {

@@ -28,12 +28,14 @@ keybinds clear-defaults=true {{
         bind "j" "Down" {{ MoveFocus "Down"; }}
         bind "k" "Up" {{ MoveFocus "Up"; }}
         bind "Tab" {{ SwitchFocus; }}
+        bind ";" {{ FocusLastPane; }}
         bind "n" {{ NewPane; SwitchToMode "Locked"; }}
         bind "d" {{ NewPane "Down"; SwitchToMode "Locked"; }}
         bind "r" {{ NewPane "Right"; SwitchToMode "Locked"; }}
         bind "s" {{ NewPane "stacked"; SwitchToMode "Locked"; }}
         bind "x" {{ CloseFocus; SwitchToMode "Locked"; }}
         bind "f" {{ ToggleFocusFullscreen; SwitchToMode "Locked"; }}
+        bind "Shift f" {{ ToggleFocusNoUiFullscreen; SwitchToMode "Locked"; }}
         bind "z" {{ TogglePaneFrames; SwitchToMode "Locked"; }}
         bind "w" {{ ToggleFloatingPanes; SwitchToMode "Locked"; }}
         bind "e" {{ TogglePaneEmbedOrFloating; SwitchToMode "Locked"; }}
@@ -90,6 +92,10 @@ keybinds clear-defaults=true {{
         bind "Alt j" {{ MoveFocus "down"; SwitchToMode "locked"; }}
         bind "Alt k" {{ MoveFocus "up"; SwitchToMode "locked"; }}
         bind "Alt l" {{ MoveFocusOrTab "right"; SwitchToMode "locked"; }}
+        bind "[" {{ ScrollToPreviousPrompt; }}
+        bind "]" {{ ScrollToNextPrompt; }}
+        bind "m" {{ SelectCommandAtScrollPosition; }}
+        bind "c" {{ CopyLastCommandOutput; SwitchToMode "Locked"; }}
     }}
     search {{
         bind "Ctrl c" {{ ScrollToBottom; SwitchToMode "Locked"; }}
@@ -104,6 +110,9 @@ keybinds clear-defaults=true {{
         bind "c" {{ SearchToggleOption "CaseSensitivity"; }}
         bind "w" {{ SearchToggleOption "Wrap"; }}
         bind "o" {{ SearchToggleOption "WholeWord"; }}
+        bind "[" {{ ScrollToPreviousPrompt; }}
+        bind "]" {{ ScrollToNextPrompt; }}
+        bind "m" {{ SelectCommandAtScrollPosition; }}
     }}
     entersearch {{
         bind "Ctrl c" "Esc" {{ SwitchToMode "Scroll"; }}
@@ -120,6 +129,9 @@ keybinds clear-defaults=true {{
     session {{
         bind "o" {{ SwitchToMode "Normal"; }}
         bind "d" {{ Detach; }}
+        bind "]" {{ FocusHostSession; SwitchToMode "Locked"; }}
+        bind "[" {{ FocusGuestSession; SwitchToMode "Locked"; }}
+        bind "f" {{ ToggleHostFullscreen; SwitchToMode "Locked"; }}
         bind "w" {{
             LaunchOrFocusPlugin "session-manager" {{
                 floating true
@@ -249,12 +261,14 @@ keybinds clear-defaults=true {{
         bind "j" "Down" {{ MoveFocus "Down"; }}
         bind "k" "Up" {{ MoveFocus "Up"; }}
         bind "p" {{ SwitchFocus; }}
+        bind ";" {{ FocusLastPane; }}
         bind "n" {{ NewPane; SwitchToMode "Normal"; }}
         bind "d" {{ NewPane "Down"; SwitchToMode "Normal"; }}
         bind "r" {{ NewPane "Right"; SwitchToMode "Normal"; }}
         bind "s" {{ NewPane "stacked"; SwitchToMode "Normal"; }}
         bind "x" {{ CloseFocus; SwitchToMode "Normal"; }}
         bind "f" {{ ToggleFocusFullscreen; SwitchToMode "Normal"; }}
+        bind "Shift f" {{ ToggleFocusNoUiFullscreen; SwitchToMode "Normal"; }}
         bind "z" {{ TogglePaneFrames; SwitchToMode "Normal"; }}
         bind "w" {{ ToggleFloatingPanes; SwitchToMode "Normal"; }}
         bind "e" {{ TogglePaneEmbedOrFloating; SwitchToMode "Normal"; }}
@@ -311,6 +325,10 @@ keybinds clear-defaults=true {{
         bind "{secondary_modifier} j" {{ MoveFocus "down"; SwitchToMode "normal"; }}
         bind "{secondary_modifier} k" {{ MoveFocus "up"; SwitchToMode "normal"; }}
         bind "{secondary_modifier} l" {{ MoveFocusOrTab "right"; SwitchToMode "normal"; }}
+        bind "[" {{ ScrollToPreviousPrompt; }}
+        bind "]" {{ ScrollToNextPrompt; }}
+        bind "m" {{ SelectCommandAtScrollPosition; }}
+        bind "c" {{ CopyLastCommandOutput; SwitchToMode "Normal"; }}
     }}
     search {{
         bind "{primary_modifier} s" {{ SwitchToMode "Normal"; }}
@@ -326,6 +344,9 @@ keybinds clear-defaults=true {{
         bind "c" {{ SearchToggleOption "CaseSensitivity"; }}
         bind "w" {{ SearchToggleOption "Wrap"; }}
         bind "o" {{ SearchToggleOption "WholeWord"; }}
+        bind "[" {{ ScrollToPreviousPrompt; }}
+        bind "]" {{ ScrollToNextPrompt; }}
+        bind "m" {{ SelectCommandAtScrollPosition; }}
     }}
     entersearch {{
         bind "Ctrl c" "Esc" {{ SwitchToMode "Scroll"; }}
@@ -343,6 +364,9 @@ keybinds clear-defaults=true {{
         bind "{primary_modifier} o" {{ SwitchToMode "Normal"; }}
         bind "{primary_modifier} s" {{ SwitchToMode "Scroll"; }}
         bind "d" {{ Detach; }}
+        bind "]" {{ FocusHostSession; SwitchToMode "Normal"; }}
+        bind "[" {{ FocusGuestSession; SwitchToMode "Normal"; }}
+        bind "f" {{ ToggleHostFullscreen; SwitchToMode "Normal"; }}
         bind "w" {{
             LaunchOrFocusPlugin "session-manager" {{
                 floating true
@@ -481,12 +505,14 @@ keybinds clear-defaults=true {{
         bind "j" "Down" {{ MoveFocus "Down"; }}
         bind "k" "Up" {{ MoveFocus "Up"; }}
         bind "p" {{ SwitchFocus; }}
+        bind ";" {{ FocusLastPane; }}
         bind "n" {{ NewPane; SwitchToMode "Normal"; }}
         bind "d" {{ NewPane "Down"; SwitchToMode "Normal"; }}
         bind "r" {{ NewPane "Right"; SwitchToMode "Normal"; }}
         bind "s" {{ NewPane "stacked"; SwitchToMode "Normal"; }}
         bind "x" {{ CloseFocus; SwitchToMode "Normal"; }}
         bind "f" {{ ToggleFocusFullscreen; SwitchToMode "Normal"; }}
+        bind "Shift f" {{ ToggleFocusNoUiFullscreen; SwitchToMode "Normal"; }}
         bind "z" {{ TogglePaneFrames; SwitchToMode "Normal"; }}
         bind "w" {{ ToggleFloatingPanes; SwitchToMode "Normal"; }}
         bind "e" {{ TogglePaneEmbedOrFloating; SwitchToMode "Normal"; }}
@@ -537,6 +563,10 @@ keybinds clear-defaults=true {{
         bind "{secondary_modifier} j" {{ MoveFocus "down"; SwitchToMode "normal"; }}
         bind "{secondary_modifier} k" {{ MoveFocus "up"; SwitchToMode "normal"; }}
         bind "{secondary_modifier} l" {{ MoveFocusOrTab "right"; SwitchToMode "normal"; }}
+        bind "[" {{ ScrollToPreviousPrompt; }}
+        bind "]" {{ ScrollToNextPrompt; }}
+        bind "m" {{ SelectCommandAtScrollPosition; }}
+        bind "c" {{ CopyLastCommandOutput; SwitchToMode "Normal"; }}
     }}
     search {{
         bind "Ctrl c" {{ ScrollToBottom; SwitchToMode "Normal"; }}
@@ -551,6 +581,9 @@ keybinds clear-defaults=true {{
         bind "c" {{ SearchToggleOption "CaseSensitivity"; }}
         bind "w" {{ SearchToggleOption "Wrap"; }}
         bind "o" {{ SearchToggleOption "WholeWord"; }}
+        bind "[" {{ ScrollToPreviousPrompt; }}
+        bind "]" {{ ScrollToNextPrompt; }}
+        bind "m" {{ SelectCommandAtScrollPosition; }}
     }}
     entersearch {{
         bind "Ctrl c" "Esc" {{ SwitchToMode "Scroll"; }}
@@ -566,6 +599,9 @@ keybinds clear-defaults=true {{
     }}
     session {{
         bind "d" {{ Detach; }}
+        bind "]" {{ FocusHostSession; SwitchToMode "Normal"; }}
+        bind "[" {{ FocusGuestSession; SwitchToMode "Normal"; }}
+        bind "f" {{ ToggleHostFullscreen; SwitchToMode "Normal"; }}
         bind "w" {{
             LaunchOrFocusPlugin "session-manager" {{
                 floating true
@@ -684,12 +720,14 @@ keybinds clear-defaults=true {{
         bind "j" "Down" {{ MoveFocus "Down"; }}
         bind "k" "Up" {{ MoveFocus "Up"; }}
         bind "p" {{ SwitchFocus; }}
+        bind ";" {{ FocusLastPane; }}
         bind "n" {{ NewPane; SwitchToMode "Normal"; }}
         bind "d" {{ NewPane "Down"; SwitchToMode "Normal"; }}
         bind "r" {{ NewPane "Right"; SwitchToMode "Normal"; }}
         bind "s" {{ NewPane "stacked"; SwitchToMode "Normal"; }}
         bind "x" {{ CloseFocus; SwitchToMode "Normal"; }}
         bind "f" {{ ToggleFocusFullscreen; SwitchToMode "Normal"; }}
+        bind "Shift f" {{ ToggleFocusNoUiFullscreen; SwitchToMode "Normal"; }}
         bind "z" {{ TogglePaneFrames; SwitchToMode "Normal"; }}
         bind "w" {{ ToggleFloatingPanes; SwitchToMode "Normal"; }}
         bind "e" {{ TogglePaneEmbedOrFloating; SwitchToMode "Normal"; }}
@@ -738,6 +776,10 @@ keybinds clear-defaults=true {{
         bind "Ctrl b" "PageUp" "Left" "h" {{ PageScrollUp; }}
         bind "d" {{ HalfPageScrollDown; }}
         bind "u" {{ HalfPageScrollUp; }}
+        bind "[" {{ ScrollToPreviousPrompt; }}
+        bind "]" {{ ScrollToNextPrompt; }}
+        bind "m" {{ SelectCommandAtScrollPosition; }}
+        bind "c" {{ CopyLastCommandOutput; SwitchToMode "Normal"; }}
     }}
     search {{
         bind "{primary_modifier} s" {{ SwitchToMode "Normal"; }}
@@ -753,6 +795,9 @@ keybinds clear-defaults=true {{
         bind "c" {{ SearchToggleOption "CaseSensitivity"; }}
         bind "w" {{ SearchToggleOption "Wrap"; }}
         bind "o" {{ SearchToggleOption "WholeWord"; }}
+        bind "[" {{ ScrollToPreviousPrompt; }}
+        bind "]" {{ ScrollToNextPrompt; }}
+        bind "m" {{ SelectCommandAtScrollPosition; }}
     }}
     entersearch {{
         bind "Ctrl c" "Esc" {{ SwitchToMode "Scroll"; }}
@@ -770,6 +815,9 @@ keybinds clear-defaults=true {{
         bind "{primary_modifier} o" {{ SwitchToMode "Normal"; }}
         bind "{primary_modifier} s" {{ SwitchToMode "Scroll"; }}
         bind "d" {{ Detach; }}
+        bind "]" {{ FocusHostSession; SwitchToMode "Normal"; }}
+        bind "[" {{ FocusGuestSession; SwitchToMode "Normal"; }}
+        bind "f" {{ ToggleHostFullscreen; SwitchToMode "Normal"; }}
         bind "w" {{
             LaunchOrFocusPlugin "session-manager" {{
                 floating true
@@ -894,12 +942,14 @@ keybinds clear-defaults=true {{
         bind "j" "Down" {{ MoveFocus "Down"; }}
         bind "k" "Up" {{ MoveFocus "Up"; }}
         bind "p" {{ SwitchFocus; }}
+        bind ";" {{ FocusLastPane; }}
         bind "n" {{ NewPane; SwitchToMode "Normal"; }}
         bind "d" {{ NewPane "Down"; SwitchToMode "Normal"; }}
         bind "r" {{ NewPane "Right"; SwitchToMode "Normal"; }}
         bind "s" {{ NewPane "stacked"; SwitchToMode "Normal"; }}
         bind "x" {{ CloseFocus; SwitchToMode "Normal"; }}
         bind "f" {{ ToggleFocusFullscreen; SwitchToMode "Normal"; }}
+        bind "Shift f" {{ ToggleFocusNoUiFullscreen; SwitchToMode "Normal"; }}
         bind "z" {{ TogglePaneFrames; SwitchToMode "Normal"; }}
         bind "w" {{ ToggleFloatingPanes; SwitchToMode "Normal"; }}
         bind "e" {{ TogglePaneEmbedOrFloating; SwitchToMode "Normal"; }}
@@ -945,6 +995,10 @@ keybinds clear-defaults=true {{
         bind "Ctrl b" "PageUp" "Left" "h" {{ PageScrollUp; }}
         bind "d" {{ HalfPageScrollDown; }}
         bind "u" {{ HalfPageScrollUp; }}
+        bind "[" {{ ScrollToPreviousPrompt; }}
+        bind "]" {{ ScrollToNextPrompt; }}
+        bind "m" {{ SelectCommandAtScrollPosition; }}
+        bind "c" {{ CopyLastCommandOutput; SwitchToMode "Normal"; }}
     }}
     search {{
         bind "Ctrl c" {{ ScrollToBottom; SwitchToMode "Normal"; }}
@@ -959,6 +1013,9 @@ keybinds clear-defaults=true {{
         bind "c" {{ SearchToggleOption "CaseSensitivity"; }}
         bind "w" {{ SearchToggleOption "Wrap"; }}
         bind "o" {{ SearchToggleOption "WholeWord"; }}
+        bind "[" {{ ScrollToPreviousPrompt; }}
+        bind "]" {{ ScrollToNextPrompt; }}
+        bind "m" {{ SelectCommandAtScrollPosition; }}
     }}
     entersearch {{
         bind "Ctrl c" "Esc" {{ SwitchToMode "Scroll"; }}
@@ -974,6 +1031,9 @@ keybinds clear-defaults=true {{
     }}
     session {{
         bind "d" {{ Detach; }}
+        bind "]" {{ FocusHostSession; SwitchToMode "Normal"; }}
+        bind "[" {{ FocusGuestSession; SwitchToMode "Normal"; }}
+        bind "f" {{ ToggleHostFullscreen; SwitchToMode "Normal"; }}
         bind "w" {{
             LaunchOrFocusPlugin "session-manager" {{
                 floating true
@@ -1079,12 +1139,14 @@ keybinds clear-defaults=true {{
         bind "j" "Down" {{ MoveFocus "Down"; }}
         bind "k" "Up" {{ MoveFocus "Up"; }}
         bind "p" {{ SwitchFocus; }}
+        bind ";" {{ FocusLastPane; }}
         bind "n" {{ NewPane; SwitchToMode "Normal"; }}
         bind "d" {{ NewPane "Down"; SwitchToMode "Normal"; }}
         bind "r" {{ NewPane "Right"; SwitchToMode "Normal"; }}
         bind "s" {{ NewPane "stacked"; SwitchToMode "Normal"; }}
         bind "x" {{ CloseFocus; SwitchToMode "Normal"; }}
         bind "f" {{ ToggleFocusFullscreen; SwitchToMode "Normal"; }}
+        bind "Shift f" {{ ToggleFocusNoUiFullscreen; SwitchToMode "Normal"; }}
         bind "z" {{ TogglePaneFrames; SwitchToMode "Normal"; }}
         bind "w" {{ ToggleFloatingPanes; SwitchToMode "Normal"; }}
         bind "e" {{ TogglePaneEmbedOrFloating; SwitchToMode "Normal"; }}
@@ -1141,6 +1203,10 @@ keybinds clear-defaults=true {{
         bind "{secondary_modifier} j" {{ MoveFocus "down"; SwitchToMode "normal"; }}
         bind "{secondary_modifier} k" {{ MoveFocus "up"; SwitchToMode "normal"; }}
         bind "{secondary_modifier} l" {{ MoveFocusOrTab "right"; SwitchToMode "normal"; }}
+        bind "[" {{ ScrollToPreviousPrompt; }}
+        bind "]" {{ ScrollToNextPrompt; }}
+        bind "m" {{ SelectCommandAtScrollPosition; }}
+        bind "c" {{ CopyLastCommandOutput; SwitchToMode "Normal"; }}
     }}
     search {{
         bind "{primary_modifier} s" {{ SwitchToMode "Normal"; }}
@@ -1156,6 +1222,9 @@ keybinds clear-defaults=true {{
         bind "c" {{ SearchToggleOption "CaseSensitivity"; }}
         bind "w" {{ SearchToggleOption "Wrap"; }}
         bind "o" {{ SearchToggleOption "WholeWord"; }}
+        bind "[" {{ ScrollToPreviousPrompt; }}
+        bind "]" {{ ScrollToNextPrompt; }}
+        bind "m" {{ SelectCommandAtScrollPosition; }}
     }}
     entersearch {{
         bind "Ctrl c" "Esc" {{ SwitchToMode "Scroll"; }}
@@ -1173,6 +1242,9 @@ keybinds clear-defaults=true {{
         bind "{primary_modifier} o" {{ SwitchToMode "Normal"; }}
         bind "{primary_modifier} s" {{ SwitchToMode "Scroll"; }}
         bind "d" {{ Detach; }}
+        bind "]" {{ FocusHostSession; SwitchToMode "Normal"; }}
+        bind "[" {{ FocusGuestSession; SwitchToMode "Normal"; }}
+        bind "f" {{ ToggleHostFullscreen; SwitchToMode "Normal"; }}
         bind "w" {{
             LaunchOrFocusPlugin "session-manager" {{
                 floating true

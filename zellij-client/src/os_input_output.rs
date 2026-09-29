@@ -21,7 +21,10 @@ use std::{io, thread, time};
 use zellij_utils::{
     data::Palette,
     errors::ErrorContext,
-    ipc::{ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg},
+    ipc::{
+        ClientToServerMsg, IpcReceiveError, IpcReceiverWithContext, IpcSenderWithContext,
+        ServerToClientMsg,
+    },
     shared::default_palette,
 };
 
@@ -129,6 +132,11 @@ pub trait ClientOsApi: Send + Sync + std::fmt::Debug {
     /// Receives a message on client-side IPC channel
     // This should be called from the client-side router thread only.
     fn recv_from_server(&self) -> Option<(ServerToClientMsg, ErrorContext)>;
+    fn try_recv_from_server(
+        &self,
+    ) -> std::result::Result<(ServerToClientMsg, ErrorContext), IpcReceiveError> {
+        self.recv_from_server().ok_or(IpcReceiveError::Undecodable)
+    }
     fn handle_signals(
         &self,
         sigwinch_cb: Box<dyn Fn()>,
@@ -249,12 +257,17 @@ impl ClientOsApi for ClientOsInputOutput {
         }
     }
     fn recv_from_server(&self) -> Option<(ServerToClientMsg, ErrorContext)> {
+        self.try_recv_from_server().ok()
+    }
+    fn try_recv_from_server(
+        &self,
+    ) -> std::result::Result<(ServerToClientMsg, ErrorContext), IpcReceiveError> {
         self.receive_instructions_from_server
             .lock()
             .unwrap()
             .as_mut()
             .unwrap()
-            .recv_server_msg()
+            .try_recv_server_msg()
     }
     fn handle_signals(
         &self,

@@ -148,7 +148,7 @@ fn discard_result<T>(_arg: anyhow::Result<T>) {}
 impl<T> FatalError<T> for anyhow::Result<T> {
     fn non_fatal(self) {
         if self.is_err() {
-            discard_result(self.context("a non-fatal error occured").to_log());
+            discard_result(self.context("a non-fatal error occurred").to_log());
         }
     }
 
@@ -156,7 +156,7 @@ impl<T> FatalError<T> for anyhow::Result<T> {
         if let Ok(val) = self {
             val
         } else {
-            self.context("a fatal error occured")
+            self.context("a fatal error occurred")
                 .expect("Program terminates")
         }
     }
@@ -273,6 +273,11 @@ pub enum ScreenContext {
     ScrollDownAt,
     ScrollToBottom,
     ScrollToTop,
+    ScrollToPreviousPrompt,
+    ScrollToNextPrompt,
+    SelectCommandAtScrollPosition,
+    CopyLastCommandOutput,
+    ClearCommandOutputFlash,
     PageScrollUp,
     PageScrollDown,
     HalfPageScrollUp,
@@ -281,6 +286,7 @@ pub enum ScreenContext {
     CloseFocusedPane,
     ToggleActiveSyncTab,
     ToggleActiveTerminalFullscreen,
+    ToggleActiveTerminalNoUiFullscreen,
     TogglePaneFrames,
     SetPaneFrameStyle,
     SetSelectable,
@@ -307,13 +313,20 @@ pub enum ScreenContext {
     CloseTabWithId,
     RenameTabWithId,
     BreakPanesToTabWithId,
-    TerminalResize,
     RecomputeTabSize,
     TerminalPixelDimensions,
     TerminalBackgroundColor,
     TerminalForegroundColor,
     TerminalColorRegisters,
+    SetKittyGraphicsSupport,
+    SetKittyZlibSupport,
+    SetSixelSupport,
     ForwardHostQuery,
+    NestedSessionMessageFromPane,
+    NestedGuestPingTick,
+    NestedSessionMessageFromHost,
+    GetNestedSessionKeybinds,
+    GuestModalChoice,
     ForwardedReplyFromHost,
     ResumePaneAfterForward,
     HostTerminalThemeChanged,
@@ -333,9 +346,6 @@ pub enum ScreenContext {
     ToggleTab,
     AddClient,
     RemoveClient,
-    SuppressRenderUntilMobile,
-    MobileSizeSettled,
-    ForceMobileUngate,
     UpdateSearch,
     SearchDown,
     SearchUp,
@@ -345,8 +355,13 @@ pub enum ScreenContext {
     AddRedPaneFrameColorOverride,
     ClearPaneFrameColorOverride,
     SetTabBellFlash,
+    HostTerminalFocusChanged,
+    SetClientHostTerminalEnv,
+    ForwardDesktopNotifications,
     PreviousSwapLayout,
     NextSwapLayout,
+    ApplyTiledSwapLayout,
+    ApplyFloatingSwapLayout,
     OverrideLayout,
     OverrideLayoutComplete,
     QueryTabNames,
@@ -404,7 +419,7 @@ pub enum ScreenContext {
     PageScrollUpInPaneId,
     PageScrollDownInPaneId,
     TogglePaneIdFullscreen,
-    SetTabFit,
+    SetMobileRenderPreferences,
     TogglePaneEmbedOrEjectForPaneId,
     CloseTabWithIndex,
     BreakPanesToNewTab,
@@ -416,6 +431,7 @@ pub enum ScreenContext {
     ChangeFloatingPanesCoordinates,
     TogglePaneBorderless,
     SetPaneBorderless,
+    SetPaneBorderStyle,
     AddHighlightPaneFrameColorOverride,
     GroupAndUngroupPanes,
     HighlightAndUnhighlightPanes,
@@ -453,6 +469,7 @@ pub enum ScreenContext {
     ClearScreenWithPaneId,
     EditScrollbackWithPaneId,
     ToggleFullscreenWithPaneId,
+    ToggleNoUiFullscreenWithPaneId,
     TogglePaneEmbedOrFloatingWithPaneId,
     CloseFocusWithPaneId,
     RenamePaneWithPaneId,
@@ -464,17 +481,16 @@ pub enum ScreenContext {
     ToggleFloatingPanesWithTabId,
     PreviousSwapLayoutWithTabId,
     NextSwapLayoutWithTabId,
+    ApplyTiledSwapLayoutWithTabId,
+    ApplyFloatingSwapLayoutWithTabId,
     MoveTabWithTabId,
-    PluginSubscribedToAnsiPaneContents,
     UpdateBackgroundPluginSubscriptions,
     ClearHintTextCache,
     BroadcastModeUpdate,
-    EnterMobileMode,
-    ExitMobileMode,
-    ToggleMobileMode,
-    ReevaluateMobileMode,
     SetSoftKeyboard,
-    SetShadowFocus,
+    FocusHostSession,
+    FocusGuestSession,
+    ToggleHostFullscreen,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
@@ -526,11 +542,11 @@ pub enum PluginContext {
     Exit,
     AddClient,
     RemoveClient,
+    UpdatePluginTabIndices,
+    UpdateClientVisiblePlugins,
     NewTab,
     OverrideLayout,
     ApplyCachedEvents,
-    HoldMobileRender,
-    ReleaseMobileRender,
     ApplyCachedWorkerMessages,
     PostMessageToPluginWorker,
     PostMessageToPlugin,
@@ -586,6 +602,7 @@ pub enum ClientContext {
     RenamedSession,
     ConfigFileUpdated,
     ForwardQueryToHost,
+    EmitNestedSessionFrame,
 }
 
 /// Stack call representations corresponding to the different types of [`ServerInstruction`]s.
@@ -621,7 +638,10 @@ pub enum ServerContext {
     FailedToStartWebServer,
     SendWebClientsForbidden,
     ClearMouseHelpText,
+    ClearCommandOutputFlash,
     ForwardQueryToHost,
+    KeyPassthroughChanged,
+    EmitNestedSessionFrameToClient,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -648,11 +668,14 @@ pub enum BackgroundJobContext {
     HighlightPanesWithMessage,
     QueryZellijWebServerStatus,
     ClearHelpText,
+    ClearCommandOutputFlash,
     FlashPaneBell,
     StopFlashPaneBell,
     FlashTabBell,
     StopFlashTabBell,
-    MobileGateTimeout,
+    StartNestedGuestPing,
+    StopNestedGuestPing,
+    TrimAllocator,
     Exit,
 }
 
@@ -687,9 +710,10 @@ If you're a developer:
     plugin directory.
 
 Possible fix for your problem:
-    Run `zellij setup --dump-plugins`, and optionally point it to your
-    'DATA DIR', visible in e.g. the output of `zellij setup --check`. Without
-    further arguments, it will use the default 'DATA DIR'.
+    Place the builtin plugin '.wasm' files in the plugin directory shown above,
+    or in the 'plugins' folder of the system data directory. Both are visible in
+    the output of `zellij setup --check`. This build carries no bundled plugins,
+    so `zellij setup --dump-plugins` cannot provide them.
 "
     )]
     BuiltinPluginMissing {
@@ -729,7 +753,7 @@ open an issue on GitHub:
     #[error("Pane size remains unchanged")]
     PaneSizeUnchanged,
 
-    #[error("an error occured")]
+    #[error("an error occurred")]
     GenericError { source: anyhow::Error },
 
     #[error("Client {client_id} is too slow to handle incoming messages")]
@@ -758,7 +782,7 @@ mod not_wasm {
     const MAX_THREAD_CALL_STACK: usize = 6;
 
     #[derive(Debug, ThisError, Diagnostic)]
-    #[error("{0}{}", self.show_backtrace())]
+    #[error("{0}{backtrace}", backtrace = self.show_backtrace())]
     #[diagnostic(help("{}", self.show_help()))]
     struct Panic(String);
 
@@ -836,7 +860,7 @@ mod not_wasm {
         error!(
             "{}",
             format!(
-                "Panic occured:
+                "Panic occurred:
              thread: {}
              location: {}
              message: {}",

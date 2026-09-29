@@ -2,7 +2,7 @@
 
 use insta::assert_snapshot;
 use zellij_integration_tests::{
-    claim_first_terminal_and_wait_for_prompt, col, keys, normalized, start_zellij, PROMPT,
+    claim_first_terminal_and_wait_for_prompt, col, keys, normalized, start_zellij, Size, PROMPT,
     TERMINAL_SIZE,
 };
 
@@ -138,6 +138,47 @@ fn watcher_client_functionality() {
     assert_snapshot!(normalized(&watcher_snapshot));
 
     main.quit();
+    watcher.quit();
+    zellij.quit();
+}
+
+#[test]
+fn watcher_larger_than_the_followed_content_is_padded_to_its_own_size() {
+    let mut zellij = start_zellij();
+    let first_terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
+    first_terminal.output(b"\r\nWATCHER_PADDING\r\n");
+    zellij.wait_until("followed client rendered", |grid_snapshot| {
+        grid_snapshot.contains("WATCHER_PADDING")
+    });
+
+    let followed_size = Size {
+        cols: TERMINAL_SIZE.cols - 20,
+        rows: TERMINAL_SIZE.rows - 4,
+    };
+    zellij.resize(followed_size);
+    zellij.wait_until(
+        "followed client re-rendered at its new size",
+        move |snapshot| {
+            snapshot.contains("WATCHER_PADDING") && snapshot.row_count() == followed_size.rows
+        },
+    );
+
+    let watcher = zellij.attach_watcher(Size {
+        cols: TERMINAL_SIZE.cols + 20,
+        rows: TERMINAL_SIZE.rows + 6,
+    });
+    watcher.wait_until("watcher connected and sees the output", |grid_snapshot| {
+        grid_snapshot.contains("Ctrl +") && grid_snapshot.contains("WATCHER_PADDING")
+    });
+
+    let clear_below_content = format!("\u{1b}[{};1H\u{1b}[m\u{1b}[J", followed_size.rows + 1);
+    let clear_to_end_of_content_line =
+        format!("\u{1b}[1;{}H\u{1b}[m\u{1b}[K", followed_size.cols + 1);
+    watcher.wait_until_raw_output("watcher output padded to its own size", move |bytes| {
+        let output = String::from_utf8_lossy(bytes);
+        output.contains(&clear_below_content) && output.contains(&clear_to_end_of_content_line)
+    });
+
     watcher.quit();
     zellij.quit();
 }

@@ -48,7 +48,7 @@ impl Default for RebindLeadersScreen {
 
 impl RebindLeadersScreen {
     // temporarily commented out for the time being because the extra leaders screen was deemed a bit
-    // confusing, see commend in <l> key
+    // confusing, see comment in <l> key
     //     pub fn with_rebinding_for_presets(mut self) -> Self {
     //         self.is_rebinding_for_presets = true;
     //         self

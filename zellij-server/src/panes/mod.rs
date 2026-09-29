@@ -1,7 +1,9 @@
 pub mod alacritty_functions;
 pub mod grid;
 pub mod hyperlink_tracker;
+pub mod kitty_graphics;
 pub mod link_handler;
+pub mod nested_session_modal;
 pub mod selection;
 pub mod sixel;
 pub mod terminal_character;
@@ -17,6 +19,7 @@ pub use active_panes::*;
 pub use alacritty_functions::*;
 pub use floating_panes::*;
 pub use grid::*;
+pub use kitty_graphics::*;
 pub use link_handler::*;
 pub(crate) use plugin_pane::*;
 pub use selection::Selection;

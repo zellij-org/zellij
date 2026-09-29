@@ -1,4 +1,5 @@
 use super::super::TerminalPane;
+use crate::panes::kitty_graphics::KittyImageStore;
 use crate::panes::sixel::SixelImageStore;
 use crate::panes::LinkHandler;
 use crate::tab::Pane;
@@ -50,6 +51,7 @@ pub fn scrolling_inside_a_pane() {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         None,
@@ -103,6 +105,7 @@ pub fn sixel_image_inside_terminal_pane() {
         Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         None,
@@ -156,6 +159,7 @@ pub fn partial_sixel_image_inside_terminal_pane() {
         Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         None,
@@ -203,6 +207,7 @@ pub fn overflowing_sixel_image_inside_terminal_pane() {
         Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         None,
@@ -249,6 +254,7 @@ pub fn scrolling_through_a_sixel_image() {
         Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         None,
@@ -306,6 +312,7 @@ pub fn multiple_sixel_images_in_pane() {
         Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         None,
@@ -361,6 +368,7 @@ pub fn resizing_pane_with_sixel_images() {
         Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         None,
@@ -419,6 +427,7 @@ pub fn changing_character_cell_size_with_sixel_images() {
         Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size.clone(),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         None,
@@ -482,6 +491,7 @@ pub fn keep_working_after_corrupted_sixel_image() {
         Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         None,
@@ -543,6 +553,7 @@ pub fn pane_with_frame_position_is_on_frame() {
         Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         None,
@@ -640,6 +651,7 @@ pub fn pane_with_bottom_and_right_borders_position_is_on_frame() {
         Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         None,
@@ -720,6 +732,7 @@ fn make_terminal_pane_for_bell() -> TerminalPane {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         None,
@@ -778,6 +791,165 @@ pub fn has_bell_reflects_grid_ring_bell() {
 }
 
 #[test]
+pub fn osc7_payload_stored_from_pty_bytes() {
+    let mut terminal_pane = make_terminal_pane_for_bell();
+
+    assert!(
+        terminal_pane.osc7_payload().is_none(),
+        "Initially osc7_payload should be None"
+    );
+
+    // Send OSC 7 sequence: \x1b]7;file://localhost/tmp\x1b\\
+    let osc7_bytes = b"\x1b]7;file://localhost/tmp\x1b\\";
+    terminal_pane.handle_pty_bytes(osc7_bytes.to_vec());
+
+    assert_eq!(
+        terminal_pane.drain_osc7_cwd(),
+        Some(std::path::PathBuf::from("/tmp")),
+        "OSC 7 should still update Zellij's internal CWD tracking"
+    );
+    assert!(terminal_pane.drain_osc7_cwd().is_none());
+    assert_eq!(
+        terminal_pane.osc7_payload(),
+        Some("file://localhost/tmp"),
+        "The forwarding URI should persist after the internal CWD update is drained"
+    );
+}
+
+#[test]
+pub fn osc7_payload_updated_on_subsequent_osc7() {
+    let mut terminal_pane = make_terminal_pane_for_bell();
+
+    let osc7_first = b"\x1b]7;file://localhost/first\x1b\\";
+    terminal_pane.handle_pty_bytes(osc7_first.to_vec());
+    assert_eq!(terminal_pane.osc7_payload(), Some("file://localhost/first"));
+
+    let osc7_second = b"\x1b]7;file://localhost/second\x1b\\";
+    terminal_pane.handle_pty_bytes(osc7_second.to_vec());
+    assert_eq!(
+        terminal_pane.osc7_payload(),
+        Some("file://localhost/second")
+    );
+}
+
+#[test]
+pub fn osc7_payload_preserves_percent_encoding() {
+    let mut terminal_pane = make_terminal_pane_for_bell();
+
+    let osc7_bytes = b"\x1b]7;file://localhost/path%20with%20spaces\x1b\\";
+    terminal_pane.handle_pty_bytes(osc7_bytes.to_vec());
+    assert_eq!(
+        terminal_pane.drain_osc7_cwd(),
+        Some(std::path::PathBuf::from("/path with spaces")),
+    );
+    assert_eq!(
+        terminal_pane.osc7_payload(),
+        Some("file://localhost/path%20with%20spaces"),
+    );
+}
+
+#[test]
+pub fn osc7_payload_works_with_bel_terminator() {
+    let mut terminal_pane = make_terminal_pane_for_bell();
+
+    // BEL (\x07) is an alternative terminator for OSC sequences
+    let osc7_bytes = b"\x1b]7;file://localhost/tmp\x07";
+    terminal_pane.handle_pty_bytes(osc7_bytes.to_vec());
+    assert_eq!(terminal_pane.osc7_payload(), Some("file://localhost/tmp"),);
+}
+
+#[test]
+pub fn osc7_payload_rejects_c0_control_characters() {
+    // Test the Grid's osc_dispatch directly, since the VTE parser strips
+    // control characters before they reach osc_dispatch. This validates
+    // the defense-in-depth guard in the b"7" handler.
+    use vte::Perform;
+
+    let mut terminal_pane = make_terminal_pane_for_bell();
+    let params: &[&[u8]] = &[b"7", b"file://host/path\x01bad"];
+    terminal_pane.grid.osc_dispatch(params, false);
+    assert!(
+        terminal_pane.osc7_payload().is_none(),
+        "URIs with C0 control characters should be rejected"
+    );
+}
+
+#[test]
+pub fn osc7_payload_rejects_c1_control_characters() {
+    // C1 control characters (U+0080..U+009F) include ST (U+009C) which
+    // could terminate the OSC sequence in the parent terminal.
+    use vte::Perform;
+
+    let mut terminal_pane = make_terminal_pane_for_bell();
+    // U+009C (ST) in UTF-8 is 0xC2 0x9C
+    let params: &[&[u8]] = &[b"7", "file://host/path\u{9c}bad".as_bytes()];
+    terminal_pane.grid.osc_dispatch(params, false);
+    assert!(
+        terminal_pane.osc7_payload().is_none(),
+        "URIs with C1 control characters should be rejected"
+    );
+}
+
+#[test]
+pub fn osc7_payload_rejects_an_empty_payload() {
+    let mut terminal_pane = make_terminal_pane_for_bell();
+
+    terminal_pane.handle_pty_bytes(b"\x1b]7;file://localhost/tmp\x1b\\".to_vec());
+    terminal_pane.handle_pty_bytes(b"\x1b]7;\x1b\\".to_vec());
+
+    assert_eq!(
+        terminal_pane.osc7_payload(),
+        Some("file://localhost/tmp"),
+        "An empty OSC 7 is rejected and the previous URI is retained"
+    );
+}
+
+#[test]
+pub fn osc7_payload_rejects_invalid_utf8() {
+    use vte::Perform;
+
+    let mut terminal_pane = make_terminal_pane_for_bell();
+    terminal_pane.handle_pty_bytes(b"\x1b]7;file://localhost/tmp\x1b\\".to_vec());
+
+    let params: &[&[u8]] = &[b"7", b"file://localhost/\xff\xfe"];
+    terminal_pane.grid.osc_dispatch(params, false);
+
+    assert_eq!(
+        terminal_pane.osc7_payload(),
+        Some("file://localhost/tmp"),
+        "A non-UTF-8 OSC 7 is rejected and the previous URI is retained"
+    );
+}
+
+#[test]
+pub fn osc7_payload_joins_semicolon_separated_segments() {
+    let mut terminal_pane = make_terminal_pane_for_bell();
+
+    terminal_pane.handle_pty_bytes(b"\x1b]7;file://localhost/a;b;c\x1b\\".to_vec());
+
+    assert_eq!(
+        terminal_pane.osc7_payload(),
+        Some("file://localhost/a;b;c"),
+        "A URI containing semicolons is reassembled from the split params"
+    );
+}
+
+#[test]
+pub fn osc7_payload_is_cleared_by_a_terminal_reset() {
+    let mut terminal_pane = make_terminal_pane_for_bell();
+
+    terminal_pane.handle_pty_bytes(b"\x1b]7;file://localhost/tmp\x1b\\".to_vec());
+    assert_eq!(terminal_pane.osc7_payload(), Some("file://localhost/tmp"));
+
+    terminal_pane.handle_pty_bytes(b"\x1bc".to_vec());
+
+    assert!(
+        terminal_pane.osc7_payload().is_none(),
+        "RIS clears the reported working directory"
+    );
+}
+
+#[test]
 pub fn frameless_pane_position_is_on_frame() {
     let mut fake_win_size = PaneGeom {
         x: 10,
@@ -810,6 +982,7 @@ pub fn frameless_pane_position_is_on_frame() {
         Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         terminal_emulator_colors,
         terminal_emulator_color_codes,
         None,
@@ -872,4 +1045,152 @@ pub fn frameless_pane_position_is_on_frame() {
     assert!(!terminal_pane.position_is_on_frame(&Position::new(30, 70)));
     assert!(!terminal_pane.position_is_on_frame(&Position::new(30, 130)));
     assert!(!terminal_pane.position_is_on_frame(&Position::new(30, 131)));
+}
+
+fn create_guest_modal_pane() -> TerminalPane {
+    let mut fake_win_size = PaneGeom::default();
+    fake_win_size.cols.set_inner(80);
+    fake_win_size.rows.set_inner(24);
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    TerminalPane::new(
+        1,
+        fake_win_size,
+        Style::default(),
+        0,
+        String::new(),
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+        None,
+        None,
+        false,
+        true,
+        true,
+        true,
+        false,
+        None,
+    )
+}
+
+fn press_key(
+    pane: &mut TerminalPane,
+    bare_key: zellij_utils::data::BareKey,
+    client_id: crate::ClientId,
+) -> Option<crate::tab::AdjustedInput> {
+    let key = zellij_utils::data::KeyWithModifier::new(bare_key);
+    pane.adjust_input_to_terminal(&Some(key), vec![], false, Some(client_id))
+}
+
+#[test]
+pub fn guest_modal_navigation_wraps() {
+    use zellij_utils::data::BareKey;
+    let mut pane = create_guest_modal_pane();
+    let client_id = 1;
+    pane.set_guest_modal(&[client_id]);
+    assert_eq!(pane.guest_modal_selection(client_id), Some(0));
+    press_key(&mut pane, BareKey::Up, client_id);
+    assert_eq!(pane.guest_modal_selection(client_id), Some(1));
+    press_key(&mut pane, BareKey::Down, client_id);
+    assert_eq!(pane.guest_modal_selection(client_id), Some(0));
+    press_key(&mut pane, BareKey::Down, client_id);
+    assert_eq!(pane.guest_modal_selection(client_id), Some(1));
+    press_key(&mut pane, BareKey::Up, client_id);
+    assert_eq!(pane.guest_modal_selection(client_id), Some(0));
+}
+
+#[test]
+pub fn guest_modal_tab_is_ignored() {
+    use zellij_utils::data::{BareKey, KeyWithModifier};
+    let mut pane = create_guest_modal_pane();
+    let client_id = 1;
+    pane.set_guest_modal(&[client_id]);
+    press_key(&mut pane, BareKey::Tab, client_id);
+    assert_eq!(pane.guest_modal_selection(client_id), Some(0));
+    let key = KeyWithModifier::new(BareKey::Tab).with_shift_modifier();
+    pane.adjust_input_to_terminal(&Some(key), vec![], false, Some(client_id));
+    assert_eq!(pane.guest_modal_selection(client_id), Some(0));
+}
+
+#[test]
+pub fn guest_modal_enter_confirms_selection() {
+    use crate::tab::AdjustedInput;
+    use zellij_utils::data::BareKey;
+    let mut pane = create_guest_modal_pane();
+    let client_id = 1;
+
+    pane.set_guest_modal(&[client_id]);
+    let outcome = press_key(&mut pane, BareKey::Enter, client_id);
+    assert!(matches!(outcome, Some(AdjustedInput::GuestModalZoom)));
+
+    pane.set_guest_modal(&[client_id]);
+    press_key(&mut pane, BareKey::Down, client_id);
+    let outcome = press_key(&mut pane, BareKey::Enter, client_id);
+    assert!(matches!(outcome, Some(AdjustedInput::GuestModalDescend)));
+}
+
+#[test]
+pub fn guest_modal_digit_shortcuts() {
+    use crate::tab::AdjustedInput;
+    use zellij_utils::data::BareKey;
+    let mut pane = create_guest_modal_pane();
+    let client_id = 1;
+
+    pane.set_guest_modal(&[client_id]);
+    let outcome = press_key(&mut pane, BareKey::Char('1'), client_id);
+    assert!(matches!(outcome, Some(AdjustedInput::GuestModalZoom)));
+
+    pane.set_guest_modal(&[client_id]);
+    let outcome = press_key(&mut pane, BareKey::Char('2'), client_id);
+    assert!(matches!(outcome, Some(AdjustedInput::GuestModalDescend)));
+}
+
+#[test]
+pub fn guest_modal_esc_descends() {
+    use crate::tab::AdjustedInput;
+    use zellij_utils::data::BareKey;
+    let mut pane = create_guest_modal_pane();
+    let client_id = 1;
+    pane.set_guest_modal(&[client_id]);
+    let outcome = press_key(&mut pane, BareKey::Esc, client_id);
+    assert!(matches!(outcome, Some(AdjustedInput::GuestModalDescend)));
+}
+
+#[test]
+pub fn guest_modal_swallows_other_input() {
+    use zellij_utils::data::BareKey;
+    let mut pane = create_guest_modal_pane();
+    let client_id = 1;
+    pane.set_guest_modal(&[client_id]);
+    let outcome = press_key(&mut pane, BareKey::Char('x'), client_id);
+    assert!(outcome.is_none());
+    assert_eq!(pane.guest_modal_selection(client_id), Some(0));
+}
+
+#[test]
+pub fn guest_modal_is_per_client() {
+    use zellij_utils::data::BareKey;
+    let mut pane = create_guest_modal_pane();
+    let client_a = 1;
+    let client_b = 2;
+    pane.set_guest_modal(&[client_a, client_b]);
+    press_key(&mut pane, BareKey::Down, client_a);
+    assert_eq!(pane.guest_modal_selection(client_a), Some(1));
+    assert_eq!(pane.guest_modal_selection(client_b), Some(0));
+}
+
+#[test]
+pub fn guest_modal_no_modal_passes_input_through() {
+    use zellij_utils::data::BareKey;
+    let mut pane = create_guest_modal_pane();
+    let client_id = 1;
+    let outcome = press_key(&mut pane, BareKey::Char('x'), client_id);
+    assert!(matches!(
+        outcome,
+        Some(crate::tab::AdjustedInput::WriteBytesToTerminal(_))
+    ));
 }

@@ -1,4 +1,5 @@
 use super::super::TerminalPane;
+use crate::panes::kitty_graphics::KittyImageStore;
 use crate::panes::sixel::SixelImageStore;
 use crate::panes::LinkHandler;
 use crate::tab::Pane;
@@ -42,6 +43,7 @@ fn create_pane() -> TerminalPane {
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
         sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
         Rc::new(RefCell::new(Palette::default())),
         terminal_emulator_color_codes,
         None,

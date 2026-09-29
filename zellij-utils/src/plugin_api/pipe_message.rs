@@ -9,7 +9,7 @@ impl TryFrom<ProtobufPipeMessage> for PipeMessage {
     type Error = &'static str;
     fn try_from(protobuf_pipe_message: ProtobufPipeMessage) -> Result<Self, &'static str> {
         let source = match (
-            ProtobufPipeSource::from_i32(protobuf_pipe_message.source),
+            ProtobufPipeSource::try_from(protobuf_pipe_message.source).ok(),
             protobuf_pipe_message.cli_source_id,
             protobuf_pipe_message.plugin_source_id,
         ) {

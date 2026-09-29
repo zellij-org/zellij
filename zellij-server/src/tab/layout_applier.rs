@@ -5,6 +5,7 @@ use crate::tab::{get_next_terminal_position, HoldForCommand, Pane};
 
 use crate::{
     os_input_output::ServerOsApi,
+    panes::kitty_graphics::KittyImageStore,
     panes::sixel::SixelImageStore,
     panes::{FloatingPanes, TiledPanes},
     panes::{LinkHandler, PaneId, PluginPane, TerminalPane},
@@ -27,6 +28,7 @@ pub struct LayoutApplier<'a> {
     viewport: Rc<RefCell<Viewport>>, // includes all non-UI panes
     senders: ThreadSenders,
     sixel_image_store: Rc<RefCell<SixelImageStore>>,
+    kitty_image_store: Rc<RefCell<KittyImageStore>>,
     link_handler: Rc<RefCell<LinkHandler>>,
     terminal_emulator_colors: Rc<RefCell<Palette>>,
     terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
@@ -52,6 +54,7 @@ impl<'a> LayoutApplier<'a> {
         viewport: &Rc<RefCell<Viewport>>,
         senders: &ThreadSenders,
         sixel_image_store: &Rc<RefCell<SixelImageStore>>,
+        kitty_image_store: &Rc<RefCell<KittyImageStore>>,
         link_handler: &Rc<RefCell<LinkHandler>>,
         terminal_emulator_colors: &Rc<RefCell<Palette>>,
         terminal_emulator_color_codes: &Rc<RefCell<HashMap<usize, String>>>,
@@ -74,6 +77,7 @@ impl<'a> LayoutApplier<'a> {
         let viewport = viewport.clone();
         let senders = senders.clone();
         let sixel_image_store = sixel_image_store.clone();
+        let kitty_image_store = kitty_image_store.clone();
         let link_handler = link_handler.clone();
         let terminal_emulator_colors = terminal_emulator_colors.clone();
         let terminal_emulator_color_codes = terminal_emulator_color_codes.clone();
@@ -86,6 +90,7 @@ impl<'a> LayoutApplier<'a> {
             viewport,
             senders,
             sixel_image_store,
+            kitty_image_store,
             link_handler,
             terminal_emulator_colors,
             terminal_emulator_color_codes,
@@ -529,6 +534,7 @@ impl<'a> LayoutApplier<'a> {
             pane_title,
             layout.name.clone().unwrap_or_default(),
             self.sixel_image_store.clone(),
+            self.kitty_image_store.clone(),
             self.terminal_emulator_colors.clone(),
             self.terminal_emulator_color_codes.clone(),
             self.link_handler.clone(),
@@ -546,6 +552,7 @@ impl<'a> LayoutApplier<'a> {
         }
 
         new_plugin.set_borderless(layout.borderless.unwrap_or(false));
+        new_plugin.set_border_style_override(layout.border_style.unwrap_or_default());
         if let Some(exclude_from_sync) = layout.exclude_from_sync {
             new_plugin.set_exclude_from_sync(exclude_from_sync);
         }
@@ -578,6 +585,7 @@ impl<'a> LayoutApplier<'a> {
             pane_title,
             floating_pane_layout.name.clone().unwrap_or_default(),
             self.sixel_image_store.clone(),
+            self.kitty_image_store.clone(),
             self.terminal_emulator_colors.clone(),
             self.terminal_emulator_color_codes.clone(),
             self.link_handler.clone(),
@@ -598,6 +606,7 @@ impl<'a> LayoutApplier<'a> {
         } else {
             new_pane.set_borderless(false);
         }
+        new_pane.set_border_style_override(floating_pane_layout.border_style.unwrap_or_default());
         resize_pty!(
             new_pane,
             self.os_api,
@@ -634,6 +643,7 @@ impl<'a> LayoutApplier<'a> {
             self.link_handler.clone(),
             self.character_cell_size.clone(),
             self.sixel_image_store.clone(),
+            self.kitty_image_store.clone(),
             self.terminal_emulator_colors.clone(),
             self.terminal_emulator_color_codes.clone(),
             initial_title,
@@ -654,6 +664,7 @@ impl<'a> LayoutApplier<'a> {
         } else {
             new_pane.set_borderless(false);
         }
+        new_pane.set_border_style_override(floating_pane_layout.border_style.unwrap_or_default());
         if floating_pane_layout.default_fg.is_some() || floating_pane_layout.default_bg.is_some() {
             new_pane.set_pane_default_colors(
                 floating_pane_layout.default_fg.clone(),
@@ -710,6 +721,7 @@ impl<'a> LayoutApplier<'a> {
             self.link_handler.clone(),
             self.character_cell_size.clone(),
             self.sixel_image_store.clone(),
+            self.kitty_image_store.clone(),
             self.terminal_emulator_colors.clone(),
             self.terminal_emulator_color_codes.clone(),
             initial_title,
@@ -726,6 +738,7 @@ impl<'a> LayoutApplier<'a> {
             new_pane.handle_pty_bytes("\n\r".as_bytes().into());
         }
         new_pane.set_borderless(layout.borderless.unwrap_or(false));
+        new_pane.set_border_style_override(layout.border_style.unwrap_or_default());
         if let Some(exclude_from_sync) = layout.exclude_from_sync {
             new_pane.set_exclude_from_sync(exclude_from_sync);
         }
@@ -755,6 +768,7 @@ impl<'a> LayoutApplier<'a> {
                 layout.run,
                 position_and_size,
                 layout.borderless,
+                layout.border_style,
             );
             found_exact_match = true;
         }
@@ -775,6 +789,7 @@ impl<'a> LayoutApplier<'a> {
                 run_instruction.clone(),
                 position_and_size,
                 layout.borderless,
+                layout.border_style,
             );
             found_empty_location = true;
         }
@@ -1041,38 +1056,64 @@ impl<'a> LayoutApplier<'a> {
             let mut viewport = viewport.borrow_mut();
             *viewport = (*display_area.borrow()).into();
         }
-        let boundary_geoms = tiled_panes.non_selectable_pane_geoms_inside_viewport();
+        let ui_pane_geoms = tiled_panes.non_selectable_pane_geoms_inside_viewport();
         {
-            // curly braces here is so that we free viewport immediately when we're done
             let mut viewport = viewport.borrow_mut();
-            for position_and_size in boundary_geoms {
-                if position_and_size.x == viewport.x
-                    && position_and_size.x + position_and_size.cols == viewport.x + viewport.cols
-                {
-                    if position_and_size.y == viewport.y {
-                        viewport.y += position_and_size.rows;
-                        viewport.rows -= position_and_size.rows;
-                    } else if position_and_size.y + position_and_size.rows
-                        == viewport.y + viewport.rows
-                    {
-                        viewport.rows -= position_and_size.rows;
-                    }
+            for geom in &ui_pane_geoms {
+                let row_strips = ui_pane_geoms.iter().map(|g| ((g.y, g.rows), (g.x, g.cols)));
+                if let Some(remaining_rows) = LayoutApplier::shrink_by_edge_strip(
+                    (viewport.y, viewport.rows),
+                    (viewport.x, viewport.cols),
+                    (geom.y, geom.rows),
+                    row_strips,
+                ) {
+                    (viewport.y, viewport.rows) = remaining_rows;
                 }
-                if position_and_size.y == viewport.y
-                    && position_and_size.y + position_and_size.rows == viewport.y + viewport.rows
-                {
-                    if position_and_size.x == viewport.x {
-                        viewport.x += position_and_size.cols;
-                        viewport.cols -= position_and_size.cols;
-                    } else if position_and_size.x + position_and_size.cols
-                        == viewport.x + viewport.cols
-                    {
-                        viewport.cols -= position_and_size.cols;
-                    }
+                let col_strips = ui_pane_geoms.iter().map(|g| ((g.x, g.cols), (g.y, g.rows)));
+                if let Some(remaining_cols) = LayoutApplier::shrink_by_edge_strip(
+                    (viewport.x, viewport.cols),
+                    (viewport.y, viewport.rows),
+                    (geom.x, geom.cols),
+                    col_strips,
+                ) {
+                    (viewport.x, viewport.cols) = remaining_cols;
                 }
             }
         }
         tiled_panes.set_pane_frames(pane_frame_style);
+    }
+    fn shrink_by_edge_strip(
+        (start, len): (usize, usize),
+        (cross_start, cross_len): (usize, usize),
+        (strip_start, strip_len): (usize, usize),
+        geoms: impl Iterator<Item = ((usize, usize), (usize, usize))>,
+    ) -> Option<(usize, usize)> {
+        let is_at_start = strip_start == start;
+        let is_at_end = strip_start + strip_len == start + len;
+        if strip_len == 0 || strip_len >= len || !(is_at_start || is_at_end) {
+            return None;
+        }
+        let mut cross_spans: Vec<(usize, usize)> = geoms
+            .filter(|(span, _)| *span == (strip_start, strip_len))
+            .map(|(_, cross_span)| cross_span)
+            .collect();
+        cross_spans.sort_unstable();
+        let mut covered_until = cross_start;
+        for (cross_span_start, cross_span_len) in cross_spans {
+            if cross_span_start > covered_until {
+                break;
+            }
+            covered_until = covered_until.max(cross_span_start + cross_span_len);
+        }
+        if covered_until < cross_start + cross_len {
+            return None;
+        }
+        let remaining_start = if is_at_start {
+            start + strip_len
+        } else {
+            start
+        };
+        Some((remaining_start, len - strip_len))
     }
     fn adjust_viewport(&mut self) -> Result<()> {
         // here we offset the viewport after applying a tiled panes layout
@@ -1322,6 +1363,9 @@ impl<'a> PaneApplier<'a> {
         if let Some(should_be_borderless) = floating_panes_layout.borderless {
             pane.set_borderless(should_be_borderless);
         }
+        if let Some(border_style) = floating_panes_layout.border_style {
+            pane.set_border_style_override(border_style);
+        }
         self.apply_position_and_size_to_floating_pane(pane, position_and_size);
         Ok(())
     }
@@ -1400,6 +1444,9 @@ impl<'a> PaneApplier<'a> {
         }
         if let Some(should_be_borderless) = layout.borderless {
             pane.set_borderless(should_be_borderless);
+        }
+        if let Some(border_style) = layout.border_style {
+            pane.set_border_style_override(border_style);
         }
         if let Some(pane_title) = layout.name.as_ref() {
             pane.set_title(pane_title.into());

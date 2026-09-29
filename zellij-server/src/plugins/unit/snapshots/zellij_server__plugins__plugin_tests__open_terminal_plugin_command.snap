@@ -23,6 +23,7 @@ Some(
         Tiled {
             direction: None,
             borderless: None,
+            border_style: None,
         },
         false,
         ClientId(

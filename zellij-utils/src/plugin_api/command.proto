@@ -2,8 +2,11 @@ syntax = "proto3";
 
 package api.command;
 
+import "style.proto";
+
 message Command {
   string path = 1;
   repeated string args = 2;
   optional string cwd = 3;
+  optional style.BorderStyleOverride border_style = 4;
 }
