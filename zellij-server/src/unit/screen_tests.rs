@@ -14935,3 +14935,200 @@ fn per_client_modes_are_kept_across_tabs() {
         Some(InputMode::Normal)
     );
 }
+
+mod session_update_dedup {
+    use super::*;
+    use std::time::Duration;
+    use zellij_utils::data::SessionInfo;
+
+    struct Harness {
+        screen: Screen,
+        plugin_receiver: Receiver<(PluginInstruction, ErrorContext)>,
+    }
+
+    impl Harness {
+        fn new() -> Self {
+            let size = Size {
+                cols: 121,
+                rows: 20,
+            };
+            let (mut screen, _tty_stdin_bytes, _server_receiver) =
+                create_new_screen_with_capture(size, true, true, true, true);
+            let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> =
+                channels::unbounded();
+            screen.bus.senders.to_plugin = Some(SenderWithContext::new(to_plugin));
+            Harness {
+                screen,
+                plugin_receiver,
+            }
+        }
+
+        /// Every `update_session_infos` call is what a session list query sends to the screen, so
+        /// the number of `SessionUpdate` events the plugins receive is what a plugin rendering on
+        /// those events would react to.
+        fn scan_session_list(&mut self, session_infos: BTreeMap<String, SessionInfo>) {
+            let resurrectable_sessions = BTreeMap::new();
+            self.screen
+                .update_session_infos(session_infos, resurrectable_sessions)
+                .expect("TEST");
+        }
+
+        fn session_updates_received(&self) -> Vec<Event> {
+            self.plugin_receiver
+                .try_iter()
+                .filter_map(|(instruction, _)| match instruction {
+                    PluginInstruction::Update(updates) => Some(updates),
+                    _ => None,
+                })
+                .flatten()
+                .map(|(_, _, event)| event)
+                .filter(|event| matches!(event, Event::SessionUpdate(..)))
+                .collect()
+        }
+    }
+
+    fn session_infos(connected_clients: usize) -> BTreeMap<String, SessionInfo> {
+        let mut session_infos = BTreeMap::new();
+        session_infos.insert(
+            "zellij-test".to_owned(),
+            SessionInfo {
+                name: "zellij-test".to_owned(),
+                connected_clients,
+                ..Default::default()
+            },
+        );
+        session_infos
+    }
+
+    #[test]
+    fn first_scan_broadcasts_a_session_update() {
+        let mut harness = Harness::new();
+        harness.scan_session_list(session_infos(1));
+        assert_eq!(
+            harness.session_updates_received().len(),
+            1,
+            "the first scan is broadcast so that subscribers get an initial event"
+        );
+    }
+
+    #[test]
+    fn unchanged_scan_does_not_broadcast_a_session_update() {
+        let mut harness = Harness::new();
+        harness.scan_session_list(session_infos(1));
+        harness.session_updates_received();
+
+        // a plugin that queries the session list on every `SessionUpdate` keeps the scans
+        // identical, and a plugin must not be woken up by its own query
+        harness.scan_session_list(session_infos(1));
+        harness.scan_session_list(session_infos(1));
+        assert_eq!(
+            harness.session_updates_received().len(),
+            0,
+            "identical scans do not broadcast another session update"
+        );
+    }
+
+    #[test]
+    fn elapsed_creation_time_alone_does_not_broadcast_a_session_update() {
+        let mut harness = Harness::new();
+        let mut first_scan = session_infos(1);
+        first_scan.get_mut("zellij-test").unwrap().creation_time = Duration::from_secs(1);
+        harness.scan_session_list(first_scan);
+        harness.session_updates_received();
+
+        // the scan recomputes the elapsed creation time every time, which is not a session list
+        // change on its own
+        let mut second_scan = session_infos(1);
+        second_scan.get_mut("zellij-test").unwrap().creation_time = Duration::from_secs(9);
+        harness.scan_session_list(second_scan);
+        assert_eq!(
+            harness.session_updates_received().len(),
+            0,
+            "an elapsed creation time alone does not broadcast another session update"
+        );
+    }
+
+    #[test]
+    fn changed_session_info_broadcasts_a_session_update() {
+        let mut harness = Harness::new();
+        harness.scan_session_list(session_infos(1));
+        harness.session_updates_received();
+
+        harness.scan_session_list(session_infos(2));
+        assert_eq!(
+            harness.session_updates_received().len(),
+            1,
+            "a real session info change still broadcasts a session update"
+        );
+    }
+
+    #[test]
+    fn added_or_removed_session_broadcasts_a_session_update() {
+        let mut harness = Harness::new();
+        harness.scan_session_list(session_infos(1));
+        harness.session_updates_received();
+
+        let mut with_peer = session_infos(1);
+        with_peer.insert(
+            "zellij-peer".to_owned(),
+            SessionInfo {
+                name: "zellij-peer".to_owned(),
+                ..Default::default()
+            },
+        );
+        harness.scan_session_list(with_peer);
+        assert_eq!(
+            harness.session_updates_received().len(),
+            1,
+            "a new session in the list broadcasts a session update"
+        );
+
+        harness.scan_session_list(session_infos(1));
+        assert_eq!(
+            harness.session_updates_received().len(),
+            1,
+            "a session disappearing from the list broadcasts a session update"
+        );
+    }
+
+    #[test]
+    fn changed_resurrectable_sessions_broadcast_a_session_update() {
+        let mut harness = Harness::new();
+        let session_infos = session_infos(1);
+        harness
+            .screen
+            .update_session_infos(
+                session_infos.clone(),
+                BTreeMap::from([("zellij-dead".to_owned(), Duration::from_secs(1))]),
+            )
+            .expect("TEST");
+        harness.session_updates_received();
+
+        // the resurrection duration is elapsed and advances on every scan on its own
+        harness
+            .screen
+            .update_session_infos(
+                session_infos.clone(),
+                BTreeMap::from([("zellij-dead".to_owned(), Duration::from_secs(9))]),
+            )
+            .expect("TEST");
+        assert_eq!(
+            harness.session_updates_received().len(),
+            0,
+            "an elapsed resurrection duration alone does not broadcast another session update"
+        );
+
+        harness
+            .screen
+            .update_session_infos(
+                session_infos,
+                BTreeMap::from([("zellij-other-dead".to_owned(), Duration::from_secs(9))]),
+            )
+            .expect("TEST");
+        assert_eq!(
+            harness.session_updates_received().len(),
+            1,
+            "a different set of resurrectable sessions broadcasts a session update"
+        );
+    }
+}
