@@ -600,12 +600,12 @@ pub struct WindowArgs {
     pub record: Option<PathBuf>,
 
     /// Rows to advertise while headless
-    #[clap(long, default_value_t = 40, hide = true)]
-    pub rows: usize,
+    #[clap(long, hide = true)]
+    pub rows: Option<usize>,
 
     /// Columns to advertise while headless
-    #[clap(long, default_value_t = 120, hide = true)]
-    pub cols: usize,
+    #[clap(long, hide = true)]
+    pub cols: Option<usize>,
 
     /// Character cell width in pixels to advertise while headless
     #[clap(long, default_value_t = 10, hide = true)]
@@ -623,9 +623,14 @@ pub struct WindowArgs {
         long,
         value_enum,
         value_name = "MODE",
-        help = "Open the window windowed, maximized or fullscreen, overriding startup_mode in the window section of the configuration"
+        help = "Open the window windowed, maximized, fullscreen, or the way the last one was closed (remember), overriding startup_mode in the window section of the configuration"
     )]
     pub startup_mode: Option<crate::input::window::StartupMode>,
+}
+
+impl WindowArgs {
+    pub const DEFAULT_ROWS: usize = 40;
+    pub const DEFAULT_COLS: usize = 120;
 }
 
 #[derive(Debug, Parser, Clone, Serialize, Deserialize)]

@@ -404,7 +404,7 @@ mod tests {
             options.cursor_blink, None,
             "with nothing configured the session decides whether the cursor blinks"
         );
-        assert_eq!(options.startup_mode, StartupMode::Windowed);
+        assert_eq!(options.startup_mode, StartupMode::Remember);
     }
 
     #[test]
