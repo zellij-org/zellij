@@ -6,6 +6,13 @@ const FILE_PATH_REGEX: &str = r#"(?:^|\s)((?:(?:\./|\.\./|/)[A-Za-z0-9_./\-+@%,#
 
 const CWD_CONTEXT_KEY: &str = "cwd";
 
+/// Paths handed to the host must be prefixed with the mount point of the host
+/// filesystem, otherwise a path that happens to start with one of the sandbox
+/// prefixes (`/tmp`, `/data`, `/cache`) is resolved against the wrong root.
+fn host_path(absolute_path: &Path) -> PathBuf {
+    Path::new("/host").join(absolute_path.strip_prefix("/").unwrap_or(absolute_path))
+}
+
 #[derive(Default)]
 pub struct Link {
     slots: BTreeSet<SlotId>,
@@ -119,8 +126,7 @@ impl Link {
             PathBuf::from(path_str)
         };
 
-        let host_path =
-            Path::new("/host").join(absolute_path.strip_prefix("/").unwrap_or(&absolute_path));
+        let host_path = host_path(&absolute_path);
         let metadata = match std::fs::metadata(&host_path) {
             Ok(m) => m,
             Err(_) => return,
@@ -139,12 +145,12 @@ impl Link {
                         absolute_path.display()
                     ))
                     .new_plugin_instance_should_be_focused()
-                    .new_plugin_instance_should_have_cwd(absolute_path)
+                    .new_plugin_instance_should_have_cwd(host_path)
                     .with_args(args)
                     .with_plugin_config(configuration),
             );
         } else {
-            let mut file_to_open = FileToOpen::new(&absolute_path);
+            let mut file_to_open = FileToOpen::new(&host_path);
             if let Some(line) = line_number {
                 file_to_open = file_to_open.with_line_number(line);
             }
@@ -458,6 +464,26 @@ mod tests {
             pos = m.end().max(pos + 1);
         }
         assert_eq!(found, vec!["Cargo.toml", "src", "src/main.rs:12"]);
+    }
+
+    #[test]
+    fn host_path_prefixes_paths_under_sandbox_mounts() {
+        assert_eq!(
+            host_path(Path::new("/tmp/test.txt")),
+            PathBuf::from("/host/tmp/test.txt")
+        );
+        assert_eq!(
+            host_path(Path::new("/data/x")),
+            PathBuf::from("/host/data/x")
+        );
+        assert_eq!(
+            host_path(Path::new("/cache/y")),
+            PathBuf::from("/host/cache/y")
+        );
+        assert_eq!(
+            host_path(Path::new("/etc/passwd")),
+            PathBuf::from("/host/etc/passwd")
+        );
     }
 
     #[test]
