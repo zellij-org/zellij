@@ -154,10 +154,11 @@ impl NotificationMode {
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
 pub enum StartupMode {
-    #[default]
     Windowed,
     Maximized,
     Fullscreen,
+    #[default]
+    Remember,
 }
 
 impl StartupMode {
@@ -171,8 +172,10 @@ impl StartupMode {
             Some("windowed") => Ok(StartupMode::Windowed),
             Some("maximized") => Ok(StartupMode::Maximized),
             Some("fullscreen") => Ok(StartupMode::Fullscreen),
+            Some("remember") => Ok(StartupMode::Remember),
             _ => Err(ConfigError::new_kdl_error(
-                "startup_mode must be \"windowed\", \"maximized\" or \"fullscreen\"".to_owned(),
+                "startup_mode must be \"windowed\", \"maximized\", \"fullscreen\" or \"remember\""
+                    .to_owned(),
                 kdl.span().offset(),
                 kdl.span().len(),
             )),
@@ -186,6 +189,7 @@ impl StartupMode {
                 StartupMode::Windowed => "windowed",
                 StartupMode::Maximized => "maximized",
                 StartupMode::Fullscreen => "fullscreen",
+                StartupMode::Remember => "remember",
             }
             .to_owned(),
         ));
@@ -911,16 +915,37 @@ mod tests {
             ("maximized", StartupMode::Maximized),
             ("fullscreen", StartupMode::Fullscreen),
             ("FullScreen", StartupMode::Fullscreen),
+            ("remember", StartupMode::Remember),
+            ("Remember", StartupMode::Remember),
         ] {
             let parsed = section(&format!("window {{\n startup_mode \"{}\"\n}}", text)).unwrap();
             assert_eq!(parsed.startup_mode, Some(expected), "{}", text);
             let reparsed = section(&parsed.to_kdl().unwrap().to_string()).unwrap();
             assert_eq!(reparsed.startup_mode, Some(expected), "{}", text);
         }
-        assert!(section("window {\n startup_mode \"minimized\"\n}").is_err());
+        let message = format!(
+            "{:?}",
+            section("window {\n startup_mode \"minimized\"\n}").unwrap_err()
+        );
+        for valid in ["windowed", "maximized", "fullscreen", "remember"] {
+            assert!(
+                message.contains(valid),
+                "{} missing from {}",
+                valid,
+                message
+            );
+        }
         assert!(section("window {\n startup_mode\n}").is_err());
         assert_eq!(section("window {\n}").unwrap().startup_mode, None);
-        assert_eq!(StartupMode::default(), StartupMode::Windowed);
+        assert_eq!(StartupMode::default(), StartupMode::Remember);
+    }
+
+    #[test]
+    fn remember_round_trips_through_kdl() {
+        let parsed = section("window {\n startup_mode \"remember\"\n}").unwrap();
+        let emitted = parsed.to_kdl().unwrap().to_string();
+        assert!(emitted.contains("startup_mode \"remember\""), "{}", emitted);
+        assert_eq!(section(&emitted).unwrap(), parsed);
     }
 
     #[test]

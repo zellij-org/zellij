@@ -245,8 +245,8 @@ fn the_fixture_flags_are_on_the_verb_and_hidden_from_it() {
         "2",
     ]);
     assert!(args.headless);
-    assert_eq!(args.rows, 24);
-    assert_eq!(args.cols, 80);
+    assert_eq!(args.rows, Some(24));
+    assert_eq!(args.cols, Some(80));
     assert_eq!(args.cell_width, 8);
     assert_eq!(args.cell_height, 16);
     assert_eq!(args.duration_secs, Some(2));
