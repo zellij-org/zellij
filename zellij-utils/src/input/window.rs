@@ -193,6 +193,44 @@ impl StartupMode {
     }
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum OpacityMode {
+    #[default]
+    Background,
+    Everything,
+}
+
+impl OpacityMode {
+    pub fn from_kdl(kdl: &KdlNode) -> Result<Self, ConfigError> {
+        let named = kdl
+            .entries()
+            .iter()
+            .next()
+            .and_then(|entry| entry.value().as_string());
+        match named.map(str::to_ascii_lowercase).as_deref() {
+            Some("background") => Ok(OpacityMode::Background),
+            Some("everything") => Ok(OpacityMode::Everything),
+            _ => Err(ConfigError::new_kdl_error(
+                "opacity_mode must be \"background\" or \"everything\"".to_owned(),
+                kdl.span().offset(),
+                kdl.span().len(),
+            )),
+        }
+    }
+
+    pub fn to_kdl(&self) -> KdlNode {
+        let mut node = KdlNode::new("opacity_mode");
+        node.push(KdlValue::String(
+            match self {
+                OpacityMode::Background => "background",
+                OpacityMode::Everything => "everything",
+            }
+            .to_owned(),
+        ));
+        node
+    }
+}
+
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WindowTheme {
     pub foreground: Option<PaletteColor>,
@@ -283,6 +321,9 @@ pub struct WindowConfig {
     pub bell: Option<BellMode>,
     pub notifications: Option<NotificationMode>,
     pub startup_mode: Option<StartupMode>,
+    pub opacity: Option<f32>,
+    pub opacity_mode: Option<OpacityMode>,
+    pub blur: Option<bool>,
     pub theme: Option<WindowTheme>,
 }
 
@@ -335,6 +376,15 @@ impl WindowConfig {
         }
         if let Some(startup_mode) = kdl_get_child!(kdl, "startup_mode") {
             window.startup_mode = Some(StartupMode::from_kdl(startup_mode)?);
+        }
+        if let Some(opacity) = kdl_get_child!(kdl, "opacity") {
+            window.opacity = Some(opacity_from_kdl(opacity)?);
+        }
+        if let Some(opacity_mode) = kdl_get_child!(kdl, "opacity_mode") {
+            window.opacity_mode = Some(OpacityMode::from_kdl(opacity_mode)?);
+        }
+        if let Some(blur) = kdl_get_child_entry_bool_value!(kdl, "blur") {
+            window.blur = Some(blur);
         }
         if let Some(theme) = kdl_get_child!(kdl, "theme") {
             window.theme = Some(WindowTheme::from_kdl(theme)?);
@@ -413,6 +463,23 @@ impl WindowConfig {
         if let Some(startup_mode) = self.startup_mode {
             children.nodes_mut().push(startup_mode.to_kdl());
         }
+        if let Some(opacity) = self.opacity {
+            let mut opacity_node = KdlNode::new("opacity");
+            if opacity.fract() == 0.0 {
+                opacity_node.push(KdlValue::Base10(opacity as i64));
+            } else {
+                opacity_node.push(KdlValue::Base10Float(opacity as f64));
+            }
+            children.nodes_mut().push(opacity_node);
+        }
+        if let Some(opacity_mode) = self.opacity_mode {
+            children.nodes_mut().push(opacity_mode.to_kdl());
+        }
+        if let Some(blur) = self.blur {
+            let mut blur_node = KdlNode::new("blur");
+            blur_node.push(KdlValue::Bool(blur));
+            children.nodes_mut().push(blur_node);
+        }
         if let Some(theme) = self.theme.as_ref().and_then(|theme| theme.to_kdl()) {
             children.nodes_mut().push(theme);
         }
@@ -441,6 +508,9 @@ impl WindowConfig {
         merged.bell = other.bell.or(merged.bell);
         merged.notifications = other.notifications.or(merged.notifications);
         merged.startup_mode = other.startup_mode.or(merged.startup_mode);
+        merged.opacity = other.opacity.or(merged.opacity);
+        merged.opacity_mode = other.opacity_mode.or(merged.opacity_mode);
+        merged.blur = other.blur.or(merged.blur);
         merged.theme = match (merged.theme, other.theme) {
             (Some(mine), Some(theirs)) => Some(mine.merge(theirs)),
             (mine, theirs) => theirs.or(mine),
@@ -470,6 +540,31 @@ fn font_size_from_kdl(node: &KdlNode) -> Result<f32, ConfigError> {
         return Err(error(format!("font_size {} is not a usable size", size)));
     }
     Ok(size as f32)
+}
+
+fn opacity_from_kdl(node: &KdlNode) -> Result<f32, ConfigError> {
+    let error = |message: String| {
+        ConfigError::new_kdl_error(message, node.span().offset(), node.span().len())
+    };
+    let value = node
+        .entries()
+        .iter()
+        .next()
+        .map(|entry| entry.value())
+        .ok_or_else(|| error("opacity needs a value between 0.0 and 1.0".to_owned()))?;
+    let opacity = match value {
+        KdlValue::Base10Float(opacity) => *opacity,
+        other => other.as_i64().map(|opacity| opacity as f64).ok_or_else(|| {
+            error("opacity must be a number between 0.0 and 1.0".to_owned())
+        })?,
+    };
+    if !(opacity.is_finite() && (0.0..=1.0).contains(&opacity)) {
+        return Err(error(format!(
+            "opacity {} is outside the range 0.0 to 1.0",
+            opacity
+        )));
+    }
+    Ok(opacity as f32)
 }
 
 fn keys_from_kdl(node: &KdlNode) -> Result<Vec<KeyWithModifier>, ConfigError> {
@@ -531,6 +626,9 @@ mod tests {
                 bell "both"
                 notifications "desktop"
                 startup_mode "fullscreen"
+                opacity 0.85
+                opacity_mode "everything"
+                blur true
                 theme {
                     foreground "#e5e5e5"
                     background 0 0 0
@@ -582,6 +680,9 @@ mod tests {
         assert_eq!(parsed.bell, Some(BellMode::Both));
         assert_eq!(parsed.notifications, Some(NotificationMode::Desktop));
         assert_eq!(parsed.startup_mode, Some(StartupMode::Fullscreen));
+        assert_eq!(parsed.opacity, Some(0.85));
+        assert_eq!(parsed.opacity_mode, Some(OpacityMode::Everything));
+        assert_eq!(parsed.blur, Some(true));
         let theme = parsed.theme.clone().unwrap();
         assert_eq!(theme.foreground, Some(PaletteColor::Rgb((229, 229, 229))));
         assert_eq!(theme.background, Some(PaletteColor::Rgb((0, 0, 0))));
@@ -820,6 +921,69 @@ mod tests {
         assert!(section("window {\n startup_mode\n}").is_err());
         assert_eq!(section("window {\n}").unwrap().startup_mode, None);
         assert_eq!(StartupMode::default(), StartupMode::Windowed);
+    }
+
+    #[test]
+    fn opacity_accepts_the_unit_range_and_nothing_else() {
+        for (text, expected) in [("0.8", 0.8f32), ("0", 0.0), ("1", 1.0), ("1.0", 1.0)] {
+            let parsed = section(&format!("window {{\n opacity {}\n}}", text)).unwrap();
+            assert_eq!(parsed.opacity, Some(expected), "{}", text);
+            let reparsed = section(&parsed.to_kdl().unwrap().to_string()).unwrap();
+            assert_eq!(reparsed.opacity, Some(expected), "{}", text);
+        }
+        for text in ["-0.1", "1.5", "2", "\"high\"", ""] {
+            let err = section(&format!("window {{\n opacity {}\n}}", text)).unwrap_err();
+            assert!(format!("{:?}", err).contains("opacity"), "{}: {:?}", text, err);
+        }
+    }
+
+    #[test]
+    fn every_opacity_mode_is_named_and_an_unknown_one_lists_the_valid_ones() {
+        for (text, expected) in [
+            ("background", OpacityMode::Background),
+            ("everything", OpacityMode::Everything),
+            ("Everything", OpacityMode::Everything),
+        ] {
+            let parsed = section(&format!("window {{\n opacity_mode \"{}\"\n}}", text)).unwrap();
+            assert_eq!(parsed.opacity_mode, Some(expected), "{}", text);
+        }
+        let err = section("window {\n opacity_mode \"sideways\"\n}").unwrap_err();
+        let message = format!("{:?}", err);
+        assert!(
+            message.contains("background") && message.contains("everything"),
+            "{}",
+            message
+        );
+        assert!(section("window {\n opacity_mode\n}").is_err());
+        assert_eq!(OpacityMode::default(), OpacityMode::Background);
+    }
+
+    #[test]
+    fn blur_parses_and_an_absent_see_through_setting_stays_unset() {
+        assert_eq!(section("window {\n blur true\n}").unwrap().blur, Some(true));
+        assert_eq!(
+            section("window {\n blur false\n}").unwrap().blur,
+            Some(false)
+        );
+        let empty = section("window {\n}").unwrap();
+        assert_eq!(empty.opacity, None);
+        assert_eq!(empty.opacity_mode, None);
+        assert_eq!(empty.blur, None);
+    }
+
+    #[test]
+    fn a_later_section_supersedes_the_see_through_settings_field_by_field() {
+        let first =
+            section("window {\n opacity 0.5\n opacity_mode \"everything\"\n blur true\n}")
+                .unwrap();
+        let second = section("window {\n opacity 0.9\n}").unwrap();
+        let merged = first.merge(second);
+        assert_eq!(merged.opacity, Some(0.9));
+        assert_eq!(merged.opacity_mode, Some(OpacityMode::Everything));
+        assert_eq!(merged.blur, Some(true));
+        let unblurred = merged.merge(section("window {\n blur false\n}").unwrap());
+        assert_eq!(unblurred.blur, Some(false));
+        assert_eq!(unblurred.opacity, Some(0.9));
     }
 
     #[test]

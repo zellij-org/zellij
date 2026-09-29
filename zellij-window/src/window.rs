@@ -42,7 +42,7 @@ use crate::palette;
 use crate::platform::Platform;
 use crate::renderer::Renderer;
 use crate::retained::{self, Damage, RetainedScene};
-use crate::scene::{self, BlinkPhase};
+use crate::scene::{self, BlinkPhase, Transparency};
 use crate::settings::Settings;
 use crate::terminal::{self, FrameError, TerminalState};
 use zellij_utils::input::window::{NotificationMode, StartupMode};
@@ -136,6 +136,8 @@ struct App {
     session: Option<Session>,
     ring: fn(),
     notify: fn(NotificationMode, &crate::kitty::Notification) -> bool,
+    transparency_available: bool,
+    warned_opaque: bool,
 }
 
 struct Session {
@@ -235,6 +237,37 @@ impl App {
         if change.open_links {
             self.refresh_pointer();
         }
+        if change.transparency {
+            self.warn_if_opaque();
+        }
+        if change.blur {
+            if let Some(surfaces) = &self.surfaces {
+                surfaces.window.set_blur(self.options.blur);
+            }
+        }
+    }
+
+    fn effective_transparency(&self) -> Transparency {
+        if self.transparency_available {
+            self.options.transparency
+        } else {
+            Transparency::OPAQUE
+        }
+    }
+
+    fn warn_if_opaque(&mut self) {
+        if self.transparency_available
+            || self.warned_opaque
+            || self.options.transparency.opacity >= 1.0
+        {
+            return;
+        }
+        self.warned_opaque = true;
+        eprintln!(
+            "zellij-window: opacity {} was asked for, but the display offers no transparent \
+             surface (is a compositor running?), so the window stays opaque",
+            self.options.transparency.opacity
+        );
     }
 
     fn reflow(&mut self, width: u32, height: u32) {
@@ -689,17 +722,7 @@ impl App {
         if self.surfaces.is_none() {
             return;
         }
-        let cursor = self.cursor_options();
-        let preedit = self.composition.shown();
-        self.retained.refresh(
-            &self.state,
-            &mut self.cache,
-            self.blink,
-            &self.options.paints,
-            cursor,
-            self.hovered_link.as_ref(),
-            preedit.as_ref(),
-        );
+        self.refresh_scene();
         self.follow_cursor_area();
         let Some(surfaces) = self.surfaces.as_mut() else {
             return;
@@ -713,6 +736,21 @@ impl App {
             eprintln!("zellij-window: buffer swap failed: {}", e);
         }
         self.pacer.drawn(Instant::now());
+    }
+
+    fn refresh_scene(&mut self) {
+        let cursor = self.cursor_options();
+        let preedit = self.composition.shown();
+        self.retained.set_transparency(self.effective_transparency());
+        self.retained.refresh(
+            &self.state,
+            &mut self.cache,
+            self.blink,
+            &self.options.paints,
+            cursor,
+            self.hovered_link.as_ref(),
+            preedit.as_ref(),
+        );
     }
 
     fn follow(&mut self, switch_to: Option<ConnectToSession>) -> bool {
@@ -781,6 +819,8 @@ impl App {
             WindowAttributes::default()
                 .with_title(self.title.clone())
                 .with_window_icon(window_icon())
+                .with_transparent(true)
+                .with_blur(self.options.blur)
                 .with_inner_size(winit::dpi::PhysicalSize::new(
                     self.initial_size.0,
                     self.initial_size.1,
@@ -792,10 +832,14 @@ impl App {
             .with_window_attributes(Some(attributes))
             .build(
                 event_loop,
-                ConfigTemplateBuilder::new().with_alpha_size(8),
+                ConfigTemplateBuilder::new()
+                    .with_alpha_size(8)
+                    .with_transparency(true),
                 pick_config,
             )
             .map_err(|e| anyhow!("failed to create a window: {}", e))?;
+        self.transparency_available = config.supports_transparency() != Some(false);
+        self.warn_if_opaque();
         let window = window.ok_or_else(|| anyhow!("the windowing system produced no window"))?;
         window.set_ime_purpose(ImePurpose::Terminal);
         window.set_ime_allowed(true);
@@ -1175,6 +1219,8 @@ impl Rendering {
             session,
             ring: bell::ring,
             notify: notify::handled,
+            transparency_available: true,
+            warned_opaque: false,
         }
     }
 }
@@ -1275,15 +1321,31 @@ fn named(attributes: WindowAttributes) -> WindowAttributes {
 }
 
 fn pick_config(configs: Box<dyn Iterator<Item = Config> + '_>) -> Config {
+    let configs: Vec<Config> = configs.collect();
+    let best = best_config(
+        configs
+            .iter()
+            .map(|config| (config.supports_transparency(), config.num_samples())),
+    )
+    .expect("the display offered no configs");
     configs
-        .reduce(|best, config| {
-            if config.num_samples() < best.num_samples() {
-                config
-            } else {
-                best
-            }
+        .into_iter()
+        .nth(best)
+        .expect("the chosen config is one of those offered")
+}
+
+fn best_config(candidates: impl Iterator<Item = (Option<bool>, u8)>) -> Option<usize> {
+    candidates
+        .enumerate()
+        .min_by_key(|(_, (transparency, samples))| {
+            let rank = match transparency {
+                Some(true) => 0u8,
+                None => 1,
+                Some(false) => 2,
+            };
+            (rank, *samples)
         })
-        .expect("the display offered no configs")
+        .map(|(index, _)| index)
 }
 
 #[cfg(test)]
@@ -1351,6 +1413,8 @@ mod tests {
                     cursor_shape: None,
                     cursor_blink: None,
                     startup_mode: StartupMode::Windowed,
+                    transparency: Transparency::OPAQUE,
+                    blur: false,
                 },
                 clipboard_text,
             )
@@ -2003,6 +2067,114 @@ mod tests {
             },
             "the options the scene is built with did not follow the reload"
         );
+    }
+
+    #[test]
+    fn a_reload_that_changes_the_opacity_reaches_the_scene_on_the_next_frame() {
+        use zellij_utils::input::window::OpacityMode;
+        let mut harness = Harness::new(0, true, "");
+        let before = harness.app.metrics;
+        harness.app.refresh_scene();
+        let identity = harness.app.retained.identity();
+        harness.app.refresh_scene();
+        assert!(!harness.app.retained.rebuilt_everything());
+        assert_eq!(harness.app.retained.transparency(), Transparency::OPAQUE);
+
+        harness.reconfigure(WindowConfig {
+            opacity: Some(0.8),
+            ..WindowConfig::default()
+        });
+        let expected = Transparency {
+            opacity: 0.8,
+            mode: OpacityMode::Background,
+        };
+        assert_eq!(harness.app.options.transparency, expected);
+        assert_eq!(harness.app.effective_transparency(), expected);
+        harness.app.refresh_scene();
+        assert_eq!(harness.app.retained.transparency(), expected);
+        assert!(
+            harness.app.retained.rebuilt_everything(),
+            "the scene was not rebuilt for the new opacity"
+        );
+
+        harness.reconfigure(WindowConfig {
+            opacity: Some(0.8),
+            opacity_mode: Some(OpacityMode::Everything),
+            ..WindowConfig::default()
+        });
+        harness.app.refresh_scene();
+        assert_eq!(
+            harness.app.retained.transparency(),
+            Transparency {
+                opacity: 0.8,
+                mode: OpacityMode::Everything,
+            }
+        );
+        assert!(harness.app.retained.rebuilt_everything());
+
+        harness.reconfigure(WindowConfig {
+            opacity: Some(0.8),
+            opacity_mode: Some(OpacityMode::Everything),
+            blur: Some(true),
+            ..WindowConfig::default()
+        });
+        assert!(harness.app.options.blur);
+        harness.app.refresh_scene();
+        assert!(
+            !harness.app.retained.rebuilt_everything(),
+            "a blur change is the compositor's business and must not rebuild the scene"
+        );
+
+        assert_eq!(
+            harness.app.retained.identity(),
+            identity,
+            "the scene was replaced rather than updated"
+        );
+        assert_eq!(harness.app.metrics, before, "a see-through change rebuilt the font");
+    }
+
+    #[test]
+    fn a_display_without_transparency_draws_opaque_and_warns_once() {
+        let mut harness = Harness::new(0, true, "");
+        harness.app.transparency_available = false;
+        harness.reconfigure(WindowConfig {
+            opacity: Some(0.5),
+            ..WindowConfig::default()
+        });
+        assert_eq!(harness.app.effective_transparency(), Transparency::OPAQUE);
+        assert!(harness.app.warned_opaque);
+        harness.app.refresh_scene();
+        assert_eq!(harness.app.retained.transparency(), Transparency::OPAQUE);
+
+        let mut harness = Harness::new(0, true, "");
+        harness.app.transparency_available = false;
+        harness.app.warn_if_opaque();
+        assert!(
+            !harness.app.warned_opaque,
+            "a solid window has nothing to warn about"
+        );
+    }
+
+    #[test]
+    fn a_transparent_config_is_preferred_before_the_fewest_samples() {
+        assert_eq!(
+            best_config([(Some(false), 0), (Some(true), 4), (None, 0)].into_iter()),
+            Some(1)
+        );
+        assert_eq!(
+            best_config([(Some(false), 0), (None, 4), (Some(false), 0)].into_iter()),
+            Some(1)
+        );
+        assert_eq!(
+            best_config([(Some(true), 4), (Some(true), 0), (Some(true), 0)].into_iter()),
+            Some(1),
+            "among equals the fewest samples wins and ties keep the first offered"
+        );
+        assert_eq!(
+            best_config([(Some(false), 2), (Some(false), 0)].into_iter()),
+            Some(1)
+        );
+        assert_eq!(best_config(std::iter::empty()), None);
     }
 
     #[test]

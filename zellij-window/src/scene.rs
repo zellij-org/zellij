@@ -14,6 +14,7 @@ use crate::kitty::Image;
 use crate::links::LinkRun;
 use crate::screen_buffer::{CursorShape, Occupancy, TermSize};
 use crate::terminal::TerminalState;
+use zellij_utils::input::window::OpacityMode;
 
 const OPAQUE: Srgb = [255, 255, 255];
 const WHOLE_GRID: usize = usize::MAX;
@@ -125,9 +126,45 @@ struct RowCell {
     cell: WireCell,
     occupancy: Occupancy,
     paint: CellPaint,
+    explicit_background: bool,
     on_cursor: bool,
     inverted_by_cursor: bool,
     composing: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Transparency {
+    pub opacity: f32,
+    pub mode: OpacityMode,
+}
+
+impl Default for Transparency {
+    fn default() -> Self {
+        Self::OPAQUE
+    }
+}
+
+impl Transparency {
+    pub const OPAQUE: Self = Self {
+        opacity: 1.0,
+        mode: OpacityMode::Background,
+    };
+
+    pub fn see_through_background(&self) -> bool {
+        self.mode == OpacityMode::Background && self.opacity < 1.0
+    }
+
+    pub fn clear_alpha(&self) -> f32 {
+        if self.see_through_background() {
+            self.opacity
+        } else {
+            1.0
+        }
+    }
+
+    pub fn fade(&self) -> Option<f32> {
+        (self.mode == OpacityMode::Everything && self.opacity < 1.0).then_some(self.opacity)
+    }
 }
 
 pub struct PreeditOverlay {
@@ -294,9 +331,15 @@ pub struct RowContext<'a> {
     cursor_breaks_runs: Option<(usize, usize)>,
     shaping: bool,
     preedit: Option<PreeditOverlay>,
+    transparent_background: bool,
 }
 
 impl<'a> RowContext<'a> {
+    pub fn with_transparency(mut self, transparency: Transparency) -> Self {
+        self.transparent_background = transparency.see_through_background();
+        self
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         state: &'a TerminalState,
@@ -338,6 +381,7 @@ impl<'a> RowContext<'a> {
                 .then_some((cursor_row, cursor_col)),
             shaping: cache.shapes_runs(),
             preedit,
+            transparent_background: false,
         }
     }
 
@@ -407,11 +451,18 @@ pub fn build_row(
             paint.background = paints.cursor_over(paint.foreground);
             paint.foreground = glyph;
         }
+        let explicit_background = inverted_by_cursor
+            || cell.has(ATTR_REVERSE)
+            || !matches!(WireColor::unpack(cell.bg), WireColor::Default);
+        if context.transparent_background && paint.hidden && !explicit_background {
+            paint.draw_glyph = false;
+        }
 
         row_paints.push(RowCell {
             cell,
             occupancy,
             paint,
+            explicit_background,
             on_cursor,
             inverted_by_cursor,
             composing: composed.is_some(),
@@ -455,14 +506,21 @@ pub fn build_row(
             cell,
             occupancy,
             paint,
+            explicit_background,
             on_cursor,
             inverted_by_cursor,
             composing,
         } = row_paints[col];
 
         let origin_x = (col as u32 * metrics.width) as i32;
+        let fills = if context.transparent_background {
+            explicit_background
+        } else {
+            paint.background != context.clear
+        };
+        let inkless = context.transparent_background && paint.hidden && !explicit_background;
 
-        if paint.background != context.clear {
+        if fills {
             out.rects.push(Rect {
                 x: origin_x,
                 y: origin_y,
@@ -479,9 +537,14 @@ pub fn build_row(
             );
         }
 
-        push_decorations(out, cell, &paint, origin_x, origin_y, metrics, paints);
+        push_decorations(
+            out, cell, &paint, origin_x, origin_y, metrics, paints, inkless,
+        );
 
-        if !composing && context.hovered_link.is_some_and(|run| run.covers(row, col)) {
+        if !composing
+            && !inkless
+            && context.hovered_link.is_some_and(|run| run.covers(row, col))
+        {
             push_hover_underline(out, &paint, origin_x, origin_y, metrics);
         }
 
@@ -711,6 +774,7 @@ pub fn ligating_sequences(state: &TerminalState, cache: &mut GlyphCache) -> Vec<
                     cell,
                     occupancy,
                     paint: paint_of(cell, occupancy, &paints),
+                    explicit_background: false,
                     on_cursor: false,
                     inverted_by_cursor: false,
                     composing: false,
@@ -1020,6 +1084,7 @@ fn push_decorations(
     origin_y: i32,
     metrics: CellMetrics,
     paints: &Paints,
+    inkless: bool,
 ) {
     let underline = cell.underline_style();
     let struck = cell.has(ATTR_STRIKE);
@@ -1028,6 +1093,7 @@ fn push_decorations(
     }
 
     let color = match WireColor::unpack(cell.underline_color) {
+        WireColor::Default if inkless => return,
         WireColor::Default => paint.foreground,
         _ => paints.foreground(cell.underline_color),
     };
@@ -2107,6 +2173,7 @@ mod tests {
                         cell,
                         occupancy,
                         paint: paint_of(cell, occupancy, &paints),
+                        explicit_background: false,
                         on_cursor: false,
                         inverted_by_cursor: false,
                         composing: false,
@@ -2554,6 +2621,7 @@ mod ligature_tests {
                 cell,
                 occupancy: Occupancy::Single,
                 paint: paint_of(cell, Occupancy::Single, &Paints::default()),
+                explicit_background: false,
                 on_cursor: false,
                 inverted_by_cursor: false,
                 composing: false,

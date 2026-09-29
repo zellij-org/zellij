@@ -7,6 +7,7 @@ use crate::links::LinkRun;
 use crate::scene::Scene;
 use crate::scene::{
     self, BlinkPhase, CursorOptions, ImageKey, ImageQuad, RowContext, RowScene, RowScratch,
+    Transparency,
 };
 use crate::terminal::{GraphicsStamp, TerminalState};
 use std::time::Instant;
@@ -35,6 +36,7 @@ pub struct RetainedScene {
     width: u32,
     height: u32,
     clear: Srgb,
+    transparency: Transparency,
     rows: Vec<RowScene>,
     dirty: Vec<bool>,
     everything: bool,
@@ -61,6 +63,7 @@ impl RetainedScene {
             width: 0,
             height: 0,
             clear: [0, 0, 0],
+            transparency: Transparency::OPAQUE,
             rows: Vec::new(),
             dirty: Vec::new(),
             everything: true,
@@ -91,6 +94,17 @@ impl RetainedScene {
 
     pub fn clear(&self) -> Srgb {
         self.clear
+    }
+
+    pub fn transparency(&self) -> Transparency {
+        self.transparency
+    }
+
+    pub fn set_transparency(&mut self, transparency: Transparency) {
+        if self.transparency != transparency {
+            self.transparency = transparency;
+            self.everything = true;
+        }
     }
 
     pub fn rows(&self) -> &[RowScene] {
@@ -172,7 +186,8 @@ impl RetainedScene {
         hovered_link: Option<&LinkRun>,
         preedit: Option<&Preedit>,
     ) {
-        let context = RowContext::new(state, cache, phase, paints, cursor, hovered_link, preedit);
+        let context = RowContext::new(state, cache, phase, paints, cursor, hovered_link, preedit)
+            .with_transparency(self.transparency);
         let (width, height) = (context.width(), context.height());
         if self.generation != cache.generation()
             || self.rows.len() != context.size.rows
@@ -528,6 +543,99 @@ mod tests {
             ],
         );
         state
+    }
+
+    fn see_through() -> Transparency {
+        Transparency {
+            opacity: 0.8,
+            mode: zellij_utils::input::window::OpacityMode::Background,
+        }
+    }
+
+    fn rects_in_row(scene: &RetainedScene, row: usize) -> usize {
+        scene.rows()[row].rects.len()
+    }
+
+    #[test]
+    fn a_see_through_background_draws_only_the_backgrounds_a_program_chose() {
+        use zellij_utils::structured_render::{WireColor, ATTR_REVERSE};
+        let mut cache = cache();
+        let state = Painter::state(4, 8, |painter| {
+            painter.text(0, 0, "plain");
+            painter.styled(1, 0, " ", |cell| cell.bg = WireColor::Rgb(0, 0, 0).pack());
+            painter.styled(2, 0, " ", |cell| cell.attrs |= ATTR_REVERSE);
+            painter.styled(3, 0, " ", |cell| cell.bg = WireColor::Named(1).pack());
+        });
+
+        let mut opaque = RetainedScene::new();
+        refreshed(&mut opaque, &state, &mut cache);
+        assert_eq!(rects_in_row(&opaque, 0), 0);
+        assert_eq!(
+            rects_in_row(&opaque, 1),
+            0,
+            "a solid window folds an explicit copy of the default into the clear"
+        );
+
+        let mut clear = RetainedScene::new();
+        clear.set_transparency(see_through());
+        refreshed(&mut clear, &state, &mut cache);
+        assert_eq!(rects_in_row(&clear, 0), 0, "a default cell must let the clear through");
+        assert_eq!(rects_in_row(&clear, 1), 1, "an explicit background equal to the default");
+        assert_eq!(rects_in_row(&clear, 2), 1, "a reverse-video cell");
+        assert_eq!(rects_in_row(&clear, 3), 1, "a colored cell");
+    }
+
+    #[test]
+    fn hidden_text_on_a_see_through_background_leaves_no_ink() {
+        use zellij_utils::structured_render::{
+            WireColor, ATTR_HIDDEN, UNDERLINE_SHIFT, UNDERLINE_STRAIGHT,
+        };
+        let mut cache = cache();
+        let state = Painter::state(2, 8, |painter| {
+            painter.styled(0, 0, "MM", |cell| {
+                cell.attrs |= ATTR_HIDDEN | (UNDERLINE_STRAIGHT << UNDERLINE_SHIFT)
+            });
+            painter.styled(1, 0, "MM", |cell| {
+                cell.attrs |= ATTR_HIDDEN;
+                cell.bg = WireColor::Named(1).pack();
+            });
+        });
+        let mut opaque = RetainedScene::new();
+        refreshed(&mut opaque, &state, &mut cache);
+        assert!(!opaque.rows()[0].glyphs.is_empty() || !opaque.rows()[0].rects.is_empty());
+
+        let mut clear = RetainedScene::new();
+        clear.set_transparency(see_through());
+        refreshed(&mut clear, &state, &mut cache);
+        assert!(clear.rows()[0].glyphs.is_empty(), "hidden glyphs showed");
+        assert!(clear.rows()[0].rects.is_empty(), "a hidden underline showed");
+        assert_eq!(clear.rows()[1].rects.len(), 2);
+    }
+
+    #[test]
+    fn a_change_of_transparency_rebuilds_every_row() {
+        let mut cache = cache();
+        let state = painted();
+        let mut retained = RetainedScene::new();
+        refreshed(&mut retained, &state, &mut cache);
+        refreshed(&mut retained, &state, &mut cache);
+        assert!(!retained.rebuilt_everything());
+
+        retained.set_transparency(see_through());
+        refreshed(&mut retained, &state, &mut cache);
+        assert!(retained.rebuilt_everything());
+        assert_eq!(retained.transparency(), see_through());
+
+        retained.set_transparency(see_through());
+        refreshed(&mut retained, &state, &mut cache);
+        assert!(!retained.rebuilt_everything(), "an unchanged setting rebuilt");
+
+        retained.set_transparency(Transparency {
+            mode: zellij_utils::input::window::OpacityMode::Everything,
+            ..see_through()
+        });
+        refreshed(&mut retained, &state, &mut cache);
+        assert!(retained.rebuilt_everything(), "a mode change did not rebuild");
     }
 
     #[test]

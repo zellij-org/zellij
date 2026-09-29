@@ -7,6 +7,7 @@ use zellij_utils::input::window::{
 use crate::color::{Paints, Srgb};
 use crate::font::{FontOptions, DEFAULT_FONT_SIZE, DEFAULT_LIGATURES};
 use crate::platform::Platform;
+use crate::scene::Transparency;
 use crate::screen_buffer::CursorShape;
 use crate::settings::Settings;
 
@@ -25,6 +26,8 @@ pub struct Options {
     pub cursor_shape: Option<CursorShape>,
     pub cursor_blink: Option<bool>,
     pub startup_mode: StartupMode,
+    pub transparency: Transparency,
+    pub blur: bool,
 }
 
 impl Default for Options {
@@ -69,6 +72,11 @@ pub fn resolve(settings: &Settings, mode: Option<HostTerminalThemeMode>) -> Opti
         cursor_shape: section.cursor_style.map(cursor_shape),
         cursor_blink: section.cursor_blink,
         startup_mode: section.startup_mode.unwrap_or_default(),
+        transparency: Transparency {
+            opacity: section.opacity.unwrap_or(Transparency::OPAQUE.opacity),
+            mode: section.opacity_mode.unwrap_or_default(),
+        },
+        blur: section.blur.unwrap_or(false),
     }
 }
 
@@ -205,6 +213,8 @@ pub struct Change {
     pub open_links: bool,
     pub bell: bool,
     pub notifications: bool,
+    pub transparency: bool,
+    pub blur: bool,
 }
 
 impl Change {
@@ -222,6 +232,8 @@ impl Change {
             open_links: current.open_links != next.open_links,
             bell: current.bell != next.bell,
             notifications: current.notifications != next.notifications,
+            transparency: current.transparency != next.transparency,
+            blur: current.blur != next.blur,
         }
     }
 
@@ -236,10 +248,12 @@ impl Change {
             || self.open_links
             || self.bell
             || self.notifications
+            || self.transparency
+            || self.blur
     }
 
     pub fn needs_redraw(&self) -> bool {
-        self.paints || self.cursor_shape || self.cursor_blink
+        self.paints || self.cursor_shape || self.cursor_blink || self.transparency
     }
 }
 
@@ -249,7 +263,7 @@ mod tests {
     use std::str::FromStr;
     use zellij_utils::data::{KeyModifier, StyleDeclaration, DEFAULT_STYLES};
     use zellij_utils::input::theme::TerminalColors;
-    use zellij_utils::input::window::WindowConfig;
+    use zellij_utils::input::window::{OpacityMode, WindowConfig};
 
     use crate::color::{ANSI_16, DEFAULT_BACKGROUND, DEFAULT_FOREGROUND};
 
@@ -697,6 +711,57 @@ mod tests {
             !Change::between(&current, &next).needs_redraw(),
             "a chord the window does not draw asked for a redraw"
         );
+    }
+
+    #[test]
+    fn an_unconfigured_window_is_solid_and_unblurred() {
+        let options = Options::default();
+        assert_eq!(options.transparency, Transparency::OPAQUE);
+        assert_eq!(options.transparency.opacity, 1.0);
+        assert_eq!(options.transparency.mode, OpacityMode::Background);
+        assert!(!options.blur);
+    }
+
+    #[test]
+    fn the_see_through_settings_follow_the_configuration() {
+        let options = resolve(
+            &settings(WindowConfig {
+                opacity: Some(0.8),
+                opacity_mode: Some(OpacityMode::Everything),
+                blur: Some(true),
+                ..WindowConfig::default()
+            }),
+            None,
+        );
+        assert_eq!(
+            options.transparency,
+            Transparency {
+                opacity: 0.8,
+                mode: OpacityMode::Everything,
+            }
+        );
+        assert!(options.blur);
+    }
+
+    #[test]
+    fn a_see_through_change_redraws_and_a_blur_change_does_not() {
+        let current = Options::default();
+
+        let mut next = current.clone();
+        next.transparency.opacity = 0.5;
+        let change = Change::between(&current, &next);
+        assert!(change.transparency && change.needs_redraw() && change.is_anything());
+        assert!(!change.fonts && !change.paints);
+
+        let mut next = current.clone();
+        next.transparency.mode = OpacityMode::Everything;
+        assert!(Change::between(&current, &next).transparency);
+
+        let mut next = current.clone();
+        next.blur = true;
+        let change = Change::between(&current, &next);
+        assert!(change.blur && change.is_anything());
+        assert!(!change.needs_redraw());
     }
 
     #[test]

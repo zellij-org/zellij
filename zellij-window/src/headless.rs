@@ -1225,6 +1225,205 @@ mod tests {
         );
     }
 
+    const SEE_THROUGH_BACKGROUND: [u8; 3] = [100, 150, 200];
+
+    fn see_through_state() -> TerminalState {
+        painted_with_graphics(
+            2,
+            4,
+            &[
+                kitty_image([10, 200, 30, 255], 8, 20),
+                Place::of(1, 8, 20).at(1, 1).record(),
+            ],
+            |painter| {
+                painter.styled(0, 1, " ", background(1));
+                painter.text(0, 2, "\u{2588}");
+                painter.cursor(0, 3, crate::screen_buffer::CursorShape::Block);
+            },
+        )
+    }
+
+    fn see_through_paints() -> color::Paints {
+        color::Paints {
+            background: SEE_THROUGH_BACKGROUND,
+            ..color::Paints::default()
+        }
+    }
+
+    fn render_see_through(
+        gpu: &mut GpuLease,
+        state: &TerminalState,
+        transparency: scene::Transparency,
+    ) -> (Image, crate::font::CellMetrics) {
+        let mut cache = GlyphCache::new(FontStack::embedded(DEFAULT_FONT_SIZE).unwrap());
+        let mut retained = crate::retained::RetainedScene::new();
+        retained.set_transparency(transparency);
+        retained.refresh(
+            state,
+            &mut cache,
+            scene::BlinkPhase::On,
+            &see_through_paints(),
+            scene::CursorOptions::default(),
+            None,
+            None,
+        );
+        let metrics = cache.metrics();
+        let image = gpu
+            .get()
+            .render_retained(&retained, cache.atlases())
+            .unwrap();
+        (image, metrics)
+    }
+
+    struct Probes {
+        default_background: (u32, u32),
+        explicit_background: (u32, u32),
+        glyph: (u32, u32),
+        cursor: (u32, u32),
+        image: (u32, u32),
+    }
+
+    fn probes(metrics: crate::font::CellMetrics) -> Probes {
+        let (w, h) = (metrics.width, metrics.height);
+        Probes {
+            default_background: (1, 1),
+            explicit_background: (w + w / 2, h / 2),
+            glyph: (2 * w + w / 2, h / 2),
+            cursor: (3 * w + w / 2, h / 2),
+            image: (w + 2, h + 2),
+        }
+    }
+
+    fn scaled(color: [u8; 3], opacity: f32) -> [u8; 4] {
+        let [r, g, b] = color.map(|channel| (channel as f32 * opacity).round() as u8);
+        [r, g, b, (255.0 * opacity).round() as u8]
+    }
+
+    fn assert_near(actual: [u8; 4], expected: [u8; 4], what: &str) {
+        assert!(
+            actual
+                .iter()
+                .zip(expected.iter())
+                .all(|(a, e)| a.abs_diff(*e) <= 1),
+            "{}: read {:?}, expected {:?}",
+            what,
+            actual,
+            expected
+        );
+    }
+
+    fn see_through(opacity: f32, mode: zellij_utils::input::window::OpacityMode) -> scene::Transparency {
+        scene::Transparency { opacity, mode }
+    }
+
+    #[test]
+    fn a_see_through_background_lets_only_the_default_background_through() {
+        let Some(mut gpu) = Headless::exclusive() else {
+            return;
+        };
+        let (image, metrics) = render_see_through(
+            &mut gpu,
+            &see_through_state(),
+            see_through(0.8, zellij_utils::input::window::OpacityMode::Background),
+        );
+        let at = probes(metrics);
+        let pixel = |(x, y): (u32, u32)| image.pixel(x, y);
+        let [fr, fg, fb] = color::DEFAULT_FOREGROUND;
+        let [er, eg, eb] = color::ANSI_16[1];
+
+        assert_near(
+            pixel(at.default_background),
+            scaled(SEE_THROUGH_BACKGROUND, 0.8),
+            "the default background",
+        );
+        assert_eq!(pixel(at.explicit_background), [er, eg, eb, 255]);
+        assert_eq!(pixel(at.glyph), [fr, fg, fb, 255], "the middle of a full block");
+        assert_eq!(pixel(at.cursor), [fr, fg, fb, 255], "the block cursor");
+        assert_eq!(pixel(at.image), [10, 200, 30, 255], "the image");
+    }
+
+    #[test]
+    fn fading_everything_scales_every_layer_by_exactly_the_opacity() {
+        let Some(mut gpu) = Headless::exclusive() else {
+            return;
+        };
+        let (image, metrics) = render_see_through(
+            &mut gpu,
+            &see_through_state(),
+            see_through(0.8, zellij_utils::input::window::OpacityMode::Everything),
+        );
+        let at = probes(metrics);
+        let pixel = |(x, y): (u32, u32)| image.pixel(x, y);
+
+        assert_near(
+            pixel(at.default_background),
+            scaled(SEE_THROUGH_BACKGROUND, 0.8),
+            "the default background",
+        );
+        assert_near(
+            pixel(at.explicit_background),
+            scaled(color::ANSI_16[1], 0.8),
+            "an explicit background",
+        );
+        assert_near(
+            pixel(at.glyph),
+            scaled(color::DEFAULT_FOREGROUND, 0.8),
+            "the middle of a full block",
+        );
+        assert_near(
+            pixel(at.cursor),
+            scaled(color::DEFAULT_FOREGROUND, 0.8),
+            "the block cursor",
+        );
+        assert_near(pixel(at.image), scaled([10, 200, 30], 0.8), "the image");
+    }
+
+    #[test]
+    fn full_opacity_in_either_mode_draws_what_a_solid_window_draws() {
+        let Some(mut gpu) = Headless::exclusive() else {
+            return;
+        };
+        let state = Painter::state(3, 8, |painter| {
+            painter.text(0, 0, "hello");
+            painter.styled(1, 0, "red", |cell| cell.fg = WireColor::Named(1).pack());
+            painter.styled(1, 4, "bg", background(4));
+            painter.wide(2, 0, '\u{1f600}');
+            painter.cursor(2, 4, crate::screen_buffer::CursorShape::Block);
+        });
+        let mut cache = GlyphCache::new(FontStack::embedded(DEFAULT_FONT_SIZE).unwrap());
+        let solid_scene = scene::build_at(
+            &state,
+            &mut cache,
+            scene::BlinkPhase::On,
+            &see_through_paints(),
+            scene::CursorOptions::default(),
+            None,
+            None,
+        );
+        let solid = gpu.get().render(&solid_scene, cache.atlases()).unwrap();
+        assert!(
+            solid.pixels.chunks(4).all(|px| px[3] == 255),
+            "a solid window wrote a pixel that is not fully opaque"
+        );
+
+        for mode in [
+            zellij_utils::input::window::OpacityMode::Background,
+            zellij_utils::input::window::OpacityMode::Everything,
+        ] {
+            let (image, _) = render_see_through(&mut gpu, &state, see_through(1.0, mode));
+            assert!(
+                image.pixels.chunks(4).all(|px| px[3] == 255),
+                "{:?} at 1.0 wrote a pixel that is not fully opaque",
+                mode
+            );
+            assert_eq!(
+                image.pixels, solid.pixels,
+                "{:?} at 1.0 drew something other than the solid window",
+                mode
+            );
+        }
+    }
+
     #[test]
     fn one_context_serves_scenes_of_different_sizes() {
         let Some(mut gpu) = Headless::exclusive() else {
