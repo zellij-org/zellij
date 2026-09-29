@@ -16,6 +16,13 @@ fn open_settings(zellij: &TestSession) -> GridSnapshot {
     })
 }
 
+fn close_search(zellij: &TestSession) {
+    zellij.send_stdin(&keys::ESC);
+    zellij.wait_until("search closed and categories shown", |grid_snapshot| {
+        grid_snapshot.contains("Keys: presets") && !grid_snapshot.contains(" match")
+    });
+}
+
 fn close_settings(zellij: &TestSession) {
     zellij.send_stdin(&keys::ESC);
     zellij.wait_until("settings screen closed", |grid_snapshot| {
@@ -88,7 +95,7 @@ fn the_unsaved_marker_is_still_shown_after_closing_and_reopening_the_screen() {
     zellij.wait_until("unsaved marker shown", |grid_snapshot| {
         grid_snapshot.contains("● unsaved") && grid_snapshot.contains("1 unsaved change ")
     });
-    zellij.send_stdin(&keys::ESC);
+    close_search(&zellij);
     close_settings(&zellij);
 
     open_settings(&zellij);
@@ -122,7 +129,7 @@ fn a_restart_only_setting_is_written_to_the_file_after_confirming_the_save() {
             && grid_snapshot.contains("1 unsaved change ")
     });
 
-    zellij.send_stdin(&keys::ctrl('s'));
+    zellij.send_stdin(&keys::ctrl('a'));
     zellij.wait_until("save confirm dialog shown", |grid_snapshot| {
         grid_snapshot.contains("Save settings?") && grid_snapshot.contains("Cancel")
     });

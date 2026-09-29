@@ -581,7 +581,7 @@ impl SettingsScreen {
             close_self();
         } else {
             self.notice = Some(format!(
-                "{} unsaved change{} stay applied to this session. Ctrl+s in settings saves them.",
+                "{} unsaved change{} stay applied to this session. Ctrl+a in settings saves them.",
                 unsaved,
                 if unsaved == 1 { "" } else { "s" }
             ));
@@ -733,9 +733,10 @@ impl SettingsScreen {
             && self.focus == Focus::Content
             && self.rebind_leaders_screen.is_capturing_keys()
             && self.category() == Category::KeysLeaders;
-        if !keys_capture {
+        let embedded_keys_screen = self.showing_keys_screen() && self.focus == Focus::Content;
+        if !keys_capture && self.editing.is_none() {
             self.notice = None;
-            if is_ctrl_key(&key, 's') {
+            if is_ctrl_key(&key, 'a') && !embedded_keys_screen {
                 self.restore_theme_preview();
                 self.request_save();
                 return true;
@@ -1222,7 +1223,12 @@ impl SettingsScreen {
         let y0 = rows.saturating_sub(ui_height) / 2;
         self.render_header(x0, y0, ui_width);
         let body_y = y0 + HEADER_ROWS;
-        let body_height = ui_height.saturating_sub(HEADER_ROWS + FOOTER_ROWS);
+        let footer_rows = if self.showing_keys_screen() {
+            1
+        } else {
+            FOOTER_ROWS
+        };
+        let body_height = ui_height.saturating_sub(HEADER_ROWS + footer_rows);
         if self.search_active {
             self.menu.clear_area();
             self.search.set_match_count(None);
@@ -1324,7 +1330,7 @@ impl SettingsScreen {
         );
         let mut header = key_hints(
             &format!("{} · ", count),
-            &[("<Ctrl s>", "save"), ("<Ctrl r>", "revert all")],
+            &[("<Ctrl a>", "save"), ("<Ctrl r>", "revert all")],
             cols,
         );
         if unsaved > 0 {
@@ -1409,7 +1415,18 @@ impl SettingsScreen {
     fn render_footer(&self, x: usize, bottom: usize, cols: usize) {
         let y = bottom.saturating_sub(1);
         let description_y = bottom.saturating_sub(3);
-        if let Some(notice) = &self.notice {
+        if self.showing_keys_screen() {
+            if let Some(notice) = &self.notice {
+                print_text_with_coordinates(
+                    Text::new(truncate(notice, cols)).color_all(3),
+                    x,
+                    y,
+                    None,
+                    None,
+                );
+                return;
+            }
+        } else if let Some(notice) = &self.notice {
             print_text_with_coordinates(
                 Text::new(truncate(notice, cols)).color_all(3),
                 x,
