@@ -1312,7 +1312,10 @@ mod tests {
         );
     }
 
-    fn see_through(opacity: f32, mode: zellij_utils::input::window::OpacityMode) -> scene::Transparency {
+    fn see_through(
+        opacity: f32,
+        mode: zellij_utils::input::window::OpacityMode,
+    ) -> scene::Transparency {
         scene::Transparency { opacity, mode }
     }
 
@@ -1337,7 +1340,11 @@ mod tests {
             "the default background",
         );
         assert_eq!(pixel(at.explicit_background), [er, eg, eb, 255]);
-        assert_eq!(pixel(at.glyph), [fr, fg, fb, 255], "the middle of a full block");
+        assert_eq!(
+            pixel(at.glyph),
+            [fr, fg, fb, 255],
+            "the middle of a full block"
+        );
         assert_eq!(pixel(at.cursor), [fr, fg, fb, 255], "the block cursor");
         assert_eq!(pixel(at.image), [10, 200, 30, 255], "the image");
     }

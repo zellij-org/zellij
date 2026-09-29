@@ -541,10 +541,7 @@ pub fn build_row(
             out, cell, &paint, origin_x, origin_y, metrics, paints, inkless,
         );
 
-        if !composing
-            && !inkless
-            && context.hovered_link.is_some_and(|run| run.covers(row, col))
-        {
+        if !composing && !inkless && context.hovered_link.is_some_and(|run| run.covers(row, col)) {
             push_hover_underline(out, &paint, origin_x, origin_y, metrics);
         }
 
