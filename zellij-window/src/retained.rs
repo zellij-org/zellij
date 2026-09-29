@@ -579,8 +579,16 @@ mod tests {
         let mut clear = RetainedScene::new();
         clear.set_transparency(see_through());
         refreshed(&mut clear, &state, &mut cache);
-        assert_eq!(rects_in_row(&clear, 0), 0, "a default cell must let the clear through");
-        assert_eq!(rects_in_row(&clear, 1), 1, "an explicit background equal to the default");
+        assert_eq!(
+            rects_in_row(&clear, 0),
+            0,
+            "a default cell must let the clear through"
+        );
+        assert_eq!(
+            rects_in_row(&clear, 1),
+            1,
+            "an explicit background equal to the default"
+        );
         assert_eq!(rects_in_row(&clear, 2), 1, "a reverse-video cell");
         assert_eq!(rects_in_row(&clear, 3), 1, "a colored cell");
     }
@@ -608,7 +616,10 @@ mod tests {
         clear.set_transparency(see_through());
         refreshed(&mut clear, &state, &mut cache);
         assert!(clear.rows()[0].glyphs.is_empty(), "hidden glyphs showed");
-        assert!(clear.rows()[0].rects.is_empty(), "a hidden underline showed");
+        assert!(
+            clear.rows()[0].rects.is_empty(),
+            "a hidden underline showed"
+        );
         assert_eq!(clear.rows()[1].rects.len(), 2);
     }
 
@@ -628,14 +639,20 @@ mod tests {
 
         retained.set_transparency(see_through());
         refreshed(&mut retained, &state, &mut cache);
-        assert!(!retained.rebuilt_everything(), "an unchanged setting rebuilt");
+        assert!(
+            !retained.rebuilt_everything(),
+            "an unchanged setting rebuilt"
+        );
 
         retained.set_transparency(Transparency {
             mode: zellij_utils::input::window::OpacityMode::Everything,
             ..see_through()
         });
         refreshed(&mut retained, &state, &mut cache);
-        assert!(retained.rebuilt_everything(), "a mode change did not rebuild");
+        assert!(
+            retained.rebuilt_everything(),
+            "a mode change did not rebuild"
+        );
     }
 
     #[test]

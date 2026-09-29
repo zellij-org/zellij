@@ -804,7 +804,8 @@ impl App {
     fn refresh_scene(&mut self) {
         let cursor = self.cursor_options();
         let preedit = self.composition.shown();
-        self.retained.set_transparency(self.effective_transparency());
+        self.retained
+            .set_transparency(self.effective_transparency());
         self.retained.refresh(
             &self.state,
             &mut self.cache,
@@ -2304,7 +2305,10 @@ mod tests {
             identity,
             "the scene was replaced rather than updated"
         );
-        assert_eq!(harness.app.metrics, before, "a see-through change rebuilt the font");
+        assert_eq!(
+            harness.app.metrics, before,
+            "a see-through change rebuilt the font"
+        );
     }
 
     #[test]
