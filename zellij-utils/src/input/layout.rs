@@ -547,6 +547,7 @@ impl PluginUserConfiguration {
         configuration.remove("title");
         configuration.remove("in_place");
         configuration.remove("skip_plugin_cache");
+        configuration.remove("client_local");
 
         PluginUserConfiguration(configuration)
     }
