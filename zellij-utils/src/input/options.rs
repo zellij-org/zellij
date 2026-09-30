@@ -96,6 +96,7 @@ impl PaneFrameStyle {
         }
         match options.pane_frame_style {
             Some(PaneFrameStyle::Full) => PaneFrameStyle::Full,
+            Some(PaneFrameStyle::None) => PaneFrameStyle::None,
             _ => PaneFrameStyle::Titles,
         }
     }
@@ -869,6 +870,21 @@ mod tests {
             PaneFrameStyle::None
         );
         assert!("bogus".parse::<PaneFrameStyle>().is_err());
+    }
+
+    #[test]
+    fn pane_frame_style_none_is_respected_when_pane_frames_is_true() {
+        // Regression test: `pane_frames true` + `pane_frame_style "none"` (the combination
+        // the KDL config comments suggest using to fully hide frames while keeping the
+        // top-level toggle on) used to silently fall back to the default `Titles` style,
+        // since `from_options` only special-cased `Full` and let everything else -
+        // including an explicit `None` - hit the `_ => Titles` wildcard.
+        let options = Options {
+            pane_frames: Some(true),
+            pane_frame_style: Some(PaneFrameStyle::None),
+            ..Default::default()
+        };
+        assert_eq!(PaneFrameStyle::from_options(&options), PaneFrameStyle::None);
     }
 
     #[test]
