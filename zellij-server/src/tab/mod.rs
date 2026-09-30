@@ -2350,6 +2350,8 @@ impl Tab {
                 None
             };
         }
+        self.tiled_panes.remove_client(client_id);
+        self.floating_panes.remove_client(client_id);
         self.mode_info.borrow_mut().remove(&client_id);
         self.connected_clients.borrow_mut().remove(&client_id);
         self.mouse_help_text_visible.remove(&client_id);
@@ -4924,7 +4926,9 @@ impl Tab {
             connected_clients.insert(override_id);
         }
 
-        if connected_clients.is_empty() || !self.tiled_panes.has_active_panes() {
+        let has_tiled_panes_to_render = self.tiled_panes.has_active_panes()
+            || (client_id_override.is_some() && self.tiled_panes.has_panes());
+        if connected_clients.is_empty() || !has_tiled_panes_to_render {
             return Ok(());
         }
         if self.stacked_pane_list_is_active() {
@@ -4958,7 +4962,9 @@ impl Tab {
             .with_context(err_context)?;
         let no_ui_fullscreen_active = self.tiled_panes.fullscreen_covers_ui();
         if !no_ui_fullscreen_active
-            && ((self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes())
+            && ((self.floating_panes.panes_are_visible()
+                && (self.floating_panes.has_active_panes()
+                    || (client_id_override.is_some() && self.floating_panes.has_panes())))
                 || self.floating_panes.has_pinned_panes())
         {
             self.floating_panes
