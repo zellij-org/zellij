@@ -111,6 +111,11 @@ fn option_values(options: &Options, values: &mut BTreeMap<SettingKey, Option<Str
         default_layout,
         layout_dir,
         theme_dir,
+        keybinds_dir,
+        keybinds_preset: _keybinds_preset_is_command_line_only,
+        keybinds_primary: _keybinds_primary_is_command_line_only,
+        keybinds_secondary: _keybinds_secondary_is_command_line_only,
+        keybinds_unlock: _keybinds_unlock_is_command_line_only,
         mouse_mode,
         pane_frames,
         pane_frame_style,
@@ -178,6 +183,7 @@ fn option_values(options: &Options, values: &mut BTreeMap<SettingKey, Option<Str
         (SettingKey::DefaultLayout, path_text(default_layout)),
         (SettingKey::LayoutDir, path_text(layout_dir)),
         (SettingKey::ThemeDir, path_text(theme_dir)),
+        (SettingKey::KeybindsDir, path_text(keybinds_dir)),
         (SettingKey::MouseMode, display_text(mouse_mode)),
         (SettingKey::PaneFrames, display_text(pane_frames)),
         (
@@ -189,7 +195,10 @@ fn option_values(options: &Options, values: &mut BTreeMap<SettingKey, Option<Str
             SettingKey::OnForceClose,
             on_force_close.as_ref().map(on_force_close_text),
         ),
-        (SettingKey::ScrollBufferSize, display_text(scroll_buffer_size)),
+        (
+            SettingKey::ScrollBufferSize,
+            display_text(scroll_buffer_size),
+        ),
         (SettingKey::CopyCommand, copy_command.clone()),
         (
             SettingKey::CopyClipboard,
@@ -213,7 +222,10 @@ fn option_values(options: &Options, values: &mut BTreeMap<SettingKey, Option<Str
             SettingKey::ScrollbackLinesToSerialize,
             display_text(scrollback_lines_to_serialize),
         ),
-        (SettingKey::StyledUnderlines, display_text(styled_underlines)),
+        (
+            SettingKey::StyledUnderlines,
+            display_text(styled_underlines),
+        ),
         (
             SettingKey::SerializationInterval,
             display_text(serialization_interval),
@@ -238,7 +250,10 @@ fn option_values(options: &Options, values: &mut BTreeMap<SettingKey, Option<Str
         (SettingKey::StackedResize, display_text(stacked_resize)),
         (SettingKey::StackedPaneList, display_text(stacked_pane_list)),
         (SettingKey::ShowStartupTips, display_text(show_startup_tips)),
-        (SettingKey::ShowReleaseNotes, display_text(show_release_notes)),
+        (
+            SettingKey::ShowReleaseNotes,
+            display_text(show_release_notes),
+        ),
         (
             SettingKey::AdvancedMouseActions,
             display_text(advanced_mouse_actions),
@@ -363,7 +378,10 @@ fn ui_values(ui: &UiConfig, values: &mut BTreeMap<SettingKey, Option<String>>) {
     border_override_values(floating_border_style, FLOATING_BORDER_KEYS, values);
 }
 
-fn web_client_values(web_client: &WebClientConfig, values: &mut BTreeMap<SettingKey, Option<String>>) {
+fn web_client_values(
+    web_client: &WebClientConfig,
+    values: &mut BTreeMap<SettingKey, Option<String>>,
+) {
     let WebClientConfig {
         font,
         theme: _web_client_theme_colours_are_read_only,
@@ -386,7 +404,9 @@ fn web_client_values(web_client: &WebClientConfig, values: &mut BTreeMap<Setting
     );
     values.insert(
         SettingKey::WebClientCursorInactiveStyle,
-        cursor_inactive_style.as_ref().map(cursor_inactive_style_text),
+        cursor_inactive_style
+            .as_ref()
+            .map(cursor_inactive_style_text),
     );
     values.insert(
         SettingKey::WebClientMacOptionIsMeta,
@@ -406,9 +426,21 @@ pub fn setting_values(config: &Config) -> BTreeMap<SettingKey, Option<String>> {
         background_plugins: _load_plugins_are_read_only,
         web_client,
         context_menu: _context_menu_is_read_only,
+        keybinds_layers: _keybinds_layers_are_compared_directly,
     } = config;
     let mut values = BTreeMap::new();
     option_values(options, &mut values);
+    let injected_default_mode = config.keybinds_layers.injected_default_mode;
+    if injected_default_mode.is_some() && options.default_mode == injected_default_mode {
+        values.insert(
+            SettingKey::DefaultMode,
+            config
+                .keybinds_layers
+                .config_default_mode
+                .as_ref()
+                .map(input_mode_text),
+        );
+    }
     ui_values(ui, &mut values);
     web_client_values(web_client, &mut values);
     values.insert(SettingKey::Keybinds, None);
@@ -419,9 +451,13 @@ pub fn setting_value(config: &Config, key: SettingKey) -> Option<String> {
     setting_values(config).remove(&key).flatten()
 }
 
+pub fn keybinds_differ(first: &Config, second: &Config) -> bool {
+    first.keybinds_layers.user != second.keybinds_layers.user
+}
+
 pub fn settings_differ(first: &Config, second: &Config, key: SettingKey) -> bool {
     match key {
-        SettingKey::Keybinds => first.keybinds != second.keybinds,
+        SettingKey::Keybinds => keybinds_differ(first, second),
         _ => setting_value(first, key) != setting_value(second, key),
     }
 }
@@ -432,7 +468,7 @@ pub fn differing_settings(first: &Config, second: &Config) -> Vec<SettingKey> {
     SettingKey::all()
         .into_iter()
         .filter(|key| match key {
-            SettingKey::Keybinds => first.keybinds != second.keybinds,
+            SettingKey::Keybinds => keybinds_differ(first, second),
             _ => first_values.get(key) != second_values.get(key),
         })
         .collect()
@@ -466,12 +502,18 @@ pub fn copy_setting(target: &mut Config, source: &Config, key: SettingKey) {
         SettingKey::ThemeDark => options.theme_dark = from.theme_dark.clone(),
         SettingKey::ThemeLight => options.theme_light = from.theme_light.clone(),
         SettingKey::ExplicitThemeHue => options.explicit_theme_hue = from.explicit_theme_hue,
-        SettingKey::DefaultMode => options.default_mode = from.default_mode,
+        SettingKey::DefaultMode => {
+            options.default_mode = from.default_mode;
+            target.keybinds_layers.config_default_mode = source.keybinds_layers.config_default_mode;
+            target.keybinds_layers.injected_default_mode =
+                source.keybinds_layers.injected_default_mode;
+        },
         SettingKey::DefaultShell => options.default_shell = from.default_shell.clone(),
         SettingKey::DefaultCwd => options.default_cwd = from.default_cwd.clone(),
         SettingKey::DefaultLayout => options.default_layout = from.default_layout.clone(),
         SettingKey::LayoutDir => options.layout_dir = from.layout_dir.clone(),
         SettingKey::ThemeDir => options.theme_dir = from.theme_dir.clone(),
+        SettingKey::KeybindsDir => options.keybinds_dir = from.keybinds_dir.clone(),
         SettingKey::MouseMode => options.mouse_mode = from.mouse_mode,
         SettingKey::PaneFrames => options.pane_frames = from.pane_frames,
         SettingKey::PaneFrameStyle => options.pane_frame_style = from.pane_frame_style,
@@ -482,9 +524,7 @@ pub fn copy_setting(target: &mut Config, source: &Config, key: SettingKey) {
         SettingKey::CopyClipboard => options.copy_clipboard = from.copy_clipboard,
         SettingKey::CopyOnSelect => options.copy_on_select = from.copy_on_select,
         SettingKey::Osc8Hyperlinks => options.osc8_hyperlinks = from.osc8_hyperlinks,
-        SettingKey::ScrollbackEditor => {
-            options.scrollback_editor = from.scrollback_editor.clone()
-        },
+        SettingKey::ScrollbackEditor => options.scrollback_editor = from.scrollback_editor.clone(),
         SettingKey::SessionName => options.session_name = from.session_name.clone(),
         SettingKey::AttachToSession => options.attach_to_session = from.attach_to_session,
         SettingKey::AutoLayout => options.auto_layout = from.auto_layout,
@@ -550,8 +590,7 @@ pub fn copy_setting(target: &mut Config, source: &Config, key: SettingKey) {
             options.nested_session_handling = from.nested_session_handling
         },
         SettingKey::DangerouslyEnablePasteBufferRead => {
-            options.dangerously_enable_paste_buffer_read =
-                from.dangerously_enable_paste_buffer_read
+            options.dangerously_enable_paste_buffer_read = from.dangerously_enable_paste_buffer_read
         },
         SettingKey::FrameRoundedCorners => frames.rounded_corners = from_frames.rounded_corners,
         SettingKey::FrameHideSessionName => {
@@ -616,12 +655,17 @@ pub fn copy_setting(target: &mut Config, source: &Config, key: SettingKey) {
             web.mac_option_is_meta = from_web.mac_option_is_meta
         },
         SettingKey::WebClientBaseUrl => web.base_url = from_web.base_url.clone(),
-        SettingKey::Keybinds => target.keybinds = source.keybinds.clone(),
+        SettingKey::Keybinds => {
+            target.keybinds_layers.user = source.keybinds_layers.user.clone();
+            target.resolve_keybinds();
+        },
     }
 }
 
 pub fn unset_setting(config: &mut Config, key: SettingKey) {
     if key == SettingKey::Keybinds {
+        config.keybinds_layers.user = Default::default();
+        config.resolve_keybinds();
         return;
     }
     let defaults = Config {
@@ -641,7 +685,10 @@ pub fn settings_set_in_file(file_contents: &str) -> BTreeSet<SettingKey> {
             .and_then(|node| node.children())
             .cloned()
     };
-    let pane_frames = child_document(child_document(Some(&document), "ui").as_ref(), "pane_frames");
+    let pane_frames = child_document(
+        child_document(Some(&document), "ui").as_ref(),
+        "pane_frames",
+    );
     let web_client = child_document(Some(&document), "web_client");
     SettingKey::all()
         .into_iter()
@@ -674,7 +721,7 @@ pub fn setting_states(
 ) -> Vec<ConfigSettingState> {
     let saved_values = setting_values(saved);
     let current_values = setting_values(current);
-    let keybinds_changed = saved.keybinds != current.keybinds;
+    let keybinds_changed = keybinds_differ(saved, current);
     SettingKey::all()
         .into_iter()
         .map(|key| {

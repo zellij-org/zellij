@@ -1,37 +1,27 @@
-mod presets;
-mod presets_screen;
-mod rebind_leaders_screen;
+mod keys_screen;
 mod settings;
 mod settings_screen;
 mod ui_components;
 
 use zellij_tile::prelude::*;
 
-use presets_screen::PresetsScreen;
+use keys_screen::KeysScreen;
 use settings_screen::SettingsScreen;
 use ui_components::set_close_directly;
 
 use std::collections::BTreeMap;
 
-pub static UI_SIZE: usize = 15;
-pub static WIDTH_BREAKPOINTS: (usize, usize) = (62, 35);
-pub static POSSIBLE_MODIFIERS: [KeyModifier; 4] = [
-    KeyModifier::Ctrl,
-    KeyModifier::Alt,
-    KeyModifier::Super,
-    KeyModifier::Shift,
-];
-
-const SETUP_WIZARD_UI_SIZE: usize = 18;
+const SETUP_WIZARD_WIDTH: usize = 72;
+const SETUP_WIZARD_HEIGHT: usize = 18;
 
 enum Screen {
-    SetupWizard(PresetsScreen),
+    SetupWizard(KeysScreen),
     Settings(SettingsScreen),
 }
 
 impl Default for Screen {
     fn default() -> Self {
-        Screen::SetupWizard(PresetsScreen::new(Some(0)))
+        Screen::SetupWizard(KeysScreen::new(true))
     }
 }
 
@@ -53,11 +43,15 @@ impl ZellijPlugin for State {
         if is_setup_wizard {
             subscribe(&[
                 EventType::Key,
+                EventType::Mouse,
+                EventType::Timer,
                 EventType::FailedToWriteConfigToDisk,
-                EventType::ModeUpdate,
+                EventType::AvailableKeybindPresets,
             ]);
             set_close_directly(true);
-            self.screen = Screen::SetupWizard(PresetsScreen::new(Some(0)));
+            let mut keys_screen = KeysScreen::new(true);
+            keys_screen.set_snapshot(&read_config());
+            self.screen = Screen::SetupWizard(keys_screen);
             rename_plugin_pane(own_plugin_id, "First Run Setup Wizard (Step 1/1)");
             resize_focused_pane(Resize::Increase);
             resize_focused_pane(Resize::Increase);
@@ -71,6 +65,7 @@ impl ZellijPlugin for State {
                 EventType::ConfigWasWrittenToDisk,
                 EventType::ConfigChangesDropped,
                 EventType::ModeUpdate,
+                EventType::AvailableKeybindPresets,
             ]);
             set_close_directly(false);
             self.screen = Screen::Settings(SettingsScreen::new());
@@ -92,19 +87,30 @@ impl ZellijPlugin for State {
     }
     fn update(&mut self, event: Event) -> bool {
         match &mut self.screen {
-            Screen::SetupWizard(presets_screen) => match event {
-                Event::ModeUpdate(mode_info) => {
-                    presets_screen.update_mode_info(mode_info);
+            Screen::SetupWizard(keys_screen) => match event {
+                Event::AvailableKeybindPresets(presets, errors) => {
+                    keys_screen.set_presets(presets, errors);
                     true
                 },
                 Event::Key(key) => {
                     if self.notification.is_some() {
                         self.notification = None;
-                        true
-                    } else {
-                        presets_screen.handle_setup_wizard_key(key)
+                        return true;
                     }
+                    let should_render = keys_screen.handle_key(key);
+                    if keys_screen.take_needs_refresh() {
+                        keys_screen.set_snapshot(&read_config());
+                    }
+                    should_render
                 },
+                Event::Mouse(mouse) => {
+                    let should_render = keys_screen.handle_mouse(mouse);
+                    if keys_screen.take_needs_refresh() {
+                        keys_screen.set_snapshot(&read_config());
+                    }
+                    should_render
+                },
+                Event::Timer(_) => keys_screen.handle_timer(),
                 Event::FailedToWriteConfigToDisk(config_file_path) => {
                     self.notification = Some(match config_file_path {
                         Some(failed_path) => {
@@ -136,18 +142,27 @@ impl ZellijPlugin for State {
                     settings_screen.changes_dropped(dropped);
                     true
                 },
+                Event::AvailableKeybindPresets(presets, errors) => {
+                    settings_screen.update_keybind_presets(presets, errors);
+                    true
+                },
                 _ => false,
             },
         }
     }
     fn render(&mut self, rows: usize, cols: usize) {
         match &mut self.screen {
-            Screen::SetupWizard(presets_screen) => presets_screen.render_setup_wizard_screen(
-                rows,
-                cols,
-                SETUP_WIZARD_UI_SIZE,
-                self.notification.clone(),
-            ),
+            Screen::SetupWizard(keys_screen) => {
+                if self.notification.is_some() {
+                    keys_screen.set_notice(self.notification.clone());
+                }
+                let width = SETUP_WIZARD_WIDTH.min(cols);
+                let height = SETUP_WIZARD_HEIGHT.min(rows);
+                let x = cols.saturating_sub(width) / 2;
+                let y = rows.saturating_sub(height) / 2;
+                keys_screen.render(x, y, width, height);
+                keys_screen.render_overlays(rows, cols);
+            },
             Screen::Settings(settings_screen) => settings_screen.render(rows, cols),
         }
     }

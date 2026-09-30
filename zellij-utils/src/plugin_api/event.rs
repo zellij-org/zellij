@@ -5,6 +5,7 @@ pub use super::generated_api::api::{
         layout_parsing_error::ErrorType as ProtobufLayoutParsingErrorType,
         pane_scrollback_response, ActionCompletePayload as ProtobufActionCompletePayload,
         ActivePaneScrollPayload as ProtobufActivePaneScrollPayload,
+        AvailableKeybindPresetsPayload as ProtobufAvailableKeybindPresetsPayload,
         AvailableLayoutInfoPayload as ProtobufAvailableLayoutInfoPayload,
         ClientInfo as ProtobufClientInfo, ClientPaneHistory as ProtobufClientPaneHistory,
         ClientTabHistory as ProtobufClientTabHistory,
@@ -19,6 +20,10 @@ pub use super::generated_api::api::{
         HostTerminalThemeIndication as ProtobufHostTerminalThemeIndication,
         InputModeKeybinds as ProtobufInputModeKeybinds, KdlError as ProtobufKdlError,
         KdlErrorVariant as ProtobufKdlErrorVariant, KeyBind as ProtobufKeyBind,
+        KeybindPresetExample as ProtobufKeybindPresetExample,
+        KeybindPresetInfo as ProtobufKeybindPresetInfo,
+        KeybindPresetSource as ProtobufKeybindPresetSource,
+        KeybindPresetWithError as ProtobufKeybindPresetWithError,
         LayoutInfo as ProtobufLayoutInfo, LayoutMetadata as ProtobufLayoutMetadata,
         LayoutParsingError as ProtobufLayoutParsingError,
         LayoutWithError as ProtobufLayoutWithError, ModeUpdatePayload as ProtobufModeUpdatePayload,
@@ -49,7 +54,8 @@ pub use super::generated_api::api::{
 #[allow(hidden_glob_reexports)]
 use crate::data::{
     ClientId, ClientInfo, ContextMenuContext, ContextMenuEntry, ContextMenuKind, CopyDestination,
-    Event, EventType, FileMetadata, HostTerminalThemeMode, InputMode, KeyWithModifier, KeybindsVec,
+    Event, EventType, FileMetadata, HostTerminalThemeMode, InputMode, KeyWithModifier,
+    KeybindPresetInfo, KeybindPresetSource, KeybindPresetWithError, KeybindsVec,
     LayoutInfo, LayoutMetadata, ModeInfo, Mouse, NestedSessionEndReason, NestedSessionKeybinds,
     NestedSessionKeybindsError, NestedSessionKeybindsResponse, PaneContents, PaneId, PaneInfo,
     PaneManifest, PaneMetadata, PaneScrollbackResponse, PermissionStatus, PluginCapabilities,
@@ -765,6 +771,19 @@ impl TryFrom<ProtobufEvent> for Event {
                     ))
                 },
                 _ => Err("Malformed payload for the ContextMenu Event"),
+            },
+            Some(ProtobufEventType::AvailableKeybindPresets) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::AvailableKeybindPresetsPayload(payload)) => {
+                    Ok(Event::AvailableKeybindPresets(
+                        payload.presets.into_iter().map(Into::into).collect(),
+                        payload
+                            .presets_with_errors
+                            .into_iter()
+                            .map(Into::into)
+                            .collect(),
+                    ))
+                },
+                _ => Err("Malformed payload for the AvailableKeybindPresets Event"),
             },
             Some(ProtobufEventType::ConfigChangesDropped) => match protobuf_event.payload {
                 Some(ProtobufEventPayload::ConfigChangesDroppedPayload(payload)) => {
@@ -1513,6 +1532,15 @@ impl TryFrom<Event> for ProtobufEvent {
                     )),
                 })
             },
+            Event::AvailableKeybindPresets(presets, errors) => Ok(ProtobufEvent {
+                name: ProtobufEventType::AvailableKeybindPresets as i32,
+                payload: Some(event::Payload::AvailableKeybindPresetsPayload(
+                    ProtobufAvailableKeybindPresetsPayload {
+                        presets: presets.into_iter().map(Into::into).collect(),
+                        presets_with_errors: errors.into_iter().map(Into::into).collect(),
+                    },
+                )),
+            }),
             Event::ConfigChangesDropped(keys) => Ok(ProtobufEvent {
                 name: ProtobufEventType::ConfigChangesDropped as i32,
                 payload: Some(event::Payload::ConfigChangesDroppedPayload(
@@ -2510,6 +2538,7 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::NestedSessionEnded => EventType::NestedSessionEnded,
             ProtobufEventType::ContextMenu => EventType::ContextMenu,
             ProtobufEventType::ConfigChangesDropped => EventType::ConfigChangesDropped,
+            ProtobufEventType::AvailableKeybindPresets => EventType::AvailableKeybindPresets,
         })
     }
 }
@@ -2572,6 +2601,7 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::NestedSessionEnded => ProtobufEventType::NestedSessionEnded,
             EventType::ContextMenu => ProtobufEventType::ContextMenu,
             EventType::ConfigChangesDropped => ProtobufEventType::ConfigChangesDropped,
+            EventType::AvailableKeybindPresets => ProtobufEventType::AvailableKeybindPresets,
         })
     }
 }
@@ -3963,3 +3993,68 @@ fn event_from_protobuf_bytes_matches_full_decoding() {
         assert_eq!(event_from_protobuf_bytes(&bytes).unwrap(), fully_decoded);
     }
 }
+impl From<KeybindPresetInfo> for ProtobufKeybindPresetInfo {
+    fn from(info: KeybindPresetInfo) -> Self {
+        ProtobufKeybindPresetInfo {
+            name: info.name,
+            display_name: info.display_name,
+            description: info.description,
+            source: match info.source {
+                KeybindPresetSource::BuiltIn => ProtobufKeybindPresetSource::BuiltIn,
+                KeybindPresetSource::Folder => ProtobufKeybindPresetSource::Folder,
+                KeybindPresetSource::File => ProtobufKeybindPresetSource::File,
+            } as i32,
+            placeholders: info.placeholders,
+            path: info.path,
+            examples: info
+                .examples
+                .into_iter()
+                .map(|(keys, text)| ProtobufKeybindPresetExample { keys, text })
+                .collect(),
+        }
+    }
+}
+
+impl From<ProtobufKeybindPresetInfo> for KeybindPresetInfo {
+    fn from(info: ProtobufKeybindPresetInfo) -> Self {
+        let source = match ProtobufKeybindPresetSource::try_from(info.source).ok() {
+            Some(ProtobufKeybindPresetSource::Folder) => KeybindPresetSource::Folder,
+            Some(ProtobufKeybindPresetSource::File) => KeybindPresetSource::File,
+            _ => KeybindPresetSource::BuiltIn,
+        };
+        KeybindPresetInfo {
+            name: info.name,
+            display_name: info.display_name,
+            description: info.description,
+            source,
+            placeholders: info.placeholders,
+            path: info.path,
+            examples: info
+                .examples
+                .into_iter()
+                .map(|example| (example.keys, example.text))
+                .collect(),
+        }
+    }
+}
+
+impl From<KeybindPresetWithError> for ProtobufKeybindPresetWithError {
+    fn from(preset: KeybindPresetWithError) -> Self {
+        ProtobufKeybindPresetWithError {
+            name: preset.name,
+            path: preset.path,
+            error: preset.error,
+        }
+    }
+}
+
+impl From<ProtobufKeybindPresetWithError> for KeybindPresetWithError {
+    fn from(preset: ProtobufKeybindPresetWithError) -> Self {
+        KeybindPresetWithError {
+            name: preset.name,
+            path: preset.path,
+            error: preset.error,
+        }
+    }
+}
+

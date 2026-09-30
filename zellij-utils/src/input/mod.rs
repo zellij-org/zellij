@@ -4,6 +4,7 @@ pub mod command;
 pub mod config;
 pub mod config_settings;
 pub mod context_menu;
+pub mod keybind_presets;
 pub mod keybinds;
 pub mod layout;
 pub mod mouse;

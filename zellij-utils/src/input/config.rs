@@ -1,7 +1,7 @@
 use crate::data::Styling;
 
 #[cfg(not(target_family = "wasm"))]
-use crate::data::{LayoutInfo, LayoutWithError};
+use crate::data::{KeybindPresetInfo, KeybindPresetWithError, LayoutInfo, LayoutWithError};
 
 use miette::{Diagnostic, LabeledSpan, NamedSource, SourceCode};
 use serde::{Deserialize, Serialize};
@@ -17,6 +17,7 @@ use thiserror::Error;
 use std::convert::TryFrom;
 
 use super::context_menu::ContextMenuConfig;
+use super::keybind_presets::KeybindsLayers;
 use super::keybinds::Keybinds;
 use super::layout::RunPluginOrAlias;
 use super::options::Options;
@@ -45,6 +46,8 @@ pub struct Config {
     pub web_client: WebClientConfig,
     #[serde(default)]
     pub context_menu: ContextMenuConfig,
+    #[serde(default)]
+    pub keybinds_layers: KeybindsLayers,
 }
 
 mod shared_keybinds {
@@ -194,6 +197,21 @@ impl TryFrom<&CliArgs> for Config {
     type Error = ConfigError;
 
     fn try_from(opts: &CliArgs) -> ConfigResult {
+        let mut config = Config::from_cli_args_without_keybinds_dir(opts)?;
+        let config_dir = opts
+            .config_dir
+            .clone()
+            .or_else(home::find_default_config_dir);
+        if config.keybinds_layers.config_dir != config_dir {
+            config.keybinds_layers.config_dir = config_dir;
+            config.resolve_keybinds();
+        }
+        Ok(config)
+    }
+}
+
+impl Config {
+    fn from_cli_args_without_keybinds_dir(opts: &CliArgs) -> ConfigResult {
         if let Some(ref path) = opts.config {
             let default_config = Config::from_default_assets()?;
             return Config::from_path(path, Some(default_config));
@@ -306,7 +324,12 @@ impl Config {
     }
     pub fn merge(&mut self, other: Config) -> Result<(), ConfigError> {
         self.options = self.options.merge(other.options);
-        if !other.keybinds.0.is_empty() && !Arc::ptr_eq(&self.keybinds, &other.keybinds) {
+        let other_layers = other.keybinds_layers;
+        if !other_layers.user.is_empty() || !other_layers.layout.is_empty() {
+            self.keybinds_layers.user.merge(other_layers.user);
+            self.keybinds_layers.layout.merge(other_layers.layout);
+            self.resolve_keybinds();
+        } else if !other.keybinds.0.is_empty() && !Arc::ptr_eq(&self.keybinds, &other.keybinds) {
             Arc::make_mut(&mut self.keybinds).merge(Arc::unwrap_or_clone(other.keybinds));
         }
         self.themes = self.themes.merge(other.themes);
@@ -515,20 +538,33 @@ pub async fn watch_config_file_changes<F, Fut>(
         cli_args_for_config
     }
 
-    fn load_config_and_theme_dir(
+    fn load_config_and_watched_paths(
         config_file_path: &Path,
         config_dir: Option<&Path>,
-    ) -> Option<(Config, Option<PathBuf>)> {
+    ) -> Option<(Config, Vec<PathBuf>)> {
         let cli_args_for_config = cli_args_for_config(config_file_path, config_dir);
         Setup::from_cli_args(&cli_args_for_config)
             .map(|(config, _, config_options, _, _)| {
+                let mut watched_paths = vec![];
                 let theme_dir = config_options.theme_dir.or_else(|| {
                     let config_dir = config_dir
                         .map(Path::to_path_buf)
                         .or_else(home::find_default_config_dir);
                     home::get_theme_dir(config_dir).filter(|dir| dir.exists())
                 });
-                (config, theme_dir)
+                watched_paths.extend(theme_dir);
+                let keybinds_dir = config.keybinds_dir().filter(|dir| dir.exists());
+                if let Some(preset_file) = config.active_keybind_preset_file() {
+                    let is_in_keybinds_dir = keybinds_dir
+                        .as_ref()
+                        .map(|dir| preset_file.starts_with(dir))
+                        .unwrap_or(false);
+                    if !is_in_keybinds_dir && preset_file.exists() {
+                        watched_paths.push(preset_file);
+                    }
+                }
+                watched_paths.extend(keybinds_dir);
+                (config, watched_paths)
             })
             .ok()
     }
@@ -537,16 +573,19 @@ pub async fn watch_config_file_changes<F, Fut>(
         event.paths.iter().any(|path| path == config_file_path)
     }
 
-    fn event_is_in_theme_dir(event: &Event, theme_dir: Option<&Path>) -> bool {
-        theme_dir.map_or(false, |theme_dir| {
-            event.paths.iter().any(|path| path.starts_with(theme_dir))
+    fn event_is_in_watched_paths(event: &Event, watched_paths: &[PathBuf]) -> bool {
+        watched_paths.iter().any(|watched_path| {
+            event
+                .paths
+                .iter()
+                .any(|path| path.starts_with(watched_path))
         })
     }
 
     async fn reload_config_after_change<F, Fut>(
         config_file_path: &Path,
         config_dir: Option<&Path>,
-        watched_theme_dir: Option<&Path>,
+        watched_paths: &[PathBuf],
         on_config_change: &F,
     ) -> Option<bool>
     where
@@ -559,8 +598,8 @@ pub async fn watch_config_file_changes<F, Fut>(
             return None;
         }
 
-        let (new_config, new_theme_dir) =
-            match load_config_and_theme_dir(config_file_path, config_dir) {
+        let (new_config, new_watched_paths) =
+            match load_config_and_watched_paths(config_file_path, config_dir) {
                 Some(loaded) => loaded,
                 None => {
                     log::error!("Failed to reload config from {:?}", config_file_path);
@@ -568,14 +607,14 @@ pub async fn watch_config_file_changes<F, Fut>(
                 },
             };
         on_config_change(new_config).await;
-        Some(new_theme_dir.as_deref() != watched_theme_dir)
+        Some(new_watched_paths.as_slice() != watched_paths)
     }
 
     loop {
         if config_file_path.exists() {
-            let watched_theme_dir =
-                load_config_and_theme_dir(config_file_path.as_path(), config_dir)
-                    .and_then(|(_, theme_dir)| theme_dir);
+            let watched_paths = load_config_and_watched_paths(config_file_path.as_path(), config_dir)
+                .map(|(_, watched_paths)| watched_paths)
+                .unwrap_or_default();
             let (tx, mut rx) = mpsc::unbounded_channel();
 
             let mut watcher = match PollWatcher::new(
@@ -596,11 +635,11 @@ pub async fn watch_config_file_changes<F, Fut>(
                 break;
             }
 
-            if let Some(watched_theme_dir) = &watched_theme_dir {
-                if let Err(e) = watcher.watch(watched_theme_dir, RecursiveMode::NonRecursive) {
+            for watched_path in &watched_paths {
+                if let Err(e) = watcher.watch(watched_path, RecursiveMode::NonRecursive) {
                     log::error!(
-                        "Failed to watch theme dir {:?}, continuing without it: {}",
-                        watched_theme_dir,
+                        "Failed to watch {:?}, continuing without it: {}",
+                        watched_path,
                         e,
                     );
                 }
@@ -624,7 +663,7 @@ pub async fn watch_config_file_changes<F, Fut>(
                         if reload_config_after_change(
                             config_file_path.as_path(),
                             config_dir,
-                            watched_theme_dir.as_deref(),
+                            &watched_paths,
                             &on_config_change,
                         )
                         .await
@@ -633,13 +672,13 @@ pub async fn watch_config_file_changes<F, Fut>(
                             break;
                         }
                     }
-                } else if event_is_in_theme_dir(&event, watched_theme_dir.as_deref())
+                } else if event_is_in_watched_paths(&event, &watched_paths)
                     && (event.kind.is_remove() || event.kind.is_create() || event.kind.is_modify())
                 {
                     let should_restart_watcher = reload_config_after_change(
                         config_file_path.as_path(),
                         config_dir,
-                        watched_theme_dir.as_deref(),
+                        &watched_paths,
                         &on_config_change,
                     )
                     .await
@@ -723,6 +762,71 @@ pub async fn watch_layout_dir_changes<F, Fut>(
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
+pub async fn watch_keybinds_dir_changes<F, Fut>(keybinds_dir: PathBuf, on_presets_change: F)
+where
+    F: Fn(Vec<KeybindPresetInfo>, Vec<KeybindPresetWithError>) -> Fut + Send + 'static,
+    Fut: std::future::Future<Output = ()> + Send,
+{
+    use super::keybind_presets::list_keybind_presets;
+    use notify::{self, Config as WatcherConfig, Event, PollWatcher, RecursiveMode, Watcher};
+    use std::time::Duration;
+    use tokio::sync::mpsc;
+
+    loop {
+        if keybinds_dir.exists() {
+            let (tx, mut rx) = mpsc::unbounded_channel();
+
+            let mut watcher = match PollWatcher::new(
+                move |res: Result<Event, notify::Error>| {
+                    let _ = tx.send(res);
+                },
+                WatcherConfig::default().with_poll_interval(Duration::from_secs(1)),
+            ) {
+                Ok(watcher) => watcher,
+                Err(_) => break,
+            };
+
+            if watcher
+                .watch(&keybinds_dir, RecursiveMode::NonRecursive)
+                .is_err()
+            {
+                break;
+            }
+            let (presets, preset_errors) = list_keybind_presets(Some(&keybinds_dir), &[]);
+            on_presets_change(presets, preset_errors).await;
+
+            while let Some(event_result) = rx.recv().await {
+                match event_result {
+                    Ok(event) => {
+                        if event.kind.is_remove()
+                            || event.kind.is_create()
+                            || event.kind.is_modify()
+                        {
+                            tokio::time::sleep(Duration::from_millis(100)).await;
+
+                            if !keybinds_dir.exists() {
+                                break;
+                            }
+
+                            let (presets, preset_errors) =
+                                list_keybind_presets(Some(&keybinds_dir), &[]);
+                            on_presets_change(presets, preset_errors).await;
+                        }
+                    },
+                    Err(_) => break,
+                }
+            }
+            let (presets, preset_errors) = list_keybind_presets(None, &[]);
+            on_presets_change(presets, preset_errors).await;
+        }
+
+        while !keybinds_dir.exists() {
+            tokio::time::sleep(Duration::from_secs(3)).await;
+        }
+    }
+}
+
 #[cfg(test)]
 mod config_test {
     use super::*;
@@ -781,7 +885,9 @@ mod config_test {
         let tmp = tempdir().unwrap();
         opts.config_dir = Some(tmp.path().to_path_buf());
         let result = Config::try_from(&opts);
-        assert_eq!(result.unwrap(), Config::from_default_assets().unwrap());
+        let mut expected = Config::from_default_assets().unwrap();
+        expected.keybinds_layers.config_dir = Some(tmp.path().to_path_buf());
+        assert_eq!(result.unwrap(), expected);
     }
 
     #[test]

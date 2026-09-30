@@ -26,6 +26,11 @@ fn every_option_set() -> Options {
         default_layout: Some(PathBuf::from("compact")),
         layout_dir: Some(PathBuf::from("/tmp/layouts")),
         theme_dir: Some(PathBuf::from("/tmp/themes")),
+        keybinds_dir: Some(PathBuf::from("/tmp/keybinds")),
+        keybinds_preset: None,
+        keybinds_primary: None,
+        keybinds_secondary: None,
+        keybinds_unlock: None,
         mouse_mode: Some(false),
         pane_frames: Some(false),
         pane_frame_style: Some(PaneFrameStyle::Full),
@@ -89,8 +94,14 @@ fn every_border_override_set(line_style: LineStyle) -> BorderStyleOverride {
 }
 
 fn every_setting_set() -> Config {
+    let with_preset = Config::from_kdl(
+        "keybinds preset=\"default\"",
+        Some(Config::from_default_assets().unwrap()),
+    )
+    .unwrap();
     Config {
-        keybinds: Config::from_default_assets().unwrap().keybinds,
+        keybinds: with_preset.keybinds.clone(),
+        keybinds_layers: with_preset.keybinds_layers,
         options: every_option_set(),
         ui: UiConfig {
             pane_frames: FrameConfig {
@@ -213,7 +224,11 @@ fn copying_a_setting_changes_only_that_setting() {
     for key in SettingKey::all() {
         let mut target = Config::default();
         copy_setting(&mut target, &source, key);
-        assert!(!settings_differ(&target, &source, key), "{} was not copied", key);
+        assert!(
+            !settings_differ(&target, &source, key),
+            "{} was not copied",
+            key
+        );
         let target_values = setting_values(&target);
         for other in SettingKey::all() {
             if other != key {
@@ -235,7 +250,11 @@ fn unsetting_a_setting_restores_its_default() {
         let mut config = every_setting_set();
         unset_setting(&mut config, key);
         if key == SettingKey::Keybinds {
-            assert!(!settings_differ(&config, &every_setting_set(), key));
+            assert!(config.keybinds_layers.user.is_empty());
+            assert_eq!(
+                config.keybinds,
+                Config::from_default_assets().unwrap().keybinds
+            );
         } else {
             assert_eq!(setting_value(&config, key), default_values[&key].clone());
         }

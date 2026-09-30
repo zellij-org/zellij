@@ -10,7 +10,7 @@ pub struct EventNameList {
 pub struct Event {
     #[prost(enumeration="EventType", tag="1")]
     pub name: i32,
-    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47")]
+    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48")]
     pub payload: ::core::option::Option<event::Payload>,
 }
 /// Nested message and enum types in `Event`.
@@ -108,7 +108,53 @@ pub mod event {
         ContextMenuPayload(super::ContextMenuPayload),
         #[prost(message, tag="47")]
         ConfigChangesDroppedPayload(super::ConfigChangesDroppedPayload),
+        #[prost(message, tag="48")]
+        AvailableKeybindPresetsPayload(super::AvailableKeybindPresetsPayload),
     }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct KeybindPresetInfo {
+    #[prost(string, tag="1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(string, tag="2")]
+    pub display_name: ::prost::alloc::string::String,
+    #[prost(string, optional, tag="3")]
+    pub description: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(enumeration="KeybindPresetSource", tag="4")]
+    pub source: i32,
+    #[prost(string, repeated, tag="5")]
+    pub placeholders: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="6")]
+    pub path: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, repeated, tag="7")]
+    pub examples: ::prost::alloc::vec::Vec<KeybindPresetExample>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct KeybindPresetExample {
+    #[prost(string, tag="1")]
+    pub keys: ::prost::alloc::string::String,
+    #[prost(string, tag="2")]
+    pub text: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct KeybindPresetWithError {
+    #[prost(string, tag="1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(string, tag="2")]
+    pub path: ::prost::alloc::string::String,
+    #[prost(string, tag="3")]
+    pub error: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AvailableKeybindPresetsPayload {
+    #[prost(message, repeated, tag="1")]
+    pub presets: ::prost::alloc::vec::Vec<KeybindPresetInfo>,
+    #[prost(message, repeated, tag="2")]
+    pub presets_with_errors: ::prost::alloc::vec::Vec<KeybindPresetWithError>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1005,6 +1051,7 @@ pub enum EventType {
     NestedSessionEnded = 51,
     ContextMenu = 52,
     ConfigChangesDropped = 53,
+    AvailableKeybindPresets = 54,
 }
 impl EventType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1065,6 +1112,7 @@ impl EventType {
             EventType::NestedSessionEnded => "NestedSessionEnded",
             EventType::ContextMenu => "ContextMenu",
             EventType::ConfigChangesDropped => "ConfigChangesDropped",
+            EventType::AvailableKeybindPresets => "AvailableKeybindPresets",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1122,6 +1170,36 @@ impl EventType {
             "NestedSessionEnded" => Some(Self::NestedSessionEnded),
             "ContextMenu" => Some(Self::ContextMenu),
             "ConfigChangesDropped" => Some(Self::ConfigChangesDropped),
+            "AvailableKeybindPresets" => Some(Self::AvailableKeybindPresets),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum KeybindPresetSource {
+    BuiltIn = 0,
+    Folder = 1,
+    File = 2,
+}
+impl KeybindPresetSource {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            KeybindPresetSource::BuiltIn => "BuiltIn",
+            KeybindPresetSource::Folder => "Folder",
+            KeybindPresetSource::File => "File",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "BuiltIn" => Some(Self::BuiltIn),
+            "Folder" => Some(Self::Folder),
+            "File" => Some(Self::File),
             _ => None,
         }
     }

@@ -13,6 +13,7 @@ use crate::input::config::{Config, ConfigError, KdlError};
 use crate::input::context_menu::{
     merge_context_menu_entries, ContextMenuConfig, CONTEXT_MENU_SECTIONS,
 };
+use crate::input::keybind_presets::{KeybindChanges, KeybindsLayer, KeybindsSelection};
 use crate::input::keybinds::Keybinds;
 use crate::input::layout::{
     Layout, PercentOrFixed, PluginUserConfiguration, RunPlugin, RunPluginOrAlias, TabLayoutInfo,
@@ -2979,6 +2980,9 @@ impl Options {
             .map(|(string, _entry)| PathBuf::from(string));
         let theme_dir = kdl_property_first_arg_as_string_or_error!(kdl_options, "theme_dir")
             .map(|(string, _entry)| PathBuf::from(string));
+        let keybinds_dir =
+            kdl_property_first_arg_as_string_or_error!(kdl_options, "keybinds_dir")
+                .map(|(string, _entry)| PathBuf::from(string));
         let mouse_mode =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "mouse_mode").map(|(v, _)| v);
         let scroll_buffer_size =
@@ -3175,6 +3179,11 @@ impl Options {
             default_layout,
             layout_dir,
             theme_dir,
+            keybinds_dir,
+            keybinds_preset: None,
+            keybinds_primary: None,
+            keybinds_secondary: None,
+            keybinds_unlock: None,
             mouse_mode,
             pane_frames,
             pane_frame_style,
@@ -3554,6 +3563,33 @@ impl Options {
         };
         if let Some(theme_dir) = &self.theme_dir {
             let mut node = create_node(&theme_dir.display().to_string());
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node("/tmp");
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn keybinds_dir_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}",
+            " ",
+            "// The folder in which Zellij will look for keybinding presets",
+            "// ",
+        );
+
+        let create_node = |node_value: &str| -> KdlNode {
+            let mut node = KdlNode::new("keybinds_dir");
+            node.push(node_value.to_owned());
+            node
+        };
+        if let Some(keybinds_dir) = &self.keybinds_dir {
+            let mut node = create_node(&keybinds_dir.display().to_string());
             if add_comments {
                 node.set_leading(format!("{}\n", comment_text));
             }
@@ -4991,6 +5027,9 @@ impl Options {
         if let Some(theme_dir) = self.theme_dir_to_kdl(add_comments) {
             nodes.push(theme_dir);
         }
+        if let Some(keybinds_dir) = self.keybinds_dir_to_kdl(add_comments) {
+            nodes.push(keybinds_dir);
+        }
         if let Some(mouse_mode) = self.mouse_mode_to_kdl(add_comments) {
             nodes.push(mouse_mode);
         }
@@ -5264,21 +5303,53 @@ impl EnvironmentVariables {
     }
 }
 
-impl Keybinds {
+impl KeybindChanges {
+    fn keys_with_text(
+        key_block: &KdlNode,
+        key_text: &dyn Fn(&str) -> Result<String, String>,
+    ) -> Result<Vec<KeyWithModifier>, ConfigError> {
+        let mut keys = vec![];
+        for key in kdl_string_arguments!(key_block) {
+            let text = key_text(key).map_err(|e| {
+                ConfigError::new_kdl_error(e, key_block.span().offset(), key_block.span().len())
+            })?;
+            let key_with_modifier = KeyWithModifier::from_str(&text).map_err(|_| {
+                ConfigError::new_kdl_error(
+                    format!("Invalid key: '{}'", text),
+                    key_block.span().offset(),
+                    key_block.span().len(),
+                )
+            })?;
+            keys.push(key_with_modifier);
+        }
+        Ok(keys)
+    }
     fn bind_keys_in_block(
         block: &KdlNode,
-        input_mode_keybinds: &mut HashMap<KeyWithModifier, Vec<Action>>,
+        input_mode: InputMode,
+        changes: &mut KeybindChanges,
         config_options: &Options,
+        key_text: &dyn Fn(&str) -> Result<String, String>,
     ) -> Result<(), ConfigError> {
         let all_nodes = kdl_children_nodes_or_error!(block, "no keybinding block for mode");
-        let bind_nodes = all_nodes.iter().filter(|n| kdl_name!(n) == "bind");
-        let unbind_nodes = all_nodes.iter().filter(|n| kdl_name!(n) == "unbind");
-        for key_block in bind_nodes {
-            Keybinds::bind_actions_for_each_key(key_block, input_mode_keybinds, config_options)?;
+        for key_block in all_nodes.iter().filter(|n| kdl_name!(n) == "bind") {
+            let keys = KeybindChanges::keys_with_text(key_block, key_text)?;
+            let actions: Vec<Action> = actions_from_kdl!(key_block, config_options);
+            if actions.iter().any(|a| a.has_missing_target()) {
+                return Err(ConfigError::new_kdl_error(
+                    "Actions bound to keys must name their target pane or tab explicitly (the target can only be omitted inside context_menu)".into(),
+                    key_block.span().offset(),
+                    key_block.span().len(),
+                ));
+            }
+            for key in keys {
+                changes.bind(input_mode, key, actions.clone());
+            }
         }
-        // we loop a second time so that the unbinds always happen after the binds
-        for key_block in unbind_nodes {
-            Keybinds::unbind_keys(key_block, input_mode_keybinds)?;
+        for key_block in all_nodes.iter().filter(|n| kdl_name!(n) == "unbind") {
+            for key in KeybindChanges::keys_with_text(key_block, key_text)? {
+                changes.unbind(input_mode, key);
+            }
         }
         for key_block in all_nodes {
             if kdl_name!(key_block) != "bind" && kdl_name!(key_block) != "unbind" {
@@ -5293,16 +5364,25 @@ impl Keybinds {
     }
     pub fn from_kdl(
         kdl_keybinds: &KdlNode,
-        base_keybinds: Keybinds,
         config_options: &Options,
-    ) -> Result<Self, ConfigError> {
-        let clear_defaults = kdl_arg_is_truthy!(kdl_keybinds, "clear-defaults");
-        let mut keybinds_from_config = if clear_defaults {
-            Keybinds::default()
-        } else {
-            base_keybinds
+    ) -> Result<KeybindChanges, ConfigError> {
+        KeybindChanges::from_kdl_with_key_text(kdl_keybinds, config_options, &|key: &str| {
+            Ok(key.to_owned())
+        })
+    }
+    pub fn from_kdl_with_key_text(
+        kdl_keybinds: &KdlNode,
+        config_options: &Options,
+        key_text: &dyn Fn(&str) -> Result<String, String>,
+    ) -> Result<KeybindChanges, ConfigError> {
+        let mut changes = KeybindChanges::default();
+        if kdl_arg_is_truthy!(kdl_keybinds, "clear-defaults") {
+            changes.clear_all();
+        }
+        let Some(children) = kdl_keybinds.children() else {
+            return Ok(changes);
         };
-        for block in kdl_children_nodes_or_error!(kdl_keybinds, "keybindings with no children") {
+        for block in children.nodes() {
             if kdl_name!(block) == "shared_except" || kdl_name!(block) == "shared" {
                 let mut modes_to_exclude = vec![];
                 for mode_name in kdl_string_arguments!(block) {
@@ -5318,8 +5398,13 @@ impl Keybinds {
                     if modes_to_exclude.contains(&mode) {
                         continue;
                     }
-                    let mut input_mode_keybinds = keybinds_from_config.get_input_mode_mut(&mode);
-                    Keybinds::bind_keys_in_block(block, &mut input_mode_keybinds, config_options)?;
+                    KeybindChanges::bind_keys_in_block(
+                        block,
+                        mode,
+                        &mut changes,
+                        config_options,
+                        key_text,
+                    )?;
                 }
             }
             if kdl_name!(block) == "shared_among" {
@@ -5331,12 +5416,17 @@ impl Keybinds {
                     if !modes_to_include.contains(&mode) {
                         continue;
                     }
-                    let mut input_mode_keybinds = keybinds_from_config.get_input_mode_mut(&mode);
-                    Keybinds::bind_keys_in_block(block, &mut input_mode_keybinds, config_options)?;
+                    KeybindChanges::bind_keys_in_block(
+                        block,
+                        mode,
+                        &mut changes,
+                        config_options,
+                        key_text,
+                    )?;
                 }
             }
         }
-        for mode in kdl_children_nodes_or_error!(kdl_keybinds, "keybindings with no children") {
+        for mode in children.nodes() {
             if kdl_name!(mode) == "unbind"
                 || kdl_name!(mode) == "shared_except"
                 || kdl_name!(mode) == "shared_among"
@@ -5344,74 +5434,184 @@ impl Keybinds {
             {
                 continue;
             }
-            let mut input_mode_keybinds =
-                Keybinds::input_mode_keybindings(mode, &mut keybinds_from_config)?;
-            Keybinds::bind_keys_in_block(mode, &mut input_mode_keybinds, config_options)?;
+            let mode_name = kdl_name!(mode);
+            let input_mode = InputMode::from_str(mode_name).map_err(|_| {
+                ConfigError::new_kdl_error(
+                    format!("Invalid mode: '{}'", mode_name),
+                    mode.name().span().offset(),
+                    mode.name().span().len(),
+                )
+            })?;
+            if kdl_arg_is_truthy!(mode, "clear-defaults") {
+                changes.clear_mode(input_mode);
+            }
+            KeybindChanges::bind_keys_in_block(
+                mode,
+                input_mode,
+                &mut changes,
+                config_options,
+                key_text,
+            )?;
         }
-        if let Some(global_unbind) = kdl_keybinds.children().and_then(|c| c.get("unbind")) {
-            Keybinds::unbind_keys_in_all_modes(global_unbind, &mut keybinds_from_config)?;
-        };
-        Ok(keybinds_from_config)
-    }
-    fn bind_actions_for_each_key(
-        key_block: &KdlNode,
-        input_mode_keybinds: &mut HashMap<KeyWithModifier, Vec<Action>>,
-        config_options: &Options,
-    ) -> Result<(), ConfigError> {
-        let keys: Vec<KeyWithModifier> = keys_from_kdl!(key_block);
-        let actions: Vec<Action> = actions_from_kdl!(key_block, config_options);
-        if actions.iter().any(|a| a.has_missing_target()) {
-            return Err(ConfigError::new_kdl_error(
-                "Actions bound to keys must name their target pane or tab explicitly (the target can only be omitted inside context_menu)".into(),
-                key_block.span().offset(),
-                key_block.span().len(),
-            ));
-        }
-        for key in keys {
-            input_mode_keybinds.insert(key, actions.clone());
-        }
-        Ok(())
-    }
-    fn unbind_keys(
-        key_block: &KdlNode,
-        input_mode_keybinds: &mut HashMap<KeyWithModifier, Vec<Action>>,
-    ) -> Result<(), ConfigError> {
-        let keys: Vec<KeyWithModifier> = keys_from_kdl!(key_block);
-        for key in keys {
-            input_mode_keybinds.remove(&key);
-        }
-        Ok(())
-    }
-    fn unbind_keys_in_all_modes(
-        global_unbind: &KdlNode,
-        keybinds_from_config: &mut Keybinds,
-    ) -> Result<(), ConfigError> {
-        let keys: Vec<KeyWithModifier> = keys_from_kdl!(global_unbind);
-        for mode in keybinds_from_config.0.values_mut() {
-            for key in &keys {
-                mode.remove(&key);
+        if let Some(global_unbind) = children.get("unbind") {
+            let keys = KeybindChanges::keys_with_text(global_unbind, key_text)?;
+            for mode in InputMode::iter() {
+                for key in &keys {
+                    changes.unbind(mode, key.clone());
+                }
             }
         }
-        Ok(())
+        Ok(changes)
     }
-    fn input_mode_keybindings<'a>(
-        mode: &KdlNode,
-        keybinds_from_config: &'a mut Keybinds,
-    ) -> Result<&'a mut HashMap<KeyWithModifier, Vec<Action>>, ConfigError> {
-        let mode_name = kdl_name!(mode);
-        let input_mode = InputMode::from_str(mode_name).map_err(|_| {
-            ConfigError::new_kdl_error(
-                format!("Invalid mode: '{}'", mode_name),
-                mode.name().span().offset(),
-                mode.name().span().len(),
-            )
-        })?;
-        let input_mode_keybinds = keybinds_from_config.get_input_mode_mut(&input_mode);
-        let clear_defaults_for_mode = kdl_arg_is_truthy!(mode, "clear-defaults");
-        if clear_defaults_for_mode {
-            input_mode_keybinds.clear();
+    pub fn to_kdl_children(&self) -> KdlDocument {
+        let mut document = KdlDocument::new();
+        let serializer = Keybinds::default();
+        let mode_name = |mode: &InputMode| format!("{:?}", mode).to_lowercase();
+        let unbind_node = |keys: &BTreeSet<KeyWithModifier>| {
+            let mut node = KdlNode::new("unbind");
+            for key in keys {
+                node.push(key.to_kdl());
+            }
+            node
+        };
+        for (mode, mode_changes) in &self.modes {
+            if !mode_changes.clear_defaults {
+                continue;
+            }
+            let mut node = KdlNode::new(mode_name(mode));
+            node.insert("clear-defaults", true);
+            let mut children = serializer.serialize_mode_keybinds(&mode_changes.bind);
+            if !mode_changes.unbind.is_empty() {
+                children
+                    .nodes_mut()
+                    .push(unbind_node(&mode_changes.unbind));
+            }
+            node.set_children(children);
+            document.nodes_mut().push(node);
         }
-        Ok(input_mode_keybinds)
+        let mut bound = Keybinds::default();
+        for (mode, mode_changes) in &self.modes {
+            if !mode_changes.clear_defaults && !mode_changes.bind.is_empty() {
+                bound.0.insert(
+                    *mode,
+                    mode_changes
+                        .bind
+                        .iter()
+                        .map(|(key, actions)| (key.clone(), actions.clone()))
+                        .collect(),
+                );
+            }
+        }
+        if !bound.0.is_empty() {
+            if let Some(children) = bound.to_kdl(false).children() {
+                for node in children.nodes() {
+                    document.nodes_mut().push(node.clone());
+                }
+            }
+        }
+        let mut unbound_everywhere: Option<BTreeSet<KeyWithModifier>> = None;
+        for mode in InputMode::iter() {
+            let unbound_in_mode = match self.modes.get(&mode) {
+                Some(mode_changes) if !mode_changes.clear_defaults => mode_changes.unbind.clone(),
+                _ => BTreeSet::new(),
+            };
+            unbound_everywhere = Some(match unbound_everywhere {
+                Some(so_far) => so_far.intersection(&unbound_in_mode).cloned().collect(),
+                None => unbound_in_mode,
+            });
+        }
+        let unbound_everywhere = unbound_everywhere.unwrap_or_default();
+        for (mode, mode_changes) in &self.modes {
+            if mode_changes.clear_defaults {
+                continue;
+            }
+            let remaining: BTreeSet<KeyWithModifier> = mode_changes
+                .unbind
+                .difference(&unbound_everywhere)
+                .cloned()
+                .collect();
+            if !remaining.is_empty() {
+                let mut node = KdlNode::new(mode_name(mode));
+                let mut children = KdlDocument::new();
+                children.nodes_mut().push(unbind_node(&remaining));
+                node.set_children(children);
+                document.nodes_mut().push(node);
+            }
+        }
+        if !unbound_everywhere.is_empty() {
+            document
+                .nodes_mut()
+                .push(unbind_node(&unbound_everywhere));
+        }
+        document
+    }
+}
+
+impl KeybindsSelection {
+    pub fn from_kdl(
+        kdl_keybinds: &KdlNode,
+        config_options: &Options,
+    ) -> Result<KeybindsSelection, ConfigError> {
+        let string_property = |name: &str| -> Result<Option<String>, ConfigError> {
+            match kdl_keybinds.get(name) {
+                Some(entry) => entry
+                    .value()
+                    .as_string()
+                    .map(|value| Some(value.to_owned()))
+                    .ok_or_else(|| {
+                        ConfigError::new_kdl_error(
+                            format!("'{}' must be a string", name),
+                            entry.span().offset(),
+                            entry.span().len(),
+                        )
+                    }),
+                None => Ok(None),
+            }
+        };
+        Ok(KeybindsSelection {
+            preset: string_property("preset")?,
+            primary: string_property("primary")?,
+            secondary: string_property("secondary")?,
+            unlock: string_property("unlock")?,
+            changes: KeybindChanges::from_kdl(kdl_keybinds, config_options)?,
+        })
+    }
+    pub fn to_kdl(&self) -> Option<KdlNode> {
+        if self.is_empty() {
+            return None;
+        }
+        let mut node = KdlNode::new("keybinds");
+        if self.changes.clear_defaults {
+            node.insert("clear-defaults", true);
+        }
+        for (name, value) in [
+            ("preset", &self.preset),
+            ("primary", &self.primary),
+            ("secondary", &self.secondary),
+            ("unlock", &self.unlock),
+        ] {
+            if let Some(value) = value {
+                node.insert(name, value.clone());
+            }
+        }
+        let children = self.changes.to_kdl_children();
+        if !children.nodes().is_empty() {
+            node.set_children(children);
+        }
+        Some(node)
+    }
+}
+
+impl Keybinds {
+    pub fn from_kdl(
+        kdl_keybinds: &KdlNode,
+        base_keybinds: Keybinds,
+        config_options: &Options,
+    ) -> Result<Self, ConfigError> {
+        let changes = KeybindChanges::from_kdl(kdl_keybinds, config_options)?;
+        let mut keybinds_from_config = base_keybinds;
+        changes.apply(&mut keybinds_from_config);
+        Ok(keybinds_from_config)
     }
     pub fn from_string(
         stringified_keybindings: String,
@@ -5611,20 +5811,36 @@ impl BareKey {
 
 impl Config {
     pub fn from_kdl(kdl_config: &str, base_config: Option<Config>) -> Result<Config, ConfigError> {
+        Config::from_kdl_for_layer(kdl_config, base_config, KeybindsLayer::User)
+    }
+    pub fn from_layout_kdl(
+        kdl_config: &str,
+        base_config: Option<Config>,
+    ) -> Result<Config, ConfigError> {
+        Config::from_kdl_for_layer(kdl_config, base_config, KeybindsLayer::Layout)
+    }
+    fn from_kdl_for_layer(
+        kdl_config: &str,
+        base_config: Option<Config>,
+        keybinds_layer: KeybindsLayer,
+    ) -> Result<Config, ConfigError> {
+        let base_was_given = base_config.is_some();
         let mut config = base_config.unwrap_or_else(|| Config::default());
         let kdl_config: KdlDocument = kdl_config.parse()?;
 
+        let previous_keybinds_dir = config.options.keybinds_dir.clone();
         let config_options = Options::from_kdl(&kdl_config)?;
+        if let Some(default_mode) = config_options.default_mode {
+            config.keybinds_layers.config_default_mode = Some(default_mode);
+        }
         config.options = config.options.merge(config_options);
+        let mut should_resolve_keybinds =
+            !base_was_given || config.options.keybinds_dir != previous_keybinds_dir;
 
-        // TODO: handle cases where we have more than one of these blocks (eg. two "keybinds")
-        // this should give an informative parsing error
         if let Some(kdl_keybinds) = kdl_config.get("keybinds") {
-            config.keybinds = std::sync::Arc::new(Keybinds::from_kdl(
-                &kdl_keybinds,
-                std::sync::Arc::unwrap_or_clone(config.keybinds),
-                &config.options,
-            )?);
+            let selection = KeybindsSelection::from_kdl(&kdl_keybinds, &config.options)?;
+            config.apply_keybinds_selection(keybinds_layer, selection);
+            should_resolve_keybinds = true;
         }
         if let Some(kdl_themes) = kdl_config.get("themes") {
             let sourced_from_external_file = false;
@@ -5657,14 +5873,17 @@ impl Config {
                 &config.options,
             )?;
         }
+        if should_resolve_keybinds {
+            config.resolve_keybinds();
+        }
         Ok(config)
     }
     pub fn to_string(&self, add_comments: bool) -> String {
         let mut document = KdlDocument::new();
 
-        let clear_defaults = true;
-        let keybinds = self.keybinds.to_kdl(clear_defaults);
-        document.nodes_mut().push(keybinds);
+        if let Some(keybinds) = self.keybinds_layers.user.to_kdl() {
+            document.nodes_mut().push(keybinds);
+        }
 
         if let Some(themes) = self.themes.to_kdl() {
             document.nodes_mut().push(themes);
@@ -5690,9 +5909,14 @@ impl Config {
             document.nodes_mut().push(context_menu);
         }
 
+        let mut options = self.options.clone();
+        let injected_default_mode = self.keybinds_layers.injected_default_mode;
+        if injected_default_mode.is_some() && options.default_mode == injected_default_mode {
+            options.default_mode = self.keybinds_layers.config_default_mode;
+        }
         document
             .nodes_mut()
-            .append(&mut self.options.to_kdl(add_comments));
+            .append(&mut options.to_kdl(add_comments));
 
         document.to_string()
     }

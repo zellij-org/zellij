@@ -496,7 +496,7 @@ fn can_define_shared_keybinds_for_all_modes() {
 #[test]
 fn can_define_shared_keybinds_with_exclusion() {
     let config_contents = r#"
-        keybinds {
+        keybinds clear-defaults=true {
             shared_except "locked" {
                 bind "Ctrl g" { SwitchToMode "Locked"; }
             }
@@ -525,7 +525,7 @@ fn can_define_shared_keybinds_with_exclusion() {
 #[test]
 fn can_define_shared_keybinds_with_inclusion() {
     let config_contents = r#"
-        keybinds {
+        keybinds clear-defaults=true {
             shared_among "normal" "resize" "pane" {
                 bind "Ctrl g" { SwitchToMode "Locked"; }
             }

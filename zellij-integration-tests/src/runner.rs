@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use zellij_client::os_input_output::SignalEvent;
 use zellij_client::ClientInfo;
-use zellij_utils::cli::{CliAction, CliArgs};
+use zellij_utils::cli::{CliAction, CliArgs, Command};
 use zellij_utils::data::{CommandOrPlugin, ConnectToSession, LayoutInfo};
 use zellij_utils::input::actions::{Action, RunCommandAction};
 use zellij_utils::input::options::Options;
@@ -30,6 +30,7 @@ pub struct TestRunner {
     stdout_tap: Option<crossbeam::channel::Sender<Vec<u8>>>,
     skip_concurrency_slot: bool,
     host_terminal: Option<HostTerminal>,
+    cli_options: Option<Options>,
 }
 
 impl TestRunner {
@@ -43,12 +44,18 @@ impl TestRunner {
             stdout_tap: None,
             skip_concurrency_slot: false,
             host_terminal: None,
+            cli_options: None,
         }
     }
 
     pub fn with_config(mut self, extra_config_kdl: &str) -> Self {
         self.extra_config_kdl.push('\n');
         self.extra_config_kdl.push_str(extra_config_kdl);
+        self
+    }
+
+    pub fn with_cli_options(mut self, options: Options) -> Self {
+        self.cli_options = Some(options);
         self
     }
 
@@ -141,6 +148,7 @@ impl TestRunner {
         let cli_args = CliArgs {
             config: Some(config_path),
             data_dir: Some(data_dir),
+            command: self.cli_options.clone().map(Command::Options),
             ..Default::default()
         };
         let (config, default_layout_info, config_options, _, _) =

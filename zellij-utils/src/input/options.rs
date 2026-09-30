@@ -167,6 +167,41 @@ pub struct Options {
     /// subdirectory of config dir
     #[clap(long, value_parser)]
     pub theme_dir: Option<PathBuf>,
+    #[clap(
+        long,
+        value_parser,
+        help = "Set the keybinds_dir, defaults to subdirectory of config dir"
+    )]
+    #[serde(default)]
+    pub keybinds_dir: Option<PathBuf>,
+    #[clap(
+        long,
+        value_parser,
+        help = "Use this keybinding preset for this session: a name from the keybinds folder, a built-in preset, or a path to a preset file"
+    )]
+    #[serde(default)]
+    pub keybinds_preset: Option<String>,
+    #[clap(
+        long,
+        value_parser,
+        help = "The primary leader key for the keybinding preset (for example \"Ctrl\")"
+    )]
+    #[serde(default)]
+    pub keybinds_primary: Option<String>,
+    #[clap(
+        long,
+        value_parser,
+        help = "The secondary leader key for the keybinding preset (for example \"Alt\")"
+    )]
+    #[serde(default)]
+    pub keybinds_secondary: Option<String>,
+    #[clap(
+        long,
+        value_parser,
+        help = "The unlock key for the keybinding preset (for example \"Ctrl g\")"
+    )]
+    #[serde(default)]
+    pub keybinds_unlock: Option<String>,
     #[clap(long, value_parser)]
     #[serde(default)]
     /// Set the handling of mouse events (true or false)
@@ -523,6 +558,11 @@ impl Options {
         let default_layout = other.default_layout.or_else(|| self.default_layout.clone());
         let layout_dir = other.layout_dir.or_else(|| self.layout_dir.clone());
         let theme_dir = other.theme_dir.or_else(|| self.theme_dir.clone());
+        let keybinds_dir = other.keybinds_dir.or_else(|| self.keybinds_dir.clone());
+        let keybinds_preset = other.keybinds_preset.or_else(|| self.keybinds_preset.clone());
+        let keybinds_primary = other.keybinds_primary.or_else(|| self.keybinds_primary.clone());
+        let keybinds_secondary = other.keybinds_secondary.or_else(|| self.keybinds_secondary.clone());
+        let keybinds_unlock = other.keybinds_unlock.or_else(|| self.keybinds_unlock.clone());
         let theme = other.theme.or_else(|| self.theme.clone());
         let theme_dark = other.theme_dark.or_else(|| self.theme_dark.clone());
         let theme_light = other.theme_light.or_else(|| self.theme_light.clone());
@@ -615,6 +655,11 @@ impl Options {
             default_layout,
             layout_dir,
             theme_dir,
+            keybinds_dir,
+            keybinds_preset,
+            keybinds_primary,
+            keybinds_secondary,
+            keybinds_unlock,
             mouse_mode,
             pane_frames,
             pane_frame_style,
@@ -698,6 +743,11 @@ impl Options {
         let default_layout = other.default_layout.or_else(|| self.default_layout.clone());
         let layout_dir = other.layout_dir.or_else(|| self.layout_dir.clone());
         let theme_dir = other.theme_dir.or_else(|| self.theme_dir.clone());
+        let keybinds_dir = other.keybinds_dir.or_else(|| self.keybinds_dir.clone());
+        let keybinds_preset = other.keybinds_preset.or_else(|| self.keybinds_preset.clone());
+        let keybinds_primary = other.keybinds_primary.or_else(|| self.keybinds_primary.clone());
+        let keybinds_secondary = other.keybinds_secondary.or_else(|| self.keybinds_secondary.clone());
+        let keybinds_unlock = other.keybinds_unlock.or_else(|| self.keybinds_unlock.clone());
         let theme = other.theme.or_else(|| self.theme.clone());
         let theme_dark = other.theme_dark.or_else(|| self.theme_dark.clone());
         let theme_light = other.theme_light.or_else(|| self.theme_light.clone());
@@ -786,6 +836,11 @@ impl Options {
             default_layout,
             layout_dir,
             theme_dir,
+            keybinds_dir,
+            keybinds_preset,
+            keybinds_primary,
+            keybinds_secondary,
+            keybinds_unlock,
             mouse_mode,
             pane_frames,
             pane_frame_style,

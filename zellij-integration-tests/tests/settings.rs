@@ -1,7 +1,8 @@
 #![cfg(unix)]
 
 use zellij_integration_tests::{
-    claim_first_terminal_and_wait_for_prompt, keys, start_zellij, GridSnapshot, TestSession,
+    claim_first_terminal_and_wait_for_prompt, keys, start_zellij, GridSnapshot, TestRunner,
+    TestSession, TERMINAL_SIZE,
 };
 
 const ARROW_LEFT: &[u8] = b"\x1b[D";
@@ -19,7 +20,7 @@ fn open_settings(zellij: &TestSession) -> GridSnapshot {
 fn close_search(zellij: &TestSession) {
     zellij.send_stdin(&keys::ESC);
     zellij.wait_until("search closed and categories shown", |grid_snapshot| {
-        grid_snapshot.contains("Keys: presets") && !grid_snapshot.contains(" match")
+        grid_snapshot.contains("Mouse and clipboard") && !grid_snapshot.contains(" match")
     });
 }
 
@@ -68,7 +69,8 @@ fn changing_a_toggle_and_a_dropdown_reaches_the_session() {
     let session_name = zellij.session_name().to_owned();
     open_settings(&zellij);
     zellij.wait_until("tab bar shows the session name", |grid_snapshot| {
-        tab_bar_shows_session_name(grid_snapshot, &session_name) && !tiled_pane_has_full_frame(grid_snapshot)
+        tab_bar_shows_session_name(grid_snapshot, &session_name)
+            && !tiled_pane_has_full_frame(grid_snapshot)
     });
 
     toggle_hide_session_name(&zellij);
@@ -101,11 +103,14 @@ fn the_unsaved_marker_is_still_shown_after_closing_and_reopening_the_screen() {
     open_settings(&zellij);
     zellij.send_stdin(ARROW_DOWN);
     zellij.send_stdin(&keys::TAB);
-    zellij.wait_until("unsaved marker shown again after reopening", |grid_snapshot| {
-        grid_snapshot.contains("1 unsaved change ")
-            && grid_snapshot.contains("Hide session name")
-            && grid_snapshot.contains("● unsaved")
-    });
+    zellij.wait_until(
+        "unsaved marker shown again after reopening",
+        |grid_snapshot| {
+            grid_snapshot.contains("1 unsaved change ")
+                && grid_snapshot.contains("Hide session name")
+                && grid_snapshot.contains("● unsaved")
+        },
+    );
     zellij.quit();
 }
 
@@ -113,7 +118,9 @@ fn the_unsaved_marker_is_still_shown_after_closing_and_reopening_the_screen() {
 fn a_restart_only_setting_is_written_to_the_file_after_confirming_the_save() {
     let mut zellij = start_zellij();
     claim_first_terminal_and_wait_for_prompt(&zellij);
-    let config_file_path = zellij.config_file_path().expect("the test session has a config file");
+    let config_file_path = zellij
+        .config_file_path()
+        .expect("the test session has a config file");
     let backup_file_path = config_file_path.with_file_name(format!(
         "{}.bak",
         config_file_path.file_name().unwrap().to_string_lossy()
@@ -173,5 +180,45 @@ fn ctrl_r_reverts_all_unsaved_changes() {
             && grid_snapshot.contains("0 unsaved changes")
             && !grid_snapshot.contains("● unsaved")
     });
+    zellij.quit();
+}
+
+fn sgr_motion(column: usize, line: usize) -> Vec<u8> {
+    format!("\u{1b}[<35;{};{}M", column, line).into_bytes()
+}
+
+#[test]
+fn the_unsaved_marker_in_the_side_menu_takes_the_hover_background() {
+    let mut zellij = TestRunner::new(TERMINAL_SIZE)
+        .with_config("mouse_mode true\nadvanced_mouse_actions true\nmouse_hover_effects true")
+        .start();
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+    open_settings(&zellij);
+    toggle_hide_session_name(&zellij);
+    zellij.wait_until("unsaved marker shown", |grid_snapshot| {
+        grid_snapshot.contains("1 unsaved change ")
+    });
+    close_search(&zellij);
+    let grid_snapshot = zellij.wait_until("menu marker shown", |grid_snapshot| {
+        grid_snapshot.contains("Pane frames and borders ●")
+    });
+    let row = grid_snapshot
+        .row_of_line("Pane frames and borders ●")
+        .unwrap();
+    let line = grid_snapshot.lines()[row].clone();
+    let title_column = line[..line.find("Pane frames").unwrap()].chars().count();
+    let marker_column = line[..line.find('●').unwrap()].chars().count();
+
+    let background_before_hover = grid_snapshot.cell_style(title_column, row).background;
+    zellij.send_stdin(&sgr_motion(title_column + 2, row + 1));
+    zellij.wait_until(
+        "the hovered row and its marker share a background",
+        |grid_snapshot| {
+            let title_background = grid_snapshot.cell_style(title_column, row).background;
+            let marker_background = grid_snapshot.cell_style(marker_column, row).background;
+            title_background != background_before_hover && marker_background == title_background
+        },
+    );
+
     zellij.quit();
 }

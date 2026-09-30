@@ -76,6 +76,7 @@ enum EventType {
     NestedSessionEnded = 51;
     ContextMenu = 52;
     ConfigChangesDropped = 53;
+    AvailableKeybindPresets = 54;
 }
 
 message EventNameList {
@@ -131,7 +132,40 @@ message Event {
     NestedSessionEndedPayload nested_session_ended_payload = 45;
     ContextMenuPayload context_menu_payload = 46;
     ConfigChangesDroppedPayload config_changes_dropped_payload = 47;
+    AvailableKeybindPresetsPayload available_keybind_presets_payload = 48;
   }
+}
+
+enum KeybindPresetSource {
+  BuiltIn = 0;
+  Folder = 1;
+  File = 2;
+}
+
+message KeybindPresetInfo {
+  string name = 1;
+  string display_name = 2;
+  optional string description = 3;
+  KeybindPresetSource source = 4;
+  repeated string placeholders = 5;
+  optional string path = 6;
+  repeated KeybindPresetExample examples = 7;
+}
+
+message KeybindPresetExample {
+  string keys = 1;
+  string text = 2;
+}
+
+message KeybindPresetWithError {
+  string name = 1;
+  string path = 2;
+  string error = 3;
+}
+
+message AvailableKeybindPresetsPayload {
+  repeated KeybindPresetInfo presets = 1;
+  repeated KeybindPresetWithError presets_with_errors = 2;
 }
 
 message ConfigChangesDroppedPayload {

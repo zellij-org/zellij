@@ -67,6 +67,10 @@ layout_dir "/tmp/layouts"
 // 
 theme_dir "/tmp/themes"
  
+// The folder in which Zellij will look for keybinding presets
+// 
+// keybinds_dir "/tmp"
+ 
 // Toggle enabling the mouse mode.
 // On certain configurations, or terminals this could
 // potentially interfere with copying text.

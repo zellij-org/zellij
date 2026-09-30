@@ -1060,6 +1060,7 @@ pub enum Event {
     },
     ContextMenu(ContextMenuContext, Vec<ContextMenuEntry>),
     ConfigChangesDropped(Vec<SettingKey>),
+    AvailableKeybindPresets(Vec<KeybindPresetInfo>, Vec<KeybindPresetWithError>),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -2211,6 +2212,54 @@ pub enum LayoutInfo {
     File(String, LayoutMetadata),
     Url(String),
     Stringified(String),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Deserialize, Serialize)]
+pub enum KeybindPresetSource {
+    #[default]
+    BuiltIn,
+    Folder,
+    File,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct KeybindPresetInfo {
+    pub name: String,
+    pub display_name: String,
+    pub description: Option<String>,
+    pub source: KeybindPresetSource,
+    pub placeholders: Vec<String>,
+    pub path: Option<String>,
+    pub examples: Vec<(String, String)>,
+}
+
+impl KeybindPresetInfo {
+    pub fn uses_placeholder(&self, placeholder: &str) -> bool {
+        self.placeholders.iter().any(|p| p == placeholder)
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct KeybindPresetWithError {
+    pub name: String,
+    pub path: String,
+    pub error: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct KeybindsSelectionSnapshot {
+    pub preset: Option<String>,
+    pub primary: Option<String>,
+    pub secondary: Option<String>,
+    pub unlock: Option<String>,
+    pub clears_defaults: bool,
+    pub has_own_keybindings: bool,
+    pub active: KeybindPresetInfo,
+    pub active_values: BTreeMap<String, String>,
+    pub error: Option<String>,
+    pub set_by_layout: bool,
+    pub default_mode: Option<InputMode>,
+    pub set_on_command_line: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -4208,6 +4257,10 @@ pub enum PluginCommand {
     RevertConfig(Option<SettingKey>),
     UnsetConfigSetting(SettingKey),
     SaveConfig,
+    CopyKeybindPreset {
+        preset: String,
+        new_name: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -4258,6 +4311,7 @@ setting_keys! {
     DefaultLayout => (TopLevel, "default_layout", true),
     LayoutDir => (TopLevel, "layout_dir", false),
     ThemeDir => (TopLevel, "theme_dir", false),
+    KeybindsDir => (TopLevel, "keybinds_dir", false),
     MouseMode => (TopLevel, "mouse_mode", true),
     PaneFrames => (TopLevel, "pane_frames", false),
     PaneFrameStyle => (TopLevel, "pane_frame_style", false),
@@ -4378,6 +4432,7 @@ pub struct ConfigSnapshot {
     pub load_plugins: Vec<String>,
     pub env_vars: Vec<String>,
     pub context_menu_items: Vec<String>,
+    pub keybinds: KeybindsSelectionSnapshot,
 }
 
 impl ConfigSnapshot {

@@ -2,14 +2,12 @@ use std::collections::BTreeMap;
 
 use zellij_tile::prelude::*;
 
-use crate::presets_screen::PresetsScreen;
-use crate::rebind_leaders_screen::RebindLeadersScreen;
+use crate::keys_screen::KeysScreen;
 use crate::settings::{
     check_text, describe, kdl_for, section, settings_in, sort_for_display, Category, Scope,
     SettingInfo, SettingKind, CATEGORIES, UNSET_CHOICE,
 };
-use crate::ui_components::{set_origin, take_close_request};
-use crate::UI_SIZE;
+use crate::ui_components::{print_link, take_close_request};
 
 pub const MIN_COLS: usize = 50;
 pub const MIN_ROWS: usize = 12;
@@ -63,8 +61,7 @@ pub struct SettingsScreen {
     notice: Option<String>,
     closing: bool,
     theme_preview: Option<(SettingKey, Option<String>, Option<String>)>,
-    rebind_leaders_screen: RebindLeadersScreen,
-    presets_screen: PresetsScreen,
+    keys_screen: KeysScreen,
     latest_mode_info: Option<ModeInfo>,
     follow_focus: bool,
     last_size: (usize, usize),
@@ -95,8 +92,7 @@ impl Default for SettingsScreen {
             notice: None,
             closing: false,
             theme_preview: None,
-            rebind_leaders_screen: RebindLeadersScreen::default(),
-            presets_screen: PresetsScreen::default(),
+            keys_screen: KeysScreen::new(false),
             latest_mode_info: None,
             follow_focus: false,
             last_size: (0, 0),
@@ -175,6 +171,7 @@ impl SettingsScreen {
     }
     pub fn refresh(&mut self) {
         self.snapshot = read_config();
+        self.keys_screen.set_snapshot(&self.snapshot);
         self.sync_elements();
         self.update_menu_labels();
     }
@@ -186,8 +183,7 @@ impl SettingsScreen {
                     setting.is_unsaved() && {
                         let info = describe(setting.key);
                         info.category == *category
-                            || (info.kind == SettingKind::Keybindings
-                                && category.is_keys_screen())
+                            || (info.kind == SettingKind::Keybindings && category.is_keys_screen())
                     }
                 });
                 if has_unsaved {
@@ -229,7 +225,10 @@ impl SettingsScreen {
         let mut rows = vec![];
         let sections: [(&str, &Vec<String>); 4] = [
             ("Plugin aliases", &self.snapshot.plugin_aliases),
-            ("Plugins loaded at start (load_plugins)", &self.snapshot.load_plugins),
+            (
+                "Plugins loaded at start (load_plugins)",
+                &self.snapshot.load_plugins,
+            ),
             ("Environment variables (env)", &self.snapshot.env_vars),
             (
                 "Right-click menu items (context_menu, only you)",
@@ -356,9 +355,10 @@ impl SettingsScreen {
     fn selected_choice_index(&self, key: SettingKey, options: &[String]) -> usize {
         let info = describe(key);
         let value = self.current_value(key).or_else(|| match info.kind {
-            SettingKind::Choice(_) | SettingKind::Theme { can_be_unset: false } => {
-                Some(info.default.to_owned())
-            },
+            SettingKind::Choice(_)
+            | SettingKind::Theme {
+                can_be_unset: false,
+            } => Some(info.default.to_owned()),
             _ => Some(UNSET_CHOICE.to_owned()),
         });
         value
@@ -604,10 +604,7 @@ impl SettingsScreen {
                     .iter()
                     .map(|key| describe(*key).name)
                     .collect();
-                format!(
-                    "Saved. Restart Zellij to apply: {}",
-                    names.join(", ")
-                )
+                format!("Saved. Restart Zellij to apply: {}", names.join(", "))
             });
         }
         self.refresh();
@@ -629,19 +626,16 @@ impl SettingsScreen {
         ));
         self.refresh();
     }
+    pub fn update_keybind_presets(
+        &mut self,
+        presets: Vec<KeybindPresetInfo>,
+        preset_errors: Vec<KeybindPresetWithError>,
+    ) {
+        self.keys_screen.set_presets(presets, preset_errors);
+    }
     pub fn update_mode_info(&mut self, mode_info: ModeInfo) {
-        let base_mode_changed =
-            self.latest_mode_info.as_ref().and_then(|m| m.base_mode) != mode_info.base_mode;
-        if base_mode_changed {
-            let notification = self.rebind_leaders_screen.drain_notification();
-            self.rebind_leaders_screen = RebindLeadersScreen::default();
-            self.rebind_leaders_screen.set_notification(notification);
-            let notification = self.presets_screen.drain_notification();
-            self.presets_screen = PresetsScreen::default();
-            self.presets_screen.set_notification(notification);
-        }
-        self.rebind_leaders_screen.update_mode_info(mode_info.clone());
-        self.presets_screen.update_mode_info(mode_info.clone());
+        self.keys_screen
+            .set_link_color(Some(mode_info.style.colors.text_unselected.emphasis_2));
         self.latest_mode_info = Some(mode_info);
         if self.theme_preview.is_none() {
             self.refresh();
@@ -651,12 +645,15 @@ impl SettingsScreen {
         if self.closing {
             close_self();
         }
-        self.elements.handle_timer()
+        let keys_screen_changed = self.keys_screen.handle_timer();
+        self.elements.handle_timer() || keys_screen_changed
     }
     fn set_focus(&mut self, focus: Focus) {
         self.focus = focus;
         self.menu.set_focused(focus == Focus::Menu);
         self.search.set_focused(focus == Focus::Search);
+        self.keys_screen
+            .set_focused(focus == Focus::Content && self.showing_keys_screen());
         match focus {
             Focus::Content => {
                 if self.elements.focused_key().is_none() {
@@ -729,14 +726,12 @@ impl SettingsScreen {
             self.dialog_response(response);
             return true;
         }
-        let keys_capture = self.showing_keys_screen()
-            && self.focus == Focus::Content
-            && self.rebind_leaders_screen.is_capturing_keys()
-            && self.category() == Category::KeysLeaders;
         let embedded_keys_screen = self.showing_keys_screen() && self.focus == Focus::Content;
+        let keys_capture = embedded_keys_screen
+            && (self.keys_screen.is_capturing_keys() || self.keys_screen.dialog_is_open());
         if !keys_capture && self.editing.is_none() {
             self.notice = None;
-            if is_ctrl_key(&key, 'a') && !embedded_keys_screen {
+            if is_ctrl_key(&key, 'a') {
                 self.restore_theme_preview();
                 self.request_save();
                 return true;
@@ -819,18 +814,15 @@ impl SettingsScreen {
         }
     }
     fn handle_keys_screen_key(&mut self, key: KeyWithModifier, keys_capture: bool) -> bool {
-        if !keys_capture && (is_plain_key(&key, BareKey::Tab) || is_shift_tab(&key)) {
+        let moves_focus = is_plain_key(&key, BareKey::Tab) || is_shift_tab(&key);
+        let should_render = self.keys_screen.handle_key(key);
+        if moves_focus && !keys_capture && !should_render {
             self.set_focus(Focus::Menu);
             return true;
         }
-        let refreshes = is_plain_key(&key, BareKey::Enter) || is_ctrl_key(&key, 'a');
-        let should_render = match self.category() {
-            Category::KeysLeaders => self.rebind_leaders_screen.handle_key(key),
-            _ => self.presets_screen.handle_presets_key(key),
-        };
         if take_close_request() {
             self.begin_close();
-        } else if refreshes {
+        } else if self.keys_screen.take_needs_refresh() {
             self.refresh();
         }
         should_render
@@ -1002,7 +994,10 @@ impl SettingsScreen {
             .elements
             .dropdown(&theme_key)
             .filter(|d| d.is_open())
-            .and_then(|d| d.highlighted_index().and_then(|i| d.options().get(i).cloned()));
+            .and_then(|d| {
+                d.highlighted_index()
+                    .and_then(|i| d.options().get(i).cloned())
+            });
         match open_highlight {
             Some(highlighted) => {
                 let (original, last) = match &self.theme_preview {
@@ -1066,6 +1061,29 @@ impl SettingsScreen {
             let response = self.dialog.handle_mouse(mouse);
             self.dialog_response(response);
             return true;
+        }
+        if self.showing_keys_screen() {
+            let on_menu = match mouse {
+                Mouse::LeftClick(line, column) => self.menu.hit_test(line, column),
+                _ => false,
+            };
+            if !on_menu || self.keys_screen.dialog_is_open() {
+                if let Mouse::Hover(..) = mouse {
+                    self.menu.handle_mouse(mouse);
+                }
+                let handled = self.keys_screen.handle_mouse(mouse);
+                if handled {
+                    if let Mouse::LeftClick(..) = mouse {
+                        if self.focus != Focus::Content {
+                            self.set_focus(Focus::Content);
+                        }
+                    }
+                    if self.keys_screen.take_needs_refresh() {
+                        self.refresh();
+                    }
+                    return true;
+                }
+            }
         }
         match mouse {
             Mouse::Hover(line, column) => {
@@ -1253,28 +1271,20 @@ impl SettingsScreen {
         let content_x = x0 + menu_width + 2;
         let content_width = ui_width.saturating_sub(menu_width + 2);
         self.elements.clear_areas();
-        if self.showing_keys_screen() {
+        let showing_keys_screen = self.showing_keys_screen();
+        if showing_keys_screen {
             self.scroll.clear_area();
-            set_origin(content_x, body_y);
             let keys_rows = body_height.saturating_sub(1);
-            match self.category() {
-                Category::KeysLeaders => {
-                    self.rebind_leaders_screen
-                        .render(keys_rows, content_width, UI_SIZE, None)
-                },
-                _ => self.presets_screen.render_reset_keybindings_screen(
-                    keys_rows,
-                    content_width,
-                    UI_SIZE,
-                    None,
-                ),
-            }
-            set_origin(0, 0);
+            self.keys_screen
+                .render(content_x, body_y, content_width, keys_rows);
         } else {
             self.render_content(content_x, body_y, content_width, body_height);
         }
         self.render_footer(x0, y0 + ui_height, ui_width);
         self.elements.render_overlays(rows, cols);
+        if showing_keys_screen {
+            self.keys_screen.render_overlays(rows, cols);
+        }
         self.dialog.render_centered(rows, cols);
     }
     fn render_menu_unsaved_markers(&self, x: usize, y: usize, width: usize, height: usize) {
@@ -1296,7 +1306,7 @@ impl SettingsScreen {
                 continue;
             }
             let mut marker = Text::new("●").color_all(1);
-            if index == self.menu.selected_index() {
+            if index == self.menu.selected_index() || self.menu.hovered_index() == Some(index) {
                 marker = marker.selected();
             }
             print_text_with_coordinates(marker, column, first_line + index - offset, None, None);
@@ -1362,24 +1372,7 @@ impl SettingsScreen {
             .latest_mode_info
             .as_ref()
             .map(|mode_info| mode_info.style.colors.text_unselected.emphasis_2);
-        let color = match color {
-            Some(PaletteColor::Rgb((r, g, b))) => format!("\u{1b}[38;2;{};{};{}m", r, g, b),
-            Some(PaletteColor::EightBit(index)) => format!("\u{1b}[38;5;{}m", index),
-            None => String::new(),
-        };
-        let hover = if self.file_link_hovered {
-            "\u{1b}[3;4m"
-        } else {
-            ""
-        };
-        print!(
-            "\u{1b}[{};{}H\u{1b}[0m\u{1b}[1m{}{}{}\u{1b}[0m",
-            y + 1,
-            x + 1,
-            color,
-            hover,
-            link
-        );
+        print_link(link, x, y, color, self.file_link_hovered);
     }
     fn open_config_file(&mut self) {
         if let Some(path) = self.snapshot.config_file_path.clone() {
@@ -1416,7 +1409,7 @@ impl SettingsScreen {
         let y = bottom.saturating_sub(1);
         let description_y = bottom.saturating_sub(3);
         if self.showing_keys_screen() {
-            if let Some(notice) = &self.notice {
+            if let Some(notice) = self.notice.as_ref().or(self.keys_screen.notice()) {
                 print_text_with_coordinates(
                     Text::new(truncate(notice, cols)).color_all(3),
                     x,
@@ -1451,9 +1444,11 @@ impl SettingsScreen {
                 ("<Esc>", "close"),
             ],
             Focus::Search => &[("<↓>", "results"), ("<Esc>", "end search")],
-            Focus::Content if self.showing_keys_screen() => {
-                &[("<Tab>", "categories"), ("<Esc>", "close")]
-            },
+            Focus::Content if self.showing_keys_screen() => &[
+                ("<Tab/↓↑>", "move"),
+                ("<Space>", "change"),
+                ("<Esc>", "close"),
+            ],
             Focus::Content if self.editing.is_some() => {
                 &[("<Enter>", "apply"), ("<Esc>", "cancel")]
             },
@@ -1533,13 +1528,7 @@ impl SettingsScreen {
             }
         }
         if self.rows.is_empty() {
-            print_text_with_coordinates(
-                Text::new("No settings match").dim_all(),
-                x,
-                y,
-                None,
-                None,
-            );
+            print_text_with_coordinates(Text::new("No settings match").dim_all(), x, y, None, None);
         }
         self.scroll.render_indicators();
     }

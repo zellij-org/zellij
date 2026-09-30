@@ -1277,6 +1277,11 @@ message Options {
   optional string host_notification_protocol = 67;
   optional bool scroll_mode_sync = 68;
   optional ThemeHue explicit_theme_hue = 69;
+  optional string keybinds_dir = 70;
+  optional string keybinds_preset = 71;
+  optional string keybinds_primary = 72;
+  optional string keybinds_secondary = 73;
+  optional string keybinds_unlock = 74;
 }
 
 enum OnForceClose {

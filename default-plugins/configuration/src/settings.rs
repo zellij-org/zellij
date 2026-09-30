@@ -4,8 +4,7 @@ use zellij_tile::prelude::*;
 pub enum Category {
     Appearance,
     PaneFrames,
-    KeysLeaders,
-    KeysPresets,
+    Keys,
     MouseAndClipboard,
     PanesAndLayouts,
     ScrollbackAndEditor,
@@ -15,11 +14,10 @@ pub enum Category {
     PluginsEnvironmentAndMenu,
 }
 
-pub const CATEGORIES: [Category; 11] = [
+pub const CATEGORIES: [Category; 10] = [
     Category::Appearance,
     Category::PaneFrames,
-    Category::KeysLeaders,
-    Category::KeysPresets,
+    Category::Keys,
     Category::MouseAndClipboard,
     Category::PanesAndLayouts,
     Category::ScrollbackAndEditor,
@@ -34,8 +32,7 @@ impl Category {
         match self {
             Category::Appearance => "Appearance",
             Category::PaneFrames => "Pane frames and borders",
-            Category::KeysLeaders => "Keys: leader keys",
-            Category::KeysPresets => "Keys: presets",
+            Category::Keys => "Keys",
             Category::MouseAndClipboard => "Mouse and clipboard",
             Category::PanesAndLayouts => "Panes and layouts",
             Category::ScrollbackAndEditor => "Scrollback and editor",
@@ -46,7 +43,7 @@ impl Category {
         }
     }
     pub fn is_keys_screen(&self) -> bool {
-        matches!(self, Category::KeysLeaders | Category::KeysPresets)
+        matches!(self, Category::Keys)
     }
 }
 
@@ -319,8 +316,8 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::Keybinds => info(
             "Keybindings",
-            KeysLeaders,
-            "Keybindings, changed through the leader key and preset screens",
+            Keys,
+            "Keybinding preset, leader keys and your own keybindings",
             Keybindings,
             "default preset",
             OnlyYou,
@@ -467,6 +464,14 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "Layout name or path used for new sessions",
             Text(TextCheck::Path),
             "default",
+            Everyone,
+        ),
+        SettingKey::KeybindsDir => info(
+            "Keybinding preset folder",
+            PanesAndLayouts,
+            "Folder searched for keybinding presets",
+            Text(TextCheck::Path),
+            "keybinds in the config folder",
             Everyone,
         ),
         SettingKey::LayoutDir => info(
@@ -820,8 +825,12 @@ pub fn section(key: SettingKey) -> &'static str {
         SimplifiedUi | PaneFrames | PaneFrameStyle | VisualBell => "Display",
         StyledUnderlines | Osc8Hyperlinks => "Text",
         FrameRoundedCorners | FrameHideSessionName => "Frames",
-        FrameBorderStyle | FrameBorderTop | FrameBorderRight | FrameBorderBottom
-        | FrameBorderLeft | FrameBorderRoundedCorners => "Tiled pane borders",
+        FrameBorderStyle
+        | FrameBorderTop
+        | FrameBorderRight
+        | FrameBorderBottom
+        | FrameBorderLeft
+        | FrameBorderRoundedCorners => "Tiled pane borders",
         FrameFloatingBorderStyle
         | FrameFloatingBorderTop
         | FrameFloatingBorderRight
@@ -835,7 +844,9 @@ pub fn section(key: SettingKey) -> &'static str {
             "Clipboard"
         },
         DefaultMode | DefaultShell | DefaultCwd => "New panes",
-        DefaultLayout | LayoutDir | AutoLayout | StackedResize | StackedPaneList => "Layouts",
+        DefaultLayout | LayoutDir | KeybindsDir | AutoLayout | StackedResize | StackedPaneList => {
+            "Layouts"
+        },
         NestedSessionHandling => "Nested sessions",
         SessionName | AttachToSession | ShowStartupTips | ShowReleaseNotes => "Startup",
         SessionSerialization
@@ -844,8 +855,14 @@ pub fn section(key: SettingKey) -> &'static str {
         | SerializationInterval
         | PostCommandDiscoveryHook => "Resurrection",
         MirrorSession | OnForceClose | DisableSessionMetadata => "Behaviour",
-        WebServer | WebSharing | WebServerIp | WebServerPort | WebServerCert | WebServerKey
-        | EnforceHttpsForLocalhost | ClientAsyncWorkerTasks => "Server",
+        WebServer
+        | WebSharing
+        | WebServerIp
+        | WebServerPort
+        | WebServerCert
+        | WebServerKey
+        | EnforceHttpsForLocalhost
+        | ClientAsyncWorkerTasks => "Server",
         WebClientFont
         | WebClientFontSize
         | WebClientCursorBlink
@@ -909,7 +926,7 @@ pub fn check_text(check: TextCheck, text: &str) -> Result<(), String> {
     }
 }
 
-fn kdl_string(text: &str) -> String {
+pub fn kdl_string(text: &str) -> String {
     let mut escaped = String::with_capacity(text.len() + 2);
     escaped.push('"');
     for character in text.chars() {
@@ -939,7 +956,9 @@ pub fn kdl_for(key: SettingKey, value: &str) -> String {
     let node = format!("{} {}", key.kdl_name(), kdl_value(key, value));
     match key.section() {
         SettingSection::TopLevel | SettingSection::Keybinds => node,
-        SettingSection::PaneFrames => format!("ui {{\n    pane_frames {{\n        {}\n    }}\n}}", node),
+        SettingSection::PaneFrames => {
+            format!("ui {{\n    pane_frames {{\n        {}\n    }}\n}}", node)
+        },
         SettingSection::WebClient => format!("web_client {{\n    {}\n}}", node),
     }
 }
@@ -954,7 +973,11 @@ mod tests {
             let info = describe(key);
             assert!(!info.name.is_empty(), "{} has no name", key);
             assert!(!info.description.is_empty(), "{} has no description", key);
-            assert!(CATEGORIES.contains(&info.category), "{} has no category", key);
+            assert!(
+                CATEGORIES.contains(&info.category),
+                "{} has no category",
+                key
+            );
             match info.kind {
                 SettingKind::Number { min, max, step } => {
                     assert!(min < max && step > 0, "{} has bad limits", key)
@@ -977,8 +1000,8 @@ mod tests {
     fn every_category_with_rows_has_settings() {
         for category in CATEGORIES {
             let has_rows = !settings_in(category).is_empty();
-            let expected = !category.is_keys_screen()
-                && category != Category::PluginsEnvironmentAndMenu;
+            let expected =
+                !category.is_keys_screen() && category != Category::PluginsEnvironmentAndMenu;
             assert_eq!(has_rows, expected, "{}", category.title());
         }
     }

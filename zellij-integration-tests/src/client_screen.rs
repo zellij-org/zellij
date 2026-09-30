@@ -276,6 +276,7 @@ pub struct CellStyle {
     pub italic: bool,
     pub bold: bool,
     pub foreground: Option<AnsiCode>,
+    pub background: Option<AnsiCode>,
 }
 
 #[derive(Clone, Debug)]
@@ -410,6 +411,7 @@ fn render_bytes(bytes: &[u8], win_size: Size) -> GridSnapshot {
                 italic: matches!(character_style.italic, Some(AnsiCode::On)),
                 bold: matches!(character_style.bold, Some(AnsiCode::On)),
                 foreground: character_style.foreground,
+                background: character_style.background,
             });
             let character_position = CursorPosition {
                 x: character_index,

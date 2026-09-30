@@ -2156,6 +2156,16 @@ pub struct Options {
     pub scroll_mode_sync: ::core::option::Option<bool>,
     #[prost(enumeration="ThemeHue", optional, tag="69")]
     pub explicit_theme_hue: ::core::option::Option<i32>,
+    #[prost(string, optional, tag="70")]
+    pub keybinds_dir: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="71")]
+    pub keybinds_preset: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="72")]
+    pub keybinds_primary: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="73")]
+    pub keybinds_secondary: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="74")]
+    pub keybinds_unlock: ::core::option::Option<::prost::alloc::string::String>,
 }
 /// Pane-targeting action messages
 #[allow(clippy::derive_partial_eq_without_eq)]

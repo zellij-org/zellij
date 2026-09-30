@@ -42,8 +42,8 @@ use zellij_utils::plugin_api::plugin_command::{
     ProtobufOpenTerminalFloatingResponse, ProtobufOpenTerminalInPlaceOfPluginResponse,
     ProtobufOpenTerminalInPlaceResponse, ProtobufOpenTerminalNearPluginResponse,
     ProtobufOpenTerminalPaneInPlaceOfPaneIdResponse, ProtobufOpenTerminalResponse,
-    ProtobufParseLayoutResponse, ProtobufPluginCommand, ProtobufReadConfigResponse,
-    ProtobufRenameLayoutResponse,
+    ProtobufCopyKeybindPresetResponse, ProtobufParseLayoutResponse, ProtobufPluginCommand,
+    ProtobufReadConfigResponse, ProtobufRenameLayoutResponse,
     ProtobufSaveLayoutResponse, ProtobufSaveSessionResponse, ProtobufShowFloatingPanesResponse,
     ProtobufSlotCommandResponse, RenameWebTokenResponse, RevokeAllWebTokensResponse,
     RevokeTokenResponse,
@@ -1955,6 +1955,25 @@ pub fn save_config() {
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+}
+
+pub fn copy_keybind_preset(preset: &str, new_name: &str) -> Result<String, String> {
+    use zellij_utils::plugin_api::plugin_command::copy_keybind_preset_response::Result as CopyResult;
+    let plugin_command = PluginCommand::CopyKeybindPreset {
+        preset: preset.to_owned(),
+        new_name: new_name.to_owned(),
+    };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+    let response = bytes_from_stdin()
+        .ok()
+        .and_then(|bytes| ProtobufCopyKeybindPresetResponse::decode(bytes.as_slice()).ok());
+    match response.and_then(|response| response.result) {
+        Some(CopyResult::NewName(new_name)) => Ok(new_name),
+        Some(CopyResult::Error(error)) => Err(error),
+        None => Err("No response".to_owned()),
+    }
 }
 
 /// Re-run command in pane

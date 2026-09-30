@@ -932,6 +932,13 @@ impl From<crate::input::options::Options>
                 .map(|p| p.to_string_lossy().to_string()),
             layout_dir: options.layout_dir.map(|p| p.to_string_lossy().to_string()),
             theme_dir: options.theme_dir.map(|p| p.to_string_lossy().to_string()),
+            keybinds_dir: options
+                .keybinds_dir
+                .map(|p| p.to_string_lossy().to_string()),
+            keybinds_preset: options.keybinds_preset,
+            keybinds_primary: options.keybinds_primary,
+            keybinds_secondary: options.keybinds_secondary,
+            keybinds_unlock: options.keybinds_unlock,
             mouse_mode: options.mouse_mode,
             pane_frames: options.pane_frames,
             mirror_session: options.mirror_session,
@@ -1050,6 +1057,11 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
             default_layout: options.default_layout.map(std::path::PathBuf::from),
             layout_dir: options.layout_dir.map(std::path::PathBuf::from),
             theme_dir: options.theme_dir.map(std::path::PathBuf::from),
+            keybinds_dir: options.keybinds_dir.map(std::path::PathBuf::from),
+            keybinds_preset: options.keybinds_preset,
+            keybinds_primary: options.keybinds_primary,
+            keybinds_secondary: options.keybinds_secondary,
+            keybinds_unlock: options.keybinds_unlock,
             mouse_mode: options.mouse_mode,
             pane_frames: options.pane_frames,
             pane_frame_style: options.pane_frame_style.as_deref().and_then(|s| match s {

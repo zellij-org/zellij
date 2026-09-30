@@ -33,8 +33,8 @@ use url::Url;
 use wasmi::{Engine, Module};
 use zellij_utils::consts::{ZELLIJ_CACHE_DIR, ZELLIJ_SESSION_CACHE_DIR, ZELLIJ_TMP_DIR};
 use zellij_utils::data::{
-    FloatingPaneCoordinates, HostTerminalThemeMode, InputMode, KeybindsVec, LayoutInfo,
-    LayoutWithError, PaneContents, PaneRenderReport, PermissionStatus, PermissionType, PipeMessage,
+    FloatingPaneCoordinates, HostTerminalThemeMode, InputMode, KeybindPresetInfo,
+    KeybindPresetWithError, KeybindsVec, LayoutInfo, LayoutWithError, PaneContents, PaneRenderReport, PermissionStatus, PermissionType, PipeMessage,
     PipeSource,
 };
 use zellij_utils::downloader::Downloader;
@@ -235,6 +235,8 @@ pub struct WasmBridge {
     layout_dir: Option<PathBuf>,
     available_layouts: Vec<LayoutInfo>,
     available_layout_errors: Vec<LayoutWithError>,
+    available_keybind_presets: Vec<KeybindPresetInfo>,
+    available_keybind_preset_errors: Vec<KeybindPresetWithError>,
     default_mode: InputMode,
     default_keybinds: SharedKeybinds,
     keybinds: HashMap<ClientId, SharedKeybinds>,
@@ -303,6 +305,8 @@ impl WasmBridge {
             layout_dir,
             available_layouts,
             available_layout_errors,
+            available_keybind_presets: vec![],
+            available_keybind_preset_errors: vec![],
             default_mode,
             default_keybinds,
             keybinds: HashMap::new(),
@@ -2300,15 +2304,42 @@ impl WasmBridge {
             )]));
         }
     }
+    pub fn update_available_keybind_presets(
+        &mut self,
+        presets: Vec<KeybindPresetInfo>,
+        errors: Vec<KeybindPresetWithError>,
+    ) {
+        if self.available_keybind_presets != presets
+            || self.available_keybind_preset_errors != errors
+        {
+            self.available_keybind_presets = presets.clone();
+            self.available_keybind_preset_errors = errors.clone();
+            let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![(
+                None,
+                None,
+                Event::AvailableKeybindPresets(presets, errors),
+            )]));
+        }
+    }
     pub fn state_update_for_plugin(&self, plugin_id: PluginId) {
-        let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![(
-            Some(plugin_id),
-            None,
-            Event::AvailableLayoutInfo(
-                self.available_layouts.clone(),
-                self.available_layout_errors.clone(),
+        let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![
+            (
+                Some(plugin_id),
+                None,
+                Event::AvailableLayoutInfo(
+                    self.available_layouts.clone(),
+                    self.available_layout_errors.clone(),
+                ),
             ),
-        )]));
+            (
+                Some(plugin_id),
+                None,
+                Event::AvailableKeybindPresets(
+                    self.available_keybind_presets.clone(),
+                    self.available_keybind_preset_errors.clone(),
+                ),
+            ),
+        ]));
     }
     pub fn shared_instance_ids(&self) -> Vec<PluginId> {
         self.shared_instances.keys().copied().collect()
@@ -3029,6 +3060,7 @@ pub fn check_event_permission(
         | Event::CwdChanged(..)
         | Event::CommandChanged(..)
         | Event::AvailableLayoutInfo(..)
+        | Event::AvailableKeybindPresets(..)
         | Event::PluginConfigurationChanged(..)
         | Event::HighlightClicked { .. }
         | Event::SoftKeyboardVisibilityChanged(..)

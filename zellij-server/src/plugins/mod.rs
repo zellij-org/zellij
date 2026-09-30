@@ -32,7 +32,7 @@ use wasm_bridge::WasmBridge;
 use zellij_utils::{
     data::{
         ClientInfo, CommandOrPlugin, Event, EventType, FloatingPaneCoordinates, InputMode,
-        LayoutInfo, LayoutWithError, MessageToPlugin, PermissionStatus, PermissionType,
+        KeybindPresetInfo, KeybindPresetWithError, LayoutInfo, LayoutWithError, MessageToPlugin, PermissionStatus, PermissionType,
         PipeMessage, PipeSource, SettingKey, WebServerStatus,
     },
     errors::{prelude::*, ContextType, PluginContext},
@@ -210,6 +210,7 @@ pub enum PluginInstruction {
         cli_client_id: Option<ClientId>,
     },
     LayoutListUpdate(Vec<LayoutInfo>, Vec<LayoutWithError>),
+    KeybindPresetListUpdate(Vec<KeybindPresetInfo>, Vec<KeybindPresetWithError>),
     RequestStateUpdateForPlugin(PluginId),
     UpdateSessionSaveTime(u64), // u64 = milliseconds since UNIX epoch
     GetLastSessionSaveTime {
@@ -293,6 +294,9 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::PaneRenderReport(..) => PluginContext::PaneRenderReport,
             PluginInstruction::UserInput { .. } => PluginContext::UserInput,
             PluginInstruction::LayoutListUpdate(..) => PluginContext::LayoutListUpdate,
+            PluginInstruction::KeybindPresetListUpdate(..) => {
+                PluginContext::KeybindPresetListUpdate
+            },
             PluginInstruction::RequestStateUpdateForPlugin(..) => {
                 PluginContext::RequestStateUpdateForPlugin
             },
@@ -1329,6 +1333,9 @@ pub(crate) fn plugin_thread_main(
             },
             PluginInstruction::LayoutListUpdate(layouts, errors) => {
                 wasm_bridge.update_available_layouts(layouts, errors);
+            },
+            PluginInstruction::KeybindPresetListUpdate(presets, errors) => {
+                wasm_bridge.update_available_keybind_presets(presets, errors);
             },
             PluginInstruction::RequestStateUpdateForPlugin(plugin_id) => {
                 wasm_bridge.state_update_for_plugin(plugin_id);

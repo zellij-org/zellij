@@ -109,7 +109,8 @@ use zellij_utils::{
             ProtobufOpenTerminalInPlaceOfPluginResponse, ProtobufOpenTerminalInPlaceResponse,
             ProtobufOpenTerminalNearPluginResponse,
             ProtobufOpenTerminalPaneInPlaceOfPaneIdResponse, ProtobufOpenTerminalResponse,
-            ProtobufParseLayoutResponse, ProtobufPluginCommand, ProtobufReadConfigResponse,
+            ProtobufCopyKeybindPresetResponse, ProtobufParseLayoutResponse,
+            ProtobufPluginCommand, ProtobufReadConfigResponse,
             ProtobufRenameLayoutResponse,
             ProtobufSaveLayoutResponse, ProtobufSaveSessionResponse,
             ProtobufShowFloatingPanesResponse, ProtobufSlotCommandResponse,
@@ -482,6 +483,9 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::RevertConfig(key) => revert_config(env, key),
                     PluginCommand::UnsetConfigSetting(key) => unset_config_setting(env, key),
                     PluginCommand::SaveConfig => save_config(env),
+                    PluginCommand::CopyKeybindPreset { preset, new_name } => {
+                        copy_keybind_preset(env, preset, new_name)
+                    },
                     PluginCommand::Subscribe(event_list) => subscribe(env, event_list)?,
                     PluginCommand::Unsubscribe(event_list) => unsubscribe(env, event_list)?,
                     PluginCommand::SetSelectable(selectable) => set_selectable(env, selectable),
@@ -3081,6 +3085,32 @@ fn read_config(env: &PluginEnv) {
     let response: ProtobufReadConfigResponse = snapshot.into();
     wasi_write_object(env, &response.encode_to_vec())
         .with_context(|| format!("failed to send config to plugin {}", env.name()))
+        .non_fatal();
+}
+
+fn copy_keybind_preset(env: &PluginEnv, preset: String, new_name: String) {
+    use zellij_utils::plugin_api::plugin_command::copy_keybind_preset_response::Result as CopyResult;
+    let client_id = acting_client(env);
+    let (response_sender, response_receiver) = crossbeam::channel::bounded(1);
+    let result = match env.senders.send_to_server(ServerInstruction::CopyKeybindPreset {
+        client_id,
+        preset,
+        new_name,
+        response_channel: response_sender,
+    }) {
+        Ok(()) => response_receiver
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap_or_else(|e| Err(format!("Failed to copy the preset: {:?}", e))),
+        Err(e) => Err(format!("Failed to copy the preset: {:?}", e)),
+    };
+    let response = ProtobufCopyKeybindPresetResponse {
+        result: Some(match result {
+            Ok(new_name) => CopyResult::NewName(new_name),
+            Err(error) => CopyResult::Error(error),
+        }),
+    };
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to send copy result to plugin {}", env.name()))
         .non_fatal();
 }
 
@@ -6106,6 +6136,7 @@ fn check_command_permission(
         | PluginCommand::ReadConfig
         | PluginCommand::RevertConfig(..)
         | PluginCommand::UnsetConfigSetting(..)
+        | PluginCommand::CopyKeybindPreset { .. }
         | PluginCommand::SaveConfig => PermissionType::Reconfigure,
         PluginCommand::ChangeHostFolder(..) | PluginCommand::ListWindowsVolumes => {
             PermissionType::FullHdAccess

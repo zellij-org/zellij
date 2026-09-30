@@ -60,6 +60,18 @@ impl DistributionLayout {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DistributionKeybindPreset {
+    pub name: &'static str,
+    pub preset: &'static str,
+}
+
+impl DistributionKeybindPreset {
+    pub fn new(name: &'static str, preset: &'static str) -> Self {
+        DistributionKeybindPreset { name, preset }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Distribution {
     /// Lowercase, filesystem-safe identifier. Every path this distribution owns is named after
     /// it: `~/.config/<name>`, `/etc/<name>`, `<prefix>/share/<name>`, the temporary directory,
@@ -78,6 +90,7 @@ pub struct Distribution {
     /// Layered between Zellij's default configuration and the user's `config.kdl`
     pub config: Option<&'static str>,
     pub layouts: Vec<DistributionLayout>,
+    pub keybind_presets: Vec<DistributionKeybindPreset>,
     is_stock_zellij: bool,
 }
 
@@ -92,6 +105,7 @@ impl Distribution {
             removed_builtin_plugins: vec![],
             config: None,
             layouts: vec![],
+            keybind_presets: vec![],
             is_stock_zellij: false,
         }
     }
@@ -142,6 +156,10 @@ impl Distribution {
         self.layouts.push(layout);
         self
     }
+    pub fn with_keybind_preset(mut self, preset: DistributionKeybindPreset) -> Self {
+        self.keybind_presets.push(preset);
+        self
+    }
     /// Stock Zellij, with its own builtin plugins and no bundled configuration or layouts.
     ///
     /// Its `project_dirs` are pinned to Zellij's historical values: changing them would move
@@ -156,6 +174,7 @@ impl Distribution {
             removed_builtin_plugins: vec![],
             config: None,
             layouts: vec![],
+            keybind_presets: vec![],
             is_stock_zellij: true,
         }
     }
@@ -180,6 +199,9 @@ impl Distribution {
     }
     fn layout(&self, name: &str) -> Option<&DistributionLayout> {
         self.layouts.iter().find(|layout| layout.name == name)
+    }
+    fn keybind_preset(&self, name: &str) -> Option<&DistributionKeybindPreset> {
+        self.keybind_presets.iter().find(|preset| preset.name == name)
     }
 }
 
@@ -266,6 +288,7 @@ pub enum DistributionError {
     PluginNameCollidesWithBuiltin(String),
     DuplicatePluginName(String),
     DuplicateLayoutName(String),
+    DuplicateKeybindPresetName(String),
     UnknownBuiltinPlugin(String),
 }
 
@@ -303,6 +326,9 @@ impl std::fmt::Display for DistributionError {
             },
             DistributionError::DuplicateLayoutName(name) => {
                 write!(f, "Layout name '{}' is declared more than once", name)
+            },
+            DistributionError::DuplicateKeybindPresetName(name) => {
+                write!(f, "Keybinding preset name '{}' is declared more than once", name)
             },
         }
     }
@@ -344,6 +370,16 @@ fn resolve_plugins(
         {
             return Err(DistributionError::DuplicateLayoutName(
                 layout.name.to_owned(),
+            ));
+        }
+    }
+    for (i, preset) in distribution.keybind_presets.iter().enumerate() {
+        if distribution.keybind_presets[..i]
+            .iter()
+            .any(|existing| existing.name == preset.name)
+        {
+            return Err(DistributionError::DuplicateKeybindPresetName(
+                preset.name.to_owned(),
             ));
         }
     }
@@ -416,6 +452,14 @@ pub fn bundled_config() -> Option<&'static str> {
 /// A layout bundled by this distribution, addressable by name
 pub fn builtin_layout(name: &str) -> Option<&'static DistributionLayout> {
     distribution().layout(name)
+}
+
+pub fn builtin_keybind_preset(name: &str) -> Option<&'static DistributionKeybindPreset> {
+    distribution().keybind_preset(name)
+}
+
+pub fn builtin_keybind_presets() -> &'static [DistributionKeybindPreset] {
+    &distribution().keybind_presets
 }
 
 /// The plugins this distribution supplies itself, including any replacing a Zellij builtin
@@ -597,6 +641,19 @@ mod tests {
         assert_eq!(
             resolve_plugins(fake_builtins(), &distribution),
             Err(DistributionError::DuplicateLayoutName("mine".to_owned()))
+        );
+    }
+
+    #[test]
+    fn a_distribution_may_not_declare_the_same_keybind_preset_twice() {
+        let distribution = Distribution::new("test", "0.0.0")
+            .with_keybind_preset(DistributionKeybindPreset::new("mine", "keybinds {}"))
+            .with_keybind_preset(DistributionKeybindPreset::new("mine", "keybinds {}"));
+        assert_eq!(
+            resolve_plugins(fake_builtins(), &distribution),
+            Err(DistributionError::DuplicateKeybindPresetName(
+                "mine".to_owned()
+            ))
         );
     }
 

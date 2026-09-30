@@ -54,6 +54,9 @@ impl SideMenu {
         self.items = items.into_iter().map(|i| i.into()).collect();
         self.selected = self.selected.min(self.items.len().saturating_sub(1));
     }
+    pub fn hovered_index(&self) -> Option<usize> {
+        self.hovered_row
+    }
     pub fn selected_index(&self) -> usize {
         self.selected
     }

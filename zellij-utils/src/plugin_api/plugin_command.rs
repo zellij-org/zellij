@@ -9,7 +9,8 @@ pub use super::generated_api::api::{
     pane_frame_style::PaneFrameStyle as ProtobufPaneFrameStyle,
     plugin_command::{
         break_panes_to_new_tab_response, break_panes_to_tab_with_id_response,
-        break_panes_to_tab_with_index_response, delete_layout_response, dump_layout_response,
+        break_panes_to_tab_with_index_response, copy_keybind_preset_response,
+        delete_layout_response, dump_layout_response,
         dump_session_layout_response, edit_layout_response, focus_or_create_tab_response,
         get_focused_pane_info_response, get_pane_cwd_response, get_pane_pid_response,
         get_pane_running_command_response, get_session_list_response, hide_floating_panes_response,
@@ -112,7 +113,10 @@ pub use super::generated_api::api::{
         ParseLayoutResponse as ProtobufParseLayoutResponse, PluginCommand as ProtobufPluginCommand,
         PluginMessagePayload, ReadConfigPayload, ReadConfigResponse as ProtobufReadConfigResponse,
         RebindKeysPayload, ReconfigurePayload, RevertConfigPayload, SaveConfigPayload,
-        ConfigSettingState as ProtobufConfigSettingState,
+        ConfigSettingState as ProtobufConfigSettingState, CopyKeybindPresetPayload,
+        CopyKeybindPresetResponse as ProtobufCopyKeybindPresetResponse,
+        KeybindsSelectionSnapshot as ProtobufKeybindsSelectionSnapshot,
+        LeaderValue as ProtobufLeaderValue,
         RegexHighlight as ProtobufRegexHighlight, ReloadPluginPayload, RenameLayoutPayload,
         RenameLayoutResponse as ProtobufRenameLayoutResponse, RenameTabWithIdPayload,
         RenameWebLoginTokenPayload, RenameWebTokenResponse, ReplacePaneWithExistingPanePayload,
@@ -147,7 +151,7 @@ use crate::data::{
     HighlightLayer, HighlightStyle, HttpVerb, InputMode, KeyWithModifier, KillSessionsResponse,
     MessageToPlugin, NewPluginArgs, PaneId, PermissionType, PluginCommand, RegexHighlight,
     RenameLayoutResponse, SaveLayoutResponse, SessionInfo, SessionListSnapshot, SettingKey,
-    ConfigSettingState, ConfigSnapshot,
+    ConfigSettingState, ConfigSnapshot, KeybindsSelectionSnapshot,
 };
 use crate::input::actions::Action;
 use crate::input::layout::PercentOrFixed;
@@ -2615,6 +2619,15 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 Some(Payload::SaveConfigPayload(_)) => Ok(PluginCommand::SaveConfig),
                 _ => Err("Mismatched payload for SaveConfig"),
             },
+            Some(CommandName::CopyKeybindPreset) => match protobuf_plugin_command.payload {
+                Some(Payload::CopyKeybindPresetPayload(payload)) => {
+                    Ok(PluginCommand::CopyKeybindPreset {
+                        preset: payload.preset,
+                        new_name: payload.new_name,
+                    })
+                },
+                _ => Err("Mismatched payload for CopyKeybindPreset"),
+            },
             Some(CommandName::GetNestedSessionKeybinds) => match protobuf_plugin_command.payload {
                 Some(Payload::GetNestedSessionKeybindsPayload(payload)) => {
                     let pane_id = payload
@@ -4505,6 +4518,13 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 name: CommandName::UnsetConfigSetting as i32,
                 payload: Some(Payload::UnsetConfigSettingPayload(key.id())),
             }),
+            PluginCommand::CopyKeybindPreset { preset, new_name } => Ok(ProtobufPluginCommand {
+                name: CommandName::CopyKeybindPreset as i32,
+                payload: Some(Payload::CopyKeybindPresetPayload(CopyKeybindPresetPayload {
+                    preset,
+                    new_name,
+                })),
+            }),
             PluginCommand::SaveConfig => Ok(ProtobufPluginCommand {
                 name: CommandName::SaveConfig as i32,
                 payload: Some(Payload::SaveConfigPayload(SaveConfigPayload {})),
@@ -5708,6 +5728,59 @@ impl From<ConfigSnapshot> for ProtobufReadConfigResponse {
             load_plugins: snapshot.load_plugins,
             env_vars: snapshot.env_vars,
             context_menu_items: snapshot.context_menu_items,
+            keybinds: Some(snapshot.keybinds.into()),
+        }
+    }
+}
+
+impl From<KeybindsSelectionSnapshot> for ProtobufKeybindsSelectionSnapshot {
+    fn from(snapshot: KeybindsSelectionSnapshot) -> Self {
+        ProtobufKeybindsSelectionSnapshot {
+            preset: snapshot.preset,
+            primary: snapshot.primary,
+            secondary: snapshot.secondary,
+            unlock: snapshot.unlock,
+            clears_defaults: snapshot.clears_defaults,
+            has_own_keybindings: snapshot.has_own_keybindings,
+            active: Some(snapshot.active.into()),
+            active_values: snapshot
+                .active_values
+                .into_iter()
+                .map(|(name, value)| ProtobufLeaderValue { name, value })
+                .collect(),
+            error: snapshot.error,
+            set_by_layout: snapshot.set_by_layout,
+            set_on_command_line: snapshot.set_on_command_line,
+            default_mode: snapshot
+                .default_mode
+                .and_then(|mode| ProtobufInputMode::try_from(mode).ok())
+                .map(|mode| mode as i32),
+        }
+    }
+}
+
+impl From<ProtobufKeybindsSelectionSnapshot> for KeybindsSelectionSnapshot {
+    fn from(snapshot: ProtobufKeybindsSelectionSnapshot) -> Self {
+        KeybindsSelectionSnapshot {
+            preset: snapshot.preset,
+            primary: snapshot.primary,
+            secondary: snapshot.secondary,
+            unlock: snapshot.unlock,
+            clears_defaults: snapshot.clears_defaults,
+            has_own_keybindings: snapshot.has_own_keybindings,
+            active: snapshot.active.map(Into::into).unwrap_or_default(),
+            active_values: snapshot
+                .active_values
+                .into_iter()
+                .map(|leader_value| (leader_value.name, leader_value.value))
+                .collect(),
+            error: snapshot.error,
+            set_by_layout: snapshot.set_by_layout,
+            set_on_command_line: snapshot.set_on_command_line,
+            default_mode: snapshot
+                .default_mode
+                .and_then(|mode| ProtobufInputMode::try_from(mode).ok())
+                .and_then(|mode| InputMode::try_from(mode).ok()),
         }
     }
 }
@@ -5739,6 +5812,7 @@ impl From<ProtobufReadConfigResponse> for ConfigSnapshot {
             load_plugins: response.load_plugins,
             env_vars: response.env_vars,
             context_menu_items: response.context_menu_items,
+            keybinds: response.keybinds.map(Into::into).unwrap_or_default(),
         }
     }
 }
