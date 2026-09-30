@@ -34,9 +34,11 @@ use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::str;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::route::NotificationEnd;
+use crate::SharedKeybinds;
 
 use log::{debug, warn};
 use zellij_utils::data::{
@@ -805,7 +807,7 @@ pub enum ScreenInstruction {
     },
     Reconfigure {
         client_id: ClientId,
-        keybinds: Keybinds,
+        keybinds: SharedKeybinds,
         default_mode: InputMode,
         theme: Styling,
         /// Resolved styling for `theme_dark`. When both this and
@@ -1604,6 +1606,8 @@ pub(crate) struct Screen {
     pane_history: BTreeMap<ClientId, Vec<PaneId>>,
     mode_info: BTreeMap<ClientId, ModeInfo>,
     default_mode_info: ModeInfo, // TODO: restructure ModeInfo to prevent this duplication
+    default_keybinds: SharedKeybinds,
+    client_keybinds: BTreeMap<ClientId, SharedKeybinds>,
     style: Style,
     pane_frame_style: PaneFrameStyle,
     auto_layout: bool,
@@ -1656,6 +1660,8 @@ pub(crate) struct Screen {
     pane_render_subscribers: HashMap<ClientId, PaneRenderSubscription>,
     background_plugin_subscriptions: HashMap<(PluginId, ClientId), HashSet<EventType>>,
     last_reported_plugin_tab_indices: HashMap<PluginId, usize>,
+    last_reported_client_visible_plugins: HashMap<ClientId, HashSet<PluginId>>,
+    pending_selectable_panes: HashMap<PaneId, bool>,
     state_report_target: Option<(PluginId, ClientId)>,
     next_forward_token: u32,
     pending_forwarded_queries: HashMap<u32, PendingForwardEntry>,
@@ -1763,7 +1769,7 @@ impl Screen {
         bus: Bus<ScreenInstruction>,
         client_attributes: &ClientAttributes,
         max_panes: Option<usize>,
-        mode_info: ModeInfo,
+        mut mode_info: ModeInfo,
         pane_frame_style: PaneFrameStyle,
         auto_layout: bool,
         session_is_mirrored: bool,
@@ -1832,6 +1838,8 @@ impl Screen {
             tab_history: BTreeMap::new(),
             pane_history: BTreeMap::new(),
             mode_info: BTreeMap::new(),
+            default_keybinds: Arc::new(std::mem::take(&mut mode_info.keybinds)),
+            client_keybinds: BTreeMap::new(),
             default_mode_info: mode_info,
             pane_frame_style,
             auto_layout,
@@ -1878,6 +1886,8 @@ impl Screen {
             pane_render_subscribers: HashMap::new(),
             background_plugin_subscriptions: HashMap::new(),
             last_reported_plugin_tab_indices: HashMap::new(),
+            last_reported_client_visible_plugins: HashMap::new(),
+            pending_selectable_panes: HashMap::new(),
             state_report_target: None,
             next_forward_token: 1, // 0 is reserved as the startup sentinel
             pending_forwarded_queries: HashMap::new(),
@@ -4146,6 +4156,7 @@ impl Screen {
         if !changed && !ascend_keys_changed {
             return;
         }
+        self.ensure_client_keybinds(client_id);
         let mode_info = self
             .mode_info
             .entry(client_id)
@@ -4169,29 +4180,23 @@ impl Screen {
     }
 
     fn own_ascend_shortcut(&self) -> Vec<KeyWithModifier> {
-        shortcut_for_action(
-            &self.default_mode_info.keybinds,
-            self.base_input_mode(),
-            |action| matches!(action, Action::FocusHostSession),
-        )
+        shortcut_for_action(&self.default_keybinds, self.base_input_mode(), |action| {
+            matches!(action, Action::FocusHostSession)
+        })
         .unwrap_or_default()
     }
 
     fn own_descend_shortcut(&self) -> Vec<KeyWithModifier> {
-        shortcut_for_action(
-            &self.default_mode_info.keybinds,
-            self.base_input_mode(),
-            |action| matches!(action, Action::FocusGuestSession),
-        )
+        shortcut_for_action(&self.default_keybinds, self.base_input_mode(), |action| {
+            matches!(action, Action::FocusGuestSession)
+        })
         .unwrap_or_default()
     }
 
     fn own_host_zoom_shortcut(&self) -> Vec<KeyWithModifier> {
-        shortcut_for_action(
-            &self.default_mode_info.keybinds,
-            self.base_input_mode(),
-            |action| matches!(action, Action::ToggleHostFullscreen),
-        )
+        shortcut_for_action(&self.default_keybinds, self.base_input_mode(), |action| {
+            matches!(action, Action::ToggleHostFullscreen)
+        })
         .unwrap_or_default()
     }
 
@@ -4292,6 +4297,7 @@ impl Screen {
             }
         }
         for client_id in client_ids {
+            self.ensure_client_keybinds(client_id);
             let mode_info = self
                 .mode_info
                 .entry(client_id)
@@ -5751,6 +5757,8 @@ impl Screen {
             self.recompute_tab_size(prev_tab_id)
                 .with_context(err_context)?;
         }
+        self.mode_info.remove(&client_id);
+        self.client_keybinds.remove(&client_id);
         self.held_keybinds_requests.remove(&client_id);
         self.pending_keybinds_requests.retain(|_, pending| {
             !matches!(pending.reply_to, KeybindsReplyTo::Host { client_id: host_client_id, .. } if host_client_id == client_id)
@@ -6057,14 +6065,52 @@ impl Screen {
             .send_to_plugin(PluginInstruction::UpdatePluginTabIndices(tab_indices));
         self.last_reported_plugin_tab_indices = current;
     }
+    fn apply_pending_selectable_panes(&mut self) {
+        if self.pending_selectable_panes.is_empty() {
+            return;
+        }
+        let pending: Vec<(PaneId, bool)> = self.pending_selectable_panes.drain().collect();
+        for (pane_id, selectable) in pending {
+            let tab = self
+                .tabs
+                .values_mut()
+                .find(|tab| tab.has_pane_with_pid(&pane_id));
+            match tab {
+                Some(tab) => tab.set_pane_selectable(pane_id, selectable),
+                None => {
+                    self.pending_selectable_panes.insert(pane_id, selectable);
+                },
+            }
+        }
+    }
+    fn report_client_visible_plugins(&mut self) {
+        let mut visible: HashMap<ClientId, HashSet<PluginId>> = HashMap::new();
+        for (client_id, tab_id) in self.active_tab_ids.iter() {
+            if let Some(tab) = self.tabs.get(tab_id) {
+                visible.insert(*client_id, tab.get_plugin_ids().into_iter().collect());
+            }
+        }
+        if visible == self.last_reported_client_visible_plugins {
+            return;
+        }
+        let _ = self
+            .bus
+            .senders
+            .send_to_plugin(PluginInstruction::UpdateClientVisiblePlugins(
+                visible.clone(),
+            ));
+        self.last_reported_client_visible_plugins = visible;
+    }
     fn log_and_report_session_state(&mut self) -> Result<()> {
         let err_context = || format!("Failed to log and report session state");
+        self.apply_pending_selectable_panes();
 
         self.update_active_pane_ids();
         self.revert_fit_disabled_without_reference_client()
             .with_context(err_context)?;
         self.reconcile_all_single_pane_focus();
         self.report_plugin_tab_indices();
+        self.report_client_visible_plugins();
         // generate own session info
         let pane_manifest = self.generate_and_report_pane_state()?;
         let tab_infos = self.generate_and_report_tab_state()?;
@@ -6610,6 +6656,7 @@ impl Screen {
         base_mode: Option<InputMode>,
         client_id: ClientId,
     ) -> Result<()> {
+        self.ensure_client_keybinds(client_id);
         let mut mode_info = self
             .mode_info
             .get(&client_id)
@@ -6687,10 +6734,25 @@ impl Screen {
     }
 
     fn keybinds_for_client(&self, client_id: ClientId) -> KeybindsVec {
-        self.mode_info
+        self.client_keybinds
             .get(&client_id)
-            .map(|mode_info| mode_info.keybinds.clone())
-            .unwrap_or_else(|| self.default_mode_info.keybinds.clone())
+            .unwrap_or(&self.default_keybinds)
+            .as_ref()
+            .clone()
+    }
+
+    fn update_keybinds(&mut self, new_keybinds: SharedKeybinds, client_id: ClientId) {
+        self.default_keybinds = new_keybinds.clone();
+        if self.connected_clients_contains(&client_id) {
+            self.client_keybinds.insert(client_id, new_keybinds);
+        }
+    }
+
+    fn ensure_client_keybinds(&mut self, client_id: ClientId) {
+        if !self.client_keybinds.contains_key(&client_id) {
+            self.client_keybinds
+                .insert(client_id, self.default_keybinds.clone());
+        }
     }
 
     // Keep the client's mode in sync with the pane it just focused: entering a scrolled
@@ -7482,7 +7544,7 @@ impl Screen {
     }
     pub fn reconfigure(
         &mut self,
-        new_keybinds: Keybinds,
+        new_keybinds: SharedKeybinds,
         new_default_mode: InputMode,
         theme: Styling,
         simplified_ui: bool,
@@ -7529,7 +7591,7 @@ impl Screen {
         // `default_mode_info` is the fallback used by `change_mode` for
         // clients that don't yet have a per-client `mode_info` entry, so its
         // keybinds and base mode must be kept in sync with reconfigures.
-        self.default_mode_info.update_keybinds(new_keybinds.clone());
+        self.update_keybinds(new_keybinds, client_id);
         self.default_mode_info.update_default_mode(new_default_mode);
         self.default_shell = default_shell.clone().unwrap_or_else(|| get_default_shell());
         self.default_editor = default_editor.clone().or_else(|| get_default_editor());
@@ -7596,7 +7658,6 @@ impl Screen {
                 .mode_info
                 .entry(client_id)
                 .or_insert_with(|| self.default_mode_info.clone());
-            mode_info.update_keybinds(new_keybinds);
             mode_info.update_default_mode(new_default_mode);
             mode_info.update_theme(theme);
             mode_info.update_arrow_fonts(should_support_arrow_fonts);
@@ -7658,6 +7719,7 @@ impl Screen {
                 let client_ids: Vec<ClientId> = self.active_tab_ids.keys().copied().collect();
                 let default_for_new = self.default_mode_info.clone();
                 for client_id in client_ids {
+                    self.ensure_client_keybinds(client_id);
                     let mode_info = self
                         .mode_info
                         .entry(client_id)
@@ -8704,6 +8766,7 @@ pub(crate) fn screen_thread_main(
     config: Config,
     debug: bool,
     default_layout: Box<Layout>,
+    default_keybinds: SharedKeybinds,
 ) -> Result<()> {
     // Resolve `theme_dark` / `theme_light` to concrete `Styling` from the
     // bundled themes BEFORE `config.options` is moved out below. These
@@ -8821,7 +8884,7 @@ pub(crate) fn screen_thread_main(
                 //  ¯\_(ツ)_/¯
                 arrow_fonts: !arrow_fonts,
             },
-            &config.keybinds,
+            &Keybinds::default(),
             config_options.default_mode,
         ),
         pane_frame_style,
@@ -8860,6 +8923,7 @@ pub(crate) fn screen_thread_main(
         web_server_port,
         nested_session_handling,
     );
+    screen.default_keybinds = default_keybinds;
     screen.host_theme_dark_styling = host_theme_dark_styling;
     screen.host_theme_light_styling = host_theme_light_styling;
     screen.paste_buffer_read_enabled = dangerously_enable_paste_buffer_read;
@@ -10198,9 +10262,10 @@ pub(crate) fn screen_thread_main(
                         break;
                     }
                 }
-                if !found_plugin {
-                    pending_events_waiting_for_tab
-                        .push(ScreenInstruction::SetSelectable(pid, selectable));
+                if found_plugin {
+                    screen.pending_selectable_panes.remove(&pid);
+                } else {
+                    screen.pending_selectable_panes.insert(pid, selectable);
                 }
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;

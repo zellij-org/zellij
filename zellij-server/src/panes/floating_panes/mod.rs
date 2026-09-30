@@ -24,7 +24,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::rc::Rc;
 use std::time::Instant;
 use zellij_utils::{
-    data::{ModeInfo, Style, Styling},
+    data::{InputMode, ModeInfo, Style, Styling},
     errors::prelude::*,
     input::command::RunCommand,
     input::layout::{FloatingPaneLayout, Run, RunPluginOrAlias},
@@ -44,7 +44,7 @@ pub struct FloatingPanes {
     client_display_slots: Rc<RefCell<HashMap<ClientId, usize>>>,
     mode_info: Rc<RefCell<HashMap<ClientId, ModeInfo>>>,
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
-    default_mode_info: ModeInfo,
+    default_mode: InputMode,
     style: Style,
     session_is_mirrored: bool,
     desired_pane_positions: HashMap<PaneId, PaneGeom>, // this represents the positions of panes the user moved with intention, rather than by resizing the terminal window
@@ -77,7 +77,7 @@ impl FloatingPanes {
         fullscreen_covers_ui: Rc<RefCell<bool>>,
         pane_frame_style: PaneFrameStyle,
         session_is_mirrored: bool,
-        default_mode_info: ModeInfo,
+        default_mode: InputMode,
         style: Style,
         os_input: Box<dyn ServerOsApi>,
         senders: ThreadSenders,
@@ -92,7 +92,7 @@ impl FloatingPanes {
             mode_info,
             character_cell_size,
             session_is_mirrored,
-            default_mode_info,
+            default_mode,
             style,
             desired_pane_positions: HashMap::new(),
             z_indices: vec![],
@@ -608,8 +608,8 @@ impl FloatingPanes {
                     .mode_info
                     .borrow()
                     .get(client_id)
-                    .unwrap_or(&self.default_mode_info)
-                    .mode;
+                    .map(|mode_info| mode_info.mode)
+                    .unwrap_or(self.default_mode);
                 let is_floating = true;
                 let skip_frame = no_ui_fullscreen
                     || (pane_is_regular_fullscreen

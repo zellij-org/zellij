@@ -3,6 +3,7 @@ mod pipes;
 mod plugin_loader;
 mod plugin_map;
 mod plugin_worker;
+mod shared;
 mod wasm_bridge;
 mod watch_filesystem;
 mod zellij_exports;
@@ -21,7 +22,7 @@ use crate::panes::PaneId;
 use crate::route::NotificationEnd;
 use crate::screen::ScreenInstruction;
 use crate::session_layout_metadata::SessionLayoutMetadata;
-use crate::{pty::PtyInstruction, thread_bus::Bus, ClientId, ServerInstruction};
+use crate::{pty::PtyInstruction, thread_bus::Bus, ClientId, ServerInstruction, SharedKeybinds};
 use zellij_utils::data::PaneRenderReport;
 use zellij_utils::input::layout::TabLayoutInfo;
 
@@ -38,7 +39,6 @@ use zellij_utils::{
     input::{
         actions::Action,
         command::TerminalAction,
-        keybinds::Keybinds,
         layout::{FloatingPaneLayout, Layout, Run, RunPlugin, RunPluginOrAlias, TiledPaneLayout},
         plugins::PluginAliases,
     },
@@ -89,6 +89,7 @@ pub enum PluginInstruction {
     AddClient(ClientId),
     RemoveClient(ClientId),
     UpdatePluginTabIndices(Vec<(PluginId, usize)>),
+    UpdateClientVisiblePlugins(HashMap<ClientId, HashSet<PluginId>>),
     NewTab(
         Option<PathBuf>,
         Option<TerminalAction>,
@@ -185,7 +186,7 @@ pub enum PluginInstruction {
     UnblockCliPipes(Vec<PluginRenderAsset>),
     Reconfigure {
         client_id: ClientId,
-        keybinds: Option<Keybinds>,
+        keybinds: Option<SharedKeybinds>,
         default_mode: Option<InputMode>,
         default_shell: Option<TerminalAction>,
         layout_dir: Option<PathBuf>,
@@ -238,6 +239,9 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::AddClient(_) => PluginContext::AddClient,
             PluginInstruction::RemoveClient(_) => PluginContext::RemoveClient,
             PluginInstruction::UpdatePluginTabIndices(..) => PluginContext::UpdatePluginTabIndices,
+            PluginInstruction::UpdateClientVisiblePlugins(..) => {
+                PluginContext::UpdateClientVisiblePlugins
+            },
             PluginInstruction::NewTab(..) => PluginContext::NewTab,
             PluginInstruction::OverrideLayout(..) => PluginContext::OverrideLayout,
             PluginInstruction::ApplyCachedEvents { .. } => PluginContext::ApplyCachedEvents,
@@ -304,7 +308,7 @@ pub(crate) fn plugin_thread_main(
     default_shell: Option<TerminalAction>,
     plugin_aliases: PluginAliases,
     default_mode: InputMode,
-    default_keybinds: Keybinds,
+    default_keybinds: SharedKeybinds,
     background_plugins: HashSet<RunPluginOrAlias>,
     // the client id that started the session,
     // we need it here because the thread's own list of connected clients might not yet be updated
@@ -514,6 +518,9 @@ pub(crate) fn plugin_thread_main(
             },
             PluginInstruction::UpdatePluginTabIndices(tab_indices) => {
                 wasm_bridge.update_plugin_tab_indices(tab_indices);
+            },
+            PluginInstruction::UpdateClientVisiblePlugins(visible_plugins) => {
+                wasm_bridge.update_client_visible_plugins(visible_plugins);
             },
             PluginInstruction::NewTab(
                 cwd,
@@ -1353,6 +1360,13 @@ fn pipe_to_all_plugins(
             PipeMessage::new(pipe_source.clone(), name, payload, &args, is_private),
         ));
     }
+    for instance_id in wasm_bridge.shared_instance_ids() {
+        pipe_messages.push((
+            Some(instance_id),
+            None,
+            PipeMessage::new(pipe_source.clone(), name, payload, &args, is_private),
+        ));
+    }
 }
 
 fn pipe_to_specific_plugins(
@@ -1433,13 +1447,15 @@ fn load_background_plugin(
     let run_plugin = run_plugin_or_alias.get_run_plugin();
     let size = Size::default();
     let skip_cache = false;
-    match wasm_bridge.load_plugin(
+    let is_background = true;
+    match wasm_bridge.load_plugin_with_kind(
         &run_plugin,
         None,
         size,
         cwd.clone(),
         skip_cache,
         Some(client_id),
+        is_background,
     ) {
         Ok((plugin_id, client_id)) => {
             let should_float = None;
@@ -1475,3 +1491,7 @@ const EXIT_TIMEOUT: Duration = Duration::from_secs(3);
 #[path = "./unit/plugin_tests.rs"]
 #[cfg(test)]
 mod plugin_tests;
+
+#[path = "./unit/shared_plugin_tests.rs"]
+#[cfg(test)]
+mod shared_plugin_tests;

@@ -543,6 +543,7 @@ pub enum PluginContext {
     AddClient,
     RemoveClient,
     UpdatePluginTabIndices,
+    UpdateClientVisiblePlugins,
     NewTab,
     OverrideLayout,
     ApplyCachedEvents,
@@ -674,6 +675,7 @@ pub enum BackgroundJobContext {
     StopFlashTabBell,
     StartNestedGuestPing,
     StopNestedGuestPing,
+    TrimAllocator,
     Exit,
 }
 

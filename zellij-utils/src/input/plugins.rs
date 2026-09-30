@@ -54,6 +54,9 @@ impl PluginConfig {
                 initial_userspace_configuration: run_plugin.configuration.clone(),
                 initial_cwd: run_plugin.initial_cwd.clone(),
             }),
+            RunPluginLocation::Zellij(tag) if legacy_bars_role(&tag.to_string()).is_some() => {
+                Self::from_run_plugin(&canonical_run_plugin(run_plugin))
+            },
             RunPluginLocation::Zellij(tag) => {
                 let tag = tag.to_string();
                 if distribution::is_builtin_plugin_name(&tag) {
@@ -193,6 +196,53 @@ impl PluginConfig {
             .map(|name| distribution::is_builtin_plugin_name(name))
             .unwrap_or(false)
     }
+}
+
+pub const BARS_PLUGIN_NAME: &str = "bars";
+pub const SHARED_INSTANCE_KEY: &str = "instance";
+
+pub fn legacy_bars_role(tag: &str) -> Option<&'static str> {
+    match tag {
+        "tab-bar" => Some("tab-bar"),
+        "status-bar" => Some("status-bar"),
+        "compact-bar" => Some("compact-bar"),
+        "link" => Some("link"),
+        _ => None,
+    }
+}
+
+pub fn canonical_plugin_location(location: &RunPluginLocation) -> RunPluginLocation {
+    match location {
+        RunPluginLocation::Zellij(tag) if legacy_bars_role(&tag.to_string()).is_some() => {
+            RunPluginLocation::Zellij(PluginTag::new(BARS_PLUGIN_NAME))
+        },
+        other => other.clone(),
+    }
+}
+
+pub fn canonical_run_plugin(run_plugin: &RunPlugin) -> RunPlugin {
+    let mut canonical = run_plugin.clone();
+    canonical.configuration = PluginUserConfiguration::new(slot_configuration(
+        &run_plugin.location,
+        &run_plugin.configuration,
+    ));
+    canonical.location = canonical_plugin_location(&run_plugin.location);
+    canonical
+}
+
+pub fn slot_configuration(
+    location: &RunPluginLocation,
+    configuration: &PluginUserConfiguration,
+) -> BTreeMap<String, String> {
+    let mut configuration = configuration.inner().clone();
+    if let RunPluginLocation::Zellij(tag) = location {
+        if let Some(role) = legacy_bars_role(&tag.to_string()) {
+            configuration
+                .entry("role".to_owned())
+                .or_insert_with(|| role.to_owned());
+        }
+    }
+    configuration
 }
 
 #[derive(Error, Debug, PartialEq)]

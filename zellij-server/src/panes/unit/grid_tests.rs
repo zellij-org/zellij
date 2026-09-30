@@ -19,6 +19,119 @@ use zellij_utils::{
 
 use std::fmt::Write;
 
+#[test]
+fn erase_line_end_pads_wide_characters_to_display_width() {
+    use crate::panes::grid::Row;
+    use crate::panes::terminal_character::{TerminalCharacter, EMPTY_TERMINAL_CHARACTER};
+
+    for (content, from, to, expected) in [
+        ("ab你cd", 2, 6, "ab    "),
+        ("ab你cd", 3, 6, "ab    "),
+        ("你ab好", 3, 6, "你a   "),
+        ("你好", 0, 6, "      "),
+        ("ab", 4, 6, "ab    "),
+    ] {
+        let mut row = Row::from_columns(
+            content
+                .chars()
+                .map(|character| TerminalCharacter::new_styled(character, Default::default()))
+                .collect(),
+        );
+        row.replace_and_pad_end(from, to, EMPTY_TERMINAL_CHARACTER);
+        assert_eq!(row.width_cached(), to, "content={content:?}, from={from}");
+        assert_eq!(
+            row.columns
+                .iter()
+                .map(|cell| cell.character)
+                .collect::<String>(),
+            expected,
+        );
+    }
+}
+
+fn row_from_str(content: &str) -> crate::panes::grid::Row {
+    use crate::panes::terminal_character::TerminalCharacter;
+    crate::panes::grid::Row::from_columns(
+        content
+            .chars()
+            .map(|character| TerminalCharacter::new_styled(character, Default::default()))
+            .collect(),
+    )
+}
+
+fn row_to_string(row: &crate::panes::grid::Row) -> String {
+    row.columns.iter().map(|cell| cell.character).collect()
+}
+
+#[test]
+fn erase_line_end_from_second_half_of_wide_character_before_another_wide_character() {
+    use crate::panes::terminal_character::EMPTY_TERMINAL_CHARACTER;
+
+    for (content, from, to, expected) in [
+        ("ab你c好", 3, 8, "ab      "),
+        ("ab你c好", 2, 8, "ab      "),
+        ("ab你c好", 5, 8, "ab你c   "),
+        ("你好你好", 3, 8, "你      "),
+    ] {
+        let mut row = row_from_str(content);
+        row.replace_and_pad_end(from, to, EMPTY_TERMINAL_CHARACTER);
+        assert_eq!(row.width_cached(), to, "content={content:?}, from={from}");
+        assert_eq!(
+            row_to_string(&row),
+            expected,
+            "content={content:?}, from={from}"
+        );
+    }
+}
+
+#[test]
+fn erase_line_end_past_row_end_styles_only_cells_from_cursor() {
+    use crate::panes::terminal_character::{AnsiCode, EMPTY_TERMINAL_CHARACTER};
+
+    let mut erase_character = EMPTY_TERMINAL_CHARACTER;
+    erase_character
+        .styles
+        .update(|styles| styles.background = Some(AnsiCode::ColorIndex(1)));
+
+    let mut row = row_from_str("ab");
+    row.replace_and_pad_end(4, 6, erase_character.clone());
+
+    assert_eq!(row.width_cached(), 6);
+    assert_eq!(row_to_string(&row), "ab    ");
+    assert!(row
+        .columns
+        .range(2..4)
+        .all(|cell| *cell == EMPTY_TERMINAL_CHARACTER));
+    assert!(row.columns.range(4..6).all(|cell| *cell == erase_character));
+}
+
+#[test]
+fn erase_line_start_through_wide_character_keeps_row_width() {
+    use crate::panes::terminal_character::EMPTY_TERMINAL_CHARACTER;
+
+    for (content, to, expected) in [
+        ("ab你c好", 2, "    c好"),
+        ("ab你c好", 3, "    c好"),
+        ("ab你c好", 4, "     好"),
+        ("你好你好", 3, "    你好"),
+        ("ab", 0, " b"),
+    ] {
+        let mut row = row_from_str(content);
+        let original_width = row.width();
+        row.replace_and_pad_beginning(to, EMPTY_TERMINAL_CHARACTER);
+        assert_eq!(
+            row.width_cached(),
+            original_width,
+            "content={content:?}, to={to}"
+        );
+        assert_eq!(
+            row_to_string(&row),
+            expected,
+            "content={content:?}, to={to}"
+        );
+    }
+}
+
 fn read_fixture(fixture_name: &str) -> Vec<u8> {
     let mut path_to_file = std::path::PathBuf::new();
     path_to_file.push("../src");
@@ -5090,6 +5203,69 @@ fn plugin_highlight_at_wrapped_line() {
     let (plugin_id, _pattern, matched_string, _ctx) = result.unwrap();
     assert_eq!(plugin_id, 1);
     assert_eq!(matched_string, "jklm");
+}
+
+const COMBINED_ENTRIES_PATTERN: &str = r"(?:^|\s)((?:abc\.rs|b\.rs)(?:/[A-Za-z0-9_./\-+@%,#=~!\$\{\}\[\]]+)?(?::\d+(?::\d+)?)?)(?::|\s|$)";
+
+#[test]
+fn combined_pattern_highlights_adjacent_entries_separated_by_single_space() {
+    let mut grid = create_grid_with_content("abc.rs b.rs\n");
+    let highlights = vec![create_highlight(
+        COMBINED_ENTRIES_PATTERN,
+        false,
+        false,
+        false,
+        true,
+        HighlightLayer::Hint,
+    )];
+    grid.set_plugin_regex_highlights(1, highlights, &Style::default());
+
+    let first = grid.plugin_highlight_at(&Position::new(0, 0)).unwrap();
+    assert_eq!(first.2, "abc.rs");
+    let second = grid.plugin_highlight_at(&Position::new(0, 8)).unwrap();
+    assert_eq!(second.2, "b.rs");
+    assert!(grid.plugin_highlight_at(&Position::new(0, 6)).is_none());
+    assert_eq!(grid.compute_plugin_highlight_selections().len(), 2);
+}
+
+#[test]
+fn combined_pattern_highlights_entries_on_wrapped_line() {
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let mut grid = Grid::new(
+        5,
+        10,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
+        Style::default(),
+        false,
+        true,
+        true,
+        true,
+        false,
+    );
+    let mut vte_parser = vte::Parser::new();
+    vte_parser.advance(&mut grid, "12345 abc.rs b.rs".as_bytes());
+
+    let highlights = vec![create_highlight(
+        COMBINED_ENTRIES_PATTERN,
+        false,
+        false,
+        false,
+        true,
+        HighlightLayer::Hint,
+    )];
+    grid.set_plugin_regex_highlights(1, highlights, &Style::default());
+
+    let wrapped = grid.plugin_highlight_at(&Position::new(1, 0)).unwrap();
+    assert_eq!(wrapped.2, "abc.rs");
+    let after_wrap = grid.plugin_highlight_at(&Position::new(1, 4)).unwrap();
+    assert_eq!(after_wrap.2, "b.rs");
+    assert_eq!(grid.compute_plugin_highlight_selections().len(), 2);
 }
 
 #[test]

@@ -11,6 +11,7 @@ use std::io::{self, Read};
 #[cfg(not(target_family = "wasm"))]
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 use thiserror::Error;
 
 use std::convert::TryFrom;
@@ -32,7 +33,8 @@ type ConfigResult = Result<Config, ConfigError>;
 /// Main configuration.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct Config {
-    pub keybinds: Keybinds,
+    #[serde(with = "shared_keybinds")]
+    pub keybinds: Arc<Keybinds>,
     pub options: Options,
     pub themes: Themes,
     pub plugins: PluginAliases,
@@ -40,6 +42,25 @@ pub struct Config {
     pub env: EnvironmentVariables,
     pub background_plugins: HashSet<RunPluginOrAlias>,
     pub web_client: WebClientConfig,
+}
+
+mod shared_keybinds {
+    use super::Keybinds;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use std::sync::Arc;
+
+    pub fn serialize<S: Serializer>(
+        keybinds: &Arc<Keybinds>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        keybinds.as_ref().serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Arc<Keybinds>, D::Error> {
+        Keybinds::deserialize(deserializer).map(Arc::new)
+    }
 }
 
 #[derive(Error, Debug, Serialize, Deserialize)]
@@ -282,7 +303,9 @@ impl Config {
     }
     pub fn merge(&mut self, other: Config) -> Result<(), ConfigError> {
         self.options = self.options.merge(other.options);
-        self.keybinds.merge(other.keybinds.clone());
+        if !other.keybinds.0.is_empty() && !Arc::ptr_eq(&self.keybinds, &other.keybinds) {
+            Arc::make_mut(&mut self.keybinds).merge(Arc::unwrap_or_clone(other.keybinds));
+        }
         self.themes = self.themes.merge(other.themes);
         self.plugins.merge(other.plugins);
         self.ui = self.ui.merge(other.ui);

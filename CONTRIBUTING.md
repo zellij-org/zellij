@@ -71,7 +71,7 @@ unaffected, since they embed the plugins from `zellij-utils/assets/plugins`.
 
 ## Packaging Zellij for a distribution
 
-Builtin plugins (`status-bar`, `tab-bar`, ...) are `.wasm` files that are embedded into
+Builtin plugins (`bars`, `strider`, ...) are `.wasm` files that are embedded into
 the Zellij binary at compile time. Pre-built copies live in `zellij-utils/assets/plugins`
 so that `cargo install zellij` works without further tooling. Distributions that forbid
 pre-built binaries in source packages can strip that folder and build the plugins from
@@ -80,9 +80,9 @@ source instead:
 ```sh
 # 1. build the plugins from source (repeat for every plugin, or use `cargo x build --release`)
 cargo build --release --target wasm32-wasip1 \
-  -p status-bar -p tab-bar -p compact-bar -p strider -p session-manager \
+  -p bars -p strider -p session-manager \
   -p configuration -p plugin-manager -p about -p share -p multiple-select \
-  -p layout-manager -p link
+  -p layout-manager
 
 # 2. install the resulting artifacts from <target-dir>/wasm32-wasip1/release/*.wasm
 #    into $PREFIX/share/zellij/plugins/

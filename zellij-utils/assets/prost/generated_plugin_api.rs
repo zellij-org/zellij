@@ -39,6 +39,9 @@ pub mod api {
     pub mod resize {
         include!("api.resize.rs");
     }
+    pub mod shared_plugin {
+        include!("api.shared_plugin.rs");
+    }
     pub mod style {
         include!("api.style.rs");
     }

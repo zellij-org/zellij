@@ -763,6 +763,40 @@ fn highlight_match<'t>(captures: &regex::Captures<'t>) -> Option<regex::Match<'t
     captures.get(1).or_else(|| captures.get(0))
 }
 
+fn highlight_matches<'r, 't>(
+    regex: &'r regex::Regex,
+    text: &'t str,
+) -> impl Iterator<Item = regex::Match<'t>> + 'r
+where
+    't: 'r,
+{
+    let mut pos = 0;
+    std::iter::from_fn(move || {
+        while pos <= text.len() {
+            let captures = regex.captures_at(text, pos)?;
+            let mat = highlight_match(&captures);
+            let end = match (mat, captures.get(0)) {
+                (Some(m), _) => m.end(),
+                (None, Some(whole)) => whole.end(),
+                (None, None) => return None,
+            };
+            pos = if end > pos {
+                end
+            } else {
+                text[pos..]
+                    .chars()
+                    .next()
+                    .map(|c| pos + c.len_utf8())
+                    .unwrap_or(text.len() + 1)
+            };
+            if mat.is_some() {
+                return mat;
+            }
+        }
+        None
+    })
+}
+
 /// Check whether a (row, col) position falls within a display span.
 /// The span is inclusive at start and exclusive at end.
 fn position_in_span(
@@ -2944,10 +2978,7 @@ impl Grid {
         )> = None;
         for (plugin_id, pattern_map) in &self.plugin_highlights {
             for (pattern, compiled) in pattern_map {
-                for captures in compiled.regex.captures_iter(&logical_text) {
-                    let Some(mat) = highlight_match(&captures) else {
-                        continue;
-                    };
+                for mat in highlight_matches(&compiled.regex, &logical_text) {
                     if let Some((_sel, start_row, start_col, end_row, end_col)) =
                         match_to_selection(&mat, &boundaries, &self.viewport)
                     {
@@ -3045,10 +3076,7 @@ impl Grid {
                 if !compiled.on_hover || compiled.tooltip_text.is_none() {
                     continue;
                 }
-                for captures in compiled.regex.captures_iter(&logical_text) {
-                    let Some(mat) = highlight_match(&captures) else {
-                        continue;
-                    };
+                for mat in highlight_matches(&compiled.regex, &logical_text) {
                     if let Some((_sel, start_row, start_col, end_row, end_col)) =
                         match_to_selection(&mat, &boundaries, &self.viewport)
                     {
@@ -3104,10 +3132,7 @@ impl Grid {
                                 if !compiled.on_hover || !compiled.has_visual_effect() {
                                     continue;
                                 }
-                                for captures in compiled.regex.captures_iter(&logical_text) {
-                                    let Some(mat) = highlight_match(&captures) else {
-                                        continue;
-                                    };
+                                for mat in highlight_matches(&compiled.regex, &logical_text) {
                                     if let Some((sel, start_row, start_col, end_row, end_col)) =
                                         match_to_selection(&mat, &boundaries, &self.viewport)
                                     {
@@ -3141,10 +3166,7 @@ impl Grid {
                     if compiled.on_hover || !compiled.has_visual_effect() {
                         continue;
                     }
-                    for captures in compiled.regex.captures_iter(&logical_text) {
-                        let Some(mat) = highlight_match(&captures) else {
-                            continue;
-                        };
+                    for mat in highlight_matches(&compiled.regex, &logical_text) {
                         if let Some((sel, _, _, _, _)) =
                             match_to_selection(&mat, &boundaries, &self.viewport)
                         {
@@ -6044,16 +6066,18 @@ impl Row {
         self.width = None;
     }
     pub fn position_accounting_for_widechars(&self, x: usize) -> usize {
-        let mut position = x;
+        self.character_index_and_start_column(x).0
+    }
+    fn character_index_and_start_column(&self, x: usize) -> (usize, usize) {
+        let mut column = 0;
         for (index, terminal_character) in self.columns.iter().enumerate() {
-            if index == position {
-                break;
+            let character_width = terminal_character.width();
+            if column + character_width > x {
+                return (index, column);
             }
-            if terminal_character.width() > 1 {
-                position = position.saturating_sub(terminal_character.width().saturating_sub(1));
-            }
+            column += character_width;
         }
-        position
+        (self.columns.len() + (x - column), x)
     }
     pub fn replace_and_pad_end(
         &mut self,
@@ -6062,13 +6086,21 @@ impl Row {
         terminal_character: TerminalCharacter,
     ) {
         self.osc133_markers.retain(|marker| marker.column <= from);
-        let from_position_accounting_for_widechars = self.position_accounting_for_widechars(from);
-        let to_position_accounting_for_widechars = self.position_accounting_for_widechars(to);
-        let replacement_length = to_position_accounting_for_widechars
-            .saturating_sub(from_position_accounting_for_widechars);
+        let (from_index, _) = self.character_index_and_start_column(from);
+        self.columns.truncate(from_index);
+        let retained_width = self.width();
+        if retained_width < from {
+            let mut gap_fill = EMPTY_TERMINAL_CHARACTER;
+            if let Some(bg_color) = self.bg_color {
+                gap_fill
+                    .styles
+                    .update(|styles| styles.background = Some(bg_color));
+            }
+            self.columns
+                .extend(std::iter::repeat(gap_fill).take(from - retained_width));
+        }
+        let replacement_length = to.saturating_sub(self.width());
         let mut replace_with = VecDeque::from(vec![terminal_character; replacement_length]);
-        self.columns
-            .truncate(from_position_accounting_for_widechars);
         self.columns.append(&mut replace_with);
         self.width = None;
     }
@@ -6101,17 +6133,17 @@ impl Row {
         drained_part
     }
     pub fn replace_and_pad_beginning(&mut self, to: usize, terminal_character: TerminalCharacter) {
-        let to_position_accounting_for_widechars = self.position_accounting_for_widechars(to);
+        let (to_position_accounting_for_widechars, character_start_column) =
+            self.character_index_and_start_column(to);
         let width_of_current_character = self
             .columns
             .get(to_position_accounting_for_widechars)
             .map(|character| character.width())
             .unwrap_or(1);
-        let replaced_end = to + width_of_current_character;
+        let replaced_end = character_start_column + width_of_current_character;
         self.osc133_markers
             .retain(|marker| marker.column >= replaced_end);
-        let mut replace_with =
-            VecDeque::from(vec![terminal_character; to + width_of_current_character]);
+        let mut replace_with = VecDeque::from(vec![terminal_character; replaced_end]);
         if to_position_accounting_for_widechars > self.columns.len() {
             self.columns.clear();
         } else if to_position_accounting_for_widechars >= self.columns.len() {

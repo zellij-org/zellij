@@ -223,6 +223,10 @@ enum CommandName {
   ApplyFloatingSwapLayout = 230;
   SetPaneBorderStyle = 231;
   GetNestedSessionKeybinds = 232;
+  SetSelectableSlot = 233;
+  HideSlot = 234;
+  ShowSlot = 235;
+  CloseSlot = 236;
 }
 
 message PluginCommand {
@@ -387,7 +391,25 @@ message PluginCommand {
     string apply_floating_swap_layout_payload = 173;
     SetPaneBorderStylePayload set_pane_border_style_payload = 174;
     GetNestedSessionKeybindsPayload get_nested_session_keybinds_payload = 175;
+    SetSelectableSlotPayload set_selectable_slot_payload = 176;
+    uint32 hide_slot_payload = 177;
+    ShowSlotPayload show_slot_payload = 178;
+    uint32 close_slot_payload = 179;
   }
+}
+
+message SetSelectableSlotPayload {
+  uint32 slot_id = 1;
+  bool selectable = 2;
+}
+
+message ShowSlotPayload {
+  uint32 slot_id = 1;
+  bool should_float_if_hidden = 2;
+}
+
+message SlotCommandResponse {
+  optional string error = 1;
 }
 
 message GetNestedSessionKeybindsPayload {

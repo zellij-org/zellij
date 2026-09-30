@@ -5471,7 +5471,11 @@ impl Config {
         // TODO: handle cases where we have more than one of these blocks (eg. two "keybinds")
         // this should give an informative parsing error
         if let Some(kdl_keybinds) = kdl_config.get("keybinds") {
-            config.keybinds = Keybinds::from_kdl(&kdl_keybinds, config.keybinds, &config.options)?;
+            config.keybinds = std::sync::Arc::new(Keybinds::from_kdl(
+                &kdl_keybinds,
+                std::sync::Arc::unwrap_or_clone(config.keybinds),
+                &config.options,
+            )?);
         }
         if let Some(kdl_themes) = kdl_config.get("themes") {
             let sourced_from_external_file = false;

@@ -288,24 +288,15 @@ struct FakeAsyncReader {
 
 #[async_trait]
 impl AsyncReader for FakeAsyncReader {
-    async fn read(&mut self, buf: &mut [u8]) -> Result<usize, std::io::Error> {
+    async fn read_chunk(&mut self, max: usize) -> Result<Vec<u8>, std::io::Error> {
         if self.pending.is_empty() {
             match self.output_rx.recv().await {
                 Some(bytes) => self.pending.extend(bytes),
-                None => return Ok(0),
+                None => return Ok(Vec::new()),
             }
         }
-        let mut written = 0;
-        while written < buf.len() {
-            match self.pending.pop_front() {
-                Some(byte) => {
-                    buf[written] = byte;
-                    written += 1;
-                },
-                None => break,
-            }
-        }
-        Ok(written)
+        let n = max.min(self.pending.len());
+        Ok(self.pending.drain(..n).collect())
     }
 }
 

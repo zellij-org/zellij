@@ -29,8 +29,8 @@ use crate::{
 use stacked_panes::StackedPanes;
 use zellij_utils::{
     data::{
-        BorderStyle, BorderStyleOverride, Direction, LineStyle, ModeInfo, PaneInfo, Resize,
-        ResizeStrategy, Style, Styling,
+        BorderStyle, BorderStyleOverride, Direction, InputMode, LineStyle, ModeInfo, PaneInfo,
+        Resize, ResizeStrategy, Style, Styling,
     },
     errors::prelude::*,
     input::{
@@ -78,7 +78,7 @@ pub struct TiledPanes {
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     stacked_resize: Rc<RefCell<bool>>,
     reserved_top_rows: Rc<RefCell<HashMap<PaneId, usize>>>,
-    default_mode_info: ModeInfo,
+    default_mode: InputMode,
     style: Style,
     session_is_mirrored: bool,
     active_panes: ActivePanes,
@@ -109,7 +109,7 @@ impl TiledPanes {
         fullscreen_covers_ui: Rc<RefCell<bool>>,
         session_is_mirrored: bool,
         pane_frame_style: PaneFrameStyle,
-        default_mode_info: ModeInfo,
+        default_mode: InputMode,
         style: Style,
         os_api: Box<dyn ServerOsApi>,
         senders: ThreadSenders,
@@ -125,7 +125,7 @@ impl TiledPanes {
             character_cell_size,
             stacked_resize,
             reserved_top_rows,
-            default_mode_info,
+            default_mode,
             style,
             session_is_mirrored,
             active_panes: ActivePanes::new(&os_api),
@@ -426,7 +426,7 @@ impl TiledPanes {
             None => {
                 // we couldn't add the pane normally, let's see if there's room in one of the
                 // stacks...
-                let _ = pane_grid.make_pane_stacked(active_pane_id);
+                let newly_stacked = pane_grid.make_pane_stacked(active_pane_id).is_ok();
                 match pane_grid.make_room_in_stack_of_pane_id_for_pane(active_pane_id) {
                     Ok(new_pane_geom) => {
                         pane.set_geom(new_pane_geom);
@@ -434,6 +434,9 @@ impl TiledPanes {
                         return;
                     },
                     Err(_e) => {
+                        if newly_stacked {
+                            pane_grid.unstack_pane(active_pane_id);
+                        }
                         return self.add_pane_without_stacked_resize(
                             pane_id,
                             pane,
@@ -464,9 +467,8 @@ impl TiledPanes {
             .get_pane_geom(active_pane_id)
             .map(|p| p.is_stacked())
             .unwrap_or(false);
-        if !pane_id_is_stacked {
-            let _ = pane_grid.make_pane_stacked(&active_pane_id);
-        }
+        let newly_stacked =
+            !pane_id_is_stacked && pane_grid.make_pane_stacked(&active_pane_id).is_ok();
         match pane_grid.make_room_in_stack_of_pane_id_for_pane(active_pane_id) {
             Ok(new_pane_geom) => {
                 pane.set_geom(new_pane_geom);
@@ -475,6 +477,9 @@ impl TiledPanes {
                 return;
             },
             Err(e) => {
+                if newly_stacked {
+                    pane_grid.unstack_pane(active_pane_id);
+                }
                 log::error!("Failed to add pane to stack: {}", e);
             },
         }
@@ -495,9 +500,11 @@ impl TiledPanes {
             .get_pane_geom(&root_pane_id)
             .map(|p| p.is_stacked())
             .unwrap_or(false);
+        let mut newly_stacked = false;
         if !pane_id_is_stacked {
-            if let Err(e) = pane_grid.make_pane_stacked(&root_pane_id) {
-                log::error!("Failed to make pane stacked: {:?}", e);
+            match pane_grid.make_pane_stacked(&root_pane_id) {
+                Ok(()) => newly_stacked = true,
+                Err(e) => log::error!("Failed to make pane stacked: {:?}", e),
             }
         }
         match pane_grid.make_room_in_stack_of_pane_id_for_pane(&root_pane_id) {
@@ -508,6 +515,9 @@ impl TiledPanes {
                 return;
             },
             Err(e) => {
+                if newly_stacked {
+                    pane_grid.unstack_pane(&root_pane_id);
+                }
                 log::error!("Failed to add pane to stack: {}", e);
             },
         }
@@ -1294,8 +1304,8 @@ impl TiledPanes {
                         .mode_info
                         .borrow()
                         .get(client_id)
-                        .unwrap_or(&self.default_mode_info)
-                        .mode;
+                        .map(|mode_info| mode_info.mode)
+                        .unwrap_or(self.default_mode);
                     let err_context =
                         || format!("failed to render tiled panes for client {client_id}");
                     if let PaneId::Plugin(..) = kind {
@@ -2037,6 +2047,9 @@ impl TiledPanes {
             );
             pane_grid.next_selectable_pane_id(&active_pane_id)
         };
+        let Some(next_active_pane_id) = next_active_pane_id else {
+            return;
+        };
         if self
             .panes
             .get(&next_active_pane_id)
@@ -2066,6 +2079,9 @@ impl TiledPanes {
                 *self.viewport.borrow(),
             );
             pane_grid.previous_selectable_pane_id(&active_pane_id)
+        };
+        let Some(next_active_pane_id) = next_active_pane_id else {
+            return;
         };
 
         if self
@@ -2447,6 +2463,12 @@ impl TiledPanes {
                 pane_grid.next_selectable_pane_id(&pane_id)
             }
         };
+        let Some(new_position_id) = new_position_id else {
+            return;
+        };
+        if !self.panes.contains_key(&new_position_id) {
+            return;
+        }
         if self
             .panes
             .get(&new_position_id)
@@ -2458,11 +2480,15 @@ impl TiledPanes {
             self.reapply_pane_frames();
         }
 
-        let current_position = self.panes.get(&pane_id).unwrap();
+        let Some(current_position) = self.panes.get(&pane_id) else {
+            return;
+        };
         let prev_geom = current_position.position_and_size();
         let prev_geom_override = current_position.geom_override();
 
-        let new_position = self.panes.get_mut(&new_position_id).unwrap();
+        let Some(new_position) = self.panes.get_mut(&new_position_id) else {
+            return;
+        };
         let next_geom = new_position.position_and_size();
         let next_geom_override = new_position.geom_override();
         new_position.set_geom(prev_geom);
@@ -2478,7 +2504,9 @@ impl TiledPanes {
         .unwrap();
         new_position.set_should_render(true);
 
-        let current_position = self.panes.get_mut(&pane_id).unwrap();
+        let Some(current_position) = self.panes.get_mut(&pane_id) else {
+            return;
+        };
         current_position.set_geom(next_geom);
         if let Some(geom) = next_geom_override {
             current_position.set_geom_override(geom);

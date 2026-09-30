@@ -364,6 +364,18 @@ pub fn send_blocking_command_through_the_cli() {
                         remote_terminal
                             .send_blocking_command_through_the_cli("bash -c 'sleep 2 && exit 42'");
                         std::thread::sleep(std::time::Duration::from_millis(100));
+                        step_is_complete = true;
+                    }
+                    step_is_complete
+                },
+            })
+            .add_step(Step {
+                name: "Wait for the typed command to be echoed on a single line",
+                instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                    let mut step_is_complete = false;
+                    if remote_terminal.snapshot_contains(
+                        "$ /usr/src/zellij/zellij run --blocking --floating --close-on-exit -- bash -c 'sleep 2 && exit 42'",
+                    ) {
                         remote_terminal.send_key(&ENTER);
                         std::thread::sleep(std::time::Duration::from_millis(100));
                         step_is_complete = true;

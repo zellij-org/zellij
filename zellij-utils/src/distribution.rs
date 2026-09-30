@@ -184,9 +184,7 @@ impl Distribution {
 }
 
 pub const ZELLIJ_BUILTIN_PLUGIN_NAMES: &[&str] = &[
-    "compact-bar",
-    "status-bar",
-    "tab-bar",
+    "bars",
     "strider",
     "session-manager",
     "configuration",
@@ -195,7 +193,6 @@ pub const ZELLIJ_BUILTIN_PLUGIN_NAMES: &[&str] = &[
     "share",
     "multiple-select",
     "layout-manager",
-    "link",
 ];
 
 // Plugins are taken from:
@@ -231,9 +228,7 @@ fn zellij_builtin_plugins() -> Vec<DistributionPlugin> {
         };
     }
     vec![
-        builtin_plugin!("compact-bar"),
-        builtin_plugin!("status-bar"),
-        builtin_plugin!("tab-bar"),
+        builtin_plugin!("bars"),
         builtin_plugin!("strider"),
         builtin_plugin!("session-manager"),
         builtin_plugin!("configuration"),
@@ -242,7 +237,6 @@ fn zellij_builtin_plugins() -> Vec<DistributionPlugin> {
         builtin_plugin!("share"),
         builtin_plugin!("multiple-select"),
         builtin_plugin!("layout-manager"),
-        builtin_plugin!("link"),
     ]
 }
 
@@ -483,7 +477,7 @@ mod tests {
 
     #[test]
     fn only_bundled_plugin_names_are_builtin() {
-        assert!(is_builtin_plugin_name("tab-bar"));
+        assert!(is_builtin_plugin_name("bars"));
         assert!(!is_builtin_plugin_name("yazelix-sidebar"));
         assert!(!is_builtin_plugin_name(""));
     }
