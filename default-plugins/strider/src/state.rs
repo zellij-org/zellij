@@ -331,9 +331,9 @@ impl State {
                     display_name
                 };
                 let mut text_element = if is_selected {
-                    Text::new(text).selected()
+                    Text::from(text).selected()
                 } else {
-                    Text::new(text)
+                    Text::from(text)
                 };
                 text_element = text_element.color_range(0, ..);
                 print_text_with_coordinates(

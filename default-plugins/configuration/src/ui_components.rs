@@ -22,15 +22,15 @@ pub fn top_tab_menu(cols: usize, current_screen: &Screen, colors: &Styling) {
     } else {
         (first_ribbon_text_short, second_ribbon_text_short, (6, 21))
     };
-    let mut first_ribbon = Text::new(first_ribbon_text);
-    let mut second_ribbon = Text::new(second_ribbon_text);
+    let mut first_ribbon = Text::from(first_ribbon_text);
+    let mut second_ribbon = Text::from(second_ribbon_text);
     if first_ribbon_is_selected {
         first_ribbon = first_ribbon.selected();
     }
     if second_ribbon_is_selected {
         second_ribbon = second_ribbon.selected();
     }
-    let switch_key = Text::new("<TAB>").color_range(3, ..).opaque();
+    let switch_key = Text::from("<TAB>").color_range(3, ..).opaque();
     print_text_with_coordinates(switch_key, 0, 0, None, None);
     print!("\u{1b}[{};{}H{}", 0, starting_positions.0, bg_color);
     print_ribbon_with_coordinates(first_ribbon, starting_positions.0, 0, None, None);
@@ -38,8 +38,8 @@ pub fn top_tab_menu(cols: usize, current_screen: &Screen, colors: &Styling) {
 }
 
 pub fn back_to_presets() {
-    let esc = Text::new("<ESC>").color_range(3, ..);
-    let first_ribbon = Text::new("Back to Presets");
+    let esc = Text::from("<ESC>").color_range(3, ..);
+    let first_ribbon = Text::from("Back to Presets");
     print_text_with_coordinates(esc, 0, 0, None, None);
     print_ribbon_with_coordinates(first_ribbon, 6, 0, None, None);
 }
@@ -48,8 +48,8 @@ pub fn info_line(
     rows: usize,
     cols: usize,
     ui_size: usize,
-    notification: &Option<String>,
-    warning_text: &Option<String>,
+    notification: Option<String>,
+    warning_text: Option<String>,
     widths: Option<(usize, usize, usize)>,
 ) {
     let top_coordinates = if rows > 14 {
@@ -72,9 +72,9 @@ pub fn info_line(
             cols.saturating_sub(WIDTH_BREAKPOINTS.1) / 2
         }
     };
-    if let Some(notification) = &notification {
+    if let Some(notification) = notification {
         print_text_with_coordinates(
-            Text::new(notification).color_range(3, ..),
+            Text::from(notification).color_range(3, ..),
             left_padding,
             top_coordinates,
             None,
@@ -82,7 +82,7 @@ pub fn info_line(
         );
     } else if let Some(warning_text) = warning_text {
         print_text_with_coordinates(
-            Text::new(warning_text).color_range(3, ..),
+            Text::from(warning_text).color_range(3, ..),
             left_padding,
             top_coordinates,
             None,
