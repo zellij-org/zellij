@@ -135,6 +135,8 @@ fn pipe_client(
     };
     let is_piped = !os_input.stdin_is_terminal();
     loop {
+        let mut reached_stdin_eof = false;
+
         if let Some(payload) = payload.take() {
             let msg = create_msg(Some(payload));
             os_input.send_to_server(msg);
@@ -149,9 +151,13 @@ fn pipe_client(
             let mut buffer = String::new();
             let _ = stdin.read_line(&mut buffer);
             if buffer.is_empty() {
+                // EOF on piped STDIN. We still send an empty message to trigger the plugin,
+                // then wait for the corresponding UnblockCliPipeInput before exiting.
+                // Otherwise the CLI client would exit immediately, the server would remove its
+                // pipe association, and a later unblock could no longer be routed to this client.
+                reached_stdin_eof = true;
                 let msg = create_msg(None);
                 os_input.send_to_server(msg);
-                break;
             } else {
                 // we've got data! send it down the pipe (most common)
                 let msg = create_msg(Some(buffer));
@@ -165,9 +171,9 @@ fn pipe_client(
                     // unblock this pipe, meaning we need to stop waiting for a response and read
                     // once more from STDIN
                     if pipe_name == pipe_id {
-                        if !is_piped {
-                            // if this client is not piped, we need to exit the process completely
-                            // rather than wait for more data
+                        if !is_piped || reached_stdin_eof {
+                            // if this client is not piped, or if piped STDIN reached EOF, we need
+                            // to exit the process completely rather than wait for more data
                             process::exit(0);
                         } else {
                             break;
