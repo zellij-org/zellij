@@ -1,6 +1,6 @@
 use crate::output::SixelImageChunk;
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use sixel_image::{SixelDeserializer, SixelImage};
@@ -66,6 +66,7 @@ pub struct SixelGrid {
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     currently_parsing: Option<SixelDeserializer>,
     image_ids_to_reap: Vec<usize>,
+    images_to_check_for_emptiness: HashSet<usize>,
     sixel_parser: Option<sixel_tokenizer::Parser>,
     pub sixel_image_store: Rc<RefCell<SixelImageStore>>,
 }
@@ -167,8 +168,8 @@ impl SixelGrid {
                     if let Some(intersecting_rect) =
                         pixel_rect.intersecting_rect(&image_size_and_coordinates)
                     {
-                        if intersecting_rect.x == pixel_rect.x
-                            && intersecting_rect.y == pixel_rect.y
+                        if intersecting_rect.x == 0
+                            && intersecting_rect.y == 0
                             && intersecting_rect.height == pixel_rect.height
                             && intersecting_rect.width == pixel_rect.width
                         {
@@ -225,6 +226,21 @@ impl SixelGrid {
         }
     }
     pub fn drain_image_ids_to_reap(&mut self) -> Option<Vec<usize>> {
+        if !self.images_to_check_for_emptiness.is_empty() {
+            let store = self.sixel_image_store.borrow();
+            for image_id in self.images_to_check_for_emptiness.drain() {
+                let has_lit_pixels = store
+                    .sixel_images
+                    .get(&image_id)
+                    .map_or(false, |(sixel_image, _)| {
+                        sixel_image.pixels.iter().flatten().any(|pixel| pixel.on)
+                    });
+                if !has_lit_pixels {
+                    self.sixel_image_locations.remove(&image_id);
+                    self.image_ids_to_reap.push(image_id);
+                }
+            }
+        }
         let images_to_reap = self.image_ids_to_reap.drain(..);
         if images_to_reap.len() > 0 {
             Some(images_to_reap.collect())
@@ -255,6 +271,7 @@ impl SixelGrid {
             .map(|(image_id, _image_rect)| image_id)
             .collect();
         image_ids.append(&mut self.image_ids_to_reap);
+        self.images_to_check_for_emptiness.clear();
         if !image_ids.is_empty() {
             Some(image_ids)
         } else {
@@ -262,13 +279,17 @@ impl SixelGrid {
         }
     }
     pub fn next_image_id(&self) -> usize {
-        self.sixel_image_store.borrow().sixel_images.keys().len()
+        let mut store = self.sixel_image_store.borrow_mut();
+        let id = store.next_image_id;
+        store.next_image_id += 1;
+        id
     }
     pub fn new_sixel_image(&mut self, sixel_image_id: usize, sixel_image: SixelImage) {
         self.sixel_image_store
             .borrow_mut()
             .sixel_images
             .insert(sixel_image_id, (sixel_image, HashMap::new()));
+        self.images_to_check_for_emptiness.insert(sixel_image_id);
     }
     pub fn remove_pixels_from_image(&mut self, image_id: usize, pixel_rect: PixelRect) {
         if let Some((sixel_image, sixel_image_cache)) = self
@@ -285,6 +306,7 @@ impl SixelGrid {
             );
             sixel_image_cache.clear(); // TODO: more intelligent cache clearing
         }
+        self.images_to_check_for_emptiness.insert(image_id);
     }
     pub fn reap_images(&mut self, ids_to_reap: Vec<usize>) {
         for id in ids_to_reap {
@@ -428,6 +450,7 @@ type SixelImageCache = HashMap<PixelRect, String>;
 #[derive(Debug, Clone, Default)]
 pub struct SixelImageStore {
     sixel_images: HashMap<usize, (SixelImage, SixelImageCache)>,
+    next_image_id: usize,
 }
 
 impl SixelImageStore {

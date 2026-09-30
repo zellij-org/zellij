@@ -78,6 +78,7 @@ pub enum BackgroundJob {
     StopFlashTabBell(usize), // usize = tab_id
     StartNestedGuestPing(PaneId),
     StopNestedGuestPing(PaneId),
+    TrimAllocator,
     Exit,
 }
 
@@ -111,12 +112,25 @@ impl From<&BackgroundJob> for BackgroundJobContext {
             BackgroundJob::StopFlashTabBell(..) => BackgroundJobContext::StopFlashTabBell,
             BackgroundJob::StartNestedGuestPing(..) => BackgroundJobContext::StartNestedGuestPing,
             BackgroundJob::StopNestedGuestPing(..) => BackgroundJobContext::StopNestedGuestPing,
+            BackgroundJob::TrimAllocator => BackgroundJobContext::TrimAllocator,
             BackgroundJob::Exit => BackgroundJobContext::Exit,
         }
     }
 }
 
 static LONG_FLASH_DURATION_MS: u64 = 1000;
+static TRIM_ALLOCATOR_DEBOUNCE_MS: u64 = 2000;
+static STARTUP_TRIM_ALLOCATOR_DELAY_MS: u64 = 10000;
+
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+fn trim_allocator() {
+    unsafe {
+        libc::malloc_trim(0);
+    }
+}
+
+#[cfg(not(all(target_os = "linux", target_env = "gnu")))]
+fn trim_allocator() {}
 static FLASH_DURATION_MS: u64 = 400; // Doherty threshold
 static PLUGIN_ANIMATION_OFFSET_DURATION_MD: u64 = 500;
 static SESSION_METADATA_WRITE_INTERVAL_MS: u64 = 1000;
@@ -171,6 +185,7 @@ pub(crate) fn background_jobs_main(
     let mut flashing_pane_bells: HashMap<PaneId, Arc<AtomicBool>> = HashMap::new();
     let mut flashing_tab_bells: HashMap<usize, Arc<AtomicBool>> = HashMap::new();
     let mut nested_guest_pings: HashMap<PaneId, Arc<AtomicBool>> = HashMap::new();
+    let pending_allocator_trim: Arc<Mutex<Option<Instant>>> = Arc::new(Mutex::new(None));
 
     let http_client = HttpClient::builder()
         // TODO: timeout?
@@ -179,6 +194,11 @@ pub(crate) fn background_jobs_main(
         .ok();
     // We needn't do anything with the runtime, but it should exist at this point.
     let runtime = crate::global_async_runtime::get_tokio_runtime();
+
+    runtime.spawn(async move {
+        tokio::time::sleep(Duration::from_millis(STARTUP_TRIM_ALLOCATOR_DELAY_MS)).await;
+        trim_allocator();
+    });
 
     {
         let senders = bus.senders.clone();
@@ -709,6 +729,45 @@ pub(crate) fn background_jobs_main(
             BackgroundJob::StopNestedGuestPing(pane_id) => {
                 if let Some(flag) = nested_guest_pings.remove(&pane_id) {
                     flag.store(false, Ordering::SeqCst);
+                }
+            },
+            BackgroundJob::TrimAllocator => {
+                let should_spawn = {
+                    let mut pending = pending_allocator_trim.lock().unwrap();
+                    let should_spawn = pending.is_none();
+                    *pending = Some(Instant::now());
+                    should_spawn
+                };
+                if should_spawn {
+                    let pending = pending_allocator_trim.clone();
+                    runtime.spawn(async move {
+                        let debounce = Duration::from_millis(TRIM_ALLOCATOR_DEBOUNCE_MS);
+                        tokio::time::sleep(debounce).await;
+                        loop {
+                            let remaining = {
+                                let mut pending = pending.lock().unwrap();
+                                match *pending {
+                                    Some(last_request) => {
+                                        let elapsed = Instant::now().duration_since(last_request);
+                                        if elapsed >= debounce {
+                                            *pending = None;
+                                            None
+                                        } else {
+                                            Some(debounce.saturating_sub(elapsed))
+                                        }
+                                    },
+                                    None => return,
+                                }
+                            };
+                            match remaining {
+                                Some(duration) => tokio::time::sleep(duration).await,
+                                None => {
+                                    trim_allocator();
+                                    return;
+                                },
+                            }
+                        }
+                    });
                 }
             },
             BackgroundJob::Exit => {

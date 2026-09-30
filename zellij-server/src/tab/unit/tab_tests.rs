@@ -70,19 +70,18 @@ impl ServerOsApi for FakeInputOutput {
     fn send_to_client(&self, _client_id: ClientId, _msg: ServerToClientMsg) -> Result<()> {
         unimplemented!()
     }
-    fn new_client(
+    fn register_client(
         &mut self,
         _client_id: ClientId,
-        _stream: LocalSocketStream,
-    ) -> Result<IpcReceiverWithContext<ClientToServerMsg>> {
+        _receiver: &IpcReceiverWithContext<ClientToServerMsg>,
+    ) -> Result<()> {
         unimplemented!()
     }
-    fn new_client_with_reply(
+    fn register_client_with_reply(
         &mut self,
         _client_id: ClientId,
-        _stream: LocalSocketStream,
         _reply_stream: LocalSocketStream,
-    ) -> Result<IpcReceiverWithContext<ClientToServerMsg>> {
+    ) -> Result<()> {
         unimplemented!()
     }
     fn remove_client(&mut self, _client_id: ClientId) -> Result<()> {
@@ -212,6 +211,7 @@ fn create_new_tab_with_plugin_receiver(
         draw_pane_frames,
         auto_layout,
         connected_clients,
+        Rc::new(RefCell::new(HashMap::new())),
         session_is_mirrored,
         Some(client_id),
         copy_options,
@@ -303,6 +303,7 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
         draw_pane_frames,
         auto_layout,
         connected_clients,
+        Rc::new(RefCell::new(HashMap::new())),
         session_is_mirrored,
         Some(client_id),
         copy_options,
@@ -400,6 +401,7 @@ fn create_new_tab_with_cell_size(
         draw_pane_frames,
         auto_layout,
         connected_clients,
+        Rc::new(RefCell::new(HashMap::new())),
         session_is_mirrored,
         Some(client_id),
         copy_options,
@@ -910,6 +912,7 @@ pub fn split_in_direction_without_a_connected_client_still_creates_the_pane() {
         NewPanePlacement::Tiled {
             direction: Some(Direction::Down),
             borderless: None,
+            border_style: None,
         },
         None,
         None,
@@ -940,6 +943,7 @@ pub fn split_in_direction_without_a_connected_client_splits_the_existing_pane() 
         NewPanePlacement::Tiled {
             direction: Some(Direction::Right),
             borderless: None,
+            border_style: None,
         },
         None,
         None,
@@ -1017,6 +1021,185 @@ pub fn cannot_split_panes_horizontally_when_active_pane_has_fixed_rows() {
     tab.horizontal_split(PaneId::Terminal(3), None, 1, None, None)
         .unwrap();
     assert_eq!(tab.tiled_panes.panes.len(), 2, "Tab still has two panes");
+}
+
+fn create_tab_with_small_fixed_top_left_pane() -> Tab {
+    let size = Size {
+        cols: 120,
+        rows: 40,
+    };
+    let mut fixed_cols_child = TiledPaneLayout::default();
+    fixed_cols_child.split_size = Some(SplitSize::Fixed(24));
+    let mut top_row = TiledPaneLayout::default();
+    top_row.split_size = Some(SplitSize::Fixed(7));
+    top_row.children_split_direction = SplitDirection::Vertical;
+    top_row.children = vec![fixed_cols_child, TiledPaneLayout::default()];
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Horizontal;
+    initial_layout.children = vec![top_row, TiledPaneLayout::default()];
+    let mut tab = create_new_tab_with_layout(size, initial_layout);
+    tab.focus_pane_with_id(PaneId::Terminal(0), false, false, 1)
+        .unwrap();
+    tab
+}
+
+fn tiled_pane_is_stacked(tab: &Tab, pane_id: PaneId) -> bool {
+    tab.tiled_panes
+        .panes
+        .get(&pane_id)
+        .unwrap()
+        .position_and_size()
+        .is_stacked()
+}
+
+#[test]
+pub fn new_pane_next_to_small_fixed_pane_keeps_it_unstacked() {
+    let mut tab = create_tab_with_small_fixed_top_left_pane();
+    tab.new_pane(
+        PaneId::Terminal(3),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(1),
+        None,
+    )
+    .unwrap();
+    assert!(
+        tab.tiled_panes.panes.contains_key(&PaneId::Terminal(3)),
+        "new pane was added"
+    );
+    assert!(
+        !tiled_pane_is_stacked(&tab, PaneId::Terminal(0)),
+        "small fixed pane is not left in a stack"
+    );
+    tab.close_pane(PaneId::Terminal(3), false, None);
+    assert!(
+        !tab.tiled_panes.panes.contains_key(&PaneId::Terminal(3)),
+        "new pane was closed"
+    );
+    assert_eq!(tab.tiled_panes.panes.len(), 3, "original panes remain");
+}
+
+#[test]
+pub fn failed_stacked_pane_on_small_fixed_pane_keeps_it_unstacked() {
+    let mut tab = create_tab_with_small_fixed_top_left_pane();
+    tab.new_pane(
+        PaneId::Terminal(3),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::Stacked {
+            pane_id_to_stack_under: None,
+            borderless: None,
+            border_style: None,
+        },
+        Some(1),
+        None,
+    )
+    .unwrap();
+    assert!(
+        !tiled_pane_is_stacked(&tab, PaneId::Terminal(0)),
+        "small fixed pane is not left in a stack"
+    );
+    tab.close_pane(PaneId::Terminal(1), false, None);
+    assert!(
+        tab.tiled_panes.panes.contains_key(&PaneId::Terminal(0)),
+        "small fixed pane remains"
+    );
+    assert!(
+        !tab.tiled_panes.panes.contains_key(&PaneId::Terminal(1)),
+        "neighbouring pane was closed"
+    );
+}
+
+#[test]
+pub fn moving_suppressed_pane_leaves_tiled_panes_in_place() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
+    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
+        .unwrap();
+    tab.replace_active_pane_with_editor_pane(PaneId::Terminal(3), 1)
+        .unwrap();
+    assert!(
+        tab.suppressed_panes
+            .values()
+            .any(|(_, p)| p.pid() == PaneId::Terminal(2)),
+        "pane is suppressed"
+    );
+    assert!(
+        !tab.tiled_panes.panes.contains_key(&PaneId::Terminal(2)),
+        "suppressed pane is not tiled"
+    );
+    let geoms_before: Vec<_> = tab
+        .tiled_panes
+        .panes
+        .iter()
+        .map(|(id, p)| (*id, p.position_and_size()))
+        .collect();
+    tab.move_pane(PaneId::Terminal(2));
+    let geoms_after: Vec<_> = tab
+        .tiled_panes
+        .panes
+        .iter()
+        .map(|(id, p)| (*id, p.position_and_size()))
+        .collect();
+    assert_eq!(geoms_before, geoms_after, "tiled panes did not move");
+}
+
+#[test]
+pub fn moving_pane_hidden_by_fullscreen_keeps_both_panes() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let stacked_resize = false;
+    let mut tab = create_new_tab(size, stacked_resize);
+    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
+        .unwrap();
+    tab.toggle_active_pane_fullscreen(1);
+    let search_backwards = false;
+    tab.tiled_panes
+        .move_pane(search_backwards, PaneId::Terminal(1));
+    tab.tiled_panes
+        .move_pane(!search_backwards, PaneId::Terminal(1));
+    assert_eq!(tab.tiled_panes.panes.len(), 2, "both panes remain");
+}
+
+#[test]
+pub fn closing_pane_next_to_stack_without_flexible_pane_removes_it() {
+    let mut tab = create_tab_with_small_fixed_top_left_pane();
+    tab.focus_pane_with_id(PaneId::Terminal(2), false, false, 1)
+        .unwrap();
+    tab.new_pane(
+        PaneId::Terminal(3),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(1),
+        None,
+    )
+    .unwrap();
+    {
+        let small_fixed_pane = tab.tiled_panes.panes.get_mut(&PaneId::Terminal(0)).unwrap();
+        let mut geom = small_fixed_pane.position_and_size();
+        geom.stacked = Some(999);
+        small_fixed_pane.set_geom(geom);
+    }
+    tab.close_pane(PaneId::Terminal(3), false, None);
+    assert!(
+        !tab.tiled_panes.panes.contains_key(&PaneId::Terminal(3)),
+        "pane was closed"
+    );
+    assert_eq!(tab.tiled_panes.panes.len(), 3, "original panes remain");
 }
 
 #[test]

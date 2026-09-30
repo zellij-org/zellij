@@ -1,6 +1,5 @@
 ---
 source: zellij-utils/src/session_serialization.rs
-assertion_line: 1929
 expression: kdl.0
 ---
 layout {
@@ -61,6 +60,7 @@ layout {
                 width 10
                 x 0
                 y 70
+                borderless true
             }
             pane name="my cool \\ \"pane_title\"" focus=true contents_file="initial_contents_1" {
                 height 10
@@ -71,4 +71,3 @@ layout {
         }
     }
 }
-

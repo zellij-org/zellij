@@ -12,6 +12,7 @@ pub mod test_env;
 
 pub use client_screen::{
     col, AnsiCode, CellStyle, ClientScreen, Coord, CoordBuilder, CursorPosition, GridSnapshot,
+    HostTerminal,
 };
 pub use fake_pty::FakePtyHandle;
 pub use harness::{

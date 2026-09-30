@@ -83,18 +83,19 @@ impl RawFdAsyncReader {
 
 #[async_trait]
 impl AsyncReader for RawFdAsyncReader {
-    async fn read(&mut self, buf: &mut [u8]) -> Result<usize, io::Error> {
+    async fn read_chunk(&mut self, max: usize) -> Result<Vec<u8>, io::Error> {
         let async_fd = self.get_async_fd()?;
         loop {
             let mut guard = async_fd.readable().await?;
             match guard.try_io(|inner| {
+                let mut buf = vec![0u8; max];
                 let fd = inner.get_ref().as_raw_fd();
                 let ret =
                     unsafe { libc::read(fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) };
                 if ret < 0 {
                     Err(io::Error::last_os_error())
                 } else {
-                    Ok(ret as usize)
+                    Ok(buf[..ret as usize].to_vec())
                 }
             }) {
                 Ok(result) => return result,
@@ -469,7 +470,43 @@ mod tests {
     use super::*;
     use nix::fcntl::{fcntl, FcntlArg, OFlag};
     use nix::sys::termios;
-    use std::io::Read;
+    use std::io::{Read, Write};
+
+    #[test]
+    fn raw_fd_reader_returns_exact_bytes_in_order() {
+        let mut fds = [0 as libc::c_int; 2];
+        assert_eq!(unsafe { libc::pipe(fds.as_mut_ptr()) }, 0);
+        let mut writer = unsafe { File::from_raw_fd(fds[1]) };
+        let mut reader = RawFdAsyncReader::new(fds[0]).expect("reader");
+
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        rt.block_on(async {
+            writer.write_all(b"hello").unwrap();
+            let chunk = reader.read_chunk(65536).await.unwrap();
+            assert_eq!(chunk, b"hello");
+            assert_eq!(chunk.capacity(), chunk.len());
+
+            writer.write_all(b"abc").unwrap();
+            writer.write_all(b"def").unwrap();
+            writer.write_all(b"ghij").unwrap();
+            let mut collected = Vec::new();
+            while collected.len() < 10 {
+                let chunk = reader.read_chunk(4).await.unwrap();
+                assert!(!chunk.is_empty() && chunk.len() <= 4);
+                assert_eq!(chunk.capacity(), chunk.len());
+                collected.extend_from_slice(&chunk);
+            }
+            assert_eq!(collected, b"abcdefghij");
+
+            drop(writer);
+            let eof = reader.read_chunk(65536).await.unwrap();
+            assert!(eof.is_empty());
+        });
+    }
 
     /// Verify that `try_write_to_fd` writes as many bytes as the kernel will
     /// accept in one pass and returns a partial count (not an error) when the

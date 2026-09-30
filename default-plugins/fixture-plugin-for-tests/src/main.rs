@@ -75,6 +75,10 @@ impl ZellijPlugin for State {
             .get("subscribe_mode_update")
             .map(|v| v == "true")
             .unwrap_or(false);
+        let should_subscribe_nested_session_events = configuration
+            .get("subscribe_nested_session_events")
+            .map(|v| v == "true")
+            .unwrap_or(false);
         self.configuration = configuration;
         subscribe(&[
             EventType::InputReceived,
@@ -93,6 +97,12 @@ impl ZellijPlugin for State {
         }
         if should_subscribe_mode_update {
             subscribe(&[EventType::ModeUpdate]);
+        }
+        if should_subscribe_nested_session_events {
+            subscribe(&[
+                EventType::NestedSessionModeUpdate,
+                EventType::NestedSessionEnded,
+            ]);
         }
         watch_filesystem();
     }
@@ -945,7 +955,52 @@ impl ZellijPlugin for State {
                 {
                     focus_last_pane()
                 },
+                BareKey::Char('m')
+                    if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Alt]) =>
+                {
+                    let skip_nested_keybinds = self
+                        .configuration
+                        .get("skip_nested_keybinds_request")
+                        .map(|v| v == "true")
+                        .unwrap_or(false);
+                    if !skip_nested_keybinds {
+                        self.explicit_string_to_render =
+                            Some(match get_nested_session_keybinds(PaneId::Terminal(1)) {
+                                Ok(nested_session_keybinds) => format!(
+                                    "Nested keybinds ok: path={:?}, mode={:?}, base_mode={:?}, generation={}, bindings={}",
+                                    nested_session_keybinds.session_path,
+                                    nested_session_keybinds.mode,
+                                    nested_session_keybinds.base_mode,
+                                    nested_session_keybinds.keybinds_generation,
+                                    nested_session_keybinds
+                                        .keybinds
+                                        .iter()
+                                        .map(|(_mode, bindings)| bindings.len())
+                                        .sum::<usize>()
+                                ),
+                                Err(e) => format!("Nested keybinds error: {:?}", e),
+                            });
+                    }
+                },
                 _ => {},
+            },
+            Event::NestedSessionModeUpdate {
+                pane_id,
+                session_path,
+                mode,
+                keybinds_generation,
+                ..
+            } => {
+                self.explicit_string_to_render = Some(format!(
+                    "Nested mode update: pane={:?}, path={:?}, mode={:?}, generation={}",
+                    pane_id, session_path, mode, keybinds_generation
+                ));
+            },
+            Event::NestedSessionEnded { pane_id, reason } => {
+                self.explicit_string_to_render = Some(format!(
+                    "Nested session ended: pane={:?}, reason={:?}",
+                    pane_id, reason
+                ));
             },
             Event::CustomMessage(message, payload) => {
                 if message == "pong" {

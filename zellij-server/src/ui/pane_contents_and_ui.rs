@@ -6,7 +6,7 @@ use crate::ui::boundaries::Boundaries;
 use crate::ui::pane_boundaries_frame::{FrameParams, StackListEntry};
 use crate::ClientId;
 use std::collections::{HashMap, HashSet};
-use zellij_utils::data::{client_id_to_colors, InputMode, PaletteColor, Style};
+use zellij_utils::data::{client_slot_to_colors, BorderStyle, InputMode, PaletteColor, Style};
 use zellij_utils::errors::prelude::*;
 use zellij_utils::pane_size::PaneGeom;
 
@@ -25,6 +25,7 @@ pub struct PaneContentsAndUi<'a> {
     output: &'a mut Output,
     style: Style,
     focused_clients: Vec<ClientId>,
+    client_display_slots: HashMap<ClientId, usize>,
     multiple_users_exist_in_session: bool,
     z_index: Option<usize>,
     pane_is_stacked_under: bool,
@@ -62,6 +63,7 @@ impl<'a> PaneContentsAndUi<'a> {
         mouse_scroll_resize: bool,
         mouse_hover_tips: bool,
         dimmed_for_clients: HashSet<ClientId>,
+        client_display_slots: &HashMap<ClientId, usize>,
     ) -> Self {
         let mut focused_clients: Vec<ClientId> = active_panes
             .iter()
@@ -69,6 +71,7 @@ impl<'a> PaneContentsAndUi<'a> {
             .map(|(c_id, _p_id)| *c_id)
             .collect();
         focused_clients.sort_unstable();
+        let client_display_slots = client_display_slots.clone();
         let mouse_is_hovering_over_pane_for_clients = mouse_hover_pane_id
             .iter()
             .filter_map(|(client_id, pane_id)| {
@@ -84,6 +87,7 @@ impl<'a> PaneContentsAndUi<'a> {
             output,
             style,
             focused_clients,
+            client_display_slots,
             multiple_users_exist_in_session,
             z_index,
             pane_is_stacked_under,
@@ -102,6 +106,12 @@ impl<'a> PaneContentsAndUi<'a> {
             mouse_hover_tips,
             dimmed_for_clients,
         }
+    }
+    fn display_slot_of(&self, client_id: ClientId) -> usize {
+        self.client_display_slots
+            .get(&client_id)
+            .copied()
+            .unwrap_or(0)
     }
     fn frame_is_dimmed_for_client(&self, client_id: ClientId) -> bool {
         self.dimmed_for_clients.contains(&client_id) && !self.focused_clients.contains(&client_id)
@@ -256,8 +266,8 @@ impl<'a> PaneContentsAndUi<'a> {
                 .with_context(|| {
                     format!("failed to render fake cursor if needed for client {client_id}")
                 })?;
-            if let Some(colors) = client_id_to_colors(
-                *fake_cursor_client_id,
+            if let Some(colors) = client_slot_to_colors(
+                self.display_slot_of(*fake_cursor_client_id),
                 self.style.colors.multiplayer_user_colors,
             ) {
                 let cursor_is_visible = self
@@ -358,12 +368,15 @@ impl<'a> PaneContentsAndUi<'a> {
         });
         let frame_is_dimmed = self.frame_is_dimmed_for_client(client_id);
         let guest_choice_indicator = self.pane.guest_choice_indicator(client_id);
+        let border_style = self.border_style(pane_is_floating);
         let frame_params = if session_is_mirrored {
             FrameParams {
                 focused_client,
                 is_main_client: pane_focused_for_client_id,
                 other_focused_clients: vec![],
+                other_focused_client_slots: vec![],
                 style: self.style,
+                border_style,
                 color: frame_color.map(|c| c.0),
                 other_cursors_exist_in_session: false,
                 pane_is_stacked_over: self.pane_is_stacked_over,
@@ -391,8 +404,13 @@ impl<'a> PaneContentsAndUi<'a> {
             FrameParams {
                 focused_client,
                 is_main_client: pane_focused_for_client_id,
+                other_focused_client_slots: other_focused_clients
+                    .iter()
+                    .map(|c_id| self.display_slot_of(*c_id))
+                    .collect(),
                 other_focused_clients,
                 style: self.style,
+                border_style,
                 color: frame_color.map(|c| c.0),
                 other_cursors_exist_in_session: self.multiple_users_exist_in_session,
                 pane_is_stacked_over: self.pane_is_stacked_over,
@@ -437,6 +455,14 @@ impl<'a> PaneContentsAndUi<'a> {
 
         Ok(())
     }
+    pub fn border_style(&self, pane_is_floating: bool) -> BorderStyle {
+        let base = if pane_is_floating {
+            self.style.floating_border_style
+        } else {
+            self.style.border_style
+        };
+        self.pane.border_style_override().apply_to(base)
+    }
     pub fn render_pane_boundaries(
         &self,
         client_id: ClientId,
@@ -447,9 +473,11 @@ impl<'a> PaneContentsAndUi<'a> {
         pane_is_on_bottom_of_stack: bool,
     ) {
         let color = self.frame_color(client_id, client_mode, session_is_mirrored);
+        let pane_is_floating = false;
         boundaries.add_rect(
             self.pane.as_ref(),
             color,
+            self.border_style(pane_is_floating),
             pane_is_on_top_of_stack,
             pane_is_on_bottom_of_stack,
             self.pane_is_stacked_under,
@@ -483,8 +511,8 @@ impl<'a> PaneContentsAndUi<'a> {
                     if session_is_mirrored || !self.multiple_users_exist_in_session {
                         Some((self.style.colors.frame_selected.base, 3))
                     } else {
-                        let colors = client_id_to_colors(
-                            client_id,
+                        let colors = client_slot_to_colors(
+                            self.display_slot_of(client_id),
                             self.style.colors.multiplayer_user_colors,
                         );
                         colors.map(|colors| (colors.0, 3))

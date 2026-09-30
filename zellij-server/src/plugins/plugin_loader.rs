@@ -1,5 +1,6 @@
 use crate::plugins::plugin_map::{
-    PluginEnv, PluginMap, RunningPlugin, VecDequeInputStream, WriteOutputStream,
+    PluginEnv, PluginMap, PluginMetadata, RunningPlugin, SharedEnv, VecDequeInputStream,
+    WriteOutputStream,
 };
 use crate::plugins::plugin_worker::{plugin_worker, RunningWorker};
 use crate::plugins::wasm_bridge::{LoadingContext, PluginCache};
@@ -20,13 +21,13 @@ use wasmi_wasi::WasiCtx;
 
 use crate::{
     logging_pipe::LoggingPipe, thread_bus::ThreadSenders,
-    ui::loading_indication::LoadingIndication, ClientId,
+    ui::loading_indication::LoadingIndication, ClientId, SharedKeybinds,
 };
 
 use zellij_utils::plugin_api::action::ProtobufPluginConfiguration;
 use zellij_utils::{
     consts::ZELLIJ_TMP_DIR, data::InputMode, errors::prelude::*, input::command::TerminalAction,
-    input::keybinds::Keybinds, input::plugins::PluginConfig, pane_size::Size,
+    input::plugins::PluginConfig, pane_size::Size,
 };
 
 /// Open a directory as a `File` handle for WASI pre-opening.
@@ -73,7 +74,7 @@ pub struct PluginLoader<'a> {
     default_shell: Option<TerminalAction>,
     layout_dir: Option<PathBuf>,
     default_mode: InputMode,
-    keybinds: Keybinds,
+    keybinds: SharedKeybinds,
     plugin_dir: PathBuf,
     size: Size,
     loading_indication: LoadingIndication,
@@ -132,6 +133,7 @@ impl<'a> PluginLoader<'a> {
         self
     }
     pub fn start_plugin(&mut self) -> Result<()> {
+        self.record_plugin_metadata();
         let module = if self.skip_cache {
             self.interpret_module()?
         } else {
@@ -139,9 +141,33 @@ impl<'a> PluginLoader<'a> {
                 .or_else(|_e| self.interpret_module())?
         };
         let (store, instance) = self.create_plugin_environment(module)?;
-        self.load_plugin_instance(store, &instance)?;
+        self.load_plugin_instance(store, &instance, false)?;
         self.clone_instance_for_other_clients()?;
         Ok(())
+    }
+    pub fn start_shared_plugin(&mut self) -> Result<Arc<Mutex<RunningPlugin>>> {
+        let module = if self.skip_cache {
+            self.interpret_module()?
+        } else {
+            self.load_module_from_memory()
+                .or_else(|_e| self.interpret_module())?
+        };
+        let (mut store, instance) = self.create_plugin_environment(module)?;
+        store.data_mut().shared = Some(SharedEnv::default());
+        self.load_plugin_instance(store, &instance, true)
+    }
+    fn record_plugin_metadata(&mut self) {
+        self.plugin_map.insert_metadata(
+            self.plugin_id,
+            PluginMetadata {
+                plugin_config: self.plugin_config.clone(),
+                tab_index: self.tab_index,
+                rows: self.size.rows,
+                columns: self.size.cols,
+                cwd: self.plugin_cwd.clone(),
+                is_background: self.tab_index.is_none(),
+            },
+        );
     }
     fn interpret_module(&mut self) -> Result<Module> {
         self.loading_indication.override_previous_error();
@@ -169,7 +195,8 @@ impl<'a> PluginLoader<'a> {
         &mut self,
         mut store: Store<PluginEnv>,
         instance: &Instance,
-    ) -> Result<()> {
+        shared: bool,
+    ) -> Result<Arc<Mutex<RunningPlugin>>> {
         let err_context = || format!("failed to load plugin from instance {instance:#?}");
         let main_user_instance = instance.clone();
         let start_function = instance
@@ -206,13 +233,18 @@ impl<'a> PluginLoader<'a> {
             self.size.rows,
             self.size.cols,
         )));
-        self.plugin_map.insert(
-            self.plugin_id,
-            self.client_id,
-            plugin.clone(),
-            subscriptions,
-            workers,
-        );
+        if shared {
+            self.plugin_map
+                .insert_shared(self.plugin_id, (plugin.clone(), subscriptions, workers));
+        } else {
+            self.plugin_map.insert(
+                self.plugin_id,
+                self.client_id,
+                plugin.clone(),
+                subscriptions,
+                workers,
+            );
+        }
 
         start_function
             .call(&mut plugin.lock().unwrap().store, ())
@@ -231,7 +263,7 @@ impl<'a> PluginLoader<'a> {
             .call(&mut plugin.lock().unwrap().store, ())
             .with_context(err_context)?;
 
-        Ok(())
+        Ok(plugin)
     }
     pub fn create_plugin_environment(
         &self,
@@ -266,7 +298,6 @@ impl<'a> PluginLoader<'a> {
             wasi_ctx,
             plugin_own_data_dir: self.plugin_own_data_dir.clone(),
             plugin_own_cache_dir: self.plugin_own_cache_dir.clone(),
-            tab_index: self.tab_index,
             path_to_default_shell: self.path_to_default_shell.clone(),
             default_shell: self.default_shell.clone(),
             plugin_cwd: self.plugin_cwd.clone(),
@@ -281,6 +312,7 @@ impl<'a> PluginLoader<'a> {
             stdin_pipe,
             stdout_pipe,
             store_limits: create_optimized_store_limits(),
+            shared: None,
         };
         let mut store = Store::new(&self.engine, plugin_env);
 
@@ -378,7 +410,6 @@ impl<'a> PluginLoader<'a> {
             wasi_ctx,
             plugin_own_data_dir: self.plugin_own_data_dir.clone(),
             plugin_own_cache_dir: self.plugin_own_cache_dir.clone(),
-            tab_index: self.tab_index,
             path_to_default_shell: self.path_to_default_shell.clone(),
             default_shell: self.default_shell.clone(),
             plugin_cwd: self.plugin_cwd.clone(),
@@ -393,6 +424,7 @@ impl<'a> PluginLoader<'a> {
             stdin_pipe,
             stdout_pipe,
             store_limits: create_optimized_store_limits(),
+            shared: None,
         };
         let mut store = Store::new(&self.engine, plugin_env);
 

@@ -97,6 +97,11 @@ pub fn zellij_server_listener(
                             colors: palette,
                             rounded_corners: config.ui.pane_frames.rounded_corners,
                             hide_session_name: config.ui.pane_frames.hide_session_name,
+                            border_style: config.ui.pane_frames.resolved_border_style(),
+                            floating_border_style: config
+                                .ui
+                                .pane_frames
+                                .resolved_floating_border_style(),
                         },
                     };
 

@@ -72,6 +72,8 @@ enum EventType {
     SoftKeyboardVisibilityChanged = 47;
     HintText = 48;
     ActivePaneScroll = 49;
+    NestedSessionModeUpdate = 50;
+    NestedSessionEnded = 51;
 }
 
 message EventNameList {
@@ -123,6 +125,50 @@ message Event {
     SoftKeyboardVisibilityChangedPayload soft_keyboard_visibility_changed_payload = 41;
     HintTextPayload hint_text_payload = 42;
     ActivePaneScrollPayload active_pane_scroll_payload = 43;
+    NestedSessionModeUpdatePayload nested_session_mode_update_payload = 44;
+    NestedSessionEndedPayload nested_session_ended_payload = 45;
+  }
+}
+
+message NestedSessionModeUpdatePayload {
+  PaneId pane_id = 1;
+  repeated string session_path = 2;
+  input_mode.InputMode mode = 3;
+  optional input_mode.InputMode base_mode = 4;
+  uint64 keybinds_generation = 5;
+}
+
+enum NestedSessionEndReason {
+  NestedSessionExited = 0;
+  NestedSessionUnresponsive = 1;
+}
+
+message NestedSessionEndedPayload {
+  PaneId pane_id = 1;
+  NestedSessionEndReason reason = 2;
+}
+
+enum NestedSessionKeybindsError {
+  NestedKeybindsNotANestedSession = 0;
+  NestedKeybindsNotSupported = 1;
+  NestedKeybindsGuestUnresponsive = 2;
+  NestedKeybindsGuestGone = 3;
+  NestedKeybindsTooLarge = 4;
+  NestedKeybindsTimeout = 5;
+}
+
+message NestedSessionKeybindsResult {
+  repeated string session_path = 1;
+  input_mode.InputMode mode = 2;
+  optional input_mode.InputMode base_mode = 3;
+  repeated InputModeKeybinds keybinds = 4;
+  uint64 keybinds_generation = 5;
+}
+
+message NestedSessionKeybindsResponse {
+  oneof response {
+    NestedSessionKeybindsResult ok = 1;
+    NestedSessionKeybindsError err = 2;
   }
 }
 
@@ -465,6 +511,7 @@ message PaneInfo {
     repeated IndexInPaneGroup index_in_pane_group = 23;
     optional string default_fg = 24;
     optional string default_bg = 25;
+    optional string nested_session_name = 26;
 }
 
 message IndexInPaneGroup {
@@ -492,6 +539,7 @@ message TabInfo {
     uint32 tab_id = 17;
     bool has_bell_notification = 18;
     bool is_flashing_bell = 19;
+    repeated uint32 other_focused_client_slots = 20;
 }
 
 message ModeUpdatePayload {

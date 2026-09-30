@@ -32,6 +32,7 @@ message ClientToServerMsg {
     RequestSessionListMsg request_session_list = 25;
     SetMobileRenderPreferencesMsg set_mobile_render_preferences = 26;
     HostTerminalFocusChangedMsg host_terminal_focus_changed = 27;
+    KittyZlibSupportMsg kitty_zlib_support = 28;
   }
 }
 
@@ -146,6 +147,10 @@ message NestedSessionFrameFromHostMsg {
 }
 
 message KittyGraphicsSupportMsg {
+  bool supported = 1;
+}
+
+message KittyZlibSupportMsg {
   bool supported = 1;
 }
 

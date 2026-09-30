@@ -11,7 +11,7 @@ use zellij_utils::ipc::{
 use zellij_utils::pane_size::Size;
 use zellij_utils::shared::default_palette;
 
-use crate::client_screen::ClientScreen;
+use crate::client_screen::{ClientScreen, HostTerminal};
 
 type ServerSpawner = Box<dyn FnOnce(PathBuf) + Send>;
 
@@ -120,6 +120,7 @@ impl FakeClientOsApi {
             env: Arc::new(Mutex::new(env)),
             received_server_messages: received_server_messages.clone(),
         };
+        client_screen.set_host_terminal(HostTerminal::Basic, stdin_tx.clone());
         let fake_client_handle = FakeClientHandle {
             client_screen,
             size,

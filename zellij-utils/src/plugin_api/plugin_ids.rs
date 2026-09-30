@@ -1,7 +1,7 @@
 pub use super::generated_api::api::plugin_ids::{
     PluginIds as ProtobufPluginIds, ZellijVersion as ProtobufZellijVersion,
 };
-use crate::data::PluginIds;
+use crate::data::{ClientId, PluginIds};
 
 use std::convert::TryFrom;
 use std::path::PathBuf;
@@ -13,7 +13,7 @@ impl TryFrom<ProtobufPluginIds> for PluginIds {
             plugin_id: protobuf_plugin_ids.plugin_id as u32,
             zellij_pid: protobuf_plugin_ids.zellij_pid as u32,
             initial_cwd: PathBuf::from(protobuf_plugin_ids.initial_cwd),
-            client_id: protobuf_plugin_ids.client_id as u16,
+            client_id: protobuf_plugin_ids.client_id as ClientId,
         })
     }
 }
