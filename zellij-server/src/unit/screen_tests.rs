@@ -807,7 +807,7 @@ impl MockScreen {
                         .expect("failed to receive event on channel");
                     received_background_jobs.lock().unwrap().push(event.clone());
                     match event {
-                        BackgroundJob::RenderToClients => {
+                        BackgroundJob::RenderToClients | BackgroundJob::RenderToClientsNow => {
                             let _ = to_screen.send(ScreenInstruction::RenderToClients);
                         },
                         BackgroundJob::Exit => {
