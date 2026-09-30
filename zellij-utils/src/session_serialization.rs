@@ -215,6 +215,7 @@ fn serialize_tiled_pane(
         let mut tiled_pane_node_children = KdlDocument::new();
         serialize_args(args, &mut tiled_pane_node_children);
         serialize_start_suspended(&command, &mut tiled_pane_node_children);
+        serialize_shell_return(&layout.run, &mut tiled_pane_node_children);
         serialize_plugin(plugin, plugin_config, &mut tiled_pane_node_children);
         if layout.children.is_empty() && layout.external_children_index.is_some() {
             tiled_pane_node_children
@@ -524,6 +525,14 @@ fn border_style_properties(border_style: &BorderStyleOverride) -> Vec<(&'static 
     properties
 }
 
+fn serialize_shell_return(run: &Option<Run>, children: &mut KdlDocument) {
+    if matches!(run, Some(Run::Command(command)) if command.drop_to_shell_on_exit) {
+        let mut node = KdlNode::new("drop_to_shell_on_exit");
+        node.entries_mut().push(KdlEntry::new(true));
+        children.nodes_mut().push(node);
+    }
+}
+
 fn serialize_start_suspended(command: &Option<String>, pane_node_children: &mut KdlDocument) {
     if command.is_some() {
         let mut start_suspended_node = KdlNode::new("start_suspended");
@@ -722,6 +731,7 @@ fn serialize_floating_pane(
             .push(KdlEntry::new_prop("default_bg", bg.to_owned()));
     }
     serialize_start_suspended(&command, &mut floating_pane_node_children);
+    serialize_shell_return(&layout.run, &mut floating_pane_node_children);
     serialize_floating_layout_attributes(&layout, &mut floating_pane_node_children);
     serialize_args(args, &mut floating_pane_node_children);
     serialize_plugin(plugin, plugin_config, &mut floating_pane_node_children);
@@ -909,7 +919,11 @@ fn get_floating_panes_layout_from_panegeoms(
         .map(|m| {
             let mut run = m.run.clone();
             if let Some(cwd) = &m.cwd {
-                run.as_mut().map(|r| r.add_cwd(cwd));
+                if let Some(run) = run.as_mut() {
+                    run.add_cwd(cwd);
+                } else {
+                    run = Some(Run::Cwd(cwd.clone()));
+                }
             }
             FloatingPaneLayout {
                 name: m.title.clone(),
@@ -1442,6 +1456,20 @@ mod tests {
             }
         "#]]
         .assert_eq(&kdl.0);
+    }
+
+    #[test]
+    fn floating_shell_preserves_cwd_when_saved_and_restored() {
+        let cwd = PathBuf::from("/work/my project");
+        let panes = get_floating_panes_layout_from_panegeoms(&vec![PaneLayoutManifest {
+            cwd: Some(cwd.clone()),
+            ..Default::default()
+        }]);
+        let node = serialize_floating_pane(&panes[0], &mut BTreeMap::new());
+        let raw = format!("layout {{\n pane\n floating_panes {{\n{node}\n}}\n}}\n");
+        let parsed = Layout::from_kdl(&raw, None, None, None).unwrap();
+        let run = &parsed.template.unwrap().1[0].run;
+        assert_eq!(run.as_ref().and_then(|r| r.get_cwd()), Some(cwd));
     }
 
     #[test]

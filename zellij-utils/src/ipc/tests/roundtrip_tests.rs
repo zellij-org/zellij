@@ -2065,6 +2065,7 @@ fn test_client_messages() {
                     hold_on_start: false,
                     originating_plugin: None,
                     use_terminal_title: true,
+                    drop_to_shell_on_exit: true,
                 })),
                 ..Default::default()
             }),
@@ -2096,6 +2097,7 @@ fn test_client_messages() {
                         context: empty_context.clone(),
                     }),
                     use_terminal_title: true,
+                    drop_to_shell_on_exit: true,
                 })),
                 ..Default::default()
             }),
