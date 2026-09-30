@@ -25,7 +25,7 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicUsize, Ordering},
     Arc, Mutex,
 };
 use std::thread;
@@ -66,6 +66,7 @@ pub enum BackgroundJob {
     ),
     HighlightPanesWithMessage(Vec<PaneId>, String),
     RenderToClients,
+    RenderToClientsNow,
     QueryZellijWebServerStatus,
     ClearHelpText {
         client_id: ClientId,
@@ -96,7 +97,9 @@ impl From<&BackgroundJob> for BackgroundJobContext {
             BackgroundJob::RunCommand(..) => BackgroundJobContext::RunCommand,
             BackgroundJob::WebRequest(..) => BackgroundJobContext::WebRequest,
             BackgroundJob::ReportPluginList(..) => BackgroundJobContext::ReportPluginList,
-            BackgroundJob::RenderToClients => BackgroundJobContext::ReportPluginList,
+            BackgroundJob::RenderToClients | BackgroundJob::RenderToClientsNow => {
+                BackgroundJobContext::RenderToClients
+            },
             BackgroundJob::HighlightPanesWithMessage(..) => {
                 BackgroundJobContext::HighlightPanesWithMessage
             },
@@ -140,15 +143,27 @@ static DEFAULT_SERIALIZATION_INTERVAL: u64 = 60000;
 pub const RENDER_QUIET_PERIOD: Duration = Duration::from_millis(1);
 pub const RENDER_MAX_DELAY: Duration = Duration::from_millis(8);
 
+static IMMEDIATE_RENDER_REQUESTS: AtomicUsize = AtomicUsize::new(0);
+
+pub fn immediate_render_requests() -> usize {
+    IMMEDIATE_RENDER_REQUESTS.load(Ordering::Relaxed)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct PendingRender {
     first_request: Instant,
     last_request: Instant,
+    immediate_at: Option<Instant>,
 }
 
 impl PendingRender {
     fn due(&self) -> Instant {
-        (self.last_request + RENDER_QUIET_PERIOD).min(self.first_request + RENDER_MAX_DELAY)
+        let due =
+            (self.last_request + RENDER_QUIET_PERIOD).min(self.first_request + RENDER_MAX_DELAY);
+        match self.immediate_at {
+            Some(immediate_at) => due.min(immediate_at),
+            None => due,
+        }
     }
 }
 
@@ -169,8 +184,25 @@ impl RenderSchedule {
                 self.pending = Some(PendingRender {
                     first_request: now,
                     last_request: now,
+                    immediate_at: None,
                 });
                 true
+            },
+        }
+    }
+
+    fn request_now(&mut self, now: Instant) {
+        match self.pending.as_mut() {
+            Some(pending) => {
+                pending.last_request = now;
+                pending.immediate_at = Some(now);
+            },
+            None => {
+                self.pending = Some(PendingRender {
+                    first_request: now,
+                    last_request: now,
+                    immediate_at: Some(now),
+                });
             },
         }
     }
@@ -575,6 +607,12 @@ pub(crate) fn background_jobs_main(
                 if lock.lock().unwrap().request(Instant::now()) {
                     wake.notify_one();
                 }
+            },
+            BackgroundJob::RenderToClientsNow => {
+                IMMEDIATE_RENDER_REQUESTS.fetch_add(1, Ordering::Relaxed);
+                let (lock, wake) = &*render_schedule;
+                lock.lock().unwrap().request_now(Instant::now());
+                wake.notify_one();
             },
             BackgroundJob::HighlightPanesWithMessage(pane_ids, text) => {
                 if job_already_running(job, &mut running_jobs) {
@@ -1203,5 +1241,47 @@ mod render_schedule_tests {
         schedule.request(start);
         schedule.exiting = true;
         assert_eq!(schedule.step(start + RENDER_MAX_DELAY), RenderStep::Exit);
+    }
+
+    #[test]
+    fn an_immediate_request_on_an_idle_schedule_renders_at_once() {
+        let start = Instant::now();
+        let mut schedule = RenderSchedule::default();
+        schedule.request_now(start);
+        assert_eq!(schedule.step(start), RenderStep::Render);
+        assert_eq!(schedule.step(start), RenderStep::Idle);
+    }
+
+    #[test]
+    fn an_immediate_request_makes_a_pending_render_due_at_once() {
+        let start = Instant::now();
+        let mut schedule = RenderSchedule::default();
+        assert!(schedule.request(start));
+        let later = start + RENDER_QUIET_PERIOD / 4;
+        assert_eq!(
+            schedule.step(later),
+            RenderStep::WaitFor(RENDER_QUIET_PERIOD * 3 / 4)
+        );
+        schedule.request_now(later);
+        assert_eq!(schedule.step(later), RenderStep::Render);
+        assert_eq!(schedule.step(later), RenderStep::Idle);
+    }
+
+    #[test]
+    fn a_normal_request_after_an_immediate_render_waits_for_the_quiet_period_again() {
+        let start = Instant::now();
+        let mut schedule = RenderSchedule::default();
+        schedule.request_now(start);
+        assert_eq!(schedule.step(start), RenderStep::Render);
+        let later = start + RENDER_QUIET_PERIOD;
+        assert!(schedule.request(later));
+        assert_eq!(
+            schedule.step(later),
+            RenderStep::WaitFor(RENDER_QUIET_PERIOD)
+        );
+        assert_eq!(
+            schedule.step(later + RENDER_QUIET_PERIOD),
+            RenderStep::Render
+        );
     }
 }

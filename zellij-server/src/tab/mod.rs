@@ -37,7 +37,7 @@ use zellij_utils::structured_render::{
 use crate::background_jobs::BackgroundJob;
 use crate::pane_groups::PaneGroups;
 use crate::pty_writer::PtyWriteInstruction;
-use crate::screen::{CopyOptions, GuestModalOutcome, ScreenInstruction};
+use crate::screen::{CopyOptions, GuestModalOutcome, ScreenInstruction, TypedInput};
 use crate::ui::hint_text::{
     held_hint_variants, hover_hint_variants, resize_hint_variants, HintExitStatus,
 };
@@ -326,6 +326,7 @@ pub(crate) struct Tab {
     mouse_last_pane_id: HashMap<ClientId, PaneId>,
     mouse_help_text_visible: HashMap<ClientId, bool>,
     last_mouse_activity_time: HashMap<ClientId, Instant>,
+    typed_input: TypedInput,
     last_hint_text: HashMap<ClientId, BTreeMap<usize, StyledText>>,
     last_active_pane_scroll: HashMap<ClientId, Option<(usize, usize)>>,
     current_pane_group: Rc<RefCell<PaneGroups>>,
@@ -1115,6 +1116,7 @@ impl Tab {
             mouse_last_pane_id: HashMap::new(),
             mouse_help_text_visible: HashMap::new(),
             last_mouse_activity_time: HashMap::new(),
+            typed_input: TypedInput::default(),
             last_hint_text: HashMap::new(),
             last_active_pane_scroll: HashMap::new(),
             current_pane_group,
@@ -3753,6 +3755,7 @@ impl Tab {
             Ok(replaced_pane) => {
                 self.track_stack_list_member_id_swap(pane_id_to_replace, replacement_pane_id);
                 let pane_id = replaced_pane.pid();
+                self.forget_typed_input(pane_id);
                 let _ = self
                     .senders
                     .send_to_pty(PtyInstruction::ClosePane(pane_id, completion_tx));
@@ -4949,6 +4952,9 @@ impl Tab {
                     client_id,
                 ) {
                     Some(AdjustedInput::WriteBytesToTerminal(adjusted_input)) => {
+                        if client_id.is_some() {
+                            self.typed_input.record(active_terminal_id, Instant::now());
+                        }
                         self.senders
                             .send_to_pty_writer(PtyWriteInstruction::Write(
                                 adjusted_input,
@@ -5059,6 +5065,14 @@ impl Tab {
             },
         }
         Ok(should_update_ui)
+    }
+    pub fn output_answers_typed_input(&mut self, terminal_id: u32, now: Instant) -> bool {
+        self.typed_input.output_answers_input(terminal_id, now)
+    }
+    fn forget_typed_input(&mut self, pane_id: PaneId) {
+        if let PaneId::Terminal(terminal_id) = pane_id {
+            self.typed_input.forget(terminal_id);
+        }
     }
     pub fn write_to_pane_id_without_preprocessing(
         &mut self,
@@ -6217,6 +6231,7 @@ impl Tab {
         if self.selecting_with_mouse_in_pane == Some(id) {
             self.selecting_with_mouse_in_pane = None;
         }
+        self.forget_typed_input(id);
         let id_parks_a_different_pane = self.pane_parked_by(&id).is_some();
         if !ignore_suppressed_panes
             && !id_parks_a_different_pane
@@ -6324,6 +6339,7 @@ impl Tab {
         id: PaneId,
         dont_swap_if_suppressed: bool,
     ) -> Option<Box<dyn Pane>> {
+        self.forget_typed_input(id);
         let id_parks_a_different_pane = self.pane_parked_by(&id).is_some();
         if self.pane_is_stack_list_member(&id)
             && (dont_swap_if_suppressed || !id_parks_a_different_pane)

@@ -1899,6 +1899,91 @@ const SERVER_FORWARD_TIMEOUT_MS: u64 = 1000;
 
 const SERVER_CLIPBOARD_FORWARD_TIMEOUT_MS: u64 = 35_000;
 
+pub(crate) const ECHO_WINDOW: Duration = Duration::from_millis(50);
+
+pub(crate) fn answers_typed_input(last_input: Option<Instant>, now: Instant) -> bool {
+    match last_input {
+        Some(last_input) => now.saturating_duration_since(last_input) <= ECHO_WINDOW,
+        None => false,
+    }
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct TypedInput {
+    last_input: HashMap<u32, Instant>,
+}
+
+impl TypedInput {
+    pub fn record(&mut self, terminal_id: u32, now: Instant) {
+        self.last_input.insert(terminal_id, now);
+    }
+
+    pub fn forget(&mut self, terminal_id: u32) {
+        self.last_input.remove(&terminal_id);
+    }
+
+    pub fn output_answers_input(&mut self, terminal_id: u32, now: Instant) -> bool {
+        answers_typed_input(self.last_input.remove(&terminal_id), now)
+    }
+}
+
+#[cfg(test)]
+mod typed_input_tests {
+    use super::*;
+
+    #[test]
+    fn output_within_the_echo_window_answers_typed_input() {
+        let typed_at = Instant::now();
+        assert!(answers_typed_input(
+            Some(typed_at),
+            typed_at + ECHO_WINDOW - Duration::from_millis(1)
+        ));
+    }
+
+    #[test]
+    fn output_after_the_echo_window_does_not_answer_typed_input() {
+        let typed_at = Instant::now();
+        assert!(!answers_typed_input(
+            Some(typed_at),
+            typed_at + ECHO_WINDOW + Duration::from_millis(1)
+        ));
+    }
+
+    #[test]
+    fn output_without_typed_input_does_not_answer_it() {
+        assert!(!answers_typed_input(None, Instant::now()));
+    }
+
+    #[test]
+    fn only_the_first_output_after_a_keystroke_answers_it() {
+        let typed_at = Instant::now();
+        let mut typed_input = TypedInput::default();
+        typed_input.record(7, typed_at);
+        let now = typed_at + Duration::from_millis(1);
+        assert!(typed_input.output_answers_input(7, now));
+        assert!(!typed_input.output_answers_input(7, now));
+    }
+
+    #[test]
+    fn a_keystroke_only_counts_for_the_terminal_it_was_written_to() {
+        let typed_at = Instant::now();
+        let mut typed_input = TypedInput::default();
+        typed_input.record(7, typed_at);
+        let now = typed_at + Duration::from_millis(1);
+        assert!(!typed_input.output_answers_input(8, now));
+        assert!(typed_input.output_answers_input(7, now));
+    }
+
+    #[test]
+    fn a_forgotten_terminal_no_longer_answers_typed_input() {
+        let typed_at = Instant::now();
+        let mut typed_input = TypedInput::default();
+        typed_input.record(7, typed_at);
+        typed_input.forget(7);
+        assert!(!typed_input.output_answers_input(7, typed_at));
+    }
+}
+
 impl Screen {
     /// Creates and returns a new [`Screen`].
     pub fn new(
@@ -9802,6 +9887,7 @@ pub(crate) fn screen_thread_main(
                 let all_tabs = screen.get_tabs_mut();
                 let mut vte_bytes = Some(vte_bytes);
                 let mut title_changed = false;
+                let mut answers_typed_input = false;
                 for tab in all_tabs.values_mut() {
                     if tab.has_terminal_pid(pid) {
                         if let Some(bytes) = vte_bytes.take() {
@@ -9814,6 +9900,8 @@ pub(crate) fn screen_thread_main(
                                 .get_pane_with_id(PaneId::Terminal(pid))
                                 .map(|pane| pane.current_title());
                             title_changed = title_before != title_after;
+                            answers_typed_input =
+                                tab.output_answers_typed_input(pid, Instant::now());
                         }
                         break;
                     }
@@ -9832,10 +9920,12 @@ pub(crate) fn screen_thread_main(
                             .push(ScreenInstruction::PtyBytes(pid, vte_bytes));
                     }
                 }
-                let _ = screen
-                    .bus
-                    .senders
-                    .send_to_background_jobs(BackgroundJob::RenderToClients);
+                let render_request = if answers_typed_input {
+                    BackgroundJob::RenderToClientsNow
+                } else {
+                    BackgroundJob::RenderToClients
+                };
+                let _ = screen.bus.senders.send_to_background_jobs(render_request);
             },
             ScreenInstruction::PluginBytes(mut plugin_render_assets) => {
                 for plugin_render_asset in plugin_render_assets.iter_mut() {
