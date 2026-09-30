@@ -540,6 +540,7 @@ message TabInfo {
     bool has_bell_notification = 18;
     bool is_flashing_bell = 19;
     repeated uint32 other_focused_client_slots = 20;
+    optional style.Styling ui_theme = 21;
 }
 
 message ModeUpdatePayload {

@@ -48,7 +48,7 @@ use zellij_utils::data::{
     NestedSessionEndReason, NestedSessionKeybinds, NestedSessionKeybindsError,
     NestedSessionKeybindsResponse, NewPanePlacement, PaneContents, PaneInfo, PaneListEntry,
     PaneManifest, PaneRenderReport, PaneScrollbackResponse, PluginPermission, RegexHighlight,
-    Resize, ResizeStrategy, SessionInfo, Styling, TabInfo, ThemeHue, WebSharing,
+    Resize, ResizeStrategy, SessionInfo, Styling, TabInfo, ThemeHue, UiThemeTarget, WebSharing,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::actions::Action;
@@ -810,6 +810,7 @@ pub enum ScreenInstruction {
         keybinds: SharedKeybinds,
         default_mode: InputMode,
         theme: Styling,
+        themes: HashMap<String, Styling>,
         /// Resolved styling for `theme_dark`. When both this and
         /// `host_theme_light` are `Some`, Screen auto-switches the active
         /// palette in response to host CSI 2031 / DSR 997 notifications.
@@ -856,6 +857,7 @@ pub enum ScreenInstruction {
         Option<String>,
         Option<NotificationEnd>,
     ),
+    SetUiTheme(UiThemeTarget, Option<String>, Option<NotificationEnd>),
     WriteKeyToPaneId(
         Option<KeyWithModifier>,
         Vec<u8>,
@@ -1248,6 +1250,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::WriteToPaneId(..) => ScreenContext::WriteToPaneId,
             ScreenInstruction::Paste(..) => ScreenContext::Paste,
             ScreenInstruction::SetPaneColor(..) => ScreenContext::SetPaneColor,
+            ScreenInstruction::SetUiTheme(..) => ScreenContext::SetUiTheme,
             ScreenInstruction::WriteKeyToPaneId(..) => ScreenContext::WriteKeyToPaneId,
             ScreenInstruction::CopyTextToClipboard(..) => ScreenContext::CopyTextToClipboard,
             ScreenInstruction::MovePaneWithPaneId(..) => ScreenContext::MovePaneWithPaneId,
@@ -1609,6 +1612,7 @@ pub(crate) struct Screen {
     default_keybinds: SharedKeybinds,
     client_keybinds: BTreeMap<ClientId, SharedKeybinds>,
     style: Style,
+    themes: HashMap<String, Styling>,
     pane_frame_style: PaneFrameStyle,
     auto_layout: bool,
     session_serialization: bool,
@@ -1825,6 +1829,7 @@ impl Screen {
             sixel_host_capabilities: Rc::new(RefCell::new(HashMap::new())),
             client_kitty_host_state: Rc::new(RefCell::new(HashMap::new())),
             style: client_attributes.style,
+            themes: HashMap::new(),
             connected_clients: Rc::new(RefCell::new(HashMap::new())),
             client_display_slots: Rc::new(RefCell::new(HashMap::new())),
             highest_client_id_seen: 0,
@@ -5848,6 +5853,7 @@ impl Screen {
                     && !self.active_tab_ids.values().any(|i| i == &tab.id),
                 is_flashing_bell: tab.tab_bell_flash
                     && !self.active_tab_ids.values().any(|i| i == &tab.id),
+                ui_theme: tab.ui_theme(),
             };
             tab_infos_for_screen_state.insert(tab.position, tab_info_for_screen);
         }
@@ -5895,6 +5901,7 @@ impl Screen {
                     tab_id: tab.id,
                     has_bell_notification: tab.tab_has_pending_bell && *active_tab_index != tab.id,
                     is_flashing_bell: tab.tab_bell_flash && *active_tab_index != tab.id,
+                    ui_theme: tab.ui_theme(),
                 };
                 plugin_tab_updates.push(tab_info_for_plugins);
             }
@@ -7542,6 +7549,41 @@ impl Screen {
         }
         let _ = self.log_and_report_session_state();
     }
+    pub fn set_available_themes(&mut self, themes: HashMap<String, Styling>) {
+        self.themes = themes;
+        for tab in self.tabs.values_mut() {
+            tab.update_ui_themes(&self.themes);
+        }
+    }
+
+    pub fn set_ui_theme(&mut self, target: UiThemeTarget, theme_name: Option<String>) {
+        let styling = theme_name
+            .as_deref()
+            .and_then(|name| self.themes.get(name).copied());
+        if theme_name.is_some() && styling.is_none() {
+            log::warn!(
+                "UI theme '{}' was not found; clearing the target override",
+                theme_name.as_deref().unwrap_or_default()
+            );
+        }
+        match target {
+            UiThemeTarget::Tab(tab_id) => {
+                if let Some(tab) = self.tabs.get_mut(&tab_id) {
+                    tab.set_ui_theme(theme_name, styling);
+                }
+            },
+            UiThemeTarget::Pane(pane_id) => {
+                let pane_id = pane_id.into();
+                for tab in self.tabs.values_mut() {
+                    if tab.has_pane_with_pid(&pane_id) {
+                        tab.set_pane_ui_theme(pane_id, theme_name, styling);
+                        break;
+                    }
+                }
+            },
+        }
+    }
+
     pub fn reconfigure(
         &mut self,
         new_keybinds: SharedKeybinds,
@@ -8382,6 +8424,7 @@ impl Screen {
                     && !self.active_tab_ids.values().any(|i| i == &tab.id),
                 is_flashing_bell: tab.tab_bell_flash
                     && !self.active_tab_ids.values().any(|i| i == &tab.id),
+                ui_theme: tab.ui_theme(),
             }
         })
     }
@@ -8796,6 +8839,12 @@ pub(crate) fn screen_thread_main(
     }
 
     let explicit_theme_hue = config.options.explicit_theme_hue;
+    let themes = config
+        .themes
+        .inner()
+        .iter()
+        .map(|(name, theme)| (name.clone(), theme.palette))
+        .collect();
 
     let config_options = config.options;
     let host_notification_protocol = config_options
@@ -8926,6 +8975,7 @@ pub(crate) fn screen_thread_main(
     screen.default_keybinds = default_keybinds;
     screen.host_theme_dark_styling = host_theme_dark_styling;
     screen.host_theme_light_styling = host_theme_light_styling;
+    screen.set_available_themes(themes);
     screen.paste_buffer_read_enabled = dangerously_enable_paste_buffer_read;
     screen.set_host_notification_protocol(host_notification_protocol);
     if explicit_theme_hue.is_some() {
@@ -12363,6 +12413,7 @@ pub(crate) fn screen_thread_main(
                 keybinds,
                 default_mode,
                 theme,
+                themes,
                 host_theme_dark,
                 host_theme_light,
                 explicit_theme_hue,
@@ -12396,6 +12447,7 @@ pub(crate) fn screen_thread_main(
             } => {
                 screen.host_theme_dark_styling = host_theme_dark;
                 screen.host_theme_light_styling = host_theme_light;
+                screen.set_available_themes(themes);
                 screen
                     .reconfigure(
                         keybinds,
@@ -12501,6 +12553,10 @@ pub(crate) fn screen_thread_main(
                         break;
                     }
                 }
+                screen.render(None)?;
+            },
+            ScreenInstruction::SetUiTheme(target, theme_name, _completion) => {
+                screen.set_ui_theme(target, theme_name);
                 screen.render(None)?;
             },
             ScreenInstruction::WriteKeyToPaneId(
