@@ -141,3 +141,16 @@ fn web_cli_status_with_ip_and_port_works() {
         panic!("Expected Web command");
     }
 }
+
+#[test]
+fn self_update_cli_works() {
+    let args = try_parse(&["zellij", "self-update"]);
+    assert!(args.is_ok());
+    assert!(matches!(args.unwrap().command, Some(Command::SelfUpdate)));
+}
+
+#[test]
+fn self_update_cli_with_extra_args_fails() {
+    let args = try_parse(&["zellij", "self-update", "--check"]);
+    assert!(args.is_err());
+}
