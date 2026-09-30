@@ -168,13 +168,17 @@ pub fn ensure_plugin_assets(sh: &Shell) -> anyhow::Result<()> {
                 Some((_, name)) => name,
                 None => return true,
             };
-            let asset_time = std::fs::metadata(plugin_asset_path(plugin_name))
-                .and_then(|m| m.modified())
-                .ok();
-            match (asset_time, newest_source) {
-                (Some(asset_time), Some(newest_source)) => asset_time < newest_source,
-                _ => true,
-            }
+            std::iter::once(plugin_name)
+                .chain(member.extra_artifacts.iter().copied())
+                .any(|artifact_name| {
+                    let asset_time = std::fs::metadata(plugin_asset_path(artifact_name))
+                        .and_then(|m| m.modified())
+                        .ok();
+                    match (asset_time, newest_source) {
+                        (Some(asset_time), Some(newest_source)) => asset_time < newest_source,
+                        _ => true,
+                    }
+                })
         });
 
     if !stale {
@@ -205,6 +209,9 @@ fn build_plugins_release_into_assets(
 
     for member in plugin_members {
         move_plugin_to_assets(sh, plugin_name_of(member)?)?;
+        for artifact_name in member.extra_artifacts {
+            move_plugin_to_assets(sh, artifact_name)?;
+        }
     }
     Ok(())
 }

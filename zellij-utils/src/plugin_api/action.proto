@@ -3,6 +3,7 @@ syntax = "proto3";
 import "input_mode.proto";
 import "resize.proto";
 import "pane_frame_style.proto";
+import "style.proto";
 
 package api.action;
 
@@ -108,6 +109,7 @@ message TiledPaneLayout {
   bool is_expanded_in_stack = 11;
   bool hide_floating_panes = 12;
   optional string pane_initial_contents = 13;
+  optional style.BorderStyleOverride border_style = 14;
 }
 
 message FloatingPaneLayout {
@@ -123,6 +125,7 @@ message FloatingPaneLayout {
   optional string pane_initial_contents = 10;
   optional uint32 logical_position = 11;
   optional bool borderless = 12;
+  optional style.BorderStyleOverride border_style = 13;
 }
 
 message SwapTiledLayout {
@@ -247,7 +250,15 @@ message Action {
     HideFloatingPanesPayload hide_floating_panes_payload = 59;
     AreFloatingPanesVisiblePayload are_floating_panes_visible_payload = 60;
     SetPaneFrameStylePayload set_pane_frame_style_payload = 61;
+    string apply_tiled_swap_layout_payload = 62;
+    string apply_floating_swap_layout_payload = 63;
+    SetPaneBorderStylePayload set_pane_border_style_payload = 64;
   }
+}
+
+message SetPaneBorderStylePayload {
+  PaneId pane_id = 1;
+  style.BorderStyleOverride border_style = 2;
 }
 
 message SetPaneFrameStylePayload {
@@ -335,6 +346,7 @@ message NewTiledPanePayload {
   optional resize.ResizeDirection direction = 2;
   bool near_current_pane = 3;
   optional bool borderless = 4;
+  optional style.BorderStyleOverride border_style = 5;
 }
 
 message MovePanePayload {
@@ -509,6 +521,9 @@ enum ActionName {
     ScrollToNextPrompt = 111;
     SelectCommandAtScrollPosition = 112;
     CopyLastCommandOutput = 113;
+    ApplyTiledSwapLayout = 114;
+    ApplyFloatingSwapLayout = 115;
+    SetPaneBorderStyle = 116;
 }
 
 message Position {
@@ -540,6 +555,7 @@ message FloatingPaneCoordinates {
   optional SplitSize height = 4;
   optional bool pinned = 5;
   optional bool borderless = 6;
+  optional style.BorderStyleOverride border_style = 7;
 }
 
 // SetPaneBorderlessPayload specifies the pane and borderless state
@@ -568,11 +584,13 @@ message NewPanePlacement {
 
 message NoPreferenceOptions {
   optional bool borderless = 1;
+  optional style.BorderStyleOverride border_style = 2;
 }
 
 message TiledPlacement {
   optional resize.ResizeDirection direction = 1;
   optional bool borderless = 2;
+  optional style.BorderStyleOverride border_style = 3;
 }
 
 message FloatingPlacement {
@@ -583,11 +601,13 @@ message InPlaceConfig {
   optional PaneId pane_id_to_replace = 1;
   bool close_replaced_pane = 2;
   optional bool borderless = 3;
+  optional style.BorderStyleOverride border_style = 4;
 }
 
 message StackedPlacement {
   optional PaneId pane_id = 1;
   optional bool borderless = 2;
+  optional style.BorderStyleOverride border_style = 3;
 }
 
 message MouseEventPayload {

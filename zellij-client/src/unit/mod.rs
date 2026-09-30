@@ -4,3 +4,6 @@ mod terminal_loop_tests;
 
 #[cfg(test)]
 mod teardown_tests;
+
+#[cfg(test)]
+mod ipc_pipe_length_tests;

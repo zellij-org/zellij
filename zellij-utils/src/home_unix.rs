@@ -1,15 +1,17 @@
 use directories::BaseDirs;
 use std::path::PathBuf;
 
-const CONFIG_LOCATION: &str = ".config/zellij";
+fn config_location() -> PathBuf {
+    PathBuf::from(".config").join(crate::distribution::name())
+}
 
 pub(crate) fn home_config_dir() -> Option<PathBuf> {
-    BaseDirs::new().map(|dirs| dirs.home_dir().join(CONFIG_LOCATION))
+    BaseDirs::new().map(|dirs| dirs.home_dir().join(config_location()))
 }
 
 pub(crate) fn try_create_home_config_dir() {
     if let Some(user_dirs) = BaseDirs::new() {
-        let config_dir = user_dirs.home_dir().join(CONFIG_LOCATION);
+        let config_dir = user_dirs.home_dir().join(config_location());
         if let Err(e) = std::fs::create_dir_all(config_dir) {
             log::error!("Failed to create config dir: {:?}", e);
         }
@@ -19,5 +21,7 @@ pub(crate) fn try_create_home_config_dir() {
 /// System-wide data directory (e.g. `/usr/share/zellij` from distro packages).
 pub(crate) fn system_data_dir() -> PathBuf {
     use crate::consts::SYSTEM_DEFAULT_DATA_DIR_PREFIX;
-    std::path::Path::new(SYSTEM_DEFAULT_DATA_DIR_PREFIX).join("share/zellij")
+    std::path::Path::new(SYSTEM_DEFAULT_DATA_DIR_PREFIX)
+        .join("share")
+        .join(crate::distribution::name())
 }

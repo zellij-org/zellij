@@ -34,17 +34,21 @@ use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::str;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::route::NotificationEnd;
+use crate::SharedKeybinds;
 
 use log::{debug, warn};
 use zellij_utils::data::{
-    CommandOrPlugin, Direction, EventType, FloatingPaneCoordinates, GetFocusedPaneInfoResponse,
-    HostTerminalThemeMode, KeyWithModifier, LayoutInfo, LayoutWithError, ListPanesResponse,
-    ListTabsResponse, NewPanePlacement, PaneContents, PaneInfo, PaneListEntry, PaneManifest,
-    PaneRenderReport, PaneScrollbackResponse, PluginPermission, RegexHighlight, Resize,
-    ResizeStrategy, SessionInfo, Styling, TabInfo, ThemeHue, WebSharing,
+    BorderStyle, BorderStyleOverride, CommandOrPlugin, Direction, EventType,
+    FloatingPaneCoordinates, GetFocusedPaneInfoResponse, HostTerminalThemeMode, KeyWithModifier,
+    KeybindsVec, LayoutInfo, LayoutWithError, ListPanesResponse, ListTabsResponse,
+    NestedSessionEndReason, NestedSessionKeybinds, NestedSessionKeybindsError,
+    NestedSessionKeybindsResponse, NewPanePlacement, PaneContents, PaneInfo, PaneListEntry,
+    PaneManifest, PaneRenderReport, PaneScrollbackResponse, PluginPermission, RegexHighlight,
+    Resize, ResizeStrategy, SessionInfo, Styling, TabInfo, ThemeHue, WebSharing,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::actions::Action;
@@ -87,7 +91,7 @@ use crate::session_layout_metadata::{PaneLayoutMetadata, SessionLayoutMetadata};
 use crate::{
     nested_guest::NestedGuestTracker,
     output::{HostKittyState, Output},
-    panes::kitty_graphics::{KittyHostSupport, KittyImageStore},
+    panes::kitty_graphics::{KittyHostCapability, KittyHostSupport, KittyImageStore},
     panes::sixel::SixelImageStore,
     panes::LinkHandler,
     panes::PaneId,
@@ -550,6 +554,10 @@ pub enum ScreenInstruction {
         client_id: ClientId,
         supported: bool,
     },
+    SetKittyZlibSupport {
+        client_id: ClientId,
+        supported: bool,
+    },
     SetSixelSupport {
         client_id: ClientId,
         supported: bool,
@@ -572,6 +580,10 @@ pub enum ScreenInstruction {
     NestedSessionMessageFromHost {
         client_id: ClientId,
         message: NestedSessionMessage,
+    },
+    GetNestedSessionKeybinds {
+        pane_id: PaneId,
+        response_channel: crossbeam::channel::Sender<NestedSessionKeybindsResponse>,
     },
     GuestModalChoice {
         client_id: ClientId,
@@ -647,6 +659,8 @@ pub enum ScreenInstruction {
     },
     PreviousSwapLayout(ClientId, Option<NotificationEnd>),
     NextSwapLayout(ClientId, Option<NotificationEnd>),
+    ApplyTiledSwapLayout(ClientId, String, Option<NotificationEnd>),
+    ApplyFloatingSwapLayout(ClientId, String, Option<NotificationEnd>),
     OverrideLayout(
         Option<PathBuf>,        // cwd (applies to all tabs)
         Option<TerminalAction>, // default_shell (applies to all tabs)
@@ -793,7 +807,7 @@ pub enum ScreenInstruction {
     },
     Reconfigure {
         client_id: ClientId,
-        keybinds: Keybinds,
+        keybinds: SharedKeybinds,
         default_mode: InputMode,
         theme: Styling,
         /// Resolved styling for `theme_dark`. When both this and
@@ -812,6 +826,8 @@ pub enum ScreenInstruction {
         auto_layout: bool,
         rounded_corners: bool,
         hide_session_name: bool,
+        border_style: BorderStyle,
+        floating_border_style: BorderStyle,
         stacked_resize: bool,
         stacked_pane_list: bool,
         default_editor: Option<PathBuf>,
@@ -890,6 +906,7 @@ pub enum ScreenInstruction {
     ),
     TogglePaneBorderless(PaneId, Option<NotificationEnd>),
     SetPaneBorderless(PaneId, bool, Option<NotificationEnd>),
+    SetPaneBorderStyle(PaneId, BorderStyleOverride, Option<NotificationEnd>),
     AddHighlightPaneFrameColorOverride(Vec<PaneId>, Option<String>), // Option<String> => optional
     // message
     GroupAndUngroupPanes(Vec<PaneId>, Vec<PaneId>, bool, ClientId), // panes_to_group, panes_to_ungroup, bool -> for all clients
@@ -959,6 +976,8 @@ pub enum ScreenInstruction {
     ToggleFloatingPanesWithTabId(usize, Option<TerminalAction>, Option<NotificationEnd>),
     PreviousSwapLayoutWithTabId(usize, Option<NotificationEnd>),
     NextSwapLayoutWithTabId(usize, Option<NotificationEnd>),
+    ApplyTiledSwapLayoutWithTabId(usize, String, Option<NotificationEnd>),
+    ApplyFloatingSwapLayoutWithTabId(usize, String, Option<NotificationEnd>),
     MoveTabWithTabId(usize, Direction, Option<NotificationEnd>),
     SetSoftKeyboard {
         client_id: ClientId,
@@ -1105,6 +1124,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::SetKittyGraphicsSupport { .. } => {
                 ScreenContext::SetKittyGraphicsSupport
             },
+            ScreenInstruction::SetKittyZlibSupport { .. } => ScreenContext::SetKittyZlibSupport,
             ScreenInstruction::SetSixelSupport { .. } => ScreenContext::SetSixelSupport,
             ScreenInstruction::ForwardHostQuery { .. } => ScreenContext::ForwardHostQuery,
             ScreenInstruction::NestedSessionMessageFromPane { .. } => {
@@ -1113,6 +1133,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::NestedGuestPingTick { .. } => ScreenContext::NestedGuestPingTick,
             ScreenInstruction::NestedSessionMessageFromHost { .. } => {
                 ScreenContext::NestedSessionMessageFromHost
+            },
+            ScreenInstruction::GetNestedSessionKeybinds { .. } => {
+                ScreenContext::GetNestedSessionKeybinds
             },
             ScreenInstruction::GuestModalChoice { .. } => ScreenContext::GuestModalChoice,
             ScreenInstruction::ForwardedReplyFromHost { .. } => {
@@ -1165,6 +1188,10 @@ impl From<&ScreenInstruction> for ScreenContext {
             },
             ScreenInstruction::PreviousSwapLayout(..) => ScreenContext::PreviousSwapLayout,
             ScreenInstruction::NextSwapLayout(..) => ScreenContext::NextSwapLayout,
+            ScreenInstruction::ApplyTiledSwapLayout(..) => ScreenContext::ApplyTiledSwapLayout,
+            ScreenInstruction::ApplyFloatingSwapLayout(..) => {
+                ScreenContext::ApplyFloatingSwapLayout
+            },
             ScreenInstruction::OverrideLayout(..) => ScreenContext::OverrideLayout,
             ScreenInstruction::OverrideLayoutComplete(..) => ScreenContext::OverrideLayoutComplete,
             ScreenInstruction::QueryTabNames(..) => ScreenContext::QueryTabNames,
@@ -1255,6 +1282,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             },
             ScreenInstruction::TogglePaneBorderless(..) => ScreenContext::TogglePaneBorderless,
             ScreenInstruction::SetPaneBorderless(..) => ScreenContext::SetPaneBorderless,
+            ScreenInstruction::SetPaneBorderStyle(..) => ScreenContext::SetPaneBorderStyle,
             ScreenInstruction::AddHighlightPaneFrameColorOverride(..) => {
                 ScreenContext::AddHighlightPaneFrameColorOverride
             },
@@ -1360,6 +1388,12 @@ impl From<&ScreenInstruction> for ScreenContext {
             },
             ScreenInstruction::NextSwapLayoutWithTabId(..) => {
                 ScreenContext::NextSwapLayoutWithTabId
+            },
+            ScreenInstruction::ApplyTiledSwapLayoutWithTabId(..) => {
+                ScreenContext::ApplyTiledSwapLayoutWithTabId
+            },
+            ScreenInstruction::ApplyFloatingSwapLayoutWithTabId(..) => {
+                ScreenContext::ApplyFloatingSwapLayoutWithTabId
             },
             ScreenInstruction::MoveTabWithTabId(..) => ScreenContext::MoveTabWithTabId,
             ScreenInstruction::SetSoftKeyboard { .. } => ScreenContext::SetSoftKeyboard,
@@ -1506,6 +1540,30 @@ impl NestedGuestChoice {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct GuestModeReport {
+    mode: InputMode,
+    base_mode: Option<InputMode>,
+    session_path: Vec<String>,
+    keybinds_generation: u64,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum KeybindsReplyTo {
+    Plugin(crossbeam::channel::Sender<NestedSessionKeybindsResponse>),
+    Host {
+        client_id: ClientId,
+        request_id: u64,
+    },
+}
+
+#[derive(Debug)]
+pub(crate) struct PendingKeybindsRequest {
+    pane_id: PaneId,
+    reply_to: KeybindsReplyTo,
+    deadline: Instant,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GuestModalOutcome {
     Zoom,
@@ -1532,12 +1590,14 @@ pub(crate) struct Screen {
     stacked_pane_list: Rc<RefCell<bool>>,
     sixel_image_store: Rc<RefCell<SixelImageStore>>,
     kitty_image_store: Rc<RefCell<KittyImageStore>>,
-    kitty_host_capabilities: Rc<RefCell<HashMap<ClientId, bool>>>,
+    kitty_host_capabilities: Rc<RefCell<HashMap<ClientId, KittyHostCapability>>>,
     sixel_host_capabilities: Rc<RefCell<HashMap<ClientId, bool>>>,
     client_kitty_host_state: Rc<RefCell<HashMap<ClientId, HostKittyState>>>,
     terminal_emulator_colors: Rc<RefCell<Palette>>,
     terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
     connected_clients: Rc<RefCell<HashMap<ClientId, bool>>>, // bool -> is_web_client
+    client_display_slots: Rc<RefCell<HashMap<ClientId, usize>>>,
+    highest_client_id_seen: ClientId,
     /// The indices of this [`Screen`]'s active [`Tab`]s.
     active_tab_ids: BTreeMap<ClientId, usize>,
     client_sizes: HashMap<ClientId, Size>,
@@ -1546,6 +1606,8 @@ pub(crate) struct Screen {
     pane_history: BTreeMap<ClientId, Vec<PaneId>>,
     mode_info: BTreeMap<ClientId, ModeInfo>,
     default_mode_info: ModeInfo, // TODO: restructure ModeInfo to prevent this duplication
+    default_keybinds: SharedKeybinds,
+    client_keybinds: BTreeMap<ClientId, SharedKeybinds>,
     style: Style,
     pane_frame_style: PaneFrameStyle,
     auto_layout: bool,
@@ -1597,6 +1659,10 @@ pub(crate) struct Screen {
     cached_layout_errors: Vec<LayoutWithError>,
     pane_render_subscribers: HashMap<ClientId, PaneRenderSubscription>,
     background_plugin_subscriptions: HashMap<(PluginId, ClientId), HashSet<EventType>>,
+    last_reported_plugin_tab_indices: HashMap<PluginId, usize>,
+    last_reported_client_visible_plugins: HashMap<ClientId, HashSet<PluginId>>,
+    pending_selectable_panes: HashMap<PaneId, bool>,
+    state_report_target: Option<(PluginId, ClientId)>,
     next_forward_token: u32,
     pending_forwarded_queries: HashMap<u32, PendingForwardEntry>,
     forward_queue: VecDeque<PendingForward>,
@@ -1615,6 +1681,16 @@ pub(crate) struct Screen {
     dimmed_clients: HashSet<ClientId>,
     nested_guest_choices: HashMap<(ClientId, PaneId), NestedGuestChoice>,
     guest_ascend_keys: HashMap<PaneId, Vec<KeyWithModifier>>,
+    guest_capabilities: HashMap<PaneId, Vec<NestedSessionCapability>>,
+    guest_last_mode: HashMap<PaneId, GuestModeReport>,
+    pending_keybinds_requests: HashMap<u64, PendingKeybindsRequest>,
+    next_keybinds_request_id: u64,
+    host_capabilities: Vec<NestedSessionCapability>,
+    held_keybinds_requests: HashMap<ClientId, VecDeque<u64>>,
+    own_keybinds_generation: u64,
+    upward_generation: u64,
+    upward_identity: Option<(Option<PaneId>, Vec<String>, u64)>,
+    last_reported_upward: Option<GuestModeReport>,
     host_descend_keys: Vec<KeyWithModifier>,
     host_descended: bool,
     host_terminal_theme_mode: Option<HostTerminalThemeMode>,
@@ -1694,7 +1770,7 @@ impl Screen {
         bus: Bus<ScreenInstruction>,
         client_attributes: &ClientAttributes,
         max_panes: Option<usize>,
-        mode_info: ModeInfo,
+        mut mode_info: ModeInfo,
         pane_frame_style: PaneFrameStyle,
         auto_layout: bool,
         session_is_mirrored: bool,
@@ -1751,6 +1827,8 @@ impl Screen {
             client_kitty_host_state: Rc::new(RefCell::new(HashMap::new())),
             style: client_attributes.style,
             connected_clients: Rc::new(RefCell::new(HashMap::new())),
+            client_display_slots: Rc::new(RefCell::new(HashMap::new())),
+            highest_client_id_seen: 0,
             active_tab_ids: BTreeMap::new(),
             client_sizes: HashMap::new(),
             global_last_active_tab_id: 0,
@@ -1761,6 +1839,8 @@ impl Screen {
             tab_history: BTreeMap::new(),
             pane_history: BTreeMap::new(),
             mode_info: BTreeMap::new(),
+            default_keybinds: Arc::new(std::mem::take(&mut mode_info.keybinds)),
+            client_keybinds: BTreeMap::new(),
             default_mode_info: mode_info,
             pane_frame_style,
             auto_layout,
@@ -1806,6 +1886,10 @@ impl Screen {
             cached_layout_errors: vec![],
             pane_render_subscribers: HashMap::new(),
             background_plugin_subscriptions: HashMap::new(),
+            last_reported_plugin_tab_indices: HashMap::new(),
+            last_reported_client_visible_plugins: HashMap::new(),
+            pending_selectable_panes: HashMap::new(),
+            state_report_target: None,
             next_forward_token: 1, // 0 is reserved as the startup sentinel
             pending_forwarded_queries: HashMap::new(),
             forward_queue: VecDeque::new(),
@@ -1824,6 +1908,16 @@ impl Screen {
             dimmed_clients: HashSet::new(),
             nested_guest_choices: HashMap::new(),
             guest_ascend_keys: HashMap::new(),
+            guest_capabilities: HashMap::new(),
+            guest_last_mode: HashMap::new(),
+            pending_keybinds_requests: HashMap::new(),
+            next_keybinds_request_id: 0,
+            host_capabilities: vec![],
+            held_keybinds_requests: HashMap::new(),
+            own_keybinds_generation: 0,
+            upward_generation: 0,
+            upward_identity: None,
+            last_reported_upward: None,
             host_descend_keys: vec![],
             host_descended: false,
             host_terminal_theme_mode: None,
@@ -2726,8 +2820,20 @@ impl Screen {
         let supported = supported && self.support_kitty_graphics_protocol;
         self.kitty_host_capabilities
             .borrow_mut()
-            .insert(client_id, supported);
+            .entry(client_id)
+            .or_default()
+            .graphics = supported;
         self.push_kitty_host_support_to_tabs();
+    }
+
+    pub fn update_kitty_zlib_support(&mut self, client_id: ClientId, supported: bool) {
+        if let Some(capability) = self
+            .kitty_host_capabilities
+            .borrow_mut()
+            .get_mut(&client_id)
+        {
+            capability.zlib = supported;
+        }
     }
 
     fn kitty_host_support_aggregate(&self) -> Option<KittyHostSupport> {
@@ -2739,7 +2845,7 @@ impl Screen {
             None
         } else {
             Some(KittyHostSupport::from_host_capability(
-                capabilities.values().any(|supported| *supported),
+                capabilities.values().any(|capability| capability.graphics),
             ))
         }
     }
@@ -3113,8 +3219,11 @@ impl Screen {
         message: NestedSessionMessage,
     ) {
         match message {
-            NestedSessionMessage::Announce { session_name, .. } => {
-                self.handle_nested_guest_announce(pane_id, session_name);
+            NestedSessionMessage::Announce {
+                session_name,
+                capabilities,
+            } => {
+                self.handle_nested_guest_announce(pane_id, session_name, capabilities);
             },
             NestedSessionMessage::Pong => {
                 self.nested_guest_tracker.on_pong(pane_id, Instant::now());
@@ -3143,6 +3252,7 @@ impl Screen {
                                 ),
                             );
                         }
+                        self.report_upward();
                         let _ = self.render(None);
                     },
                     Some(direction) => {
@@ -3184,6 +3294,60 @@ impl Screen {
                 self.guest_ascend_keys.insert(pane_id, ascend_keys);
                 self.refresh_nested_ascend_keys_for_pane(pane_id);
             },
+            NestedSessionMessage::GuestModeUpdate {
+                mode,
+                base_mode,
+                session_path,
+                keybinds_generation,
+            } => {
+                if !self.nested_guest_tracker.is_tracked(pane_id) {
+                    log::debug!(
+                        "ignoring nested mode update from non-live guest pane {:?}",
+                        pane_id
+                    );
+                    return;
+                }
+                let report = GuestModeReport {
+                    mode,
+                    base_mode,
+                    session_path,
+                    keybinds_generation,
+                };
+                self.guest_last_mode.insert(pane_id, report.clone());
+                let _ = self
+                    .bus
+                    .senders
+                    .send_to_plugin(PluginInstruction::Update(vec![(
+                        None,
+                        None,
+                        Event::NestedSessionModeUpdate {
+                            pane_id: pane_id.into(),
+                            session_path: report.session_path,
+                            mode: report.mode,
+                            base_mode: report.base_mode,
+                            keybinds_generation: report.keybinds_generation,
+                        },
+                    )]));
+                self.report_upward();
+            },
+            NestedSessionMessage::GuestKeybindsReply { request_id, result } => {
+                let belongs_to_pane = self
+                    .pending_keybinds_requests
+                    .get(&request_id)
+                    .map(|pending| pending.pane_id == pane_id)
+                    .unwrap_or(false);
+                if !belongs_to_pane {
+                    log::debug!(
+                        "dropping nested keybinding reply {} from pane {:?} with no matching request",
+                        request_id,
+                        pane_id
+                    );
+                    return;
+                }
+                if let Some(pending) = self.pending_keybinds_requests.remove(&request_id) {
+                    self.deliver_keybinds_reply(pending, result);
+                }
+            },
             NestedSessionMessage::ToggleHostFullscreen { fullscreen } => {
                 if !self.nested_guest_tracker.is_tracked(pane_id) {
                     log::debug!(
@@ -3214,7 +3378,316 @@ impl Screen {
         }
     }
 
-    fn handle_nested_guest_announce(&mut self, pane_id: PaneId, guest_session_name: String) {
+    pub fn get_nested_session_keybinds(&mut self, pane_id: PaneId, reply_to: KeybindsReplyTo) {
+        let now = Instant::now();
+        self.pending_keybinds_requests
+            .retain(|_, pending| pending.deadline > now);
+        let terminal_id = match pane_id {
+            PaneId::Terminal(terminal_id) => terminal_id,
+            PaneId::Plugin(_) => {
+                return self.answer_keybinds_request(
+                    reply_to,
+                    pane_id,
+                    Err(NestedSessionKeybindsError::NotANestedSession),
+                );
+            },
+        };
+        if self.nested_guest_tracker.is_dormant(pane_id) {
+            return self.answer_keybinds_request(
+                reply_to,
+                pane_id,
+                Err(NestedSessionKeybindsError::GuestUnresponsive),
+            );
+        }
+        if !self.nested_guest_tracker.is_tracked(pane_id) {
+            return self.answer_keybinds_request(
+                reply_to,
+                pane_id,
+                Err(NestedSessionKeybindsError::NotANestedSession),
+            );
+        }
+        let guest_supports_hint_reporting = self
+            .guest_capabilities
+            .get(&pane_id)
+            .map(|capabilities| capabilities.contains(&NestedSessionCapability::HintReporting))
+            .unwrap_or(false);
+        if !guest_supports_hint_reporting {
+            return self.answer_keybinds_request(
+                reply_to,
+                pane_id,
+                Err(NestedSessionKeybindsError::NotSupported),
+            );
+        }
+        self.next_keybinds_request_id = self.next_keybinds_request_id.wrapping_add(1);
+        let request_id = self.next_keybinds_request_id;
+        self.pending_keybinds_requests.insert(
+            request_id,
+            PendingKeybindsRequest {
+                pane_id,
+                reply_to,
+                deadline: now + nested_session::KEYBINDS_REQUEST_TIMEOUT,
+            },
+        );
+        let _ = self
+            .bus
+            .senders
+            .send_to_pty_writer(PtyWriteInstruction::Write(
+                nested_session::encode_frame(&NestedSessionMessage::RequestGuestKeybinds {
+                    request_id,
+                }),
+                terminal_id,
+                None,
+            ));
+    }
+
+    fn answer_keybinds_request(
+        &mut self,
+        reply_to: KeybindsReplyTo,
+        pane_id: PaneId,
+        result: NestedSessionKeybindsResponse,
+    ) {
+        self.deliver_keybinds_reply(
+            PendingKeybindsRequest {
+                pane_id,
+                reply_to,
+                deadline: Instant::now(),
+            },
+            result,
+        );
+    }
+
+    fn deliver_keybinds_reply(
+        &mut self,
+        pending: PendingKeybindsRequest,
+        result: NestedSessionKeybindsResponse,
+    ) {
+        match pending.reply_to {
+            KeybindsReplyTo::Plugin(response_channel) => {
+                let _ = response_channel.send(result);
+            },
+            KeybindsReplyTo::Host {
+                client_id,
+                request_id,
+            } => {
+                let relayed_from_current_source =
+                    self.refresh_upward_source() == Some(pending.pane_id);
+                let result = result.map(|mut nested_session_keybinds| {
+                    nested_session_keybinds
+                        .session_path
+                        .insert(0, self.session_name.clone());
+                    nested_session_keybinds.keybinds_generation = if relayed_from_current_source {
+                        self.upward_generation
+                    } else {
+                        0
+                    };
+                    nested_session_keybinds
+                });
+                self.send_keybinds_reply_to_host(client_id, request_id, result);
+            },
+        }
+    }
+
+    fn send_keybinds_reply_to_host(
+        &mut self,
+        client_id: ClientId,
+        request_id: u64,
+        result: NestedSessionKeybindsResponse,
+    ) {
+        if self.nested_via_client_id != Some(client_id) {
+            return;
+        }
+        let payload = nested_session::encode_keybinds_reply_payload(request_id, result);
+        let _ = self
+            .bus
+            .senders
+            .send_to_server(ServerInstruction::EmitNestedSessionFrameToClient(
+                client_id, payload,
+            ));
+    }
+
+    fn fail_pending_keybinds_requests_for_pane(
+        &mut self,
+        pane_id: PaneId,
+        error: NestedSessionKeybindsError,
+    ) {
+        let request_ids: Vec<u64> = self
+            .pending_keybinds_requests
+            .iter()
+            .filter(|(_, pending)| pending.pane_id == pane_id)
+            .map(|(request_id, _)| *request_id)
+            .collect();
+        for request_id in request_ids {
+            if let Some(pending) = self.pending_keybinds_requests.remove(&request_id) {
+                self.deliver_keybinds_reply(pending, Err(error));
+            }
+        }
+    }
+
+    fn notify_plugins_nested_session_ended(
+        &mut self,
+        pane_id: PaneId,
+        reason: NestedSessionEndReason,
+    ) {
+        let _ = self
+            .bus
+            .senders
+            .send_to_plugin(PluginInstruction::Update(vec![(
+                None,
+                None,
+                Event::NestedSessionEnded {
+                    pane_id: pane_id.into(),
+                    reason,
+                },
+            )]));
+    }
+
+    fn answer_keybinds_request_from_host(&mut self, client_id: ClientId, request_id: u64) {
+        if !self
+            .host_capabilities
+            .contains(&NestedSessionCapability::HintReporting)
+        {
+            return;
+        }
+        match self.refresh_upward_source() {
+            Some(guest_pane_id) => {
+                self.get_nested_session_keybinds(
+                    guest_pane_id,
+                    KeybindsReplyTo::Host {
+                        client_id,
+                        request_id,
+                    },
+                );
+            },
+            None => {
+                let (mode, base_mode) = self.own_mode_for_host(client_id);
+                let result = Ok(NestedSessionKeybinds {
+                    session_path: vec![self.session_name.clone()],
+                    mode,
+                    base_mode,
+                    keybinds: self.keybinds_for_client(client_id),
+                    keybinds_generation: self.upward_generation,
+                });
+                self.send_keybinds_reply_to_host(client_id, request_id, result);
+            },
+        }
+    }
+
+    fn hold_keybinds_request_until_acknowledged(&mut self, client_id: ClientId, request_id: u64) {
+        let held = self.held_keybinds_requests.entry(client_id).or_default();
+        held.push_back(request_id);
+        while held.len() > nested_session::MAX_HELD_KEYBINDS_REQUESTS {
+            held.pop_front();
+        }
+    }
+
+    fn release_held_keybinds_requests(&mut self, acknowledged_client_id: ClientId) {
+        let held = self
+            .held_keybinds_requests
+            .remove(&acknowledged_client_id)
+            .unwrap_or_default();
+        self.held_keybinds_requests.clear();
+        for request_id in held {
+            self.answer_keybinds_request_from_host(acknowledged_client_id, request_id);
+        }
+    }
+
+    fn upward_source_pane(&self) -> Option<PaneId> {
+        let client_id = self.nested_via_client_id?;
+        let active_pane_id = self.get_active_pane_id(&client_id)?;
+        if self.should_route_keys_to_pane(client_id, active_pane_id)
+            && self.guest_last_mode.contains_key(&active_pane_id)
+        {
+            Some(active_pane_id)
+        } else {
+            None
+        }
+    }
+
+    fn own_mode_for_host(&self, client_id: ClientId) -> (InputMode, Option<InputMode>) {
+        let (mode, base_mode) = self.current_mode_for_client(client_id);
+        let base_mode = base_mode
+            .or(self.default_mode_info.base_mode)
+            .unwrap_or(self.default_mode_info.mode);
+        (mode, Some(base_mode))
+    }
+
+    fn refresh_upward_source(&mut self) -> Option<PaneId> {
+        self.current_upward_report()
+            .map(|(source, _)| source)
+            .flatten()
+    }
+
+    fn current_upward_report(&mut self) -> Option<(Option<PaneId>, GuestModeReport)> {
+        let client_id = self.nested_via_client_id?;
+        let source = self.upward_source_pane();
+        let (mode, base_mode, inner_path, inner_generation) =
+            match source.and_then(|pane_id| self.guest_last_mode.get(&pane_id)) {
+                Some(guest_report) => (
+                    guest_report.mode,
+                    guest_report.base_mode,
+                    guest_report.session_path.clone(),
+                    guest_report.keybinds_generation,
+                ),
+                None => {
+                    let (mode, base_mode) = self.own_mode_for_host(client_id);
+                    (mode, base_mode, vec![], self.own_keybinds_generation)
+                },
+            };
+        let identity = (source, inner_path.clone(), inner_generation);
+        if self.upward_identity.as_ref() != Some(&identity) {
+            self.upward_identity = Some(identity);
+            self.upward_generation = self.upward_generation.wrapping_add(1);
+        }
+        let mut session_path = vec![self.session_name.clone()];
+        session_path.extend(inner_path);
+        Some((
+            source,
+            GuestModeReport {
+                mode,
+                base_mode,
+                session_path,
+                keybinds_generation: self.upward_generation,
+            },
+        ))
+    }
+
+    fn report_upward(&mut self) {
+        let Some(client_id) = self.nested_via_client_id else {
+            return;
+        };
+        if !self
+            .host_capabilities
+            .contains(&NestedSessionCapability::HintReporting)
+        {
+            return;
+        }
+        let Some((_, report)) = self.current_upward_report() else {
+            return;
+        };
+        if self.last_reported_upward.as_ref() == Some(&report) {
+            return;
+        }
+        self.last_reported_upward = Some(report.clone());
+        let payload = nested_session::encode_payload(&NestedSessionMessage::GuestModeUpdate {
+            mode: report.mode,
+            base_mode: report.base_mode,
+            session_path: report.session_path,
+            keybinds_generation: report.keybinds_generation,
+        });
+        let _ = self
+            .bus
+            .senders
+            .send_to_server(ServerInstruction::EmitNestedSessionFrameToClient(
+                client_id, payload,
+            ));
+    }
+
+    fn handle_nested_guest_announce(
+        &mut self,
+        pane_id: PaneId,
+        guest_session_name: String,
+        guest_capabilities: Vec<NestedSessionCapability>,
+    ) {
         use crate::nested_guest::AnnounceKind;
         let terminal_id = match pane_id {
             PaneId::Terminal(terminal_id) => terminal_id,
@@ -3227,6 +3700,7 @@ impl Screen {
         if is_fresh {
             self.nested_guest_choices
                 .retain(|(_, choice_pane_id), _| *choice_pane_id != pane_id);
+            self.guest_last_mode.remove(&pane_id);
         }
         let connected_client_ids: Vec<ClientId> =
             self.connected_clients.borrow().keys().copied().collect();
@@ -3252,11 +3726,15 @@ impl Screen {
                 return;
             },
         }
+        self.guest_capabilities.insert(pane_id, guest_capabilities);
         let mut ancestry = self.nested_ancestry.clone();
         ancestry.push(self.session_name.clone());
         let announce_ack = NestedSessionMessage::AnnounceAck {
             ancestry,
-            capabilities: vec![NestedSessionCapability::NestedControl],
+            capabilities: vec![
+                NestedSessionCapability::NestedControl,
+                NestedSessionCapability::HintReporting,
+            ],
             descend_keys: self.own_descend_shortcut(),
         };
         let _ = self
@@ -3277,6 +3755,9 @@ impl Screen {
             self.revive_nested_guest(pane_id);
         }
         let _ = self.render(None);
+        if announce_kind != AnnounceKind::Refresh {
+            let _ = self.log_and_report_session_state();
+        }
         log::info!(
             "nested session handshake ({:?}): guest session {:?} announced in pane {:?}, sent announce_ack",
             announce_kind,
@@ -3286,6 +3767,12 @@ impl Screen {
     }
 
     fn suspend_nested_guest(&mut self, pane_id: PaneId) {
+        self.guest_last_mode.remove(&pane_id);
+        self.fail_pending_keybinds_requests_for_pane(
+            pane_id,
+            NestedSessionKeybindsError::GuestUnresponsive,
+        );
+        self.notify_plugins_nested_session_ended(pane_id, NestedSessionEndReason::Unresponsive);
         let _ = self
             .bus
             .senders
@@ -3312,6 +3799,8 @@ impl Screen {
                     client_id, pane_id, pane_id, false, None, false,
                 ));
         }
+        self.report_upward();
+        let _ = self.log_and_report_session_state();
     }
 
     fn revive_nested_guest(&mut self, pane_id: PaneId) {
@@ -3452,8 +3941,18 @@ impl Screen {
     }
 
     pub fn clear_nested_guest(&mut self, pane_id: PaneId) {
+        let was_nested_guest = self.nested_guest_tracker.is_known(pane_id);
         self.nested_guest_tracker.remove(pane_id);
         self.guest_ascend_keys.remove(&pane_id);
+        self.guest_capabilities.remove(&pane_id);
+        self.guest_last_mode.remove(&pane_id);
+        self.fail_pending_keybinds_requests_for_pane(
+            pane_id,
+            NestedSessionKeybindsError::GuestGone,
+        );
+        if was_nested_guest {
+            self.notify_plugins_nested_session_ended(pane_id, NestedSessionEndReason::Exited);
+        }
         let _ = self
             .bus
             .senders
@@ -3492,6 +3991,10 @@ impl Screen {
                 .send_to_server(ServerInstruction::KeyPassthroughChanged(
                     client_id, pane_id, pane_id, false, None, false,
                 ));
+        }
+        if was_nested_guest {
+            self.report_upward();
+            let _ = self.log_and_report_session_state();
         }
     }
 
@@ -3624,6 +4127,9 @@ impl Screen {
                 entered_from_direction,
                 true,
             ));
+        if self.nested_via_client_id == Some(client_id) {
+            self.report_upward();
+        }
     }
 
     fn set_client_dimmed(
@@ -3652,6 +4158,7 @@ impl Screen {
         if !changed && !ascend_keys_changed {
             return;
         }
+        self.ensure_client_keybinds(client_id);
         let mode_info = self
             .mode_info
             .entry(client_id)
@@ -3675,29 +4182,23 @@ impl Screen {
     }
 
     fn own_ascend_shortcut(&self) -> Vec<KeyWithModifier> {
-        shortcut_for_action(
-            &self.default_mode_info.keybinds,
-            self.base_input_mode(),
-            |action| matches!(action, Action::FocusHostSession),
-        )
+        shortcut_for_action(&self.default_keybinds, self.base_input_mode(), |action| {
+            matches!(action, Action::FocusHostSession)
+        })
         .unwrap_or_default()
     }
 
     fn own_descend_shortcut(&self) -> Vec<KeyWithModifier> {
-        shortcut_for_action(
-            &self.default_mode_info.keybinds,
-            self.base_input_mode(),
-            |action| matches!(action, Action::FocusGuestSession),
-        )
+        shortcut_for_action(&self.default_keybinds, self.base_input_mode(), |action| {
+            matches!(action, Action::FocusGuestSession)
+        })
         .unwrap_or_default()
     }
 
     fn own_host_zoom_shortcut(&self) -> Vec<KeyWithModifier> {
-        shortcut_for_action(
-            &self.default_mode_info.keybinds,
-            self.base_input_mode(),
-            |action| matches!(action, Action::ToggleHostFullscreen),
-        )
+        shortcut_for_action(&self.default_keybinds, self.base_input_mode(), |action| {
+            matches!(action, Action::ToggleHostFullscreen)
+        })
         .unwrap_or_default()
     }
 
@@ -3798,6 +4299,7 @@ impl Screen {
             }
         }
         for client_id in client_ids {
+            self.ensure_client_keybinds(client_id);
             let mode_info = self
                 .mode_info
                 .entry(client_id)
@@ -3976,8 +4478,8 @@ impl Screen {
         match message {
             NestedSessionMessage::AnnounceAck {
                 ancestry,
+                capabilities,
                 descend_keys,
-                ..
             } => {
                 log::info!(
                     "nested session handshake complete: this session is nested inside ancestry {:?}",
@@ -3996,11 +4498,22 @@ impl Screen {
                 let _ = self.bus.senders.send_to_server(
                     ServerInstruction::EmitNestedSessionFrameToClient(client_id, payload),
                 );
+                self.host_capabilities = capabilities;
+                self.last_reported_upward = None;
+                self.release_held_keybinds_requests(client_id);
+                self.report_upward();
             },
             NestedSessionMessage::ShortcutUpdate { descend_keys, .. } => {
                 if self.host_descend_keys != descend_keys {
                     self.host_descend_keys = descend_keys;
                     self.update_all_clients_nesting_mode_info();
+                }
+            },
+            NestedSessionMessage::RequestGuestKeybinds { request_id } => {
+                if self.nested_via_client_id == Some(client_id) {
+                    self.answer_keybinds_request_from_host(client_id, request_id);
+                } else {
+                    self.hold_keybinds_request_until_acknowledged(client_id, request_id);
                 }
             },
             NestedSessionMessage::FullscreenState { fullscreen } => {
@@ -4891,6 +5404,7 @@ impl Screen {
             self.pane_frame_style,
             self.auto_layout,
             self.connected_clients.clone(),
+            self.client_display_slots.clone(),
             self.session_is_mirrored,
             client_id,
             self.copy_options.clone(),
@@ -5074,8 +5588,8 @@ impl Screen {
             })
             .with_context(err_context)?;
 
-        if !self.active_tab_ids.contains_key(&client_id) {
-            // this means this is a new client and we need to add it to our state properly
+        let client_has_since_disconnected = client_id <= self.highest_client_id_seen;
+        if !self.active_tab_ids.contains_key(&client_id) && !client_has_since_disconnected {
             self.add_client(client_id, is_web_client)
                 .with_context(err_context)?;
         }
@@ -5103,8 +5617,16 @@ impl Screen {
             format!("failed to attach client {client_id} to tab with index {tab_index}")
         };
 
-        // Set followed_client_id to the first regular client if not already set
-        if self.followed_client_id.is_none() && !self.watcher_clients.contains_key(&client_id) {
+        let followed_client_is_gone = self
+            .followed_client_id
+            .map(|followed_client_id| {
+                !self
+                    .connected_clients
+                    .borrow()
+                    .contains_key(&followed_client_id)
+            })
+            .unwrap_or(true);
+        if followed_client_is_gone && !self.watcher_clients.contains_key(&client_id) {
             self.followed_client_id = Some(client_id);
         }
 
@@ -5139,15 +5661,17 @@ impl Screen {
             bail!("Can't find a valid tab to attach client to!");
         };
 
+        self.highest_client_id_seen = self.highest_client_id_seen.max(client_id);
         self.active_tab_ids.insert(client_id, tab_index);
         self.client_kitty_host_state.borrow_mut().remove(&client_id);
         self.connected_clients
             .borrow_mut()
             .insert(client_id, is_web_client);
+        self.assign_display_slot(client_id);
         if is_web_client {
             self.kitty_host_capabilities
                 .borrow_mut()
-                .insert(client_id, false);
+                .insert(client_id, KittyHostCapability::default());
             self.push_kitty_host_support_to_tabs();
             self.sixel_host_capabilities
                 .borrow_mut()
@@ -5178,6 +5702,7 @@ impl Screen {
 
     pub fn remove_client(&mut self, client_id: ClientId) -> Result<()> {
         let err_context = || format!("failed to remove client {client_id}");
+        self.highest_client_id_seen = self.highest_client_id_seen.max(client_id);
 
         self.set_client_dimmed(client_id, false, None);
         let passthrough_panes: Vec<PaneId> = self
@@ -5260,7 +5785,10 @@ impl Screen {
             self.push_sixel_host_support_to_tabs();
         }
         self.client_sizes.remove(&client_id);
+        self.client_display_slots.borrow_mut().remove(&client_id);
         self.pane_render_subscribers.remove(&client_id);
+        self.background_plugin_subscriptions
+            .retain(|(_plugin_id, c_id), _subscriptions| c_id != &client_id);
         self.last_forwarded_osc7.remove(&client_id);
         self.last_forwarded_user_variables.remove(&client_id);
         self.client_host_focused.remove(&client_id);
@@ -5272,7 +5800,15 @@ impl Screen {
             self.recompute_tab_size(prev_tab_id)
                 .with_context(err_context)?;
         }
+        self.mode_info.remove(&client_id);
+        self.client_keybinds.remove(&client_id);
+        self.held_keybinds_requests.remove(&client_id);
+        self.pending_keybinds_requests.retain(|_, pending| {
+            !matches!(pending.reply_to, KeybindsReplyTo::Host { client_id: host_client_id, .. } if host_client_id == client_id)
+        });
         if self.nested_via_client_id == Some(client_id) {
+            self.host_capabilities = vec![];
+            self.last_reported_upward = None;
             self.nested_via_client_id = None;
             self.nested_ancestry = vec![];
             self.host_descended = false;
@@ -5340,6 +5876,7 @@ impl Screen {
                 is_fullscreen_active: tab.is_fullscreen_active(),
                 is_sync_panes_active: tab.is_sync_panes_active(),
                 are_floating_panes_visible: tab.are_floating_panes_visible(),
+                other_focused_client_slots: self.display_slots_of_clients(&all_focused_clients),
                 other_focused_clients: all_focused_clients,
                 active_swap_layout_name,
                 is_swap_layout_dirty,
@@ -5387,6 +5924,8 @@ impl Screen {
                     is_fullscreen_active: tab.is_fullscreen_active(),
                     is_sync_panes_active: tab.is_sync_panes_active(),
                     are_floating_panes_visible: tab.are_floating_panes_visible(),
+                    other_focused_client_slots: self
+                        .display_slots_of_clients(&other_focused_clients),
                     other_focused_clients,
                     active_swap_layout_name,
                     is_swap_layout_dirty,
@@ -5443,6 +5982,20 @@ impl Screen {
         }
 
         Ok(pane_manifest)
+    }
+
+    fn report_pane_and_tab_state_to_plugin(
+        &mut self,
+        plugin_id: PluginId,
+        client_id: ClientId,
+    ) -> Result<()> {
+        self.state_report_target = Some((plugin_id, client_id));
+        let pane_state = self.generate_and_report_pane_state();
+        let tab_state = self.generate_and_report_tab_state();
+        self.state_report_target = None;
+        pane_state?;
+        tab_state?;
+        Ok(())
     }
 
     fn collect_pane_list(&self, show_all: bool) -> Result<ListPanesResponse> {
@@ -5516,13 +6069,91 @@ impl Screen {
             false
         }
     }
+    fn assign_display_slot(&mut self, client_id: ClientId) {
+        let mut display_slots = self.client_display_slots.borrow_mut();
+        if display_slots.contains_key(&client_id) {
+            return;
+        }
+        let taken: HashSet<usize> = display_slots.values().copied().collect();
+        let mut slot = 1;
+        while taken.contains(&slot) {
+            slot += 1;
+        }
+        display_slots.insert(client_id, slot);
+    }
+    fn display_slots_of_clients(&self, client_ids: &[ClientId]) -> Vec<usize> {
+        let display_slots = self.client_display_slots.borrow();
+        client_ids
+            .iter()
+            .map(|client_id| display_slots.get(client_id).copied().unwrap_or(0))
+            .collect()
+    }
+    fn report_plugin_tab_indices(&mut self) {
+        let mut current: HashMap<PluginId, usize> = HashMap::new();
+        for tab in self.tabs.values() {
+            for plugin_id in tab.get_plugin_ids() {
+                current.insert(plugin_id, tab.position);
+            }
+        }
+        if current == self.last_reported_plugin_tab_indices {
+            return;
+        }
+        let tab_indices: Vec<(PluginId, usize)> = current
+            .iter()
+            .map(|(plugin_id, tab_index)| (*plugin_id, *tab_index))
+            .collect();
+        let _ = self
+            .bus
+            .senders
+            .send_to_plugin(PluginInstruction::UpdatePluginTabIndices(tab_indices));
+        self.last_reported_plugin_tab_indices = current;
+    }
+    fn apply_pending_selectable_panes(&mut self) {
+        if self.pending_selectable_panes.is_empty() {
+            return;
+        }
+        let pending: Vec<(PaneId, bool)> = self.pending_selectable_panes.drain().collect();
+        for (pane_id, selectable) in pending {
+            let tab = self
+                .tabs
+                .values_mut()
+                .find(|tab| tab.has_pane_with_pid(&pane_id));
+            match tab {
+                Some(tab) => tab.set_pane_selectable(pane_id, selectable),
+                None => {
+                    self.pending_selectable_panes.insert(pane_id, selectable);
+                },
+            }
+        }
+    }
+    fn report_client_visible_plugins(&mut self) {
+        let mut visible: HashMap<ClientId, HashSet<PluginId>> = HashMap::new();
+        for (client_id, tab_id) in self.active_tab_ids.iter() {
+            if let Some(tab) = self.tabs.get(tab_id) {
+                visible.insert(*client_id, tab.get_plugin_ids().into_iter().collect());
+            }
+        }
+        if visible == self.last_reported_client_visible_plugins {
+            return;
+        }
+        let _ = self
+            .bus
+            .senders
+            .send_to_plugin(PluginInstruction::UpdateClientVisiblePlugins(
+                visible.clone(),
+            ));
+        self.last_reported_client_visible_plugins = visible;
+    }
     fn log_and_report_session_state(&mut self) -> Result<()> {
         let err_context = || format!("Failed to log and report session state");
+        self.apply_pending_selectable_panes();
 
         self.update_active_pane_ids();
         self.revert_fit_disabled_without_reference_client()
             .with_context(err_context)?;
         self.reconcile_all_single_pane_focus();
+        self.report_plugin_tab_indices();
+        self.report_client_visible_plugins();
         // generate own session info
         let pane_manifest = self.generate_and_report_pane_state()?;
         let tab_infos = self.generate_and_report_tab_state()?;
@@ -5923,7 +6554,7 @@ impl Screen {
         Ok(())
     }
 
-    fn client_id(&mut self, client_id: ClientId) -> Option<u16> {
+    fn client_id(&mut self, client_id: ClientId) -> Option<ClientId> {
         if self.get_active_tab(client_id).is_ok() {
             Some(client_id)
         } else {
@@ -6068,6 +6699,7 @@ impl Screen {
         base_mode: Option<InputMode>,
         client_id: ClientId,
     ) -> Result<()> {
+        self.ensure_client_keybinds(client_id);
         let mut mode_info = self
             .mode_info
             .get(&client_id)
@@ -6128,8 +6760,44 @@ impl Screen {
                 .send_to_plugin(PluginInstruction::Update(bg_updates))
                 .context("failed to update background plugins with mode info")?;
         }
+        if self.nested_via_client_id == Some(client_id) {
+            self.report_upward();
+        }
         Ok(())
     }
+
+    fn current_mode_for_client(&self, client_id: ClientId) -> (InputMode, Option<InputMode>) {
+        self.mode_info
+            .get(&client_id)
+            .map(|mode_info| (mode_info.mode, mode_info.base_mode))
+            .unwrap_or((
+                self.default_mode_info.mode,
+                self.default_mode_info.base_mode,
+            ))
+    }
+
+    fn keybinds_for_client(&self, client_id: ClientId) -> KeybindsVec {
+        self.client_keybinds
+            .get(&client_id)
+            .unwrap_or(&self.default_keybinds)
+            .as_ref()
+            .clone()
+    }
+
+    fn update_keybinds(&mut self, new_keybinds: SharedKeybinds, client_id: ClientId) {
+        self.default_keybinds = new_keybinds.clone();
+        if self.connected_clients_contains(&client_id) {
+            self.client_keybinds.insert(client_id, new_keybinds);
+        }
+    }
+
+    fn ensure_client_keybinds(&mut self, client_id: ClientId) {
+        if !self.client_keybinds.contains_key(&client_id) {
+            self.client_keybinds
+                .insert(client_id, self.default_keybinds.clone());
+        }
+    }
+
     // Keep the client's mode in sync with the pane it just focused: entering a scrolled
     // pane switches to Scroll so its position is navigable, leaving it returns to the
     // default mode. Only the default<->Scroll pair is touched (Normal by default, Locked
@@ -6214,6 +6882,13 @@ impl Screen {
     /// Returns plugin IDs from the client's active tab plus background plugins
     /// subscribed to the given event type.
     fn targeted_plugin_ids(&self, client_id: ClientId, event_type: EventType) -> Vec<PluginId> {
+        if let Some((target_plugin_id, target_client_id)) = self.state_report_target {
+            return if target_client_id == client_id {
+                vec![target_plugin_id]
+            } else {
+                vec![]
+            };
+        }
         let mut plugin_ids = Vec::new();
         // Active-tab plugins
         if let Some(active_tab_id) = self.active_tab_ids.get(&client_id) {
@@ -6755,6 +7430,7 @@ impl Screen {
                         height: Some(PercentOrFixed::Fixed(pane.rows())),
                         pinned: Some(pane.current_geom().is_pinned),
                         borderless: Some(pane.borderless()),
+                        border_style: None,
                     };
                     new_active_tab.add_floating_pane(
                         pane,
@@ -6911,7 +7587,7 @@ impl Screen {
     }
     pub fn reconfigure(
         &mut self,
-        new_keybinds: Keybinds,
+        new_keybinds: SharedKeybinds,
         new_default_mode: InputMode,
         theme: Styling,
         simplified_ui: bool,
@@ -6923,6 +7599,8 @@ impl Screen {
         auto_layout: bool,
         rounded_corners: bool,
         hide_session_name: bool,
+        border_style: BorderStyle,
+        floating_border_style: BorderStyle,
         stacked_resize: bool,
         stacked_pane_list: bool,
         default_editor: Option<PathBuf>,
@@ -6949,10 +7627,14 @@ impl Screen {
         self.default_mode_info.update_theme(theme);
         self.default_mode_info
             .update_rounded_corners(rounded_corners);
+        self.default_mode_info
+            .update_border_styles(border_style, floating_border_style);
+        self.style.border_style = border_style;
+        self.style.floating_border_style = floating_border_style;
         // `default_mode_info` is the fallback used by `change_mode` for
         // clients that don't yet have a per-client `mode_info` entry, so its
         // keybinds and base mode must be kept in sync with reconfigures.
-        self.default_mode_info.update_keybinds(new_keybinds.clone());
+        self.update_keybinds(new_keybinds, client_id);
         self.default_mode_info.update_default_mode(new_default_mode);
         self.default_shell = default_shell.clone().unwrap_or_else(|| get_default_shell());
         self.default_editor = default_editor.clone().or_else(|| get_default_editor());
@@ -6989,6 +7671,7 @@ impl Screen {
         for tab in self.tabs.values_mut() {
             tab.update_theme(theme);
             tab.update_rounded_corners(rounded_corners);
+            tab.update_border_styles(border_style, floating_border_style);
             tab.update_default_shell(default_shell.clone());
             tab.update_default_editor(self.default_editor.clone());
             tab.update_auto_layout(auto_layout);
@@ -7018,7 +7701,6 @@ impl Screen {
                 .mode_info
                 .entry(client_id)
                 .or_insert_with(|| self.default_mode_info.clone());
-            mode_info.update_keybinds(new_keybinds);
             mode_info.update_default_mode(new_default_mode);
             mode_info.update_theme(theme);
             mode_info.update_arrow_fonts(should_support_arrow_fonts);
@@ -7035,6 +7717,8 @@ impl Screen {
             tab.update_input_modes()?;
         }
         self.broadcast_nested_shortcuts();
+        self.own_keybinds_generation = self.own_keybinds_generation.wrapping_add(1);
+        self.report_upward();
         Ok(())
     }
     pub fn update_host_terminal_theme_mode(&mut self, mode: HostTerminalThemeMode) -> Result<()> {
@@ -7078,6 +7762,7 @@ impl Screen {
                 let client_ids: Vec<ClientId> = self.active_tab_ids.keys().copied().collect();
                 let default_for_new = self.default_mode_info.clone();
                 for client_id in client_ids {
+                    self.ensure_client_keybinds(client_id);
                     let mode_info = self
                         .mode_info
                         .entry(client_id)
@@ -7337,6 +8022,18 @@ impl Screen {
             }
         }
     }
+    pub fn set_pane_border_style(
+        &mut self,
+        pane_id: PaneId,
+        border_style: BorderStyleOverride,
+    ) -> bool {
+        for (_tab_id, tab) in self.tabs.iter_mut() {
+            if tab.has_pane_with_pid(&pane_id) {
+                return tab.set_pane_border_style(pane_id, border_style);
+            }
+        }
+        false
+    }
     pub fn handle_mouse_event(&mut self, event: MouseEvent, client_id: ClientId) {
         let is_bare_motion = event.event_type == MouseEventType::Motion
             && !event.left
@@ -7553,6 +8250,7 @@ impl Screen {
                         focused_clients,
                         default_fg,
                         default_bg,
+                        p.border_style_override(),
                     )
                 })
                 .collect();
@@ -7582,7 +8280,7 @@ impl Screen {
                     PaneLayoutMetadata::new(
                         pane_id,
                         p.position_and_size(),
-                        false, // floating panes are never borderless
+                        p.borderless(),
                         p.invoked_with().clone(),
                         p.custom_title(),
                         !focused_clients.is_empty(),
@@ -7594,6 +8292,7 @@ impl Screen {
                         focused_clients,
                         default_fg,
                         default_bg,
+                        p.border_style_override(),
                     )
                 })
                 .collect();
@@ -7711,6 +8410,7 @@ impl Screen {
                 is_fullscreen_active: tab.is_fullscreen_active(),
                 is_sync_panes_active: tab.is_sync_panes_active(),
                 are_floating_panes_visible: tab.are_floating_panes_visible(),
+                other_focused_client_slots: self.display_slots_of_clients(&all_focused_clients),
                 other_focused_clients: all_focused_clients,
                 active_swap_layout_name,
                 is_swap_layout_dirty,
@@ -8109,6 +8809,7 @@ pub(crate) fn screen_thread_main(
     config: Config,
     debug: bool,
     default_layout: Box<Layout>,
+    default_keybinds: SharedKeybinds,
 ) -> Result<()> {
     // Resolve `theme_dark` / `theme_light` to concrete `Styling` from the
     // bundled themes BEFORE `config.options` is moved out below. These
@@ -8226,7 +8927,7 @@ pub(crate) fn screen_thread_main(
                 //  ¯\_(ツ)_/¯
                 arrow_fonts: !arrow_fonts,
             },
-            &config.keybinds,
+            &Keybinds::default(),
             config_options.default_mode,
         ),
         pane_frame_style,
@@ -8265,6 +8966,7 @@ pub(crate) fn screen_thread_main(
         web_server_port,
         nested_session_handling,
     );
+    screen.default_keybinds = default_keybinds;
     screen.host_theme_dark_styling = host_theme_dark_styling;
     screen.host_theme_light_styling = host_theme_light_styling;
     screen.paste_buffer_read_enabled = dangerously_enable_paste_buffer_read;
@@ -8458,6 +9160,7 @@ pub(crate) fn screen_thread_main(
                                     NewPanePlacement::Tiled {
                                         direction: Some(direction),
                                         borderless,
+                                        border_style: None,
                                     } => {
                                         if direction == Direction::Left
                                             || direction == Direction::Right
@@ -9602,9 +10305,10 @@ pub(crate) fn screen_thread_main(
                         break;
                     }
                 }
-                if !found_plugin {
-                    pending_events_waiting_for_tab
-                        .push(ScreenInstruction::SetSelectable(pid, selectable));
+                if found_plugin {
+                    screen.pending_selectable_panes.remove(&pid);
+                } else {
+                    screen.pending_selectable_panes.insert(pid, selectable);
                 }
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
@@ -10145,6 +10849,12 @@ pub(crate) fn screen_thread_main(
             } => {
                 screen.update_kitty_graphics_support(client_id, supported);
             },
+            ScreenInstruction::SetKittyZlibSupport {
+                client_id,
+                supported,
+            } => {
+                screen.update_kitty_zlib_support(client_id, supported);
+            },
             ScreenInstruction::SetSixelSupport {
                 client_id,
                 supported,
@@ -10162,6 +10872,15 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::NestedSessionMessageFromHost { client_id, message } => {
                 screen.handle_nested_session_message_from_host(client_id, message);
+            },
+            ScreenInstruction::GetNestedSessionKeybinds {
+                pane_id,
+                response_channel,
+            } => {
+                screen.get_nested_session_keybinds(
+                    pane_id,
+                    KeybindsReplyTo::Plugin(response_channel),
+                );
             },
             ScreenInstruction::GuestModalChoice {
                 client_id,
@@ -10469,6 +11188,58 @@ pub(crate) fn screen_thread_main(
                     |tab: &mut Tab, _client_id: ClientId| tab.next_swap_layout(),
                     ?
                 );
+                screen.render(None)?;
+                screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::ApplyTiledSwapLayout(client_id, layout_name, mut completion_tx) => {
+                let mut applied = false;
+                active_tab_and_connected_client_id!(
+                    screen,
+                    client_id,
+                    |tab: &mut Tab, _client_id: ClientId| {
+                        applied = tab.apply_tiled_swap_layout(&layout_name)?;
+                        Ok::<(), anyhow::Error>(())
+                    },
+                    ?
+                );
+                if !applied {
+                    log::error!("Tiled swap layout not found or incompatible: {layout_name}");
+                    if let Some(ref mut c) = completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message(format!(
+                            "Tiled swap layout not found or incompatible: {layout_name}"
+                        ));
+                    }
+                }
+                drop(completion_tx);
+                screen.render(None)?;
+                screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::ApplyFloatingSwapLayout(
+                client_id,
+                layout_name,
+                mut completion_tx,
+            ) => {
+                let mut applied = false;
+                active_tab_and_connected_client_id!(
+                    screen,
+                    client_id,
+                    |tab: &mut Tab, _client_id: ClientId| {
+                        applied = tab.apply_floating_swap_layout(&layout_name)?;
+                        Ok::<(), anyhow::Error>(())
+                    },
+                    ?
+                );
+                if !applied {
+                    log::error!("Floating swap layout not found or incompatible: {layout_name}");
+                    if let Some(ref mut c) = completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message(format!(
+                            "Floating swap layout not found or incompatible: {layout_name}"
+                        ));
+                    }
+                }
+                drop(completion_tx);
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
             },
@@ -10871,6 +11642,7 @@ pub(crate) fn screen_thread_main(
                     new_pane_placement = NewPanePlacement::Tiled {
                         direction: None,
                         borderless: None,
+                        border_style: None,
                     };
                 }
                 if should_be_in_place {
@@ -11646,6 +12418,8 @@ pub(crate) fn screen_thread_main(
                 auto_layout,
                 rounded_corners,
                 hide_session_name,
+                border_style,
+                floating_border_style,
                 stacked_resize,
                 stacked_pane_list,
                 default_editor,
@@ -11679,6 +12453,8 @@ pub(crate) fn screen_thread_main(
                         auto_layout,
                         rounded_corners,
                         hide_session_name,
+                        border_style,
+                        floating_border_style,
                         stacked_resize,
                         stacked_pane_list,
                         default_editor,
@@ -12105,6 +12881,16 @@ pub(crate) fn screen_thread_main(
                 screen.set_pane_borderless(pane_id, borderless);
                 let _ = screen.render(None);
             },
+            ScreenInstruction::SetPaneBorderStyle(pane_id, border_style, mut completion_tx) => {
+                if !screen.set_pane_border_style(pane_id, border_style) {
+                    log::error!("Pane with id {:?} not found", pane_id);
+                    if let Some(c) = completion_tx.as_mut() {
+                        c.set_exit_status(1);
+                        c.set_error_message(format!("Pane with id {:?} not found", pane_id));
+                    }
+                }
+                let _ = screen.render(None);
+            },
             ScreenInstruction::GroupAndUngroupPanes(
                 pane_ids_to_group,
                 pane_ids_to_ungroup,
@@ -12365,7 +13151,10 @@ pub(crate) fn screen_thread_main(
                 } else {
                     screen
                         .background_plugin_subscriptions
-                        .insert((plugin_id, client_id), subscriptions);
+                        .entry((plugin_id, client_id))
+                        .or_default()
+                        .extend(subscriptions);
+                    screen.report_pane_and_tab_state_to_plugin(plugin_id, client_id)?;
                 }
             },
             ScreenInstruction::ClearHintTextCache => {
@@ -12839,6 +13628,60 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::NextSwapLayoutWithTabId(tab_id, mut _completion_tx) => {
                 if let Some(tab) = screen.tabs.get_mut(&tab_id) {
                     tab.next_swap_layout().non_fatal();
+                } else {
+                    log::error!("Tab with id {} not found", tab_id);
+                    if let Some(ref mut c) = _completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message(format!("Tab with id {} not found", tab_id));
+                    }
+                }
+                screen.render(None)?;
+                screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::ApplyTiledSwapLayoutWithTabId(
+                tab_id,
+                layout_name,
+                mut _completion_tx,
+            ) => {
+                if let Some(tab) = screen.tabs.get_mut(&tab_id) {
+                    let applied = tab.apply_tiled_swap_layout(&layout_name)?;
+                    if !applied {
+                        log::error!("Tiled swap layout not found or incompatible: {layout_name}");
+                        if let Some(ref mut c) = _completion_tx {
+                            c.set_exit_status(1);
+                            c.set_error_message(format!(
+                                "Tiled swap layout not found or incompatible: {layout_name}"
+                            ));
+                        }
+                    }
+                } else {
+                    log::error!("Tab with id {} not found", tab_id);
+                    if let Some(ref mut c) = _completion_tx {
+                        c.set_exit_status(1);
+                        c.set_error_message(format!("Tab with id {} not found", tab_id));
+                    }
+                }
+                screen.render(None)?;
+                screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::ApplyFloatingSwapLayoutWithTabId(
+                tab_id,
+                layout_name,
+                mut _completion_tx,
+            ) => {
+                if let Some(tab) = screen.tabs.get_mut(&tab_id) {
+                    let applied = tab.apply_floating_swap_layout(&layout_name)?;
+                    if !applied {
+                        log::error!(
+                            "Floating swap layout not found or incompatible: {layout_name}"
+                        );
+                        if let Some(ref mut c) = _completion_tx {
+                            c.set_exit_status(1);
+                            c.set_error_message(format!(
+                                "Floating swap layout not found or incompatible: {layout_name}"
+                            ));
+                        }
+                    }
                 } else {
                     log::error!("Tab with id {} not found", tab_id);
                     if let Some(ref mut c) = _completion_tx {

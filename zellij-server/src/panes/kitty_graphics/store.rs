@@ -1,19 +1,27 @@
 use base64::engine::general_purpose::STANDARD as BASE64_ENCODER;
 use base64::engine::Engine as _;
+use std::io::Write;
 
 use super::parser::{DecodedImage, KittyError, KittyErrorCode, KittyFormat};
+use crate::panes::sixel::PixelRect;
 use std::collections::HashMap;
 
 pub const DEFAULT_KITTY_STORE_QUOTA_BYTES: usize = 335_544_320;
 
 pub type InternalImageId = u64;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ScaledImageKey {
+    pub source: PixelRect,
+    pub size: (usize, usize),
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct KittyImage {
     pub rgba: Vec<u8>,
     pub width: u32,
     pub height: u32,
-    pub scaled_variants: HashMap<(u16, u16), Vec<u8>>,
+    pub scaled_variants: HashMap<ScaledImageKey, Vec<u8>>,
 }
 
 #[derive(Debug, Clone)]
@@ -21,7 +29,7 @@ struct StoredImage {
     image: KittyImage,
     refcount: usize,
     lru_stamp: u64,
-    base64_cache: HashMap<Option<(u16, u16)>, String>,
+    base64_cache: HashMap<(Option<ScaledImageKey>, bool), String>,
 }
 
 #[derive(Debug, Clone)]
@@ -93,10 +101,10 @@ impl KittyImageStore {
     pub fn get(&self, id: InternalImageId) -> Option<&KittyImage> {
         self.images.get(&id).map(|stored| &stored.image)
     }
-    pub fn scaled_variant(&self, id: InternalImageId, cells: (u16, u16)) -> Option<&[u8]> {
+    pub fn scaled_variant(&self, id: InternalImageId, key: ScaledImageKey) -> Option<&[u8]> {
         self.images
             .get(&id)
-            .and_then(|stored| stored.image.scaled_variants.get(&cells))
+            .and_then(|stored| stored.image.scaled_variants.get(&key))
             .map(|bytes| bytes.as_slice())
     }
     pub fn touch(&mut self, id: InternalImageId) {
@@ -132,21 +140,36 @@ impl KittyImageStore {
     pub fn base64_for(
         &mut self,
         id: InternalImageId,
-        variant: Option<(u16, u16)>,
+        variant: Option<ScaledImageKey>,
+        compressed: bool,
     ) -> Option<String> {
         let stored = self.images.get_mut(&id)?;
-        if let Some(cached) = stored.base64_cache.get(&variant) {
+        if let Some(cached) = stored.base64_cache.get(&(variant, compressed)) {
             return Some(cached.clone());
         }
         let bytes = match variant {
-            Some(cells) => stored.image.scaled_variants.get(&cells)?,
+            Some(key) => stored.image.scaled_variants.get(&key)?,
             None => &stored.image.rgba,
         };
-        let encoded = BASE64_ENCODER.encode(bytes);
-        stored.base64_cache.insert(variant, encoded.clone());
+        let encoded = if compressed {
+            let mut encoder = flate2::write::ZlibEncoder::new(
+                Vec::with_capacity(bytes.len() / 8),
+                flate2::Compression::fast(),
+            );
+            let deflated = encoder
+                .write_all(bytes)
+                .and_then(|_| encoder.finish())
+                .ok()?;
+            BASE64_ENCODER.encode(&deflated)
+        } else {
+            BASE64_ENCODER.encode(bytes)
+        };
+        stored
+            .base64_cache
+            .insert((variant, compressed), encoded.clone());
         Some(encoded)
     }
-    pub fn add_scaled_variant(&mut self, id: InternalImageId, cells: (u16, u16), bytes: Vec<u8>) {
+    pub fn add_scaled_variant(&mut self, id: InternalImageId, key: ScaledImageKey, bytes: Vec<u8>) {
         let lru_stamp = self.bump_lru();
         let inserted = match self.images.get_mut(&id) {
             Some(stored) => {
@@ -154,10 +177,12 @@ impl KittyImageStore {
                 let old_len = stored
                     .image
                     .scaled_variants
-                    .insert(cells, bytes)
+                    .insert(key, bytes)
                     .map(|old| old.len())
                     .unwrap_or(0);
-                stored.base64_cache.remove(&Some(cells));
+                stored
+                    .base64_cache
+                    .retain(|(cached_variant, _), _| *cached_variant != Some(key));
                 stored.lru_stamp = lru_stamp;
                 Some((old_len, new_len))
             },
@@ -168,6 +193,19 @@ impl KittyImageStore {
             if self.total_bytes > self.quota_bytes {
                 self.evict_to_fit(0, Some(id));
             }
+        }
+    }
+    pub fn clear_scaled_variants(&mut self, id: InternalImageId) {
+        if let Some(stored) = self.images.get_mut(&id) {
+            self.total_bytes -= stored
+                .image
+                .scaled_variants
+                .drain()
+                .map(|(_, bytes)| bytes.len())
+                .sum::<usize>();
+            stored
+                .base64_cache
+                .retain(|(cached_variant, _), _| cached_variant.is_none());
         }
     }
     pub fn refcount(&self, id: InternalImageId) -> Option<usize> {
