@@ -121,6 +121,7 @@ fn use_custom_layout_with_relative_path() {
         grid_snapshot.tab_bar_appears()
             && grid_snapshot.status_bar_appears()
             && grid_snapshot.contains("Zellij (test")
+            && !grid_snapshot.contains(" BASE ")
             && grid_snapshot.cursor.is_some()
     });
     assert_snapshot!(normalized(&grid_snapshot));

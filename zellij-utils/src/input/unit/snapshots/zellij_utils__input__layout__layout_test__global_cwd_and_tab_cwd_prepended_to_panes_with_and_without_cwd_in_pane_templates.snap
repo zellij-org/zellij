@@ -1,7 +1,6 @@
 ---
 source: zellij-utils/src/input/./unit/layout_test.rs
-assertion_line: 1868
-expression: "format!(\"{:#?}\", layout)"
+expression: "normalize_layout_debug(format!(\"{:#?}\", layout))"
 ---
 Layout {
     tabs: [
@@ -26,6 +25,7 @@ Layout {
                                     ),
                                 ),
                                 borderless: None,
+                                border_style: None,
                                 focus: None,
                                 external_children_index: None,
                                 children_are_stacked: false,
@@ -59,6 +59,7 @@ Layout {
                                     ),
                                 ),
                                 borderless: None,
+                                border_style: None,
                                 focus: None,
                                 external_children_index: None,
                                 children_are_stacked: false,
@@ -85,6 +86,7 @@ Layout {
                                             ),
                                         ),
                                         borderless: None,
+                                        border_style: None,
                                         focus: None,
                                         external_children_index: None,
                                         children_are_stacked: false,
@@ -104,6 +106,7 @@ Layout {
                                     ),
                                 ),
                                 borderless: None,
+                                border_style: None,
                                 focus: None,
                                 external_children_index: None,
                                 children_are_stacked: false,
@@ -123,6 +126,7 @@ Layout {
                             ),
                         ),
                         borderless: None,
+                        border_style: None,
                         focus: None,
                         external_children_index: None,
                         children_are_stacked: false,
@@ -142,6 +146,7 @@ Layout {
                     ),
                 ),
                 borderless: None,
+                border_style: None,
                 focus: None,
                 external_children_index: None,
                 children_are_stacked: false,
@@ -166,6 +171,7 @@ Layout {
                 split_size: None,
                 run: None,
                 borderless: None,
+                border_style: None,
                 focus: None,
                 external_children_index: None,
                 children_are_stacked: false,

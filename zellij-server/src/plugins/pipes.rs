@@ -82,6 +82,24 @@ impl PendingPipes {
         }
         pipe_names_to_unblock
     }
+    pub fn unload_plugin_client(
+        &mut self,
+        plugin_id: &PluginId,
+        client_id: &ClientId,
+    ) -> Vec<String> {
+        let mut pipe_names_to_unblock = vec![];
+        for (pipe_name, pending_pipe_info) in self.pipes.iter_mut() {
+            let should_unblock_this_pipe =
+                pending_pipe_info.unload_plugin_client(plugin_id, client_id);
+            if should_unblock_this_pipe {
+                pipe_names_to_unblock.push(pipe_name.to_owned());
+            }
+        }
+        for pipe_name in &pipe_names_to_unblock {
+            self.pipes.remove(pipe_name);
+        }
+        pipe_names_to_unblock
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -134,6 +152,17 @@ impl PendingPipeInfo {
         } else {
             false
         }
+    }
+    pub fn unload_plugin_client(
+        &mut self,
+        plugin_id_to_unload: &PluginId,
+        client_id_to_unload: &ClientId,
+    ) -> bool {
+        self.currently_being_processed_by
+            .retain(|(plugin_id, client_id)| {
+                plugin_id != plugin_id_to_unload || client_id != client_id_to_unload
+            });
+        self.currently_being_processed_by.is_empty() && !self.is_explicitly_blocked
     }
 }
 

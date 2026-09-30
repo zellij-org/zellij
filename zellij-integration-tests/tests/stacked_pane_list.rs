@@ -444,6 +444,7 @@ fn entries_share_a_uniform_width_sized_by_the_widest_title() {
     }
     let grid_snapshot = zellij.wait_until("mixed-width entries rendered", |grid_snapshot| {
         grid_snapshot.status_bar_appears()
+            && grid_snapshot.tab_bar_appears()
             && grid_snapshot.contains("member-command")
             && grid_snapshot.contains(&selected_entry("Pane #1"))
             && grid_snapshot.cursor_is_at(col(2).row(4))

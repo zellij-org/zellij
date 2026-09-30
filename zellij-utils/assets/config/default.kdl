@@ -240,10 +240,16 @@ keybinds {
 // Plugin aliases - can be used to change the implementation of Zellij
 // changing these requires a restart to take effect
 plugins {
-    tab-bar location="zellij:tab-bar"
-    status-bar location="zellij:status-bar"
+    tab-bar location="zellij:bars" {
+        role "tab-bar"
+    }
+    status-bar location="zellij:bars" {
+        role "status-bar"
+    }
     strider location="zellij:strider"
-    compact-bar location="zellij:compact-bar"
+    compact-bar location="zellij:bars" {
+        role "compact-bar"
+    }
     session-manager location="zellij:session-manager"
     welcome-screen location="zellij:session-manager" {
         welcome_screen true
@@ -258,7 +264,9 @@ plugins {
 
 // Plugins to load in the background when a new session starts
 load_plugins {
-    "zellij:link"
+    "zellij:bars" {
+        role "link"
+    }
     // "file:/path/to/my-plugin.wasm"
     // "https://example.com/my-plugin.wasm"
 }
@@ -311,6 +319,33 @@ load_plugins {
 //   - none (equivalent to pane_frames false)
 //
 // pane_frame_style "titles"
+
+// Configure the look of the pane frame borders
+//
+// ui {
+//     pane_frames {
+//         // round the corners of single-line borders
+//         rounded_corners true
+//         // line style for all four sides of tiled pane frames
+//         // one of: single, double, heavy, dashed, heavy_dashed
+//         border_style "single"
+//         // per-side overrides, eg. a double top border with single sides
+//         border_top "double"
+//         border_right "single"
+//         border_bottom "single"
+//         border_left "single"
+//         // when two neighbouring panes disagree about a shared grid line
+//         // (pane frames off), that line falls back to border_style above
+//         // the same keys prefixed with "floating_" apply to floating panes,
+//         // they default to the values above
+//         floating_border_style "double"
+//         floating_border_top "double"
+//         floating_border_right "double"
+//         floating_border_bottom "double"
+//         floating_border_left "double"
+//         floating_border_rounded_corners false
+//     }
+// }
 
 // Toggle between having Zellij lay out panes according to a predefined set of layouts whenever possible
 // Options:

@@ -3,8 +3,10 @@ use crate::background_jobs::BackgroundJob;
 use crate::global_async_runtime::get_tokio_runtime;
 use crate::plugins::plugin_map::PluginEnv;
 use crate::plugins::wasm_bridge::handle_plugin_crash;
+use crate::plugins::PluginId;
 use crate::pty::{ClientTabIndexOrPaneId, PtyInstruction};
 use crate::route::{route_action, wait_for_action_completion, NotificationEnd};
+use crate::ClientId;
 use crate::ServerInstruction;
 use log::warn;
 use serde::Serialize;
@@ -21,13 +23,14 @@ use tokio::sync::oneshot;
 use wasmi::{Caller, Linker};
 use zellij_utils::consts::ipc_connect;
 use zellij_utils::data::{
-    BreakPanesToNewTabResponse, BreakPanesToTabWithIdResponse, BreakPanesToTabWithIndexResponse,
-    CommandType, ConnectToSession, DeleteAllDeadSessionsResponse, DeleteDeadSessionResponse,
-    DeleteLayoutResponse, EditLayoutResponse, Event, FloatingPaneCoordinates,
-    FocusOrCreateTabResponse, GetFocusedPaneInfoResponse, GetPaneCwdResponse, GetPanePidResponse,
-    GetPaneRunningCommandResponse, HttpVerb, KeyWithModifier, KillSessionsResponse, LayoutInfo,
-    LayoutMetadata, LayoutParsingError, MessageToPlugin, NewPanePlacement, NewTabResponse,
-    NewTabUnfocusedResponse, NewTiledPaneInTabResponse, OpenCommandPaneBackgroundResponse,
+    BorderStyleOverride, BreakPanesToNewTabResponse, BreakPanesToTabWithIdResponse,
+    BreakPanesToTabWithIndexResponse, CommandType, ConnectToSession, DeleteAllDeadSessionsResponse,
+    DeleteDeadSessionResponse, DeleteLayoutResponse, EditLayoutResponse, Event,
+    FloatingPaneCoordinates, FocusOrCreateTabResponse, GetFocusedPaneInfoResponse,
+    GetPaneCwdResponse, GetPanePidResponse, GetPaneRunningCommandResponse, HttpVerb,
+    KeyWithModifier, KillSessionsResponse, LayoutInfo, LayoutMetadata, LayoutParsingError,
+    MessageToPlugin, NewPanePlacement, NewTabResponse, NewTabUnfocusedResponse,
+    NewTiledPaneInTabResponse, OpenCommandPaneBackgroundResponse,
     OpenCommandPaneFloatingNearPluginResponse, OpenCommandPaneFloatingResponse,
     OpenCommandPaneInPlaceOfPaneIdResponse, OpenCommandPaneInPlaceOfPluginResponse,
     OpenCommandPaneInPlaceResponse, OpenCommandPaneNearPluginResponse, OpenCommandPaneResponse,
@@ -58,8 +61,9 @@ use prost::Message;
 use zellij_utils::{
     consts::{VERSION, ZELLIJ_SESSION_INFO_CACHE_DIR, ZELLIJ_SOCK_DIR, ZELLIJ_TMP_DIR},
     data::{
-        CommandOrPlugin, CommandToRun, Direction, EventType, FileToOpen, InputMode, PluginCommand,
-        PluginIds, PluginMessage, Resize, ResizeStrategy,
+        CommandOrPlugin, CommandToRun, Direction, EventType, FileToOpen, InputMode,
+        NestedSessionKeybindsError, PluginCommand, PluginIds, PluginMessage, Resize,
+        ResizeStrategy,
     },
     errors::prelude::*,
     input::{
@@ -71,7 +75,8 @@ use zellij_utils::{
     plugin_api::{
         event::{
             layout_parsing_error::ErrorType as ProtobufLayoutParsingErrorType,
-            ProtobufLayoutParsingError, ProtobufPaneScrollbackResponse, ProtobufSyntaxError,
+            nested_session_keybinds_response_to_protobuf, ProtobufLayoutParsingError,
+            ProtobufPaneScrollbackResponse, ProtobufSyntaxError,
         },
         plugin_command::{
             dump_layout_response, dump_session_layout_response, hide_floating_panes_response,
@@ -105,7 +110,7 @@ use zellij_utils::{
             ProtobufOpenTerminalPaneInPlaceOfPaneIdResponse, ProtobufOpenTerminalResponse,
             ProtobufParseLayoutResponse, ProtobufPluginCommand, ProtobufRenameLayoutResponse,
             ProtobufSaveLayoutResponse, ProtobufSaveSessionResponse,
-            ProtobufShowFloatingPanesResponse,
+            ProtobufShowFloatingPanesResponse, ProtobufSlotCommandResponse,
         },
         plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion},
     },
@@ -121,9 +126,9 @@ macro_rules! apply_action {
     ($action:ident, $error_message:ident, $env: ident) => {
         match route_action(
             $action,
-            $env.client_id,
+            acting_client(&$env),
             None,
-            Some(PaneId::Plugin($env.plugin_id)),
+            source_pane(&$env),
             $env.senders.clone(),
             $env.default_shell.clone(),
             None,
@@ -156,6 +161,154 @@ fn translate_plugin_path(env: &PluginEnv, path: PathBuf) -> PathBuf {
     }
 }
 
+fn acting_client(env: &PluginEnv) -> ClientId {
+    env.shared
+        .as_ref()
+        .and_then(|shared| shared.current_client)
+        .unwrap_or(env.client_id)
+}
+
+fn self_pane_id(env: &PluginEnv) -> PluginId {
+    env.shared
+        .as_ref()
+        .and_then(|shared| shared.current_slot)
+        .unwrap_or(env.plugin_id)
+}
+
+fn source_pane(env: &PluginEnv) -> Option<PaneId> {
+    match env.shared.as_ref() {
+        Some(shared) => shared.current_slot.map(PaneId::Plugin),
+        None => Some(PaneId::Plugin(env.plugin_id)),
+    }
+}
+
+fn permission_pane_id(env: &PluginEnv) -> PluginId {
+    match env.shared.as_ref() {
+        Some(shared) => shared
+            .current_slot
+            .or_else(|| shared.first_pane_slot())
+            .unwrap_or(env.plugin_id),
+        None => env.plugin_id,
+    }
+}
+
+fn crash_pane_ids(env: &PluginEnv) -> Vec<PluginId> {
+    match env.shared.as_ref() {
+        Some(shared) => shared.pane_slot_ids(),
+        None => vec![env.plugin_id],
+    }
+}
+
+fn is_self_command(command: &PluginCommand) -> bool {
+    matches!(
+        command,
+        PluginCommand::SetSelectable(..)
+            | PluginCommand::ShowCursor(..)
+            | PluginCommand::HideSelf
+            | PluginCommand::ShowSelf(..)
+            | PluginCommand::CloseSelf
+            | PluginCommand::SetSelfMouseSelectionSupport(..)
+    ) || self_command_has_response(command)
+}
+
+fn self_command_has_response(command: &PluginCommand) -> bool {
+    matches!(
+        command,
+        PluginCommand::OpenFileNearPlugin(..)
+            | PluginCommand::OpenFileFloatingNearPlugin(..)
+            | PluginCommand::OpenFileInPlaceOfPlugin(..)
+            | PluginCommand::OpenTerminalNearPlugin(..)
+            | PluginCommand::OpenTerminalFloatingNearPlugin(..)
+            | PluginCommand::OpenTerminalInPlaceOfPlugin(..)
+            | PluginCommand::OpenCommandPaneNearPlugin(..)
+            | PluginCommand::OpenCommandPaneFloatingNearPlugin(..)
+            | PluginCommand::OpenCommandPaneInPlaceOfPlugin(..)
+    )
+}
+
+fn self_command_is_forbidden(env: &PluginEnv, command: &PluginCommand) -> bool {
+    match env.shared.as_ref() {
+        Some(shared) => {
+            is_self_command(command)
+                && !(shared.self_commands_allowed && shared.current_slot.is_some())
+        },
+        None => false,
+    }
+}
+
+fn slot_command_target(env: &PluginEnv, slot_id: PluginId) -> std::result::Result<(), String> {
+    match env.shared.as_ref() {
+        Some(shared) if shared.slots.contains_key(&slot_id) => Ok(()),
+        Some(_) => Err(format!("Slot {} does not belong to this plugin", slot_id)),
+        None if slot_id == env.plugin_id => Ok(()),
+        None => Err(format!(
+            "Slot {} does not belong to this plugin, slot commands are meant for shared plugins",
+            slot_id
+        )),
+    }
+}
+
+fn write_slot_command_response(env: &PluginEnv, result: std::result::Result<(), String>) {
+    let response = ProtobufSlotCommandResponse::from(result);
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to write slot command response"))
+        .non_fatal();
+}
+
+fn set_selectable_slot(env: &PluginEnv, slot_id: PluginId, selectable: bool) {
+    let result = slot_command_target(env, slot_id).and_then(|_| {
+        env.senders
+            .send_to_screen(ScreenInstruction::SetSelectable(
+                PaneId::Plugin(slot_id),
+                selectable,
+            ))
+            .map_err(|e| e.to_string())
+    });
+    write_slot_command_response(env, result);
+}
+
+fn hide_slot(env: &PluginEnv, slot_id: PluginId) {
+    let result = slot_command_target(env, slot_id).and_then(|_| {
+        env.senders
+            .send_to_screen(ScreenInstruction::SuppressPane(
+                PaneId::Plugin(slot_id),
+                acting_client(env),
+            ))
+            .map_err(|e| e.to_string())
+    });
+    write_slot_command_response(env, result);
+}
+
+fn show_slot(env: &PluginEnv, slot_id: PluginId, should_float_if_hidden: bool) {
+    let result = slot_command_target(env, slot_id).map(|_| {
+        let action = Action::FocusPluginPaneWithId {
+            pane_id: slot_id,
+            should_float_if_hidden,
+            should_be_in_place_if_hidden: false,
+        };
+        let error_msg = || format!("Failed to show slot");
+        apply_action!(action, error_msg, env);
+    });
+    write_slot_command_response(env, result);
+}
+
+fn close_slot(env: &PluginEnv, slot_id: PluginId) {
+    let result = slot_command_target(env, slot_id).and_then(|_| {
+        env.senders
+            .send_to_screen(ScreenInstruction::ClosePane(
+                PaneId::Plugin(slot_id),
+                None,
+                None,
+                None,
+            ))
+            .map_err(|e| e.to_string())?;
+        env.senders
+            .send_to_plugin(PluginInstruction::Unload(slot_id))
+            .map_err(|e| e.to_string())
+    });
+    write_slot_command_response(env, result);
+}
+
 pub fn zellij_exports(linker: &mut Linker<PluginEnv>) {
     linker
         .func_wrap("zellij", "host_run_plugin_command", host_run_plugin_command)
@@ -172,8 +325,25 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
             let command: PluginCommand = command
                 .try_into()
                 .map_err(|e| anyhow!("failed to convert serialized command: {}", e))?;
+            if self_command_is_forbidden(&env, &command) {
+                if self_command_has_response(&command) {
+                    wasi_write_object(env, &Vec::<u8>::new())?;
+                }
+                return Err(anyhow!(
+                    "'self' commands of shared plugins are only available inside render and slot_added, use the explicit slot form instead: {:?}",
+                    CommandType::from_str(&command.to_string()).ok()
+                ));
+            }
             match check_command_permission(&env, &command) {
                 (PermissionStatus::Granted, _) => match command {
+                    PluginCommand::SetSelectableSlot(slot_id, selectable) => {
+                        set_selectable_slot(env, slot_id, selectable)
+                    },
+                    PluginCommand::HideSlot(slot_id) => hide_slot(env, slot_id),
+                    PluginCommand::ShowSlot(slot_id, should_float_if_hidden) => {
+                        show_slot(env, slot_id, should_float_if_hidden)
+                    },
+                    PluginCommand::CloseSlot(slot_id) => close_slot(env, slot_id),
                     PluginCommand::Subscribe(event_list) => subscribe(env, event_list)?,
                     PluginCommand::Unsubscribe(event_list) => unsubscribe(env, event_list)?,
                     PluginCommand::SetSelectable(selectable) => set_selectable(env, selectable),
@@ -199,21 +369,35 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         floating_pane_coordinates,
                         context,
                     ) => open_file_floating(env, file_to_open, floating_pane_coordinates, context),
-                    PluginCommand::OpenTerminal(cwd) => open_terminal(env, cwd.path.try_into()?),
+                    PluginCommand::OpenTerminal(cwd) => {
+                        let border_style = cwd.border_style;
+                        open_terminal(env, cwd.path.try_into()?, border_style)
+                    },
                     PluginCommand::OpenTerminalNearPlugin(cwd) => {
-                        open_terminal_near_plugin(env, cwd.path.try_into()?)
+                        let border_style = cwd.border_style;
+                        open_terminal_near_plugin(env, cwd.path.try_into()?, border_style)
                     },
                     PluginCommand::OpenTerminalFloating(cwd, floating_pane_coordinates) => {
+                        let floating_pane_coordinates = FloatingPaneCoordinates::merge_border_style(
+                            floating_pane_coordinates,
+                            cwd.border_style,
+                        );
                         open_terminal_floating(env, cwd.path.try_into()?, floating_pane_coordinates)
                     },
                     PluginCommand::OpenTerminalFloatingNearPlugin(
                         cwd,
                         floating_pane_coordinates,
-                    ) => open_terminal_floating_near_plugin(
-                        env,
-                        cwd.path.try_into()?,
-                        floating_pane_coordinates,
-                    ),
+                    ) => {
+                        let floating_pane_coordinates = FloatingPaneCoordinates::merge_border_style(
+                            floating_pane_coordinates,
+                            cwd.border_style,
+                        );
+                        open_terminal_floating_near_plugin(
+                            env,
+                            cwd.path.try_into()?,
+                            floating_pane_coordinates,
+                        )
+                    },
                     PluginCommand::OpenCommandPane(command_to_run, context) => {
                         open_command_pane(env, command_to_run, context)
                     },
@@ -338,6 +522,9 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::ToggleFocusFullscreen => toggle_focus_fullscreen(env),
                     PluginCommand::ToggleFocusNoUiFullscreen => toggle_focus_no_ui_fullscreen(env),
                     PluginCommand::FocusHostSession => focus_host_session(env),
+                    PluginCommand::GetNestedSessionKeybinds(pane_id) => {
+                        get_nested_session_keybinds(env, pane_id.into())
+                    },
                     PluginCommand::TogglePaneFrames => toggle_pane_frames(env),
                     PluginCommand::SetPaneFrameStyle(pane_frame_style) => {
                         set_pane_frame_style(env, pane_frame_style)
@@ -351,6 +538,12 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::QuitZellij => quit_zellij(env),
                     PluginCommand::PreviousSwapLayout => previous_swap_layout(env),
                     PluginCommand::NextSwapLayout => next_swap_layout(env),
+                    PluginCommand::ApplyTiledSwapLayout(layout_name) => {
+                        apply_tiled_swap_layout(env, layout_name)
+                    },
+                    PluginCommand::ApplyFloatingSwapLayout(layout_name) => {
+                        apply_floating_swap_layout(env, layout_name)
+                    },
                     PluginCommand::GoToTabName(tab_name) => go_to_tab_name(env, tab_name),
                     PluginCommand::FocusOrCreateTab(tab_name) => focus_or_create_tab(env, tab_name),
                     PluginCommand::GoToTab(tab_index) => go_to_tab(env, tab_index),
@@ -622,6 +815,9 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::TogglePaneBorderless(pane_id) => {
                         toggle_pane_borderless(env, pane_id.into())
                     },
+                    PluginCommand::SetPaneBorderStyle(pane_id, border_style) => {
+                        set_pane_border_style(env, pane_id.into(), border_style)
+                    },
                     PluginCommand::SetPaneBorderless(pane_id, borderless) => {
                         set_pane_borderless(env, pane_id.into(), borderless)
                     },
@@ -814,7 +1010,7 @@ fn subscribe(env: &PluginEnv, event_list: HashSet<EventType>) -> Result<()> {
     env.senders
         .send_to_plugin(PluginInstruction::PluginSubscribedToEvents(
             env.plugin_id,
-            env.client_id,
+            acting_client(env),
             event_list,
         ))
 }
@@ -866,7 +1062,7 @@ fn unsubscribe(env: &PluginEnv, event_list: HashSet<EventType>) -> Result<()> {
 fn set_selectable(env: &PluginEnv, selectable: bool) {
     env.senders
         .send_to_screen(ScreenInstruction::SetSelectable(
-            PaneId::Plugin(env.plugin_id),
+            PaneId::Plugin(self_pane_id(env)),
             selectable,
         ))
         .with_context(|| {
@@ -882,8 +1078,8 @@ fn set_selectable(env: &PluginEnv, selectable: bool) {
 fn show_cursor(env: &PluginEnv, cursor_position: Option<(usize, usize)>) {
     env.senders
         .send_to_screen(ScreenInstruction::ShowPluginCursor(
-            env.plugin_id,
-            env.client_id,
+            self_pane_id(env),
+            acting_client(env),
             cursor_position,
         ))
         .with_context(|| {
@@ -901,14 +1097,15 @@ fn show_cursor(env: &PluginEnv, cursor_position: Option<(usize, usize)>) {
 }
 
 fn request_permission(env: &PluginEnv, permissions: Vec<PermissionType>) -> Result<()> {
-    if PermissionCache::from_path_or_default(None)
-        .check_permissions(env.plugin.location.to_string(), &permissions)
+    if env.plugin.is_builtin()
+        || PermissionCache::from_path_or_default(None)
+            .check_permissions(env.plugin.location.to_string(), &permissions)
     {
         return env
             .senders
             .send_to_plugin(PluginInstruction::PermissionRequestResult(
                 env.plugin_id,
-                Some(env.client_id),
+                Some(acting_client(env)),
                 permissions.to_vec(),
                 PermissionStatus::Granted,
                 None,
@@ -925,7 +1122,7 @@ fn request_permission(env: &PluginEnv, permissions: Vec<PermissionType>) -> Resu
 
     env.senders
         .send_to_screen(ScreenInstruction::RequestPluginPermissions(
-            env.plugin_id,
+            permission_pane_id(env),
             PluginPermission::new(env.plugin.location.to_string(), permissions),
         ))
 }
@@ -935,7 +1132,7 @@ fn get_plugin_ids(env: &PluginEnv) {
         plugin_id: env.plugin_id,
         zellij_pid: process::id(),
         initial_cwd: env.plugin_cwd.clone(),
-        client_id: env.client_id,
+        client_id: acting_client(env),
     };
     ProtobufPluginIds::try_from(ids)
         .map_err(|e| anyhow!("Failed to serialized plugin ids: {}", e))
@@ -1061,7 +1258,7 @@ fn open_command_pane_in_new_tab(
         hold_on_start,
         originating_plugin: Some(OriginatingPlugin::new(
             env.plugin_id,
-            env.client_id,
+            acting_client(env),
             context,
         )),
         use_terminal_title: false,
@@ -1208,6 +1405,7 @@ fn open_editor_pane_in_new_tab(
         .map(|cwd| translate_plugin_path(env, cwd))
         .or_else(|| Some(env.plugin_cwd.clone()));
     let file_to_open = FileToOpen {
+        border_style: None,
         path,
         cwd,
         ..file_to_open
@@ -1246,7 +1444,7 @@ fn get_focused_pane_info(env: &PluginEnv) {
     let err_context = || {
         format!(
             "failed to get focused pane info for client {:?} from plugin {}",
-            env.client_id,
+            acting_client(env),
             env.name()
         )
     };
@@ -1257,7 +1455,7 @@ fn get_focused_pane_info(env: &PluginEnv) {
     // Send request to screen thread
     env.senders
         .send_to_screen(ScreenInstruction::GetFocusedPaneInfo {
-            client_id: env.client_id,
+            client_id: acting_client(env),
             response_channel: response_sender,
         })
         .with_context(err_context)
@@ -1270,7 +1468,7 @@ fn get_focused_pane_info(env: &PluginEnv) {
             log::error!(
                 "GetFocusedPaneInfo timed out for plugin {} for client {:?}",
                 env.plugin_id,
-                env.client_id
+                acting_client(env)
             );
             GetFocusedPaneInfoResponse::Err("Timeout retrieving focused pane info".to_string())
         },
@@ -1407,6 +1605,7 @@ fn open_file(env: &PluginEnv, file_to_open: FileToOpen, context: BTreeMap<String
     let floating = false;
     let in_place = false;
     let start_suppressed = false;
+    let border_style = file_to_open.border_style;
     let path = translate_plugin_path(env, file_to_open.path);
     let cwd = file_to_open
         .cwd
@@ -1414,14 +1613,14 @@ fn open_file(env: &PluginEnv, file_to_open: FileToOpen, context: BTreeMap<String
         .or_else(|| Some(env.plugin_cwd.clone()));
     let action = Action::EditFile {
         payload: OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(
-            OriginatingPlugin::new(env.plugin_id, env.client_id, context),
+            OriginatingPlugin::new(env.plugin_id, acting_client(env), context),
         ),
         direction: None,
         floating,
         in_place,
         close_replaced_pane: false,
         start_suppressed,
-        coordinates: None,
+        coordinates: FloatingPaneCoordinates::merge_border_style(None, border_style),
         near_current_pane: false,
         no_focus: false,
         tab_id: None,
@@ -1442,11 +1641,11 @@ fn run_action(env: &PluginEnv, mut action: Action, context: BTreeMap<String, Str
     // Clone the necessary data to move into the thread
     action.populate_originating_plugin(OriginatingPlugin::new(
         env.plugin_id,
-        env.client_id,
+        acting_client(env),
         context.clone(),
     ));
     let action_clone = action.clone();
-    let client_id = env.client_id;
+    let client_id = acting_client(env);
     let plugin_id = env.plugin_id;
     let senders = env.senders.clone();
     let default_shell = env.default_shell.clone();
@@ -1503,6 +1702,7 @@ fn open_file_floating(
     let floating = true;
     let in_place = false;
     let start_suppressed = false;
+    let border_style = file_to_open.border_style;
     let path = translate_plugin_path(env, file_to_open.path);
     let cwd = file_to_open
         .cwd
@@ -1510,14 +1710,17 @@ fn open_file_floating(
         .or_else(|| Some(env.plugin_cwd.clone()));
     let action = Action::EditFile {
         payload: OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(
-            OriginatingPlugin::new(env.plugin_id, env.client_id, context),
+            OriginatingPlugin::new(env.plugin_id, acting_client(env), context),
         ),
         direction: None,
         floating,
         in_place,
         close_replaced_pane: false,
         start_suppressed,
-        coordinates: floating_pane_coordinates,
+        coordinates: FloatingPaneCoordinates::merge_border_style(
+            floating_pane_coordinates,
+            border_style,
+        ),
         near_current_pane: false,
         no_focus: false,
         tab_id: None,
@@ -1552,7 +1755,7 @@ fn open_file_in_place(
 
     let action = Action::EditFile {
         payload: OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(
-            OriginatingPlugin::new(env.plugin_id, env.client_id, context),
+            OriginatingPlugin::new(env.plugin_id, acting_client(env), context),
         ),
         direction: None,
         floating,
@@ -1582,6 +1785,7 @@ fn open_file_near_plugin(
     file_to_open: FileToOpen,
     context: BTreeMap<String, String>,
 ) {
+    let border_style = file_to_open.border_style;
     let cwd = file_to_open
         .cwd
         .map(|cwd| translate_plugin_path(env, cwd))
@@ -1589,7 +1793,7 @@ fn open_file_near_plugin(
     let path = translate_plugin_path(env, file_to_open.path);
     let open_file_payload =
         OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(
-            OriginatingPlugin::new(env.plugin_id, env.client_id, context),
+            OriginatingPlugin::new(env.plugin_id, acting_client(env), context),
         );
     let title = format!("Editing: {}", open_file_payload.path.display());
     let start_suppressed = false;
@@ -1600,9 +1804,9 @@ fn open_file_near_plugin(
     let pty_instr = PtyInstruction::SpawnTerminal(
         Some(open_file),
         Some(title),
-        NewPanePlacement::default(),
+        NewPanePlacement::default().with_border_style(border_style),
         start_suppressed,
-        ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
+        ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(self_pane_id(env))),
         Some(NotificationEnd::new(completion_tx)),
         false, // set_blocking
     );
@@ -1625,6 +1829,10 @@ fn open_file_floating_near_plugin(
     floating_pane_coordinates: Option<FloatingPaneCoordinates>,
     context: BTreeMap<String, String>,
 ) {
+    let floating_pane_coordinates = FloatingPaneCoordinates::merge_border_style(
+        floating_pane_coordinates,
+        file_to_open.border_style,
+    );
     let cwd = file_to_open
         .cwd
         .map(|cwd| translate_plugin_path(env, cwd))
@@ -1632,7 +1840,7 @@ fn open_file_floating_near_plugin(
     let path = translate_plugin_path(env, file_to_open.path);
     let open_file_payload =
         OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(
-            OriginatingPlugin::new(env.plugin_id, env.client_id, context),
+            OriginatingPlugin::new(env.plugin_id, acting_client(env), context),
         );
     let title = format!("Editing: {}", open_file_payload.path.display());
     let start_suppressed = false;
@@ -1645,7 +1853,7 @@ fn open_file_floating_near_plugin(
         Some(title),
         NewPanePlacement::Floating(floating_pane_coordinates),
         start_suppressed,
-        ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
+        ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(self_pane_id(env))),
         Some(NotificationEnd::new(completion_tx)),
         false, // set_blocking
     );
@@ -1675,7 +1883,7 @@ fn open_file_in_place_of_plugin(
     let path = translate_plugin_path(env, file_to_open.path);
     let open_file_payload =
         OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(
-            OriginatingPlugin::new(env.plugin_id, env.client_id, context),
+            OriginatingPlugin::new(env.plugin_id, acting_client(env), context),
         );
     let title = format!("Editing: {}", open_file_payload.path.display());
     let open_file = TerminalAction::OpenFile(open_file_payload);
@@ -1686,7 +1894,7 @@ fn open_file_in_place_of_plugin(
         Some(open_file),
         Some(title),
         close_plugin_after_replace,
-        ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
+        ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(self_pane_id(env))),
         Some(NotificationEnd::new(completion_tx)),
     );
     let _ = env.senders.send_to_pty(pty_instr);
@@ -1702,7 +1910,7 @@ fn open_file_in_place_of_plugin(
         .non_fatal();
 }
 
-fn open_terminal(env: &PluginEnv, cwd: PathBuf) {
+fn open_terminal(env: &PluginEnv, cwd: PathBuf, border_style: Option<BorderStyleOverride>) {
     let error_msg = || format!("failed to open file in plugin {}", env.name());
     let cwd = translate_plugin_path(env, cwd);
     let mut default_shell = env.default_shell.clone().unwrap_or_else(|| {
@@ -1724,6 +1932,7 @@ fn open_terminal(env: &PluginEnv, cwd: PathBuf) {
         near_current_pane: false,
         no_focus: false,
         borderless: None,
+        border_style,
         tab_id: None,
     };
     let result = apply_action!(action, error_msg, env);
@@ -1738,7 +1947,11 @@ fn open_terminal(env: &PluginEnv, cwd: PathBuf) {
         .non_fatal();
 }
 
-fn open_terminal_near_plugin(env: &PluginEnv, cwd: PathBuf) {
+fn open_terminal_near_plugin(
+    env: &PluginEnv,
+    cwd: PathBuf,
+    border_style: Option<BorderStyleOverride>,
+) {
     let cwd = translate_plugin_path(env, cwd);
     let mut default_shell = env.default_shell.clone().unwrap_or_else(|| {
         TerminalAction::RunCommand(RunCommand {
@@ -1758,9 +1971,10 @@ fn open_terminal_near_plugin(env: &PluginEnv, cwd: PathBuf) {
         NewPanePlacement::Tiled {
             direction: None,
             borderless: None,
+            border_style,
         },
         false,
-        ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
+        ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(self_pane_id(env))),
         Some(NotificationEnd::new(completion_tx)),
         false, // set_blocking
     ));
@@ -1839,7 +2053,7 @@ fn open_terminal_floating_near_plugin(
         name,
         NewPanePlacement::Floating(floating_pane_coordinates),
         false,
-        ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
+        ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(self_pane_id(env))),
         Some(NotificationEnd::new(completion_tx)),
         false, // set_blocking
     ));
@@ -1917,7 +2131,7 @@ fn open_terminal_in_place_of_plugin(
             Some(default_shell),
             name,
             close_plugin_after_replace,
-            ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
+            ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(self_pane_id(env))),
             Some(NotificationEnd::new(completion_tx)),
         ));
 
@@ -1940,6 +2154,7 @@ fn open_command_pane_in_place_of_plugin(
     context: BTreeMap<String, String>,
 ) {
     let command = command_to_run.path;
+    let _border_style = command_to_run.border_style;
     let cwd = command_to_run
         .cwd
         .map(|cwd| translate_plugin_path(env, cwd));
@@ -1958,7 +2173,7 @@ fn open_command_pane_in_place_of_plugin(
         hold_on_start,
         originating_plugin: Some(OriginatingPlugin::new(
             env.plugin_id,
-            env.client_id,
+            acting_client(env),
             context,
         )),
         use_terminal_title,
@@ -1973,7 +2188,7 @@ fn open_command_pane_in_place_of_plugin(
             Some(run_cmd),
             name,
             close_plugin_after_replace,
-            ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
+            ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(self_pane_id(env))),
             Some(NotificationEnd::new(completion_tx)),
         ));
 
@@ -2039,6 +2254,7 @@ fn open_command_pane_in_place_of_pane_id(
     context: BTreeMap<String, String>,
 ) {
     let command = command_to_run.path;
+    let _border_style = command_to_run.border_style;
     let cwd = command_to_run
         .cwd
         .map(|cwd| translate_plugin_path(env, cwd));
@@ -2057,7 +2273,7 @@ fn open_command_pane_in_place_of_pane_id(
         hold_on_start,
         originating_plugin: Some(OriginatingPlugin::new(
             env.plugin_id,
-            env.client_id,
+            acting_client(env),
             context,
         )),
         use_terminal_title,
@@ -2102,7 +2318,7 @@ fn open_edit_pane_in_place_of_pane_id(
     let path = translate_plugin_path(env, file_to_open.path);
     let open_file_payload =
         OpenFilePayload::new(path, file_to_open.line_number, cwd).with_originating_plugin(
-            OriginatingPlugin::new(env.plugin_id, env.client_id, context),
+            OriginatingPlugin::new(env.plugin_id, acting_client(env), context),
         );
     let title = format!("Editing: {}", open_file_payload.path.display());
     let open_file = TerminalAction::OpenFile(open_file_payload);
@@ -2134,6 +2350,7 @@ fn open_command_pane(
 ) {
     let error_msg = || format!("failed to open command in plugin {}", env.name());
     let command = command_to_run.path;
+    let border_style = command_to_run.border_style;
     let cwd = command_to_run
         .cwd
         .map(|cwd| translate_plugin_path(env, cwd));
@@ -2152,7 +2369,7 @@ fn open_command_pane(
         hold_on_start,
         originating_plugin: Some(OriginatingPlugin::new(
             env.plugin_id,
-            env.client_id,
+            acting_client(env),
             context,
         )),
         use_terminal_title,
@@ -2164,6 +2381,7 @@ fn open_command_pane(
         near_current_pane: false,
         no_focus: false,
         borderless: None,
+        border_style,
         tab_id: None,
     };
     let result = apply_action!(action, error_msg, env);
@@ -2185,6 +2403,7 @@ fn open_command_pane_near_plugin(
     context: BTreeMap<String, String>,
 ) {
     let command = command_to_run.path;
+    let border_style = command_to_run.border_style;
     let cwd = command_to_run
         .cwd
         .map(|cwd| translate_plugin_path(env, cwd));
@@ -2203,7 +2422,7 @@ fn open_command_pane_near_plugin(
         hold_on_start,
         originating_plugin: Some(OriginatingPlugin::new(
             env.plugin_id,
-            env.client_id,
+            acting_client(env),
             context,
         )),
         use_terminal_title,
@@ -2218,9 +2437,10 @@ fn open_command_pane_near_plugin(
         NewPanePlacement::Tiled {
             direction: None,
             borderless: None,
+            border_style,
         },
         false,
-        ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
+        ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(self_pane_id(env))),
         Some(NotificationEnd::new(completion_tx)),
         false, // set_blocking
     ));
@@ -2244,6 +2464,7 @@ fn open_command_pane_floating(
 ) {
     let error_msg = || format!("failed to open command in plugin {}", env.name());
     let command = command_to_run.path;
+    let border_style = command_to_run.border_style;
     let cwd = command_to_run
         .cwd
         .map(|cwd| translate_plugin_path(env, cwd));
@@ -2262,7 +2483,7 @@ fn open_command_pane_floating(
         hold_on_start,
         originating_plugin: Some(OriginatingPlugin::new(
             env.plugin_id,
-            env.client_id,
+            acting_client(env),
             context,
         )),
         use_terminal_title,
@@ -2270,7 +2491,10 @@ fn open_command_pane_floating(
     let action = Action::NewFloatingPane {
         command: Some(run_command_action),
         pane_name: name,
-        coordinates: floating_pane_coordinates,
+        coordinates: FloatingPaneCoordinates::merge_border_style(
+            floating_pane_coordinates,
+            border_style,
+        ),
         near_current_pane: false,
         no_focus: false,
         tab_id: None,
@@ -2295,6 +2519,7 @@ fn open_command_pane_floating_near_plugin(
     context: BTreeMap<String, String>,
 ) {
     let command = command_to_run.path;
+    let border_style = command_to_run.border_style;
     let cwd = command_to_run
         .cwd
         .map(|cwd| translate_plugin_path(env, cwd));
@@ -2313,7 +2538,7 @@ fn open_command_pane_floating_near_plugin(
         hold_on_start,
         originating_plugin: Some(OriginatingPlugin::new(
             env.plugin_id,
-            env.client_id,
+            acting_client(env),
             context,
         )),
         use_terminal_title,
@@ -2325,9 +2550,12 @@ fn open_command_pane_floating_near_plugin(
     let _ = env.senders.send_to_pty(PtyInstruction::SpawnTerminal(
         Some(run_cmd),
         name,
-        NewPanePlacement::Floating(floating_pane_coordinates),
+        NewPanePlacement::Floating(FloatingPaneCoordinates::merge_border_style(
+            floating_pane_coordinates,
+            border_style,
+        )),
         false,
-        ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(env.plugin_id)),
+        ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(self_pane_id(env))),
         Some(NotificationEnd::new(completion_tx)),
         false, // set_blocking
     ));
@@ -2355,6 +2583,7 @@ fn open_command_pane_in_place(
 ) {
     let error_msg = || format!("failed to open command in plugin {}", env.name());
     let command = command_to_run.path;
+    let _border_style = command_to_run.border_style;
     let cwd = command_to_run
         .cwd
         .map(|cwd| translate_plugin_path(env, cwd));
@@ -2373,7 +2602,7 @@ fn open_command_pane_in_place(
         hold_on_start,
         originating_plugin: Some(OriginatingPlugin::new(
             env.plugin_id,
-            env.client_id,
+            acting_client(env),
             context,
         )),
         use_terminal_title,
@@ -2426,7 +2655,7 @@ fn open_command_pane_background(
         hold_on_start,
         originating_plugin: Some(OriginatingPlugin::new(
             env.plugin_id,
-            env.client_id,
+            acting_client(env),
             context,
         )),
         use_terminal_title,
@@ -2440,7 +2669,7 @@ fn open_command_pane_background(
         name,
         NewPanePlacement::default(),
         start_suppressed,
-        ClientTabIndexOrPaneId::ClientId(env.client_id),
+        ClientTabIndexOrPaneId::ClientId(acting_client(env)),
         Some(NotificationEnd::new(completion_tx)),
         false, // set_blocking
     ));
@@ -2466,7 +2695,7 @@ fn switch_tab_to(env: &PluginEnv, tab_idx: u32) {
     env.senders
         .send_to_screen(ScreenInstruction::GoToTab(
             tab_idx,
-            Some(env.client_id),
+            Some(acting_client(env)),
             None,
         ))
         .with_context(|| {
@@ -2481,7 +2710,7 @@ fn switch_tab_to(env: &PluginEnv, tab_idx: u32) {
 fn set_timeout(env: &PluginEnv, secs: f64) {
     let send_plugin_instructions = env.senders.to_plugin.clone();
     let update_target = Some(env.plugin_id);
-    let client_id = env.client_id;
+    let client_id = acting_client(env);
     let plugin_name = env.name();
     // Use tokio runtime for async I/O (timer operation)
     get_tokio_runtime().spawn(async move {
@@ -2553,7 +2782,7 @@ fn run_command(
             .senders
             .send_to_background_jobs(BackgroundJob::RunCommand(
                 env.plugin_id,
-                env.client_id,
+                acting_client(env),
                 command,
                 command_line,
                 env_variables,
@@ -2575,7 +2804,7 @@ fn web_request(
         .senders
         .send_to_background_jobs(BackgroundJob::WebRequest(
             env.plugin_id,
-            env.client_id,
+            acting_client(env),
             url,
             verb,
             headers,
@@ -2591,7 +2820,7 @@ fn post_message_to(env: &PluginEnv, plugin_message: PluginMessage) -> Result<()>
     env.senders
         .send_to_plugin(PluginInstruction::PostMessagesToPluginWorker(
             env.plugin_id,
-            env.client_id,
+            acting_client(env),
             worker_name,
             vec![(plugin_message.name, plugin_message.payload)],
         ))
@@ -2607,7 +2836,7 @@ fn post_message_to_plugin(env: &PluginEnv, plugin_message: PluginMessage) -> Res
     env.senders
         .send_to_plugin(PluginInstruction::PostMessageToPlugin(
             env.plugin_id,
-            env.client_id,
+            acting_client(env),
             plugin_message.name,
             plugin_message.payload,
         ))
@@ -2616,21 +2845,21 @@ fn post_message_to_plugin(env: &PluginEnv, plugin_message: PluginMessage) -> Res
 fn hide_self(env: &PluginEnv) -> Result<()> {
     env.senders
         .send_to_screen(ScreenInstruction::SuppressPane(
-            PaneId::Plugin(env.plugin_id),
-            env.client_id,
+            PaneId::Plugin(self_pane_id(env)),
+            acting_client(env),
         ))
         .with_context(|| format!("failed to hide self"))
 }
 
 fn hide_pane_with_id(env: &PluginEnv, pane_id: PaneId) -> Result<()> {
     env.senders
-        .send_to_screen(ScreenInstruction::SuppressPane(pane_id, env.client_id))
+        .send_to_screen(ScreenInstruction::SuppressPane(pane_id, acting_client(env)))
         .with_context(|| format!("failed to hide self"))
 }
 
 fn show_self(env: &PluginEnv, should_float_if_hidden: bool) {
     let action = Action::FocusPluginPaneWithId {
-        pane_id: env.plugin_id,
+        pane_id: self_pane_id(env),
         should_float_if_hidden,
         should_be_in_place_if_hidden: false,
     };
@@ -2651,7 +2880,7 @@ fn show_pane_with_id(
                 pane_id,
                 should_float_if_hidden,
                 false,
-                env.client_id,
+                acting_client(env),
                 None,
             ));
     } else {
@@ -2667,7 +2896,7 @@ fn show_pane_with_id(
 fn close_self(env: &PluginEnv) {
     env.senders
         .send_to_screen(ScreenInstruction::ClosePane(
-            PaneId::Plugin(env.plugin_id),
+            PaneId::Plugin(self_pane_id(env)),
             None,
             None,
             None,
@@ -2675,14 +2904,14 @@ fn close_self(env: &PluginEnv) {
         .with_context(|| format!("failed to close self"))
         .non_fatal();
     env.senders
-        .send_to_plugin(PluginInstruction::Unload(env.plugin_id))
+        .send_to_plugin(PluginInstruction::Unload(self_pane_id(env)))
         .with_context(|| format!("failed to close self"))
         .non_fatal();
 }
 
 fn reconfigure(env: &PluginEnv, new_config: String, write_config_to_disk: bool) -> Result<()> {
     let err_context = || "Failed to reconfigure";
-    let client_id = env.client_id;
+    let client_id = acting_client(env);
     env.senders
         .send_to_server(ServerInstruction::Reconfigure {
             client_id,
@@ -2700,7 +2929,7 @@ fn rebind_keys(
     write_config_to_disk: bool,
 ) -> Result<()> {
     let err_context = || "Failed to rebind_keys";
-    let client_id = env.client_id;
+    let client_id = acting_client(env);
     env.senders
         .send_to_server(ServerInstruction::RebindKeys {
             client_id,
@@ -2869,6 +3098,7 @@ fn new_tiled_pane_in_tab(env: &PluginEnv, tab_position: usize) {
         near_current_pane: false,
         no_focus: false,
         borderless: None,
+        border_style: None,
         tab_id: Some(tab_position),
     };
     let result = apply_action!(action, error_msg, env);
@@ -2975,7 +3205,7 @@ fn switch_session(
     {
         log::error!("Session names cannot contain \'/\'");
     } else {
-        let client_id = env.client_id;
+        let client_id = acting_client(env);
         let tab_position = tab_position.map(|p| p + 1); // ¯\_()_/¯
         let cwd = cwd
             .map(|c| translate_plugin_path(env, c))
@@ -3156,9 +3386,51 @@ fn toggle_focus_no_ui_fullscreen(env: &PluginEnv) {
 
 fn focus_host_session(env: &PluginEnv) {
     env.senders
-        .send_to_screen(ScreenInstruction::FocusHostSession(env.client_id, None))
+        .send_to_screen(ScreenInstruction::FocusHostSession(
+            acting_client(env),
+            None,
+        ))
         .with_context(|| format!("failed to focus host session from plugin {}", env.name()))
         .non_fatal();
+}
+
+fn get_nested_session_keybinds(env: &PluginEnv, pane_id: PaneId) {
+    use crossbeam::channel::RecvTimeoutError;
+    let (response_sender, response_receiver) = crossbeam::channel::bounded(1);
+    env.senders
+        .send_to_screen(ScreenInstruction::GetNestedSessionKeybinds {
+            pane_id,
+            response_channel: response_sender,
+        })
+        .with_context(|| {
+            format!(
+                "failed to request nested session keybindings from plugin {}",
+                env.name()
+            )
+        })
+        .non_fatal();
+    let response = match response_receiver
+        .recv_timeout(zellij_utils::nested_session::KEYBINDS_REQUEST_TIMEOUT)
+    {
+        Ok(response) => response,
+        Err(RecvTimeoutError::Timeout) | Err(RecvTimeoutError::Disconnected) => {
+            log::warn!(
+                "nested session keybindings for pane {:?} did not arrive in time for plugin {}",
+                pane_id,
+                env.plugin_id
+            );
+            Err(NestedSessionKeybindsError::Timeout)
+        },
+    };
+    let protobuf_response = nested_session_keybinds_response_to_protobuf(response).or_else(|_| {
+        nested_session_keybinds_response_to_protobuf(Err(NestedSessionKeybindsError::NotSupported))
+    });
+    match protobuf_response {
+        Ok(protobuf_response) => {
+            let _ = wasi_write_object(env, &protobuf_response.encode_to_vec());
+        },
+        Err(e) => log::error!("failed to encode nested session keybindings: {}", e),
+    }
 }
 
 fn toggle_pane_frames(env: &PluginEnv) {
@@ -3248,6 +3520,23 @@ fn previous_swap_layout(env: &PluginEnv) {
 fn next_swap_layout(env: &PluginEnv) {
     let error_msg = || format!("failed to switch swap layout in plugin {}", env.name());
     let action = Action::NextSwapLayout;
+    apply_action!(action, error_msg, env);
+}
+
+fn apply_tiled_swap_layout(env: &PluginEnv, layout_name: String) {
+    let error_msg = || format!("failed to apply tiled swap layout in plugin {}", env.name());
+    let action = Action::ApplyTiledSwapLayout { name: layout_name };
+    apply_action!(action, error_msg, env);
+}
+
+fn apply_floating_swap_layout(env: &PluginEnv, layout_name: String) {
+    let error_msg = || {
+        format!(
+            "failed to apply floating swap layout in plugin {}",
+            env.name()
+        )
+    };
+    let action = Action::ApplyFloatingSwapLayout { name: layout_name };
     apply_action!(action, error_msg, env);
 }
 
@@ -3394,7 +3683,9 @@ fn rename_session(env: &PluginEnv, new_session_name: String) {
 fn disconnect_other_clients(env: &PluginEnv) {
     let _ = env
         .senders
-        .send_to_server(ServerInstruction::DisconnectAllClientsExcept(env.client_id))
+        .send_to_server(ServerInstruction::DisconnectAllClientsExcept(
+            acting_client(env),
+        ))
         .context("failed to send disconnect other clients instruction");
 }
 
@@ -3614,7 +3905,7 @@ fn save_session(env: &PluginEnv) {
     let (completion_tx, completion_rx) = oneshot::channel();
 
     let send_result = env.senders.send_to_screen(ScreenInstruction::SaveSession(
-        env.client_id,
+        acting_client(env),
         Some(NotificationEnd::new(completion_tx)),
     ));
 
@@ -3642,7 +3933,7 @@ fn show_floating_panes(env: &PluginEnv, tab_id: Option<usize>) {
     let send_result = env
         .senders
         .send_to_screen(ScreenInstruction::ShowFloatingPanes {
-            client_id: env.client_id,
+            client_id: acting_client(env),
             tab_id,
             completion: Some(NotificationEnd::new(completion_tx)),
         });
@@ -3673,7 +3964,7 @@ fn hide_floating_panes(env: &PluginEnv, tab_id: Option<usize>) {
     let send_result = env
         .senders
         .send_to_screen(ScreenInstruction::HideFloatingPanes {
-            client_id: env.client_id,
+            client_id: acting_client(env),
             tab_id,
             completion: Some(NotificationEnd::new(completion_tx)),
         });
@@ -3889,7 +4180,7 @@ fn list_clients(env: &PluginEnv) {
     let _ = env.senders.to_screen.as_ref().map(|sender| {
         sender.send(ScreenInstruction::ListClientsToPlugin(
             env.plugin_id,
-            env.client_id,
+            acting_client(env),
         ))
     });
 }
@@ -3899,7 +4190,7 @@ fn change_host_folder(env: &PluginEnv, new_host_folder: PathBuf) {
         sender.send(PluginInstruction::ChangePluginHostDir(
             new_host_folder,
             env.plugin_id,
-            env.client_id,
+            acting_client(env),
         ))
     });
 }
@@ -3914,9 +4205,11 @@ fn set_floating_pane_pinned(env: &PluginEnv, pane_id: PaneId, should_be_pinned: 
 }
 
 fn stack_panes(env: &PluginEnv, pane_ids: Vec<PaneId>) {
-    let _ =
-        env.senders
-            .send_to_screen(ScreenInstruction::StackPanes(pane_ids, env.client_id, None));
+    let _ = env.senders.send_to_screen(ScreenInstruction::StackPanes(
+        pane_ids,
+        acting_client(env),
+        None,
+    ));
 }
 
 fn change_floating_panes_coordinates(
@@ -3942,6 +4235,16 @@ fn set_pane_borderless(env: &PluginEnv, pane_id: PaneId, borderless: bool) {
         .senders
         .send_to_screen(ScreenInstruction::SetPaneBorderless(
             pane_id, borderless, None,
+        ));
+}
+
+fn set_pane_border_style(env: &PluginEnv, pane_id: PaneId, border_style: BorderStyleOverride) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::SetPaneBorderStyle(
+            pane_id,
+            border_style,
+            None,
         ));
 }
 
@@ -3979,7 +4282,7 @@ fn scan_host_folder(env: &PluginEnv, folder_to_scan: PathBuf) {
                 Ok(reading_folder) => {
                     let send_plugin_instructions = env.senders.to_plugin.clone();
                     let update_target = Some(env.plugin_id);
-                    let client_id = env.client_id;
+                    let client_id = acting_client(env);
                     thread::spawn({
                         move || {
                             let mut paths_in_folder = vec![];
@@ -4029,7 +4332,7 @@ fn list_windows_volumes(_env: &PluginEnv) {
 fn set_soft_keyboard(env: &PluginEnv, on: bool) {
     env.senders
         .send_to_screen(ScreenInstruction::SetSoftKeyboard {
-            client_id: env.client_id,
+            client_id: acting_client(env),
             on,
         })
         .with_context(|| {
@@ -4045,7 +4348,7 @@ fn set_soft_keyboard(env: &PluginEnv, on: bool) {
 fn list_windows_volumes(env: &PluginEnv) {
     let send_plugin_instructions = env.senders.to_plugin.clone();
     let update_target = Some(env.plugin_id);
-    let client_id = env.client_id;
+    let client_id = acting_client(env);
     thread::spawn(move || {
         let mut entries = enumerate_drives();
         entries.extend(enumerate_wsl_distributions());
@@ -4151,7 +4454,7 @@ fn get_pane_scrollback(env: &PluginEnv, pane_id: PaneId, get_full_scrollback: bo
     env.senders
         .send_to_screen(ScreenInstruction::GetPaneScrollback {
             pane_id,
-            client_id: env.client_id,
+            client_id: acting_client(env),
             get_full_scrollback,
             response_channel: response_sender,
         })
@@ -4685,6 +4988,7 @@ fn try_edit_layout(
 
     // Create FileToOpen for the layout file
     let file_to_open = FileToOpen {
+        border_style: None,
         path: file_path,
         line_number: None,
         cwd: Some(layout_dir.clone()),
@@ -4699,7 +5003,7 @@ fn try_edit_layout(
         )
         .with_originating_plugin(OriginatingPlugin::new(
             env.plugin_id,
-            env.client_id,
+            acting_client(env),
             context,
         )),
         direction: None,
@@ -4715,9 +5019,9 @@ fn try_edit_layout(
     // Route the action - this is fallible
     route_action(
         action,
-        env.client_id,
+        acting_client(env),
         None,
-        Some(PaneId::Plugin(env.plugin_id)),
+        source_pane(env),
         env.senders.clone(),
         env.default_shell.clone(),
         None,
@@ -4865,7 +5169,7 @@ fn break_panes_to_new_tab(
             default_shell,
             new_tab_name,
             should_change_focus_to_new_tab,
-            client_id: env.client_id,
+            client_id: acting_client(env),
             completion_tx,
         });
 
@@ -4894,7 +5198,7 @@ fn break_panes_to_tab_with_index(
         .send_to_screen(ScreenInstruction::BreakPanesToTabWithIndex {
             pane_ids,
             tab_index,
-            client_id: env.client_id,
+            client_id: acting_client(env),
             should_change_focus_to_new_tab,
             completion_tx,
         });
@@ -4914,7 +5218,7 @@ fn switch_tab_to_id(env: &PluginEnv, tab_id: u64) {
     env.senders
         .send_to_screen(ScreenInstruction::GoToTabWithId(
             tab_id,
-            Some(env.client_id),
+            Some(acting_client(env)),
             None,
         ))
         .with_context(|| {
@@ -4932,7 +5236,7 @@ fn go_to_tab_with_id(env: &PluginEnv, tab_id: u64) {
     env.senders
         .send_to_screen(ScreenInstruction::GoToTabWithId(
             tab_id,
-            Some(env.client_id),
+            Some(acting_client(env)),
             None,
         ))
         .with_context(|| format!("failed to go to tab {} from plugin {}", tab_id, env.name()))
@@ -4974,7 +5278,7 @@ fn break_panes_to_tab_with_id(
             pane_ids,
             tab_id,
             should_change_focus_to_target_tab,
-            client_id: env.client_id,
+            client_id: acting_client(env),
             completion_tx,
         });
 
@@ -5013,7 +5317,7 @@ fn load_new_plugin(
                     .senders
                     .send_to_plugin(PluginInstruction::LoadBackgroundPlugin(
                         run_plugin_or_alias,
-                        env.client_id,
+                        acting_client(env),
                     ));
             },
             Err(e) => {
@@ -5026,7 +5330,7 @@ fn load_new_plugin(
         let pane_title = None;
         let tab_index = None;
         let pane_id_to_replace = None;
-        let client_id = env.client_id;
+        let client_id = acting_client(env);
         let size = Default::default();
         let cwd = Some(env.plugin_cwd.clone());
         let skip_cache = skip_plugin_cache;
@@ -5060,7 +5364,7 @@ fn load_new_plugin(
 fn start_web_server(env: &PluginEnv) {
     let _ = env
         .senders
-        .send_to_server(ServerInstruction::StartWebServer(env.client_id));
+        .send_to_server(ServerInstruction::StartWebServer(acting_client(env)));
 }
 
 fn stop_web_server(_env: &PluginEnv) {
@@ -5079,13 +5383,15 @@ fn query_web_server_status(env: &PluginEnv) {
 fn share_current_session(env: &PluginEnv) {
     let _ = env
         .senders
-        .send_to_server(ServerInstruction::ShareCurrentSession(env.client_id));
+        .send_to_server(ServerInstruction::ShareCurrentSession(acting_client(env)));
 }
 
 fn stop_sharing_current_session(env: &PluginEnv) {
     let _ = env
         .senders
-        .send_to_server(ServerInstruction::StopSharingCurrentSession(env.client_id));
+        .send_to_server(ServerInstruction::StopSharingCurrentSession(acting_client(
+            env,
+        )));
 }
 
 fn group_and_ungroup_panes(
@@ -5100,7 +5406,7 @@ fn group_and_ungroup_panes(
             panes_to_group,
             panes_to_ungroup,
             for_all_clients,
-            env.client_id,
+            acting_client(env),
         ));
 }
 
@@ -5114,7 +5420,7 @@ fn highlight_and_unhighlight_panes(
         .send_to_screen(ScreenInstruction::HighlightAndUnhighlightPanes(
             panes_to_highlight,
             panes_to_unhighlight,
-            env.client_id,
+            acting_client(env),
         ));
 }
 
@@ -5136,7 +5442,7 @@ fn float_multiple_panes(env: &PluginEnv, pane_ids: Vec<PaneId>) {
         .senders
         .send_to_screen(ScreenInstruction::FloatMultiplePanes(
             pane_ids,
-            env.client_id,
+            acting_client(env),
         ));
 }
 
@@ -5145,7 +5451,7 @@ fn embed_multiple_panes(env: &PluginEnv, pane_ids: Vec<PaneId>) {
         .senders
         .send_to_screen(ScreenInstruction::EmbedMultiplePanes(
             pane_ids,
-            env.client_id,
+            acting_client(env),
         ));
 }
 
@@ -5272,7 +5578,7 @@ fn list_web_login_tokens(env: &PluginEnv) {
 fn set_self_mouse_selection_support(env: &PluginEnv, selection_support: bool) {
     env.senders
         .send_to_screen(ScreenInstruction::SetMouseSelectionSupport(
-            PaneId::Plugin(env.plugin_id),
+            PaneId::Plugin(self_pane_id(env)),
             selection_support,
         ))
         .with_context(|| {
@@ -5291,7 +5597,7 @@ fn intercept_key_presses(env: &mut PluginEnv) {
         .senders
         .send_to_screen(ScreenInstruction::InterceptKeyPresses(
             env.plugin_id,
-            env.client_id,
+            acting_client(env),
         ));
 }
 
@@ -5299,7 +5605,9 @@ fn clear_key_presses_intercepts(env: &mut PluginEnv) {
     env.intercepting_key_presses = false;
     let _ = env
         .senders
-        .send_to_screen(ScreenInstruction::ClearKeyPressesIntercepts(env.client_id));
+        .send_to_screen(ScreenInstruction::ClearKeyPressesIntercepts(acting_client(
+            env,
+        )));
 }
 
 fn replace_pane_with_existing_pane(
@@ -5378,7 +5686,9 @@ fn override_layout(
 // formatted as string from the plugin.
 fn report_panic(env: &PluginEnv, msg: &str) {
     log::error!("PANIC IN PLUGIN!\n\r{}", msg);
-    handle_plugin_crash(env.plugin_id, msg.to_owned(), env.senders.clone());
+    for pane_id in crash_pane_ids(env) {
+        handle_plugin_crash(pane_id, msg.to_owned(), env.senders.clone());
+    }
 }
 
 // Helper Functions ---------------------------------------------------------------------------------------------------
@@ -5520,6 +5830,8 @@ fn check_command_permission(
         | PluginCommand::QuitZellij
         | PluginCommand::PreviousSwapLayout
         | PluginCommand::NextSwapLayout
+        | PluginCommand::ApplyTiledSwapLayout(..)
+        | PluginCommand::ApplyFloatingSwapLayout(..)
         | PluginCommand::GoToTabName(..)
         | PluginCommand::FocusOrCreateTab(..)
         | PluginCommand::GoToTab(..)
@@ -5554,6 +5866,7 @@ fn check_command_permission(
         | PluginCommand::ChangeFloatingPanesCoordinates(..)
         | PluginCommand::TogglePaneBorderless(..)
         | PluginCommand::SetPaneBorderless(..)
+        | PluginCommand::SetPaneBorderStyle(..)
         | PluginCommand::SetPaneColor(..)
         | PluginCommand::GroupAndUngroupPanes(..)
         | PluginCommand::HighlightAndUnhighlightPanes(..)
@@ -5595,6 +5908,7 @@ fn check_command_permission(
         | PluginCommand::CurrentSessionLastSavedTime
         | PluginCommand::GetPaneInfo(..)
         | PluginCommand::GetTabInfo(..)
+        | PluginCommand::GetNestedSessionKeybinds(..)
         | PluginCommand::GetSessionList => PermissionType::ReadApplicationState,
         PluginCommand::RebindKeys { .. } | PluginCommand::Reconfigure(..) => {
             PermissionType::Reconfigure

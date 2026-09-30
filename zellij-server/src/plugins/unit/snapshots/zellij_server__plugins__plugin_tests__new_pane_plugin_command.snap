@@ -8,6 +8,7 @@ Some(
         None,
         NoPreference {
             borderless: None,
+            border_style: None,
         },
         false,
         ClientId(

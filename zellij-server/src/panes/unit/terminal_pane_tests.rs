@@ -1080,7 +1080,7 @@ fn create_guest_modal_pane() -> TerminalPane {
 fn press_key(
     pane: &mut TerminalPane,
     bare_key: zellij_utils::data::BareKey,
-    client_id: u16,
+    client_id: crate::ClientId,
 ) -> Option<crate::tab::AdjustedInput> {
     let key = zellij_utils::data::KeyWithModifier::new(bare_key);
     pane.adjust_input_to_terminal(&Some(key), vec![], false, Some(client_id))

@@ -169,11 +169,13 @@ Config {
                 _allow_exec_host_cmd: false,
                 location: Zellij(
                     PluginTag(
-                        "compact-bar",
+                        "bars",
                     ),
                 ),
                 configuration: PluginUserConfiguration(
-                    {},
+                    {
+                        "role": "compact-bar",
+                    },
                 ),
                 initial_cwd: None,
             },
@@ -231,11 +233,13 @@ Config {
                 _allow_exec_host_cmd: false,
                 location: Zellij(
                     PluginTag(
-                        "status-bar",
+                        "bars",
                     ),
                 ),
                 configuration: PluginUserConfiguration(
-                    {},
+                    {
+                        "role": "status-bar",
+                    },
                 ),
                 initial_cwd: None,
             },
@@ -255,11 +259,13 @@ Config {
                 _allow_exec_host_cmd: false,
                 location: Zellij(
                     PluginTag(
-                        "tab-bar",
+                        "bars",
                     ),
                 ),
                 configuration: PluginUserConfiguration(
-                    {},
+                    {
+                        "role": "tab-bar",
+                    },
                 ),
                 initial_cwd: None,
             },
@@ -283,6 +289,22 @@ Config {
         pane_frames: FrameConfig {
             rounded_corners: false,
             hide_session_name: false,
+            border_style: BorderStyleOverride {
+                all: None,
+                top: None,
+                right: None,
+                bottom: None,
+                left: None,
+                rounded_corners: None,
+            },
+            floating_border_style: BorderStyleOverride {
+                all: None,
+                top: None,
+                right: None,
+                bottom: None,
+                left: None,
+                rounded_corners: None,
+            },
         },
     },
     env: {},
@@ -292,11 +314,13 @@ Config {
                 _allow_exec_host_cmd: false,
                 location: Zellij(
                     PluginTag(
-                        "link",
+                        "bars",
                     ),
                 ),
                 configuration: PluginUserConfiguration(
-                    {},
+                    {
+                        "role": "link",
+                    },
                 ),
                 initial_cwd: None,
             },

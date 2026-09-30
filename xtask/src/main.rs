@@ -28,6 +28,7 @@ use xshell::Shell;
 pub struct WorkspaceMember {
     crate_name: &'static str,
     build: bool,
+    extra_artifacts: &'static [&'static str],
 }
 
 fn workspace_members() -> &'static Vec<WorkspaceMember> {
@@ -35,80 +36,84 @@ fn workspace_members() -> &'static Vec<WorkspaceMember> {
     WORKSPACE_MEMBERS.get_or_init(|| {
         vec![
             WorkspaceMember {
-                crate_name: "default-plugins/compact-bar",
+                crate_name: "default-plugins/bars",
                 build: true,
-            },
-            WorkspaceMember {
-                crate_name: "default-plugins/status-bar",
-                build: true,
+                extra_artifacts: &[],
             },
             WorkspaceMember {
                 crate_name: "default-plugins/strider",
                 build: true,
-            },
-            WorkspaceMember {
-                crate_name: "default-plugins/tab-bar",
-                build: true,
+                extra_artifacts: &[],
             },
             WorkspaceMember {
                 crate_name: "default-plugins/fixture-plugin-for-tests",
                 build: true,
+                extra_artifacts: &["fixture-shared-plugin-for-tests"],
             },
             WorkspaceMember {
                 crate_name: "default-plugins/session-manager",
                 build: true,
+                extra_artifacts: &[],
             },
             WorkspaceMember {
                 crate_name: "default-plugins/configuration",
                 build: true,
+                extra_artifacts: &[],
             },
             WorkspaceMember {
                 crate_name: "default-plugins/plugin-manager",
                 build: true,
+                extra_artifacts: &[],
             },
             WorkspaceMember {
                 crate_name: "default-plugins/about",
                 build: true,
+                extra_artifacts: &[],
             },
             WorkspaceMember {
                 crate_name: "default-plugins/multiple-select",
                 build: true,
+                extra_artifacts: &[],
             },
             WorkspaceMember {
                 crate_name: "default-plugins/share",
                 build: true,
+                extra_artifacts: &[],
             },
             WorkspaceMember {
                 crate_name: "default-plugins/layout-manager",
                 build: true,
-            },
-            WorkspaceMember {
-                crate_name: "default-plugins/link",
-                build: true,
+                extra_artifacts: &[],
             },
             WorkspaceMember {
                 crate_name: "zellij-utils",
                 build: false,
+                extra_artifacts: &[],
             },
             WorkspaceMember {
                 crate_name: "zellij-tile-utils",
                 build: false,
+                extra_artifacts: &[],
             },
             WorkspaceMember {
                 crate_name: "zellij-tile",
                 build: false,
+                extra_artifacts: &[],
             },
             WorkspaceMember {
                 crate_name: "zellij-client",
                 build: false,
+                extra_artifacts: &[],
             },
             WorkspaceMember {
                 crate_name: "zellij-server",
                 build: false,
+                extra_artifacts: &[],
             },
             WorkspaceMember {
                 crate_name: ".",
                 build: true,
+                extra_artifacts: &[],
             },
         ]
     })
