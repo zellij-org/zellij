@@ -68,7 +68,23 @@ mod platform {
     }
 }
 
-#[cfg(not(all(unix, not(target_os = "macos"), not(target_os = "android"))))]
+#[cfg(target_os = "macos")]
+mod platform {
+    #[link(name = "AppKit", kind = "framework")]
+    extern "C" {
+        fn NSBeep();
+    }
+
+    pub fn ring() -> bool {
+        unsafe { NSBeep() };
+        true
+    }
+}
+
+#[cfg(not(any(
+    all(unix, not(target_os = "macos"), not(target_os = "android")),
+    target_os = "macos"
+)))]
 mod platform {
     pub fn ring() -> bool {
         false
