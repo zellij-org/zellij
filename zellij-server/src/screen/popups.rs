@@ -5,10 +5,12 @@ use crate::tab::{ContextMenuRequest, PopupKind, PopupMouseOutcome, PopupPlacemen
 use crate::{ClientId, ServerInstruction};
 use std::collections::BTreeMap;
 use std::time::Instant;
+use crate::route::PopupScroll;
 use zellij_utils::data::{
-    ContextMenuContext, ContextMenuEntry, ContextMenuKind, ContextMenuTarget, Event,
-    PipePopupPlacement,
+    ContextMenuContext, ContextMenuEntry, ContextMenuKind, ContextMenuTarget, Event, InputMode,
+    KeybindsVec, PipePopupPlacement, PopupOptions,
 };
+use zellij_utils::input::context_menu::context_menu_shortcut;
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::actions::Action;
 use zellij_utils::input::context_menu::ContextMenuConfig;
@@ -22,14 +24,25 @@ pub const CONTEXT_MENU_PLUGIN_ALIAS: &str = "context-menu";
 pub const PIPE_POPUP_INITIAL_COLS: usize = 50;
 pub const PIPE_POPUP_INITIAL_ROWS: usize = 8;
 
-pub fn estimated_context_menu_size(entries: &[ContextMenuEntry]) -> (usize, usize) {
-    let widest_label = entries
+pub fn estimated_context_menu_size(
+    entries: &[ContextMenuEntry],
+    keybinds: &KeybindsVec,
+    base_mode: InputMode,
+) -> (usize, usize) {
+    let widest_item = entries
         .iter()
-        .filter_map(|entry| entry.label())
-        .map(|label| label.chars().count())
+        .filter_map(|entry| match entry {
+            ContextMenuEntry::Item { label, actions } => {
+                let shortcut = context_menu_shortcut(keybinds, base_mode, actions)
+                    .map(|shortcut| shortcut.chars().count() + 1)
+                    .unwrap_or(0);
+                Some(label.chars().count() + 4 + shortcut)
+            },
+            ContextMenuEntry::Separator => None,
+        })
         .max()
         .unwrap_or(0);
-    let width = (widest_label + 6).max(16);
+    let width = (widest_item + 3).max(16);
     let height = entries.len() + 2;
     (width, height)
 }
@@ -47,6 +60,12 @@ pub fn entries_available_to_plugins(entries: Vec<ContextMenuEntry>) -> Vec<Conte
 }
 
 impl Screen {
+    pub fn update_context_menu_enabled(&mut self, context_menu_enabled: bool) {
+        self.context_menu_enabled = context_menu_enabled;
+        for tab in self.tabs.values_mut() {
+            tab.update_context_menu_enabled(context_menu_enabled);
+        }
+    }
     pub fn update_context_menu_config(
         &mut self,
         client_id: ClientId,
@@ -75,10 +94,10 @@ impl Screen {
             None => false,
         }
     }
-    fn client_has_popup(&self, client_id: ClientId) -> bool {
+    fn client_has_focused_popup(&self, client_id: ClientId) -> bool {
         self.tabs
             .values()
-            .any(|tab| tab.has_popup_for_client(client_id))
+            .any(|tab| tab.has_focused_popup_for_client(client_id))
     }
     fn report_popup_state(&self, client_id: ClientId) {
         let _ = self
@@ -86,8 +105,54 @@ impl Screen {
             .senders
             .send_to_server(ServerInstruction::PopupStateChanged(
                 client_id,
-                self.client_has_popup(client_id),
+                self.client_has_focused_popup(client_id),
             ));
+    }
+    fn unload_popups(&self, plugin_ids: &[u32]) {
+        for plugin_id in plugin_ids {
+            let _ = self
+                .bus
+                .senders
+                .send_to_plugin(PluginInstruction::Unload(*plugin_id));
+        }
+    }
+    pub fn scroll_popup(&mut self, client_id: ClientId, scroll: PopupScroll) -> bool {
+        let Ok(tab) = self.get_active_tab(client_id) else {
+            return false;
+        };
+        match scroll {
+            PopupScroll::Up(lines) => tab.scroll_top_popup(client_id, true, lines),
+            PopupScroll::Down(lines) => tab.scroll_top_popup(client_id, false, lines),
+        }
+    }
+    pub fn dismiss_info_popups(&mut self, client_id: ClientId) -> bool {
+        let mut closed_plugin_ids = vec![];
+        for tab in self.tabs.values_mut() {
+            closed_plugin_ids.append(&mut tab.close_info_popups(client_id));
+        }
+        self.unload_popups(&closed_plugin_ids);
+        !closed_plugin_ids.is_empty()
+    }
+    pub fn close_popups_with_missing_anchor(&mut self) -> bool {
+        let mut closed = vec![];
+        for tab in self.tabs.values_mut() {
+            closed.append(&mut tab.close_popups_with_missing_anchor());
+        }
+        if closed.is_empty() {
+            return false;
+        }
+        let mut clients = vec![];
+        for (client_id, plugin_id) in closed {
+            self.unload_popups(&[plugin_id]);
+            if !clients.contains(&client_id) {
+                clients.push(client_id);
+            }
+        }
+        for client_id in clients {
+            self.forget_context_menu_unless_open(client_id);
+            self.report_popup_state(client_id);
+        }
+        true
     }
     fn forget_context_menu_unless_open(&mut self, client_id: ClientId) {
         let menu_still_open = self
@@ -171,6 +236,34 @@ impl Screen {
                 .filter(|action| !action.has_missing_target())
                 .collect(),
             _ => vec![],
+        }
+    }
+    pub fn move_popups_to_new_tab(&mut self, client_id: ClientId, old_tab_id: usize, new_tab_id: usize) {
+        self.open_context_menus.remove(&client_id);
+        let mut closed_plugin_ids = vec![];
+        for tab in self.tabs.values_mut() {
+            closed_plugin_ids.append(&mut tab.close_focused_popups(client_id));
+        }
+        self.unload_popups(&closed_plugin_ids);
+        let info_popups = self
+            .tabs
+            .get_mut(&old_tab_id)
+            .map(|tab| tab.take_info_popups(client_id))
+            .unwrap_or_default();
+        if let Some(tab) = self.tabs.get_mut(&new_tab_id) {
+            tab.adopt_popups(client_id, info_popups);
+        } else {
+            let plugin_ids: Vec<u32> = info_popups
+                .iter()
+                .filter_map(|popup| match popup.pane.pid() {
+                    PaneId::Plugin(plugin_id) => Some(plugin_id),
+                    PaneId::Terminal(_) => None,
+                })
+                .collect();
+            self.unload_popups(&plugin_ids);
+        }
+        if !closed_plugin_ids.is_empty() {
+            self.report_popup_state(client_id);
         }
     }
     pub fn close_popup_for_client(&mut self, client_id: ClientId) -> bool {
@@ -349,7 +442,17 @@ impl Screen {
         if entries.is_empty() {
             return;
         }
-        let (width, height) = estimated_context_menu_size(&entries);
+        let keybinds = self.keybinds_for_client(client_id);
+        let mut mode_info = self
+            .mode_info
+            .get(&client_id)
+            .unwrap_or(&self.default_mode_info)
+            .clone();
+        let base_mode = mode_info
+            .base_mode
+            .unwrap_or(self.default_mode_info.mode);
+        mode_info.base_mode = Some(base_mode);
+        let (width, height) = estimated_context_menu_size(&entries, &keybinds, base_mode);
         let anchor = Position::new(context.line as i32, context.column as u16);
         let run_plugin_or_alias =
             match RunPluginOrAlias::from_url(CONTEXT_MENU_PLUGIN_ALIAS, &None, None, None) {
@@ -359,13 +462,19 @@ impl Screen {
                     return;
                 },
             };
+        let anchor_pane = context.pane_id.map(PaneId::from);
         self.request_popup(
             client_id,
             run_plugin_or_alias,
-            anchor,
+            PopupPlacement::At(anchor),
+            PopupKind::Menu,
+            anchor_pane,
             width,
             height,
-            Some(Event::ContextMenu(context.clone(), entries.clone())),
+            vec![
+                Event::ModeUpdate(mode_info),
+                Event::ContextMenu(context.clone(), entries.clone()),
+            ],
         );
         self.open_context_menus
             .insert(client_id, (context, entries));
@@ -379,22 +488,44 @@ impl Screen {
         column: usize,
         width: usize,
         height: usize,
+        options: PopupOptions,
     ) {
         let (line, column) =
             self.plugin_relative_to_screen(requesting_plugin_id, client_id, line, column);
-        let anchor = Position::new(line as i32, column as u16);
-        self.request_popup(client_id, run_plugin_or_alias, anchor, width, height, None);
+        let placement = match options.corner {
+            Some(corner) => PopupPlacement::Corner(corner),
+            None => PopupPlacement::At(Position::new(line as i32, column as u16)),
+        };
+        let kind = if options.focused {
+            PopupKind::Menu
+        } else {
+            PopupKind::Info
+        };
+        self.request_popup(
+            client_id,
+            run_plugin_or_alias,
+            placement,
+            kind,
+            None,
+            width,
+            height,
+            vec![],
+        );
     }
     fn request_popup(
         &mut self,
         client_id: ClientId,
         run_plugin_or_alias: RunPluginOrAlias,
-        anchor: Position,
+        placement: PopupPlacement,
+        kind: PopupKind,
+        anchor_pane: Option<PaneId>,
         width: usize,
         height: usize,
-        initial_event: Option<Event>,
+        initial_events: Vec<Event>,
     ) {
-        self.close_menu_popups_for_client(client_id);
+        if kind == PopupKind::Menu {
+            self.close_menu_popups_for_client(client_id);
+        }
         let Ok(tab) = self.get_active_tab(client_id) else {
             return;
         };
@@ -407,13 +538,14 @@ impl Screen {
                 tab_id,
                 tab_index,
                 client_id,
-                placement: PopupPlacement::At(anchor),
-                kind: PopupKind::Menu,
+                placement,
+                kind,
+                anchor_pane,
                 size: Size {
                     rows: height,
                     cols: width,
                 },
-                initial_event,
+                initial_events,
                 pipe: None,
             });
     }
@@ -466,6 +598,7 @@ impl Screen {
         run_plugin_or_alias: RunPluginOrAlias,
         caller_pane_id: Option<PaneId>,
         placement: PipePopupPlacement,
+        focused: bool,
     ) {
         let Some((client_id, tab_id, pane_in_tab)) = self.pipe_popup_owner(caller_pane_id) else {
             let _ = self
@@ -489,6 +622,13 @@ impl Screen {
         let caller_title = caller_pane
             .map(|pane| pane.current_title())
             .unwrap_or_default();
+        let caller_tab_name = caller_pane_id.and_then(|pane_id| {
+            self.tabs
+                .values()
+                .find(|tab| tab.get_pane_with_id(pane_id).is_some())
+                .filter(|caller_tab| caller_tab.id != tab_id)
+                .map(|caller_tab| caller_tab.name.clone())
+        });
         let pane_area = pane_in_tab
             .and_then(|pane_id| tab.get_pane_with_id(pane_id))
             .map(|pane| {
@@ -527,6 +667,18 @@ impl Screen {
                 None => at_cursor,
             },
             PipePopupPlacement::Cursor => at_cursor,
+            PipePopupPlacement::TopLeft
+            | PipePopupPlacement::TopRight
+            | PipePopupPlacement::BottomLeft
+            | PipePopupPlacement::BottomRight => match placement.corner() {
+                Some(corner) => PopupPlacement::Corner(corner),
+                None => PopupPlacement::CenteredIn(bounds),
+            },
+        };
+        let kind = if focused {
+            PopupKind::Prompt
+        } else {
+            PopupKind::Info
         };
         let mut caller_args = BTreeMap::new();
         if let Some(pane_id) = caller_pane_id {
@@ -540,6 +692,12 @@ impl Screen {
             zellij_utils::prompt::CALLER_PANE_TITLE_ARG.to_owned(),
             caller_title,
         );
+        if let Some(caller_tab_name) = caller_tab_name {
+            caller_args.insert(
+                zellij_utils::prompt::CALLER_TAB_NAME_ARG.to_owned(),
+                caller_tab_name,
+            );
+        }
         let _ = self
             .bus
             .senders
@@ -549,12 +707,13 @@ impl Screen {
                 tab_index: tab.position,
                 client_id,
                 placement: popup_placement,
-                kind: PopupKind::Prompt,
+                kind,
+                anchor_pane: if focused { pane_in_tab } else { None },
                 size: Size {
                     rows: PIPE_POPUP_INITIAL_ROWS,
                     cols: PIPE_POPUP_INITIAL_COLS,
                 },
-                initial_event: None,
+                initial_events: vec![],
                 pipe: Some((pipe_id, caller_args)),
             });
     }
@@ -568,8 +727,22 @@ impl Screen {
         kind: PopupKind,
         width: usize,
         height: usize,
+        anchor_pane: Option<PaneId>,
     ) -> Result<()> {
-        let client_is_still_on_tab = self.active_tab_ids.get(&client_id) == Some(&tab_id);
+        let anchor_still_exists = anchor_pane
+            .map(|pane_id| {
+                self.tabs
+                    .get(&tab_id)
+                    .map(|tab| tab.get_pane_with_id(pane_id).is_some())
+                    .unwrap_or(false)
+            })
+            .unwrap_or(true);
+        let tab_id = match self.active_tab_ids.get(&client_id) {
+            Some(current_tab_id) if kind == PopupKind::Info => *current_tab_id,
+            _ => tab_id,
+        };
+        let client_is_still_on_tab = anchor_still_exists
+            && self.active_tab_ids.get(&client_id) == Some(&tab_id);
         if !client_is_still_on_tab {
             let _ = self
                 .bus
@@ -582,16 +755,20 @@ impl Screen {
             run_plugin_or_alias,
         ));
         let replaced = match self.tabs.get_mut(&tab_id) {
-            Some(tab) => tab.open_popup(
-                client_id,
-                plugin_id,
-                placement,
-                kind,
-                width,
-                height,
-                invoked_with,
-                title,
-            )?,
+            Some(tab) => {
+                let replaced = tab.open_popup(
+                    client_id,
+                    plugin_id,
+                    placement,
+                    kind,
+                    width,
+                    height,
+                    invoked_with,
+                    title,
+                )?;
+                tab.set_popup_anchor(plugin_id, anchor_pane);
+                replaced
+            },
             None => return Ok(()),
         };
         for replaced_plugin_id in replaced {
@@ -611,5 +788,54 @@ impl Screen {
             }
         }
         self.render(None)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use zellij_utils::data::{BareKey, KeyWithModifier};
+
+    #[test]
+    fn the_estimated_menu_width_leaves_room_for_the_shortcuts() {
+        let entries = vec![
+            ContextMenuEntry::Item {
+                label: "Close pane".to_owned(),
+                actions: vec![Action::CloseFocusByPaneId { pane_id: None }],
+            },
+            ContextMenuEntry::Separator,
+            ContextMenuEntry::Item {
+                label: "Detach".to_owned(),
+                actions: vec![Action::Detach],
+            },
+        ];
+        let keybinds: KeybindsVec = vec![
+            (
+                InputMode::Normal,
+                vec![(
+                    KeyWithModifier::new(BareKey::Char('p')).with_ctrl_modifier(),
+                    vec![Action::SwitchToMode {
+                        input_mode: InputMode::Pane,
+                    }],
+                )],
+            ),
+            (
+                InputMode::Pane,
+                vec![(
+                    KeyWithModifier::new(BareKey::Char('x')),
+                    vec![
+                        Action::CloseFocus,
+                        Action::SwitchToMode {
+                            input_mode: InputMode::Normal,
+                        },
+                    ],
+                )],
+            ),
+        ];
+        let (without_keys, height) = estimated_context_menu_size(&entries, &vec![], InputMode::Normal);
+        let (with_keys, _) = estimated_context_menu_size(&entries, &keybinds, InputMode::Normal);
+        assert_eq!(height, 5);
+        assert_eq!(without_keys, 17);
+        assert_eq!(with_keys, "Close pane".len() + 4 + "Ctrl p, x".len() + 1 + 3);
     }
 }

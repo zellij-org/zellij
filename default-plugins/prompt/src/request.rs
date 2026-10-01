@@ -3,6 +3,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use std::str::FromStr;
 use std::time::Duration;
+use zellij_utils::data::PaneId;
 use zellij_utils::prompt::{
     self, decode_items, decode_list, parse_bool, parse_duration, parse_form_spec, ChoiceItem,
     FormSpec, PromptElement,
@@ -78,6 +79,14 @@ pub enum Spec {
         spec: FormSpec,
         patterns: Vec<Option<Pattern>>,
         default: Option<serde_json::Map<String, Value>>,
+    },
+    Notify {
+        message: String,
+        pane_name: Option<String>,
+        tab_name: Option<String>,
+        show_pane_name: bool,
+        show_tab_name: bool,
+        caller_pane: Option<PaneId>,
     },
 }
 
@@ -317,6 +326,24 @@ pub fn parse_request(
                 default,
             }
         },
+        PromptElement::Notify => {
+            let message = message
+                .or_else(|| payload.map(|p| strip_line_ending(p, false)))
+                .ok_or_else(|| "notify needs the text to show".to_owned())?;
+            let show_pane_name = !flag(args, prompt::ARG_NO_PANE_NAME)?;
+            let show_tab_name = !flag(args, prompt::ARG_NO_TAB_NAME)?;
+            let caller_pane = args
+                .get(prompt::CALLER_PANE_ID_ARG)
+                .and_then(|pane_id| PaneId::from_str(pane_id).ok());
+            Spec::Notify {
+                message,
+                pane_name: args.get(prompt::CALLER_PANE_TITLE_ARG).cloned(),
+                tab_name: args.get(prompt::CALLER_TAB_NAME_ARG).cloned(),
+                show_pane_name,
+                show_tab_name,
+                caller_pane,
+            }
+        },
     };
     if let Spec::Form {
         spec: form_spec, ..
@@ -370,6 +397,56 @@ mod tests {
         assert!(request.common.in_popup);
         let floating = parse_request("confirm", &args(&[]), None).unwrap();
         assert!(!floating.common.in_popup);
+    }
+
+    #[test]
+    fn notify_reads_its_text_and_the_calling_pane_title() {
+        let request = parse_request(
+            "notify",
+            &args(&[
+                ("message", "Build finished"),
+                ("timeout", "5s"),
+                ("_caller_pane_title", "make"),
+                ("_caller_tab_name", "Build"),
+                ("_caller_pane_id", "terminal_3"),
+            ]),
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            request.spec,
+            Spec::Notify {
+                message: "Build finished".to_owned(),
+                pane_name: Some("make".to_owned()),
+                tab_name: Some("Build".to_owned()),
+                show_pane_name: true,
+                show_tab_name: true,
+                caller_pane: Some(PaneId::Terminal(3)),
+            }
+        );
+        let without_names = parse_request(
+            "notify",
+            &args(&[
+                ("message", "Saved"),
+                ("no_pane_name", "true"),
+                ("no_tab_name", "true"),
+            ]),
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            without_names.spec,
+            Spec::Notify {
+                message: "Saved".to_owned(),
+                pane_name: None,
+                tab_name: None,
+                show_pane_name: false,
+                show_tab_name: false,
+                caller_pane: None,
+            }
+        );
+        assert_eq!(request.common.timeout, Some(Duration::from_secs(5)));
+        assert!(parse_request("notify", &args(&[]), None).is_err());
     }
 
     #[test]

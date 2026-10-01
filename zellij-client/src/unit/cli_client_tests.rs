@@ -134,6 +134,7 @@ fn pipe_action(payload: Option<&str>) -> Action {
         cwd: None,
         pane_title: None,
         popup: None,
+        popup_no_focus: false,
     }
 }
 
@@ -389,7 +390,7 @@ fn the_help_is_coloured_for_a_terminal_and_plain_otherwise() {
 #[test]
 fn every_element_has_an_examples_section() {
     for element in [
-        "confirm", "choose", "input", "number", "toggle", "select", "menu", "form",
+        "confirm", "choose", "input", "number", "toggle", "select", "menu", "form", "notify",
     ] {
         let help = zellij_utils::cli::prompt_element_help(element, false);
         assert!(
@@ -454,6 +455,74 @@ fn placement_flags_choose_where_the_popup_opens() {
         "--at-cursor"
     ])
     .is_err());
+}
+
+#[test]
+fn notify_defaults_to_the_top_right_corner_and_does_not_take_focus() {
+    use zellij_utils::data::PipePopupPlacement;
+    let notify = prompt_cli(&["notify", "Build finished"]);
+    assert_eq!(notify.placement(), PipePopupPlacement::TopRight);
+    assert!(!notify.takes_focus());
+    assert_eq!(
+        prompt_cli(&["notify", "x", "--at", "bottom-left"]).placement(),
+        PipePopupPlacement::BottomLeft
+    );
+    assert!(prompt_cli(&["toggle", "x"]).takes_focus());
+    assert!(<PromptCli as clap::Parser>::try_parse_from(["prompt", "notify", "x", "--at", "nowhere"]).is_err());
+}
+
+#[test]
+fn notify_does_not_take_the_answer_and_placement_flags() {
+    for flag in ["--json", "--at-cursor", "--at-mouse", "--at-center"] {
+        assert!(
+            <PromptCli as clap::Parser>::try_parse_from(["prompt", "notify", "x", flag]).is_err(),
+            "{}",
+            flag
+        );
+        assert!(
+            <PromptCli as clap::Parser>::try_parse_from(["prompt", "toggle", "x", flag]).is_ok(),
+            "{}",
+            flag
+        );
+    }
+    assert!(
+        <PromptCli as clap::Parser>::try_parse_from(["prompt", "notify", "x", "--default", "y"])
+            .is_err()
+    );
+    assert!(<PromptCli as clap::Parser>::try_parse_from([
+        "prompt", "notify", "x", "--title", "t", "--timeout", "5s"
+    ])
+    .is_ok());
+    let help = zellij_utils::cli::prompt_element_help("notify", false);
+    for flag in ["--json", "--at-cursor", "--at-mouse", "--at-center", "--default"] {
+        assert!(!help.contains(flag), "{}: {}", flag, help);
+    }
+    assert!(help.contains("--timeout") && help.contains("--at "));
+}
+
+#[test]
+fn notify_needs_its_text_and_sends_it_as_the_message() {
+    let plan = plan_prompt(&prompt_cli(&["notify", "Build finished", "--timeout", "5s"]), || Ok(String::new()), false).unwrap();
+    assert_eq!(plan.element, zellij_utils::prompt::PromptElement::Notify);
+    assert_eq!(
+        plan.args.get(zellij_utils::prompt::ARG_MESSAGE).map(|m| m.as_str()),
+        Some("Build finished")
+    );
+    assert!(!plan.args.contains_key(zellij_utils::prompt::ARG_NO_PANE_NAME));
+    assert!(!plan.args.contains_key(zellij_utils::prompt::ARG_NO_TAB_NAME));
+    let without_names = plan_prompt(
+        &prompt_cli(&["notify", "x", "--no-pane-name", "--no-tab-name"]),
+        || Ok(String::new()),
+        false,
+    )
+    .unwrap();
+    for arg in [
+        zellij_utils::prompt::ARG_NO_PANE_NAME,
+        zellij_utils::prompt::ARG_NO_TAB_NAME,
+    ] {
+        assert_eq!(without_names.args.get(arg).map(|m| m.as_str()), Some("true"));
+    }
+    assert!(plan_prompt(&prompt_cli(&["notify"]), || Ok(String::new()), false).is_err());
 }
 
 #[test]

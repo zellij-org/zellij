@@ -53,6 +53,8 @@ load_plugins {
 // "common" items are added to the end of every menu
 // Actions ending in "ByPaneId"/"ById"/"ByTabId" apply to the clicked pane or tab when no id is given
 // Add clear-defaults=true to the block or to a section to replace the default items
+// An empty "context_menu clear-defaults=true {}" leaves the menu empty, so it never opens,
+// but right clicks are still taken by Zellij; use "context_menu_enabled false" to turn the menu off
 context_menu {
     pane {
         item "New pane" { NewPane; }
@@ -519,6 +521,13 @@ context_menu {
 // Default: false
 //
 // mouse_click_through true
+
+// Whether a right click opens the right-click menu
+// When off, right clicks go to the focused pane only and Alt + right click clears the pane group
+// Plugins can still open the menu through their API
+// Default: true
+//
+// context_menu_enabled false
 
 // How notifications from programs inside Zellij are passed to the outer terminal
 // Options:

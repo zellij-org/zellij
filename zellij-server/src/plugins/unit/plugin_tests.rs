@@ -6686,6 +6686,7 @@ pub fn unblock_input_plugin_command() {
         cli_client_id: client_id,
         caller_pane_id: None,
         popup: None,
+        popup_focused: true,
     });
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
@@ -6776,6 +6777,7 @@ pub fn block_input_plugin_command() {
         cli_client_id: client_id,
         caller_pane_id: None,
         popup: None,
+        popup_focused: true,
     });
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
@@ -6872,6 +6874,7 @@ pub fn pipe_output_plugin_command() {
         cli_client_id: client_id,
         caller_pane_id: None,
         popup: None,
+        popup_focused: true,
     });
     std::thread::sleep(std::time::Duration::from_millis(500));
     teardown();
@@ -6961,6 +6964,7 @@ pub fn pipe_message_to_plugin_plugin_command() {
         cli_client_id: client_id,
         caller_pane_id: None,
         popup: None,
+        popup_focused: true,
     });
     std::thread::sleep(std::time::Duration::from_millis(500));
     teardown();
@@ -13296,6 +13300,7 @@ pub fn cli_pipe_is_released_when_plugin_panics_while_handling_it() {
         cli_client_id: client_id,
         caller_pane_id: None,
         popup: None,
+        popup_focused: true,
     });
     std::thread::sleep(std::time::Duration::from_millis(1000));
     let unblocked = received_server_instruction.lock().unwrap().iter().any(

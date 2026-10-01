@@ -3513,6 +3513,65 @@ pub enum PipeSource {
     Keybind,     // TODO: consider including the actual keybind here?
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
+pub enum PopupCorner {
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+}
+
+impl PopupCorner {
+    pub fn is_top(&self) -> bool {
+        matches!(self, PopupCorner::TopLeft | PopupCorner::TopRight)
+    }
+    pub fn is_left(&self) -> bool {
+        matches!(self, PopupCorner::TopLeft | PopupCorner::BottomLeft)
+    }
+}
+
+impl FromStr for PopupCorner {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_ascii_lowercase().replace('_', "-").as_str() {
+            "top-left" => Ok(PopupCorner::TopLeft),
+            "top-right" => Ok(PopupCorner::TopRight),
+            "bottom-left" => Ok(PopupCorner::BottomLeft),
+            "bottom-right" => Ok(PopupCorner::BottomRight),
+            other => Err(format!(
+                "invalid popup corner '{}', expected one of: top-left, top-right, bottom-left, bottom-right",
+                other
+            )),
+        }
+    }
+}
+
+impl fmt::Display for PopupCorner {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            PopupCorner::TopLeft => write!(f, "top-left"),
+            PopupCorner::TopRight => write!(f, "top-right"),
+            PopupCorner::BottomLeft => write!(f, "bottom-left"),
+            PopupCorner::BottomRight => write!(f, "bottom-right"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
+pub struct PopupOptions {
+    pub focused: bool,
+    pub corner: Option<PopupCorner>,
+}
+
+impl Default for PopupOptions {
+    fn default() -> Self {
+        PopupOptions {
+            focused: true,
+            corner: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Deserialize, Serialize)]
 pub enum PipePopupPlacement {
     #[default]
@@ -3520,18 +3579,38 @@ pub enum PipePopupPlacement {
     Center,
     Mouse,
     Cursor,
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+}
+
+impl PipePopupPlacement {
+    pub fn corner(&self) -> Option<PopupCorner> {
+        match self {
+            PipePopupPlacement::TopLeft => Some(PopupCorner::TopLeft),
+            PipePopupPlacement::TopRight => Some(PopupCorner::TopRight),
+            PipePopupPlacement::BottomLeft => Some(PopupCorner::BottomLeft),
+            PipePopupPlacement::BottomRight => Some(PopupCorner::BottomRight),
+            _ => None,
+        }
+    }
 }
 
 impl FromStr for PipePopupPlacement {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.trim().to_ascii_lowercase().as_str() {
+        match s.trim().to_ascii_lowercase().replace('_', "-").as_str() {
             "pane" => Ok(PipePopupPlacement::Pane),
             "center" | "centre" => Ok(PipePopupPlacement::Center),
             "mouse" => Ok(PipePopupPlacement::Mouse),
             "cursor" => Ok(PipePopupPlacement::Cursor),
+            "top-left" => Ok(PipePopupPlacement::TopLeft),
+            "top-right" => Ok(PipePopupPlacement::TopRight),
+            "bottom-left" => Ok(PipePopupPlacement::BottomLeft),
+            "bottom-right" => Ok(PipePopupPlacement::BottomRight),
             other => Err(format!(
-                "invalid popup placement '{}', expected one of: pane, center, mouse, cursor",
+                "invalid popup placement '{}', expected one of: pane, center, mouse, cursor, top-left, top-right, bottom-left, bottom-right",
                 other
             )),
         }
@@ -3545,6 +3624,10 @@ impl fmt::Display for PipePopupPlacement {
             PipePopupPlacement::Center => write!(f, "center"),
             PipePopupPlacement::Mouse => write!(f, "mouse"),
             PipePopupPlacement::Cursor => write!(f, "cursor"),
+            PipePopupPlacement::TopLeft => write!(f, "top-left"),
+            PipePopupPlacement::TopRight => write!(f, "top-right"),
+            PipePopupPlacement::BottomLeft => write!(f, "bottom-left"),
+            PipePopupPlacement::BottomRight => write!(f, "bottom-right"),
         }
     }
 }
@@ -4284,6 +4367,7 @@ pub enum PluginCommand {
         column: usize,
         width: usize,
         height: usize,
+        options: PopupOptions,
     },
     SetPopupSize {
         width: usize,
@@ -4385,6 +4469,7 @@ setting_keys! {
     VisualBell => (TopLevel, "visual_bell", false),
     FocusFollowsMouse => (TopLevel, "focus_follows_mouse", false),
     MouseClickThrough => (TopLevel, "mouse_click_through", false),
+    ContextMenuEnabled => (TopLevel, "context_menu_enabled", false),
     Osc133CommandSelection => (TopLevel, "osc133_command_selection", false),
     WordSeparators => (TopLevel, "word_separators", false),
     HostNotificationProtocol => (TopLevel, "host_notification_protocol", false),
@@ -4727,4 +4812,43 @@ fn a_floating_placement_carries_its_border_style_in_the_coordinates() {
         })
     );
     assert_eq!(placement.get_border_style(), coordinates.border_style);
+}
+
+#[cfg(test)]
+mod popup_placement_tests {
+    use super::*;
+
+    #[test]
+    fn corner_placements_parse_and_print_back() {
+        for (text, placement, corner) in [
+            ("top-left", PipePopupPlacement::TopLeft, PopupCorner::TopLeft),
+            ("top-right", PipePopupPlacement::TopRight, PopupCorner::TopRight),
+            ("bottom-left", PipePopupPlacement::BottomLeft, PopupCorner::BottomLeft),
+            ("bottom-right", PipePopupPlacement::BottomRight, PopupCorner::BottomRight),
+        ] {
+            assert_eq!(text.parse::<PipePopupPlacement>(), Ok(placement));
+            assert_eq!(placement.to_string(), text);
+            assert_eq!(placement.corner(), Some(corner));
+            assert_eq!(text.parse::<PopupCorner>(), Ok(corner));
+            assert_eq!(corner.to_string(), text);
+        }
+        assert_eq!(
+            "Top_Right".parse::<PipePopupPlacement>(),
+            Ok(PipePopupPlacement::TopRight)
+        );
+        assert_eq!(PipePopupPlacement::Pane.corner(), None);
+        assert!("middle".parse::<PipePopupPlacement>().is_err());
+        assert!("center".parse::<PopupCorner>().is_err());
+    }
+
+    #[test]
+    fn popup_options_default_to_a_focused_popup_without_a_corner() {
+        assert_eq!(
+            PopupOptions::default(),
+            PopupOptions {
+                focused: true,
+                corner: None
+            }
+        );
+    }
 }

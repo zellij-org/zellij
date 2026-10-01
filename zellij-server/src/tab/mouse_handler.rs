@@ -252,6 +252,7 @@ struct MouseEventContext {
     mouse_click_through: bool,
     mouse_scroll_resize: bool,
     passthrough_pane_id: Option<PaneId>,
+    context_menu_enabled: bool,
 }
 
 fn edge_and_delta_to_strategies(
@@ -493,6 +494,7 @@ impl MouseHandler {
             mouse_click_through: tab.mouse_click_through,
             mouse_scroll_resize: tab.mouse_scroll_resize,
             passthrough_pane_id,
+            context_menu_enabled: tab.context_menu_enabled,
         })
     }
 
@@ -1659,6 +1661,17 @@ impl MouseHandler {
     }
 
     fn determine_right_button_action(event: &MouseEvent, ctx: &MouseEventContext) -> MouseAction {
+        if !ctx.context_menu_enabled {
+            return match ctx.pane_id_at_position {
+                Some(pane_id) if Some(pane_id) == ctx.active_pane_id => {
+                    MouseAction::SendToTerminal {
+                        pane_id,
+                        event: *event,
+                    }
+                },
+                _ => MouseAction::NoAction,
+            };
+        }
         let Some(details) = ctx.clicked_pane.as_ref() else {
             return MouseAction::NoAction;
         };
@@ -2018,6 +2031,7 @@ mod tests {
             mouse_click_through: false,
             mouse_scroll_resize,
             passthrough_pane_id: None,
+            context_menu_enabled: true,
         }
     }
 
@@ -2210,6 +2224,100 @@ mod tests {
                 pane_id: PaneId::Terminal(1),
                 event,
             }
+        );
+    }
+
+    fn menu_off(details: ClickedPaneDetails) -> MouseEventContext {
+        let mut context = context_with(details);
+        context.context_menu_enabled = false;
+        context
+    }
+
+    #[test]
+    fn with_the_menu_off_a_right_press_on_the_focused_pane_goes_to_the_pane() {
+        let position = Position::new(3, 4);
+        let context = menu_off(clicked(PaneId::Terminal(1)));
+        let event = MouseEvent::new_right_press_event(position);
+        assert_eq!(
+            MouseHandler::determine_mouse_action(&event, &context).unwrap(),
+            MouseAction::SendToTerminal {
+                pane_id: PaneId::Terminal(1),
+                event,
+            }
+        );
+    }
+
+    #[test]
+    fn with_the_menu_off_a_right_press_on_the_focused_pane_frame_goes_to_the_pane() {
+        let position = Position::new(0, 4);
+        let mut details = clicked(PaneId::Terminal(1));
+        details.on_frame = true;
+        let context = menu_off(details);
+        let event = MouseEvent::new_right_press_event(position);
+        assert_eq!(
+            MouseHandler::determine_mouse_action(&event, &context).unwrap(),
+            MouseAction::SendToTerminal {
+                pane_id: PaneId::Terminal(1),
+                event,
+            }
+        );
+    }
+
+    #[test]
+    fn with_the_menu_off_a_right_press_on_an_unfocused_pane_is_dropped() {
+        let position = Position::new(3, 4);
+        let context = menu_off(clicked(PaneId::Terminal(2)));
+        let event = MouseEvent::new_right_press_event(position);
+        assert_eq!(
+            MouseHandler::determine_mouse_action(&event, &context).unwrap(),
+            MouseAction::NoAction
+        );
+    }
+
+    #[test]
+    fn with_the_menu_off_a_right_press_on_a_bar_is_not_forwarded_to_the_bar() {
+        let position = Position::new(0, 4);
+        let mut details = clicked(PaneId::Plugin(7));
+        details.is_unselectable_plugin = true;
+        let context = menu_off(details);
+        let event = MouseEvent::new_right_press_event(position);
+        assert_eq!(
+            MouseHandler::determine_mouse_action(&event, &context).unwrap(),
+            MouseAction::NoAction
+        );
+    }
+
+    #[test]
+    fn with_the_menu_off_alt_right_press_still_ungroups_and_alt_middle_does_nothing() {
+        let position = Position::new(3, 4);
+        let context = menu_off(clicked(PaneId::Terminal(1)));
+        assert_eq!(
+            MouseHandler::determine_mouse_action(
+                &MouseEvent::new_right_press_with_alt_event(position),
+                &context
+            )
+            .unwrap(),
+            MouseAction::Ungroup
+        );
+        let mut alt_middle = MouseEvent::new_middle_press_event(position);
+        alt_middle.alt = true;
+        assert_eq!(
+            MouseHandler::determine_mouse_action(&alt_middle, &context).unwrap(),
+            MouseAction::NoAction
+        );
+    }
+
+    #[test]
+    fn with_the_menu_on_alt_right_press_never_opens_the_menu() {
+        let position = Position::new(3, 4);
+        let context = context_with(clicked(PaneId::Terminal(2)));
+        assert_eq!(
+            MouseHandler::determine_mouse_action(
+                &MouseEvent::new_right_press_with_alt_event(position),
+                &context
+            )
+            .unwrap(),
+            MouseAction::Ungroup
         );
     }
 

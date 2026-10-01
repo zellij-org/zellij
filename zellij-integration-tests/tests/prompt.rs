@@ -219,7 +219,7 @@ fn form_answers_one_json_object() {
     let (mut zellij, terminal) = start_with_terminal();
     let prompt = zellij.run_prompt(&["form"], from(&terminal).with_stdin_text(FORM));
     wait_for_prompt_showing(&zellij, "New project");
-    zellij.send_stdin(&keys::ctrl('s'));
+    zellij.send_stdin(&keys::ctrl('a'));
     zellij.wait_until("required field refused", |grid_snapshot| {
         grid_snapshot.contains("This field is required")
     });
@@ -229,7 +229,7 @@ fn form_answers_one_json_object() {
         zellij.send_stdin(&keys::TAB);
     }
     zellij.send_stdin(&keys::SPACE);
-    zellij.send_stdin(&keys::ctrl('s'));
+    zellij.send_stdin(&keys::ctrl('a'));
     answered(
         &prompt.wait_for_exit(),
         0,
@@ -402,6 +402,7 @@ fn pipe_action(
         plugin_cwd: None,
         plugin_title: None,
         popup,
+        popup_no_focus: false,
     }
 }
 
@@ -756,5 +757,331 @@ fn choose_reads_many_short_lines_quickly() {
     });
     zellij.send_stdin(&keys::ENTER);
     answered(&prompt.wait_for_exit(), 0, "path/19999\n");
+    zellij.quit();
+}
+
+#[test]
+fn keybindings_work_while_a_prompt_popup_is_open() {
+    let (mut zellij, terminal) = start_with_terminal();
+    let prompt = zellij.run_prompt(&["toggle", "Enable CI"], from(&terminal));
+    wait_for_prompt_showing(&zellij, "Enable CI");
+
+    zellij.send_stdin(&keys::ctrl('g'));
+    zellij.wait_until("interface locked with the prompt open", |grid_snapshot| {
+        grid_snapshot.contains("LOCK")
+            && !grid_snapshot.contains("PANE")
+            && grid_snapshot.contains(PROMPT_MARKER)
+    });
+    zellij.send_stdin(&keys::SPACE);
+    zellij.send_stdin(&keys::ctrl('g'));
+    zellij.wait_until("interface unlocked with the prompt open", |grid_snapshot| {
+        grid_snapshot.status_bar_appears() && grid_snapshot.contains(PROMPT_MARKER)
+    });
+
+    zellij.send_stdin(&keys::ctrl('p'));
+    zellij.wait_until("pane mode with the prompt open", |grid_snapshot| {
+        grid_snapshot.contains("PANE")
+            && !grid_snapshot.contains("LOCK")
+            && grid_snapshot.contains(PROMPT_MARKER)
+    });
+    zellij.send_stdin(&keys::ESC);
+    zellij.wait_until("back to normal mode with the prompt open", |grid_snapshot| {
+        grid_snapshot.status_bar_appears() && grid_snapshot.contains(PROMPT_MARKER)
+    });
+    assert!(!prompt.has_exited());
+
+    zellij.send_stdin(&keys::ENTER);
+    answered(&prompt.wait_for_exit(), 0, "true\n");
+    wait_for_prompts_to_close(&zellij);
+    zellij.quit();
+}
+
+#[test]
+fn switching_tabs_with_keys_closes_the_prompt_popup() {
+    let (mut zellij, _first_terminal) = start_with_terminal();
+    zellij.send_stdin(&keys::ctrl('t'));
+    zellij.send_stdin(&keys::key('n'));
+    let second_terminal = zellij.expect_pty_spawn();
+    second_terminal.output(PROMPT);
+    zellij.wait_until("second tab opened", |grid_snapshot| {
+        grid_snapshot.contains("Tab #2") && grid_snapshot.status_bar_appears()
+    });
+    let prompt = confirm(&zellij, &second_terminal, "Leave?");
+    wait_for_prompt_showing(&zellij, "Leave?");
+    zellij.send_stdin(&keys::ctrl('t'));
+    zellij.send_stdin(&keys::key('1'));
+    answered(&prompt.wait_for_exit(), 1, "");
+    wait_for_prompts_to_close(&zellij);
+    zellij.quit();
+}
+
+#[test]
+fn detaching_with_keys_closes_the_prompt_popup() {
+    let (mut zellij, terminal) = start_with_terminal();
+    let prompt = confirm(&zellij, &terminal, "Detach?");
+    wait_for_prompt_showing(&zellij, "Detach?");
+    zellij.detach_main_client();
+    answered(&prompt.wait_for_exit(), 1, "");
+    let reattached_client = zellij.attach_client(TERMINAL_SIZE);
+    reattached_client.wait_until("reattached without the prompt", |grid_snapshot| {
+        grid_snapshot.status_bar_appears() && !grid_snapshot.contains("Detach?")
+    });
+    reattached_client.quit();
+    zellij.quit();
+}
+
+fn start_with_mouse() -> (TestSession, FakePtyHandle) {
+    let zellij = TestRunner::new(TERMINAL_SIZE)
+        .with_config("mouse_mode true")
+        .start();
+    let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
+    (zellij, terminal)
+}
+
+#[test]
+fn notify_returns_at_once_and_keys_still_reach_the_pane() {
+    let (mut zellij, terminal) = start_with_mouse();
+    let notice = zellij.run_prompt(
+        &["notify", "Build finished", "--title", "make"],
+        from(&terminal),
+    );
+    answered(&notice.wait_for_exit(), 0, "");
+    let grid_snapshot = zellij.wait_until("notice shown in the top right", |grid_snapshot| {
+        grid_snapshot.contains("Build finished")
+    });
+    let (row, column) = column_of(&grid_snapshot, "Build finished").unwrap();
+    assert!(row <= 3 && column > 60, "notice not in the top right: {:?}", (row, column));
+    assert!(grid_snapshot.contains("make"));
+
+    zellij.send_stdin(&keys::key('x'));
+    terminal.wait_for_stdin("keys reach the pane under the notice", |bytes| {
+        bytes.contains(&b'x')
+    });
+
+    let (close_row, close_column) = column_of(&grid_snapshot, "✕").unwrap();
+    zellij.send_stdin(format!("\u{1b}[<0;{};{}M", close_column + 1, close_row + 1).as_bytes());
+    zellij.send_stdin(format!("\u{1b}[<0;{};{}m", close_column + 1, close_row + 1).as_bytes());
+    zellij.wait_until("notice closed by its close mark", |grid_snapshot| {
+        !grid_snapshot.contains("Build finished") && grid_snapshot.status_bar_appears()
+    });
+    zellij.quit();
+}
+
+#[test]
+fn notify_closes_itself_when_its_timeout_runs_out() {
+    let (mut zellij, terminal) = start_with_terminal();
+    let notice = zellij.run_prompt(
+        &["notify", "Tests passed", "--timeout", "1s"],
+        from(&terminal),
+    );
+    answered(&notice.wait_for_exit(), 0, "");
+    zellij.wait_until("notice shown", |grid_snapshot| {
+        grid_snapshot.contains("Tests passed")
+    });
+    zellij.wait_until("notice closed after its timeout", |grid_snapshot| {
+        !grid_snapshot.contains("Tests passed")
+    });
+    zellij.quit();
+}
+
+#[test]
+fn a_click_outside_a_notice_does_not_close_it_and_a_prompt_takes_keys_above_it() {
+    let (mut zellij, terminal) = start_with_mouse();
+    let notice = zellij.run_prompt(&["notify", "Deploy started"], from(&terminal));
+    answered(&notice.wait_for_exit(), 0, "");
+    zellij.wait_until("notice shown", |grid_snapshot| {
+        grid_snapshot.contains("Deploy started")
+    });
+    zellij.send_stdin(b"\x1b[<0;20;12M");
+    zellij.send_stdin(b"\x1b[<0;20;12m");
+    let prompt = zellij.run_prompt(&["toggle", "Notify me"], from(&terminal));
+    let grid_snapshot = wait_for_prompt_showing(&zellij, "Notify me");
+    assert!(grid_snapshot.contains("Deploy started"));
+    zellij.send_stdin(&keys::SPACE);
+    zellij.send_stdin(&keys::ENTER);
+    answered(&prompt.wait_for_exit(), 0, "true\n");
+    let grid_snapshot = zellij.wait_until("prompt closed and notice still shown", |grid_snapshot| {
+        !grid_snapshot.contains(PROMPT_MARKER) && grid_snapshot.contains("Deploy started")
+    });
+    assert!(grid_snapshot.status_bar_appears());
+    zellij.quit();
+}
+
+#[test]
+fn clicking_a_notice_focuses_the_pane_that_sent_it_and_closes_the_notice() {
+    let (mut zellij, left_terminal) = start_with_mouse();
+    let right_terminal = split_right_and_wait_for_prompt(&zellij);
+    let notice = zellij.run_prompt(&["notify", "Left pane is done"], from(&left_terminal));
+    answered(&notice.wait_for_exit(), 0, "");
+    let grid_snapshot = zellij.wait_until("notice shown", |grid_snapshot| {
+        grid_snapshot.contains("Left pane is done")
+    });
+    zellij.send_stdin(&keys::key('a'));
+    right_terminal.wait_for_stdin("keys go to the focused right pane", |bytes| {
+        bytes.contains(&b'a')
+    });
+
+    let (row, column) = column_of(&grid_snapshot, "Left pane is done").unwrap();
+    zellij.send_stdin(format!("\u{1b}[<0;{};{}M", column + 2, row + 1).as_bytes());
+    zellij.send_stdin(format!("\u{1b}[<0;{};{}m", column + 2, row + 1).as_bytes());
+    zellij.wait_until("clicking closed the notice", |grid_snapshot| {
+        !grid_snapshot.contains("Left pane is done") && grid_snapshot.status_bar_appears()
+    });
+    zellij.send_stdin(&keys::key('b'));
+    left_terminal.wait_for_stdin("keys go to the pane that sent the notice", |bytes| {
+        bytes.contains(&b'b')
+    });
+    zellij.quit();
+}
+
+fn rename_pane(zellij: &TestSession, terminal: &FakePtyHandle, name: &str) {
+    zellij.run_cli_action(CliAction::RenamePane {
+        name: name.to_owned(),
+        pane_id: Some(format!("terminal_{}", terminal.terminal_id())),
+    });
+}
+
+fn rename_first_tab(zellij: &TestSession, name: &str) {
+    zellij.run_cli_action(CliAction::RenameTab {
+        name: name.to_owned(),
+        tab_id: Some(0),
+    });
+}
+
+fn open_second_tab(zellij: &TestSession) -> FakePtyHandle {
+    zellij.send_stdin(&keys::ctrl('t'));
+    zellij.send_stdin(&keys::key('n'));
+    let second_terminal = zellij.expect_pty_spawn();
+    second_terminal.output(PROMPT);
+    zellij.wait_until("second tab opened", |grid_snapshot| {
+        grid_snapshot.contains("Tab #2") && grid_snapshot.status_bar_appears()
+    });
+    zellij.send_stdin(&keys::key('x'));
+    second_terminal.wait_for_stdin("user is active in the second tab", |bytes| {
+        bytes.contains(&b'x')
+    });
+    second_terminal
+}
+
+fn lines_containing(grid_snapshot: &GridSnapshot, needle: &str) -> usize {
+    grid_snapshot
+        .lines()
+        .iter()
+        .filter(|line| line.contains(needle))
+        .count()
+}
+
+#[test]
+fn the_pane_name_sits_one_line_below_the_text_and_can_be_left_out() {
+    let (mut zellij, terminal) = start_with_terminal();
+    rename_pane(&zellij, &terminal, "SENDER-PANE");
+    let notice = zellij.run_prompt(&["notify", "With sender"], from(&terminal));
+    answered(&notice.wait_for_exit(), 0, "");
+    let grid_snapshot = zellij.wait_until("notice with the pane name shown", |grid_snapshot| {
+        grid_snapshot.contains("With sender") && grid_snapshot.contains("SENDER-PANE")
+    });
+    let (text_row, _) = column_of(&grid_snapshot, "With sender").unwrap();
+    let lines = grid_snapshot.lines();
+    assert!(!lines[text_row + 1].contains("SENDER-PANE"));
+    assert!(lines[text_row + 2].contains("SENDER-PANE"), "{}", lines.join("\n"));
+    assert!(!lines[text_row + 1].contains("Tab #1"), "same tab, so no tab line");
+    assert!(!grid_snapshot.contains("from: "));
+    let pane_name_lines_before = lines_containing(&grid_snapshot, "SENDER-PANE");
+
+    let notice = zellij.run_prompt(
+        &["notify", "No sender", "--no-pane-name", "--at", "top-left"],
+        from(&terminal),
+    );
+    answered(&notice.wait_for_exit(), 0, "");
+    let grid_snapshot = zellij.wait_until("second notice shown", |grid_snapshot| {
+        grid_snapshot.contains("No sender")
+    });
+    assert_eq!(
+        lines_containing(&grid_snapshot, "SENDER-PANE"),
+        pane_name_lines_before
+    );
+    zellij.quit();
+}
+
+#[test]
+fn a_notice_from_another_tab_names_that_tab_above_the_pane_and_follows_renames() {
+    let (mut zellij, first_terminal) = start_with_terminal();
+    rename_first_tab(&zellij, "FIRST-TAB");
+    rename_pane(&zellij, &first_terminal, "SENDER-PANE");
+    open_second_tab(&zellij);
+
+    let notice = zellij.run_prompt(&["notify", "From the first tab"], from(&first_terminal));
+    answered(&notice.wait_for_exit(), 0, "");
+    let grid_snapshot = zellij.wait_until("notice names the other tab", |grid_snapshot| {
+        grid_snapshot.contains("From the first tab")
+            && grid_snapshot.contains("SENDER-PANE")
+            && lines_containing(grid_snapshot, "FIRST-TAB") == 2
+    });
+    let (name_row, _) = column_of(&grid_snapshot, "SENDER-PANE").unwrap();
+    assert!(grid_snapshot.lines()[name_row - 1].contains("FIRST-TAB"));
+    assert!(!grid_snapshot.contains("tab: "));
+
+    rename_first_tab(&zellij, "Builds");
+    rename_pane(&zellij, &first_terminal, "compiler");
+    let grid_snapshot = zellij.wait_until("notice shows the new names", |grid_snapshot| {
+        grid_snapshot.contains("compiler") && lines_containing(grid_snapshot, "Builds") == 2
+    });
+    let (name_row, _) = column_of(&grid_snapshot, "compiler").unwrap();
+    assert!(grid_snapshot.lines()[name_row - 1].contains("Builds"));
+
+    let notice = zellij.run_prompt(
+        &["notify", "Tab hidden", "--no-tab-name", "--at", "bottom-left"],
+        from(&first_terminal),
+    );
+    answered(&notice.wait_for_exit(), 0, "");
+    let grid_snapshot = zellij.wait_until("second notice shown", |grid_snapshot| {
+        grid_snapshot.contains("Tab hidden")
+    });
+    assert_eq!(lines_containing(&grid_snapshot, "Builds"), 2);
+    assert_eq!(lines_containing(&grid_snapshot, "compiler"), 2);
+    zellij.quit();
+}
+
+#[test]
+fn a_title_set_by_a_program_in_another_tab_updates_the_notice() {
+    let (mut zellij, first_terminal) = start_with_terminal();
+    open_second_tab(&zellij);
+    let notice = zellij.run_prompt(&["notify", "Watching titles"], from(&first_terminal));
+    answered(&notice.wait_for_exit(), 0, "");
+    zellij.wait_until("notice shown", |grid_snapshot| {
+        grid_snapshot.contains("Watching titles")
+    });
+    first_terminal.output(b"\x1b]0;OSC-TITLE\x07");
+    zellij.wait_until("notice shows the title set by the program", |grid_snapshot| {
+        grid_snapshot.contains("OSC-TITLE")
+    });
+    zellij.quit();
+}
+
+#[test]
+fn a_notice_stays_with_the_user_across_tab_switches_until_dismissed() {
+    let (mut zellij, first_terminal) = start_with_terminal();
+    first_terminal.output(b"FIRST-TAB-CONTENT");
+    let second_terminal = open_second_tab(&zellij);
+    let notice = zellij.run_prompt(&["notify", "Follows you"], from(&second_terminal));
+    answered(&notice.wait_for_exit(), 0, "");
+    zellij.wait_until("notice shown", |grid_snapshot| {
+        grid_snapshot.contains("Follows you")
+    });
+    zellij.send_stdin(&keys::ctrl('t'));
+    zellij.send_stdin(&keys::key('1'));
+    zellij.wait_until("back in the first tab with the notice", |grid_snapshot| {
+        grid_snapshot.contains("FIRST-TAB-CONTENT")
+            && grid_snapshot.contains("Follows you")
+            && grid_snapshot.status_bar_appears()
+    });
+    zellij.send_stdin(&keys::key('y'));
+    first_terminal.wait_for_stdin("keys reach the first tab's pane", |bytes| {
+        bytes.contains(&b'y')
+    });
+    zellij.run_cli_action(CliAction::DismissInfoPopups);
+    zellij.wait_until("notice dismissed", |grid_snapshot| {
+        !grid_snapshot.contains("Follows you") && grid_snapshot.contains("FIRST-TAB-CONTENT")
+    });
     zellij.quit();
 }

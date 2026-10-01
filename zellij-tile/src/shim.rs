@@ -925,6 +925,26 @@ pub fn open_plugin_popup(
     width: usize,
     height: usize,
 ) {
+    open_plugin_popup_with_options(
+        plugin_url,
+        configuration,
+        line,
+        column,
+        width,
+        height,
+        PopupOptions::default(),
+    );
+}
+
+pub fn open_plugin_popup_with_options(
+    plugin_url: impl Into<String>,
+    configuration: BTreeMap<String, String>,
+    line: usize,
+    column: usize,
+    width: usize,
+    height: usize,
+    options: PopupOptions,
+) {
     let plugin_command = PluginCommand::OpenPluginPopup {
         plugin_url: plugin_url.into(),
         configuration,
@@ -932,6 +952,7 @@ pub fn open_plugin_popup(
         column,
         width,
         height,
+        options,
     };
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());

@@ -1,5 +1,95 @@
-use crate::data::{ContextMenuEntry, ContextMenuKind};
+use crate::data::{ContextMenuEntry, ContextMenuKind, InputMode, KeyWithModifier, KeybindsVec};
+use crate::input::actions::Action;
 use serde::{Deserialize, Serialize};
+
+const MAX_SHORTCUT_DEPTH: usize = 4;
+
+fn actions_match(binding: &[Action], wanted: &[Action]) -> bool {
+    binding.len() == wanted.len()
+        && wanted
+            .iter()
+            .zip(binding.iter())
+            .all(|(wanted, bound)| wanted.matches_binding_for_shortcut(bound))
+}
+
+fn binding_matches(binding: &[Action], wanted: &[Action], base_mode: InputMode) -> bool {
+    if wanted.is_empty() {
+        return false;
+    }
+    if actions_match(binding, wanted) {
+        return true;
+    }
+    binding.len() == wanted.len() + 1
+        && actions_match(&binding[..wanted.len()], wanted)
+        && matches!(
+            binding.last(),
+            Some(Action::SwitchToMode { input_mode }) if *input_mode == base_mode
+        )
+}
+
+pub fn context_menu_shortcut(
+    keybinds: &KeybindsVec,
+    base_mode: InputMode,
+    actions: &[Action],
+) -> Option<String> {
+    let wanted: Vec<Action> = actions
+        .iter()
+        .flat_map(|action| action.keybinding_equivalent())
+        .collect();
+    if wanted.is_empty() {
+        return None;
+    }
+    let mode_binds = |mode: InputMode| -> Vec<(KeyWithModifier, Vec<Action>)> {
+        let mut binds = keybinds
+            .iter()
+            .find(|(bind_mode, _)| *bind_mode == mode)
+            .map(|(_, binds)| binds.clone())
+            .unwrap_or_default();
+        binds.sort_by(|(a, _), (b, _)| a.cmp(b));
+        binds
+    };
+    let mut visited = vec![base_mode];
+    let mut queue: Vec<(InputMode, Vec<KeyWithModifier>)> = vec![(base_mode, vec![])];
+    for _ in 0..MAX_SHORTCUT_DEPTH {
+        for (mode, path) in &queue {
+            for (key, bound) in mode_binds(*mode) {
+                if binding_matches(&bound, &wanted, base_mode) {
+                    let mut shortcut = path.clone();
+                    shortcut.push(key);
+                    return Some(
+                        shortcut
+                            .iter()
+                            .map(|key| key.to_string())
+                            .collect::<Vec<_>>()
+                            .join(", "),
+                    );
+                }
+            }
+        }
+        let mut next_queue = vec![];
+        for (mode, path) in &queue {
+            for (key, bound) in mode_binds(*mode) {
+                if let [Action::SwitchToMode {
+                    input_mode: next_mode,
+                }] = bound.as_slice()
+                {
+                    if !visited.contains(next_mode) {
+                        visited.push(*next_mode);
+                        let mut next_path = path.clone();
+                        next_path.push(key.clone());
+                        next_queue.push((*next_mode, next_path));
+                    }
+                }
+            }
+        }
+        if next_queue.is_empty() {
+            return None;
+        }
+        next_queue.sort_by_key(|(mode, _)| *mode == InputMode::Tmux);
+        queue = next_queue;
+    }
+    None
+}
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct ContextMenuConfig {

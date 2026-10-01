@@ -504,6 +504,10 @@ pub struct OpenPluginPopupPayload {
     pub width: u32,
     #[prost(uint32, tag="6")]
     pub height: u32,
+    #[prost(bool, optional, tag="7")]
+    pub focused: ::core::option::Option<bool>,
+    #[prost(string, optional, tag="8")]
+    pub corner: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

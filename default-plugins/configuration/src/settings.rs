@@ -386,6 +386,14 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "false",
             Everyone,
         ),
+        SettingKey::ContextMenuEnabled => info(
+            "Right-click menu",
+            MouseAndClipboard,
+            "A right click opens the menu; when off it goes to the focused pane",
+            Toggle,
+            "true",
+            Everyone,
+        ),
         SettingKey::Osc133CommandSelection => info(
             "Select command output",
             MouseAndClipboard,
@@ -838,7 +846,8 @@ pub fn section(key: SettingKey) -> &'static str {
         | FrameFloatingBorderLeft
         | FrameFloatingBorderRoundedCorners => "Floating pane borders",
         MouseMode | AdvancedMouseActions | MouseScrollResize | ScrollModeSync
-        | MouseHoverEffects | MouseHoverTips | FocusFollowsMouse | MouseClickThrough => "Mouse",
+        | MouseHoverEffects | MouseHoverTips | FocusFollowsMouse | MouseClickThrough
+        | ContextMenuEnabled => "Mouse",
         Osc133CommandSelection | WordSeparators => "Selection",
         CopyCommand | CopyClipboard | CopyOnSelect | DangerouslyEnablePasteBufferRead => {
             "Clipboard"

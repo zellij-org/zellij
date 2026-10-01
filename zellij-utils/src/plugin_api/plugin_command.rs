@@ -157,7 +157,7 @@ use crate::data::{
 use crate::input::actions::Action;
 use crate::input::layout::PercentOrFixed;
 
-use crate::data::BorderStyleOverride;
+use crate::data::{BorderStyleOverride, PopupOptions};
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
 use std::path::PathBuf;
@@ -2587,6 +2587,13 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                         column: payload.column as usize,
                         width: payload.width as usize,
                         height: payload.height as usize,
+                        options: PopupOptions {
+                            focused: payload.focused.unwrap_or(true),
+                            corner: payload
+                                .corner
+                                .as_deref()
+                                .and_then(|corner| corner.parse().ok()),
+                        },
                     })
                 },
                 _ => Err("Mismatched payload for OpenPluginPopup"),
@@ -4507,6 +4514,7 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 column,
                 width,
                 height,
+                options,
             } => Ok(ProtobufPluginCommand {
                 name: CommandName::OpenPluginPopup as i32,
                 payload: Some(Payload::OpenPluginPopupPayload(OpenPluginPopupPayload {
@@ -4519,6 +4527,8 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     column: column as u32,
                     width: width as u32,
                     height: height as u32,
+                    focused: Some(options.focused),
+                    corner: options.corner.map(|corner| corner.to_string()),
                 })),
             }),
             PluginCommand::ReadConfig => Ok(ProtobufPluginCommand {

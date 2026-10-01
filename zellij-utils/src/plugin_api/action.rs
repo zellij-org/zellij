@@ -687,6 +687,11 @@ impl TryFrom<ProtobufAction> for Action {
                 Some(_) => Err("ToggleTheme should not have a payload"),
                 None => Ok(Action::ToggleTheme),
             },
+            Some(ProtobufActionName::DismissInfoPopups) => match protobuf_action.optional_payload
+            {
+                Some(_) => Err("DismissInfoPopups should not have a payload"),
+                None => Ok(Action::DismissInfoPopups),
+            },
             Some(ProtobufActionName::LeftClick) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::LeftClickPayload(payload)) => {
                     let position = payload.try_into()?;
@@ -1887,6 +1892,10 @@ impl TryFrom<Action> for ProtobufAction {
             }),
             Action::ToggleTheme => Ok(ProtobufAction {
                 name: ProtobufActionName::ToggleTheme as i32,
+                optional_payload: None,
+            }),
+            Action::DismissInfoPopups => Ok(ProtobufAction {
+                name: ProtobufActionName::DismissInfoPopups as i32,
                 optional_payload: None,
             }),
             Action::LaunchOrFocusPlugin {

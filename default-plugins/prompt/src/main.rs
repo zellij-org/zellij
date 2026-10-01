@@ -29,6 +29,8 @@ fn apply(effects: Vec<Effect>) {
             Effect::SetTimeout(seconds) => set_timeout(seconds),
             Effect::ShowSelf => show_self(true),
             Effect::CloseSelf => close_self(),
+            Effect::FocusPane(pane_id) => focus_pane_with_id(pane_id, true, false),
+            Effect::WatchNames => subscribe(&[EventType::PaneUpdate, EventType::TabUpdate]),
         }
     }
 }
@@ -51,6 +53,8 @@ impl ZellijPlugin for Prompt {
             Event::Key(key) => self.app.handle_key(key),
             Event::Mouse(mouse) => self.app.handle_mouse(mouse),
             Event::Timer(_) => self.app.handle_timer(Instant::now()),
+            Event::PaneUpdate(pane_manifest) => self.app.handle_pane_update(&pane_manifest),
+            Event::TabUpdate(tabs) => self.app.handle_tab_update(&tabs),
             _ => false,
         };
         self.flush();

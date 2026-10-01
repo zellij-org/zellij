@@ -16155,6 +16155,7 @@ fn a_popup_whose_plugin_fails_is_closed_and_unloaded() {
             crate::tab::PopupKind::Prompt,
             20,
             5,
+            None,
         )
         .unwrap();
     assert!(screen
@@ -16173,4 +16174,196 @@ fn a_popup_whose_plugin_fails_is_closed_and_unloaded() {
         .try_iter()
         .any(|(instruction, _)| matches!(instruction, PluginInstruction::Unload(42)));
     assert!(unloaded);
+}
+
+#[test]
+fn closing_the_pane_a_popup_belongs_to_closes_the_popup() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut screen = create_new_screen(size, true, true);
+    let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> = channels::unbounded();
+    screen
+        .bus
+        .senders
+        .replace_to_plugin(SenderWithContext::new(to_plugin));
+    new_tab(&mut screen, 1, 0);
+    screen
+        .get_active_tab_mut(client_id)
+        .unwrap()
+        .vertical_split(PaneId::Terminal(2), None, client_id, None, None)
+        .unwrap();
+    let tab_id = screen.get_active_tab(client_id).unwrap().id;
+    let run_plugin_or_alias =
+        RunPluginOrAlias::from_url("zellij:prompt", &None, None, None).unwrap();
+    screen
+        .add_popup(
+            42,
+            client_id,
+            tab_id,
+            run_plugin_or_alias.clone(),
+            crate::tab::PopupPlacement::At(Position::new(3, 3)),
+            crate::tab::PopupKind::Prompt,
+            20,
+            5,
+            Some(PaneId::Terminal(2)),
+        )
+        .unwrap();
+    screen
+        .add_popup(
+            43,
+            client_id,
+            tab_id,
+            run_plugin_or_alias,
+            crate::tab::PopupPlacement::At(Position::new(3, 3)),
+            crate::tab::PopupKind::Prompt,
+            20,
+            5,
+            Some(PaneId::Terminal(1)),
+        )
+        .unwrap();
+    assert!(!screen.close_popups_with_missing_anchor());
+    screen
+        .get_active_tab_mut(client_id)
+        .unwrap()
+        .close_pane(PaneId::Terminal(2), false, None);
+    assert!(screen.close_popups_with_missing_anchor());
+    let tab = screen.get_active_tab(client_id).unwrap();
+    assert_eq!(tab.popup_plugin_id(client_id), Some(43));
+    assert_eq!(tab.popup_count_for_client(client_id), 1);
+    let unloaded = plugin_receiver
+        .try_iter()
+        .any(|(instruction, _)| matches!(instruction, PluginInstruction::Unload(42)));
+    assert!(unloaded);
+}
+
+#[test]
+fn closing_the_top_popup_from_a_key_leaves_information_popups_open() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut screen = create_new_screen(size, true, true);
+    let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> = channels::unbounded();
+    screen
+        .bus
+        .senders
+        .replace_to_plugin(SenderWithContext::new(to_plugin));
+    new_tab(&mut screen, 1, 0);
+    let tab_id = screen.get_active_tab(client_id).unwrap().id;
+    let run_plugin_or_alias =
+        RunPluginOrAlias::from_url("zellij:prompt", &None, None, None).unwrap();
+    screen
+        .add_popup(
+            50,
+            client_id,
+            tab_id,
+            run_plugin_or_alias.clone(),
+            crate::tab::PopupPlacement::Corner(zellij_utils::data::PopupCorner::TopRight),
+            crate::tab::PopupKind::Info,
+            20,
+            3,
+            None,
+        )
+        .unwrap();
+    screen
+        .add_popup(
+            42,
+            client_id,
+            tab_id,
+            run_plugin_or_alias,
+            crate::tab::PopupPlacement::At(Position::new(3, 3)),
+            crate::tab::PopupKind::Prompt,
+            20,
+            5,
+            None,
+        )
+        .unwrap();
+    assert!(screen.send_key_to_popup(client_id, None));
+    assert!(screen.close_top_popup_for_client(client_id));
+    assert!(!screen.send_key_to_popup(client_id, None));
+    assert!(!screen.close_top_popup_for_client(client_id));
+    assert!(screen
+        .get_active_tab(client_id)
+        .unwrap()
+        .has_popup_for_client(client_id));
+    assert!(screen.dismiss_info_popups(client_id));
+    assert!(!screen
+        .get_active_tab(client_id)
+        .unwrap()
+        .has_popup_for_client(client_id));
+    let unloaded: Vec<u32> = plugin_receiver
+        .try_iter()
+        .filter_map(|(instruction, _)| match instruction {
+            PluginInstruction::Unload(plugin_id) => Some(plugin_id),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(unloaded, vec![42, 50]);
+}
+
+#[test]
+fn switching_tabs_moves_information_popups_along_and_closes_focused_ones() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut screen = create_new_screen(size, true, true);
+    let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> = channels::unbounded();
+    screen
+        .bus
+        .senders
+        .replace_to_plugin(SenderWithContext::new(to_plugin));
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    let first_tab_id = screen.get_active_tab(client_id).unwrap().id;
+    let run_plugin_or_alias =
+        RunPluginOrAlias::from_url("zellij:prompt", &None, None, None).unwrap();
+    for (plugin_id, kind, placement) in [
+        (
+            50,
+            crate::tab::PopupKind::Info,
+            crate::tab::PopupPlacement::Corner(zellij_utils::data::PopupCorner::TopRight),
+        ),
+        (
+            42,
+            crate::tab::PopupKind::Prompt,
+            crate::tab::PopupPlacement::At(Position::new(3, 3)),
+        ),
+    ] {
+        screen
+            .add_popup(
+                plugin_id,
+                client_id,
+                first_tab_id,
+                run_plugin_or_alias.clone(),
+                placement,
+                kind,
+                20,
+                3,
+                None,
+            )
+            .unwrap();
+    }
+    screen.switch_tab_prev(None, true, client_id).unwrap();
+    let new_tab = screen.get_active_tab(client_id).unwrap();
+    assert_ne!(new_tab.id, first_tab_id);
+    assert_eq!(new_tab.popup_plugin_ids_for_client(client_id), vec![50]);
+    assert!(!screen
+        .tabs
+        .get(&first_tab_id)
+        .unwrap()
+        .has_popup_for_client(client_id));
+    let unloaded: Vec<u32> = plugin_receiver
+        .try_iter()
+        .filter_map(|(instruction, _)| match instruction {
+            PluginInstruction::Unload(plugin_id) => Some(plugin_id),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(unloaded, vec![42]);
 }

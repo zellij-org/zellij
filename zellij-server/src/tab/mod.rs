@@ -332,6 +332,7 @@ pub(crate) struct Tab {
     mouse_hover_tips: bool,
     focus_follows_mouse: bool,
     mouse_click_through: bool,
+    context_menu_enabled: bool,
     osc133_command_selection: bool,
     word_separators: String,
     currently_marking_pane_group: Rc<RefCell<HashMap<ClientId, bool>>>,
@@ -1114,6 +1115,7 @@ impl Tab {
             mouse_hover_tips,
             focus_follows_mouse,
             mouse_click_through,
+            context_menu_enabled: true,
             osc133_command_selection: true,
             word_separators: DEFAULT_WORD_SEPARATORS.to_owned(),
             connected_clients_in_app,
@@ -2282,6 +2284,13 @@ impl Tab {
                 mode_info.web_server_capability = Some(false);
             }
             mode_info.pane_frame_style = Some(self.pane_frame_style);
+            for plugin_id in self.popup_plugin_ids_for_client(*client_id) {
+                plugin_updates.push((
+                    Some(plugin_id),
+                    Some(*client_id),
+                    Event::ModeUpdate(mode_info.clone()),
+                ));
+            }
             for plugin_id in &tab_plugin_ids {
                 plugin_updates.push((
                     Some(*plugin_id),
@@ -5354,7 +5363,7 @@ impl Tab {
         let connected_clients: Vec<ClientId> =
             { self.connected_clients.borrow().iter().copied().collect() };
         for client_id in connected_clients {
-            if self.has_popup_for_client(client_id) {
+            if self.has_focused_popup_for_client(client_id) {
                 output.add_post_vte_instruction_to_client(client_id, "\u{1b}[?25l");
                 continue;
             }
@@ -8328,6 +8337,9 @@ impl Tab {
     }
     pub fn update_mouse_click_through(&mut self, mouse_click_through: bool) {
         self.mouse_click_through = mouse_click_through;
+    }
+    pub fn update_context_menu_enabled(&mut self, context_menu_enabled: bool) {
+        self.context_menu_enabled = context_menu_enabled;
     }
     pub fn update_selection_options(
         &mut self,

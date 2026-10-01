@@ -341,7 +341,9 @@ impl FormScreen {
         if key.is_key_without_modifier(BareKey::Esc) && !focused_is_editing_number {
             return Step::Done(Outcome::Cancelled);
         }
-        if key.is_key_with_ctrl_modifier(BareKey::Char('s')) {
+        if key.is_key_with_ctrl_modifier(BareKey::Char('a'))
+            || key.is_key_with_ctrl_modifier(BareKey::Char('s'))
+        {
             return self.try_submit();
         }
         if let Some(focused) = focused {

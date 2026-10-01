@@ -94,6 +94,7 @@ pub fn default_answer(request: &Request) -> Result<Option<Answer>, String> {
         Spec::Form { default, .. } => {
             Answer::Form(default.clone().unwrap_or_default().into_iter().collect())
         },
+        Spec::Notify { .. } => return Ok(None),
     };
     Ok(Some(answer))
 }

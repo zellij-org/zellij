@@ -35,6 +35,10 @@ use zellij_utils::{
 
 use crate::ClientId;
 
+mod popup_keys;
+pub(crate) use popup_keys::PopupKeyAction;
+pub use popup_keys::PopupScroll;
+
 const ACTION_COMPLETION_TIMEOUT: Duration = Duration::from_secs(1);
 
 #[derive(Debug, Clone)]
@@ -1261,6 +1265,14 @@ pub(crate) fn route_action(
                 ))))
                 .with_context(err_context)?;
         },
+        Action::DismissInfoPopups => {
+            senders
+                .send_to_screen(ScreenInstruction::DismissInfoPopups(
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
         Action::SwitchSession {
             name,
             tab_position,
@@ -1723,6 +1735,7 @@ pub(crate) fn route_action(
             cwd,
             pane_title,
             popup,
+            popup_no_focus,
             ..
         } => {
             drop(completion_tx); // releasing pipes is handled by the plugins, so we don't want
@@ -1760,6 +1773,7 @@ pub(crate) fn route_action(
                         cli_client_id: cli_client_id.unwrap_or(client_id),
                         caller_pane_id: pane_id,
                         popup,
+                        popup_focused: !popup_no_focus,
                     })
                     .with_context(err_context)?;
             } else {
@@ -2532,45 +2546,48 @@ pub(crate) fn route_thread_main(
                             // see the doc comment on `route_action` for why this matters.
                             let dispatch_inputs =
                                 session_data.read().unwrap().as_ref().and_then(|s| {
-                                    let in_passthrough =
-                                        s.key_passthrough_clients.contains_key(&client_id)
-                                            || s.popup_clients.contains(&client_id);
-                                    if in_passthrough {
-                                        return Some((
-                                            s.senders.clone(),
-                                            s.default_shell.clone(),
-                                            s.session_configuration
-                                                .get_client_default_input_mode(&client_id),
-                                            vec![Action::Write {
-                                                key_with_modifier: Some(key),
-                                                bytes: raw_bytes,
-                                                is_kitty_keyboard_protocol,
-                                            }],
-                                        ));
-                                    }
+                                    let in_key_passthrough =
+                                        s.key_passthrough_clients.contains_key(&client_id);
+                                    let has_focused_popup = s.popup_clients.contains(&client_id);
                                     let (kb, im, dim) =
                                         s.get_client_keybinds_and_mode(&client_id)?;
-                                    let actions: Vec<Action> = kb
-                                        .get_actions_for_key_in_mode_or_default_action(
-                                            im,
-                                            &key,
-                                            raw_bytes,
-                                            dim,
-                                            is_kitty_keyboard_protocol,
-                                        );
+                                    let key_actions = popup_keys::key_dispatch(
+                                        kb,
+                                        im,
+                                        dim,
+                                        &key,
+                                        raw_bytes,
+                                        is_kitty_keyboard_protocol,
+                                        in_key_passthrough,
+                                        has_focused_popup,
+                                    );
                                     Some((
                                         s.senders.clone(),
                                         s.default_shell.clone(),
                                         s.session_configuration
                                             .get_client_default_input_mode(&client_id),
-                                        actions,
+                                        key_actions,
                                     ))
                                 });
-                            if let Some((senders, default_shell, client_input_mode, actions)) =
+                            if let Some((senders, default_shell, client_input_mode, key_actions)) =
                                 dispatch_inputs
                             {
-                                for action in actions {
-                                    // Send user input to plugin thread for logging
+                                for key_action in key_actions {
+                                    let action = match key_action {
+                                        PopupKeyAction::Route(action) => action,
+                                        PopupKeyAction::ClosePopup => {
+                                            let _ = senders.send_to_screen(
+                                                ScreenInstruction::CloseTopPopup(client_id),
+                                            );
+                                            continue;
+                                        },
+                                        PopupKeyAction::ScrollPopup(scroll) => {
+                                            let _ = senders.send_to_screen(
+                                                ScreenInstruction::ScrollPopup(client_id, scroll),
+                                            );
+                                            continue;
+                                        },
+                                    };
                                     let _ = senders.send_to_plugin(PluginInstruction::UserInput {
                                         client_id,
                                         action: action.clone(),

@@ -583,6 +583,8 @@ pub enum Action {
         cwd: Option<PathBuf>,
         pane_title: Option<String>,
         popup: Option<crate::data::PipePopupPlacement>,
+        #[serde(default)]
+        popup_no_focus: bool,
     },
     KeybindPipe {
         name: Option<String>,
@@ -745,6 +747,7 @@ pub enum Action {
     StartRenameTabByTabId {
         id: Option<u64>,
     },
+    DismissInfoPopups,
 }
 
 impl Default for Action {
@@ -811,6 +814,86 @@ impl Action {
                 | Action::MoveTabByTabId { .. }
                 | Action::StartRenameTabByTabId { .. }
         )
+    }
+
+    pub fn keybinding_equivalent(&self) -> Vec<Action> {
+        match self {
+            Action::ToggleFocusFullscreenByPaneId { .. } => vec![Action::ToggleFocusFullscreen],
+            Action::ToggleFocusNoUiFullscreenByPaneId { .. } => {
+                vec![Action::ToggleFocusNoUiFullscreen]
+            },
+            Action::TogglePaneEmbedOrFloatingByPaneId { .. } => {
+                vec![Action::TogglePaneEmbedOrFloating]
+            },
+            Action::CloseFocusByPaneId { .. } => vec![Action::CloseFocus],
+            Action::TogglePanePinnedByPaneId { .. } => vec![Action::TogglePanePinned],
+            Action::TogglePaneInGroupByPaneId { .. } => vec![Action::TogglePaneInGroup],
+            Action::StartRenamePaneByPaneId { .. } => vec![
+                Action::SwitchToMode {
+                    input_mode: InputMode::RenamePane,
+                },
+                Action::PaneNameInput { input: vec![0] },
+            ],
+            Action::UndoRenamePaneByPaneId { .. } => vec![Action::UndoRenamePane],
+            Action::ScrollUpByPaneId { .. } => vec![Action::ScrollUp],
+            Action::ScrollDownByPaneId { .. } => vec![Action::ScrollDown],
+            Action::ScrollToTopByPaneId { .. } => vec![Action::ScrollToTop],
+            Action::ScrollToBottomByPaneId { .. } => vec![Action::ScrollToBottom],
+            Action::PageScrollUpByPaneId { .. } => vec![Action::PageScrollUp],
+            Action::PageScrollDownByPaneId { .. } => vec![Action::PageScrollDown],
+            Action::HalfPageScrollUpByPaneId { .. } => vec![Action::HalfPageScrollUp],
+            Action::HalfPageScrollDownByPaneId { .. } => vec![Action::HalfPageScrollDown],
+            Action::ResizeByPaneId {
+                resize, direction, ..
+            } => vec![Action::Resize {
+                resize: *resize,
+                direction: *direction,
+            }],
+            Action::MovePaneByPaneId { direction, .. } => vec![Action::MovePane {
+                direction: *direction,
+            }],
+            Action::MovePaneBackwardsByPaneId { .. } => vec![Action::MovePaneBackwards],
+            Action::ClearScreenByPaneId { .. } => vec![Action::ClearScreen],
+            Action::EditScrollbackByPaneId { ansi, .. } => {
+                vec![Action::EditScrollback { ansi: *ansi }]
+            },
+            Action::CloseTabById { .. } => vec![Action::CloseTab],
+            Action::MoveTabByTabId { direction, .. } => vec![Action::MoveTab {
+                direction: *direction,
+            }],
+            Action::StartRenameTabByTabId { .. } => vec![
+                Action::SwitchToMode {
+                    input_mode: InputMode::RenameTab,
+                },
+                Action::TabNameInput { input: vec![0] },
+            ],
+            Action::UndoRenameTabByTabId { .. } => vec![Action::UndoRenameTab],
+            Action::ToggleActiveSyncTabByTabId { .. } => vec![Action::ToggleActiveSyncTab],
+            Action::ToggleFloatingPanesByTabId { .. } => vec![Action::ToggleFloatingPanes],
+            Action::PreviousSwapLayoutByTabId { .. } => vec![Action::PreviousSwapLayout],
+            Action::NextSwapLayoutByTabId { .. } => vec![Action::NextSwapLayout],
+            Action::ApplyTiledSwapLayoutByTabId { name, .. } => {
+                vec![Action::ApplyTiledSwapLayout { name: name.clone() }]
+            },
+            Action::ApplyFloatingSwapLayoutByTabId { name, .. } => {
+                vec![Action::ApplyFloatingSwapLayout { name: name.clone() }]
+            },
+            other => vec![other.clone()],
+        }
+    }
+
+    pub fn matches_binding_for_shortcut(&self, binding: &Action) -> bool {
+        match (self, binding) {
+            (
+                Action::LaunchOrFocusPlugin { plugin, .. },
+                Action::LaunchOrFocusPlugin {
+                    plugin: bound_plugin,
+                    ..
+                },
+            ) => plugin.location_string() == bound_plugin.location_string(),
+            (Action::NewPane { direction: None, .. }, Action::NewPane { .. }) => true,
+            _ => self == binding,
+        }
     }
 
     pub fn fill_context_menu_target(
@@ -2086,6 +2169,7 @@ impl Action {
                 plugin_cwd,
                 plugin_title,
                 popup,
+                popup_no_focus,
             } => {
                 let current_dir = get_current_dir();
                 let cwd = plugin_cwd
@@ -2108,6 +2192,7 @@ impl Action {
                     pane_title: plugin_title,
                     skip_cache,
                     popup,
+                    popup_no_focus,
                 }])
             },
             CliAction::ListClients => Ok(vec![Action::ListClients]),
@@ -2310,6 +2395,7 @@ impl Action {
             CliAction::SetDarkTheme => Ok(vec![Action::SetDarkTheme]),
             CliAction::SetLightTheme => Ok(vec![Action::SetLightTheme]),
             CliAction::ToggleTheme => Ok(vec![Action::ToggleTheme]),
+            CliAction::DismissInfoPopups => Ok(vec![Action::DismissInfoPopups]),
             CliAction::SwitchSession {
                 name,
                 tab_position,
@@ -2523,6 +2609,113 @@ mod tests {
     use crate::data::BareKey;
     use crate::data::KeyModifier;
     use std::path::PathBuf;
+
+    #[test]
+    fn by_id_actions_map_to_their_focused_pane_or_tab_actions() {
+        let pane_id = Some(PaneId::Terminal(3));
+        let pairs = vec![
+            (
+                Action::ToggleFocusFullscreenByPaneId { pane_id },
+                Action::ToggleFocusFullscreen,
+            ),
+            (
+                Action::TogglePaneEmbedOrFloatingByPaneId { pane_id },
+                Action::TogglePaneEmbedOrFloating,
+            ),
+            (Action::CloseFocusByPaneId { pane_id }, Action::CloseFocus),
+            (
+                Action::TogglePanePinnedByPaneId { pane_id },
+                Action::TogglePanePinned,
+            ),
+            (
+                Action::TogglePaneInGroupByPaneId { pane_id },
+                Action::TogglePaneInGroup,
+            ),
+            (
+                Action::ScrollUpByPaneId {
+                    pane_id: PaneId::Terminal(1),
+                },
+                Action::ScrollUp,
+            ),
+            (
+                Action::ResizeByPaneId {
+                    pane_id: PaneId::Terminal(1),
+                    resize: Resize::Increase,
+                    direction: Some(Direction::Left),
+                },
+                Action::Resize {
+                    resize: Resize::Increase,
+                    direction: Some(Direction::Left),
+                },
+            ),
+            (Action::CloseTabById { id: Some(2) }, Action::CloseTab),
+            (
+                Action::MoveTabByTabId {
+                    id: None,
+                    direction: Direction::Right,
+                },
+                Action::MoveTab {
+                    direction: Direction::Right,
+                },
+            ),
+            (
+                Action::NextSwapLayoutByTabId { id: 1 },
+                Action::NextSwapLayout,
+            ),
+        ];
+        for (by_id, focused) in pairs {
+            assert_eq!(by_id.keybinding_equivalent(), vec![focused], "{:?}", by_id);
+        }
+    }
+
+    #[test]
+    fn rename_actions_map_to_their_key_sequences() {
+        assert_eq!(
+            Action::StartRenamePaneByPaneId { pane_id: None }.keybinding_equivalent(),
+            vec![
+                Action::SwitchToMode {
+                    input_mode: InputMode::RenamePane
+                },
+                Action::PaneNameInput { input: vec![0] },
+            ]
+        );
+        assert_eq!(
+            Action::StartRenameTabByTabId { id: None }.keybinding_equivalent(),
+            vec![
+                Action::SwitchToMode {
+                    input_mode: InputMode::RenameTab
+                },
+                Action::TabNameInput { input: vec![0] },
+            ]
+        );
+    }
+
+    #[test]
+    fn other_actions_map_to_themselves() {
+        assert_eq!(Action::Detach.keybinding_equivalent(), vec![Action::Detach]);
+    }
+
+    #[test]
+    fn shortcut_matching_compares_plugins_by_location_and_new_pane_without_direction() {
+        let launch = |name: &str, should_float: bool| Action::LaunchOrFocusPlugin {
+            plugin: RunPluginOrAlias::Alias(PluginAlias::new(name, &None, None)),
+            should_float,
+            move_to_focused_tab: false,
+            should_open_in_place: false,
+            close_replaced_pane: false,
+            skip_cache: false,
+            tab_id: None,
+        };
+        assert!(launch("configuration", true).matches_binding_for_shortcut(&launch("configuration", false)));
+        assert!(!launch("configuration", true).matches_binding_for_shortcut(&launch("session-manager", true)));
+        let new_pane = |direction| Action::NewPane {
+            direction,
+            pane_name: None,
+            start_suppressed: false,
+        };
+        assert!(new_pane(None).matches_binding_for_shortcut(&new_pane(Some(Direction::Down))));
+        assert!(!new_pane(Some(Direction::Up)).matches_binding_for_shortcut(&new_pane(Some(Direction::Down))));
+    }
 
     #[test]
     fn test_send_keys_single_key() {
@@ -3372,6 +3565,17 @@ mod tests {
         let actions = result.expect("ToggleTheme conversion should succeed");
         assert_eq!(actions.len(), 1);
         assert!(matches!(actions[0], Action::ToggleTheme));
+    }
+
+    #[test]
+    fn test_dismiss_info_popups_cli_to_action() {
+        let actions = Action::actions_from_cli(
+            CliAction::DismissInfoPopups,
+            Box::new(|| PathBuf::from("/tmp")),
+            None,
+        )
+        .unwrap();
+        assert_eq!(actions, vec![Action::DismissInfoPopups]);
     }
 
     // 21. RenameTab

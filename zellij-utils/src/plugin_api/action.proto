@@ -548,6 +548,7 @@ enum ActionName {
     StartRenamePaneByPaneId = 122;
     MoveTabByTabId = 123;
     StartRenameTabByTabId = 124;
+    DismissInfoPopups = 125;
 }
 
 message Position {

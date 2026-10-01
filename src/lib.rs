@@ -256,6 +256,7 @@ fn main() {
                 plugin_cwd: None,
                 plugin_title: None,
                 popup: None,
+                popup_no_focus: false,
             };
             commands::send_action_to_session(command_cli_action, opts.session, config);
             std::process::exit(0);

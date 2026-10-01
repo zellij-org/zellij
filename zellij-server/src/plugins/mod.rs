@@ -163,6 +163,7 @@ pub enum PluginInstruction {
         cli_client_id: ClientId,
         caller_pane_id: Option<PaneId>,
         popup: Option<PipePopupPlacement>,
+        popup_focused: bool,
     },
     SetCliPipeExitCode {
         pipe_id: String,
@@ -244,8 +245,9 @@ pub enum PluginInstruction {
         client_id: ClientId,
         placement: PopupPlacement,
         kind: PopupKind,
+        anchor_pane: Option<PaneId>,
         size: Size,
-        initial_event: Option<Event>,
+        initial_events: Vec<Event>,
         pipe: Option<(String, BTreeMap<String, String>)>,
     },
     Exit,
@@ -458,8 +460,9 @@ pub(crate) fn plugin_thread_main(
                 client_id,
                 placement,
                 kind,
+                anchor_pane,
                 size,
-                initial_event,
+                initial_events,
                 pipe,
             } => {
                 run_plugin_or_alias.populate_run_plugin_if_needed(&plugin_aliases);
@@ -489,10 +492,14 @@ pub(crate) fn plugin_thread_main(
                             kind,
                             width: size.cols,
                             height: size.rows,
+                            anchor_pane,
                         }));
-                        if let Some(initial_event) = initial_event {
+                        if !initial_events.is_empty() {
                             wasm_bridge.update_plugins(
-                                vec![(Some(plugin_id), Some(client_id), initial_event)],
+                                initial_events
+                                    .into_iter()
+                                    .map(|event| (Some(plugin_id), Some(client_id), event))
+                                    .collect(),
                                 shutdown_send.clone(),
                             )?;
                         }
@@ -1059,6 +1066,7 @@ pub(crate) fn plugin_thread_main(
                 cli_client_id,
                 caller_pane_id,
                 popup,
+                popup_focused,
             } => {
                 if wasm_bridge.cli_pipe_is_finished(&pipe_id) {
                     continue;
@@ -1103,6 +1111,7 @@ pub(crate) fn plugin_thread_main(
                                             run_plugin_or_alias,
                                             caller_pane_id,
                                             placement,
+                                            focused: popup_focused,
                                         },
                                     ));
                                 },

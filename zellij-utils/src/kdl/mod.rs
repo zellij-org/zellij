@@ -94,6 +94,7 @@ macro_rules! parse_kdl_action_arguments {
                 "SetDarkTheme" => Ok(Action::SetDarkTheme),
                 "SetLightTheme" => Ok(Action::SetLightTheme),
                 "ToggleTheme" => Ok(Action::ToggleTheme),
+                "DismissInfoPopups" => Ok(Action::DismissInfoPopups),
                 "Copy" => Ok(Action::Copy),
                 "Confirm" => Ok(Action::Confirm),
                 "Deny" => Ok(Action::Deny),
@@ -1391,6 +1392,7 @@ impl Action {
             Action::SetDarkTheme => Some(KdlNode::new("SetDarkTheme")),
             Action::SetLightTheme => Some(KdlNode::new("SetLightTheme")),
             Action::ToggleTheme => Some(KdlNode::new("ToggleTheme")),
+            Action::DismissInfoPopups => Some(KdlNode::new("DismissInfoPopups")),
             Action::FocusHostSession => Some(KdlNode::new("FocusHostSession")),
             Action::FocusGuestSession => Some(KdlNode::new("FocusGuestSession")),
             Action::ToggleHostFullscreen => Some(KdlNode::new("ToggleHostFullscreen")),
@@ -1736,6 +1738,9 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
             "ToggleTheme" => {
+                parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
+            },
+            "DismissInfoPopups" => {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
             "SwitchSession" => {
@@ -3129,6 +3134,9 @@ impl Options {
         let mouse_click_through =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "mouse_click_through")
                 .map(|(v, _)| v);
+        let context_menu_enabled =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "context_menu_enabled")
+                .map(|(v, _)| v);
         let osc133_command_selection =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "osc133_command_selection")
                 .map(|(v, _)| v);
@@ -3220,6 +3228,7 @@ impl Options {
             visual_bell,
             focus_follows_mouse,
             mouse_click_through,
+            context_menu_enabled,
             osc133_command_selection,
             word_separators,
             host_notification_protocol,
@@ -4693,6 +4702,34 @@ impl Options {
             None
         }
     }
+    fn context_menu_enabled_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}",
+            " ",
+            "// Whether a right click opens the right-click menu (when off, right clicks go to the focused pane only)",
+            "// An empty context_menu block opens no menu but keeps this on",
+            "// default is true",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("context_menu_enabled");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(context_menu_enabled) = self.context_menu_enabled {
+            let mut node = create_node(context_menu_enabled);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(false);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
     fn mouse_click_through_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!(
             "{}\n{}\n{}",
@@ -5151,6 +5188,9 @@ impl Options {
         }
         if let Some(mouse_click_through) = self.mouse_click_through_to_kdl(add_comments) {
             nodes.push(mouse_click_through);
+        }
+        if let Some(context_menu_enabled) = self.context_menu_enabled_to_kdl(add_comments) {
+            nodes.push(context_menu_enabled);
         }
         if let Some(osc133_command_selection) = self.osc133_command_selection_to_kdl(add_comments) {
             nodes.push(osc133_command_selection);
@@ -7701,6 +7741,34 @@ fn keybinds_to_string_with_multiple_actions() {
 }
 
 #[test]
+fn can_bind_dismiss_info_popups_and_write_it_back() {
+    let fake_config = r#"
+        keybinds {
+            normal {
+                bind "Alt x" { DismissInfoPopups; }
+            }
+        }"#;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = Keybinds::from_kdl(
+        document.get("keybinds").unwrap(),
+        Default::default(),
+        &Default::default(),
+    )
+    .unwrap();
+    let alt_x = KeyWithModifier::new(BareKey::Char('x')).with_alt_modifier();
+    assert_eq!(
+        deserialized.get_actions_for_key_in_mode(&InputMode::Normal, &alt_x),
+        Some(&vec![Action::DismissInfoPopups])
+    );
+    assert_eq!(
+        Action::DismissInfoPopups
+            .to_kdl()
+            .map(|node| node.name().value().to_owned()),
+        Some("DismissInfoPopups".to_owned())
+    );
+}
+
+#[test]
 fn can_bind_theme_actions() {
     // Regression test for https://github.com/zellij-org/zellij/issues/5297
     // SetDarkTheme / SetLightTheme / ToggleTheme work via the CLI but used to be
@@ -8496,6 +8564,52 @@ fn selection_options_from_kdl() {
         Some("[]{}<>():,".to_owned()),
         "word separators are parsed verbatim"
     );
+}
+
+#[test]
+fn context_menu_enabled_is_parsed_merged_and_written_back() {
+    let document: KdlDocument = "context_menu_enabled false".parse().unwrap();
+    let deserialized = Options::from_kdl(&document).unwrap();
+    assert_eq!(deserialized.context_menu_enabled, Some(false));
+    let unset: KdlDocument = "".parse().unwrap();
+    assert_eq!(
+        Options::from_kdl(&unset).unwrap().context_menu_enabled,
+        None
+    );
+    let written: Vec<String> = deserialized
+        .to_kdl(false)
+        .iter()
+        .map(|node| node.to_string().trim().to_owned())
+        .collect();
+    assert!(
+        written.contains(&"context_menu_enabled false".to_owned()),
+        "{:?}",
+        written
+    );
+    let merged = deserialized.merge(Options {
+        context_menu_enabled: Some(true),
+        ..Default::default()
+    });
+    assert_eq!(merged.context_menu_enabled, Some(true));
+    let kept = deserialized.merge(Options::default());
+    assert_eq!(kept.context_menu_enabled, Some(false));
+    let from_cli = deserialized.merge_from_cli(Options {
+        context_menu_enabled: Some(true),
+        ..Default::default()
+    });
+    assert_eq!(from_cli.context_menu_enabled, Some(true));
+}
+
+#[test]
+fn context_menu_enabled_has_a_command_line_flag() {
+    use clap::Parser;
+    #[derive(Parser)]
+    struct OptionsCli {
+        #[clap(flatten)]
+        options: Options,
+    }
+    let parsed = OptionsCli::try_parse_from(["zellij", "--context-menu-enabled", "false"]).unwrap();
+    assert_eq!(parsed.options.context_menu_enabled, Some(false));
 }
 
 #[test]

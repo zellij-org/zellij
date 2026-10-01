@@ -9,6 +9,7 @@ pub const PROMPT_PLUGIN_URL: &str = "zellij:prompt";
 pub const CALLER_ARG_PREFIX: &str = "_caller_";
 pub const CALLER_PANE_ID_ARG: &str = "_caller_pane_id";
 pub const CALLER_PANE_TITLE_ARG: &str = "_caller_pane_title";
+pub const CALLER_TAB_NAME_ARG: &str = "_caller_tab_name";
 
 pub const ARG_MESSAGE: &str = "message";
 pub const ARG_TITLE: &str = "title";
@@ -29,6 +30,8 @@ pub const ARG_REQUIRED: &str = "required";
 pub const ARG_MIN: &str = "min";
 pub const ARG_MAX: &str = "max";
 pub const ARG_STEP: &str = "step";
+pub const ARG_NO_PANE_NAME: &str = "no_pane_name";
+pub const ARG_NO_TAB_NAME: &str = "no_tab_name";
 
 pub const EXIT_ANSWERED: i32 = 0;
 pub const EXIT_CANCELLED: i32 = 1;
@@ -45,6 +48,7 @@ pub enum PromptElement {
     Select,
     Menu,
     Form,
+    Notify,
 }
 
 impl PromptElement {
@@ -58,6 +62,7 @@ impl PromptElement {
             PromptElement::Select => "select",
             PromptElement::Menu => "menu",
             PromptElement::Form => "form",
+            PromptElement::Notify => "notify",
         }
     }
 }
@@ -80,8 +85,9 @@ impl FromStr for PromptElement {
             "select" => Ok(PromptElement::Select),
             "menu" => Ok(PromptElement::Menu),
             "form" => Ok(PromptElement::Form),
+            "notify" => Ok(PromptElement::Notify),
             other => Err(format!(
-                "unknown prompt element '{}', expected one of: confirm, choose, input, number, toggle, select, menu, form",
+                "unknown prompt element '{}', expected one of: confirm, choose, input, number, toggle, select, menu, form, notify",
                 other
             )),
         }

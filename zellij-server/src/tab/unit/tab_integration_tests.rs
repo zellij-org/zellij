@@ -17303,3 +17303,168 @@ fn mismatched_neighbours_fall_back_to_single_when_the_ambient_style_is_mixed() {
     let snapshot = render_tab(&mut tab, size, client_id);
     assert!(snapshot.contains('│'), "{}", snapshot);
 }
+
+#[test]
+fn right_click_menu_setting_applies_live_to_the_tab() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    tab.vertical_split(PaneId::Terminal(2), None, client_id, None, None)
+        .unwrap();
+    let right_click_on_unfocused_pane = MouseEvent::new_right_press_event(Position::new(5, 30));
+    tab.update_context_menu_enabled(false);
+    let effect = tab
+        .handle_mouse_event(&right_click_on_unfocused_pane, client_id)
+        .unwrap();
+    assert!(effect.open_context_menu.is_none());
+    tab.update_context_menu_enabled(true);
+    let effect = tab
+        .handle_mouse_event(&right_click_on_unfocused_pane, client_id)
+        .unwrap();
+    assert!(effect.open_context_menu.is_some());
+}
+
+fn open_test_info_popup(
+    tab: &mut Tab,
+    client_id: ClientId,
+    plugin_id: u32,
+    corner: zellij_utils::data::PopupCorner,
+    rows: usize,
+) {
+    tab.open_popup(
+        client_id,
+        plugin_id,
+        crate::tab::PopupPlacement::Corner(corner),
+        crate::tab::PopupKind::Info,
+        30,
+        rows,
+        None,
+        String::from("info"),
+    )
+    .unwrap();
+}
+
+#[test]
+fn an_information_popup_does_not_take_keys_or_hide_the_cursor() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    open_test_popup(&mut tab, client_id, 1);
+    tab.close_popup(client_id);
+    open_test_info_popup(
+        &mut tab,
+        client_id,
+        50,
+        zellij_utils::data::PopupCorner::TopRight,
+        4,
+    );
+    assert!(tab.has_popup_for_client(client_id));
+    assert!(!tab.has_focused_popup_for_client(client_id));
+    assert_eq!(tab.popup_plugin_id(client_id), None);
+}
+
+#[test]
+fn clicks_outside_an_information_popup_are_not_handled_by_it_and_clicks_inside_are() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    open_test_popup(&mut tab, client_id, 1);
+    tab.close_popup(client_id);
+    open_test_info_popup(
+        &mut tab,
+        client_id,
+        50,
+        zellij_utils::data::PopupCorner::TopRight,
+        4,
+    );
+    assert_eq!(
+        tab.handle_popup_mouse_event(
+            &MouseEvent::new_left_press_event(Position::new(10, 10)),
+            client_id
+        ),
+        None
+    );
+    assert!(tab.has_popup_for_client(client_id));
+    let (_, geom) = tab.info_popup_geoms(client_id)[0];
+    assert_eq!(
+        tab.handle_popup_mouse_event(
+            &MouseEvent::new_left_press_event(Position::new(geom.y as i32 + 1, geom.x as u16 + 1)),
+            client_id
+        ),
+        Some(crate::tab::PopupMouseOutcome::Consumed)
+    );
+    assert!(!tab.has_focused_popup_for_client(client_id));
+}
+
+#[test]
+fn information_popups_in_a_corner_stack_and_move_up_when_one_closes() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    open_test_popup(&mut tab, client_id, 1);
+    tab.close_popup(client_id);
+    let corner = zellij_utils::data::PopupCorner::TopRight;
+    open_test_info_popup(&mut tab, client_id, 50, corner, 4);
+    open_test_info_popup(&mut tab, client_id, 51, corner, 3);
+    let geoms = tab.info_popup_geoms(client_id);
+    assert_eq!(geoms[0].0, 50);
+    assert_eq!((geoms[1].1.x, geoms[1].1.y), (91, 0));
+    assert_eq!((geoms[0].1.x, geoms[0].1.y), (91, 3));
+    tab.close_popup_with_plugin_id(51);
+    let geoms = tab.info_popup_geoms(client_id);
+    assert_eq!(geoms.len(), 1);
+    assert_eq!((geoms[0].1.x, geoms[0].1.y), (91, 0));
+}
+
+#[test]
+fn a_focused_popup_takes_keys_and_clicks_above_information_popups() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    open_test_popup(&mut tab, client_id, 1);
+    tab.close_popup(client_id);
+    open_test_info_popup(
+        &mut tab,
+        client_id,
+        50,
+        zellij_utils::data::PopupCorner::TopLeft,
+        6,
+    );
+    open_test_prompt_popup(&mut tab, client_id, 60, 2);
+    open_test_info_popup(
+        &mut tab,
+        client_id,
+        51,
+        zellij_utils::data::PopupCorner::BottomRight,
+        3,
+    );
+    assert_eq!(tab.popup_plugin_id(client_id), Some(60));
+    assert!(tab.has_focused_popup_for_client(client_id));
+    assert_eq!(
+        tab.handle_popup_mouse_event(
+            &MouseEvent::new_left_press_event(Position::new(15, 60)),
+            client_id
+        ),
+        Some(crate::tab::PopupMouseOutcome::Consumed)
+    );
+    assert_eq!(tab.close_top_popup(client_id), Some(60));
+    assert_eq!(tab.popup_plugin_id(client_id), None);
+    assert_eq!(tab.info_popup_geoms(client_id).len(), 2);
+    assert_eq!(tab.close_info_popups(client_id).len(), 2);
+    assert!(!tab.has_popup_for_client(client_id));
+}

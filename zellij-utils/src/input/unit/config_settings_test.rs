@@ -67,6 +67,7 @@ fn every_option_set() -> Options {
         visual_bell: Some(false),
         focus_follows_mouse: Some(true),
         mouse_click_through: Some(true),
+        context_menu_enabled: Some(false),
         osc133_command_selection: Some(false),
         word_separators: Some("[]".to_owned()),
         host_notification_protocol: Some(HostNotificationProtocol::Osc99),

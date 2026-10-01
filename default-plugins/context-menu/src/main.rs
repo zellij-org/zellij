@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 use zellij_tile::prelude::actions::Action;
 use zellij_tile::prelude::*;
+use zellij_utils::input::context_menu::context_menu_shortcut;
 
-const MAX_SHORTCUT_DEPTH: usize = 4;
 const MAX_MENU_HEIGHT: usize = 200;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,69 +63,12 @@ fn item_state(actions: &[Action], context: &ContextMenuContext) -> ItemState {
     state
 }
 
-fn binding_matches(binding: &[Action], wanted: &[Action], base_mode: InputMode) -> bool {
-    if wanted.is_empty() {
-        return false;
-    }
-    if binding == wanted {
-        return true;
-    }
-    binding.len() == wanted.len() + 1
-        && &binding[..wanted.len()] == wanted
-        && matches!(
-            binding.last(),
-            Some(Action::SwitchToMode { input_mode }) if *input_mode == base_mode
-        )
-}
-
 fn shortcut_for(mode_info: &ModeInfo, wanted: &[Action]) -> Option<String> {
-    let base_mode = mode_info.base_mode.unwrap_or(InputMode::Normal);
-    let start_mode = mode_info.mode;
-    let mode_binds = |mode: InputMode| -> Vec<(KeyWithModifier, Vec<Action>)> {
-        let mut binds = mode_info.get_keybinds_for_mode(mode);
-        binds.sort_by(|(a, _), (b, _)| a.cmp(b));
-        binds
-    };
-    let mut visited = vec![start_mode];
-    let mut queue: Vec<(InputMode, Vec<KeyWithModifier>)> = vec![(start_mode, vec![])];
-    for _ in 0..MAX_SHORTCUT_DEPTH {
-        for (mode, path) in &queue {
-            for (key, actions) in mode_binds(*mode) {
-                if binding_matches(&actions, wanted, base_mode) {
-                    let mut shortcut = path.clone();
-                    shortcut.push(key);
-                    return Some(
-                        shortcut
-                            .iter()
-                            .map(|key| key.to_string())
-                            .collect::<Vec<_>>()
-                            .join(", "),
-                    );
-                }
-            }
-        }
-        let mut next_queue = vec![];
-        for (mode, path) in &queue {
-            for (key, actions) in mode_binds(*mode) {
-                if let [Action::SwitchToMode {
-                    input_mode: next_mode,
-                }] = actions.as_slice()
-                {
-                    if !visited.contains(next_mode) {
-                        visited.push(*next_mode);
-                        let mut next_path = path.clone();
-                        next_path.push(key.clone());
-                        next_queue.push((*next_mode, next_path));
-                    }
-                }
-            }
-        }
-        if next_queue.is_empty() {
-            return None;
-        }
-        queue = next_queue;
-    }
-    None
+    context_menu_shortcut(
+        &mode_info.keybinds,
+        mode_info.base_mode.unwrap_or(InputMode::Normal),
+        wanted,
+    )
 }
 
 impl ContextMenuPlugin {
@@ -270,5 +213,266 @@ impl ZellijPlugin for ContextMenuPlugin {
         if let Some(menu) = self.menu.as_mut() {
             menu.render(0, 0, cols, rows);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use zellij_utils::input::layout::{PluginAlias, RunPluginOrAlias};
+
+    fn key(c: char) -> KeyWithModifier {
+        KeyWithModifier::new(BareKey::Char(c))
+    }
+
+    fn ctrl(c: char) -> KeyWithModifier {
+        KeyWithModifier::new(BareKey::Char(c)).with_ctrl_modifier()
+    }
+
+    fn alt(c: char) -> KeyWithModifier {
+        KeyWithModifier::new(BareKey::Char(c)).with_alt_modifier()
+    }
+
+    fn switch_to(input_mode: InputMode) -> Action {
+        Action::SwitchToMode { input_mode }
+    }
+
+    fn plugin_launch(name: &str, configuration: &[(&str, &str)], should_float: bool) -> Action {
+        let configuration: BTreeMap<String, String> = configuration
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        Action::LaunchOrFocusPlugin {
+            plugin: RunPluginOrAlias::Alias(PluginAlias::new(
+                name,
+                &Some(configuration),
+                None,
+            )),
+            should_float,
+            move_to_focused_tab: true,
+            should_open_in_place: false,
+            close_replaced_pane: false,
+            skip_cache: false,
+            tab_id: None,
+        }
+    }
+
+    fn mode_info(base_mode: InputMode) -> ModeInfo {
+        let back = switch_to(base_mode);
+        let normal = vec![
+            (ctrl('p'), vec![switch_to(InputMode::Pane)]),
+            (ctrl('t'), vec![switch_to(InputMode::Tab)]),
+            (ctrl('o'), vec![switch_to(InputMode::Session)]),
+            (
+                alt('n'),
+                vec![Action::NewPane {
+                    direction: Some(Direction::Right),
+                    pane_name: None,
+                    start_suppressed: false,
+                }],
+            ),
+            (
+                alt('i'),
+                vec![Action::MoveTab {
+                    direction: Direction::Left,
+                }],
+            ),
+        ];
+        let pane = vec![
+            (key('f'), vec![Action::ToggleFocusFullscreen, back.clone()]),
+            (key('x'), vec![Action::CloseFocus, back.clone()]),
+            (
+                key('c'),
+                vec![
+                    switch_to(InputMode::RenamePane),
+                    Action::PaneNameInput { input: vec![0] },
+                ],
+            ),
+        ];
+        let tab = vec![
+            (
+                key('r'),
+                vec![
+                    switch_to(InputMode::RenameTab),
+                    Action::TabNameInput { input: vec![0] },
+                ],
+            ),
+            (key('x'), vec![Action::CloseTab, back.clone()]),
+        ];
+        let session = vec![
+            (key('d'), vec![Action::Detach]),
+            (
+                key('c'),
+                vec![
+                    plugin_launch("configuration", &[], true),
+                    back.clone(),
+                ],
+            ),
+        ];
+        ModeInfo {
+            mode: base_mode,
+            base_mode: Some(base_mode),
+            keybinds: vec![
+                (base_mode, normal),
+                (InputMode::Pane, pane),
+                (InputMode::Tab, tab),
+                (InputMode::Session, session),
+            ],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn by_id_pane_actions_match_their_focused_pane_bindings() {
+        let mode_info = mode_info(InputMode::Normal);
+        assert_eq!(
+            shortcut_for(
+                &mode_info,
+                &[Action::ToggleFocusFullscreenByPaneId { pane_id: None }]
+            ),
+            Some("Ctrl p, f".to_owned())
+        );
+        assert_eq!(
+            shortcut_for(&mode_info, &[Action::CloseFocusByPaneId { pane_id: None }]),
+            Some("Ctrl p, x".to_owned())
+        );
+    }
+
+    #[test]
+    fn by_id_tab_actions_match_their_focused_tab_bindings() {
+        let mode_info = mode_info(InputMode::Normal);
+        assert_eq!(
+            shortcut_for(&mode_info, &[Action::CloseTabById { id: None }]),
+            Some("Ctrl t, x".to_owned())
+        );
+        assert_eq!(
+            shortcut_for(
+                &mode_info,
+                &[Action::MoveTabByTabId {
+                    id: None,
+                    direction: Direction::Left
+                }]
+            ),
+            Some("Alt i".to_owned())
+        );
+        assert_eq!(
+            shortcut_for(
+                &mode_info,
+                &[Action::MoveTabByTabId {
+                    id: None,
+                    direction: Direction::Right
+                }]
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn rename_actions_match_their_key_sequences() {
+        let mode_info = mode_info(InputMode::Normal);
+        assert_eq!(
+            shortcut_for(
+                &mode_info,
+                &[Action::StartRenamePaneByPaneId { pane_id: None }]
+            ),
+            Some("Ctrl p, c".to_owned())
+        );
+        assert_eq!(
+            shortcut_for(&mode_info, &[Action::StartRenameTabByTabId { id: None }]),
+            Some("Ctrl t, r".to_owned())
+        );
+    }
+
+    #[test]
+    fn plugin_items_match_by_location_only() {
+        let mode_info = mode_info(InputMode::Normal);
+        assert_eq!(
+            shortcut_for(
+                &mode_info,
+                &[plugin_launch("configuration", &[("x", "y")], false)]
+            ),
+            Some("Ctrl o, c".to_owned())
+        );
+        assert_eq!(
+            shortcut_for(&mode_info, &[plugin_launch("session-manager", &[], true)]),
+            None
+        );
+    }
+
+    #[test]
+    fn new_pane_without_a_direction_matches_any_new_pane_binding() {
+        let mode_info = mode_info(InputMode::Normal);
+        let new_pane = |direction| Action::NewPane {
+            direction,
+            pane_name: None,
+            start_suppressed: false,
+        };
+        assert_eq!(
+            shortcut_for(&mode_info, &[new_pane(None)]),
+            Some("Alt n".to_owned())
+        );
+        assert_eq!(shortcut_for(&mode_info, &[new_pane(Some(Direction::Down))]), None);
+    }
+
+    #[test]
+    fn shortcuts_follow_mode_switches_from_the_base_mode() {
+        let mut mode_info = mode_info(InputMode::Locked);
+        mode_info.mode = InputMode::Pane;
+        assert_eq!(
+            shortcut_for(&mode_info, &[Action::Detach]),
+            Some("Ctrl o, d".to_owned())
+        );
+        assert_eq!(
+            shortcut_for(
+                &mode_info,
+                &[Action::ToggleFocusFullscreenByPaneId { pane_id: None }]
+            ),
+            Some("Ctrl p, f".to_owned())
+        );
+    }
+
+    #[test]
+    fn the_tmux_mode_is_only_used_when_no_other_mode_has_the_key() {
+        let mut mode_info = mode_info(InputMode::Normal);
+        mode_info.keybinds[0]
+            .1
+            .push((ctrl('b'), vec![switch_to(InputMode::Tmux)]));
+        mode_info.keybinds.push((
+            InputMode::Tmux,
+            vec![
+                (
+                    key('x'),
+                    vec![Action::CloseFocus, switch_to(InputMode::Normal)],
+                ),
+                (
+                    key('z'),
+                    vec![Action::TogglePaneInGroup, switch_to(InputMode::Normal)],
+                ),
+            ],
+        ));
+        assert_eq!(
+            shortcut_for(&mode_info, &[Action::CloseFocusByPaneId { pane_id: None }]),
+            Some("Ctrl p, x".to_owned())
+        );
+        assert_eq!(
+            shortcut_for(
+                &mode_info,
+                &[Action::TogglePaneInGroupByPaneId { pane_id: None }]
+            ),
+            Some("Ctrl b, z".to_owned())
+        );
+    }
+
+    #[test]
+    fn actions_without_a_binding_show_nothing() {
+        let mode_info = mode_info(InputMode::Normal);
+        assert_eq!(
+            shortcut_for(
+                &mode_info,
+                &[Action::TogglePaneInGroupByPaneId { pane_id: None }]
+            ),
+            None
+        );
+        assert_eq!(shortcut_for(&mode_info, &[]), None);
     }
 }

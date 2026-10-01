@@ -8,6 +8,7 @@ use zellij_integration_tests::{
 const PANE_MENU_MARKER: &str = "Close pane";
 const TAB_MENU_MARKER: &str = "Move tab right";
 const COMMON_MENU_MARKER: &str = "Session manager";
+const LAST_COMMON_MENU_ITEM: &str = "Detach";
 
 fn start_zellij() -> TestSession {
     TestRunner::new(TERMINAL_SIZE)
@@ -47,7 +48,9 @@ fn wait_for_pane_menu(zellij: &TestSession) -> GridSnapshot {
 
 fn wait_for_menu_to_close(zellij: &TestSession) -> GridSnapshot {
     zellij.wait_until("context menu closed", |grid_snapshot| {
-        !grid_snapshot.contains(COMMON_MENU_MARKER) && grid_snapshot.status_bar_appears()
+        !grid_snapshot.contains(COMMON_MENU_MARKER)
+            && !grid_snapshot.contains(LAST_COMMON_MENU_ITEM)
+            && grid_snapshot.status_bar_appears()
     })
 }
 
@@ -282,7 +285,7 @@ fn opening_the_menu_keeps_floating_panes_hidden_or_visible() {
 
     right_click(&zellij, 5, 20);
     let grid_snapshot = wait_for_pane_menu(&zellij);
-    assert!(grid_snapshot.contains("FLOAT-MARKER"));
+    assert!(grid_snapshot.contains("Pane #2"));
     zellij.send_stdin(&keys::ESC);
     wait_for_menu_to_close(&zellij);
 
@@ -348,5 +351,190 @@ fn a_program_that_wants_the_mouse_still_receives_plain_right_clicks() {
         String::from_utf8_lossy(stdin).contains("\u{1b}[<2;")
     });
     assert!(!zellij.snapshot().contains(COMMON_MENU_MARKER));
+    zellij.quit();
+}
+
+#[test]
+fn the_default_menu_shows_the_keyboard_shortcuts_of_its_items() {
+    let mut zellij = start_zellij();
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+
+    right_click(&zellij, 30, 10);
+    zellij.wait_until("pane menu shows its shortcuts", |grid_snapshot| {
+        grid_snapshot.contains(PANE_MENU_MARKER)
+            && grid_snapshot.contains("Alt n")
+            && grid_snapshot.contains("Ctrl p, f")
+            && grid_snapshot.contains("Ctrl p, e")
+            && grid_snapshot.contains("Ctrl p, c")
+            && grid_snapshot.contains("Ctrl p, x")
+            && grid_snapshot.contains("Ctrl o, d")
+    });
+    zellij.send_stdin(&keys::ESC);
+    wait_for_menu_to_close(&zellij);
+    zellij.quit();
+}
+
+#[test]
+fn menu_shortcuts_follow_a_change_of_keybinding_preset() {
+    let mut zellij = start_zellij();
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+
+    zellij.send_stdin(&keys::ctrl('o'));
+    zellij.send_stdin(&keys::key('c'));
+    zellij.wait_until("configuration plugin opened", |grid_snapshot| {
+        grid_snapshot.contains("Configuration")
+    });
+    zellij.send_stdin(b"\x1b[B");
+    zellij.send_stdin(b"\x1b[B");
+    zellij.wait_until("keys screen opened", |grid_snapshot| {
+        grid_snapshot.contains("Keybinding presets change") && grid_snapshot.contains("Preset")
+    });
+    zellij.send_stdin(&keys::TAB);
+    zellij.send_stdin(&keys::ENTER);
+    zellij.wait_until("preset list opened", |grid_snapshot| {
+        grid_snapshot.contains("unlock-first") && grid_snapshot.contains("default")
+    });
+    zellij.send_stdin(b"\x1b[B");
+    zellij.send_stdin(&keys::ENTER);
+    zellij.wait_until("unlock-first preset applied", |grid_snapshot| {
+        grid_snapshot.contains("UNLOCK")
+    });
+    zellij.send_stdin(&keys::ctrl('c'));
+    zellij.send_stdin(&keys::ctrl('c'));
+    zellij.wait_until("configuration plugin closed", |grid_snapshot| {
+        !grid_snapshot.contains("Configuration")
+    });
+
+    right_click(&zellij, 30, 10);
+    zellij.wait_until("pane menu shows the unlock-first shortcuts", |grid_snapshot| {
+        grid_snapshot.contains(PANE_MENU_MARKER)
+            && grid_snapshot.contains("p, f")
+            && !grid_snapshot.contains("Ctrl p, f")
+    });
+    zellij.send_stdin(&keys::ESC);
+    zellij.wait_until("context menu closed", |grid_snapshot| {
+        !grid_snapshot.contains(COMMON_MENU_MARKER) && !grid_snapshot.contains(LAST_COMMON_MENU_ITEM)
+    });
+    zellij.quit();
+}
+
+#[test]
+fn turning_the_menu_off_in_the_settings_stops_right_clicks_from_opening_it() {
+    let mut zellij = start_zellij();
+    let left_terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
+    let right_terminal = split_right_and_wait_for_prompt(&zellij);
+    right_terminal.output(b"\x1b[?1000h\x1b[?1006h");
+
+    right_click(&zellij, 30, 10);
+    wait_for_pane_menu(&zellij);
+    zellij.send_stdin(&keys::ESC);
+    wait_for_menu_to_close(&zellij);
+
+    zellij.send_stdin(&keys::ctrl('o'));
+    zellij.send_stdin(&keys::key('c'));
+    zellij.wait_until("settings screen opened", |grid_snapshot| {
+        grid_snapshot.contains("Configuration") && grid_snapshot.contains("unsaved change")
+    });
+    zellij.send_stdin(&keys::key('/'));
+    zellij.send_stdin(b"right-click");
+    zellij.wait_until("search shows the setting", |grid_snapshot| {
+        grid_snapshot.contains("Right-click menu")
+    });
+    zellij.send_stdin(&keys::ENTER);
+    zellij.send_stdin(&keys::SPACE);
+    zellij.wait_until("setting changed", |grid_snapshot| {
+        grid_snapshot.contains("1 unsaved change ")
+    });
+    zellij.send_stdin(&keys::ESC);
+    zellij.wait_until("search closed", |grid_snapshot| {
+        grid_snapshot.contains("Mouse and clipboard") && !grid_snapshot.contains(" match")
+    });
+    zellij.send_stdin(&keys::ESC);
+    zellij.wait_until("settings screen closed", |grid_snapshot| {
+        !grid_snapshot.contains("Configuration") && grid_snapshot.status_bar_appears()
+    });
+
+    right_click(&zellij, 30, 10);
+    right_click(&zellij, 90, 10);
+    right_terminal.wait_for_stdin("right click on the focused pane reached it", |stdin| {
+        String::from_utf8_lossy(stdin).contains("\u{1b}[<2;")
+    });
+    left_terminal.output(b"AFTER-CLICKS");
+    let grid_snapshot = zellij.wait_until("output after the clicks rendered", |grid_snapshot| {
+        grid_snapshot.contains("AFTER-CLICKS")
+    });
+    assert!(!grid_snapshot.contains(COMMON_MENU_MARKER) && !grid_snapshot.contains(LAST_COMMON_MENU_ITEM));
+    zellij.quit();
+}
+
+#[test]
+fn keybindings_work_while_the_menu_is_open() {
+    let mut zellij = start_zellij();
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+
+    right_click(&zellij, 30, 10);
+    wait_for_pane_menu(&zellij);
+
+    zellij.send_stdin(&keys::ctrl('g'));
+    zellij.wait_until("interface locked with the menu open", |grid_snapshot| {
+        grid_snapshot.contains("LOCK")
+            && !grid_snapshot.contains("PANE")
+            && grid_snapshot.contains(COMMON_MENU_MARKER)
+    });
+    zellij.send_stdin(&keys::ctrl('g'));
+    zellij.wait_until("interface unlocked with the menu open", |grid_snapshot| {
+        grid_snapshot.status_bar_appears() && grid_snapshot.contains(COMMON_MENU_MARKER)
+    });
+
+    zellij.send_stdin(&keys::ctrl('p'));
+    zellij.wait_until("pane mode with the menu open", |grid_snapshot| {
+        grid_snapshot.contains("PANE")
+            && !grid_snapshot.contains("LOCK")
+            && grid_snapshot.contains(COMMON_MENU_MARKER)
+    });
+    zellij.send_stdin(&keys::ESC);
+    zellij.wait_until("back to normal mode with the menu open", |grid_snapshot| {
+        grid_snapshot.status_bar_appears() && grid_snapshot.contains(COMMON_MENU_MARKER)
+    });
+
+    zellij.send_stdin(&keys::ESC);
+    wait_for_menu_to_close(&zellij);
+    zellij.quit();
+}
+
+#[test]
+fn switching_tabs_with_keys_closes_the_menu() {
+    let mut zellij = start_zellij();
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+    zellij.send_stdin(&keys::ctrl('t'));
+    zellij.send_stdin(&keys::key('n'));
+    let second_terminal = zellij.expect_pty_spawn();
+    second_terminal.output(PROMPT);
+    zellij.wait_until("second tab opened", |grid_snapshot| {
+        grid_snapshot.contains("Tab #2") && grid_snapshot.status_bar_appears()
+    });
+
+    right_click(&zellij, 30, 10);
+    wait_for_pane_menu(&zellij);
+    zellij.send_stdin(&keys::ctrl('t'));
+    zellij.send_stdin(&keys::key('1'));
+    wait_for_menu_to_close(&zellij);
+    zellij.quit();
+}
+
+#[test]
+fn detaching_with_keys_works_while_the_menu_is_open() {
+    let mut zellij = start_zellij();
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+
+    right_click(&zellij, 30, 10);
+    wait_for_pane_menu(&zellij);
+    zellij.detach_main_client();
+
+    let reattached_client = zellij.attach_client(TERMINAL_SIZE);
+    reattached_client.wait_until("reattached without the menu", |grid_snapshot| {
+        grid_snapshot.status_bar_appears() && !grid_snapshot.contains(COMMON_MENU_MARKER)
+    });
+    reattached_client.quit();
     zellij.quit();
 }

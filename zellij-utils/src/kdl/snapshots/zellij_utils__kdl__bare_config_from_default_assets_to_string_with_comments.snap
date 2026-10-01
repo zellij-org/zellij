@@ -1,5 +1,6 @@
 ---
 source: zellij-utils/src/kdl/mod.rs
+assertion_line: 8944
 expression: fake_config_stringified
 ---
 
@@ -396,6 +397,11 @@ context_menu clear-defaults=true {
 // Whether clicking a pane to focus it also sends the click into the pane
 // default is false
 // mouse_click_through false
+ 
+// Whether a right click opens the right-click menu (when off, right clicks go to the focused pane only)
+// An empty context_menu block opens no menu but keeps this on
+// default is true
+// context_menu_enabled false
  
 // Whether triple-clicking inside command output marked by the shell (OSC 133) selects
 // the command and its output instead of the logical line

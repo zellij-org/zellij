@@ -23,7 +23,7 @@ use tokio::sync::oneshot;
 use wasmi::{Caller, Linker};
 use zellij_utils::consts::ipc_connect;
 use zellij_utils::data::{
-    BorderStyleOverride, BreakPanesToNewTabResponse, BreakPanesToTabWithIdResponse,
+    BorderStyleOverride, PopupOptions, BreakPanesToNewTabResponse, BreakPanesToTabWithIdResponse,
     BreakPanesToTabWithIndexResponse, CommandType, ConnectToSession, ContextMenuTarget,
     DeleteAllDeadSessionsResponse, DeleteDeadSessionResponse, DeleteLayoutResponse,
     EditLayoutResponse, Event, FloatingPaneCoordinates, FocusOrCreateTabResponse,
@@ -333,6 +333,7 @@ fn open_plugin_popup(
     column: usize,
     width: usize,
     height: usize,
+    options: PopupOptions,
 ) {
     let run_plugin_or_alias = match RunPluginOrAlias::from_url(
         &plugin_url,
@@ -355,6 +356,7 @@ fn open_plugin_popup(
             column,
             width,
             height,
+            options,
         })
         .with_context(|| format!("failed to open popup"))
         .non_fatal();
@@ -464,6 +466,7 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         column,
                         width,
                         height,
+                        options,
                     } => open_plugin_popup(
                         env,
                         plugin_url,
@@ -472,6 +475,7 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         column,
                         width,
                         height,
+                        options,
                     ),
                     PluginCommand::SetPopupSize { width, height } => {
                         set_popup_size(env, width, height)

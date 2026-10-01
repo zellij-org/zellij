@@ -17,6 +17,7 @@ pub enum Step {
     Nothing,
     Redraw,
     Done(Outcome),
+    FocusPane(PaneId),
 }
 
 impl Step {
@@ -132,6 +133,7 @@ pub enum Screen {
     Select(SelectScreen),
     Menu(MenuScreen),
     Form(FormScreen),
+    Notify(NotifyScreen),
 }
 
 impl Screen {
@@ -213,10 +215,46 @@ impl Screen {
                 patterns.clone(),
                 default.clone(),
             )),
+            Spec::Notify {
+                message,
+                pane_name,
+                tab_name,
+                show_pane_name,
+                show_tab_name,
+                caller_pane,
+            } => {
+                let mut screen = NotifyScreen::new(request.common.title.clone(), message.clone())
+                    .with_caller_pane(*caller_pane)
+                    .showing_names(*show_pane_name, *show_tab_name);
+                screen.set_pane_name(pane_name.clone());
+                screen.set_tab_name(tab_name.clone());
+                Screen::Notify(screen)
+            },
         }
     }
     pub fn has_own_frame(&self) -> bool {
         matches!(self, Screen::Confirm(_))
+    }
+    pub fn is_notice(&self) -> bool {
+        matches!(self, Screen::Notify(_))
+    }
+    pub fn watches_names(&self) -> bool {
+        match self {
+            Screen::Notify(s) => s.watches_names(),
+            _ => false,
+        }
+    }
+    pub fn update_panes(&mut self, pane_manifest: &PaneManifest) -> bool {
+        match self {
+            Screen::Notify(s) => s.update_panes(pane_manifest),
+            _ => false,
+        }
+    }
+    pub fn update_tabs(&mut self, tabs: &[TabInfo]) -> bool {
+        match self {
+            Screen::Notify(s) => s.update_tabs(tabs),
+            _ => false,
+        }
     }
     pub fn handle_key(&mut self, key: &KeyWithModifier) -> Step {
         match self {
@@ -228,6 +266,7 @@ impl Screen {
             Screen::Select(s) => s.handle_key(key),
             Screen::Menu(s) => s.handle_key(key),
             Screen::Form(s) => s.handle_key(key),
+            Screen::Notify(_) => Step::Nothing,
         }
     }
     pub fn handle_mouse(&mut self, mouse: Mouse) -> Step {
@@ -240,6 +279,7 @@ impl Screen {
             Screen::Select(s) => s.handle_mouse(mouse),
             Screen::Menu(s) => s.handle_mouse(mouse),
             Screen::Form(s) => s.handle_mouse(mouse),
+            Screen::Notify(s) => s.handle_mouse(mouse),
         }
     }
     pub fn handle_timer(&mut self) -> bool {
@@ -258,6 +298,7 @@ impl Screen {
             Screen::Select(s) => s.render(x, y, width, height),
             Screen::Menu(s) => s.render(x, y, width, height),
             Screen::Form(s) => s.render(x, y, width, height),
+            Screen::Notify(s) => s.render(x, y, width, height),
         }
     }
     pub fn render_overlays(&mut self, rows: usize, cols: usize) {
@@ -277,6 +318,7 @@ impl Screen {
             Screen::Select(s) => s.desired_size(),
             Screen::Menu(s) => s.desired_size(),
             Screen::Form(s) => s.desired_size(),
+            Screen::Notify(s) => s.desired_size(),
         }
     }
     pub fn hints(&self) -> &'static [Hint] {
@@ -301,7 +343,8 @@ impl Screen {
                 ("<Esc>", "cancel"),
             ],
             Screen::Menu(_) => &[("<↓↑>", "move"), ("<Enter>", "choose"), ("<Esc>", "cancel")],
-            Screen::Form(_) => &[("<Tab>", "next"), ("<Ctrl s>", "save"), ("<Esc>", "cancel")],
+            Screen::Form(_) => &[("<Tab>", "next"), ("<Ctrl a>", "save"), ("<Esc>", "cancel")],
+            Screen::Notify(_) => &[],
         }
     }
     pub fn status(&self) -> Option<String> {
@@ -1131,6 +1174,293 @@ impl MenuScreen {
     }
 }
 
+pub const NOTICE_MAX_TEXT_WIDTH: usize = 48;
+pub const NOTICE_MIN_TEXT_WIDTH: usize = 20;
+pub const NOTICE_CLOSE_MARK: &str = "✕";
+
+pub fn wrap_text(text: &str, width: usize) -> Vec<String> {
+    let width = width.max(1);
+    let mut lines = vec![];
+    for paragraph in text.split('\n') {
+        let mut line = String::new();
+        for word in paragraph.split_whitespace() {
+            let mut word: String = word.to_owned();
+            loop {
+                let line_width = text_width(&line);
+                let separator = if line.is_empty() { 0 } else { 1 };
+                if line_width + separator + text_width(&word) <= width {
+                    if separator == 1 {
+                        line.push(' ');
+                    }
+                    line.push_str(&word);
+                    break;
+                }
+                if !line.is_empty() {
+                    lines.push(std::mem::take(&mut line));
+                    continue;
+                }
+                let head: String = word.chars().take(width).collect();
+                word = word.chars().skip(width).collect();
+                lines.push(head);
+                if word.is_empty() {
+                    break;
+                }
+            }
+        }
+        lines.push(line);
+    }
+    while lines.len() > 1 && lines.last().map(|l| l.is_empty()).unwrap_or(false) {
+        lines.pop();
+    }
+    lines
+}
+
+pub struct NotifyScreen {
+    title: Option<String>,
+    message: String,
+    pane_name: Option<String>,
+    tab_name: Option<String>,
+    show_pane_name: bool,
+    show_tab_name: bool,
+    caller_pane: Option<PaneId>,
+    caller_tab_position: Option<usize>,
+    active_tab_position: Option<usize>,
+    caller_in_other_tab: bool,
+    last_cols: usize,
+}
+
+fn non_empty(name: Option<String>) -> Option<String> {
+    name.filter(|name| !name.trim().is_empty())
+}
+
+impl NotifyScreen {
+    pub fn new(title: Option<String>, message: String) -> Self {
+        NotifyScreen {
+            title,
+            message,
+            pane_name: None,
+            tab_name: None,
+            show_pane_name: true,
+            show_tab_name: true,
+            caller_pane: None,
+            caller_tab_position: None,
+            active_tab_position: None,
+            caller_in_other_tab: false,
+            last_cols: 0,
+        }
+    }
+    pub fn with_caller_pane(mut self, caller_pane: Option<PaneId>) -> Self {
+        self.caller_pane = caller_pane;
+        self
+    }
+    pub fn showing_names(mut self, show_pane_name: bool, show_tab_name: bool) -> Self {
+        self.show_pane_name = show_pane_name;
+        self.show_tab_name = show_tab_name;
+        self
+    }
+    pub fn set_pane_name(&mut self, pane_name: Option<String>) -> bool {
+        let pane_name = non_empty(pane_name);
+        let changed = self.pane_name != pane_name;
+        self.pane_name = pane_name;
+        changed && self.show_pane_name
+    }
+    pub fn set_tab_name(&mut self, tab_name: Option<String>) -> bool {
+        let tab_name = non_empty(tab_name);
+        let changed = self.tab_name != tab_name;
+        self.caller_in_other_tab |= tab_name.is_some() && self.caller_tab_position.is_none();
+        self.tab_name = tab_name;
+        changed && self.shows_tab_name()
+    }
+    fn shows_tab_name(&self) -> bool {
+        self.show_tab_name && self.caller_in_other_tab
+    }
+    fn refresh_caller_in_other_tab(&mut self) -> bool {
+        let (Some(caller_tab), Some(active_tab)) =
+            (self.caller_tab_position, self.active_tab_position)
+        else {
+            return false;
+        };
+        let was_shown = self.shows_tab_name() && self.tab_name.is_some();
+        self.caller_in_other_tab = caller_tab != active_tab;
+        was_shown != (self.shows_tab_name() && self.tab_name.is_some())
+    }
+    pub fn watches_names(&self) -> bool {
+        self.caller_pane.is_some() && (self.show_pane_name || self.show_tab_name)
+    }
+    pub fn update_panes(&mut self, pane_manifest: &PaneManifest) -> bool {
+        let Some(caller_pane) = self.caller_pane else {
+            return false;
+        };
+        let found = pane_manifest.panes.iter().find_map(|(tab_position, panes)| {
+            panes
+                .iter()
+                .find(|pane| match caller_pane {
+                    PaneId::Terminal(id) => !pane.is_plugin && pane.id == id,
+                    PaneId::Plugin(id) => pane.is_plugin && pane.id == id,
+                })
+                .map(|pane| (*tab_position, pane.title.clone()))
+        });
+        match found {
+            Some((tab_position, title)) => {
+                self.caller_tab_position = Some(tab_position);
+                let placement_changed = self.refresh_caller_in_other_tab();
+                self.set_pane_name(Some(title)) || placement_changed
+            },
+            None => false,
+        }
+    }
+    pub fn update_tabs(&mut self, tabs: &[TabInfo]) -> bool {
+        if let Some(active_tab) = tabs.iter().find(|tab| tab.active) {
+            self.active_tab_position = Some(active_tab.position);
+        }
+        let placement_changed = self.refresh_caller_in_other_tab();
+        let Some(caller_tab_position) = self.caller_tab_position else {
+            return placement_changed;
+        };
+        let name_changed = match tabs.iter().find(|tab| tab.position == caller_tab_position) {
+            Some(tab) => self.set_tab_name(Some(tab.name.clone())),
+            None => false,
+        };
+        name_changed || placement_changed
+    }
+    fn name_lines(&self) -> Vec<String> {
+        let mut lines = vec![];
+        if let Some(tab_name) = self.tab_name.as_ref().filter(|_| self.shows_tab_name()) {
+            lines.push(tab_name.clone());
+        }
+        if let Some(pane_name) = self.pane_name.as_ref().filter(|_| self.show_pane_name) {
+            lines.push(pane_name.clone());
+        }
+        lines
+    }
+    fn from_rows(&self) -> usize {
+        match self.name_lines().len() {
+            0 => 0,
+            count => count + 1,
+        }
+    }
+    fn text_width_wanted(&self) -> usize {
+        let message = self
+            .message
+            .split('\n')
+            .map(text_width)
+            .max()
+            .unwrap_or(0);
+        let title = self.title.as_deref().map(|t| text_width(t) + 6).unwrap_or(0);
+        let from = self
+            .name_lines()
+            .iter()
+            .map(|line| text_width(line))
+            .max()
+            .unwrap_or(0);
+        message
+            .max(title)
+            .max(from)
+            .clamp(NOTICE_MIN_TEXT_WIDTH, NOTICE_MAX_TEXT_WIDTH)
+    }
+    pub fn desired_size(&self) -> (usize, usize) {
+        let text_width_wanted = self.text_width_wanted();
+        let lines = wrap_text(&self.message, text_width_wanted).len();
+        (text_width_wanted + 4, lines + self.from_rows() + 2)
+    }
+    pub fn close_mark_column(cols: usize) -> usize {
+        cols.saturating_sub(3)
+    }
+    pub fn handle_mouse(&mut self, mouse: Mouse) -> Step {
+        match mouse {
+            Mouse::LeftClick(line, column) => {
+                let close_column = Self::close_mark_column(self.last_cols);
+                let on_close_mark = self.last_cols > 0
+                    && line == 0
+                    && column + 1 >= close_column
+                    && column <= close_column + 1;
+                if on_close_mark {
+                    Step::Done(Outcome::Cancelled)
+                } else {
+                    self.caller_pane
+                        .map(Step::FocusPane)
+                        .unwrap_or(Step::Nothing)
+                }
+            },
+            _ => Step::Nothing,
+        }
+    }
+    pub fn render(&mut self, x: usize, y: usize, cols: usize, rows: usize) {
+        if rows < 3 || cols < 8 {
+            return;
+        }
+        self.last_cols = cols;
+        let inner = cols - 2;
+        let close_section = format!(" {} ", NOTICE_CLOSE_MARK);
+        let close_width = text_width(&close_section);
+        let mut top = String::from("╭");
+        let mut title_range = None;
+        if let Some(title) = &self.title {
+            let room = inner.saturating_sub(close_width + 4);
+            if room > 0 {
+                let title = truncate(title, room);
+                top.push_str("─ ");
+                let start = text_width(&top);
+                top.push_str(&title);
+                title_range = Some(start..start + text_width(&title));
+                top.push(' ');
+            }
+        }
+        let used = text_width(&top) - 1;
+        top.push_str(&"─".repeat(inner.saturating_sub(used + close_width)));
+        let close_start = text_width(&top) + 1;
+        top.push_str(&close_section);
+        top.push('╮');
+        let mut top_text = Text::new(top).color_range(3, close_start..close_start + 1);
+        if let Some(range) = title_range {
+            top_text = top_text.color_range(2, range);
+        }
+        print_text_with_coordinates(top_text, x, y, Some(cols), None);
+        let text_width_available = cols.saturating_sub(4).max(1);
+        let name_lines = self.name_lines();
+        let body_rows = rows - 2;
+        let message_rows = body_rows.saturating_sub(self.from_rows());
+        let first_name_row = body_rows.saturating_sub(name_lines.len());
+        let lines = wrap_text(&self.message, text_width_available);
+        for row in 0..body_rows {
+            let line_y = y + 1 + row;
+            print_text_with_coordinates(Text::new("│"), x, line_y, Some(1), None);
+            print_text_with_coordinates(Text::new("│"), x + cols - 1, line_y, Some(1), None);
+            if row < message_rows {
+                if let Some(line) = lines.get(row) {
+                    print_text_with_coordinates(
+                        Text::new(line.clone()),
+                        x + 2,
+                        line_y,
+                        Some(text_width_available),
+                        None,
+                    );
+                }
+            } else if let Some(from_line) = row
+                .checked_sub(first_name_row)
+                .and_then(|index| name_lines.get(index))
+            {
+                let from_line = truncate(from_line, text_width_available);
+                let length = text_width(&from_line);
+                print_text_with_coordinates(
+                    Text::new(from_line).dim_range(0..length),
+                    x + 2,
+                    line_y,
+                    Some(text_width_available),
+                    None,
+                );
+            }
+        }
+        print_text_with_coordinates(
+            Text::new(format!("╰{}╯", "─".repeat(inner))),
+            x,
+            y + rows - 1,
+            Some(cols),
+            None,
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1141,6 +1471,109 @@ mod tests {
 
     fn items(values: &[&str]) -> Vec<ChoiceItem> {
         values.iter().map(|v| ChoiceItem::plain(*v)).collect()
+    }
+
+    #[test]
+    fn notice_text_is_wrapped_at_word_boundaries() {
+        assert_eq!(
+            wrap_text("the build finished without errors", 12),
+            vec!["the build", "finished", "without", "errors"]
+        );
+        assert_eq!(wrap_text("abcdefghij", 4), vec!["abcd", "efgh", "ij"]);
+        assert_eq!(wrap_text("one\ntwo", 20), vec!["one", "two"]);
+    }
+
+    fn pane(id: u32, title: &str) -> PaneInfo {
+        PaneInfo {
+            id,
+            title: title.to_owned(),
+            ..Default::default()
+        }
+    }
+
+    fn tab(position: usize, name: &str) -> TabInfo {
+        TabInfo {
+            position,
+            name: name.to_owned(),
+            ..Default::default()
+        }
+    }
+
+    fn manifest(panes: Vec<(usize, Vec<PaneInfo>)>) -> PaneManifest {
+        PaneManifest {
+            panes: panes.into_iter().collect(),
+        }
+    }
+
+    fn notice(show_pane_name: bool, show_tab_name: bool) -> NotifyScreen {
+        let mut screen = NotifyScreen::new(None, "Done".to_owned())
+            .with_caller_pane(Some(PaneId::Terminal(3)))
+            .showing_names(show_pane_name, show_tab_name);
+        screen.set_pane_name(Some("make".to_owned()));
+        screen.set_tab_name(Some("Build".to_owned()));
+        screen
+    }
+
+    fn active_tab(position: usize, name: &str) -> TabInfo {
+        TabInfo {
+            active: true,
+            ..tab(position, name)
+        }
+    }
+
+    fn lines(screen: &NotifyScreen) -> Vec<String> {
+        screen.name_lines()
+    }
+
+    #[test]
+    fn the_tab_line_comes_before_the_pane_line_and_names_can_be_turned_off() {
+        assert_eq!(lines(&notice(true, true)), vec!["Build", "make"]);
+        assert_eq!(lines(&notice(true, false)), vec!["make"]);
+        assert_eq!(lines(&notice(false, true)), vec!["Build"]);
+        assert!(lines(&notice(false, false)).is_empty());
+        assert!(!notice(false, false).watches_names());
+    }
+
+    #[test]
+    fn the_tab_line_is_only_shown_when_the_sender_is_in_another_tab() {
+        let mut screen = NotifyScreen::new(None, "Done".to_owned())
+            .with_caller_pane(Some(PaneId::Terminal(3)));
+        screen.set_pane_name(Some("make".to_owned()));
+        let same_tab = manifest(vec![(0, vec![pane(3, "make")])]);
+        screen.update_panes(&same_tab);
+        screen.update_tabs(&[active_tab(0, "Main"), tab(1, "Other")]);
+        assert_eq!(lines(&screen), vec!["make"]);
+        let moved = manifest(vec![(0, vec![]), (1, vec![pane(3, "make")])]);
+        assert!(screen.update_panes(&moved));
+        assert!(screen.update_tabs(&[active_tab(0, "Main"), tab(1, "Other")]));
+        assert_eq!(lines(&screen), vec!["Other", "make"]);
+    }
+
+    #[test]
+    fn the_names_follow_pane_and_tab_renames() {
+        let mut screen = notice(true, true);
+        let panes = manifest(vec![(0, vec![pane(1, "other")]), (1, vec![pane(3, "cargo")])]);
+        assert!(screen.update_panes(&panes));
+        assert!(screen.update_tabs(&[active_tab(0, "Main"), tab(1, "Tests")]));
+        assert!(!screen.update_panes(&panes));
+        assert_eq!(lines(&screen), vec!["Tests", "cargo"]);
+        let mut hidden_tab = notice(true, false);
+        hidden_tab.update_panes(&panes);
+        hidden_tab.update_tabs(&[active_tab(0, "Main"), tab(1, "Tests")]);
+        assert_eq!(lines(&hidden_tab), vec!["cargo"]);
+    }
+
+    #[test]
+    fn a_notice_is_sized_for_its_text_and_the_from_line() {
+        let short = NotifyScreen::new(None, "Done".to_owned());
+        assert_eq!(short.desired_size(), (NOTICE_MIN_TEXT_WIDTH + 4, 3));
+        let mut with_from = NotifyScreen::new(None, "Done".to_owned());
+        with_from.set_pane_name(Some("shell".to_owned()));
+        assert_eq!(with_from.desired_size().1, 5);
+        let long = NotifyScreen::new(None, "word ".repeat(30));
+        let (width, height) = long.desired_size();
+        assert_eq!(width, NOTICE_MAX_TEXT_WIDTH + 4);
+        assert!(height > 3);
     }
 
     #[test]

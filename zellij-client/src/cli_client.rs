@@ -51,6 +51,7 @@ pub fn start_cli_client(
                 cwd,
                 pane_title,
                 popup,
+                popup_no_focus,
             } => {
                 let exit_status = pipe_client(
                     &mut os_input,
@@ -68,6 +69,7 @@ pub fn start_cli_client(
                         cwd,
                         pane_title,
                         popup,
+                        popup_no_focus,
                     },
                     payload,
                 );
@@ -103,6 +105,7 @@ struct PipeRequest {
     cwd: Option<PathBuf>,
     pane_title: Option<String>,
     popup: Option<PipePopupPlacement>,
+    popup_no_focus: bool,
 }
 
 impl PipeRequest {
@@ -135,6 +138,7 @@ impl PipeRequest {
                 cwd: self.cwd.clone(),
                 pane_title: self.pane_title.clone(),
                 popup: self.popup,
+                popup_no_focus: self.popup_no_focus,
             },
             terminal_id: self.pane_id,
             client_id: None,
@@ -432,6 +436,7 @@ pub fn start_prompt_client(
         cwd: None,
         pane_title: Some(format!("prompt: {}", plan.element.name())),
         popup: Some(prompt_cli.placement()),
+        popup_no_focus: !prompt_cli.takes_focus(),
     }
     .prepare();
     let exit_status = match plan.input {
@@ -498,6 +503,7 @@ pub fn plan_prompt(
     stdin_is_piped: bool,
 ) -> Result<PromptPlan, String> {
     let mut args = BTreeMap::new();
+    let answer_args = prompt_cli.answer_args();
     if let Some(title) = &prompt_cli.title {
         args.insert(prompt::ARG_TITLE.to_owned(), title.clone());
     }
@@ -505,15 +511,15 @@ pub fn plan_prompt(
         prompt::parse_duration(timeout).map_err(|e| format!("--timeout: {}", e))?;
         args.insert(prompt::ARG_TIMEOUT.to_owned(), timeout.clone());
     }
-    if let Some(default) = &prompt_cli.default {
+    if let Some(default) = &answer_args.default {
         args.insert(prompt::ARG_DEFAULT.to_owned(), default.clone());
     }
-    if prompt_cli.json {
+    if answer_args.json {
         args.insert(prompt::ARG_JSON.to_owned(), "true".to_owned());
     }
     let mut input = PromptInput::Single(None);
     let element = match &prompt_cli.element {
-        PromptElementCli::Confirm { message, yes, no } => {
+        PromptElementCli::Confirm { message, yes, no, .. } => {
             let message = message
                 .as_ref()
                 .ok_or_else(|| usage_error("confirm: the question is missing"))?;
@@ -524,7 +530,7 @@ pub fn plan_prompt(
             if let Some(no) = no {
                 args.insert(prompt::ARG_NO.to_owned(), no.clone());
             }
-            if let Some(default) = &prompt_cli.default {
+            if let Some(default) = &answer_args.default {
                 prompt::parse_bool(default).map_err(|e| format!("--default: {}", e))?;
             }
             PromptElement::Confirm
@@ -535,7 +541,7 @@ pub fn plan_prompt(
             multi,
             labels,
             null,
-            selected,
+            selected, ..
         } => {
             let mut choices: Vec<ChoiceItem> =
                 items.iter().map(|i| ChoiceItem::plain(i.clone())).collect();
@@ -571,7 +577,7 @@ pub fn plan_prompt(
             message,
             placeholder,
             validate,
-            required,
+            required, ..
         } => {
             if let Some(message) = message {
                 args.insert(prompt::ARG_MESSAGE.to_owned(), message.clone());
@@ -592,7 +598,7 @@ pub fn plan_prompt(
             message,
             min,
             max,
-            step,
+            step, ..
         } => {
             if let Some(message) = message {
                 args.insert(prompt::ARG_MESSAGE.to_owned(), message.clone());
@@ -614,7 +620,7 @@ pub fn plan_prompt(
             if let Some(max) = max {
                 args.insert(prompt::ARG_MAX.to_owned(), max.to_string());
             }
-            if let Some(default) = &prompt_cli.default {
+            if let Some(default) = &answer_args.default {
                 let value = default
                     .trim()
                     .parse::<i64>()
@@ -633,24 +639,24 @@ pub fn plan_prompt(
             }
             PromptElement::Number
         },
-        PromptElementCli::Toggle { message } => {
+        PromptElementCli::Toggle { message, .. } => {
             let message = message
                 .as_ref()
                 .ok_or_else(|| usage_error("toggle: the label is missing"))?;
             args.insert(prompt::ARG_MESSAGE.to_owned(), message.clone());
-            if let Some(default) = &prompt_cli.default {
+            if let Some(default) = &answer_args.default {
                 prompt::parse_bool(default).map_err(|e| format!("--default: {}", e))?;
             }
             PromptElement::Toggle
         },
-        PromptElementCli::Select { message, options } => {
+        PromptElementCli::Select { message, options, .. } => {
             if options.is_empty() {
                 return Err(usage_error("select: give a label followed by the options"));
             }
             if let Some(message) = message {
                 args.insert(prompt::ARG_MESSAGE.to_owned(), message.clone());
             }
-            if let Some(default) = &prompt_cli.default {
+            if let Some(default) = &answer_args.default {
                 if !options.contains(default) {
                     return Err(format!(
                         "--default: '{}' is not one of the options",
@@ -661,7 +667,7 @@ pub fn plan_prompt(
             args.insert(prompt::ARG_OPTIONS.to_owned(), prompt::encode_list(options));
             PromptElement::Select
         },
-        PromptElementCli::Menu { items, item } => {
+        PromptElementCli::Menu { items, item, .. } => {
             let mut choices: Vec<ChoiceItem> =
                 items.iter().map(|i| ChoiceItem::plain(i.clone())).collect();
             choices.extend(item.iter().map(|i| ChoiceItem::from_item_arg(i)));
@@ -671,7 +677,7 @@ pub fn plan_prompt(
             args.insert(prompt::ARG_ITEMS.to_owned(), prompt::encode_items(&choices));
             PromptElement::Menu
         },
-        PromptElementCli::Form { spec } => {
+        PromptElementCli::Form { spec, .. } => {
             let text = match spec {
                 Some(path) => fs::read_to_string(path)
                     .map_err(|e| format!("failed to read {}: {}", path.display(), e))?,
@@ -686,7 +692,7 @@ pub fn plan_prompt(
             };
             let form_spec = prompt::parse_form_spec(&text)?;
             prompt::check_form_patterns(&form_spec, check_pattern)?;
-            if let Some(default) = &prompt_cli.default {
+            if let Some(default) = &answer_args.default {
                 match serde_json::from_str::<serde_json::Value>(default) {
                     Ok(serde_json::Value::Object(_)) => {},
                     _ => return Err("--default: must be a JSON object for form".to_owned()),
@@ -694,6 +700,24 @@ pub fn plan_prompt(
             }
             input = PromptInput::Single(Some(text));
             PromptElement::Form
+        },
+        PromptElementCli::Notify {
+            message,
+            no_pane_name,
+            no_tab_name,
+            ..
+        } => {
+            let message = message
+                .as_ref()
+                .ok_or_else(|| usage_error("notify: the text is missing"))?;
+            args.insert(prompt::ARG_MESSAGE.to_owned(), message.clone());
+            if *no_pane_name {
+                args.insert(prompt::ARG_NO_PANE_NAME.to_owned(), "true".to_owned());
+            }
+            if *no_tab_name {
+                args.insert(prompt::ARG_NO_TAB_NAME.to_owned(), "true".to_owned());
+            }
+            PromptElement::Notify
         },
     };
     Ok(PromptPlan {

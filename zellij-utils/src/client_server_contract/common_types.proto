@@ -324,6 +324,7 @@ message Action {
     TogglePaneInGroupByPaneIdAction toggle_pane_in_group_by_pane_id = 157;
     StartRenamePaneByPaneIdAction start_rename_pane_by_pane_id = 158;
     StartRenameTabByTabIdAction start_rename_tab_by_tab_id = 159;
+    DismissInfoPopupsAction dismiss_info_popups = 160;
   }
 }
 
@@ -752,6 +753,7 @@ message CliPipeAction {
   optional string cwd = 11;
   optional string pane_title = 12;
   optional string popup = 13;
+  bool popup_no_focus = 14;
 }
 
 message KeybindPipeAction {
@@ -1283,6 +1285,7 @@ message Options {
   optional string keybinds_primary = 72;
   optional string keybinds_secondary = 73;
   optional string keybinds_unlock = 74;
+  optional bool context_menu_enabled = 75;
 }
 
 enum OnForceClose {
@@ -1363,3 +1366,4 @@ message MoveTabByTabIdAction { uint64 id = 1; Direction direction = 2; bool id_i
 message TogglePaneInGroupByPaneIdAction { PaneId pane_id = 1; }
 message StartRenamePaneByPaneIdAction { PaneId pane_id = 1; }
 message StartRenameTabByTabIdAction { optional uint64 id = 1; }
+message DismissInfoPopupsAction {}

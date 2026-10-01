@@ -203,13 +203,15 @@ pub struct PromptCli {
     #[clap(
         long,
         global = true,
-        help = "Give up after this long; exits 124 unless --default is given (e.g. --timeout 30s)"
+        help = "How long the popup stays open; an unanswered prompt then exits 124 and a notice just closes (e.g. --timeout 30s)"
     )]
     pub timeout: Option<String>,
+}
 
+#[derive(Debug, Args, Clone, Default, Serialize, Deserialize)]
+pub struct PromptAnswerArgs {
     #[clap(
         long,
-        global = true,
         allow_hyphen_values = true,
         help = "Initial value, and the answer used when --timeout runs out (e.g. --default 8080)"
     )]
@@ -217,14 +219,12 @@ pub struct PromptCli {
 
     #[clap(
         long,
-        global = true,
         help = "Print JSON with the result and why the prompt ended (e.g. {\"result\":\"cancelled\"})"
     )]
     pub json: bool,
 
     #[clap(
         long,
-        global = true,
         conflicts_with_all(&["at_cursor", "at_center"]),
         help = "Open the popup where the mouse pointer last was, or at your cursor if the mouse has not moved yet (e.g. --at-mouse)"
     )]
@@ -232,7 +232,6 @@ pub struct PromptCli {
 
     #[clap(
         long,
-        global = true,
         conflicts_with_all(&["at_mouse", "at_center"]),
         help = "Open the popup just below your cursor, in the pane you are focused on (e.g. --at-cursor)"
     )]
@@ -240,7 +239,6 @@ pub struct PromptCli {
 
     #[clap(
         long,
-        global = true,
         conflicts_with_all(&["at_mouse", "at_cursor"]),
         help = "Open the popup in the middle of the screen instead of over the calling pane (e.g. --at-center)"
     )]
@@ -248,12 +246,22 @@ pub struct PromptCli {
 }
 
 impl PromptCli {
+    pub fn answer_args(&self) -> PromptAnswerArgs {
+        self.element.answer_args().cloned().unwrap_or_default()
+    }
+    pub fn takes_focus(&self) -> bool {
+        !matches!(self.element, PromptElementCli::Notify { .. })
+    }
     pub fn placement(&self) -> crate::data::PipePopupPlacement {
-        if self.at_mouse {
+        if let PromptElementCli::Notify { at, .. } = &self.element {
+            return at.unwrap_or(crate::data::PipePopupPlacement::TopRight);
+        }
+        let answer_args = self.answer_args();
+        if answer_args.at_mouse {
             crate::data::PipePopupPlacement::Mouse
-        } else if self.at_cursor {
+        } else if answer_args.at_cursor {
             crate::data::PipePopupPlacement::Cursor
-        } else if self.at_center {
+        } else if answer_args.at_center {
             crate::data::PipePopupPlacement::Center
         } else {
             crate::data::PipePopupPlacement::Pane
@@ -273,6 +281,8 @@ pub enum PromptElementCli {
         yes: Option<String>,
         #[clap(long, help = "Label of the refusing button (e.g. --no Cancel)")]
         no: Option<String>,
+        #[clap(flatten)]
+        answer: PromptAnswerArgs,
     },
     #[clap(about = "Choose one or more items from the arguments or from stdin, one per line (e.g. git branch | zellij prompt choose)", after_help = "Examples:\n  git branch --format='%(refname:short)' | zellij prompt choose
   zellij prompt choose main develop feature/login --title Branch
@@ -293,6 +303,8 @@ pub enum PromptElementCli {
         null: bool,
         #[clap(long, allow_hyphen_values = true, help = "An item ticked in advance (e.g. --selected b)")]
         selected: Vec<String>,
+        #[clap(flatten)]
+        answer: PromptAnswerArgs,
     },
     #[clap(about = "Ask for a line of text (e.g. zellij prompt input \"Commit message\" --required)", after_help = "Examples:\n  zellij prompt input \"Commit message\" --placeholder \"what changed\" --required
   zellij prompt input Branch --validate '^[a-z-]+$' --default my-branch
@@ -306,6 +318,8 @@ pub enum PromptElementCli {
         validate: Option<String>,
         #[clap(long, help = "Refuse an empty answer (e.g. --required)")]
         required: bool,
+        #[clap(flatten)]
+        answer: PromptAnswerArgs,
     },
     #[clap(about = "Ask for a whole number (e.g. zellij prompt number Port --min 1 --max 65535 --default 8080)", after_help = "Examples:\n  zellij prompt number Port --min 1 --max 65535 --default 8080
   zellij prompt number Workers --min 1 --max 64 --step 4 --default 8")]
@@ -318,12 +332,16 @@ pub enum PromptElementCli {
         max: Option<i64>,
         #[clap(long, help = "Step used by the arrow keys (e.g. --step 10)")]
         step: Option<i64>,
+        #[clap(flatten)]
+        answer: PromptAnswerArgs,
     },
     #[clap(about = "Ask for on or off; prints true or false (e.g. zellij prompt toggle \"Enable CI\" --default on)", after_help = "Examples:\n  zellij prompt toggle \"Enable CI\" --default on
   zellij prompt toggle Verbose --json")]
     Toggle {
         #[clap(help = "The label (e.g. \"Enable CI\")")]
         message: Option<String>,
+        #[clap(flatten)]
+        answer: PromptAnswerArgs,
     },
     #[clap(about = "Choose one value from a dropdown (e.g. zellij prompt select License MIT Apache-2.0)", after_help = "Examples:\n  zellij prompt select License MIT Apache-2.0 GPL-3.0
   zellij prompt select License MIT Apache-2.0 --default Apache-2.0")]
@@ -332,6 +350,8 @@ pub enum PromptElementCli {
         message: Option<String>,
         #[clap(help = "The options (e.g. MIT Apache-2.0)")]
         options: Vec<String>,
+        #[clap(flatten)]
+        answer: PromptAnswerArgs,
     },
     #[clap(about = "Show a menu and print the chosen item (e.g. zellij prompt menu Open Rename Delete)", after_help = "Examples:\n  zellij prompt menu Open Rename Delete
   zellij prompt menu --item \"o=Open\" --item \"r=Rename\" --item \"d=Delete\" --at-mouse\n  zellij prompt menu Copy Paste --at-cursor\n  zellij prompt menu Open Close --at-center")]
@@ -340,16 +360,48 @@ pub enum PromptElementCli {
         items: Vec<String>,
         #[clap(long = "item", allow_hyphen_values = true, help = "An item written as value=Label (e.g. --item \"rm=Delete\")")]
         item: Vec<String>,
+        #[clap(flatten)]
+        answer: PromptAnswerArgs,
     },
     #[clap(about = "Show several fields described in JSON and print one JSON object (e.g. zellij prompt form --spec form.json)", after_help = "Examples:\n  echo '{\"title\":\"New project\",\"fields\":[{\"id\":\"name\",\"type\":\"input\",\"label\":\"Name\",\"required\":true},{\"id\":\"ci\",\"type\":\"toggle\",\"label\":\"Use CI\",\"default\":true}]}' | zellij prompt form
   zellij prompt form --spec form.json")]
     Form {
         #[clap(long, help = "File with the form description; read from stdin when not given (e.g. --spec form.json)")]
         spec: Option<PathBuf>,
+        #[clap(flatten)]
+        answer: PromptAnswerArgs,
+    },
+    #[clap(about = "Show a notice that does not take the keyboard and return at once with exit 0 (e.g. zellij prompt notify \"Build finished\" --timeout 5s)", after_help = "Examples:\n  zellij prompt notify \"Build finished\"
+  make && zellij prompt notify \"Build finished\" --title make --timeout 5s
+  zellij prompt notify \"Tests failed\" --at bottom-left
+  zellij prompt notify \"Saved\" --no-tab-name --timeout 3s
+  zellij prompt notify \"Saved\" --no-pane-name --no-tab-name")]
+    Notify {
+        #[clap(help = "The text to show; long text is wrapped (e.g. \"Build finished\")")]
+        message: Option<String>,
+        #[clap(long, value_parser, help = "Where to show it: top-right, top-left, bottom-right, bottom-left, pane, center, mouse or cursor (e.g. --at bottom-right)")]
+        at: Option<crate::data::PipePopupPlacement>,
+        #[clap(long, help = "Leave out the line with the name of the pane that sent the notice (e.g. --no-pane-name)")]
+        no_pane_name: bool,
+        #[clap(long, help = "Leave out the line with the tab name, shown when the pane that sent the notice is in another tab (e.g. --no-tab-name)")]
+        no_tab_name: bool,
     },
 }
 
 impl PromptElementCli {
+    pub fn answer_args(&self) -> Option<&PromptAnswerArgs> {
+        match self {
+            PromptElementCli::Confirm { answer, .. }
+            | PromptElementCli::Choose { answer, .. }
+            | PromptElementCli::Input { answer, .. }
+            | PromptElementCli::Number { answer, .. }
+            | PromptElementCli::Toggle { answer, .. }
+            | PromptElementCli::Select { answer, .. }
+            | PromptElementCli::Menu { answer, .. }
+            | PromptElementCli::Form { answer, .. } => Some(answer),
+            PromptElementCli::Notify { .. } => None,
+        }
+    }
     pub fn name(&self) -> &'static str {
         match self {
             PromptElementCli::Confirm { .. } => "confirm",
@@ -360,6 +412,7 @@ impl PromptElementCli {
             PromptElementCli::Select { .. } => "select",
             PromptElementCli::Menu { .. } => "menu",
             PromptElementCli::Form { .. } => "form",
+            PromptElementCli::Notify { .. } => "notify",
         }
     }
 }
@@ -1689,9 +1742,17 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
             value_parser,
             display_order(11),
             conflicts_with_all(&["floating_plugin", "in_place_plugin"]),
-            help = "If launching a plugin, open it as a popup for the user looking at the calling pane (pane, center, mouse or cursor)"
+            help = "If launching a plugin, open it as a popup for the user looking at the calling pane (pane, center, mouse, cursor, top-left, top-right, bottom-left or bottom-right)"
         )]
         popup: Option<crate::data::PipePopupPlacement>,
+        #[clap(
+            long,
+            value_parser,
+            display_order(12),
+            requires("popup"),
+            help = "Open the --popup as an information popup that does not take key focus (e.g. --popup top-right --popup-no-focus)"
+        )]
+        popup_no_focus: bool,
     },
     ListClients,
     /// List all panes in the current session
@@ -1832,6 +1893,8 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
     SetLightTheme,
     /// Toggle between dark and light themes (used configured `theme_dark` and `theme_light`)
     ToggleTheme,
+    #[clap(about = "Close the information popups (such as `zellij prompt notify`) shown to you")]
+    DismissInfoPopups,
     /// Switch to a different session
     SwitchSession {
         /// Name of the session to switch to

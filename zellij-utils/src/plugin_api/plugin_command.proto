@@ -497,6 +497,8 @@ message OpenPluginPopupPayload {
   uint32 column = 4;
   uint32 width = 5;
   uint32 height = 6;
+  optional bool focused = 7;
+  optional string corner = 8;
 }
 
 message SetPopupSizePayload {

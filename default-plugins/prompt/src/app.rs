@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 use zellij_tile::prelude::*;
-use zellij_utils::prompt::{EXIT_CANCELLED, EXIT_ERROR};
+use zellij_utils::prompt::{EXIT_ANSWERED, EXIT_CANCELLED, EXIT_ERROR};
 
 use crate::outcome::{default_answer, reply_for, Outcome};
 use crate::request::{parse_request, split_lines, Request, Spec};
@@ -22,6 +22,8 @@ pub enum Effect {
     SetTimeout(f64),
     ShowSelf,
     CloseSelf,
+    FocusPane(PaneId),
+    WatchNames,
 }
 
 #[derive(Default)]
@@ -31,6 +33,7 @@ pub struct App {
     screen: Option<Screen>,
     deadline: Option<Instant>,
     finished: bool,
+    released: bool,
     last_popup_size: Option<(usize, usize)>,
     last_input_render: Option<Instant>,
     effects: Vec<Effect>,
@@ -81,6 +84,9 @@ impl App {
                 return false;
             },
         };
+        if matches!(request.spec, Spec::Notify { .. }) {
+            return self.start_notice(pipe_id, request, now);
+        }
         let is_streaming = matches!(
             request.spec,
             Spec::Choose {
@@ -104,6 +110,55 @@ impl App {
         self.request = Some(request);
         self.request_popup_size();
         true
+    }
+    fn start_notice(&mut self, pipe_id: String, request: Request, now: Instant) -> bool {
+        self.effects
+            .push(Effect::SetExitCode(pipe_id.clone(), EXIT_ANSWERED));
+        self.effects.push(Effect::UnblockPipe(pipe_id));
+        self.released = true;
+        if !request.common.in_popup {
+            self.effects.push(Effect::ShowSelf);
+        }
+        if let Some(timeout) = request.common.timeout {
+            self.deadline = Some(now + timeout);
+            self.schedule_tick(now);
+        }
+        let screen = Screen::new(&request);
+        if screen.watches_names() {
+            self.effects.push(Effect::WatchNames);
+        }
+        self.screen = Some(screen);
+        self.request = Some(request);
+        self.request_popup_size();
+        true
+    }
+    pub fn handle_pane_update(&mut self, pane_manifest: &PaneManifest) -> bool {
+        let changed = !self.finished
+            && self
+                .screen
+                .as_mut()
+                .map(|screen| screen.update_panes(pane_manifest))
+                .unwrap_or(false);
+        if changed {
+            self.request_popup_size();
+        }
+        changed
+    }
+    pub fn handle_tab_update(&mut self, tabs: &[TabInfo]) -> bool {
+        let changed = !self.finished
+            && self
+                .screen
+                .as_mut()
+                .map(|screen| screen.update_tabs(tabs))
+                .unwrap_or(false);
+        if changed {
+            self.request_popup_size();
+        }
+        changed
+    }
+    fn close_notice(&mut self) {
+        self.finished = true;
+        self.effects.push(Effect::CloseSelf);
     }
     fn continue_input(&mut self, pipe_message: PipeMessage, now: Instant) -> bool {
         let Some(pipe_id) = self.pipe_id.clone() else {
@@ -167,6 +222,10 @@ impl App {
             .map(|screen| screen.handle_timer())
             .unwrap_or(false);
         if let Some(deadline) = self.deadline {
+            if now >= deadline && self.released {
+                self.close_notice();
+                return false;
+            }
             if now >= deadline {
                 let answer = self
                     .request
@@ -215,9 +274,18 @@ impl App {
                 self.finish(outcome);
                 false
             },
+            Step::FocusPane(pane_id) => {
+                self.effects.push(Effect::FocusPane(pane_id));
+                self.close_notice();
+                false
+            },
         }
     }
     fn finish(&mut self, outcome: Outcome) {
+        if self.released {
+            self.close_notice();
+            return;
+        }
         let Some(pipe_id) = self.pipe_id.clone() else {
             return;
         };
@@ -302,8 +370,17 @@ impl App {
     fn footer_width(&self) -> usize {
         hints_width(self.hints(), self.status(Instant::now()).as_deref())
     }
+    fn is_notice(&self) -> bool {
+        self.screen
+            .as_ref()
+            .map(|screen| screen.is_notice())
+            .unwrap_or(false)
+    }
     pub fn desired_size(&self) -> Option<(usize, usize)> {
         let screen = self.screen.as_ref()?;
+        if screen.is_notice() {
+            return Some(screen.desired_size());
+        }
         let (body_width, body_height) = screen.desired_size();
         let header_rows = if self.header_title().is_some() { 1 } else { 0 };
         let title = self
@@ -373,6 +450,12 @@ impl App {
     }
     pub fn render(&mut self, rows: usize, cols: usize, now: Instant) {
         if self.finished || rows == 0 || cols == 0 {
+            return;
+        }
+        if self.is_notice() {
+            if let Some(screen) = self.screen.as_mut() {
+                screen.render(0, 0, cols, rows);
+            }
             return;
         }
         let (x, y, width, height) = if self.is_framed() && rows > 2 && cols > 4 {
@@ -491,6 +574,150 @@ mod tests {
             ]
         );
         assert!(app.is_finished());
+    }
+
+    #[test]
+    fn a_notice_releases_the_pipe_with_exit_zero_at_once_and_stays_open() {
+        let mut app = App::default();
+        let now = Instant::now();
+        app.handle_pipe(
+            message("p", "notify", &[("message", "Build finished")], None),
+            now,
+        );
+        assert_eq!(
+            pipe_effects(&app.take_effects()),
+            vec![
+                Effect::SetExitCode("p".to_owned(), 0),
+                Effect::UnblockPipe("p".to_owned()),
+            ]
+        );
+        assert!(!app.is_finished());
+        app.handle_key(KeyWithModifier::new(BareKey::Esc));
+        assert!(pipe_effects(&app.take_effects()).is_empty());
+        assert!(!app.is_finished());
+    }
+
+    #[test]
+    fn a_notice_closes_itself_when_its_timeout_runs_out() {
+        let mut app = App::default();
+        let now = Instant::now();
+        app.handle_pipe(
+            message(
+                "p",
+                "notify",
+                &[("message", "Build finished"), ("timeout", "5s")],
+                None,
+            ),
+            now,
+        );
+        app.take_effects();
+        app.handle_timer(now + Duration::from_secs(1));
+        assert!(pipe_effects(&app.take_effects()).is_empty());
+        app.handle_timer(now + Duration::from_secs(6));
+        assert_eq!(pipe_effects(&app.take_effects()), vec![Effect::CloseSelf]);
+        assert!(app.is_finished());
+    }
+
+    #[test]
+    fn a_click_on_the_notice_focuses_its_pane_and_closes_it() {
+        let mut app = App::default();
+        let now = Instant::now();
+        app.handle_pipe(
+            message(
+                "p",
+                "notify",
+                &[("message", "Build finished"), ("_caller_pane_id", "terminal_7")],
+                None,
+            ),
+            now,
+        );
+        app.take_effects();
+        let (cols, rows) = app.desired_size().unwrap();
+        app.render(rows, cols, now);
+        app.handle_mouse(Mouse::LeftClick(1, 2));
+        assert_eq!(
+            pipe_effects(&app.take_effects()),
+            vec![Effect::FocusPane(PaneId::Terminal(7)), Effect::CloseSelf]
+        );
+        assert!(app.is_finished());
+    }
+
+    #[test]
+    fn a_click_on_the_close_mark_closes_the_notice_without_focusing() {
+        let mut app = App::default();
+        let now = Instant::now();
+        app.handle_pipe(
+            message(
+                "p",
+                "notify",
+                &[("message", "Build finished"), ("_caller_pane_id", "terminal_7")],
+                None,
+            ),
+            now,
+        );
+        app.take_effects();
+        let (cols, rows) = app.desired_size().unwrap();
+        app.render(rows, cols, now);
+        app.handle_mouse(Mouse::LeftClick(0, cols - 3));
+        assert_eq!(pipe_effects(&app.take_effects()), vec![Effect::CloseSelf]);
+    }
+
+    #[test]
+    fn a_notice_watches_and_follows_the_names_of_its_pane_and_tab() {
+        let mut app = App::default();
+        let now = Instant::now();
+        app.handle_pipe(
+            message(
+                "p",
+                "notify",
+                &[
+                    ("message", "Build finished"),
+                    ("_caller_pane_id", "terminal_7"),
+                    ("_caller_tab_name", "Tab #1"),
+                ],
+                None,
+            ),
+            now,
+        );
+        assert!(app.take_effects().contains(&Effect::WatchNames));
+        let panes = PaneManifest {
+            panes: [(
+                0,
+                vec![PaneInfo {
+                    id: 7,
+                    title: "vim".to_owned(),
+                    ..Default::default()
+                }],
+            )]
+            .into_iter()
+            .collect(),
+        };
+        assert!(app.handle_pane_update(&panes));
+        assert!(app.handle_tab_update(&[TabInfo {
+            position: 0,
+            name: "Editor".to_owned(),
+            ..Default::default()
+        }]));
+        assert!(!app.handle_pane_update(&panes));
+        let without_names = {
+            let mut app = App::default();
+            app.handle_pipe(
+                message(
+                    "q",
+                    "notify",
+                    &[
+                        ("message", "x"),
+                        ("_caller_pane_id", "terminal_7"),
+                        ("no_pane_name", "true"),
+                        ("no_tab_name", "true"),
+                    ],
+                    None,
+                ),
+                now,
+            );
+            app.take_effects()
+        };
+        assert!(!without_names.contains(&Effect::WatchNames));
     }
 
     #[test]

@@ -152,6 +152,7 @@ fn option_values(options: &Options, values: &mut BTreeMap<SettingKey, Option<Str
         visual_bell,
         focus_follows_mouse,
         mouse_click_through,
+        context_menu_enabled,
         osc133_command_selection,
         word_separators,
         host_notification_protocol,
@@ -276,6 +277,10 @@ fn option_values(options: &Options, values: &mut BTreeMap<SettingKey, Option<Str
         (
             SettingKey::MouseClickThrough,
             display_text(mouse_click_through),
+        ),
+        (
+            SettingKey::ContextMenuEnabled,
+            display_text(context_menu_enabled),
         ),
         (
             SettingKey::Osc133CommandSelection,
@@ -566,6 +571,9 @@ pub fn copy_setting(target: &mut Config, source: &Config, key: SettingKey) {
         SettingKey::VisualBell => options.visual_bell = from.visual_bell,
         SettingKey::FocusFollowsMouse => options.focus_follows_mouse = from.focus_follows_mouse,
         SettingKey::MouseClickThrough => options.mouse_click_through = from.mouse_click_through,
+        SettingKey::ContextMenuEnabled => {
+            options.context_menu_enabled = from.context_menu_enabled
+        },
         SettingKey::Osc133CommandSelection => {
             options.osc133_command_selection = from.osc133_command_selection
         },

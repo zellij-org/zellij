@@ -1001,6 +1001,7 @@ impl From<crate::input::options::Options>
             visual_bell: options.visual_bell,
             focus_follows_mouse: options.focus_follows_mouse,
             mouse_click_through: options.mouse_click_through,
+            context_menu_enabled: options.context_menu_enabled,
             osc133_command_selection: options.osc133_command_selection,
             word_separators: options.word_separators,
             host_notification_protocol: options
@@ -1144,6 +1145,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
             visual_bell: options.visual_bell,
             focus_follows_mouse: options.focus_follows_mouse,
             mouse_click_through: options.mouse_click_through,
+            context_menu_enabled: options.context_menu_enabled,
             osc133_command_selection: options.osc133_command_selection,
             word_separators: options.word_separators,
             host_notification_protocol: options
@@ -1344,7 +1346,7 @@ impl From<crate::input::actions::Action>
             TogglePanePinnedAction,
             TogglePanePinnedByPaneIdAction,
             ToggleTabAction,
-            ToggleThemeAction,
+            ToggleThemeAction, DismissInfoPopupsAction,
             UndoRenamePaneAction,
             UndoRenamePaneByPaneIdAction,
             UndoRenameTabAction,
@@ -1761,6 +1763,9 @@ impl From<crate::input::actions::Action>
             crate::input::actions::Action::ToggleTheme => {
                 ActionType::ToggleTheme(ToggleThemeAction {})
             },
+            crate::input::actions::Action::DismissInfoPopups => {
+                ActionType::DismissInfoPopups(DismissInfoPopupsAction {})
+            },
             crate::input::actions::Action::SwitchSession {
                 name,
                 tab_position,
@@ -2005,6 +2010,7 @@ impl From<crate::input::actions::Action>
                 cwd,
                 pane_title,
                 popup,
+                popup_no_focus,
             } => ActionType::CliPipe(CliPipeAction {
                 pipe_id,
                 name,
@@ -2023,6 +2029,7 @@ impl From<crate::input::actions::Action>
                 cwd: cwd.map(|p| p.to_string_lossy().to_string()),
                 pane_title,
                 popup: popup.map(|p| p.to_string()),
+                popup_no_focus,
             }),
             crate::input::actions::Action::KeybindPipe {
                 name,
@@ -2713,6 +2720,9 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             ActionType::SetDarkTheme(_) => Ok(crate::input::actions::Action::SetDarkTheme),
             ActionType::SetLightTheme(_) => Ok(crate::input::actions::Action::SetLightTheme),
             ActionType::ToggleTheme(_) => Ok(crate::input::actions::Action::ToggleTheme),
+            ActionType::DismissInfoPopups(_) => {
+                Ok(crate::input::actions::Action::DismissInfoPopups)
+            },
             ActionType::SwitchSession(switch_session_action) => {
                 Ok(crate::input::actions::Action::SwitchSession {
                     name: switch_session_action.name.clone(),
@@ -2987,6 +2997,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                 popup: cli_pipe_action
                     .popup
                     .and_then(|p| p.parse::<crate::data::PipePopupPlacement>().ok()),
+                popup_no_focus: cli_pipe_action.popup_no_focus,
             }),
             ActionType::KeybindPipe(keybind_pipe_action) => {
                 Ok(crate::input::actions::Action::KeybindPipe {

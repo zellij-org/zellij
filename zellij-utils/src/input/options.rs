@@ -414,6 +414,14 @@ pub struct Options {
     #[serde(default)]
     pub mouse_click_through: Option<bool>,
 
+    #[clap(
+        long,
+        value_parser,
+        help = "Whether a right click opens the right-click menu (true or false), default is true"
+    )]
+    #[serde(default)]
+    pub context_menu_enabled: Option<bool>,
+
     /// Whether triple-clicking inside shell-marked (OSC 133) command output selects the command
     /// and its output rather than the logical line
     /// default is true
@@ -612,6 +620,7 @@ impl Options {
         let visual_bell = other.visual_bell.or(self.visual_bell);
         let focus_follows_mouse = other.focus_follows_mouse.or(self.focus_follows_mouse);
         let mouse_click_through = other.mouse_click_through.or(self.mouse_click_through);
+        let context_menu_enabled = other.context_menu_enabled.or(self.context_menu_enabled);
         let osc133_command_selection = other
             .osc133_command_selection
             .or(self.osc133_command_selection);
@@ -696,6 +705,7 @@ impl Options {
             visual_bell,
             focus_follows_mouse,
             mouse_click_through,
+            context_menu_enabled,
             osc133_command_selection,
             word_separators,
             host_notification_protocol,
@@ -793,6 +803,7 @@ impl Options {
         let visual_bell = other.visual_bell.or(self.visual_bell);
         let focus_follows_mouse = merge_bool(other.focus_follows_mouse, self.focus_follows_mouse);
         let mouse_click_through = merge_bool(other.mouse_click_through, self.mouse_click_through);
+        let context_menu_enabled = other.context_menu_enabled.or(self.context_menu_enabled);
         let osc133_command_selection = other
             .osc133_command_selection
             .or(self.osc133_command_selection);
@@ -877,6 +888,7 @@ impl Options {
             visual_bell,
             focus_follows_mouse,
             mouse_click_through,
+            context_menu_enabled,
             osc133_command_selection,
             word_separators,
             host_notification_protocol,
