@@ -115,7 +115,7 @@ fn the_unsaved_marker_is_still_shown_after_closing_and_reopening_the_screen() {
 }
 
 #[test]
-fn a_restart_only_setting_is_written_to_the_file_after_confirming_the_save() {
+fn a_restart_only_setting_is_written_to_the_file_on_save() {
     let mut zellij = start_zellij();
     claim_first_terminal_and_wait_for_prompt(&zellij);
     let config_file_path = zellij
@@ -137,10 +137,6 @@ fn a_restart_only_setting_is_written_to_the_file_after_confirming_the_save() {
     });
 
     zellij.send_stdin(&keys::ctrl('a'));
-    zellij.wait_until("save confirm dialog shown", |grid_snapshot| {
-        grid_snapshot.contains("Save settings?") && grid_snapshot.contains("Cancel")
-    });
-    zellij.send_stdin(&keys::ENTER);
     zellij.wait_until("save reported with a restart note", |grid_snapshot| {
         grid_snapshot.contains("Restart Zellij to apply: Scrollback lines")
     });

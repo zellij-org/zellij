@@ -2,10 +2,14 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use zellij_tile::prelude::*;
 
-use crate::settings::kdl_string;
+use crate::settings::{check_text, describe, kdl_for, kdl_string, SettingKind};
 use crate::ui_components::{print_link, request_close};
 
 const LABEL_WIDTH: usize = 16;
+const FOLDER_LABEL_WIDTH: usize = 26;
+const FOLDER_FIELD_WIDTH: usize = 54;
+const PRESET_EXPLANATION: &str =
+    "Presets change how modes are reached and help avoid key clashes with other programs";
 const FIELD_WIDTH: usize = 44;
 const MODIFIER_CHOICES: [&str; 8] = [
     "Ctrl",
@@ -27,6 +31,7 @@ pub enum KeysField {
     Copy,
     SwitchToPreset,
     Save,
+    PresetFolder,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,6 +57,9 @@ pub struct KeysScreen {
     needs_refresh: bool,
     pending_mode_switch: bool,
     focused: bool,
+    editing_folder: bool,
+    keybinds_dir: Option<String>,
+    keybinds_dir_unsaved: bool,
 }
 
 impl KeysScreen {
@@ -74,12 +82,21 @@ impl KeysScreen {
             needs_refresh: false,
             pending_mode_switch: false,
             focused: is_setup_wizard,
+            editing_folder: false,
+            keybinds_dir: None,
+            keybinds_dir_unsaved: false,
         };
         screen.rebuild();
         screen
     }
+    pub fn is_editing_folder(&self) -> bool {
+        self.editing_folder
+    }
+    pub fn folder_is_focused(&self) -> bool {
+        self.elements.focused_key() == Some(&KeysField::PresetFolder)
+    }
     pub fn is_capturing_keys(&self) -> bool {
-        self.capturing_unlock
+        self.capturing_unlock || self.editing_folder
     }
     pub fn dialog_is_open(&self) -> bool {
         self.dialog.is_open()
@@ -117,6 +134,20 @@ impl KeysScreen {
             let default_mode = snapshot.keybinds.default_mode.unwrap_or(InputMode::Normal);
             switch_to_input_mode(&default_mode);
         }
+        let keybinds_dir_setting = snapshot.setting(SettingKey::KeybindsDir);
+        self.keybinds_dir_unsaved = keybinds_dir_setting
+            .map(|setting| setting.is_unsaved())
+            .unwrap_or(false);
+        let keybinds_dir = keybinds_dir_setting.and_then(|setting| setting.current_value.clone());
+        if self.keybinds_dir != keybinds_dir {
+            self.keybinds_dir = keybinds_dir;
+            if !self.editing_folder {
+                let text = self.keybinds_dir.clone().unwrap_or_default();
+                if let Some(input) = self.elements.text_input_mut(&KeysField::PresetFolder) {
+                    input.set_text(text);
+                }
+            }
+        }
         if self.selection != snapshot.keybinds {
             self.selection = snapshot.keybinds.clone();
             self.rebuild();
@@ -130,6 +161,7 @@ impl KeysScreen {
             }
         } else {
             self.capturing_unlock = false;
+            self.stop_editing_folder();
             self.elements.blur();
         }
     }
@@ -170,6 +202,7 @@ impl KeysScreen {
     }
     fn rebuild(&mut self) {
         let focused = self.elements.focused_key().copied();
+        self.editing_folder = false;
         self.elements = FocusGroup::new().wrap(self.is_setup_wizard);
         if self.selection.clears_defaults && !self.is_setup_wizard {
             self.elements
@@ -230,6 +263,16 @@ impl KeysScreen {
                     Button::new("Copy to my keybinds folder to edit"),
                 );
             }
+        }
+        if !self.is_setup_wizard {
+            let info = describe(SettingKey::KeybindsDir);
+            self.elements.add(
+                KeysField::PresetFolder,
+                TextInput::new(self.keybinds_dir.clone().unwrap_or_default())
+                    .label(info.name)
+                    .label_width(FOLDER_LABEL_WIDTH)
+                    .placeholder(info.default),
+            );
         }
         if self.focused {
             let refocused = focused
@@ -380,8 +423,33 @@ impl KeysScreen {
         }
     }
     fn save(&mut self) {
-        save_config();
+        overwrite_config_file();
         request_close();
+    }
+    fn stop_editing_folder(&mut self) {
+        if self.editing_folder {
+            self.editing_folder = false;
+            let text = self.keybinds_dir.clone().unwrap_or_default();
+            if let Some(input) = self.elements.text_input_mut(&KeysField::PresetFolder) {
+                input.set_text(text);
+            }
+        }
+    }
+    fn set_keybinds_dir(&mut self, text: String) {
+        if let SettingKind::Text(check) = describe(SettingKey::KeybindsDir).kind {
+            if let Err(error) = check_text(check, &text) {
+                self.notice = Some(format!("Keybinding preset folder: {}", error));
+                return;
+            }
+        }
+        self.editing_folder = false;
+        if text.is_empty() {
+            unset_config_setting(SettingKey::KeybindsDir);
+        } else if self.keybinds_dir.as_deref() != Some(text.as_str()) {
+            reconfigure(kdl_for(SettingKey::KeybindsDir, &text), false);
+        }
+        self.notice = Some("Keybinding preset folder applied".to_owned());
+        self.needs_refresh = true;
     }
     fn handle_focus_event(&mut self, event: FocusEvent<KeysField>) -> bool {
         match event {
@@ -404,12 +472,21 @@ impl KeysScreen {
                     (KeysField::Copy, UiResponse::Activated) => self.copy_preset(),
                     (KeysField::SwitchToPreset, UiResponse::Activated) => self.open_switch_dialog(),
                     (KeysField::Save, UiResponse::Activated) => self.save(),
+                    (KeysField::PresetFolder, UiResponse::Submitted(UiValue::Text(text))) => {
+                        self.set_keybinds_dir(text)
+                    },
+                    (KeysField::PresetFolder, UiResponse::Cancelled) => self.stop_editing_folder(),
                     (_, UiResponse::Cancelled) => {},
                     _ => {},
                 }
                 true
             },
-            FocusEvent::FocusChanged(_) => true,
+            FocusEvent::FocusChanged(_) => {
+                if self.elements.focused_key() != Some(&KeysField::PresetFolder) {
+                    self.stop_editing_folder();
+                }
+                true
+            },
             FocusEvent::NotHandled => false,
         }
     }
@@ -434,12 +511,30 @@ impl KeysScreen {
             self.capture_unlock_key(key);
             return true;
         }
+        if self.editing_folder {
+            let event = self.elements.handle_key(&key);
+            self.handle_focus_event(event);
+            return true;
+        }
         self.notice = None;
         if self.is_setup_wizard && key.is_key_with_ctrl_modifier(BareKey::Char('a')) {
             self.save();
             return true;
         }
-        let event = self.elements.handle_key(&key);
+        let folder_focused = self.elements.focused_key() == Some(&KeysField::PresetFolder);
+        if folder_focused && key.bare_key == BareKey::Enter && key.has_no_modifiers() {
+            self.editing_folder = true;
+            if let Some(input) = self.elements.text_input_mut(&KeysField::PresetFolder) {
+                input.move_to_end();
+            }
+            return true;
+        }
+        let moves_focus = key.bare_key == BareKey::Tab;
+        let event = if folder_focused && !moves_focus {
+            FocusEvent::NotHandled
+        } else {
+            self.elements.handle_key(&key)
+        };
         if self.handle_focus_event(event) {
             return true;
         }
@@ -564,15 +659,6 @@ impl KeysScreen {
                 Text::new(fit("You can change this later in the settings screen.")).dim_all(),
             ));
             row += 2;
-        } else {
-            for line in wrap(
-                "Keybinding presets change how modes are accessed and can help prevent key collisions with other programs.",
-                width,
-            ) {
-                lines.push((row, Text::new(line).unbold_all()));
-                row += 1;
-            }
-            row += 1;
         }
         if self.selection.clears_defaults && !self.is_setup_wizard {
             lines.push((row, Text::new(fit("Custom keybindings")).color_all(3)));
@@ -587,19 +673,25 @@ impl KeysScreen {
             row += 1;
             rows.push((KeysField::SwitchToPreset, row));
             row += 2;
+            if self.elements.get(&KeysField::PresetFolder).is_some() {
+                rows.push((KeysField::PresetFolder, row));
+                row += 2;
+            }
         } else {
             rows.push((KeysField::Preset, row));
-            row += 2;
+            row += 1;
             let active = self.selection.active.clone();
             if let Some(path) = self.preset_file() {
                 link_row = Some((row, path));
                 row += 1;
             } else {
-                if let Some(description) = &active.description {
-                    let description = self.with_leader_values(description);
-                    lines.push((row, Text::new(fit(&description)).unbold_all()));
-                    row += 1;
-                }
+                let description = active
+                    .description
+                    .as_ref()
+                    .map(|description| self.with_leader_values(description))
+                    .unwrap_or_else(|| PRESET_EXPLANATION.to_owned());
+                lines.push((row, Text::new(fit(&description)).unbold_all().dim_all()));
+                row += 1;
                 for (keys, text) in &active.examples {
                     lines.push((row, self.example_line(keys, text, width)));
                     row += 1;
@@ -630,12 +722,18 @@ impl KeysScreen {
                 ));
                 row += 1;
             }
-            for field in [KeysField::Copy, KeysField::Save] {
-                if self.elements.get(&field).is_some() {
-                    row += 1;
-                    rows.push((field, row));
-                    row += 1;
-                }
+            if self.elements.get(&KeysField::Save).is_some() {
+                row += 1;
+                rows.push((KeysField::Save, row));
+                row += 1;
+            }
+            if self.elements.get(&KeysField::Copy).is_some() {
+                rows.push((KeysField::Copy, row));
+                row += 1;
+            }
+            if self.elements.get(&KeysField::PresetFolder).is_some() {
+                rows.push((KeysField::PresetFolder, row));
+                row += 1;
             }
             if self.selection.set_on_command_line {
                 row += 1;
@@ -750,6 +848,21 @@ impl KeysScreen {
                         }
                     }
                 },
+                Some(Element::TextInput(input)) => {
+                    input.set_show_cursor(self.editing_folder);
+                    let input_width = FOLDER_FIELD_WIDTH.min(width);
+                    input.render(x, screen_y, input_width);
+                    if self.keybinds_dir_unsaved && input_width + 2 < width {
+                        print_text_with_coordinates(
+                            Text::new(truncate("● unsaved", width - input_width - 2))
+                                .color_all(1),
+                            x + input_width + 2,
+                            screen_y,
+                            None,
+                            None,
+                        );
+                    }
+                },
                 Some(Element::Button(button)) => {
                     let button_x = if field == KeysField::Unlock {
                         x + LABEL_WIDTH
@@ -766,32 +879,6 @@ impl KeysScreen {
         self.elements.render_overlays(rows, cols);
         self.dialog.render_centered(rows, cols);
     }
-}
-
-fn wrap(text: &str, width: usize) -> Vec<String> {
-    let mut lines: Vec<String> = vec![];
-    let mut current = String::new();
-    for word in text.split_whitespace() {
-        let needed = if current.is_empty() {
-            word.chars().count()
-        } else {
-            current.chars().count() + 1 + word.chars().count()
-        };
-        if needed > width && !current.is_empty() {
-            lines.push(std::mem::take(&mut current));
-        }
-        if !current.is_empty() {
-            current.push(' ');
-        }
-        current.push_str(word);
-    }
-    if !current.is_empty() {
-        lines.push(current);
-    }
-    lines
-        .into_iter()
-        .map(|line| truncate(&line, width))
-        .collect()
 }
 
 fn truncate(text: &str, width: usize) -> String {

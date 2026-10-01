@@ -387,7 +387,7 @@ fn menu_shortcuts_follow_a_change_of_keybinding_preset() {
     zellij.send_stdin(b"\x1b[B");
     zellij.send_stdin(b"\x1b[B");
     zellij.wait_until("keys screen opened", |grid_snapshot| {
-        grid_snapshot.contains("Keybinding presets change") && grid_snapshot.contains("Preset")
+        grid_snapshot.contains("Copy to my keybinds folder") && grid_snapshot.contains("Preset")
     });
     zellij.send_stdin(&keys::TAB);
     zellij.send_stdin(&keys::ENTER);

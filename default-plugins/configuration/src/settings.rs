@@ -83,6 +83,11 @@ pub struct SettingInfo {
 }
 
 pub const UNSET_CHOICE: &str = "(not set)";
+pub const MISSING_SUFFIX: &str = " (missing)";
+
+pub fn option_value(label: &str) -> &str {
+    label.strip_suffix(MISSING_SUFFIX).unwrap_or(label)
+}
 
 const LINE_STYLES: &[&str] = &["single", "double", "heavy", "dashed", "heavy_dashed"];
 const INPUT_MODES: &[&str] = &[
@@ -476,7 +481,7 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::KeybindsDir => info(
             "Keybinding preset folder",
-            PanesAndLayouts,
+            Keys,
             "Folder searched for keybinding presets",
             Text(TextCheck::Path),
             "keybinds in the config folder",
@@ -853,9 +858,7 @@ pub fn section(key: SettingKey) -> &'static str {
             "Clipboard"
         },
         DefaultMode | DefaultShell | DefaultCwd => "New panes",
-        DefaultLayout | LayoutDir | KeybindsDir | AutoLayout | StackedResize | StackedPaneList => {
-            "Layouts"
-        },
+        DefaultLayout | LayoutDir | AutoLayout | StackedResize | StackedPaneList => "Layouts",
         NestedSessionHandling => "Nested sessions",
         SessionName | AttachToSession | ShowStartupTips | ShowReleaseNotes => "Startup",
         SessionSerialization
@@ -884,6 +887,7 @@ pub fn section(key: SettingKey) -> &'static str {
         | SupportKittyKeyboardProtocol
         | SupportKittyGraphicsProtocol
         | HostNotificationProtocol
+        | KeybindsDir
         | Keybinds => "",
     }
 }
@@ -907,6 +911,9 @@ pub fn sort_for_display(keys: &mut Vec<SettingKey>) {
 }
 
 pub fn settings_in(category: Category) -> Vec<SettingKey> {
+    if category.is_keys_screen() {
+        return vec![];
+    }
     let mut keys = SettingKey::all()
         .into_iter()
         .filter(|key| {
@@ -952,24 +959,8 @@ pub fn kdl_string(text: &str) -> String {
     escaped
 }
 
-pub fn kdl_value(key: SettingKey, value: &str) -> String {
-    match describe(key).kind {
-        SettingKind::Toggle | SettingKind::OptionalToggle | SettingKind::Number { .. } => {
-            value.to_owned()
-        },
-        _ => kdl_string(value),
-    }
-}
-
 pub fn kdl_for(key: SettingKey, value: &str) -> String {
-    let node = format!("{} {}", key.kdl_name(), kdl_value(key, value));
-    match key.section() {
-        SettingSection::TopLevel | SettingSection::Keybinds => node,
-        SettingSection::PaneFrames => {
-            format!("ui {{\n    pane_frames {{\n        {}\n    }}\n}}", node)
-        },
-        SettingSection::WebClient => format!("web_client {{\n    {}\n}}", node),
-    }
+    key.kdl_snippet(value)
 }
 
 #[cfg(test)]
@@ -998,10 +989,20 @@ mod tests {
                 _ => {},
             }
             assert!(
-                !info.category.is_keys_screen() || info.kind == SettingKind::Keybindings,
-                "{} is in a keys screen but is not keybindings",
+                !info.category.is_keys_screen()
+                    || info.kind == SettingKind::Keybindings
+                    || key == SettingKey::KeybindsDir,
+                "{} is in a keys screen but is not shown there",
                 key
             );
+            let shape_fits = match info.kind {
+                SettingKind::Toggle | SettingKind::OptionalToggle => {
+                    key.value_shape() == SettingValueShape::Flag
+                },
+                SettingKind::Number { .. } => key.value_shape() == SettingValueShape::Number,
+                _ => key.value_shape() == SettingValueShape::Text,
+            };
+            assert!(shape_fits, "{} is written to the file in the wrong shape", key);
         }
     }
 
@@ -1020,6 +1021,13 @@ mod tests {
         for key in SettingKey::all() {
             assert!(SECTION_ORDER.contains(&section(key)), "{}", key);
         }
+    }
+
+    #[test]
+    fn a_missing_theme_label_maps_back_to_its_name() {
+        assert_eq!(option_value("nord (missing)"), "nord");
+        assert_eq!(option_value("nord"), "nord");
+        assert_eq!(option_value(UNSET_CHOICE), UNSET_CHOICE);
     }
 
     #[test]

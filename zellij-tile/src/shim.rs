@@ -1985,6 +1985,20 @@ pub fn save_config() {
     unsafe { host_run_plugin_command() };
 }
 
+pub fn overwrite_config_file() {
+    let plugin_command = PluginCommand::OverwriteConfigFile;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn reload_config_file() {
+    let plugin_command = PluginCommand::ReloadConfigFile;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 pub fn copy_keybind_preset(preset: &str, new_name: &str) -> Result<String, String> {
     use zellij_utils::plugin_api::plugin_command::copy_keybind_preset_response::Result as CopyResult;
     let plugin_command = PluginCommand::CopyKeybindPreset {

@@ -31,6 +31,7 @@ pub struct TestRunner {
     skip_concurrency_slot: bool,
     host_terminal: Option<HostTerminal>,
     cli_options: Option<Options>,
+    without_config_file: bool,
 }
 
 impl TestRunner {
@@ -45,7 +46,13 @@ impl TestRunner {
             skip_concurrency_slot: false,
             host_terminal: None,
             cli_options: None,
+            without_config_file: false,
         }
+    }
+
+    pub fn without_config_file(mut self) -> Self {
+        self.without_config_file = true;
+        self
     }
 
     pub fn with_config(mut self, extra_config_kdl: &str) -> Self {
@@ -142,14 +149,27 @@ impl TestRunner {
     ) {
         test_env::init();
         let session_name = test_env::unique_session_name();
-        let config_path = test_env::write_config(&session_name, &self.extra_config_kdl);
         let data_dir = test_env::init().join("data");
 
-        let cli_args = CliArgs {
-            config: Some(config_path),
-            data_dir: Some(data_dir),
-            command: self.cli_options.clone().map(Command::Options),
-            ..Default::default()
+        let cli_args = if self.without_config_file {
+            let mut options = test_env::default_test_options();
+            if let Some(cli_options) = self.cli_options.clone() {
+                options = options.merge(cli_options);
+            }
+            CliArgs {
+                config_dir: Some(test_env::empty_config_dir(&session_name)),
+                data_dir: Some(data_dir),
+                command: Some(Command::Options(options.into())),
+                ..Default::default()
+            }
+        } else {
+            let config_path = test_env::write_config(&session_name, &self.extra_config_kdl);
+            CliArgs {
+                config: Some(config_path),
+                data_dir: Some(data_dir),
+                command: self.cli_options.clone().map(Command::Options),
+                ..Default::default()
+            }
         };
         let (config, default_layout_info, config_options, _, _) =
             Setup::from_cli_args(&cli_args).expect("failed to load harness config");
@@ -647,7 +667,12 @@ impl TestSession {
     }
 
     pub fn config_file_path(&self) -> Option<std::path::PathBuf> {
-        self.cli_args.config.clone()
+        self.cli_args.config.clone().or_else(|| {
+            self.cli_args
+                .config_dir
+                .as_ref()
+                .map(|config_dir| config_dir.join("config.kdl"))
+        })
     }
 
     pub fn attach_client(&self, size: Size) -> TestClient {

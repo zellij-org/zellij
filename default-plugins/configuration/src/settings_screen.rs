@@ -4,9 +4,10 @@ use zellij_tile::prelude::*;
 
 use crate::keys_screen::KeysScreen;
 use crate::settings::{
-    check_text, describe, kdl_for, section, settings_in, sort_for_display, Category, Scope,
-    SettingInfo, SettingKind, CATEGORIES, UNSET_CHOICE,
+    check_text, describe, kdl_for, option_value, section, settings_in, sort_for_display,
+    Category, Scope, SettingInfo, SettingKind, CATEGORIES, MISSING_SUFFIX, UNSET_CHOICE,
 };
+use crate::theme_preview::{PreviewAction, ThemePreview, PREVIEWED_THEME_SETTINGS};
 use crate::ui_components::{print_link, take_close_request};
 
 pub const MIN_COLS: usize = 50;
@@ -23,6 +24,7 @@ const KEYS_SCREEN_ROWS: usize = 18;
 const CLOSE_NOTICE_SECONDS: f64 = 1.5;
 const DEFAULT_THEME: &str = "default";
 const FILE_PREFIX: &str = "File: ";
+const THEME_NOTE: &str = "  A dark or light terminal theme is set and is used instead of this one";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Focus {
@@ -33,7 +35,7 @@ enum Focus {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DialogPurpose {
-    Save,
+    ChangedOutside,
     RevertAll,
 }
 
@@ -56,11 +58,12 @@ pub struct SettingsScreen {
     search_active: bool,
     dialog: ConfirmDialog,
     dialog_purpose: Option<DialogPurpose>,
-    save_confirmed: bool,
     awaiting_save: Option<Vec<SettingKey>>,
+    awaiting_reload: bool,
     notice: Option<String>,
     closing: bool,
-    theme_preview: Option<(SettingKey, Option<String>, Option<String>)>,
+    theme_preview: ThemePreview,
+    theme_note_shown: bool,
     keys_screen: KeysScreen,
     latest_mode_info: Option<ModeInfo>,
     follow_focus: bool,
@@ -87,11 +90,12 @@ impl Default for SettingsScreen {
             search_active: false,
             dialog: ConfirmDialog::new("", ""),
             dialog_purpose: None,
-            save_confirmed: false,
             awaiting_save: None,
+            awaiting_reload: false,
             notice: None,
             closing: false,
-            theme_preview: None,
+            theme_preview: ThemePreview::default(),
+            theme_note_shown: false,
             keys_screen: KeysScreen::new(false),
             latest_mode_info: None,
             follow_focus: false,
@@ -100,6 +104,14 @@ impl Default for SettingsScreen {
             file_link_area: None,
             file_link_hovered: false,
         }
+    }
+}
+
+fn run_preview_action(action: PreviewAction) {
+    match action {
+        PreviewAction::Set(key, value) => reconfigure(kdl_for(key, &value), false),
+        PreviewAction::Unset(key) => unset_config_setting(key),
+        PreviewAction::Revert(key) => revert_config(Some(key)),
     }
 }
 
@@ -172,8 +184,18 @@ impl SettingsScreen {
     pub fn refresh(&mut self) {
         self.snapshot = read_config();
         self.keys_screen.set_snapshot(&self.snapshot);
+        if self.theme_note_needed() != self.theme_note_shown
+            && !self.elements.has_open_overlay()
+            && self.editing.is_none()
+        {
+            self.rebuild_rows();
+        }
         self.sync_elements();
         self.update_menu_labels();
+    }
+    fn theme_note_needed(&self) -> bool {
+        self.current_value(SettingKey::ThemeDark).is_some()
+            || self.current_value(SettingKey::ThemeLight).is_some()
     }
     fn update_menu_labels(&mut self) {
         let labels: Vec<String> = CATEGORIES
@@ -248,6 +270,7 @@ impl SettingsScreen {
     }
     fn rebuild_rows(&mut self) {
         self.editing = None;
+        self.theme_note_shown = self.theme_note_needed();
         let focused = self.elements.focused_key().copied();
         self.elements = FocusGroup::new().wrap(false);
         self.rows.clear();
@@ -272,6 +295,9 @@ impl SettingsScreen {
                 }
                 self.elements.add(key, element);
                 self.rows.push(Row::Setting(key));
+                if key == SettingKey::Theme && self.theme_note_shown {
+                    self.rows.push(Row::Line(THEME_NOTE.to_owned()));
+                }
             }
         }
         if let Some(focused) = focused {
@@ -327,7 +353,9 @@ impl SettingsScreen {
         let mut names: Vec<String> = self.snapshot.theme_names.clone();
         names.push(DEFAULT_THEME.to_owned());
         if let Some(current) = current {
-            names.push(current.clone());
+            if !names.contains(current) {
+                names.push(format!("{}{}", current, MISSING_SUFFIX));
+            }
         }
         names.sort();
         names.dedup();
@@ -362,7 +390,11 @@ impl SettingsScreen {
             _ => Some(UNSET_CHOICE.to_owned()),
         });
         value
-            .and_then(|value| options.iter().position(|option| *option == value))
+            .and_then(|value| {
+                options
+                    .iter()
+                    .position(|option| option_value(option) == value)
+            })
             .unwrap_or(0)
     }
     fn toggle_value(&self, key: SettingKey) -> bool {
@@ -428,17 +460,27 @@ impl SettingsScreen {
                 | SettingKind::Theme { .. } => {
                     let options = self.choice_options(key, &info);
                     let selected = self.selected_choice_index(key, &options);
-                    let previewing = self
-                        .theme_preview
-                        .as_ref()
-                        .map(|(k, _, _)| *k == key)
-                        .unwrap_or(false);
+                    let previewing = self.theme_preview.is_previewing(key);
                     if let Some(dropdown) = self.elements.dropdown_mut(&key) {
                         if !dropdown.is_open() && !previewing {
                             if dropdown.options() != options.as_slice() {
                                 dropdown.set_options(options);
                             }
                             dropdown.set_selected(selected);
+                        } else if dropdown.options() != options.as_slice() {
+                            let highlighted = dropdown
+                                .highlighted_index()
+                                .and_then(|index| dropdown.options().get(index))
+                                .map(|label| option_value(label).to_owned());
+                            dropdown.set_options(options.clone());
+                            dropdown.set_selected(selected);
+                            if let Some(index) = highlighted.and_then(|highlighted| {
+                                options
+                                    .iter()
+                                    .position(|option| option_value(option) == highlighted)
+                            }) {
+                                dropdown.set_highlighted_index(index);
+                            }
                         }
                     }
                 },
@@ -498,29 +540,26 @@ impl SettingsScreen {
     }
     fn save(&mut self) {
         self.awaiting_save = Some(self.snapshot.pending_restart_settings.clone());
+        self.awaiting_reload = false;
         save_config();
     }
-    fn open_save_dialog(&mut self) {
-        let backup = self
-            .snapshot
-            .backup_file_path
-            .clone()
-            .unwrap_or_else(|| "a .bak file next to it".to_owned());
+    pub fn config_file_changed_since_read(&mut self) {
+        self.awaiting_save = None;
         let file = self
             .snapshot
             .config_file_path
             .clone()
-            .unwrap_or_else(|| "the config file".to_owned());
+            .unwrap_or_else(|| "The config file".to_owned());
         let message = format!(
-            "Saving rewrites the whole file {}. Comments and formatting in it are lost. The current file is copied to {} first.",
-            file, backup
+            "{} changed outside Zellij since it was last read. Overwrite applies your unsaved changes to the file as it is now. Reload reads the file again and keeps your changes unsaved.",
+            file
         );
-        self.dialog = ConfirmDialog::new("Save settings?", message)
-            .buttons(vec!["Save", "Cancel"])
-            .width(60)
+        self.dialog = ConfirmDialog::new("Config file changed", message)
+            .buttons(vec!["Overwrite", "Reload", "Cancel"])
+            .width(64)
             .opened();
         self.clear_all_hover();
-        self.dialog_purpose = Some(DialogPurpose::Save);
+        self.dialog_purpose = Some(DialogPurpose::ChangedOutside);
     }
     fn open_revert_all_dialog(&mut self) {
         let count = self.snapshot.unsaved_count();
@@ -537,11 +576,7 @@ impl SettingsScreen {
         self.dialog_purpose = Some(DialogPurpose::RevertAll);
     }
     fn request_save(&mut self) {
-        if self.save_confirmed {
-            self.save();
-        } else {
-            self.open_save_dialog();
-        }
+        self.save();
     }
     fn request_revert_all(&mut self) {
         if self.snapshot.unsaved_count() > 0 {
@@ -552,12 +587,27 @@ impl SettingsScreen {
     }
     fn dialog_response(&mut self, response: UiResponse) {
         let purpose = self.dialog_purpose;
+        if purpose == Some(DialogPurpose::ChangedOutside) {
+            match response {
+                UiResponse::Submitted(UiValue::Choice { index: 0, .. }) => {
+                    self.awaiting_save = Some(self.snapshot.pending_restart_settings.clone());
+                    self.awaiting_reload = false;
+                    overwrite_config_file();
+                },
+                UiResponse::Submitted(UiValue::Choice { index: 1, .. }) => {
+                    self.awaiting_save = None;
+                    self.awaiting_reload = true;
+                    reload_config_file();
+                },
+                UiResponse::Submitted(_) | UiResponse::Cancelled => {
+                    self.notice = Some("Not saved".to_owned());
+                },
+                _ => {},
+            }
+        }
         if let UiResponse::Submitted(UiValue::Choice { index: 0, .. }) = response {
             match purpose {
-                Some(DialogPurpose::Save) => {
-                    self.save_confirmed = true;
-                    self.save();
-                },
+                Some(DialogPurpose::ChangedOutside) => {},
                 Some(DialogPurpose::RevertAll) => {
                     revert_config(None);
                     self.refresh();
@@ -591,6 +641,14 @@ impl SettingsScreen {
         }
     }
     pub fn config_written(&mut self) {
+        if std::mem::replace(&mut self.awaiting_reload, false) {
+            let unsaved = self.snapshot.unsaved_count();
+            self.notice = Some(format!(
+                "Reloaded the config file; {} unsaved change{} kept",
+                unsaved,
+                if unsaved == 1 { "" } else { "s" }
+            ));
+        }
         if let Some(restart_settings) = self.awaiting_save.take() {
             let path = self
                 .snapshot
@@ -608,9 +666,11 @@ impl SettingsScreen {
             });
         }
         self.refresh();
+        self.update_theme_preview();
     }
     pub fn config_write_failed(&mut self, path: Option<String>) {
         self.awaiting_save = None;
+        self.awaiting_reload = false;
         self.notice = Some(match path {
             Some(path) => format!("Failed to write the config file: {}", path),
             None => "Failed to write the config file".to_owned(),
@@ -624,7 +684,26 @@ impl SettingsScreen {
             names.join(", "),
             if names.len() == 1 { "was" } else { "were" }
         ));
+        self.theme_preview.file_replaced(&dropped);
         self.refresh();
+        self.update_theme_preview();
+    }
+    pub fn before_close(&mut self) {
+        if let Some(action) = self.theme_preview.restore() {
+            run_preview_action(action);
+        }
+    }
+    pub fn hidden(&mut self) {
+        self.restore_theme_preview();
+        if self.elements.has_open_overlay() {
+            self.elements.blur();
+            if self.focus == Focus::Content {
+                let focused = self.elements.focused_key().copied();
+                if let Some(focused) = focused {
+                    self.elements.focus(&focused);
+                }
+            }
+        }
     }
     pub fn update_keybind_presets(
         &mut self,
@@ -637,7 +716,7 @@ impl SettingsScreen {
         self.keys_screen
             .set_link_color(Some(mode_info.style.colors.text_unselected.emphasis_2));
         self.latest_mode_info = Some(mode_info);
-        if self.theme_preview.is_none() {
+        if self.theme_preview.active_key().is_none() {
             self.refresh();
         }
     }
@@ -947,11 +1026,11 @@ impl SettingsScreen {
         match response {
             UiResponse::Changed(UiValue::Bool(on)) => self.set_value(key, &on.to_string()),
             UiResponse::Changed(UiValue::Choice { label, .. }) => {
-                self.theme_preview = None;
+                self.theme_preview.commit(key);
                 if label == UNSET_CHOICE {
                     self.unset_value(key);
                 } else {
-                    self.set_value(key, &label);
+                    self.set_value(key, option_value(&label));
                 }
             },
             UiResponse::Changed(UiValue::Number(number)) => {
@@ -988,49 +1067,46 @@ impl SettingsScreen {
             _ => {},
         }
     }
+    fn open_theme_highlight(&self) -> Option<(SettingKey, String, String)> {
+        PREVIEWED_THEME_SETTINGS.iter().find_map(|key| {
+            let dropdown = self.elements.dropdown(key).filter(|d| d.is_open())?;
+            let highlighted = dropdown
+                .highlighted_index()
+                .and_then(|index| dropdown.options().get(index))?;
+            let shown = dropdown.selected_value().unwrap_or(UNSET_CHOICE);
+            Some((
+                *key,
+                option_value(highlighted).to_owned(),
+                option_value(shown).to_owned(),
+            ))
+        })
+    }
     fn update_theme_preview(&mut self) {
-        let theme_key = SettingKey::Theme;
-        let open_highlight = self
-            .elements
-            .dropdown(&theme_key)
-            .filter(|d| d.is_open())
-            .and_then(|d| {
-                d.highlighted_index()
-                    .and_then(|i| d.options().get(i).cloned())
-            });
-        match open_highlight {
-            Some(highlighted) => {
-                let (original, last) = match &self.theme_preview {
-                    Some((_, original, last)) => (original.clone(), last.clone()),
-                    None => {
-                        let original = self.current_value(theme_key);
-                        let shown = original
-                            .clone()
-                            .or_else(|| Some(describe(theme_key).default.to_owned()));
-                        (original, shown)
-                    },
-                };
-                let last = if last.as_ref() != Some(&highlighted) {
-                    reconfigure(kdl_for(theme_key, &highlighted), false);
-                    Some(highlighted)
-                } else {
-                    last
-                };
-                self.theme_preview = Some((theme_key, original, last));
+        match self.open_theme_highlight() {
+            Some((key, highlighted, shown_originally)) => {
+                let state = self.setting(key).cloned();
+                let actions = self.theme_preview.highlight(
+                    key,
+                    &highlighted,
+                    &shown_originally,
+                    state.as_ref(),
+                    UNSET_CHOICE,
+                );
+                let applied_any = !actions.is_empty();
+                for action in actions {
+                    run_preview_action(action);
+                }
+                if applied_any {
+                    self.refresh();
+                }
             },
             None => self.restore_theme_preview(),
         }
     }
     fn restore_theme_preview(&mut self) {
-        if let Some((key, original, last)) = self.theme_preview.take() {
-            let shown_originally = original
-                .clone()
-                .or_else(|| Some(describe(key).default.to_owned()));
-            if last != shown_originally {
-                match original {
-                    Some(original) => reconfigure(kdl_for(key, &original), false),
-                    None => unset_config_setting(key),
-                }
+        if self.theme_preview.active_key().is_some() {
+            if let Some(action) = self.theme_preview.restore() {
+                run_preview_action(action);
             }
             self.refresh();
         }
@@ -1444,6 +1520,14 @@ impl SettingsScreen {
                 ("<Esc>", "close"),
             ],
             Focus::Search => &[("<↓>", "results"), ("<Esc>", "end search")],
+            Focus::Content
+                if self.showing_keys_screen() && self.keys_screen.is_editing_folder() =>
+            {
+                &[("<Enter>", "apply"), ("<Esc>", "cancel")]
+            },
+            Focus::Content if self.showing_keys_screen() && self.keys_screen.folder_is_focused() => {
+                &[("<Tab/↓↑>", "move"), ("<Enter>", "edit"), ("<Esc>", "close")]
+            },
             Focus::Content if self.showing_keys_screen() => &[
                 ("<Tab/↓↑>", "move"),
                 ("<Space>", "change"),

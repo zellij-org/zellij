@@ -5724,7 +5724,7 @@ impl Keybinds {
             node
         }
     }
-    fn serialize_mode_keybinds(
+    pub(crate) fn serialize_mode_keybinds(
         &self,
         keybinds: &BTreeMap<KeyWithModifier, Vec<Action>>,
     ) -> KdlDocument {

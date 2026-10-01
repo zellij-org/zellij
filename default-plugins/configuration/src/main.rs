@@ -1,6 +1,7 @@
 mod keys_screen;
 mod settings;
 mod settings_screen;
+mod theme_preview;
 mod ui_components;
 
 use zellij_tile::prelude::*;
@@ -66,6 +67,9 @@ impl ZellijPlugin for State {
                 EventType::ConfigChangesDropped,
                 EventType::ModeUpdate,
                 EventType::AvailableKeybindPresets,
+                EventType::ConfigFileChangedSinceRead,
+                EventType::BeforeClose,
+                EventType::Visible,
             ]);
             set_close_directly(false);
             self.screen = Screen::Settings(SettingsScreen::new());
@@ -144,6 +148,18 @@ impl ZellijPlugin for State {
                 },
                 Event::AvailableKeybindPresets(presets, errors) => {
                     settings_screen.update_keybind_presets(presets, errors);
+                    true
+                },
+                Event::ConfigFileChangedSinceRead => {
+                    settings_screen.config_file_changed_since_read();
+                    true
+                },
+                Event::BeforeClose => {
+                    settings_screen.before_close();
+                    false
+                },
+                Event::Visible(false) => {
+                    settings_screen.hidden();
                     true
                 },
                 _ => false,

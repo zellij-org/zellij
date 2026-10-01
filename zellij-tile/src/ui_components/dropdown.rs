@@ -111,6 +111,11 @@ impl Dropdown {
             None
         }
     }
+    pub fn set_highlighted_index(&mut self, index: usize) {
+        if self.open && index < self.options.len() {
+            self.menu.set_highlighted(Some(index));
+        }
+    }
     pub fn opens_upward(&self) -> bool {
         self.opens_upward
     }

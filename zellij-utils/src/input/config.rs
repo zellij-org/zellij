@@ -8,7 +8,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs::File;
 use std::io::{self, Read};
-#[cfg(not(target_family = "wasm"))]
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -353,50 +352,6 @@ impl Config {
     pub fn default_config_file_path() -> Option<PathBuf> {
         home::find_default_config_dir().map(|config_dir| config_dir.join(DEFAULT_CONFIG_FILE_NAME))
     }
-    pub fn write_config_to_disk(
-        config: String,
-        config_file_path: &PathBuf,
-    ) -> Result<Config, Option<PathBuf>> {
-        // if we fail, try to return the PathBuf of the file we were not able to write to
-        let config_file_path = config_file_path.clone();
-        Config::from_kdl(&config, None)
-            .map_err(|e| {
-                log::error!("Failed to parse config: {}", e);
-                None
-            })
-            .and_then(|parsed_config| {
-                let backed_up_file_name = Config::backup_current_config(&config_file_path)?;
-                let config = match backed_up_file_name {
-                    Some(backed_up_file_name) => {
-                        format!(
-                            "{}{}",
-                            Config::autogen_config_message(backed_up_file_name),
-                            config
-                        )
-                    },
-                    None => config,
-                };
-                std::fs::write(&config_file_path, config.as_bytes()).map_err(|e| {
-                    log::error!("Failed to write config: {}", e);
-                    Some(config_file_path.clone())
-                })?;
-                let written_config = std::fs::read_to_string(&config_file_path).map_err(|e| {
-                    log::error!("Failed to read written config: {}", e);
-                    Some(config_file_path.clone())
-                })?;
-                let parsed_written_config =
-                    Config::from_kdl(&written_config, None).map_err(|e| {
-                        log::error!("Failed to parse written config: {}", e);
-                        None
-                    })?;
-                if parsed_written_config == parsed_config {
-                    Ok(parsed_config)
-                } else {
-                    log::error!("Configuration corrupted when writing to disk");
-                    Err(Some(config_file_path))
-                }
-            })
-    }
     // returns true if the config was not previously written to disk and we successfully wrote it
     pub fn write_config_to_disk_if_it_does_not_exist(
         config: String,
@@ -422,89 +377,24 @@ impl Config {
             }
         }
     }
-    pub fn find_free_backup_file_name(config_file_path: &PathBuf) -> Option<PathBuf> {
-        let mut backup_config_path = None;
+    pub fn backup_file_path(config_file_path: &Path) -> PathBuf {
         let config_file_name = config_file_path
             .file_name()
             .and_then(|f| f.to_str())
             .unwrap_or_else(|| DEFAULT_CONFIG_FILE_NAME);
-        for i in 0..100 {
-            let new_file_name = if i == 0 {
-                format!("{}.bak", config_file_name)
-            } else {
-                format!("{}.bak.{}", config_file_name, i)
-            };
-            let mut potential_config_path = config_file_path.clone();
-            potential_config_path.set_file_name(new_file_name);
-            if !potential_config_path.exists() {
-                backup_config_path = Some(potential_config_path);
-                break;
-            }
-        }
-        backup_config_path
+        config_file_path.with_file_name(format!("{}.bak", config_file_name))
     }
-    fn backup_config_with_written_content_confirmation(
-        current_config: &str,
-        current_config_file_path: &PathBuf,
-        backup_config_path: &PathBuf,
-    ) -> bool {
-        let _ = std::fs::copy(current_config_file_path, &backup_config_path);
-        match std::fs::read_to_string(&backup_config_path) {
-            Ok(backed_up_config) => current_config == &backed_up_config,
-            Err(e) => {
-                log::error!(
-                    "Failed to back up config file {}: {:?}",
-                    backup_config_path.display(),
-                    e
-                );
-                false
-            },
-        }
-    }
-    fn backup_current_config(
-        config_file_path: &PathBuf,
-    ) -> Result<Option<PathBuf>, Option<PathBuf>> {
-        // if we fail, try to return the PathBuf of the file we were not able to write to
-        // if let Some(config_file_path) = Config::config_file_path(&opts) {
-        match std::fs::read_to_string(&config_file_path) {
-            Ok(current_config) => {
-                let Some(backup_config_path) =
-                    Config::find_free_backup_file_name(&config_file_path)
-                else {
-                    log::error!("Failed to find a file name to back up the configuration to, ran out of files.");
-                    return Err(None);
-                };
-                if Config::backup_config_with_written_content_confirmation(
-                    &current_config,
-                    &config_file_path,
-                    &backup_config_path,
-                ) {
-                    Ok(Some(backup_config_path))
-                } else {
-                    log::error!(
-                        "Failed to back up config file: {}",
-                        backup_config_path.display()
-                    );
-                    Err(Some(backup_config_path))
-                }
-            },
-            Err(e) => {
-                if e.kind() == std::io::ErrorKind::NotFound {
-                    Ok(None)
-                } else {
-                    log::error!(
-                        "Failed to read current config {}: {}",
-                        config_file_path.display(),
-                        e
-                    );
-                    Err(Some(config_file_path.clone()))
-                }
-            },
-        }
-    }
-    fn autogen_config_message(backed_up_file_name: PathBuf) -> String {
-        format!("//\n// THIS FILE WAS AUTOGENERATED BY ZELLIJ, THE PREVIOUS FILE AT THIS LOCATION WAS COPIED TO: {}\n//\n\n", backed_up_file_name.display())
-    }
+}
+
+#[cfg(not(target_family = "wasm"))]
+pub fn load_config_file(config_file_path: &Path, config_dir: Option<&Path>) -> Option<Config> {
+    let mut cli_args = CliArgs::default();
+    cli_args.config = Some(config_file_path.to_path_buf());
+    cli_args.config_dir = config_dir.map(Path::to_path_buf);
+    crate::setup::Setup::from_cli_args(&cli_args)
+        .map(|(config, ..)| config)
+        .map_err(|e| log::error!("Failed to load {}: {}", config_file_path.display(), e))
+        .ok()
 }
 
 #[cfg(not(target_family = "wasm"))]
@@ -763,17 +653,22 @@ pub async fn watch_layout_dir_changes<F, Fut>(
 }
 
 #[cfg(not(target_family = "wasm"))]
-pub async fn watch_keybinds_dir_changes<F, Fut>(keybinds_dir: PathBuf, on_presets_change: F)
-where
+pub async fn watch_keybinds_dir_changes<F, Fut>(
+    keybinds_dir: PathBuf,
+    stop: Arc<std::sync::atomic::AtomicBool>,
+    on_presets_change: F,
+) where
     F: Fn(Vec<KeybindPresetInfo>, Vec<KeybindPresetWithError>) -> Fut + Send + 'static,
     Fut: std::future::Future<Output = ()> + Send,
 {
     use super::keybind_presets::list_keybind_presets;
     use notify::{self, Config as WatcherConfig, Event, PollWatcher, RecursiveMode, Watcher};
+    use std::sync::atomic::Ordering;
     use std::time::Duration;
     use tokio::sync::mpsc;
 
-    loop {
+    let stopped = || stop.load(Ordering::SeqCst);
+    while !stopped() {
         if keybinds_dir.exists() {
             let (tx, mut rx) = mpsc::unbounded_channel();
 
@@ -796,7 +691,16 @@ where
             let (presets, preset_errors) = list_keybind_presets(Some(&keybinds_dir), &[]);
             on_presets_change(presets, preset_errors).await;
 
-            while let Some(event_result) = rx.recv().await {
+            loop {
+                if stopped() {
+                    return;
+                }
+                let event_result =
+                    match tokio::time::timeout(Duration::from_millis(250), rx.recv()).await {
+                        Err(_) => continue,
+                        Ok(None) => break,
+                        Ok(Some(event_result)) => event_result,
+                    };
                 match event_result {
                     Ok(event) => {
                         if event.kind.is_remove()
@@ -805,6 +709,9 @@ where
                         {
                             tokio::time::sleep(Duration::from_millis(100)).await;
 
+                            if stopped() {
+                                return;
+                            }
                             if !keybinds_dir.exists() {
                                 break;
                             }
@@ -817,12 +724,15 @@ where
                     Err(_) => break,
                 }
             }
+            if stopped() {
+                return;
+            }
             let (presets, preset_errors) = list_keybind_presets(None, &[]);
             on_presets_change(presets, preset_errors).await;
         }
 
-        while !keybinds_dir.exists() {
-            tokio::time::sleep(Duration::from_secs(3)).await;
+        while !keybinds_dir.exists() && !stopped() {
+            tokio::time::sleep(Duration::from_millis(250)).await;
         }
     }
 }

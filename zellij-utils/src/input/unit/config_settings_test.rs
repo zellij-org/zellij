@@ -94,7 +94,7 @@ fn every_border_override_set(line_style: LineStyle) -> BorderStyleOverride {
     }
 }
 
-fn every_setting_set() -> Config {
+pub(crate) fn every_setting_set() -> Config {
     let with_preset = Config::from_kdl(
         "keybinds preset=\"default\"",
         Some(Config::from_default_assets().unwrap()),

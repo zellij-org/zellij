@@ -1052,6 +1052,7 @@ pub enum EventType {
     ContextMenu = 52,
     ConfigChangesDropped = 53,
     AvailableKeybindPresets = 54,
+    ConfigFileChangedSinceRead = 55,
 }
 impl EventType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1113,6 +1114,7 @@ impl EventType {
             EventType::ContextMenu => "ContextMenu",
             EventType::ConfigChangesDropped => "ConfigChangesDropped",
             EventType::AvailableKeybindPresets => "AvailableKeybindPresets",
+            EventType::ConfigFileChangedSinceRead => "ConfigFileChangedSinceRead",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1171,6 +1173,7 @@ impl EventType {
             "ContextMenu" => Some(Self::ContextMenu),
             "ConfigChangesDropped" => Some(Self::ConfigChangesDropped),
             "AvailableKeybindPresets" => Some(Self::AvailableKeybindPresets),
+            "ConfigFileChangedSinceRead" => Some(Self::ConfigFileChangedSinceRead),
             _ => None,
         }
     }

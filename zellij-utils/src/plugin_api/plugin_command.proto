@@ -237,6 +237,8 @@ enum CommandName {
   SaveConfig = 244;
   CopyKeybindPreset = 245;
   SetCliPipeExitCode = 246;
+  OverwriteConfigFile = 247;
+  ReloadConfigFile = 248;
 }
 
 message PluginCommand {
@@ -415,6 +417,8 @@ message PluginCommand {
     SaveConfigPayload save_config_payload = 187;
     CopyKeybindPresetPayload copy_keybind_preset_payload = 188;
     SetCliPipeExitCodePayload set_cli_pipe_exit_code_payload = 189;
+    SaveConfigPayload overwrite_config_file_payload = 190;
+    SaveConfigPayload reload_config_file_payload = 191;
   }
 }
 

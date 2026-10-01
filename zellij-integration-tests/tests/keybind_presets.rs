@@ -18,7 +18,7 @@ fn open_keys_screen(zellij: &TestSession) {
         zellij.send_stdin(ARROW_DOWN);
     }
     zellij.wait_until("keys screen opened", |grid_snapshot| {
-        grid_snapshot.contains("Keybinding presets change") && grid_snapshot.contains("Preset")
+        grid_snapshot.contains("Copy to my keybinds folder") && grid_snapshot.contains("Preset")
     });
     zellij.send_stdin(&keys::TAB);
 }
@@ -98,10 +98,6 @@ fn saving_after_switching_to_unlock_first_writes_only_the_preset_attribute() {
     });
 
     zellij.send_stdin(&keys::ctrl('a'));
-    zellij.wait_until("save confirmation shown", |grid_snapshot| {
-        grid_snapshot.contains("Save settings?")
-    });
-    zellij.send_stdin(&keys::ENTER);
     zellij.wait_until("config saved", |grid_snapshot| {
         grid_snapshot.contains("Saved to")
     });
@@ -201,10 +197,6 @@ fn a_preset_given_on_the_command_line_applies_to_the_session_but_is_not_saved() 
     );
 
     zellij.send_stdin(&keys::ctrl('a'));
-    zellij.wait_until("save confirmation shown", |grid_snapshot| {
-        grid_snapshot.contains("Save settings?")
-    });
-    zellij.send_stdin(&keys::ENTER);
     zellij.wait_until("config saved", |grid_snapshot| {
         grid_snapshot.contains("Saved to")
     });
@@ -271,10 +263,6 @@ keybinds clear-defaults=true {
     });
 
     zellij.send_stdin(&keys::ctrl('a'));
-    zellij.wait_until("save confirmation shown", |grid_snapshot| {
-        grid_snapshot.contains("Save settings?")
-    });
-    zellij.send_stdin(&keys::ENTER);
     zellij.wait_until("config saved", |grid_snapshot| {
         grid_snapshot.contains("Saved to")
     });
@@ -330,6 +318,7 @@ fn tab_moves_through_the_leader_key_fields_before_leaving_the_keys_page() {
             && grid_snapshot.contains("1 unsaved change")
     });
 
+    zellij.send_stdin(&keys::TAB);
     zellij.send_stdin(&keys::TAB);
     zellij.send_stdin(&keys::TAB);
     zellij.wait_until("focus went back to the categories", |grid_snapshot| {
@@ -436,33 +425,104 @@ fn a_preset_from_the_keybinds_folder_links_to_its_file() {
 }
 
 #[test]
-fn the_keys_page_scrolls_to_the_focused_field_and_wraps_its_explanation() {
+fn the_keys_page_fits_its_fields_at_the_default_size() {
     let mut zellij = start_zellij();
     claim_first_terminal_and_wait_for_prompt(&zellij);
     zellij.send_stdin(&keys::ctrl('o'));
     zellij.send_stdin(&keys::key('c'));
     open_keys_screen(&zellij);
-    zellij.wait_until("the explanation is wrapped, not cut off", |grid_snapshot| {
-        grid_snapshot.contains("Keybinding presets change how modes are accessed and can help")
-            && grid_snapshot.contains("prevent key collisions with other programs.")
+    zellij.wait_until("every field of the keys page is shown", |grid_snapshot| {
+        grid_snapshot.contains("All modes available directly from the base mode, eg.:")
+            && grid_snapshot.contains("Ctrl p to enter PANE mode")
+            && grid_snapshot.contains("Secondary key")
+            && grid_snapshot.contains("Copy to my keybinds folder to edit")
+            && grid_snapshot.contains("Keybinding preset folder")
     });
-
-    for _ in 0..3 {
+    for _ in 0..4 {
         zellij.send_stdin(&keys::TAB);
     }
-    zellij.wait_until("the copy button scrolled into view", |grid_snapshot| {
-        grid_snapshot.contains("Copy to my keybinds folder to edit")
-            && !grid_snapshot.contains("Keybinding presets change")
+    zellij.wait_until(
+        "the preset folder is focused without scrolling the page",
+        |grid_snapshot| {
+            grid_snapshot.contains("<Enter> - edit")
+                && grid_snapshot.contains("All modes available directly")
+        },
+    );
+    zellij.quit();
+}
+
+#[test]
+fn the_keys_page_scrolls_to_the_focused_field_in_a_small_pane() {
+    let mut zellij = TestRunner::new(Size {
+        cols: 120,
+        rows: 20,
+    })
+    .start();
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+    zellij.send_stdin(&keys::ctrl('o'));
+    zellij.send_stdin(&keys::key('c'));
+    zellij.wait_until("configuration plugin opened", |grid_snapshot| {
+        grid_snapshot.contains("Configuration")
+    });
+    for _ in 0..2 {
+        zellij.send_stdin(ARROW_DOWN);
+    }
+    zellij.wait_until("the top of the keys page is shown", |grid_snapshot| {
+        grid_snapshot.contains("All modes available directly")
+            && !grid_snapshot.contains("Keybinding preset folder")
+    });
+    zellij.send_stdin(&keys::TAB);
+    for _ in 0..4 {
+        zellij.send_stdin(&keys::TAB);
+    }
+    zellij.wait_until("the preset folder scrolled into view", |grid_snapshot| {
+        grid_snapshot.contains("Keybinding preset folder")
+            && !grid_snapshot.contains("All modes available directly")
     });
     zellij.send_stdin(&keys::TAB);
     zellij.wait_until(
         "back at the top when focus leaves the page",
         |grid_snapshot| {
             grid_snapshot.contains("<↓↑> - category")
-                && grid_snapshot.contains("Keybinding presets change")
+                && grid_snapshot.contains("All modes available directly")
         },
     );
+    zellij.quit();
+}
 
+#[test]
+fn the_preset_folder_is_set_on_the_keys_page_and_lists_its_presets() {
+    let keybinds_dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        keybinds_dir.path().join("from-new-folder.kdl"),
+        "keybinds {\n}\n",
+    )
+    .unwrap();
+    let mut zellij = start_zellij();
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+    zellij.send_stdin(&keys::ctrl('o'));
+    zellij.send_stdin(&keys::key('c'));
+    open_keys_screen(&zellij);
+    for _ in 0..4 {
+        zellij.send_stdin(&keys::TAB);
+    }
+    zellij.wait_until("the preset folder is focused", |grid_snapshot| {
+        grid_snapshot.contains("<Enter> - edit")
+    });
+    zellij.send_stdin(&keys::ENTER);
+    zellij.send_stdin(keybinds_dir.path().display().to_string().as_bytes());
+    zellij.send_stdin(&keys::ENTER);
+    zellij.wait_until("the folder is applied", |grid_snapshot| {
+        grid_snapshot.contains("1 unsaved change") && grid_snapshot.contains("● unsaved")
+    });
+    for _ in 0..4 {
+        zellij.send_stdin(ARROW_UP);
+    }
+    zellij.send_stdin(&keys::ENTER);
+    zellij.wait_until(
+        "the preset list shows the new folder's preset",
+        |grid_snapshot| grid_snapshot.contains("from-new-folder"),
+    );
     zellij.quit();
 }
 

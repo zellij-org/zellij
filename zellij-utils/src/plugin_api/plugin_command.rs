@@ -2634,6 +2634,16 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 Some(Payload::SaveConfigPayload(_)) => Ok(PluginCommand::SaveConfig),
                 _ => Err("Mismatched payload for SaveConfig"),
             },
+            Some(CommandName::OverwriteConfigFile) => match protobuf_plugin_command.payload {
+                Some(Payload::OverwriteConfigFilePayload(_)) => {
+                    Ok(PluginCommand::OverwriteConfigFile)
+                },
+                _ => Err("Mismatched payload for OverwriteConfigFile"),
+            },
+            Some(CommandName::ReloadConfigFile) => match protobuf_plugin_command.payload {
+                Some(Payload::ReloadConfigFilePayload(_)) => Ok(PluginCommand::ReloadConfigFile),
+                _ => Err("Mismatched payload for ReloadConfigFile"),
+            },
             Some(CommandName::CopyKeybindPreset) => match protobuf_plugin_command.payload {
                 Some(Payload::CopyKeybindPresetPayload(payload)) => {
                     Ok(PluginCommand::CopyKeybindPreset {
@@ -4555,6 +4565,14 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             PluginCommand::SaveConfig => Ok(ProtobufPluginCommand {
                 name: CommandName::SaveConfig as i32,
                 payload: Some(Payload::SaveConfigPayload(SaveConfigPayload {})),
+            }),
+            PluginCommand::OverwriteConfigFile => Ok(ProtobufPluginCommand {
+                name: CommandName::OverwriteConfigFile as i32,
+                payload: Some(Payload::OverwriteConfigFilePayload(SaveConfigPayload {})),
+            }),
+            PluginCommand::ReloadConfigFile => Ok(ProtobufPluginCommand {
+                name: CommandName::ReloadConfigFile as i32,
+                payload: Some(Payload::ReloadConfigFilePayload(SaveConfigPayload {})),
             }),
             PluginCommand::RunContextMenuItem(index) => Ok(ProtobufPluginCommand {
                 name: CommandName::RunContextMenuItem as i32,

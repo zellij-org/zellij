@@ -210,6 +210,7 @@ pub enum PluginInstruction {
     },
     ConfigWasWrittenToDisk,
     ConfigChangesDropped(ClientId, Vec<SettingKey>),
+    ConfigFileChangedSinceRead(ClientId),
     WatchFilesystem,
     ListClientsToPlugin(SessionLayoutMetadata, PluginId, ClientId),
     ChangePluginHostDir(PathBuf, PluginId, ClientId),
@@ -305,6 +306,9 @@ impl From<&PluginInstruction> for PluginContext {
             },
             PluginInstruction::ConfigWasWrittenToDisk => PluginContext::ConfigWasWrittenToDisk,
             PluginInstruction::ConfigChangesDropped(..) => PluginContext::ConfigChangesDropped,
+            PluginInstruction::ConfigFileChangedSinceRead(..) => {
+                PluginContext::ConfigFileChangedSinceRead
+            },
             PluginInstruction::ListClientsToPlugin(..) => PluginContext::ListClientsToPlugin,
             PluginInstruction::ChangePluginHostDir(..) => PluginContext::ChangePluginHostDir,
             PluginInstruction::WebServerStarted(..) => PluginContext::WebServerStarted,
@@ -1405,6 +1409,12 @@ pub(crate) fn plugin_thread_main(
                     Some(client_id),
                     Event::ConfigChangesDropped(dropped_settings),
                 )];
+                wasm_bridge
+                    .update_plugins(updates, shutdown_send.clone())
+                    .non_fatal();
+            },
+            PluginInstruction::ConfigFileChangedSinceRead(client_id) => {
+                let updates = vec![(None, Some(client_id), Event::ConfigFileChangedSinceRead)];
                 wasm_bridge
                     .update_plugins(updates, shutdown_send.clone())
                     .non_fatal();

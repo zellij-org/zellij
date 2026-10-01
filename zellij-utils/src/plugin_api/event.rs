@@ -543,6 +543,10 @@ impl TryFrom<ProtobufEvent> for Event {
                 None => Ok(Event::ConfigWasWrittenToDisk),
                 _ => Err("Malformed payload for the ConfigWasWrittenToDisk Event"),
             },
+            Some(ProtobufEventType::ConfigFileChangedSinceRead) => match protobuf_event.payload {
+                None => Ok(Event::ConfigFileChangedSinceRead),
+                _ => Err("Malformed payload for the ConfigFileChangedSinceRead Event"),
+            },
             Some(ProtobufEventType::WebServerStatus) => match protobuf_event.payload {
                 Some(ProtobufEventPayload::WebServerStatusPayload(web_server_status)) => {
                     Ok(Event::WebServerStatus(web_server_status.try_into()?))
@@ -1235,6 +1239,10 @@ impl TryFrom<Event> for ProtobufEvent {
             }),
             Event::ConfigWasWrittenToDisk => Ok(ProtobufEvent {
                 name: ProtobufEventType::ConfigWasWrittenToDisk as i32,
+                payload: None,
+            }),
+            Event::ConfigFileChangedSinceRead => Ok(ProtobufEvent {
+                name: ProtobufEventType::ConfigFileChangedSinceRead as i32,
                 payload: None,
             }),
             Event::WebServerStatus(web_server_status) => Ok(ProtobufEvent {
@@ -2539,6 +2547,7 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::ContextMenu => EventType::ContextMenu,
             ProtobufEventType::ConfigChangesDropped => EventType::ConfigChangesDropped,
             ProtobufEventType::AvailableKeybindPresets => EventType::AvailableKeybindPresets,
+            ProtobufEventType::ConfigFileChangedSinceRead => EventType::ConfigFileChangedSinceRead,
         })
     }
 }
@@ -2602,6 +2611,7 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::ContextMenu => ProtobufEventType::ContextMenu,
             EventType::ConfigChangesDropped => ProtobufEventType::ConfigChangesDropped,
             EventType::AvailableKeybindPresets => ProtobufEventType::AvailableKeybindPresets,
+            EventType::ConfigFileChangedSinceRead => ProtobufEventType::ConfigFileChangedSinceRead,
         })
     }
 }

@@ -1061,6 +1061,7 @@ pub enum Event {
     ContextMenu(ContextMenuContext, Vec<ContextMenuEntry>),
     ConfigChangesDropped(Vec<SettingKey>),
     AvailableKeybindPresets(Vec<KeybindPresetInfo>, Vec<KeybindPresetWithError>),
+    ConfigFileChangedSinceRead,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -4378,6 +4379,8 @@ pub enum PluginCommand {
     RevertConfig(Option<SettingKey>),
     UnsetConfigSetting(SettingKey),
     SaveConfig,
+    OverwriteConfigFile,
+    ReloadConfigFile,
     CopyKeybindPreset {
         preset: String,
         new_name: String,
@@ -4392,8 +4395,15 @@ pub enum SettingSection {
     Keybinds,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum SettingValueShape {
+    Flag,
+    Number,
+    Text,
+}
+
 macro_rules! setting_keys {
-    ($($variant:ident => ($section:ident, $kdl_name:literal, $requires_restart:literal)),* $(,)?) => {
+    ($($variant:ident => ($section:ident, $kdl_name:literal, $requires_restart:literal, $shape:ident)),* $(,)?) => {
         #[derive(
             Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, EnumIter,
         )]
@@ -4416,94 +4426,99 @@ macro_rules! setting_keys {
                     $(SettingKey::$variant => $requires_restart),*
                 }
             }
+            pub fn value_shape(&self) -> SettingValueShape {
+                match self {
+                    $(SettingKey::$variant => SettingValueShape::$shape),*
+                }
+            }
         }
     };
 }
 
 setting_keys! {
-    SimplifiedUi => (TopLevel, "simplified_ui", false),
-    Theme => (TopLevel, "theme", false),
-    ThemeDark => (TopLevel, "theme_dark", false),
-    ThemeLight => (TopLevel, "theme_light", false),
-    ExplicitThemeHue => (TopLevel, "explicit_theme_hue", false),
-    DefaultMode => (TopLevel, "default_mode", false),
-    DefaultShell => (TopLevel, "default_shell", false),
-    DefaultCwd => (TopLevel, "default_cwd", false),
-    DefaultLayout => (TopLevel, "default_layout", true),
-    LayoutDir => (TopLevel, "layout_dir", false),
-    ThemeDir => (TopLevel, "theme_dir", false),
-    KeybindsDir => (TopLevel, "keybinds_dir", false),
-    MouseMode => (TopLevel, "mouse_mode", true),
-    PaneFrames => (TopLevel, "pane_frames", false),
-    PaneFrameStyle => (TopLevel, "pane_frame_style", false),
-    MirrorSession => (TopLevel, "mirror_session", true),
-    OnForceClose => (TopLevel, "on_force_close", true),
-    ScrollBufferSize => (TopLevel, "scroll_buffer_size", true),
-    CopyCommand => (TopLevel, "copy_command", false),
-    CopyClipboard => (TopLevel, "copy_clipboard", false),
-    CopyOnSelect => (TopLevel, "copy_on_select", false),
-    Osc8Hyperlinks => (TopLevel, "osc8_hyperlinks", true),
-    ScrollbackEditor => (TopLevel, "scrollback_editor", false),
-    SessionName => (TopLevel, "session_name", true),
-    AttachToSession => (TopLevel, "attach_to_session", true),
-    AutoLayout => (TopLevel, "auto_layout", false),
-    SessionSerialization => (TopLevel, "session_serialization", true),
-    SerializePaneViewport => (TopLevel, "serialize_pane_viewport", true),
-    ScrollbackLinesToSerialize => (TopLevel, "scrollback_lines_to_serialize", true),
-    StyledUnderlines => (TopLevel, "styled_underlines", true),
-    SerializationInterval => (TopLevel, "serialization_interval", true),
-    DisableSessionMetadata => (TopLevel, "disable_session_metadata", true),
-    SupportKittyKeyboardProtocol => (TopLevel, "support_kitty_keyboard_protocol", true),
-    SupportKittyGraphicsProtocol => (TopLevel, "support_kitty_graphics_protocol", true),
-    WebServer => (TopLevel, "web_server", true),
-    WebSharing => (TopLevel, "web_sharing", true),
-    StackedResize => (TopLevel, "stacked_resize", false),
-    StackedPaneList => (TopLevel, "stacked_pane_list", false),
-    ShowStartupTips => (TopLevel, "show_startup_tips", true),
-    ShowReleaseNotes => (TopLevel, "show_release_notes", true),
-    AdvancedMouseActions => (TopLevel, "advanced_mouse_actions", false),
-    MouseScrollResize => (TopLevel, "mouse_scroll_resize", false),
-    ScrollModeSync => (TopLevel, "scroll_mode_sync", false),
-    MouseHoverEffects => (TopLevel, "mouse_hover_effects", false),
-    MouseHoverTips => (TopLevel, "mouse_hover_tips", false),
-    VisualBell => (TopLevel, "visual_bell", false),
-    FocusFollowsMouse => (TopLevel, "focus_follows_mouse", false),
-    MouseClickThrough => (TopLevel, "mouse_click_through", false),
-    ContextMenuEnabled => (TopLevel, "context_menu_enabled", false),
-    Osc133CommandSelection => (TopLevel, "osc133_command_selection", false),
-    WordSeparators => (TopLevel, "word_separators", false),
-    HostNotificationProtocol => (TopLevel, "host_notification_protocol", false),
-    WebServerIp => (TopLevel, "web_server_ip", true),
-    WebServerPort => (TopLevel, "web_server_port", true),
-    WebServerCert => (TopLevel, "web_server_cert", true),
-    WebServerKey => (TopLevel, "web_server_key", true),
-    EnforceHttpsForLocalhost => (TopLevel, "enforce_https_for_localhost", true),
-    PostCommandDiscoveryHook => (TopLevel, "post_command_discovery_hook", false),
-    ClientAsyncWorkerTasks => (TopLevel, "client_async_worker_tasks", true),
-    NestedSessionHandling => (TopLevel, "nested_session_handling", false),
-    DangerouslyEnablePasteBufferRead => (TopLevel, "dangerously_enable_paste_buffer_read", false),
-    FrameRoundedCorners => (PaneFrames, "rounded_corners", false),
-    FrameHideSessionName => (PaneFrames, "hide_session_name", false),
-    FrameBorderStyle => (PaneFrames, "border_style", false),
-    FrameBorderTop => (PaneFrames, "border_top", false),
-    FrameBorderRight => (PaneFrames, "border_right", false),
-    FrameBorderBottom => (PaneFrames, "border_bottom", false),
-    FrameBorderLeft => (PaneFrames, "border_left", false),
-    FrameBorderRoundedCorners => (PaneFrames, "border_rounded_corners", false),
-    FrameFloatingBorderStyle => (PaneFrames, "floating_border_style", false),
-    FrameFloatingBorderTop => (PaneFrames, "floating_border_top", false),
-    FrameFloatingBorderRight => (PaneFrames, "floating_border_right", false),
-    FrameFloatingBorderBottom => (PaneFrames, "floating_border_bottom", false),
-    FrameFloatingBorderLeft => (PaneFrames, "floating_border_left", false),
-    FrameFloatingBorderRoundedCorners => (PaneFrames, "floating_border_rounded_corners", false),
-    WebClientFont => (WebClient, "font", true),
-    WebClientFontSize => (WebClient, "font_size", true),
-    WebClientCursorBlink => (WebClient, "cursor_blink", true),
-    WebClientCursorStyle => (WebClient, "cursor_style", true),
-    WebClientCursorInactiveStyle => (WebClient, "cursor_inactive_style", true),
-    WebClientMacOptionIsMeta => (WebClient, "mac_option_is_meta", true),
-    WebClientBaseUrl => (WebClient, "base_url", true),
-    Keybinds => (Keybinds, "keybinds", false),
+    SimplifiedUi => (TopLevel, "simplified_ui", false, Flag),
+    Theme => (TopLevel, "theme", false, Text),
+    ThemeDark => (TopLevel, "theme_dark", false, Text),
+    ThemeLight => (TopLevel, "theme_light", false, Text),
+    ExplicitThemeHue => (TopLevel, "explicit_theme_hue", false, Text),
+    DefaultMode => (TopLevel, "default_mode", false, Text),
+    DefaultShell => (TopLevel, "default_shell", false, Text),
+    DefaultCwd => (TopLevel, "default_cwd", false, Text),
+    DefaultLayout => (TopLevel, "default_layout", true, Text),
+    LayoutDir => (TopLevel, "layout_dir", false, Text),
+    ThemeDir => (TopLevel, "theme_dir", false, Text),
+    KeybindsDir => (TopLevel, "keybinds_dir", false, Text),
+    MouseMode => (TopLevel, "mouse_mode", true, Flag),
+    PaneFrames => (TopLevel, "pane_frames", false, Flag),
+    PaneFrameStyle => (TopLevel, "pane_frame_style", false, Text),
+    MirrorSession => (TopLevel, "mirror_session", true, Flag),
+    OnForceClose => (TopLevel, "on_force_close", true, Text),
+    ScrollBufferSize => (TopLevel, "scroll_buffer_size", true, Number),
+    CopyCommand => (TopLevel, "copy_command", false, Text),
+    CopyClipboard => (TopLevel, "copy_clipboard", false, Text),
+    CopyOnSelect => (TopLevel, "copy_on_select", false, Flag),
+    Osc8Hyperlinks => (TopLevel, "osc8_hyperlinks", true, Flag),
+    ScrollbackEditor => (TopLevel, "scrollback_editor", false, Text),
+    SessionName => (TopLevel, "session_name", true, Text),
+    AttachToSession => (TopLevel, "attach_to_session", true, Flag),
+    AutoLayout => (TopLevel, "auto_layout", false, Flag),
+    SessionSerialization => (TopLevel, "session_serialization", true, Flag),
+    SerializePaneViewport => (TopLevel, "serialize_pane_viewport", true, Flag),
+    ScrollbackLinesToSerialize => (TopLevel, "scrollback_lines_to_serialize", true, Number),
+    StyledUnderlines => (TopLevel, "styled_underlines", true, Flag),
+    SerializationInterval => (TopLevel, "serialization_interval", true, Number),
+    DisableSessionMetadata => (TopLevel, "disable_session_metadata", true, Flag),
+    SupportKittyKeyboardProtocol => (TopLevel, "support_kitty_keyboard_protocol", true, Flag),
+    SupportKittyGraphicsProtocol => (TopLevel, "support_kitty_graphics_protocol", true, Flag),
+    WebServer => (TopLevel, "web_server", true, Flag),
+    WebSharing => (TopLevel, "web_sharing", true, Text),
+    StackedResize => (TopLevel, "stacked_resize", false, Flag),
+    StackedPaneList => (TopLevel, "stacked_pane_list", false, Flag),
+    ShowStartupTips => (TopLevel, "show_startup_tips", true, Flag),
+    ShowReleaseNotes => (TopLevel, "show_release_notes", true, Flag),
+    AdvancedMouseActions => (TopLevel, "advanced_mouse_actions", false, Flag),
+    MouseScrollResize => (TopLevel, "mouse_scroll_resize", false, Flag),
+    ScrollModeSync => (TopLevel, "scroll_mode_sync", false, Flag),
+    MouseHoverEffects => (TopLevel, "mouse_hover_effects", false, Flag),
+    MouseHoverTips => (TopLevel, "mouse_hover_tips", false, Flag),
+    VisualBell => (TopLevel, "visual_bell", false, Flag),
+    FocusFollowsMouse => (TopLevel, "focus_follows_mouse", false, Flag),
+    MouseClickThrough => (TopLevel, "mouse_click_through", false, Flag),
+    ContextMenuEnabled => (TopLevel, "context_menu_enabled", false, Flag),
+    Osc133CommandSelection => (TopLevel, "osc133_command_selection", false, Flag),
+    WordSeparators => (TopLevel, "word_separators", false, Text),
+    HostNotificationProtocol => (TopLevel, "host_notification_protocol", false, Text),
+    WebServerIp => (TopLevel, "web_server_ip", true, Text),
+    WebServerPort => (TopLevel, "web_server_port", true, Number),
+    WebServerCert => (TopLevel, "web_server_cert", true, Text),
+    WebServerKey => (TopLevel, "web_server_key", true, Text),
+    EnforceHttpsForLocalhost => (TopLevel, "enforce_https_for_localhost", true, Flag),
+    PostCommandDiscoveryHook => (TopLevel, "post_command_discovery_hook", false, Text),
+    ClientAsyncWorkerTasks => (TopLevel, "client_async_worker_tasks", true, Number),
+    NestedSessionHandling => (TopLevel, "nested_session_handling", false, Text),
+    DangerouslyEnablePasteBufferRead => (TopLevel, "dangerously_enable_paste_buffer_read", false, Flag),
+    FrameRoundedCorners => (PaneFrames, "rounded_corners", false, Flag),
+    FrameHideSessionName => (PaneFrames, "hide_session_name", false, Flag),
+    FrameBorderStyle => (PaneFrames, "border_style", false, Text),
+    FrameBorderTop => (PaneFrames, "border_top", false, Text),
+    FrameBorderRight => (PaneFrames, "border_right", false, Text),
+    FrameBorderBottom => (PaneFrames, "border_bottom", false, Text),
+    FrameBorderLeft => (PaneFrames, "border_left", false, Text),
+    FrameBorderRoundedCorners => (PaneFrames, "border_rounded_corners", false, Flag),
+    FrameFloatingBorderStyle => (PaneFrames, "floating_border_style", false, Text),
+    FrameFloatingBorderTop => (PaneFrames, "floating_border_top", false, Text),
+    FrameFloatingBorderRight => (PaneFrames, "floating_border_right", false, Text),
+    FrameFloatingBorderBottom => (PaneFrames, "floating_border_bottom", false, Text),
+    FrameFloatingBorderLeft => (PaneFrames, "floating_border_left", false, Text),
+    FrameFloatingBorderRoundedCorners => (PaneFrames, "floating_border_rounded_corners", false, Flag),
+    WebClientFont => (WebClient, "font", true, Text),
+    WebClientFontSize => (WebClient, "font_size", true, Number),
+    WebClientCursorBlink => (WebClient, "cursor_blink", true, Flag),
+    WebClientCursorStyle => (WebClient, "cursor_style", true, Text),
+    WebClientCursorInactiveStyle => (WebClient, "cursor_inactive_style", true, Text),
+    WebClientMacOptionIsMeta => (WebClient, "mac_option_is_meta", true, Flag),
+    WebClientBaseUrl => (WebClient, "base_url", true, Text),
+    Keybinds => (Keybinds, "keybinds", false, Text),
 }
 
 impl SettingKey {
@@ -4520,6 +4535,40 @@ impl SettingKey {
     }
     pub fn from_id(id: &str) -> Option<SettingKey> {
         SettingKey::all().into_iter().find(|key| key.id() == id)
+    }
+    pub fn parent_nodes(&self) -> &'static [&'static str] {
+        match self.section() {
+            SettingSection::TopLevel | SettingSection::Keybinds => &[],
+            SettingSection::PaneFrames => &["ui", "pane_frames"],
+            SettingSection::WebClient => &["web_client"],
+        }
+    }
+    pub fn kdl_value(&self, value: &str) -> Option<kdl::KdlValue> {
+        match self.value_shape() {
+            SettingValueShape::Flag => match value {
+                "true" => Some(kdl::KdlValue::Bool(true)),
+                "false" => Some(kdl::KdlValue::Bool(false)),
+                _ => None,
+            },
+            SettingValueShape::Number => value.trim().parse::<i64>().ok().map(kdl::KdlValue::Base10),
+            SettingValueShape::Text => Some(kdl::KdlValue::String(value.to_owned())),
+        }
+    }
+    pub fn kdl_snippet(&self, value: &str) -> String {
+        let value_text = self
+            .kdl_value(value)
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| kdl::KdlValue::String(value.to_owned()).to_string());
+        let mut text = format!("{} {}", self.kdl_name(), value_text);
+        for parent in self.parent_nodes().iter().rev() {
+            let inner = text
+                .lines()
+                .map(|line| format!("    {}", line))
+                .collect::<Vec<_>>()
+                .join("\n");
+            text = format!("{} {{\n{}\n}}", parent, inner);
+        }
+        text
     }
 }
 

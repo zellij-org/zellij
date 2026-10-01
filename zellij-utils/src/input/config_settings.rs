@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use kdl::KdlDocument;
+use kdl::{KdlDocument, KdlNode, KdlValue};
 
 use super::config::Config;
 use super::options::{
@@ -12,7 +12,7 @@ use super::theme::{FrameConfig, UiConfig};
 use super::web_client::{CursorInactiveStyle, CursorStyle, WebClientConfig};
 use crate::data::{
     BorderStyleOverride, ConfigSettingState, ContextMenuEntry, InputMode, LineStyle, SettingKey,
-    SettingSection, ThemeHue, WebSharing,
+    ThemeHue, WebSharing,
 };
 
 fn path_text(path: &Option<PathBuf>) -> Option<String> {
@@ -683,36 +683,42 @@ pub fn unset_setting(config: &mut Config, key: SettingKey) {
     copy_setting(config, &defaults, key);
 }
 
+pub fn setting_node_path(key: SettingKey) -> (&'static [&'static str], &'static str) {
+    (key.parent_nodes(), key.kdl_name())
+}
+
+pub fn setting_kdl_value(config: &Config, key: SettingKey) -> Option<KdlValue> {
+    setting_value(config, key).and_then(|value| key.kdl_value(&value))
+}
+
+pub fn setting_is_default(config: &Config, key: SettingKey) -> bool {
+    if key == SettingKey::Keybinds {
+        return config.keybinds_layers.user.is_empty();
+    }
+    let mut defaults = config.clone();
+    unset_setting(&mut defaults, key);
+    setting_value(&defaults, key) == setting_value(config, key)
+}
+
+pub fn setting_node_in_document<'a>(
+    document: &'a KdlDocument,
+    key: SettingKey,
+) -> Option<&'a KdlNode> {
+    let (parents, name) = setting_node_path(key);
+    let mut current = document;
+    for parent in parents {
+        current = current.get(parent)?.children()?;
+    }
+    current.get(name)
+}
+
 pub fn settings_set_in_file(file_contents: &str) -> BTreeSet<SettingKey> {
     let Ok(document) = file_contents.parse::<KdlDocument>() else {
         return BTreeSet::new();
     };
-    let child_document = |parent: Option<&KdlDocument>, name: &str| -> Option<KdlDocument> {
-        parent
-            .and_then(|p| p.get(name))
-            .and_then(|node| node.children())
-            .cloned()
-    };
-    let pane_frames = child_document(
-        child_document(Some(&document), "ui").as_ref(),
-        "pane_frames",
-    );
-    let web_client = child_document(Some(&document), "web_client");
     SettingKey::all()
         .into_iter()
-        .filter(|key| match key.section() {
-            SettingSection::TopLevel | SettingSection::Keybinds => {
-                document.get(key.kdl_name()).is_some()
-            },
-            SettingSection::PaneFrames => pane_frames
-                .as_ref()
-                .map(|d| d.get(key.kdl_name()).is_some())
-                .unwrap_or(false),
-            SettingSection::WebClient => web_client
-                .as_ref()
-                .map(|d| d.get(key.kdl_name()).is_some())
-                .unwrap_or(false),
-        })
+        .filter(|key| setting_node_in_document(&document, *key).is_some())
         .collect()
 }
 
@@ -827,4 +833,4 @@ pub fn context_menu_lines(config: &Config) -> Vec<String> {
 
 #[cfg(test)]
 #[path = "./unit/config_settings_test.rs"]
-mod config_settings_test;
+pub(crate) mod config_settings_test;

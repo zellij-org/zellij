@@ -487,6 +487,8 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::RevertConfig(key) => revert_config(env, key),
                     PluginCommand::UnsetConfigSetting(key) => unset_config_setting(env, key),
                     PluginCommand::SaveConfig => save_config(env),
+                    PluginCommand::OverwriteConfigFile => overwrite_config_file(env),
+                    PluginCommand::ReloadConfigFile => reload_config_file(env),
                     PluginCommand::CopyKeybindPreset { preset, new_name } => {
                         copy_keybind_preset(env, preset, new_name)
                     },
@@ -3152,6 +3154,22 @@ fn save_config(env: &PluginEnv) {
     env.senders
         .send_to_server(ServerInstruction::SaveConfig { client_id })
         .with_context(|| "Failed to save config")
+        .non_fatal();
+}
+
+fn overwrite_config_file(env: &PluginEnv) {
+    let client_id = acting_client(env);
+    env.senders
+        .send_to_server(ServerInstruction::OverwriteConfigFile { client_id })
+        .with_context(|| "Failed to overwrite the config file")
+        .non_fatal();
+}
+
+fn reload_config_file(env: &PluginEnv) {
+    let client_id = acting_client(env);
+    env.senders
+        .send_to_server(ServerInstruction::ReloadConfigFile { client_id })
+        .with_context(|| "Failed to reload the config file")
         .non_fatal();
 }
 
@@ -6155,7 +6173,9 @@ fn check_command_permission(
         | PluginCommand::RevertConfig(..)
         | PluginCommand::UnsetConfigSetting(..)
         | PluginCommand::CopyKeybindPreset { .. }
-        | PluginCommand::SaveConfig => PermissionType::Reconfigure,
+        | PluginCommand::SaveConfig
+        | PluginCommand::OverwriteConfigFile
+        | PluginCommand::ReloadConfigFile => PermissionType::Reconfigure,
         PluginCommand::ChangeHostFolder(..) | PluginCommand::ListWindowsVolumes => {
             PermissionType::FullHdAccess
         },
