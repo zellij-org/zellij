@@ -121,7 +121,7 @@ pub enum ServerInstruction {
     Log(Vec<String>, ClientId, Option<NotificationEnd>),
     LogError(Vec<String>, ClientId, Option<NotificationEnd>),
     SwitchSession(ConnectToSession, ClientId, Option<NotificationEnd>),
-    UnblockCliPipeInput(String),   // String -> Pipe name
+    UnblockCliPipeInput(String, Option<i32>),
     CliPipeOutput(String, String), // String -> Pipe name, String -> Output
     AssociatePipeWithClient {
         pipe_id: String,
@@ -2162,7 +2162,7 @@ pub fn start_server_impl(
                     );
                 }
             },
-            ServerInstruction::UnblockCliPipeInput(pipe_name) => {
+            ServerInstruction::UnblockCliPipeInput(pipe_name, exit_code) => {
                 let pipe = session_state.read().unwrap().get_pipe(&pipe_name);
                 match pipe {
                     Some(client_id) => {
@@ -2170,7 +2170,8 @@ pub fn start_server_impl(
                             client_id,
                             os_input,
                             ServerToClientMsg::UnblockCliPipeInput {
-                                pipe_name: pipe_name.clone()
+                                pipe_name: pipe_name.clone(),
+                                exit_code,
                             },
                             session_state,
                             session_data
@@ -2184,7 +2185,8 @@ pub fn start_server_impl(
                                 client_id,
                                 os_input,
                                 ServerToClientMsg::UnblockCliPipeInput {
-                                    pipe_name: pipe_name.clone()
+                                    pipe_name: pipe_name.clone(),
+                                    exit_code,
                                 },
                                 session_state,
                                 session_data

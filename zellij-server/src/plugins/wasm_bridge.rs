@@ -1,7 +1,8 @@
 use super::{PinnedExecutor, PluginId, PluginInstruction};
 use crate::global_async_runtime::get_tokio_runtime;
 use crate::plugins::pipes::{
-    apply_pipe_message_to_plugin, pipes_to_block_or_unblock, PendingPipes, PipeStateChange,
+    apply_pipe_message_to_plugin, pipes_to_block_or_unblock, PendingPipes, PipeRelease,
+    PipeStateChange,
 };
 use crate::plugins::plugin_loader::PluginLoader;
 use crate::plugins::plugin_map::{
@@ -75,7 +76,30 @@ fn make_plugin_url_path_safe(url: String) -> String {
 #[derive(Debug, Clone)]
 pub enum EventOrPipeMessage {
     Event(Event, Option<ClientId>),
-    PipeMessage(PipeMessage),
+    PipeMessage(PipeMessage, Option<ClientId>),
+}
+
+pub const PIPE_POPUP_CLOSED_EXIT_CODE: i32 = 1;
+pub const PIPE_POPUP_ERROR_EXIT_CODE: i32 = 2;
+
+#[derive(Debug, Clone)]
+enum PipePopup {
+    Opening {
+        queued: Vec<PipeMessage>,
+        cli_client_id: ClientId,
+    },
+    Open {
+        plugin_id: PluginId,
+        client_id: ClientId,
+        caller_args: BTreeMap<String, String>,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub enum PipePopupRoute {
+    New(PipeMessage),
+    Queued,
+    Deliver(PluginId, ClientId, PipeMessage),
 }
 
 #[derive(Debug, Clone, Default)]
@@ -232,6 +256,7 @@ pub struct WasmBridge {
     cached_plugin_map:
         HashMap<RunPluginLocation, HashMap<PluginUserConfiguration, Vec<(PluginId, ClientId)>>>,
     pending_pipes: PendingPipes,
+    pipe_popups: HashMap<String, PipePopup>,
     layout_dir: Option<PathBuf>,
     available_layouts: Vec<LayoutInfo>,
     available_layout_errors: Vec<LayoutWithError>,
@@ -302,6 +327,7 @@ impl WasmBridge {
             default_shell,
             cached_plugin_map: HashMap::new(),
             pending_pipes: Default::default(),
+            pipe_popups: HashMap::new(),
             layout_dir,
             available_layouts,
             available_layout_errors,
@@ -665,13 +691,9 @@ impl WasmBridge {
 
         // Main thread cleanup
         self.cached_plugin_map.clear();
-        let mut pipes_to_unblock = self.pending_pipes.unload_plugin(&pid);
-        for pipe_name in pipes_to_unblock.drain(..) {
-            let _ = self
-                .senders
-                .send_to_server(ServerInstruction::UnblockCliPipeInput(pipe_name))
-                .context("failed to unblock input pipe");
-        }
+        let pipes_to_release = self.pending_pipes.unload_plugin(&pid);
+        self.send_pipe_releases(pipes_to_release);
+        self.forget_pipe_popups_of_plugin(pid);
         let plugin_list = self.plugin_map.lock().unwrap().list_plugins();
         let _ = self
             .senders
@@ -1386,7 +1408,10 @@ impl WasmBridge {
                 .collect();
             for (plugin_id, cached_events) in self.cached_events_for_pending_plugins.iter_mut() {
                 if message_pid.is_none() || message_pid.as_ref() == Some(plugin_id) {
-                    cached_events.push(EventOrPipeMessage::PipeMessage(pipe_message.clone()));
+                    cached_events.push(EventOrPipeMessage::PipeMessage(
+                        pipe_message.clone(),
+                        message_cid,
+                    ));
                     if let PipeSource::Cli(pipe_id) = &pipe_message.source {
                         for client_id in &all_connected_clients {
                             if Self::message_is_directed_at_plugin(
@@ -1514,15 +1539,10 @@ impl WasmBridge {
                 }
             });
 
-            let mut pipes_to_unblock = self
+            let pipes_to_release = self
                 .pending_pipes
                 .unload_plugin_client(&plugin_id, &client_id);
-            for pipe_name in pipes_to_unblock.drain(..) {
-                let _ = self
-                    .senders
-                    .send_to_server(ServerInstruction::UnblockCliPipeInput(pipe_name))
-                    .context("failed to unblock input pipe");
-            }
+            self.send_pipe_releases(pipes_to_release);
         }
         self.cached_plugin_map.clear();
     }
@@ -1870,7 +1890,16 @@ impl WasmBridge {
                                             },
                                         }
                                     },
-                                    EventOrPipeMessage::PipeMessage(pipe_message) => {
+                                    EventOrPipeMessage::PipeMessage(
+                                        pipe_message,
+                                        target_client_id,
+                                    ) => {
+                                        if target_client_id
+                                            .map(|target| target != client_id)
+                                            .unwrap_or(false)
+                                        {
+                                            continue;
+                                        }
                                         let mut running_plugin = running_plugin.lock().unwrap();
                                         let mut plugin_render_assets = vec![];
 
@@ -2240,13 +2269,13 @@ impl WasmBridge {
     pub fn update_cli_pipe_state(
         &mut self,
         pipe_state_changes: Vec<PluginRenderAsset>,
-    ) -> Vec<String> {
-        let mut pipe_names_to_unblock = vec![];
+    ) -> Vec<PipeRelease> {
+        let mut pipes_to_release = vec![];
         for pipe_state_change in pipe_state_changes {
             let client_id = pipe_state_change.client_id;
             let plugin_id = pipe_state_change.plugin_id;
             for (cli_pipe_name, pipe_state_change) in pipe_state_change.cli_pipes {
-                pipe_names_to_unblock.append(&mut self.pending_pipes.update_pipe_state_change(
+                pipes_to_release.append(&mut self.pending_pipes.update_pipe_state_change(
                     &cli_pipe_name,
                     pipe_state_change,
                     &plugin_id,
@@ -2254,14 +2283,121 @@ impl WasmBridge {
                 ));
             }
         }
-        let pipe_names_to_unblock =
-            pipe_names_to_unblock
-                .into_iter()
-                .fold(HashSet::new(), |mut acc, p| {
-                    acc.insert(p);
-                    acc
-                });
-        pipe_names_to_unblock.into_iter().collect()
+        let mut seen = HashSet::new();
+        pipes_to_release.retain(|release| seen.insert(release.clone()));
+        pipes_to_release
+    }
+    pub fn set_cli_pipe_exit_code(&mut self, pipe_id: &str, exit_code: i32, plugin_id: PluginId) {
+        self.pending_pipes
+            .set_exit_code(pipe_id, exit_code, plugin_id);
+    }
+    pub fn cli_pipe_is_finished(&self, pipe_id: &str) -> bool {
+        self.pending_pipes.is_finished(pipe_id)
+    }
+    pub fn cli_pipe_is_pending(&self, pipe_id: &str) -> bool {
+        self.pending_pipes.is_pending(pipe_id)
+    }
+    fn send_pipe_releases(&self, releases: Vec<PipeRelease>) {
+        for release in releases {
+            let _ = self
+                .senders
+                .send_to_server(ServerInstruction::UnblockCliPipeInput(
+                    release.pipe_id,
+                    release.exit_code,
+                ))
+                .context("failed to unblock input pipe");
+        }
+    }
+    pub fn route_pipe_popup_message(
+        &mut self,
+        pipe_id: &str,
+        pipe_message: PipeMessage,
+    ) -> PipePopupRoute {
+        match self.pipe_popups.get_mut(pipe_id) {
+            Some(PipePopup::Opening { queued, .. }) => {
+                queued.push(pipe_message);
+                PipePopupRoute::Queued
+            },
+            Some(PipePopup::Open {
+                plugin_id,
+                client_id,
+                caller_args,
+            }) => {
+                let mut pipe_message = pipe_message;
+                pipe_message.args.extend(caller_args.clone());
+                PipePopupRoute::Deliver(*plugin_id, *client_id, pipe_message)
+            },
+            None => PipePopupRoute::New(pipe_message),
+        }
+    }
+    pub fn start_pipe_popup(
+        &mut self,
+        pipe_id: &str,
+        pipe_message: PipeMessage,
+        cli_client_id: ClientId,
+    ) {
+        self.pipe_popups.insert(
+            pipe_id.to_owned(),
+            PipePopup::Opening {
+                queued: vec![pipe_message],
+                cli_client_id,
+            },
+        );
+    }
+    pub fn attach_pipe_popup(
+        &mut self,
+        pipe_id: &str,
+        plugin_id: PluginId,
+        client_id: ClientId,
+        caller_args: BTreeMap<String, String>,
+    ) -> Vec<(Option<PluginId>, Option<ClientId>, PipeMessage)> {
+        let queued = match self.pipe_popups.remove(pipe_id) {
+            Some(PipePopup::Opening { queued, .. }) => queued,
+            _ => vec![],
+        };
+        self.pipe_popups.insert(
+            pipe_id.to_owned(),
+            PipePopup::Open {
+                plugin_id,
+                client_id,
+                caller_args: caller_args.clone(),
+            },
+        );
+        self.pending_pipes
+            .set_exit_code(pipe_id, PIPE_POPUP_CLOSED_EXIT_CODE, plugin_id);
+        queued
+            .into_iter()
+            .map(|mut pipe_message| {
+                pipe_message.args.extend(caller_args.clone());
+                (Some(plugin_id), Some(client_id), pipe_message)
+            })
+            .collect()
+    }
+    pub fn fail_pipe_popup(&mut self, pipe_id: &str, error: String) {
+        let cli_client_id = match self.pipe_popups.remove(pipe_id) {
+            Some(PipePopup::Opening { cli_client_id, .. }) => Some(cli_client_id),
+            _ => None,
+        };
+        if let Some(cli_client_id) = cli_client_id {
+            let _ = self.senders.send_to_server(ServerInstruction::LogError(
+                vec![error],
+                cli_client_id,
+                None,
+            ));
+        }
+        let release = self
+            .pending_pipes
+            .release_with_code(pipe_id, PIPE_POPUP_ERROR_EXIT_CODE);
+        self.send_pipe_releases(vec![release]);
+    }
+    fn forget_pipe_popups_of_plugin(&mut self, plugin_id: PluginId) {
+        self.pipe_popups.retain(|_, pipe_popup| match pipe_popup {
+            PipePopup::Open {
+                plugin_id: popup_plugin_id,
+                ..
+            } => *popup_plugin_id != plugin_id,
+            PipePopup::Opening { .. } => true,
+        });
     }
     fn message_is_directed_at_plugin(
         message_pid: Option<PluginId>,
@@ -2563,12 +2699,8 @@ impl WasmBridge {
                     remove_slot_job(senders, plugin_map, instance_id, slot_id, true);
                 },
             );
-            let mut pipes_to_unblock = self.pending_pipes.unload_plugin(&instance_id);
-            for pipe_name in pipes_to_unblock.drain(..) {
-                let _ = self
-                    .senders
-                    .send_to_server(ServerInstruction::UnblockCliPipeInput(pipe_name));
-            }
+            let pipes_to_release = self.pending_pipes.unload_plugin(&instance_id);
+            self.send_pipe_releases(pipes_to_release);
         } else {
             self.plugin_executor.execute_for_plugin(
                 instance_id,

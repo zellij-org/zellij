@@ -17,6 +17,8 @@ pub struct ConfirmDialog {
     width: Option<usize>,
     open: bool,
     hovered_button: Option<usize>,
+    footer_rows: usize,
+    centered: bool,
     area: Option<Rect>,
     button_areas: Vec<Rect>,
 }
@@ -31,6 +33,8 @@ impl ConfirmDialog {
             width: None,
             open: false,
             hovered_button: None,
+            footer_rows: 0,
+            centered: false,
             area: None,
             button_areas: vec![],
         }
@@ -55,6 +59,26 @@ impl ConfirmDialog {
     pub fn opened(mut self) -> Self {
         self.open = true;
         self
+    }
+    pub fn centered(mut self) -> Self {
+        self.centered = true;
+        self
+    }
+    pub fn footer_rows(mut self, rows: usize) -> Self {
+        self.footer_rows = rows;
+        self
+    }
+    pub fn footer_area(&self) -> Option<Rect> {
+        let area = self.area?;
+        if self.footer_rows == 0 || area.width < 4 {
+            return None;
+        }
+        Some(Rect::new(
+            area.x + 2,
+            area.y + area.height - 1 - self.footer_rows,
+            area.width - 4,
+            self.footer_rows,
+        ))
     }
     pub fn title(&self) -> &str {
         &self.title
@@ -102,19 +126,19 @@ impl ConfirmDialog {
             .max(text_width(&self.title) + 8)
             .max(buttons_width + 4);
         let width = wanted.min(cols).max(MIN_WIDTH.min(cols));
-        (width, self.lines_for(width).len() + 5)
+        (width, self.lines_for(width).len() + 5 + self.footer_rows)
     }
     pub fn serialize(&mut self, x: usize, y: usize, width: usize, max_height: usize) -> String {
         let width = width.max(MIN_WIDTH);
         let mut lines = self.lines_for(width);
-        let max_lines = max_height.saturating_sub(5);
+        let max_lines = max_height.saturating_sub(5 + self.footer_rows);
         lines.truncate(max_lines);
-        let height = lines.len() + 5;
+        let height = lines.len() + 5 + self.footer_rows;
         let widths = self.button_widths();
         let buttons_width: usize =
             widths.iter().sum::<usize>() + widths.len().saturating_sub(1) * BUTTON_GAP;
         let buttons_start = (width.saturating_sub(buttons_width) / 2).max(1);
-        let buttons_row = y + height - 2;
+        let buttons_row = y + height - 2 - self.footer_rows;
         self.button_areas.clear();
         let mut column = x + buttons_start;
         for width in &widths {
@@ -127,6 +151,12 @@ impl ConfirmDialog {
         state_value(&mut state, "sel", self.selected);
         state_value(&mut state, "nb", self.buttons.len());
         state_value(&mut state, "bx", buttons_start);
+        if self.footer_rows > 0 {
+            state_value(&mut state, "fr", self.footer_rows);
+        }
+        if self.centered {
+            state.push("c".to_owned());
+        }
         if let Some(hovered) = self.hovered_button {
             state_value(&mut state, "hb", hovered);
         }

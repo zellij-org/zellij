@@ -3513,6 +3513,42 @@ pub enum PipeSource {
     Keybind,     // TODO: consider including the actual keybind here?
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Deserialize, Serialize)]
+pub enum PipePopupPlacement {
+    #[default]
+    Pane,
+    Center,
+    Mouse,
+    Cursor,
+}
+
+impl FromStr for PipePopupPlacement {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "pane" => Ok(PipePopupPlacement::Pane),
+            "center" | "centre" => Ok(PipePopupPlacement::Center),
+            "mouse" => Ok(PipePopupPlacement::Mouse),
+            "cursor" => Ok(PipePopupPlacement::Cursor),
+            other => Err(format!(
+                "invalid popup placement '{}', expected one of: pane, center, mouse, cursor",
+                other
+            )),
+        }
+    }
+}
+
+impl fmt::Display for PipePopupPlacement {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            PipePopupPlacement::Pane => write!(f, "pane"),
+            PipePopupPlacement::Center => write!(f, "center"),
+            PipePopupPlacement::Mouse => write!(f, "mouse"),
+            PipePopupPlacement::Cursor => write!(f, "cursor"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PipeMessage {
     pub source: PipeSource,
@@ -4052,6 +4088,7 @@ pub enum PluginCommand {
     UnblockCliPipeInput(String),   // String => pipe name
     BlockCliPipeInput(String),     // String => pipe name
     CliPipeOutput(String, String), // String => pipe name, String => output
+    SetCliPipeExitCode(String, i32),
     MessageToPlugin(MessageToPlugin),
     DisconnectOtherClients,
     KillSessions(Vec<String>), // one or more session names

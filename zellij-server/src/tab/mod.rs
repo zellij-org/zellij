@@ -11,7 +11,7 @@ mod swap_layouts;
 use crate::plugins::PluginId;
 use copy_command::CopyCommand;
 pub use mouse_handler::{ContextMenuRequest, MouseEffect, MouseHandler, PaneEdge, PaneResizeState};
-pub use popup::{place_popup, PopupMouseOutcome, POPUP_Z_INDEX};
+pub use popup::{place_popup, PopupKind, PopupMouseOutcome, PopupPlacement, POPUP_Z_INDEX};
 use std::env::temp_dir;
 use std::net::IpAddr;
 use std::path::PathBuf;
@@ -346,7 +346,7 @@ pub(crate) struct Tab {
     pub tab_bell_flash: bool, // currently in mid-notification-flash
     pub tab_bell_ring: bool,  // need to send ANSI BEL to the controlling terminal
     tab_visible: bool,
-    popups: HashMap<ClientId, popup::Popup>,
+    popups: HashMap<ClientId, Vec<popup::Popup>>,
 }
 
 // FIXME: Use a struct that has a pane_type enum, to reduce all of the duplication

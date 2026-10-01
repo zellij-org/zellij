@@ -1343,6 +1343,8 @@ pub struct CliPipeAction {
     pub cwd: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(string, optional, tag="12")]
     pub pane_title: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="13")]
+    pub popup: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -3619,6 +3621,8 @@ pub struct SwitchSessionMsg {
 pub struct UnblockCliPipeInputMsg {
     #[prost(string, tag="1")]
     pub pipe_name: ::prost::alloc::string::String,
+    #[prost(int32, optional, tag="2")]
+    pub exit_code: ::core::option::Option<i32>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

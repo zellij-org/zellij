@@ -16,6 +16,7 @@ plugins {
         cwd "/"
     }
     plugin-manager location="zellij:plugin-manager"
+    prompt location="zellij:prompt"
     session-manager location="zellij:session-manager"
     status-bar location="zellij:bars" {
         role "status-bar"

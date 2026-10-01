@@ -244,11 +244,11 @@ pub fn indicator_label(up: bool, count: usize) -> String {
 pub fn indicator_styles(style: &Style, hovered: bool) -> CharacterStyles {
     if hovered {
         bold(colored(
-            style.colors.text_unselected.base,
+            style.colors.text_unselected.emphasis_1,
             Some(gray(style)),
         ))
     } else {
-        colored(style.colors.text_unselected.base, None)
+        colored(style.colors.text_unselected.emphasis_1, None)
     }
 }
 
@@ -350,4 +350,20 @@ pub fn button_cells(label: &str, width: usize, look: ButtonLook, style: &Style) 
 
 pub fn button_width(label: &str) -> usize {
     text_width(label) + 4
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn more_items_indicators_use_emphasis_1() {
+        let style = Style::default();
+        let emphasis_1 = style.colors.text_unselected.emphasis_1;
+        assert_eq!(indicator_styles(&style, false), colored(emphasis_1, None));
+        assert_eq!(
+            indicator_styles(&style, true),
+            bold(colored(emphasis_1, Some(gray(&style))))
+        );
+    }
 }

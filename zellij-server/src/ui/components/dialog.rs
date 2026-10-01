@@ -1,6 +1,6 @@
 use super::widget_common::{
-    bold, button_cells, button_width, colored, decode_text, fit, move_to, paint, text_width,
-    truncate, ButtonLook, WidgetState,
+    bold, button_cells, button_width, center, colored, decode_text, fit, move_to, paint,
+    text_width, truncate, ButtonLook, WidgetState,
 };
 use super::Coordinates;
 use zellij_utils::data::Style;
@@ -58,7 +58,9 @@ pub fn dialog(
         output.push_str(&paint(title_styles, &title));
         output.push_str(&paint(border_styles, &format!(" {}╮", "─".repeat(rest))));
     }
-    let buttons_row = height - 2;
+    let footer_rows = state.count("fr");
+    let centered = state.flag("c");
+    let buttons_row = height.saturating_sub(2 + footer_rows).max(1);
     for row in 1..height - 1 {
         output.push_str(&move_to(coordinates, row, 0));
         output.push_str(&paint(border_styles, "│"));
@@ -75,13 +77,16 @@ pub fn dialog(
         } else {
             let line = row
                 .checked_sub(2)
+                .filter(|_| row < buttons_row)
                 .and_then(|index| lines.get(index))
                 .map(|l| l.as_str())
                 .unwrap_or("");
-            output.push_str(&paint(
-                body_styles,
-                &format!(" {} ", fit(line, inner_width - 2)),
-            ));
+            let line = if centered {
+                center(line, inner_width - 2)
+            } else {
+                fit(line, inner_width - 2)
+            };
+            output.push_str(&paint(body_styles, &format!(" {} ", line)));
         }
         output.push_str(&paint(border_styles, "│"));
     }
@@ -129,4 +134,50 @@ fn render_buttons(
     }
     output.push_str(&paint(body_styles, &" ".repeat(inner_width - used)));
     output
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn message_row(centered: bool) -> String {
+        let mut state = vec!["nb=1".to_owned()];
+        if centered {
+            state.push("c".to_owned());
+        }
+        let state = WidgetState::parse(&state.join(","));
+        let fields = vec![String::new(), "79".to_owned(), "72,105".to_owned()];
+        let coordinates = Coordinates {
+            x: 0,
+            y: 0,
+            width: Some(20),
+            height: Some(6),
+        };
+        let output =
+            String::from_utf8(dialog(&state, &fields, &Style::default(), &coordinates)).unwrap();
+        let mut stripped = String::new();
+        let mut characters = output.chars();
+        while let Some(character) = characters.next() {
+            if character == '\u{1b}' {
+                for next in characters.by_ref() {
+                    if next.is_ascii_alphabetic() {
+                        break;
+                    }
+                }
+            } else {
+                stripped.push(character);
+            }
+        }
+        stripped
+            .split('│')
+            .find(|cell| cell.contains("Hi"))
+            .unwrap()
+            .to_owned()
+    }
+
+    #[test]
+    fn the_message_is_centered_only_when_asked() {
+        assert_eq!(message_row(false), " Hi               ");
+        assert_eq!(message_row(true), "        Hi        ");
+    }
 }

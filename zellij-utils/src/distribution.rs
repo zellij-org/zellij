@@ -215,7 +215,7 @@ pub const ZELLIJ_BUILTIN_PLUGIN_NAMES: &[&str] = &[
     "share",
     "multiple-select",
     "layout-manager",
-    "storybook",
+    "prompt",
     "context-menu",
 ];
 
@@ -261,7 +261,7 @@ fn zellij_builtin_plugins() -> Vec<DistributionPlugin> {
         builtin_plugin!("share"),
         builtin_plugin!("multiple-select"),
         builtin_plugin!("layout-manager"),
-        builtin_plugin!("storybook"),
+        builtin_plugin!("prompt"),
         builtin_plugin!("context-menu"),
     ]
 }

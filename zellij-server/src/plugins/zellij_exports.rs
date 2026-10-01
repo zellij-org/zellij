@@ -781,6 +781,9 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::CliPipeOutput(pipe_name, output) => {
                         cli_pipe_output(env, pipe_name, output)?
                     },
+                    PluginCommand::SetCliPipeExitCode(pipe_name, exit_code) => {
+                        set_cli_pipe_exit_code(env, pipe_name, exit_code)?
+                    },
                     PluginCommand::MessageToPlugin(message) => message_to_plugin(env, message)?,
                     PluginCommand::DisconnectOtherClients => disconnect_other_clients(env),
                     PluginCommand::KillSessions(session_list) => kill_sessions(session_list),
@@ -1169,6 +1172,16 @@ fn cli_pipe_output(env: &PluginEnv, pipe_name: String, output: String) -> Result
     env.senders
         .send_to_server(ServerInstruction::CliPipeOutput(pipe_name, output))
         .context("failed to send pipe output")
+}
+
+fn set_cli_pipe_exit_code(env: &PluginEnv, pipe_name: String, exit_code: i32) -> Result<()> {
+    env.senders
+        .send_to_plugin(PluginInstruction::SetCliPipeExitCode {
+            pipe_id: pipe_name,
+            exit_code,
+            plugin_id: env.plugin_id,
+        })
+        .context("failed to set pipe exit code")
 }
 
 fn message_to_plugin(env: &PluginEnv, mut message_to_plugin: MessageToPlugin) -> Result<()> {
@@ -6113,7 +6126,8 @@ fn check_command_permission(
         PluginCommand::RunContextMenuItem(..) => PermissionType::RunActionsAsUser,
         PluginCommand::UnblockCliPipeInput(..)
         | PluginCommand::BlockCliPipeInput(..)
-        | PluginCommand::CliPipeOutput(..) => PermissionType::ReadCliPipes,
+        | PluginCommand::CliPipeOutput(..)
+        | PluginCommand::SetCliPipeExitCode(..) => PermissionType::ReadCliPipes,
         PluginCommand::MessageToPlugin(..) => PermissionType::MessageAndLaunchOtherPlugins,
         PluginCommand::ListClients
         | PluginCommand::DumpSessionLayout { .. }

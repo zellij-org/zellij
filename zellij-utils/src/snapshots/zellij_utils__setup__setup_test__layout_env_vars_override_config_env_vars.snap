@@ -6239,6 +6239,18 @@ Config {
                 ),
                 initial_cwd: None,
             },
+            "prompt": RunPlugin {
+                _allow_exec_host_cmd: false,
+                location: Zellij(
+                    PluginTag(
+                        "prompt",
+                    ),
+                ),
+                configuration: PluginUserConfiguration(
+                    {},
+                ),
+                initial_cwd: None,
+            },
             "session-manager": RunPlugin {
                 _allow_exec_host_cmd: false,
                 location: Zellij(

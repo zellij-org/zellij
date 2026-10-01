@@ -1,5 +1,5 @@
 [package]
-name = "storybook"
+name = "prompt"
 version = "0.1.0"
 authors = ["Aram Drevekenin <aram@poor.dev>"]
 edition.workspace = true
@@ -7,3 +7,6 @@ license.workspace = true
 
 [dependencies]
 zellij-tile = { path = "../../zellij-tile" }
+serde_json = { workspace = true }
+regex = { workspace = true }
+zellij-utils = { workspace = true }

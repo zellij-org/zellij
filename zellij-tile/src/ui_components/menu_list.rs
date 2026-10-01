@@ -12,6 +12,7 @@ pub struct MenuItem {
     disabled: bool,
     separator: bool,
     marked: bool,
+    matched: Vec<usize>,
 }
 
 impl MenuItem {
@@ -22,6 +23,7 @@ impl MenuItem {
             disabled: false,
             separator: false,
             marked: false,
+            matched: vec![],
         }
     }
     pub fn separator() -> Self {
@@ -31,6 +33,7 @@ impl MenuItem {
             disabled: false,
             separator: true,
             marked: false,
+            matched: vec![],
         }
     }
     pub fn shortcut(mut self, shortcut: impl Into<String>) -> Self {
@@ -44,6 +47,13 @@ impl MenuItem {
     pub fn marked(mut self) -> Self {
         self.marked = true;
         self
+    }
+    pub fn matched_indices(mut self, indices: Vec<usize>) -> Self {
+        self.matched = indices;
+        self
+    }
+    pub fn matched(&self) -> &[usize] {
+        &self.matched
     }
     pub fn label(&self) -> &str {
         &self.label
@@ -81,6 +91,17 @@ impl MenuItem {
         if let Some(shortcut) = &self.shortcut {
             serialized.push(':');
             serialized.push_str(&encode_text(shortcut));
+        }
+        if !self.matched.is_empty() {
+            serialized.push('/');
+            serialized.push_str(
+                &self
+                    .matched
+                    .iter()
+                    .map(|index| index.to_string())
+                    .collect::<Vec<_>>()
+                    .join(","),
+            );
         }
         serialized
     }

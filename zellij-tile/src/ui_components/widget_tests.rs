@@ -186,6 +186,20 @@ fn menu_list_serializes_rows_separators_disabled_and_highlight() {
 }
 
 #[test]
+fn menu_list_serializes_matched_characters_and_marks() {
+    let mut menu = MenuList::new(vec![
+        MenuItem::new("main").matched_indices(vec![0, 2]).marked(),
+        MenuItem::new("dev"),
+    ]);
+    let serialized = menu.serialize(0, 0, 10, 5);
+    let fields = vec![format!("m{}/0,2", enc("main")), enc("dev")];
+    assert_eq!(
+        serialized,
+        dcs("menu", "0/0/10/2", "hl=0,above=0,below=0", &fields)
+    );
+}
+
+#[test]
 fn menu_list_arrows_skip_separators_and_disabled_rows() {
     let mut menu = sample_menu();
     menu.serialize(0, 0, 20, 10);
@@ -1081,4 +1095,19 @@ fn fuzzy_match_indices_finds_letters_in_order() {
     assert_eq!(fuzzy_match_indices("", "anything"), Some(vec![]));
     assert_eq!(fuzzy_match_indices("zz", "pizza"), Some(vec![2, 3]));
     assert_eq!(fuzzy_match_indices("xyz", "pizza"), None);
+}
+
+#[test]
+fn confirm_dialog_reserves_footer_rows_below_the_buttons() {
+    let mut dialog = ConfirmDialog::new("T", "Go?")
+        .buttons(vec!["Yes", "No"])
+        .footer_rows(2)
+        .opened();
+    assert_eq!(dialog.size_for(80).1, 8);
+    dialog.serialize(0, 0, 30, 20);
+    assert_eq!(dialog.button_areas()[0].y, 4);
+    assert_eq!(dialog.footer_area(), Some(Rect::new(2, 5, 26, 2)));
+    let mut centered = ConfirmDialog::new("T", "Go?").centered().opened();
+    assert!(centered.serialize(0, 0, 30, 20).contains(",c;"));
+    assert!(!dialog.serialize(0, 0, 30, 20).contains(",c;"));
 }

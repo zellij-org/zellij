@@ -2739,6 +2739,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "prompt"
+version = "0.1.0"
+dependencies = [
+ "regex",
+ "serde_json",
+ "zellij-tile",
+ "zellij-utils",
+]
+
+[[package]]
 name = "prost"
 version = "0.12.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3477,13 +3487,6 @@ name = "stable_deref_trait"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
-
-[[package]]
-name = "storybook"
-version = "0.1.0"
-dependencies = [
- "zellij-tile",
-]
 
 [[package]]
 name = "strider"
@@ -5016,6 +5019,7 @@ dependencies = [
  "axum",
  "axum-extra",
  "axum-server",
+ "clap",
  "crossterm",
  "daemonix",
  "dialoguer",
@@ -5060,6 +5064,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "base64",
+ "clap",
  "crossbeam",
  "flate2",
  "insta",

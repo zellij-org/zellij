@@ -10,13 +10,35 @@ use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
 use zellij_utils::pane_size::{Dimension, Offset, PaneGeom, Viewport};
 use zellij_utils::position::Position;
 
-pub const POPUP_Z_INDEX: usize = usize::MAX;
+pub const POPUP_Z_INDEX: usize = usize::MAX / 2;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PopupPlacement {
+    At(Position),
+    CenteredIn(Viewport),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PopupKind {
+    Menu,
+    Prompt,
+}
 
 pub(crate) struct Popup {
     pub pane: Box<dyn Pane>,
-    pub anchor: Position,
+    pub placement: PopupPlacement,
+    pub kind: PopupKind,
     pub wanted_cols: usize,
     pub wanted_rows: usize,
+}
+
+impl Popup {
+    fn plugin_id(&self) -> Option<u32> {
+        match self.pane.pid() {
+            PaneId::Plugin(plugin_id) => Some(plugin_id),
+            PaneId::Terminal(_) => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,6 +84,24 @@ pub fn place_popup(
     }
 }
 
+pub fn place_popup_with(
+    placement: PopupPlacement,
+    wanted_cols: usize,
+    wanted_rows: usize,
+    bounds: Viewport,
+) -> PaneGeom {
+    match placement {
+        PopupPlacement::At(anchor) => place_popup(anchor, wanted_cols, wanted_rows, bounds),
+        PopupPlacement::CenteredIn(area) => {
+            let cols = wanted_cols.max(1).min(bounds.cols.max(1));
+            let rows = wanted_rows.max(1).min(bounds.rows.max(1));
+            let x = area.x + area.cols.saturating_sub(cols) / 2;
+            let y = area.y + area.rows.saturating_sub(rows) / 2;
+            place_popup(Position::new(y as i32, x as u16), cols, rows, bounds)
+        },
+    }
+}
+
 fn mouse_event_for_plugin(event: &MouseEvent, line: isize, column: usize) -> Option<Mouse> {
     if event.wheel_up {
         return Some(Mouse::ScrollUp(3));
@@ -84,14 +124,19 @@ impl Tab {
         &mut self,
         client_id: ClientId,
         plugin_id: u32,
-        anchor: Position,
+        placement: PopupPlacement,
+        kind: PopupKind,
         wanted_cols: usize,
         wanted_rows: usize,
         invoked_with: Option<Run>,
         title: String,
-    ) -> Result<Option<u32>> {
+    ) -> Result<Vec<u32>> {
         let err_context = || format!("failed to open popup for client {client_id}");
-        let replaced = self.close_popup(client_id);
+        let replaced = if kind == PopupKind::Menu {
+            self.close_menu_popups(client_id)
+        } else {
+            vec![]
+        };
         let mut pane = Box::new(PluginPane::new(
             plugin_id,
             PaneGeom::default(),
@@ -118,7 +163,7 @@ impl Tab {
         let bounds = self.popup_bounds();
         pane.set_borderless(true);
         pane.set_content_offset(Offset::default());
-        pane.set_geom(place_popup(anchor, wanted_cols, wanted_rows, bounds));
+        pane.set_geom(place_popup_with(placement, wanted_cols, wanted_rows, bounds));
         self.senders
             .send_to_plugin(PluginInstruction::Resize(
                 plugin_id,
@@ -126,61 +171,114 @@ impl Tab {
                 pane.get_content_rows(),
             ))
             .with_context(err_context)?;
-        self.popups.insert(
-            client_id,
-            Popup {
-                pane,
-                anchor,
-                wanted_cols,
-                wanted_rows,
-            },
-        );
+        self.popups.entry(client_id).or_default().push(Popup {
+            pane,
+            placement,
+            kind,
+            wanted_cols,
+            wanted_rows,
+        });
+        self.set_force_render();
         Ok(replaced)
     }
-    pub fn close_popup(&mut self, client_id: ClientId) -> Option<u32> {
-        let popup = self.popups.remove(&client_id)?;
-        self.set_force_render();
-        match popup.pane.pid() {
-            PaneId::Plugin(plugin_id) => Some(plugin_id),
-            PaneId::Terminal(_) => None,
+    fn remove_popups_where(
+        &mut self,
+        client_id: ClientId,
+        should_remove: impl Fn(&Popup) -> bool,
+    ) -> Vec<u32> {
+        let Some(stack) = self.popups.get_mut(&client_id) else {
+            return vec![];
+        };
+        let mut removed = vec![];
+        stack.retain(|popup| {
+            if should_remove(popup) {
+                if let Some(plugin_id) = popup.plugin_id() {
+                    removed.push(plugin_id);
+                }
+                false
+            } else {
+                true
+            }
+        });
+        if stack.is_empty() {
+            self.popups.remove(&client_id);
         }
+        if !removed.is_empty() {
+            self.set_force_render();
+        }
+        removed
+    }
+    pub fn close_popup(&mut self, client_id: ClientId) -> Vec<u32> {
+        self.remove_popups_where(client_id, |_| true)
+    }
+    pub fn close_menu_popups(&mut self, client_id: ClientId) -> Vec<u32> {
+        self.remove_popups_where(client_id, |popup| popup.kind == PopupKind::Menu)
+    }
+    pub fn close_top_popup(&mut self, client_id: ClientId) -> Option<u32> {
+        let top_plugin_id = self.popup_plugin_id(client_id)?;
+        self.remove_popups_where(client_id, |popup| {
+            popup.plugin_id() == Some(top_plugin_id)
+        })
+        .into_iter()
+        .next()
     }
     pub fn close_popup_with_plugin_id(&mut self, plugin_id: u32) -> Option<ClientId> {
         let client_id = self.popup_client_for_plugin(plugin_id)?;
-        self.close_popup(client_id);
+        self.remove_popups_where(client_id, |popup| popup.plugin_id() == Some(plugin_id));
         Some(client_id)
     }
     pub fn drain_popups(&mut self) -> Vec<(ClientId, u32)> {
         let client_ids: Vec<ClientId> = self.popups.keys().copied().collect();
         client_ids
             .into_iter()
-            .filter_map(|client_id| {
+            .flat_map(|client_id| {
                 self.close_popup(client_id)
-                    .map(|plugin_id| (client_id, plugin_id))
+                    .into_iter()
+                    .map(move |plugin_id| (client_id, plugin_id))
             })
             .collect()
     }
     pub fn popup_client_for_plugin(&self, plugin_id: u32) -> Option<ClientId> {
         self.popups
             .iter()
-            .find(|(_, popup)| popup.pane.pid() == PaneId::Plugin(plugin_id))
+            .find(|(_, stack)| stack.iter().any(|popup| popup.plugin_id() == Some(plugin_id)))
             .map(|(client_id, _)| *client_id)
     }
     pub fn popup_plugin_id(&self, client_id: ClientId) -> Option<u32> {
         self.popups
             .get(&client_id)
-            .and_then(|popup| match popup.pane.pid() {
-                PaneId::Plugin(plugin_id) => Some(plugin_id),
-                PaneId::Terminal(_) => None,
-            })
+            .and_then(|stack| stack.last())
+            .and_then(|popup| popup.plugin_id())
+    }
+    pub fn popup_kind_of_plugin(&self, plugin_id: u32) -> Option<PopupKind> {
+        self.popups
+            .values()
+            .flat_map(|stack| stack.iter())
+            .find(|popup| popup.plugin_id() == Some(plugin_id))
+            .map(|popup| popup.kind)
     }
     pub fn has_popup_for_client(&self, client_id: ClientId) -> bool {
-        self.popups.contains_key(&client_id)
+        self.popups
+            .get(&client_id)
+            .map(|stack| !stack.is_empty())
+            .unwrap_or(false)
     }
+    #[cfg(test)]
+    pub fn popup_count_for_client(&self, client_id: ClientId) -> usize {
+        self.popups.get(&client_id).map(|stack| stack.len()).unwrap_or(0)
+    }
+    #[cfg(test)]
     pub fn popup_geom(&self, client_id: ClientId) -> Option<PaneGeom> {
         self.popups
             .get(&client_id)
+            .and_then(|stack| stack.last())
             .map(|popup| popup.pane.current_geom())
+    }
+    pub fn popup_geoms(&self, client_id: ClientId) -> Vec<PaneGeom> {
+        self.popups
+            .get(&client_id)
+            .map(|stack| stack.iter().map(|popup| popup.pane.current_geom()).collect())
+            .unwrap_or_default()
     }
     pub fn has_popup_plugin(&self, plugin_id: u32) -> bool {
         self.popup_client_for_plugin(plugin_id).is_some()
@@ -188,7 +286,8 @@ impl Tab {
     pub fn popup_pane_mut(&mut self, plugin_id: u32) -> Option<&mut Box<dyn Pane>> {
         self.popups
             .values_mut()
-            .find(|popup| popup.pane.pid() == PaneId::Plugin(plugin_id))
+            .flat_map(|stack| stack.iter_mut())
+            .find(|popup| popup.plugin_id() == Some(plugin_id))
             .map(|popup| &mut popup.pane)
     }
     pub fn resize_popup(&mut self, plugin_id: u32, wanted_cols: usize, wanted_rows: usize) {
@@ -197,11 +296,12 @@ impl Tab {
         if let Some(popup) = self
             .popups
             .values_mut()
-            .find(|popup| popup.pane.pid() == PaneId::Plugin(plugin_id))
+            .flat_map(|stack| stack.iter_mut())
+            .find(|popup| popup.plugin_id() == Some(plugin_id))
         {
             popup.wanted_cols = wanted_cols;
             popup.wanted_rows = wanted_rows;
-            let new_geom = place_popup(popup.anchor, wanted_cols, wanted_rows, bounds);
+            let new_geom = place_popup_with(popup.placement, wanted_cols, wanted_rows, bounds);
             if new_geom != popup.pane.current_geom() {
                 popup.pane.set_geom(new_geom);
                 resized = Some((
@@ -217,7 +317,7 @@ impl Tab {
             self.set_force_render();
         }
     }
-    fn popup_bounds(&self) -> Viewport {
+    pub fn popup_bounds(&self) -> Viewport {
         let viewport = *self.viewport.borrow();
         if viewport.has_positive_size() {
             viewport
@@ -234,11 +334,12 @@ impl Tab {
     pub fn relayout_popups(&mut self) {
         let bounds = self.popup_bounds();
         let mut resized = vec![];
-        for popup in self.popups.values_mut() {
-            let new_geom = place_popup(popup.anchor, popup.wanted_cols, popup.wanted_rows, bounds);
+        for popup in self.popups.values_mut().flat_map(|stack| stack.iter_mut()) {
+            let new_geom =
+                place_popup_with(popup.placement, popup.wanted_cols, popup.wanted_rows, bounds);
             if new_geom != popup.pane.current_geom() {
                 popup.pane.set_geom(new_geom);
-                if let PaneId::Plugin(plugin_id) = popup.pane.pid() {
+                if let Some(plugin_id) = popup.plugin_id() {
                     resized.push((
                         plugin_id,
                         popup.pane.get_content_columns(),
@@ -254,7 +355,7 @@ impl Tab {
         }
     }
     pub fn mark_popups_for_full_render(&mut self) {
-        for popup in self.popups.values_mut() {
+        for popup in self.popups.values_mut().flat_map(|stack| stack.iter_mut()) {
             popup.pane.set_should_render(true);
             popup.pane.render_full_viewport();
         }
@@ -264,17 +365,20 @@ impl Tab {
         event: &MouseEvent,
         client_id: ClientId,
     ) -> Option<PopupMouseOutcome> {
-        let popup = self.popups.get(&client_id)?;
+        let popup = self.popups.get(&client_id).and_then(|stack| stack.last())?;
         let geom = popup.pane.current_geom();
-        let plugin_id = match popup.pane.pid() {
-            PaneId::Plugin(plugin_id) => plugin_id,
-            PaneId::Terminal(_) => return Some(PopupMouseOutcome::Consumed),
+        let plugin_id = match popup.plugin_id() {
+            Some(plugin_id) => plugin_id,
+            None => return Some(PopupMouseOutcome::Consumed),
         };
         let inside = geom.contains(&event.position);
         let is_press = event.event_type == MouseEventType::Press
             && (event.left || event.right || event.middle);
         if !inside && is_press {
-            return Some(PopupMouseOutcome::CloseRequested);
+            return match popup.kind {
+                PopupKind::Menu => Some(PopupMouseOutcome::CloseRequested),
+                PopupKind::Prompt => Some(PopupMouseOutcome::Consumed),
+            };
         }
         let (line, column) = if inside {
             let relative = popup.pane.relative_position(&event.position);
@@ -299,36 +403,39 @@ impl Tab {
         let err_context = || "failed to render popups".to_string();
         let connected_clients: Vec<ClientId> =
             { self.connected_clients.borrow().iter().copied().collect() };
-        for (client_id, popup) in self.popups.iter_mut() {
+        for (client_id, stack) in self.popups.iter_mut() {
             if !connected_clients.contains(client_id) {
                 continue;
             }
-            if force {
-                popup.pane.set_should_render(true);
-                popup.pane.render_full_viewport();
-            }
-            if let Some((character_chunks, raw_vte_output, _sixel_chunks, _kitty_chunks)) = popup
-                .pane
-                .render(Some(*client_id))
-                .with_context(err_context)?
-            {
-                output
-                    .add_character_chunks_to_client(
-                        *client_id,
-                        character_chunks,
-                        Some(POPUP_Z_INDEX),
-                    )
-                    .with_context(err_context)?;
-                if let Some(raw_vte_output) = raw_vte_output {
-                    output.add_post_vte_instruction_to_client(
-                        *client_id,
-                        &format!(
-                            "\u{1b}[{};{}H\u{1b}[m{}",
-                            popup.pane.y() + 1,
-                            popup.pane.x() + 1,
-                            raw_vte_output
-                        ),
-                    );
+            for (layer, popup) in stack.iter_mut().enumerate() {
+                if force {
+                    popup.pane.set_should_render(true);
+                    popup.pane.render_full_viewport();
+                }
+                if let Some((character_chunks, raw_vte_output, _sixel_chunks, _kitty_chunks)) =
+                    popup
+                        .pane
+                        .render(Some(*client_id))
+                        .with_context(err_context)?
+                {
+                    output
+                        .add_character_chunks_to_client(
+                            *client_id,
+                            character_chunks,
+                            Some(POPUP_Z_INDEX + layer),
+                        )
+                        .with_context(err_context)?;
+                    if let Some(raw_vte_output) = raw_vte_output {
+                        output.add_post_vte_instruction_to_client(
+                            *client_id,
+                            &format!(
+                                "\u{1b}[{};{}H\u{1b}[m{}",
+                                popup.pane.y() + 1,
+                                popup.pane.x() + 1,
+                                raw_vte_output
+                            ),
+                        );
+                    }
                 }
             }
         }
@@ -338,7 +445,7 @@ impl Tab {
         let connected_clients: Vec<ClientId> =
             { self.connected_clients.borrow().iter().copied().collect() };
         for client_id in connected_clients {
-            output.set_popup_cover(client_id, self.popup_geom(client_id));
+            output.set_popup_cover(client_id, self.popup_geoms(client_id));
         }
     }
 }

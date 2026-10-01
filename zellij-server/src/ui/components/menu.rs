@@ -15,6 +15,7 @@ pub enum MenuRow {
         shortcut: Option<String>,
         disabled: bool,
         marked: bool,
+        matched: Vec<usize>,
     },
 }
 
@@ -27,6 +28,16 @@ pub fn parse_menu_row(raw: &str) -> MenuRow {
         .take_while(|c| c.is_ascii_alphabetic())
         .collect();
     let rest = &raw[flags.len()..];
+    let (rest, matched) = match rest.split_once('/') {
+        Some((rest, matched)) => (
+            rest,
+            matched
+                .split(',')
+                .filter_map(|index| index.parse::<usize>().ok())
+                .collect(),
+        ),
+        None => (rest, vec![]),
+    };
     let (label, shortcut) = match rest.split_once(':') {
         Some((label, shortcut)) => (decode_text(label), Some(decode_text(shortcut))),
         None => (decode_text(rest), None),
@@ -36,6 +47,7 @@ pub fn parse_menu_row(raw: &str) -> MenuRow {
         shortcut: shortcut.filter(|s| !s.is_empty()),
         disabled: flags.contains('d'),
         marked: flags.contains('m'),
+        matched,
     }
 }
 
@@ -108,6 +120,7 @@ pub fn menu(
                 shortcut,
                 disabled,
                 marked,
+                matched,
             } => {
                 let is_highlighted = highlighted == Some(index) && !disabled;
                 let row_styles = if *disabled {
@@ -121,10 +134,12 @@ pub fn menu(
                     label,
                     shortcut.as_deref(),
                     *marked,
+                    matched,
                     inner_width,
                     row_styles,
                     bold(row_styles),
                     dimmed(row_styles.bold(Some(AnsiCode::Reset))),
+                    match_styles(style, row_styles),
                 ));
             },
         }
@@ -190,14 +205,51 @@ fn border_line(
     }
 }
 
+fn match_styles(style: &Style, row_styles: CharacterStyles) -> CharacterStyles {
+    bold(row_styles.foreground(Some(style.colors.text_unselected.emphasis_0.into())))
+}
+
+fn paint_with_matches(
+    text: &str,
+    matched: &[usize],
+    row_styles: CharacterStyles,
+    match_styles: CharacterStyles,
+) -> String {
+    if matched.is_empty() {
+        return paint(row_styles, text);
+    }
+    let mut output = String::new();
+    let mut run = String::new();
+    let mut run_is_match = false;
+    for (index, character) in text.chars().enumerate() {
+        let is_match = matched.contains(&index);
+        if is_match != run_is_match && !run.is_empty() {
+            output.push_str(&paint(
+                if run_is_match { match_styles } else { row_styles },
+                &run,
+            ));
+            run.clear();
+        }
+        run_is_match = is_match;
+        run.push(character);
+    }
+    output.push_str(&paint(
+        if run_is_match { match_styles } else { row_styles },
+        &run,
+    ));
+    output
+}
+
 fn render_item(
     label: &str,
     shortcut: Option<&str>,
     marked: bool,
+    matched: &[usize],
     width: usize,
     row_styles: CharacterStyles,
     mark_styles: CharacterStyles,
     shortcut_styles: CharacterStyles,
+    match_styles: CharacterStyles,
 ) -> String {
     if width < 5 {
         return paint(row_styles, &fit(label, width));
@@ -211,7 +263,12 @@ fn render_item(
     output.push_str(&paint(row_styles, " "));
     output.push_str(&paint(mark_styles, if marked { "●" } else { " " }));
     output.push_str(&paint(row_styles, " "));
-    output.push_str(&paint(row_styles, &fit(label, label_width)));
+    output.push_str(&paint_with_matches(
+        &fit(label, label_width),
+        matched,
+        row_styles,
+        match_styles,
+    ));
     if let Some(shortcut) = shortcut {
         output.push_str(&paint(row_styles, " "));
         output.push_str(&paint(shortcut_styles, &shortcut));
@@ -230,4 +287,61 @@ fn natural_width(rows: &[MenuRow]) -> usize {
         })
         .max()
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn menu_rows_carry_matched_character_positions() {
+        let row = parse_menu_row("m109,97,105,110/0,2");
+        assert_eq!(
+            row,
+            MenuRow::Item {
+                label: "main".to_owned(),
+                shortcut: None,
+                disabled: false,
+                marked: true,
+                matched: vec![0, 2],
+            }
+        );
+        let row = parse_menu_row("109,97:67");
+        assert_eq!(
+            row,
+            MenuRow::Item {
+                label: "ma".to_owned(),
+                shortcut: Some("C".to_owned()),
+                disabled: false,
+                marked: false,
+                matched: vec![],
+            }
+        );
+    }
+
+    #[test]
+    fn matched_characters_use_emphasis_0() {
+        let style = Style::default();
+        let row = crate::panes::terminal_character::RESET_STYLES;
+        assert_eq!(
+            match_styles(&style, row),
+            bold(row.foreground(Some(style.colors.text_unselected.emphasis_0.into())))
+        );
+    }
+
+    #[test]
+    fn matched_characters_are_painted_separately() {
+        let plain = crate::panes::terminal_character::RESET_STYLES;
+        let emphasis = bold(plain);
+        let painted = paint_with_matches("abc", &[1], plain, emphasis);
+        assert_eq!(
+            painted,
+            format!(
+                "{}{}{}",
+                paint(plain, "a"),
+                paint(emphasis, "b"),
+                paint(plain, "c")
+            )
+        );
+    }
 }

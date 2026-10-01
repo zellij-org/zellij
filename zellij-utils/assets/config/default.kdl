@@ -37,6 +37,7 @@ plugins {
     plugin-manager location="zellij:plugin-manager"
     about location="zellij:about"
     context-menu location="zellij:context-menu"
+    prompt location="zellij:prompt"
 }
 
 // Plugins to load in the background when a new session starts

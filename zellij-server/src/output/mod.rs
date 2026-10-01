@@ -655,7 +655,7 @@ pub struct Output {
     sixel_host_capabilities: Rc<RefCell<HashMap<ClientId, bool>>>,
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     floating_panes_stack: Option<FloatingPanesStack>,
-    popup_covers: HashMap<ClientId, PaneGeom>,
+    popup_covers: HashMap<ClientId, Vec<PaneGeom>>,
     styled_underlines: bool,
     osc8_hyperlinks: bool,
     pane_render_report: PaneRenderReport,
@@ -699,14 +699,11 @@ impl Output {
             self.client_character_chunks.insert(*client_id, vec![]);
         }
     }
-    pub fn set_popup_cover(&mut self, client_id: ClientId, popup_geom: Option<PaneGeom>) {
-        match popup_geom {
-            Some(popup_geom) => {
-                self.popup_covers.insert(client_id, popup_geom);
-            },
-            None => {
-                self.popup_covers.remove(&client_id);
-            },
+    pub fn set_popup_cover(&mut self, client_id: ClientId, popup_geoms: Vec<PaneGeom>) {
+        if popup_geoms.is_empty() {
+            self.popup_covers.remove(&client_id);
+        } else {
+            self.popup_covers.insert(client_id, popup_geoms);
         }
     }
     fn popup_cover_for(
@@ -714,14 +711,19 @@ impl Output {
         client_id: ClientId,
         z_index: Option<usize>,
     ) -> Option<FloatingPanesStack> {
-        if z_index == Some(crate::tab::POPUP_Z_INDEX) {
-            return None;
+        let covers = self.popup_covers.get(&client_id)?;
+        let first_covering_layer = match z_index {
+            Some(z_index) if z_index >= crate::tab::POPUP_Z_INDEX => {
+                z_index - crate::tab::POPUP_Z_INDEX + 1
+            },
+            _ => 0,
+        };
+        let layers: Vec<PaneGeom> = covers.iter().skip(first_covering_layer).copied().collect();
+        if layers.is_empty() {
+            None
+        } else {
+            Some(FloatingPanesStack { layers })
         }
-        self.popup_covers
-            .get(&client_id)
-            .map(|popup_geom| FloatingPanesStack {
-                layers: vec![*popup_geom],
-            })
     }
     pub fn add_character_chunks_to_client(
         &mut self,

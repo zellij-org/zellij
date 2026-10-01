@@ -183,6 +183,203 @@ pub enum Command {
         "zellij [--session <OTHER SESSION NAME>] subscribe [OPTIONS] --pane-id..."
     ))]
     Subscribe(SubscribeCli),
+
+    #[clap(
+        about = "Show a UI element to the person at the terminal and print their answer (e.g. zellij prompt confirm \"Deploy?\")",
+        long_about = "Show a UI element to the person at the terminal and print their answer.\n\nExit codes: 0 answered, 1 cancelled or closed, 2 error, 124 timed out without a default."
+    )]
+    #[clap(arg_required_else_help = true)]
+    Prompt(PromptCli),
+}
+
+#[derive(Debug, Parser, Clone, Serialize, Deserialize)]
+pub struct PromptCli {
+    #[clap(subcommand)]
+    pub element: PromptElementCli,
+
+    #[clap(long, global = true, help = "Title shown at the top of the popup (e.g. --title \"Git\")")]
+    pub title: Option<String>,
+
+    #[clap(
+        long,
+        global = true,
+        help = "Give up after this long; exits 124 unless --default is given (e.g. --timeout 30s)"
+    )]
+    pub timeout: Option<String>,
+
+    #[clap(
+        long,
+        global = true,
+        allow_hyphen_values = true,
+        help = "Initial value, and the answer used when --timeout runs out (e.g. --default 8080)"
+    )]
+    pub default: Option<String>,
+
+    #[clap(
+        long,
+        global = true,
+        help = "Print JSON with the result and why the prompt ended (e.g. {\"result\":\"cancelled\"})"
+    )]
+    pub json: bool,
+
+    #[clap(
+        long,
+        global = true,
+        conflicts_with_all(&["at_cursor", "at_center"]),
+        help = "Open the popup where the mouse pointer last was, or at your cursor if the mouse has not moved yet (e.g. --at-mouse)"
+    )]
+    pub at_mouse: bool,
+
+    #[clap(
+        long,
+        global = true,
+        conflicts_with_all(&["at_mouse", "at_center"]),
+        help = "Open the popup just below your cursor, in the pane you are focused on (e.g. --at-cursor)"
+    )]
+    pub at_cursor: bool,
+
+    #[clap(
+        long,
+        global = true,
+        conflicts_with_all(&["at_mouse", "at_cursor"]),
+        help = "Open the popup in the middle of the screen instead of over the calling pane (e.g. --at-center)"
+    )]
+    pub at_center: bool,
+}
+
+impl PromptCli {
+    pub fn placement(&self) -> crate::data::PipePopupPlacement {
+        if self.at_mouse {
+            crate::data::PipePopupPlacement::Mouse
+        } else if self.at_cursor {
+            crate::data::PipePopupPlacement::Cursor
+        } else if self.at_center {
+            crate::data::PipePopupPlacement::Center
+        } else {
+            crate::data::PipePopupPlacement::Pane
+        }
+    }
+}
+
+#[derive(Debug, Subcommand, Clone, Serialize, Deserialize)]
+pub enum PromptElementCli {
+    #[clap(about = "Ask a yes/no question; the exit code is the answer (e.g. zellij prompt confirm \"Force push?\" --yes Push --no Cancel)", after_help = "Examples:\n  zellij prompt confirm \"Force push?\"
+  zellij prompt confirm \"Force push?\" --yes Push --no Cancel && git push --force
+  zellij prompt confirm \"Deploy?\" --title Production --timeout 10s --default no")]
+    Confirm {
+        #[clap(help = "The question (e.g. \"Force push?\")")]
+        message: Option<String>,
+        #[clap(long, help = "Label of the confirming button (e.g. --yes Push)")]
+        yes: Option<String>,
+        #[clap(long, help = "Label of the refusing button (e.g. --no Cancel)")]
+        no: Option<String>,
+    },
+    #[clap(about = "Choose one or more items from the arguments or from stdin, one per line (e.g. git branch | zellij prompt choose)", after_help = "Examples:\n  git branch --format='%(refname:short)' | zellij prompt choose
+  zellij prompt choose main develop feature/login --title Branch
+  zellij prompt choose --multi --selected b a b c d
+  printf 'main\\tMain branch\\ndev\\tDevelopment\\n' | zellij prompt choose --labels
+  zellij prompt choose --item \"rm=Delete file\" --item \"mv=Rename file\"
+  ls | zellij prompt choose --json")]
+    Choose {
+        #[clap(help = "The items; read from stdin when none are given (e.g. main dev)")]
+        items: Vec<String>,
+        #[clap(long = "item", allow_hyphen_values = true, help = "An item written as value=Label (e.g. --item \"rm=Delete file\")")]
+        item: Vec<String>,
+        #[clap(long, help = "Allow ticking several items (e.g. zellij prompt choose --multi a b c)")]
+        multi: bool,
+        #[clap(long, help = "Each stdin line is value<TAB>label (e.g. printf 'main\\tMain branch\\n' | zellij prompt choose --labels)")]
+        labels: bool,
+        #[clap(short = '0', long = "null", help = "Input and output are NUL-separated (e.g. find . -print0 | zellij prompt choose -0)")]
+        null: bool,
+        #[clap(long, allow_hyphen_values = true, help = "An item ticked in advance (e.g. --selected b)")]
+        selected: Vec<String>,
+    },
+    #[clap(about = "Ask for a line of text (e.g. zellij prompt input \"Commit message\" --required)", after_help = "Examples:\n  zellij prompt input \"Commit message\" --placeholder \"what changed\" --required
+  zellij prompt input Branch --validate '^[a-z-]+$' --default my-branch
+  zellij prompt input Name --timeout 10s --default anonymous")]
+    Input {
+        #[clap(help = "The label (e.g. \"Commit message\")")]
+        message: Option<String>,
+        #[clap(long, help = "Text shown while the field is empty (e.g. --placeholder \"what changed\")")]
+        placeholder: Option<String>,
+        #[clap(long, allow_hyphen_values = true, help = "A regular expression the answer must match (e.g. --validate '^[a-z-]+$')")]
+        validate: Option<String>,
+        #[clap(long, help = "Refuse an empty answer (e.g. --required)")]
+        required: bool,
+    },
+    #[clap(about = "Ask for a whole number (e.g. zellij prompt number Port --min 1 --max 65535 --default 8080)", after_help = "Examples:\n  zellij prompt number Port --min 1 --max 65535 --default 8080
+  zellij prompt number Workers --min 1 --max 64 --step 4 --default 8")]
+    Number {
+        #[clap(help = "The label (e.g. Port)")]
+        message: Option<String>,
+        #[clap(long, allow_hyphen_values = true, help = "Smallest allowed value (e.g. --min 1)")]
+        min: Option<i64>,
+        #[clap(long, allow_hyphen_values = true, help = "Largest allowed value (e.g. --max 65535)")]
+        max: Option<i64>,
+        #[clap(long, help = "Step used by the arrow keys (e.g. --step 10)")]
+        step: Option<i64>,
+    },
+    #[clap(about = "Ask for on or off; prints true or false (e.g. zellij prompt toggle \"Enable CI\" --default on)", after_help = "Examples:\n  zellij prompt toggle \"Enable CI\" --default on
+  zellij prompt toggle Verbose --json")]
+    Toggle {
+        #[clap(help = "The label (e.g. \"Enable CI\")")]
+        message: Option<String>,
+    },
+    #[clap(about = "Choose one value from a dropdown (e.g. zellij prompt select License MIT Apache-2.0)", after_help = "Examples:\n  zellij prompt select License MIT Apache-2.0 GPL-3.0
+  zellij prompt select License MIT Apache-2.0 --default Apache-2.0")]
+    Select {
+        #[clap(help = "The label (e.g. License)")]
+        message: Option<String>,
+        #[clap(help = "The options (e.g. MIT Apache-2.0)")]
+        options: Vec<String>,
+    },
+    #[clap(about = "Show a menu and print the chosen item (e.g. zellij prompt menu Open Rename Delete)", after_help = "Examples:\n  zellij prompt menu Open Rename Delete
+  zellij prompt menu --item \"o=Open\" --item \"r=Rename\" --item \"d=Delete\" --at-mouse\n  zellij prompt menu Copy Paste --at-cursor\n  zellij prompt menu Open Close --at-center")]
+    Menu {
+        #[clap(help = "The menu items (e.g. Open Rename Delete)")]
+        items: Vec<String>,
+        #[clap(long = "item", allow_hyphen_values = true, help = "An item written as value=Label (e.g. --item \"rm=Delete\")")]
+        item: Vec<String>,
+    },
+    #[clap(about = "Show several fields described in JSON and print one JSON object (e.g. zellij prompt form --spec form.json)", after_help = "Examples:\n  echo '{\"title\":\"New project\",\"fields\":[{\"id\":\"name\",\"type\":\"input\",\"label\":\"Name\",\"required\":true},{\"id\":\"ci\",\"type\":\"toggle\",\"label\":\"Use CI\",\"default\":true}]}' | zellij prompt form
+  zellij prompt form --spec form.json")]
+    Form {
+        #[clap(long, help = "File with the form description; read from stdin when not given (e.g. --spec form.json)")]
+        spec: Option<PathBuf>,
+    },
+}
+
+impl PromptElementCli {
+    pub fn name(&self) -> &'static str {
+        match self {
+            PromptElementCli::Confirm { .. } => "confirm",
+            PromptElementCli::Choose { .. } => "choose",
+            PromptElementCli::Input { .. } => "input",
+            PromptElementCli::Number { .. } => "number",
+            PromptElementCli::Toggle { .. } => "toggle",
+            PromptElementCli::Select { .. } => "select",
+            PromptElementCli::Menu { .. } => "menu",
+            PromptElementCli::Form { .. } => "form",
+        }
+    }
+}
+
+pub fn prompt_element_help(element: &str, color: bool) -> String {
+    use clap::CommandFactory;
+    let mut command = PromptCli::command()
+        .name("prompt")
+        .bin_name("zellij prompt")
+        .styles(CLI_STYLES);
+    command.build();
+    let help = match command.find_subcommand_mut(element) {
+        Some(subcommand) => subcommand.render_help(),
+        None => command.render_help(),
+    };
+    if color {
+        help.ansi().to_string()
+    } else {
+        help.to_string()
+    }
 }
 
 #[derive(Debug, Parser, Clone, Serialize, Deserialize)]
@@ -1487,6 +1684,14 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         /// If launching a plugin, specify its pane title
         #[clap(short('t'), long, value_parser, display_order(10))]
         plugin_title: Option<String>,
+        #[clap(
+            long,
+            value_parser,
+            display_order(11),
+            conflicts_with_all(&["floating_plugin", "in_place_plugin"]),
+            help = "If launching a plugin, open it as a popup for the user looking at the calling pane (pane, center, mouse or cursor)"
+        )]
+        popup: Option<crate::data::PipePopupPlacement>,
     },
     ListClients,
     /// List all panes in the current session

@@ -751,6 +751,7 @@ message CliPipeAction {
   optional bool in_place = 10;
   optional string cwd = 11;
   optional string pane_title = 12;
+  optional string popup = 13;
 }
 
 message KeybindPipeAction {

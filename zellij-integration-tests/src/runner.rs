@@ -519,6 +519,65 @@ impl CliClientHandle {
     }
 }
 
+pub struct CliOutputHandle {
+    thread: JoinHandle<i32>,
+    fake_client_handle: FakeClientHandle,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CliResult {
+    pub exit_code: i32,
+    pub stdout: String,
+}
+
+impl CliOutputHandle {
+    pub fn has_exited(&self) -> bool {
+        self.thread.is_finished()
+    }
+    pub fn stdout(&self) -> String {
+        String::from_utf8_lossy(&self.fake_client_handle.client_screen.raw_bytes()).into_owned()
+    }
+    pub fn wait_for_exit(self) -> CliResult {
+        let deadline = std::time::Instant::now() + crate::default_timeout();
+        while !self.thread.is_finished() {
+            if std::time::Instant::now() > deadline {
+                panic!(
+                    "cli command did not exit in time; stdout so far: {:?}",
+                    self.stdout()
+                );
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let stdout = self.stdout();
+        let exit_code = self.thread.join().expect("cli client thread panicked");
+        CliResult { exit_code, stdout }
+    }
+}
+
+pub struct CliCaller {
+    pub pane_id: Option<u32>,
+    pub stdin: Option<crossbeam::channel::Receiver<Vec<u8>>>,
+}
+
+impl CliCaller {
+    pub fn from_pane(pane_id: u32) -> Self {
+        CliCaller {
+            pane_id: Some(pane_id),
+            stdin: None,
+        }
+    }
+    pub fn with_stdin(mut self, stdin: crossbeam::channel::Receiver<Vec<u8>>) -> Self {
+        self.stdin = Some(stdin);
+        self
+    }
+    pub fn with_stdin_text(self, text: &str) -> Self {
+        let (sender, receiver) = crossbeam::channel::unbounded();
+        sender.send(text.as_bytes().to_vec()).unwrap();
+        drop(sender);
+        self.with_stdin(receiver)
+    }
+}
+
 impl TestSession {
     pub fn session_name(&self) -> &str {
         &self.session_name
@@ -646,6 +705,70 @@ impl TestSession {
                 )
             })
             .unwrap()
+    }
+
+    fn cli_os_api(&self, caller: CliCaller) -> (FakeClientOsApi, FakeClientHandle) {
+        let mut env = std::collections::HashMap::new();
+        if let Some(pane_id) = caller.pane_id {
+            env.insert("ZELLIJ_PANE_ID".to_owned(), pane_id.to_string());
+        }
+        let (fake_client_os_api, fake_client_handle) =
+            FakeClientOsApi::new_with_env(self.size, None, env);
+        let fake_client_os_api = match caller.stdin {
+            Some(stdin) => fake_client_os_api.with_piped_stdin(stdin),
+            None => fake_client_os_api,
+        };
+        (fake_client_os_api, fake_client_handle)
+    }
+
+    pub fn run_prompt(&self, args: &[&str], caller: CliCaller) -> CliOutputHandle {
+        let mut command_line = vec!["prompt"];
+        command_line.extend_from_slice(args);
+        let prompt_cli =
+            <zellij_utils::cli::PromptCli as clap::Parser>::try_parse_from(command_line)
+                .expect("invalid prompt arguments");
+        let (fake_client_os_api, fake_client_handle) = self.cli_os_api(caller);
+        let session_name = self.session_name.clone();
+        let thread = std::thread::Builder::new()
+            .name("in_process_prompt_client".to_string())
+            .spawn(move || {
+                zellij_client::cli_client::start_prompt_client(
+                    Box::new(fake_client_os_api),
+                    &session_name,
+                    prompt_cli,
+                    zellij_utils::prompt::PROMPT_PLUGIN_URL.to_owned(),
+                )
+            })
+            .unwrap();
+        CliOutputHandle {
+            thread,
+            fake_client_handle,
+        }
+    }
+
+    pub fn run_cli_pipe(&self, cli_action: CliAction, caller: CliCaller) -> CliOutputHandle {
+        let actions = Action::actions_from_cli(
+            cli_action,
+            Box::new(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"))),
+            Some(self.config.clone()),
+        )
+        .expect("failed to build cli actions");
+        let (fake_client_os_api, fake_client_handle) = self.cli_os_api(caller);
+        let session_name = self.session_name.clone();
+        let thread = std::thread::Builder::new()
+            .name("in_process_pipe_client".to_string())
+            .spawn(move || {
+                zellij_client::cli_client::start_cli_client(
+                    Box::new(fake_client_os_api),
+                    &session_name,
+                    actions,
+                )
+            })
+            .unwrap();
+        CliOutputHandle {
+            thread,
+            fake_client_handle,
+        }
     }
 
     pub fn save_session(&self) {

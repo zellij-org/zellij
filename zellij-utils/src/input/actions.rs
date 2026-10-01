@@ -582,6 +582,7 @@ pub enum Action {
         in_place: Option<bool>,
         cwd: Option<PathBuf>,
         pane_title: Option<String>,
+        popup: Option<crate::data::PipePopupPlacement>,
     },
     KeybindPipe {
         name: Option<String>,
@@ -2084,6 +2085,7 @@ impl Action {
                 in_place_plugin,
                 plugin_cwd,
                 plugin_title,
+                popup,
             } => {
                 let current_dir = get_current_dir();
                 let cwd = plugin_cwd
@@ -2105,6 +2107,7 @@ impl Action {
                     cwd,
                     pane_title: plugin_title,
                     skip_cache,
+                    popup,
                 }])
             },
             CliAction::ListClients => Ok(vec![Action::ListClients]),

@@ -16127,3 +16127,50 @@ pub fn bookkeeping_for_panes_that_were_not_created_stays_bounded() {
     screen.remember_pane_never_created(PaneId::Plugin(3));
     assert!(!screen.pane_will_never_be_created(&PaneId::Plugin(3)));
 }
+
+#[test]
+fn a_popup_whose_plugin_fails_is_closed_and_unloaded() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut screen = create_new_screen(size, true, true);
+    let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> = channels::unbounded();
+    screen
+        .bus
+        .senders
+        .replace_to_plugin(SenderWithContext::new(to_plugin));
+    new_tab(&mut screen, 1, 0);
+    let tab_id = screen.get_active_tab(client_id).unwrap().id;
+    let run_plugin_or_alias =
+        RunPluginOrAlias::from_url("zellij:prompt", &None, None, None).unwrap();
+    screen
+        .add_popup(
+            42,
+            client_id,
+            tab_id,
+            run_plugin_or_alias,
+            crate::tab::PopupPlacement::At(Position::new(3, 3)),
+            crate::tab::PopupKind::Prompt,
+            20,
+            5,
+        )
+        .unwrap();
+    assert!(screen
+        .get_active_tab(client_id)
+        .unwrap()
+        .has_popup_for_client(client_id));
+    let mut loading_indication =
+        crate::ui::loading_indication::LoadingIndication::new("Panic!".to_owned());
+    loading_indication.indicate_loading_error("out of memory".to_owned());
+    assert!(screen.update_plugin_loading_stage(42, loading_indication));
+    assert!(!screen
+        .get_active_tab(client_id)
+        .unwrap()
+        .has_popup_for_client(client_id));
+    let unloaded = plugin_receiver
+        .try_iter()
+        .any(|(instruction, _)| matches!(instruction, PluginInstruction::Unload(42)));
+    assert!(unloaded);
+}

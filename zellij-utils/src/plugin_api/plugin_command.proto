@@ -236,6 +236,7 @@ enum CommandName {
   UnsetConfigSetting = 243;
   SaveConfig = 244;
   CopyKeybindPreset = 245;
+  SetCliPipeExitCode = 246;
 }
 
 message PluginCommand {
@@ -413,7 +414,13 @@ message PluginCommand {
     string unset_config_setting_payload = 186;
     SaveConfigPayload save_config_payload = 187;
     CopyKeybindPresetPayload copy_keybind_preset_payload = 188;
+    SetCliPipeExitCodePayload set_cli_pipe_exit_code_payload = 189;
   }
+}
+
+message SetCliPipeExitCodePayload {
+  string pipe_name = 1;
+  int32 exit_code = 2;
 }
 
 message CopyKeybindPresetPayload {

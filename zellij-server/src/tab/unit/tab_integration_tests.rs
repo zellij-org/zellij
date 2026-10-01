@@ -12903,11 +12903,26 @@ fn open_test_popup(tab: &mut Tab, client_id: ClientId, plugin_id: u32) {
     tab.open_popup(
         client_id,
         plugin_id,
-        Position::new(3, 3),
+        crate::tab::PopupPlacement::At(Position::new(3, 3)),
+        crate::tab::PopupKind::Menu,
         20,
         6,
         None,
         String::from("popup"),
+    )
+    .unwrap();
+}
+
+fn open_test_prompt_popup(tab: &mut Tab, client_id: ClientId, plugin_id: u32, line: i32) {
+    tab.open_popup(
+        client_id,
+        plugin_id,
+        crate::tab::PopupPlacement::At(Position::new(line, 3)),
+        crate::tab::PopupKind::Prompt,
+        20,
+        4,
+        None,
+        String::from("prompt"),
     )
     .unwrap();
 }
@@ -13008,7 +13023,8 @@ fn popup_is_placed_inside_the_screen_and_resized_on_request() {
     tab.open_popup(
         client_id,
         42,
-        Position::new(18, 115),
+        crate::tab::PopupPlacement::At(Position::new(18, 115)),
+        crate::tab::PopupKind::Menu,
         20,
         6,
         None,
@@ -13053,6 +13069,169 @@ fn click_outside_popup_requests_close_and_click_inside_is_consumed() {
         tab.handle_popup_mouse_event(&MouseEvent::new_left_press_event(Position::new(15, 80)), 2),
         None
     );
+}
+
+#[test]
+fn stacked_prompt_popups_hand_keys_back_from_the_newest_to_the_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let (plugin_sender, _plugin_receiver) = channels::unbounded();
+    tab.senders
+        .replace_to_plugin(SenderWithContext::new(plugin_sender));
+    open_test_prompt_popup(&mut tab, client_id, 42, 2);
+    open_test_prompt_popup(&mut tab, client_id, 43, 8);
+    assert_eq!(tab.popup_count_for_client(client_id), 2);
+    assert_eq!(tab.popup_plugin_id(client_id), Some(43));
+
+    assert_eq!(tab.close_popup_with_plugin_id(43), Some(client_id));
+    assert_eq!(tab.popup_plugin_id(client_id), Some(42));
+    assert!(tab.has_popup_for_client(client_id));
+
+    assert_eq!(tab.close_popup_with_plugin_id(42), Some(client_id));
+    assert_eq!(tab.popup_plugin_id(client_id), None);
+    assert!(!tab.has_popup_for_client(client_id));
+    assert_eq!(tab.get_active_pane_id(client_id), Some(PaneId::Terminal(1)));
+}
+
+#[test]
+fn closing_a_lower_prompt_popup_keeps_the_newest_on_top() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let (plugin_sender, _plugin_receiver) = channels::unbounded();
+    tab.senders
+        .replace_to_plugin(SenderWithContext::new(plugin_sender));
+    open_test_prompt_popup(&mut tab, client_id, 42, 2);
+    open_test_prompt_popup(&mut tab, client_id, 43, 8);
+    tab.close_popup_with_plugin_id(42);
+    assert_eq!(tab.popup_plugin_id(client_id), Some(43));
+    assert_eq!(tab.popup_count_for_client(client_id), 1);
+}
+
+#[test]
+fn a_menu_popup_replaces_only_menus_and_never_a_prompt() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    open_test_popup(&mut tab, client_id, 41);
+    open_test_prompt_popup(&mut tab, client_id, 42, 2);
+    let (plugin_sender, _plugin_receiver) = channels::unbounded();
+    tab.senders
+        .replace_to_plugin(SenderWithContext::new(plugin_sender));
+    let replaced = tab
+        .open_popup(
+            client_id,
+            44,
+            crate::tab::PopupPlacement::At(Position::new(3, 3)),
+            crate::tab::PopupKind::Menu,
+            20,
+            6,
+            None,
+            String::from("popup"),
+        )
+        .unwrap();
+    assert_eq!(replaced, vec![41]);
+    assert_eq!(tab.popup_count_for_client(client_id), 2);
+    assert_eq!(tab.popup_plugin_id(client_id), Some(44));
+    assert_eq!(tab.close_top_popup(client_id), Some(44));
+    assert_eq!(tab.popup_plugin_id(client_id), Some(42));
+}
+
+#[test]
+fn click_outside_a_prompt_popup_is_ignored() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let (plugin_sender, _plugin_receiver) = channels::unbounded();
+    tab.senders
+        .replace_to_plugin(SenderWithContext::new(plugin_sender));
+    open_test_prompt_popup(&mut tab, client_id, 42, 2);
+    assert_eq!(
+        tab.handle_popup_mouse_event(
+            &MouseEvent::new_left_press_event(Position::new(15, 80)),
+            client_id
+        ),
+        Some(crate::tab::PopupMouseOutcome::Consumed)
+    );
+    assert!(tab.has_popup_for_client(client_id));
+}
+
+#[test]
+fn prompt_popup_centered_in_a_pane_stays_centered_when_resized() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let (plugin_sender, _plugin_receiver) = channels::unbounded();
+    tab.senders
+        .replace_to_plugin(SenderWithContext::new(plugin_sender));
+    let area = zellij_utils::pane_size::Viewport {
+        x: 60,
+        y: 1,
+        rows: 18,
+        cols: 60,
+    };
+    tab.open_popup(
+        client_id,
+        42,
+        crate::tab::PopupPlacement::CenteredIn(area),
+        crate::tab::PopupKind::Prompt,
+        20,
+        6,
+        None,
+        String::from("prompt"),
+    )
+    .unwrap();
+    let geom = tab.popup_geom(client_id).unwrap();
+    assert_eq!((geom.x, geom.y), (80, 7));
+    tab.resize_popup(42, 40, 10);
+    let geom = tab.popup_geom(client_id).unwrap();
+    assert_eq!((geom.x, geom.y), (70, 5));
+}
+
+#[test]
+fn stacked_popups_hide_the_lower_popup_where_they_overlap() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let (plugin_sender, _plugin_receiver) = channels::unbounded();
+    tab.senders
+        .replace_to_plugin(SenderWithContext::new(plugin_sender));
+    open_test_prompt_popup(&mut tab, client_id, 42, 2);
+    open_test_prompt_popup(&mut tab, client_id, 43, 2);
+    tab.handle_plugin_bytes(42, client_id, Vec::from("LOWER-POPUP".as_bytes()))
+        .unwrap();
+    tab.handle_plugin_bytes(43, client_id, Vec::from("UPPER-POPUP".as_bytes()))
+        .unwrap();
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+    let serialized = output.serialize().unwrap();
+    let snapshot = take_snapshot(
+        serialized.get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert!(snapshot.contains("UPPER-POPUP"));
+    assert!(!snapshot.contains("LOWER-POPUP"));
 }
 
 #[test]

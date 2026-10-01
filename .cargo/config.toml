@@ -13,4 +13,4 @@ linker = "x86_64-w64-mingw32-gcc"
 target-dir = "target"
 
 [target.wasm32-wasip1]
-rustflags = ["-C", "link-arg=-zstack-size=262144"]
+rustflags = ["-C", "link-arg=-zstack-size=524288"]

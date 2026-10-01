@@ -3026,6 +3026,7 @@ fn test_client_messages() {
             in_place: None,
             cwd: None,
             pane_title: None,
+            popup: None,
         },
         terminal_id: Some(1),
         client_id: Some(100),
@@ -3045,6 +3046,7 @@ fn test_client_messages() {
             in_place: Some(false),
             cwd: Some(PathBuf::from("/path/to/cwd")),
             pane_title: Some("pane_title".to_owned()),
+            popup: Some(crate::data::PipePopupPlacement::Center),
         },
         terminal_id: Some(1),
         client_id: Some(100),
@@ -3983,6 +3985,15 @@ fn test_server_messages() {
     });
     test_server_roundtrip!(ServerToClientMsg::UnblockCliPipeInput {
         pipe_name: "stdout".to_string(),
+        exit_code: None,
+    });
+    test_server_roundtrip!(ServerToClientMsg::UnblockCliPipeInput {
+        pipe_name: "stdout".to_string(),
+        exit_code: Some(124),
+    });
+    test_server_roundtrip!(ServerToClientMsg::UnblockCliPipeInput {
+        pipe_name: "stdout".to_string(),
+        exit_code: Some(0),
     });
     test_server_roundtrip!(ServerToClientMsg::CliPipeOutput {
         pipe_name: "stderr".to_string(),

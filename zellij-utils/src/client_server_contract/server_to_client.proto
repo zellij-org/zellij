@@ -58,6 +58,7 @@ message SwitchSessionMsg {
 
 message UnblockCliPipeInputMsg {
   string pipe_name = 1;
+  optional int32 exit_code = 2;
 }
 
 message CliPipeOutputMsg {

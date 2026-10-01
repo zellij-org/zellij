@@ -417,11 +417,13 @@ impl From<ServerToClientMsg> for ProtoServerToClientMsg {
                     connect_to_session: Some(connect_to_session.into()),
                 })
             },
-            ServerToClientMsg::UnblockCliPipeInput { pipe_name } => {
-                server_to_client_msg::Message::UnblockCliPipeInput(UnblockCliPipeInputMsg {
-                    pipe_name,
-                })
-            },
+            ServerToClientMsg::UnblockCliPipeInput {
+                pipe_name,
+                exit_code,
+            } => server_to_client_msg::Message::UnblockCliPipeInput(UnblockCliPipeInputMsg {
+                pipe_name,
+                exit_code,
+            }),
             ServerToClientMsg::CliPipeOutput { pipe_name, output } => {
                 server_to_client_msg::Message::CliPipeOutput(CliPipeOutputMsg { pipe_name, output })
             },
@@ -656,6 +658,7 @@ impl TryFrom<ProtoServerToClientMsg> for ServerToClientMsg {
             Some(server_to_client_msg::Message::UnblockCliPipeInput(unblock)) => {
                 Ok(ServerToClientMsg::UnblockCliPipeInput {
                     pipe_name: unblock.pipe_name,
+                    exit_code: unblock.exit_code,
                 })
             },
             Some(server_to_client_msg::Message::CliPipeOutput(pipe_output)) => {
@@ -2001,6 +2004,7 @@ impl From<crate::input::actions::Action>
                 in_place,
                 cwd,
                 pane_title,
+                popup,
             } => ActionType::CliPipe(CliPipeAction {
                 pipe_id,
                 name,
@@ -2018,6 +2022,7 @@ impl From<crate::input::actions::Action>
                 in_place,
                 cwd: cwd.map(|p| p.to_string_lossy().to_string()),
                 pane_title,
+                popup: popup.map(|p| p.to_string()),
             }),
             crate::input::actions::Action::KeybindPipe {
                 name,
@@ -2979,6 +2984,9 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                 in_place: cli_pipe_action.in_place,
                 cwd: cli_pipe_action.cwd.map(PathBuf::from),
                 pane_title: cli_pipe_action.pane_title,
+                popup: cli_pipe_action
+                    .popup
+                    .and_then(|p| p.parse::<crate::data::PipePopupPlacement>().ok()),
             }),
             ActionType::KeybindPipe(keybind_pipe_action) => {
                 Ok(crate::input::actions::Action::KeybindPipe {

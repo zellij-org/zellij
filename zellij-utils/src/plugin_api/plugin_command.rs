@@ -126,7 +126,8 @@ pub use super::generated_api::api::{
         SaveLayoutPayload, SaveLayoutResponse as ProtobufSaveLayoutResponse, SaveSessionPayload,
         SaveSessionResponse as ProtobufSaveSessionResponse, ScrollDownInPaneIdPayload,
         ScrollToBottomInPaneIdPayload, ScrollToTopInPaneIdPayload, ScrollUpInPaneIdPayload,
-        SessionListSnapshot as ProtobufSessionListSnapshot, SetFloatingPanePinnedPayload,
+        SessionListSnapshot as ProtobufSessionListSnapshot, SetCliPipeExitCodePayload,
+        SetFloatingPanePinnedPayload,
         SetPaneBorderStylePayload, SetPaneBorderlessPayload, SetPaneColorPayload,
         SetPaneFrameStylePayload as ProtobufSetPaneFrameStylePayload,
         SetPaneRegexHighlightsPayload, SetPopupSizePayload, SetSelectableSlotPayload,
@@ -1454,6 +1455,13 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     Ok(PluginCommand::CliPipeOutput(pipe_name, output))
                 },
                 _ => Err("Mismatched payload for PipeOutput"),
+            },
+            Some(CommandName::SetCliPipeExitCode) => match protobuf_plugin_command.payload {
+                Some(Payload::SetCliPipeExitCodePayload(SetCliPipeExitCodePayload {
+                    pipe_name,
+                    exit_code,
+                })) => Ok(PluginCommand::SetCliPipeExitCode(pipe_name, exit_code)),
+                _ => Err("Mismatched payload for SetCliPipeExitCode"),
             },
             Some(CommandName::MessageToPlugin) => match protobuf_plugin_command.payload {
                 Some(Payload::MessageToPluginPayload(MessageToPluginPayload {
@@ -3506,6 +3514,15 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     pipe_name,
                     output,
                 })),
+            }),
+            PluginCommand::SetCliPipeExitCode(pipe_name, exit_code) => Ok(ProtobufPluginCommand {
+                name: CommandName::SetCliPipeExitCode as i32,
+                payload: Some(Payload::SetCliPipeExitCodePayload(
+                    SetCliPipeExitCodePayload {
+                        pipe_name,
+                        exit_code,
+                    },
+                )),
             }),
             PluginCommand::MessageToPlugin(message_to_plugin) => {
                 let plugin_config: Vec<_> = message_to_plugin

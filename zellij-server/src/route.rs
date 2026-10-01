@@ -1722,6 +1722,7 @@ pub(crate) fn route_action(
             skip_cache,
             cwd,
             pane_title,
+            popup,
             ..
         } => {
             drop(completion_tx); // releasing pipes is handled by the plugins, so we don't want
@@ -1757,6 +1758,8 @@ pub(crate) fn route_action(
                         pane_title,
                         skip_cache,
                         cli_client_id: cli_client_id.unwrap_or(client_id),
+                        caller_pane_id: pane_id,
+                        popup,
                     })
                     .with_context(err_context)?;
             } else {

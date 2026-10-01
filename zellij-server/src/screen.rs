@@ -948,9 +948,16 @@ pub enum ScreenInstruction {
         client_id: ClientId,
         tab_id: usize,
         run_plugin_or_alias: RunPluginOrAlias,
-        anchor: Position,
+        placement: crate::tab::PopupPlacement,
+        kind: crate::tab::PopupKind,
         width: usize,
         height: usize,
+    },
+    OpenPipePopup {
+        pipe_id: String,
+        run_plugin_or_alias: RunPluginOrAlias,
+        caller_pane_id: Option<PaneId>,
+        placement: zellij_utils::data::PipePopupPlacement,
     },
     SetPopupSize {
         plugin_id: u32,
@@ -1361,6 +1368,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             },
             ScreenInstruction::OpenPluginPopup { .. } => ScreenContext::OpenPluginPopup,
             ScreenInstruction::AddPopup { .. } => ScreenContext::AddPopup,
+            ScreenInstruction::OpenPipePopup { .. } => ScreenContext::OpenPipePopup,
             ScreenInstruction::SetPopupSize { .. } => ScreenContext::SetPopupSize,
             ScreenInstruction::UpdateContextMenuConfig(..) => {
                 ScreenContext::UpdateContextMenuConfig
@@ -1675,6 +1683,8 @@ pub(crate) struct Screen {
     default_context_menu_config: ContextMenuConfig,
     context_menu_configs: HashMap<ClientId, ContextMenuConfig>,
     open_context_menus: HashMap<ClientId, (ContextMenuContext, Vec<ContextMenuEntry>)>,
+    last_client_input: HashMap<ClientId, std::time::Instant>,
+    last_mouse_positions: HashMap<ClientId, Position>,
     rename_pane_targets: HashMap<ClientId, PaneId>,
     rename_tab_targets: HashMap<ClientId, usize>,
     style: Style,
@@ -1914,6 +1924,8 @@ impl Screen {
             default_context_menu_config: ContextMenuConfig::default(),
             context_menu_configs: HashMap::new(),
             open_context_menus: HashMap::new(),
+            last_client_input: HashMap::new(),
+            last_mouse_positions: HashMap::new(),
             rename_pane_targets: HashMap::new(),
             rename_tab_targets: HashMap::new(),
             default_mode_info: mode_info,
@@ -5783,6 +5795,8 @@ impl Screen {
         self.rename_pane_targets.remove(&client_id);
         self.rename_tab_targets.remove(&client_id);
         self.context_menu_configs.remove(&client_id);
+        self.last_client_input.remove(&client_id);
+        self.last_mouse_positions.remove(&client_id);
         let passthrough_panes: Vec<PaneId> = self
             .nested_guest_choices
             .iter()
@@ -8460,6 +8474,10 @@ impl Screen {
         false
     }
     pub fn handle_mouse_event(&mut self, event: MouseEvent, client_id: ClientId) {
+        self.record_mouse_position(client_id, event.position);
+        if event.event_type == MouseEventType::Press {
+            self.record_client_input(client_id);
+        }
         if self.handle_popup_mouse_event(&event, client_id) {
             return;
         }
@@ -8742,6 +8760,9 @@ impl Screen {
         pid: u32,
         loading_indication: LoadingIndication,
     ) -> bool {
+        if loading_indication.is_error() && self.popup_plugin_failed(pid) {
+            return true;
+        }
         let all_tabs = self.get_tabs_mut();
         let mut found_plugin = false;
         for tab in all_tabs.values_mut() {
@@ -9802,6 +9823,7 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
+                screen.record_client_input(client_id);
                 if screen.send_key_to_popup(client_id, key_with_modifier.clone()) {
                     continue;
                 }
@@ -13668,7 +13690,8 @@ pub(crate) fn screen_thread_main(
                 client_id,
                 tab_id,
                 run_plugin_or_alias,
-                anchor,
+                placement,
+                kind,
                 width,
                 height,
             } => {
@@ -13677,10 +13700,23 @@ pub(crate) fn screen_thread_main(
                     client_id,
                     tab_id,
                     run_plugin_or_alias,
-                    anchor,
+                    placement,
+                    kind,
                     width,
                     height,
                 )?;
+                if let Some(loading_indication) = plugin_loading_message_cache.remove(&plugin_id) {
+                    screen.update_plugin_loading_stage(plugin_id, loading_indication);
+                    screen.render(None)?;
+                }
+            },
+            ScreenInstruction::OpenPipePopup {
+                pipe_id,
+                run_plugin_or_alias,
+                caller_pane_id,
+                placement,
+            } => {
+                screen.open_pipe_popup(pipe_id, run_plugin_or_alias, caller_pane_id, placement);
             },
             ScreenInstruction::SetPopupSize {
                 plugin_id,

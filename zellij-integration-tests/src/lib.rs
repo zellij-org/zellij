@@ -25,8 +25,8 @@ pub use nested::{
     NestedDepthThreeHarness, NestedHarness,
 };
 pub use runner::{
-    assert_same_rendered_grid, normalized, BackgroundTestSession, TestClient, TestRunner,
-    TestSession,
+    assert_same_rendered_grid, normalized, BackgroundTestSession, CliCaller, CliOutputHandle,
+    CliResult, TestClient, TestRunner, TestSession,
 };
 pub use zellij_utils::data::LayoutInfo;
 pub use zellij_utils::pane_size::Size;
