@@ -415,16 +415,51 @@ pub enum SessionNameMatch {
     None,
 }
 
+/// Whether two session names refer to the same session.
+///
+/// Session names are case-sensitive on Unix, but case-insensitive on Windows:
+/// there the session's marker file lives on NTFS and its IPC endpoint is a
+/// Win32 named pipe, and both resolve names case-insensitively, so two
+/// sessions whose names differ only in case cannot coexist.
+#[cfg(windows)]
+fn session_names_equal(a: &str, b: &str) -> bool {
+    a.to_lowercase() == b.to_lowercase()
+}
+
+/// Unix semantics: session names are compared verbatim.
+#[cfg(not(windows))]
+fn session_names_equal(a: &str, b: &str) -> bool {
+    a == b
+}
+
+/// Whether a session name starts with the given prefix, following the same
+/// case rules as [`session_names_equal`].
+#[cfg(windows)]
+fn session_name_starts_with(name: &str, prefix: &str) -> bool {
+    name.to_lowercase().starts_with(&prefix.to_lowercase())
+}
+
+#[cfg(not(windows))]
+fn session_name_starts_with(name: &str, prefix: &str) -> bool {
+    name.starts_with(prefix)
+}
+
 pub fn match_session_name(prefix: &str) -> Result<SessionNameMatch, io::ErrorKind> {
     let sessions = get_sessions()?;
 
     let filtered_sessions: Vec<_> = sessions
         .iter()
-        .filter(|s| s.0.starts_with(prefix))
+        .filter(|s| session_name_starts_with(&s.0, prefix))
         .collect();
 
-    if filtered_sessions.iter().any(|s| s.0 == prefix) {
-        return Ok(SessionNameMatch::Exact(prefix.to_string()));
+    // Return the stored session name rather than the queried prefix so that
+    // paths and pipes derived from it keep the casing the session was
+    // created with.
+    if let Some(exact) = filtered_sessions
+        .iter()
+        .find(|s| session_names_equal(&s.0, prefix))
+    {
+        return Ok(SessionNameMatch::Exact(exact.0.clone()));
     }
 
     Ok({
@@ -548,7 +583,10 @@ pub fn assert_session_ne(name: &str) {
     match session_exists(name) {
         Ok(result) if !result => {
             let resurrectable_sessions = get_resurrectable_session_names();
-            if resurrectable_sessions.iter().find(|s| s == &name).is_some() {
+            if resurrectable_sessions
+                .iter()
+                .any(|s| session_names_equal(s, name))
+            {
                 println!("Session with name {:?} already exists, but is dead. Use the attach command to resurrect it or, the delete-session command to kill it or specify a different name.", name);
             } else {
                 return
@@ -644,9 +682,10 @@ pub fn generate_unique_session_name() -> Option<String> {
         },
     };
 
-    let name = get_name_generator()
-        .take(1000)
-        .find(|name| !sessions.contains(name) && !dead_sessions.contains(name));
+    let name = get_name_generator().take(1000).find(|name| {
+        !sessions.iter().any(|s| session_names_equal(s, name))
+            && !dead_sessions.iter().any(|s| session_names_equal(s, name))
+    });
 
     if let Some(name) = name {
         return Some(name);
@@ -808,3 +847,28 @@ const NOUNS: &[&'static str] = &[
     "yak",
     "zebra",
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn session_name_comparison_matches_platform_semantics() {
+        assert!(session_names_equal("abc", "abc"));
+        assert!(!session_names_equal("abc", "abd"));
+        assert!(session_name_starts_with("abcdef", "abc"));
+        assert!(!session_name_starts_with("abcdef", "abd"));
+
+        #[cfg(windows)]
+        {
+            assert!(session_names_equal("Test", "test"));
+            assert!(session_names_equal("TEST", "test"));
+            assert!(session_name_starts_with("TestSession", "test"));
+        }
+        #[cfg(not(windows))]
+        {
+            assert!(!session_names_equal("Test", "test"));
+            assert!(!session_name_starts_with("TestSession", "test"));
+        }
+    }
+}
