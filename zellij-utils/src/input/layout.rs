@@ -831,6 +831,9 @@ impl FloatingPaneLayout {
             },
         }
     }
+    pub fn is_terminal_pane(&self) -> bool {
+        Run::is_terminal(&self.run)
+    }
     pub fn add_start_suspended(&mut self, start_suspended: Option<bool>) {
         if let Some(run) = self.run.as_mut() {
             run.add_start_suspended(start_suspended);
@@ -939,6 +942,14 @@ impl TiledPaneLayout {
             }
             pane_count
         }
+    }
+    /// Whether this subtree would spawn at least one terminal pane (as opposed to only
+    /// plugins, which on their own leave the user with nothing to interact with).
+    pub fn has_terminal_panes(&self) -> bool {
+        if self.children.is_empty() {
+            return Run::is_terminal(&self.run);
+        }
+        self.children.iter().any(|child| child.has_terminal_panes())
     }
     pub fn position_panes_in_space(
         &self,
@@ -1726,6 +1737,36 @@ impl Layout {
     // TODO: do we need both of these?
     pub fn has_tabs(&self) -> bool {
         !self.tabs.is_empty()
+    }
+
+    /// Whether this layout would produce at least one terminal pane. A layout made up
+    /// purely of plugins (eg. a status bar and a tab bar) gives the user nothing to type
+    /// into, which is why we warn before attaching to such a resurrected session.
+    pub fn has_terminal_panes(&self) -> bool {
+        if !self.tabs.is_empty() {
+            return self
+                .tabs
+                .iter()
+                .any(|(_tab_name, tiled_panes, floating_panes)| {
+                    tiled_panes.has_terminal_panes()
+                        || floating_panes
+                            .iter()
+                            .any(|floating_pane| floating_pane.is_terminal_pane())
+                });
+        }
+        // There are no tabs, so the new tab template is all the user would get. Its root is
+        // a container rather than a pane, and defaults to an empty container when the
+        // layout does not declare one, so only its children can hold panes.
+        if let Some((tiled_panes, floating_panes)) = self.template.as_ref() {
+            return tiled_panes
+                .children
+                .iter()
+                .any(|child| child.has_terminal_panes())
+                || floating_panes
+                    .iter()
+                    .any(|floating_pane| floating_pane.is_terminal_pane());
+        }
+        false
     }
 
     pub fn tabs(&self) -> Vec<(Option<String>, TiledPaneLayout, Vec<FloatingPaneLayout>)> {
