@@ -16939,6 +16939,20 @@ struct DeliveredFrame {
     rows_written: Vec<(u16, u16, u16)>,
     cursor: zellij_utils::structured_render::CursorState,
     geometry: Option<zellij_utils::structured_render::GeometryRecord>,
+    scroll: zellij_utils::structured_render::ScrollRecord,
+    graphics: Vec<zellij_utils::structured_render::GraphicsRecord>,
+}
+
+fn drain_frames(server_receiver: &ServerReceiver) -> HashMap<ClientId, DeliveredFrame> {
+    let mut frames = HashMap::new();
+    while let Ok((instruction, _)) = server_receiver.try_recv() {
+        if let ServerInstruction::Render(Some(payloads)) = instruction {
+            for (client_id, payload) in payloads {
+                frames.insert(client_id, decode_delivered(&payload));
+            }
+        }
+    }
+    frames
 }
 
 fn delivered_frame(
@@ -16946,6 +16960,10 @@ fn delivered_frame(
     client_id: ClientId,
 ) -> Option<DeliveredFrame> {
     let payload = rendered_payload_for_client(server_receiver, client_id)?;
+    Some(decode_delivered(&payload))
+}
+
+fn decode_delivered(payload: &crate::output::RenderPayload) -> DeliveredFrame {
     let frame = payload
         .frame()
         .expect("a structured client must be sent a frame, not an ansi string");
@@ -16955,7 +16973,7 @@ fn delivered_frame(
         .filter_map(|index| view.record(index))
         .map(|record| (record.y, record.x0, record.len))
         .collect();
-    Some(DeliveredFrame {
+    DeliveredFrame {
         seq: header.seq,
         full_repaint: header.full_repaint(),
         cols: header.cols,
@@ -16963,7 +16981,9 @@ fn delivered_frame(
         rows_written,
         cursor: view.cursor(),
         geometry: view.geometry(),
-    })
+        scroll: view.scroll(),
+        graphics: view.graphics(),
+    }
 }
 
 fn structured_client_with<T>(
@@ -18101,4 +18121,408 @@ mod close_dialogue {
         assert!(!has_dialogue(&screen, 7));
         assert_eq!(seen(&server_receiver), vec![Seen::Detached(vec![7])]);
     }
+}
+
+fn screen_with_scrollback(client_id: ClientId) -> (Screen, TtyStdinBytes, ServerReceiver) {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let (mut screen, tty_stdin_bytes, server_receiver) =
+        structured_screen_with_client(size, client_id);
+    fill_active_pane(&mut screen, client_id, 0..80);
+    (screen, tty_stdin_bytes, server_receiver)
+}
+
+fn fill_active_pane(screen: &mut Screen, client_id: ClientId, lines: std::ops::Range<usize>) {
+    let mut content = String::new();
+    for i in lines {
+        content.push_str(&format!("Line {}\r\n", i));
+    }
+    screen
+        .get_active_tab_mut(client_id)
+        .unwrap()
+        .handle_pty_bytes(1, content.into_bytes())
+        .unwrap();
+}
+
+fn wheel(screen: &mut Screen, client_id: ClientId, lines: isize) {
+    let tab = screen.get_active_tab_mut(client_id).unwrap();
+    let at = Position::new(5, 10);
+    if lines > 0 {
+        tab.handle_scrollwheel_up(&at, lines as usize, client_id)
+            .unwrap();
+    } else {
+        tab.handle_scrollwheel_down(&at, lines.unsigned_abs(), client_id)
+            .unwrap();
+    }
+}
+
+fn next_acknowledged_frame(
+    screen: &mut Screen,
+    server_receiver: &ServerReceiver,
+    client_id: ClientId,
+) -> DeliveredFrame {
+    render_with_pending_output(screen, client_id);
+    let frame = delivered_frame(server_receiver, client_id).expect("a frame must reach the client");
+    screen
+        .handle_render_frame_ack(client_id, frame.seq)
+        .expect("TEST");
+    while server_receiver.try_recv().is_ok() {}
+    frame
+}
+
+fn hint(entries: &[(u16, i16)]) -> zellij_utils::structured_render::ScrollRecord {
+    zellij_utils::structured_render::ScrollRecord {
+        entries: entries
+            .iter()
+            .map(
+                |&(pane, lines)| zellij_utils::structured_render::ScrollEntry { pane, lines },
+            )
+            .collect(),
+    }
+}
+
+#[test]
+fn scrolling_a_pane_up_five_lines_tells_a_structured_client_it_moved_down_five() {
+    let client_id = 1;
+    let (mut screen, _tty, server_receiver) = screen_with_scrollback(client_id);
+    let first = next_acknowledged_frame(&mut screen, &server_receiver, client_id);
+    assert!(first.full_repaint);
+    assert!(first.scroll.is_empty(), "a full repaint carries no hint");
+
+    wheel(&mut screen, client_id, 5);
+    let scrolled = next_acknowledged_frame(&mut screen, &server_receiver, client_id);
+    assert_eq!(scrolled.scroll, hint(&[(0, 5)]));
+
+    wheel(&mut screen, client_id, -2);
+    let back = next_acknowledged_frame(&mut screen, &server_receiver, client_id);
+    assert_eq!(back.scroll, hint(&[(0, -2)]));
+
+    let idle = next_acknowledged_frame(&mut screen, &server_receiver, client_id);
+    assert!(idle.scroll.is_empty(), "a frame without scrolling has no hint");
+}
+
+#[test]
+fn two_scrolls_between_frames_are_reported_as_their_sum() {
+    let client_id = 1;
+    let (mut screen, _tty, server_receiver) = screen_with_scrollback(client_id);
+    next_acknowledged_frame(&mut screen, &server_receiver, client_id);
+
+    wheel(&mut screen, client_id, 3);
+    wheel(&mut screen, client_id, 4);
+    let frame = next_acknowledged_frame(&mut screen, &server_receiver, client_id);
+    assert_eq!(frame.scroll, hint(&[(0, 7)]));
+}
+
+#[test]
+fn scrolls_merged_while_a_frame_is_in_flight_are_delivered_once_as_their_sum() {
+    let client_id = 1;
+    let (mut screen, _tty, server_receiver) = screen_with_scrollback(client_id);
+    next_acknowledged_frame(&mut screen, &server_receiver, client_id);
+
+    wheel(&mut screen, client_id, 3);
+    render_with_pending_output(&mut screen, client_id);
+    let in_flight = delivered_frame(&server_receiver, client_id).expect("TEST");
+    assert_eq!(in_flight.scroll, hint(&[(0, 3)]));
+
+    wheel(&mut screen, client_id, 2);
+    render_with_pending_output(&mut screen, client_id);
+    wheel(&mut screen, client_id, 4);
+    render_with_pending_output(&mut screen, client_id);
+    assert!(delivered_frame(&server_receiver, client_id).is_none());
+
+    screen
+        .handle_render_frame_ack(client_id, in_flight.seq)
+        .expect("TEST");
+    let drained = delivered_frame(&server_receiver, client_id).expect("the overlay must drain");
+    assert_eq!(drained.scroll, hint(&[(0, 6)]));
+    screen
+        .handle_render_frame_ack(client_id, drained.seq)
+        .expect("TEST");
+
+    let after = next_acknowledged_frame(&mut screen, &server_receiver, client_id);
+    assert!(after.scroll.is_empty(), "nothing is counted twice");
+}
+
+#[test]
+fn new_output_at_the_bottom_produces_no_scroll_hint() {
+    let client_id = 1;
+    let (mut screen, _tty, server_receiver) = screen_with_scrollback(client_id);
+    next_acknowledged_frame(&mut screen, &server_receiver, client_id);
+
+    fill_active_pane(&mut screen, client_id, 80..90);
+    let frame = next_acknowledged_frame(&mut screen, &server_receiver, client_id);
+    assert!(frame.scroll.is_empty());
+}
+
+#[test]
+fn a_resize_produces_no_scroll_hint() {
+    let client_id = 1;
+    let (mut screen, _tty, server_receiver) = screen_with_scrollback(client_id);
+    next_acknowledged_frame(&mut screen, &server_receiver, client_id);
+
+    wheel(&mut screen, client_id, 4);
+    screen.set_client_size(
+        client_id,
+        Size {
+            cols: 101,
+            rows: 24,
+        },
+    );
+    screen.recompute_tab_size(0).expect("TEST");
+    let frame = next_acknowledged_frame(&mut screen, &server_receiver, client_id);
+    assert!(frame.full_repaint);
+    assert!(frame.scroll.is_empty());
+
+    wheel(&mut screen, client_id, 2);
+    let next = next_acknowledged_frame(&mut screen, &server_receiver, client_id);
+    assert_eq!(next.scroll, hint(&[(0, 2)]));
+}
+
+#[test]
+fn clearing_the_scrollback_produces_no_scroll_hint() {
+    let client_id = 1;
+    let (mut screen, _tty, server_receiver) = screen_with_scrollback(client_id);
+    next_acknowledged_frame(&mut screen, &server_receiver, client_id);
+
+    wheel(&mut screen, client_id, 4);
+    next_acknowledged_frame(&mut screen, &server_receiver, client_id);
+    screen
+        .get_active_tab_mut(client_id)
+        .unwrap()
+        .clear_active_terminal_screen(client_id)
+        .unwrap();
+    let frame = next_acknowledged_frame(&mut screen, &server_receiver, client_id);
+    assert!(frame.scroll.is_empty());
+}
+
+#[test]
+fn the_alternate_screen_produces_no_scroll_hint() {
+    let client_id = 1;
+    let (mut screen, _tty, server_receiver) = screen_with_scrollback(client_id);
+    next_acknowledged_frame(&mut screen, &server_receiver, client_id);
+
+    screen
+        .get_active_tab_mut(client_id)
+        .unwrap()
+        .handle_pty_bytes(1, b"\x1b[?1049h".to_vec())
+        .unwrap();
+    wheel(&mut screen, client_id, 3);
+    let entered = next_acknowledged_frame(&mut screen, &server_receiver, client_id);
+    assert!(entered.scroll.is_empty());
+
+    screen
+        .get_active_tab_mut(client_id)
+        .unwrap()
+        .handle_pty_bytes(1, b"\x1b[?1049l".to_vec())
+        .unwrap();
+    let left = next_acknowledged_frame(&mut screen, &server_receiver, client_id);
+    assert!(left.scroll.is_empty());
+
+    wheel(&mut screen, client_id, 2);
+    let scrolled = next_acknowledged_frame(&mut screen, &server_receiver, client_id);
+    assert_eq!(scrolled.scroll, hint(&[(0, 2)]));
+}
+
+#[test]
+fn a_full_repaint_produces_no_scroll_hint() {
+    let client_id = 1;
+    let (mut screen, _tty, server_receiver) = screen_with_scrollback(client_id);
+    next_acknowledged_frame(&mut screen, &server_receiver, client_id);
+
+    wheel(&mut screen, client_id, 3);
+    screen
+        .structured_render_clients
+        .borrow_mut()
+        .get_mut(&client_id)
+        .unwrap()
+        .force_full_repaint = true;
+    let frame = next_acknowledged_frame(&mut screen, &server_receiver, client_id);
+    assert!(frame.full_repaint);
+    assert!(frame.scroll.is_empty());
+}
+
+#[test]
+fn a_frame_that_changes_the_pane_rectangles_carries_no_scroll_hint() {
+    let client_id = 1;
+    let (mut screen, _tty, server_receiver) = screen_with_scrollback(client_id);
+    next_acknowledged_frame(&mut screen, &server_receiver, client_id);
+
+    wheel(&mut screen, client_id, 3);
+    screen
+        .get_active_tab_mut(client_id)
+        .unwrap()
+        .horizontal_split(PaneId::Terminal(2), None, client_id, None, None)
+        .unwrap();
+    let frame = next_acknowledged_frame(&mut screen, &server_receiver, client_id);
+    assert!(frame.geometry.is_some());
+    assert!(frame.scroll.is_empty());
+}
+
+#[test]
+fn two_clients_with_different_frame_histories_each_get_their_own_scroll_hints() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let (mut screen, _tty, server_receiver) = structured_screen_with_client(size, 1);
+    screen.add_client(2, false).expect("TEST");
+    screen.set_client_size(2, size);
+    screen.update_structured_render_support(2, true);
+    fill_active_pane(&mut screen, 1, 0..80);
+    while server_receiver.try_recv().is_ok() {}
+
+    screen.queue_vte_instruction_for_clients(vec![1, 2], CLIPBOARD_SEQUENCE.to_owned());
+    screen.render_to_clients().expect("TEST");
+    let mut payloads = drain_frames(&server_receiver);
+    let first_one = payloads.remove(&1).expect("TEST");
+    let first_two = payloads.remove(&2).expect("TEST");
+    screen.handle_render_frame_ack(1, first_one.seq).expect("TEST");
+    screen.handle_render_frame_ack(2, first_two.seq).expect("TEST");
+    while server_receiver.try_recv().is_ok() {}
+
+    wheel(&mut screen, 1, 3);
+    screen.queue_vte_instruction_for_clients(vec![1, 2], CLIPBOARD_SEQUENCE.to_owned());
+    screen.render_to_clients().expect("TEST");
+    let mut payloads = drain_frames(&server_receiver);
+    let one = payloads.remove(&1).expect("TEST");
+    let two = payloads.remove(&2).expect("TEST");
+    assert_eq!(one.scroll, hint(&[(0, 3)]));
+    assert_eq!(two.scroll, hint(&[(0, 3)]));
+    screen.handle_render_frame_ack(1, one.seq).expect("TEST");
+    while server_receiver.try_recv().is_ok() {}
+
+    wheel(&mut screen, 1, 2);
+    screen.queue_vte_instruction_for_clients(vec![1, 2], CLIPBOARD_SEQUENCE.to_owned());
+    screen.render_to_clients().expect("TEST");
+    let mut payloads = drain_frames(&server_receiver);
+    let one = payloads.remove(&1).expect("TEST");
+    assert_eq!(one.scroll, hint(&[(0, 2)]));
+    assert!(
+        !payloads.contains_key(&2),
+        "the second client still has a frame in flight"
+    );
+    screen.handle_render_frame_ack(1, one.seq).expect("TEST");
+
+    wheel(&mut screen, 1, 4);
+    screen.queue_vte_instruction_for_clients(vec![1, 2], CLIPBOARD_SEQUENCE.to_owned());
+    screen.render_to_clients().expect("TEST");
+    let mut payloads = drain_frames(&server_receiver);
+    let one = payloads.remove(&1).expect("TEST");
+    assert_eq!(one.scroll, hint(&[(0, 4)]));
+
+    screen.handle_render_frame_ack(2, two.seq).expect("TEST");
+    let mut payloads = drain_frames(&server_receiver);
+    let drained = payloads.remove(&2).expect("the second client's overlay must drain");
+    assert_eq!(drained.scroll, hint(&[(0, 6)]));
+}
+
+#[test]
+fn a_structured_watcher_is_told_how_far_the_followed_pane_scrolled() {
+    let watcher_size = Size { cols: 60, rows: 10 };
+    let (mut screen, _tty_stdin_bytes, server_receiver) = watcher_screen(watcher_size, true);
+    fill_active_pane(&mut screen, FOLLOWED_CLIENT, 0..80);
+
+    render_for_watcher(&mut screen);
+    let first = delivered_frame(&server_receiver, WATCHER_CLIENT).expect("TEST");
+    assert!(first.scroll.is_empty());
+    screen
+        .handle_render_frame_ack(WATCHER_CLIENT, first.seq)
+        .expect("TEST");
+    while server_receiver.try_recv().is_ok() {}
+
+    wheel(&mut screen, FOLLOWED_CLIENT, 4);
+    render_for_watcher(&mut screen);
+    let scrolled = delivered_frame(&server_receiver, WATCHER_CLIENT).expect("TEST");
+    assert_eq!(scrolled.scroll, hint(&[(0, 4)]));
+}
+
+#[test]
+fn a_classic_wheel_notch_is_reported_as_three_lines_and_a_touchpad_scroll_as_its_count() {
+    let client_id = 1;
+    let (mut screen, _tty, server_receiver) = screen_with_scrollback(client_id);
+    next_acknowledged_frame(&mut screen, &server_receiver, client_id);
+
+    screen.handle_mouse_event(MouseEvent::new_scroll_up_event(Position::new(5, 10)), client_id);
+    let notch = next_acknowledged_frame(&mut screen, &server_receiver, client_id);
+    assert_eq!(notch.scroll, hint(&[(0, 3)]));
+
+    let mut touchpad = MouseEvent::new_scroll_up_event(Position::new(5, 10));
+    touchpad.wheel_lines = 5;
+    screen.handle_mouse_event(touchpad, client_id);
+    let counted = next_acknowledged_frame(&mut screen, &server_receiver, client_id);
+    assert_eq!(counted.scroll, hint(&[(0, 5)]));
+}
+
+fn kitty_records(frame: &DeliveredFrame) -> (bool, usize, usize) {
+    use zellij_utils::structured_render::GraphicsRecord;
+    let cleared = frame
+        .graphics
+        .iter()
+        .any(|record| matches!(record, GraphicsRecord::Clear));
+    let residencies = frame
+        .graphics
+        .iter()
+        .filter(|record| matches!(record, GraphicsRecord::Residency { .. }))
+        .count();
+    let placements = frame
+        .graphics
+        .iter()
+        .filter(|record| matches!(record, GraphicsRecord::Placement { .. }))
+        .count();
+    (cleared, residencies, placements)
+}
+
+#[test]
+fn a_kitty_image_is_sent_again_after_a_pane_resize_wipes_the_client_screen() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let (mut screen, _tty, server_receiver) = structured_screen_with_client(size, client_id);
+    screen.update_kitty_graphics_support(client_id, true, false);
+    screen.update_pixel_dimensions(
+        client_id,
+        PixelDimensions {
+            character_cell_size: Some(SizeInPixels {
+                height: 20,
+                width: 10,
+            }),
+            text_area_size: None,
+        },
+    );
+    screen
+        .get_active_tab_mut(client_id)
+        .unwrap()
+        .handle_pty_bytes(
+            1,
+            b"\x1b_Ga=T,q=2,f=24,s=2,v=2,m=0;////////////////\x1b\\".to_vec(),
+        )
+        .unwrap();
+    let placed = next_acknowledged_frame(&mut screen, &server_receiver, client_id);
+    let (_, residencies, placements) = kitty_records(&placed);
+    assert!(
+        residencies > 0 && placements > 0,
+        "the image must reach the client first, got {:?}",
+        placed.graphics
+    );
+    let quiet = next_acknowledged_frame(&mut screen, &server_receiver, client_id);
+    assert_eq!(
+        kitty_records(&quiet),
+        (false, 0, 0),
+        "an unchanged image is not sent twice"
+    );
+
+    screen.resize_pane_with_id(pane_resize_strategy(), PaneId::Terminal(1));
+    let repaint = next_acknowledged_frame(&mut screen, &server_receiver, client_id);
+    assert!(repaint.full_repaint);
+    let (cleared, residencies, placements) = kitty_records(&repaint);
+    assert!(
+        residencies > 0 && placements > 0,
+        "a full repaint wipes the client's images, so they must be sent again (cleared: {}), got {:?}",
+        cleared,
+        repaint.graphics
+    );
 }

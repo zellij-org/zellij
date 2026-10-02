@@ -329,6 +329,7 @@ mod not_wasm {
             wheel_down,
             wheel_left,
             wheel_right,
+            wheel_lines: 0,
             shift,
             alt,
             ctrl,

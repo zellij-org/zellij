@@ -44,6 +44,7 @@ use crate::platform::Platform;
 use crate::renderer::{Frame, Renderer};
 use crate::retained::{self, Damage, RetainedScene};
 use crate::scene::{self, BlinkPhase, Margins, Transparency};
+use crate::scroll_animation::{ScrollAnimations, ScrollLayer, ScrollSettings};
 use crate::settings::Settings;
 use crate::terminal::{self, FrameError, TerminalState};
 use crate::window_state::{self, Shown, Startup, WindowState};
@@ -148,6 +149,8 @@ struct App {
     before_fullscreen: Shown,
     pointer_hidden: bool,
     focused: bool,
+    scroll: ScrollAnimations,
+    layer: ScrollLayer,
 }
 
 struct Session {
@@ -188,6 +191,7 @@ impl App {
     fn rebuild_fonts_quietly(&mut self, scale: f64, zoom: f64) -> bool {
         match self.options.font.stack(scale * zoom) {
             Ok(fonts) => {
+                self.cancel_scroll_animations();
                 self.metrics = fonts.metrics();
                 self.cache = GlyphCache::new(fonts);
                 self.scale = scale;
@@ -206,6 +210,7 @@ impl App {
     }
 
     fn relayout(&mut self, width: u32, height: u32) {
+        self.cancel_scroll_animations();
         self.retained.mark_everything();
         self.schedule_draw();
         self.reflow(width, height);
@@ -289,7 +294,30 @@ impl App {
         self.reapply(zoom_reset);
     }
 
+    fn cancel_scroll_animations(&mut self) {
+        if self.scroll.is_active() {
+            self.scroll.cancel();
+            self.schedule_draw();
+        }
+    }
+
+    fn scroll_settings(&self) -> ScrollSettings {
+        ScrollSettings {
+            enabled: self.options.smooth_scrolling,
+            duration: self.options.scroll_animation,
+        }
+    }
+
+    fn advance_scroll_animations(&mut self, now: Instant) {
+        if !self.scroll.is_active() {
+            return;
+        }
+        self.scroll.retire(now);
+        self.schedule_draw();
+    }
+
     fn reapply(&mut self, zoom_reset: bool) {
+        self.cancel_scroll_animations();
         let next = crate::options::resolve(&self.settings, self.theme_mode);
         let change = Change::between(&self.options, &next);
         if !change.is_anything() && !zoom_reset {
@@ -383,6 +411,7 @@ impl App {
     }
 
     fn resized(&mut self, width: u32, height: u32) {
+        self.cancel_scroll_animations();
         self.observe_window();
         if self.shown == Shown::Windowed {
             let fitted = self.fitted(width, height);
@@ -454,13 +483,24 @@ impl App {
     }
 
     fn on_frame(&mut self, frame: &[u8]) {
-        match self.state.apply_frame(frame) {
+        let settings = self.scroll_settings();
+        let cell_height = self.metrics.height;
+        let now = Instant::now();
+        let scroll = &mut self.scroll;
+        let applied = self.state.apply_frame_with(frame, |before, view| {
+            scroll.note_frame(before, view, settings, cell_height, now)
+        });
+        if self.scroll.is_active() {
+            self.schedule_draw();
+        }
+        match applied {
             Ok(applied) => {
                 self.retained.mark(&applied.damage);
                 self.schedule_draw();
                 self.acknowledge(applied.seq);
             },
             Err(FrameError::Unapplicable { seq, error }) => {
+                self.scroll.cancel();
                 eprintln!(
                     "zellij-window: dropping a frame the viewport has moved past: {}",
                     error
@@ -972,7 +1012,10 @@ impl App {
         if self.surfaces.is_none() {
             return;
         }
+        let now = Instant::now();
+        self.retained.set_held_out(self.scroll.held_out(&self.state));
         self.refresh_scene();
+        self.build_scroll_layer(now);
         self.follow_cursor_area();
         let Some(surfaces) = self.surfaces.as_mut() else {
             return;
@@ -1012,6 +1055,7 @@ impl App {
             Frame {
                 origin: self.origin,
                 margins: &margins,
+                layer: self.scroll.is_active().then_some(&self.layer),
             },
         );
         if let Err(e) = surfaces.surface.swap_buffers(&surfaces.context) {
@@ -1037,6 +1081,28 @@ impl App {
         );
     }
 
+    fn build_scroll_layer(&mut self, now: Instant) {
+        if !self.scroll.is_active() {
+            self.layer.clear();
+            return;
+        }
+        let cursor = self.cursor_options();
+        let preedit = self.composition.shown();
+        self.scroll.build_layer(
+            &mut self.layer,
+            &self.state,
+            &mut self.cache,
+            self.blink,
+            &self.options.paints,
+            cursor,
+            preedit.as_ref(),
+            self.retained.transparency(),
+            self.retained.contrast(),
+            self.retained.all_images(),
+            now,
+        );
+    }
+
     fn follow(&mut self, switch_to: Option<ConnectToSession>) -> bool {
         let Some(session) = self.session.as_mut() else {
             return false;
@@ -1056,6 +1122,7 @@ impl App {
                     .detacher
                     .follow(connection.sender.clone(), connection.role);
                 session.spawn(connection);
+                self.cancel_scroll_animations();
                 self.state = TerminalState::new(geometry.rows, geometry.cols);
                 self.state
                     .set_cell_size(self.metrics.width, self.metrics.height);
@@ -1095,6 +1162,7 @@ impl App {
     fn show_notice(&mut self, message: &str) {
         let size = self.state.size();
         let frame = crate::notice::frame(message, size.rows, size.cols);
+        self.cancel_scroll_animations();
         if let Err(e) = self.state.apply_frame(&frame) {
             eprintln!("zellij-window: the message could not be drawn: {}", e);
             return;
@@ -1297,6 +1365,7 @@ impl ApplicationHandler<Wake> for App {
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         let now = Instant::now();
+        self.advance_scroll_animations(now);
         let blinks = self.anything_blinks();
         if blinks && now >= self.blink_deadline() {
             self.advance_blink();
@@ -1545,6 +1614,8 @@ impl Rendering {
             before_fullscreen: Shown::Windowed,
             pointer_hidden: false,
             focused: true,
+            scroll: ScrollAnimations::default(),
+            layer: ScrollLayer::default(),
         }
     }
 }
@@ -1772,6 +1843,8 @@ mod tests {
             hide_pointer_while_typing: false,
             cursor_unfocused_hollow: true,
             minimum_contrast: 1.0,
+            smooth_scrolling: true,
+            scroll_animation: Duration::from_millis(100),
         }
     }
 
@@ -3846,6 +3919,139 @@ mod tests {
                 harness.app.pacer.interval(),
                 crate::pacing::interval_of(Some(60_000))
             );
+        }
+    }
+
+    mod smooth_scrolling {
+        use super::*;
+        use zellij_utils::structured_render::{
+            FrameBuilder, GeometryRecord, PaneRect, ScrollEntry, ScrollRecord, WireCell,
+            PANE_FRAMED,
+        };
+
+        fn whole_pane() -> GeometryRecord {
+            GeometryRecord {
+                panes: vec![PaneRect {
+                    x: 0,
+                    y: 0,
+                    cols: 120,
+                    rows: 40,
+                    top: 1,
+                    bottom: 1,
+                    left: 1,
+                    right: 1,
+                    flags: PANE_FRAMED,
+                }],
+            }
+        }
+
+        fn frame(seq: u64, first: bool, base: usize, hint: Option<i16>) -> Vec<u8> {
+            let mut builder = FrameBuilder::new(120, 40, seq);
+            builder.set_full_repaint(first);
+            builder.set_clear(first);
+            for row in 1..39 {
+                let text = format!("line {}", base + row);
+                let cells: Vec<WireCell> = text
+                    .chars()
+                    .map(|character| WireCell {
+                        ch: character as u32,
+                        ..WireCell::BLANK
+                    })
+                    .collect();
+                builder.push_row(row as u16, 1, &cells);
+            }
+            if first {
+                builder.push_geometry(&whole_pane());
+            }
+            if let Some(lines) = hint {
+                builder.push_scroll(&ScrollRecord {
+                    entries: vec![ScrollEntry { pane: 0, lines }],
+                });
+            }
+            builder.finish()
+        }
+
+        fn scrolled(expected: usize) -> Harness {
+            let mut harness = Harness::new(expected, true, "");
+            harness.app.on_frame(&frame(1, true, 100, None));
+            harness.app.on_frame(&frame(2, false, 97, Some(3)));
+            harness
+        }
+
+        #[test]
+        fn a_scroll_hint_starts_an_animation_that_draws_every_refresh_until_it_ends() {
+            let mut harness = scrolled(2);
+            assert!(harness.app.scroll.is_active());
+            let start = Instant::now();
+            harness.app.pacer.drawn(start);
+            harness.app.advance_scroll_animations(start);
+            assert_eq!(
+                harness.app.pacer.decide(start),
+                Decision::At(start + harness.app.pacer.interval()),
+                "a running slide must ask for the next refresh"
+            );
+
+            let after = start + Duration::from_millis(500);
+            harness.app.advance_scroll_animations(after);
+            assert!(!harness.app.scroll.is_active());
+            harness.app.pacer.drawn(after);
+            harness.app.advance_scroll_animations(after);
+            assert_eq!(
+                harness.app.pacer.decide(after),
+                Decision::Idle,
+                "nothing is drawn once every slide has ended"
+            );
+        }
+
+        #[test]
+        fn a_frame_without_a_hint_starts_nothing() {
+            let mut harness = Harness::new(2, true, "");
+            harness.app.on_frame(&frame(1, true, 100, None));
+            harness.app.on_frame(&frame(2, false, 97, None));
+            assert!(!harness.app.scroll.is_active());
+        }
+
+        #[test]
+        fn turning_smooth_scrolling_off_ends_a_running_slide_at_its_final_position() {
+            let mut harness = scrolled(2);
+            assert!(harness.app.scroll.is_active());
+            harness.reconfigure(WindowConfig {
+                smooth_scrolling: Some(false),
+                ..WindowConfig::default()
+            });
+            assert!(!harness.app.scroll.is_active());
+            assert!(!harness.app.options.smooth_scrolling);
+
+            harness.app.on_frame(&frame(3, false, 95, Some(2)));
+            assert!(!harness.app.scroll.is_active());
+        }
+
+        #[test]
+        fn the_configured_duration_is_used_after_a_reload() {
+            let mut harness = Harness::new(2, true, "");
+            harness.reconfigure(WindowConfig {
+                scroll_animation_duration: Some(400),
+                ..WindowConfig::default()
+            });
+            harness.app.on_frame(&frame(1, true, 100, None));
+            let before = Instant::now();
+            harness.app.on_frame(&frame(2, false, 97, Some(3)));
+            assert!(harness.app.scroll.is_active());
+            assert!(!harness.app.scroll.retire(before + Duration::from_millis(300)));
+            assert!(harness.app.scroll.retire(Instant::now() + Duration::from_millis(400)));
+        }
+
+        #[test]
+        fn a_configuration_reload_or_theme_change_cancels_the_slide() {
+            let mut harness = scrolled(3);
+            harness.reconfigure(WindowConfig::default());
+            assert!(!harness.app.scroll.is_active());
+
+            harness.app.on_frame(&frame(3, false, 95, Some(2)));
+            assert!(harness.app.scroll.is_active());
+            harness.app.theme_mode = Some(HostTerminalThemeMode::Dark);
+            harness.app.reapply(false);
+            assert!(!harness.app.scroll.is_active());
         }
     }
 }

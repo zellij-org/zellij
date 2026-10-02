@@ -667,6 +667,15 @@ web_client {
 //     // 1.0 (off) to 21.0; text colours are adjusted when below it.
 //     minimum_contrast 1.0
 //
+//     // Whether scrolling through a pane's scrollback slides the text to its
+//     // new position instead of jumping. Applies to the mouse wheel, touchpad
+//     // and scroll keys alike.
+//     smooth_scrolling true
+//
+//     // How long one scroll slide takes, in milliseconds, from 1 to 1000.
+//     // Ignored when smooth_scrolling is false.
+//     scroll_animation_duration 100
+//
 //     // Whether clicking an OSC 8 hyperlink opens it in the platform's default
 //     // handler. A plain left click opens it; over a pane whose program has
 //     // asked for mouse reporting, hold shift instead. Dragging is a selection

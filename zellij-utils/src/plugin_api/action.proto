@@ -650,6 +650,7 @@ message MouseEventPayload {
   int64 column = 11;
   bool wheel_left = 12;
   bool wheel_right = 13;
+  uint32 wheel_lines = 14;
 }
 
 message RunCommandAction {

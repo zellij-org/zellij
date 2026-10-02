@@ -130,6 +130,146 @@ struct RowCell {
     on_cursor: bool,
     inverted_by_cursor: bool,
     composing: bool,
+    held: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CellRect {
+    pub x: usize,
+    pub y: usize,
+    pub cols: usize,
+    pub rows: usize,
+}
+
+impl CellRect {
+    pub fn content_of(pane: &zellij_utils::structured_render::PaneRect) -> Self {
+        Self {
+            x: pane.content_x() as usize,
+            y: pane.content_y() as usize,
+            cols: pane.content_cols() as usize,
+            rows: pane.content_rows() as usize,
+        }
+    }
+
+    pub fn outer_of(pane: &zellij_utils::structured_render::PaneRect) -> Self {
+        Self {
+            x: pane.x as usize,
+            y: pane.y as usize,
+            cols: pane.cols as usize,
+            rows: pane.rows as usize,
+        }
+    }
+
+    pub fn contains(&self, row: usize, col: usize) -> bool {
+        row >= self.y && row < self.y + self.rows && col >= self.x && col < self.x + self.cols
+    }
+
+    pub fn overlaps(&self, other: &CellRect) -> bool {
+        self.x < other.x + other.cols
+            && other.x < self.x + self.cols
+            && self.y < other.y + other.rows
+            && other.y < self.y + self.rows
+    }
+
+    pub fn pixels(&self, metrics: CellMetrics) -> PixelRect {
+        PixelRect {
+            left: (self.x as u32 * metrics.width) as i32,
+            top: (self.y as u32 * metrics.height) as i32,
+            right: ((self.x + self.cols) as u32 * metrics.width) as i32,
+            bottom: ((self.y + self.rows) as u32 * metrics.height) as i32,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PixelRect {
+    pub left: i32,
+    pub top: i32,
+    pub right: i32,
+    pub bottom: i32,
+}
+
+impl PixelRect {
+    pub fn is_empty(&self) -> bool {
+        self.right <= self.left || self.bottom <= self.top
+    }
+
+    pub fn intersection(&self, other: &PixelRect) -> Option<PixelRect> {
+        let clipped = PixelRect {
+            left: self.left.max(other.left),
+            top: self.top.max(other.top),
+            right: self.right.min(other.right),
+            bottom: self.bottom.min(other.bottom),
+        };
+        (!clipped.is_empty()).then_some(clipped)
+    }
+
+    pub fn subtract(&self, cut: &PixelRect, out: &mut Vec<PixelRect>) {
+        let Some(overlap) = self.intersection(cut) else {
+            out.push(*self);
+            return;
+        };
+        let pieces = [
+            PixelRect {
+                bottom: overlap.top,
+                ..*self
+            },
+            PixelRect {
+                top: overlap.bottom,
+                ..*self
+            },
+            PixelRect {
+                top: overlap.top,
+                bottom: overlap.bottom,
+                right: overlap.left,
+                ..*self
+            },
+            PixelRect {
+                top: overlap.top,
+                bottom: overlap.bottom,
+                left: overlap.right,
+                ..*self
+            },
+        ];
+        out.extend(pieces.into_iter().filter(|piece| !piece.is_empty()));
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HeldOut {
+    pub content: CellRect,
+    pub covers: Vec<CellRect>,
+}
+
+impl HeldOut {
+    pub fn of(geometry: &GeometryRecord, index: usize) -> Option<Self> {
+        let pane = geometry.panes.get(index)?;
+        let content = CellRect::content_of(pane);
+        let covers = geometry.panes[index + 1..]
+            .iter()
+            .map(CellRect::outer_of)
+            .filter(|cover| cover.overlaps(&content))
+            .collect();
+        Some(Self { content, covers })
+    }
+
+    pub fn holds(&self, row: usize, col: usize) -> bool {
+        self.content.contains(row, col) && !self.covers.iter().any(|cover| cover.contains(row, col))
+    }
+
+    pub fn regions(&self, metrics: CellMetrics) -> Vec<PixelRect> {
+        let mut regions = vec![self.content.pixels(metrics)];
+        let mut next = Vec::new();
+        for cover in &self.covers {
+            let cut = cover.pixels(metrics);
+            next.clear();
+            for region in &regions {
+                region.subtract(&cut, &mut next);
+            }
+            std::mem::swap(&mut regions, &mut next);
+        }
+        regions
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -336,9 +476,30 @@ pub struct RowContext<'a> {
     transparent_background: bool,
     cursor_hollow: bool,
     contrast: Option<&'a Contrast>,
+    held_out: &'a [HeldOut],
+    only: Option<&'a HeldOut>,
 }
 
 impl<'a> RowContext<'a> {
+    pub fn with_held_out(mut self, held_out: &'a [HeldOut]) -> Self {
+        self.held_out = held_out;
+        self
+    }
+
+    pub fn with_only(mut self, only: &'a HeldOut) -> Self {
+        self.only = Some(only);
+        self
+    }
+
+    fn holds(&self, row: usize, col: usize) -> bool {
+        if let Some(only) = self.only {
+            if !only.holds(row, col) {
+                return true;
+            }
+        }
+        !self.held_out.is_empty() && self.held_out.iter().any(|held| held.holds(row, col))
+    }
+
     pub fn with_transparency(mut self, transparency: Transparency) -> Self {
         self.transparent_background = transparency.see_through_background();
         self
@@ -394,6 +555,8 @@ impl<'a> RowContext<'a> {
             transparent_background: false,
             cursor_hollow: cursor.hollow,
             contrast: None,
+            held_out: &[],
+            only: None,
         }
     }
 
@@ -482,6 +645,7 @@ pub fn build_row(
             on_cursor,
             inverted_by_cursor,
             composing: composed.is_some(),
+            held: context.holds(row, col),
         });
     }
 
@@ -526,7 +690,11 @@ pub fn build_row(
             on_cursor,
             inverted_by_cursor,
             composing,
+            held,
         } = row_paints[col];
+        if held {
+            continue;
+        }
 
         let origin_x = (col as u32 * metrics.width) as i32;
         let fills = if context.transparent_background {
@@ -604,7 +772,11 @@ fn run_key(
     col: usize,
     cursor: Option<(usize, usize)>,
 ) -> Option<RunKey> {
-    if entry.occupancy != Occupancy::Single || !entry.paint.draw_glyph || entry.composing {
+    if entry.occupancy != Occupancy::Single
+        || !entry.paint.draw_glyph
+        || entry.composing
+        || entry.held
+    {
         return None;
     }
     let character = entry.cell.character();
@@ -813,6 +985,7 @@ pub fn ligating_sequences(state: &TerminalState, cache: &mut GlyphCache) -> Vec<
                     on_cursor: false,
                     inverted_by_cursor: false,
                     composing: false,
+                    held: false,
                 }
             })
             .collect();
@@ -885,6 +1058,15 @@ pub fn resident_images(state: &TerminalState) -> Vec<ImageKey> {
             .map(ImageKey::Kitty),
     );
     resident
+}
+
+pub fn image_area(image: &ImageQuad) -> PixelRect {
+    PixelRect {
+        left: image.x,
+        top: image.y,
+        right: image.x.saturating_add(image.width as i32),
+        bottom: image.y.saturating_add(image.height as i32),
+    }
 }
 
 pub fn clip_to_owning_pane(
@@ -1190,6 +1372,7 @@ fn spill_room(cells: &[RowCell], geometry: &GeometryRecord, row: usize, col: usi
     let spreads = cells[col].occupancy == Occupancy::Single
         && next.occupancy == Occupancy::Single
         && !next.composing
+        && !next.held
         && next.cell.character() == ' '
         && region_of(geometry, row, col).is_some()
         && region_of(geometry, row, col) == region_of(geometry, row, col + 1);
@@ -2792,6 +2975,7 @@ mod tests {
                         on_cursor: false,
                         inverted_by_cursor: false,
                         composing: false,
+                        held: false,
                     }
                 })
                 .collect();
@@ -3241,6 +3425,7 @@ mod ligature_tests {
                 on_cursor: false,
                 inverted_by_cursor: false,
                 composing: false,
+                held: false,
             })
             .collect()
     }

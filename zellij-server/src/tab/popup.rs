@@ -175,11 +175,12 @@ pub fn place_popup_stack(
 }
 
 fn mouse_event_for_plugin(event: &MouseEvent, line: isize, column: usize) -> Option<Mouse> {
+    let (wheel_lines, _) = super::mouse_handler::wheel_steps(event);
     if event.wheel_up {
-        return Some(Mouse::ScrollUp(3));
+        return Some(Mouse::ScrollUp(wheel_lines));
     }
     if event.wheel_down {
-        return Some(Mouse::ScrollDown(3));
+        return Some(Mouse::ScrollDown(wheel_lines));
     }
     match event.event_type {
         MouseEventType::Press if event.left => Some(Mouse::LeftClick(line, column)),

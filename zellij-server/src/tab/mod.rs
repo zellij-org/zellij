@@ -826,6 +826,9 @@ pub trait Pane {
     fn scroll_position(&self) -> (usize, usize) {
         (0, 0)
     }
+    fn viewport_scroll_state(&self) -> Option<(usize, u64)> {
+        None
+    }
     fn is_held(&self) -> bool {
         false
     }

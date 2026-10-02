@@ -430,3 +430,104 @@ fn a_structured_client_types_resizes_and_detaches_over_the_control_socket() {
 
     shut_down(runtime, server, zellij);
 }
+
+struct ClientScreenCells {
+    cols: usize,
+    rows: usize,
+    cells: Vec<structured_render::WireCell>,
+}
+
+impl ClientScreenCells {
+    fn new() -> Self {
+        Self {
+            cols: TERMINAL_SIZE.cols,
+            rows: TERMINAL_SIZE.rows,
+            cells: vec![structured_render::WireCell::BLANK; TERMINAL_SIZE.cols * TERMINAL_SIZE.rows],
+        }
+    }
+
+    fn row_text(&self, row: usize) -> String {
+        self.cells[row * self.cols..(row + 1) * self.cols]
+            .iter()
+            .map(|cell| cell.character())
+            .collect()
+    }
+
+    fn row_containing(&self, needle: &str) -> Option<usize> {
+        (0..self.rows).find(|row| self.row_text(*row).contains(needle))
+    }
+}
+
+fn next_applied_frame(
+    runtime: &tokio::runtime::Runtime,
+    client: &mut StructuredClient,
+    screen: &mut ClientScreenCells,
+) -> structured_render::ScrollRecord {
+    let frame = runtime.block_on(client.next_frame());
+    let view = structured_render::decode(&frame).expect("a frame must decode");
+    view.apply(&mut screen.cells, screen.cols, screen.rows);
+    let scroll = view.scroll();
+    runtime.block_on(client.acknowledge(view.header().seq));
+    scroll
+}
+
+#[test]
+fn a_touchpad_scroll_moves_the_pane_by_its_line_count_and_the_frame_says_so() {
+    let zellij = start_shared_session();
+    let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
+    terminal.disable_echo();
+
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let server = start_web_server(&runtime, "integration_structured_touchpad");
+    let mut client = attach_structured_client(&runtime, &server, zellij.session_name());
+    let mut screen = ClientScreenCells::new();
+
+    let mut lines = String::new();
+    for index in 0..200 {
+        lines.push_str(&format!("scroll {:03}\r\n", index));
+    }
+    terminal.output(lines.as_bytes());
+
+    let mut bottom = None;
+    for _ in 0..40 {
+        next_applied_frame(&runtime, &mut client, &mut screen);
+        bottom = screen.row_containing("scroll 199");
+        if bottom.is_some() {
+            break;
+        }
+    }
+    let bottom = bottom.expect("the last line written must reach the client");
+
+    let mut event = zellij_utils::input::mouse::MouseEvent::new_scroll_up_event(
+        zellij_utils::position::Position::new(5, 10),
+    );
+    event.wheel_lines = 4;
+    runtime.block_on(client.send_control(serde_json::json!({
+        "type": "Mouse",
+        "event": event,
+    })));
+
+    let mut hint = structured_render::ScrollRecord::default();
+    for _ in 0..40 {
+        hint = next_applied_frame(&runtime, &mut client, &mut screen);
+        if !hint.is_empty() {
+            break;
+        }
+    }
+    assert_eq!(
+        hint.entries.iter().map(|entry| entry.lines).collect::<Vec<_>>(),
+        vec![4],
+        "the frame must say the pane's content moved down four lines, got {:?}",
+        hint
+    );
+    assert!(
+        screen.row_text(bottom).contains("scroll 195"),
+        "the row that showed the last line must show the line four above it, got {:?}",
+        screen.row_text(bottom)
+    );
+
+    shut_down(runtime, server, zellij);
+}
