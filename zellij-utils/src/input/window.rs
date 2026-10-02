@@ -299,6 +299,8 @@ pub const MIN_INITIAL_CELLS: u16 = 2;
 pub const MAX_INITIAL_CELLS: u16 = 1000;
 pub const MIN_SCROLL_ANIMATION_MS: u16 = 1;
 pub const MAX_SCROLL_ANIMATION_MS: u16 = 1000;
+pub const MIN_SCROLL_MOMENTUM_FRICTION: f32 = 0.5;
+pub const MAX_SCROLL_MOMENTUM_FRICTION: f32 = 10.0;
 
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WindowTheme {
@@ -417,6 +419,8 @@ pub struct WindowConfig {
     pub minimum_contrast: Option<f32>,
     pub smooth_scrolling: Option<bool>,
     pub scroll_animation_duration: Option<u16>,
+    pub scroll_momentum: Option<bool>,
+    pub scroll_momentum_friction: Option<f32>,
 }
 
 impl WindowConfig {
@@ -549,6 +553,12 @@ impl WindowConfig {
         }
         if let Some(duration) = kdl_get_child!(kdl, "scroll_animation_duration") {
             window.scroll_animation_duration = Some(scroll_animation_duration_from_kdl(duration)?);
+        }
+        if let Some(momentum) = kdl_get_child!(kdl, "scroll_momentum") {
+            window.scroll_momentum = Some(bool_from_kdl(momentum, "scroll_momentum")?);
+        }
+        if let Some(friction) = kdl_get_child!(kdl, "scroll_momentum_friction") {
+            window.scroll_momentum_friction = Some(scroll_momentum_friction_from_kdl(friction)?);
         }
 
         Ok(window)
@@ -710,6 +720,7 @@ impl WindowConfig {
             ("hide_pointer_while_typing", self.hide_pointer_while_typing),
             ("cursor_unfocused_hollow", self.cursor_unfocused_hollow),
             ("smooth_scrolling", self.smooth_scrolling),
+            ("scroll_momentum", self.scroll_momentum),
         ] {
             if let Some(value) = value {
                 let mut flag_node = KdlNode::new(name);
@@ -726,6 +737,11 @@ impl WindowConfig {
             let mut duration_node = KdlNode::new("scroll_animation_duration");
             duration_node.push(KdlValue::Base10(duration as i64));
             children.nodes_mut().push(duration_node);
+        }
+        if let Some(friction) = self.scroll_momentum_friction {
+            children
+                .nodes_mut()
+                .push(number_node("scroll_momentum_friction", friction));
         }
 
         if children.nodes().is_empty() {
@@ -788,6 +804,10 @@ impl WindowConfig {
         merged.scroll_animation_duration = other
             .scroll_animation_duration
             .or(merged.scroll_animation_duration);
+        merged.scroll_momentum = other.scroll_momentum.or(merged.scroll_momentum);
+        merged.scroll_momentum_friction = other
+            .scroll_momentum_friction
+            .or(merged.scroll_momentum_friction);
         merged
     }
 }
@@ -915,6 +935,38 @@ fn scroll_animation_duration_from_kdl(node: &KdlNode) -> Result<u16, ConfigError
         ));
     }
     Ok(duration as u16)
+}
+
+fn bool_from_kdl(node: &KdlNode, name: &str) -> Result<bool, ConfigError> {
+    node.entries()
+        .iter()
+        .next()
+        .and_then(|entry| entry.value().as_bool())
+        .ok_or_else(|| {
+            ConfigError::new_kdl_error(
+                format!("{} must be true or false", name),
+                node.span().offset(),
+                node.span().len(),
+            )
+        })
+}
+
+fn scroll_momentum_friction_from_kdl(node: &KdlNode) -> Result<f32, ConfigError> {
+    let name = "scroll_momentum_friction";
+    let friction = number_from_kdl(node, name)?;
+    if !(MIN_SCROLL_MOMENTUM_FRICTION as f64..=MAX_SCROLL_MOMENTUM_FRICTION as f64)
+        .contains(&friction)
+    {
+        return Err(ConfigError::new_kdl_error(
+            format!(
+                "{} {} is outside the range {} to {}",
+                name, friction, MIN_SCROLL_MOMENTUM_FRICTION, MAX_SCROLL_MOMENTUM_FRICTION
+            ),
+            node.span().offset(),
+            node.span().len(),
+        ));
+    }
+    Ok(friction as f32)
 }
 
 fn font_weight_from_kdl(node: &KdlNode) -> Result<u16, ConfigError> {
@@ -1765,10 +1817,9 @@ mod tests {
 
     #[test]
     fn the_scroll_animation_settings_round_trip_through_kdl() {
-        let parsed = section(
-            "window {\n smooth_scrolling false\n scroll_animation_duration 250\n}",
-        )
-        .unwrap();
+        let parsed =
+            section("window {\n smooth_scrolling false\n scroll_animation_duration 250\n}")
+                .unwrap();
         assert_eq!(parsed.smooth_scrolling, Some(false));
         assert_eq!(parsed.scroll_animation_duration, Some(250));
         let emitted = parsed.to_kdl().unwrap().to_string();
@@ -1787,16 +1838,89 @@ mod tests {
     fn the_scroll_animation_duration_is_one_to_a_thousand_milliseconds() {
         for text in ["1", "100", "1000"] {
             assert!(
-                section(&format!("window {{\n scroll_animation_duration {}\n}}", text)).is_ok(),
+                section(&format!(
+                    "window {{\n scroll_animation_duration {}\n}}",
+                    text
+                ))
+                .is_ok(),
                 "{}",
                 text
             );
         }
         for text in ["0", "-5", "1001", "12.5", "\"fast\"", ""] {
-            let err = section(&format!("window {{\n scroll_animation_duration {}\n}}", text))
-                .unwrap_err();
+            let err = section(&format!(
+                "window {{\n scroll_animation_duration {}\n}}",
+                text
+            ))
+            .unwrap_err();
             assert!(
                 format!("{:?}", err).contains("scroll_animation_duration"),
+                "{}: {:?}",
+                text,
+                err
+            );
+        }
+    }
+
+    #[test]
+    fn the_scroll_momentum_settings_round_trip_through_kdl() {
+        let parsed =
+            section("window {\n scroll_momentum false\n scroll_momentum_friction 3.5\n}").unwrap();
+        assert_eq!(parsed.scroll_momentum, Some(false));
+        assert_eq!(parsed.scroll_momentum_friction, Some(3.5));
+        let emitted = parsed.to_kdl().unwrap().to_string();
+        assert_eq!(section(&emitted).unwrap(), parsed, "{}", emitted);
+
+        let empty = section("window {\n}").unwrap();
+        assert_eq!(empty.scroll_momentum, None);
+        assert_eq!(empty.scroll_momentum_friction, None);
+
+        let merged = parsed.merge(section("window {\n scroll_momentum true\n}").unwrap());
+        assert_eq!(merged.scroll_momentum, Some(true));
+        assert_eq!(merged.scroll_momentum_friction, Some(3.5));
+    }
+
+    #[test]
+    fn scroll_momentum_must_be_a_boolean() {
+        for text in ["true", "false"] {
+            assert!(
+                section(&format!("window {{\n scroll_momentum {}\n}}", text)).is_ok(),
+                "{}",
+                text
+            );
+        }
+        for text in ["1", "\"yes\"", ""] {
+            let err = section(&format!("window {{\n scroll_momentum {}\n}}", text)).unwrap_err();
+            assert!(
+                format!("{:?}", err).contains("scroll_momentum"),
+                "{}: {:?}",
+                text,
+                err
+            );
+        }
+    }
+
+    #[test]
+    fn the_scroll_momentum_friction_is_a_half_to_ten() {
+        for text in ["0.5", "2", "4.25", "10"] {
+            assert!(
+                section(&format!(
+                    "window {{\n scroll_momentum_friction {}\n}}",
+                    text
+                ))
+                .is_ok(),
+                "{}",
+                text
+            );
+        }
+        for text in ["0.49", "0", "-2", "10.5", "\"slow\"", ""] {
+            let err = section(&format!(
+                "window {{\n scroll_momentum_friction {}\n}}",
+                text
+            ))
+            .unwrap_err();
+            assert!(
+                format!("{:?}", err).contains("scroll_momentum_friction"),
                 "{}: {:?}",
                 text,
                 err

@@ -28,6 +28,7 @@ mod image_io;
 mod input;
 mod kitty;
 mod links;
+mod momentum;
 mod mouse;
 mod notice;
 mod notify;

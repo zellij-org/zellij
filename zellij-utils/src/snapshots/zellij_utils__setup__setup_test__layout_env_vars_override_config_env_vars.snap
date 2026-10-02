@@ -6388,5 +6388,7 @@ Config {
         minimum_contrast: None,
         smooth_scrolling: None,
         scroll_animation_duration: None,
+        scroll_momentum: None,
+        scroll_momentum_friction: None,
     },
 }

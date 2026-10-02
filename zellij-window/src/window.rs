@@ -11,7 +11,7 @@ use glutin::surface::{Surface, SurfaceAttributesBuilder, SwapInterval, WindowSur
 use glutin_winit::{DisplayBuilder, GlWindow};
 use winit::application::ApplicationHandler;
 use winit::event::KeyEvent;
-use winit::event::{ElementState, Ime, WindowEvent};
+use winit::event::{ElementState, Ime, MouseScrollDelta, TouchPhase, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
 use winit::keyboard::{Key, ModifiersState};
 use winit::raw_window_handle::HasWindowHandle;
@@ -35,6 +35,7 @@ use crate::font::{CellMetrics, FontStack};
 use crate::graphics::create_context;
 use crate::input;
 use crate::links::{self, LinkRun};
+use crate::momentum::{self, Momentum, Touch};
 use crate::mouse::{self, PointerState};
 use crate::notify;
 use crate::options::{Change, Options};
@@ -151,6 +152,8 @@ struct App {
     focused: bool,
     scroll: ScrollAnimations,
     layer: ScrollLayer,
+    wayland: bool,
+    momentum: Momentum,
 }
 
 struct Session {
@@ -192,6 +195,7 @@ impl App {
         match self.options.font.stack(scale * zoom) {
             Ok(fonts) => {
                 self.cancel_scroll_animations();
+                self.stop_momentum();
                 self.metrics = fonts.metrics();
                 self.cache = GlyphCache::new(fonts);
                 self.scale = scale;
@@ -217,6 +221,7 @@ impl App {
     }
 
     fn rescale_keeping_cells(&mut self, scale: f64, writer: &mut winit::event::InnerSizeWriter) {
+        self.stop_momentum();
         if !(scale.is_finite() && scale > 0.0) || scale == self.scale {
             return;
         }
@@ -318,6 +323,7 @@ impl App {
 
     fn reapply(&mut self, zoom_reset: bool) {
         self.cancel_scroll_animations();
+        self.stop_momentum();
         let next = crate::options::resolve(&self.settings, self.theme_mode);
         let change = Change::between(&self.options, &next);
         if !change.is_anything() && !zoom_reset {
@@ -412,6 +418,7 @@ impl App {
 
     fn resized(&mut self, width: u32, height: u32) {
         self.cancel_scroll_animations();
+        self.stop_momentum();
         self.observe_window();
         if self.shown == Shown::Windowed {
             let fitted = self.fitted(width, height);
@@ -487,7 +494,12 @@ impl App {
         let cell_height = self.metrics.height;
         let now = Instant::now();
         let scroll = &mut self.scroll;
+        let watching = self.momentum.watches_frames();
+        let mut hints = None;
         let applied = self.state.apply_frame_with(frame, |before, view| {
+            if watching {
+                hints = Some(view.scroll());
+            }
             scroll.note_frame(before, view, settings, cell_height, now)
         });
         if self.scroll.is_active() {
@@ -495,12 +507,16 @@ impl App {
         }
         match applied {
             Ok(applied) => {
+                if let Some(hints) = hints {
+                    self.momentum.note_frame(&hints, self.state.geometry());
+                }
                 self.retained.mark(&applied.damage);
                 self.schedule_draw();
                 self.acknowledge(applied.seq);
             },
             Err(FrameError::Unapplicable { seq, error }) => {
                 self.scroll.cancel();
+                self.stop_momentum();
                 eprintln!(
                     "zellij-window: dropping a frame the viewport has moved past: {}",
                     error
@@ -616,6 +632,8 @@ impl App {
         self.show_pointer();
         let (geometry, modifiers) = (self.geometry.get(), self.modifiers);
         let event = self.pointer.moved(position, geometry, modifiers);
+        let target = self.momentum_target();
+        self.momentum.pointer_moved(target);
         self.refresh_hover();
         self.refresh_pointer();
         self.point(event);
@@ -624,6 +642,7 @@ impl App {
     fn on_mouse_input(&mut self, button: winit::event::MouseButton, state: ElementState) {
         if state.is_pressed() {
             self.show_pointer();
+            self.stop_momentum();
         }
         self.note_link_click(button, state);
         if self.middle_click_pasted(button, state) {
@@ -790,14 +809,85 @@ impl App {
         }
     }
 
-    fn on_wheel(&mut self, delta: winit::event::MouseScrollDelta) {
+    fn on_wheel(&mut self, delta: MouseScrollDelta, phase: TouchPhase) {
+        self.on_wheel_at(delta, phase, Instant::now());
+    }
+
+    fn on_wheel_at(&mut self, delta: MouseScrollDelta, phase: TouchPhase, now: Instant) {
         self.show_pointer();
         let (geometry, modifiers) = (self.geometry.get(), self.modifiers);
         let events = self.pointer.wheel(delta, geometry, modifiers);
+        if self.momentum_enabled() {
+            match delta {
+                MouseScrollDelta::LineDelta(..) => self.stop_momentum(),
+                MouseScrollDelta::PixelDelta(pixels) => {
+                    let touch = Touch {
+                        phase,
+                        pixels: pixels.y,
+                        at: now,
+                        target: self.momentum_target(),
+                        position: self.pointer.position(geometry),
+                        modifiers,
+                        cell_height: geometry.cell_height.max(1) as f64,
+                        friction: self.options.scroll_momentum_friction,
+                    };
+                    self.momentum.touchpad(touch);
+                },
+            }
+        }
         self.point(events);
     }
 
+    fn momentum_enabled(&self) -> bool {
+        self.wayland && self.options.scroll_momentum
+    }
+
+    fn momentum_target(&self) -> Option<momentum::Target> {
+        momentum::target_at(
+            self.state.geometry(),
+            self.pointer.cell_if_inside(self.geometry.get()),
+        )
+    }
+
+    fn stop_momentum(&mut self) {
+        self.momentum.stop();
+    }
+
+    fn tick_momentum(&mut self, now: Instant) -> Vec<MouseEvent> {
+        let Some(glide) = self.momentum.tick(now) else {
+            return Vec::new();
+        };
+        let delta =
+            MouseScrollDelta::PixelDelta(winit::dpi::PhysicalPosition::new(0.0, glide.pixels));
+        let events =
+            self.pointer
+                .wheel_at(delta, glide.position, self.geometry.get(), glide.modifiers);
+        if !events.is_empty() {
+            self.momentum.sent();
+        }
+        events
+    }
+
+    fn advance_momentum(&mut self, now: Instant) -> Option<Instant> {
+        if !self.momentum.is_coasting() {
+            return None;
+        }
+        let events = self.tick_momentum(now);
+        self.point(events);
+        self.momentum
+            .is_coasting()
+            .then(|| now + self.pacer.interval())
+    }
+
+    fn on_cursor_left(&mut self) {
+        self.show_pointer();
+        self.stop_momentum();
+        self.pointer.left();
+        self.refresh_pointer();
+    }
+
     fn on_focus_lost(&mut self) {
+        self.stop_momentum();
         self.show_pointer();
         let (geometry, modifiers) = (self.geometry.get(), self.modifiers);
         let events = self.pointer.focus_lost(geometry, modifiers);
@@ -826,26 +916,31 @@ impl App {
         }
         if input::claims(&self.options.zoom_in_keys, &press) {
             self.hide_pointer();
+            self.stop_momentum();
             self.zoom_by(ZOOM_STEP);
             return;
         }
         if input::claims(&self.options.zoom_out_keys, &press) {
             self.hide_pointer();
+            self.stop_momentum();
             self.zoom_by(1.0 / ZOOM_STEP);
             return;
         }
         if input::claims(&self.options.zoom_reset_keys, &press) {
             self.hide_pointer();
+            self.stop_momentum();
             self.set_zoom(1.0);
             return;
         }
         if input::claims(&self.options.fullscreen_keys, &press) {
             self.hide_pointer();
+            self.stop_momentum();
             self.toggle_fullscreen();
             return;
         }
         if input::claims(&self.options.paste_keys, &press) {
             self.hide_pointer();
+            self.stop_momentum();
             self.paste();
             return;
         }
@@ -856,6 +951,7 @@ impl App {
         let Some(msg) = input::key_message(press) else {
             return;
         };
+        self.stop_momentum();
         self.hide_pointer();
         if let Err(e) = self.tell(msg) {
             eprintln!("zellij-window: failed to send a key: {}", e);
@@ -878,6 +974,7 @@ impl App {
         if text.is_empty() {
             return;
         }
+        self.stop_momentum();
         let committed = input::Press::new(Key::Character(text.into()), ModifiersState::empty());
         let Some(msg) = input::key_message(&committed) else {
             return;
@@ -1013,7 +1110,8 @@ impl App {
             return;
         }
         let now = Instant::now();
-        self.retained.set_held_out(self.scroll.held_out(&self.state));
+        self.retained
+            .set_held_out(self.scroll.held_out(&self.state));
         self.refresh_scene();
         self.build_scroll_layer(now);
         self.follow_cursor_area();
@@ -1104,6 +1202,7 @@ impl App {
     }
 
     fn follow(&mut self, switch_to: Option<ConnectToSession>) -> bool {
+        self.stop_momentum();
         let Some(session) = self.session.as_mut() else {
             return false;
         };
@@ -1163,6 +1262,7 @@ impl App {
         let size = self.state.size();
         let frame = crate::notice::frame(message, size.rows, size.cols);
         self.cancel_scroll_animations();
+        self.stop_momentum();
         if let Err(e) = self.state.apply_frame(&frame) {
             eprintln!("zellij-window: the message could not be drawn: {}", e);
             return;
@@ -1187,6 +1287,7 @@ impl App {
         let size = surfaces.window.inner_size();
         let scale = surfaces.window.scale_factor();
         self.surfaces = Some(surfaces);
+        self.wayland = is_wayland(event_loop);
         self.shown = Shown::of(self.startup.mode);
         self.windowed_cells = (self.startup.cols, self.startup.rows);
         self.windowed_known = self.startup.mode == StartupMode::Windowed;
@@ -1339,17 +1440,13 @@ impl ApplicationHandler<Wake> for App {
             },
             WindowEvent::CursorMoved { position, .. } => self.on_cursor_moved(position),
             WindowEvent::MouseInput { button, state, .. } => self.on_mouse_input(button, state),
-            WindowEvent::MouseWheel { delta, .. } => self.on_wheel(delta),
+            WindowEvent::MouseWheel { delta, phase, .. } => self.on_wheel(delta, phase),
             WindowEvent::CursorEntered { .. } => {
                 self.show_pointer();
                 self.pointer.entered();
                 self.refresh_pointer();
             },
-            WindowEvent::CursorLeft { .. } => {
-                self.show_pointer();
-                self.pointer.left();
-                self.refresh_pointer();
-            },
+            WindowEvent::CursorLeft { .. } => self.on_cursor_left(),
             WindowEvent::Ime(event) => self.on_ime(event),
             WindowEvent::Focused(true) => self.set_focused(true),
             WindowEvent::Focused(false) => {
@@ -1365,6 +1462,7 @@ impl ApplicationHandler<Wake> for App {
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         let now = Instant::now();
+        let gliding = self.advance_momentum(now);
         self.advance_scroll_animations(now);
         let blinks = self.anything_blinks();
         if blinks && now >= self.blink_deadline() {
@@ -1372,6 +1470,9 @@ impl ApplicationHandler<Wake> for App {
             self.schedule_draw();
         }
         let mut deadline = blinks.then(|| self.blink_deadline());
+        if let Some(glide) = gliding {
+            deadline = Some(deadline.map_or(glide, |other| other.min(glide)));
+        }
         match self.pacer.decide(now) {
             Decision::Now => {
                 if let Some(surfaces) = &self.surfaces {
@@ -1616,6 +1717,8 @@ impl Rendering {
             focused: true,
             scroll: ScrollAnimations::default(),
             layer: ScrollLayer::default(),
+            wayland: false,
+            momentum: Momentum::default(),
         }
     }
 }
@@ -1733,6 +1836,17 @@ fn window_icon() -> Option<Icon> {
 }
 
 #[cfg(all(unix, not(target_os = "macos"), not(target_os = "android")))]
+fn is_wayland(event_loop: &ActiveEventLoop) -> bool {
+    use winit::platform::wayland::ActiveEventLoopExtWayland;
+    event_loop.is_wayland()
+}
+
+#[cfg(not(all(unix, not(target_os = "macos"), not(target_os = "android"))))]
+fn is_wayland(_event_loop: &ActiveEventLoop) -> bool {
+    false
+}
+
+#[cfg(all(unix, not(target_os = "macos"), not(target_os = "android")))]
 fn named(attributes: WindowAttributes) -> WindowAttributes {
     use winit::platform::wayland::WindowAttributesExtWayland;
     use winit::platform::x11::WindowAttributesExtX11;
@@ -1845,6 +1959,8 @@ mod tests {
             minimum_contrast: 1.0,
             smooth_scrolling: true,
             scroll_animation: Duration::from_millis(100),
+            scroll_momentum: true,
+            scroll_momentum_friction: 2.0,
         }
     }
 
@@ -2249,7 +2365,9 @@ mod tests {
         let mut harness = hiding(1);
         harness.press(&f11());
         assert!(harness.app.pointer_hidden);
-        harness.app.on_wheel(MouseScrollDelta::LineDelta(0.0, 0.0));
+        harness
+            .app
+            .on_wheel(MouseScrollDelta::LineDelta(0.0, 0.0), TouchPhase::Moved);
         assert!(!harness.app.pointer_hidden);
         harness.press(&f11());
         assert!(harness.app.pointer_hidden);
@@ -2635,7 +2753,9 @@ mod tests {
     #[test]
     fn a_wheel_tick_reaches_the_server() {
         let mut harness = Harness::new(1, true, "");
-        harness.app.on_wheel(MouseScrollDelta::LineDelta(0.0, 1.0));
+        harness
+            .app
+            .on_wheel(MouseScrollDelta::LineDelta(0.0, 1.0), TouchPhase::Moved);
         match &harness.actions()[0] {
             Action::MouseEvent { event } => assert!(event.wheel_up),
             other => panic!("expected a mouse event, got {:?}", other),
@@ -4037,8 +4157,14 @@ mod tests {
             let before = Instant::now();
             harness.app.on_frame(&frame(2, false, 97, Some(3)));
             assert!(harness.app.scroll.is_active());
-            assert!(!harness.app.scroll.retire(before + Duration::from_millis(300)));
-            assert!(harness.app.scroll.retire(Instant::now() + Duration::from_millis(400)));
+            assert!(!harness
+                .app
+                .scroll
+                .retire(before + Duration::from_millis(300)));
+            assert!(harness
+                .app
+                .scroll
+                .retire(Instant::now() + Duration::from_millis(400)));
         }
 
         #[test]
@@ -4052,6 +4178,450 @@ mod tests {
             harness.app.theme_mode = Some(HostTerminalThemeMode::Dark);
             harness.app.reapply(false);
             assert!(!harness.app.scroll.is_active());
+        }
+    }
+
+    mod scroll_momentum {
+        use super::*;
+        use crate::mouse::PointerState;
+        use zellij_utils::structured_render::{
+            FrameBuilder, GeometryRecord, PaneRect, ScrollEntry, ScrollRecord, PANE_FRAMED,
+            PANE_SELECTABLE,
+        };
+
+        fn pane(x: u16) -> PaneRect {
+            PaneRect {
+                x,
+                y: 0,
+                cols: 60,
+                rows: 40,
+                top: 1,
+                bottom: 1,
+                left: 1,
+                right: 1,
+                flags: PANE_FRAMED | PANE_SELECTABLE,
+            }
+        }
+
+        fn frame(seq: u64, first: bool, hints: &[(u16, i16)]) -> Vec<u8> {
+            let mut builder = FrameBuilder::new(120, 40, seq);
+            builder.set_full_repaint(first);
+            builder.set_clear(first);
+            if first {
+                builder.push_geometry(&GeometryRecord {
+                    panes: vec![pane(0), pane(60)],
+                });
+            }
+            builder.push_scroll(&ScrollRecord {
+                entries: hints
+                    .iter()
+                    .map(|&(pane, lines)| ScrollEntry { pane, lines })
+                    .collect(),
+            });
+            builder.finish()
+        }
+
+        fn ms(millis: u64) -> Duration {
+            Duration::from_millis(millis)
+        }
+
+        fn pixels(y: f64) -> MouseScrollDelta {
+            MouseScrollDelta::PixelDelta(at(0.0, y))
+        }
+
+        const OVER_LEFT: (f64, f64) = (100.0, 200.0);
+        const OVER_RIGHT: (f64, f64) = (800.0, 200.0);
+
+        struct Fling {
+            harness: Harness,
+            seq: u64,
+            start: Instant,
+        }
+
+        impl Fling {
+            fn offline(wayland: bool) -> Self {
+                Self::new(0, wayland, false)
+            }
+
+            fn wired(expected: usize, wayland: bool) -> Self {
+                Self::new(expected, wayland, true)
+            }
+
+            fn new(expected: usize, wayland: bool, wired: bool) -> Self {
+                let mut harness = Harness::new(expected, true, "");
+                harness.app.wayland = wayland;
+                if !wired {
+                    harness.app.sender = None;
+                }
+                let mut fling = Self {
+                    harness,
+                    seq: 0,
+                    start: Instant::now(),
+                };
+                fling.frame(true, &[]);
+                fling
+                    .harness
+                    .app
+                    .on_cursor_moved(at(OVER_LEFT.0, OVER_LEFT.1));
+                fling
+            }
+
+            fn frame(&mut self, first: bool, hints: &[(u16, i16)]) {
+                self.seq += 1;
+                self.harness.app.on_frame(&frame(self.seq, first, hints));
+            }
+
+            fn wheel(&mut self, delta: MouseScrollDelta, phase: TouchPhase, after: u64) {
+                self.harness
+                    .app
+                    .on_wheel_at(delta, phase, self.start + ms(after));
+            }
+
+            fn swipe(&mut self, step: f64, hinted: bool) {
+                self.wheel(pixels(step), TouchPhase::Started, 0);
+                for index in 1..=5 {
+                    self.wheel(pixels(step), TouchPhase::Moved, 10 * index);
+                }
+                if hinted {
+                    self.frame(false, &[(0, 2)]);
+                }
+                self.wheel(pixels(0.0), TouchPhase::Ended, 55);
+            }
+
+            fn tick(&mut self, after: u64) -> Vec<MouseEvent> {
+                self.harness.app.tick_momentum(self.start + ms(after))
+            }
+
+            fn coasting(&self) -> bool {
+                self.harness.app.momentum.is_coasting()
+            }
+
+            fn coasting_fling(wayland: bool) -> Self {
+                let mut fling = Self::offline(wayland);
+                fling.swipe(40.0, true);
+                fling
+            }
+
+            fn assert_stopped(&mut self, why: &str) {
+                assert!(!self.coasting(), "{}", why);
+                assert!(self.tick(400).is_empty(), "{}", why);
+                assert!(self.tick(2000).is_empty(), "{}", why);
+            }
+        }
+
+        #[test]
+        fn a_fast_swipe_through_scrollback_keeps_scrolling_after_the_lift() {
+            let mut fling = Fling::coasting_fling(true);
+            assert!(fling.coasting());
+            let events = fling.tick(100);
+            assert_eq!(events.len(), 1);
+            assert!(events[0].wheel_up && events[0].wheel_lines > 0);
+            assert_eq!(
+                events[0].position,
+                zellij_utils::position::Position::new(10, 10),
+                "the glide scrolls where the swipe ended"
+            );
+        }
+
+        #[test]
+        fn a_downward_swipe_glides_downward() {
+            let mut fling = Fling::offline(true);
+            fling.swipe(-40.0, true);
+            let events = fling.tick(100);
+            assert!(events[0].wheel_down && events[0].wheel_lines > 0);
+        }
+
+        #[test]
+        fn the_glide_sends_whole_lines_slows_down_and_ends() {
+            let mut fling = Fling::coasting_fling(true);
+            let mut lines = Vec::new();
+            let mut after = 55;
+            while fling.coasting() {
+                after += 16;
+                let events = fling.tick(after);
+                for event in &events {
+                    assert!(event.wheel_up && event.wheel_lines > 0);
+                    lines.push((after, event.wheel_lines as u64));
+                }
+                if !events.is_empty() {
+                    fling.frame(false, &[(0, 1)]);
+                }
+            }
+            let total: u64 = lines.iter().map(|(_, count)| count).sum();
+            assert_eq!(total, 97, "(4000 - 100) px / 2 / 20 px per line");
+            let early: u64 = lines
+                .iter()
+                .filter(|(at, _)| *at < 555)
+                .map(|(_, count)| count)
+                .sum();
+            assert!(early > total - early, "the glide slows down");
+            assert!(fling.tick(after + 16).is_empty());
+        }
+
+        #[test]
+        fn a_slow_swipe_or_a_bare_lift_starts_nothing() {
+            let mut fling = Fling::offline(true);
+            fling.swipe(3.0, true);
+            assert!(!fling.coasting());
+
+            let mut fling = Fling::offline(true);
+            fling.frame(false, &[(0, 2)]);
+            fling.wheel(pixels(0.0), TouchPhase::Ended, 0);
+            assert!(!fling.coasting());
+        }
+
+        #[test]
+        fn a_swipe_the_server_answered_without_a_hint_starts_nothing() {
+            let mut fling = Fling::offline(true);
+            fling.swipe(40.0, false);
+            assert!(
+                !fling.coasting(),
+                "a full-screen program or a plugin pane produces no scroll hint"
+            );
+
+            let mut fling = Fling::offline(true);
+            fling.wheel(pixels(40.0), TouchPhase::Started, 0);
+            fling.wheel(pixels(40.0), TouchPhase::Moved, 10);
+            fling.frame(false, &[(1, 2)]);
+            fling.wheel(pixels(0.0), TouchPhase::Ended, 15);
+            assert!(!fling.coasting(), "a hint for another pane is no evidence");
+        }
+
+        #[test]
+        fn the_scrollback_running_out_stops_the_glide_once_the_frame_says_so() {
+            let mut fling = Fling::coasting_fling(true);
+            assert!(!fling.tick(100).is_empty());
+            assert!(!fling.tick(130).is_empty());
+            assert!(
+                fling.coasting(),
+                "no frame has answered the scroll yet, so nothing is decided"
+            );
+            fling.frame(false, &[(0, 3)]);
+            assert!(fling.coasting());
+            assert!(!fling.tick(160).is_empty());
+            fling.frame(false, &[]);
+            fling.assert_stopped("a frame without a hint after a sent scroll");
+        }
+
+        #[test]
+        fn every_interruption_stops_the_glide_with_nothing_further_sent() {
+            let interruptions: Vec<(&str, Box<dyn Fn(&mut Fling)>)> = vec![
+                (
+                    "fingers back down",
+                    Box::new(|f: &mut Fling| f.wheel(pixels(0.0), TouchPhase::Started, 80)),
+                ),
+                (
+                    "fingers moving",
+                    Box::new(|f: &mut Fling| f.wheel(pixels(1.0), TouchPhase::Moved, 80)),
+                ),
+                (
+                    "a mouse wheel",
+                    Box::new(|f: &mut Fling| {
+                        f.wheel(MouseScrollDelta::LineDelta(0.0, 1.0), TouchPhase::Moved, 80)
+                    }),
+                ),
+                (
+                    "a mouse button",
+                    Box::new(|f: &mut Fling| {
+                        f.harness
+                            .app
+                            .on_mouse_input(MouseButton::Left, ElementState::Pressed)
+                    }),
+                ),
+                (
+                    "a key sent to the session",
+                    Box::new(|f: &mut Fling| f.harness.press(&character("a"))),
+                ),
+                (
+                    "a window key",
+                    Box::new(|f: &mut Fling| {
+                        f.harness.app.modifiers = ModifiersState::CONTROL | ModifiersState::SHIFT;
+                        f.harness.press(&character("V"))
+                    }),
+                ),
+                (
+                    "a font zoom",
+                    Box::new(|f: &mut Fling| {
+                        f.harness.app.modifiers = ModifiersState::CONTROL;
+                        f.harness.press(&character("="))
+                    }),
+                ),
+                (
+                    "text from the input method",
+                    Box::new(|f: &mut Fling| {
+                        f.harness.app.on_ime(Ime::Preedit(String::new(), None));
+                        f.harness.app.on_ime(Ime::Commit("x".to_owned()));
+                    }),
+                ),
+                (
+                    "focus loss",
+                    Box::new(|f: &mut Fling| f.harness.app.on_focus_lost()),
+                ),
+                (
+                    "the pointer leaving",
+                    Box::new(|f: &mut Fling| f.harness.app.on_cursor_left()),
+                ),
+                (
+                    "a resize",
+                    Box::new(|f: &mut Fling| f.harness.app.resized(640, 480)),
+                ),
+                (
+                    "a scale change",
+                    Box::new(|f: &mut Fling| f.harness.app.rescale(2.0)),
+                ),
+                (
+                    "a configuration reload",
+                    Box::new(|f: &mut Fling| f.harness.reconfigure(WindowConfig::default())),
+                ),
+                (
+                    "a session switch",
+                    Box::new(|f: &mut Fling| {
+                        f.harness.app.follow(None);
+                    }),
+                ),
+                (
+                    "the pointer moving to another pane",
+                    Box::new(|f: &mut Fling| {
+                        f.harness
+                            .app
+                            .on_cursor_moved(at(OVER_RIGHT.0, OVER_RIGHT.1))
+                    }),
+                ),
+            ];
+            for (why, interrupt) in interruptions {
+                let mut fling = Fling::coasting_fling(true);
+                assert!(!fling.tick(70).is_empty(), "{}", why);
+                fling.frame(false, &[(0, 1)]);
+                assert!(fling.coasting(), "{}", why);
+                interrupt(&mut fling);
+                fling.assert_stopped(why);
+            }
+        }
+
+        #[test]
+        fn moving_within_the_same_pane_keeps_the_glide() {
+            let mut fling = Fling::coasting_fling(true);
+            fling.harness.app.on_cursor_moved(at(150.0, 300.0));
+            assert!(fling.coasting());
+        }
+
+        #[test]
+        fn turning_momentum_off_stops_it_and_keeps_it_off() {
+            let mut fling = Fling::coasting_fling(true);
+            fling.harness.reconfigure(WindowConfig {
+                scroll_momentum: Some(false),
+                ..WindowConfig::default()
+            });
+            fling.assert_stopped("momentum switched off");
+            fling.swipe(40.0, true);
+            assert!(!fling.coasting());
+        }
+
+        #[test]
+        fn momentum_works_with_smooth_scrolling_off() {
+            let mut fling = Fling::offline(true);
+            fling.harness.reconfigure(WindowConfig {
+                smooth_scrolling: Some(false),
+                ..WindowConfig::default()
+            });
+            fling.swipe(40.0, true);
+            assert!(fling.coasting());
+            assert!(!fling.tick(100).is_empty());
+        }
+
+        #[test]
+        fn a_running_glide_asks_for_a_wake_up_and_an_idle_one_asks_for_nothing() {
+            let mut fling = Fling::offline(true);
+            let now = Instant::now();
+            assert_eq!(fling.harness.app.advance_momentum(now), None);
+            fling.swipe(40.0, true);
+            let interval = fling.harness.app.pacer.interval();
+            let now = fling.start + ms(80);
+            fling.harness.app.pacer.drawn(now);
+            assert_eq!(
+                fling.harness.app.advance_momentum(now),
+                Some(now + interval)
+            );
+            assert_eq!(
+                fling.harness.app.pacer.decide(now),
+                Decision::Idle,
+                "a glide redraws only when a frame comes back"
+            );
+        }
+
+        fn scenario(mirror: &mut PointerState) -> Vec<ClientToServerMsg> {
+            let geometry = geometry();
+            let none = ModifiersState::empty();
+            let mut expected = vec![ClientToServerMsg::RenderFrameAck { seq: 1 }];
+            expected.extend(
+                mirror
+                    .moved(at(OVER_LEFT.0, OVER_LEFT.1), geometry, none)
+                    .map(mouse::message),
+            );
+            for _ in 0..6 {
+                expected.extend(
+                    mirror
+                        .wheel(pixels(40.0), geometry, none)
+                        .into_iter()
+                        .map(mouse::message),
+                );
+            }
+            expected.push(ClientToServerMsg::RenderFrameAck { seq: 2 });
+            expected.extend(
+                mirror
+                    .wheel(pixels(0.0), geometry, none)
+                    .into_iter()
+                    .map(mouse::message),
+            );
+            expected
+        }
+
+        fn run(
+            wayland: bool,
+            momentum: bool,
+            tick: bool,
+        ) -> (Vec<ClientToServerMsg>, Vec<ClientToServerMsg>) {
+            let expected = scenario(&mut PointerState::new());
+            let mut fling = Fling::wired(expected.len(), wayland);
+            if !momentum {
+                fling.harness.app.options.scroll_momentum = false;
+            }
+            fling.swipe(40.0, true);
+            if tick {
+                for after in [70, 90, 200, 900, 3000] {
+                    fling.harness.app.advance_momentum(fling.start + ms(after));
+                }
+            }
+            assert_eq!(
+                fling.harness.app.momentum.is_coasting(),
+                wayland && momentum && !tick
+            );
+            (fling.harness.sent(), expected)
+        }
+
+        #[test]
+        fn the_touch_phase_changes_nothing_that_each_wheel_event_sends() {
+            let (sent, expected) = run(true, true, false);
+            assert_eq!(sent, expected);
+        }
+
+        #[test]
+        fn away_from_wayland_the_same_swipe_sends_exactly_what_it_did_before() {
+            let (sent, expected) = run(false, true, true);
+            assert_eq!(sent, expected);
+            let mut fling = Fling::offline(false);
+            fling.swipe(40.0, true);
+            assert!(!fling.coasting());
+            assert_eq!(
+                fling.harness.app.advance_momentum(fling.start + ms(80)),
+                None
+            );
+        }
+
+        #[test]
+        fn with_momentum_off_the_same_swipe_sends_exactly_what_it_did_before() {
+            let (sent, expected) = run(true, false, true);
+            assert_eq!(sent, expected);
         }
     }
 }
