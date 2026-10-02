@@ -519,7 +519,10 @@ mod tests {
 
     #[test]
     fn a_classic_wheel_event_carries_no_line_count() {
-        assert_eq!(MouseEvent::new_scroll_up_event(Position::new(0, 0)).wheel_lines, 0);
+        assert_eq!(
+            MouseEvent::new_scroll_up_event(Position::new(0, 0)).wheel_lines,
+            0
+        );
         assert_eq!(MouseEvent::new().wheel_lines, 0);
     }
 

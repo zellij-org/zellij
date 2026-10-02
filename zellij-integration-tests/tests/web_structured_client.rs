@@ -442,7 +442,10 @@ impl ClientScreenCells {
         Self {
             cols: TERMINAL_SIZE.cols,
             rows: TERMINAL_SIZE.rows,
-            cells: vec![structured_render::WireCell::BLANK; TERMINAL_SIZE.cols * TERMINAL_SIZE.rows],
+            cells: vec![
+                structured_render::WireCell::BLANK;
+                TERMINAL_SIZE.cols * TERMINAL_SIZE.rows
+            ],
         }
     }
 
@@ -518,7 +521,10 @@ fn a_touchpad_scroll_moves_the_pane_by_its_line_count_and_the_frame_says_so() {
         }
     }
     assert_eq!(
-        hint.entries.iter().map(|entry| entry.lines).collect::<Vec<_>>(),
+        hint.entries
+            .iter()
+            .map(|entry| entry.lines)
+            .collect::<Vec<_>>(),
         vec![4],
         "the frame must say the pane's content moved down four lines, got {:?}",
         hint

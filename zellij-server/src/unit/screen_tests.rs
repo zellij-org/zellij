@@ -16398,9 +16398,7 @@ fn hint(entries: &[(u16, i16)]) -> zellij_utils::structured_render::ScrollRecord
     zellij_utils::structured_render::ScrollRecord {
         entries: entries
             .iter()
-            .map(
-                |&(pane, lines)| zellij_utils::structured_render::ScrollEntry { pane, lines },
-            )
+            .map(|&(pane, lines)| zellij_utils::structured_render::ScrollEntry { pane, lines })
             .collect(),
     }
 }
@@ -16422,7 +16420,10 @@ fn scrolling_a_pane_up_five_lines_tells_a_structured_client_it_moved_down_five()
     assert_eq!(back.scroll, hint(&[(0, -2)]));
 
     let idle = next_acknowledged_frame(&mut screen, &server_receiver, client_id);
-    assert!(idle.scroll.is_empty(), "a frame without scrolling has no hint");
+    assert!(
+        idle.scroll.is_empty(),
+        "a frame without scrolling has no hint"
+    );
 }
 
 #[test]
@@ -16600,8 +16601,12 @@ fn two_clients_with_different_frame_histories_each_get_their_own_scroll_hints() 
     let mut payloads = drain_frames(&server_receiver);
     let first_one = payloads.remove(&1).expect("TEST");
     let first_two = payloads.remove(&2).expect("TEST");
-    screen.handle_render_frame_ack(1, first_one.seq).expect("TEST");
-    screen.handle_render_frame_ack(2, first_two.seq).expect("TEST");
+    screen
+        .handle_render_frame_ack(1, first_one.seq)
+        .expect("TEST");
+    screen
+        .handle_render_frame_ack(2, first_two.seq)
+        .expect("TEST");
     while server_receiver.try_recv().is_ok() {}
 
     wheel(&mut screen, 1, 3);
@@ -16636,7 +16641,9 @@ fn two_clients_with_different_frame_histories_each_get_their_own_scroll_hints() 
 
     screen.handle_render_frame_ack(2, two.seq).expect("TEST");
     let mut payloads = drain_frames(&server_receiver);
-    let drained = payloads.remove(&2).expect("the second client's overlay must drain");
+    let drained = payloads
+        .remove(&2)
+        .expect("the second client's overlay must drain");
     assert_eq!(drained.scroll, hint(&[(0, 6)]));
 }
 
@@ -16666,7 +16673,10 @@ fn a_classic_wheel_notch_is_reported_as_three_lines_and_a_touchpad_scroll_as_its
     let (mut screen, _tty, server_receiver) = screen_with_scrollback(client_id);
     next_acknowledged_frame(&mut screen, &server_receiver, client_id);
 
-    screen.handle_mouse_event(MouseEvent::new_scroll_up_event(Position::new(5, 10)), client_id);
+    screen.handle_mouse_event(
+        MouseEvent::new_scroll_up_event(Position::new(5, 10)),
+        client_id,
+    );
     let notch = next_acknowledged_frame(&mut screen, &server_receiver, client_id);
     assert_eq!(notch.scroll, hint(&[(0, 3)]));
 
