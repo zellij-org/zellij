@@ -255,6 +255,17 @@ impl PointerState {
         geometry: Geometry,
         modifiers: ModifiersState,
     ) -> Vec<MouseEvent> {
+        let position = self.at(geometry);
+        self.wheel_at(delta, position, geometry, modifiers)
+    }
+
+    pub fn wheel_at(
+        &mut self,
+        delta: MouseScrollDelta,
+        position: Position,
+        geometry: Geometry,
+        modifiers: ModifiersState,
+    ) -> Vec<MouseEvent> {
         let (horizontal, vertical, counted) = match delta {
             MouseScrollDelta::LineDelta(x, y) => (x as f64, y as f64, false),
             MouseScrollDelta::PixelDelta(pixels) => (
@@ -264,7 +275,6 @@ impl PointerState {
             ),
         };
 
-        let position = self.at(geometry);
         let mut events = Vec::new();
         let vertical = accumulate(&mut self.vertical, vertical);
         let vertical_wheel = if vertical > 0 { Wheel::Up } else { Wheel::Down };
@@ -338,6 +348,10 @@ impl PointerState {
             position.column.0.min(u16::MAX as usize) as u16,
             position.line.0.clamp(0, u16::MAX as isize) as u16,
         )
+    }
+
+    pub fn position(&self, geometry: Geometry) -> Position {
+        self.at(geometry)
     }
 
     pub fn cell_if_inside(&self, geometry: Geometry) -> Option<(u16, u16)> {
@@ -1010,7 +1024,11 @@ mod tests {
     fn pixel_travel_short_of_a_line_sends_nothing_until_it_adds_up() {
         let mut pointer = PointerState::new();
         assert!(pointer
-            .wheel(MouseScrollDelta::PixelDelta(at(0.0, 15.0)), geometry(), none())
+            .wheel(
+                MouseScrollDelta::PixelDelta(at(0.0, 15.0)),
+                geometry(),
+                none()
+            )
             .is_empty());
         let events = pointer.wheel(
             MouseScrollDelta::PixelDelta(at(0.0, 30.0)),
@@ -1037,10 +1055,18 @@ mod tests {
     fn reversing_pixel_travel_discards_the_carried_remainder() {
         let mut pointer = PointerState::new();
         assert!(pointer
-            .wheel(MouseScrollDelta::PixelDelta(at(0.0, 18.0)), geometry(), none())
+            .wheel(
+                MouseScrollDelta::PixelDelta(at(0.0, 18.0)),
+                geometry(),
+                none()
+            )
             .is_empty());
         assert!(pointer
-            .wheel(MouseScrollDelta::PixelDelta(at(0.0, -2.0)), geometry(), none())
+            .wheel(
+                MouseScrollDelta::PixelDelta(at(0.0, -2.0)),
+                geometry(),
+                none()
+            )
             .is_empty());
         let events = pointer.wheel(
             MouseScrollDelta::PixelDelta(at(0.0, 4.0)),
@@ -1098,6 +1124,52 @@ mod tests {
         let mut pointer = PointerState::new();
         let events = pointer.wheel(MouseScrollDelta::LineDelta(0.0, 1.0e9), geometry(), none());
         assert_eq!(events.len(), MAX_LINES_PER_DELTA);
+    }
+
+    #[test]
+    fn a_wheel_at_the_tracked_cursor_matches_the_plain_wheel() {
+        let deltas = [
+            MouseScrollDelta::PixelDelta(at(0.0, 35.0)),
+            MouseScrollDelta::PixelDelta(at(0.0, 12.0)),
+            MouseScrollDelta::LineDelta(0.0, -2.0),
+            MouseScrollDelta::PixelDelta(at(15.0, -50.0)),
+        ];
+        let mut plain = PointerState::new();
+        let mut placed = PointerState::new();
+        plain.moved(at(35.0, 51.0), geometry(), none());
+        placed.moved(at(35.0, 51.0), geometry(), none());
+        let position = placed.position(geometry());
+        for delta in deltas {
+            assert_eq!(
+                plain.wheel(delta, geometry(), none()),
+                placed.wheel_at(delta, position, geometry(), none())
+            );
+        }
+    }
+
+    #[test]
+    fn a_wheel_at_a_remembered_position_ignores_where_the_cursor_went() {
+        let mut pointer = PointerState::new();
+        pointer.moved(at(35.0, 51.0), geometry(), none());
+        let remembered = pointer.position(geometry());
+        pointer.moved(at(500.0, 500.0), geometry(), none());
+        let events = pointer.wheel_at(
+            MouseScrollDelta::PixelDelta(at(0.0, 45.0)),
+            remembered,
+            geometry(),
+            none(),
+        );
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].position, position(2, 3));
+        assert_eq!(events[0].wheel_lines, 2);
+        assert!(events[0].wheel_up);
+        let rest = pointer.wheel_at(
+            MouseScrollDelta::PixelDelta(at(0.0, 15.0)),
+            remembered,
+            geometry(),
+            none(),
+        );
+        assert_eq!(rest[0].wheel_lines, 1, "the carried fraction is shared");
     }
 
     #[test]
