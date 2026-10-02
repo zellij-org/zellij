@@ -266,6 +266,11 @@ pub enum Run {
 }
 
 impl Run {
+    pub fn merge_env(&mut self, env: &BTreeMap<String, String>) {
+        if let Run::Command(run_command) = self {
+            run_command.merge_env(env);
+        }
+    }
     pub fn merge(base: &Option<Run>, other: &Option<Run>) -> Option<Run> {
         // This method is necessary to merge between pane_templates and their consumers
         // TODO: reconsider the way we parse command/edit/plugin pane_templates from layouts to prevent this

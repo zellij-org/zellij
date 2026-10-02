@@ -495,6 +495,7 @@ impl MockScreen {
                                                                    // render
         let _ = self.to_screen.send(ScreenInstruction::NewTab(
             None,
+            BTreeMap::new(),
             default_shell,
             Some(pane_layout.clone()),
             initial_floating_panes_layout.clone(),
@@ -590,6 +591,7 @@ impl MockScreen {
         let should_change_focus_to_new_tab = true;
         let _ = self.to_screen.send(ScreenInstruction::NewTab(
             None,
+            BTreeMap::new(),
             default_shell,
             Some(pane_layout.clone()),
             initial_floating_panes_layout.clone(),
@@ -629,6 +631,7 @@ impl MockScreen {
         let should_change_focus_to_new_tab = true;
         let _ = self.to_screen.send(ScreenInstruction::NewTab(
             None,
+            BTreeMap::new(),
             default_shell,
             Some(tab_layout.clone()),
             vec![], // floating_panes_layout
@@ -677,6 +680,7 @@ impl MockScreen {
         let should_change_focus_to_new_tab = true;
         let _ = self.to_screen.send(ScreenInstruction::NewTab(
             None,
+            BTreeMap::new(),
             default_shell,
             Some(tab_layout.clone()),
             vec![], // floating_panes_layout
@@ -3583,6 +3587,7 @@ pub fn send_cli_new_pane_action_with_default_parameters() {
         borderless: Some(false),
         tab_id: None,
         border_style: None,
+        env: vec![],
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -3619,6 +3624,7 @@ pub fn web_new_pane_in_tab_action_targets_requested_tab() {
         borderless: None,
         tab_id: Some(0),
         border_style: None,
+        env: Default::default(),
     };
     route_arbitrary_action_to_server(&session_metadata, action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -3695,6 +3701,7 @@ pub fn send_cli_new_pane_action_with_split_direction() {
         borderless: Some(false),
         tab_id: None,
         border_style: None,
+        env: vec![],
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -3752,6 +3759,7 @@ pub fn send_cli_new_pane_action_with_command_and_cwd() {
         borderless: Some(false),
         tab_id: None,
         border_style: None,
+        env: vec![],
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -3820,6 +3828,7 @@ pub fn send_cli_new_pane_action_with_floating_pane_and_coordinates() {
         borderless: Some(false),
         tab_id: None,
         border_style: None,
+        env: vec![],
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -4156,6 +4165,7 @@ pub fn send_cli_new_tab_action_default_params() {
         block_until_exit_success: false,
         block_until_exit_failure: false,
         no_focus: false,
+        env: vec![],
     };
     send_cli_action_to_server(&session_metadata, new_tab_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -4205,6 +4215,7 @@ pub fn send_cli_new_tab_action_with_name_and_layout() {
         block_until_exit_success: false,
         block_until_exit_failure: false,
         no_focus: false,
+        env: vec![],
     };
     send_cli_action_to_server(&session_metadata, new_tab_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -5727,6 +5738,7 @@ pub fn send_cli_new_pane_in_place_with_close_replaced_pane() {
         borderless: None,
         tab_id: None,
         border_style: None,
+        env: vec![],
     };
     send_cli_action_to_server(&session_metadata, cli_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -8391,6 +8403,7 @@ pub fn send_cli_new_tab_action_with_layout_string() {
         block_until_exit_success: false,
         block_until_exit_failure: false,
         no_focus: false,
+        env: vec![],
     };
     send_cli_action_to_server(&session_metadata, new_tab_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -8446,6 +8459,7 @@ pub fn send_cli_new_tab_action_with_layout_string_and_name() {
         block_until_exit_success: false,
         block_until_exit_failure: false,
         no_focus: false,
+        env: vec![],
     };
     send_cli_action_to_server(&session_metadata, new_tab_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -8520,6 +8534,7 @@ pub fn send_cli_new_pane_action_with_tab_id() {
         borderless: Some(false),
         tab_id: Some(0),
         border_style: None,
+        env: vec![],
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -8584,6 +8599,7 @@ pub fn send_cli_new_floating_pane_action_with_tab_id() {
         borderless: None,
         tab_id: Some(0),
         border_style: None,
+        env: vec![],
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -8698,6 +8714,7 @@ pub fn send_cli_new_pane_action_with_tab_id_and_direction() {
         borderless: Some(false),
         tab_id: Some(0),
         border_style: None,
+        env: vec![],
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -8761,6 +8778,7 @@ pub fn send_cli_new_pane_action_with_tab_id_and_stacked() {
         borderless: None,
         tab_id: Some(0),
         border_style: None,
+        env: vec![],
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -12879,6 +12897,7 @@ pub fn switching_tabs_syncs_scroll_mode() {
 
     let _ = mock_screen.to_screen.send(ScreenInstruction::NewTab(
         None,
+        BTreeMap::new(),
         None,
         Some(TiledPaneLayout::default()),
         vec![],
@@ -14934,4 +14953,208 @@ fn per_client_modes_are_kept_across_tabs() {
         screen.get_active_tab(2).unwrap().get_client_input_mode(2),
         Some(InputMode::Normal)
     );
+}
+
+fn cli_new_pane_with_env(command: Vec<String>, env: Vec<(String, String)>) -> CliAction {
+    CliAction::NewPane {
+        direction: None,
+        command,
+        plugin: None,
+        cwd: None,
+        floating: false,
+        in_place: false,
+        close_replaced_pane: false,
+        pane_id: None,
+        name: None,
+        close_on_exit: false,
+        start_suspended: false,
+        configuration: None,
+        skip_plugin_cache: false,
+        x: None,
+        y: None,
+        width: None,
+        height: None,
+        pinned: None,
+        stacked: false,
+        blocking: false,
+        block_until_exit_success: false,
+        block_until_exit_failure: false,
+        block_until_exit: false,
+        unblock_condition: None,
+        near_current_pane: false,
+        no_focus: false,
+        borderless: None,
+        tab_id: None,
+        border_style: None,
+        env,
+    }
+}
+
+/// Sends the CLI action and returns the environment of the terminal the server asked the pty
+/// thread to spawn (None if it asked to spawn without a TerminalAction or a non-command one)
+fn spawned_terminal_env(cli_action: CliAction) -> Option<BTreeMap<String, String>> {
+    spawned_run_command(cli_action).map(|run_command| run_command.env)
+}
+
+/// Sends the CLI action and returns the command the server asked the pty thread to spawn (None
+/// if it asked to spawn without a TerminalAction or a non-command one)
+fn spawned_run_command(cli_action: CliAction) -> Option<RunCommand> {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 10;
+    let mut mock_screen = MockScreen::new(size);
+    let pty_receiver = mock_screen.pty_receiver.take().unwrap();
+    let session_metadata = mock_screen.clone_session_metadata();
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
+    let pty_thread = log_actions_in_thread!(
+        received_pty_instructions,
+        PtyInstruction::Exit,
+        pty_receiver
+    );
+    send_cli_action_to_server(&session_metadata, cli_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![pty_thread, screen_thread]);
+
+    let received_pty_instructions = received_pty_instructions.lock().unwrap();
+    received_pty_instructions
+        .iter()
+        .find_map(|instruction| match instruction {
+            PtyInstruction::SpawnTerminal(terminal_action, ..)
+            | PtyInstruction::SpawnInPlaceTerminal(terminal_action, ..) => {
+                Some(terminal_action.clone())
+            },
+            _ => None,
+        })
+        .expect("no spawn instruction was sent to the pty thread")
+        .and_then(|terminal_action| match terminal_action {
+            TerminalAction::RunCommand(run_command) => Some(run_command),
+            _ => None,
+        })
+}
+
+#[test]
+pub fn send_cli_new_shell_pane_action_with_env_keeps_terminal_title() {
+    // a shell pane opened with -e must keep showing the shell's own title like any other shell
+    // pane, rather than being named after the shell's path
+    let run_command = spawned_run_command(cli_new_pane_with_env(
+        vec![],
+        vec![("FOO".to_owned(), "bar".to_owned())],
+    ))
+    .expect("expected a RunCommand to be spawned");
+    assert!(
+        run_command.use_terminal_title,
+        "shell pane would get a fixed title: {:?}",
+        run_command
+    );
+}
+
+#[test]
+pub fn send_cli_new_shell_pane_action_with_env() {
+    let expected: BTreeMap<String, String> = [("FOO".to_owned(), "bar".to_owned())].into();
+    let env = spawned_terminal_env(cli_new_pane_with_env(
+        vec![],
+        vec![("FOO".to_owned(), "bar".to_owned())],
+    ));
+    assert_eq!(env, Some(expected));
+}
+
+#[test]
+pub fn send_cli_new_command_pane_actions_with_env_in_all_placements() {
+    let expected: BTreeMap<String, String> = [("FOO".to_owned(), "bar".to_owned())].into();
+    for (floating, in_place, stacked, blocking) in [
+        (false, false, false, false),
+        (true, false, false, false),
+        (false, true, false, false),
+        (false, false, true, false),
+        (false, false, false, true),
+    ] {
+        for command in [vec![], vec!["htop".to_owned()]] {
+            let mut cli_action =
+                cli_new_pane_with_env(command.clone(), vec![("FOO".to_owned(), "bar".to_owned())]);
+            if let CliAction::NewPane {
+                floating: f,
+                in_place: i,
+                stacked: s,
+                blocking: b,
+                ..
+            } = &mut cli_action
+            {
+                *f = floating;
+                *i = in_place;
+                *s = stacked;
+                *b = blocking;
+            }
+            assert_eq!(
+                spawned_terminal_env(cli_action),
+                Some(expected.clone()),
+                "floating: {}, in_place: {}, stacked: {}, blocking: {}, command: {:?}",
+                floating,
+                in_place,
+                stacked,
+                blocking,
+                command
+            );
+        }
+    }
+}
+
+#[test]
+pub fn send_cli_new_tab_action_with_env() {
+    let size = Size { cols: 80, rows: 10 };
+    let client_id = 10;
+    let mut initial_layout = TiledPaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(Some(initial_layout), vec![]);
+    let received_plugin_instructions = Arc::new(Mutex::new(vec![]));
+    let plugin_receiver = mock_screen.plugin_receiver.take().unwrap();
+    let plugin_thread = log_actions_in_thread!(
+        received_plugin_instructions,
+        PluginInstruction::Exit,
+        plugin_receiver
+    );
+    let new_tab_action = CliAction::NewTab {
+        name: None,
+        layout: None,
+        layout_string: None,
+        layout_dir: None,
+        cwd: None,
+        initial_command: vec![],
+        initial_plugin: None,
+        close_on_exit: false,
+        start_suspended: false,
+        block_until_exit: false,
+        block_until_exit_success: false,
+        block_until_exit_failure: false,
+        no_focus: false,
+        env: vec![("FOO".to_owned(), "bar".to_owned())],
+    };
+    send_cli_action_to_server(&session_metadata, new_tab_action, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![plugin_thread, screen_thread]);
+    let received_plugin_instructions = received_plugin_instructions.lock().unwrap();
+    // the first NewTab is the mock screen's initial tab, the last one is ours
+    let new_tab_envs: Vec<BTreeMap<String, String>> = received_plugin_instructions
+        .iter()
+        .filter_map(|instruction| match instruction {
+            PluginInstruction::NewTab(_cwd, env, ..) => Some(env.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        new_tab_envs.len(),
+        2,
+        "expected the initial tab and the new tab"
+    );
+    let env = new_tab_envs.last().unwrap().clone();
+    let expected: BTreeMap<String, String> = [("FOO".to_owned(), "bar".to_owned())].into();
+    assert_eq!(env, expected);
 }

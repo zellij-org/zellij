@@ -1262,6 +1262,7 @@ fn open_command_pane_in_new_tab(
             context,
         )),
         use_terminal_title: false,
+        env: Default::default(),
     };
     let initial_panes = Some(vec![CommandOrPlugin::Command(run_command_action)]);
     let action = Action::NewTab {
@@ -1274,6 +1275,7 @@ fn open_command_pane_in_new_tab(
         cwd: None,
         initial_panes,
         first_pane_unblock_condition: None,
+        env: Default::default(),
     };
     let error_msg = || format!("Failed to open command pane in new tab");
     let result = apply_action!(action, error_msg, env);
@@ -1328,6 +1330,7 @@ fn open_plugin_pane_in_new_tab(
         cwd: None,
         initial_panes,
         first_pane_unblock_condition: None,
+        env: Default::default(),
     };
     let error_msg = || format!("Failed to open plugin pane in new tab");
     let result = apply_action!(action, error_msg, env);
@@ -1421,6 +1424,7 @@ fn open_editor_pane_in_new_tab(
         cwd: None,
         initial_panes,
         first_pane_unblock_condition: None,
+        env: Default::default(),
     };
     let error_msg = || format!("Failed to open editor pane in new tab");
     let result = apply_action!(action, error_msg, env);
@@ -1934,6 +1938,7 @@ fn open_terminal(env: &PluginEnv, cwd: PathBuf, border_style: Option<BorderStyle
         borderless: None,
         border_style,
         tab_id: None,
+        env: Default::default(),
     };
     let result = apply_action!(action, error_msg, env);
 
@@ -2016,6 +2021,7 @@ fn open_terminal_floating(
         near_current_pane: false,
         no_focus: false,
         tab_id: None,
+        env: Default::default(),
     };
     let result = apply_action!(action, error_msg, env);
 
@@ -2093,6 +2099,7 @@ fn open_terminal_in_place(env: &PluginEnv, cwd: PathBuf) {
         pane_id_to_replace: None,
         close_replaced_pane: false,
         tab_id: None,
+        env: Default::default(),
     };
     let result = apply_action!(action, error_msg, env);
 
@@ -2177,6 +2184,7 @@ fn open_command_pane_in_place_of_plugin(
             context,
         )),
         use_terminal_title,
+        env: Default::default(),
     };
     let run_cmd = TerminalAction::RunCommand(run_command_action.into());
 
@@ -2277,6 +2285,7 @@ fn open_command_pane_in_place_of_pane_id(
             context,
         )),
         use_terminal_title,
+        env: Default::default(),
     };
     let run_cmd = TerminalAction::RunCommand(run_command_action.into());
 
@@ -2373,6 +2382,7 @@ fn open_command_pane(
             context,
         )),
         use_terminal_title,
+        env: Default::default(),
     };
     let action = Action::NewTiledPane {
         direction,
@@ -2383,6 +2393,7 @@ fn open_command_pane(
         borderless: None,
         border_style,
         tab_id: None,
+        env: Default::default(),
     };
     let result = apply_action!(action, error_msg, env);
 
@@ -2426,6 +2437,7 @@ fn open_command_pane_near_plugin(
             context,
         )),
         use_terminal_title,
+        env: Default::default(),
     };
     let run_cmd = TerminalAction::RunCommand(run_command_action.into());
 
@@ -2487,6 +2499,7 @@ fn open_command_pane_floating(
             context,
         )),
         use_terminal_title,
+        env: Default::default(),
     };
     let action = Action::NewFloatingPane {
         command: Some(run_command_action),
@@ -2498,6 +2511,7 @@ fn open_command_pane_floating(
         near_current_pane: false,
         no_focus: false,
         tab_id: None,
+        env: Default::default(),
     };
     let result = apply_action!(action, error_msg, env);
 
@@ -2542,6 +2556,7 @@ fn open_command_pane_floating_near_plugin(
             context,
         )),
         use_terminal_title,
+        env: Default::default(),
     };
     let run_cmd = TerminalAction::RunCommand(run_command_action.into());
 
@@ -2606,6 +2621,7 @@ fn open_command_pane_in_place(
             context,
         )),
         use_terminal_title,
+        env: Default::default(),
     };
     let action = Action::NewInPlacePane {
         command: Some(run_command_action),
@@ -2615,6 +2631,7 @@ fn open_command_pane_in_place(
         pane_id_to_replace: None,
         close_replaced_pane: false,
         tab_id: None,
+        env: Default::default(),
     };
     let result = apply_action!(action, error_msg, env);
 
@@ -2659,6 +2676,7 @@ fn open_command_pane_background(
             context,
         )),
         use_terminal_title,
+        env: Default::default(),
     };
     let run_cmd = TerminalAction::RunCommand(run_command_action.into());
 
@@ -2985,6 +3003,7 @@ fn apply_layout(env: &PluginEnv, layout: Layout) {
             cwd,
             initial_panes: None,
             first_pane_unblock_condition: None,
+            env: Default::default(),
         };
         tabs_to_open.push(action);
     } else {
@@ -3005,6 +3024,7 @@ fn apply_layout(env: &PluginEnv, layout: Layout) {
                 cwd: cwd.clone(),
                 initial_panes: None,
                 first_pane_unblock_condition: None,
+                env: Default::default(),
             };
             tabs_to_open.push(action);
         }
@@ -3040,6 +3060,7 @@ fn new_tab(env: &PluginEnv, name: Option<String>, cwd: Option<String>) {
         cwd,
         initial_panes: None,
         first_pane_unblock_condition: None,
+        env: Default::default(),
     };
     let error_msg = || format!("Failed to open new tab");
     let result = apply_action!(action, error_msg, env);
@@ -3066,6 +3087,7 @@ fn new_tab_unfocused(env: &PluginEnv, name: Option<String>, cwd: Option<String>)
         cwd,
         initial_panes: None,
         first_pane_unblock_condition: None,
+        env: Default::default(),
     };
     let error_msg = || format!("Failed to open new tab (unfocused)");
     let result = apply_action!(action, error_msg, env);
@@ -3100,6 +3122,7 @@ fn new_tiled_pane_in_tab(env: &PluginEnv, tab_position: usize) {
         borderless: None,
         border_style: None,
         tab_id: Some(tab_position),
+        env: Default::default(),
     };
     let result = apply_action!(action, error_msg, env);
 
