@@ -6,8 +6,8 @@ use crate::links::LinkRun;
 #[cfg(test)]
 use crate::scene::Scene;
 use crate::scene::{
-    self, BlinkPhase, CursorOptions, HeldOut, ImageKey, ImageQuad, PixelRect, RowContext,
-    RowScene, RowScratch, Transparency,
+    self, BlinkPhase, CursorOptions, HeldOut, ImageKey, ImageQuad, PixelRect, RowContext, RowScene,
+    RowScratch, Transparency,
 };
 use crate::terminal::{GraphicsStamp, TerminalState};
 use std::time::Instant;
@@ -308,10 +308,7 @@ fn held_images(
     if held.is_empty() {
         return None;
     }
-    let regions: Vec<PixelRect> = held
-        .iter()
-        .flat_map(|held| held.regions(metrics))
-        .collect();
+    let regions: Vec<PixelRect> = held.iter().flat_map(|held| held.regions(metrics)).collect();
     Some(
         images
             .iter()

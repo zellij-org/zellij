@@ -468,11 +468,7 @@ impl Renderer {
             draw_rows(&self.gl, &self.color, &self.color_rows, viewport, origin);
             if let Some(layer) = layer {
                 self.layer_vertices.clear();
-                push_glyph_vertices(
-                    &mut self.layer_vertices,
-                    &layer.color_glyphs,
-                    atlases.color,
-                );
+                push_glyph_vertices(&mut self.layer_vertices, &layer.color_glyphs, atlases.color);
                 draw_pass(
                     &self.gl,
                     &self.layer_color,

@@ -2539,8 +2539,11 @@ mod tests {
         let context = mouse_event_context(true);
         let position = Position::new(1, 1);
         assert_eq!(
-            MouseHandler::determine_mouse_action(&MouseEvent::new_scroll_up_event(position), &context)
-                .unwrap(),
+            MouseHandler::determine_mouse_action(
+                &MouseEvent::new_scroll_up_event(position),
+                &context
+            )
+            .unwrap(),
             MouseAction::ScrollUp {
                 pane_id: PaneId::Terminal(1),
                 lines: 3,

@@ -21461,7 +21461,8 @@ fn a_counted_wheel_event_scrolls_the_normal_screen_by_exactly_that_many_lines() 
     assert_eq!(scrolled_lines(&tab), 5);
     tab.handle_mouse_event(&counted_wheel_up(at, 1), 1).unwrap();
     assert_eq!(scrolled_lines(&tab), 6);
-    tab.handle_mouse_event(&counted_wheel_down(at, 4), 1).unwrap();
+    tab.handle_mouse_event(&counted_wheel_down(at, 4), 1)
+        .unwrap();
     assert_eq!(scrolled_lines(&tab), 2);
 }
 
@@ -21471,7 +21472,8 @@ fn a_classic_wheel_step_still_scrolls_the_normal_screen_by_three_lines() {
     let at = zellij_utils::position::Position::new(5, 10);
     tab.handle_mouse_event(&counted_wheel_up(at, 0), 1).unwrap();
     assert_eq!(scrolled_lines(&tab), 3);
-    tab.handle_mouse_event(&counted_wheel_down(at, 0), 1).unwrap();
+    tab.handle_mouse_event(&counted_wheel_down(at, 0), 1)
+        .unwrap();
     assert_eq!(scrolled_lines(&tab), 0);
 }
 
@@ -21492,7 +21494,8 @@ fn a_counted_wheel_event_sends_that_many_wheel_reports_to_a_mouse_tracking_progr
     assert_eq!(writes.len(), 4, "got {writes:?}");
     assert!(writes.iter().all(|w| w.starts_with("\u{1b}[<64;")));
 
-    tab.handle_mouse_event(&counted_wheel_down(at, 0), 1).unwrap();
+    tab.handle_mouse_event(&counted_wheel_down(at, 0), 1)
+        .unwrap();
     let writes = written_strings(&rx);
     assert_eq!(writes.len(), 1, "got {writes:?}");
     assert!(writes[0].starts_with("\u{1b}[<65;"));
@@ -21512,7 +21515,8 @@ fn a_counted_wheel_event_sends_that_many_arrow_keys_on_the_alternate_screen() {
     tab.handle_mouse_event(&counted_wheel_up(at, 4), 1).unwrap();
     assert_eq!(written_strings(&rx), vec!["\u{1b}[A".to_string(); 4]);
 
-    tab.handle_mouse_event(&counted_wheel_down(at, 0), 1).unwrap();
+    tab.handle_mouse_event(&counted_wheel_down(at, 0), 1)
+        .unwrap();
     assert_eq!(written_strings(&rx), vec!["\u{1b}[B".to_string(); 3]);
 }
 
@@ -21527,7 +21531,8 @@ fn a_counted_wheel_event_tells_a_plugin_that_many_lines() {
     while plugin_receiver.try_recv().is_ok() {}
 
     tab.handle_mouse_event(&counted_wheel_up(at, 6), 1).unwrap();
-    tab.handle_mouse_event(&counted_wheel_down(at, 0), 1).unwrap();
+    tab.handle_mouse_event(&counted_wheel_down(at, 0), 1)
+        .unwrap();
 
     let mut scrolls = vec![];
     while let Ok((instruction, _)) = plugin_receiver.try_recv() {

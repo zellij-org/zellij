@@ -2824,7 +2824,10 @@ mod scroll_hints_on_the_wire {
         let before = [pane(1, 20, Some((0, 0))), pane(2, 20, Some((10, 0)))];
         scroll_hints(&mut tracked, &before, false);
         let after = [pane(1, 20, Some((0, 0))), pane(2, 20, Some((4, 0)))];
-        assert_eq!(scroll_hints(&mut tracked, &after, false), record(&[(1, -6)]));
+        assert_eq!(
+            scroll_hints(&mut tracked, &after, false),
+            record(&[(1, -6)])
+        );
     }
 
     #[test]

@@ -1334,10 +1334,7 @@ fn scroll_hints(
                     && previous.content_rows == current.content_rows
                 {
                     let lines = offset as i64 - previous.offset as i64;
-                    record.add(
-                        index,
-                        lines.clamp(i32::MIN as i64, i32::MAX as i64) as i32,
-                    );
+                    record.add(index, lines.clamp(i32::MIN as i64, i32::MAX as i64) as i32);
                 }
             }
         }
