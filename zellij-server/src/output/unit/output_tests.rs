@@ -2774,3 +2774,95 @@ mod blink_serialization {
         );
     }
 }
+
+mod scroll_hints_on_the_wire {
+    use super::super::super::{scroll_hints, PaneScroll, TrackedScroll};
+    use crate::panes::PaneId;
+    use std::collections::HashMap;
+    use zellij_utils::structured_render::{PaneRect, ScrollEntry, ScrollRecord};
+
+    fn rect(rows: u16) -> PaneRect {
+        PaneRect {
+            x: 0,
+            y: 0,
+            cols: 40,
+            rows,
+            top: 1,
+            bottom: 1,
+            left: 1,
+            right: 1,
+            flags: 0,
+        }
+    }
+
+    fn pane(id: u32, rows: u16, state: Option<(usize, u64)>) -> (PaneRect, PaneScroll) {
+        (rect(rows), PaneScroll::of(PaneId::Terminal(id), state))
+    }
+
+    fn record(entries: &[(u16, i16)]) -> ScrollRecord {
+        ScrollRecord {
+            entries: entries
+                .iter()
+                .map(|&(pane, lines)| ScrollEntry { pane, lines })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn a_pane_seen_for_the_first_time_has_no_hint() {
+        let mut tracked: HashMap<PaneId, TrackedScroll> = HashMap::new();
+        assert!(scroll_hints(&mut tracked, &[pane(1, 20, Some((5, 0)))], false).is_empty());
+        assert_eq!(
+            scroll_hints(&mut tracked, &[pane(1, 20, Some((8, 0)))], false),
+            record(&[(0, 3)])
+        );
+    }
+
+    #[test]
+    fn the_hint_names_the_pane_by_its_index_in_the_rectangle_list() {
+        let mut tracked = HashMap::new();
+        let before = [pane(1, 20, Some((0, 0))), pane(2, 20, Some((10, 0)))];
+        scroll_hints(&mut tracked, &before, false);
+        let after = [pane(1, 20, Some((0, 0))), pane(2, 20, Some((4, 0)))];
+        assert_eq!(scroll_hints(&mut tracked, &after, false), record(&[(1, -6)]));
+    }
+
+    #[test]
+    fn a_changed_epoch_or_size_resets_the_baseline_without_a_hint() {
+        let mut tracked = HashMap::new();
+        scroll_hints(&mut tracked, &[pane(1, 20, Some((0, 0)))], false);
+        assert!(scroll_hints(&mut tracked, &[pane(1, 20, Some((5, 1)))], false).is_empty());
+        assert!(scroll_hints(&mut tracked, &[pane(1, 18, Some((7, 1)))], false).is_empty());
+        assert_eq!(
+            scroll_hints(&mut tracked, &[pane(1, 18, Some((9, 1)))], false),
+            record(&[(0, 2)])
+        );
+    }
+
+    #[test]
+    fn a_pane_without_a_scroll_state_forgets_its_baseline() {
+        let mut tracked = HashMap::new();
+        scroll_hints(&mut tracked, &[pane(1, 20, Some((0, 0)))], false);
+        assert!(scroll_hints(&mut tracked, &[pane(1, 20, None)], false).is_empty());
+        assert!(scroll_hints(&mut tracked, &[pane(1, 20, Some((4, 0)))], false).is_empty());
+    }
+
+    #[test]
+    fn a_pane_that_disappears_and_returns_has_no_hint() {
+        let mut tracked = HashMap::new();
+        scroll_hints(&mut tracked, &[pane(1, 20, Some((0, 0)))], false);
+        scroll_hints(&mut tracked, &[], false);
+        assert!(scroll_hints(&mut tracked, &[pane(1, 20, Some((4, 0)))], false).is_empty());
+    }
+
+    #[test]
+    fn a_suppressed_frame_sends_nothing_but_moves_the_baseline() {
+        let mut tracked = HashMap::new();
+        scroll_hints(&mut tracked, &[pane(1, 20, Some((0, 0)))], false);
+        assert!(scroll_hints(&mut tracked, &[pane(1, 20, Some((4, 0)))], true).is_empty());
+        assert_eq!(
+            scroll_hints(&mut tracked, &[pane(1, 20, Some((5, 0)))], false),
+            record(&[(0, 1)])
+        );
+    }
+}

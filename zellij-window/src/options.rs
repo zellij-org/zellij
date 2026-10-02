@@ -40,7 +40,11 @@ pub struct Options {
     pub hide_pointer_while_typing: bool,
     pub cursor_unfocused_hollow: bool,
     pub minimum_contrast: f32,
+    pub smooth_scrolling: bool,
+    pub scroll_animation: std::time::Duration,
 }
+
+pub const DEFAULT_SCROLL_ANIMATION_MS: u16 = 100;
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Padding {
@@ -144,6 +148,12 @@ pub fn resolve(settings: &Settings, mode: Option<HostTerminalThemeMode>) -> Opti
         hide_pointer_while_typing: section.hide_pointer_while_typing.unwrap_or(false),
         cursor_unfocused_hollow: section.cursor_unfocused_hollow.unwrap_or(true),
         minimum_contrast: section.minimum_contrast.unwrap_or(1.0),
+        smooth_scrolling: section.smooth_scrolling.unwrap_or(true),
+        scroll_animation: std::time::Duration::from_millis(u64::from(
+            section
+                .scroll_animation_duration
+                .unwrap_or(DEFAULT_SCROLL_ANIMATION_MS),
+        )),
     }
 }
 
@@ -293,6 +303,7 @@ pub struct Change {
     pub hide_pointer_while_typing: bool,
     pub cursor_unfocused_hollow: bool,
     pub minimum_contrast: bool,
+    pub scroll_animation: bool,
 }
 
 impl Change {
@@ -322,6 +333,8 @@ impl Change {
             cursor_unfocused_hollow: current.cursor_unfocused_hollow
                 != next.cursor_unfocused_hollow,
             minimum_contrast: current.minimum_contrast != next.minimum_contrast,
+            scroll_animation: current.smooth_scrolling != next.smooth_scrolling
+                || current.scroll_animation != next.scroll_animation,
         }
     }
 
@@ -345,6 +358,7 @@ impl Change {
             || self.hide_pointer_while_typing
             || self.cursor_unfocused_hollow
             || self.minimum_contrast
+            || self.scroll_animation
     }
 
     pub fn needs_redraw(&self) -> bool {
@@ -965,5 +979,34 @@ mod tests {
         next.fullscreen_keys.clear();
         let change = Change::between(&options, &next);
         assert!(change.fullscreen_keys && change.is_anything() && !change.needs_redraw());
+    }
+
+    #[test]
+    fn smooth_scrolling_is_on_by_default_for_a_tenth_of_a_second() {
+        let options = Options::default();
+        assert!(options.smooth_scrolling);
+        assert_eq!(
+            options.scroll_animation,
+            std::time::Duration::from_millis(100)
+        );
+    }
+
+    #[test]
+    fn the_scroll_animation_settings_are_resolved_and_count_as_a_change() {
+        let options = resolve(
+            &settings(WindowConfig {
+                smooth_scrolling: Some(false),
+                scroll_animation_duration: Some(250),
+                ..WindowConfig::default()
+            }),
+            None,
+        );
+        assert!(!options.smooth_scrolling);
+        assert_eq!(
+            options.scroll_animation,
+            std::time::Duration::from_millis(250)
+        );
+        let change = Change::between(&Options::default(), &options);
+        assert!(change.scroll_animation && change.is_anything() && !change.needs_redraw());
     }
 }

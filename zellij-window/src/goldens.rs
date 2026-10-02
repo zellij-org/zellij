@@ -1042,6 +1042,7 @@ mod tests {
                     Frame {
                         origin: fit.origin,
                         margins: &margins,
+                        layer: None,
                     },
                 )
                 .unwrap()
@@ -1084,6 +1085,48 @@ mod tests {
         }
 
         #[test]
+        fn a_pane_caught_mid_slide_renders_to_its_golden_png() {
+            use crate::renderer::Frame;
+
+            let Some(mut gpu) = Headless::exclusive() else {
+                return;
+            };
+            let headless = gpu.get();
+            let mut cache = GlyphCache::new(FontStack::embedded(DEFAULT_FONT_SIZE).unwrap());
+            let (retained, layer) = crate::scroll_animation::sample::mid_slide(&mut cache);
+            assert!(!layer.is_empty());
+            let rendered = headless
+                .render_retained_framed(
+                    &retained,
+                    cache.atlases(),
+                    (retained.width(), retained.height()),
+                    Frame {
+                        origin: (0, 0),
+                        margins: &[],
+                        layer: Some(&layer),
+                    },
+                )
+                .unwrap();
+            let golden = goldens_dir().join("smooth-scroll@mid-slide.png");
+            if should_update() {
+                image_io::write(&golden, &rendered).unwrap();
+                return;
+            }
+            let expected = image_io::read(&golden).unwrap_or_else(|_| {
+                panic!(
+                    "{:?} has no golden; regenerate with UPDATE_GOLDENS=1",
+                    golden
+                )
+            });
+            if let Some(difference) = compare(&expected, &rendered) {
+                panic!(
+                    "{:?} diverges at {}; regenerate with UPDATE_GOLDENS=1",
+                    golden, difference
+                );
+            }
+        }
+
+        #[test]
         fn padding_leaves_the_grid_pixels_as_they_are_and_only_moves_them() {
             use crate::renderer::Frame;
 
@@ -1117,6 +1160,7 @@ mod tests {
                         Frame {
                             origin: (left as i32, top as i32),
                             margins: &[],
+                            layer: None,
                         },
                     )
                     .unwrap();

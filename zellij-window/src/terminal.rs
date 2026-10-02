@@ -174,7 +174,16 @@ impl TerminalState {
     }
 
     pub fn apply_frame(&mut self, frame: &[u8]) -> Result<FrameApplied, FrameError> {
+        self.apply_frame_with(frame, |_, _| {})
+    }
+
+    pub fn apply_frame_with(
+        &mut self,
+        frame: &[u8],
+        before: impl FnOnce(&TerminalState, &structured_render::FrameView<'_>),
+    ) -> Result<FrameApplied, FrameError> {
         let view = structured_render::decode(frame).map_err(FrameError::Undecodable)?;
+        before(self, &view);
         let applied = self
             .screen
             .apply(&view)

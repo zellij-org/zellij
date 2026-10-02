@@ -79,6 +79,7 @@ const WHOLE_BUFFER_DIVISOR: usize = 2;
 pub struct Frame<'a> {
     pub origin: (i32, i32),
     pub margins: &'a [crate::scene::Rect],
+    pub layer: Option<&'a crate::scroll_animation::ScrollLayer>,
 }
 
 struct Slot {
@@ -156,6 +157,11 @@ pub struct Renderer {
     color: Pass,
     image: Pass,
     fade: Pass,
+    layer_solid: Pass,
+    layer_glyph: Pass,
+    layer_color: Pass,
+    layer_image: Pass,
+    layer_vertices: Vec<f32>,
     mask_atlas: AtlasTexture,
     color_atlas: AtlasTexture,
     images: HashMap<ImageKey, ImageTexture>,
@@ -247,6 +253,11 @@ impl Renderer {
             attribute(&gl, solid_program, "a_position", 2, SOLID_STRIDE, 0);
             attribute(&gl, solid_program, "a_color", 3, SOLID_STRIDE, 2 * 4);
 
+            let layer_solid = solid_pass(&gl, solid_program)?;
+            let layer_glyph = textured_pass(&gl, glyph_program)?;
+            let layer_color = textured_pass(&gl, color_program)?;
+            let layer_image = textured_pass(&gl, color_program)?;
+
             let mask_atlas = atlas_texture(&gl, glow::RED, glow::R8 as i32)?;
             let color_atlas = atlas_texture(&gl, glow::RGBA, glow::RGBA8 as i32)?;
 
@@ -263,6 +274,11 @@ impl Renderer {
                 color,
                 image,
                 fade,
+                layer_solid,
+                layer_glyph,
+                layer_color,
+                layer_image,
+                layer_vertices: Vec::new(),
                 mask_atlas,
                 color_atlas,
                 images: HashMap::new(),
@@ -353,9 +369,10 @@ impl Renderer {
         let everything = self.retained != Some(scene.identity()) || scene.rebuilt_everything();
         self.retained = Some(scene.identity());
         if everything || scene.replaced_images() {
-            self.sync_images(scene.images(), scene.resident_images());
+            self.sync_images(scene.all_images(), scene.resident_images());
             self.sync_image_vertices(scene.images());
         }
+        let layer = frame.layer.filter(|layer| !layer.is_empty());
         let (rows, rebuilt) = (scene.rows(), scene.rebuilt_rows());
         let mask = (atlases.mask.width(), atlases.mask.height());
         let color = (atlases.color.width(), atlases.color.height());
@@ -414,15 +431,61 @@ impl Renderer {
                 );
             }
             draw_rows(&self.gl, &self.solid, &self.solid_rows, viewport, origin);
+            if let Some(layer) = layer {
+                self.layer_vertices.clear();
+                push_solid_vertices(&mut self.layer_vertices, &layer.rects);
+                draw_pass(
+                    &self.gl,
+                    &self.layer_solid,
+                    &self.layer_vertices,
+                    SOLID_STRIDE,
+                    viewport,
+                    origin,
+                );
+            }
             self.gl.active_texture(glow::TEXTURE0);
             self.draw_images(viewport, origin, true);
+            if let Some(layer) = layer {
+                self.draw_layer_images(&layer.images, viewport, origin, true);
+            }
             self.gl
                 .bind_texture(glow::TEXTURE_2D, Some(self.mask_atlas.texture));
             draw_rows(&self.gl, &self.glyph, &self.glyph_rows, viewport, origin);
+            if let Some(layer) = layer {
+                self.layer_vertices.clear();
+                push_glyph_vertices(&mut self.layer_vertices, &layer.glyphs, atlases.mask);
+                draw_pass(
+                    &self.gl,
+                    &self.layer_glyph,
+                    &self.layer_vertices,
+                    GLYPH_STRIDE,
+                    viewport,
+                    origin,
+                );
+            }
             self.gl
                 .bind_texture(glow::TEXTURE_2D, Some(self.color_atlas.texture));
             draw_rows(&self.gl, &self.color, &self.color_rows, viewport, origin);
+            if let Some(layer) = layer {
+                self.layer_vertices.clear();
+                push_glyph_vertices(
+                    &mut self.layer_vertices,
+                    &layer.color_glyphs,
+                    atlases.color,
+                );
+                draw_pass(
+                    &self.gl,
+                    &self.layer_color,
+                    &self.layer_vertices,
+                    GLYPH_STRIDE,
+                    viewport,
+                    origin,
+                );
+            }
             self.draw_images(viewport, origin, false);
+            if let Some(layer) = layer {
+                self.draw_layer_images(&layer.images, viewport, origin, false);
+            }
             if let Some(opacity) = transparency.fade() {
                 self.fade_everything(opacity, viewport);
             }
@@ -531,6 +594,34 @@ impl Renderer {
             self.gl.bind_texture(glow::TEXTURE_2D, Some(image.texture));
             self.gl
                 .draw_arrays(glow::TRIANGLES, batch.first, batch.count);
+        }
+    }
+
+    unsafe fn draw_layer_images(
+        &mut self,
+        images: &[ImageQuad],
+        viewport: (f32, f32),
+        origin: (f32, f32),
+        below_text: bool,
+    ) {
+        for quad in images {
+            if (quad.z < 0) != below_text {
+                continue;
+            }
+            let Some(texture) = self.images.get(&quad.key).map(|image| image.texture) else {
+                continue;
+            };
+            self.layer_vertices.clear();
+            push_image_vertices(&mut self.layer_vertices, quad);
+            self.gl.bind_texture(glow::TEXTURE_2D, Some(texture));
+            draw_pass(
+                &self.gl,
+                &self.layer_image,
+                &self.layer_vertices,
+                GLYPH_STRIDE,
+                viewport,
+                origin,
+            );
         }
     }
 
@@ -797,6 +888,37 @@ unsafe fn premultiplied_blending(gl: &glow::Context) {
         glow::ONE,
         glow::ONE_MINUS_SRC_ALPHA,
     );
+}
+
+unsafe fn solid_pass(gl: &glow::Context, program: glow::Program) -> Result<Pass> {
+    let pass = Pass {
+        viewport: gl.get_uniform_location(program, "u_viewport"),
+        origin: gl.get_uniform_location(program, "u_origin"),
+        program,
+        vertex_array: gl.create_vertex_array().map_err(|e| anyhow!(e))?,
+        buffer: gl.create_buffer().map_err(|e| anyhow!(e))?,
+    };
+    gl.bind_vertex_array(Some(pass.vertex_array));
+    gl.bind_buffer(glow::ARRAY_BUFFER, Some(pass.buffer));
+    attribute(gl, program, "a_position", 2, SOLID_STRIDE, 0);
+    attribute(gl, program, "a_color", 3, SOLID_STRIDE, 2 * 4);
+    Ok(pass)
+}
+
+unsafe fn textured_pass(gl: &glow::Context, program: glow::Program) -> Result<Pass> {
+    let pass = Pass {
+        viewport: gl.get_uniform_location(program, "u_viewport"),
+        origin: gl.get_uniform_location(program, "u_origin"),
+        program,
+        vertex_array: gl.create_vertex_array().map_err(|e| anyhow!(e))?,
+        buffer: gl.create_buffer().map_err(|e| anyhow!(e))?,
+    };
+    gl.bind_vertex_array(Some(pass.vertex_array));
+    gl.bind_buffer(glow::ARRAY_BUFFER, Some(pass.buffer));
+    attribute(gl, program, "a_position", 2, GLYPH_STRIDE, 0);
+    attribute(gl, program, "a_texcoord", 2, GLYPH_STRIDE, 2 * 4);
+    attribute(gl, program, "a_color", 3, GLYPH_STRIDE, 4 * 4);
+    Ok(pass)
 }
 
 unsafe fn atlas_texture(

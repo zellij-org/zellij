@@ -10,7 +10,7 @@ use zellij_utils::structured_render::GeometryRecord;
 
 use crate::connection::Geometry;
 
-const MAX_TICKS_PER_DELTA: usize = 16;
+const MAX_LINES_PER_DELTA: usize = 16;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct Buttons {
@@ -255,32 +255,38 @@ impl PointerState {
         geometry: Geometry,
         modifiers: ModifiersState,
     ) -> Vec<MouseEvent> {
-        let (horizontal, vertical) = match delta {
-            MouseScrollDelta::LineDelta(x, y) => (x as f64, y as f64),
+        let (horizontal, vertical, counted) = match delta {
+            MouseScrollDelta::LineDelta(x, y) => (x as f64, y as f64, false),
             MouseScrollDelta::PixelDelta(pixels) => (
                 pixels.x / geometry.cell_width.max(1) as f64,
                 pixels.y / geometry.cell_height.max(1) as f64,
+                !(modifiers.control_key() || modifiers.alt_key()),
             ),
         };
 
         let position = self.at(geometry);
         let mut events = Vec::new();
-        for (ticks, up, down) in [
-            (
-                accumulate(&mut self.vertical, vertical),
-                Wheel::Up,
-                Wheel::Down,
-            ),
-            (
-                accumulate(&mut self.horizontal, horizontal),
-                Wheel::Right,
-                Wheel::Left,
-            ),
-        ] {
-            let wheel = if ticks > 0 { up } else { down };
-            for _ in 0..ticks.unsigned_abs() {
-                events.push(wheel.event(position, modifiers));
+        let vertical = accumulate(&mut self.vertical, vertical);
+        let vertical_wheel = if vertical > 0 { Wheel::Up } else { Wheel::Down };
+        if counted {
+            if vertical != 0 {
+                let mut event = vertical_wheel.event(position, modifiers);
+                event.wheel_lines = vertical.unsigned_abs() as u16;
+                events.push(event);
             }
+        } else {
+            for _ in 0..vertical.unsigned_abs() {
+                events.push(vertical_wheel.event(position, modifiers));
+            }
+        }
+        let horizontal = accumulate(&mut self.horizontal, horizontal);
+        let horizontal_wheel = if horizontal > 0 {
+            Wheel::Right
+        } else {
+            Wheel::Left
+        };
+        for _ in 0..horizontal.unsigned_abs() {
+            events.push(horizontal_wheel.event(position, modifiers));
         }
         events
     }
@@ -385,8 +391,8 @@ fn accumulate(carried: &mut f64, delta: f64) -> isize {
     let whole = carried.trunc();
     *carried -= whole;
     (whole as isize).clamp(
-        -(MAX_TICKS_PER_DELTA as isize),
-        MAX_TICKS_PER_DELTA as isize,
+        -(MAX_LINES_PER_DELTA as isize),
+        MAX_LINES_PER_DELTA as isize,
     )
 }
 
@@ -419,6 +425,7 @@ fn event(
         wheel_down: false,
         wheel_left: false,
         wheel_right: false,
+        wheel_lines: 0,
         shift: modifiers.shift_key(),
         alt: modifiers.alt_key(),
         ctrl: modifiers.control_key(),
@@ -974,15 +981,97 @@ mod tests {
     }
 
     #[test]
-    fn pixel_travel_is_measured_in_cell_heights() {
+    fn pixel_travel_is_measured_in_cell_heights_and_sent_as_one_counted_event() {
         let mut pointer = PointerState::new();
         let events = pointer.wheel(
             MouseScrollDelta::PixelDelta(at(0.0, -60.0)),
             geometry(),
             none(),
         );
+        assert_eq!(events.len(), 1);
+        assert!(events[0].wheel_down);
+        assert_eq!(events[0].wheel_lines, 3);
+    }
+
+    #[test]
+    fn upward_pixel_travel_is_one_counted_wheel_up() {
+        let mut pointer = PointerState::new();
+        let events = pointer.wheel(
+            MouseScrollDelta::PixelDelta(at(0.0, 20.0)),
+            geometry(),
+            none(),
+        );
+        assert_eq!(events.len(), 1);
+        assert!(events[0].wheel_up);
+        assert_eq!(events[0].wheel_lines, 1);
+    }
+
+    #[test]
+    fn pixel_travel_short_of_a_line_sends_nothing_until_it_adds_up() {
+        let mut pointer = PointerState::new();
+        assert!(pointer
+            .wheel(MouseScrollDelta::PixelDelta(at(0.0, 15.0)), geometry(), none())
+            .is_empty());
+        let events = pointer.wheel(
+            MouseScrollDelta::PixelDelta(at(0.0, 30.0)),
+            geometry(),
+            none(),
+        );
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].wheel_lines, 2);
+    }
+
+    #[test]
+    fn pixel_travel_is_capped_in_lines_per_event() {
+        let mut pointer = PointerState::new();
+        let events = pointer.wheel(
+            MouseScrollDelta::PixelDelta(at(0.0, 1.0e9)),
+            geometry(),
+            none(),
+        );
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].wheel_lines as usize, MAX_LINES_PER_DELTA);
+    }
+
+    #[test]
+    fn reversing_pixel_travel_discards_the_carried_remainder() {
+        let mut pointer = PointerState::new();
+        assert!(pointer
+            .wheel(MouseScrollDelta::PixelDelta(at(0.0, 18.0)), geometry(), none())
+            .is_empty());
+        assert!(pointer
+            .wheel(MouseScrollDelta::PixelDelta(at(0.0, -2.0)), geometry(), none())
+            .is_empty());
+        let events = pointer.wheel(
+            MouseScrollDelta::PixelDelta(at(0.0, 4.0)),
+            geometry(),
+            none(),
+        );
+        assert!(events.is_empty());
+    }
+
+    #[test]
+    fn line_travel_still_sends_one_uncounted_event_per_tick() {
+        let mut pointer = PointerState::new();
+        let events = pointer.wheel(MouseScrollDelta::LineDelta(0.0, 3.0), geometry(), none());
         assert_eq!(events.len(), 3);
-        assert!(events.iter().all(|event| event.wheel_down));
+        assert!(events
+            .iter()
+            .all(|event| event.wheel_up && event.wheel_lines == 0));
+    }
+
+    #[test]
+    fn pixel_travel_with_ctrl_or_alt_keeps_one_uncounted_event_per_line() {
+        for modifiers in [ModifiersState::CONTROL, ModifiersState::ALT] {
+            let mut pointer = PointerState::new();
+            let events = pointer.wheel(
+                MouseScrollDelta::PixelDelta(at(0.0, 40.0)),
+                geometry(),
+                modifiers,
+            );
+            assert_eq!(events.len(), 2);
+            assert!(events.iter().all(|event| event.wheel_lines == 0));
+        }
     }
 
     #[test]
@@ -1008,7 +1097,7 @@ mod tests {
     fn an_absurd_delta_is_bounded_rather_than_flooding_the_server() {
         let mut pointer = PointerState::new();
         let events = pointer.wheel(MouseScrollDelta::LineDelta(0.0, 1.0e9), geometry(), none());
-        assert_eq!(events.len(), MAX_TICKS_PER_DELTA);
+        assert_eq!(events.len(), MAX_LINES_PER_DELTA);
     }
 
     #[test]

@@ -1,6 +1,8 @@
 use std::fmt::{self, Display, Formatter};
 
-const WIRE_VERSION: u8 = 2;
+const WIRE_VERSION: u8 = 3;
+const OLDEST_WIRE_VERSION: u8 = 2;
+const FIRST_VERSION_WITH_SCROLL: u8 = 3;
 
 const HEADER_LEN: usize = 48;
 const ROW_RECORD_LEN: usize = 8;
@@ -15,12 +17,16 @@ const GRAPHICS_KIND_CLEAR: u8 = 4;
 const GRAPHICS_KIND_SIXEL: u8 = 5;
 const RECORD_KIND_GEOMETRY: u8 = 6;
 const RECORD_KIND_LINKS: u8 = 7;
+const RECORD_KIND_SCROLL: u8 = 8;
 
 const GEOMETRY_HEADER_LEN: usize = 8;
 const GEOMETRY_ENTRY_LEN: usize = 16;
 
 const LINKS_HEADER_LEN: usize = 8;
 const LINK_ENTRY_HEADER_LEN: usize = 4;
+
+const SCROLL_HEADER_LEN: usize = 8;
+const SCROLL_ENTRY_LEN: usize = 4;
 
 pub const LINK_NONE: u8 = 0;
 pub const MAX_LINK_ID: u8 = u8::MAX;
@@ -649,10 +655,90 @@ impl LinkRecord {
     }
 }
 
-fn record_is_decodable(kind: u8, medium: u8, payload: &[u8]) -> bool {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ScrollEntry {
+    pub pane: u16,
+    pub lines: i16,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct ScrollRecord {
+    pub entries: Vec<ScrollEntry>,
+}
+
+impl ScrollRecord {
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    pub fn lines_for(&self, pane: u16) -> Option<i16> {
+        self.entries
+            .iter()
+            .find(|entry| entry.pane == pane)
+            .map(|entry| entry.lines)
+    }
+
+    pub fn add(&mut self, pane: u16, lines: i32) {
+        if lines == 0 {
+            return;
+        }
+        match self.entries.iter_mut().position(|entry| entry.pane == pane) {
+            Some(index) => {
+                let sum = (self.entries[index].lines as i32 + lines)
+                    .clamp(i16::MIN as i32, i16::MAX as i32) as i16;
+                if sum == 0 {
+                    self.entries.remove(index);
+                } else {
+                    self.entries[index].lines = sum;
+                }
+            },
+            None => self.entries.push(ScrollEntry {
+                pane,
+                lines: lines.clamp(i16::MIN as i32, i16::MAX as i32) as i16,
+            }),
+        }
+    }
+
+    fn encode_payload(&self, out: &mut Vec<u8>) {
+        out.extend_from_slice(&(self.entries.len() as u16).to_le_bytes());
+        out.extend_from_slice(&(SCROLL_ENTRY_LEN as u16).to_le_bytes());
+        put_u32(out, 0);
+        for entry in &self.entries {
+            out.extend_from_slice(&entry.pane.to_le_bytes());
+            out.extend_from_slice(&entry.lines.to_le_bytes());
+        }
+    }
+
+    fn decode(payload: &[u8]) -> Option<Self> {
+        let header = payload.get(..SCROLL_HEADER_LEN)?;
+        let entry_count = u16::from_le_bytes([header[0], header[1]]) as usize;
+        let entry_len = u16::from_le_bytes([header[2], header[3]]) as usize;
+        if entry_len < SCROLL_ENTRY_LEN {
+            return None;
+        }
+        let entries = payload.get(SCROLL_HEADER_LEN..)?;
+        let mut record = ScrollRecord {
+            entries: Vec::with_capacity(entry_count),
+        };
+        for index in 0..entry_count {
+            let at = index.checked_mul(entry_len)?;
+            let entry = entries.get(at..at.checked_add(entry_len)?)?;
+            record.entries.push(ScrollEntry {
+                pane: u16::from_le_bytes([entry[0], entry[1]]),
+                lines: i16::from_le_bytes([entry[2], entry[3]]),
+            });
+        }
+        Some(record)
+    }
+}
+
+fn record_is_decodable(version: u8, kind: u8, medium: u8, payload: &[u8]) -> bool {
     match kind {
         RECORD_KIND_GEOMETRY => GeometryRecord::decode(payload).is_some(),
         RECORD_KIND_LINKS => LinkRecord::decode(payload).is_some(),
+        RECORD_KIND_SCROLL => {
+            version >= FIRST_VERSION_WITH_SCROLL && ScrollRecord::decode(payload).is_some()
+        },
         _ => GraphicsRecord::decode(kind, medium, payload).is_some(),
     }
 }
@@ -802,6 +888,14 @@ impl FrameBuilder {
         self.cursor = cursor;
     }
 
+    pub fn is_full_repaint(&self) -> bool {
+        self.flags & FLAG_FULL_REPAINT != 0
+    }
+
+    pub fn is_clear(&self) -> bool {
+        self.flags & FLAG_CLEAR != 0
+    }
+
     pub fn cols(&self) -> u16 {
         self.cols
     }
@@ -864,6 +958,15 @@ impl FrameBuilder {
             return;
         }
         self.push_record(RECORD_KIND_LINKS, GRAPHICS_MEDIUM_INLINE, |out| {
+            record.encode_payload(out)
+        });
+    }
+
+    pub fn push_scroll(&mut self, record: &ScrollRecord) {
+        if record.is_empty() {
+            return;
+        }
+        self.push_record(RECORD_KIND_SCROLL, GRAPHICS_MEDIUM_INLINE, |out| {
             record.encode_payload(out)
         });
     }
@@ -937,7 +1040,7 @@ pub fn decode(buffer: &[u8]) -> Result<FrameView<'_>, DecodeError> {
         ])
     };
     let version = buffer[0];
-    if version != WIRE_VERSION {
+    if !(OLDEST_WIRE_VERSION..=WIRE_VERSION).contains(&version) {
         return Err(DecodeError::UnsupportedVersion(version));
     }
     let mut seq_bytes = [0u8; 8];
@@ -1019,7 +1122,12 @@ pub fn decode(buffer: &[u8]) -> Result<FrameView<'_>, DecodeError> {
         if payload_end > graphics_end {
             return Err(DecodeError::BadGraphicsRecord);
         }
-        if !record_is_decodable(buffer[at], buffer[at + 1], &buffer[header_end..payload_end]) {
+        if !record_is_decodable(
+            version,
+            buffer[at],
+            buffer[at + 1],
+            &buffer[header_end..payload_end],
+        ) {
             return Err(DecodeError::BadGraphicsRecord);
         }
         at = align_up(payload_end, 4);
@@ -1141,6 +1249,32 @@ impl<'a> FrameView<'a> {
         links
     }
 
+    pub fn scroll(&self) -> ScrollRecord {
+        let start = self.header.graphics_offset as usize;
+        let end = start + self.header.graphics_len as usize;
+        let mut scroll = ScrollRecord::default();
+        let mut at = start;
+        while at < end {
+            let header_end = at + GRAPHICS_RECORD_HEADER_LEN;
+            let payload_len = u32::from_le_bytes([
+                self.buffer[at + 4],
+                self.buffer[at + 5],
+                self.buffer[at + 6],
+                self.buffer[at + 7],
+            ]) as usize;
+            let payload_end = header_end + payload_len;
+            if self.buffer[at] == RECORD_KIND_SCROLL {
+                if let Some(record) = ScrollRecord::decode(&self.buffer[header_end..payload_end]) {
+                    for entry in record.entries {
+                        scroll.add(entry.pane, entry.lines as i32);
+                    }
+                }
+            }
+            at = align_up(payload_end, 4);
+        }
+        scroll
+    }
+
     pub fn record(&self, index: usize) -> Option<RowRecord> {
         (index < self.header.row_record_count as usize).then(|| self.record_at(index))
     }
@@ -1241,6 +1375,7 @@ pub struct PendingOverlay {
     clear: bool,
     geometry: Option<GeometryRecord>,
     links: Vec<LinkEntry>,
+    scroll: ScrollRecord,
     graphics: Vec<GraphicsRecord>,
     sideband: Vec<u8>,
 }
@@ -1258,6 +1393,7 @@ impl PendingOverlay {
             clear: false,
             geometry: None,
             links: Vec::new(),
+            scroll: ScrollRecord::default(),
             graphics: Vec::new(),
             sideband: Vec::new(),
         }
@@ -1277,6 +1413,7 @@ impl PendingOverlay {
             || self.clear
             || self.geometry.is_some()
             || !self.links.is_empty()
+            || !self.scroll.is_empty()
             || !self.graphics.is_empty()
             || !self.sideband.is_empty()
             || self.spans.iter().any(|spans| !spans.is_empty())
@@ -1310,6 +1447,7 @@ impl PendingOverlay {
             self.clear = true;
         }
         if header.full_repaint() || header.clear() {
+            self.scroll.entries.clear();
             self.cells
                 .iter_mut()
                 .for_each(|cell| *cell = WireCell::BLANK);
@@ -1322,6 +1460,10 @@ impl PendingOverlay {
         self.cursor_seen = true;
         if let Some(geometry) = frame.geometry() {
             self.geometry = Some(geometry);
+            self.scroll.entries.clear();
+        }
+        for entry in frame.scroll().entries {
+            self.scroll.add(entry.pane, entry.lines as i32);
         }
         for entry in frame.links().entries {
             match self.links.iter_mut().find(|held| held.id == entry.id) {
@@ -1350,8 +1492,11 @@ impl PendingOverlay {
                 );
             }
         }
+        let scroll = std::mem::take(&mut self.scroll);
         if let Some(geometry) = self.geometry.take() {
             builder.push_geometry(&geometry);
+        } else if !self.full_repaint && !self.clear {
+            builder.push_scroll(&scroll);
         }
         builder.push_links(&LinkRecord {
             entries: std::mem::take(&mut self.links),
@@ -1580,6 +1725,36 @@ mod tests {
             error_of(&frame),
             Some(DecodeError::UnsupportedVersion(WIRE_VERSION + 1))
         );
+        frame[0] = OLDEST_WIRE_VERSION - 1;
+        assert_eq!(
+            error_of(&frame),
+            Some(DecodeError::UnsupportedVersion(OLDEST_WIRE_VERSION - 1))
+        );
+    }
+
+    #[test]
+    fn a_frame_of_the_previous_wire_version_still_decodes() {
+        let mut builder = FrameBuilder::new(4, 1, 0);
+        builder.push_row(0, 0, &run("ab"));
+        builder.push_geometry(&GeometryRecord {
+            panes: vec![pane(0, 0, 4, 1, 0)],
+        });
+        let mut frame = builder.finish();
+        frame[0] = 2;
+        let view = decode(&frame).unwrap();
+        assert_eq!(view.header().version, 2);
+        assert_eq!(view.geometry().unwrap().panes.len(), 1);
+        assert!(view.scroll().is_empty());
+    }
+
+    #[test]
+    fn a_scroll_record_in_a_frame_of_the_previous_wire_version_is_rejected() {
+        let mut builder = FrameBuilder::new(4, 1, 0);
+        builder.push_scroll(&scroll(&[(0, 2)]));
+        let mut frame = builder.finish();
+        assert!(decode(&frame).is_ok());
+        frame[0] = 2;
+        assert_eq!(error_of(&frame), Some(DecodeError::BadGraphicsRecord));
     }
 
     #[test]
@@ -2406,5 +2581,143 @@ mod tests {
         let mut destination = vec![WireCell::BLANK; 16];
         view.apply(&mut destination, 8, 2);
         assert!(destination.iter().all(|cell| *cell == WireCell::BLANK));
+    }
+
+    fn scroll(entries: &[(u16, i16)]) -> ScrollRecord {
+        ScrollRecord {
+            entries: entries
+                .iter()
+                .map(|&(pane, lines)| ScrollEntry { pane, lines })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn a_scroll_record_round_trips_every_entry() {
+        let mut builder = FrameBuilder::new(8, 2, 1);
+        builder.push_scroll(&scroll(&[(0, 5), (3, -2), (7, i16::MAX)]));
+        let frame = builder.finish();
+        let view = decode(&frame).unwrap();
+        assert_eq!(view.header().version, WIRE_VERSION);
+        assert_eq!(view.scroll(), scroll(&[(0, 5), (3, -2), (7, i16::MAX)]));
+        assert_eq!(view.scroll().lines_for(3), Some(-2));
+        assert_eq!(view.scroll().lines_for(1), None);
+    }
+
+    #[test]
+    fn a_scroll_record_shares_the_record_stream_with_geometry_and_links() {
+        let mut builder = FrameBuilder::new(8, 2, 1);
+        builder.push_geometry(&GeometryRecord {
+            panes: vec![pane(0, 0, 8, 2, 0)],
+        });
+        builder.push_scroll(&scroll(&[(0, 1)]));
+        builder.push_links(&LinkRecord {
+            entries: vec![link(1, "https://example.com")],
+        });
+        let frame = builder.finish();
+        let view = decode(&frame).unwrap();
+        assert_eq!(view.geometry().unwrap().panes.len(), 1);
+        assert_eq!(view.scroll(), scroll(&[(0, 1)]));
+        assert_eq!(view.links().entries.len(), 1);
+    }
+
+    #[test]
+    fn an_empty_scroll_record_is_never_written_to_the_wire() {
+        let mut builder = FrameBuilder::new(4, 1, 0);
+        builder.push_scroll(&ScrollRecord::default());
+        let frame = builder.finish();
+        assert_eq!(decode(&frame).unwrap().header().graphics_len, 0);
+    }
+
+    #[test]
+    fn a_scroll_record_that_names_more_entries_than_it_carries_is_rejected() {
+        let mut builder = FrameBuilder::new(4, 1, 0);
+        builder.push_scroll(&scroll(&[(0, 1)]));
+        let mut frame = builder.finish();
+        let at = decode(&frame).unwrap().header().graphics_offset as usize;
+        frame[at + GRAPHICS_RECORD_HEADER_LEN] = 2;
+        assert_eq!(error_of(&frame), Some(DecodeError::BadGraphicsRecord));
+    }
+
+    #[test]
+    fn a_scroll_record_declaring_a_shorter_entry_than_this_build_knows_is_rejected() {
+        let mut builder = FrameBuilder::new(4, 1, 0);
+        builder.push_scroll(&scroll(&[(0, 1)]));
+        let mut frame = builder.finish();
+        let at = decode(&frame).unwrap().header().graphics_offset as usize;
+        frame[at + GRAPHICS_RECORD_HEADER_LEN + 2] = 2;
+        assert_eq!(error_of(&frame), Some(DecodeError::BadGraphicsRecord));
+    }
+
+    #[test]
+    fn adding_to_a_scroll_record_sums_per_pane_and_drops_a_zero_sum() {
+        let mut record = ScrollRecord::default();
+        record.add(1, 3);
+        record.add(2, -1);
+        record.add(1, 2);
+        assert_eq!(record, scroll(&[(1, 5), (2, -1)]));
+        record.add(2, 1);
+        assert_eq!(record, scroll(&[(1, 5)]));
+        record.add(1, 0);
+        assert_eq!(record, scroll(&[(1, 5)]));
+    }
+
+    fn scroll_frame(seq: u64, entries: &[(u16, i16)]) -> Vec<u8> {
+        let mut builder = FrameBuilder::new(4, 2, seq);
+        builder.push_row(0, 0, &run("ab"));
+        builder.push_scroll(&scroll(entries));
+        builder.finish()
+    }
+
+    #[test]
+    fn an_overlay_sums_the_scroll_hints_of_the_frames_it_absorbs_and_drains_them_once() {
+        let mut overlay = PendingOverlay::new(4, 2);
+        overlay.merge_frame(&decode(&scroll_frame(1, &[(0, 2), (1, -1)])).unwrap());
+        overlay.merge_frame(&decode(&scroll_frame(2, &[(0, 3)])).unwrap());
+        let drained = overlay.drain(3);
+        assert_eq!(
+            decode(&drained).unwrap().scroll(),
+            scroll(&[(0, 5), (1, -1)])
+        );
+        let again = overlay.drain(4);
+        assert!(decode(&again).unwrap().scroll().is_empty());
+    }
+
+    #[test]
+    fn an_overlay_that_absorbed_only_a_scroll_hint_is_dirty() {
+        let mut builder = FrameBuilder::new(4, 2, 1);
+        builder.push_scroll(&scroll(&[(0, 1)]));
+        let mut overlay = PendingOverlay::new(4, 2);
+        let frame = builder.finish();
+        let view = decode(&frame).unwrap();
+        overlay.merge_frame(&view);
+        assert!(overlay.is_dirty());
+    }
+
+    #[test]
+    fn an_overlay_drops_held_scroll_hints_when_it_absorbs_new_geometry() {
+        let mut overlay = PendingOverlay::new(4, 2);
+        overlay.merge_frame(&decode(&scroll_frame(1, &[(0, 2)])).unwrap());
+        let mut reshaped = FrameBuilder::new(4, 2, 2);
+        reshaped.push_geometry(&GeometryRecord {
+            panes: vec![pane(0, 0, 4, 2, 0)],
+        });
+        overlay.merge_frame(&decode(&reshaped.finish()).unwrap());
+        overlay.merge_frame(&decode(&scroll_frame(3, &[(0, 1)])).unwrap());
+        let drained = overlay.drain(4);
+        let view = decode(&drained).unwrap();
+        assert!(view.geometry().is_some());
+        assert!(view.scroll().is_empty());
+    }
+
+    #[test]
+    fn an_overlay_drops_held_scroll_hints_when_it_absorbs_a_full_repaint() {
+        let mut overlay = PendingOverlay::new(4, 2);
+        overlay.merge_frame(&decode(&scroll_frame(1, &[(0, 2)])).unwrap());
+        let mut repaint = FrameBuilder::new(4, 2, 2);
+        repaint.set_full_repaint(true);
+        overlay.merge_frame(&decode(&repaint.finish()).unwrap());
+        let drained = overlay.drain(3);
+        assert!(decode(&drained).unwrap().scroll().is_empty());
     }
 }

@@ -676,6 +676,7 @@ impl FloatingPanes {
                 output.add_pane_rect(
                     *client_id,
                     pane_rect_for_pane(pane, should_draw_pane_frames, focused),
+                    crate::output::PaneScroll::of(pane.pid(), pane.viewport_scroll_state()),
                 );
             }
             let mut pane_contents_and_ui = PaneContentsAndUi::new(

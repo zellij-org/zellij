@@ -22,6 +22,15 @@ use crate::ClientId;
 
 use super::{Pane, Tab};
 
+pub(crate) const CLASSIC_WHEEL_LINES: usize = 3;
+
+pub(crate) fn wheel_steps(event: &MouseEvent, bound_lines: usize) -> (usize, usize) {
+    match event.wheel_lines {
+        0 => (bound_lines, 1),
+        lines => (usize::from(lines), usize::from(lines)),
+    }
+}
+
 fn clear_hover_for_client(tab: &mut Tab, client_id: ClientId) -> bool {
     clear_hover_for_client_keeping_plugin(tab, client_id, None)
 }
@@ -202,11 +211,13 @@ enum MouseAction {
         pane_id: PaneId,
         lines: usize,
         app_first: bool,
+        reports: usize,
     },
     ScrollDown {
         pane_id: PaneId,
         lines: usize,
         app_first: bool,
+        reports: usize,
     },
     ScrollLeft {
         pane_id: PaneId,
@@ -1143,14 +1154,18 @@ impl MouseHandler {
                 pane_id: _,
                 lines,
                 app_first,
-            } => Self::handle_scrollwheel_up(tab, &event.position, lines, app_first, client_id)
+                reports,
+            } => Self::scroll_wheel_up(tab, &event.position, lines, app_first, reports, client_id)
                 .with_context(err_context),
             MouseAction::ScrollDown {
                 pane_id: _,
                 lines,
                 app_first,
-            } => Self::handle_scrollwheel_down(tab, &event.position, lines, app_first, client_id)
-                .with_context(err_context),
+                reports,
+            } => {
+                Self::scroll_wheel_down(tab, &event.position, lines, app_first, reports, client_id)
+                    .with_context(err_context)
+            },
             MouseAction::ScrollLeft {
                 pane_id: _,
                 cols,
@@ -2056,15 +2071,23 @@ impl MouseHandler {
             MouseBehaviour::Ungroup => MouseAction::Ungroup,
             MouseBehaviour::ContextMenu => Self::determine_right_button_action(event, ctx),
             MouseBehaviour::Scroll(amount) => match (button, ctx.pane_id_at_position) {
-                (MouseButton::ScrollUp, Some(pane_id)) => MouseAction::ScrollUp {
-                    pane_id,
-                    lines: amount,
-                    app_first,
+                (MouseButton::ScrollUp, Some(pane_id)) => {
+                    let (lines, reports) = wheel_steps(event, amount);
+                    MouseAction::ScrollUp {
+                        pane_id,
+                        lines,
+                        app_first,
+                        reports,
+                    }
                 },
-                (MouseButton::ScrollDown, Some(pane_id)) => MouseAction::ScrollDown {
-                    pane_id,
-                    lines: amount,
-                    app_first,
+                (MouseButton::ScrollDown, Some(pane_id)) => {
+                    let (lines, reports) = wheel_steps(event, amount);
+                    MouseAction::ScrollDown {
+                        pane_id,
+                        lines,
+                        app_first,
+                        reports,
+                    }
                 },
                 (MouseButton::ScrollLeft, Some(pane_id)) => MouseAction::ScrollLeft {
                     pane_id,
@@ -2373,6 +2396,17 @@ impl MouseHandler {
         app_first: bool,
         client_id: ClientId,
     ) -> Result<MouseEffect> {
+        Self::scroll_wheel_up(tab, point, lines, app_first, 1, client_id)
+    }
+
+    fn scroll_wheel_up(
+        tab: &mut Tab,
+        point: &Position,
+        lines: usize,
+        app_first: bool,
+        reports: usize,
+        client_id: ClientId,
+    ) -> Result<MouseEffect> {
         let err_context = || {
             format!("failed to handle scrollwheel up at position {point:?} for client {client_id}")
         };
@@ -2385,8 +2419,10 @@ impl MouseHandler {
                 None
             };
             if let Some(mouse_event) = app_report {
-                tab.write_to_terminal_at(mouse_event.into_bytes(), point, client_id)
-                    .with_context(err_context)?;
+                for _ in 0..reports {
+                    tab.write_to_terminal_at(mouse_event.clone().into_bytes(), point, client_id)
+                        .with_context(err_context)?;
+                }
             } else if app_first && pane.is_alternate_mode_active() {
                 // separate writes so each sequence gets adjusted for cursor keys mode
                 for _ in 0..lines {
@@ -2407,6 +2443,17 @@ impl MouseHandler {
         app_first: bool,
         client_id: ClientId,
     ) -> Result<MouseEffect> {
+        Self::scroll_wheel_down(tab, point, lines, app_first, 1, client_id)
+    }
+
+    fn scroll_wheel_down(
+        tab: &mut Tab,
+        point: &Position,
+        lines: usize,
+        app_first: bool,
+        reports: usize,
+        client_id: ClientId,
+    ) -> Result<MouseEffect> {
         let err_context = || {
             format!(
                 "failed to handle scrollwheel down at position {point:?} for client {client_id}"
@@ -2421,8 +2468,10 @@ impl MouseHandler {
                 None
             };
             if let Some(mouse_event) = app_report {
-                tab.write_to_terminal_at(mouse_event.into_bytes(), point, client_id)
-                    .with_context(err_context)?;
+                for _ in 0..reports {
+                    tab.write_to_terminal_at(mouse_event.clone().into_bytes(), point, client_id)
+                        .with_context(err_context)?;
+                }
             } else if app_first && pane.is_alternate_mode_active() {
                 // separate writes so each sequence gets adjusted for cursor keys mode
                 for _ in 0..lines {
@@ -2825,6 +2874,7 @@ mod tests {
                 pane_id: PaneId::Terminal(1),
                 lines: 2,
                 app_first: false,
+                reports: 1,
             }
         );
     }
@@ -3204,6 +3254,102 @@ mod tests {
                 }
             );
         }
+    }
+
+    fn with_lines(mut event: MouseEvent, lines: u16) -> MouseEvent {
+        event.wheel_lines = lines;
+        event
+    }
+
+    #[test]
+    fn a_classic_wheel_step_scrolls_three_lines_and_reports_once() {
+        let context = mouse_event_context(true);
+        let position = Position::new(1, 1);
+        assert_eq!(
+            MouseHandler::determine_mouse_action(
+                &MouseEvent::new_scroll_up_event(position),
+                &context
+            )
+            .unwrap(),
+            MouseAction::ScrollUp {
+                pane_id: PaneId::Terminal(1),
+                lines: 3,
+                app_first: true,
+                reports: 1,
+            }
+        );
+        assert_eq!(
+            MouseHandler::determine_mouse_action(
+                &MouseEvent::new_scroll_down_event(position),
+                &context
+            )
+            .unwrap(),
+            MouseAction::ScrollDown {
+                pane_id: PaneId::Terminal(1),
+                lines: 3,
+                app_first: true,
+                reports: 1,
+            }
+        );
+    }
+
+    #[test]
+    fn a_counted_wheel_event_scrolls_and_reports_that_many_lines() {
+        let context = mouse_event_context(true);
+        let position = Position::new(1, 1);
+        assert_eq!(
+            MouseHandler::determine_mouse_action(
+                &with_lines(MouseEvent::new_scroll_up_event(position), 5),
+                &context
+            )
+            .unwrap(),
+            MouseAction::ScrollUp {
+                pane_id: PaneId::Terminal(1),
+                lines: 5,
+                app_first: true,
+                reports: 5,
+            }
+        );
+        assert_eq!(
+            MouseHandler::determine_mouse_action(
+                &with_lines(MouseEvent::new_scroll_down_event(position), 2),
+                &context
+            )
+            .unwrap(),
+            MouseAction::ScrollDown {
+                pane_id: PaneId::Terminal(1),
+                lines: 2,
+                app_first: true,
+                reports: 2,
+            }
+        );
+    }
+
+    #[test]
+    fn ctrl_and_alt_wheels_ignore_the_line_count() {
+        let context = mouse_event_context(true);
+        let position = Position::new(1, 1);
+        assert_eq!(
+            MouseHandler::determine_mouse_action(
+                &with_lines(MouseEvent::new_ctrl_scroll_up_event(position), 7),
+                &context
+            )
+            .unwrap(),
+            MouseAction::ResizeScrollUp {
+                pane_id: PaneId::Terminal(1)
+            }
+        );
+        assert_eq!(
+            MouseHandler::determine_mouse_action(
+                &with_lines(MouseEvent::new_alt_scroll_down_event(position), 7),
+                &context
+            )
+            .unwrap(),
+            MouseAction::ScrollToNextPrompt {
+                pane_id: PaneId::Terminal(1),
+                app_first: true,
+            }
+        );
     }
 }
 
