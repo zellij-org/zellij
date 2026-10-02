@@ -140,6 +140,7 @@ mod tests {
                 size: DEFAULT_FONT_SIZE,
                 system_fonts: false,
                 ligatures: true,
+                ..crate::font::FontOptions::default()
             })
             .unwrap(),
         )
@@ -202,6 +203,7 @@ mod tests {
                 size: DEFAULT_FONT_SIZE,
                 system_fonts: false,
                 ligatures,
+                ..crate::font::FontOptions::default()
             })
             .unwrap(),
         );
@@ -242,6 +244,7 @@ mod tests {
                 size: DEFAULT_FONT_SIZE,
                 system_fonts: false,
                 ligatures: false,
+                ..crate::font::FontOptions::default()
             })
             .unwrap(),
         );
@@ -961,6 +964,189 @@ mod tests {
                 }
             }
 
+            assert!(failures.is_empty(), "{}", failures.join("\n"));
+        }
+
+        const PADDED_FIXTURE: &str = "styling";
+        const PADDED_LINE_HEIGHT: f32 = 1.25;
+        const PADDED_SLACK: (u32, u32) = (5, 7);
+
+        fn padded_golden(name: &str) -> PathBuf {
+            goldens_dir().join(format!("{}@{}.png", PADDED_FIXTURE, name))
+        }
+
+        fn padded_render(
+            headless: &mut Headless,
+            padding_color: zellij_utils::input::window::PaddingColor,
+        ) -> Image {
+            use crate::font::{CellAdjust, FontOptions};
+            use crate::renderer::Frame;
+            use crate::scene::{padding_rects, Margins, Transparency};
+            use zellij_utils::input::window::PaddingColor;
+
+            let fixture = fixtures_dir().join(format!("{}.jsonl", PADDED_FIXTURE));
+            let mut cache = GlyphCache::new(
+                FontStack::build(&FontOptions {
+                    system_fonts: false,
+                    cell: CellAdjust {
+                        line_height: PADDED_LINE_HEIGHT,
+                        ..CellAdjust::default()
+                    },
+                    ..FontOptions::default()
+                })
+                .unwrap(),
+            );
+            let metrics = cache.metrics();
+            let outcome = replay::replay_file(&fixture)
+                .unwrap_or_else(|e| panic!("failed to replay {:?}: {:?}", fixture, e));
+            let size = outcome.state.size();
+            let padding = Margins {
+                left: 10,
+                top: 6,
+                right: 10,
+                bottom: 6,
+            };
+            let (grid_width, grid_height) = (
+                metrics.width * size.cols as u32,
+                metrics.height * size.rows as u32,
+            );
+            let target = (
+                grid_width + padding.left + padding.right + PADDED_SLACK.0,
+                grid_height + padding.top + padding.bottom + PADDED_SLACK.1,
+            );
+            let fit =
+                crate::window::fit_grid(target, (metrics.width, metrics.height), padding, true);
+            assert_eq!((fit.cols, fit.rows), (size.cols, size.rows));
+            let (left, top) = (fit.origin.0 as u32, fit.origin.1 as u32);
+            let margins = match padding_color {
+                PaddingColor::Background => Vec::new(),
+                PaddingColor::Extend => padding_rects(
+                    &outcome.state,
+                    &Paints::default(),
+                    metrics,
+                    Transparency::OPAQUE,
+                    Margins {
+                        left,
+                        top,
+                        right: target.0 - left - grid_width,
+                        bottom: target.1 - top - grid_height,
+                    },
+                ),
+            };
+            let retained = whole(&outcome.state, &mut cache);
+            headless
+                .render_retained_framed(
+                    &retained,
+                    cache.atlases(),
+                    target,
+                    Frame {
+                        origin: fit.origin,
+                        margins: &margins,
+                    },
+                )
+                .unwrap()
+        }
+
+        #[test]
+        fn a_padded_taller_cell_renders_to_its_golden_png() {
+            use zellij_utils::input::window::PaddingColor;
+
+            let Some(mut gpu) = Headless::exclusive() else {
+                return;
+            };
+            let headless = gpu.get();
+            let mut failures = Vec::new();
+            for (name, color) in [
+                ("padded", PaddingColor::Background),
+                ("padded-extend", PaddingColor::Extend),
+            ] {
+                let golden = padded_golden(name);
+                let rendered = padded_render(headless, color);
+                if should_update() {
+                    image_io::write(&golden, &rendered).unwrap();
+                    continue;
+                }
+                let Ok(expected) = image_io::read(&golden) else {
+                    failures.push(format!(
+                        "{:?} has no golden; regenerate with UPDATE_GOLDENS=1",
+                        golden
+                    ));
+                    continue;
+                };
+                if let Some(difference) = compare(&expected, &rendered) {
+                    failures.push(format!(
+                        "{:?} diverges at {}; regenerate with UPDATE_GOLDENS=1",
+                        golden, difference
+                    ));
+                }
+            }
+            assert!(failures.is_empty(), "{}", failures.join("\n"));
+        }
+
+        #[test]
+        fn padding_leaves_the_grid_pixels_as_they_are_and_only_moves_them() {
+            use crate::renderer::Frame;
+
+            let Some(mut gpu) = Headless::exclusive() else {
+                return;
+            };
+            let headless = gpu.get();
+            let mut cache = GlyphCache::new(FontStack::embedded(DEFAULT_FONT_SIZE).unwrap());
+            let background = Paints::default().background;
+            let (left, top, right, bottom) = (9u32, 5u32, 4u32, 6u32);
+            let mut failures = Vec::new();
+
+            for fixture in corpus().unwrap() {
+                let outcome = replay::replay_file(&fixture).unwrap();
+                let retained = whole(&outcome.state, &mut cache);
+                let (width, height) = (retained.width(), retained.height());
+                let plain = headless
+                    .render_retained_framed(
+                        &retained,
+                        cache.atlases(),
+                        (width, height),
+                        Frame::default(),
+                    )
+                    .unwrap();
+                let padded_size = (width + left + right, height + top + bottom);
+                let padded = headless
+                    .render_retained_framed(
+                        &retained,
+                        cache.atlases(),
+                        padded_size,
+                        Frame {
+                            origin: (left as i32, top as i32),
+                            margins: &[],
+                        },
+                    )
+                    .unwrap();
+
+                let pixel = |image: &Image, x: u32, y: u32| {
+                    let at = ((y * image.width + x) * 4) as usize;
+                    [image.pixels[at], image.pixels[at + 1], image.pixels[at + 2]]
+                };
+                let shifted = (0..height).all(|y| {
+                    (0..width).all(|x| pixel(&plain, x, y) == pixel(&padded, x + left, y + top))
+                });
+                if !shifted {
+                    failures.push(format!(
+                        "{:?}: the padded grid is not the plain grid moved",
+                        fixture
+                    ));
+                }
+                let border = (0..padded_size.1).all(|y| {
+                    (0..padded_size.0).all(|x| {
+                        let inside = x >= left && x < left + width && y >= top && y < top + height;
+                        inside || pixel(&padded, x, y) == background
+                    })
+                });
+                if !border {
+                    failures.push(format!(
+                        "{:?}: something was drawn into the padding",
+                        fixture
+                    ));
+                }
+            }
             assert!(failures.is_empty(), "{}", failures.join("\n"));
         }
     }

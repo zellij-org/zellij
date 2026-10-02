@@ -1,11 +1,13 @@
 use zellij_utils::data::{BareKey, HostTerminalThemeMode, KeyWithModifier, PaletteColor, Styling};
 use zellij_utils::input::theme::Theme;
 use zellij_utils::input::window::{
-    BellMode, CursorStyle, NotificationMode, StartupMode, WindowTheme,
+    BellMode, CursorStyle, NotificationMode, PaddingColor, StartupMode, WindowConfig, WindowTheme,
 };
 
 use crate::color::{Paints, Srgb};
-use crate::font::{FontOptions, DEFAULT_FONT_SIZE, DEFAULT_LIGATURES};
+use crate::font::{
+    CellAdjust, FontFeature, FontOptions, DEFAULT_FONT_SIZE, DEFAULT_FONT_WEIGHT, DEFAULT_LIGATURES,
+};
 use crate::platform::Platform;
 use crate::scene::Transparency;
 use crate::screen_buffer::CursorShape;
@@ -28,6 +30,39 @@ pub struct Options {
     pub startup_mode: StartupMode,
     pub transparency: Transparency,
     pub blur: bool,
+    pub padding: Padding,
+    pub padding_balance: bool,
+    pub padding_color: PaddingColor,
+    pub initial_cols: Option<usize>,
+    pub initial_rows: Option<usize>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Padding {
+    pub top: f32,
+    pub right: f32,
+    pub bottom: f32,
+    pub left: f32,
+}
+
+impl Padding {
+    pub fn of(section: &WindowConfig) -> Self {
+        let all = section.padding.unwrap_or(0.0);
+        Self {
+            top: section.padding_top.unwrap_or(all),
+            right: section.padding_right.unwrap_or(all),
+            bottom: section.padding_bottom.unwrap_or(all),
+            left: section.padding_left.unwrap_or(all),
+        }
+    }
+
+    pub fn horizontal(&self) -> f32 {
+        self.left + self.right
+    }
+
+    pub fn vertical(&self) -> f32 {
+        self.top + self.bottom
+    }
 }
 
 impl Default for Options {
@@ -47,6 +82,20 @@ pub fn resolve(settings: &Settings, mode: Option<HostTerminalThemeMode>) -> Opti
             size: section.font_size.unwrap_or(DEFAULT_FONT_SIZE),
             system_fonts: section.system_fonts.unwrap_or(true),
             ligatures: section.ligatures.unwrap_or(DEFAULT_LIGATURES),
+            weight: section.font_weight.unwrap_or(DEFAULT_FONT_WEIGHT),
+            features: section
+                .font_features
+                .iter()
+                .flatten()
+                .filter_map(|feature| FontFeature::parse(feature))
+                .collect(),
+            cell: CellAdjust {
+                line_height: section.line_height.unwrap_or(1.0),
+                cell_width: section.cell_width.unwrap_or(1.0),
+                baseline_offset: section.baseline_offset.unwrap_or(0) as f32,
+                underline_offset: section.underline_offset.unwrap_or(0) as f32,
+                underline_thickness: section.underline_thickness.unwrap_or(0) as f32,
+            },
         },
         paste_keys: section
             .paste_keys
@@ -77,6 +126,11 @@ pub fn resolve(settings: &Settings, mode: Option<HostTerminalThemeMode>) -> Opti
             mode: section.opacity_mode.unwrap_or_default(),
         },
         blur: section.blur.unwrap_or(false),
+        padding: Padding::of(section),
+        padding_balance: section.padding_balance.unwrap_or(false),
+        padding_color: section.padding_color.unwrap_or_default(),
+        initial_cols: section.initial_columns.map(usize::from),
+        initial_rows: section.initial_rows.map(usize::from),
     }
 }
 
@@ -215,6 +269,8 @@ pub struct Change {
     pub notifications: bool,
     pub transparency: bool,
     pub blur: bool,
+    pub layout: bool,
+    pub padding_color: bool,
 }
 
 impl Change {
@@ -234,6 +290,9 @@ impl Change {
             notifications: current.notifications != next.notifications,
             transparency: current.transparency != next.transparency,
             blur: current.blur != next.blur,
+            layout: current.padding != next.padding
+                || current.padding_balance != next.padding_balance,
+            padding_color: current.padding_color != next.padding_color,
         }
     }
 
@@ -250,10 +309,16 @@ impl Change {
             || self.notifications
             || self.transparency
             || self.blur
+            || self.layout
+            || self.padding_color
     }
 
     pub fn needs_redraw(&self) -> bool {
-        self.paints || self.cursor_shape || self.cursor_blink || self.transparency
+        self.paints
+            || self.cursor_shape
+            || self.cursor_blink
+            || self.transparency
+            || self.padding_color
     }
 }
 
@@ -788,5 +853,57 @@ mod tests {
         let mut next = current.clone();
         next.paste_keys.clear();
         assert!(Change::between(&current, &next).paste_keys);
+    }
+
+    #[test]
+    fn padding_sides_override_the_padding_for_every_side() {
+        let options = resolve(
+            &settings(WindowConfig {
+                padding: Some(4.0),
+                padding_left: Some(10.0),
+                ..WindowConfig::default()
+            }),
+            None,
+        );
+        assert_eq!(
+            options.padding,
+            Padding {
+                top: 4.0,
+                right: 4.0,
+                bottom: 4.0,
+                left: 10.0,
+            }
+        );
+        assert_eq!(Options::default().padding, Padding::default());
+    }
+
+    #[test]
+    fn layout_settings_reach_the_font_and_mark_the_right_changes() {
+        let options = resolve(
+            &settings(WindowConfig {
+                line_height: Some(1.2),
+                font_weight: Some(500),
+                font_features: Some(vec!["-calt".to_owned()]),
+                ..WindowConfig::default()
+            }),
+            None,
+        );
+        assert_eq!(options.font.cell.line_height, 1.2);
+        assert_eq!(options.font.weight, 500);
+        assert_eq!(options.font.features.len(), 1);
+
+        let current = Options::default();
+        let mut next = current.clone();
+        next.padding.top = 3.0;
+        let change = Change::between(&current, &next);
+        assert!(change.layout && change.is_anything() && !change.fonts);
+
+        let mut next = current.clone();
+        next.font.cell.cell_width = 1.1;
+        assert!(Change::between(&current, &next).fonts);
+
+        let mut next = current.clone();
+        next.padding_color = PaddingColor::Extend;
+        assert!(Change::between(&current, &next).needs_redraw());
     }
 }

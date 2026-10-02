@@ -727,6 +727,47 @@ mod tests {
     }
 
     #[test]
+    fn box_lines_span_a_cell_adjusted_for_line_height_and_width() {
+        use crate::font::{CellAdjust, FontOptions, FontStack};
+
+        let metrics = FontStack::build(&FontOptions {
+            system_fonts: false,
+            cell: CellAdjust {
+                line_height: 1.5,
+                cell_width: 1.25,
+                ..CellAdjust::default()
+            },
+            ..FontOptions::default()
+        })
+        .unwrap()
+        .metrics();
+        assert_eq!((metrics.width, metrics.height), (10, 30));
+
+        let vertical = sprite('\u{2502}', metrics);
+        assert_eq!((vertical.width, vertical.height), (10, 30));
+        assert_eq!(vertical.top, metrics.baseline as i32);
+        let column = (0..vertical.width)
+            .find(|x| at(&vertical, *x, 0) == OPAQUE)
+            .expect("the vertical line reaches the top edge");
+        assert!(
+            (0..vertical.height).all(|y| at(&vertical, column, y) == OPAQUE),
+            "the vertical line has a gap inside the taller cell"
+        );
+
+        let horizontal = sprite('\u{2500}', metrics);
+        let row = (0..horizontal.height)
+            .find(|y| at(&horizontal, 0, *y) == OPAQUE)
+            .expect("the horizontal line reaches the left edge");
+        assert!(
+            (0..horizontal.width).all(|x| at(&horizontal, x, row) == OPAQUE),
+            "the horizontal line has a gap inside the wider cell"
+        );
+
+        let powerline = sprite('\u{e0b0}', metrics);
+        assert_eq!((powerline.width, powerline.height), (10, 30));
+    }
+
+    #[test]
     fn a_corner_lines_up_with_the_straight_lines_it_joins() {
         let metrics = metrics(9, 21);
         let corner = sprite('\u{250c}', metrics);

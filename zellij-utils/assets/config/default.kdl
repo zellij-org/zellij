@@ -694,6 +694,50 @@ web_client {
 //     // != are drawn as one shape.
 //     ligatures true
 //
+//     // Weight of the regular face: a number from 100 to 900, or one of
+//     // "thin", "extralight", "light", "regular", "medium", "semibold",
+//     // "bold", "extrabold" or "black". Bold text uses a face 300 heavier,
+//     // up to 900. Variable fonts are set to the exact weight.
+//     font_weight "regular"
+//
+//     // OpenType features to turn on, or off with a leading -, as
+//     // four-character tags. Listing any feature shapes text even with
+//     // ligatures false; then "liga", "calt" and "dlig" stay off unless
+//     // listed here.
+//     font_features "ss01" "zero" "-calt"
+//
+//     // Height of a cell as a multiple of the font's own line height. The
+//     // extra space is shared evenly above and below the text.
+//     line_height 1.0
+//
+//     // Width of a cell as a multiple of the font's own character width.
+//     // Characters keep their shape and are centered in the cell.
+//     cell_width 1.0
+//
+//     // Pixels to move the text down (or up, when negative) inside its cell
+//     baseline_offset 0
+//
+//     // Pixels to move the underline down (or up, when negative), and pixels
+//     // to add to (or remove from) its thickness. Both stay inside the cell.
+//     underline_offset 0
+//     underline_thickness 0
+//
+//     // Empty space around the text, in pixels, scaled with the display but
+//     // not with zoom. `padding` sets every side; padding_top, padding_right,
+//     // padding_bottom and padding_left override one side each.
+//     padding 0
+//     padding_top 0
+//
+//     // Whether the pixels left over when the window is not a whole number of
+//     // cells are shared evenly on all sides instead of all going to the
+//     // right and bottom edges.
+//     padding_balance false
+//
+//     // How the padding is painted: "background" (the default) uses the
+//     // theme background and the window opacity; "extend" continues the
+//     // background of the nearest cell at the edge of the grid.
+//     padding_color "background"
+//
 //     // The cursor shape to draw where the application in the pane has not
 //     // asked for one: "block", "bar" or "underline". An application that does
 //     // ask (with CSI <n> q) still gets the shape it asked for.
@@ -743,6 +787,13 @@ web_client {
 //     // and columns, and in the state the last window was closed in. With
 //     // nothing remembered yet, "remember" opens windowed at 120x40.
 //     startup_mode "remember"
+//
+//     // The size, in columns and rows, of a window that has no remembered
+//     // size to reopen at. The --cols and --rows arguments still win, and a
+//     // size remembered by "remember" wins over these. A maximized or
+//     // fullscreen window returns to this size when it is restored.
+//     initial_columns 120
+//     initial_rows 40
 //
 //     // Colors the window paints itself. `foreground` and
 //     // `background` default to the active Zellij theme; the sixteen ANSI
