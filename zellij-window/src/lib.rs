@@ -47,6 +47,7 @@ mod renderer;
 mod replay;
 mod retained;
 mod scene;
+mod scroll_animation;
 mod screen_buffer;
 mod settings;
 mod sixel;

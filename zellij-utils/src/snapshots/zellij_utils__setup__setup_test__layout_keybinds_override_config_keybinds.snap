@@ -377,5 +377,7 @@ Config {
         hide_pointer_while_typing: None,
         cursor_unfocused_hollow: None,
         minimum_contrast: None,
+        smooth_scrolling: None,
+        scroll_animation_duration: None,
     },
 }

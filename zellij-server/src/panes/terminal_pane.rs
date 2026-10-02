@@ -1201,6 +1201,9 @@ impl Pane for TerminalPane {
     fn scroll_position(&self) -> (usize, usize) {
         self.grid.scrollback_position_and_length()
     }
+    fn viewport_scroll_state(&self) -> Option<(usize, u64)> {
+        self.grid.viewport_scroll_state()
+    }
     fn exit_status(&self) -> Option<i32> {
         self.is_held
             .as_ref()

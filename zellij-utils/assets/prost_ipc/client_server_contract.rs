@@ -1887,6 +1887,8 @@ pub struct MouseEvent {
     pub wheel_left: bool,
     #[prost(bool, tag="12")]
     pub wheel_right: bool,
+    #[prost(uint32, tag="13")]
+    pub wheel_lines: u32,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

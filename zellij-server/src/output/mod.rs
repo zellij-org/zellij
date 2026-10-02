@@ -33,7 +33,7 @@ use zellij_utils::pane_size::SizeInPixels;
 use zellij_utils::pane_size::{PaneGeom, Size};
 use zellij_utils::structured_render::{
     CursorState, FrameBuilder, GeometryRecord, GraphicsMedium, GraphicsRecord, LinkEntry,
-    LinkRecord, PaneRect, PendingOverlay, WireCell, WireColor, ATTR_BOLD, ATTR_DIM,
+    LinkRecord, PaneRect, PendingOverlay, ScrollRecord, WireCell, WireColor, ATTR_BOLD, ATTR_DIM,
     ATTR_FAST_BLINK, ATTR_HIDDEN, ATTR_ITALIC, ATTR_REVERSE, ATTR_SLOW_BLINK, ATTR_STRIKE,
     CURSOR_BLINKING, CURSOR_SHAPE_BEAM, CURSOR_SHAPE_BLOCK, CURSOR_SHAPE_DEFAULT,
     CURSOR_SHAPE_UNDERLINE, GRAPHICS_FORMAT_RGBA8, LINK_NONE, MAX_LINK_ID, MAX_LINK_URI_LEN,
@@ -1286,6 +1286,81 @@ pub struct StructuredClientState {
     pub overlay: PendingOverlay,
     pub last_geometry: Option<GeometryRecord>,
     pub links: LinkTable,
+    pub scroll_offsets: HashMap<PaneId, TrackedScroll>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TrackedScroll {
+    pub offset: usize,
+    pub epoch: u64,
+    pub content_cols: u16,
+    pub content_rows: u16,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PaneScroll {
+    pub pane_id: PaneId,
+    pub state: Option<(usize, u64)>,
+}
+
+impl PaneScroll {
+    pub fn of(pane_id: PaneId, state: Option<(usize, u64)>) -> Self {
+        PaneScroll { pane_id, state }
+    }
+}
+
+fn scroll_hints(
+    tracked: &mut HashMap<PaneId, TrackedScroll>,
+    panes: &[(PaneRect, PaneScroll)],
+    suppressed: bool,
+) -> ScrollRecord {
+    let mut record = ScrollRecord::default();
+    let mut seen: HashMap<PaneId, TrackedScroll> = HashMap::with_capacity(panes.len());
+    for (index, (rect, pane)) in panes.iter().enumerate() {
+        let Some((offset, epoch)) = pane.state else {
+            continue;
+        };
+        let current = TrackedScroll {
+            offset,
+            epoch,
+            content_cols: rect.content_cols(),
+            content_rows: rect.content_rows(),
+        };
+        if !suppressed {
+            if let (Some(previous), Ok(index)) = (tracked.get(&pane.pane_id), u16::try_from(index))
+            {
+                if previous.epoch == current.epoch
+                    && previous.content_cols == current.content_cols
+                    && previous.content_rows == current.content_rows
+                {
+                    let lines = offset as i64 - previous.offset as i64;
+                    record.add(
+                        index,
+                        lines.clamp(i32::MIN as i64, i32::MAX as i64) as i32,
+                    );
+                }
+            }
+        }
+        seen.insert(pane.pane_id, current);
+    }
+    *tracked = seen;
+    record
+}
+
+fn push_scroll_hints(
+    clients: &Rc<RefCell<HashMap<ClientId, StructuredClientState>>>,
+    client_id: ClientId,
+    panes: &[(PaneRect, PaneScroll)],
+    geometry_pushed: bool,
+    builder: &mut FrameBuilder,
+) {
+    let mut clients = clients.borrow_mut();
+    let Some(state) = clients.get_mut(&client_id) else {
+        return;
+    };
+    let suppressed = geometry_pushed || builder.is_full_repaint() || builder.is_clear();
+    let record = scroll_hints(&mut state.scroll_offsets, panes, suppressed);
+    builder.push_scroll(&record);
 }
 
 #[derive(Debug, Default)]
@@ -1386,6 +1461,7 @@ impl Default for StructuredClientState {
             overlay: PendingOverlay::new(0, 0),
             last_geometry: None,
             links: LinkTable::default(),
+            scroll_offsets: HashMap::new(),
         }
     }
 }
@@ -1399,6 +1475,7 @@ impl StructuredClientState {
         self.overlay.resize(size.cols, size.rows);
         self.last_geometry = None;
         self.links.reset();
+        self.scroll_offsets.clear();
     }
 
     pub fn arm(&mut self, seq: u64) {
@@ -1482,16 +1559,17 @@ fn push_geometry_if_changed(
     client_id: ClientId,
     geometry: GeometryRecord,
     builder: &mut FrameBuilder,
-) {
+) -> bool {
     let mut clients = clients.borrow_mut();
     let Some(state) = clients.get_mut(&client_id) else {
-        return;
+        return false;
     };
     if state.last_geometry.as_ref() == Some(&geometry) {
-        return;
+        return false;
     }
     builder.push_geometry(&geometry);
     state.last_geometry = Some(geometry);
+    true
 }
 
 fn is_subsumed_by_frame_semantics(instruction: &str) -> bool {
@@ -1541,7 +1619,7 @@ pub struct Output {
     pre_vte_instructions: HashMap<ClientId, Vec<String>>,
     post_vte_instructions: HashMap<ClientId, Vec<String>>,
     client_character_chunks: HashMap<ClientId, Vec<CharacterChunk>>,
-    client_pane_rects: HashMap<ClientId, Vec<PaneRect>>,
+    client_pane_rects: HashMap<ClientId, Vec<(PaneRect, PaneScroll)>>,
     sixel_chunks: HashMap<ClientId, Vec<SixelImageChunk>>,
     client_kitty_chunks: HashMap<ClientId, HashMap<PaneId, Vec<KittyImageChunk>>>,
     client_rendered_kitty_panes: HashMap<ClientId, HashSet<PaneId>>,
@@ -1606,9 +1684,9 @@ impl Output {
             self.client_pane_rects.insert(*client_id, vec![]);
         }
     }
-    pub fn add_pane_rect(&mut self, client_id: ClientId, pane_rect: PaneRect) {
+    pub fn add_pane_rect(&mut self, client_id: ClientId, pane_rect: PaneRect, scroll: PaneScroll) {
         if let Some(pane_rects) = self.client_pane_rects.get_mut(&client_id) {
-            pane_rects.push(pane_rect);
+            pane_rects.push((pane_rect, scroll));
         }
     }
     pub fn add_character_chunks_to_client(
@@ -1817,7 +1895,29 @@ impl Output {
             let mut client_serialized_render_instructions = String::new();
 
             // append pre-vte instructions for this client
-            let host_display_cleared = self.clients_with_cleared_host_display.remove(&client_id);
+            let mut host_display_cleared =
+                self.clients_with_cleared_host_display.remove(&client_id);
+            let mut structured_builder = if structured {
+                let mut builder = frame_builder_for(
+                    &self.structured_render_clients,
+                    client_id,
+                    self.client_cursor.get(&client_id).copied(),
+                )
+                .with_context(|| {
+                    format!(
+                        "client {} is registered for structured rendering without a record",
+                        client_id
+                    )
+                })
+                .with_context(err_context)?;
+                if host_display_cleared {
+                    builder.set_clear(true);
+                }
+                host_display_cleared = builder.is_clear();
+                Some(builder)
+            } else {
+                None
+            };
             let pre_vte_instructions_for_client = self
                 .pre_vte_instructions
                 .remove(&client_id)
@@ -1876,30 +1976,16 @@ impl Output {
                 None
             };
 
-            if structured {
-                let mut builder = frame_builder_for(
-                    &self.structured_render_clients,
-                    client_id,
-                    self.client_cursor.get(&client_id).copied(),
-                )
-                .with_context(|| {
-                    format!(
-                        "client {} is registered for structured rendering without a record",
-                        client_id
-                    )
-                })
-                .with_context(err_context)?;
-                if host_display_cleared {
-                    builder.set_clear(true);
-                }
-                push_geometry_if_changed(
+            if let Some(mut builder) = structured_builder.take() {
+                let panes = self
+                    .client_pane_rects
+                    .remove(&client_id)
+                    .unwrap_or_default();
+                let geometry_pushed = push_geometry_if_changed(
                     &self.structured_render_clients,
                     client_id,
                     GeometryRecord {
-                        panes: self
-                            .client_pane_rects
-                            .remove(&client_id)
-                            .unwrap_or_default(),
+                        panes: panes.iter().map(|(rect, _)| *rect).collect(),
                     },
                     &mut builder,
                 );
@@ -1932,6 +2018,13 @@ impl Output {
                         append_sideband_instruction(builder.sideband_mut(), &vte_instruction);
                     }
                 }
+                push_scroll_hints(
+                    &self.structured_render_clients,
+                    client_id,
+                    &panes,
+                    geometry_pushed,
+                    &mut builder,
+                );
                 serialized_render_instructions
                     .insert(client_id, RenderPayload::Frame(builder.finish()));
                 continue;
@@ -2015,21 +2108,27 @@ impl Output {
         {
             builder.set_clear(true);
         }
-        let followed_pane_rects = self
+        let watcher_cols = watcher_size.cols.min(u16::MAX as usize) as u16;
+        let watcher_rows = watcher_size.rows.min(u16::MAX as usize) as u16;
+        let followed_panes: Vec<(PaneRect, PaneScroll)> = self
             .client_pane_rects
             .get(&followed_client_id)
-            .cloned()
+            .map(|panes| {
+                panes
+                    .iter()
+                    .filter_map(|(rect, scroll)| {
+                        rect.clip_to(watcher_cols, watcher_rows)
+                            .map(|clipped| (clipped, *scroll))
+                    })
+                    .collect()
+            })
             .unwrap_or_default();
-        push_geometry_if_changed(
+        let geometry_pushed = push_geometry_if_changed(
             &self.structured_render_clients,
             watcher_id,
             GeometryRecord {
-                panes: followed_pane_rects,
-            }
-            .clip_to(
-                watcher_size.cols.min(u16::MAX as usize) as u16,
-                watcher_size.rows.min(u16::MAX as usize) as u16,
-            ),
+                panes: followed_panes.iter().map(|(rect, _)| *rect).collect(),
+            },
             &mut builder,
         );
         for vte_instruction in self
@@ -2083,6 +2182,13 @@ impl Output {
             append_sideband_instruction(builder.sideband_mut(), &vte_instruction);
         }
 
+        push_scroll_hints(
+            &self.structured_render_clients,
+            watcher_id,
+            &followed_panes,
+            geometry_pushed,
+            &mut builder,
+        );
         Ok(builder.finish())
     }
     pub fn set_client_cursor(

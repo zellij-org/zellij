@@ -20,6 +20,8 @@ pub struct MouseEvent {
     pub wheel_left: bool,
     #[serde(default)]
     pub wheel_right: bool,
+    #[serde(default)]
+    pub wheel_lines: u16,
 
     // Keyboard modifier flags can be encoded with events too.  They
     // are not often passed on the wire (instead used for
@@ -57,6 +59,7 @@ impl MouseEvent {
             wheel_down: false,
             wheel_left: false,
             wheel_right: false,
+            wheel_lines: 0,
             shift: false,
             alt: false,
             ctrl: false,
@@ -74,6 +77,7 @@ impl MouseEvent {
             wheel_down: false,
             wheel_left: false,
             wheel_right: false,
+            wheel_lines: 0,
             shift: false,
             alt: false,
             ctrl: false,
@@ -91,6 +95,7 @@ impl MouseEvent {
             wheel_down: false,
             wheel_left: false,
             wheel_right: false,
+            wheel_lines: 0,
             shift: false,
             alt: false,
             ctrl: false,
@@ -108,6 +113,7 @@ impl MouseEvent {
             wheel_down: false,
             wheel_left: false,
             wheel_right: false,
+            wheel_lines: 0,
             shift: false,
             alt: false,
             ctrl: false,
@@ -125,6 +131,7 @@ impl MouseEvent {
             wheel_down: false,
             wheel_left: false,
             wheel_right: false,
+            wheel_lines: 0,
             shift: false,
             alt: false,
             ctrl: false,
@@ -142,6 +149,7 @@ impl MouseEvent {
             wheel_down: false,
             wheel_left: false,
             wheel_right: false,
+            wheel_lines: 0,
             shift: false,
             alt: false,
             ctrl: false,
@@ -159,6 +167,7 @@ impl MouseEvent {
             wheel_down: false,
             wheel_left: false,
             wheel_right: false,
+            wheel_lines: 0,
             shift: false,
             alt: false,
             ctrl: false,
@@ -176,6 +185,7 @@ impl MouseEvent {
             wheel_down: false,
             wheel_left: false,
             wheel_right: false,
+            wheel_lines: 0,
             shift: false,
             alt: false,
             ctrl: false,
@@ -193,6 +203,7 @@ impl MouseEvent {
             wheel_down: false,
             wheel_left: false,
             wheel_right: false,
+            wheel_lines: 0,
             shift: false,
             alt: false,
             ctrl: false,
@@ -210,6 +221,7 @@ impl MouseEvent {
             wheel_down: false,
             wheel_left: false,
             wheel_right: false,
+            wheel_lines: 0,
             shift: false,
             alt: false,
             ctrl: false,
@@ -227,6 +239,7 @@ impl MouseEvent {
             wheel_down: false,
             wheel_left: false,
             wheel_right: false,
+            wheel_lines: 0,
             shift: false,
             alt: false,
             ctrl: false,
@@ -244,6 +257,7 @@ impl MouseEvent {
             wheel_down: false,
             wheel_left: false,
             wheel_right: false,
+            wheel_lines: 0,
             shift: false,
             alt: true,
             ctrl: false,
@@ -261,6 +275,7 @@ impl MouseEvent {
             wheel_down: false,
             wheel_left: false,
             wheel_right: false,
+            wheel_lines: 0,
             shift: false,
             alt: true,
             ctrl: false,
@@ -278,6 +293,7 @@ impl MouseEvent {
             wheel_down: false,
             wheel_left: false,
             wheel_right: false,
+            wheel_lines: 0,
             shift: false,
             alt: false,
             ctrl: true,
@@ -295,6 +311,7 @@ impl MouseEvent {
             wheel_down: false,
             wheel_left: false,
             wheel_right: false,
+            wheel_lines: 0,
             shift: false,
             alt: false,
             ctrl: true,
@@ -312,6 +329,7 @@ impl MouseEvent {
             wheel_down: false,
             wheel_left: false,
             wheel_right: false,
+            wheel_lines: 0,
             shift: false,
             alt: false,
             ctrl: true,
@@ -329,6 +347,7 @@ impl MouseEvent {
             wheel_down: false,
             wheel_left: false,
             wheel_right: false,
+            wheel_lines: 0,
             shift: false,
             alt: true,
             ctrl: false,
@@ -346,6 +365,7 @@ impl MouseEvent {
             wheel_down: false,
             wheel_left: false,
             wheel_right: false,
+            wheel_lines: 0,
             shift: false,
             alt: false,
             ctrl: false,
@@ -363,6 +383,7 @@ impl MouseEvent {
             wheel_down: true,
             wheel_left: false,
             wheel_right: false,
+            wheel_lines: 0,
             shift: false,
             alt: false,
             ctrl: false,
@@ -380,6 +401,7 @@ impl MouseEvent {
             wheel_down: false,
             wheel_left: false,
             wheel_right: false,
+            wheel_lines: 0,
             shift: false,
             alt: true,
             ctrl: false,
@@ -397,6 +419,7 @@ impl MouseEvent {
             wheel_down: true,
             wheel_left: false,
             wheel_right: false,
+            wheel_lines: 0,
             shift: false,
             alt: true,
             ctrl: false,
@@ -414,6 +437,7 @@ impl MouseEvent {
             wheel_down: false,
             wheel_left: false,
             wheel_right: false,
+            wheel_lines: 0,
             shift: false,
             alt: false,
             ctrl: true,
@@ -431,6 +455,7 @@ impl MouseEvent {
             wheel_down: true,
             wheel_left: false,
             wheel_right: false,
+            wheel_lines: 0,
             shift: false,
             alt: false,
             ctrl: true,
@@ -448,6 +473,7 @@ impl MouseEvent {
             wheel_down: false,
             wheel_left: true,
             wheel_right: false,
+            wheel_lines: 0,
             shift: false,
             alt: false,
             ctrl: false,
@@ -464,6 +490,7 @@ impl MouseEvent {
             wheel_down: false,
             wheel_left: false,
             wheel_right: true,
+            wheel_lines: 0,
             shift: false,
             alt: false,
             ctrl: false,
@@ -475,5 +502,69 @@ impl MouseEvent {
 impl Default for MouseEvent {
     fn default() -> Self {
         MouseEvent::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::client_server_contract::client_server_contract::MouseEvent as ProtoMouseEvent;
+    use crate::plugin_api::action::ProtobufMouseEventPayload;
+
+    fn touchpad_scroll(lines: u16) -> MouseEvent {
+        let mut event = MouseEvent::new_scroll_up_event(Position::new(4, 7));
+        event.wheel_lines = lines;
+        event
+    }
+
+    #[test]
+    fn a_classic_wheel_event_carries_no_line_count() {
+        assert_eq!(MouseEvent::new_scroll_up_event(Position::new(0, 0)).wheel_lines, 0);
+        assert_eq!(MouseEvent::new().wheel_lines, 0);
+    }
+
+    #[test]
+    fn the_line_count_survives_json() {
+        let event = touchpad_scroll(5);
+        let json = serde_json::to_string(&event).unwrap();
+        let back: MouseEvent = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, event);
+    }
+
+    #[test]
+    fn json_from_a_peer_without_the_line_count_reads_as_a_classic_step() {
+        let event = touchpad_scroll(5);
+        let mut value = serde_json::to_value(&event).unwrap();
+        value.as_object_mut().unwrap().remove("wheel_lines");
+        let back: MouseEvent = serde_json::from_value(value).unwrap();
+        assert_eq!(back.wheel_lines, 0);
+        assert!(back.wheel_up);
+    }
+
+    #[test]
+    fn the_line_count_survives_the_client_server_protobuf() {
+        for lines in [0, 1, 9, u16::MAX] {
+            let event = touchpad_scroll(lines);
+            let proto: ProtoMouseEvent = event.into();
+            let back = MouseEvent::try_from(proto).unwrap();
+            assert_eq!(back, event);
+        }
+    }
+
+    #[test]
+    fn a_protobuf_event_without_the_line_count_reads_as_a_classic_step() {
+        let mut proto: ProtoMouseEvent = touchpad_scroll(5).into();
+        proto.wheel_lines = 0;
+        assert_eq!(MouseEvent::try_from(proto).unwrap().wheel_lines, 0);
+    }
+
+    #[test]
+    fn the_line_count_survives_the_plugin_protobuf() {
+        for lines in [0, 3, u16::MAX] {
+            let event = touchpad_scroll(lines);
+            let payload = ProtobufMouseEventPayload::try_from(event).unwrap();
+            let back = MouseEvent::try_from(payload).unwrap();
+            assert_eq!(back, event);
+        }
     }
 }

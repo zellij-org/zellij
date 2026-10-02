@@ -6,8 +6,8 @@ use crate::links::LinkRun;
 #[cfg(test)]
 use crate::scene::Scene;
 use crate::scene::{
-    self, BlinkPhase, CursorOptions, ImageKey, ImageQuad, RowContext, RowScene, RowScratch,
-    Transparency,
+    self, BlinkPhase, CursorOptions, HeldOut, ImageKey, ImageQuad, PixelRect, RowContext,
+    RowScene, RowScratch, Transparency,
 };
 use crate::terminal::{GraphicsStamp, TerminalState};
 use std::time::Instant;
@@ -42,9 +42,12 @@ pub struct RetainedScene {
     dirty: Vec<bool>,
     everything: bool,
     images: Vec<ImageQuad>,
+    held_images: Option<Vec<ImageQuad>>,
     resident_images: Vec<ImageKey>,
     placed: Option<(GraphicsStamp, CellMetrics)>,
     replaced_images: bool,
+    held: Vec<HeldOut>,
+    held_changed: bool,
     generation: u64,
     scratch: RowScratch,
     rebuilt_everything: bool,
@@ -70,9 +73,12 @@ impl RetainedScene {
             dirty: Vec::new(),
             everything: true,
             images: Vec::new(),
+            held_images: None,
             resident_images: Vec::new(),
             placed: None,
             replaced_images: true,
+            held: Vec::new(),
+            held_changed: false,
             generation: 0,
             scratch: RowScratch::default(),
             rebuilt_everything: true,
@@ -125,7 +131,34 @@ impl RetainedScene {
     }
 
     pub fn images(&self) -> &[ImageQuad] {
+        self.held_images.as_deref().unwrap_or(&self.images)
+    }
+
+    pub fn all_images(&self) -> &[ImageQuad] {
         &self.images
+    }
+
+    pub fn contrast(&self) -> &Contrast {
+        &self.contrast
+    }
+
+    pub fn set_held_out(&mut self, held: Vec<HeldOut>) {
+        if held == self.held {
+            return;
+        }
+        let spans: Vec<(usize, usize)> = self
+            .held
+            .iter()
+            .chain(held.iter())
+            .map(|held| (held.content.y, held.content.rows))
+            .collect();
+        for (top, rows) in spans {
+            for row in top..top + rows {
+                self.mark_row(row);
+            }
+        }
+        self.held = held;
+        self.held_changed = true;
     }
 
     pub fn resident_images(&self) -> &[ImageKey] {
@@ -201,7 +234,8 @@ impl RetainedScene {
     ) {
         let context = RowContext::new(state, cache, phase, paints, cursor, hovered_link, preedit)
             .with_transparency(self.transparency)
-            .with_contrast(&self.contrast);
+            .with_contrast(&self.contrast)
+            .with_held_out(&self.held);
         let (width, height) = (context.width(), context.height());
         if self.generation != cache.generation()
             || self.rows.len() != context.size.rows
@@ -223,6 +257,11 @@ impl RetainedScene {
             self.images = scene::images_of(state, context.metrics);
             self.resident_images = scene::resident_images(state);
             self.placed = Some(placed);
+        }
+        if self.replaced_images || self.held_changed {
+            self.held_images = held_images(&self.images, &self.held, context.metrics);
+            self.replaced_images = true;
+            self.held_changed = false;
         }
 
         self.rebuilt_rows.clear();
@@ -249,7 +288,7 @@ impl RetainedScene {
             rects: Vec::new(),
             glyphs: Vec::new(),
             color_glyphs: Vec::new(),
-            images: self.images.clone(),
+            images: self.images().to_vec(),
             resident_images: self.resident_images.clone(),
         };
         for row in &self.rows {
@@ -259,6 +298,32 @@ impl RetainedScene {
         }
         scene
     }
+}
+
+fn held_images(
+    images: &[ImageQuad],
+    held: &[HeldOut],
+    metrics: CellMetrics,
+) -> Option<Vec<ImageQuad>> {
+    if held.is_empty() {
+        return None;
+    }
+    let regions: Vec<PixelRect> = held
+        .iter()
+        .flat_map(|held| held.regions(metrics))
+        .collect();
+    Some(
+        images
+            .iter()
+            .filter(|image| {
+                let area = scene::image_area(image);
+                !regions
+                    .iter()
+                    .any(|region| region.intersection(&area).is_some())
+            })
+            .cloned()
+            .collect(),
+    )
 }
 
 pub fn blink_damage(state: &TerminalState, cursor: CursorOptions) -> Damage {

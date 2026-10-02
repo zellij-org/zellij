@@ -954,6 +954,7 @@ pub struct Grid {
     pub link_handler: Rc<RefCell<LinkHandler>>,
     pub ring_bell: bool,
     scrollback_display_rows: usize,
+    scrollback_epoch: u64,
     pub mouse_mode: MouseMode,
     pub mouse_tracking: MouseTracking,
     pub focus_event_tracking: bool,
@@ -1308,6 +1309,7 @@ impl Grid {
         // I don't know why this needs to be a OneCell, but whatevs
         let _ = SCROLL_BUFFER_SIZE.set(DEFAULT_SCROLL_BUFFER_SIZE);
         Grid {
+            scrollback_epoch: 0,
             lines_above: VecDeque::new(),
             viewport: VecDeque::from(vec![Row::new().canonical()]),
             lines_below: VecDeque::new(),
@@ -1439,6 +1441,15 @@ impl Grid {
     }
     pub fn cursor_shape(&self) -> CursorShape {
         self.cursor.get_shape()
+    }
+    pub fn viewport_scroll_state(&self) -> Option<(usize, u64)> {
+        if self.alternate_screen_state.is_some() {
+            return None;
+        }
+        Some((self.lines_below.len(), self.scrollback_epoch))
+    }
+    fn invalidate_scroll_offset(&mut self) {
+        self.scrollback_epoch = self.scrollback_epoch.wrapping_add(1);
     }
     pub fn scrollback_position_and_length(&self) -> (usize, usize) {
         // (position, length)
@@ -1748,6 +1759,7 @@ impl Grid {
         if new_columns == 0 || new_rows == 0 {
             return;
         }
+        self.invalidate_scroll_offset();
         if self.alternate_screen_state.is_some() {
             // in alternate screen we do nothing but log the new size, the program in the terminal
             // is in control now...
@@ -2704,6 +2716,7 @@ impl Grid {
         }
     }
     fn clear_lines_above(&mut self) {
+        self.invalidate_scroll_offset();
         self.lines_above.clear();
         self.scrollback_display_rows = 0;
     }
@@ -2931,6 +2944,7 @@ impl Grid {
         if let Some(alternate_screen_state) = self.alternate_screen_state.as_mut() {
             alternate_screen_state.kitty_grid.clear_all_placements();
         }
+        self.invalidate_scroll_offset();
         self.lines_above = VecDeque::new();
         self.lines_below = VecDeque::new();
         self.is_scrolled = false;
@@ -3856,6 +3870,7 @@ impl Grid {
         }
     }
     fn transfer_rows_to_lines_above(&mut self, count: usize) {
+        self.invalidate_scroll_offset();
         self.kitty_settle_placements_below_the_viewport();
         let width = self.width;
         let display_row_delta = transfer_rows_from_viewport_to_lines_above(
@@ -4430,6 +4445,7 @@ impl Grid {
         }
     }
     pub fn delete_viewport_and_scroll(&mut self) {
+        self.invalidate_scroll_offset();
         self.lines_above.clear();
         self.viewport.clear();
         self.lines_below.clear();
@@ -5231,6 +5247,7 @@ impl Perform for Grid {
                                 );
                             }
                             self.alternate_screen_state = None;
+                            self.invalidate_scroll_offset();
                             self.clear_viewport_before_rendering = true;
                             self.force_change_size(self.height, self.width); // the alternative_viewport might have been of a different size...
                             self.mark_for_rerender();
@@ -5340,6 +5357,7 @@ impl Perform for Grid {
                                 &mut self.kitty_grid,
                                 KittyGrid::new(self.character_cell_size.clone(), kitty_image_store),
                             );
+                            self.invalidate_scroll_offset();
                             self.alternate_screen_state = Some(AlternateScreenState::new(
                                 current_lines_above,
                                 current_viewport,

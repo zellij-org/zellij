@@ -297,6 +297,8 @@ pub const MAX_PIXEL_ADJUSTMENT: i32 = 64;
 pub const MAX_PADDING: f32 = 1000.0;
 pub const MIN_INITIAL_CELLS: u16 = 2;
 pub const MAX_INITIAL_CELLS: u16 = 1000;
+pub const MIN_SCROLL_ANIMATION_MS: u16 = 1;
+pub const MAX_SCROLL_ANIMATION_MS: u16 = 1000;
 
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WindowTheme {
@@ -413,6 +415,8 @@ pub struct WindowConfig {
     pub hide_pointer_while_typing: Option<bool>,
     pub cursor_unfocused_hollow: Option<bool>,
     pub minimum_contrast: Option<f32>,
+    pub smooth_scrolling: Option<bool>,
+    pub scroll_animation_duration: Option<u16>,
 }
 
 impl WindowConfig {
@@ -539,6 +543,12 @@ impl WindowConfig {
         }
         if let Some(minimum_contrast) = kdl_get_child!(kdl, "minimum_contrast") {
             window.minimum_contrast = Some(minimum_contrast_from_kdl(minimum_contrast)?);
+        }
+        if let Some(smooth) = kdl_get_child_entry_bool_value!(kdl, "smooth_scrolling") {
+            window.smooth_scrolling = Some(smooth);
+        }
+        if let Some(duration) = kdl_get_child!(kdl, "scroll_animation_duration") {
+            window.scroll_animation_duration = Some(scroll_animation_duration_from_kdl(duration)?);
         }
 
         Ok(window)
@@ -699,6 +709,7 @@ impl WindowConfig {
             ("confirm_close", self.confirm_close),
             ("hide_pointer_while_typing", self.hide_pointer_while_typing),
             ("cursor_unfocused_hollow", self.cursor_unfocused_hollow),
+            ("smooth_scrolling", self.smooth_scrolling),
         ] {
             if let Some(value) = value {
                 let mut flag_node = KdlNode::new(name);
@@ -710,6 +721,11 @@ impl WindowConfig {
             children
                 .nodes_mut()
                 .push(number_node("minimum_contrast", minimum_contrast));
+        }
+        if let Some(duration) = self.scroll_animation_duration {
+            let mut duration_node = KdlNode::new("scroll_animation_duration");
+            duration_node.push(KdlValue::Base10(duration as i64));
+            children.nodes_mut().push(duration_node);
         }
 
         if children.nodes().is_empty() {
@@ -768,6 +784,10 @@ impl WindowConfig {
             .cursor_unfocused_hollow
             .or(merged.cursor_unfocused_hollow);
         merged.minimum_contrast = other.minimum_contrast.or(merged.minimum_contrast);
+        merged.smooth_scrolling = other.smooth_scrolling.or(merged.smooth_scrolling);
+        merged.scroll_animation_duration = other
+            .scroll_animation_duration
+            .or(merged.scroll_animation_duration);
         merged
     }
 }
@@ -879,6 +899,22 @@ fn initial_cells_from_kdl(node: &KdlNode, name: &str) -> Result<u16, ConfigError
         ));
     }
     Ok(cells as u16)
+}
+
+fn scroll_animation_duration_from_kdl(node: &KdlNode) -> Result<u16, ConfigError> {
+    let name = "scroll_animation_duration";
+    let duration = integer_from_kdl(node, name)?;
+    if !(MIN_SCROLL_ANIMATION_MS as i64..=MAX_SCROLL_ANIMATION_MS as i64).contains(&duration) {
+        return Err(ConfigError::new_kdl_error(
+            format!(
+                "{} {} is outside the range {} to {} milliseconds",
+                name, duration, MIN_SCROLL_ANIMATION_MS, MAX_SCROLL_ANIMATION_MS
+            ),
+            node.span().offset(),
+            node.span().len(),
+        ));
+    }
+    Ok(duration as u16)
 }
 
 fn font_weight_from_kdl(node: &KdlNode) -> Result<u16, ConfigError> {
@@ -1725,6 +1761,47 @@ mod tests {
         assert_eq!(empty.hide_pointer_while_typing, None);
         assert_eq!(empty.cursor_unfocused_hollow, None);
         assert_eq!(empty.minimum_contrast, None);
+    }
+
+    #[test]
+    fn the_scroll_animation_settings_round_trip_through_kdl() {
+        let parsed = section(
+            "window {\n smooth_scrolling false\n scroll_animation_duration 250\n}",
+        )
+        .unwrap();
+        assert_eq!(parsed.smooth_scrolling, Some(false));
+        assert_eq!(parsed.scroll_animation_duration, Some(250));
+        let emitted = parsed.to_kdl().unwrap().to_string();
+        assert_eq!(section(&emitted).unwrap(), parsed, "{}", emitted);
+
+        let empty = section("window {\n}").unwrap();
+        assert_eq!(empty.smooth_scrolling, None);
+        assert_eq!(empty.scroll_animation_duration, None);
+
+        let merged = parsed.merge(section("window {\n smooth_scrolling true\n}").unwrap());
+        assert_eq!(merged.smooth_scrolling, Some(true));
+        assert_eq!(merged.scroll_animation_duration, Some(250));
+    }
+
+    #[test]
+    fn the_scroll_animation_duration_is_one_to_a_thousand_milliseconds() {
+        for text in ["1", "100", "1000"] {
+            assert!(
+                section(&format!("window {{\n scroll_animation_duration {}\n}}", text)).is_ok(),
+                "{}",
+                text
+            );
+        }
+        for text in ["0", "-5", "1001", "12.5", "\"fast\"", ""] {
+            let err = section(&format!("window {{\n scroll_animation_duration {}\n}}", text))
+                .unwrap_err();
+            assert!(
+                format!("{:?}", err).contains("scroll_animation_duration"),
+                "{}: {:?}",
+                text,
+                err
+            );
+        }
     }
 
     #[test]
