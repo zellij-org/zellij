@@ -1209,6 +1209,11 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
             should_break = true;
         },
+        Action::ConfirmClose => {
+            senders
+                .send_to_screen(ScreenInstruction::ConfirmClose(client_id))
+                .with_context(err_context)?;
+        },
         Action::SetDarkTheme => {
             senders
                 .send_to_screen(ScreenInstruction::SetDarkTheme(Some(NotificationEnd::new(
@@ -2465,6 +2470,22 @@ pub(crate) fn route_thread_main(
                                 .unwrap()
                                 .set_last_active_client(client_id);
 
+                            let dialogue_senders =
+                                session_data.read().unwrap().as_ref().and_then(|s| {
+                                    s.close_dialogue_clients
+                                        .contains(&client_id)
+                                        .then(|| s.senders.clone())
+                                });
+                            if let Some(senders) = dialogue_senders {
+                                senders
+                                    .send_to_screen(ScreenInstruction::CloseDialogueInput {
+                                        client_id,
+                                        key: Some(key),
+                                        raw_bytes,
+                                    })
+                                    .with_context(err_context)?;
+                                return Ok(should_break);
+                            }
                             // The read guard ends as a temporary in this expression so
                             // `route_action` runs without holding `session_data.read()` —
                             // see the doc comment on `route_action` for why this matters.
@@ -2544,6 +2565,34 @@ pub(crate) fn route_thread_main(
                             client_id: maybe_client_id,
                             is_cli_client,
                         } => {
+                            if !is_cli_client {
+                                let dialogue_senders =
+                                    session_data.read().unwrap().as_ref().and_then(|s| {
+                                        s.close_dialogue_clients
+                                            .contains(&client_id)
+                                            .then(|| s.senders.clone())
+                                    });
+                                if let Some(senders) = dialogue_senders {
+                                    match &action {
+                                        Action::WriteChars { chars } => {
+                                            senders
+                                                .send_to_screen(
+                                                    ScreenInstruction::CloseDialogueInput {
+                                                        client_id,
+                                                        key: None,
+                                                        raw_bytes: chars.as_bytes().to_vec(),
+                                                    },
+                                                )
+                                                .with_context(err_context)?;
+                                            return Ok(should_break);
+                                        },
+                                        Action::Paste { .. } | Action::Write { .. } => {
+                                            return Ok(should_break);
+                                        },
+                                        _ => {},
+                                    }
+                                }
+                            }
                             let cli_client_id = client_id;
                             let client_id = if is_cli_client {
                                 // for cli clients, we want to default to the last active client

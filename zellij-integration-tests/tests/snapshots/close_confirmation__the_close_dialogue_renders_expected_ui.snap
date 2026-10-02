@@ -1,0 +1,12 @@
+---
+source: zellij-integration-tests/tests/close_confirmation.rs
+expression: without_session_number(&normalized(&shown))
+---
+ Zellij (test)  Tab #1  + 
+                     Close this window?
+                     The session "test-N" keeps running and can be attached again.
+                     > 1. Detach and leave running in the background.
+                       2. Quit and shut down the entire session.
+                       3. Cancel
+                     <↓↑> select  <Enter> confirm  <1-3> direct  <y> detach  <q> quit  <Esc> cancel
+ Ctrl + <g> LOCK  <p> PANE  <t> TAB  <n> RESIZE  <h> MOVE  <s> SEARCH  <o> SESSION  <q> QUIT        ...

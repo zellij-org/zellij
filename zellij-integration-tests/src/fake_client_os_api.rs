@@ -84,11 +84,24 @@ pub struct FakeClientHandle {
     pub stdin_tx: crossbeam::channel::Sender<Vec<u8>>,
     pub signal_tx: crossbeam::channel::Sender<SignalEvent>,
     pub received_server_messages: Arc<Mutex<Vec<String>>>,
+    pub server_sender: Arc<Mutex<Option<IpcSenderWithContext<ClientToServerMsg>>>>,
 }
 
 impl FakeClientHandle {
     pub fn received_server_messages(&self) -> Vec<String> {
         self.received_server_messages.lock().unwrap().clone()
+    }
+
+    pub fn send_action(&self, action: zellij_utils::input::actions::Action) {
+        let msg = ClientToServerMsg::Action {
+            action,
+            terminal_id: None,
+            client_id: None,
+            is_cli_client: false,
+        };
+        if let Some(sender) = self.server_sender.lock().unwrap().as_mut() {
+            let _ = sender.send_client_msg(msg);
+        }
     }
 }
 
@@ -110,12 +123,13 @@ impl FakeClientOsApi {
         let (stdin_tx, stdin_rx) = crossbeam::channel::unbounded();
         let (signal_tx, signal_rx) = crossbeam::channel::unbounded();
         let received_server_messages = Arc::new(Mutex::new(Vec::new()));
+        let server_sender = Arc::new(Mutex::new(None));
         let fake_client_os_api = FakeClientOsApi {
             client_screen: client_screen.clone(),
             size: size.clone(),
             stdin_rx,
             signal_rx,
-            send_instructions_to_server: Arc::new(Mutex::new(None)),
+            send_instructions_to_server: server_sender.clone(),
             receive_instructions_from_server: Arc::new(Mutex::new(None)),
             session_name: Arc::new(Mutex::new(None)),
             server_spawner: Arc::new(Mutex::new(server_spawner)),
@@ -129,6 +143,7 @@ impl FakeClientOsApi {
             stdin_tx,
             signal_tx,
             received_server_messages,
+            server_sender,
         };
         (fake_client_os_api, fake_client_handle)
     }

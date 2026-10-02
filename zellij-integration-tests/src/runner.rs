@@ -448,6 +448,14 @@ impl TestClient {
         self.fake_client_handle.received_server_messages()
     }
 
+    pub fn send_action(&self, action: zellij_utils::input::actions::Action) {
+        self.fake_client_handle.send_action(action);
+    }
+
+    pub fn wait_for_client_to_exit(mut self) {
+        self.join();
+    }
+
     pub fn quit(mut self) {
         self.send_stdin(&keys::ctrl('q'));
         self.join();
@@ -771,6 +779,10 @@ impl TestSession {
                 block_until_exit,
             )),
         }
+    }
+
+    pub fn wait_for_main_client_to_exit(&mut self) {
+        self.main_client.join();
     }
 
     pub fn detach_main_client(&mut self) {

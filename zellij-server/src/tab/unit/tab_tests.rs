@@ -18007,3 +18007,158 @@ pub fn a_shift_right_click_is_still_the_programs_because_the_pane_decides_that_o
          selection is a left-button gesture, got {writes:?}"
     );
 }
+
+mod close_dialogue {
+    use super::*;
+    use crate::output::Output;
+    use crate::panes::close_dialogue::{CloseDialogueInput, CloseDialogueOutcome, QUIT_OPTION};
+    use zellij_utils::data::{BareKey, KeyWithModifier};
+
+    const TITLE: &str = "Close this window?";
+
+    fn size() -> Size {
+        Size {
+            cols: 121,
+            rows: 20,
+        }
+    }
+
+    fn rendered(tab: &mut Tab) -> HashMap<ClientId, String> {
+        let mut output = Output::default();
+        tab.render(&mut output, None).unwrap();
+        output
+            .serialize()
+            .unwrap()
+            .into_iter()
+            .map(|(client_id, payload)| (client_id, payload.ansi().to_owned()))
+            .collect()
+    }
+
+    fn shows_dialogue(tab: &mut Tab, client_id: ClientId) -> bool {
+        rendered(tab)
+            .get(&client_id)
+            .is_some_and(|ansi| ansi.contains(TITLE))
+    }
+
+    fn two_client_tab() -> Tab {
+        let mut tab = create_new_tab(size(), true);
+        tab.add_client(2, None).unwrap();
+        tab
+    }
+
+    fn show(tab: &mut Tab, client_id: ClientId) -> PaneId {
+        let pane_id = tab.get_active_pane_id(client_id).unwrap();
+        tab.show_close_dialogue(client_id, pane_id, "my-session".to_owned());
+        pane_id
+    }
+
+    #[test]
+    fn the_dialogue_is_drawn_only_for_the_client_that_asked() {
+        let mut tab = two_client_tab();
+        show(&mut tab, 2);
+        let frames = rendered(&mut tab);
+        assert!(frames.get(&2).is_some_and(|ansi| ansi.contains(TITLE)));
+        assert!(frames.get(&1).is_some_and(|ansi| !ansi.contains(TITLE)));
+        assert!(tab.has_close_dialogue(2));
+        assert!(!tab.has_close_dialogue(1));
+    }
+
+    #[test]
+    fn the_cursor_is_hidden_only_for_the_client_with_the_dialogue() {
+        let mut tab = two_client_tab();
+        assert!(tab.get_active_terminal_cursor_position(2).is_some());
+        show(&mut tab, 2);
+        assert!(tab.get_active_terminal_cursor_position(2).is_none());
+        assert!(tab.get_active_terminal_cursor_position(1).is_some());
+    }
+
+    #[test]
+    fn keys_move_the_selection_of_one_client_only() {
+        let mut tab = two_client_tab();
+        show(&mut tab, 1);
+        show(&mut tab, 2);
+        let down = KeyWithModifier::new(BareKey::Down);
+        assert_eq!(
+            tab.close_dialogue_key(2, Some(&down), &[]),
+            Some(CloseDialogueInput::Select(QUIT_OPTION))
+        );
+        assert_eq!(tab.close_dialogue(2).unwrap().selected, QUIT_OPTION);
+        assert_eq!(tab.close_dialogue(1).unwrap().selected, 0);
+        let enter = KeyWithModifier::new(BareKey::Enter);
+        assert_eq!(
+            tab.close_dialogue_key(2, Some(&enter), &[]),
+            Some(CloseDialogueInput::Choose(CloseDialogueOutcome::Quit))
+        );
+        assert_eq!(
+            tab.close_dialogue_key(1, Some(&enter), &[]),
+            Some(CloseDialogueInput::Choose(CloseDialogueOutcome::Detach))
+        );
+        assert_eq!(tab.close_dialogue_key(3, Some(&enter), &[]), None);
+    }
+
+    #[test]
+    fn cancelling_removes_the_dialogue_and_redraws_the_pane() {
+        let mut tab = create_new_tab(size(), true);
+        show(&mut tab, 1);
+        assert!(shows_dialogue(&mut tab, 1));
+        assert!(tab.clear_close_dialogue(1));
+        assert!(!tab.has_close_dialogue(1));
+        assert!(!shows_dialogue(&mut tab, 1));
+        assert!(tab.get_active_terminal_cursor_position(1).is_some());
+        assert!(!tab.clear_close_dialogue(1));
+    }
+
+    #[test]
+    fn closing_the_pane_removes_the_dialogue() {
+        let mut tab = create_new_tab(size(), true);
+        tab.new_pane(
+            PaneId::Terminal(2),
+            None,
+            None,
+            false,
+            true,
+            NewPanePlacement::default(),
+            Some(1),
+            None,
+        )
+        .unwrap();
+        let pane_id = show(&mut tab, 1);
+        assert_eq!(pane_id, PaneId::Terminal(2));
+        tab.close_pane(pane_id, false, None);
+        tab.prune_close_dialogues();
+        assert!(!tab.has_close_dialogue(1));
+    }
+
+    #[test]
+    fn a_client_that_leaves_loses_its_dialogue() {
+        let mut tab = two_client_tab();
+        show(&mut tab, 1);
+        show(&mut tab, 2);
+        tab.remove_client(2);
+        tab.prune_close_dialogues();
+        assert!(!tab.has_close_dialogue(2));
+        assert!(tab.has_close_dialogue(1));
+    }
+
+    #[test]
+    fn the_dialogue_appears_on_a_plugin_pane() {
+        let (mut tab, _plugin_receiver) = tab_with_floating_plugin_pane(1);
+        let pane_id = show(&mut tab, 1);
+        assert_eq!(pane_id, PaneId::Plugin(1));
+        assert!(shows_dialogue(&mut tab, 1));
+        assert!(tab.clear_close_dialogue(1));
+        assert!(!shows_dialogue(&mut tab, 1));
+    }
+
+    #[test]
+    fn mouse_events_over_the_dialogue_pane_are_swallowed() {
+        let mut tab = create_new_tab(size(), true);
+        show(&mut tab, 1);
+        let event = zellij_utils::input::mouse::MouseEvent::new_left_press_event(
+            zellij_utils::position::Position::new(5, 10),
+        );
+        let effect = tab.handle_mouse_event(&event, 1).unwrap();
+        assert!(effect.state_changed);
+        assert!(tab.has_close_dialogue(1));
+    }
+}

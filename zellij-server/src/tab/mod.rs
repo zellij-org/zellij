@@ -51,6 +51,9 @@ use crate::route::NotificationEnd;
 use crate::{
     os_input_output::ServerOsApi,
     output::{CharacterChunk, KittyImageChunk, Output, SixelImageChunk},
+    panes::close_dialogue::{
+        close_dialogue_chunks, close_dialogue_input, CloseDialogue, CloseDialogueInput,
+    },
     panes::floating_panes::floating_pane_grid::half_size_middle_geom,
     panes::grid::PendingNotification,
     panes::kitty_graphics::{KittyHostSupport, KittyImageStore},
@@ -253,6 +256,7 @@ pub(crate) struct Tab {
     web_clients_allowed: bool,
     web_sharing: WebSharing,
     mouse_hover_pane_id: HashMap<ClientId, PaneId>,
+    close_dialogues: HashMap<ClientId, CloseDialogue>,
     dimmed_clients: HashSet<ClientId>,
     plugin_hover_pane_id: HashMap<ClientId, PaneId>,
     mouse_last_pane_id: HashMap<ClientId, PaneId>,
@@ -1028,6 +1032,7 @@ impl Tab {
             web_clients_allowed,
             web_sharing,
             mouse_hover_pane_id: HashMap::new(),
+            close_dialogues: HashMap::new(),
             plugin_hover_pane_id: HashMap::new(),
             mouse_last_pane_id: HashMap::new(),
             mouse_help_text_visible: HashMap::new(),
@@ -4041,6 +4046,99 @@ impl Tab {
             .filter(|pane_id| self.is_pane_nested_guest(*pane_id))
             .collect()
     }
+    pub fn show_close_dialogue(
+        &mut self,
+        client_id: ClientId,
+        pane_id: PaneId,
+        session_name: String,
+    ) {
+        self.close_dialogues
+            .insert(client_id, CloseDialogue::new(pane_id, session_name));
+        self.set_force_render();
+    }
+    pub fn has_close_dialogue(&self, client_id: ClientId) -> bool {
+        self.close_dialogues.contains_key(&client_id)
+    }
+    pub fn close_dialogue(&self, client_id: ClientId) -> Option<&CloseDialogue> {
+        self.close_dialogues.get(&client_id)
+    }
+    pub fn close_dialogue_clients(&self) -> impl Iterator<Item = ClientId> + '_ {
+        self.close_dialogues.keys().copied()
+    }
+    pub fn close_dialogue_key(
+        &mut self,
+        client_id: ClientId,
+        key: Option<&KeyWithModifier>,
+        raw_bytes: &[u8],
+    ) -> Option<CloseDialogueInput> {
+        let dialogue = self.close_dialogues.get_mut(&client_id)?;
+        let input = close_dialogue_input(key, raw_bytes, dialogue.selected);
+        if let CloseDialogueInput::Select(selected) = input {
+            dialogue.selected = selected;
+        }
+        Some(input)
+    }
+    pub fn clear_close_dialogue(&mut self, client_id: ClientId) -> bool {
+        let Some(dialogue) = self.close_dialogues.remove(&client_id) else {
+            return false;
+        };
+        if let Some(pane) = self.get_pane_with_id_mut(dialogue.pane_id) {
+            pane.render_full_viewport();
+            pane.set_should_render(true);
+        }
+        self.set_force_render();
+        true
+    }
+    pub fn prune_close_dialogues(&mut self) {
+        let connected: HashSet<ClientId> =
+            self.connected_clients.borrow().iter().copied().collect();
+        let stale: Vec<ClientId> = self
+            .close_dialogues
+            .iter()
+            .filter(|(client_id, dialogue)| {
+                !connected.contains(client_id)
+                    || !self.has_non_suppressed_pane_with_pid(&dialogue.pane_id)
+            })
+            .map(|(client_id, _)| *client_id)
+            .collect();
+        for client_id in stale {
+            self.clear_close_dialogue(client_id);
+        }
+    }
+    fn render_close_dialogues(&mut self, output: &mut Output) -> Result<()> {
+        let floating_visible = self.floating_panes.panes_are_visible();
+        let mut drawn = Vec::new();
+        for (client_id, dialogue) in &self.close_dialogues {
+            let floating = self.floating_panes.panes_contain(&dialogue.pane_id);
+            if floating && !floating_visible && !self.floating_panes.has_pinned_panes() {
+                continue;
+            }
+            let Some(pane) = self.get_pane_with_id(dialogue.pane_id) else {
+                continue;
+            };
+            let chunks = close_dialogue_chunks(
+                pane.get_content_columns(),
+                pane.get_content_rows(),
+                pane.get_content_x(),
+                pane.get_content_y(),
+                &self.style,
+                &dialogue.session_name,
+                dialogue.selected,
+            );
+            let z_index = if floating {
+                self.floating_panes
+                    .get_pane_z_index(dialogue.pane_id)
+                    .map(|z_index| z_index + 1)
+            } else {
+                None
+            };
+            drawn.push((*client_id, chunks, z_index));
+        }
+        for (client_id, chunks, z_index) in drawn {
+            output.add_character_chunks_to_client(client_id, chunks, z_index)?;
+        }
+        Ok(())
+    }
     pub fn set_guest_modal_on_pane(&mut self, pane_id: PaneId, client_ids: &[ClientId]) {
         if let Some(pane) = self
             .tiled_panes
@@ -4726,6 +4824,9 @@ impl Tab {
         client_id: ClientId,
     ) -> Option<(usize, usize, bool)> {
         // (x, y, is_cursor_visible)
+        if self.close_dialogues.contains_key(&client_id) {
+            return None;
+        }
         let active_pane_id = if self.floating_panes.panes_are_visible() {
             self.floating_panes
                 .get_active_pane_id(client_id)
@@ -4990,6 +5091,8 @@ impl Tab {
                 )
                 .with_context(err_context)?;
         }
+        self.render_close_dialogues(output)
+            .with_context(err_context)?;
 
         self.render_cursor(output);
         if output.has_rendered_assets() {

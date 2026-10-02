@@ -152,6 +152,7 @@ pub enum ServerInstruction {
     /// loop. The main loop writes `ServerToClientMsg::ForwardQueryToHost`
     ForwardQueryToHost(u32, Vec<u8>, bool),
     KeyPassthroughChanged(ClientId, PaneId, PaneId, bool, Option<Direction>, bool),
+    CloseDialogueChanged(ClientId, bool),
     EmitNestedSessionFrameToClient(ClientId, Vec<u8>),
 }
 
@@ -209,6 +210,7 @@ impl From<&ServerInstruction> for ServerContext {
             },
             ServerInstruction::ForwardQueryToHost(..) => ServerContext::ForwardQueryToHost,
             ServerInstruction::KeyPassthroughChanged(..) => ServerContext::KeyPassthroughChanged,
+            ServerInstruction::CloseDialogueChanged(..) => ServerContext::CloseDialogueChanged,
             ServerInstruction::EmitNestedSessionFrameToClient(..) => {
                 ServerContext::EmitNestedSessionFrameToClient
             },
@@ -394,6 +396,7 @@ pub(crate) struct SessionMetaData {
     pub current_input_modes: HashMap<ClientId, InputMode>,
     pub session_configuration: SessionConfiguration,
     pub key_passthrough_clients: HashMap<ClientId, PaneId>,
+    pub close_dialogue_clients: HashSet<ClientId>,
     pub web_sharing: WebSharing, // this is a special attribute explicitly set on session
     // initialization because we don't want it to be overridden by
     // configuration changes, the only way it can be overwritten is by
@@ -2235,6 +2238,15 @@ pub fn start_server_impl(
                     }
                 }
             },
+            ServerInstruction::CloseDialogueChanged(client_id, shown) => {
+                if let Some(session_data) = session_data.write().unwrap().as_mut() {
+                    if shown {
+                        session_data.close_dialogue_clients.insert(client_id);
+                    } else {
+                        session_data.close_dialogue_clients.remove(&client_id);
+                    }
+                }
+            },
             ServerInstruction::KeyPassthroughChanged(
                 client_id,
                 _old_pane_id,
@@ -2594,6 +2606,7 @@ fn init_session(
         #[cfg(not(feature = "web_server_capability"))]
         web_sharing: WebSharing::Disabled,
         key_passthrough_clients: HashMap::new(),
+        close_dialogue_clients: HashSet::new(),
         config_file_path: cli_assets.config_file_path,
     }
 }

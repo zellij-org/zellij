@@ -83,6 +83,7 @@ use crate::notifications::NotificationProtocol;
 use crate::os_input_output::ResizeCache;
 use crate::pane_groups::PaneGroups;
 use crate::panes::alacritty_functions::xparse_color;
+use crate::panes::close_dialogue::{CloseDialogueInput, CloseDialogueOutcome};
 use crate::panes::grid::{namespace_notification_id, Osc99PayloadType, PendingNotification};
 use crate::panes::nested_session_modal::GuestModalShortcuts;
 use crate::panes::terminal_character::AnsiCode;
@@ -601,6 +602,16 @@ pub enum ScreenInstruction {
         client_id: ClientId,
         pane_id: PaneId,
         outcome: GuestModalOutcome,
+    },
+    ConfirmClose(ClientId),
+    CloseDialogueInput {
+        client_id: ClientId,
+        key: Option<KeyWithModifier>,
+        raw_bytes: Vec<u8>,
+    },
+    CloseDialogueChoice {
+        client_id: ClientId,
+        outcome: CloseDialogueOutcome,
     },
     /// The client observed the host's reply to a previously forwarded
     /// query (closed by the Primary-DA barrier or the 500 ms timeout).
@@ -1157,6 +1168,9 @@ impl From<&ScreenInstruction> for ScreenContext {
                 ScreenContext::GetNestedSessionKeybinds
             },
             ScreenInstruction::GuestModalChoice { .. } => ScreenContext::GuestModalChoice,
+            ScreenInstruction::ConfirmClose(..) => ScreenContext::ConfirmClose,
+            ScreenInstruction::CloseDialogueInput { .. } => ScreenContext::CloseDialogueInput,
+            ScreenInstruction::CloseDialogueChoice { .. } => ScreenContext::CloseDialogueChoice,
             ScreenInstruction::ForwardedReplyFromHost { .. } => {
                 ScreenContext::ForwardedReplyFromHost
             },
@@ -1703,6 +1717,7 @@ pub(crate) struct Screen {
     host_fullscreen: bool,
     dimmed_clients: HashSet<ClientId>,
     nested_guest_choices: HashMap<(ClientId, PaneId), NestedGuestChoice>,
+    close_dialogue_clients: HashSet<ClientId>,
     guest_ascend_keys: HashMap<PaneId, Vec<KeyWithModifier>>,
     guest_capabilities: HashMap<PaneId, Vec<NestedSessionCapability>>,
     guest_last_mode: HashMap<PaneId, GuestModeReport>,
@@ -2018,6 +2033,7 @@ impl Screen {
             host_fullscreen: false,
             dimmed_clients: HashSet::new(),
             nested_guest_choices: HashMap::new(),
+            close_dialogue_clients: HashSet::new(),
             guest_ascend_keys: HashMap::new(),
             guest_capabilities: HashMap::new(),
             guest_last_mode: HashMap::new(),
@@ -4124,6 +4140,105 @@ impl Screen {
         }
     }
 
+    fn sync_close_dialogues(&mut self) {
+        let mut current = HashSet::new();
+        for tab in self.tabs.values_mut() {
+            tab.prune_close_dialogues();
+            current.extend(tab.close_dialogue_clients());
+        }
+        for client_id in current.difference(&self.close_dialogue_clients) {
+            let _ = self
+                .bus
+                .senders
+                .send_to_server(ServerInstruction::CloseDialogueChanged(*client_id, true));
+        }
+        for client_id in self.close_dialogue_clients.difference(&current) {
+            let _ = self
+                .bus
+                .senders
+                .send_to_server(ServerInstruction::CloseDialogueChanged(*client_id, false));
+        }
+        self.close_dialogue_clients = current;
+    }
+
+    fn detach_client(&self, client_id: ClientId) {
+        let _ = self
+            .bus
+            .senders
+            .send_to_server(ServerInstruction::DetachSession(vec![client_id], None));
+    }
+
+    pub fn confirm_close(&mut self, client_id: ClientId) -> Result<()> {
+        if self
+            .tabs
+            .values()
+            .any(|tab| tab.has_close_dialogue(client_id))
+        {
+            return self.finish_close_dialogue(client_id, CloseDialogueOutcome::Detach);
+        }
+        let session_name = self.session_name.clone();
+        let shown = match self.get_active_tab_mut(client_id) {
+            Ok(tab) => match tab.get_active_pane_id(client_id) {
+                Some(pane_id) => {
+                    tab.show_close_dialogue(client_id, pane_id, session_name);
+                    true
+                },
+                None => false,
+            },
+            Err(_) => false,
+        };
+        if !shown {
+            self.detach_client(client_id);
+            return Ok(());
+        }
+        self.render(None)
+    }
+
+    pub fn close_dialogue_key(
+        &mut self,
+        client_id: ClientId,
+        key: Option<KeyWithModifier>,
+        raw_bytes: Vec<u8>,
+    ) -> Result<()> {
+        let input = self
+            .tabs
+            .values_mut()
+            .find(|tab| tab.has_close_dialogue(client_id))
+            .and_then(|tab| tab.close_dialogue_key(client_id, key.as_ref(), &raw_bytes));
+        match input {
+            Some(CloseDialogueInput::Choose(outcome)) => {
+                self.finish_close_dialogue(client_id, outcome)
+            },
+            Some(CloseDialogueInput::Select(_)) => self.render(None),
+            Some(CloseDialogueInput::Swallow) | None => Ok(()),
+        }
+    }
+
+    pub fn finish_close_dialogue(
+        &mut self,
+        client_id: ClientId,
+        outcome: CloseDialogueOutcome,
+    ) -> Result<()> {
+        let mut cleared = false;
+        for tab in self.tabs.values_mut() {
+            cleared |= tab.clear_close_dialogue(client_id);
+        }
+        self.sync_close_dialogues();
+        if cleared {
+            match outcome {
+                CloseDialogueOutcome::Detach => self.detach_client(client_id),
+                CloseDialogueOutcome::Quit => {
+                    let _ = self
+                        .bus
+                        .senders
+                        .send_to_server(ServerInstruction::KillSession);
+                },
+                CloseDialogueOutcome::Cancel => {},
+            }
+        }
+        self.render(None)
+    }
+
     fn handle_guest_modal_choice(
         &mut self,
         client_id: ClientId,
@@ -4975,6 +5090,7 @@ impl Screen {
         // message, triggering our render_to_clients method which does the actual rendering
 
         self.sync_nested_guest_fullscreen_state();
+        self.sync_close_dialogues();
 
         let _ = self
             .bus
@@ -6042,7 +6158,9 @@ impl Screen {
         for tab in self.tabs.values_mut() {
             tab.clear_guest_modal_for_client_on_all_panes(client_id);
             tab.clear_guest_choice_indicator_for_client_on_all_panes(client_id);
+            tab.clear_close_dialogue(client_id);
         }
+        self.sync_close_dialogues();
 
         // If the followed client disconnected, find the next regular client
         if Some(client_id) == self.followed_client_id {
@@ -11241,6 +11359,19 @@ pub(crate) fn screen_thread_main(
                 outcome,
             } => {
                 screen.handle_guest_modal_choice(client_id, pane_id, outcome);
+            },
+            ScreenInstruction::ConfirmClose(client_id) => {
+                screen.confirm_close(client_id)?;
+            },
+            ScreenInstruction::CloseDialogueInput {
+                client_id,
+                key,
+                raw_bytes,
+            } => {
+                screen.close_dialogue_key(client_id, key, raw_bytes)?;
+            },
+            ScreenInstruction::CloseDialogueChoice { client_id, outcome } => {
+                screen.finish_close_dialogue(client_id, outcome)?;
             },
             ScreenInstruction::ForwardedReplyFromHost { token, reply_bytes } => {
                 screen.handle_forwarded_reply_from_host(token, reply_bytes)?;

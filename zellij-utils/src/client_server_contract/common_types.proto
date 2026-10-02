@@ -321,6 +321,7 @@ message Action {
     ApplyFloatingSwapLayoutAction apply_floating_swap_layout = 153;
     ApplyTiledSwapLayoutByTabIdAction apply_tiled_swap_layout_by_tab_id = 154;
     ApplyFloatingSwapLayoutByTabIdAction apply_floating_swap_layout_by_tab_id = 155;
+    ConfirmCloseAction confirm_close = 157;
   }
 }
 
@@ -381,6 +382,7 @@ message CloseTabAction {}
 message ToggleTabAction {}
 message UndoRenameTabAction {}
 message DetachAction {}
+message ConfirmCloseAction {}
 message SetDarkThemeAction {}
 message SetLightThemeAction {}
 message ToggleThemeAction {}

@@ -1,5 +1,5 @@
 use crate::atlas::GlyphCache;
-use crate::color::{Paints, Srgb};
+use crate::color::{Contrast, Paints, Srgb};
 use crate::composition::Preedit;
 use crate::font::CellMetrics;
 use crate::links::LinkRun;
@@ -37,6 +37,7 @@ pub struct RetainedScene {
     height: u32,
     clear: Srgb,
     transparency: Transparency,
+    contrast: Contrast,
     rows: Vec<RowScene>,
     dirty: Vec<bool>,
     everything: bool,
@@ -64,6 +65,7 @@ impl RetainedScene {
             height: 0,
             clear: [0, 0, 0],
             transparency: Transparency::OPAQUE,
+            contrast: Contrast::new(1.0),
             rows: Vec::new(),
             dirty: Vec::new(),
             everything: true,
@@ -105,6 +107,17 @@ impl RetainedScene {
             self.transparency = transparency;
             self.everything = true;
         }
+    }
+
+    pub fn set_contrast(&mut self, minimum: f32) {
+        if self.contrast.minimum() != minimum {
+            self.contrast = Contrast::new(minimum);
+            self.everything = true;
+        }
+    }
+
+    pub fn forget_contrast(&mut self) {
+        self.contrast = Contrast::new(self.contrast.minimum());
     }
 
     pub fn rows(&self) -> &[RowScene] {
@@ -187,7 +200,8 @@ impl RetainedScene {
         preedit: Option<&Preedit>,
     ) {
         let context = RowContext::new(state, cache, phase, paints, cursor, hovered_link, preedit)
-            .with_transparency(self.transparency);
+            .with_transparency(self.transparency)
+            .with_contrast(&self.contrast);
         let (width, height) = (context.width(), context.height());
         if self.generation != cache.generation()
             || self.rows.len() != context.size.rows

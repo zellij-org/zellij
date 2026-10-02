@@ -729,6 +729,7 @@ impl MockScreen {
             web_sharing: WebSharing::Off,
             config_file_path: self.session_metadata.config_file_path.clone(),
             key_passthrough_clients: self.session_metadata.key_passthrough_clients.clone(),
+            close_dialogue_clients: self.session_metadata.close_dialogue_clients.clone(),
         }
     }
 }
@@ -784,6 +785,7 @@ impl MockScreen {
             web_sharing: WebSharing::Off,
             config_file_path: None,
             key_passthrough_clients: Default::default(),
+            close_dialogue_clients: Default::default(),
         };
 
         let os_input = FakeInputOutput::default();
@@ -16143,4 +16145,182 @@ fn a_watcher_that_declares_nothing_still_receives_ansi() {
         screen.structured_render_clients.borrow().is_empty(),
         "a watcher that declares nothing must hold no structured record"
     );
+}
+
+mod close_dialogue {
+    use super::*;
+    use crate::panes::close_dialogue::CloseDialogueOutcome;
+    use zellij_utils::data::{BareKey, KeyWithModifier};
+
+    fn screen() -> (Screen, ServerReceiver) {
+        let size = Size {
+            cols: 121,
+            rows: 20,
+        };
+        let (mut screen, _tty, server_receiver) =
+            create_new_screen_with_capture(size, true, true, true, true);
+        new_tab(&mut screen, 1, 0);
+        while server_receiver.try_recv().is_ok() {}
+        (screen, server_receiver)
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    enum Seen {
+        Shown(ClientId, bool),
+        Detached(Vec<ClientId>),
+    }
+
+    fn seen(server_receiver: &ServerReceiver) -> Vec<Seen> {
+        let mut seen = Vec::new();
+        while let Ok((instruction, _)) = server_receiver.try_recv() {
+            match instruction {
+                ServerInstruction::CloseDialogueChanged(client_id, shown) => {
+                    seen.push(Seen::Shown(client_id, shown))
+                },
+                ServerInstruction::DetachSession(client_ids, _) => {
+                    seen.push(Seen::Detached(client_ids))
+                },
+                _ => {},
+            }
+        }
+        seen
+    }
+
+    fn has_dialogue(screen: &Screen, client_id: ClientId) -> bool {
+        screen
+            .tabs
+            .values()
+            .any(|tab| tab.has_close_dialogue(client_id))
+    }
+
+    #[test]
+    fn a_close_request_shows_the_dialogue_and_tells_the_server() {
+        let (mut screen, server_receiver) = screen();
+        screen.confirm_close(1).unwrap();
+        assert!(has_dialogue(&screen, 1));
+        assert_eq!(seen(&server_receiver), vec![Seen::Shown(1, true)]);
+    }
+
+    #[test]
+    fn a_second_close_request_detaches() {
+        let (mut screen, server_receiver) = screen();
+        screen.confirm_close(1).unwrap();
+        screen.confirm_close(1).unwrap();
+        assert!(!has_dialogue(&screen, 1));
+        assert_eq!(
+            seen(&server_receiver),
+            vec![
+                Seen::Shown(1, true),
+                Seen::Shown(1, false),
+                Seen::Detached(vec![1])
+            ]
+        );
+    }
+
+    #[test]
+    fn cancel_removes_the_dialogue_without_detaching() {
+        let (mut screen, server_receiver) = screen();
+        screen.confirm_close(1).unwrap();
+        screen
+            .close_dialogue_key(1, Some(KeyWithModifier::new(BareKey::Char('n'))), vec![])
+            .unwrap();
+        assert!(!has_dialogue(&screen, 1));
+        assert_eq!(
+            seen(&server_receiver),
+            vec![Seen::Shown(1, true), Seen::Shown(1, false)]
+        );
+    }
+
+    #[test]
+    fn y_detaches_and_swallowed_keys_change_nothing() {
+        let (mut screen, server_receiver) = screen();
+        screen.confirm_close(1).unwrap();
+        screen
+            .close_dialogue_key(1, Some(KeyWithModifier::new(BareKey::Char('x'))), vec![])
+            .unwrap();
+        assert!(has_dialogue(&screen, 1));
+        screen.close_dialogue_key(1, None, b"y".to_vec()).unwrap();
+        assert!(!has_dialogue(&screen, 1));
+        assert_eq!(
+            seen(&server_receiver),
+            vec![
+                Seen::Shown(1, true),
+                Seen::Shown(1, false),
+                Seen::Detached(vec![1])
+            ]
+        );
+    }
+
+    #[test]
+    fn quitting_from_the_dialogue_ends_the_whole_session() {
+        let (mut screen, server_receiver) = screen();
+        screen.confirm_close(1).unwrap();
+        screen
+            .close_dialogue_key(1, Some(KeyWithModifier::new(BareKey::Char('q'))), vec![])
+            .unwrap();
+        assert!(!has_dialogue(&screen, 1));
+        let mut killed = false;
+        while let Ok((instruction, _)) = server_receiver.try_recv() {
+            match instruction {
+                ServerInstruction::KillSession => killed = true,
+                ServerInstruction::DetachSession(..) => {
+                    panic!("quitting must end the session, not detach one client")
+                },
+                _ => {},
+            }
+        }
+        assert!(killed, "the session was not asked to end");
+    }
+
+    #[test]
+    fn a_mouse_choice_is_applied_like_a_key() {
+        let (mut screen, server_receiver) = screen();
+        screen.confirm_close(1).unwrap();
+        screen
+            .finish_close_dialogue(1, CloseDialogueOutcome::Cancel)
+            .unwrap();
+        assert!(!has_dialogue(&screen, 1));
+        assert!(!seen(&server_receiver).contains(&Seen::Detached(vec![1])));
+    }
+
+    #[test]
+    fn a_disconnecting_client_loses_its_dialogue() {
+        let (mut screen, server_receiver) = screen();
+        screen.confirm_close(1).unwrap();
+        screen.remove_client(1).unwrap();
+        assert!(!has_dialogue(&screen, 1));
+        assert_eq!(
+            seen(&server_receiver),
+            vec![Seen::Shown(1, true), Seen::Shown(1, false)]
+        );
+    }
+
+    #[test]
+    fn closing_the_pane_under_the_dialogue_removes_it() {
+        let (mut screen, server_receiver) = screen();
+        screen.confirm_close(1).unwrap();
+        let pane_id = screen
+            .get_active_tab(1)
+            .unwrap()
+            .get_active_pane_id(1)
+            .unwrap();
+        screen
+            .get_active_tab_mut(1)
+            .unwrap()
+            .close_pane(pane_id, false, None);
+        screen.render(None).unwrap();
+        assert!(!has_dialogue(&screen, 1));
+        assert_eq!(
+            seen(&server_receiver),
+            vec![Seen::Shown(1, true), Seen::Shown(1, false)]
+        );
+    }
+
+    #[test]
+    fn a_client_without_a_tab_is_detached_at_once() {
+        let (mut screen, server_receiver) = screen();
+        screen.confirm_close(7).unwrap();
+        assert!(!has_dialogue(&screen, 7));
+        assert_eq!(seen(&server_receiver), vec![Seen::Detached(vec![7])]);
+    }
 }

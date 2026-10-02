@@ -330,6 +330,9 @@ pub enum ScreenContext {
     NestedSessionMessageFromHost,
     GetNestedSessionKeybinds,
     GuestModalChoice,
+    ConfirmClose,
+    CloseDialogueInput,
+    CloseDialogueChoice,
     ForwardedReplyFromHost,
     ResumePaneAfterForward,
     HostTerminalThemeChanged,
@@ -644,6 +647,7 @@ pub enum ServerContext {
     ClearCommandOutputFlash,
     ForwardQueryToHost,
     KeyPassthroughChanged,
+    CloseDialogueChanged,
     EmitNestedSessionFrameToClient,
     HostTerminalThemeModeChanged,
 }
