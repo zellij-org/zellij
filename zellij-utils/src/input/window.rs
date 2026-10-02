@@ -235,6 +235,69 @@ impl OpacityMode {
     }
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PaddingColor {
+    #[default]
+    Background,
+    Extend,
+}
+
+impl PaddingColor {
+    pub fn from_kdl(kdl: &KdlNode) -> Result<Self, ConfigError> {
+        let named = kdl
+            .entries()
+            .iter()
+            .next()
+            .and_then(|entry| entry.value().as_string());
+        match named.map(str::to_ascii_lowercase).as_deref() {
+            Some("background") => Ok(PaddingColor::Background),
+            Some("extend") => Ok(PaddingColor::Extend),
+            _ => Err(ConfigError::new_kdl_error(
+                "padding_color must be \"background\" or \"extend\"".to_owned(),
+                kdl.span().offset(),
+                kdl.span().len(),
+            )),
+        }
+    }
+
+    pub fn to_kdl(&self) -> KdlNode {
+        let mut node = KdlNode::new("padding_color");
+        node.push(KdlValue::String(
+            match self {
+                PaddingColor::Background => "background",
+                PaddingColor::Extend => "extend",
+            }
+            .to_owned(),
+        ));
+        node
+    }
+}
+
+pub const FONT_WEIGHT_NAMES: &[(&str, u16)] = &[
+    ("thin", 100),
+    ("hairline", 100),
+    ("extralight", 200),
+    ("ultralight", 200),
+    ("light", 300),
+    ("regular", 400),
+    ("normal", 400),
+    ("medium", 500),
+    ("semibold", 600),
+    ("demibold", 600),
+    ("bold", 700),
+    ("extrabold", 800),
+    ("ultrabold", 800),
+    ("black", 900),
+    ("heavy", 900),
+];
+
+pub const MIN_CELL_SCALE: f32 = 0.5;
+pub const MAX_CELL_SCALE: f32 = 3.0;
+pub const MAX_PIXEL_ADJUSTMENT: i32 = 64;
+pub const MAX_PADDING: f32 = 1000.0;
+pub const MIN_INITIAL_CELLS: u16 = 2;
+pub const MAX_INITIAL_CELLS: u16 = 1000;
+
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WindowTheme {
     pub foreground: Option<PaletteColor>,
@@ -329,6 +392,22 @@ pub struct WindowConfig {
     pub opacity_mode: Option<OpacityMode>,
     pub blur: Option<bool>,
     pub theme: Option<WindowTheme>,
+    pub padding: Option<f32>,
+    pub padding_top: Option<f32>,
+    pub padding_right: Option<f32>,
+    pub padding_bottom: Option<f32>,
+    pub padding_left: Option<f32>,
+    pub padding_balance: Option<bool>,
+    pub padding_color: Option<PaddingColor>,
+    pub line_height: Option<f32>,
+    pub cell_width: Option<f32>,
+    pub baseline_offset: Option<i32>,
+    pub underline_offset: Option<i32>,
+    pub underline_thickness: Option<i32>,
+    pub initial_columns: Option<u16>,
+    pub initial_rows: Option<u16>,
+    pub font_weight: Option<u16>,
+    pub font_features: Option<Vec<String>>,
 }
 
 impl WindowConfig {
@@ -392,6 +471,54 @@ impl WindowConfig {
         }
         if let Some(theme) = kdl_get_child!(kdl, "theme") {
             window.theme = Some(WindowTheme::from_kdl(theme)?);
+        }
+        for (name, slot) in [
+            ("padding", &mut window.padding),
+            ("padding_top", &mut window.padding_top),
+            ("padding_right", &mut window.padding_right),
+            ("padding_bottom", &mut window.padding_bottom),
+            ("padding_left", &mut window.padding_left),
+        ] {
+            if let Some(node) = kdl_get_child!(kdl, name) {
+                *slot = Some(padding_from_kdl(node, name)?);
+            }
+        }
+        if let Some(padding_balance) = kdl_get_child_entry_bool_value!(kdl, "padding_balance") {
+            window.padding_balance = Some(padding_balance);
+        }
+        if let Some(padding_color) = kdl_get_child!(kdl, "padding_color") {
+            window.padding_color = Some(PaddingColor::from_kdl(padding_color)?);
+        }
+        for (name, slot) in [
+            ("line_height", &mut window.line_height),
+            ("cell_width", &mut window.cell_width),
+        ] {
+            if let Some(node) = kdl_get_child!(kdl, name) {
+                *slot = Some(cell_scale_from_kdl(node, name)?);
+            }
+        }
+        for (name, slot) in [
+            ("baseline_offset", &mut window.baseline_offset),
+            ("underline_offset", &mut window.underline_offset),
+            ("underline_thickness", &mut window.underline_thickness),
+        ] {
+            if let Some(node) = kdl_get_child!(kdl, name) {
+                *slot = Some(pixel_adjustment_from_kdl(node, name)?);
+            }
+        }
+        for (name, slot) in [
+            ("initial_columns", &mut window.initial_columns),
+            ("initial_rows", &mut window.initial_rows),
+        ] {
+            if let Some(node) = kdl_get_child!(kdl, name) {
+                *slot = Some(initial_cells_from_kdl(node, name)?);
+            }
+        }
+        if let Some(font_weight) = kdl_get_child!(kdl, "font_weight") {
+            window.font_weight = Some(font_weight_from_kdl(font_weight)?);
+        }
+        if let Some(font_features) = kdl_get_child!(kdl, "font_features") {
+            window.font_features = Some(font_features_from_kdl(font_features)?);
         }
 
         Ok(window)
@@ -487,6 +614,66 @@ impl WindowConfig {
         if let Some(theme) = self.theme.as_ref().and_then(|theme| theme.to_kdl()) {
             children.nodes_mut().push(theme);
         }
+        for (name, value) in [
+            ("padding", self.padding),
+            ("padding_top", self.padding_top),
+            ("padding_right", self.padding_right),
+            ("padding_bottom", self.padding_bottom),
+            ("padding_left", self.padding_left),
+        ] {
+            if let Some(value) = value {
+                children.nodes_mut().push(number_node(name, value));
+            }
+        }
+        if let Some(padding_balance) = self.padding_balance {
+            let mut padding_balance_node = KdlNode::new("padding_balance");
+            padding_balance_node.push(KdlValue::Bool(padding_balance));
+            children.nodes_mut().push(padding_balance_node);
+        }
+        if let Some(padding_color) = self.padding_color {
+            children.nodes_mut().push(padding_color.to_kdl());
+        }
+        for (name, value) in [
+            ("line_height", self.line_height),
+            ("cell_width", self.cell_width),
+        ] {
+            if let Some(value) = value {
+                children.nodes_mut().push(number_node(name, value));
+            }
+        }
+        for (name, value) in [
+            ("baseline_offset", self.baseline_offset),
+            ("underline_offset", self.underline_offset),
+            ("underline_thickness", self.underline_thickness),
+        ] {
+            if let Some(value) = value {
+                let mut adjustment_node = KdlNode::new(name);
+                adjustment_node.push(KdlValue::Base10(value as i64));
+                children.nodes_mut().push(adjustment_node);
+            }
+        }
+        for (name, value) in [
+            ("initial_columns", self.initial_columns),
+            ("initial_rows", self.initial_rows),
+        ] {
+            if let Some(value) = value {
+                let mut cells_node = KdlNode::new(name);
+                cells_node.push(KdlValue::Base10(value as i64));
+                children.nodes_mut().push(cells_node);
+            }
+        }
+        if let Some(font_weight) = self.font_weight {
+            let mut font_weight_node = KdlNode::new("font_weight");
+            font_weight_node.push(KdlValue::Base10(font_weight as i64));
+            children.nodes_mut().push(font_weight_node);
+        }
+        if let Some(font_features) = &self.font_features {
+            let mut font_features_node = KdlNode::new("font_features");
+            for feature in font_features {
+                font_features_node.push(KdlValue::String(feature.clone()));
+            }
+            children.nodes_mut().push(font_features_node);
+        }
 
         if children.nodes().is_empty() {
             return None;
@@ -519,8 +706,206 @@ impl WindowConfig {
             (Some(mine), Some(theirs)) => Some(mine.merge(theirs)),
             (mine, theirs) => theirs.or(mine),
         };
+        merged.padding = other.padding.or(merged.padding);
+        merged.padding_top = other.padding_top.or(merged.padding_top);
+        merged.padding_right = other.padding_right.or(merged.padding_right);
+        merged.padding_bottom = other.padding_bottom.or(merged.padding_bottom);
+        merged.padding_left = other.padding_left.or(merged.padding_left);
+        merged.padding_balance = other.padding_balance.or(merged.padding_balance);
+        merged.padding_color = other.padding_color.or(merged.padding_color);
+        merged.line_height = other.line_height.or(merged.line_height);
+        merged.cell_width = other.cell_width.or(merged.cell_width);
+        merged.baseline_offset = other.baseline_offset.or(merged.baseline_offset);
+        merged.underline_offset = other.underline_offset.or(merged.underline_offset);
+        merged.underline_thickness = other.underline_thickness.or(merged.underline_thickness);
+        merged.initial_columns = other.initial_columns.or(merged.initial_columns);
+        merged.initial_rows = other.initial_rows.or(merged.initial_rows);
+        merged.font_weight = other.font_weight.or(merged.font_weight);
+        merged.font_features = other.font_features.or(merged.font_features);
         merged
     }
+}
+
+fn number_node(name: &str, value: f32) -> KdlNode {
+    let mut node = KdlNode::new(name);
+    if value.fract() == 0.0 {
+        node.push(KdlValue::Base10(value as i64));
+    } else {
+        node.push(KdlValue::Base10Float(value as f64));
+    }
+    node
+}
+
+fn number_from_kdl(node: &KdlNode, name: &str) -> Result<f64, ConfigError> {
+    let error = |message: String| {
+        ConfigError::new_kdl_error(message, node.span().offset(), node.span().len())
+    };
+    let value = node
+        .entries()
+        .iter()
+        .next()
+        .map(|entry| entry.value())
+        .ok_or_else(|| error(format!("{} needs a value", name)))?;
+    let number = match value {
+        KdlValue::Base10Float(number) => *number,
+        other => other
+            .as_i64()
+            .map(|number| number as f64)
+            .ok_or_else(|| error(format!("{} must be a number", name)))?,
+    };
+    if !number.is_finite() {
+        return Err(error(format!("{} must be a finite number", name)));
+    }
+    Ok(number)
+}
+
+fn integer_from_kdl(node: &KdlNode, name: &str) -> Result<i64, ConfigError> {
+    let error = |message: String| {
+        ConfigError::new_kdl_error(message, node.span().offset(), node.span().len())
+    };
+    let value = node
+        .entries()
+        .iter()
+        .next()
+        .map(|entry| entry.value())
+        .ok_or_else(|| error(format!("{} needs a value", name)))?;
+    value
+        .as_i64()
+        .ok_or_else(|| error(format!("{} must be a whole number", name)))
+}
+
+fn padding_from_kdl(node: &KdlNode, name: &str) -> Result<f32, ConfigError> {
+    let padding = number_from_kdl(node, name)?;
+    if !(0.0..=MAX_PADDING as f64).contains(&padding) {
+        return Err(ConfigError::new_kdl_error(
+            format!(
+                "{} {} is outside the range 0 to {} pixels",
+                name, padding, MAX_PADDING
+            ),
+            node.span().offset(),
+            node.span().len(),
+        ));
+    }
+    Ok(padding as f32)
+}
+
+fn cell_scale_from_kdl(node: &KdlNode, name: &str) -> Result<f32, ConfigError> {
+    let scale = number_from_kdl(node, name)?;
+    if !(MIN_CELL_SCALE as f64..=MAX_CELL_SCALE as f64).contains(&scale) {
+        return Err(ConfigError::new_kdl_error(
+            format!(
+                "{} {} is outside the range {} to {} (a multiple of the font's own cell)",
+                name, scale, MIN_CELL_SCALE, MAX_CELL_SCALE
+            ),
+            node.span().offset(),
+            node.span().len(),
+        ));
+    }
+    Ok(scale as f32)
+}
+
+fn pixel_adjustment_from_kdl(node: &KdlNode, name: &str) -> Result<i32, ConfigError> {
+    let adjustment = integer_from_kdl(node, name)?;
+    let limit = MAX_PIXEL_ADJUSTMENT as i64;
+    if !(-limit..=limit).contains(&adjustment) {
+        return Err(ConfigError::new_kdl_error(
+            format!(
+                "{} {} is outside the range -{} to {} pixels",
+                name, adjustment, limit, limit
+            ),
+            node.span().offset(),
+            node.span().len(),
+        ));
+    }
+    Ok(adjustment as i32)
+}
+
+fn initial_cells_from_kdl(node: &KdlNode, name: &str) -> Result<u16, ConfigError> {
+    let cells = integer_from_kdl(node, name)?;
+    if !(MIN_INITIAL_CELLS as i64..=MAX_INITIAL_CELLS as i64).contains(&cells) {
+        return Err(ConfigError::new_kdl_error(
+            format!(
+                "{} {} is outside the range {} to {}",
+                name, cells, MIN_INITIAL_CELLS, MAX_INITIAL_CELLS
+            ),
+            node.span().offset(),
+            node.span().len(),
+        ));
+    }
+    Ok(cells as u16)
+}
+
+fn font_weight_from_kdl(node: &KdlNode) -> Result<u16, ConfigError> {
+    let error = |message: String| {
+        ConfigError::new_kdl_error(message, node.span().offset(), node.span().len())
+    };
+    let names = || {
+        FONT_WEIGHT_NAMES
+            .iter()
+            .map(|(name, _)| format!("\"{}\"", name))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let value = node
+        .entries()
+        .iter()
+        .next()
+        .map(|entry| entry.value())
+        .ok_or_else(|| error("font_weight needs a value".to_owned()))?;
+    if let Some(name) = value.as_string() {
+        let lowered = name.to_ascii_lowercase().replace(['-', '_', ' '], "");
+        return FONT_WEIGHT_NAMES
+            .iter()
+            .find(|(known, _)| *known == lowered)
+            .map(|(_, weight)| *weight)
+            .ok_or_else(|| {
+                error(format!(
+                    "font_weight {:?} is not a weight; use a number from 100 to 900 or one of {}",
+                    name,
+                    names()
+                ))
+            });
+    }
+    let weight = value.as_i64().ok_or_else(|| {
+        error(format!(
+            "font_weight must be a number from 100 to 900 or one of {}",
+            names()
+        ))
+    })?;
+    if !(100..=900).contains(&weight) {
+        return Err(error(format!(
+            "font_weight {} is outside the range 100 to 900",
+            weight
+        )));
+    }
+    Ok(weight as u16)
+}
+
+pub fn is_font_feature(text: &str) -> bool {
+    let tag = text.strip_prefix(['+', '-']).unwrap_or(text);
+    tag.len() == 4 && tag.bytes().all(|byte| (0x21..=0x7e).contains(&byte))
+}
+
+fn font_features_from_kdl(node: &KdlNode) -> Result<Vec<String>, ConfigError> {
+    let mut features = Vec::new();
+    for entry in node.entries() {
+        let error = |message: String| {
+            ConfigError::new_kdl_error(message, entry.span().offset(), entry.span().len())
+        };
+        let text = entry
+            .value()
+            .as_string()
+            .ok_or_else(|| error("a font feature must be given as a string".to_owned()))?;
+        if !is_font_feature(text) {
+            return Err(error(format!(
+                "{:?} is not a font feature; use a four-character OpenType tag such as \"ss01\", \
+                 optionally prefixed with - to turn it off",
+                text
+            )));
+        }
+        features.push(text.to_owned());
+    }
+    Ok(features)
 }
 
 fn font_size_from_kdl(node: &KdlNode) -> Result<f32, ConfigError> {
@@ -1043,5 +1428,218 @@ mod tests {
             .next()
             .is_none());
         let _ = KeyModifier::Ctrl;
+    }
+
+    #[test]
+    fn every_layout_option_round_trips_through_kdl() {
+        let parsed = section(
+            r##"
+            window {
+                padding 8
+                padding_top 4.5
+                padding_right 12
+                padding_bottom 0
+                padding_left 6
+                padding_balance true
+                padding_color "extend"
+                line_height 1.25
+                cell_width 1
+                baseline_offset -2
+                underline_offset 1
+                underline_thickness 2
+                initial_columns 100
+                initial_rows 30
+                font_weight "medium"
+                font_features "ss01" "zero" "-calt" "+dlig"
+            }
+            "##,
+        )
+        .unwrap();
+
+        assert_eq!(parsed.padding, Some(8.0));
+        assert_eq!(parsed.padding_top, Some(4.5));
+        assert_eq!(parsed.padding_right, Some(12.0));
+        assert_eq!(parsed.padding_bottom, Some(0.0));
+        assert_eq!(parsed.padding_left, Some(6.0));
+        assert_eq!(parsed.padding_balance, Some(true));
+        assert_eq!(parsed.padding_color, Some(PaddingColor::Extend));
+        assert_eq!(parsed.line_height, Some(1.25));
+        assert_eq!(parsed.cell_width, Some(1.0));
+        assert_eq!(parsed.baseline_offset, Some(-2));
+        assert_eq!(parsed.underline_offset, Some(1));
+        assert_eq!(parsed.underline_thickness, Some(2));
+        assert_eq!(parsed.initial_columns, Some(100));
+        assert_eq!(parsed.initial_rows, Some(30));
+        assert_eq!(parsed.font_weight, Some(500));
+        assert_eq!(
+            parsed.font_features,
+            Some(vec![
+                "ss01".to_owned(),
+                "zero".to_owned(),
+                "-calt".to_owned(),
+                "+dlig".to_owned()
+            ])
+        );
+
+        let emitted = parsed.to_kdl().unwrap().to_string();
+        assert_eq!(section(&emitted).unwrap(), parsed, "{}", emitted);
+    }
+
+    #[test]
+    fn layout_options_are_unset_in_an_empty_section() {
+        let empty = section("window {\n}").unwrap();
+        assert_eq!(empty.padding, None);
+        assert_eq!(empty.padding_balance, None);
+        assert_eq!(empty.padding_color, None);
+        assert_eq!(empty.line_height, None);
+        assert_eq!(empty.cell_width, None);
+        assert_eq!(empty.font_weight, None);
+        assert_eq!(empty.font_features, None);
+        assert_eq!(PaddingColor::default(), PaddingColor::Background);
+    }
+
+    #[test]
+    fn padding_must_not_be_negative() {
+        for name in [
+            "padding",
+            "padding_top",
+            "padding_right",
+            "padding_bottom",
+            "padding_left",
+        ] {
+            let err = section(&format!("window {{\n {} -1\n}}", name)).unwrap_err();
+            assert!(format!("{:?}", err).contains(name), "{}: {:?}", name, err);
+            assert!(section(&format!("window {{\n {} \"wide\"\n}}", name)).is_err());
+            assert!(section(&format!("window {{\n {}\n}}", name)).is_err());
+        }
+    }
+
+    #[test]
+    fn line_height_and_cell_width_refuse_multipliers_that_collapse_the_cell() {
+        for name in ["line_height", "cell_width"] {
+            for text in ["0", "0.2", "-1", "4", "\"tall\""] {
+                let err = section(&format!("window {{\n {} {}\n}}", name, text)).unwrap_err();
+                assert!(
+                    format!("{:?}", err).contains(name),
+                    "{} {}: {:?}",
+                    name,
+                    text,
+                    err
+                );
+            }
+            for text in ["0.5", "1", "1.2", "3"] {
+                assert!(
+                    section(&format!("window {{\n {} {}\n}}", name, text)).is_ok(),
+                    "{} {}",
+                    name,
+                    text
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn pixel_adjustments_are_whole_numbers_within_bounds() {
+        for name in ["baseline_offset", "underline_offset", "underline_thickness"] {
+            assert!(section(&format!("window {{\n {} 1.5\n}}", name)).is_err());
+            assert!(section(&format!("window {{\n {} 65\n}}", name)).is_err());
+            assert!(section(&format!("window {{\n {} -65\n}}", name)).is_err());
+            assert!(section(&format!("window {{\n {} -3\n}}", name)).is_ok());
+        }
+    }
+
+    #[test]
+    fn initial_cells_share_the_saved_state_bounds() {
+        assert!(section("window {\n initial_columns 1\n}").is_err());
+        assert!(section("window {\n initial_rows 1001\n}").is_err());
+        assert!(section("window {\n initial_rows 24.5\n}").is_err());
+        assert_eq!(
+            section("window {\n initial_rows 24\n}")
+                .unwrap()
+                .initial_rows,
+            Some(24)
+        );
+    }
+
+    #[test]
+    fn font_weight_accepts_numbers_and_names_and_refuses_the_rest() {
+        for (text, expected) in [
+            ("100", 100),
+            ("350", 350),
+            ("900", 900),
+            ("\"thin\"", 100),
+            ("\"Light\"", 300),
+            ("\"regular\"", 400),
+            ("\"normal\"", 400),
+            ("\"medium\"", 500),
+            ("\"semi-bold\"", 600),
+            ("\"bold\"", 700),
+            ("\"extra_bold\"", 800),
+            ("\"black\"", 900),
+        ] {
+            let parsed = section(&format!("window {{\n font_weight {}\n}}", text)).unwrap();
+            assert_eq!(parsed.font_weight, Some(expected), "{}", text);
+        }
+        let message = format!(
+            "{:?}",
+            section("window {\n font_weight \"chunky\"\n}").unwrap_err()
+        );
+        assert!(
+            message.contains("font_weight") && message.contains("medium"),
+            "{}",
+            message
+        );
+        assert!(section("window {\n font_weight 50\n}").is_err());
+        assert!(section("window {\n font_weight 1000\n}").is_err());
+        assert!(section("window {\n font_weight\n}").is_err());
+    }
+
+    #[test]
+    fn a_malformed_font_feature_is_refused() {
+        for text in [
+            "\"ss1\"",
+            "\"ss011\"",
+            "\"--calt\"",
+            "\"\"",
+            "4",
+            "\"ss 1\"",
+        ] {
+            let err = section(&format!("window {{\n font_features {}\n}}", text)).unwrap_err();
+            assert!(
+                format!("{:?}", err).contains("font feature"),
+                "{}: {:?}",
+                text,
+                err
+            );
+        }
+        assert_eq!(
+            section("window {\n font_features\n}")
+                .unwrap()
+                .font_features,
+            Some(Vec::new())
+        );
+    }
+
+    #[test]
+    fn an_unknown_padding_color_lists_the_valid_ones() {
+        let message = format!(
+            "{:?}",
+            section("window {\n padding_color \"mirror\"\n}").unwrap_err()
+        );
+        assert!(
+            message.contains("background") && message.contains("extend"),
+            "{}",
+            message
+        );
+    }
+
+    #[test]
+    fn a_later_section_supersedes_layout_options_field_by_field() {
+        let first = section("window {\n padding 4\n line_height 1.5\n}").unwrap();
+        let second = section("window {\n padding_left 9\n line_height 1.1\n}").unwrap();
+        let merged = first.merge(second);
+        assert_eq!(merged.padding, Some(4.0));
+        assert_eq!(merged.padding_left, Some(9.0));
+        assert_eq!(merged.line_height, Some(1.1));
     }
 }

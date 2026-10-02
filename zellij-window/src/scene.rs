@@ -322,6 +322,7 @@ pub struct RowContext<'a> {
     hovered_link: Option<&'a LinkRun>,
     phase: BlinkPhase,
     pub metrics: CellMetrics,
+    underline_stroke: u32,
     pub size: TermSize,
     pub clear: Srgb,
     cursor_row: usize,
@@ -370,6 +371,7 @@ impl<'a> RowContext<'a> {
             hovered_link,
             phase,
             metrics: cache.metrics(),
+            underline_stroke: cache.underline_stroke(),
             size: state.size(),
             clear: paints.background,
             cursor_row,
@@ -538,11 +540,25 @@ pub fn build_row(
         }
 
         push_decorations(
-            out, cell, &paint, origin_x, origin_y, metrics, paints, inkless,
+            out,
+            cell,
+            &paint,
+            (origin_x, origin_y),
+            metrics,
+            context.underline_stroke,
+            paints,
+            inkless,
         );
 
         if !composing && !inkless && context.hovered_link.is_some_and(|run| run.covers(row, col)) {
-            push_hover_underline(out, &paint, origin_x, origin_y, metrics);
+            push_hover_underline(
+                out,
+                &paint,
+                origin_x,
+                origin_y,
+                metrics,
+                context.underline_stroke,
+            );
         }
 
         if on_cursor && !inverted_by_cursor {
@@ -938,6 +954,134 @@ pub fn images_of(state: &TerminalState, metrics: CellMetrics) -> Vec<ImageQuad> 
     quads
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Margins {
+    pub left: u32,
+    pub top: u32,
+    pub right: u32,
+    pub bottom: u32,
+}
+
+pub fn padding_rects(
+    state: &TerminalState,
+    paints: &Paints,
+    metrics: CellMetrics,
+    transparency: Transparency,
+    margins: Margins,
+) -> Vec<Rect> {
+    let size = state.size();
+    let mut rects: Vec<Rect> = Vec::new();
+    if size.rows == 0 || size.cols == 0 {
+        return rects;
+    }
+    let edge = |row: usize, col: usize| -> Option<Srgb> {
+        let cell = state.screen().cell(row, col);
+        let paint = paint_of(cell, state.occupancy(row, col), paints);
+        let explicit =
+            cell.has(ATTR_REVERSE) || !matches!(WireColor::unpack(cell.bg), WireColor::Default);
+        let fills = if transparency.see_through_background() {
+            explicit
+        } else {
+            paint.background != paints.background
+        };
+        fills.then_some(paint.background)
+    };
+    let (width, height) = (metrics.width as i32, metrics.height as i32);
+    let (grid_width, grid_height) = (width * size.cols as i32, height * size.rows as i32);
+    let (left, top) = (margins.left as i32, margins.top as i32);
+    let (last_row, last_col) = (size.rows - 1, size.cols - 1);
+
+    let mut push = |color: Option<Srgb>, x: i32, y: i32, w: u32, h: u32| {
+        let Some(color) = color else {
+            return;
+        };
+        if w == 0 || h == 0 {
+            return;
+        }
+        if let Some(previous) = rects.last_mut() {
+            if previous.color == color
+                && previous.x == x
+                && previous.width == w
+                && previous.y + previous.height as i32 == y
+            {
+                previous.height += h;
+                return;
+            }
+            if previous.color == color
+                && previous.y == y
+                && previous.height == h
+                && previous.x + previous.width as i32 == x
+            {
+                previous.width += w;
+                return;
+            }
+        }
+        rects.push(Rect {
+            x,
+            y,
+            width: w,
+            height: h,
+            color,
+        });
+    };
+
+    for row in 0..size.rows {
+        let y = row as i32 * height;
+        push(edge(row, 0), -left, y, margins.left, metrics.height);
+    }
+    for row in 0..size.rows {
+        let y = row as i32 * height;
+        push(
+            edge(row, last_col),
+            grid_width,
+            y,
+            margins.right,
+            metrics.height,
+        );
+    }
+    push(edge(0, 0), -left, -top, margins.left, margins.top);
+    for col in 0..size.cols {
+        push(
+            edge(0, col),
+            col as i32 * width,
+            -top,
+            metrics.width,
+            margins.top,
+        );
+    }
+    push(
+        edge(0, last_col),
+        grid_width,
+        -top,
+        margins.right,
+        margins.top,
+    );
+    push(
+        edge(last_row, 0),
+        -left,
+        grid_height,
+        margins.left,
+        margins.bottom,
+    );
+    for col in 0..size.cols {
+        push(
+            edge(last_row, col),
+            col as i32 * width,
+            grid_height,
+            metrics.width,
+            margins.bottom,
+        );
+    }
+    push(
+        edge(last_row, last_col),
+        grid_width,
+        grid_height,
+        margins.right,
+        margins.bottom,
+    );
+    rects
+}
+
 fn paint_of(cell: WireCell, occupancy: Occupancy, paints: &Paints) -> CellPaint {
     let mut foreground = paints.foreground(cell.fg);
     let mut background = paints.background(cell.bg);
@@ -1077,9 +1221,9 @@ fn push_decorations(
     out: &mut RowScene,
     cell: WireCell,
     paint: &CellPaint,
-    origin_x: i32,
-    origin_y: i32,
+    (origin_x, origin_y): (i32, i32),
     metrics: CellMetrics,
+    underline_stroke: u32,
     paints: &Paints,
     inkless: bool,
 ) {
@@ -1094,13 +1238,14 @@ fn push_decorations(
         WireColor::Default => paint.foreground,
         _ => paints.foreground(cell.underline_color),
     };
-    let stroke = metrics.stroke.max(1);
+    let strike = metrics.stroke.max(1);
+    let stroke = underline_stroke.max(1);
     let underline_y = origin_y + metrics.underline_top as i32;
-    let floor = origin_y + metrics.height as i32 - stroke as i32;
+    let bottom = origin_y + metrics.height as i32;
     let mut line = |y: i32, x: i32, width: u32, height: u32| {
         out.rects.push(Rect {
             x,
-            y: y.clamp(origin_y, floor),
+            y: y.clamp(origin_y, (bottom - height as i32).max(origin_y)),
             width,
             height,
             color,
@@ -1140,7 +1285,7 @@ fn push_decorations(
     }
     if struck {
         let y = origin_y + metrics.strikeout_top as i32;
-        line(y, origin_x, metrics.width, stroke);
+        line(y, origin_x, metrics.width, strike);
     }
 }
 
@@ -1150,8 +1295,9 @@ fn push_hover_underline(
     origin_x: i32,
     origin_y: i32,
     metrics: CellMetrics,
+    underline_stroke: u32,
 ) {
-    let stroke = metrics.stroke.max(1);
+    let stroke = underline_stroke.max(1);
     let floor = origin_y + metrics.height as i32 - stroke as i32;
     out.rects.push(Rect {
         x: origin_x,
@@ -1205,7 +1351,7 @@ fn push_cursor(
 mod tests {
     use super::*;
     use crate::atlas::Lookup;
-    use crate::font::{FontStack, DEFAULT_FONT_SIZE};
+    use crate::font::{FontOptions, FontStack, DEFAULT_FONT_SIZE};
     use crate::screen_buffer::painter::{self, Painter, Place};
     use zellij_utils::structured_render::{GraphicsRecord, PaneRect, PANE_SELECTABLE};
 
@@ -1956,6 +2102,206 @@ mod tests {
             .any(|rect| rect.color == color::indexed(208)));
     }
 
+    fn thick_underline_cache() -> GlyphCache {
+        GlyphCache::new(
+            FontStack::build(&FontOptions {
+                system_fonts: false,
+                cell: crate::font::CellAdjust {
+                    underline_thickness: 2.0,
+                    ..crate::font::CellAdjust::default()
+                },
+                ..FontOptions::default()
+            })
+            .unwrap(),
+        )
+    }
+
+    #[test]
+    fn a_thicker_underline_is_drawn_thicker_and_leaves_the_strikeout_alone() {
+        let mut cache = thick_underline_cache();
+        let metrics = cache.metrics();
+        let thick = metrics.stroke + 2;
+        let state = Painter::state(1, 2, |painter| {
+            painter.styled(0, 0, "A", |cell| {
+                cell.attrs |= (UNDERLINE_STRAIGHT
+                    << zellij_utils::structured_render::UNDERLINE_SHIFT)
+                    | ATTR_STRIKE;
+            });
+        });
+        let scene = build(&state, &mut cache);
+        assert!(
+            scene
+                .rects
+                .iter()
+                .any(|rect| rect.y == metrics.underline_top as i32
+                    && rect.height == thick
+                    && rect.width == metrics.width),
+            "{:?}",
+            scene.rects
+        );
+        assert!(
+            scene
+                .rects
+                .iter()
+                .any(|rect| rect.y == metrics.strikeout_top as i32
+                    && rect.height == metrics.stroke),
+            "{:?}",
+            scene.rects
+        );
+        assert!(scene
+            .rects
+            .iter()
+            .all(|rect| rect.y + rect.height as i32 <= metrics.height as i32));
+    }
+
+    #[test]
+    fn a_hovered_link_is_underlined_at_the_adjusted_thickness() {
+        let mut cache = thick_underline_cache();
+        let metrics = cache.metrics();
+        let state = Painter::state(1, 4, |painter| {
+            painter.links(&[(1, "https://example.com")]);
+            painter.linked(0, 0, "ab", 1);
+        });
+        let run = LinkRun {
+            id: 1,
+            uri: "https://example.com".to_owned(),
+            spans: vec![(0, 0, 1)],
+        };
+        let scene = build_at(
+            &state,
+            &mut cache,
+            BlinkPhase::On,
+            &Paints::default(),
+            CursorOptions::default(),
+            Some(&run),
+            None,
+        );
+        let strokes = scene
+            .rects
+            .iter()
+            .filter(|rect| rect.height == metrics.stroke + 2 && rect.width == metrics.width)
+            .count();
+        assert_eq!(strokes, 2, "{:?}", scene.rects);
+    }
+
+    fn edge_state() -> TerminalState {
+        Painter::state(2, 3, |painter| {
+            painter.styled(0, 0, "a", |cell| {
+                cell.bg = WireColor::Indexed(1).pack();
+            });
+            painter.text(0, 1, "b");
+            painter.styled(1, 2, "c", |cell| {
+                cell.bg = WireColor::Indexed(4).pack();
+            });
+        })
+    }
+
+    fn margins() -> Margins {
+        Margins {
+            left: 5,
+            top: 3,
+            right: 7,
+            bottom: 2,
+        }
+    }
+
+    fn painted(rects: &[Rect], x: i32, y: i32) -> Option<Srgb> {
+        rects
+            .iter()
+            .rev()
+            .find(|rect| {
+                x >= rect.x
+                    && x < rect.x + rect.width as i32
+                    && y >= rect.y
+                    && y < rect.y + rect.height as i32
+            })
+            .map(|rect| rect.color)
+    }
+
+    #[test]
+    fn extended_padding_continues_the_colour_of_the_nearest_edge_cell() {
+        let state = edge_state();
+        let metrics = cache().metrics();
+        let rects = padding_rects(
+            &state,
+            &Paints::default(),
+            metrics,
+            Transparency::OPAQUE,
+            margins(),
+        );
+        let (w, h) = (metrics.width as i32, metrics.height as i32);
+        let red = color::indexed(1);
+        let blue = color::indexed(4);
+        assert_eq!(painted(&rects, -1, 0), Some(red), "left of the red cell");
+        assert_eq!(painted(&rects, -5, -3), Some(red), "top-left corner");
+        assert_eq!(painted(&rects, 0, -1), Some(red), "above the red cell");
+        assert_eq!(painted(&rects, w, -1), None, "above a default cell");
+        assert_eq!(
+            painted(&rects, 3 * w, h),
+            Some(blue),
+            "right of the blue cell"
+        );
+        assert_eq!(
+            painted(&rects, 2 * w, 2 * h),
+            Some(blue),
+            "below the blue cell"
+        );
+        assert_eq!(
+            painted(&rects, 3 * w + 6, 2 * h + 1),
+            Some(blue),
+            "bottom-right corner"
+        );
+        assert_eq!(painted(&rects, -1, h), None, "left of a default cell");
+        assert!(rects.iter().all(|rect| {
+            let inside_x = rect.x >= 0 && rect.x + rect.width as i32 <= 3 * w;
+            let inside_y = rect.y >= 0 && rect.y + rect.height as i32 <= 2 * h;
+            !(inside_x && inside_y)
+        }));
+    }
+
+    #[test]
+    fn see_through_padding_paints_only_cells_with_their_own_background() {
+        let state = Painter::state(1, 2, |painter| {
+            painter.styled(0, 0, "a", |cell| {
+                cell.bg = WireColor::Indexed(1).pack();
+            });
+            painter.text(0, 1, "b");
+        });
+        let mut paints = Paints::default();
+        paints.background = color::indexed(1);
+        let metrics = cache().metrics();
+        let see_through = Transparency {
+            opacity: 0.5,
+            mode: OpacityMode::Background,
+        };
+        let rects = padding_rects(&state, &paints, metrics, see_through, margins());
+        assert_eq!(painted(&rects, -1, 0), Some(color::indexed(1)));
+        assert_eq!(
+            painted(&rects, 2 * metrics.width as i32, 0),
+            None,
+            "a default-background edge must stay see-through like the grid"
+        );
+
+        let opaque = padding_rects(&state, &paints, metrics, Transparency::OPAQUE, margins());
+        assert_eq!(
+            painted(&opaque, -1, 0),
+            None,
+            "an opaque window leaves a cell matching the clear colour to the clear"
+        );
+    }
+
+    #[test]
+    fn padding_with_no_margins_draws_nothing() {
+        let rects = padding_rects(
+            &edge_state(),
+            &Paints::default(),
+            cache().metrics(),
+            Transparency::OPAQUE,
+            Margins::default(),
+        );
+        assert!(rects.is_empty(), "{:?}", rects);
+    }
+
     fn decoration_rows(scene: &Scene) -> Vec<i32> {
         let mut rows: Vec<i32> = scene.rects.iter().map(|rect| rect.y).collect();
         rows.sort_unstable();
@@ -2547,6 +2893,7 @@ mod ligature_tests {
             size: DEFAULT_FONT_SIZE,
             system_fonts: false,
             ligatures,
+            ..crate::font::FontOptions::default()
         })
         .unwrap()
     }

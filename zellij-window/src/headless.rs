@@ -320,8 +320,24 @@ impl Headless {
         atlases: Atlases<'_>,
     ) -> Result<Image> {
         let (width, height) = (scene.width(), scene.height());
+        self.render_retained_framed(
+            scene,
+            atlases,
+            (width, height),
+            crate::renderer::Frame::default(),
+        )
+    }
+
+    pub fn render_retained_framed(
+        &mut self,
+        scene: &crate::retained::RetainedScene,
+        atlases: Atlases<'_>,
+        (width, height): (u32, u32),
+        frame: crate::renderer::Frame<'_>,
+    ) -> Result<Image> {
         self.bind_target(width, height)?;
-        self.renderer.draw_retained(scene, atlases, (width, height));
+        self.renderer
+            .draw_retained(scene, atlases, (width, height), frame);
         Ok(self.read_back(width, height))
     }
 

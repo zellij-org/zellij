@@ -1,11 +1,11 @@
-use crate::font::FaceStyle;
+use crate::font::FaceRequest;
 use crate::platform::Platform;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Face {
     pub families: Vec<String>,
     pub monospaced: bool,
-    pub bold: bool,
+    pub weight: u16,
     pub italic: bool,
 }
 
@@ -40,8 +40,23 @@ fn named(face: &Face, family: &str) -> bool {
         .any(|name| name.eq_ignore_ascii_case(family))
 }
 
-fn style_distance(face: &Face, style: FaceStyle) -> u8 {
-    2 * u8::from(face.bold != style.is_bold()) + u8::from(face.italic != style.is_italic())
+const PIVOT_WEIGHT: u16 = 400;
+
+fn weight_distance(weight: u16, target: u16) -> (u16, bool) {
+    let distance = weight.abs_diff(target);
+    let wrong_side = if target >= PIVOT_WEIGHT {
+        weight < target
+    } else {
+        weight > target
+    };
+    (distance, wrong_side)
+}
+
+fn style_distance(face: &Face, request: FaceRequest) -> ((u16, bool), bool) {
+    (
+        weight_distance(face.weight, request.weight),
+        face.italic != request.italic,
+    )
 }
 
 fn preference_rank(face: &Face, preferred: &[&str]) -> usize {
@@ -51,24 +66,24 @@ fn preference_rank(face: &Face, preferred: &[&str]) -> usize {
         .unwrap_or(preferred.len())
 }
 
-pub fn fallback_order(faces: &[Face], preferred: &[&str], style: FaceStyle) -> Vec<usize> {
+pub fn fallback_order(faces: &[Face], preferred: &[&str], request: FaceRequest) -> Vec<usize> {
     let mut order: Vec<usize> = (0..faces.len()).collect();
     order.sort_by_key(|index| {
         let face = &faces[*index];
         (
             preference_rank(face, preferred),
             !face.monospaced,
-            style_distance(face, style),
+            style_distance(face, request),
             *index,
         )
     });
     order
 }
 
-pub fn family_choice(faces: &[Face], family: &str, style: FaceStyle) -> Option<usize> {
+pub fn family_choice(faces: &[Face], family: &str, request: FaceRequest) -> Option<usize> {
     (0..faces.len())
         .filter(|index| named(&faces[*index], family))
-        .min_by_key(|index| (style_distance(&faces[*index], style), *index))
+        .min_by_key(|index| (style_distance(&faces[*index], request), *index))
 }
 
 #[cfg(any(target_os = "macos", windows))]
@@ -79,18 +94,18 @@ mod scanner {
     use std::path::PathBuf;
     use std::sync::Mutex;
 
-    use super::{fallback_order, family_choice, preferred_fallbacks, Face};
-    use crate::font::FaceStyle;
-    use crate::platform::Platform;
+    use std::collections::HashMap;
 
-    const BOLD_WEIGHT: u16 = 600;
+    use super::{fallback_order, family_choice, preferred_fallbacks, Face};
+    use crate::font::FaceRequest;
+    use crate::platform::Platform;
 
     pub struct Scanner {
         database: fontdb::Database,
         ids: Vec<fontdb::ID>,
         paths: Vec<PathBuf>,
         faces: Vec<Face>,
-        orders: [Vec<usize>; 4],
+        orders: Mutex<HashMap<FaceRequest, Vec<usize>>>,
     }
 
     impl Scanner {
@@ -128,27 +143,19 @@ mod scanner {
                 faces.push(Face {
                     families: info.families.iter().map(|(name, _)| name.clone()).collect(),
                     monospaced: info.monospaced,
-                    bold: info.weight.0 >= BOLD_WEIGHT,
+                    weight: info.weight.0,
                     italic: info.style != fontdb::Style::Normal,
                 });
             }
             if faces.is_empty() {
                 return None;
             }
-            let preferred = preferred_fallbacks(Platform::current());
-            let orders = [
-                FaceStyle::Regular,
-                FaceStyle::Bold,
-                FaceStyle::Italic,
-                FaceStyle::BoldItalic,
-            ]
-            .map(|style| fallback_order(&faces, preferred, style));
             Some(Self {
                 database,
                 ids,
                 paths,
                 faces,
-                orders,
+                orders: Mutex::new(HashMap::new()),
             })
         }
 
@@ -166,15 +173,36 @@ mod scanner {
                 .unwrap_or(false)
         }
 
-        pub fn match_codepoint(&self, style: FaceStyle, character: char) -> Option<(PathBuf, u32)> {
-            self.orders[style.index()]
+        fn order(&self, request: FaceRequest) -> Vec<usize> {
+            let mut orders = match self.orders.lock() {
+                Ok(orders) => orders,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            orders
+                .entry(request)
+                .or_insert_with(|| {
+                    fallback_order(
+                        &self.faces,
+                        preferred_fallbacks(Platform::current()),
+                        request,
+                    )
+                })
+                .clone()
+        }
+
+        pub fn match_codepoint(
+            &self,
+            request: FaceRequest,
+            character: char,
+        ) -> Option<(PathBuf, u32)> {
+            self.order(request)
                 .iter()
                 .find(|index| self.covers(**index, character))
                 .and_then(|index| self.located(*index))
         }
 
-        pub fn match_family(&self, family: &str, style: FaceStyle) -> Option<(PathBuf, u32)> {
-            family_choice(&self.faces, family, style).and_then(|index| self.located(index))
+        pub fn match_family(&self, family: &str, request: FaceRequest) -> Option<(PathBuf, u32)> {
+            family_choice(&self.faces, family, request).and_then(|index| self.located(index))
         }
     }
 }
@@ -182,14 +210,106 @@ mod scanner {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::font::FaceStyle;
 
     fn face(family: &str, monospaced: bool, bold: bool, italic: bool) -> Face {
         Face {
             families: vec![family.to_owned()],
             monospaced,
-            bold,
+            weight: if bold { 700 } else { 400 },
             italic,
         }
+    }
+
+    fn weighted(family: &str, weight: u16) -> Face {
+        Face {
+            families: vec![family.to_owned()],
+            monospaced: true,
+            weight,
+            italic: false,
+        }
+    }
+
+    fn upright(weight: u16) -> FaceRequest {
+        FaceRequest {
+            weight,
+            italic: false,
+        }
+    }
+
+    fn weights() -> Vec<Face> {
+        vec![
+            weighted("Mono", 100),
+            weighted("Mono", 300),
+            weighted("Mono", 400),
+            weighted("Mono", 500),
+            weighted("Mono", 700),
+        ]
+    }
+
+    #[test]
+    fn the_default_request_picks_regular_over_thin_light_and_medium() {
+        assert_eq!(
+            family_choice(&weights(), "Mono", FaceStyle::Regular.into()),
+            Some(2)
+        );
+        let mut shuffled = weights();
+        shuffled.rotate_left(3);
+        assert_eq!(
+            shuffled[family_choice(&shuffled, "Mono", FaceStyle::Regular.into()).unwrap()].weight,
+            400
+        );
+    }
+
+    #[test]
+    fn a_medium_request_picks_medium() {
+        assert_eq!(family_choice(&weights(), "Mono", upright(500)), Some(3));
+    }
+
+    #[test]
+    fn bold_picks_the_heavier_face() {
+        assert_eq!(
+            family_choice(&weights(), "Mono", FaceStyle::Bold.into()),
+            Some(4)
+        );
+        assert_eq!(
+            family_choice(
+                &weights(),
+                "Mono",
+                FaceRequest::weighted(FaceStyle::Bold, 500)
+            ),
+            Some(4)
+        );
+    }
+
+    #[test]
+    fn ties_go_heavier_from_regular_up_and_lighter_below_it() {
+        let faces = vec![
+            weighted("Mono", 300),
+            weighted("Mono", 500),
+            weighted("Mono", 200),
+            weighted("Mono", 400),
+        ];
+        assert_eq!(family_choice(&faces, "Mono", upright(450)), Some(1));
+        assert_eq!(family_choice(&faces, "Mono", upright(250)), Some(2));
+        assert_eq!(
+            family_choice(&faces[..2], "Mono", upright(400)),
+            Some(1),
+            "with no exact match a regular request leans heavier"
+        );
+        assert_eq!(
+            family_choice(&faces[..3], "Mono", upright(250)),
+            Some(2),
+            "below regular a request leans lighter"
+        );
+    }
+
+    #[test]
+    fn a_light_request_takes_the_nearest_face_and_the_lighter_of_two_equals() {
+        let faces = vec![weighted("Mono", 400), weighted("Mono", 100)];
+        assert_eq!(family_choice(&faces, "Mono", upright(300)), Some(0));
+        let faces = vec![weighted("Mono", 400), weighted("Mono", 200)];
+        assert_eq!(family_choice(&faces, "Mono", upright(300)), Some(1));
     }
 
     #[test]
@@ -201,7 +321,7 @@ mod tests {
             face("CJK", false, false, false),
         ];
         assert_eq!(
-            fallback_order(&faces, &["mono", "CJK", "Emoji"], FaceStyle::Regular),
+            fallback_order(&faces, &["mono", "CJK", "Emoji"], FaceStyle::Regular.into()),
             vec![2, 3, 1, 0]
         );
     }
@@ -215,7 +335,7 @@ mod tests {
             face("Other Fixed", true, false, false),
         ];
         assert_eq!(
-            fallback_order(&faces, &[], FaceStyle::Regular),
+            fallback_order(&faces, &[], FaceStyle::Regular.into()),
             vec![1, 3, 0, 2]
         );
     }
@@ -229,11 +349,11 @@ mod tests {
             face("Mono", true, true, true),
         ];
         assert_eq!(
-            fallback_order(&faces, &["Mono"], FaceStyle::Bold),
+            fallback_order(&faces, &["Mono"], FaceStyle::Bold.into()),
             vec![1, 3, 0, 2]
         );
         assert_eq!(
-            fallback_order(&faces, &["Mono"], FaceStyle::Italic),
+            fallback_order(&faces, &["Mono"], FaceStyle::Italic.into()),
             vec![2, 0, 3, 1]
         );
     }
@@ -246,18 +366,21 @@ mod tests {
             face("Iosevka Term", true, true, false),
         ];
         assert_eq!(
-            family_choice(&faces, "iosevka term", FaceStyle::Bold),
+            family_choice(&faces, "iosevka term", FaceStyle::Bold.into()),
             Some(2)
         );
         assert_eq!(
-            family_choice(&faces, "Iosevka Term", FaceStyle::BoldItalic),
+            family_choice(&faces, "Iosevka Term", FaceStyle::BoldItalic.into()),
             Some(2)
         );
         assert_eq!(
-            family_choice(&faces, "Iosevka Term", FaceStyle::Italic),
+            family_choice(&faces, "Iosevka Term", FaceStyle::Italic.into()),
             Some(1)
         );
-        assert_eq!(family_choice(&faces, "Missing", FaceStyle::Regular), None);
+        assert_eq!(
+            family_choice(&faces, "Missing", FaceStyle::Regular.into()),
+            None
+        );
     }
 
     #[test]

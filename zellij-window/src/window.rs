@@ -41,13 +41,13 @@ use crate::options::{Change, Options};
 use crate::pacing::{Decision, Pacer};
 use crate::palette;
 use crate::platform::Platform;
-use crate::renderer::Renderer;
+use crate::renderer::{Frame, Renderer};
 use crate::retained::{self, Damage, RetainedScene};
-use crate::scene::{self, BlinkPhase, Transparency};
+use crate::scene::{self, BlinkPhase, Margins, Transparency};
 use crate::settings::Settings;
 use crate::terminal::{self, FrameError, TerminalState};
 use crate::window_state::{self, Shown, Startup, WindowState};
-use zellij_utils::input::window::{NotificationMode, StartupMode};
+use zellij_utils::input::window::{NotificationMode, PaddingColor, StartupMode};
 
 const BLINK_INTERVAL: Duration = Duration::from_millis(500);
 const DISPLAY_RECHECK: Duration = Duration::from_secs(1);
@@ -122,7 +122,8 @@ struct App {
     pointer: PointerState,
     composition: Composition,
     composed_row: Option<usize>,
-    ime_area: Option<(i32, i32)>,
+    ime_area: Option<(i32, i32, u32, u32)>,
+    origin: (i32, i32),
     hovered_link: Option<LinkRun>,
     armed_link: Option<links::Armed>,
     clipboard: ClipboardHandle,
@@ -168,6 +169,20 @@ impl App {
     }
 
     fn rebuild_fonts_zoomed(&mut self, scale: f64, zoom: f64) -> bool {
+        if !self.rebuild_fonts_quietly(scale, zoom) {
+            return false;
+        }
+        let size = self
+            .surfaces
+            .as_ref()
+            .map(|surfaces| surfaces.window.inner_size());
+        if let Some(size) = size {
+            self.relayout(size.width, size.height);
+        }
+        true
+    }
+
+    fn rebuild_fonts_quietly(&mut self, scale: f64, zoom: f64) -> bool {
         match self.options.font.stack(scale * zoom) {
             Ok(fonts) => {
                 self.metrics = fonts.metrics();
@@ -184,15 +199,73 @@ impl App {
                 return false;
             },
         }
-        let size = self
+        true
+    }
+
+    fn relayout(&mut self, width: u32, height: u32) {
+        self.retained.mark_everything();
+        self.schedule_draw();
+        self.reflow(width, height);
+    }
+
+    fn rescale_keeping_cells(&mut self, scale: f64, writer: &mut winit::event::InnerSizeWriter) {
+        if !(scale.is_finite() && scale > 0.0) || scale == self.scale {
+            return;
+        }
+        let (windowed, cells) = (self.shown == Shown::Windowed, self.windowed_cells);
+        if !self.rebuild_fonts_quietly(scale, self.zoom) {
+            return;
+        }
+        if windowed && self.surfaces.is_some() {
+            let exact = self.exact_size(cells.0, cells.1);
+            if writer.request_inner_size(exact).is_ok() {
+                self.relayout(exact.width, exact.height);
+                return;
+            }
+        }
+        if let Some(size) = self
             .surfaces
             .as_ref()
-            .map(|surfaces| surfaces.window.inner_size());
-        if let Some(size) = size {
-            self.schedule_draw();
-            self.reflow(size.width, size.height);
+            .map(|surfaces| surfaces.window.inner_size())
+        {
+            self.relayout(size.width, size.height);
         }
-        true
+    }
+
+    fn padding_px(&self) -> Margins {
+        let pixels = |logical: f32| (logical as f64 * self.scale).round().max(0.0) as u32;
+        let padding = self.options.padding;
+        Margins {
+            left: pixels(padding.left),
+            top: pixels(padding.top),
+            right: pixels(padding.right),
+            bottom: pixels(padding.bottom),
+        }
+    }
+
+    fn exact_size(&self, cols: usize, rows: usize) -> winit::dpi::PhysicalSize<u32> {
+        let padding = self.padding_px();
+        winit::dpi::PhysicalSize::new(
+            self.metrics.width * cols as u32 + padding.left + padding.right,
+            self.metrics.height * rows as u32 + padding.top + padding.bottom,
+        )
+    }
+
+    fn settle_startup_size(&mut self) {
+        if self.shown != Shown::Windowed {
+            return;
+        }
+        let exact = self.exact_size(self.startup.cols, self.startup.rows);
+        let Some(surfaces) = &self.surfaces else {
+            return;
+        };
+        if surfaces.window.inner_size() == exact {
+            return;
+        }
+        let applied = surfaces.window.request_inner_size(exact);
+        if let Some(size) = applied {
+            self.resized(size.width, size.height);
+        }
     }
 
     fn zoom_by(&mut self, factor: f64) {
@@ -236,6 +309,14 @@ impl App {
                     self.rebuild_fonts(self.scale);
                 }
             }
+        } else if change.layout {
+            let size = self
+                .surfaces
+                .as_ref()
+                .map(|surfaces| surfaces.window.inner_size());
+            if let Some(size) = size {
+                self.relayout(size.width, size.height);
+            }
         } else if change.needs_redraw() {
             self.retained.mark_everything();
             self.schedule_draw();
@@ -276,13 +357,20 @@ impl App {
         );
     }
 
+    fn grid(&self, width: u32, height: u32) -> GridFit {
+        fit_grid(
+            (width, height),
+            (self.metrics.width, self.metrics.height),
+            self.padding_px(),
+            self.options.padding_balance,
+        )
+    }
+
     fn fitted(&self, width: u32, height: u32) -> Geometry {
-        let cols = (width / self.metrics.width) as usize;
-        let rows = (height / self.metrics.height) as usize;
-        let clamped = terminal::clamped(rows, cols);
+        let grid = self.grid(width, height);
         Geometry {
-            rows: clamped.rows,
-            cols: clamped.cols,
+            rows: grid.rows,
+            cols: grid.cols,
             cell_width: self.metrics.width as usize,
             cell_height: self.metrics.height as usize,
         }
@@ -342,6 +430,13 @@ impl App {
     }
 
     fn reflow(&mut self, width: u32, height: u32) {
+        let grid = self.grid(width, height);
+        if grid.origin != self.origin {
+            self.origin = grid.origin;
+            self.pointer.set_origin(grid.origin.0, grid.origin.1);
+            self.retained.mark_everything();
+            self.schedule_draw();
+        }
         let next = self.fitted(width, height);
         self.state
             .set_cell_size(self.metrics.width, self.metrics.height);
@@ -749,8 +844,10 @@ impl App {
     fn follow_cursor_area(&mut self) {
         let (row, col) = self.state.cursor_position();
         let area = (
-            (col as u32 * self.metrics.width) as i32,
-            (row as u32 * self.metrics.height) as i32,
+            self.origin.0 + (col as u32 * self.metrics.width) as i32,
+            self.origin.1 + (row as u32 * self.metrics.height) as i32,
+            self.metrics.width,
+            self.metrics.height,
         );
         if self.ime_area == Some(area) {
             return;
@@ -760,7 +857,7 @@ impl App {
         };
         surfaces.window.set_ime_cursor_area(
             winit::dpi::PhysicalPosition::new(area.0, area.1),
-            winit::dpi::PhysicalSize::new(self.metrics.width, self.metrics.height),
+            winit::dpi::PhysicalSize::new(area.2, area.3),
         );
         self.ime_area = Some(area);
     }
@@ -792,9 +889,41 @@ impl App {
         };
         let size = surfaces.window.inner_size();
         let target = (size.width.max(1), size.height.max(1));
-        surfaces
-            .renderer
-            .draw_retained(&self.retained, self.cache.atlases(), target);
+        let margins = match self.options.padding_color {
+            PaddingColor::Background => Vec::new(),
+            PaddingColor::Extend => {
+                let grid = self.state.size();
+                let (grid_width, grid_height) = (
+                    self.metrics.width * grid.cols as u32,
+                    self.metrics.height * grid.rows as u32,
+                );
+                let (left, top) = (self.origin.0.max(0) as u32, self.origin.1.max(0) as u32);
+                scene::padding_rects(
+                    &self.state,
+                    &self.options.paints,
+                    self.metrics,
+                    self.effective_transparency(),
+                    Margins {
+                        left,
+                        top,
+                        right: target.0.saturating_sub(left + grid_width),
+                        bottom: target.1.saturating_sub(top + grid_height),
+                    },
+                )
+            },
+        };
+        let Some(surfaces) = self.surfaces.as_mut() else {
+            return;
+        };
+        surfaces.renderer.draw_retained(
+            &self.retained,
+            self.cache.atlases(),
+            target,
+            Frame {
+                origin: self.origin,
+                margins: &margins,
+            },
+        );
         if let Err(e) = surfaces.surface.swap_buffers(&surfaces.context) {
             eprintln!("zellij-window: buffer swap failed: {}", e);
         }
@@ -884,14 +1013,14 @@ impl App {
     }
 
     fn requested_size(&self) -> winit::dpi::Size {
-        let width = self.metrics.width * self.startup.cols as u32;
-        let height = self.metrics.height * self.startup.rows as u32;
-        if self.startup.restored {
-            winit::dpi::LogicalSize::new(width as f64 / self.scale, height as f64 / self.scale)
-                .into()
-        } else {
-            winit::dpi::PhysicalSize::new(width, height).into()
-        }
+        let width = (self.metrics.width * self.startup.cols as u32) as f64 / self.scale;
+        let height = (self.metrics.height * self.startup.rows as u32) as f64 / self.scale;
+        let padding = self.options.padding;
+        winit::dpi::LogicalSize::new(
+            width + padding.horizontal() as f64,
+            height + padding.vertical() as f64,
+        )
+        .into()
     }
 
     fn open_window(&mut self, event_loop: &ActiveEventLoop) -> Result<()> {
@@ -906,6 +1035,7 @@ impl App {
         self.schedule_draw();
         self.rescale(scale);
         self.resized(size.width, size.height);
+        self.settle_startup_size();
         Ok(())
     }
 
@@ -1024,9 +1154,12 @@ impl ApplicationHandler<Wake> for App {
                 self.resized(size.width, size.height);
             },
             WindowEvent::Moved(_) => self.follow_display_occasionally(),
-            WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+            WindowEvent::ScaleFactorChanged {
+                scale_factor,
+                mut inner_size_writer,
+            } => {
                 self.follow_display();
-                self.rescale(scale_factor);
+                self.rescale_keeping_cells(scale_factor, &mut inner_size_writer);
             },
             WindowEvent::ModifiersChanged(modifiers) => {
                 self.modifiers = modifiers.state();
@@ -1292,6 +1425,7 @@ impl Rendering {
             composition: Composition::new(),
             composed_row: None,
             ime_area: None,
+            origin: (0, 0),
             hovered_link: None,
             armed_link: None,
             clipboard,
@@ -1370,6 +1504,38 @@ impl Client {
                 .map_err(|_| anyhow!("the client thread panicked"))?,
             None => Err(anyhow!("there was no client thread to wait for")),
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct GridFit {
+    pub rows: usize,
+    pub cols: usize,
+    pub origin: (i32, i32),
+}
+
+pub(crate) fn fit_grid(
+    window: (u32, u32),
+    cell: (u32, u32),
+    padding: Margins,
+    balance: bool,
+) -> GridFit {
+    let (cell_width, cell_height) = (cell.0.max(1), cell.1.max(1));
+    let room_x = window.0.saturating_sub(padding.left + padding.right);
+    let room_y = window.1.saturating_sub(padding.top + padding.bottom);
+    let size = terminal::clamped(
+        (room_y / cell_height) as usize,
+        (room_x / cell_width) as usize,
+    );
+    let (mut x, mut y) = (padding.left, padding.top);
+    if balance {
+        x += room_x.saturating_sub(size.cols as u32 * cell_width) / 2;
+        y += room_y.saturating_sub(size.rows as u32 * cell_height) / 2;
+    }
+    GridFit {
+        rows: size.rows,
+        cols: size.cols,
+        origin: (x as i32, y as i32),
     }
 }
 
@@ -1471,6 +1637,41 @@ mod tests {
         }
     }
 
+    fn test_options(intercept_paste: bool) -> Options {
+        Options {
+            font: FontOptions {
+                family: None,
+                size: DEFAULT_FONT_SIZE,
+                system_fonts: false,
+                ligatures: DEFAULT_LIGATURES,
+                ..FontOptions::default()
+            },
+            paste_keys: if intercept_paste {
+                crate::options::default_paste_keys()
+            } else {
+                Vec::new()
+            },
+            zoom_in_keys: crate::options::default_zoom_in_keys(),
+            zoom_out_keys: crate::options::default_zoom_out_keys(),
+            zoom_reset_keys: crate::options::default_zoom_reset_keys(),
+            middle_click_paste: true,
+            open_links: true,
+            bell: zellij_utils::input::window::BellMode::Visual,
+            notifications: zellij_utils::input::window::NotificationMode::Attention,
+            paints: Paints::default(),
+            cursor_shape: None,
+            cursor_blink: None,
+            startup_mode: StartupMode::Windowed,
+            transparency: Transparency::OPAQUE,
+            blur: false,
+            padding: crate::options::Padding::default(),
+            padding_balance: false,
+            padding_color: PaddingColor::Background,
+            initial_cols: None,
+            initial_rows: None,
+        }
+    }
+
     struct Harness {
         app: App,
         server: FakeServer,
@@ -1480,36 +1681,7 @@ mod tests {
 
     impl Harness {
         fn new(expected: usize, intercept_paste: bool, clipboard_text: &str) -> Self {
-            Self::with(
-                expected,
-                Options {
-                    font: FontOptions {
-                        family: None,
-                        size: DEFAULT_FONT_SIZE,
-                        system_fonts: false,
-                        ligatures: DEFAULT_LIGATURES,
-                    },
-                    paste_keys: if intercept_paste {
-                        crate::options::default_paste_keys()
-                    } else {
-                        Vec::new()
-                    },
-                    zoom_in_keys: crate::options::default_zoom_in_keys(),
-                    zoom_out_keys: crate::options::default_zoom_out_keys(),
-                    zoom_reset_keys: crate::options::default_zoom_reset_keys(),
-                    middle_click_paste: true,
-                    open_links: true,
-                    bell: zellij_utils::input::window::BellMode::Visual,
-                    notifications: zellij_utils::input::window::NotificationMode::Attention,
-                    paints: Paints::default(),
-                    cursor_shape: None,
-                    cursor_blink: None,
-                    startup_mode: StartupMode::Windowed,
-                    transparency: Transparency::OPAQUE,
-                    blur: false,
-                },
-                clipboard_text,
-            )
+            Self::with(expected, test_options(intercept_paste), clipboard_text)
         }
 
         fn with(expected: usize, options: Options, clipboard_text: &str) -> Self {
@@ -1585,6 +1757,120 @@ mod tests {
 
     fn at(x: f64, y: f64) -> PhysicalPosition<f64> {
         PhysicalPosition::new(x, y)
+    }
+
+    fn margins(left: u32, top: u32, right: u32, bottom: u32) -> Margins {
+        Margins {
+            left,
+            top,
+            right,
+            bottom,
+        }
+    }
+
+    #[test]
+    fn without_padding_the_grid_starts_at_the_corner_and_leftovers_go_right_and_down() {
+        let fit = fit_grid((805, 413), (8, 20), Margins::default(), false);
+        assert_eq!((fit.cols, fit.rows, fit.origin), (100, 20, (0, 0)));
+    }
+
+    #[test]
+    fn padding_is_taken_off_the_window_before_the_grid_is_fitted() {
+        let fit = fit_grid((820, 430), (8, 20), margins(10, 5, 10, 5), false);
+        assert_eq!((fit.cols, fit.rows), (100, 21));
+        assert_eq!(fit.origin, (10, 5));
+        let fit = fit_grid((819, 430), (8, 20), margins(10, 5, 10, 6), false);
+        assert_eq!((fit.cols, fit.rows), (99, 20));
+        assert_eq!(fit.origin, (10, 5));
+    }
+
+    #[test]
+    fn balanced_padding_shares_the_leftover_pixels_on_both_sides() {
+        let fit = fit_grid((827, 437), (8, 20), margins(10, 5, 10, 5), true);
+        assert_eq!((fit.cols, fit.rows), (100, 21));
+        assert_eq!(fit.origin, (10 + 3, 5 + 3));
+        let unbalanced = fit_grid((827, 437), (8, 20), margins(10, 5, 10, 5), false);
+        assert_eq!(unbalanced.origin, (10, 5));
+    }
+
+    #[test]
+    fn a_window_too_small_for_padding_and_a_cell_still_holds_one_cell_at_the_padding() {
+        for balance in [false, true] {
+            let fit = fit_grid((15, 12), (8, 20), margins(10, 10, 10, 10), balance);
+            assert_eq!((fit.cols, fit.rows), (1, 1));
+            assert_eq!(fit.origin, (10, 10));
+            let fit = fit_grid((0, 0), (8, 20), margins(4, 4, 4, 4), balance);
+            assert_eq!((fit.cols, fit.rows, fit.origin), (1, 1, (4, 4)));
+        }
+    }
+
+    #[test]
+    fn a_reflow_with_padding_moves_the_pointer_and_reports_the_smaller_grid() {
+        let mut options = test_options(true);
+        options.padding = crate::options::Padding {
+            top: 10.0,
+            right: 10.0,
+            bottom: 10.0,
+            left: 20.0,
+        };
+        let mut harness = Harness::with(3, options, "");
+        harness.app.reflow(350, 420);
+        assert_eq!(harness.app.origin, (20, 10));
+        let geometry = harness.app.geometry.get();
+        assert_eq!((geometry.cols, geometry.rows), (40, 20));
+        harness
+            .app
+            .on_cursor_moved(at(20.0 + 8.0 * 3.0 + 1.0, 10.0 + 20.0 + 1.0));
+        assert_eq!(harness.app.pointer.cell(geometry), (3, 1));
+        assert_eq!(
+            harness.sent()[0],
+            ClientToServerMsg::TerminalResize {
+                new_size: zellij_utils::pane_size::Size { rows: 20, cols: 40 },
+            }
+        );
+    }
+
+    fn padded_harness() -> Harness {
+        let mut options = test_options(true);
+        options.padding = crate::options::Padding {
+            top: 3.0,
+            right: 5.0,
+            bottom: 7.0,
+            left: 11.0,
+        };
+        Harness::with(0, options, "")
+    }
+
+    #[test]
+    fn the_first_window_asks_for_its_cells_plus_padding_as_a_logical_size() {
+        let harness = padded_harness();
+        let startup = harness.app.startup;
+        let expected = winit::dpi::LogicalSize::new(
+            (8 * startup.cols + 11 + 5) as f64,
+            (20 * startup.rows + 3 + 7) as f64,
+        );
+        match harness.app.requested_size() {
+            winit::dpi::Size::Logical(size) => assert_eq!(size, expected),
+            other => panic!("the startup size must be logical, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn the_exact_size_holds_the_cells_and_the_padding_at_the_display_scale() {
+        let mut harness = padded_harness();
+        assert_eq!(
+            harness.app.exact_size(100, 30),
+            winit::dpi::PhysicalSize::new(8 * 100 + 16, 20 * 30 + 10)
+        );
+        harness.app.scale = 2.0;
+        assert_eq!(
+            harness.app.exact_size(100, 30),
+            winit::dpi::PhysicalSize::new(8 * 100 + 32, 20 * 30 + 20),
+            "padding is logical and must double with the display scale"
+        );
+        let exact = harness.app.exact_size(100, 30);
+        let fitted = harness.app.fitted(exact.width, exact.height);
+        assert_eq!((fitted.cols, fitted.rows), (100, 30));
     }
 
     #[test]

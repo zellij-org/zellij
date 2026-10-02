@@ -100,7 +100,14 @@ pub struct Startup {
     pub rows: usize,
     pub cols: usize,
     pub mode: StartupMode,
+    #[cfg_attr(not(test), allow(dead_code))]
     pub restored: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct InitialCells {
+    pub rows: Option<usize>,
+    pub cols: Option<usize>,
 }
 
 impl Startup {
@@ -110,16 +117,32 @@ impl Startup {
         rows: Option<usize>,
         cols: Option<usize>,
     ) -> Self {
+        Self::resolve_with(mode, saved, rows, cols, InitialCells::default())
+    }
+
+    pub fn resolve_with(
+        mode: StartupMode,
+        saved: Option<WindowState>,
+        rows: Option<usize>,
+        cols: Option<usize>,
+        initial: InitialCells,
+    ) -> Self {
         let saved = match mode {
             StartupMode::Remember => saved.filter(WindowState::is_sane),
             _ => None,
         };
+        let initial = InitialCells {
+            rows: initial.rows.filter(|rows| sane(*rows)),
+            cols: initial.cols.filter(|cols| sane(*cols)),
+        };
         Startup {
             rows: rows
                 .or(saved.map(|saved| saved.rows))
+                .or(initial.rows)
                 .unwrap_or(WindowArgs::DEFAULT_ROWS),
             cols: cols
                 .or(saved.map(|saved| saved.cols))
+                .or(initial.cols)
                 .unwrap_or(WindowArgs::DEFAULT_COLS),
             mode: match mode {
                 StartupMode::Remember => saved
@@ -299,5 +322,31 @@ mod tests {
         assert_eq!(startup.mode, StartupMode::Maximized);
         let rows_only = Startup::resolve(StartupMode::Remember, saved, Some(24), None);
         assert_eq!((rows_only.cols, rows_only.rows), (90, 24));
+    }
+
+    #[test]
+    fn initial_cells_apply_only_when_nothing_better_is_known() {
+        let initial = InitialCells {
+            rows: Some(30),
+            cols: Some(100),
+        };
+        let fresh = Startup::resolve_with(StartupMode::Remember, None, None, None, initial);
+        assert_eq!((fresh.cols, fresh.rows), (100, 30));
+        assert!(!fresh.restored);
+
+        let saved = Some(state(90, 25, Shown::Windowed));
+        let remembered = Startup::resolve_with(StartupMode::Remember, saved, None, None, initial);
+        assert_eq!((remembered.cols, remembered.rows), (90, 25));
+
+        let insane = Some(state(1, 25, Shown::Windowed));
+        let fallen_back = Startup::resolve_with(StartupMode::Remember, insane, None, None, initial);
+        assert_eq!((fallen_back.cols, fallen_back.rows), (100, 30));
+
+        let explicit = Startup::resolve_with(StartupMode::Remember, saved, Some(24), None, initial);
+        assert_eq!((explicit.cols, explicit.rows), (90, 24));
+
+        let maximized = Startup::resolve_with(StartupMode::Maximized, saved, None, None, initial);
+        assert_eq!((maximized.cols, maximized.rows), (100, 30));
+        assert_eq!(maximized.mode, StartupMode::Maximized);
     }
 }
