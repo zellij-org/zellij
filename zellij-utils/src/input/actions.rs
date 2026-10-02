@@ -413,6 +413,7 @@ pub enum Action {
     },
     /// Detach session and exit
     Detach,
+    ConfirmClose,
     /// Switch the host-terminal theme mode to dark (uses configured `theme_dark`).
     SetDarkTheme,
     /// Switch the host-terminal theme mode to light (uses configured `theme_light`).

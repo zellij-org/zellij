@@ -557,6 +557,12 @@ fn control_payload_to_server_msg(
             client_id: None,
             is_cli_client: false,
         },
+        WebClientToWebServerControlMessagePayload::ConfirmClose => ClientToServerMsg::Action {
+            action: Action::ConfirmClose,
+            terminal_id: None,
+            client_id: None,
+            is_cli_client: false,
+        },
         WebClientToWebServerControlMessagePayload::Unknown => {
             log::warn!("Ignoring unknown control message type from web client");
             return None;
@@ -918,6 +924,26 @@ mod tests {
                 is_cli_client: false,
             }
         );
+
+        let confirm = control_payload_to_server_msg(
+            WebClientToWebServerControlMessagePayload::ConfirmClose,
+            true,
+        )
+        .expect("message dropped");
+        assert_eq!(
+            confirm,
+            ClientToServerMsg::Action {
+                action: Action::ConfirmClose,
+                terminal_id: None,
+                client_id: None,
+                is_cli_client: false,
+            }
+        );
+        assert!(control_payload_to_server_msg(
+            WebClientToWebServerControlMessagePayload::ConfirmClose,
+            false
+        )
+        .is_none());
     }
 
     #[test]

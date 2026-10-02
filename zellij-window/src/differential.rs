@@ -1173,6 +1173,7 @@ mod tests {
                             None => CursorOptions {
                                 shape: Some(CursorShape::Beam),
                                 blink: Some(true),
+                                hollow: false,
                             },
                             Some(_) => CursorOptions::default(),
                         };

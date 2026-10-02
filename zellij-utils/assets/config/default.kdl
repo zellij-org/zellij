@@ -647,6 +647,26 @@ web_client {
 //     // chords to leave them all to the session.
 //     paste_keys "Ctrl Shift v" "Shift Insert"
 //
+//     // The chords that switch the window between fullscreen and the size it
+//     // had before. List no chords to leave them all to the session.
+//     fullscreen_keys "F11"
+//
+//     // Whether closing the window first asks, inside the focused pane, to
+//     // detach from the session or cancel. Closing again while it asks
+//     // detaches straight away.
+//     confirm_close true
+//
+//     // Whether the mouse pointer is hidden while typing, until it moves again
+//     hide_pointer_while_typing false
+//
+//     // Whether the cursor is drawn as an outlined block while the window is
+//     // not focused
+//     cursor_unfocused_hollow true
+//
+//     // The lowest allowed contrast ratio between text and its background, from
+//     // 1.0 (off) to 21.0; text colours are adjusted when below it.
+//     minimum_contrast 1.0
+//
 //     // Whether clicking an OSC 8 hyperlink opens it in the platform's default
 //     // handler. A plain left click opens it; over a pane whose program has
 //     // asked for mouse reporting, hold shift instead. Dragging is a selection

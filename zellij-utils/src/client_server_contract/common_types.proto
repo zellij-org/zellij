@@ -326,6 +326,7 @@ message Action {
     StartRenameTabByTabIdAction start_rename_tab_by_tab_id = 159;
     DismissInfoPopupsAction dismiss_info_popups = 160;
     OpenContextMenuAction open_context_menu = 161;
+    ConfirmCloseAction confirm_close = 162;
   }
 }
 
@@ -386,6 +387,7 @@ message CloseTabAction {}
 message ToggleTabAction {}
 message UndoRenameTabAction {}
 message DetachAction {}
+message ConfirmCloseAction {}
 message SetDarkThemeAction {}
 message SetLightThemeAction {}
 message ToggleThemeAction {}

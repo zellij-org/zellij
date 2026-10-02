@@ -7,7 +7,7 @@ use zellij_utils::structured_render::{
 };
 
 use crate::atlas::{AtlasEntry, GlyphCache, Lookup};
-use crate::color::{self, Paints, Srgb};
+use crate::color::{self, Contrast, Paints, Srgb};
 use crate::composition::Preedit;
 use crate::font::{CellMetrics, FaceStyle, FontId, GlyphContent, ShapedGlyph};
 use crate::kitty::Image;
@@ -249,11 +249,12 @@ pub fn build(state: &TerminalState, cache: &mut GlyphCache) -> Scene {
 pub struct CursorOptions {
     pub shape: Option<CursorShape>,
     pub blink: Option<bool>,
+    pub hollow: bool,
 }
 
 impl CursorOptions {
     pub fn blinks(&self, asked_for: bool) -> bool {
-        self.blink.unwrap_or(asked_for)
+        !self.hollow && self.blink.unwrap_or(asked_for)
     }
 }
 
@@ -333,11 +334,18 @@ pub struct RowContext<'a> {
     shaping: bool,
     preedit: Option<PreeditOverlay>,
     transparent_background: bool,
+    cursor_hollow: bool,
+    contrast: Option<&'a Contrast>,
 }
 
 impl<'a> RowContext<'a> {
     pub fn with_transparency(mut self, transparency: Transparency) -> Self {
         self.transparent_background = transparency.see_through_background();
+        self
+    }
+
+    pub fn with_contrast(mut self, contrast: &'a Contrast) -> Self {
+        self.contrast = contrast.is_active().then_some(contrast);
         self
     }
 
@@ -384,6 +392,8 @@ impl<'a> RowContext<'a> {
             shaping: cache.shapes_runs(),
             preedit,
             transparent_background: false,
+            cursor_hollow: cursor.hollow,
+            contrast: None,
         }
     }
 
@@ -437,13 +447,14 @@ pub fn build_row(
         };
         let on_cursor =
             context.cursor_visible && context.cursor_row == row && context.cursor_col == col;
-        let inverted_by_cursor = on_cursor && context.cursor_shape == CursorShape::Block;
+        let inverted_by_cursor =
+            on_cursor && context.cursor_shape == CursorShape::Block && !context.cursor_hollow;
 
         let blinked_out = context.phase == BlinkPhase::Off
             && composed.is_none()
             && state.blink_at(row, col).is_set()
             && !on_cursor;
-        let mut paint = paint_of(cell, occupancy, paints);
+        let mut paint = paint_of(cell, occupancy, paints, context.contrast);
         if blinked_out {
             paint.foreground = paint.background;
             paint.hidden = true;
@@ -451,7 +462,10 @@ pub fn build_row(
         if inverted_by_cursor {
             let glyph = paint.background;
             paint.background = paints.cursor_over(paint.foreground);
-            paint.foreground = glyph;
+            paint.foreground = match context.contrast {
+                Some(contrast) if !paint.hidden => contrast.apply(glyph, paint.background),
+                _ => glyph,
+            };
         }
         let explicit_background = inverted_by_cursor
             || cell.has(ATTR_REVERSE)
@@ -546,7 +560,7 @@ pub fn build_row(
             (origin_x, origin_y),
             metrics,
             context.underline_stroke,
-            paints,
+            (paints, context.contrast),
             inkless,
         );
 
@@ -561,7 +575,15 @@ pub fn build_row(
             );
         }
 
-        if on_cursor && !inverted_by_cursor {
+        if on_cursor && context.cursor_hollow {
+            push_hollow_cursor(
+                out,
+                origin_x,
+                origin_y,
+                metrics,
+                paints.cursor_over(paint.foreground),
+            );
+        } else if on_cursor && !inverted_by_cursor {
             push_cursor(
                 out,
                 context.cursor_shape,
@@ -786,7 +808,7 @@ pub fn ligating_sequences(state: &TerminalState, cache: &mut GlyphCache) -> Vec<
                 RowCell {
                     cell,
                     occupancy,
-                    paint: paint_of(cell, occupancy, &paints),
+                    paint: paint_of(cell, occupancy, &paints, None),
                     explicit_background: false,
                     on_cursor: false,
                     inverted_by_cursor: false,
@@ -976,7 +998,7 @@ pub fn padding_rects(
     }
     let edge = |row: usize, col: usize| -> Option<Srgb> {
         let cell = state.screen().cell(row, col);
-        let paint = paint_of(cell, state.occupancy(row, col), paints);
+        let paint = paint_of(cell, state.occupancy(row, col), paints, None);
         let explicit =
             cell.has(ATTR_REVERSE) || !matches!(WireColor::unpack(cell.bg), WireColor::Default);
         let fills = if transparency.see_through_background() {
@@ -1082,7 +1104,12 @@ pub fn padding_rects(
     rects
 }
 
-fn paint_of(cell: WireCell, occupancy: Occupancy, paints: &Paints) -> CellPaint {
+fn paint_of(
+    cell: WireCell,
+    occupancy: Occupancy,
+    paints: &Paints,
+    contrast: Option<&Contrast>,
+) -> CellPaint {
     let mut foreground = paints.foreground(cell.fg);
     let mut background = paints.background(cell.bg);
     let mut tint = OPAQUE;
@@ -1097,6 +1124,8 @@ fn paint_of(cell: WireCell, occupancy: Occupancy, paints: &Paints) -> CellPaint 
     let hidden = cell.has(ATTR_HIDDEN);
     if hidden {
         foreground = background;
+    } else if let Some(contrast) = contrast {
+        foreground = contrast.apply(foreground, background);
     }
 
     CellPaint {
@@ -1224,7 +1253,7 @@ fn push_decorations(
     (origin_x, origin_y): (i32, i32),
     metrics: CellMetrics,
     underline_stroke: u32,
-    paints: &Paints,
+    (paints, contrast): (&Paints, Option<&Contrast>),
     inkless: bool,
 ) {
     let underline = cell.underline_style();
@@ -1236,7 +1265,13 @@ fn push_decorations(
     let color = match WireColor::unpack(cell.underline_color) {
         WireColor::Default if inkless => return,
         WireColor::Default => paint.foreground,
-        _ => paints.foreground(cell.underline_color),
+        _ => {
+            let underline = paints.foreground(cell.underline_color);
+            match contrast {
+                Some(contrast) if !paint.hidden => contrast.apply(underline, paint.background),
+                _ => underline,
+            }
+        },
     };
     let strike = metrics.stroke.max(1);
     let stroke = underline_stroke.max(1);
@@ -1319,6 +1354,31 @@ fn columns(origin_x: i32, width: u32, period: u32) -> impl Iterator<Item = (i32,
     })
 }
 
+fn push_hollow_cursor(
+    out: &mut RowScene,
+    origin_x: i32,
+    origin_y: i32,
+    metrics: CellMetrics,
+    color: Srgb,
+) {
+    let stroke = metrics.stroke.max(1).min(metrics.width).min(metrics.height);
+    let (width, height) = (metrics.width, metrics.height);
+    for (x, y, w, h) in [
+        (0, 0, width, stroke),
+        (0, (height - stroke) as i32, width, stroke),
+        (0, 0, stroke, height),
+        ((width - stroke) as i32, 0, stroke, height),
+    ] {
+        out.rects.push(Rect {
+            x: origin_x + x,
+            y: origin_y + y,
+            width: w,
+            height: h,
+            color,
+        });
+    }
+}
+
 fn push_cursor(
     out: &mut RowScene,
     shape: CursorShape,
@@ -1351,6 +1411,7 @@ fn push_cursor(
 mod tests {
     use super::*;
     use crate::atlas::Lookup;
+    use crate::color::{DEFAULT_BACKGROUND, DEFAULT_FOREGROUND};
     use crate::font::{FontOptions, FontStack, DEFAULT_FONT_SIZE};
     use crate::screen_buffer::painter::{self, Painter, Place};
     use zellij_utils::structured_render::{GraphicsRecord, PaneRect, PANE_SELECTABLE};
@@ -1425,6 +1486,213 @@ mod tests {
             .find(|rect| rect.width == 8 && rect.height == 20)
     }
 
+    fn hollow(shape: CursorShape, phase: BlinkPhase) -> Scene {
+        scene_with_cursor(
+            1,
+            4,
+            |painter| {
+                painter.text(0, 0, "A");
+                painter.blinking_cursor(0, 0, shape);
+            },
+            CursorOptions {
+                shape: None,
+                blink: None,
+                hollow: true,
+            },
+            phase,
+        )
+    }
+
+    #[test]
+    fn an_unfocused_cursor_is_an_outline_that_leaves_the_cell_colours_alone() {
+        for shape in [
+            CursorShape::Block,
+            CursorShape::Beam,
+            CursorShape::Underline,
+        ] {
+            let scene = hollow(shape, BlinkPhase::On);
+            assert!(
+                cursor_block(&scene).is_none(),
+                "{:?}: the cell was filled",
+                shape
+            );
+            let outline: Vec<&Rect> = scene
+                .rects
+                .iter()
+                .filter(|rect| rect.x < 8 && rect.y < 20)
+                .collect();
+            assert_eq!(outline.len(), 4, "{:?}: {:?}", shape, scene.rects);
+            assert!(outline.iter().all(|rect| rect.color == DEFAULT_FOREGROUND));
+            assert!(outline
+                .iter()
+                .any(|rect| (rect.x, rect.y, rect.width, rect.height) == (0, 0, 8, 1)));
+            assert!(outline
+                .iter()
+                .any(|rect| (rect.x, rect.y, rect.width, rect.height) == (0, 19, 8, 1)));
+            assert!(outline
+                .iter()
+                .any(|rect| (rect.x, rect.y, rect.width, rect.height) == (0, 0, 1, 20)));
+            assert!(outline
+                .iter()
+                .any(|rect| (rect.x, rect.y, rect.width, rect.height) == (7, 0, 1, 20)));
+            assert_eq!(
+                scene.glyphs[0].color, DEFAULT_FOREGROUND,
+                "{:?}: the glyph was recoloured",
+                shape
+            );
+        }
+    }
+
+    #[test]
+    fn an_unfocused_cursor_does_not_blink() {
+        let off = hollow(CursorShape::Block, BlinkPhase::Off);
+        assert_eq!(
+            off.rects.iter().filter(|rect| rect.x < 8).count(),
+            4,
+            "{:?}",
+            off.rects
+        );
+    }
+
+    #[test]
+    fn a_focused_cursor_is_drawn_as_before() {
+        let focused = scene_with_cursor(
+            1,
+            4,
+            |painter| {
+                painter.text(0, 0, "A");
+                painter.cursor(0, 0, CursorShape::Block);
+            },
+            CursorOptions::default(),
+            BlinkPhase::On,
+        );
+        let block = cursor_block(&focused).expect("a focused block cursor fills the cell");
+        assert_eq!(block.color, DEFAULT_FOREGROUND);
+        assert_eq!(focused.glyphs[0].color, DEFAULT_BACKGROUND);
+    }
+
+    fn contrasted(minimum: f32, paint: impl FnOnce(&mut Painter)) -> Scene {
+        let state = Painter::state(1, 4, paint);
+        let mut cache = cache();
+        let contrast = Contrast::new(minimum);
+        let paints = Paints::default();
+        let context = RowContext::new(
+            &state,
+            &cache,
+            BlinkPhase::On,
+            &paints,
+            CursorOptions::default(),
+            None,
+            None,
+        )
+        .with_contrast(&contrast);
+        let mut scratch = RowScratch::default();
+        let mut row = RowScene::default();
+        build_row(&context, &mut cache, 0, &mut scratch, &mut row);
+        Scene {
+            width: 0,
+            height: 0,
+            clear: paints.background,
+            rects: row.rects,
+            glyphs: row.glyphs,
+            color_glyphs: row.color_glyphs,
+            images: Vec::new(),
+            resident_images: Vec::new(),
+        }
+    }
+
+    fn dark_on_dark(painter: &mut Painter) {
+        painter.styled(0, 0, "A", |cell| {
+            cell.fg = WireColor::Rgb(40, 40, 40).pack();
+            cell.bg = WireColor::Rgb(20, 20, 20).pack();
+        });
+    }
+
+    #[test]
+    fn low_contrast_text_is_lifted_to_the_minimum() {
+        let scene = contrasted(4.5, dark_on_dark);
+        let glyph = scene.glyphs[0].color;
+        assert!(
+            color::contrast_ratio(glyph, [20, 20, 20]) >= 4.5,
+            "{:?}",
+            glyph
+        );
+        assert_eq!(
+            scene.rects[0].color,
+            [20, 20, 20],
+            "the background must not move"
+        );
+    }
+
+    #[test]
+    fn a_minimum_of_one_changes_nothing() {
+        let scene = contrasted(1.0, dark_on_dark);
+        assert_eq!(scene.glyphs[0].color, [40, 40, 40]);
+    }
+
+    #[test]
+    fn readable_and_hidden_text_are_left_alone() {
+        let readable = contrasted(4.5, |painter| painter.text(0, 0, "A"));
+        assert_eq!(readable.glyphs[0].color, DEFAULT_FOREGROUND);
+        let hidden = contrasted(4.5, |painter| {
+            painter.styled(0, 0, "A", |cell| {
+                cell.fg = WireColor::Rgb(40, 40, 40).pack();
+                cell.bg = WireColor::Rgb(20, 20, 20).pack();
+                cell.attrs |= ATTR_HIDDEN;
+            });
+        });
+        assert!(hidden
+            .glyphs
+            .iter()
+            .all(|glyph| glyph.color == [20, 20, 20]));
+    }
+
+    #[test]
+    fn an_underline_colour_is_held_to_the_minimum_too() {
+        let scene = contrasted(4.5, |painter| {
+            painter.styled(0, 0, "A", |cell| {
+                cell.attrs |=
+                    UNDERLINE_STRAIGHT << zellij_utils::structured_render::UNDERLINE_SHIFT;
+                cell.underline_color = WireColor::Rgb(10, 10, 10).pack();
+            });
+        });
+        let metrics = cache().metrics();
+        let underline = scene
+            .rects
+            .iter()
+            .find(|rect| rect.y == metrics.underline_top as i32)
+            .expect("the underline is drawn");
+        assert!(color::contrast_ratio(underline.color, DEFAULT_BACKGROUND) >= 4.5);
+    }
+
+    #[test]
+    fn text_under_a_block_cursor_is_held_to_the_minimum() {
+        let state = Painter::state(1, 4, |painter| {
+            painter.text(0, 0, "A");
+            painter.cursor(0, 0, CursorShape::Block);
+        });
+        let mut cache = cache();
+        let contrast = Contrast::new(4.5);
+        let paints = Paints {
+            cursor: Some([30, 30, 30]),
+            ..Paints::default()
+        };
+        let context = RowContext::new(
+            &state,
+            &cache,
+            BlinkPhase::On,
+            &paints,
+            CursorOptions::default(),
+            None,
+            None,
+        )
+        .with_contrast(&contrast);
+        let mut scratch = RowScratch::default();
+        let mut row = RowScene::default();
+        build_row(&context, &mut cache, 0, &mut scratch, &mut row);
+        assert!(color::contrast_ratio(row.glyphs[0].color, [30, 30, 30]) >= 4.5);
+    }
+
     #[test]
     fn a_configured_shape_replaces_the_one_the_session_did_not_ask_for() {
         let scene = scene_with_cursor(
@@ -1437,6 +1705,7 @@ mod tests {
             CursorOptions {
                 shape: Some(CursorShape::Beam),
                 blink: None,
+                hollow: false,
             },
             BlinkPhase::On,
         );
@@ -1463,6 +1732,7 @@ mod tests {
             CursorOptions {
                 shape: Some(CursorShape::Beam),
                 blink: None,
+                hollow: false,
             },
             BlinkPhase::On,
         );
@@ -1486,6 +1756,7 @@ mod tests {
                 CursorOptions {
                     shape: None,
                     blink: Some(true),
+                    hollow: false,
                 },
                 phase,
             )
@@ -1507,6 +1778,7 @@ mod tests {
                 CursorOptions {
                     shape: None,
                     blink: Some(false),
+                    hollow: false,
                 },
                 phase,
             )
@@ -2515,7 +2787,7 @@ mod tests {
                     RowCell {
                         cell,
                         occupancy,
-                        paint: paint_of(cell, occupancy, &paints),
+                        paint: paint_of(cell, occupancy, &paints, None),
                         explicit_background: false,
                         on_cursor: false,
                         inverted_by_cursor: false,
@@ -2964,7 +3236,7 @@ mod ligature_tests {
             .map(|_| RowCell {
                 cell,
                 occupancy: Occupancy::Single,
-                paint: paint_of(cell, Occupancy::Single, &Paints::default()),
+                paint: paint_of(cell, Occupancy::Single, &Paints::default(), None),
                 explicit_background: false,
                 on_cursor: false,
                 inverted_by_cursor: false,

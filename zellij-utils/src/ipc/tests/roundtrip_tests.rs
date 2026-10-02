@@ -2434,6 +2434,12 @@ fn test_client_messages() {
         is_cli_client: true,
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::ConfirmClose,
+        terminal_id: None,
+        client_id: None,
+        is_cli_client: false,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::SetDarkTheme,
         terminal_id: Some(1),
         client_id: Some(100),
