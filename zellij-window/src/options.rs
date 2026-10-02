@@ -35,6 +35,11 @@ pub struct Options {
     pub padding_color: PaddingColor,
     pub initial_cols: Option<usize>,
     pub initial_rows: Option<usize>,
+    pub fullscreen_keys: Vec<KeyWithModifier>,
+    pub confirm_close: bool,
+    pub hide_pointer_while_typing: bool,
+    pub cursor_unfocused_hollow: bool,
+    pub minimum_contrast: f32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -131,6 +136,14 @@ pub fn resolve(settings: &Settings, mode: Option<HostTerminalThemeMode>) -> Opti
         padding_color: section.padding_color.unwrap_or_default(),
         initial_cols: section.initial_columns.map(usize::from),
         initial_rows: section.initial_rows.map(usize::from),
+        fullscreen_keys: section
+            .fullscreen_keys
+            .clone()
+            .unwrap_or_else(default_fullscreen_keys),
+        confirm_close: section.confirm_close.unwrap_or(true),
+        hide_pointer_while_typing: section.hide_pointer_while_typing.unwrap_or(false),
+        cursor_unfocused_hollow: section.cursor_unfocused_hollow.unwrap_or(true),
+        minimum_contrast: section.minimum_contrast.unwrap_or(1.0),
     }
 }
 
@@ -206,6 +219,10 @@ fn zoom_out_keys_for(platform: Platform) -> Vec<KeyWithModifier> {
     keys
 }
 
+pub fn default_fullscreen_keys() -> Vec<KeyWithModifier> {
+    vec![KeyWithModifier::new(BareKey::F(11))]
+}
+
 fn zoom_reset_keys_for(platform: Platform) -> Vec<KeyWithModifier> {
     let mut keys = vec![KeyWithModifier::new(BareKey::Char('0')).with_ctrl_modifier()];
     keys.extend(command(platform, &[BareKey::Char('0')]));
@@ -271,6 +288,11 @@ pub struct Change {
     pub blur: bool,
     pub layout: bool,
     pub padding_color: bool,
+    pub fullscreen_keys: bool,
+    pub confirm_close: bool,
+    pub hide_pointer_while_typing: bool,
+    pub cursor_unfocused_hollow: bool,
+    pub minimum_contrast: bool,
 }
 
 impl Change {
@@ -293,6 +315,13 @@ impl Change {
             layout: current.padding != next.padding
                 || current.padding_balance != next.padding_balance,
             padding_color: current.padding_color != next.padding_color,
+            fullscreen_keys: current.fullscreen_keys != next.fullscreen_keys,
+            confirm_close: current.confirm_close != next.confirm_close,
+            hide_pointer_while_typing: current.hide_pointer_while_typing
+                != next.hide_pointer_while_typing,
+            cursor_unfocused_hollow: current.cursor_unfocused_hollow
+                != next.cursor_unfocused_hollow,
+            minimum_contrast: current.minimum_contrast != next.minimum_contrast,
         }
     }
 
@@ -311,6 +340,11 @@ impl Change {
             || self.blur
             || self.layout
             || self.padding_color
+            || self.fullscreen_keys
+            || self.confirm_close
+            || self.hide_pointer_while_typing
+            || self.cursor_unfocused_hollow
+            || self.minimum_contrast
     }
 
     pub fn needs_redraw(&self) -> bool {
@@ -319,6 +353,8 @@ impl Change {
             || self.cursor_blink
             || self.transparency
             || self.padding_color
+            || self.cursor_unfocused_hollow
+            || self.minimum_contrast
     }
 }
 
@@ -905,5 +941,29 @@ mod tests {
         let mut next = current.clone();
         next.padding_color = PaddingColor::Extend;
         assert!(Change::between(&current, &next).needs_redraw());
+    }
+
+    #[test]
+    fn ui_settings_have_their_documented_defaults_and_redraw_when_they_change() {
+        let options = Options::default();
+        assert_eq!(
+            options.fullscreen_keys,
+            vec![KeyWithModifier::new(BareKey::F(11))]
+        );
+        assert!(options.confirm_close);
+        assert!(!options.hide_pointer_while_typing);
+        assert!(options.cursor_unfocused_hollow);
+        assert_eq!(options.minimum_contrast, 1.0);
+
+        let mut next = options.clone();
+        next.minimum_contrast = 4.5;
+        assert!(Change::between(&options, &next).needs_redraw());
+        let mut next = options.clone();
+        next.cursor_unfocused_hollow = false;
+        assert!(Change::between(&options, &next).needs_redraw());
+        let mut next = options.clone();
+        next.fullscreen_keys.clear();
+        let change = Change::between(&options, &next);
+        assert!(change.fullscreen_keys && change.is_anything() && !change.needs_redraw());
     }
 }

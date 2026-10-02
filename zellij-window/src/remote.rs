@@ -52,6 +52,7 @@ pub fn outbound(msg: ClientToServerMsg) -> Outbound {
             Action::Paste { chars, .. } => Outbound::Control(Payload::Paste { chars }),
             Action::WriteChars { chars } => Outbound::Control(Payload::Text { chars }),
             Action::Detach => Outbound::Control(Payload::Detach),
+            Action::ConfirmClose => Outbound::Control(Payload::ConfirmClose),
             other => Outbound::Dropped(format!("Action::{}", action_name(&other))),
         },
         ClientToServerMsg::TerminalResize { new_size } => {
@@ -476,6 +477,10 @@ mod tests {
         assert_eq!(
             outbound(action(Action::Detach)),
             Outbound::Control(WebClientToWebServerControlMessagePayload::Detach)
+        );
+        assert_eq!(
+            outbound(action(Action::ConfirmClose)),
+            Outbound::Control(WebClientToWebServerControlMessagePayload::ConfirmClose)
         );
     }
 

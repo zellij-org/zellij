@@ -1257,6 +1257,7 @@ impl From<crate::input::actions::Action>
             CloseTabByIdAction,
             CloseTerminalPaneAction,
             ConfirmAction,
+            ConfirmCloseAction,
             CopyAction,
             CopyLastCommandOutputAction,
             CurrentTabInfoAction,
@@ -1806,6 +1807,9 @@ impl From<crate::input::actions::Action>
                 })
             },
             crate::input::actions::Action::Detach => ActionType::Detach(DetachAction {}),
+            crate::input::actions::Action::ConfirmClose => {
+                ActionType::ConfirmClose(ConfirmCloseAction {})
+            },
             crate::input::actions::Action::SetDarkTheme => {
                 ActionType::SetDarkTheme(SetDarkThemeAction {})
             },
@@ -2779,6 +2783,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                 })
             },
             ActionType::Detach(_) => Ok(crate::input::actions::Action::Detach),
+            ActionType::ConfirmClose(_) => Ok(crate::input::actions::Action::ConfirmClose),
             ActionType::SetDarkTheme(_) => Ok(crate::input::actions::Action::SetDarkTheme),
             ActionType::SetLightTheme(_) => Ok(crate::input::actions::Action::SetLightTheme),
             ActionType::ToggleTheme(_) => Ok(crate::input::actions::Action::ToggleTheme),

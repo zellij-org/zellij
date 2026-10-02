@@ -225,6 +225,7 @@ pub enum ServerInstruction {
     /// loop. The main loop writes `ServerToClientMsg::ForwardQueryToHost`
     ForwardQueryToHost(u32, Vec<u8>, bool),
     KeyPassthroughChanged(ClientId, PaneId, PaneId, bool, Option<Direction>, bool),
+    CloseDialogueChanged(ClientId, bool),
     EmitNestedSessionFrameToClient(ClientId, Vec<u8>),
     PopupStateChanged(ClientId, bool),
 }
@@ -296,6 +297,7 @@ impl From<&ServerInstruction> for ServerContext {
             },
             ServerInstruction::ForwardQueryToHost(..) => ServerContext::ForwardQueryToHost,
             ServerInstruction::KeyPassthroughChanged(..) => ServerContext::KeyPassthroughChanged,
+            ServerInstruction::CloseDialogueChanged(..) => ServerContext::CloseDialogueChanged,
             ServerInstruction::EmitNestedSessionFrameToClient(..) => {
                 ServerContext::EmitNestedSessionFrameToClient
             },
@@ -1045,6 +1047,7 @@ pub(crate) struct SessionMetaData {
     pub session_configuration: SessionConfiguration,
     pub key_passthrough_clients: HashMap<ClientId, PaneId>,
     pub popup_clients: HashSet<ClientId>,
+    pub close_dialogue_clients: HashSet<ClientId>,
     pub web_sharing: WebSharing, // this is a special attribute explicitly set on session
     // initialization because we don't want it to be overridden by
     // configuration changes, the only way it can be overwritten is by
@@ -2557,6 +2560,7 @@ mod session_state_tests {
             session_configuration,
             key_passthrough_clients: HashMap::new(),
             popup_clients: HashSet::new(),
+            close_dialogue_clients: HashSet::new(),
             web_sharing: WebSharing::Off,
             screen_thread: None,
             pty_thread: None,
@@ -4566,6 +4570,15 @@ pub fn start_server_impl(
                     }
                 }
             },
+            ServerInstruction::CloseDialogueChanged(client_id, shown) => {
+                if let Some(session_data) = session_data.write().unwrap().as_mut() {
+                    if shown {
+                        session_data.close_dialogue_clients.insert(client_id);
+                    } else {
+                        session_data.close_dialogue_clients.remove(&client_id);
+                    }
+                }
+            },
             ServerInstruction::KeyPassthroughChanged(
                 client_id,
                 _old_pane_id,
@@ -4950,6 +4963,7 @@ fn init_session(
         web_sharing: WebSharing::Disabled,
         key_passthrough_clients: HashMap::new(),
         popup_clients: HashSet::new(),
+        close_dialogue_clients: HashSet::new(),
         applied_env,
         config_file: ConfigFileState {
             contents_when_read: cli_assets

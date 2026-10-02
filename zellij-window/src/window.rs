@@ -145,6 +145,9 @@ struct App {
     notify: fn(NotificationMode, &crate::kitty::Notification) -> bool,
     transparency_available: bool,
     warned_opaque: bool,
+    before_fullscreen: Shown,
+    pointer_hidden: bool,
+    focused: bool,
 }
 
 struct Session {
@@ -295,6 +298,9 @@ impl App {
         let previous_font = self.options.font.clone();
         self.options = next;
 
+        if change.paints || change.minimum_contrast {
+            self.retained.forget_contrast();
+        }
         if change.paints {
             for msg in palette::seed_messages(&self.options.paints) {
                 if let Err(e) = self.tell(msg) {
@@ -493,8 +499,22 @@ impl App {
         }
     }
 
+    fn asks_before_closing(&self) -> bool {
+        self.options.confirm_close && self.role == Role::Participant && self.sender.is_some()
+    }
+
     fn closing(&mut self) -> bool {
-        match self.detach() {
+        let asked = if self.asks_before_closing() {
+            self.tell(ClientToServerMsg::Action {
+                action: zellij_utils::input::actions::Action::ConfirmClose,
+                terminal_id: None,
+                client_id: None,
+                is_cli_client: false,
+            })
+        } else {
+            self.detach()
+        };
+        match asked {
             Ok(()) => self.sender.is_none(),
             Err(e) => {
                 eprintln!(
@@ -553,6 +573,7 @@ impl App {
     }
 
     fn on_cursor_moved(&mut self, position: winit::dpi::PhysicalPosition<f64>) {
+        self.show_pointer();
         let (geometry, modifiers) = (self.geometry.get(), self.modifiers);
         let event = self.pointer.moved(position, geometry, modifiers);
         self.refresh_hover();
@@ -561,6 +582,9 @@ impl App {
     }
 
     fn on_mouse_input(&mut self, button: winit::event::MouseButton, state: ElementState) {
+        if state.is_pressed() {
+            self.show_pointer();
+        }
         self.note_link_click(button, state);
         if self.middle_click_pasted(button, state) {
             return;
@@ -673,13 +697,68 @@ impl App {
         }
     }
 
+    fn hide_pointer(&mut self) {
+        if !self.options.hide_pointer_while_typing || self.pointer_hidden {
+            return;
+        }
+        self.pointer_hidden = true;
+        if let Some(surfaces) = &self.surfaces {
+            surfaces.window.set_cursor_visible(false);
+        }
+    }
+
+    fn show_pointer(&mut self) {
+        if !self.pointer_hidden {
+            return;
+        }
+        self.pointer_hidden = false;
+        if let Some(surfaces) = &self.surfaces {
+            surfaces.window.set_cursor_visible(true);
+        }
+    }
+
+    fn set_focused(&mut self, focused: bool) {
+        if focused == self.focused {
+            return;
+        }
+        self.focused = focused;
+        self.retained
+            .mark(&Damage::Rows(vec![self.state.cursor_position().0]));
+        self.schedule_draw();
+    }
+
+    fn toggle_fullscreen(&mut self) {
+        let leaving = self.shown == Shown::Fullscreen;
+        if leaving {
+            self.shown = self.before_fullscreen;
+        } else {
+            self.before_fullscreen = self.shown;
+            self.shown = Shown::Fullscreen;
+        }
+        let Some(surfaces) = &self.surfaces else {
+            return;
+        };
+        if leaving {
+            surfaces.window.set_fullscreen(None);
+            if self.shown == Shown::Maximized {
+                surfaces.window.set_maximized(true);
+            }
+        } else {
+            surfaces
+                .window
+                .set_fullscreen(Some(winit::window::Fullscreen::Borderless(None)));
+        }
+    }
+
     fn on_wheel(&mut self, delta: winit::event::MouseScrollDelta) {
+        self.show_pointer();
         let (geometry, modifiers) = (self.geometry.get(), self.modifiers);
         let events = self.pointer.wheel(delta, geometry, modifiers);
         self.point(events);
     }
 
     fn on_focus_lost(&mut self) {
+        self.show_pointer();
         let (geometry, modifiers) = (self.geometry.get(), self.modifiers);
         let events = self.pointer.focus_lost(geometry, modifiers);
         self.point(events);
@@ -706,18 +785,27 @@ impl App {
             return;
         }
         if input::claims(&self.options.zoom_in_keys, &press) {
+            self.hide_pointer();
             self.zoom_by(ZOOM_STEP);
             return;
         }
         if input::claims(&self.options.zoom_out_keys, &press) {
+            self.hide_pointer();
             self.zoom_by(1.0 / ZOOM_STEP);
             return;
         }
         if input::claims(&self.options.zoom_reset_keys, &press) {
+            self.hide_pointer();
             self.set_zoom(1.0);
             return;
         }
+        if input::claims(&self.options.fullscreen_keys, &press) {
+            self.hide_pointer();
+            self.toggle_fullscreen();
+            return;
+        }
         if input::claims(&self.options.paste_keys, &press) {
+            self.hide_pointer();
             self.paste();
             return;
         }
@@ -728,6 +816,7 @@ impl App {
         let Some(msg) = input::key_message(press) else {
             return;
         };
+        self.hide_pointer();
         if let Err(e) = self.tell(msg) {
             eprintln!("zellij-window: failed to send a key: {}", e);
         }
@@ -794,6 +883,7 @@ impl App {
         scene::CursorOptions {
             shape: self.options.cursor_shape,
             blink: self.options.cursor_blink,
+            hollow: self.options.cursor_unfocused_hollow && !self.focused,
         }
     }
 
@@ -935,6 +1025,7 @@ impl App {
         let preedit = self.composition.shown();
         self.retained
             .set_transparency(self.effective_transparency());
+        self.retained.set_contrast(self.options.minimum_contrast);
         self.retained.refresh(
             &self.state,
             &mut self.cache,
@@ -1182,15 +1273,19 @@ impl ApplicationHandler<Wake> for App {
             WindowEvent::MouseInput { button, state, .. } => self.on_mouse_input(button, state),
             WindowEvent::MouseWheel { delta, .. } => self.on_wheel(delta),
             WindowEvent::CursorEntered { .. } => {
+                self.show_pointer();
                 self.pointer.entered();
                 self.refresh_pointer();
             },
             WindowEvent::CursorLeft { .. } => {
+                self.show_pointer();
                 self.pointer.left();
                 self.refresh_pointer();
             },
             WindowEvent::Ime(event) => self.on_ime(event),
+            WindowEvent::Focused(true) => self.set_focused(true),
             WindowEvent::Focused(false) => {
+                self.set_focused(false);
                 self.stop_composing();
                 self.on_focus_lost();
             },
@@ -1447,6 +1542,9 @@ impl Rendering {
             notify: notify::handled,
             transparency_available: true,
             warned_opaque: false,
+            before_fullscreen: Shown::Windowed,
+            pointer_hidden: false,
+            focused: true,
         }
     }
 }
@@ -1669,6 +1767,11 @@ mod tests {
             padding_color: PaddingColor::Background,
             initial_cols: None,
             initial_rows: None,
+            fullscreen_keys: crate::options::default_fullscreen_keys(),
+            confirm_close: false,
+            hide_pointer_while_typing: false,
+            cursor_unfocused_hollow: true,
+            minimum_contrast: 1.0,
         }
     }
 
@@ -1899,6 +2002,218 @@ mod tests {
             "a window showing a live session waits for the server"
         );
         assert_eq!(harness.actions(), vec![Action::Detach]);
+    }
+
+    fn confirming(expected: usize) -> Harness {
+        let mut options = test_options(true);
+        options.confirm_close = true;
+        Harness::with(expected, options, "")
+    }
+
+    #[test]
+    fn a_close_request_asks_for_confirmation_when_the_setting_is_on() {
+        let mut harness = confirming(1);
+        assert!(!harness.app.closing());
+        assert_eq!(harness.actions(), vec![Action::ConfirmClose]);
+    }
+
+    #[test]
+    fn a_watcher_detaches_without_confirmation() {
+        let mut harness = confirming(1);
+        harness.app.role = Role::Watcher;
+        assert!(!harness.app.closing());
+        assert!(
+            matches!(harness.sent()[0], ClientToServerMsg::Key { .. }),
+            "a watcher leaves with Esc as before"
+        );
+    }
+
+    #[test]
+    fn a_close_request_with_confirmation_off_detaches_as_before() {
+        let mut options = test_options(true);
+        options.confirm_close = false;
+        let mut harness = Harness::with(1, options, "");
+        harness.app.closing();
+        assert_eq!(harness.actions(), vec![Action::Detach]);
+    }
+
+    #[test]
+    fn with_no_session_a_confirming_window_still_closes_itself() {
+        let mut harness = confirming(0);
+        harness.app.sender = None;
+        assert!(harness.app.closing());
+        assert!(harness.sent().is_empty());
+    }
+
+    fn f11() -> Key {
+        Key::Named(NamedKey::F11)
+    }
+
+    #[test]
+    fn the_fullscreen_key_toggles_and_is_not_sent_to_the_session() {
+        let mut harness = Harness::new(0, true, "");
+        harness.app.shown = Shown::Windowed;
+        harness.press(&f11());
+        assert_eq!(harness.app.shown, Shown::Fullscreen);
+        harness.press(&f11());
+        assert_eq!(harness.app.shown, Shown::Windowed);
+        assert!(harness.sent().is_empty());
+    }
+
+    #[test]
+    fn leaving_fullscreen_returns_to_maximized_when_that_is_where_it_came_from() {
+        let mut harness = Harness::new(0, true, "");
+        harness.app.shown = Shown::Maximized;
+        harness.press(&f11());
+        assert_eq!(harness.app.shown, Shown::Fullscreen);
+        harness.press(&f11());
+        assert_eq!(harness.app.shown, Shown::Maximized);
+    }
+
+    #[test]
+    fn the_windowed_size_survives_a_fullscreen_round_trip() {
+        let mut harness = Harness::new(4, true, "");
+        let dir = remembering(&mut harness);
+        harness.app.resized(720, 600);
+        harness.press(&f11());
+        harness.app.resized(1600, 1000);
+        harness.press(&f11());
+        harness.app.remember();
+        assert_eq!(
+            remembered(&dir),
+            Some(WindowState {
+                cols: 90,
+                rows: 30,
+                state: Shown::Windowed,
+            })
+        );
+    }
+
+    #[test]
+    fn closing_while_fullscreen_keeps_the_windowed_size_and_reopens_fullscreen() {
+        let mut harness = Harness::new(4, true, "");
+        let dir = remembering(&mut harness);
+        harness.app.resized(720, 600);
+        harness.press(&f11());
+        harness.app.resized(1600, 1000);
+        harness.app.remember();
+        let saved = remembered(&dir).expect("the state was saved");
+        assert_eq!(
+            saved,
+            WindowState {
+                cols: 90,
+                rows: 30,
+                state: Shown::Fullscreen,
+            }
+        );
+        let startup = Startup::resolve(StartupMode::Remember, Some(saved), None, None);
+        assert_eq!(startup.mode, StartupMode::Fullscreen);
+        assert_eq!((startup.cols, startup.rows), (90, 30));
+        assert!(
+            startup_attributes(WindowAttributes::default(), startup.mode)
+                .fullscreen
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn closing_in_fullscreen_without_a_windowed_size_this_run_keeps_the_saved_one() {
+        let mut harness = Harness::new(0, true, "");
+        let dir = remembering(&mut harness);
+        window_state::store(
+            &dir.path().join("window-state.json"),
+            WindowState {
+                cols: 70,
+                rows: 20,
+                state: Shown::Windowed,
+            },
+        );
+        harness.app.windowed_known = false;
+        harness.app.shown = Shown::Fullscreen;
+        harness.app.remember();
+        assert_eq!(
+            remembered(&dir),
+            Some(WindowState {
+                cols: 70,
+                rows: 20,
+                state: Shown::Fullscreen,
+            })
+        );
+    }
+
+    fn hiding(expected: usize) -> Harness {
+        let mut options = test_options(true);
+        options.hide_pointer_while_typing = true;
+        Harness::with(expected, options, "")
+    }
+
+    #[test]
+    fn the_pointer_hides_on_a_sent_key_and_returns_when_it_moves() {
+        let mut harness = hiding(2);
+        harness.press(&character("a"));
+        assert!(harness.app.pointer_hidden);
+        harness.app.on_cursor_moved(at(5.0, 5.0));
+        assert!(!harness.app.pointer_hidden);
+    }
+
+    #[test]
+    fn a_modifier_alone_does_not_hide_the_pointer() {
+        let mut harness = hiding(0);
+        for named in [
+            NamedKey::Shift,
+            NamedKey::Control,
+            NamedKey::Alt,
+            NamedKey::Super,
+        ] {
+            harness.press(&Key::Named(named));
+        }
+        assert!(!harness.app.pointer_hidden);
+        assert!(harness.sent().is_empty());
+    }
+
+    #[test]
+    fn a_window_key_setting_hides_the_pointer_and_every_pointer_event_shows_it() {
+        let mut harness = hiding(1);
+        harness.press(&f11());
+        assert!(harness.app.pointer_hidden);
+        harness.app.on_wheel(MouseScrollDelta::LineDelta(0.0, 0.0));
+        assert!(!harness.app.pointer_hidden);
+        harness.press(&f11());
+        assert!(harness.app.pointer_hidden);
+        harness.app.on_focus_lost();
+        assert!(!harness.app.pointer_hidden);
+        harness.press(&f11());
+        harness
+            .app
+            .on_mouse_input(MouseButton::Right, ElementState::Pressed);
+        assert!(!harness.app.pointer_hidden);
+    }
+
+    #[test]
+    fn with_the_setting_off_typing_leaves_the_pointer_alone() {
+        let mut harness = Harness::new(1, true, "");
+        harness.press(&character("a"));
+        assert!(!harness.app.pointer_hidden);
+    }
+
+    #[test]
+    fn a_focus_change_turns_the_cursor_hollow_and_redraws_its_row() {
+        let mut harness = Harness::new(0, true, "");
+        assert!(harness.app.focused, "a new window counts as focused");
+        assert!(!harness.app.cursor_options().hollow);
+        harness.app.refresh_scene();
+        harness.app.set_focused(false);
+        assert!(harness.app.cursor_options().hollow);
+        harness.app.refresh_scene();
+        assert_eq!(
+            harness.app.retained.rebuilt_rows(),
+            &[harness.app.state.cursor_position().0]
+        );
+        harness.app.set_focused(true);
+        assert!(!harness.app.cursor_options().hollow);
+        harness.app.options.cursor_unfocused_hollow = false;
+        harness.app.set_focused(false);
+        assert!(!harness.app.cursor_options().hollow);
     }
 
     #[test]
@@ -2525,6 +2840,7 @@ mod tests {
             scene::CursorOptions {
                 shape: Some(crate::screen_buffer::CursorShape::Beam),
                 blink: Some(true),
+                hollow: false,
             },
             "the options the scene is built with did not follow the reload"
         );

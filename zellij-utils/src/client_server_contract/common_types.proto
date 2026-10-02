@@ -328,6 +328,7 @@ message Action {
     OpenContextMenuAction open_context_menu = 161;
     MoveTabToPositionAction move_tab_to_position = 162;
     RunInBackgroundAction run_in_background = 163;
+    ConfirmCloseAction confirm_close = 164;
   }
 }
 
@@ -388,6 +389,7 @@ message CloseTabAction {}
 message ToggleTabAction {}
 message UndoRenameTabAction {}
 message DetachAction {}
+message ConfirmCloseAction {}
 message SetDarkThemeAction {}
 message SetLightThemeAction {}
 message ToggleThemeAction {}

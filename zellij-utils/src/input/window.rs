@@ -408,6 +408,11 @@ pub struct WindowConfig {
     pub initial_rows: Option<u16>,
     pub font_weight: Option<u16>,
     pub font_features: Option<Vec<String>>,
+    pub fullscreen_keys: Option<Vec<KeyWithModifier>>,
+    pub confirm_close: Option<bool>,
+    pub hide_pointer_while_typing: Option<bool>,
+    pub cursor_unfocused_hollow: Option<bool>,
+    pub minimum_contrast: Option<f32>,
 }
 
 impl WindowConfig {
@@ -443,6 +448,9 @@ impl WindowConfig {
         }
         if let Some(zoom_reset_keys) = kdl_get_child!(kdl, "zoom_reset_keys") {
             window.zoom_reset_keys = Some(keys_from_kdl(zoom_reset_keys)?);
+        }
+        if let Some(fullscreen_keys) = kdl_get_child!(kdl, "fullscreen_keys") {
+            window.fullscreen_keys = Some(keys_from_kdl(fullscreen_keys)?);
         }
         if let Some(middle_click_paste) = kdl_get_child_entry_bool_value!(kdl, "middle_click_paste")
         {
@@ -520,6 +528,18 @@ impl WindowConfig {
         if let Some(font_features) = kdl_get_child!(kdl, "font_features") {
             window.font_features = Some(font_features_from_kdl(font_features)?);
         }
+        if let Some(confirm_close) = kdl_get_child_entry_bool_value!(kdl, "confirm_close") {
+            window.confirm_close = Some(confirm_close);
+        }
+        if let Some(hide) = kdl_get_child_entry_bool_value!(kdl, "hide_pointer_while_typing") {
+            window.hide_pointer_while_typing = Some(hide);
+        }
+        if let Some(hollow) = kdl_get_child_entry_bool_value!(kdl, "cursor_unfocused_hollow") {
+            window.cursor_unfocused_hollow = Some(hollow);
+        }
+        if let Some(minimum_contrast) = kdl_get_child!(kdl, "minimum_contrast") {
+            window.minimum_contrast = Some(minimum_contrast_from_kdl(minimum_contrast)?);
+        }
 
         Ok(window)
     }
@@ -565,6 +585,7 @@ impl WindowConfig {
             ("zoom_in_keys", &self.zoom_in_keys),
             ("zoom_out_keys", &self.zoom_out_keys),
             ("zoom_reset_keys", &self.zoom_reset_keys),
+            ("fullscreen_keys", &self.fullscreen_keys),
         ] {
             let Some(keys) = keys else {
                 continue;
@@ -674,6 +695,22 @@ impl WindowConfig {
             }
             children.nodes_mut().push(font_features_node);
         }
+        for (name, value) in [
+            ("confirm_close", self.confirm_close),
+            ("hide_pointer_while_typing", self.hide_pointer_while_typing),
+            ("cursor_unfocused_hollow", self.cursor_unfocused_hollow),
+        ] {
+            if let Some(value) = value {
+                let mut flag_node = KdlNode::new(name);
+                flag_node.push(KdlValue::Bool(value));
+                children.nodes_mut().push(flag_node);
+            }
+        }
+        if let Some(minimum_contrast) = self.minimum_contrast {
+            children
+                .nodes_mut()
+                .push(number_node("minimum_contrast", minimum_contrast));
+        }
 
         if children.nodes().is_empty() {
             return None;
@@ -722,6 +759,15 @@ impl WindowConfig {
         merged.initial_rows = other.initial_rows.or(merged.initial_rows);
         merged.font_weight = other.font_weight.or(merged.font_weight);
         merged.font_features = other.font_features.or(merged.font_features);
+        merged.fullscreen_keys = other.fullscreen_keys.or(merged.fullscreen_keys);
+        merged.confirm_close = other.confirm_close.or(merged.confirm_close);
+        merged.hide_pointer_while_typing = other
+            .hide_pointer_while_typing
+            .or(merged.hide_pointer_while_typing);
+        merged.cursor_unfocused_hollow = other
+            .cursor_unfocused_hollow
+            .or(merged.cursor_unfocused_hollow);
+        merged.minimum_contrast = other.minimum_contrast.or(merged.minimum_contrast);
         merged
     }
 }
@@ -884,6 +930,24 @@ fn font_weight_from_kdl(node: &KdlNode) -> Result<u16, ConfigError> {
 pub fn is_font_feature(text: &str) -> bool {
     let tag = text.strip_prefix(['+', '-']).unwrap_or(text);
     tag.len() == 4 && tag.bytes().all(|byte| (0x21..=0x7e).contains(&byte))
+}
+
+pub const MIN_CONTRAST: f32 = 1.0;
+pub const MAX_CONTRAST: f32 = 21.0;
+
+fn minimum_contrast_from_kdl(node: &KdlNode) -> Result<f32, ConfigError> {
+    let contrast = number_from_kdl(node, "minimum_contrast")?;
+    if !(MIN_CONTRAST as f64..=MAX_CONTRAST as f64).contains(&contrast) {
+        return Err(ConfigError::new_kdl_error(
+            format!(
+                "minimum_contrast {} is outside the range {} to {}",
+                contrast, MIN_CONTRAST, MAX_CONTRAST
+            ),
+            node.span().offset(),
+            node.span().len(),
+        ));
+    }
+    Ok(contrast as f32)
 }
 
 fn font_features_from_kdl(node: &KdlNode) -> Result<Vec<String>, ConfigError> {
@@ -1630,6 +1694,67 @@ mod tests {
             message.contains("background") && message.contains("extend"),
             "{}",
             message
+        );
+    }
+
+    #[test]
+    fn every_ui_option_round_trips_through_kdl() {
+        let parsed = section(
+            "window {\n fullscreen_keys \"F11\" \"Alt Enter\"\n confirm_close false\n \
+             hide_pointer_while_typing true\n cursor_unfocused_hollow false\n \
+             minimum_contrast 4.5\n}",
+        )
+        .unwrap();
+        assert_eq!(
+            parsed.fullscreen_keys,
+            Some(vec![
+                KeyWithModifier::new(BareKey::F(11)),
+                KeyWithModifier::new(BareKey::Enter).with_alt_modifier(),
+            ])
+        );
+        assert_eq!(parsed.confirm_close, Some(false));
+        assert_eq!(parsed.hide_pointer_while_typing, Some(true));
+        assert_eq!(parsed.cursor_unfocused_hollow, Some(false));
+        assert_eq!(parsed.minimum_contrast, Some(4.5));
+        let emitted = parsed.to_kdl().unwrap().to_string();
+        assert_eq!(section(&emitted).unwrap(), parsed, "{}", emitted);
+
+        let empty = section("window {\n}").unwrap();
+        assert_eq!(empty.fullscreen_keys, None);
+        assert_eq!(empty.confirm_close, None);
+        assert_eq!(empty.hide_pointer_while_typing, None);
+        assert_eq!(empty.cursor_unfocused_hollow, None);
+        assert_eq!(empty.minimum_contrast, None);
+    }
+
+    #[test]
+    fn minimum_contrast_is_a_ratio_from_one_to_twenty_one() {
+        for text in ["1", "7", "21", "1.5"] {
+            assert!(
+                section(&format!("window {{\n minimum_contrast {}\n}}", text)).is_ok(),
+                "{}",
+                text
+            );
+        }
+        for text in ["0.9", "0", "-3", "22", "\"high\"", ""] {
+            let err = section(&format!("window {{\n minimum_contrast {}\n}}", text)).unwrap_err();
+            assert!(
+                format!("{:?}", err).contains("minimum_contrast"),
+                "{}: {:?}",
+                text,
+                err
+            );
+        }
+    }
+
+    #[test]
+    fn a_fullscreen_chord_that_does_not_parse_is_a_config_error() {
+        assert!(section("window {\n fullscreen_keys \"Ctrl nonsense\"\n}").is_err());
+        assert_eq!(
+            section("window {\n fullscreen_keys\n}")
+                .unwrap()
+                .fullscreen_keys,
+            Some(Vec::new())
         );
     }
 
