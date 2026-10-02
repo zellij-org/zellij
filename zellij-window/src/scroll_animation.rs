@@ -390,9 +390,11 @@ impl ScrollAnimations {
 
 fn push_clipped(layer: &mut ScrollLayer, row: &RowScene, dy: i32, regions: &[PixelRect]) {
     for region in regions {
-        layer
-            .rects
-            .extend(row.rects.iter().filter_map(|rect| clip_rect(rect, dy, region)));
+        layer.rects.extend(
+            row.rects
+                .iter()
+                .filter_map(|rect| clip_rect(rect, dy, region)),
+        );
         layer.glyphs.extend(
             row.glyphs
                 .iter()
@@ -606,9 +608,7 @@ pub(crate) mod sample {
         }
     }
 
-    pub fn mid_slide(
-        cache: &mut GlyphCache,
-    ) -> (crate::retained::RetainedScene, ScrollLayer) {
+    pub fn mid_slide(cache: &mut GlyphCache) -> (crate::retained::RetainedScene, ScrollLayer) {
         let mut scene = Scene::new();
         scene.cell_height = cache.metrics().height;
         let start = Instant::now();
@@ -912,12 +912,9 @@ mod tests {
             ..content
         };
         assert!(
-            layer
-                .rects
-                .iter()
-                .any(|rect| bottom_row
-                    .intersection(&area(rect.x, rect.y, rect.width, rect.height))
-                    .is_some()),
+            layer.rects.iter().any(|rect| bottom_row
+                .intersection(&area(rect.x, rect.y, rect.width, rect.height))
+                .is_some()),
             "the strip must paint the bottom row at the start of the slide"
         );
     }
