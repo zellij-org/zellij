@@ -11,13 +11,15 @@ use crate::scene::Scene;
 use crate::scene::{ImageKey, ImageQuad, RowScene};
 
 pub(crate) const SOLID_VERTEX: &str = r#"uniform vec2 u_viewport;
+uniform vec2 u_origin;
 in vec2 a_position;
 in vec3 a_color;
 out vec3 v_color;
 void main() {
     v_color = a_color;
-    vec2 ndc = vec2(a_position.x / u_viewport.x * 2.0 - 1.0,
-                    1.0 - a_position.y / u_viewport.y * 2.0);
+    vec2 position = a_position + u_origin;
+    vec2 ndc = vec2(position.x / u_viewport.x * 2.0 - 1.0,
+                    1.0 - position.y / u_viewport.y * 2.0);
     gl_Position = vec4(ndc, 0.0, 1.0);
 }
 "#;
@@ -30,6 +32,7 @@ void main() {
 "#;
 
 pub(crate) const GLYPH_VERTEX: &str = r#"uniform vec2 u_viewport;
+uniform vec2 u_origin;
 in vec2 a_position;
 in vec2 a_texcoord;
 in vec3 a_color;
@@ -38,8 +41,9 @@ out vec3 v_color;
 void main() {
     v_texcoord = a_texcoord;
     v_color = a_color;
-    vec2 ndc = vec2(a_position.x / u_viewport.x * 2.0 - 1.0,
-                    1.0 - a_position.y / u_viewport.y * 2.0);
+    vec2 position = a_position + u_origin;
+    vec2 ndc = vec2(position.x / u_viewport.x * 2.0 - 1.0,
+                    1.0 - position.y / u_viewport.y * 2.0);
     gl_Position = vec4(ndc, 0.0, 1.0);
 }
 "#;
@@ -70,6 +74,12 @@ const GLYPH_STRIDE: i32 = 7 * 4;
 const VERTICES_PER_QUAD: usize = 6;
 const SLOT_QUADS: usize = 4;
 const WHOLE_BUFFER_DIVISOR: usize = 2;
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Frame<'a> {
+    pub origin: (i32, i32),
+    pub margins: &'a [crate::scene::Rect],
+}
 
 struct Slot {
     offset: usize,
@@ -116,6 +126,7 @@ struct Pass {
     vertex_array: glow::VertexArray,
     buffer: glow::Buffer,
     viewport: Option<glow::UniformLocation>,
+    origin: Option<glow::UniformLocation>,
 }
 
 struct AtlasTexture {
@@ -175,6 +186,7 @@ impl Renderer {
 
             let solid = Pass {
                 viewport: gl.get_uniform_location(solid_program, "u_viewport"),
+                origin: gl.get_uniform_location(solid_program, "u_origin"),
                 program: solid_program,
                 vertex_array: gl.create_vertex_array().map_err(|e| anyhow!(e))?,
                 buffer: gl.create_buffer().map_err(|e| anyhow!(e))?,
@@ -186,6 +198,7 @@ impl Renderer {
 
             let glyph = Pass {
                 viewport: gl.get_uniform_location(glyph_program, "u_viewport"),
+                origin: gl.get_uniform_location(glyph_program, "u_origin"),
                 program: glyph_program,
                 vertex_array: gl.create_vertex_array().map_err(|e| anyhow!(e))?,
                 buffer: gl.create_buffer().map_err(|e| anyhow!(e))?,
@@ -198,6 +211,7 @@ impl Renderer {
 
             let color = Pass {
                 viewport: gl.get_uniform_location(color_program, "u_viewport"),
+                origin: gl.get_uniform_location(color_program, "u_origin"),
                 program: color_program,
                 vertex_array: gl.create_vertex_array().map_err(|e| anyhow!(e))?,
                 buffer: gl.create_buffer().map_err(|e| anyhow!(e))?,
@@ -210,6 +224,7 @@ impl Renderer {
 
             let image = Pass {
                 viewport: gl.get_uniform_location(color_program, "u_viewport"),
+                origin: gl.get_uniform_location(color_program, "u_origin"),
                 program: color_program,
                 vertex_array: gl.create_vertex_array().map_err(|e| anyhow!(e))?,
                 buffer: gl.create_buffer().map_err(|e| anyhow!(e))?,
@@ -222,6 +237,7 @@ impl Renderer {
 
             let fade = Pass {
                 viewport: gl.get_uniform_location(solid_program, "u_viewport"),
+                origin: gl.get_uniform_location(solid_program, "u_origin"),
                 program: solid_program,
                 vertex_array: gl.create_vertex_array().map_err(|e| anyhow!(e))?,
                 buffer: gl.create_buffer().map_err(|e| anyhow!(e))?,
@@ -287,6 +303,7 @@ impl Renderer {
             target,
         );
         let viewport = (target.0 as f32, target.1 as f32);
+        let origin = (0.0, 0.0);
         unsafe {
             draw_pass(
                 &self.gl,
@@ -294,9 +311,10 @@ impl Renderer {
                 &self.solid_vertices,
                 SOLID_STRIDE,
                 viewport,
+                origin,
             );
             self.gl.active_texture(glow::TEXTURE0);
-            self.draw_images(viewport, true);
+            self.draw_images(viewport, origin, true);
             self.gl
                 .bind_texture(glow::TEXTURE_2D, Some(self.mask_atlas.texture));
             draw_pass(
@@ -305,6 +323,7 @@ impl Renderer {
                 &self.glyph_vertices,
                 GLYPH_STRIDE,
                 viewport,
+                origin,
             );
             self.gl
                 .bind_texture(glow::TEXTURE_2D, Some(self.color_atlas.texture));
@@ -314,8 +333,9 @@ impl Renderer {
                 &self.color_vertices,
                 GLYPH_STRIDE,
                 viewport,
+                origin,
             );
-            self.draw_images(viewport, false);
+            self.draw_images(viewport, origin, false);
             self.gl.bind_vertex_array(None);
         }
     }
@@ -325,6 +345,7 @@ impl Renderer {
         scene: &RetainedScene,
         atlases: Atlases<'_>,
         target: (u32, u32),
+        frame: Frame<'_>,
     ) {
         upload_atlas(&self.gl, &mut self.mask_atlas, atlases.mask);
         upload_atlas(&self.gl, &mut self.color_atlas, atlases.color);
@@ -376,17 +397,32 @@ impl Renderer {
         let transparency = scene.transparency();
         self.clear_target(scene.clear(), transparency.clear_alpha(), target);
         let viewport = (target.0 as f32, target.1 as f32);
+        let origin = (frame.origin.0 as f32, frame.origin.1 as f32);
         unsafe {
-            draw_rows(&self.gl, &self.solid, &self.solid_rows, viewport);
+            if !frame.margins.is_empty() {
+                let mut margins = Vec::with_capacity(
+                    frame.margins.len() * VERTICES_PER_QUAD * SOLID_STRIDE as usize / 4,
+                );
+                push_solid_vertices(&mut margins, frame.margins);
+                draw_pass(
+                    &self.gl,
+                    &self.fade,
+                    &margins,
+                    SOLID_STRIDE,
+                    viewport,
+                    origin,
+                );
+            }
+            draw_rows(&self.gl, &self.solid, &self.solid_rows, viewport, origin);
             self.gl.active_texture(glow::TEXTURE0);
-            self.draw_images(viewport, true);
+            self.draw_images(viewport, origin, true);
             self.gl
                 .bind_texture(glow::TEXTURE_2D, Some(self.mask_atlas.texture));
-            draw_rows(&self.gl, &self.glyph, &self.glyph_rows, viewport);
+            draw_rows(&self.gl, &self.glyph, &self.glyph_rows, viewport, origin);
             self.gl
                 .bind_texture(glow::TEXTURE_2D, Some(self.color_atlas.texture));
-            draw_rows(&self.gl, &self.color, &self.color_rows, viewport);
-            self.draw_images(viewport, false);
+            draw_rows(&self.gl, &self.color, &self.color_rows, viewport, origin);
+            self.draw_images(viewport, origin, false);
             if let Some(opacity) = transparency.fade() {
                 self.fade_everything(opacity, viewport);
             }
@@ -407,7 +443,14 @@ impl Renderer {
             glow::ZERO,
             glow::CONSTANT_ALPHA,
         );
-        draw_pass(&self.gl, &self.fade, &vertices, SOLID_STRIDE, viewport);
+        draw_pass(
+            &self.gl,
+            &self.fade,
+            &vertices,
+            SOLID_STRIDE,
+            viewport,
+            (0.0, 0.0),
+        );
         premultiplied_blending(&self.gl);
     }
 
@@ -462,7 +505,7 @@ impl Renderer {
         }
     }
 
-    unsafe fn draw_images(&mut self, viewport: (f32, f32), below_text: bool) {
+    unsafe fn draw_images(&mut self, viewport: (f32, f32), origin: (f32, f32), below_text: bool) {
         if !self
             .image_batches
             .iter()
@@ -473,6 +516,8 @@ impl Renderer {
         self.gl.use_program(Some(self.image.program));
         self.gl
             .uniform_2_f32(self.image.viewport.as_ref(), viewport.0, viewport.1);
+        self.gl
+            .uniform_2_f32(self.image.origin.as_ref(), origin.0, origin.1);
         self.gl.bind_vertex_array(Some(self.image.vertex_array));
         self.gl
             .bind_buffer(glow::ARRAY_BUFFER, Some(self.image.buffer));
@@ -671,12 +716,19 @@ fn upload_whole(gl: &glow::Context, pass: &Pass, buffer: &mut RowVertices) {
     }
 }
 
-unsafe fn draw_rows(gl: &glow::Context, pass: &Pass, buffer: &RowVertices, viewport: (f32, f32)) {
+unsafe fn draw_rows(
+    gl: &glow::Context,
+    pass: &Pass,
+    buffer: &RowVertices,
+    viewport: (f32, f32),
+    origin: (f32, f32),
+) {
     if buffer.data.is_empty() {
         return;
     }
     gl.use_program(Some(pass.program));
     gl.uniform_2_f32(pass.viewport.as_ref(), viewport.0, viewport.1);
+    gl.uniform_2_f32(pass.origin.as_ref(), origin.0, origin.1);
     gl.bind_vertex_array(Some(pass.vertex_array));
     gl.bind_buffer(glow::ARRAY_BUFFER, Some(pass.buffer));
     gl.draw_arrays(glow::TRIANGLES, 0, buffer.vertices());
@@ -869,12 +921,14 @@ unsafe fn draw_pass(
     vertices: &[f32],
     stride: i32,
     viewport: (f32, f32),
+    origin: (f32, f32),
 ) {
     if vertices.is_empty() {
         return;
     }
     gl.use_program(Some(pass.program));
     gl.uniform_2_f32(pass.viewport.as_ref(), viewport.0, viewport.1);
+    gl.uniform_2_f32(pass.origin.as_ref(), origin.0, origin.1);
     gl.bind_vertex_array(Some(pass.vertex_array));
     gl.bind_buffer(glow::ARRAY_BUFFER, Some(pass.buffer));
     gl.buffer_data_u8_slice(

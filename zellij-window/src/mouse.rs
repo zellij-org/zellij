@@ -174,11 +174,23 @@ pub struct PointerState {
     horizontal: f64,
     swallowed_middle: bool,
     inside: bool,
+    origin: (f64, f64),
 }
 
 impl PointerState {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn set_origin(&mut self, x: i32, y: i32) {
+        self.origin = (x as f64, y as f64);
+    }
+
+    fn at(&self, geometry: Geometry) -> Position {
+        cell_at(
+            PhysicalPosition::new(self.cursor.x - self.origin.0, self.cursor.y - self.origin.1),
+            geometry,
+        )
     }
 
     pub fn moved(
@@ -189,7 +201,7 @@ impl PointerState {
     ) -> Option<MouseEvent> {
         self.cursor = cursor;
         self.inside = true;
-        let position = cell_at(cursor, geometry);
+        let position = self.at(geometry);
         if self.reported == Some(position) {
             return None;
         }
@@ -210,7 +222,7 @@ impl PointerState {
         modifiers: ModifiersState,
     ) -> Option<MouseEvent> {
         let button = Button::of(button)?;
-        let position = cell_at(self.cursor, geometry);
+        let position = self.at(geometry);
         self.reported = Some(position);
         match state {
             ElementState::Pressed => {
@@ -251,7 +263,7 @@ impl PointerState {
             ),
         };
 
-        let position = cell_at(self.cursor, geometry);
+        let position = self.at(geometry);
         let mut events = Vec::new();
         for (ticks, up, down) in [
             (
@@ -289,7 +301,7 @@ impl PointerState {
         if !self.held.any() {
             return Vec::new();
         }
-        let position = cell_at(self.cursor, geometry);
+        let position = self.at(geometry);
         let held = std::mem::take(&mut self.held);
         [Button::Left, Button::Right, Button::Middle]
             .into_iter()
@@ -315,7 +327,7 @@ impl PointerState {
     }
 
     pub fn cell(&self, geometry: Geometry) -> (u16, u16) {
-        let position = cell_at(self.cursor, geometry);
+        let position = self.at(geometry);
         (
             position.column.0.min(u16::MAX as usize) as u16,
             position.line.0.clamp(0, u16::MAX as isize) as u16,
@@ -756,6 +768,40 @@ mod tests {
     fn a_cursor_outside_the_grid_is_clamped_into_it() {
         assert_eq!(cell_at(at(-4.0, -9.0), geometry()), position(0, 0));
         assert_eq!(cell_at(at(99999.0, 99999.0), geometry()), position(39, 119));
+    }
+
+    #[test]
+    fn the_padding_origin_is_taken_off_before_finding_the_cell() {
+        let mut pointer = PointerState::new();
+        pointer.set_origin(12, 7);
+        pointer.moved(at(12.0, 7.0), geometry(), ModifiersState::empty());
+        assert_eq!(pointer.cell(geometry()), (0, 0));
+        pointer.moved(at(21.9, 26.9), geometry(), ModifiersState::empty());
+        assert_eq!(pointer.cell(geometry()), (0, 0));
+        pointer.moved(at(22.0, 27.0), geometry(), ModifiersState::empty());
+        assert_eq!(pointer.cell(geometry()), (1, 1));
+        pointer.moved(at(47.0, 58.0), geometry(), ModifiersState::empty());
+        assert_eq!(pointer.cell(geometry()), (3, 2));
+    }
+
+    #[test]
+    fn a_pointer_in_the_padding_lands_on_the_nearest_edge_cell() {
+        let mut pointer = PointerState::new();
+        pointer.set_origin(12, 7);
+        pointer.moved(at(3.0, 2.0), geometry(), ModifiersState::empty());
+        assert_eq!(pointer.cell(geometry()), (0, 0));
+        pointer.moved(
+            at(12.0 + 1200.0 + 5.0, 30.0),
+            geometry(),
+            ModifiersState::empty(),
+        );
+        assert_eq!(pointer.cell(geometry()), (119, 1));
+        pointer.moved(
+            at(40.0, 7.0 + 800.0 + 3.0),
+            geometry(),
+            ModifiersState::empty(),
+        );
+        assert_eq!(pointer.cell(geometry()), (2, 39));
     }
 
     #[test]

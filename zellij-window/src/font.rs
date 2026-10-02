@@ -9,7 +9,7 @@ use swash::shape::{Direction, ShapeContext};
 use swash::text::cluster::{CharCluster, Parser, Token};
 use swash::text::Script;
 use swash::zeno::Format;
-use swash::FontRef;
+use swash::{tag_from_bytes, FontRef};
 
 use crate::discovery::Discovery;
 
@@ -17,6 +17,11 @@ pub use swash::GlyphId;
 
 pub const DEFAULT_FONT_SIZE: f32 = 16.0;
 pub const DEFAULT_LIGATURES: bool = true;
+pub const DEFAULT_FONT_WEIGHT: u16 = 400;
+const BOLD_WEIGHT_STEP: u16 = 300;
+const MAX_FONT_WEIGHT: u16 = 900;
+const WEIGHT_AXIS: &[u8; 4] = b"wght";
+const LIGATURE_FEATURES: [&[u8; 4]; 3] = [b"liga", b"calt", b"dlig"];
 
 const MIN_FONT_SIZE: f32 = 4.0;
 const MAX_FONT_SIZE: f32 = 512.0;
@@ -123,12 +128,105 @@ pub struct GlyphBitmap {
     pub content: GlyphContent,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct FaceRequest {
+    pub weight: u16,
+    pub italic: bool,
+}
+
+impl FaceRequest {
+    pub fn weighted(style: FaceStyle, regular: u16) -> Self {
+        Self {
+            weight: if style.is_bold() {
+                bold_weight(regular)
+            } else {
+                regular
+            },
+            italic: style.is_italic(),
+        }
+    }
+}
+
+impl From<FaceStyle> for FaceRequest {
+    fn from(style: FaceStyle) -> Self {
+        Self::weighted(style, DEFAULT_FONT_WEIGHT)
+    }
+}
+
+pub fn bold_weight(regular: u16) -> u16 {
+    regular
+        .saturating_add(BOLD_WEIGHT_STEP)
+        .min(MAX_FONT_WEIGHT)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FontFeature {
+    pub tag: [u8; 4],
+    pub value: u16,
+}
+
+impl FontFeature {
+    pub fn parse(text: &str) -> Option<Self> {
+        let (value, tag) = match text.as_bytes().first() {
+            Some(b'-') => (0, &text[1..]),
+            Some(b'+') => (1, &text[1..]),
+            _ => (1, text),
+        };
+        let tag: [u8; 4] = tag.as_bytes().try_into().ok()?;
+        tag.iter()
+            .all(|byte| (0x21..=0x7e).contains(byte))
+            .then_some(Self { tag, value })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CellAdjust {
+    pub line_height: f32,
+    pub cell_width: f32,
+    pub baseline_offset: f32,
+    pub underline_offset: f32,
+    pub underline_thickness: f32,
+}
+
+impl Default for CellAdjust {
+    fn default() -> Self {
+        Self {
+            line_height: 1.0,
+            cell_width: 1.0,
+            baseline_offset: 0.0,
+            underline_offset: 0.0,
+            underline_thickness: 0.0,
+        }
+    }
+}
+
+impl CellAdjust {
+    fn scaled(&self, scale: f32) -> Self {
+        Self {
+            baseline_offset: self.baseline_offset * scale,
+            underline_offset: self.underline_offset * scale,
+            underline_thickness: self.underline_thickness * scale,
+            ..*self
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CellPlacement {
+    pub natural_width: u32,
+    pub inset: i32,
+    pub underline_stroke: u32,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct FontOptions {
     pub family: Option<String>,
     pub size: f32,
     pub system_fonts: bool,
     pub ligatures: bool,
+    pub weight: u16,
+    pub features: Vec<FontFeature>,
+    pub cell: CellAdjust,
 }
 
 impl Default for FontOptions {
@@ -138,6 +236,9 @@ impl Default for FontOptions {
             size: DEFAULT_FONT_SIZE,
             system_fonts: true,
             ligatures: DEFAULT_LIGATURES,
+            weight: DEFAULT_FONT_WEIGHT,
+            features: Vec::new(),
+            cell: CellAdjust::default(),
         }
     }
 }
@@ -145,10 +246,9 @@ impl Default for FontOptions {
 impl FontOptions {
     pub fn scaled(&self, scale: f64) -> Self {
         Self {
-            family: self.family.clone(),
             size: self.size * scale as f32,
-            system_fonts: self.system_fonts,
-            ligatures: self.ligatures,
+            cell: self.cell.scaled(scale as f32),
+            ..self.clone()
         }
     }
 
@@ -168,16 +268,21 @@ pub struct ShapedGlyph {
 
 pub struct FontStack {
     faces: Vec<FontRef<'static>>,
+    coords: Vec<Vec<i16>>,
     color_capable: Vec<bool>,
     primary: [FontId; 4],
     embedded_fallbacks: [FontId; 3],
     size: f32,
-    ligatures: bool,
+    weight: u16,
+    features: Vec<FontFeature>,
+    shapes: bool,
     metrics: CellMetrics,
+    placement: CellPlacement,
     context: ScaleContext,
     shaping: ShapeContext,
     discovery: Option<Discovery>,
-    loaded: HashMap<(PathBuf, u32), FontId>,
+    files: HashMap<PathBuf, &'static [u8]>,
+    loaded: HashMap<(PathBuf, u32, u16), FontId>,
     resolved: HashMap<(FaceStyle, char), Option<Glyph>>,
     shaped: HashMap<FontId, HashMap<String, Rc<[ShapedGlyph]>>>,
     #[cfg(test)]
@@ -219,7 +324,7 @@ impl FontStack {
             return Err(anyhow!("font size {} is out of range", size));
         }
 
-        let mut faces = vec![
+        let faces = vec![
             face(REGULAR, "IosevkaTerm-Regular")?,
             face(BOLD, "IosevkaTerm-Bold")?,
             face(ITALIC, "IosevkaTerm-Italic")?,
@@ -228,56 +333,72 @@ impl FontStack {
             face(EMOJI, "NotoColorEmoji")?,
             face(SYMBOLS, "SymbolsNerdFontMono-Regular")?,
         ];
-        let mut color_capable: Vec<bool> = faces.iter().map(is_color_capable).collect();
-        let mut loaded = HashMap::new();
+        let color_capable: Vec<bool> = faces.iter().map(is_color_capable).collect();
+        let coords = vec![Vec::new(); faces.len()];
         let embedded_primary = [FontId(0), FontId(1), FontId(2), FontId(3)];
+        let features = effective_features(&options.features, options.ligatures);
+        let (metrics, placement) = derive_metrics(&faces[0], &[], size, &options.cell);
 
-        let primary = match &options.family {
-            Some(family) => requested_family(
-                family,
-                discovery.as_ref(),
-                &mut faces,
-                &mut color_capable,
-                &mut loaded,
-            )
-            .unwrap_or_else(|| {
-                eprintln!(
-                    "zellij-window: no font family named {:?} resolved; \
-                     rendering with the embedded font instead",
-                    family
-                );
-                embedded_primary
-            }),
-            None => embedded_primary,
-        };
-
-        let metrics = derive_metrics(&faces[primary[0].0], size);
-
-        Ok(Self {
+        let mut stack = Self {
             faces,
+            coords,
             color_capable,
-            primary,
+            primary: embedded_primary,
             embedded_fallbacks: [FontId(4), FontId(5), SYMBOLS_FONT],
             size,
-            ligatures: options.ligatures,
+            weight: options.weight,
+            shapes: options.ligatures || !features.is_empty(),
+            features,
             metrics,
+            placement,
             context: ScaleContext::new(),
             shaping: ShapeContext::new(),
             discovery,
-            loaded,
+            files: HashMap::new(),
+            loaded: HashMap::new(),
             resolved: HashMap::new(),
             shaped: HashMap::new(),
             #[cfg(test)]
             discovery_queries: 0,
-        })
+        };
+
+        if let Some(family) = &options.family {
+            match stack.requested_family(family) {
+                Some(primary) => stack.primary = primary,
+                None => eprintln!(
+                    "zellij-window: no font family named {:?} resolved; \
+                     rendering with the embedded font instead",
+                    family
+                ),
+            }
+        }
+
+        let regular = stack.primary[0].0;
+        let (metrics, placement) = derive_metrics(
+            &stack.faces[regular],
+            &stack.coords[regular],
+            size,
+            &options.cell,
+        );
+        stack.metrics = metrics;
+        stack.placement = placement;
+        Ok(stack)
     }
 
     pub fn metrics(&self) -> CellMetrics {
         self.metrics
     }
 
+    pub fn placement(&self) -> CellPlacement {
+        self.placement
+    }
+
     pub fn shapes_runs(&self) -> bool {
-        self.ligatures
+        self.shapes
+    }
+
+    fn request(&self, style: FaceStyle) -> FaceRequest {
+        FaceRequest::weighted(style, self.weight)
     }
 
     pub fn primary_of(&self, style: FaceStyle) -> FontId {
@@ -308,13 +429,22 @@ impl FontStack {
             return Vec::new();
         };
         let charmap = face.charmap();
+        let coords = &self.coords[font.0];
         let mut shaper = self
             .shaping
             .builder(face)
             .script(Script::Latin)
             .direction(Direction::LeftToRight)
             .size(self.size)
+            .features(
+                self.features
+                    .iter()
+                    .map(|feature| (tag_from_bytes(&feature.tag), feature.value)),
+            )
+            .normalized_coords(coords.iter())
             .build();
+        let natural = self.placement.natural_width as f32;
+        let stretch = self.metrics.width as i32 - self.placement.natural_width as i32;
 
         let mut cluster = CharCluster::new();
         let mut parser = Parser::new(
@@ -338,11 +468,16 @@ impl FontStack {
             let span = (shaped.source.end as usize).saturating_sub(cell).max(1);
             let mut pen = 0.0f32;
             for glyph in shaped.glyphs {
+                let cells_in = if stretch != 0 && natural > 0.0 {
+                    (pen / natural).round() as i32
+                } else {
+                    0
+                };
                 glyphs.push(ShapedGlyph {
                     cell,
                     span,
                     glyph: glyph.id,
-                    dx: (pen + glyph.x).round() as i32,
+                    dx: (pen + glyph.x).round() as i32 + cells_in * stretch,
                     dy: glyph.y.round() as i32,
                 });
                 pen += glyph.advance;
@@ -381,22 +516,25 @@ impl FontStack {
         spill: u32,
     ) -> Option<GlyphBitmap> {
         let font = *self.faces.get(glyph.font.0)?;
+        let coords = self.coords[glyph.font.0].clone();
         if self.is_primary(glyph.font) {
-            return self.render(font, glyph.glyph, self.size, PRIMARY_SOURCES);
+            let mut bitmap = self.render(font, &coords, glyph.glyph, self.size, PRIMARY_SOURCES)?;
+            bitmap.left += self.placement.inset * budget.max(1) as i32;
+            return Some(bitmap);
         }
 
         let fit = Fit::new(self.metrics, budget.max(1)).spilling(spill);
         let advance_at = |size: f32| {
-            font.glyph_metrics(&[])
+            font.glyph_metrics(&coords)
                 .scale(size)
                 .advance_width(glyph.glyph)
         };
         let mut size = self.size * fit.advance_scale(advance_at(self.size));
-        let mut bitmap = self.render(font, glyph.glyph, size, FALLBACK_SOURCES)?;
+        let mut bitmap = self.render(font, &coords, glyph.glyph, size, FALLBACK_SOURCES)?;
         let shrink = fit.ink_scale(&bitmap);
         if shrink < 1.0 {
             size *= shrink;
-            bitmap = self.render(font, glyph.glyph, size, FALLBACK_SOURCES)?;
+            bitmap = self.render(font, &coords, glyph.glyph, size, FALLBACK_SOURCES)?;
         }
         Some(fit.place(bitmap, advance_at(size)))
     }
@@ -404,11 +542,18 @@ impl FontStack {
     fn render(
         &mut self,
         font: FontRef<'static>,
+        coords: &[i16],
         glyph: GlyphId,
         size: f32,
         sources: &[Source],
     ) -> Option<GlyphBitmap> {
-        let mut scaler = self.context.builder(font).size(size).hint(false).build();
+        let mut scaler = self
+            .context
+            .builder(font)
+            .size(size)
+            .hint(false)
+            .normalized_coords(coords.iter())
+            .build();
         let image = Render::new(sources)
             .format(Format::Alpha)
             .render(&mut scaler, glyph)?;
@@ -471,16 +616,109 @@ impl FontStack {
         {
             self.discovery_queries += 1;
         }
-        let (path, index) = self.discovery.as_ref()?.match_codepoint(style, character)?;
-        let font = adopt(
-            &mut self.faces,
-            &mut self.color_capable,
-            &mut self.loaded,
-            path,
-            index,
-        )?;
+        let request = self.request(style);
+        let (path, index) = self
+            .discovery
+            .as_ref()?
+            .match_codepoint(request, character)?;
+        let font = self.adopt(path, index, request.weight)?;
         self.map(font, character)
     }
+
+    fn requested_family(&mut self, family: &str) -> Option<[FontId; 4]> {
+        let discovery = self.discovery?;
+        let resolve = |stack: &mut Self, style: FaceStyle| {
+            let request = stack.request(style);
+            let (path, index) = discovery.match_family(family, request)?;
+            stack.adopt(path, index, request.weight)
+        };
+
+        let regular = resolve(self, FaceStyle::Regular)?;
+        Some([
+            regular,
+            resolve(self, FaceStyle::Bold).unwrap_or(regular),
+            resolve(self, FaceStyle::Italic).unwrap_or(regular),
+            resolve(self, FaceStyle::BoldItalic).unwrap_or(regular),
+        ])
+    }
+
+    fn adopt(&mut self, path: PathBuf, index: u32, weight: u16) -> Option<FontId> {
+        if let Some(font) = self.loaded.get(&(path.clone(), index, STATIC_FACE)) {
+            return Some(*font);
+        }
+        if let Some(font) = self.loaded.get(&(path.clone(), index, weight)) {
+            return Some(*font);
+        }
+        let data = match self.files.get(&path) {
+            Some(data) => *data,
+            None => {
+                let data = std::fs::read(&path)
+                    .map_err(|e| {
+                        eprintln!("zellij-window: failed to read the font {:?}: {}", path, e)
+                    })
+                    .ok()?;
+                let leaked: &'static [u8] = Box::leak(data.into_boxed_slice());
+                self.files.insert(path.clone(), leaked);
+                leaked
+            },
+        };
+        let parsed = FontRef::from_index(data, index as usize)?;
+        let coords = weight_coords(&parsed, weight);
+        let key = if has_weight_axis(&parsed) {
+            weight
+        } else {
+            STATIC_FACE
+        };
+        let font = FontId(self.faces.len());
+        self.color_capable.push(is_color_capable(&parsed));
+        self.faces.push(parsed);
+        self.coords.push(coords);
+        self.loaded.insert((path, index, key), font);
+        Some(font)
+    }
+}
+
+const STATIC_FACE: u16 = 0;
+
+fn has_weight_axis(font: &FontRef<'_>) -> bool {
+    font.variations()
+        .find_by_tag(tag_from_bytes(WEIGHT_AXIS))
+        .is_some()
+}
+
+fn weight_coords(font: &FontRef<'_>, weight: u16) -> Vec<i16> {
+    let variations = font.variations();
+    let Some(axis) = variations.find_by_tag(tag_from_bytes(WEIGHT_AXIS)) else {
+        return Vec::new();
+    };
+    let value = (weight as f32).clamp(axis.min_value(), axis.max_value());
+    let coords: Vec<i16> = variations
+        .normalized_coords([(tag_from_bytes(WEIGHT_AXIS), value)])
+        .collect();
+    if coords.iter().all(|coord| *coord == 0) {
+        Vec::new()
+    } else {
+        coords
+    }
+}
+
+fn effective_features(requested: &[FontFeature], ligatures: bool) -> Vec<FontFeature> {
+    if requested.is_empty() {
+        return Vec::new();
+    }
+    let mut features = Vec::new();
+    if !ligatures {
+        for tag in LIGATURE_FEATURES {
+            if !requested.iter().any(|feature| &feature.tag == tag) {
+                features.push(FontFeature {
+                    tag: *tag,
+                    value: 0,
+                });
+            }
+        }
+    }
+    features.extend_from_slice(requested);
+    features
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -592,50 +830,6 @@ fn confine(bitmap: GlyphBitmap, max_width: u32, max_height: u32) -> GlyphBitmap 
     }
 }
 
-fn requested_family(
-    family: &str,
-    discovery: Option<&Discovery>,
-    faces: &mut Vec<FontRef<'static>>,
-    color_capable: &mut Vec<bool>,
-    loaded: &mut HashMap<(PathBuf, u32), FontId>,
-) -> Option<[FontId; 4]> {
-    let discovery = discovery?;
-    let mut resolve = |style: FaceStyle| {
-        let (path, index) = discovery.match_family(family, style)?;
-        adopt(faces, color_capable, loaded, path, index)
-    };
-
-    let regular = resolve(FaceStyle::Regular)?;
-    Some([
-        regular,
-        resolve(FaceStyle::Bold).unwrap_or(regular),
-        resolve(FaceStyle::Italic).unwrap_or(regular),
-        resolve(FaceStyle::BoldItalic).unwrap_or(regular),
-    ])
-}
-
-fn adopt(
-    faces: &mut Vec<FontRef<'static>>,
-    color_capable: &mut Vec<bool>,
-    loaded: &mut HashMap<(PathBuf, u32), FontId>,
-    path: PathBuf,
-    index: u32,
-) -> Option<FontId> {
-    if let Some(font) = loaded.get(&(path.clone(), index)) {
-        return Some(*font);
-    }
-    let data = std::fs::read(&path)
-        .map_err(|e| eprintln!("zellij-window: failed to read the font {:?}: {}", path, e))
-        .ok()?;
-    let leaked: &'static [u8] = Box::leak(data.into_boxed_slice());
-    let parsed = FontRef::from_index(leaked, index as usize)?;
-    let font = FontId(faces.len());
-    color_capable.push(is_color_capable(&parsed));
-    faces.push(parsed);
-    loaded.insert((path, index), font);
-    Some(font)
-}
-
 fn is_private_use(character: char) -> bool {
     matches!(character, '\u{e000}'..='\u{f8ff}' | '\u{f0000}'..='\u{ffffd}' | '\u{100000}'..='\u{10fffd}')
 }
@@ -696,37 +890,64 @@ fn downscale(
     target
 }
 
-fn derive_metrics(font: &FontRef<'static>, size: f32) -> CellMetrics {
-    let metrics = font.metrics(&[]).scale(size);
+fn derive_metrics(
+    font: &FontRef<'static>,
+    coords: &[i16],
+    size: f32,
+    adjust: &CellAdjust,
+) -> (CellMetrics, CellPlacement) {
+    let metrics = font.metrics(coords).scale(size);
     let advance = font
-        .glyph_metrics(&[])
+        .glyph_metrics(coords)
         .scale(size)
         .advance_width(font.charmap().map('M'));
 
-    let width = advance.round().max(1.0) as u32;
-    let height = (metrics.ascent + metrics.descent + metrics.leading)
+    let natural_width = advance.round().max(1.0) as u32;
+    let natural_height = (metrics.ascent + metrics.descent + metrics.leading)
         .round()
         .max(1.0) as u32;
-    let baseline = (metrics.ascent + metrics.leading / 2.0)
+    let natural_baseline = (metrics.ascent + metrics.leading / 2.0)
         .round()
-        .clamp(1.0, height as f32) as u32;
-    let stroke = metrics.stroke_size.round().max(1.0) as u32;
+        .clamp(1.0, natural_height as f32) as i32;
 
-    let underline_top = (baseline as f32 - metrics.underline_offset)
-        .round()
-        .clamp(0.0, (height - stroke.min(height)) as f32) as u32;
+    let width = scaled_cell(natural_width, adjust.cell_width);
+    let height = scaled_cell(natural_height, adjust.line_height);
+    let added = height as i32 - natural_height as i32;
+    let baseline = (natural_baseline + added.div_euclid(2) + adjust.baseline_offset.round() as i32)
+        .clamp(1, height as i32) as u32;
+    let stroke = metrics.stroke_size.round().max(1.0) as u32;
+    let underline_stroke =
+        (stroke as i32 + adjust.underline_thickness.round() as i32).clamp(1, height as i32) as u32;
+
+    let underline_top = ((baseline as f32 - metrics.underline_offset).round()
+        + adjust.underline_offset.round())
+    .clamp(0.0, (height - underline_stroke.min(height)) as f32) as u32;
     let strikeout_top = (baseline as f32 - metrics.strikeout_offset)
         .round()
         .clamp(0.0, (height - stroke.min(height)) as f32) as u32;
 
-    CellMetrics {
-        width,
-        height,
-        baseline,
-        underline_top,
-        strikeout_top,
-        stroke,
+    (
+        CellMetrics {
+            width,
+            height,
+            baseline,
+            underline_top,
+            strikeout_top,
+            stroke,
+        },
+        CellPlacement {
+            natural_width,
+            inset: (width as i32 - natural_width as i32).div_euclid(2),
+            underline_stroke,
+        },
+    )
+}
+
+fn scaled_cell(natural: u32, scale: f32) -> u32 {
+    if !scale.is_finite() || scale == 1.0 {
+        return natural.max(1);
     }
+    (natural as f32 * scale).round().max(1.0) as u32
 }
 
 #[cfg(test)]
@@ -810,7 +1031,311 @@ mod tests {
             size: DEFAULT_FONT_SIZE,
             system_fonts: true,
             ligatures: DEFAULT_LIGATURES,
+            ..FontOptions::default()
         }
+    }
+
+    fn adjusted(cell: CellAdjust) -> FontStack {
+        FontStack::build_with(
+            &FontOptions {
+                system_fonts: false,
+                cell,
+                ..FontOptions::default()
+            },
+            None,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn line_height_grows_the_cell_and_moves_the_baseline_down_by_half_the_growth() {
+        let natural = fonts().metrics();
+        let stack = adjusted(CellAdjust {
+            line_height: 1.5,
+            ..CellAdjust::default()
+        });
+        let metrics = stack.metrics();
+        assert_eq!(metrics.width, natural.width);
+        assert_eq!(metrics.height, 30);
+        assert_eq!(metrics.baseline, natural.baseline + 5);
+        assert_eq!(metrics.underline_top, natural.underline_top + 5);
+        assert_eq!(metrics.strikeout_top, natural.strikeout_top + 5);
+    }
+
+    #[test]
+    fn a_shorter_line_still_keeps_its_lines_inside_the_cell() {
+        let stack = adjusted(CellAdjust {
+            line_height: 0.5,
+            ..CellAdjust::default()
+        });
+        let metrics = stack.metrics();
+        assert_eq!(metrics.height, 10);
+        assert!(metrics.baseline >= 1 && metrics.baseline <= metrics.height);
+        assert!(metrics.underline_top + stack.placement().underline_stroke <= metrics.height);
+        assert!(metrics.strikeout_top + metrics.stroke <= metrics.height);
+    }
+
+    #[test]
+    fn cell_width_widens_the_cell_and_centres_the_glyph_in_it() {
+        let natural = fonts().metrics();
+        let stack = adjusted(CellAdjust {
+            cell_width: 1.5,
+            ..CellAdjust::default()
+        });
+        assert_eq!(stack.metrics().width, 12);
+        assert_eq!(stack.metrics().height, natural.height);
+        assert_eq!(stack.placement().natural_width, 8);
+        assert_eq!(stack.placement().inset, 2);
+
+        let mut plain = fonts();
+        let mut wide = stack;
+        let glyph = glyph_of(&mut plain, FaceStyle::Regular, 'M');
+        let at_natural = plain.rasterize(glyph, 1).unwrap();
+        let at_wide = wide.rasterize(glyph, 1).unwrap();
+        assert_eq!(at_wide.left, at_natural.left + 2);
+        assert_eq!(at_wide.width, at_natural.width);
+    }
+
+    #[test]
+    fn shaped_glyphs_land_on_their_own_widened_cells() {
+        let mut wide = FontStack::build_with(
+            &FontOptions {
+                system_fonts: false,
+                ligatures: true,
+                cell: CellAdjust {
+                    cell_width: 1.5,
+                    ..CellAdjust::default()
+                },
+                ..FontOptions::default()
+            },
+            None,
+        )
+        .unwrap();
+        let font = wide.primary_of(FaceStyle::Regular);
+        let shaped = wide.shape(font, "->");
+        assert!(!shaped.is_empty());
+        for glyph in shaped.iter() {
+            let within = glyph.dx.rem_euclid(12);
+            assert!(
+                within <= 1 || within >= 11,
+                "{:?} does not start on a 12 px cell",
+                glyph
+            );
+        }
+    }
+
+    #[test]
+    fn a_large_baseline_offset_is_held_inside_the_cell() {
+        for offset in [-64.0, 64.0] {
+            let metrics = adjusted(CellAdjust {
+                baseline_offset: offset,
+                ..CellAdjust::default()
+            })
+            .metrics();
+            assert!(metrics.baseline >= 1 && metrics.baseline <= metrics.height);
+        }
+        let lowered = adjusted(CellAdjust {
+            baseline_offset: 2.0,
+            ..CellAdjust::default()
+        })
+        .metrics();
+        assert_eq!(lowered.baseline, fonts().metrics().baseline + 2);
+    }
+
+    #[test]
+    fn underline_adjustments_apply_on_top_of_the_font_and_stay_inside_the_cell() {
+        let natural = fonts().metrics();
+        let moved = adjusted(CellAdjust {
+            underline_offset: 1.0,
+            underline_thickness: 1.0,
+            ..CellAdjust::default()
+        });
+        assert_eq!(moved.metrics().underline_top, natural.underline_top + 1);
+        assert_eq!(moved.placement().underline_stroke, natural.stroke + 1);
+        assert_eq!(moved.metrics().stroke, natural.stroke);
+
+        for (offset, thickness) in [(64.0, 64.0), (-64.0, 0.0), (64.0, -64.0)] {
+            let stack = adjusted(CellAdjust {
+                underline_offset: offset,
+                underline_thickness: thickness,
+                ..CellAdjust::default()
+            });
+            let (metrics, placement) = (stack.metrics(), stack.placement());
+            assert!(placement.underline_stroke >= 1);
+            assert!(
+                metrics.underline_top + placement.underline_stroke <= metrics.height,
+                "{} {}: {:?} {:?}",
+                offset,
+                thickness,
+                metrics,
+                placement
+            );
+        }
+    }
+
+    #[test]
+    fn default_adjustments_leave_the_cell_as_the_font_measures_it() {
+        let stack = adjusted(CellAdjust::default());
+        assert_eq!(stack.metrics(), fonts().metrics());
+        assert_eq!(stack.placement().inset, 0);
+        assert_eq!(stack.placement().underline_stroke, stack.metrics().stroke);
+    }
+
+    #[test]
+    fn a_weight_request_on_a_static_font_changes_nothing() {
+        let stack = FontStack::build_with(
+            &FontOptions {
+                system_fonts: false,
+                weight: 500,
+                ..FontOptions::default()
+            },
+            None,
+        )
+        .unwrap();
+        assert_eq!(stack.metrics(), fonts().metrics());
+        assert!(stack.coords.iter().all(Vec::is_empty));
+    }
+
+    #[test]
+    fn bold_is_three_hundred_heavier_and_capped() {
+        assert_eq!(bold_weight(400), 700);
+        assert_eq!(bold_weight(500), 800);
+        assert_eq!(bold_weight(700), 900);
+        assert_eq!(
+            FaceRequest::weighted(FaceStyle::BoldItalic, 300).weight,
+            600
+        );
+        assert!(FaceRequest::weighted(FaceStyle::BoldItalic, 300).italic);
+    }
+
+    #[test]
+    fn features_turn_shaping_on_and_keep_ligatures_off_when_asked() {
+        let zero = FontFeature::parse("zero").unwrap();
+        let stack = FontStack::build_with(
+            &FontOptions {
+                system_fonts: false,
+                ligatures: false,
+                features: vec![zero, FontFeature::parse("+calt").unwrap()],
+                ..FontOptions::default()
+            },
+            None,
+        )
+        .unwrap();
+        assert!(stack.shapes_runs());
+        let tags: Vec<(&[u8; 4], u16)> = stack
+            .features
+            .iter()
+            .map(|feature| (&feature.tag, feature.value))
+            .collect();
+        assert!(tags.contains(&(b"liga", 0)));
+        assert!(tags.contains(&(b"dlig", 0)));
+        assert!(!tags.contains(&(b"calt", 0)));
+        assert!(tags.contains(&(b"calt", 1)));
+        assert!(tags.contains(&(b"zero", 1)));
+
+        let unshaped = FontStack::build_with(
+            &FontOptions {
+                system_fonts: false,
+                ligatures: false,
+                ..FontOptions::default()
+            },
+            None,
+        )
+        .unwrap();
+        assert!(!unshaped.shapes_runs());
+    }
+
+    fn arrow_ligates(ligatures: bool, features: &[&str]) -> bool {
+        let mut stack = FontStack::build_with(
+            &FontOptions {
+                system_fonts: false,
+                ligatures,
+                features: features
+                    .iter()
+                    .map(|feature| FontFeature::parse(feature).unwrap())
+                    .collect(),
+                ..FontOptions::default()
+            },
+            None,
+        )
+        .unwrap();
+        let font = stack.primary_of(FaceStyle::Regular);
+        let nominal: Vec<GlyphId> = "->"
+            .chars()
+            .map(|character| glyph_of(&mut stack, FaceStyle::Regular, character).glyph)
+            .collect();
+        let shaped: Vec<GlyphId> = stack.shape(font, "->").iter().map(|g| g.glyph).collect();
+        shaped != nominal
+    }
+
+    #[test]
+    fn a_listed_feature_changes_what_the_shaper_draws() {
+        assert!(
+            arrow_ligates(true, &[]),
+            "the arrow no longer ligates at all"
+        );
+        assert!(
+            !arrow_ligates(true, &["-calt"]),
+            "turning calt off left the arrow joined"
+        );
+        assert!(
+            arrow_ligates(false, &["+calt"]),
+            "listing calt with ligatures off did not join the arrow"
+        );
+        assert!(
+            !arrow_ligates(false, &["zero"]),
+            "an unrelated feature with ligatures off still joined the arrow"
+        );
+    }
+
+    #[test]
+    fn a_requested_weight_picks_the_matching_installed_face() {
+        let Some(discovery) = synthetic_discovery() else {
+            return;
+        };
+        let weight_of = |stack: &FontStack, style: FaceStyle| {
+            stack.faces[stack.primary_of(style).0]
+                .attributes()
+                .weight()
+                .0
+        };
+        let regular = FontStack::build_with(&requested("Iosevka Term"), Some(discovery)).unwrap();
+        assert_eq!(weight_of(&regular, FaceStyle::Regular), 400);
+        assert_eq!(weight_of(&regular, FaceStyle::Bold), 700);
+
+        let heavy = FontStack::build_with(
+            &FontOptions {
+                weight: 700,
+                ..requested("Iosevka Term")
+            },
+            Some(discovery),
+        )
+        .unwrap();
+        assert_eq!(
+            weight_of(&heavy, FaceStyle::Regular),
+            700,
+            "a bold regular weight did not pick the bold file"
+        );
+    }
+
+    #[test]
+    fn feature_tags_parse_with_an_optional_sign() {
+        assert_eq!(
+            FontFeature::parse("-liga"),
+            Some(FontFeature {
+                tag: *b"liga",
+                value: 0
+            })
+        );
+        assert_eq!(
+            FontFeature::parse("ss01"),
+            Some(FontFeature {
+                tag: *b"ss01",
+                value: 1
+            })
+        );
+        assert_eq!(FontFeature::parse("ss1"), None);
+        assert_eq!(FontFeature::parse("--liga"), None);
     }
 
     const EMBEDDED_PRIMARY: [FontId; 4] = [FontId(0), FontId(1), FontId(2), FontId(3)];
@@ -1279,7 +1804,7 @@ mod tests {
         let glyph = glyph_of(&mut fonts, FaceStyle::Regular, '\u{4f60}');
         let font = fonts.faces[glyph.font.0];
         let raw = fonts
-            .render(font, glyph.glyph, DEFAULT_FONT_SIZE, FALLBACK_SOURCES)
+            .render(font, &[], glyph.glyph, DEFAULT_FONT_SIZE, FALLBACK_SOURCES)
             .unwrap();
         let placed = fonts.rasterize(glyph, 2).unwrap();
         assert_eq!((placed.left, placed.top), (raw.left, raw.top));

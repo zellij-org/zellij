@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 
+use crate::font::FaceRequest;
+#[cfg(test)]
 use crate::font::FaceStyle;
 
 #[cfg_attr(not(any(target_os = "macos", windows)), allow(dead_code))]
@@ -21,9 +23,14 @@ impl Discovery {
         BACKEND.get_or_init(Backend::load).as_ref().map(Discovery)
     }
 
-    pub fn match_codepoint(&self, style: FaceStyle, character: char) -> Option<(PathBuf, u32)> {
+    pub fn match_codepoint(
+        &self,
+        request: impl Into<FaceRequest>,
+        character: char,
+    ) -> Option<(PathBuf, u32)> {
+        let request = request.into();
         match self.0.lock() {
-            Ok(backend) => backend.match_codepoint(style, character),
+            Ok(backend) => backend.match_codepoint(request, character),
             Err(_) => {
                 eprintln!("zellij-window: the font discovery mutex was poisoned");
                 None
@@ -31,9 +38,14 @@ impl Discovery {
         }
     }
 
-    pub fn match_family(&self, family: &str, style: FaceStyle) -> Option<(PathBuf, u32)> {
+    pub fn match_family(
+        &self,
+        family: &str,
+        request: impl Into<FaceRequest>,
+    ) -> Option<(PathBuf, u32)> {
+        let request = request.into();
         match self.0.lock() {
-            Ok(backend) => backend.match_family(family, style),
+            Ok(backend) => backend.match_family(family, request),
             Err(_) => {
                 eprintln!("zellij-window: the font discovery mutex was poisoned");
                 None
@@ -54,7 +66,7 @@ mod fontconfig {
     use std::path::PathBuf;
     use std::sync::Mutex;
 
-    use crate::font::FaceStyle;
+    use crate::font::FaceRequest;
 
     fn library_name() -> Option<&'static str> {
         #[cfg(target_os = "linux")]
@@ -69,8 +81,32 @@ mod fontconfig {
 
     const FC_MATCH_PATTERN: c_int = 0;
     const FC_RESULT_MATCH: c_int = 0;
-    const FC_WEIGHT_REGULAR: c_int = 80;
-    const FC_WEIGHT_BOLD: c_int = 200;
+    const FC_WEIGHTS: [(u16, c_int); 11] = [
+        (100, 0),
+        (200, 40),
+        (300, 50),
+        (350, 55),
+        (380, 75),
+        (400, 80),
+        (500, 100),
+        (600, 180),
+        (700, 200),
+        (800, 205),
+        (900, 210),
+    ];
+
+    pub(super) fn fontconfig_weight(weight: u16) -> c_int {
+        let weight = weight.clamp(FC_WEIGHTS[0].0, FC_WEIGHTS[FC_WEIGHTS.len() - 1].0);
+        for pair in FC_WEIGHTS.windows(2) {
+            let ((low, low_fc), (high, high_fc)) = (pair[0], pair[1]);
+            if weight <= high {
+                let span = (high - low) as f32;
+                let along = (weight - low) as f32 / span;
+                return (low_fc as f32 + along * (high_fc - low_fc) as f32).round() as c_int;
+            }
+        }
+        FC_WEIGHTS[FC_WEIGHTS.len() - 1].1
+    }
     const FC_SLANT_ROMAN: c_int = 0;
     const FC_SLANT_ITALIC: c_int = 100;
 
@@ -172,7 +208,7 @@ mod fontconfig {
 
         pub(super) fn match_codepoint(
             &self,
-            style: FaceStyle,
+            request: FaceRequest,
             character: char,
         ) -> Option<(PathBuf, u32)> {
             let api = &self.api;
@@ -196,16 +232,12 @@ mod fontconfig {
                 (api.pattern_add_integer)(
                     pattern,
                     WEIGHT.as_ptr() as *const c_char,
-                    if style.is_bold() {
-                        FC_WEIGHT_BOLD
-                    } else {
-                        FC_WEIGHT_REGULAR
-                    },
+                    fontconfig_weight(request.weight),
                 );
                 (api.pattern_add_integer)(
                     pattern,
                     SLANT.as_ptr() as *const c_char,
-                    if style.is_italic() {
+                    if request.italic {
                         FC_SLANT_ITALIC
                     } else {
                         FC_SLANT_ROMAN
@@ -235,7 +267,7 @@ mod fontconfig {
         pub(super) fn match_family(
             &self,
             family: &str,
-            style: FaceStyle,
+            request: FaceRequest,
         ) -> Option<(PathBuf, u32)> {
             let api = &self.api;
             let requested = CString::new(family).ok()?;
@@ -252,16 +284,12 @@ mod fontconfig {
                 (api.pattern_add_integer)(
                     pattern,
                     WEIGHT.as_ptr() as *const c_char,
-                    if style.is_bold() {
-                        FC_WEIGHT_BOLD
-                    } else {
-                        FC_WEIGHT_REGULAR
-                    },
+                    fontconfig_weight(request.weight),
                 );
                 (api.pattern_add_integer)(
                     pattern,
                     SLANT.as_ptr() as *const c_char,
-                    if style.is_italic() {
+                    if request.italic {
                         FC_SLANT_ITALIC
                     } else {
                         FC_SLANT_ROMAN
@@ -427,6 +455,20 @@ mod tests {
             !fonts.has_discovery() && fonts.lookup(FaceStyle::Regular, 'A').is_some(),
             "the embedded fonts stopped covering 'A' without system discovery"
         );
+    }
+
+    #[cfg(not(any(target_os = "macos", windows)))]
+    #[test]
+    fn css_weights_map_onto_the_fontconfig_scale() {
+        use fontconfig::fontconfig_weight;
+        assert_eq!(fontconfig_weight(100), 0);
+        assert_eq!(fontconfig_weight(300), 50);
+        assert_eq!(fontconfig_weight(400), 80);
+        assert_eq!(fontconfig_weight(500), 100);
+        assert_eq!(fontconfig_weight(700), 200);
+        assert_eq!(fontconfig_weight(900), 210);
+        assert_eq!(fontconfig_weight(450), 90);
+        assert_eq!(fontconfig_weight(50), 0);
     }
 
     #[test]

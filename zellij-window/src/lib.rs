@@ -111,7 +111,16 @@ fn remembered(args: &WindowArgs, options: &Options) -> Option<WindowState> {
 }
 
 fn plan(args: &WindowArgs, options: &Options, saved: Option<WindowState>) -> Result<Plan> {
-    let startup = Startup::resolve(options.startup_mode, saved, args.rows, args.cols);
+    let startup = Startup::resolve_with(
+        options.startup_mode,
+        saved,
+        args.rows,
+        args.cols,
+        window_state::InitialCells {
+            rows: options.initial_rows,
+            cols: options.initial_cols,
+        },
+    );
     if startup.rows == 0 || startup.cols == 0 {
         bail!("rows and cols must both be greater than zero");
     }

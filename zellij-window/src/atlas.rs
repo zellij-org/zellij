@@ -337,6 +337,10 @@ impl GlyphCache {
         self.fonts.metrics()
     }
 
+    pub fn underline_stroke(&self) -> u32 {
+        self.fonts.placement().underline_stroke
+    }
+
     pub fn atlases(&self) -> Atlases<'_> {
         Atlases {
             mask: &self.mask,
