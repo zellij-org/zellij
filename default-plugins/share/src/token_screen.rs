@@ -100,14 +100,14 @@ impl TokenScreen {
             .enumerate()
             .map(|(i, &text)| {
                 if i == 0 {
-                    Text::new(text).color_range(0, ..)
+                    Text::from(text).color_range(0, ..)
                 } else {
-                    Text::new(text)
+                    Text::from(text)
                 }
             })
             .collect();
 
-        let esc_element = Text::new(ESC_INSTRUCTION).color_range(3, ..=4);
+        let esc_element = Text::from(ESC_INSTRUCTION).color_range(3, ..=4);
 
         ScreenElements {
             token: token_element,
@@ -119,7 +119,7 @@ impl TokenScreen {
     }
 
     fn create_token_text_element(&self, token_text: &str, token_label: &str) -> Text {
-        Text::new(token_text).color_range(2, ..token_label.chars().count())
+        Text::from(token_text).color_range(2, ..token_label.chars().count())
     }
 
     fn calculate_max_width(&self, elements: &ScreenElements) -> usize {
@@ -173,7 +173,7 @@ impl TokenScreen {
     fn render_error_if_present(&self, base_x: usize, base_y: usize) {
         if let Some(error) = &self.web_server_error {
             print_text_with_coordinates(
-                Text::new(error).color_range(3, ..),
+                Text::from(error.as_str()).color_range(3, ..),
                 base_x,
                 base_y + ERROR_Y_OFFSET,
                 None,

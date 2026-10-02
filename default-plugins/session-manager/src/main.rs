@@ -332,7 +332,7 @@ impl ZellijPlugin for State {
                             &self.single_screen_state.layout_list.layout_search_term;
                         let search_term_len = layout_search_term.len();
                         let layout_indication_line = if width > 73 + search_term_len {
-                            Text::new(format!(
+                            Text::from(format!(
                                 "New session layout: {}_ (Search and select from list, <ENTER> when done)",
                                 layout_search_term
                             ))
@@ -340,7 +340,7 @@ impl ZellijPlugin for State {
                             .color_range(3, 20..20 + search_term_len)
                             .color_range(3, 52 + search_term_len..59 + search_term_len)
                         } else {
-                            Text::new(format!(
+                            Text::from(format!(
                                 "New session layout: {}_ <ENTER>",
                                 layout_search_term
                             ))
@@ -367,12 +367,12 @@ impl ZellijPlugin for State {
                                 break;
                             }
                             let mut layout_cell = if is_builtin {
-                                Text::new(format!("{} (built-in)", layout_name))
+                                Text::from(format!("{} (built-in)", layout_name))
                                     .color_range(1, 0..layout_name_len)
                                     .color_range(0, layout_name_len + 1..)
                                     .color_indices(3, indices)
                             } else {
-                                Text::new(format!("{}", layout_name))
+                                Text::from(format!("{}", layout_name))
                                     .color_range(1, ..)
                                     .color_indices(3, indices)
                             };
@@ -380,9 +380,9 @@ impl ZellijPlugin for State {
                                 layout_cell = layout_cell.selected();
                             }
                             let arrow_cell = if is_selected {
-                                Text::new(format!("<↓↑>")).selected().color_range(3, ..)
+                                Text::from(format!("<↓↑>")).selected().color_range(3, ..)
                             } else {
-                                Text::new(format!("    ")).color_range(3, ..)
+                                Text::from(format!("    ")).color_range(3, ..)
                             };
                             table = table.add_styled_row(vec![arrow_cell, layout_cell]);
                         }
@@ -1442,14 +1442,14 @@ impl State {
         let confirmation_x_location =
             x + columns.saturating_sub(confirmation_text.chars().count()) / 2;
         print_text_with_coordinates(
-            Text::new(warning_description_text).color_range(0, 15..16 + session_count_len),
+            Text::from(warning_description_text).color_range(0, 15..16 + session_count_len),
             warning_x_location,
             warning_y_location,
             None,
             None,
         );
         print_text_with_coordinates(
-            Text::new(confirmation_text).color_indices(2, vec![15, 17]),
+            Text::from(confirmation_text).color_indices(2, vec![15, 17]),
             confirmation_x_location,
             confirmation_y_location,
             None,
