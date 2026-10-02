@@ -676,6 +676,19 @@ web_client {
 //     // Ignored when smooth_scrolling is false.
 //     scroll_animation_duration 100
 //
+//     // Whether a fast two-finger touchpad swipe through a pane's scrollback
+//     // keeps scrolling for a moment after the fingers lift, slowing down
+//     // until it stops. Touching the touchpad again, clicking, typing or
+//     // moving the pointer to another pane stops it at once. Works
+//     // independently of smooth_scrolling. Currently only has an effect on
+//     // Wayland; on X11, Windows and macOS it is ignored (macOS already
+//     // provides its own touchpad momentum).
+//     scroll_momentum true
+//
+//     // How quickly that continued scrolling slows down, from 0.5 to 10.0.
+//     // Higher values stop sooner. Currently only has an effect on Wayland.
+//     scroll_momentum_friction 2.0
+//
 //     // Whether clicking an OSC 8 hyperlink opens it in the platform's default
 //     // handler. A plain left click opens it; over a pane whose program has
 //     // asked for mouse reporting, hold shift instead. Dragging is a selection

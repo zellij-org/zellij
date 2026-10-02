@@ -36,7 +36,6 @@ impl Pacer {
         }
     }
 
-    #[cfg(test)]
     pub fn interval(&self) -> Duration {
         self.interval
     }

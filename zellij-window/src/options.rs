@@ -42,9 +42,12 @@ pub struct Options {
     pub minimum_contrast: f32,
     pub smooth_scrolling: bool,
     pub scroll_animation: std::time::Duration,
+    pub scroll_momentum: bool,
+    pub scroll_momentum_friction: f64,
 }
 
 pub const DEFAULT_SCROLL_ANIMATION_MS: u16 = 100;
+pub const DEFAULT_SCROLL_MOMENTUM_FRICTION: f32 = 2.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Padding {
@@ -154,6 +157,12 @@ pub fn resolve(settings: &Settings, mode: Option<HostTerminalThemeMode>) -> Opti
                 .scroll_animation_duration
                 .unwrap_or(DEFAULT_SCROLL_ANIMATION_MS),
         )),
+        scroll_momentum: section.scroll_momentum.unwrap_or(true),
+        scroll_momentum_friction: f64::from(
+            section
+                .scroll_momentum_friction
+                .unwrap_or(DEFAULT_SCROLL_MOMENTUM_FRICTION),
+        ),
     }
 }
 
@@ -304,6 +313,7 @@ pub struct Change {
     pub cursor_unfocused_hollow: bool,
     pub minimum_contrast: bool,
     pub scroll_animation: bool,
+    pub scroll_momentum: bool,
 }
 
 impl Change {
@@ -335,6 +345,8 @@ impl Change {
             minimum_contrast: current.minimum_contrast != next.minimum_contrast,
             scroll_animation: current.smooth_scrolling != next.smooth_scrolling
                 || current.scroll_animation != next.scroll_animation,
+            scroll_momentum: current.scroll_momentum != next.scroll_momentum
+                || current.scroll_momentum_friction != next.scroll_momentum_friction,
         }
     }
 
@@ -359,6 +371,7 @@ impl Change {
             || self.cursor_unfocused_hollow
             || self.minimum_contrast
             || self.scroll_animation
+            || self.scroll_momentum
     }
 
     pub fn needs_redraw(&self) -> bool {
@@ -1008,5 +1021,35 @@ mod tests {
         );
         let change = Change::between(&Options::default(), &options);
         assert!(change.scroll_animation && change.is_anything() && !change.needs_redraw());
+    }
+
+    #[test]
+    fn scroll_momentum_is_on_by_default_with_the_default_friction() {
+        let options = Options::default();
+        assert!(options.scroll_momentum);
+        assert_eq!(
+            options.scroll_momentum_friction,
+            f64::from(DEFAULT_SCROLL_MOMENTUM_FRICTION)
+        );
+    }
+
+    #[test]
+    fn the_scroll_momentum_settings_are_resolved_and_count_as_a_change() {
+        let options = resolve(
+            &settings(WindowConfig {
+                scroll_momentum: Some(false),
+                scroll_momentum_friction: Some(4.5),
+                ..WindowConfig::default()
+            }),
+            None,
+        );
+        assert!(!options.scroll_momentum);
+        assert_eq!(options.scroll_momentum_friction, 4.5);
+        let change = Change::between(&Options::default(), &options);
+        assert!(change.scroll_momentum && change.is_anything() && !change.needs_redraw());
+
+        let mut next = Options::default();
+        next.scroll_momentum_friction = 3.0;
+        assert!(Change::between(&Options::default(), &next).scroll_momentum);
     }
 }
