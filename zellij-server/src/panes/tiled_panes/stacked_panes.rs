@@ -1,3 +1,4 @@
+use super::panes_to_hide::PanesToHide;
 use crate::{
     panes::PaneId,
     tab::{Pane, MIN_TERMINAL_HEIGHT},
@@ -20,7 +21,7 @@ impl<'a> StackedPanes<'a> {
     }
     pub fn new_from_btreemap(
         panes: impl IntoIterator<Item = (&'a PaneId, &'a mut Box<dyn Pane>)>,
-        panes_to_hide: &HashSet<PaneId>,
+        panes_to_hide: &PanesToHide,
     ) -> Self {
         let panes: HashMap<_, _> = panes
             .into_iter()
