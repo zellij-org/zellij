@@ -450,6 +450,9 @@ impl App {
     }
 
     fn resized(&mut self, width: u32, height: u32) {
+        if has_no_area(width, height) {
+            return;
+        }
         self.cancel_scroll_animations();
         self.stop_momentum();
         self.observe_window();
@@ -466,6 +469,9 @@ impl App {
             return;
         };
         let window = &surfaces.window;
+        if window.is_minimized() == Some(true) {
+            return;
+        }
         self.shown = if window.fullscreen().is_some() {
             Shown::Fullscreen
         } else if window.is_maximized() {
@@ -505,6 +511,9 @@ impl App {
     }
 
     fn reflow(&mut self, width: u32, height: u32) {
+        if has_no_area(width, height) {
+            return;
+        }
         self.selecting = false;
         self.set_selection(None);
         let grid = self.grid(width, height);
@@ -2098,6 +2107,10 @@ pub(crate) struct GridFit {
     pub origin: (i32, i32),
 }
 
+fn has_no_area(width: u32, height: u32) -> bool {
+    width == 0 || height == 0
+}
+
 pub(crate) fn fit_grid(
     window: (u32, u32),
     cell: (u32, u32),
@@ -3180,6 +3193,53 @@ mod tests {
                 rows: 20,
                 state: Shown::Maximized,
             })
+        );
+    }
+
+    #[test]
+    fn a_window_without_area_reports_no_size_to_the_session() {
+        let mut harness = Harness::new(3, true, "");
+        harness.app.resized(720, 600);
+        harness.app.resized(0, 0);
+        harness.app.resized(720, 0);
+        harness.app.relayout(0, 0);
+        harness.app.resized(720, 600);
+        assert!(!harness.app.close_requested());
+        let sent = harness.sent();
+        assert_eq!(
+            sent[0],
+            ClientToServerMsg::TerminalResize {
+                new_size: zellij_utils::pane_size::Size { rows: 30, cols: 90 },
+            }
+        );
+        assert!(
+            matches!(
+                sent[2],
+                ClientToServerMsg::Action {
+                    action: Action::Quit,
+                    ..
+                }
+            ),
+            "a window with no area resized the session: {:?}",
+            sent
+        );
+    }
+
+    #[test]
+    fn a_window_without_area_keeps_the_windowed_size_it_remembers() {
+        let mut harness = Harness::new(2, true, "");
+        let dir = remembering(&mut harness);
+        harness.app.resized(720, 600);
+        harness.app.resized(0, 0);
+        harness.app.remember();
+        assert_eq!(
+            remembered(&dir),
+            Some(WindowState {
+                cols: 90,
+                rows: 30,
+                state: Shown::Windowed,
+            }),
+            "the size a minimized window reports was remembered as its windowed size"
         );
     }
 
