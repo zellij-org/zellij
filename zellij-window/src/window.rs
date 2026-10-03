@@ -1327,11 +1327,15 @@ impl App {
                 event_loop,
                 ConfigTemplateBuilder::new()
                     .with_alpha_size(8)
-                    .with_transparency(true),
+                    .with_transparency(requires_transparent_configs(Platform::current())),
                 pick_config,
             )
             .map_err(|e| anyhow!("failed to create a window: {}", e))?;
-        self.transparency_available = config.supports_transparency() != Some(false);
+        self.transparency_available = transparency_available(
+            Platform::current(),
+            config.supports_transparency(),
+            config.alpha_size(),
+        );
         self.warn_if_opaque();
         let window = window.ok_or_else(|| anyhow!("the windowing system produced no window"))?;
         window.set_ime_purpose(ImePurpose::Terminal);
@@ -1897,6 +1901,21 @@ fn pick_config(configs: Box<dyn Iterator<Item = Config> + '_>) -> Config {
         .into_iter()
         .nth(best)
         .expect("the chosen config is one of those offered")
+}
+
+fn requires_transparent_configs(platform: Platform) -> bool {
+    platform != Platform::Windows
+}
+
+fn transparency_available(
+    platform: Platform,
+    supports_transparency: Option<bool>,
+    alpha_size: u8,
+) -> bool {
+    match platform {
+        Platform::Windows => alpha_size >= 8,
+        Platform::Linux | Platform::MacOs => supports_transparency != Some(false),
+    }
 }
 
 fn best_config(candidates: impl Iterator<Item = (Option<bool>, u8)>) -> Option<usize> {
@@ -3219,6 +3238,42 @@ mod tests {
             Some(1)
         );
         assert_eq!(best_config(std::iter::empty()), None);
+    }
+
+    #[test]
+    fn windows_never_requires_a_wgl_transparent_config() {
+        assert!(
+            !requires_transparent_configs(Platform::Windows),
+            "a driver that honors WGL_TRANSPARENT_ARB would offer no config at all"
+        );
+        assert!(requires_transparent_configs(Platform::Linux));
+        assert!(requires_transparent_configs(Platform::MacOs));
+    }
+
+    #[test]
+    fn windows_sees_through_any_config_with_an_alpha_channel() {
+        for reported in [Some(false), None, Some(true)] {
+            assert!(
+                transparency_available(Platform::Windows, reported, 8),
+                "WGL_TRANSPARENT_ARB reported as {:?} turned off a config with 8 alpha bits",
+                reported
+            );
+            assert!(
+                !transparency_available(Platform::Windows, reported, 0),
+                "a config with no alpha channel cannot be seen through"
+            );
+        }
+    }
+
+    #[test]
+    fn elsewhere_the_config_decides_whether_it_can_be_seen_through() {
+        for platform in [Platform::Linux, Platform::MacOs] {
+            for alpha in [0, 8] {
+                assert!(transparency_available(platform, Some(true), alpha));
+                assert!(transparency_available(platform, None, alpha));
+                assert!(!transparency_available(platform, Some(false), alpha));
+            }
+        }
     }
 
     #[test]
