@@ -1,4 +1,5 @@
 use super::plugin_tests::create_plugin_thread;
+use crate::panes::PaneId;
 use crate::plugins::{PluginId, PluginInstruction};
 use crate::screen::ScreenInstruction;
 use crate::ClientId;
@@ -77,6 +78,7 @@ struct ScreenLog {
     cache_path: PathBuf,
     renders: Renders,
     render_log: Vec<(PluginId, ClientId, String)>,
+    collapsed: HashSet<PaneId>,
 }
 
 impl ScreenLog {
@@ -91,6 +93,7 @@ impl ScreenLog {
             cache_path,
             renders: HashMap::new(),
             render_log: vec![],
+            collapsed: HashSet::new(),
         }
     }
     fn receive_one(&mut self, timeout: Duration) {
@@ -120,6 +123,9 @@ impl ScreenLog {
                         PermissionStatus::Granted,
                         Some(self.cache_path.clone()),
                     ));
+            },
+            ScreenInstruction::SetPaneCollapsed(pane_id, true) => {
+                self.collapsed.insert(pane_id);
             },
             _ => {},
         }
@@ -461,6 +467,43 @@ pub fn shared_plugin_slot_commands_are_checked() {
         results.contains("does not belong"),
         "foreign slot is rejected: {}",
         results
+    );
+}
+
+#[test]
+#[ignore]
+pub fn shared_plugin_collapses_the_slot_it_renders() {
+    let (sender, mut screen, teardown, _temp_folder) = start();
+    let client_id = 1;
+    let _ = sender.send(PluginInstruction::AddClient(client_id));
+    load(
+        &sender,
+        shared_fixture(&[("label", "a"), ("collapse_on_render", "true")]),
+        0,
+        client_id,
+    );
+    load(
+        &sender,
+        shared_fixture(&[("label", "b"), ("collapse_on_render", "true")]),
+        1,
+        client_id,
+    );
+    screen.wait_until("two slots rendered", |renders| {
+        slots_of_client(renders, client_id).len() == 2
+    });
+    let slots = slots_of_client(&screen.renders, client_id);
+    let expected: HashSet<PaneId> = slots
+        .iter()
+        .map(|slot_id| PaneId::Plugin(*slot_id))
+        .collect();
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while screen.collapsed != expected && Instant::now() < deadline {
+        screen.receive_one(Duration::from_millis(100));
+    }
+    teardown();
+    assert_eq!(
+        screen.collapsed, expected,
+        "each slot collapses its own pane, not the instance's"
     );
 }
 
