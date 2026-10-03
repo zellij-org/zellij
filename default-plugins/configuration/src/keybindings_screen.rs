@@ -8,7 +8,7 @@ use crate::action_picker::{size_button, ActionPicker, PickerResponse, DELETE_WID
 use crate::page::{
     DIM,
     BESIDE_SHORT_FIELD, SHORT_FIELD_WIDTH, SHORT_LABEL_WIDTH,
-    action_argument_range, action_display_text, actions_summary, confirm_removals, is_click, is_plain, is_shift_tab,
+    action_argument_range, action_display_text, actions_summary, changed_by, confirm_removals, is_click, is_plain, is_shift_tab,
     markers, note_dropdown, note_overlay, outside_overlays, render_frame, print_dim, removal_confirmed,
     truncate, typed, ColumnLayout, ColumnStyle, Effect, Page, PageResponse,
     RowLook, RowScroll, DELETE_BUTTONS,
@@ -193,7 +193,8 @@ pub fn category_of(actions: &[String]) -> &'static str {
         | "LaunchOrFocusPlugin"
         | "LaunchPlugin"
         | "MessagePlugin"
-        | "DismissInfoPopups" => "Session and plugins",
+        | "DismissInfoPopups"
+        | "OpenContextMenu" => "Session and plugins",
         name if name.starts_with("Search") => "Search",
         name if name.contains("Scroll")
             || name == "EditScrollback"
@@ -783,51 +784,70 @@ impl KeybindingsScreen {
         }
     }
     fn handle_list_mouse(&mut self, mouse: Mouse) -> PageResponse {
+        let is_hover = matches!(mouse, Mouse::Hover(..));
+        let mut hover_changed = false;
         if !self.mode_selector.is_open()
             && (self.filter.is_open() || matches!(mouse, Mouse::LeftClick(..) | Mouse::Hover(..)))
         {
-            let response = self.filter.handle_mouse(mouse);
+            let (response, filter_changed) =
+                changed_by(&mut self.filter, |filter| filter.handle_mouse(mouse));
+            hover_changed |= filter_changed;
             if let UiResponse::Changed(_) = response {
                 self.select_first();
                 self.scroll.reset();
             }
-            if response.is_handled() && !matches!(mouse, Mouse::Hover(..)) {
+            if response.is_handled() && !is_hover {
                 self.focus = Focus::Filter;
                 return PageResponse::Handled;
             }
             if self.filter.is_open() {
-                return PageResponse::Handled;
+                return if !is_hover || filter_changed {
+                    PageResponse::Handled
+                } else {
+                    PageResponse::NotHandled
+                };
             }
         }
         if !self.mode_selector.is_open() {
             let mouse = outside_overlays(mouse);
             let mut activated = None;
             for (button, category) in self.mark_buttons.iter_mut() {
+                let was_hovered = button.is_hovered();
                 if matches!(button.handle_mouse(mouse), UiResponse::Activated) {
                     activated = Some(category.clone());
                 }
+                hover_changed |= was_hovered != button.is_hovered();
             }
             if let Some(category) = activated {
                 self.toggle_group(category.as_deref());
                 return PageResponse::Handled;
             }
         }
-        let hover_changed = self.scroll.hover(&mouse);
-        self.search.handle_mouse(mouse);
+        let rows_hover = self.scroll.hover(&mouse);
+        let search_response = self.search.handle_mouse(mouse);
+        if is_hover && search_response.is_handled() {
+            hover_changed = true;
+        }
         if self.mode_selector.is_open() || matches!(mouse, Mouse::LeftClick(..) | Mouse::Hover(..))
         {
-            let response = self.mode_selector.handle_mouse(mouse);
+            let (response, selector_changed) =
+                changed_by(&mut self.mode_selector, |selector| selector.handle_mouse(mouse));
+            hover_changed |= selector_changed;
             if let UiResponse::Changed(_) = response {
                 self.select_first();
                 self.scroll.reset();
             }
-            if response.is_handled() && !matches!(mouse, Mouse::Hover(..)) {
+            if response.is_handled() && !is_hover {
                 self.focus = Focus::Mode;
                 return PageResponse::Handled;
             }
         }
-        if hover_changed.is_some() {
-            return PageResponse::Handled;
+        if let Some(rows_changed) = rows_hover {
+            return if rows_changed || hover_changed {
+                PageResponse::Handled
+            } else {
+                PageResponse::NotHandled
+            };
         }
         if let Mouse::Hold(line, column) = mouse {
             if !self.scroll.is_dragging() {
@@ -1762,9 +1782,14 @@ impl Page for KeybindingsScreen {
     }
     fn handle_mouse(&mut self, mouse: Mouse) -> PageResponse {
         if self.dialog.is_open() {
-            let response = self.dialog.handle_mouse(mouse);
+            let (response, dialog_changed) =
+                changed_by(&mut self.dialog, |dialog| dialog.handle_mouse(mouse));
             self.dialog_response(response);
-            return PageResponse::Handled;
+            return if dialog_changed || !matches!(mouse, Mouse::Hover(..)) {
+                PageResponse::Handled
+            } else {
+                PageResponse::NotHandled
+            };
         }
         if self.form.is_some() {
             self.handle_form_mouse(mouse);

@@ -4,6 +4,7 @@ use zellij_integration_tests::{
     claim_first_terminal_and_wait_for_prompt, col, keys, split_right_and_wait_for_prompt,
     GridSnapshot, TestRunner, TestSession, PROMPT, TERMINAL_SIZE,
 };
+use zellij_utils::cli::CliAction;
 
 const PANE_MENU_MARKER: &str = "Close pane";
 const TAB_MENU_MARKER: &str = "Move tab right";
@@ -368,6 +369,7 @@ fn the_default_menu_shows_the_keyboard_shortcuts_of_its_items() {
             && grid_snapshot.contains("Ctrl p, c")
             && grid_snapshot.contains("Ctrl p, x")
             && grid_snapshot.contains("Ctrl o, d")
+            && grid_snapshot.contains("Ctrl p, a")
     });
     zellij.send_stdin(&keys::ESC);
     wait_for_menu_to_close(&zellij);
@@ -399,20 +401,10 @@ fn menu_shortcuts_follow_a_change_of_keybinding_preset() {
     zellij.wait_until("unlock-first preset applied", |grid_snapshot| {
         grid_snapshot.contains("UNLOCK")
     });
-    let zellij_ref = &zellij;
-    {
-        let zellij = zellij_ref;
-        for _ in 0..20 {
-            zellij.send_stdin(&keys::ctrl('c'));
-            std::thread::sleep(std::time::Duration::from_millis(250));
-            if !zellij.snapshot().contains("Configuration") {
-                break;
-            }
-        }
-        zellij.wait_until("configuration plugin closed", |grid_snapshot| {
-            !grid_snapshot.contains("Configuration")
-        });
-    }
+    zellij.send_stdin(&keys::ctrl('c'));
+    zellij.wait_until("configuration plugin closed", |grid_snapshot| {
+        !grid_snapshot.contains("Configuration")
+    });
 
     right_click(&zellij, 30, 10);
     zellij.wait_until("pane menu shows the unlock-first shortcuts", |grid_snapshot| {
@@ -501,7 +493,7 @@ fn keybindings_work_while_the_menu_is_open() {
             && !grid_snapshot.contains("LOCK")
             && grid_snapshot.contains(COMMON_MENU_MARKER)
     });
-    zellij.send_stdin(&keys::ESC);
+    zellij.send_stdin(&keys::ctrl('p'));
     zellij.wait_until("back to normal mode with the menu open", |grid_snapshot| {
         grid_snapshot.status_bar_appears() && grid_snapshot.contains(COMMON_MENU_MARKER)
     });
@@ -545,5 +537,43 @@ fn detaching_with_keys_works_while_the_menu_is_open() {
         grid_snapshot.status_bar_appears() && !grid_snapshot.contains(COMMON_MENU_MARKER)
     });
     reattached_client.quit();
+    zellij.quit();
+}
+
+#[test]
+fn the_open_context_menu_cli_action_opens_the_menu_of_the_focused_pane() {
+    let mut zellij = start_zellij();
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+
+    zellij.run_cli_action(CliAction::OpenContextMenu);
+    let grid_snapshot = wait_for_pane_menu(&zellij);
+    assert!(grid_snapshot.contains("New floating pane"));
+    assert!(!grid_snapshot.contains(TAB_MENU_MARKER));
+
+    zellij.send_stdin(&keys::ESC);
+    wait_for_menu_to_close(&zellij);
+    zellij.quit();
+}
+
+#[test]
+fn a_key_bound_to_open_context_menu_opens_the_menu_of_the_focused_pane() {
+    let mut zellij = TestRunner::new(TERMINAL_SIZE)
+        .with_config(
+            r#"
+            keybinds {
+                normal {
+                    bind "Alt m" { OpenContextMenu; }
+                }
+            }
+            "#,
+        )
+        .start();
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+
+    zellij.send_stdin(&keys::alt('m'));
+    wait_for_pane_menu(&zellij);
+
+    zellij.send_stdin(&keys::ESC);
+    wait_for_menu_to_close(&zellij);
     zellij.quit();
 }

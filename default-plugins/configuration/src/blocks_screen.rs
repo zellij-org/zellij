@@ -300,7 +300,7 @@ impl EntryKind for EnvKind {
         "Environment variables".to_owned()
     }
     fn heading_note(&self) -> Option<String> {
-        Some("applies to this session and new panes".to_owned())
+        Some("new panes, for everyone in this session".to_owned())
     }
     fn noun(&self) -> &'static str {
         "variable"

@@ -5,7 +5,7 @@ use zellij_utils::input::config_blocks::{
 
 use crate::blocks_screen::check_name;
 use crate::page::{
-    is_click, is_plain, is_shift_tab, markers, print_dim, print_heading, truncate, typed,
+    changed_by, is_click, is_plain, is_shift_tab, markers, print_dim, print_heading, truncate, typed,
     ButtonRow, ColumnLayout, Effect, Page, PageResponse, RowLook, RowScroll,
 };
 
@@ -439,36 +439,43 @@ impl ThemesScreen {
 }
 
 impl ThemesScreen {
-    fn handle_colour_mouse(&mut self, mouse: Mouse) {
+    fn handle_colour_mouse(&mut self, mouse: Mouse) -> bool {
         let Some(form) = self.colour_form.as_mut() else {
-            return;
+            return false;
         };
         if form.scroll.handle_wheel(&mouse).is_some() {
-            return;
+            return true;
         }
-        match form.buttons.handle_mouse(mouse) {
+        let (activated, buttons_changed) = form.buttons.handle_mouse_with_hover(mouse);
+        match activated {
             Some(0) => {
                 self.apply_colours();
-                return;
+                return true;
             },
             Some(_) => {
                 self.cancel_colours();
-                return;
+                return true;
             },
             None => {},
         }
-        form.inputs.handle_mouse(mouse);
+        let inputs_changed = form.inputs.handle_mouse(mouse).is_handled();
+        buttons_changed || inputs_changed || !matches!(mouse, Mouse::Hover(..))
     }
-    fn handle_name_mouse(&mut self, mouse: Mouse) {
+    fn handle_name_mouse(&mut self, mouse: Mouse) -> bool {
         let Some(form) = self.name_form.as_mut() else {
-            return;
+            return false;
         };
-        form.input.handle_mouse(mouse);
-        match self.form_buttons.handle_mouse(mouse) {
+        let input_changed = form.input.handle_mouse(mouse).is_handled();
+        let (activated, buttons_changed) = self.form_buttons.handle_mouse_with_hover(mouse);
+        match activated {
             Some(0) => self.apply_name(),
             Some(_) => self.name_form = None,
             None => {},
         }
+        activated.is_some()
+            || input_changed
+            || buttons_changed
+            || !matches!(mouse, Mouse::Hover(..))
     }
     fn button_pressed(&mut self, button: usize) {
         match button {
@@ -508,12 +515,17 @@ impl ThemesScreen {
         }
     }
     fn handle_list_mouse(&mut self, mouse: Mouse) -> PageResponse {
-        if let Some(button) = self.buttons.handle_mouse(mouse) {
+        let (activated, buttons_changed) = self.buttons.handle_mouse_with_hover(mouse);
+        if let Some(button) = activated {
             self.button_pressed(button);
             return PageResponse::Handled;
         }
-        if self.scroll.hover(&mouse).is_some() {
-            return PageResponse::Handled;
+        if let Some(rows_changed) = self.scroll.hover(&mouse) {
+            return if rows_changed || buttons_changed {
+                PageResponse::Handled
+            } else {
+                PageResponse::NotHandled
+            };
         }
         if let Some(changed) = self.scroll.handle_wheel(&mouse) {
             return if changed {
@@ -734,26 +746,31 @@ impl Page for ThemesScreen {
         }
     }
     fn handle_mouse(&mut self, mouse: Mouse) -> PageResponse {
-        if let Some((dialog, name)) = self.dialog.as_mut() {
-            let response = dialog.handle_mouse(mouse);
+        let is_hover = matches!(mouse, Mouse::Hover(..));
+        let changed = if let Some((dialog, name)) = self.dialog.as_mut() {
+            let (response, dialog_changed) =
+                changed_by(&mut *dialog, |dialog| dialog.handle_mouse(mouse));
             let name = name.clone();
-            if !dialog.is_open() {
+            let closed = !dialog.is_open();
+            if closed {
                 self.dialog = None;
                 if let UiResponse::Submitted(UiValue::Choice { index: 0, .. }) = response {
                     self.delete_theme(&name);
                 }
             }
-            return PageResponse::Handled;
+            dialog_changed || closed || !is_hover
+        } else if self.colour_form.is_some() {
+            self.handle_colour_mouse(mouse)
+        } else if self.name_form.is_some() {
+            self.handle_name_mouse(mouse)
+        } else {
+            return self.handle_list_mouse(mouse);
+        };
+        if changed {
+            PageResponse::Handled
+        } else {
+            PageResponse::NotHandled
         }
-        if self.colour_form.is_some() {
-            self.handle_colour_mouse(mouse);
-            return PageResponse::Handled;
-        }
-        if self.name_form.is_some() {
-            self.handle_name_mouse(mouse);
-            return PageResponse::Handled;
-        }
-        self.handle_list_mouse(mouse)
     }
     fn handle_timer(&mut self) -> bool {
         let form_changed = self

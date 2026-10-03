@@ -748,6 +748,7 @@ pub enum Action {
         id: Option<u64>,
     },
     DismissInfoPopups,
+    OpenContextMenu,
 }
 
 impl Default for Action {
@@ -2396,6 +2397,7 @@ impl Action {
             CliAction::SetLightTheme => Ok(vec![Action::SetLightTheme]),
             CliAction::ToggleTheme => Ok(vec![Action::ToggleTheme]),
             CliAction::DismissInfoPopups => Ok(vec![Action::DismissInfoPopups]),
+            CliAction::OpenContextMenu => Ok(vec![Action::OpenContextMenu]),
             CliAction::SwitchSession {
                 name,
                 tab_position,
@@ -3576,6 +3578,17 @@ mod tests {
         )
         .unwrap();
         assert_eq!(actions, vec![Action::DismissInfoPopups]);
+    }
+
+    #[test]
+    fn test_open_context_menu_cli_to_action() {
+        let actions = Action::actions_from_cli(
+            CliAction::OpenContextMenu,
+            Box::new(|| PathBuf::from("/tmp")),
+            None,
+        )
+        .unwrap();
+        assert_eq!(actions, vec![Action::OpenContextMenu]);
     }
 
     // 21. RenameTab

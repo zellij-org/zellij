@@ -1006,6 +1006,24 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
+                    'a',
+                ),
+                key_modifiers: {},
+            }: [
+                NewFloatingPane {
+                    command: None,
+                    pane_name: None,
+                    coordinates: None,
+                    near_current_pane: false,
+                    no_focus: false,
+                    tab_id: None,
+                },
+                SwitchToMode {
+                    input_mode: Normal,
+                },
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     'b',
                 ),
                 key_modifiers: {

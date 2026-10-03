@@ -95,6 +95,7 @@ macro_rules! parse_kdl_action_arguments {
                 "SetLightTheme" => Ok(Action::SetLightTheme),
                 "ToggleTheme" => Ok(Action::ToggleTheme),
                 "DismissInfoPopups" => Ok(Action::DismissInfoPopups),
+                "OpenContextMenu" => Ok(Action::OpenContextMenu),
                 "Copy" => Ok(Action::Copy),
                 "Confirm" => Ok(Action::Confirm),
                 "Deny" => Ok(Action::Deny),
@@ -1393,6 +1394,7 @@ impl Action {
             Action::SetLightTheme => Some(KdlNode::new("SetLightTheme")),
             Action::ToggleTheme => Some(KdlNode::new("ToggleTheme")),
             Action::DismissInfoPopups => Some(KdlNode::new("DismissInfoPopups")),
+            Action::OpenContextMenu => Some(KdlNode::new("OpenContextMenu")),
             Action::FocusHostSession => Some(KdlNode::new("FocusHostSession")),
             Action::FocusGuestSession => Some(KdlNode::new("FocusGuestSession")),
             Action::ToggleHostFullscreen => Some(KdlNode::new("ToggleHostFullscreen")),
@@ -1741,6 +1743,9 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
             "DismissInfoPopups" => {
+                parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
+            },
+            "OpenContextMenu" => {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
             "SwitchSession" => {
@@ -5971,10 +5976,10 @@ impl ContextMenuConfig {
             for section_node in sections {
                 let section_name = kdl_name!(section_node);
                 let clear_section_defaults = kdl_arg_is_truthy!(section_node, "clear-defaults");
-                let mut entries = vec![];
+                let mut statements = vec![];
                 if let Some(entry_nodes) = kdl_children_nodes!(section_node) {
                     for entry_node in entry_nodes {
-                        entries.push(Self::entry_from_kdl(entry_node, config_options)?);
+                        statements.push(Self::statement_from_kdl(entry_node, config_options)?);
                     }
                 }
                 let section = context_menu.section_mut(section_name).ok_or_else(|| {
@@ -5989,13 +5994,63 @@ impl ContextMenuConfig {
                     )
                 })?;
                 if clear_section_defaults {
-                    *section = entries;
+                    *section =
+                        crate::input::context_menu::context_menu_entries_without_defaults(
+                            statements,
+                        );
                 } else {
-                    *section = merge_context_menu_entries(section, entries);
+                    *section = merge_context_menu_entries(section, statements);
                 }
             }
         }
         Ok(context_menu)
+    }
+    pub fn statement_from_kdl(
+        entry_node: &KdlNode,
+        config_options: &Options,
+    ) -> Result<
+        crate::input::context_menu::MenuStatement<ContextMenuEntry>,
+        ConfigError,
+    > {
+        use crate::input::context_menu::{MenuPlacement, MenuStatement};
+        if kdl_name!(entry_node) == "remove" {
+            let label = entry_node
+                .entries()
+                .iter()
+                .find(|entry| entry.name().is_none())
+                .and_then(|entry| entry.value().as_string())
+                .ok_or_else(|| {
+                    ConfigError::new_kdl_error(
+                        "A context_menu remove needs the label of the item to remove, eg. remove \"Close pane\"".into(),
+                        entry_node.span().offset(),
+                        entry_node.span().len(),
+                    )
+                })?;
+            return Ok(MenuStatement::Remove(label.to_owned()));
+        }
+        let entry = Self::entry_from_kdl(entry_node, config_options)?;
+        let placement_label = |name: &str| -> Result<Option<String>, ConfigError> {
+            match entry_node.get(name) {
+                Some(property) => property
+                    .value()
+                    .as_string()
+                    .map(|label| Some(label.to_owned()))
+                    .ok_or_else(|| {
+                        ConfigError::new_kdl_error(
+                            format!("'{}' must be the label of another context_menu item", name),
+                            property.span().offset(),
+                            property.span().len(),
+                        )
+                    }),
+                None => Ok(None),
+            }
+        };
+        let placement = match (placement_label("after")?, placement_label("before")?) {
+            (Some(label), _) => Some(MenuPlacement::After(label)),
+            (None, Some(label)) => Some(MenuPlacement::Before(label)),
+            (None, None) => None,
+        };
+        Ok(MenuStatement::Entry { entry, placement })
     }
     pub fn entry_from_kdl(
         entry_node: &KdlNode,
@@ -6004,13 +6059,18 @@ impl ContextMenuConfig {
         match kdl_name!(entry_node) {
             "separator" => Ok(ContextMenuEntry::Separator),
             "item" => {
-                let label = kdl_first_entry_as_string!(entry_node).ok_or_else(|| {
-                    ConfigError::new_kdl_error(
-                        "A context_menu item needs a label, eg. item \"Close pane\" { CloseFocusByPaneId; }".into(),
-                        entry_node.span().offset(),
-                        entry_node.span().len(),
-                    )
-                })?;
+                let label = entry_node
+                    .entries()
+                    .iter()
+                    .find(|entry| entry.name().is_none())
+                    .and_then(|entry| entry.value().as_string())
+                    .ok_or_else(|| {
+                        ConfigError::new_kdl_error(
+                            "A context_menu item needs a label, eg. item \"Close pane\" { CloseFocusByPaneId; }".into(),
+                            entry_node.span().offset(),
+                            entry_node.span().len(),
+                        )
+                    })?;
                 let actions: Vec<Action> = kdl_children_nodes_or_error!(
                     entry_node,
                     "no actions found for context_menu item"
@@ -6025,7 +6085,7 @@ impl ContextMenuConfig {
             },
             other => Err(ConfigError::new_kdl_error(
                 format!(
-                    "Unknown context_menu entry '{}', expected 'item' or 'separator'",
+                    "Unknown context_menu entry '{}', expected 'item', 'separator' or 'remove'",
                     other
                 ),
                 entry_node.span().offset(),
@@ -7725,6 +7785,34 @@ fn keybinds_to_string_with_multiple_actions() {
 }
 
 #[test]
+fn can_bind_open_context_menu_and_write_it_back() {
+    let fake_config = r#"
+        keybinds {
+            pane {
+                bind "m" { OpenContextMenu; }
+            }
+        }"#;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = Keybinds::from_kdl(
+        document.get("keybinds").unwrap(),
+        Default::default(),
+        &Default::default(),
+    )
+    .unwrap();
+    let m = KeyWithModifier::new(BareKey::Char('m'));
+    assert_eq!(
+        deserialized.get_actions_for_key_in_mode(&InputMode::Pane, &m),
+        Some(&vec![Action::OpenContextMenu])
+    );
+    assert_eq!(
+        Action::OpenContextMenu
+            .to_kdl()
+            .map(|node| node.name().value().to_owned()),
+        Some("OpenContextMenu".to_owned())
+    );
+}
+
+#[test]
 fn can_bind_dismiss_info_popups_and_write_it_back() {
     let fake_config = r#"
         keybinds {
@@ -9221,6 +9309,104 @@ fn context_menu_to_kdl_round_trip() {
     assert!(serialized.contains("clear-defaults=true"));
     let reparsed = context_menu_from(&serialized, context_menu_base()).unwrap();
     assert_eq!(context_menu, reparsed);
+}
+
+#[test]
+fn context_menu_merge_statements_remove_and_place_items() {
+    let context_menu = context_menu_from(
+        r#"
+        context_menu {
+            pane {
+                remove "New pane"
+                remove "Not a default item"
+                item "Clear" after="Close pane" { Clear; }
+                item "Close pane" before="Clear" { CloseFocus; }
+                separator before="Close pane"
+                item "Top" before="Missing" { Detach; }
+            }
+            tab {
+                item "First" before="Close tab" { Detach; }
+            }
+        }"#,
+        context_menu_base(),
+    )
+    .unwrap();
+    assert_eq!(
+        context_menu.pane,
+        vec![
+            ContextMenuEntry::Separator,
+            ContextMenuEntry::Separator,
+            ContextMenuEntry::item("Close pane", vec![Action::CloseFocus]),
+            ContextMenuEntry::item("Clear", vec![Action::ClearScreen]),
+            ContextMenuEntry::item("Top", vec![Action::Detach]),
+        ]
+    );
+    assert_eq!(
+        context_menu.tab,
+        vec![
+            ContextMenuEntry::item("First", vec![Action::Detach]),
+            ContextMenuEntry::item("Close tab", vec![Action::CloseTabById { id: None }]),
+        ]
+    );
+    assert_eq!(context_menu.common, context_menu_base().common);
+}
+
+#[test]
+fn context_menu_remove_needs_a_label() {
+    assert!(context_menu_from(
+        r#"
+        context_menu {
+            pane {
+                remove
+            }
+        }"#,
+        context_menu_base()
+    )
+    .is_err());
+}
+
+#[test]
+fn context_menu_files_without_merge_statements_parse_as_before() {
+    let text = r#"
+        context_menu {
+            pane {
+                item "Close pane" { CloseFocus; }
+                separator
+                item "Clear" { Clear; }
+                item "Clear" { Detach; }
+            }
+            tab clear-defaults=true {
+                item "A" { Detach; }
+                item "A" { Detach; }
+                separator
+            }
+        }"#;
+    let context_menu = context_menu_from(text, context_menu_base()).unwrap();
+    assert_eq!(
+        context_menu.pane,
+        vec![
+            ContextMenuEntry::item(
+                "New pane",
+                vec![Action::NewPane {
+                    direction: None,
+                    pane_name: None,
+                    start_suppressed: false,
+                }]
+            ),
+            ContextMenuEntry::Separator,
+            ContextMenuEntry::item("Close pane", vec![Action::CloseFocus]),
+            ContextMenuEntry::Separator,
+            ContextMenuEntry::item("Clear", vec![Action::Detach]),
+        ]
+    );
+    assert_eq!(
+        context_menu.tab,
+        vec![
+            ContextMenuEntry::item("A", vec![Action::Detach]),
+            ContextMenuEntry::item("A", vec![Action::Detach]),
+            ContextMenuEntry::Separator,
+        ]
+    );
 }
 
 #[test]

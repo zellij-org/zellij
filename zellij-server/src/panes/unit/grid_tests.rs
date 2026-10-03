@@ -9979,3 +9979,113 @@ fn shrinking_keeps_cursor_on_its_own_line_when_it_sits_past_the_content() {
     assert_eq!(rendered_row(&grid, 1), "X prompt text here okay");
     assert_eq!(grid.viewport.len(), 2);
 }
+
+fn row_of(text: &str) -> super::super::Row {
+    super::super::Row::from_columns(
+        text.chars()
+            .map(crate::panes::terminal_character::TerminalCharacter::new)
+            .collect(),
+    )
+}
+
+fn assert_cached_width_is_fresh(row: &mut super::super::Row) {
+    let fresh: usize = row.columns.iter().map(|character| character.width()).sum();
+    assert_eq!(row.width_cached(), fresh);
+    assert_eq!(row.width(), fresh);
+}
+
+#[test]
+fn same_width_overwrite_keeps_the_row_width_cache() {
+    use crate::panes::terminal_character::TerminalCharacter;
+    let mut row = row_of("abcdef");
+    assert_eq!(row.width_cached(), 6);
+    row.add_character_at(TerminalCharacter::new('X'), 2);
+    assert!(row.width.is_some());
+    assert_eq!(row_text(&row), "abXdef");
+    assert_cached_width_is_fresh(&mut row);
+}
+
+#[test]
+fn same_width_wide_overwrite_keeps_the_row_width_cache() {
+    use crate::panes::terminal_character::TerminalCharacter;
+    let mut row = row_of("a中b");
+    assert_eq!(row.width_cached(), 4);
+    row.add_character_at(TerminalCharacter::new('文'), 1);
+    assert!(row.width.is_some());
+    assert_eq!(row_text(&row), "a文b");
+    assert_cached_width_is_fresh(&mut row);
+}
+
+#[test]
+fn wider_overwrite_invalidates_the_row_width_cache() {
+    use crate::panes::terminal_character::TerminalCharacter;
+    let mut row = row_of("abcdef");
+    assert_eq!(row.width_cached(), 6);
+    row.add_character_at(TerminalCharacter::new('中'), 1);
+    assert!(row.width.is_none());
+    assert_eq!(row_text(&row), "a中def");
+    assert_cached_width_is_fresh(&mut row);
+    assert_eq!(row.width_cached(), 6);
+}
+
+#[test]
+fn narrower_overwrite_invalidates_the_row_width_cache() {
+    use crate::panes::terminal_character::TerminalCharacter;
+    let mut row = row_of("a中b");
+    assert_eq!(row.width_cached(), 4);
+    row.add_character_at(TerminalCharacter::new('x'), 1);
+    assert!(row.width.is_none());
+    assert_cached_width_is_fresh(&mut row);
+    assert_eq!(row.width_cached(), 4);
+    let mut row = row_of("a中b");
+    row.width_cached();
+    row.add_character_at(TerminalCharacter::new('y'), 2);
+    assert!(row.width.is_none());
+    assert_cached_width_is_fresh(&mut row);
+    assert_eq!(row.width_cached(), 4);
+}
+
+#[test]
+fn appending_wide_and_zero_width_characters_keeps_the_width_correct() {
+    use crate::panes::terminal_character::TerminalCharacter;
+    let mut row = row_of("ab");
+    assert_eq!(row.width_cached(), 2);
+    row.add_character_at(TerminalCharacter::new('中'), 2);
+    assert_cached_width_is_fresh(&mut row);
+    assert_eq!(row.width_cached(), 4);
+    let zero_width = TerminalCharacter::new('\u{0301}');
+    assert_eq!(zero_width.width(), 0);
+    row.add_character_at(zero_width, 4);
+    assert_cached_width_is_fresh(&mut row);
+    assert_eq!(row.width_cached(), 4);
+    row.add_character_at(TerminalCharacter::new('c'), 4);
+    assert_cached_width_is_fresh(&mut row);
+    assert_eq!(row.width_cached(), 5);
+}
+
+#[test]
+fn overwriting_next_to_a_zero_width_character_keeps_the_width_correct() {
+    use crate::panes::terminal_character::TerminalCharacter;
+    let mut row = row_of("ab");
+    row.columns.push_back(TerminalCharacter::new('\u{0301}'));
+    row.columns.push_back(TerminalCharacter::new('c'));
+    assert_eq!(row.width_cached(), 3);
+    row.add_character_at(TerminalCharacter::new('Z'), 2);
+    assert!(row.width.is_some());
+    assert_eq!(row.columns[3].character, 'Z');
+    assert_cached_width_is_fresh(&mut row);
+    assert_eq!(row.width_cached(), 3);
+    row.add_character_at(TerminalCharacter::new('中'), 0);
+    assert_cached_width_is_fresh(&mut row);
+}
+
+#[test]
+fn writing_past_the_end_pads_and_keeps_the_width_correct() {
+    use crate::panes::terminal_character::TerminalCharacter;
+    let mut row = row_of("a中");
+    assert_eq!(row.width_cached(), 3);
+    row.add_character_at(TerminalCharacter::new('z'), 6);
+    assert!(row.width.is_none());
+    assert_cached_width_is_fresh(&mut row);
+    assert_eq!(row.width_cached(), 7);
+}

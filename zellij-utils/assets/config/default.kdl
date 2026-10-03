@@ -2,6 +2,8 @@
 // the presets built into Zellij ("default" and "unlock-first"). Print a built-in preset with
 // "zellij setup --dump-keybinds <name>".
 // "primary", "secondary" and "unlock" set the leader keys of presets that use them.
+// If a leader key is empty or two of them are equal, Zellij warns and uses the default preset.
+// Keybindings that come from a layout are shown in the settings screen but cannot be edited there.
 // Bindings inside the block are applied on top of the preset. To replace the preset
 // completely, add clear-defaults=true to the block.
 // For a single session, "zellij options --keybinds-preset <name>" (and --keybinds-primary,
@@ -15,6 +17,8 @@
 
 // Plugin aliases - can be used to change the implementation of Zellij
 // changing these requires a restart to take effect
+// Built-in aliases cannot be deleted: this block can only add to or override them
+// (removing an override brings back the built-in one)
 plugins {
     tab-bar location="zellij:bars" {
         role "tab-bar"
@@ -41,6 +45,7 @@ plugins {
 }
 
 // Plugins to load in the background when a new session starts
+// (Requires restart)
 load_plugins {
     "zellij:bars" {
         role "link"
@@ -53,6 +58,12 @@ load_plugins {
 // "common" items are added to the end of every menu
 // Actions ending in "ByPaneId"/"ById"/"ByTabId" apply to the clicked pane or tab when no id is given
 // Add clear-defaults=true to the block or to a section to replace the default items
+// Without clear-defaults, a section changes the default items:
+//   item "Label" { ... }                     replaces the item with that label, or adds it at the end
+//   item "Label" after="Other" { ... }       places the item after "Other" (before="Other" places it before)
+//   separator after="Other"                  adds a separator after (or before=) "Other"
+//   remove "Label"                           removes the item with that label
+// Unknown labels are ignored by remove and place the item at the end with after/before
 // An empty "context_menu clear-defaults=true {}" leaves the menu empty, so it never opens,
 // but right clicks are still taken by Zellij; use "context_menu_enabled false" to turn the menu off
 context_menu {
@@ -205,6 +216,7 @@ context_menu {
 // Define color themes for Zellij
 // For more examples, see: https://github.com/zellij-org/zellij/tree/main/example/themes
 // Once these themes are defined, one of them should to be selected in the "theme" section of this file
+// Built-in themes and themes from theme_dir are read-only in the settings screen (copy one to edit it)
 //
 // themes {
 //     dracula {
@@ -311,12 +323,12 @@ context_menu {
 // mirror_session true
 
 // The folder in which Zellij will look for layouts
-// (Requires restart)
 //
 // layout_dir "/path/to/my/layout_dir"
 
 // The folder in which Zellij will look for themes
 // Changes apply to the running session without a restart.
+// Themes from this folder are read-only in the settings screen (copy one to edit it)
 //
 // theme_dir "/path/to/my/theme_dir"
 
@@ -392,16 +404,19 @@ context_menu {
 
 // A path to a certificate file to be used when setting up the web client to serve the
 // connection over HTTPs
+// (Requires restart)
 //
 // web_server_cert "/path/to/my/cert.pem"
 
 // A path to a key file to be used when setting up the web client to serve the
 // connection over HTTPs
+// (Requires restart)
 //
 // web_server_key "/path/to/my/key.pem"
 
 // Whether to enforce https connections to the web server when it is bound to localhost
 // (127.0.0.0/8)
+// (Requires restart)
 //
 // Note: https is ALWAYS enforced when bound to non-local interfaces
 //
@@ -434,6 +449,7 @@ context_menu {
 // stacked_pane_list false
 
 // Whether to show release notes on first version run
+// (Requires restart)
 // Default: true
 //
 // show_release_notes false
@@ -476,6 +492,7 @@ context_menu {
 // word_separators "[]{}<>()"
 
 // Whether to output OSC8 hyperlink sequences
+// (Requires restart)
 // Default: true
 //
 // osc8_hyperlinks false
@@ -489,10 +506,11 @@ context_menu {
 // post_command_discovery_hook "echo $RESURRECT_COMMAND | sed <your_regex_here>"
 
 // Number of async worker tasks to spawn per active client.
+// (Requires restart)
 //
 // Allocating few tasks may result in resource contention and lags. Small values (around 4) should
 // typically work best. Set to 0 to use the number of (physical) CPU cores.
-// NOTE: This only applies to web clients at the moment."#;
+// NOTE: This only applies to web clients at the moment.
 // client_async_worker_tasks 4
 
 // How often (in seconds) sessions are saved to disk so they can be resurrected
@@ -539,7 +557,8 @@ context_menu {
 //
 // host_notification_protocol "auto"
 
-
+// Settings for the web client (font, font_size, cursor_blink, cursor_style, ...)
+// (Requires restart)
 web_client {
     font "monospace"
 }

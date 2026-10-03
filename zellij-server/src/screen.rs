@@ -401,6 +401,13 @@ pub enum ScreenInstruction {
         Option<NotificationEnd>,
     ), // bool ->
     // is_kitty_keyboard_protocol
+    KeyToPopup(
+        KeyWithModifier,
+        Vec<u8>,
+        bool,
+        ClientId,
+        Option<NotificationEnd>,
+    ),
     Resize(ClientId, ResizeStrategy, Option<NotificationEnd>),
     SwitchFocus(ClientId, Option<NotificationEnd>),
     FocusNextPane(ClientId, Option<NotificationEnd>),
@@ -966,6 +973,7 @@ pub enum ScreenInstruction {
     CloseTopPopup(ClientId),
     ScrollPopup(ClientId, crate::route::PopupScroll),
     DismissInfoPopups(ClientId, Option<NotificationEnd>),
+    OpenContextMenu(ClientId, Option<NotificationEnd>),
     SetPopupSize {
         plugin_id: u32,
         width: usize,
@@ -1066,6 +1074,7 @@ impl From<&ScreenInstruction> for ScreenContext {
                 ScreenContext::AreFloatingPanesVisible
             },
             ScreenInstruction::WriteCharacter(..) => ScreenContext::WriteCharacter,
+            ScreenInstruction::KeyToPopup(..) => ScreenContext::KeyToPopup,
             ScreenInstruction::Resize(.., strategy, _) => match strategy {
                 ResizeStrategy {
                     resize: Resize::Increase,
@@ -1380,6 +1389,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::CloseTopPopup(..) => ScreenContext::CloseTopPopup,
             ScreenInstruction::ScrollPopup(..) => ScreenContext::ScrollPopup,
             ScreenInstruction::DismissInfoPopups(..) => ScreenContext::DismissInfoPopups,
+            ScreenInstruction::OpenContextMenu(..) => ScreenContext::OpenContextMenu,
             ScreenInstruction::UpdateContextMenuConfig(..) => {
                 ScreenContext::UpdateContextMenuConfig
             },
@@ -9851,6 +9861,39 @@ pub(crate) fn screen_thread_main(
             } => {
                 screen.are_floating_panes_visible_in_tab(client_id, tab_id, completion)?;
             },
+            ScreenInstruction::KeyToPopup(
+                key_with_modifier,
+                raw_bytes,
+                is_kitty_keyboard_protocol,
+                client_id,
+                completion,
+            ) => {
+                screen.record_client_input(client_id);
+                if screen.send_key_to_popup(
+                    client_id,
+                    key_with_modifier.clone(),
+                    raw_bytes.clone(),
+                    is_kitty_keyboard_protocol,
+                ) {
+                    drop(completion);
+                    screen.render(None)?;
+                } else {
+                    let _ = screen
+                        .bus
+                        .senders
+                        .send_to_screen(ScreenInstruction::ClearScroll(client_id));
+                    let _ = screen
+                        .bus
+                        .senders
+                        .send_to_screen(ScreenInstruction::WriteCharacter(
+                            Some(key_with_modifier),
+                            raw_bytes,
+                            is_kitty_keyboard_protocol,
+                            client_id,
+                            completion,
+                        ));
+                }
+            },
             ScreenInstruction::WriteCharacter(
                 key_with_modifier,
                 raw_bytes,
@@ -9860,9 +9903,6 @@ pub(crate) fn screen_thread_main(
                                 // waiting for it
             ) => {
                 screen.record_client_input(client_id);
-                if screen.send_key_to_popup(client_id, key_with_modifier.clone()) {
-                    continue;
-                }
                 if let Some(plugin_id) = keybind_intercepts.get(&client_id) {
                     if let Some(key_with_modifier) = key_with_modifier {
                         let _ = screen
@@ -13781,6 +13821,9 @@ pub(crate) fn screen_thread_main(
                 if screen.dismiss_info_popups(client_id) {
                     screen.render(None)?;
                 }
+            },
+            ScreenInstruction::OpenContextMenu(client_id, _completion_tx) => {
+                screen.open_context_menu_for_focused_pane(client_id);
             },
             ScreenInstruction::SetPopupSize {
                 plugin_id,

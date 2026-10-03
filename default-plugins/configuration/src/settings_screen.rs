@@ -5,7 +5,7 @@ use zellij_tile::prelude::*;
 use crate::blocks_screen::BlockPage;
 use crate::keybindings_screen::KeybindingsScreen;
 use crate::keys_screen::KeysScreen;
-use crate::page::{note_group, outside_overlays, run_effects, Page, PageResponse};
+use crate::page::{changed_by, note_group, outside_overlays, run_effects, Page, PageResponse};
 use crate::settings::{
     check_text, describe, is_row_kind, kdl_for, mode_choice_label, option_value, section, settings_in,
     sort_for_display, Category, Scope, SettingInfo, SettingKind, CATEGORIES, MISSING_SUFFIX,
@@ -51,6 +51,31 @@ enum DialogPurpose {
     RevertAll,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SaveState {
+    Idle,
+    AwaitingSave,
+    AwaitingOverwrite,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FileChangeReaction {
+    AskWhatToDo,
+    Ignore,
+    ShowReloaded,
+}
+
+fn reaction_to_file_change(state: SaveState) -> FileChangeReaction {
+    match state {
+        SaveState::AwaitingSave => FileChangeReaction::AskWhatToDo,
+        SaveState::AwaitingOverwrite => FileChangeReaction::Ignore,
+        SaveState::Idle => FileChangeReaction::ShowReloaded,
+    }
+}
+
+const RELOADED_FROM_OUTSIDE: &str =
+    "The config file was changed outside the settings and has been reloaded.";
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Row {
     Setting(SettingKey),
@@ -73,6 +98,7 @@ pub struct SettingsScreen {
     dialog_purpose: Option<DialogPurpose>,
     awaiting_save: Option<Vec<SettingKey>>,
     awaiting_reload: bool,
+    save_state: SaveState,
     notice: Option<String>,
     closing: bool,
     theme_preview: ThemePreview,
@@ -114,6 +140,7 @@ impl Default for SettingsScreen {
             dialog_purpose: None,
             awaiting_save: None,
             awaiting_reload: false,
+            save_state: SaveState::Idle,
             notice: None,
             closing: false,
             theme_preview: ThemePreview::default(),
@@ -251,27 +278,32 @@ impl SettingsScreen {
             .map(|page| page.hints())
             .unwrap_or_default()
     }
-    fn collect_page_results(&mut self) {
+    fn collect_page_results(&mut self) -> bool {
         let Some(page) = self.page() else {
-            return;
+            return false;
         };
         let effects = page.take_effects();
         let notice = page.take_notice();
+        let changed = notice.is_some() || !effects.is_empty();
         if notice.is_some() {
             self.notice = notice;
         }
         if run_effects(effects) {
             self.refresh();
         }
+        changed
     }
-    fn collect_keybindings_results(&mut self) {
+    fn collect_keybindings_results(&mut self) -> bool {
         let effects = self.keybindings_screen.take_effects();
+        let mut changed = !effects.is_empty();
         if let Some(notice) = self.keybindings_screen.take_notice() {
             self.notice = Some(notice);
+            changed = true;
         }
         if run_effects(effects) {
             self.refresh();
         }
+        changed
     }
     fn enter_bindings(&mut self) {
         self.bindings_focused = true;
@@ -665,9 +697,21 @@ impl SettingsScreen {
     fn save(&mut self) {
         self.awaiting_save = Some(self.snapshot.pending_restart_settings.clone());
         self.awaiting_reload = false;
+        self.save_state = SaveState::AwaitingSave;
         save_config();
     }
     pub fn config_file_changed_since_read(&mut self) {
+        match reaction_to_file_change(self.save_state) {
+            FileChangeReaction::AskWhatToDo => self.open_changed_outside_dialog(),
+            FileChangeReaction::Ignore => {},
+            FileChangeReaction::ShowReloaded => {
+                self.refresh();
+                self.update_theme_preview();
+                self.notice = Some(RELOADED_FROM_OUTSIDE.to_owned());
+            },
+        }
+    }
+    fn open_changed_outside_dialog(&mut self) {
         self.awaiting_save = None;
         let file = self
             .snapshot
@@ -716,14 +760,17 @@ impl SettingsScreen {
                 UiResponse::Submitted(UiValue::Choice { index: 0, .. }) => {
                     self.awaiting_save = Some(self.snapshot.pending_restart_settings.clone());
                     self.awaiting_reload = false;
+                    self.save_state = SaveState::AwaitingOverwrite;
                     overwrite_config_file();
                 },
                 UiResponse::Submitted(UiValue::Choice { index: 1, .. }) => {
                     self.awaiting_save = None;
                     self.awaiting_reload = true;
+                    self.save_state = SaveState::Idle;
                     reload_config_file();
                 },
                 UiResponse::Submitted(_) | UiResponse::Cancelled => {
+                    self.save_state = SaveState::Idle;
                     self.notice = Some("Not saved".to_owned());
                 },
                 _ => {},
@@ -766,6 +813,7 @@ impl SettingsScreen {
         }
     }
     pub fn config_written(&mut self) {
+        self.save_state = SaveState::Idle;
         if std::mem::replace(&mut self.awaiting_reload, false) {
             let unsaved = self.snapshot.unsaved_count();
             self.notice = Some(format!(
@@ -794,6 +842,7 @@ impl SettingsScreen {
         self.update_theme_preview();
     }
     pub fn config_write_failed(&mut self, path: Option<String>) {
+        self.save_state = SaveState::Idle;
         self.awaiting_save = None;
         self.awaiting_reload = false;
         self.notice = Some(match path {
@@ -1226,7 +1275,11 @@ impl SettingsScreen {
             _ => Some(true),
         }
     }
-    fn handle_focus_event(&mut self, event: FocusEvent<SettingKey>, dropdown_was_open: bool) {
+    fn handle_focus_event(
+        &mut self,
+        event: FocusEvent<SettingKey>,
+        dropdown_was_open: bool,
+    ) -> bool {
         match event {
             FocusEvent::Element { key, response } => {
                 self.handle_element_response(key, response, dropdown_was_open)
@@ -1237,7 +1290,7 @@ impl SettingsScreen {
             },
             FocusEvent::NotHandled => {},
         }
-        self.update_theme_preview();
+        self.update_theme_preview()
     }
     fn handle_element_response(
         &mut self,
@@ -1303,7 +1356,7 @@ impl SettingsScreen {
             ))
         })
     }
-    fn update_theme_preview(&mut self) {
+    fn update_theme_preview(&mut self) -> bool {
         match self.open_theme_highlight() {
             Some((key, highlighted, shown_originally)) => {
                 let state = self.setting(key).cloned();
@@ -1321,17 +1374,20 @@ impl SettingsScreen {
                 if applied_any {
                     self.refresh();
                 }
+                applied_any
             },
             None => self.restore_theme_preview(),
         }
     }
-    fn restore_theme_preview(&mut self) {
-        if self.theme_preview.active_key().is_some() {
-            if let Some(action) = self.theme_preview.restore() {
-                run_preview_action(action);
-            }
-            self.refresh();
+    fn restore_theme_preview(&mut self) -> bool {
+        if self.theme_preview.active_key().is_none() {
+            return false;
         }
+        if let Some(action) = self.theme_preview.restore() {
+            run_preview_action(action);
+        }
+        self.refresh();
+        true
     }
     pub fn handle_mouse(&mut self, mouse: Mouse) -> bool {
         let should_render = self.handle_mouse_inner(mouse);
@@ -1341,8 +1397,33 @@ impl SettingsScreen {
     fn rows_accept_input(&self) -> bool {
         !self.closing && !self.dialog.is_open() && self.editing.is_none()
     }
-    fn clear_row_hover(&mut self) {
-        self.elements.handle_mouse(Mouse::Hover(-1, 0));
+    fn clear_row_hover(&mut self) -> bool {
+        self.elements.handle_mouse(Mouse::Hover(-1, 0)).is_handled()
+    }
+    fn hover_menu(&mut self, mouse: Mouse) -> bool {
+        changed_by(&mut self.menu, |menu| menu.handle_mouse(mouse)).1
+    }
+    fn open_dropdown_state(&self) -> Option<String> {
+        self.elements.keys().into_iter().find_map(|key| {
+            self.elements
+                .dropdown(&key)
+                .filter(|dropdown| dropdown.is_open())
+                .map(|dropdown| format!("{:?}", dropdown))
+        })
+    }
+    fn hover_rows(&mut self, mouse: Mouse) -> bool {
+        if !self.rows_accept_input() {
+            return self.clear_row_hover();
+        }
+        let dropdown_was_open = self.focused_dropdown_open();
+        let dropdown_before = self.open_dropdown_state();
+        let event = self.elements.handle_mouse(mouse);
+        let rows_changed = match dropdown_before {
+            Some(before) => self.open_dropdown_state() != Some(before),
+            None => event.is_handled(),
+        };
+        let preview_changed = self.handle_focus_event(event, dropdown_was_open);
+        rows_changed || preview_changed
     }
     fn clear_all_hover(&mut self) {
         self.clear_row_hover();
@@ -1371,34 +1452,43 @@ impl SettingsScreen {
             _ => mouse,
         };
         if self.dialog.is_open() {
-            let response = self.dialog.handle_mouse(mouse);
+            let (response, dialog_changed) =
+                changed_by(&mut self.dialog, |dialog| dialog.handle_mouse(mouse));
             self.dialog_response(response);
-            return true;
+            return dialog_changed || !matches!(mouse, Mouse::Hover(..)) || !self.dialog.is_open();
         }
-        match mouse {
+        let link_changed = match mouse {
             Mouse::Hover(line, column) => {
-                self.file_link_hovered =
+                let hovered =
                     self.file_link_at(line, column) && !crate::page::under_overlay(line, column);
+                let changed = hovered != self.file_link_hovered;
+                self.file_link_hovered = hovered;
+                changed
             },
             Mouse::LeftClick(line, column) if self.file_link_at(line, column) => {
                 self.stop_editing(false);
                 self.open_config_file();
                 return true;
             },
-            _ => {},
-        }
+            _ => false,
+        };
+        let changed = self.route_mouse(mouse);
+        changed || link_changed
+    }
+    fn route_mouse(&mut self, mouse: Mouse) -> bool {
         if self.showing_page() {
             let page_busy = self.page_captures_keys();
             match mouse {
                 Mouse::LeftClick(line, column)
                     if !page_busy && self.menu.hit_test(line, column) => {},
                 Mouse::Hover(..) => {
-                    self.menu.handle_mouse(mouse);
-                    if let Some(page) = self.page() {
-                        page.handle_mouse(mouse);
-                    }
-                    self.collect_page_results();
-                    return true;
+                    let menu_changed = self.hover_menu(mouse);
+                    let page_changed = match self.page() {
+                        Some(page) => page.handle_mouse(mouse) == PageResponse::Handled,
+                        None => false,
+                    };
+                    let results_changed = self.collect_page_results();
+                    return menu_changed || page_changed || results_changed;
                 },
                 Mouse::ScrollUp(_) | Mouse::ScrollDown(_)
                     if !page_busy && self.menu.handle_mouse(mouse).is_handled() =>
@@ -1432,11 +1522,11 @@ impl SettingsScreen {
                 _ => false,
             };
             if !on_menu || self.keys_screen.dialog_is_open() {
-                if let Mouse::Hover(..) = mouse {
-                    self.menu.handle_mouse(mouse);
-                }
                 let handled = self.keys_screen.handle_mouse(mouse);
                 if handled {
+                    if let Mouse::Hover(..) = mouse {
+                        self.hover_menu(mouse);
+                    }
                     if let Mouse::LeftClick(..) = mouse {
                         if self.focus != Focus::Content || self.bindings_focused {
                             self.bindings_focused = false;
@@ -1452,17 +1542,12 @@ impl SettingsScreen {
         }
         match mouse {
             Mouse::Hover(..) => {
-                self.menu.handle_mouse(mouse);
-                self.scroll.handle_mouse(mouse);
-                self.search.handle_mouse(mouse);
-                if !self.rows_accept_input() {
-                    self.clear_row_hover();
-                    return true;
-                }
-                let dropdown_was_open = self.focused_dropdown_open();
-                let event = self.elements.handle_mouse(mouse);
-                self.handle_focus_event(event, dropdown_was_open);
-                return true;
+                let menu_changed = self.hover_menu(mouse);
+                let scroll_changed =
+                    changed_by(&mut self.scroll, |scroll| scroll.handle_mouse(mouse)).1;
+                let search_changed = self.search.handle_mouse(mouse).is_handled();
+                let rows_changed = self.hover_rows(mouse);
+                return menu_changed || scroll_changed || search_changed || rows_changed;
             },
             Mouse::ScrollUp(_) | Mouse::ScrollDown(_) => {
                 if self.elements.has_open_overlay() {
@@ -1722,11 +1807,12 @@ impl SettingsScreen {
             return None;
         }
         if let Mouse::Hover(..) = mouse {
-            self.menu.handle_mouse(outside_overlays(mouse));
-            self.keys_screen.handle_mouse(mouse);
-            self.keybindings_screen.handle_mouse(mouse);
-            self.collect_keybindings_results();
-            return Some(true);
+            let menu_changed = self.hover_menu(outside_overlays(mouse));
+            let keys_changed = self.keys_screen.handle_mouse(mouse);
+            let bindings_changed =
+                self.keybindings_screen.handle_mouse(mouse) == PageResponse::Handled;
+            let results_changed = self.collect_keybindings_results();
+            return Some(menu_changed || keys_changed || bindings_changed || results_changed);
         }
         let line = match mouse {
             _ if self.keybindings_screen.is_dragging() => None,
@@ -2123,5 +2209,103 @@ impl SettingsScreen {
             }
             print_text_with_coordinates(marker_text, marker_x, screen_y, None, None);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const ROWS: usize = 200;
+    const COLS: usize = 160;
+
+    fn rendered_screen() -> SettingsScreen {
+        let mut screen = SettingsScreen::default();
+        screen.rebuild_rows();
+        screen.render(ROWS, COLS);
+        screen
+    }
+
+    fn menu_item_position(screen: &SettingsScreen) -> (isize, usize) {
+        for line in 0..ROWS as isize {
+            for column in 0..COLS {
+                if screen.menu.item_at(line, column).is_some() {
+                    return (line, column);
+                }
+            }
+        }
+        panic!("the menu was not laid out");
+    }
+
+    fn choice(index: usize) -> UiResponse {
+        UiResponse::Submitted(UiValue::Choice {
+            index,
+            label: String::new(),
+        })
+    }
+
+    #[test]
+    fn hovering_an_inert_area_does_not_redraw() {
+        let mut screen = rendered_screen();
+        assert!(!screen.handle_mouse(Mouse::Hover(0, 0)));
+        assert!(!screen.handle_mouse(Mouse::Hover(1, 0)));
+    }
+
+    #[test]
+    fn hovering_a_new_menu_item_redraws_once() {
+        let mut screen = rendered_screen();
+        let (line, column) = menu_item_position(&screen);
+        assert!(screen.handle_mouse(Mouse::Hover(line, column)));
+        assert!(screen.menu.hovered_index().is_some());
+        assert!(!screen.handle_mouse(Mouse::Hover(line, column)));
+        assert!(screen.handle_mouse(Mouse::Hover(0, 0)));
+        assert!(screen.menu.hovered_index().is_none());
+    }
+
+    #[test]
+    fn a_file_change_asks_only_while_an_own_save_is_pending() {
+        assert_eq!(
+            reaction_to_file_change(SaveState::Idle),
+            FileChangeReaction::ShowReloaded
+        );
+        assert_eq!(
+            reaction_to_file_change(SaveState::AwaitingSave),
+            FileChangeReaction::AskWhatToDo
+        );
+        assert_eq!(
+            reaction_to_file_change(SaveState::AwaitingOverwrite),
+            FileChangeReaction::Ignore
+        );
+    }
+
+    #[test]
+    fn the_save_state_follows_saves_and_dialog_choices() {
+        let mut screen = SettingsScreen::default();
+        assert_eq!(screen.save_state, SaveState::Idle);
+        screen.save();
+        assert_eq!(screen.save_state, SaveState::AwaitingSave);
+        screen.config_file_changed_since_read();
+        assert!(screen.dialog.is_open());
+        screen.dialog_response(choice(0));
+        assert_eq!(screen.save_state, SaveState::AwaitingOverwrite);
+        screen.dialog.close();
+        screen.config_file_changed_since_read();
+        assert!(!screen.dialog.is_open());
+        assert_eq!(screen.save_state, SaveState::AwaitingOverwrite);
+        screen.config_write_failed(None);
+        assert_eq!(screen.save_state, SaveState::Idle);
+
+        screen.save();
+        screen.config_file_changed_since_read();
+        assert!(screen.dialog.is_open());
+        screen.dialog_response(UiResponse::Cancelled);
+        assert_eq!(screen.save_state, SaveState::Idle);
+        screen.dialog.close();
+
+        screen.save();
+        screen.config_file_changed_since_read();
+        screen.dialog_response(choice(1));
+        assert_eq!(screen.save_state, SaveState::Idle);
+        assert!(screen.awaiting_reload);
     }
 }

@@ -346,10 +346,8 @@ pub(super) fn create_plugin_thread(
     plugin_aliases.aliases.insert(
         "fixture_plugin_for_tests".to_owned(),
         RunPlugin::from_url(&format!(
-            "file:{}/../target/e2e-data/plugins/fixture-plugin-for-tests.wasm",
-            std::env::var_os("CARGO_MANIFEST_DIR")
-                .unwrap()
-                .to_string_lossy()
+            "file:{}",
+            e2e_plugin_path("fixture-plugin-for-tests").display()
         ))
         .unwrap(),
     );
@@ -671,15 +669,19 @@ fn create_plugin_thread_with_background_jobs_receiver(
     )
 }
 
+pub(crate) fn e2e_plugin_path(name: &str) -> PathBuf {
+    std::env::var_os("CARGO_TARGET_DIR")
+        .filter(|target_dir| !target_dir.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../target"))
+        .join("e2e-data/plugins")
+        .join(format!("{}.wasm", name))
+}
+
 lazy_static! {
-    static ref PLUGIN_FIXTURE: String = format!(
-        // to populate this file, make sure to run the build-e2e CI job
-        // (or compile the fixture plugin and copy the resulting .wasm blob to the below location)
-        "{}/../target/e2e-data/plugins/fixture-plugin-for-tests.wasm",
-        std::env::var_os("CARGO_MANIFEST_DIR")
-            .unwrap()
-            .to_string_lossy()
-    );
+    static ref PLUGIN_FIXTURE: String = e2e_plugin_path("fixture-plugin-for-tests")
+        .display()
+        .to_string();
 }
 
 #[test]

@@ -6116,6 +6116,9 @@ impl Tab {
         ignore_suppressed_panes: bool,
         exit_status: Option<i32>,
     ) {
+        if self.selecting_with_mouse_in_pane == Some(id) {
+            self.selecting_with_mouse_in_pane = None;
+        }
         let id_parks_a_different_pane = self.pane_parked_by(&id).is_some();
         if !ignore_suppressed_panes
             && !id_parks_a_different_pane
@@ -8120,6 +8123,11 @@ impl Tab {
         Ok(())
     }
     pub fn request_plugin_permissions(&mut self, pid: u32, permissions: Option<PluginPermission>) {
+        if let Some(popup_pane) = self.popup_pane_mut(pid) {
+            popup_pane.request_permissions_from_user(permissions);
+            self.set_force_render();
+            return;
+        }
         let mut should_focus_pane = false;
         if let Some(plugin_pane) = self
             .tiled_panes

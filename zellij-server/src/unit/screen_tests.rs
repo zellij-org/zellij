@@ -16286,9 +16286,10 @@ fn closing_the_top_popup_from_a_key_leaves_information_popups_open() {
             None,
         )
         .unwrap();
-    assert!(screen.send_key_to_popup(client_id, None));
+    let key = zellij_utils::data::KeyWithModifier::new(zellij_utils::data::BareKey::Char('a'));
+    assert!(screen.send_key_to_popup(client_id, key.clone(), vec![b'a'], false));
     assert!(screen.close_top_popup_for_client(client_id));
-    assert!(!screen.send_key_to_popup(client_id, None));
+    assert!(!screen.send_key_to_popup(client_id, key, vec![b'a'], false));
     assert!(!screen.close_top_popup_for_client(client_id));
     assert!(screen
         .get_active_tab(client_id)
@@ -16370,4 +16371,184 @@ fn switching_tabs_moves_information_popups_along_and_closes_focused_ones() {
         })
         .collect();
     assert_eq!(unloaded, vec![42]);
+}
+
+struct MockScreenWithPrompt {
+    mock_screen: MockScreen,
+    session_metadata: SessionMetaData,
+    threads: Vec<std::thread::JoinHandle<()>>,
+    plugin_receiver: Receiver<(PluginInstruction, ErrorContext)>,
+    pty_writer_receiver: Receiver<(PtyWriteInstruction, ErrorContext)>,
+    received_server_instructions: Arc<Mutex<Vec<ServerInstruction>>>,
+}
+
+impl MockScreenWithPrompt {
+    fn new(prompt_plugin_id: u32) -> Self {
+        let size = Size {
+            cols: 121,
+            rows: 20,
+        };
+        let mut mock_screen = MockScreen::new(size);
+        let plugin_receiver = mock_screen.plugin_receiver.take().unwrap();
+        let pty_writer_receiver = mock_screen.pty_writer_receiver.take().unwrap();
+        let server_receiver = mock_screen.server_receiver.take().unwrap();
+        let session_metadata = mock_screen.clone_session_metadata();
+        let screen_thread = mock_screen.run(None, vec![]);
+        let received_server_instructions = Arc::new(Mutex::new(vec![]));
+        let server_thread = log_actions_in_thread!(
+            received_server_instructions,
+            ServerInstruction::KillSession,
+            server_receiver
+        );
+        let _ = mock_screen.to_screen.send(ScreenInstruction::AddPopup {
+            plugin_id: prompt_plugin_id,
+            client_id: mock_screen.main_client_id,
+            tab_id: 0,
+            run_plugin_or_alias: RunPluginOrAlias::from_url("zellij:prompt", &None, None, None)
+                .unwrap(),
+            placement: crate::tab::PopupPlacement::At(Position::new(3, 3)),
+            kind: crate::tab::PopupKind::Prompt,
+            width: 20,
+            height: 5,
+            anchor_pane: None,
+        });
+        MockScreenWithPrompt {
+            mock_screen,
+            session_metadata,
+            threads: vec![screen_thread, server_thread],
+            plugin_receiver,
+            pty_writer_receiver,
+            received_server_instructions,
+        }
+    }
+    fn pty_writes(&self) -> Vec<(Vec<u8>, u32)> {
+        self.pty_writer_receiver
+            .try_iter()
+            .filter_map(|(instruction, _)| match instruction {
+                PtyWriteInstruction::Write(bytes, terminal_id, _) => Some((bytes, terminal_id)),
+                _ => None,
+            })
+            .collect()
+    }
+    fn keys_sent_to_plugin(&self, plugin_id: u32) -> Vec<zellij_utils::data::KeyWithModifier> {
+        self.plugin_receiver
+            .try_iter()
+            .filter_map(|(instruction, _)| match instruction {
+                PluginInstruction::Update(updates) => Some(updates),
+                _ => None,
+            })
+            .flatten()
+            .filter_map(|(pid, _, event)| match event {
+                Event::Key(key) if pid == Some(plugin_id) => Some(key),
+                _ => None,
+            })
+            .collect()
+    }
+    fn teardown_and_assert_popup_was_open(mut self) {
+        let threads = std::mem::take(&mut self.threads);
+        self.mock_screen.teardown(threads);
+        let popup_was_open = self
+            .received_server_instructions
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|instruction| {
+                matches!(instruction, ServerInstruction::PopupStateChanged(1, true))
+            });
+        assert!(popup_was_open, "the prompt popup was opened for the client");
+    }
+}
+
+#[test]
+fn write_chars_without_a_target_reach_the_pane_under_a_focused_popup() {
+    let client_id = 1;
+    let harness = MockScreenWithPrompt::new(42);
+    send_cli_action_to_server(
+        &harness.session_metadata,
+        CliAction::WriteChars {
+            chars: "abc".into(),
+            pane_id: None,
+        },
+        client_id,
+    );
+    send_cli_action_to_server(
+        &harness.session_metadata,
+        CliAction::Write {
+            bytes: vec![100, 101],
+            pane_id: None,
+        },
+        client_id,
+    );
+    let pty_writes = harness.pty_writes();
+    assert!(
+        pty_writes.contains(&(b"abc".to_vec(), 0)),
+        "write-chars reached the pane, got: {:?}",
+        pty_writes
+    );
+    assert!(
+        pty_writes.contains(&(b"de".to_vec(), 0)),
+        "write reached the pane, got: {:?}",
+        pty_writes
+    );
+    assert!(harness.keys_sent_to_plugin(42).is_empty());
+    harness.teardown_and_assert_popup_was_open();
+}
+
+#[test]
+fn a_key_press_reaches_the_focused_popup_and_not_the_pane() {
+    let client_id = 1;
+    let harness = MockScreenWithPrompt::new(42);
+    let key = zellij_utils::data::KeyWithModifier::new(zellij_utils::data::BareKey::Char('a'));
+    let (completion_tx, completion_rx) = tokio::sync::oneshot::channel();
+    let _ = harness.mock_screen.to_screen.send(ScreenInstruction::KeyToPopup(
+        key.clone(),
+        vec![b'a'],
+        false,
+        client_id,
+        Some(crate::route::NotificationEnd::new(completion_tx)),
+    ));
+    let _ = crate::route::wait_for_action_completion(completion_rx, "KeyToPopup", false);
+    assert_eq!(harness.keys_sent_to_plugin(42), vec![key]);
+    let pty_writes = harness.pty_writes();
+    assert!(
+        !pty_writes.iter().any(|(bytes, _)| bytes == b"a"),
+        "the key did not reach the pane, got: {:?}",
+        pty_writes
+    );
+    harness.teardown_and_assert_popup_was_open();
+}
+
+#[test]
+fn a_targeted_write_reaches_its_pane_while_a_popup_is_open() {
+    let client_id = 1;
+    let harness = MockScreenWithPrompt::new(42);
+    route_arbitrary_action_to_server(
+        &harness.session_metadata,
+        Action::WriteCharsToPaneId {
+            chars: "xyz".into(),
+            pane_id: zellij_utils::data::PaneId::Terminal(0),
+        },
+        client_id,
+    );
+    route_arbitrary_action_to_server(
+        &harness.session_metadata,
+        Action::WriteToPaneId {
+            bytes: b"uv".to_vec(),
+            pane_id: zellij_utils::data::PaneId::Terminal(0),
+        },
+        client_id,
+    );
+    let pty_writes = harness.pty_writes();
+    assert!(
+        pty_writes.contains(&(b"xyz".to_vec(), 0)),
+        "targeted write-chars reached the pane, got: {:?}",
+        pty_writes
+    );
+    assert!(
+        pty_writes.contains(&(b"uv".to_vec(), 0)),
+        "targeted write reached the pane, got: {:?}",
+        pty_writes
+    );
+    assert!(harness.keys_sent_to_plugin(42).is_empty());
+    harness.teardown_and_assert_popup_was_open();
 }

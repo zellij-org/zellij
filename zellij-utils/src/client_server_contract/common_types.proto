@@ -325,6 +325,7 @@ message Action {
     StartRenamePaneByPaneIdAction start_rename_pane_by_pane_id = 158;
     StartRenameTabByTabIdAction start_rename_tab_by_tab_id = 159;
     DismissInfoPopupsAction dismiss_info_popups = 160;
+    OpenContextMenuAction open_context_menu = 161;
   }
 }
 
@@ -1367,3 +1368,4 @@ message TogglePaneInGroupByPaneIdAction { PaneId pane_id = 1; }
 message StartRenamePaneByPaneIdAction { PaneId pane_id = 1; }
 message StartRenameTabByTabIdAction { optional uint64 id = 1; }
 message DismissInfoPopupsAction {}
+message OpenContextMenuAction {}

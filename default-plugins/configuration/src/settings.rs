@@ -378,7 +378,7 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         SettingKey::Env => info(
             "Environment variables",
             PluginsAndEnvironment,
-            "Variables set for new panes",
+            "Variables for new panes, shared by everyone in this session",
             Block,
             "none",
             Everyone,

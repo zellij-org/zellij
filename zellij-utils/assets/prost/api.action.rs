@@ -1211,6 +1211,7 @@ pub enum ActionName {
     MoveTabByTabId = 123,
     StartRenameTabByTabId = 124,
     DismissInfoPopups = 125,
+    OpenContextMenu = 126,
 }
 impl ActionName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1342,6 +1343,7 @@ impl ActionName {
             ActionName::MoveTabByTabId => "MoveTabByTabId",
             ActionName::StartRenameTabByTabId => "StartRenameTabByTabId",
             ActionName::DismissInfoPopups => "DismissInfoPopups",
+            ActionName::OpenContextMenu => "OpenContextMenu",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1470,6 +1472,7 @@ impl ActionName {
             "MoveTabByTabId" => Some(Self::MoveTabByTabId),
             "StartRenameTabByTabId" => Some(Self::StartRenameTabByTabId),
             "DismissInfoPopups" => Some(Self::DismissInfoPopups),
+            "OpenContextMenu" => Some(Self::OpenContextMenu),
             _ => None,
         }
     }

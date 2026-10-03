@@ -1346,7 +1346,7 @@ impl From<crate::input::actions::Action>
             TogglePanePinnedAction,
             TogglePanePinnedByPaneIdAction,
             ToggleTabAction,
-            ToggleThemeAction, DismissInfoPopupsAction,
+            ToggleThemeAction, DismissInfoPopupsAction, OpenContextMenuAction,
             UndoRenamePaneAction,
             UndoRenamePaneByPaneIdAction,
             UndoRenameTabAction,
@@ -1765,6 +1765,9 @@ impl From<crate::input::actions::Action>
             },
             crate::input::actions::Action::DismissInfoPopups => {
                 ActionType::DismissInfoPopups(DismissInfoPopupsAction {})
+            },
+            crate::input::actions::Action::OpenContextMenu => {
+                ActionType::OpenContextMenu(OpenContextMenuAction {})
             },
             crate::input::actions::Action::SwitchSession {
                 name,
@@ -2723,6 +2726,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             ActionType::DismissInfoPopups(_) => {
                 Ok(crate::input::actions::Action::DismissInfoPopups)
             },
+            ActionType::OpenContextMenu(_) => Ok(crate::input::actions::Action::OpenContextMenu),
             ActionType::SwitchSession(switch_session_action) => {
                 Ok(crate::input::actions::Action::SwitchSession {
                     name: switch_session_action.name.clone(),

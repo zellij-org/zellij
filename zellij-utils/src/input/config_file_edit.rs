@@ -8,14 +8,16 @@ use strum::IntoEnumIterator;
 use super::actions::Action;
 use super::config::Config;
 use super::config_blocks::{
-    config_blocks, env_node, load_plugin_node, menu_entries, menu_item_node, plugin_alias_node,
-    styling_colours, theme_node, theme_slots,
+    config_blocks, env_node, load_plugin_entry, load_plugin_node, menu_entries, menu_item_node,
+    plugin_alias_node, styling_colours, theme_node, theme_slots,
 };
 use super::config_settings::{
     copy_setting, default_config, differing_settings, setting_is_default, setting_kdl_value,
     setting_node_path, setting_value,
 };
-use super::context_menu::{ContextMenuConfig, CONTEXT_MENU_SECTIONS};
+use super::context_menu::{
+    merge_menu_statements, ContextMenuConfig, MenuPlacement, MenuStatement, CONTEXT_MENU_SECTIONS,
+};
 use super::keybind_presets::{KeybindChanges, KeybindsSelection, LEADER_PLACEHOLDERS};
 use super::keybinds::Keybinds;
 use super::options::Options;
@@ -185,11 +187,123 @@ pub fn list_edits<T: Clone + PartialEq>(old: &[T], new: &[T]) -> Vec<ListEdit<T>
     edits
 }
 
+fn locate_in_slots<T, K: PartialEq>(
+    list: &[T],
+    index: usize,
+    slots: &[Option<T>],
+    key_of: &impl Fn(&T) -> K,
+) -> Option<usize> {
+    let key = key_of(list.get(index)?);
+    let occurrence = list[..index]
+        .iter()
+        .filter(|item| key_of(item) == key)
+        .count();
+    slots
+        .iter()
+        .enumerate()
+        .filter(|(_, slot)| {
+            slot.as_ref()
+                .map(|item| key_of(item) == key)
+                .unwrap_or(false)
+        })
+        .nth(occurrence)
+        .map(|(position, _)| position)
+}
+
+fn insertion_point<T, K: PartialEq>(
+    list: &[T],
+    index: usize,
+    slots: &[Option<T>],
+    key_of: &impl Fn(&T) -> K,
+) -> usize {
+    if index > 0 {
+        if let Some(position) = locate_in_slots(list, index - 1, slots, key_of) {
+            return position + 1;
+        }
+    }
+    if let Some(position) = locate_in_slots(list, index, slots, key_of) {
+        return position;
+    }
+    if index == 0 {
+        0
+    } else {
+        slots.len()
+    }
+}
+
+pub fn rebased_list_edits<T: Clone, K: PartialEq>(
+    base: &[T],
+    edits: &[ListEdit<T>],
+    mut slots: Vec<Option<T>>,
+    key_of: impl Fn(&T) -> K,
+) -> Vec<ListEdit<T>> {
+    let mut working = base.to_vec();
+    let mut rebased = vec![];
+    for edit in edits {
+        match edit {
+            ListEdit::Insert { index, item } => {
+                let index = (*index).min(working.len());
+                let at = insertion_point(&working, index, &slots, &key_of);
+                slots.insert(at, Some(item.clone()));
+                rebased.push(ListEdit::Insert {
+                    index: at,
+                    item: item.clone(),
+                });
+            },
+            ListEdit::Replace { index, item } => {
+                if let Some(at) = locate_in_slots(&working, *index, &slots, &key_of) {
+                    slots[at] = Some(item.clone());
+                    rebased.push(ListEdit::Replace {
+                        index: at,
+                        item: item.clone(),
+                    });
+                }
+            },
+            ListEdit::Remove { index } => {
+                if let Some(at) = locate_in_slots(&working, *index, &slots, &key_of) {
+                    slots.remove(at);
+                    rebased.push(ListEdit::Remove { index: at });
+                }
+            },
+            ListEdit::Move { from, to } => {
+                if let Some(at) = locate_in_slots(&working, *from, &slots, &key_of) {
+                    let mut after_removal = working.clone();
+                    after_removal.remove(*from);
+                    let moved = slots.remove(at);
+                    let to = (*to).min(after_removal.len());
+                    let target = insertion_point(&after_removal, to, &slots, &key_of);
+                    slots.insert(target, moved);
+                    rebased.push(ListEdit::Move {
+                        from: at,
+                        to: target,
+                    });
+                }
+            },
+        }
+        apply_list_edits(&mut working, std::slice::from_ref(edit));
+    }
+    rebased
+}
+
+pub fn rebased_list<T: Clone, K: PartialEq>(
+    base: &[T],
+    edits: &[ListEdit<T>],
+    current: &[T],
+    key_of: impl Fn(&T) -> K,
+) -> Vec<T> {
+    let slots: Vec<Option<T>> = current.iter().cloned().map(Some).collect();
+    let rebased = rebased_list_edits(base, edits, slots, key_of);
+    let mut list = current.to_vec();
+    apply_list_edits(&mut list, &rebased);
+    list
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum SaveOutcome {
     Written {
         file_contents: Option<String>,
         saved_config: Config,
+        changed_outside: bool,
     },
     ChangedOutside,
     Failed(Option<PathBuf>),
@@ -487,11 +601,18 @@ fn child_indent(document: &KdlDocument, owner_indent: Option<&str>) -> String {
 }
 
 fn whitespace_kept_before_first_node(text: &str, inside_block: bool) -> String {
-    match text.rfind('\n') {
-        Some(position) => text[..=position].to_owned(),
-        None if inside_block => "\n".to_owned(),
-        None if text.trim().is_empty() => String::new(),
-        None => format!("{}\n", text),
+    let (head, tail) = match text.rfind('\n') {
+        Some(position) => (&text[..=position], &text[position + 1..]),
+        None => ("", text),
+    };
+    if !tail.trim().is_empty() {
+        format!("{}\n", text.trim_end_matches([' ', '\t']))
+    } else if !head.is_empty() {
+        head.to_owned()
+    } else if inside_block {
+        "\n".to_owned()
+    } else {
+        String::new()
     }
 }
 
@@ -713,18 +834,6 @@ fn string_arguments(node: &KdlNode) -> Vec<&str> {
         .collect()
 }
 
-fn shared_block_covers(node: &KdlNode, mode: InputMode) -> bool {
-    let listed: Vec<InputMode> = string_arguments(node)
-        .into_iter()
-        .filter_map(|name| InputMode::from_str(name).ok())
-        .collect();
-    match node_name(node) {
-        "shared_among" => listed.contains(&mode),
-        "shared" | "shared_except" => !listed.contains(&mode),
-        _ => false,
-    }
-}
-
 fn key_matches(text: &str, key: &KeyWithModifier) -> bool {
     KeyWithModifier::from_str(text)
         .map(|parsed| &parsed == key)
@@ -765,28 +874,6 @@ fn remove_key_from_statements(block: &mut KdlDocument, kind: &str, key: &KeyWith
     removed_any
 }
 
-fn block_has_statement(block: &KdlDocument, kind: &str, key: &KeyWithModifier) -> bool {
-    block
-        .nodes()
-        .iter()
-        .any(|node| node_name(node) == kind && statement_has_key(node, key))
-}
-
-fn mode_blocks_have_statement(
-    keybinds: &KdlDocument,
-    mode: InputMode,
-    kind: &str,
-    key: &KeyWithModifier,
-) -> bool {
-    keybinds.nodes().iter().any(|node| {
-        node_mode(node) == Some(mode)
-            && node
-                .children()
-                .map(|children| block_has_statement(children, kind, key))
-                .unwrap_or(false)
-    })
-}
-
 fn bind_node(key: &KeyWithModifier, actions: &[Action]) -> KdlNode {
     let mut bindings = BTreeMap::new();
     bindings.insert(key.clone(), actions.to_vec());
@@ -823,80 +910,80 @@ fn append_to_mode_block(
             keybinds.nodes().len() - 1
         },
     };
-    let mode_indent = node_indent(keybinds, position, keybinds_indent);
+    append_to_block_at(keybinds, keybinds_indent, position, statement);
+}
+
+fn append_to_block_at(
+    keybinds: &mut KdlDocument,
+    keybinds_indent: Option<&str>,
+    position: usize,
+    statement: KdlNode,
+) {
+    let block_indent = node_indent(keybinds, position, keybinds_indent);
     let node = &mut keybinds.nodes_mut()[position];
     if node.children().is_none() {
         node.set_children(KdlDocument::new());
     }
     if let Some(children) = node.children_mut().as_mut() {
-        let indent = child_indent(children, Some(&mode_indent));
-        push_node(children, statement, &indent, Some(&mode_indent));
+        let indent = child_indent(children, Some(&block_indent));
+        push_node(children, statement, &indent, Some(&block_indent));
     }
 }
 
-fn ensure_direct_state(
-    keybinds: &mut KdlDocument,
-    keybinds_indent: Option<&str>,
+pub struct KeyTargets<'a> {
+    pub runtime: &'a KeybindChanges,
+    pub preset: &'a Keybinds,
+}
+
+fn mode_is_cleared(changes: &KeybindChanges, mode: InputMode) -> bool {
+    changes.clear_defaults
+        || changes
+            .modes
+            .get(&mode)
+            .map(|mode_changes| mode_changes.clear_defaults)
+            .unwrap_or(false)
+}
+
+fn preset_actions(
+    changes: &KeybindChanges,
+    preset: &Keybinds,
     mode: InputMode,
     key: &KeyWithModifier,
-    state: &KeyState,
-) {
+) -> Option<Vec<Action>> {
+    if mode_is_cleared(changes, mode) {
+        return None;
+    }
+    preset.0.get(&mode).and_then(|keys| keys.get(key)).cloned()
+}
+
+fn state_actions(
+    state: KeyState,
+    changes: &KeybindChanges,
+    preset: &Keybinds,
+    mode: InputMode,
+    key: &KeyWithModifier,
+) -> Option<Vec<Action>> {
     match state {
-        KeyState::Bound(actions) => {
-            if !mode_blocks_have_statement(keybinds, mode, "bind", key) {
-                append_to_mode_block(keybinds, keybinds_indent, mode, bind_node(key, actions));
-            }
-        },
-        KeyState::Unbound => {
-            if !mode_blocks_have_statement(keybinds, mode, "unbind", key) {
-                append_to_mode_block(keybinds, keybinds_indent, mode, unbind_node(key));
-            }
-        },
-        KeyState::Untouched => {},
+        KeyState::Bound(actions) => Some(actions),
+        KeyState::Unbound => None,
+        KeyState::Untouched => preset_actions(changes, preset, mode, key),
     }
 }
 
-fn split_shared_blocks(
-    keybinds: &mut KdlDocument,
-    keybinds_indent: Option<&str>,
+pub fn effective_key_actions(
+    changes: &KeybindChanges,
+    preset: &Keybinds,
     mode: InputMode,
     key: &KeyWithModifier,
-    runtime: &KeybindChanges,
-) {
-    let mut other_modes: BTreeSet<InputMode> = BTreeSet::new();
-    for node in keybinds.nodes_mut() {
-        if !SHARED_BLOCKS.contains(&node_name(node)) || !shared_block_covers(node, mode) {
-            continue;
-        }
-        let covered: Vec<InputMode> = InputMode::iter()
-            .filter(|other| *other != mode && shared_block_covers(node, *other))
-            .collect();
-        if let Some(children) = node.children_mut().as_mut() {
-            let removed_bind = remove_key_from_statements(children, "bind", key);
-            let removed_unbind = remove_key_from_statements(children, "unbind", key);
-            if removed_bind || removed_unbind {
-                other_modes.extend(covered);
-            }
-        }
-    }
-    let global_unbind_had_key = remove_key_from_statements(keybinds, "unbind", key);
-    if global_unbind_had_key {
-        other_modes.extend(InputMode::iter().filter(|other| *other != mode));
-    }
-    for other in other_modes {
-        let state = key_state(runtime, other, key);
-        ensure_direct_state(keybinds, keybinds_indent, other, key, &state);
-    }
+) -> Option<Vec<Action>> {
+    state_actions(key_state(changes, mode, key), changes, preset, mode, key)
 }
 
-fn edit_key(
-    keybinds: &mut KdlDocument,
-    keybinds_indent: Option<&str>,
-    mode: InputMode,
-    key: &KeyWithModifier,
-    state: &KeyState,
-    runtime: &KeybindChanges,
-) {
+fn parsed_keybind_changes(keybinds: &KdlNode) -> Option<KeybindChanges> {
+    KeybindChanges::from_kdl(keybinds, &Options::default()).ok()
+}
+
+fn remove_own_statements(keybinds: &mut KdlDocument, mode: InputMode, key: &KeyWithModifier) {
     for node in keybinds.nodes_mut() {
         if node_mode(node) != Some(mode) {
             continue;
@@ -906,24 +993,118 @@ fn edit_key(
             remove_key_from_statements(children, "unbind", key);
         }
     }
-    match state {
-        KeyState::Bound(actions) => {
-            append_to_mode_block(keybinds, keybinds_indent, mode, bind_node(key, actions));
-            if keybinds
-                .nodes()
-                .iter()
-                .any(|node| node_name(node) == "unbind" && statement_has_key(node, key))
-            {
-                split_shared_blocks(keybinds, keybinds_indent, mode, key, runtime);
-            }
+}
+
+fn top_level_unbind_has(keybinds: &KdlDocument, key: &KeyWithModifier) -> bool {
+    keybinds
+        .nodes()
+        .iter()
+        .find(|node| node_name(node) == "unbind")
+        .map(|node| statement_has_key(node, key))
+        .unwrap_or(false)
+}
+
+fn move_top_level_unbind_to_shared(
+    keybinds: &mut KdlDocument,
+    keybinds_indent: Option<&str>,
+    key: &KeyWithModifier,
+) {
+    remove_key_from_statements(keybinds, "unbind", key);
+    let last_shared = keybinds
+        .nodes()
+        .iter()
+        .rposition(|node| SHARED_BLOCKS.contains(&node_name(node)));
+    let position = match last_shared {
+        Some(position)
+            if node_name(&keybinds.nodes()[position]) == "shared"
+                && string_arguments(&keybinds.nodes()[position]).is_empty() =>
+        {
+            position
         },
-        KeyState::Unbound => {
-            append_to_mode_block(keybinds, keybinds_indent, mode, unbind_node(key));
+        _ => {
+            let indent = child_indent(keybinds, keybinds_indent);
+            push_node(keybinds, KdlNode::new("shared"), &indent, keybinds_indent);
+            keybinds.nodes().len() - 1
         },
-        KeyState::Untouched => {
-            split_shared_blocks(keybinds, keybinds_indent, mode, key, runtime);
-        },
+    };
+    append_to_block_at(keybinds, keybinds_indent, position, unbind_node(key));
+}
+
+fn write_mode_statement(
+    keybinds: &mut KdlDocument,
+    keybinds_indent: Option<&str>,
+    mode: InputMode,
+    key: &KeyWithModifier,
+    actions: Option<Vec<Action>>,
+) {
+    let statement = match actions {
+        Some(actions) => bind_node(key, &actions),
+        None => unbind_node(key),
+    };
+    append_to_mode_block(keybinds, keybinds_indent, mode, statement);
+}
+
+fn settle_other_modes(
+    node: &mut KdlNode,
+    keybinds_indent: Option<&str>,
+    mode: InputMode,
+    key: &KeyWithModifier,
+    targets: &KeyTargets,
+) {
+    for other in InputMode::iter().filter(|other| *other != mode) {
+        let Some(file) = parsed_keybind_changes(node) else {
+            return;
+        };
+        let wanted = key_state(targets.runtime, other, key);
+        if key_state(&file, other, key) == wanted
+            || effective_key_actions(&file, targets.preset, other, key)
+                == effective_key_actions(targets.runtime, targets.preset, other, key)
+        {
+            continue;
+        }
+        settle_key(node, keybinds_indent, other, key, &wanted, targets);
     }
+}
+
+fn settle_key(
+    node: &mut KdlNode,
+    keybinds_indent: Option<&str>,
+    mode: InputMode,
+    key: &KeyWithModifier,
+    state: &KeyState,
+    targets: &KeyTargets,
+) {
+    remove_own_statements(keybinds_children(node), mode, key);
+    let Some(file) = parsed_keybind_changes(node) else {
+        match state {
+            KeyState::Bound(actions) => write_mode_statement(
+                keybinds_children(node),
+                keybinds_indent,
+                mode,
+                key,
+                Some(actions.clone()),
+            ),
+            KeyState::Unbound => {
+                write_mode_statement(keybinds_children(node), keybinds_indent, mode, key, None)
+            },
+            KeyState::Untouched => {},
+        }
+        return;
+    };
+    if key_state(&file, mode, key) == *state {
+        return;
+    }
+    let wanted = state_actions(state.clone(), targets.runtime, targets.preset, mode, key);
+    if *state == KeyState::Untouched
+        && effective_key_actions(&file, targets.preset, mode, key) == wanted
+    {
+        return;
+    }
+    if wanted.is_some() && top_level_unbind_has(keybinds_children(node), key) {
+        move_top_level_unbind_to_shared(keybinds_children(node), keybinds_indent, key);
+        settle_other_modes(node, keybinds_indent, mode, key, targets);
+    }
+    write_mode_statement(keybinds_children(node), keybinds_indent, mode, key, wanted);
 }
 
 fn keybinds_block<'a>(document: &'a mut KdlDocument) -> (&'a mut KdlNode, Option<String>) {
@@ -964,7 +1145,7 @@ fn only_removes(edit: &ConfigEdit) -> bool {
     )
 }
 
-fn apply_keybinds_edit(document: &mut KdlDocument, edit: &ConfigEdit, runtime: &KeybindChanges) {
+fn apply_keybinds_edit(document: &mut KdlDocument, edit: &ConfigEdit, targets: &KeyTargets) {
     let has_keybinds = document
         .nodes()
         .iter()
@@ -1010,8 +1191,7 @@ fn apply_keybinds_edit(document: &mut KdlDocument, edit: &ConfigEdit, runtime: &
             );
         },
         ConfigEdit::Key { mode, key, state } => {
-            let children = keybinds_children(node);
-            edit_key(children, indent.as_deref(), *mode, key, state, runtime);
+            settle_key(node, indent.as_deref(), *mode, key, state, targets);
         },
         _ => {},
     }
@@ -1283,17 +1463,30 @@ fn apply_load_plugins_edit(
     base: &[PluginEntry],
     edits: &[ListEdit<PluginEntry>],
 ) {
+    let had_block = last_block_position(document, LOAD_PLUGINS).is_some();
     let Some((block, indent)) = top_level_block(document, LOAD_PLUGINS, true) else {
         return;
     };
-    rebuild_children(
-        block,
-        Some(&indent),
-        base,
-        |node| Some(node_plugin_entry(node, true)),
-        |entry| Some(load_plugin_node(entry)),
-    );
-    apply_node_list_edits(block, Some(&indent), edits, |entry| {
+    if !had_block {
+        let child_indent_text = child_indent(block, Some(&indent));
+        for entry in config_blocks(default_config(), false, None).load_plugins {
+            push_node(
+                block,
+                load_plugin_node(&entry),
+                &child_indent_text,
+                Some(&indent),
+            );
+        }
+    }
+    let slots: Vec<Option<PluginEntry>> = block
+        .nodes()
+        .iter()
+        .map(|node| Some(node_plugin_entry(node, true)))
+        .collect();
+    let rebased = rebased_list_edits(base, edits, slots, |entry: &PluginEntry| {
+        entry.location.clone()
+    });
+    apply_node_list_edits(block, Some(&indent), &rebased, |entry| {
         Some(load_plugin_node(entry))
     });
 }
@@ -1333,23 +1526,240 @@ fn menu_entry_of(node: &KdlNode) -> Option<MenuItemEntry> {
         .map(|entry| menu_entries(&[entry], None).remove(0))
 }
 
+type MenuItemStatement = MenuStatement<MenuItemEntry>;
+
+fn menu_key(entry: &MenuItemEntry) -> Option<String> {
+    entry.label.clone()
+}
+
+fn menu_statement_of(node: &KdlNode) -> Option<MenuItemStatement> {
+    match ContextMenuConfig::statement_from_kdl(node, &Options::default()).ok()? {
+        MenuStatement::Remove(label) => Some(MenuStatement::Remove(label)),
+        MenuStatement::Entry { entry, placement } => Some(MenuStatement::Entry {
+            entry: menu_entries(&[entry], None).remove(0),
+            placement,
+        }),
+    }
+}
+
+fn menu_statement_node(statement: &MenuItemStatement) -> Option<KdlNode> {
+    match statement {
+        MenuStatement::Remove(label) => {
+            let mut node = KdlNode::new("remove");
+            node.push(KdlEntry::new(KdlValue::String(label.clone())));
+            Some(node)
+        },
+        MenuStatement::Entry { entry, placement } => {
+            let mut node = menu_item_node(entry).ok()?;
+            match placement {
+                Some(MenuPlacement::After(label)) => {
+                    node.push(KdlEntry::new_prop("after", KdlValue::String(label.clone())))
+                },
+                Some(MenuPlacement::Before(label)) => node.push(KdlEntry::new_prop(
+                    "before",
+                    KdlValue::String(label.clone()),
+                )),
+                None => {},
+            }
+            Some(node)
+        },
+    }
+}
+
+fn merge_menu_items(
+    base: &[MenuItemEntry],
+    statements: Vec<MenuItemStatement>,
+) -> Vec<MenuItemEntry> {
+    merge_menu_statements(base, statements, menu_key, true)
+}
+
+fn node_clears_defaults(node: &KdlNode) -> bool {
+    node.get(CLEAR_DEFAULTS)
+        .map(|entry| entry.value().as_bool() == Some(true))
+        .unwrap_or(false)
+}
+
 fn context_menu_clears_everything(document: &KdlDocument) -> bool {
     document
         .nodes()
         .iter()
         .filter(|node| node_name(node) == CONTEXT_MENU)
-        .any(|node| {
-            node.get(CLEAR_DEFAULTS)
-                .map(|entry| entry.value().as_bool() == Some(true))
-                .unwrap_or(false)
-        })
+        .any(node_clears_defaults)
 }
 
-fn context_menu_section<'a>(
+fn section_statements(node: &KdlNode) -> Option<Vec<MenuItemStatement>> {
+    match node.children() {
+        Some(children) => children.nodes().iter().map(menu_statement_of).collect(),
+        None => Some(vec![]),
+    }
+}
+
+fn merged_section_base(section: &str, earlier: &[KdlNode]) -> Option<Vec<MenuItemEntry>> {
+    let mut base = menu_section(&default_config().context_menu, section);
+    for node in earlier {
+        let statements = section_statements(node)?;
+        base = if node_clears_defaults(node) {
+            merge_menu_statements(&[], statements, menu_key, false)
+        } else {
+            merge_menu_items(&base, statements)
+        };
+    }
+    Some(base)
+}
+
+fn has_duplicate_labels(entries: &[MenuItemEntry]) -> bool {
+    let mut seen = BTreeSet::new();
+    entries
+        .iter()
+        .filter_map(|entry| entry.label.as_deref())
+        .any(|label| !seen.insert(label))
+}
+
+fn desired_menu_statements(
+    base: &[MenuItemEntry],
+    target: &[MenuItemEntry],
+    existing: &[MenuItemStatement],
+) -> Option<Vec<MenuItemStatement>> {
+    if has_duplicate_labels(base) || has_duplicate_labels(target) {
+        return None;
+    }
+    let base_labels: BTreeSet<&str> = base.iter().filter_map(|e| e.label.as_deref()).collect();
+    let target_labels: BTreeSet<&str> = target.iter().filter_map(|e| e.label.as_deref()).collect();
+    let mut free: Vec<MenuItemStatement> = base
+        .iter()
+        .filter_map(|entry| entry.label.as_deref())
+        .filter(|label| !target_labels.contains(label))
+        .map(|label| MenuStatement::Remove(label.to_owned()))
+        .collect();
+    let kept: Vec<&MenuItemEntry> = base
+        .iter()
+        .filter(|entry| {
+            entry
+                .label
+                .as_deref()
+                .map(|label| target_labels.contains(label))
+                .unwrap_or(true)
+        })
+        .collect();
+    let (n, m) = (kept.len(), target.len());
+    let mut common = vec![vec![0usize; m + 1]; n + 1];
+    for i in (0..n).rev() {
+        for j in (0..m).rev() {
+            common[i][j] = if kept[i].label == target[j].label {
+                common[i + 1][j + 1] + 1
+            } else {
+                common[i + 1][j].max(common[i][j + 1])
+            };
+        }
+    }
+    let mut kept_matched = vec![false; n];
+    let mut placed = vec![false; m];
+    let (mut i, mut j) = (0, 0);
+    while i < n && j < m {
+        if kept[i].label == target[j].label {
+            kept_matched[i] = true;
+            placed[j] = true;
+            if kept[i] != &target[j] {
+                free.push(MenuStatement::plain(target[j].clone()));
+            }
+            i += 1;
+            j += 1;
+        } else if common[i + 1][j] >= common[i][j + 1] {
+            i += 1;
+        } else {
+            j += 1;
+        }
+    }
+    if kept
+        .iter()
+        .zip(kept_matched.iter())
+        .any(|(entry, matched)| !matched && entry.label.is_none())
+    {
+        return None;
+    }
+    let mut ordered: Vec<MenuItemStatement> = vec![];
+    while placed.iter().any(|done| !done) {
+        let mut progressed = false;
+        for j in 0..m {
+            if placed[j] {
+                continue;
+            }
+            let is_new = target[j]
+                .label
+                .as_deref()
+                .map(|label| !base_labels.contains(label))
+                .unwrap_or(true);
+            let at_end =
+                placed[..j].iter().all(|done| *done) && !placed[j + 1..].iter().any(|done| *done);
+            let previous = if j > 0 && placed[j - 1] {
+                target[j - 1].label.clone()
+            } else {
+                None
+            };
+            let next = if j + 1 < m && placed[j + 1] {
+                target[j + 1].label.clone()
+            } else {
+                None
+            };
+            let placement = if is_new && at_end {
+                Some(None)
+            } else if let Some(label) = previous {
+                Some(Some(MenuPlacement::After(label)))
+            } else if let Some(label) = next {
+                Some(Some(MenuPlacement::Before(label)))
+            } else {
+                None
+            };
+            if let Some(placement) = placement {
+                ordered.push(MenuStatement::Entry {
+                    entry: target[j].clone(),
+                    placement,
+                });
+                placed[j] = true;
+                progressed = true;
+            }
+        }
+        if !progressed {
+            return None;
+        }
+    }
+    let mut result: Vec<MenuItemStatement> = vec![];
+    let mut next_ordered = 0;
+    for statement in existing {
+        if let Some(position) = free.iter().position(|wanted| wanted == statement) {
+            result.push(free.remove(position));
+            continue;
+        }
+        if let Some(offset) = ordered[next_ordered..]
+            .iter()
+            .position(|wanted| wanted == statement)
+        {
+            result.extend(
+                ordered[next_ordered..=next_ordered + offset]
+                    .iter()
+                    .cloned(),
+            );
+            next_ordered += offset + 1;
+            continue;
+        }
+        if let MenuStatement::Remove(label) = statement {
+            if !base_labels.contains(label.as_str())
+                && !target_labels.contains(label.as_str())
+                && !result.contains(statement)
+            {
+                result.push(statement.clone());
+            }
+        }
+    }
+    result.extend(free);
+    result.extend(ordered.into_iter().skip(next_ordered));
+    Some(result)
+}
+
+fn context_menu_section_node<'a>(
     document: &'a mut KdlDocument,
     section: &str,
-) -> Option<(&'a mut KdlDocument, String)> {
-    let clears_everything = context_menu_clears_everything(document);
+) -> Option<(&'a mut KdlNode, String, Vec<KdlNode>)> {
     let (block, owner_indent) = top_level_block(document, CONTEXT_MENU, true)?;
     let position = match block
         .nodes()
@@ -1366,16 +1776,81 @@ fn context_menu_section<'a>(
         },
     };
     let indent = node_indent(block, position, Some(&owner_indent));
+    let earlier: Vec<KdlNode> = block.nodes()[..position]
+        .iter()
+        .filter(|node| node_name(node) == section)
+        .cloned()
+        .collect();
     let node = &mut block.nodes_mut()[position];
-    if !clears_everything {
-        set_property(node, CLEAR_DEFAULTS, Some(KdlValue::Bool(true)));
-    }
     if node.children().is_none() {
         node.set_children(KdlDocument::new());
     }
-    node.children_mut()
-        .as_mut()
-        .map(|children| (children, indent))
+    Some((node, indent, earlier))
+}
+
+fn edited_list(base: &[MenuItemEntry], edits: &[ListEdit<MenuItemEntry>]) -> Vec<MenuItemEntry> {
+    let mut list = base.to_vec();
+    apply_list_edits(&mut list, edits);
+    list
+}
+
+fn edit_merged_section(
+    node: &mut KdlNode,
+    indent: &str,
+    section_base: &[MenuItemEntry],
+    base: &[MenuItemEntry],
+    edits: &[ListEdit<MenuItemEntry>],
+) -> Result<(), Vec<MenuItemEntry>> {
+    let Some(existing) = section_statements(node) else {
+        return Err(edited_list(base, edits));
+    };
+    let current = merge_menu_items(section_base, existing.clone());
+    let target = rebased_list(base, edits, &current, menu_key);
+    if current == target {
+        return Ok(());
+    }
+    let Some(desired) = desired_menu_statements(section_base, &target, &existing) else {
+        return Err(target);
+    };
+    if merge_menu_items(section_base, desired.clone()) != target {
+        return Err(target);
+    }
+    if existing.is_empty() && desired.len() > target.len() {
+        return Err(target);
+    }
+    let statement_edits = list_edits(&existing, &desired);
+    if let Some(children) = node.children_mut().as_mut() {
+        apply_node_list_edits(
+            children,
+            Some(indent),
+            &statement_edits,
+            menu_statement_node,
+        );
+    }
+    Ok(())
+}
+
+fn replace_section_items(node: &mut KdlNode, indent: &str, target: &[MenuItemEntry]) {
+    set_property(node, CLEAR_DEFAULTS, Some(KdlValue::Bool(true)));
+    let Some(children) = node.children_mut().as_mut() else {
+        return;
+    };
+    let old: Vec<Option<MenuItemEntry>> = children
+        .nodes()
+        .iter()
+        .map(|child| match menu_statement_of(child) {
+            Some(MenuStatement::Entry {
+                entry,
+                placement: None,
+            }) => Some(entry),
+            _ => None,
+        })
+        .collect();
+    let new: Vec<Option<MenuItemEntry>> = target.iter().cloned().map(Some).collect();
+    let edits = list_edits(&old, &new);
+    apply_node_list_edits(children, Some(indent), &edits, |entry| {
+        entry.as_ref().and_then(|entry| menu_item_node(entry).ok())
+    });
 }
 
 fn apply_context_menu_items(
@@ -1384,13 +1859,26 @@ fn apply_context_menu_items(
     base: &[MenuItemEntry],
     edits: &[ListEdit<MenuItemEntry>],
 ) {
-    let Some((children, indent)) = context_menu_section(document, section) else {
+    let clears_everything = context_menu_clears_everything(document);
+    let Some((node, indent, earlier)) = context_menu_section_node(document, section) else {
         return;
     };
-    rebuild_children(children, Some(&indent), base, menu_entry_of, |entry| {
-        menu_item_node(entry).ok()
-    });
-    apply_node_list_edits(children, Some(&indent), edits, |entry| {
+    if !clears_everything && !node_clears_defaults(node) {
+        let outcome = match merged_section_base(section, &earlier) {
+            Some(section_base) => edit_merged_section(node, &indent, &section_base, base, edits),
+            None => Err(edited_list(base, edits)),
+        };
+        if let Err(target) = outcome {
+            replace_section_items(node, &indent, &target);
+        }
+        return;
+    }
+    let Some(children) = node.children_mut().as_mut() else {
+        return;
+    };
+    let slots: Vec<Option<MenuItemEntry>> = children.nodes().iter().map(menu_entry_of).collect();
+    let rebased = rebased_list_edits(base, edits, slots, menu_key);
+    apply_node_list_edits(children, Some(&indent), &rebased, |entry| {
         menu_item_node(entry).ok()
     });
 }
@@ -1401,10 +1889,12 @@ fn apply_context_menu_defaults(
     entries: &[MenuItemEntry],
 ) {
     if context_menu_clears_everything(document) {
-        if let Some((children, indent)) = context_menu_section(document, section) {
-            rebuild_children(children, Some(&indent), entries, menu_entry_of, |entry| {
-                menu_item_node(entry).ok()
-            });
+        if let Some((node, indent, _)) = context_menu_section_node(document, section) {
+            if let Some(children) = node.children_mut().as_mut() {
+                rebuild_children(children, Some(&indent), entries, menu_entry_of, |entry| {
+                    menu_item_node(entry).ok()
+                });
+            }
         }
         return;
     }
@@ -1575,8 +2065,20 @@ fn apply_block_edit(document: &mut KdlDocument, edit: &ConfigEdit) {
 pub fn apply_edits(
     file_contents: Option<&str>,
     edits: &[ConfigEdit],
-    runtime_keybinds: &KeybindChanges,
+    runtime: &Config,
 ) -> Result<String, String> {
+    let preset = if edits
+        .iter()
+        .any(|edit| matches!(edit, ConfigEdit::Key { .. }))
+    {
+        runtime.preset_keybinds()
+    } else {
+        Keybinds::default()
+    };
+    let targets = KeyTargets {
+        runtime: &runtime.keybinds_layers.user.changes,
+        preset: &preset,
+    };
     let mut document: KdlDocument = match file_contents {
         Some(text) if !text.trim().is_empty() => text
             .parse()
@@ -1598,7 +2100,7 @@ pub fn apply_edits(
             ConfigEdit::KeybindsAttribute { .. }
             | ConfigEdit::KeybindsClearDefaults(_)
             | ConfigEdit::ModeClearDefaults(_)
-            | ConfigEdit::Key { .. } => apply_keybinds_edit(&mut document, edit, runtime_keybinds),
+            | ConfigEdit::Key { .. } => apply_keybinds_edit(&mut document, edit, &targets),
             _ => apply_block_edit(&mut document, edit),
         }
     }
@@ -1629,6 +2131,49 @@ pub fn parse_saved_file(file_contents: &str, runtime: &Config) -> Result<Config,
     Ok(parsed)
 }
 
+fn keybinds_equivalent(
+    read_back: &KeybindsSelection,
+    expected: &KeybindsSelection,
+    preset: &Keybinds,
+) -> bool {
+    if read_back.preset != expected.preset
+        || read_back.primary != expected.primary
+        || read_back.secondary != expected.secondary
+        || read_back.unlock != expected.unlock
+        || read_back.changes.clear_defaults != expected.changes.clear_defaults
+    {
+        return false;
+    }
+    let (read_back, expected) = (&read_back.changes, &expected.changes);
+    let modes: BTreeSet<InputMode> = read_back
+        .modes
+        .keys()
+        .chain(expected.modes.keys())
+        .copied()
+        .collect();
+    modes.into_iter().all(|mode| {
+        if mode_is_cleared(read_back, mode) != mode_is_cleared(expected, mode) {
+            return false;
+        }
+        let keys: BTreeSet<KeyWithModifier> = [read_back, expected]
+            .iter()
+            .filter_map(|changes| changes.modes.get(&mode))
+            .flat_map(|mode_changes| {
+                mode_changes
+                    .bind
+                    .keys()
+                    .chain(mode_changes.unbind.iter())
+                    .cloned()
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        keys.iter().all(|key| {
+            effective_key_actions(read_back, preset, mode, key)
+                == effective_key_actions(expected, preset, mode, key)
+        })
+    })
+}
+
 pub fn written_file_matches(
     file_contents: &str,
     runtime: &Config,
@@ -1644,7 +2189,13 @@ pub fn written_file_matches(
         }
         if key == SettingKey::Keybinds {
             let expected = normalized_keybinds(&runtime.keybinds_layers.user, &parsed.options);
-            if parsed.keybinds_layers.user != expected {
+            if parsed.keybinds_layers.user != expected
+                && !keybinds_equivalent(
+                    &parsed.keybinds_layers.user,
+                    &expected,
+                    &runtime.preset_keybinds(),
+                )
+            {
                 return Err("the keybindings read back differ from the ones saved".to_owned());
             }
         } else if setting_value(&parsed, key) != setting_value(runtime, key) {
@@ -1787,6 +2338,160 @@ fn back_up(path: &Path, contents: &str) -> Result<(), PathBuf> {
     }
 }
 
+const LEGACY_BACKUP_HEADER: &str = "THE PREVIOUS FILE AT THIS LOCATION WAS COPIED TO: ";
+
+fn legacy_header_line(contents: &str, backup_path: &Path) -> Option<String> {
+    let backup = backup_path.display().to_string();
+    contents
+        .lines()
+        .find(|line| {
+            line.split_once(LEGACY_BACKUP_HEADER)
+                .map(|(_, named)| named.trim_end() == backup)
+                .unwrap_or(false)
+        })
+        .map(|line| line.to_owned())
+}
+
+fn free_numbered_backup_path(backup_path: &Path) -> Option<PathBuf> {
+    let name = backup_path.file_name()?.to_str()?.to_owned();
+    (1..1000)
+        .map(|number| backup_path.with_file_name(format!("{}.{}", name, number)))
+        .find(|candidate| !candidate.exists())
+}
+
+fn keep_legacy_backup(
+    path: &Path,
+    current: &str,
+    new_contents: &mut String,
+) -> Result<Option<PathBuf>, PathBuf> {
+    let backup_path = Config::backup_file_path(path);
+    if !backup_path.exists() {
+        return Ok(None);
+    }
+    let Some(header_line) = legacy_header_line(current, &backup_path) else {
+        return Ok(None);
+    };
+    let Some(moved_to) = free_numbered_backup_path(&backup_path) else {
+        return Err(backup_path);
+    };
+    if let Err(e) = std::fs::rename(&backup_path, &moved_to) {
+        log::error!(
+            "Failed to move {} to {}: {}",
+            backup_path.display(),
+            moved_to.display(),
+            e
+        );
+        return Err(backup_path);
+    }
+    let new_header_line = header_line.replacen(
+        &backup_path.display().to_string(),
+        &moved_to.display().to_string(),
+        1,
+    );
+    *new_contents = new_contents.replacen(&header_line, &new_header_line, 1);
+    Ok(Some(moved_to))
+}
+
+fn restore_legacy_backup(path: &Path, moved_to: Option<&Path>) {
+    if let Some(moved_to) = moved_to {
+        if let Err(e) = std::fs::rename(moved_to, Config::backup_file_path(path)) {
+            log::error!("Failed to restore {}: {}", moved_to.display(), e);
+        }
+    }
+}
+
+fn plugin_from_entry(
+    entry: &PluginEntry,
+    sources: &[&Config],
+) -> Option<crate::input::layout::RunPluginOrAlias> {
+    sources
+        .iter()
+        .flat_map(|config| config.background_plugins.iter())
+        .find(|plugin| &load_plugin_entry(plugin) == entry)
+        .cloned()
+}
+
+fn menu_entry_from_item(
+    item: &MenuItemEntry,
+    section: &str,
+    sources: &[&Config],
+) -> Option<crate::data::ContextMenuEntry> {
+    sources
+        .iter()
+        .filter_map(|config| config.context_menu.section(section))
+        .flat_map(|entries| entries.iter())
+        .find(|entry| &menu_entries(std::slice::from_ref(*entry), None)[0] == item)
+        .cloned()
+}
+
+pub fn rebased_expected_config(current: &Config, runtime: &Config, edits: &[ConfigEdit]) -> Config {
+    let mut expected = current.clone();
+    for key in edited_settings(edits) {
+        if !key.is_block() {
+            copy_setting(&mut expected, runtime, key);
+        }
+    }
+    let whole_keybinds = edits.iter().any(|edit| {
+        matches!(
+            edit,
+            ConfigEdit::KeybindsAttribute { .. }
+                | ConfigEdit::KeybindsClearDefaults(_)
+                | ConfigEdit::ModeClearDefaults(_)
+        )
+    });
+    if whole_keybinds {
+        copy_setting(&mut expected, runtime, SettingKey::Keybinds);
+    }
+    let sources = [runtime, current];
+    for edit in edits {
+        match edit {
+            ConfigEdit::Key { mode, key, .. } => {
+                if whole_keybinds {
+                    continue;
+                }
+                let changes = &mut expected.keybinds_layers.user.changes;
+                match key_state(&runtime.keybinds_layers.user.changes, *mode, key) {
+                    KeyState::Bound(actions) => changes.bind(*mode, key.clone(), actions),
+                    KeyState::Unbound => changes.unbind(*mode, key.clone()),
+                    KeyState::Untouched => {
+                        if let Some(mode_changes) = changes.modes.get_mut(mode) {
+                            mode_changes.bind.remove(key);
+                            mode_changes.unbind.remove(key);
+                        }
+                    },
+                }
+            },
+            ConfigEdit::LoadPlugins { base, edits } => {
+                let current_entries = config_blocks(current, false, None).load_plugins;
+                let entries = rebased_list(base, edits, &current_entries, |entry: &PluginEntry| {
+                    entry.location.clone()
+                });
+                expected.background_plugins = entries
+                    .iter()
+                    .filter_map(|entry| plugin_from_entry(entry, &sources))
+                    .collect();
+            },
+            ConfigEdit::ContextMenuItems {
+                section,
+                base,
+                edits,
+            } => {
+                let current_items = menu_section(&current.context_menu, section);
+                let items = rebased_list(base, edits, &current_items, menu_key);
+                let entries: Vec<crate::data::ContextMenuEntry> = items
+                    .iter()
+                    .filter_map(|item| menu_entry_from_item(item, section, &sources))
+                    .collect();
+                if let Some(target) = expected.context_menu.section_mut(section) {
+                    *target = entries;
+                }
+            },
+            other => copy_block_edit(&mut expected, runtime, other),
+        }
+    }
+    expected
+}
+
 pub fn save_config_in_place(
     path: &Path,
     last_read: Option<&str>,
@@ -1802,7 +2507,8 @@ pub fn save_config_in_place(
             return SaveOutcome::Failed(Some(path.to_path_buf()));
         },
     };
-    if !overwrite && current.as_deref() != last_read {
+    let changed_outside = current.as_deref() != last_read;
+    if !overwrite && changed_outside {
         return SaveOutcome::ChangedOutside;
     }
     let edits = edits_between(base, target);
@@ -1810,27 +2516,45 @@ pub fn save_config_in_place(
         return SaveOutcome::Written {
             file_contents: current,
             saved_config: saved.clone(),
+            changed_outside,
         };
     }
-    let new_contents = match apply_edits(
-        current.as_deref(),
-        &edits,
-        &target.keybinds_layers.user.changes,
-    ) {
+    let mut new_contents = match apply_edits(current.as_deref(), &edits, target) {
         Ok(new_contents) => new_contents,
         Err(e) => {
             log::error!("Failed to edit {}: {}", path.display(), e);
             return SaveOutcome::Failed(None);
         },
     };
+    let expected = if changed_outside {
+        match parse_saved_file(current.as_deref().unwrap_or(""), target) {
+            Ok(current_config) => rebased_expected_config(&current_config, target, &edits),
+            Err(e) => {
+                log::error!(
+                    "The config file changed outside and could not be read: {}",
+                    e
+                );
+                target.clone()
+            },
+        }
+    } else {
+        target.clone()
+    };
+    let mut legacy_backup = None;
     if let Some(current) = current.as_deref() {
+        legacy_backup = match keep_legacy_backup(path, current, &mut new_contents) {
+            Ok(moved_to) => moved_to,
+            Err(backup_path) => return SaveOutcome::Failed(Some(backup_path)),
+        };
         if let Err(backup_path) = back_up(path, current) {
+            restore_legacy_backup(path, legacy_backup.as_deref());
             return SaveOutcome::Failed(Some(backup_path));
         }
     }
     if let Err(e) = std::fs::write(path, new_contents.as_bytes()) {
         log::error!("Failed to write {}: {}", path.display(), e);
         restore_previous_file(path, current.as_deref());
+        restore_legacy_backup(path, legacy_backup.as_deref());
         return SaveOutcome::Failed(Some(path.to_path_buf()));
     }
     let check = std::fs::read_to_string(path)
@@ -1839,16 +2563,18 @@ pub fn save_config_in_place(
             if written != new_contents {
                 return Err("the file read back differs from what was written".to_owned());
             }
-            written_file_matches(&written, target, &edits)
+            written_file_matches(&written, &expected, &edits)
         });
     if let Err(e) = check {
         log::error!("The saved config did not read back correctly: {}", e);
         restore_previous_file(path, current.as_deref());
+        restore_legacy_backup(path, legacy_backup.as_deref());
         return SaveOutcome::Failed(Some(path.to_path_buf()));
     }
     SaveOutcome::Written {
         file_contents: Some(new_contents),
-        saved_config: saved_config_after_edits(saved, target, &edits),
+        saved_config: saved_config_after_edits(saved, &expected, &edits),
+        changed_outside,
     }
 }
 

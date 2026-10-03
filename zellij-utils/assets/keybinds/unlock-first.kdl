@@ -38,6 +38,7 @@ keybinds {
         bind "Tab" { SwitchFocus; }
         bind ";" { FocusLastPane; }
         bind "n" { NewPane; SwitchToMode "Locked"; }
+        bind "a" { NewFloatingPane; SwitchToMode "Locked"; }
         bind "d" { NewPane "Down"; SwitchToMode "Locked"; }
         bind "r" { NewPane "Right"; SwitchToMode "Locked"; }
         bind "s" { NewPane "stacked"; SwitchToMode "Locked"; }

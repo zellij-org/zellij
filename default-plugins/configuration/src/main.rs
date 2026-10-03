@@ -115,10 +115,11 @@ impl ZellijPlugin for State {
                 },
                 Event::Mouse(mouse) => {
                     let should_render = keys_screen.handle_mouse(mouse);
-                    if keys_screen.take_needs_refresh() {
+                    let refreshed = keys_screen.take_needs_refresh();
+                    if refreshed {
                         keys_screen.set_snapshot(&read_config());
                     }
-                    should_render
+                    should_render || refreshed
                 },
                 Event::Timer(_) => keys_screen.handle_timer(),
                 Event::FailedToWriteConfigToDisk(config_file_path) => {

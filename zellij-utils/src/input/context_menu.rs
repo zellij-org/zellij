@@ -148,21 +148,107 @@ impl ContextMenuConfig {
     }
 }
 
-pub fn merge_context_menu_entries(
-    base: &[ContextMenuEntry],
-    additions: Vec<ContextMenuEntry>,
-) -> Vec<ContextMenuEntry> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MenuPlacement {
+    After(String),
+    Before(String),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum MenuStatement<T> {
+    Entry {
+        entry: T,
+        placement: Option<MenuPlacement>,
+    },
+    Remove(String),
+}
+
+impl<T> MenuStatement<T> {
+    pub fn plain(entry: T) -> Self {
+        MenuStatement::Entry {
+            entry,
+            placement: None,
+        }
+    }
+}
+
+fn label_position<T>(
+    list: &[T],
+    label: &str,
+    label_of: &impl Fn(&T) -> Option<String>,
+) -> Option<usize> {
+    list.iter()
+        .position(|item| label_of(item).as_deref() == Some(label))
+}
+
+pub fn merge_menu_statements<T: Clone>(
+    base: &[T],
+    statements: Vec<MenuStatement<T>>,
+    label_of: impl Fn(&T) -> Option<String>,
+    replace_by_label: bool,
+) -> Vec<T> {
     let mut merged = base.to_vec();
-    for entry in additions {
-        let existing_position = entry
-            .label()
-            .and_then(|label| merged.iter().position(|e| e.label() == Some(label)));
-        match existing_position {
-            Some(position) => merged[position] = entry,
-            None => merged.push(entry),
+    for statement in statements {
+        match statement {
+            MenuStatement::Remove(label) => {
+                if let Some(position) = label_position(&merged, &label, &label_of) {
+                    merged.remove(position);
+                }
+            },
+            MenuStatement::Entry {
+                entry,
+                placement: None,
+            } => {
+                let existing = if replace_by_label {
+                    label_of(&entry).and_then(|label| label_position(&merged, &label, &label_of))
+                } else {
+                    None
+                };
+                match existing {
+                    Some(position) => merged[position] = entry,
+                    None => merged.push(entry),
+                }
+            },
+            MenuStatement::Entry {
+                entry,
+                placement: Some(placement),
+            } => {
+                if let Some(label) = label_of(&entry) {
+                    if let Some(position) = label_position(&merged, &label, &label_of) {
+                        merged.remove(position);
+                    }
+                }
+                let target = match &placement {
+                    MenuPlacement::After(anchor) => {
+                        label_position(&merged, anchor, &label_of).map(|position| position + 1)
+                    },
+                    MenuPlacement::Before(anchor) => label_position(&merged, anchor, &label_of),
+                };
+                match target {
+                    Some(position) => merged.insert(position, entry),
+                    None => merged.push(entry),
+                }
+            },
         }
     }
     merged
+}
+
+fn context_menu_label(entry: &ContextMenuEntry) -> Option<String> {
+    entry.label().map(|label| label.to_owned())
+}
+
+pub fn merge_context_menu_entries(
+    base: &[ContextMenuEntry],
+    statements: Vec<MenuStatement<ContextMenuEntry>>,
+) -> Vec<ContextMenuEntry> {
+    merge_menu_statements(base, statements, context_menu_label, true)
+}
+
+pub fn context_menu_entries_without_defaults(
+    statements: Vec<MenuStatement<ContextMenuEntry>>,
+) -> Vec<ContextMenuEntry> {
+    merge_menu_statements(&[], statements, context_menu_label, false)
 }
 
 pub fn normalize_separators(entries: Vec<ContextMenuEntry>) -> Vec<ContextMenuEntry> {
@@ -240,7 +326,10 @@ mod tests {
     fn merging_entries_replaces_by_label_and_appends_new_ones() {
         let merged = merge_context_menu_entries(
             &[item("a"), ContextMenuEntry::Separator, item("b")],
-            vec![ContextMenuEntry::item("a", vec![Action::Quit]), item("c")],
+            vec![
+                MenuStatement::plain(ContextMenuEntry::item("a", vec![Action::Quit])),
+                MenuStatement::plain(item("c")),
+            ],
         );
         assert_eq!(
             merged,
@@ -251,6 +340,48 @@ mod tests {
                 item("c"),
             ]
         );
+    }
+
+    #[test]
+    fn merging_removes_and_places_items_relative_to_other_items() {
+        let placed = |entry: ContextMenuEntry, placement: MenuPlacement| MenuStatement::Entry {
+            entry,
+            placement: Some(placement),
+        };
+        let merged = merge_context_menu_entries(
+            &[item("a"), item("b"), item("c"), item("d")],
+            vec![
+                MenuStatement::Remove("b".to_owned()),
+                MenuStatement::Remove("missing".to_owned()),
+                placed(item("x"), MenuPlacement::After("a".to_owned())),
+                placed(item("d"), MenuPlacement::Before("a".to_owned())),
+                placed(
+                    ContextMenuEntry::Separator,
+                    MenuPlacement::After("c".to_owned()),
+                ),
+                placed(item("y"), MenuPlacement::Before("missing".to_owned())),
+            ],
+        );
+        assert_eq!(
+            merged,
+            vec![
+                item("d"),
+                item("a"),
+                item("x"),
+                item("c"),
+                ContextMenuEntry::Separator,
+                item("y"),
+            ]
+        );
+    }
+
+    #[test]
+    fn entries_without_defaults_keep_duplicate_labels() {
+        let entries = context_menu_entries_without_defaults(vec![
+            MenuStatement::plain(item("a")),
+            MenuStatement::plain(item("a")),
+        ]);
+        assert_eq!(entries, vec![item("a"), item("a")]);
     }
 
     #[test]

@@ -369,8 +369,12 @@ fn a_new_right_click_menu_item_shows_in_the_menu_with_its_shortcut() {
     open_settings(&zellij);
     save_and_wait(&zellij);
     let saved = std::fs::read_to_string(&config_file_path).unwrap();
-    assert!(saved.contains("pane clear-defaults=true {"), "{}", saved);
-    assert!(saved.contains("item \"Hello\" { NewTab; }"), "{}", saved);
+    assert!(!saved.contains("clear-defaults"), "{}", saved);
+    assert!(
+        saved.contains("item \"Hello\" after=\"New pane\" { NewTab; }"),
+        "{}",
+        saved
+    );
     zellij.quit();
 }
 
@@ -421,8 +425,8 @@ fn menu_items_and_separators_are_edited_with_the_mouse() {
 
     save_and_wait(&zellij);
     let saved = std::fs::read_to_string(&config_file_path).unwrap();
-    assert!(saved.contains("common clear-defaults=true {"), "{}", saved);
-    assert!(!saved.contains("Detach"), "{}", saved);
+    assert!(!saved.contains("clear-defaults"), "{}", saved);
+    assert!(saved.contains("remove \"Detach\""), "{}", saved);
     assert!(saved.contains("separator"), "{}", saved);
     zellij.quit();
 }

@@ -692,6 +692,10 @@ impl TryFrom<ProtobufAction> for Action {
                 Some(_) => Err("DismissInfoPopups should not have a payload"),
                 None => Ok(Action::DismissInfoPopups),
             },
+            Some(ProtobufActionName::OpenContextMenu) => match protobuf_action.optional_payload {
+                Some(_) => Err("OpenContextMenu should not have a payload"),
+                None => Ok(Action::OpenContextMenu),
+            },
             Some(ProtobufActionName::LeftClick) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::LeftClickPayload(payload)) => {
                     let position = payload.try_into()?;
@@ -1896,6 +1900,10 @@ impl TryFrom<Action> for ProtobufAction {
             }),
             Action::DismissInfoPopups => Ok(ProtobufAction {
                 name: ProtobufActionName::DismissInfoPopups as i32,
+                optional_payload: None,
+            }),
+            Action::OpenContextMenu => Ok(ProtobufAction {
+                name: ProtobufActionName::OpenContextMenu as i32,
                 optional_payload: None,
             }),
             Action::LaunchOrFocusPlugin {

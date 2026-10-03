@@ -4,7 +4,7 @@ use zellij_tile::prelude::*;
 
 use crate::action_picker::{ActionPicker, PickerResponse, DELETE_WIDTH};
 use crate::page::{
-    actions_summary, is_click, is_move_key, is_plain, is_shift_tab, markers, print_heading, truncate,
+    actions_summary, changed_by, is_click, is_move_key, is_plain, is_shift_tab, markers, print_heading, truncate,
     typed, ColumnLayout, Effect, RowLook, RowScroll,
 };
 use crate::page::{
@@ -922,20 +922,30 @@ impl EntryForm {
         mouse: Mouse,
         base_mode: Option<InputMode>,
         for_menu: bool,
-    ) -> FormResult {
+    ) -> (FormResult, bool) {
+        let is_hover = matches!(mouse, Mouse::Hover(..));
         if self.dialog {
-            return self.handle_dialog_mouse(mouse);
+            if is_hover && self.picker.is_none() {
+                let event = self.group.handle_mouse(mouse);
+                let changed = event.is_handled();
+                return (
+                    self.handle_event(event, self.base_mode, self.for_menu, false),
+                    changed,
+                );
+            }
+            return (self.handle_dialog_mouse(mouse), true);
         }
         if let Some((_, picker)) = self.picker.as_mut() {
             let response = picker.handle_mouse(mouse);
             self.handle_picker(response);
-            return FormResult::Pending;
+            return (FormResult::Pending, true);
         }
         if !self.group.has_open_overlay() && self.scroll.handle_wheel(&mouse).is_some() {
-            return FormResult::Pending;
+            return (FormResult::Pending, true);
         }
         let event = self.group.handle_mouse(mouse);
-        self.handle_event(event, base_mode, for_menu, false)
+        let changed = !is_hover || event.is_handled();
+        (self.handle_event(event, base_mode, for_menu, false), changed)
     }
     fn handle_timer(&mut self) -> bool {
         let picker_changed = self
@@ -1433,7 +1443,7 @@ pub trait Section {
     fn clear_follow(&mut self);
     fn is_busy(&self) -> bool;
     fn handle_busy_key(&mut self, key: &KeyWithModifier);
-    fn handle_busy_mouse(&mut self, mouse: Mouse);
+    fn handle_busy_mouse(&mut self, mouse: Mouse) -> bool;
     fn handle_timer(&mut self) -> bool;
     fn render_busy(&mut self, x: usize, y: usize, width: usize, height: usize);
     fn busy_over_list(&self) -> bool {
@@ -1606,18 +1616,22 @@ impl<K: EntryKind> Section for ListEditor<K> {
             self.form_result(result);
         }
     }
-    fn handle_busy_mouse(&mut self, mouse: Mouse) {
+    fn handle_busy_mouse(&mut self, mouse: Mouse) -> bool {
+        let is_hover = matches!(mouse, Mouse::Hover(..));
         if self.dialog.is_open() {
-            let response = self.dialog.handle_mouse(mouse);
+            let (response, changed) =
+                changed_by(&mut self.dialog, |dialog| dialog.handle_mouse(mouse));
             self.dialog_response(response);
-            return;
+            return changed || !is_hover || !self.dialog.is_open();
         }
         let base_mode = self.base_mode;
         let for_menu = self.for_menu;
         if let Some(form) = self.form.as_mut() {
-            let result = form.handle_mouse(mouse, base_mode, for_menu);
+            let (result, changed) = form.handle_mouse(mouse, base_mode, for_menu);
             self.form_result(result);
+            return changed || result != FormResult::Pending;
         }
+        !is_hover
     }
     fn handle_timer(&mut self) -> bool {
         self.form
@@ -1980,20 +1994,27 @@ impl SectionedList {
     }
     fn styled_mouse(&mut self, mouse: Mouse) -> Option<bool> {
         self.styled?;
+        let is_hover = matches!(mouse, Mouse::Hover(..));
+        let mut header_changed = false;
         if self.filter.is_open() || matches!(mouse, Mouse::LeftClick(..) | Mouse::Hover(..)) {
-            let response = self.filter.handle_mouse(mouse);
+            let (response, filter_changed) =
+                changed_by(&mut self.filter, |filter| filter.handle_mouse(mouse));
+            header_changed |= filter_changed;
             if let UiResponse::Changed(_) = response {
                 self.select_first_entry();
             }
-            if response.is_handled() && !matches!(mouse, Mouse::Hover(..)) {
+            if response.is_handled() && !is_hover {
                 self.header_focus = HeaderFocus::Filter;
                 return Some(true);
             }
             if self.filter.is_open() {
-                return Some(true);
+                return Some(!is_hover || filter_changed);
             }
         }
-        self.search.handle_mouse(mouse);
+        let search_response = self.search.handle_mouse(mouse);
+        if is_hover && search_response.is_handled() {
+            header_changed = true;
+        }
         if let Some((line, column)) = is_click(&mouse) {
             if self.search.hit_test(line, column) {
                 self.header_focus = HeaderFocus::Search;
@@ -2005,9 +2026,11 @@ impl SectionedList {
         let mut changed = false;
         for (section, buttons) in self.section_buttons.iter_mut().enumerate() {
             for (index, button) in buttons.iter_mut().enumerate() {
+                let was_hovered = button.is_hovered();
                 match button.handle_mouse(mouse) {
                     UiResponse::Activated => activated = Some((section, index)),
                     UiResponse::NotHandled => {},
+                    _ if is_hover => changed |= was_hovered != button.is_hovered(),
                     _ => changed = true,
                 }
             }
@@ -2023,10 +2046,11 @@ impl SectionedList {
         if matches!(mouse, Mouse::LeftClick(..)) {
             self.header_focus = HeaderFocus::List;
         }
+        if let Mouse::Hover(line, column) = mouse {
+            let rows_changed = self.hover(line, column);
+            return Some(rows_changed || changed || header_changed);
+        }
         if changed {
-            if let Mouse::Hover(line, column) = mouse {
-                self.hover(line, column);
-            }
             return Some(true);
         }
         None
@@ -2365,9 +2389,14 @@ impl SectionedList {
     }
     pub fn handle_mouse(&mut self, mouse: Mouse) -> bool {
         if let Some(busy) = self.busy_section() {
-            self.sections[busy].handle_busy_mouse(mouse);
+            let changed = self.sections[busy].handle_busy_mouse(mouse);
+            let notice_before = self.notice.clone();
+            let effects_before = self.effects.len();
             self.collect();
-            return true;
+            return changed
+                || self.notice != notice_before
+                || self.effects.len() != effects_before
+                || !self.is_busy();
         }
         if let Some(handled) = self.styled_mouse(mouse) {
             return handled;
@@ -3144,5 +3173,30 @@ mod tests {
             vec![Effect::ReplaceBlocks("A=1,B=2,Z=9".to_owned())]
         );
         assert!(editor.form.is_none());
+    }
+
+    #[test]
+    fn hovering_redraws_only_when_the_hovered_row_changes() {
+        let mut list = list(false);
+        list.set_focused(true);
+        list.render(0, 0, 60, 20);
+        assert!(!list.handle_mouse(Mouse::Hover(30, 100)));
+        assert!(list.handle_mouse(Mouse::Hover(1, 4)));
+        assert_eq!(list.scroll.hovered, Some(1));
+        assert!(!list.handle_mouse(Mouse::Hover(1, 5)));
+        assert!(list.handle_mouse(Mouse::Hover(2, 4)));
+        assert!(list.handle_mouse(Mouse::Hover(30, 100)));
+        assert!(!list.handle_mouse(Mouse::Hover(31, 100)));
+    }
+
+    #[test]
+    fn hovering_an_open_form_off_its_fields_does_not_redraw() {
+        let mut list = list(false);
+        list.set_focused(true);
+        list.handle_key(&enter());
+        assert!(list.is_busy());
+        list.render(0, 0, 60, 20);
+        assert!(!list.handle_mouse(Mouse::Hover(30, 100)));
+        assert!(list.handle_mouse(Mouse::LeftClick(30, 100)));
     }
 }

@@ -334,6 +334,10 @@ pub const ACTION_SPECS: &[ActionSpec] = &[
     plain("SetLightTheme", "Use the light theme"),
     plain("ToggleTheme", "Switch between dark and light themes"),
     plain("DismissInfoPopups", "Close information popups"),
+    plain(
+        "OpenContextMenu",
+        "Open the right-click menu for the focused pane",
+    ),
     with_args(
         "Run",
         "Run a command in a new pane",

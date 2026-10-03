@@ -54,7 +54,6 @@ pub struct KeysScreen {
     dialog: ConfirmDialog,
     dialog_purpose: Option<KeysDialog>,
     needs_refresh: bool,
-    pending_mode_switch: bool,
     focused: bool,
     naming: Option<PresetNaming>,
     config_file_path: Option<String>,
@@ -88,7 +87,6 @@ impl KeysScreen {
             dialog: ConfirmDialog::new("", ""),
             dialog_purpose: None,
             needs_refresh: false,
-            pending_mode_switch: false,
             focused: is_setup_wizard,
             naming: None,
             config_file_path: None,
@@ -134,11 +132,6 @@ impl KeysScreen {
         self.configured_default_mode = snapshot
             .setting(SettingKey::DefaultMode)
             .and_then(|setting| setting.current_value.clone());
-        if self.pending_mode_switch {
-            self.pending_mode_switch = false;
-            let default_mode = snapshot.keybinds.default_mode.unwrap_or(InputMode::Normal);
-            switch_to_input_mode(&default_mode);
-        }
         if self.selection != snapshot.keybinds {
             self.selection = snapshot.keybinds.clone();
             self.rebuild();
@@ -324,7 +317,6 @@ impl KeysScreen {
         {
             return;
         }
-        self.pending_mode_switch = true;
         self.apply(format!("keybinds preset={}", kdl_string(name)));
     }
     fn modifier_set(value: &str) -> BTreeSet<String> {
@@ -491,7 +483,6 @@ impl KeysScreen {
         if self.configured_default_mode.is_some() {
             unset_config_setting(SettingKey::DefaultMode);
         }
-        self.pending_mode_switch = true;
         self.apply(format!("keybinds preset={}", kdl_string(preset)));
         self.notice = Some(match saved {
             Some(saved) if saved == preset => format!(

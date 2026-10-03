@@ -37,13 +37,7 @@ fn choose_preset(zellij: &TestSession, arrow: &[u8], applied_marker: &str) {
 }
 
 fn close_configuration(zellij: &TestSession) {
-    for _ in 0..20 {
-        zellij.send_stdin(&keys::ctrl('c'));
-        std::thread::sleep(std::time::Duration::from_millis(250));
-        if !zellij.snapshot().contains("Configuration") {
-            break;
-        }
-    }
+    zellij.send_stdin(&keys::ctrl('c'));
     zellij.wait_until("configuration plugin closed", |grid_snapshot| {
         !grid_snapshot.contains("Configuration")
     });

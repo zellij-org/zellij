@@ -227,6 +227,7 @@ pub enum ScreenContext {
     HorizontalSplit,
     VerticalSplit,
     WriteCharacter,
+    KeyToPopup,
     ResizeIncreaseAll,
     ResizeIncreaseLeft,
     ResizeIncreaseDown,

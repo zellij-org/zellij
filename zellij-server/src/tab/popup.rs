@@ -1,9 +1,9 @@
-use super::{Pane, Tab};
+use super::{AdjustedInput, Pane, Tab};
 use crate::output::Output;
 use crate::panes::{PaneId, PluginPane};
 use crate::plugins::PluginInstruction;
 use crate::ClientId;
-use zellij_utils::data::{Event, Mouse, PopupCorner};
+use zellij_utils::data::{Event, KeyWithModifier, Mouse, PopupCorner};
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::layout::Run;
 use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
@@ -484,8 +484,61 @@ impl Tab {
     pub fn popup_geoms(&self, client_id: ClientId) -> Vec<PaneGeom> {
         self.popups
             .get(&client_id)
-            .map(|stack| stack.iter().map(|popup| popup.pane.current_geom()).collect())
+            .map(|stack| {
+                let mut drawing_order: Vec<&Popup> = stack.iter().collect();
+                drawing_order.sort_by_key(|popup| popup.takes_focus());
+                drawing_order
+                    .into_iter()
+                    .map(|popup| popup.pane.current_geom())
+                    .collect()
+            })
             .unwrap_or_default()
+    }
+    pub fn send_key_to_popup(
+        &mut self,
+        client_id: ClientId,
+        key_with_modifier: KeyWithModifier,
+        raw_bytes: Vec<u8>,
+        is_kitty_keyboard_protocol: bool,
+    ) -> bool {
+        let Some(plugin_id) = self.popup_plugin_id(client_id) else {
+            return false;
+        };
+        let adjusted_input = match self.popup_pane_mut(plugin_id) {
+            Some(pane) => pane.adjust_input_to_terminal(
+                &Some(key_with_modifier),
+                raw_bytes,
+                is_kitty_keyboard_protocol,
+                Some(client_id),
+            ),
+            None => return false,
+        };
+        match adjusted_input {
+            Some(AdjustedInput::WriteKeyToPlugin(key_with_modifier)) => {
+                let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![(
+                    Some(plugin_id),
+                    Some(client_id),
+                    Event::Key(key_with_modifier),
+                )]));
+            },
+            Some(AdjustedInput::PermissionRequestResult(permissions, status)) => {
+                if let Some(pane) = self.popup_pane_mut(plugin_id) {
+                    pane.request_permissions_from_user(None);
+                }
+                let _ = self
+                    .senders
+                    .send_to_plugin(PluginInstruction::PermissionRequestResult(
+                        plugin_id,
+                        Some(client_id),
+                        permissions,
+                        status,
+                        None,
+                    ));
+                self.set_force_render();
+            },
+            _ => {},
+        }
+        true
     }
     pub fn has_popup_plugin(&self, plugin_id: u32) -> bool {
         self.popup_client_for_plugin(plugin_id).is_some()

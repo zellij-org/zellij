@@ -784,7 +784,7 @@ fn keybindings_work_while_a_prompt_popup_is_open() {
             && !grid_snapshot.contains("LOCK")
             && grid_snapshot.contains(PROMPT_MARKER)
     });
-    zellij.send_stdin(&keys::ESC);
+    zellij.send_stdin(&keys::ctrl('p'));
     zellij.wait_until("back to normal mode with the prompt open", |grid_snapshot| {
         grid_snapshot.status_bar_appears() && grid_snapshot.contains(PROMPT_MARKER)
     });
@@ -793,6 +793,27 @@ fn keybindings_work_while_a_prompt_popup_is_open() {
     zellij.send_stdin(&keys::ENTER);
     answered(&prompt.wait_for_exit(), 0, "true\n");
     wait_for_prompts_to_close(&zellij);
+    zellij.quit();
+}
+
+#[test]
+fn esc_reaches_the_prompt_popup_in_pane_mode() {
+    let (mut zellij, terminal) = start_with_terminal();
+    let prompt = confirm(&zellij, &terminal, "Force push?");
+    wait_for_prompt_showing(&zellij, "Force push?");
+    zellij.send_stdin(&keys::ctrl('p'));
+    zellij.wait_until("pane mode with the prompt open", |grid_snapshot| {
+        grid_snapshot.contains("PANE")
+            && !grid_snapshot.contains("LOCK")
+            && grid_snapshot.contains(PROMPT_MARKER)
+    });
+    zellij.send_stdin(&keys::ESC);
+    answered(&prompt.wait_for_exit(), 1, "");
+    zellij.wait_until("prompt closed and still in pane mode", |grid_snapshot| {
+        !grid_snapshot.contains(PROMPT_MARKER)
+            && grid_snapshot.contains("PANE")
+            && !grid_snapshot.contains("LOCK")
+    });
     zellij.quit();
 }
 

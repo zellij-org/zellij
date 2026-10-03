@@ -1273,6 +1273,14 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
+        Action::OpenContextMenu => {
+            senders
+                .send_to_screen(ScreenInstruction::OpenContextMenu(
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
         Action::SwitchSession {
             name,
             tab_position,
@@ -2584,6 +2592,49 @@ pub(crate) fn route_thread_main(
                                         PopupKeyAction::ScrollPopup(scroll) => {
                                             let _ = senders.send_to_screen(
                                                 ScreenInstruction::ScrollPopup(client_id, scroll),
+                                            );
+                                            continue;
+                                        },
+                                        PopupKeyAction::KeyToPopup {
+                                            key: popup_key,
+                                            raw_bytes: popup_raw_bytes,
+                                            is_kitty_keyboard_protocol: popup_key_is_kitty,
+                                        } => {
+                                            let _ = senders.send_to_plugin(
+                                                PluginInstruction::UserInput {
+                                                    client_id,
+                                                    action: Action::Write {
+                                                        key_with_modifier: Some(popup_key.clone()),
+                                                        bytes: popup_raw_bytes.clone(),
+                                                        is_kitty_keyboard_protocol:
+                                                            popup_key_is_kitty,
+                                                    },
+                                                    terminal_id: None,
+                                                    cli_client_id: None,
+                                                },
+                                            );
+                                            let _ = senders.send_to_plugin(
+                                                PluginInstruction::Update(vec![(
+                                                    None,
+                                                    Some(client_id),
+                                                    Event::InputReceived,
+                                                )]),
+                                            );
+                                            let (completion_tx, completion_rx) =
+                                                oneshot::channel();
+                                            let _ = senders.send_to_screen(
+                                                ScreenInstruction::KeyToPopup(
+                                                    popup_key,
+                                                    popup_raw_bytes,
+                                                    popup_key_is_kitty,
+                                                    client_id,
+                                                    Some(NotificationEnd::new(completion_tx)),
+                                                ),
+                                            );
+                                            let _ = wait_for_action_completion(
+                                                completion_rx,
+                                                "KeyToPopup",
+                                                false,
                                             );
                                             continue;
                                         },

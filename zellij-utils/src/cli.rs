@@ -1895,6 +1895,8 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
     ToggleTheme,
     #[clap(about = "Close the information popups (such as `zellij prompt notify`) shown to you")]
     DismissInfoPopups,
+    #[clap(about = "Open the right-click menu for the focused pane, at that pane's position")]
+    OpenContextMenu,
     /// Switch to a different session
     SwitchSession {
         /// Name of the session to switch to

@@ -232,8 +232,39 @@ fn shared_event_context(
     EventContext { slot_id, client_id }
 }
 
+#[derive(Debug, Default)]
+pub(crate) struct HoverGenerations {
+    latest: HashMap<(PluginId, ClientId), u64>,
+}
+
+impl HoverGenerations {
+    pub fn queue(&mut self, plugin_id: PluginId, client_id: ClientId) -> u64 {
+        let generation = self.latest.entry((plugin_id, client_id)).or_insert(0);
+        *generation += 1;
+        *generation
+    }
+    pub fn is_superseded(&self, plugin_id: PluginId, client_id: ClientId, generation: u64) -> bool {
+        self.latest
+            .get(&(plugin_id, client_id))
+            .map(|latest| *latest != generation)
+            .unwrap_or(false)
+    }
+}
+
+pub(crate) fn subscription_event_type(
+    event: &Event,
+) -> Result<EventType, <EventType as FromStr>::Err> {
+    EventType::from_str(&event.to_string()).map(|event_type| {
+        if event_type == EventType::MouseWithModifiers {
+            EventType::Mouse
+        } else {
+            event_type
+        }
+    })
+}
+
 pub struct WasmBridge {
-    latest_hovers: Arc<Mutex<HashMap<(PluginId, ClientId), u64>>>,
+    latest_hovers: Arc<Mutex<HoverGenerations>>,
     connected_clients: Arc<Mutex<Vec<ClientId>>>,
     senders: ThreadSenders,
     plugin_dir: PathBuf,
@@ -341,7 +372,7 @@ impl WasmBridge {
             base_modes: HashMap::new(),
             downloader,
             previous_pane_render_report: None,
-            latest_hovers: Arc::new(Mutex::new(HashMap::new())),
+            latest_hovers: Arc::new(Mutex::new(HoverGenerations::default())),
             last_host_terminal_theme_mode: None,
             last_session_save_time: Arc::new(Mutex::new(None)),
             shared_instances: HashMap::new(),
@@ -1077,24 +1108,18 @@ impl WasmBridge {
             for (plugin_id, client_id, running_plugin, subscriptions) in &plugins_to_update {
                 let subs = subscriptions.lock().unwrap().clone();
                 // FIXME: This is very janky... Maybe I should write my own macro for Event -> EventType?
-                if let Ok(event_type) = EventType::from_str(&event.to_string()).map(|event_type| {
-                    if event_type == EventType::MouseWithModifiers {
-                        EventType::Mouse
-                    } else {
-                        event_type
-                    }
-                }) {
+                if let Ok(event_type) = subscription_event_type(&event) {
                     if (subs.contains(&event_type)
                         || event_type == EventType::PermissionRequestResult)
                         && Self::message_is_directed_at_plugin(pid, cid, plugin_id, client_id)
                     {
                         let hover_generation = if is_hover(&event) {
-                            let mut latest_hovers = self.latest_hovers.lock().unwrap();
-                            let generation = latest_hovers
-                                .entry((*plugin_id, *client_id))
-                                .or_insert(0);
-                            *generation += 1;
-                            Some(*generation)
+                            Some(
+                                self.latest_hovers
+                                    .lock()
+                                    .unwrap()
+                                    .queue(*plugin_id, *client_id),
+                            )
                         } else {
                             None
                         };
@@ -1114,12 +1139,11 @@ impl WasmBridge {
                                   _engine| {
                                 let _s = _s; // guard to allow the task to complete before cleanup/shutdown
                                 if let Some(generation) = hover_generation {
-                                    let superseded = latest_hovers
-                                        .lock()
-                                        .unwrap()
-                                        .get(&(plugin_id, client_id))
-                                        .map(|latest| *latest != generation)
-                                        .unwrap_or(false);
+                                    let superseded = latest_hovers.lock().unwrap().is_superseded(
+                                        plugin_id,
+                                        client_id,
+                                        generation,
+                                    );
                                     if superseded {
                                         return;
                                     }
@@ -1885,7 +1909,7 @@ impl WasmBridge {
                                         {
                                             continue;
                                         }
-                                        match EventType::from_str(&event.to_string())
+                                        match subscription_event_type(&event)
                                             .with_context(err_context)
                                         {
                                             Ok(event_type) => {
@@ -3417,10 +3441,14 @@ fn change_host_dir_of_running_plugin(
     Ok(())
 }
 
-fn is_hover(event: &Event) -> bool {
+pub(crate) fn is_hover(event: &Event) -> bool {
     matches!(
         event,
         Event::Mouse(zellij_utils::data::Mouse::Hover(..))
             | Event::MouseWithModifiers(zellij_utils::data::Mouse::Hover(..), _)
     )
 }
+
+#[cfg(test)]
+#[path = "unit/hover_merge_tests.rs"]
+mod hover_merge_tests;

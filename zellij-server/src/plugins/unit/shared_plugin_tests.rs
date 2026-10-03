@@ -17,13 +17,7 @@ use zellij_utils::pane_size::Size;
 type Renders = HashMap<(PluginId, ClientId), String>;
 
 fn fixture_path(name: &str) -> PathBuf {
-    PathBuf::from(format!(
-        "{}/../target/e2e-data/plugins/{}.wasm",
-        std::env::var_os("CARGO_MANIFEST_DIR")
-            .unwrap()
-            .to_string_lossy(),
-        name
-    ))
+    super::plugin_tests::e2e_plugin_path(name)
 }
 
 fn shared_fixture(configuration: &[(&str, &str)]) -> RunPluginOrAlias {

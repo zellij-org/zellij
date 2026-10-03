@@ -337,26 +337,19 @@ impl Screen {
     pub fn send_key_to_popup(
         &mut self,
         client_id: ClientId,
-        key_with_modifier: Option<zellij_utils::data::KeyWithModifier>,
+        key_with_modifier: zellij_utils::data::KeyWithModifier,
+        raw_bytes: Vec<u8>,
+        is_kitty_keyboard_protocol: bool,
     ) -> bool {
-        let Some(plugin_id) = self
-            .get_active_tab(client_id)
-            .ok()
-            .and_then(|tab| tab.popup_plugin_id(client_id))
-        else {
-            return false;
-        };
-        if let Some(key_with_modifier) = key_with_modifier {
-            let _ = self
-                .bus
-                .senders
-                .send_to_plugin(PluginInstruction::Update(vec![(
-                    Some(plugin_id),
-                    Some(client_id),
-                    Event::Key(key_with_modifier),
-                )]));
+        match self.get_active_tab_mut(client_id) {
+            Ok(tab) => tab.send_key_to_popup(
+                client_id,
+                key_with_modifier,
+                raw_bytes,
+                is_kitty_keyboard_protocol,
+            ),
+            Err(_) => false,
         }
-        true
     }
     pub fn open_context_menu_for_pane(&mut self, request: ContextMenuRequest, client_id: ClientId) {
         let tab_count = self.tabs.len();
@@ -375,6 +368,28 @@ impl Screen {
             client_id,
         };
         self.open_context_menu(context);
+    }
+    pub fn open_context_menu_for_focused_pane(&mut self, client_id: ClientId) {
+        let client_id = match self.get_active_tab(client_id) {
+            Ok(_) => client_id,
+            Err(_) => match self.get_first_client_id() {
+                Some(first_client_id) => first_client_id,
+                None => return,
+            },
+        };
+        let Ok(tab) = self.get_active_tab(client_id) else {
+            return;
+        };
+        let Some(pane) = tab.get_active_pane(client_id) else {
+            return;
+        };
+        let request = ContextMenuRequest {
+            kind: ContextMenuKind::Pane,
+            pane_id: pane.pid(),
+            is_floating: tab.are_floating_panes_visible(),
+            position: Position::new(pane.get_content_y() as i32, pane.get_content_x() as u16),
+        };
+        self.open_context_menu_for_pane(request, client_id);
     }
     pub fn open_context_menu_from_plugin(
         &mut self,

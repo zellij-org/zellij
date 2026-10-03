@@ -73,6 +73,16 @@ pub fn under_overlay(line: isize, column: usize) -> bool {
     })
 }
 
+pub fn changed_by<T: std::fmt::Debug, R>(
+    value: &mut T,
+    change: impl FnOnce(&mut T) -> R,
+) -> (R, bool) {
+    let before = format!("{:?}", value);
+    let result = change(value);
+    let changed = format!("{:?}", value) != before;
+    (result, changed)
+}
+
 pub fn outside_overlays(mouse: Mouse) -> Mouse {
     match mouse {
         Mouse::Hover(line, column) if under_overlay(line, column) => Mouse::Hover(-1, 0),
@@ -677,15 +687,18 @@ impl ButtonRow {
             button.clear_area();
         }
     }
-    pub fn handle_mouse(&mut self, mouse: Mouse) -> Option<usize> {
+    pub fn handle_mouse_with_hover(&mut self, mouse: Mouse) -> (Option<usize>, bool) {
         let mouse = outside_overlays(mouse);
         let mut activated = None;
+        let mut hover_changed = false;
         for (index, button) in self.buttons.iter_mut().enumerate() {
+            let was_hovered = button.is_hovered();
             if let UiResponse::Activated = button.handle_mouse(mouse) {
                 activated = Some(index);
             }
+            hover_changed |= was_hovered != button.is_hovered();
         }
-        activated
+        (activated, hover_changed)
     }
     pub fn handle_timer(&mut self) -> bool {
         let mut changed = false;

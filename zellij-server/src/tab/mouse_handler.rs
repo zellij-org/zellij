@@ -447,6 +447,7 @@ impl MouseHandler {
     ) -> Result<MouseEventContext> {
         let err_context = || format!("failed to gather context for event {event:?}");
 
+        Self::forget_selection_in_missing_pane(tab);
         let pane_id_at_position = Self::get_pane_at(tab, &event.position, false)
             .with_context(err_context)?
             .map(|p| p.pid());
@@ -1086,12 +1087,21 @@ impl MouseHandler {
         Ok(MouseEffect::state_changed())
     }
 
+    fn forget_selection_in_missing_pane(tab: &mut Tab) {
+        if let Some(pane_id) = tab.selecting_with_mouse_in_pane {
+            if tab.get_pane_with_id(pane_id).is_none() {
+                tab.selecting_with_mouse_in_pane = None;
+            }
+        }
+    }
+
     fn execute_end_selection(
         tab: &mut Tab,
         position: Position,
         client_id: ClientId,
     ) -> Result<MouseEffect> {
         let err_context = || "failed to end selection";
+        Self::forget_selection_in_missing_pane(tab);
         let mut leave_clipboard_message = false;
         let copy_on_release = tab.copy_on_select;
 

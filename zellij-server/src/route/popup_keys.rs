@@ -1,4 +1,4 @@
-use zellij_utils::data::{InputMode, KeyWithModifier};
+use zellij_utils::data::{BareKey, InputMode, KeyWithModifier};
 use zellij_utils::input::actions::Action;
 use zellij_utils::input::keybinds::Keybinds;
 
@@ -20,6 +20,11 @@ pub(crate) enum PopupActionRule {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum PopupKeyAction {
     Route(Action),
+    KeyToPopup {
+        key: KeyWithModifier,
+        raw_bytes: Vec<u8>,
+        is_kitty_keyboard_protocol: bool,
+    },
     ScrollPopup(PopupScroll),
     ClosePopup,
 }
@@ -87,13 +92,45 @@ pub(crate) fn popup_action_rule(action: &Action) -> PopupActionRule {
     }
 }
 
-pub(crate) fn key_actions_with_popup_open(actions: Vec<Action>) -> Vec<PopupKeyAction> {
+fn key_to_popup(
+    key: &KeyWithModifier,
+    raw_bytes: Vec<u8>,
+    is_kitty_keyboard_protocol: bool,
+) -> PopupKeyAction {
+    PopupKeyAction::KeyToPopup {
+        key: key.clone(),
+        raw_bytes,
+        is_kitty_keyboard_protocol,
+    }
+}
+
+fn always_reaches_popup(key: &KeyWithModifier) -> bool {
+    key.has_no_modifiers() && matches!(key.bare_key, BareKey::Esc | BareKey::Enter)
+}
+
+pub(crate) fn key_actions_with_popup_open(
+    actions: Vec<Action>,
+    key: &KeyWithModifier,
+    raw_bytes: Vec<u8>,
+    is_kitty_keyboard_protocol: bool,
+) -> Vec<PopupKeyAction> {
+    let mut key_sent_to_popup = false;
     actions
         .into_iter()
         .filter_map(|action| match popup_action_rule(&action) {
-            PopupActionRule::ToPopup | PopupActionRule::Underneath => {
-                Some(PopupKeyAction::Route(action))
+            PopupActionRule::ToPopup => {
+                if key_sent_to_popup {
+                    None
+                } else {
+                    key_sent_to_popup = true;
+                    Some(key_to_popup(
+                        key,
+                        raw_bytes.clone(),
+                        is_kitty_keyboard_protocol,
+                    ))
+                }
             },
+            PopupActionRule::Underneath => Some(PopupKeyAction::Route(action)),
             PopupActionRule::ScrollPopup(scroll) => Some(PopupKeyAction::ScrollPopup(scroll)),
             PopupActionRule::ClosePopup => Some(PopupKeyAction::ClosePopup),
             PopupActionRule::Ignore => None,
@@ -136,17 +173,20 @@ pub(crate) fn key_dispatch(
     in_key_passthrough: bool,
     has_focused_popup: bool,
 ) -> Vec<PopupKeyAction> {
+    if has_focused_popup && (in_key_passthrough || always_reaches_popup(key)) {
+        return vec![key_to_popup(key, raw_bytes, is_kitty_keyboard_protocol)];
+    }
     let actions = actions_for_key(
         keybinds,
         current_mode,
         default_mode,
         key,
-        raw_bytes,
+        raw_bytes.clone(),
         is_kitty_keyboard_protocol,
         in_key_passthrough,
     );
-    if has_focused_popup && !in_key_passthrough {
-        key_actions_with_popup_open(actions)
+    if has_focused_popup {
+        key_actions_with_popup_open(actions, key, raw_bytes, is_kitty_keyboard_protocol)
     } else {
         actions.into_iter().map(PopupKeyAction::Route).collect()
     }
@@ -156,7 +196,6 @@ pub(crate) fn key_dispatch(
 mod tests {
     use super::*;
     use std::collections::HashMap;
-    use zellij_utils::data::BareKey;
 
     fn key(c: char) -> KeyWithModifier {
         KeyWithModifier::new(BareKey::Char(c))
@@ -221,6 +260,113 @@ mod tests {
         })
     }
 
+    fn to_popup(key: KeyWithModifier) -> PopupKeyAction {
+        PopupKeyAction::KeyToPopup {
+            key,
+            raw_bytes: vec![],
+            is_kitty_keyboard_protocol: false,
+        }
+    }
+
+    fn keybinds_with_esc_and_enter_bound() -> Keybinds {
+        let esc = KeyWithModifier::new(BareKey::Esc);
+        let enter = KeyWithModifier::new(BareKey::Enter);
+        let alt_enter = KeyWithModifier::new(BareKey::Enter).with_alt_modifier();
+        let mut keybinds = keybinds();
+        let normal = keybinds.0.get_mut(&InputMode::Normal).unwrap();
+        normal.insert(esc.clone(), vec![switch_to(InputMode::Locked)]);
+        normal.insert(enter.clone(), vec![switch_to(InputMode::Locked)]);
+        normal.insert(alt_enter, vec![Action::Detach]);
+        let pane = keybinds.0.get_mut(&InputMode::Pane).unwrap();
+        pane.insert(esc, vec![switch_to(InputMode::Normal)]);
+        pane.insert(enter, vec![switch_to(InputMode::Normal)]);
+        keybinds
+    }
+
+    fn dispatch_with(
+        keybinds: &Keybinds,
+        mode: InputMode,
+        key: KeyWithModifier,
+        has_focused_popup: bool,
+    ) -> Vec<PopupKeyAction> {
+        key_dispatch(
+            keybinds,
+            &mode,
+            InputMode::Normal,
+            &key,
+            vec![],
+            false,
+            false,
+            has_focused_popup,
+        )
+    }
+
+    #[test]
+    fn bare_esc_and_enter_always_reach_the_popup_even_when_bound() {
+        let keybinds = keybinds_with_esc_and_enter_bound();
+        let esc = KeyWithModifier::new(BareKey::Esc);
+        let enter = KeyWithModifier::new(BareKey::Enter);
+        for mode in [InputMode::Normal, InputMode::Pane] {
+            assert_eq!(
+                dispatch_with(&keybinds, mode, esc.clone(), true),
+                vec![to_popup(esc.clone())],
+                "{:?}",
+                mode
+            );
+            assert_eq!(
+                dispatch_with(&keybinds, mode, enter.clone(), true),
+                vec![to_popup(enter.clone())],
+                "{:?}",
+                mode
+            );
+        }
+    }
+
+    #[test]
+    fn modified_enter_and_other_bound_keys_keep_their_binding_while_a_popup_is_open() {
+        let keybinds = keybinds_with_esc_and_enter_bound();
+        let alt_enter = KeyWithModifier::new(BareKey::Enter).with_alt_modifier();
+        assert_eq!(
+            dispatch_with(&keybinds, InputMode::Normal, alt_enter, true),
+            vec![PopupKeyAction::Route(Action::Detach)]
+        );
+        assert_eq!(
+            dispatch_with(&keybinds, InputMode::Normal, ctrl('p'), true),
+            vec![PopupKeyAction::Route(switch_to(InputMode::Pane))]
+        );
+    }
+
+    #[test]
+    fn bound_esc_and_enter_run_their_action_without_a_popup() {
+        let keybinds = keybinds_with_esc_and_enter_bound();
+        let esc = KeyWithModifier::new(BareKey::Esc);
+        let enter = KeyWithModifier::new(BareKey::Enter);
+        assert_eq!(
+            dispatch_with(&keybinds, InputMode::Pane, esc, false),
+            vec![PopupKeyAction::Route(switch_to(InputMode::Normal))]
+        );
+        assert_eq!(
+            dispatch_with(&keybinds, InputMode::Normal, enter, false),
+            vec![PopupKeyAction::Route(switch_to(InputMode::Locked))]
+        );
+    }
+
+    #[test]
+    fn a_key_bound_to_several_writes_reaches_the_popup_once() {
+        let mut keybinds = keybinds();
+        keybinds.0.get_mut(&InputMode::Normal).unwrap().insert(
+            ctrl('w'),
+            vec![
+                Action::WriteChars { chars: "a".into() },
+                Action::WriteChars { chars: "b".into() },
+            ],
+        );
+        assert_eq!(
+            dispatch_with(&keybinds, InputMode::Normal, ctrl('w'), true),
+            vec![to_popup(ctrl('w'))]
+        );
+    }
+
     #[test]
     fn bound_keys_run_their_action_while_a_popup_is_open() {
         assert_eq!(
@@ -241,15 +387,15 @@ mod tests {
 
     #[test]
     fn unbound_keys_in_the_base_mode_reach_the_popup() {
-        assert_eq!(dispatch(InputMode::Normal, key('a')), vec![write(key('a'))]);
+        assert_eq!(dispatch(InputMode::Normal, key('a')), vec![to_popup(key('a'))]);
         let esc = KeyWithModifier::new(BareKey::Esc);
-        assert_eq!(dispatch(InputMode::Normal, esc.clone()), vec![write(esc)]);
+        assert_eq!(dispatch(InputMode::Normal, esc.clone()), vec![to_popup(esc)]);
     }
 
     #[test]
     fn locked_mode_sends_every_key_but_the_unlock_key_to_the_popup() {
-        assert_eq!(dispatch(InputMode::Locked, ctrl('p')), vec![write(ctrl('p'))]);
-        assert_eq!(dispatch(InputMode::Locked, key('x')), vec![write(key('x'))]);
+        assert_eq!(dispatch(InputMode::Locked, ctrl('p')), vec![to_popup(ctrl('p'))]);
+        assert_eq!(dispatch(InputMode::Locked, key('x')), vec![to_popup(key('x'))]);
         assert_eq!(
             dispatch(InputMode::Locked, ctrl('g')),
             vec![PopupKeyAction::Route(switch_to(InputMode::Normal))]
@@ -281,7 +427,7 @@ mod tests {
     }
 
     #[test]
-    fn key_passthrough_is_unchanged_by_popups() {
+    fn key_passthrough_sends_bound_keys_to_the_popup() {
         let actions = key_dispatch(
             &keybinds(),
             &InputMode::Normal,
@@ -291,6 +437,17 @@ mod tests {
             false,
             true,
             true,
+        );
+        assert_eq!(actions, vec![to_popup(ctrl('g'))]);
+        let actions = key_dispatch(
+            &keybinds(),
+            &InputMode::Normal,
+            InputMode::Normal,
+            &ctrl('g'),
+            vec![],
+            false,
+            true,
+            false,
         );
         assert_eq!(actions, vec![write(ctrl('g'))]);
     }
