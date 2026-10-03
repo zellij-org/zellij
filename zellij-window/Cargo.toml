@@ -48,7 +48,7 @@ signal-hook = { workspace = true }
 dunce = "1.0"
 glutin = { workspace = true, features = ["wgl"] }
 glutin-winit = { workspace = true, features = ["wgl"] }
-windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_System_Diagnostics_Debug", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_Graphics_Dwm", "Win32_System_Diagnostics_Debug", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 
 [target.'cfg(any(target_os = "macos", windows))'.dependencies]
 fontdb = { version = "0.23", default-features = false, features = ["std", "fs", "memmap"] }
