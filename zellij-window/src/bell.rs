@@ -68,7 +68,20 @@ mod platform {
     }
 }
 
-#[cfg(not(all(unix, not(target_os = "macos"), not(target_os = "android"))))]
+#[cfg(windows)]
+mod platform {
+    use windows_sys::Win32::System::Diagnostics::Debug::MessageBeep;
+    use windows_sys::Win32::UI::WindowsAndMessaging::MB_OK;
+
+    pub fn ring() -> bool {
+        unsafe { MessageBeep(MB_OK) != 0 }
+    }
+}
+
+#[cfg(not(any(
+    all(unix, not(target_os = "macos"), not(target_os = "android")),
+    windows
+)))]
 mod platform {
     pub fn ring() -> bool {
         false

@@ -2,6 +2,7 @@
 mod adversarial;
 mod atlas;
 mod bell;
+mod blur;
 mod client_loop;
 mod clipboard;
 mod color;
