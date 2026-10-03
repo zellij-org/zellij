@@ -51,7 +51,9 @@ use crate::selection::Selection;
 use crate::settings::Settings;
 use crate::terminal::{self, FrameError, TerminalState};
 use crate::window_state::{self, Shown, Startup, WindowState};
-use zellij_utils::input::window::{NotificationMode, OptionAsAlt, PaddingColor, StartupMode};
+use zellij_utils::input::window::{
+    BellMode, NotificationMode, OptionAsAlt, PaddingColor, StartupMode,
+};
 
 const BLINK_INTERVAL: Duration = Duration::from_millis(500);
 const DISPLAY_RECHECK: Duration = Duration::from_secs(1);
@@ -658,14 +660,16 @@ impl App {
     fn attend(&mut self) {
         let rung = self.state.take_bells() > 0;
         let notifications = self.state.take_notifications();
-        let mut notified = false;
+        let mut unhandled = false;
         for notification in &notifications {
-            notified |= !(self.notify)(self.options.notifications, notification);
+            unhandled |= !(self.notify)(self.options.notifications, notification);
         }
-        if !(rung || notified) {
-            return;
-        }
-        if self.options.bell.attends() {
+        if asks_for_attention(
+            rung,
+            unhandled,
+            self.options.bell,
+            self.options.notifications,
+        ) {
             if let Some(surfaces) = &self.surfaces {
                 surfaces
                     .window
@@ -2109,6 +2113,15 @@ pub(crate) struct GridFit {
 
 fn has_no_area(width: u32, height: u32) -> bool {
     width == 0 || height == 0
+}
+
+fn asks_for_attention(
+    rung: bool,
+    unhandled_notification: bool,
+    bell: BellMode,
+    notifications: NotificationMode,
+) -> bool {
+    (rung && bell.attends()) || (unhandled_notification && notifications.attends())
 }
 
 pub(crate) fn fit_grid(
@@ -4833,6 +4846,43 @@ mod tests {
                 "{:?} rang the host's bell the wrong number of times",
                 mode
             );
+        }
+    }
+
+    #[test]
+    fn a_notification_asks_for_attention_by_its_own_mode_whatever_the_bell_mode() {
+        for bell in [
+            BellMode::Visual,
+            BellMode::Audible,
+            BellMode::Both,
+            BellMode::None,
+        ] {
+            for (notifications, attends) in [
+                (NotificationMode::Desktop, true),
+                (NotificationMode::Attention, true),
+                (NotificationMode::None, false),
+            ] {
+                assert_eq!(
+                    asks_for_attention(false, true, bell, notifications),
+                    attends,
+                    "an unhandled notification under {:?} with bell {:?}",
+                    notifications,
+                    bell
+                );
+                assert!(
+                    !asks_for_attention(false, false, bell, notifications),
+                    "nothing happened, yet {:?} with bell {:?} asked for attention",
+                    notifications,
+                    bell
+                );
+                assert_eq!(
+                    asks_for_attention(true, false, bell, notifications),
+                    bell.attends(),
+                    "a bell under {:?} with notifications {:?}",
+                    bell,
+                    notifications
+                );
+            }
         }
     }
 
