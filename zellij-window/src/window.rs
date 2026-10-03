@@ -24,6 +24,7 @@ use zellij_utils::ipc::{ClientToServerMsg, ExitReason};
 
 use crate::atlas::GlyphCache;
 use crate::bell;
+use crate::blur;
 use crate::client_loop::{self, LoopOptions, LoopOutcome, RenderSink};
 use crate::clipboard::{self, Clipboard, ClipboardHandle};
 use crate::composition::{Composition, Gate, Reaction};
@@ -369,7 +370,7 @@ impl App {
         }
         if change.blur {
             if let Some(surfaces) = &self.surfaces {
-                surfaces.window.set_blur(self.options.blur);
+                blur::set(&surfaces.window, self.options.blur);
             }
         }
     }
@@ -1338,6 +1339,7 @@ impl App {
         );
         self.warn_if_opaque();
         let window = window.ok_or_else(|| anyhow!("the windowing system produced no window"))?;
+        blur::set(&window, self.options.blur);
         window.set_ime_purpose(ImePurpose::Terminal);
         window.set_ime_allowed(true);
 

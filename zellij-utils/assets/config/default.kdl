@@ -820,8 +820,9 @@ web_client {
 //     opacity_mode "background"
 //
 //     // Whether to ask the compositor to blur what is behind the window. Only
-//     // visible with an opacity below 1.0; supported on macOS, Windows and KDE
-//     // Plasma, and ignored elsewhere.
+//     // visible with an opacity below 1.0; supported on macOS, KDE Plasma and
+//     // Windows 11 22H2 or later, and ignored elsewhere. On Windows it is the
+//     // system's Acrylic material, which shows only while the window is focused.
 //     blur false
 //
 //     // How a new window opens: "windowed", "maximized", "fullscreen", or
