@@ -208,6 +208,7 @@ fn is_self_command(command: &PluginCommand) -> bool {
             | PluginCommand::ShowSelf(..)
             | PluginCommand::CloseSelf
             | PluginCommand::SetSelfMouseSelectionSupport(..)
+            | PluginCommand::SetSelfCollapsed(..)
     ) || self_command_has_response(command)
 }
 
@@ -5597,7 +5598,7 @@ fn set_self_mouse_selection_support(env: &PluginEnv, selection_support: bool) {
 fn set_self_collapsed(env: &PluginEnv, collapsed: bool) {
     env.senders
         .send_to_screen(ScreenInstruction::SetPaneCollapsed(
-            PaneId::Plugin(env.plugin_id),
+            PaneId::Plugin(self_pane_id(env)),
             collapsed,
         ))
         .with_context(|| {

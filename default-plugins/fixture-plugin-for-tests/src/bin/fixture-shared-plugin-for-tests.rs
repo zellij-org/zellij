@@ -123,6 +123,14 @@ impl ZellijSharedPlugin for State {
         }
     }
     fn render(&mut self, rows: usize, cols: usize, slot_id: SlotId, client_id: ClientId) {
+        let collapse = self
+            .slots
+            .get(&slot_id)
+            .and_then(|slot| slot.configuration.get("collapse_on_render"))
+            .is_some();
+        if collapse {
+            set_self_collapsed(true);
+        }
         print!("{}", render_line(self, rows, cols, slot_id, client_id));
     }
 }
