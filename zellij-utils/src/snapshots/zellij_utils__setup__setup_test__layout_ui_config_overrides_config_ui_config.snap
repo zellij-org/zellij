@@ -6344,7 +6344,7 @@ Config {
         },
     },
     env: {},
-    background_plugins: {
+    background_plugins: [
         RunPlugin(
             RunPlugin {
                 _allow_exec_host_cmd: false,
@@ -6361,7 +6361,7 @@ Config {
                 initial_cwd: None,
             },
         ),
-    },
+    ],
     web_client: WebClientConfig {
         font: "monospace",
         theme: None,

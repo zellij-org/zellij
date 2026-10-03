@@ -76,9 +76,13 @@ use zellij_utils::{
             load_config_file, watch_config_file_changes, watch_keybinds_dir_changes,
             watch_layout_dir_changes, Config,
         },
+        config_blocks,
         config_file_edit::{read_config_file, save_config_in_place, SaveOutcome},
         config_settings,
-        keybind_presets::{copy_keybind_preset_to_folder, list_keybind_presets, KeybindChanges},
+        keybind_presets::{
+            copy_keybind_preset_to_folder, list_keybind_presets, save_keybinds_as_preset,
+            KeybindChanges,
+        },
         keybinds::Keybinds,
         layout::{FloatingPaneLayout, Layout, PluginAlias, Run, RunPluginOrAlias},
         options::Options,
@@ -162,6 +166,11 @@ pub enum ServerInstruction {
     ReloadConfigFile {
         client_id: ClientId,
     },
+    SaveKeybindsAsPreset {
+        client_id: ClientId,
+        new_name: String,
+        response_channel: crossbeam::channel::Sender<Result<String, String>>,
+    },
     CopyKeybindPreset {
         client_id: ClientId,
         preset: String,
@@ -172,6 +181,15 @@ pub enum ServerInstruction {
         client_id: ClientId,
         keys_to_rebind: Vec<(InputMode, KeyWithModifier, Vec<Action>)>,
         keys_to_unbind: Vec<(InputMode, KeyWithModifier)>,
+        write_config_to_disk: bool,
+    },
+    ReplaceConfigBlocks {
+        client_id: ClientId,
+        config: String,
+    },
+    ResetKeys {
+        client_id: ClientId,
+        keys: Vec<(InputMode, KeyWithModifier)>,
         write_config_to_disk: bool,
     },
     StartWebServer(ClientId),
@@ -224,6 +242,8 @@ impl From<&ServerInstruction> for ServerContext {
                 ServerContext::FailedToWriteConfigToDisk
             },
             ServerInstruction::RebindKeys { .. } => ServerContext::RebindKeys,
+            ServerInstruction::ReplaceConfigBlocks { .. } => ServerContext::ReplaceConfigBlocks,
+            ServerInstruction::ResetKeys { .. } => ServerContext::ResetKeys,
             ServerInstruction::ReadConfig { .. } => ServerContext::ReadConfig,
             ServerInstruction::RevertConfig { .. } => ServerContext::RevertConfig,
             ServerInstruction::UnsetConfigSetting { .. } => ServerContext::UnsetConfigSetting,
@@ -231,6 +251,7 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::OverwriteConfigFile { .. } => ServerContext::OverwriteConfigFile,
             ServerInstruction::ReloadConfigFile { .. } => ServerContext::ReloadConfigFile,
             ServerInstruction::CopyKeybindPreset { .. } => ServerContext::CopyKeybindPreset,
+            ServerInstruction::SaveKeybindsAsPreset { .. } => ServerContext::SaveKeybindsAsPreset,
             ServerInstruction::StartWebServer(..) => ServerContext::StartWebServer,
             ServerInstruction::ShareCurrentSession(..) => ServerContext::ShareCurrentSession,
             ServerInstruction::StopSharingCurrentSession(..) => {
@@ -294,6 +315,27 @@ impl SessionConfiguration {
             new_saved_config.resolve_keybinds();
         }
     }
+    pub fn save_keybinds_as_preset(
+        &self,
+        client_id: &ClientId,
+        config_file_path: Option<&PathBuf>,
+        new_name: &str,
+    ) -> Result<String, String> {
+        let config = self.get_client_configuration(client_id);
+        let keybinds_dir = config
+            .keybinds_dir()
+            .ok_or_else(|| "There is no keybinds folder to save the preset to".to_owned())?;
+        let file_contents = config_file_path.and_then(|path| std::fs::read_to_string(path).ok());
+        let saved = &self.saved_config;
+        save_keybinds_as_preset(
+            file_contents.as_deref(),
+            &saved.keybinds_layers.user,
+            saved.keybinds_layers.config_default_mode,
+            new_name,
+            &keybinds_dir,
+        )
+        .map(|_| new_name.to_owned())
+    }
     pub fn copy_keybind_preset(
         &self,
         client_id: &ClientId,
@@ -317,8 +359,8 @@ impl SessionConfiguration {
         mut new_saved_config: Config,
     ) -> (Vec<(ClientId, Config)>, Vec<(ClientId, Vec<SettingKey>)>) {
         self.carry_session_keybinds_state(&mut new_saved_config);
-        let only_the_preset_files_changed = self.saved_config.keybinds_layers.user
-            == new_saved_config.keybinds_layers.user;
+        let only_the_preset_files_changed =
+            self.saved_config.keybinds_layers.user == new_saved_config.keybinds_layers.user;
         let old_saved_config = std::mem::replace(&mut self.saved_config, new_saved_config.clone());
         let changed_in_file: HashSet<SettingKey> =
             config_settings::differing_settings(&old_saved_config, &new_saved_config)
@@ -341,7 +383,11 @@ impl SessionConfiguration {
                 if !changed_in_file.contains(&key)
                     || (key == SettingKey::Keybinds && only_the_preset_files_changed)
                 {
-                    config_settings::copy_setting(&mut rebased_config, &current_runtime_config, key);
+                    config_settings::copy_setting(
+                        &mut rebased_config,
+                        &current_runtime_config,
+                        key,
+                    );
                 } else if config_settings::settings_differ(
                     &current_runtime_config,
                     &new_saved_config,
@@ -372,9 +418,13 @@ impl SessionConfiguration {
     ) -> ConfigSnapshot {
         let current = self.get_client_configuration(client_id);
         let saved = &self.saved_config;
-        let set_in_file = config_file_path
-            .map(|path| config_settings::settings_set_in_file_at(path))
+        let file_contents = config_file_path.and_then(|path| std::fs::read_to_string(path).ok());
+        let set_in_file = file_contents
+            .as_deref()
+            .map(config_settings::settings_set_in_file)
             .unwrap_or_default();
+        let keybinds_vec = current.keybinds.to_keybinds_vec();
+        let base_mode = current.options.default_mode.unwrap_or_default();
         let settings = config_settings::setting_states(saved, &current, &set_in_file);
         let pending_restart_settings = settings
             .iter()
@@ -393,6 +443,18 @@ impl SessionConfiguration {
             load_plugins: config_settings::load_plugin_lines(&current),
             env_vars: config_settings::env_lines(&current),
             context_menu_items: config_settings::context_menu_lines(&current),
+            blocks: config_blocks::config_blocks(&current, true, Some((&keybinds_vec, base_mode))),
+            saved_blocks: config_blocks::config_blocks(saved, false, None),
+            default_blocks: config_blocks::config_blocks(
+                config_settings::default_config(),
+                false,
+                None,
+            ),
+            keybindings: config_blocks::keybinding_entries(
+                saved,
+                &current,
+                file_contents.as_deref(),
+            ),
             keybinds: current.keybinds_selection_snapshot(),
         }
     }
@@ -455,8 +517,7 @@ impl SessionConfiguration {
         let mut command_line_keybinds = Options::default();
         command_line_keybinds.keybinds_preset = client_config.options.keybinds_preset.clone();
         command_line_keybinds.keybinds_primary = client_config.options.keybinds_primary.clone();
-        command_line_keybinds.keybinds_secondary =
-            client_config.options.keybinds_secondary.clone();
+        command_line_keybinds.keybinds_secondary = client_config.options.keybinds_secondary.clone();
         command_line_keybinds.keybinds_unlock = client_config.options.keybinds_unlock.clone();
         self.command_line_keybinds
             .insert(client_id, command_line_keybinds);
@@ -590,6 +651,47 @@ impl SessionConfiguration {
     }
 }
 
+impl SessionConfiguration {
+    pub fn replace_config_blocks(
+        &mut self,
+        client_id: &ClientId,
+        stringified_blocks: &str,
+    ) -> (Option<Config>, bool) {
+        let current = self.get_client_configuration(client_id);
+        let mut replaced = current.clone();
+        if let Err(e) = config_blocks::replace_config_blocks(&mut replaced, stringified_blocks) {
+            log::error!("Failed to replace config blocks: {}", e);
+            return (None, false);
+        }
+        match self.replace_runtime_config_if_changed(client_id, current, replaced) {
+            Some(new_config) => (Some(new_config), true),
+            None => (None, false),
+        }
+    }
+    pub fn reset_keys(
+        &mut self,
+        client_id: &ClientId,
+        keys: Vec<(InputMode, KeyWithModifier)>,
+    ) -> (Option<Config>, bool) {
+        let current = self.get_client_configuration(client_id);
+        let mut reset = current.clone();
+        for (mode, key) in keys {
+            if let Some(mode_changes) = reset.keybinds_layers.user.changes.modes.get_mut(&mode) {
+                mode_changes.bind.remove(&key);
+                mode_changes.unbind.remove(&key);
+                if mode_changes.is_empty() {
+                    reset.keybinds_layers.user.changes.modes.remove(&mode);
+                }
+            }
+        }
+        reset.resolve_keybinds();
+        match self.replace_runtime_config_if_changed(client_id, current, reset) {
+            Some(new_config) => (Some(new_config), true),
+            None => (None, false),
+        }
+    }
+}
+
 fn chooses_keybind_preset_or_leaders(stringified_config: &str) -> bool {
     stringified_config
         .parse::<kdl::KdlDocument>()
@@ -659,9 +761,13 @@ pub(crate) struct SessionMetaData {
     background_jobs_thread: Option<thread::JoinHandle<()>>,
     config_file_path: Option<PathBuf>,
     config_file: ConfigFileState,
+    applied_env: HashMap<String, String>,
 }
 
 impl SessionMetaData {
+    fn sync_process_env(&mut self, env: &HashMap<String, String>) {
+        sync_env_vars(&mut self.applied_env, env);
+    }
     pub fn get_client_keybinds_and_mode(
         &self,
         client_id: &ClientId,
@@ -743,6 +849,7 @@ impl SessionMetaData {
         let mut converted_keybinds: Vec<(Arc<Keybinds>, SharedKeybinds)> = vec![];
         for (client_id, new_config) in config_changes {
             self.follow_keybinds_dir(&new_config);
+            self.sync_process_env(new_config.env.inner());
             if new_plugin_config.is_none() {
                 new_plugin_config = Some(new_config.plugins.clone());
             }
@@ -1160,6 +1267,48 @@ impl SessionState {
     }
 }
 
+fn sync_env_vars(applied: &mut HashMap<String, String>, wanted: &HashMap<String, String>) {
+    if wanted == applied {
+        return;
+    }
+    for name in applied.keys() {
+        if !wanted.contains_key(name) {
+            std::env::remove_var(name);
+        }
+    }
+    for (name, value) in wanted {
+        if applied.get(name) != Some(value) {
+            std::env::set_var(name, value);
+        }
+    }
+    *applied = wanted.clone();
+}
+
+#[cfg(test)]
+mod env_sync_tests {
+    use super::*;
+
+    #[test]
+    fn config_env_changes_reach_the_server_environment() {
+        let name = "ZELLIJ_SESSION_8_ENV_SYNC_TEST";
+        let other = "ZELLIJ_SESSION_8_ENV_SYNC_OTHER";
+        let mut applied = HashMap::new();
+        let mut wanted = HashMap::new();
+        wanted.insert(name.to_owned(), "first".to_owned());
+        wanted.insert(other.to_owned(), "kept".to_owned());
+        sync_env_vars(&mut applied, &wanted);
+        assert_eq!(std::env::var(name).unwrap(), "first");
+        wanted.insert(name.to_owned(), "second".to_owned());
+        sync_env_vars(&mut applied, &wanted);
+        assert_eq!(std::env::var(name).unwrap(), "second");
+        wanted.remove(name);
+        sync_env_vars(&mut applied, &wanted);
+        assert!(std::env::var(name).is_err());
+        assert_eq!(std::env::var(other).unwrap(), "kept");
+        std::env::remove_var(other);
+    }
+}
+
 #[cfg(test)]
 mod session_state_tests {
     use super::*;
@@ -1334,13 +1483,17 @@ mod session_state_tests {
         session_configuration
     }
 
-    fn current_value(session_configuration: &SessionConfiguration, key: SettingKey) -> Option<String> {
+    fn current_value(
+        session_configuration: &SessionConfiguration,
+        key: SettingKey,
+    ) -> Option<String> {
         config_settings::setting_value(&session_configuration.get_client_configuration(&1), key)
     }
 
     #[test]
     fn reading_config_reports_saved_and_current_values_and_what_the_file_sets() {
-        let file_contents = "mouse_mode false\nui {\n    pane_frames {\n        rounded_corners true\n    }\n}\n";
+        let file_contents =
+            "mouse_mode false\nui {\n    pane_frames {\n        rounded_corners true\n    }\n}\n";
         let config_dir = tempfile::tempdir().unwrap();
         let config_file_path = config_dir.path().join("config.kdl");
         std::fs::write(&config_file_path, file_contents).unwrap();
@@ -1363,7 +1516,10 @@ mod session_state_tests {
         assert!(rounded_corners.set_in_file);
         assert!(!rounded_corners.is_unsaved());
         assert!(!snapshot.setting(SettingKey::Keybinds).unwrap().is_unsaved());
-        assert_eq!(snapshot.pending_restart_settings, vec![SettingKey::MouseMode]);
+        assert_eq!(
+            snapshot.pending_restart_settings,
+            vec![SettingKey::MouseMode]
+        );
         assert_eq!(snapshot.unsaved_count(), 2);
         assert_eq!(
             snapshot.config_file_path,
@@ -1371,8 +1527,19 @@ mod session_state_tests {
         );
         assert_eq!(
             snapshot.backup_file_path,
-            Some(config_dir.path().join("config.kdl.bak").display().to_string())
+            Some(
+                config_dir
+                    .path()
+                    .join("config.kdl.bak")
+                    .display()
+                    .to_string()
+            )
         );
+        assert!(snapshot
+            .blocks
+            .plugin_aliases
+            .iter()
+            .any(|alias| alias.name == "configuration"));
         assert!(snapshot
             .plugin_aliases
             .iter()
@@ -1416,7 +1583,10 @@ mod session_state_tests {
         assert!(reverted.is_some());
         let snapshot = session_configuration.config_snapshot(&1, None);
         assert_eq!(snapshot.unsaved_count(), 0);
-        assert_eq!(current_value(&session_configuration, SettingKey::Theme), None);
+        assert_eq!(
+            current_value(&session_configuration, SettingKey::Theme),
+            None
+        );
         assert_eq!(
             session_configuration.get_client_keybinds(&1),
             session_configuration.saved_config.keybinds.as_ref()
@@ -1471,10 +1641,8 @@ mod session_state_tests {
     #[test]
     fn the_file_wins_when_it_changes_a_setting_with_an_unsaved_change_and_the_change_is_reported() {
         let mut session_configuration = session_configuration_with_one_client("mouse_mode false");
-        session_configuration.set_client_runtime_configuration(
-            2,
-            session_configuration.saved_config.clone(),
-        );
+        session_configuration
+            .set_client_runtime_configuration(2, session_configuration.saved_config.clone());
         session_configuration.reconfigure_runtime_config(&1, "mouse_mode true".to_owned());
         session_configuration.reconfigure_runtime_config(&1, "simplified_ui true".to_owned());
         session_configuration.reconfigure_runtime_config(&2, "pane_frames false".to_owned());
@@ -1672,9 +1840,17 @@ mod session_state_tests {
         session_configuration.revert_runtime_config(&1, Some(SettingKey::Keybinds));
 
         let config = session_configuration.get_client_configuration(&1);
-        assert_eq!(config.options.keybinds_preset.as_deref(), Some("unlock-first"));
+        assert_eq!(
+            config.options.keybinds_preset.as_deref(),
+            Some("unlock-first")
+        );
         assert!(locked_mode_action(&session_configuration, "Alt n").is_some());
-        assert_eq!(session_configuration.config_snapshot(&1, None).unsaved_count(), 0);
+        assert_eq!(
+            session_configuration
+                .config_snapshot(&1, None)
+                .unsaved_count(),
+            0
+        );
     }
 
     #[test]
@@ -1764,7 +1940,8 @@ mod session_state_tests {
             false,
         );
         let (file_contents, saved_config) = written_config(outcome);
-        let expected = "// mine\nmouse_mode true // off\n\ntheme \"nord\"\nkeybinds preset=\"unlock-first\"\n";
+        let expected =
+            "// mine\nmouse_mode true // off\n\ntheme \"nord\"\nkeybinds preset=\"unlock-first\"\n";
         assert_eq!(file_contents.as_deref(), Some(expected));
         assert_eq!(std::fs::read_to_string(&path).unwrap(), expected);
         assert_eq!(saved_config.options.mouse_mode, Some(true));
@@ -1807,6 +1984,74 @@ mod session_state_tests {
     }
 
     #[test]
+    fn a_reconfigure_that_writes_to_disk_saves_env_aliases_and_themes() {
+        let (_config_dir, path) = config_file_with(FILE_WITH_COMMENTS);
+        let mut session_configuration = session_configuration_with_one_client(FILE_WITH_COMMENTS);
+        let before = session_configuration.get_client_configuration(&1);
+        let (after, _) = session_configuration.reconfigure_runtime_config(
+            &1,
+            "env { EDITOR \"vim\"; }\nplugins { mine location=\"zellij:strider\"; }".to_owned(),
+        );
+        let outcome = session_configuration.save_change_to_file(
+            &path,
+            Some(FILE_WITH_COMMENTS),
+            &before,
+            &after.unwrap(),
+            true,
+        );
+        let (file_contents, saved_config) = written_config(outcome);
+        assert_eq!(
+            file_contents.as_deref(),
+            Some("// mine\nmouse_mode false // off\n\ntheme \"nord\"\nplugins {\n    mine location=\"zellij:strider\"\n}\nenv {\n    EDITOR \"vim\"\n}\n")
+        );
+        assert_eq!(
+            saved_config.env.inner().get("EDITOR"),
+            Some(&"vim".to_owned())
+        );
+        assert!(saved_config.plugins.aliases.contains_key("mine"));
+    }
+
+    #[test]
+    fn replacing_blocks_and_resetting_keys_change_only_the_runtime_config() {
+        use zellij_utils::data::BareKey;
+        let mut session_configuration =
+            session_configuration_with_one_client("env { A \"1\"; B \"2\"; }");
+        let (changed, did_change) =
+            session_configuration.replace_config_blocks(&1, "env {\n    B \"3\"\n}");
+        assert!(did_change);
+        let env = changed.unwrap().env;
+        assert_eq!(env.inner().get("A"), None);
+        assert_eq!(env.inner().get("B"), Some(&"3".to_owned()));
+        let snapshot = session_configuration.config_snapshot(&1, None);
+        assert!(snapshot.setting(SettingKey::Env).unwrap().is_unsaved());
+        assert_eq!(snapshot.blocks.env.len(), 1);
+        assert_eq!(snapshot.saved_blocks.env.len(), 2);
+
+        let alt_n = KeyWithModifier::new(BareKey::Char('n')).with_alt_modifier();
+        session_configuration.rebind_keys(&1, vec![], vec![(InputMode::Normal, alt_n.clone())]);
+        let unbound = session_configuration.get_client_configuration(&1);
+        assert!(unbound
+            .keybinds
+            .get_actions_for_key_in_mode(&InputMode::Normal, &alt_n)
+            .is_none());
+        let (_, did_change) =
+            session_configuration.reset_keys(&1, vec![(InputMode::Normal, alt_n.clone())]);
+        assert!(did_change);
+        let reset = session_configuration.get_client_configuration(&1);
+        assert!(reset
+            .keybinds
+            .get_actions_for_key_in_mode(&InputMode::Normal, &alt_n)
+            .is_some());
+        assert!(reset
+            .keybinds_layers
+            .user
+            .changes
+            .modes
+            .get(&InputMode::Normal)
+            .is_none());
+    }
+
+    #[test]
     fn rebinding_keys_and_writing_to_disk_adds_only_those_keys() {
         use zellij_utils::data::BareKey;
         let file = "keybinds {\n    // locked keys\n    locked {\n        bind \"Alt n\" { NewTab; }\n    }\n}\n";
@@ -1829,8 +2074,13 @@ mod session_state_tests {
             )],
         );
         assert!(changed);
-        let outcome =
-            session_configuration.save_change_to_file(&path, Some(file), &before, &after.unwrap(), true);
+        let outcome = session_configuration.save_change_to_file(
+            &path,
+            Some(file),
+            &before,
+            &after.unwrap(),
+            true,
+        );
         let (file_contents, _) = written_config(outcome);
         assert_eq!(
             file_contents.as_deref(),
@@ -2408,8 +2658,10 @@ pub fn start_server_impl(
                     .session_configuration
                     .get_client_configuration(&client_id);
                 if client_configuration.has_command_line_keybinds() {
-                    session_data
-                        .propagate_configuration_changes(vec![(client_id, client_configuration)], false);
+                    session_data.propagate_configuration_changes(
+                        vec![(client_id, client_configuration)],
+                        false,
+                    );
                 }
                 let default_mode = default_input_mode;
                 // ModeUpdate broadcast is handled by the screen thread via
@@ -2959,6 +3211,25 @@ pub fn start_server_impl(
             ServerInstruction::ReloadConfigFile { client_id: _ } => {
                 reload_config_file(&session_data);
             },
+            ServerInstruction::SaveKeybindsAsPreset {
+                client_id,
+                new_name,
+                response_channel,
+            } => {
+                let result = session_data
+                    .read()
+                    .unwrap()
+                    .as_ref()
+                    .map(|session_data| {
+                        session_data.session_configuration.save_keybinds_as_preset(
+                            &client_id,
+                            session_data.config_file_path.as_ref(),
+                            &new_name,
+                        )
+                    })
+                    .unwrap_or_else(|| Err("No active session".to_owned()));
+                let _ = response_channel.send(result);
+            },
             ServerInstruction::CopyKeybindPreset {
                 client_id,
                 preset,
@@ -2991,6 +3262,46 @@ pub fn start_server_impl(
                     .unwrap()
                     .session_configuration
                     .rebind_keys(&client_id, keys_to_rebind, keys_to_unbind);
+                apply_runtime_change(
+                    config_before,
+                    new_config,
+                    write_config_to_disk,
+                    runtime_config_changed,
+                    &session_data,
+                    client_id,
+                );
+            },
+            ServerInstruction::ReplaceConfigBlocks { client_id, config } => {
+                let config_before = client_configuration(&session_data, client_id);
+                let (new_config, runtime_config_changed) = session_data
+                    .write()
+                    .unwrap()
+                    .as_mut()
+                    .unwrap()
+                    .session_configuration
+                    .replace_config_blocks(&client_id, &config);
+                apply_runtime_change(
+                    config_before,
+                    new_config,
+                    false,
+                    runtime_config_changed,
+                    &session_data,
+                    client_id,
+                );
+            },
+            ServerInstruction::ResetKeys {
+                client_id,
+                keys,
+                write_config_to_disk,
+            } => {
+                let config_before = client_configuration(&session_data, client_id);
+                let (new_config, runtime_config_changed) = session_data
+                    .write()
+                    .unwrap()
+                    .as_mut()
+                    .unwrap()
+                    .session_configuration
+                    .reset_keys(&client_id, keys);
                 apply_runtime_change(
                     config_before,
                     new_config,
@@ -3563,6 +3874,7 @@ fn init_session(
         web_sharing: WebSharing::Disabled,
         key_passthrough_clients: HashMap::new(),
         popup_clients: HashSet::new(),
+        applied_env: config.env.inner().clone(),
         config_file: ConfigFileState {
             contents_when_read: cli_assets
                 .config_file_path
@@ -3677,15 +3989,19 @@ fn report_changes_in_keybinds_dir(
     std::thread::spawn(move || {
         let rt = crate::global_async_runtime::get_tokio_runtime();
         rt.block_on(async move {
-            watch_keybinds_dir_changes(keybinds_dir, watcher_stop, move |presets, preset_errors| {
-                let to_plugin = to_plugin.clone();
-                async move {
-                    let _ = to_plugin.send(PluginInstruction::KeybindPresetListUpdate(
-                        presets,
-                        preset_errors,
-                    ));
-                }
-            })
+            watch_keybinds_dir_changes(
+                keybinds_dir,
+                watcher_stop,
+                move |presets, preset_errors| {
+                    let to_plugin = to_plugin.clone();
+                    async move {
+                        let _ = to_plugin.send(PluginInstruction::KeybindPresetListUpdate(
+                            presets,
+                            preset_errors,
+                        ));
+                    }
+                },
+            )
             .await;
         });
     });
@@ -3845,7 +4161,8 @@ fn write_config_change(
         match session_data.config_file_path.as_ref() {
             Some(config_file_path) => {
                 let session_configuration = &session_data.session_configuration;
-                let base = base.unwrap_or_else(|| session_configuration.saved_configuration().clone());
+                let base =
+                    base.unwrap_or_else(|| session_configuration.saved_configuration().clone());
                 session_configuration.save_change_to_file(
                     config_file_path,
                     session_data.config_file.contents_when_read.as_deref(),

@@ -967,6 +967,7 @@ pub enum Event {
     Key(KeyWithModifier),
     /// A mouse event happened while the user is focused on this plugin's pane
     Mouse(Mouse),
+    MouseWithModifiers(Mouse, BTreeSet<KeyModifier>),
     /// A timer expired set by the `set_timeout` method exported by `zellij-tile`.
     Timer(f64),
     /// Text was copied to the clipboard anywhere in the app
@@ -4385,6 +4386,14 @@ pub enum PluginCommand {
         preset: String,
         new_name: String,
     },
+    ReplaceConfigBlocks(String),
+    SaveKeybindsAsPreset {
+        new_name: String,
+    },
+    ResetKeys {
+        keys: Vec<(InputMode, KeyWithModifier)>,
+        write_config_to_disk: bool,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -4393,6 +4402,7 @@ pub enum SettingSection {
     PaneFrames,
     WebClient,
     Keybinds,
+    Blocks,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -4519,6 +4529,11 @@ setting_keys! {
     WebClientMacOptionIsMeta => (WebClient, "mac_option_is_meta", true, Flag),
     WebClientBaseUrl => (WebClient, "base_url", true, Text),
     Keybinds => (Keybinds, "keybinds", false, Text),
+    PluginAliases => (Blocks, "plugins", false, Text),
+    LoadPlugins => (Blocks, "load_plugins", true, Text),
+    Env => (Blocks, "env", true, Text),
+    Themes => (Blocks, "themes", false, Text),
+    ContextMenu => (Blocks, "context_menu", false, Text),
 }
 
 impl SettingKey {
@@ -4528,7 +4543,9 @@ impl SettingKey {
     }
     pub fn id(&self) -> String {
         match self.section() {
-            SettingSection::TopLevel | SettingSection::Keybinds => self.kdl_name().to_owned(),
+            SettingSection::TopLevel | SettingSection::Keybinds | SettingSection::Blocks => {
+                self.kdl_name().to_owned()
+            },
             SettingSection::PaneFrames => format!("ui.pane_frames.{}", self.kdl_name()),
             SettingSection::WebClient => format!("web_client.{}", self.kdl_name()),
         }
@@ -4538,10 +4555,16 @@ impl SettingKey {
     }
     pub fn parent_nodes(&self) -> &'static [&'static str] {
         match self.section() {
-            SettingSection::TopLevel | SettingSection::Keybinds => &[],
+            SettingSection::TopLevel | SettingSection::Keybinds | SettingSection::Blocks => &[],
             SettingSection::PaneFrames => &["ui", "pane_frames"],
             SettingSection::WebClient => &["web_client"],
         }
+    }
+    pub fn is_block(&self) -> bool {
+        matches!(
+            self.section(),
+            SettingSection::Keybinds | SettingSection::Blocks
+        )
     }
     pub fn kdl_value(&self, value: &str) -> Option<kdl::KdlValue> {
         match self.value_shape() {
@@ -4592,6 +4615,118 @@ impl ConfigSettingState {
     }
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct PluginEntry {
+    pub location: String,
+    pub cwd: Option<String>,
+    pub configuration: Vec<(String, String)>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PluginAliasEntry {
+    pub name: String,
+    pub plugin: PluginEntry,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EnvVarEntry {
+    pub name: String,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MenuItemEntry {
+    pub label: Option<String>,
+    pub actions: Vec<String>,
+    pub shortcut: Option<String>,
+}
+
+impl MenuItemEntry {
+    pub fn separator() -> Self {
+        MenuItemEntry::default()
+    }
+    pub fn is_separator(&self) -> bool {
+        self.label.is_none()
+    }
+    pub fn same_item(&self, other: &MenuItemEntry) -> bool {
+        self.label == other.label && self.actions == other.actions
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MenuSectionEntries {
+    pub section: String,
+    pub entries: Vec<MenuItemEntry>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ThemeSource {
+    #[default]
+    BuiltIn,
+    ConfigFile,
+    ThemeFolder,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ThemeEntry {
+    pub name: String,
+    pub source: ThemeSource,
+    pub colours: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConfigBlocks {
+    pub plugin_aliases: Vec<PluginAliasEntry>,
+    pub load_plugins: Vec<PluginEntry>,
+    pub env: Vec<EnvVarEntry>,
+    pub context_menu: Vec<MenuSectionEntries>,
+    pub themes: Vec<ThemeEntry>,
+}
+
+impl ConfigBlocks {
+    pub fn menu_section(&self, section: &str) -> Vec<MenuItemEntry> {
+        self.context_menu
+            .iter()
+            .find(|entries| entries.section == section)
+            .map(|entries| entries.entries.clone())
+            .unwrap_or_default()
+    }
+    pub fn theme(&self, name: &str) -> Option<&ThemeEntry> {
+        self.themes.iter().find(|theme| theme.name == name)
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum KeybindingSource {
+    #[default]
+    Preset,
+    User,
+    Shared(String),
+    Layout,
+}
+
+impl KeybindingSource {
+    pub fn label(&self) -> String {
+        match self {
+            KeybindingSource::Preset => "preset".to_owned(),
+            KeybindingSource::User => "user file".to_owned(),
+            KeybindingSource::Shared(block) => format!("user file, {}", block),
+            KeybindingSource::Layout => "layout".to_owned(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KeybindingEntry {
+    pub mode: InputMode,
+    pub key: KeyWithModifier,
+    pub actions: Vec<String>,
+    pub source: KeybindingSource,
+    pub unbound: bool,
+    pub preset_actions: Option<Vec<String>>,
+    pub unsaved: bool,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ConfigSnapshot {
     pub settings: Vec<ConfigSettingState>,
@@ -4603,6 +4738,10 @@ pub struct ConfigSnapshot {
     pub load_plugins: Vec<String>,
     pub env_vars: Vec<String>,
     pub context_menu_items: Vec<String>,
+    pub blocks: ConfigBlocks,
+    pub saved_blocks: ConfigBlocks,
+    pub default_blocks: ConfigBlocks,
+    pub keybindings: Vec<KeybindingEntry>,
     pub keybinds: KeybindsSelectionSnapshot,
 }
 

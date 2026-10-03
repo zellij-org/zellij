@@ -1,7 +1,13 @@
+mod action_picker;
+mod blocks_screen;
+mod keybindings_screen;
 mod keys_screen;
+mod list_editor;
+mod page;
 mod settings;
 mod settings_screen;
 mod theme_preview;
+mod themes_screen;
 mod ui_components;
 
 use zellij_tile::prelude::*;
@@ -167,6 +173,7 @@ impl ZellijPlugin for State {
         }
     }
     fn render(&mut self, rows: usize, cols: usize) {
+        page::clear_overlays();
         match &mut self.screen {
             Screen::SetupWizard(keys_screen) => {
                 if self.notification.is_some() {

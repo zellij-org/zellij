@@ -524,6 +524,12 @@ pub struct CustomMessagePayload {
 pub struct MouseEventPayload {
     #[prost(enumeration="MouseEventName", tag="1")]
     pub mouse_event_name: i32,
+    #[prost(bool, tag="4")]
+    pub shift: bool,
+    #[prost(bool, tag="5")]
+    pub ctrl: bool,
+    #[prost(bool, tag="6")]
+    pub alt: bool,
     #[prost(oneof="mouse_event_payload::MouseEventPayload", tags="2, 3")]
     pub mouse_event_payload: ::core::option::Option<mouse_event_payload::MouseEventPayload>,
 }

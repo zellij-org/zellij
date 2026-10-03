@@ -909,13 +909,13 @@ impl Action {
                         node_children.nodes_mut().push(cwd_node);
                     }
                     if run_command_action.hold_on_start {
-                        let mut hos_node = KdlNode::new("hold_on_start");
+                        let mut hos_node = KdlNode::new("start_suspended");
                         hos_node.push(KdlValue::Bool(true));
                         node_children.nodes_mut().push(hos_node);
                     }
                     if !run_command_action.hold_on_close {
-                        let mut hoc_node = KdlNode::new("hold_on_close");
-                        hoc_node.push(KdlValue::Bool(false));
+                        let mut hoc_node = KdlNode::new("close_on_exit");
+                        hoc_node.push(KdlValue::Bool(true));
                         node_children.nodes_mut().push(hoc_node);
                     }
                 }
@@ -970,13 +970,13 @@ impl Action {
                         node_children.nodes_mut().push(cwd_node);
                     }
                     if run_command_action.hold_on_start {
-                        let mut hos_node = KdlNode::new("hold_on_start");
+                        let mut hos_node = KdlNode::new("start_suspended");
                         hos_node.push(KdlValue::Bool(true));
                         node_children.nodes_mut().push(hos_node);
                     }
                     if !run_command_action.hold_on_close {
-                        let mut hoc_node = KdlNode::new("hold_on_close");
-                        hoc_node.push(KdlValue::Bool(false));
+                        let mut hoc_node = KdlNode::new("close_on_exit");
+                        hoc_node.push(KdlValue::Bool(true));
                         node_children.nodes_mut().push(hoc_node);
                     }
                 }
@@ -1064,13 +1064,13 @@ impl Action {
                         node_children.nodes_mut().push(cwd_node);
                     }
                     if run_command_action.hold_on_start {
-                        let mut hos_node = KdlNode::new("hold_on_start");
+                        let mut hos_node = KdlNode::new("start_suspended");
                         hos_node.push(KdlValue::Bool(true));
                         node_children.nodes_mut().push(hos_node);
                     }
                     if !run_command_action.hold_on_close {
-                        let mut hoc_node = KdlNode::new("hold_on_close");
-                        hoc_node.push(KdlValue::Bool(false));
+                        let mut hoc_node = KdlNode::new("close_on_exit");
+                        hoc_node.push(KdlValue::Bool(true));
                         node_children.nodes_mut().push(hoc_node);
                     }
                 }
@@ -1111,13 +1111,13 @@ impl Action {
                         node_children.nodes_mut().push(cwd_node);
                     }
                     if run_command_action.hold_on_start {
-                        let mut hos_node = KdlNode::new("hold_on_start");
+                        let mut hos_node = KdlNode::new("start_suspended");
                         hos_node.push(KdlValue::Bool(true));
                         node_children.nodes_mut().push(hos_node);
                     }
                     if !run_command_action.hold_on_close {
-                        let mut hoc_node = KdlNode::new("hold_on_close");
-                        hoc_node.push(KdlValue::Bool(false));
+                        let mut hoc_node = KdlNode::new("close_on_exit");
+                        hoc_node.push(KdlValue::Bool(true));
                         node_children.nodes_mut().push(hoc_node);
                     }
                     if let Some(name) = name {
@@ -2985,9 +2985,8 @@ impl Options {
             .map(|(string, _entry)| PathBuf::from(string));
         let theme_dir = kdl_property_first_arg_as_string_or_error!(kdl_options, "theme_dir")
             .map(|(string, _entry)| PathBuf::from(string));
-        let keybinds_dir =
-            kdl_property_first_arg_as_string_or_error!(kdl_options, "keybinds_dir")
-                .map(|(string, _entry)| PathBuf::from(string));
+        let keybinds_dir = kdl_property_first_arg_as_string_or_error!(kdl_options, "keybinds_dir")
+            .map(|(string, _entry)| PathBuf::from(string));
         let mouse_mode =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "mouse_mode").map(|(v, _)| v);
         let scroll_buffer_size =
@@ -3587,9 +3586,7 @@ impl Options {
     fn keybinds_dir_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!(
             "{}\n{}\n{}",
-            " ",
-            "// The folder in which Zellij will look for keybinding presets",
-            "// ",
+            " ", "// The folder in which Zellij will look for keybinding presets", "// ",
         );
 
         let create_node = |node_value: &str| -> KdlNode {
@@ -5522,9 +5519,7 @@ impl KeybindChanges {
             node.insert("clear-defaults", true);
             let mut children = serializer.serialize_mode_keybinds(&mode_changes.bind);
             if !mode_changes.unbind.is_empty() {
-                children
-                    .nodes_mut()
-                    .push(unbind_node(&mode_changes.unbind));
+                children.nodes_mut().push(unbind_node(&mode_changes.unbind));
             }
             node.set_children(children);
             document.nodes_mut().push(node);
@@ -5579,9 +5574,7 @@ impl KeybindChanges {
             }
         }
         if !unbound_everywhere.is_empty() {
-            document
-                .nodes_mut()
-                .push(unbind_node(&unbound_everywhere));
+            document.nodes_mut().push(unbind_node(&unbound_everywhere));
         }
         document
     }
@@ -6004,7 +5997,7 @@ impl ContextMenuConfig {
         }
         Ok(context_menu)
     }
-    fn entry_from_kdl(
+    pub fn entry_from_kdl(
         entry_node: &KdlNode,
         config_options: &Options,
     ) -> Result<ContextMenuEntry, ConfigError> {
@@ -6058,35 +6051,9 @@ impl ContextMenuConfig {
             let mut section_node = KdlNode::new(section_name);
             let mut section_children = KdlDocument::new();
             for entry in entries {
-                match entry {
-                    ContextMenuEntry::Separator => {
-                        section_children.nodes_mut().push(KdlNode::new("separator"));
-                    },
-                    ContextMenuEntry::Item { label, actions } => {
-                        let mut item_node = KdlNode::new("item");
-                        item_node.push(label.clone());
-                        let mut action_nodes = KdlDocument::new();
-                        let mut actions_have_children = false;
-                        for action in actions {
-                            if let Some(kdl_action) = action.to_kdl() {
-                                if kdl_action.children().is_some() {
-                                    actions_have_children = true;
-                                }
-                                action_nodes.nodes_mut().push(kdl_action);
-                            }
-                        }
-                        if !actions_have_children {
-                            for action in action_nodes.nodes_mut() {
-                                action.set_leading("");
-                                action.set_trailing("; ");
-                            }
-                            action_nodes.set_leading(" ");
-                            action_nodes.set_trailing("");
-                        }
-                        item_node.set_children(action_nodes);
-                        section_children.nodes_mut().push(item_node);
-                    },
-                }
+                section_children
+                    .nodes_mut()
+                    .push(context_menu_entry_to_kdl(entry));
             }
             section_node.set_children(section_children);
             sections.nodes_mut().push(section_node);
@@ -6094,6 +6061,39 @@ impl ContextMenuConfig {
         context_menu_node.set_children(sections);
         Some(context_menu_node)
     }
+}
+
+pub fn context_menu_entry_to_kdl(entry: &ContextMenuEntry) -> KdlNode {
+    match entry {
+        ContextMenuEntry::Separator => KdlNode::new("separator"),
+        ContextMenuEntry::Item { label, actions } => {
+            let action_nodes: Vec<KdlNode> = actions
+                .iter()
+                .filter_map(|action| action.to_kdl())
+                .collect();
+            context_menu_item_to_kdl(label, action_nodes)
+        },
+    }
+}
+
+pub fn context_menu_item_to_kdl(label: &str, action_nodes: Vec<KdlNode>) -> KdlNode {
+    let mut item_node = KdlNode::new("item");
+    item_node.push(label.to_owned());
+    let mut actions = KdlDocument::new();
+    let actions_have_children = action_nodes.iter().any(|node| node.children().is_some());
+    for action in action_nodes {
+        actions.nodes_mut().push(action);
+    }
+    if !actions_have_children {
+        for action in actions.nodes_mut() {
+            action.set_leading("");
+            action.set_trailing("; ");
+        }
+        actions.set_leading(" ");
+        actions.set_trailing("");
+    }
+    item_node.set_children(actions);
+    item_node
 }
 
 impl PluginAliases {
@@ -6169,10 +6169,7 @@ impl PluginAliases {
     }
 }
 
-pub fn load_plugins_to_kdl(
-    background_plugins: &HashSet<RunPluginOrAlias>,
-    add_comments: bool,
-) -> KdlNode {
+pub fn load_plugins_to_kdl(background_plugins: &[RunPluginOrAlias], add_comments: bool) -> KdlNode {
     let mut load_plugins = KdlNode::new("load_plugins");
     let mut load_plugins_children = KdlDocument::new();
     for run_plugin_or_alias in background_plugins.iter() {
@@ -6235,10 +6232,10 @@ pub fn load_plugins_to_kdl(
     load_plugins
 }
 
-fn load_plugins_from_kdl(
+pub fn load_plugins_from_kdl(
     kdl_load_plugins: &KdlNode,
-) -> Result<HashSet<RunPluginOrAlias>, ConfigError> {
-    let mut load_plugins: HashSet<RunPluginOrAlias> = HashSet::new();
+) -> Result<Vec<RunPluginOrAlias>, ConfigError> {
+    let mut load_plugins: Vec<RunPluginOrAlias> = Vec::new();
     if let Some(kdl_load_plugins) = kdl_children_nodes!(kdl_load_plugins) {
         for plugin_block in kdl_load_plugins {
             let url_node = plugin_block.name();
@@ -6260,7 +6257,9 @@ fn load_plugins_from_kdl(
                 )
             })?
             .with_initial_cwd(cwd);
-            load_plugins.insert(run_plugin_or_alias);
+            if !load_plugins.contains(&run_plugin_or_alias) {
+                load_plugins.push(run_plugin_or_alias);
+            }
         }
     }
     Ok(load_plugins)
@@ -6348,7 +6347,10 @@ impl UiConfig {
     pub fn from_kdl(kdl_ui_config: &KdlNode) -> Result<UiConfig, ConfigError> {
         UiConfig::from_kdl_over(kdl_ui_config, &UiConfig::default())
     }
-    pub fn from_kdl_over(kdl_ui_config: &KdlNode, base: &UiConfig) -> Result<UiConfig, ConfigError> {
+    pub fn from_kdl_over(
+        kdl_ui_config: &KdlNode,
+        base: &UiConfig,
+    ) -> Result<UiConfig, ConfigError> {
         let mut ui_config = base.clone();
         if let Some(pane_frames) = kdl_get_child!(kdl_ui_config, "pane_frames") {
             let base_frames = base.pane_frames;
@@ -6358,12 +6360,20 @@ impl UiConfig {
             let hide_session_name =
                 kdl_get_child_entry_bool_value!(pane_frames, "hide_session_name")
                     .unwrap_or(base_frames.hide_session_name);
-            let border_style = base_frames
-                .border_style
-                .merge(&border_style_override_from_kdl_children(pane_frames, "border")?);
-            let floating_border_style = base_frames.floating_border_style.merge(
-                &border_style_override_from_kdl_children(pane_frames, "floating_border")?,
-            );
+            let border_style =
+                base_frames
+                    .border_style
+                    .merge(&border_style_override_from_kdl_children(
+                        pane_frames,
+                        "border",
+                    )?);
+            let floating_border_style =
+                base_frames
+                    .floating_border_style
+                    .merge(&border_style_override_from_kdl_children(
+                        pane_frames,
+                        "floating_border",
+                    )?);
             let frame_config = FrameConfig {
                 rounded_corners,
                 hide_session_name,
@@ -6656,67 +6666,7 @@ impl Themes {
                 continue;
             }
             has_themes = true;
-            let mut current_theme_node = KdlNode::new(theme_name.clone());
-            let mut current_theme_node_children = KdlDocument::new();
-
-            current_theme_node_children
-                .nodes_mut()
-                .push(theme.palette.text_unselected.to_kdl("text_unselected"));
-            current_theme_node_children
-                .nodes_mut()
-                .push(theme.palette.text_selected.to_kdl("text_selected"));
-            current_theme_node_children
-                .nodes_mut()
-                .push(theme.palette.ribbon_selected.to_kdl("ribbon_selected"));
-            current_theme_node_children
-                .nodes_mut()
-                .push(theme.palette.ribbon_unselected.to_kdl("ribbon_unselected"));
-            current_theme_node_children
-                .nodes_mut()
-                .push(theme.palette.table_title.to_kdl("table_title"));
-            current_theme_node_children.nodes_mut().push(
-                theme
-                    .palette
-                    .table_cell_selected
-                    .to_kdl("table_cell_selected"),
-            );
-            current_theme_node_children.nodes_mut().push(
-                theme
-                    .palette
-                    .table_cell_unselected
-                    .to_kdl("table_cell_unselected"),
-            );
-            current_theme_node_children
-                .nodes_mut()
-                .push(theme.palette.list_selected.to_kdl("list_selected"));
-            current_theme_node_children
-                .nodes_mut()
-                .push(theme.palette.list_unselected.to_kdl("list_unselected"));
-            current_theme_node_children
-                .nodes_mut()
-                .push(theme.palette.frame_selected.to_kdl("frame_selected"));
-
-            match theme.palette.frame_unselected {
-                None => {},
-                Some(frame_unselected_style) => {
-                    current_theme_node_children
-                        .nodes_mut()
-                        .push(frame_unselected_style.to_kdl("frame_unselected"));
-                },
-            }
-            current_theme_node_children
-                .nodes_mut()
-                .push(theme.palette.frame_highlight.to_kdl("frame_highlight"));
-            current_theme_node_children
-                .nodes_mut()
-                .push(theme.palette.exit_code_success.to_kdl("exit_code_success"));
-            current_theme_node_children
-                .nodes_mut()
-                .push(theme.palette.exit_code_error.to_kdl("exit_code_error"));
-            current_theme_node_children
-                .nodes_mut()
-                .push(theme.palette.multiplayer_user_colors.to_kdl());
-            current_theme_node.set_children(current_theme_node_children);
+            let current_theme_node = theme_to_kdl(&theme_name, &theme.palette);
             themes.nodes_mut().push(current_theme_node);
         }
         if has_themes {
@@ -6726,6 +6676,40 @@ impl Themes {
             None
         }
     }
+}
+
+pub fn theme_to_kdl(theme_name: &str, palette: &Styling) -> KdlNode {
+    let mut theme_node = KdlNode::new(theme_name.to_owned());
+    let mut children = KdlDocument::new();
+    let styles = [
+        ("text_unselected", Some(&palette.text_unselected)),
+        ("text_selected", Some(&palette.text_selected)),
+        ("ribbon_selected", Some(&palette.ribbon_selected)),
+        ("ribbon_unselected", Some(&palette.ribbon_unselected)),
+        ("table_title", Some(&palette.table_title)),
+        ("table_cell_selected", Some(&palette.table_cell_selected)),
+        (
+            "table_cell_unselected",
+            Some(&palette.table_cell_unselected),
+        ),
+        ("list_selected", Some(&palette.list_selected)),
+        ("list_unselected", Some(&palette.list_unselected)),
+        ("frame_selected", Some(&palette.frame_selected)),
+        ("frame_unselected", palette.frame_unselected.as_ref()),
+        ("frame_highlight", Some(&palette.frame_highlight)),
+        ("exit_code_success", Some(&palette.exit_code_success)),
+        ("exit_code_error", Some(&palette.exit_code_error)),
+    ];
+    for (name, style) in styles {
+        if let Some(style) = style {
+            children.nodes_mut().push(style.to_kdl(name));
+        }
+    }
+    children
+        .nodes_mut()
+        .push(palette.multiplayer_user_colors.to_kdl());
+    theme_node.set_children(children);
+    theme_node
 }
 
 impl PermissionCache {

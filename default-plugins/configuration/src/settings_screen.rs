@@ -2,12 +2,17 @@ use std::collections::BTreeMap;
 
 use zellij_tile::prelude::*;
 
+use crate::blocks_screen::BlockPage;
+use crate::keybindings_screen::KeybindingsScreen;
 use crate::keys_screen::KeysScreen;
+use crate::page::{note_group, outside_overlays, run_effects, Page, PageResponse};
 use crate::settings::{
-    check_text, describe, kdl_for, option_value, section, settings_in, sort_for_display,
-    Category, Scope, SettingInfo, SettingKind, CATEGORIES, MISSING_SUFFIX, UNSET_CHOICE,
+    check_text, describe, is_row_kind, kdl_for, mode_choice_label, option_value, section, settings_in,
+    sort_for_display, Category, Scope, SettingInfo, SettingKind, CATEGORIES, MISSING_SUFFIX,
+    INPUT_MODES, UNSET_CHOICE,
 };
 use crate::theme_preview::{PreviewAction, ThemePreview, PREVIEWED_THEME_SETTINGS};
+use crate::themes_screen::ThemesScreen;
 use crate::ui_components::{print_link, take_close_request};
 
 pub const MIN_COLS: usize = 50;
@@ -16,6 +21,7 @@ const HEADER_ROWS: usize = 4;
 const MAX_LABEL_WIDTH: usize = 26;
 const MAX_VALUE_WIDTH: usize = 28;
 const MIN_DROPDOWN_WIDTH: usize = 10;
+const TEXT_FIELD_WIDTH: usize = 24;
 const MENU_PADDING: usize = 4;
 const SECTION_PADDING: usize = 1;
 const FOOTER_ROWS: usize = 4;
@@ -24,6 +30,12 @@ const KEYS_SCREEN_ROWS: usize = 18;
 const CLOSE_NOTICE_SECONDS: f64 = 1.5;
 const DEFAULT_THEME: &str = "default";
 const FILE_PREFIX: &str = "File: ";
+const KEYBINDINGS_MIN_ROWS: usize = 8;
+const PAGE_CATEGORIES: [Category; 3] = [
+    Category::Themes,
+    Category::ContextMenu,
+    Category::PluginsAndEnvironment,
+];
 const THEME_NOTE: &str = "  A dark or light terminal theme is set and is used instead of this one";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,6 +55,7 @@ enum DialogPurpose {
 enum Row {
     Setting(SettingKey),
     Heading(String),
+    LabelledHeading(String, String),
     Line(String),
 }
 
@@ -65,12 +78,21 @@ pub struct SettingsScreen {
     theme_preview: ThemePreview,
     theme_note_shown: bool,
     keys_screen: KeysScreen,
+    keybindings_screen: KeybindingsScreen,
+    bindings_focused: bool,
+    bindings_area_y: Option<usize>,
+    keys_summary_y: Option<usize>,
+    bindings_hint_y: Option<usize>,
+    blocks_screen: BlockPage,
+    menu_screen: BlockPage,
+    themes_screen: ThemesScreen,
     latest_mode_info: Option<ModeInfo>,
     follow_focus: bool,
     last_size: (usize, usize),
     editing: Option<SettingKey>,
     file_link_area: Option<Rect>,
     file_link_hovered: bool,
+    last_mouse: Option<(isize, usize)>,
 }
 
 impl Default for SettingsScreen {
@@ -97,12 +119,21 @@ impl Default for SettingsScreen {
             theme_preview: ThemePreview::default(),
             theme_note_shown: false,
             keys_screen: KeysScreen::new(false),
+            keybindings_screen: KeybindingsScreen::default(),
+            bindings_focused: false,
+            bindings_area_y: None,
+            keys_summary_y: None,
+            bindings_hint_y: None,
+            blocks_screen: BlockPage::plugins_and_environment(),
+            menu_screen: BlockPage::right_click_menu(),
+            themes_screen: ThemesScreen::default(),
             latest_mode_info: None,
             follow_focus: false,
             last_size: (0, 0),
             editing: None,
             file_link_area: None,
             file_link_hovered: false,
+            last_mouse: None,
         }
     }
 }
@@ -175,6 +206,99 @@ impl SettingsScreen {
     fn showing_keys_screen(&self) -> bool {
         !self.search_active && self.category().is_keys_screen()
     }
+    fn showing_page(&self) -> bool {
+        !self.search_active && self.category().is_page()
+    }
+    fn page_for(&mut self, category: Category) -> Option<&mut dyn Page> {
+        match category {
+            Category::Themes => Some(&mut self.themes_screen),
+            Category::ContextMenu => Some(&mut self.menu_screen),
+            Category::PluginsAndEnvironment => Some(&mut self.blocks_screen),
+            _ => None,
+        }
+    }
+    fn page_ref(&self, category: Category) -> Option<&dyn Page> {
+        match category {
+            Category::Themes => Some(&self.themes_screen),
+            Category::ContextMenu => Some(&self.menu_screen),
+            Category::PluginsAndEnvironment => Some(&self.blocks_screen),
+            _ => None,
+        }
+    }
+    fn page(&mut self) -> Option<&mut dyn Page> {
+        if self.search_active {
+            return None;
+        }
+        let category = self.category();
+        self.page_for(category)
+    }
+    fn page_captures_keys(&self) -> bool {
+        if !self.showing_page() || self.focus != Focus::Content {
+            return false;
+        }
+        self.page_ref(self.category())
+            .map(|page| page.captures_keys())
+            .unwrap_or(false)
+    }
+    fn showing_bindings(&self) -> bool {
+        self.showing_keys_screen() && self.bindings_focused && self.focus == Focus::Content
+    }
+    fn page_hints(&self) -> Vec<(&'static str, &'static str)> {
+        if self.showing_bindings() {
+            return self.keybindings_screen.hints();
+        }
+        self.page_ref(self.category())
+            .map(|page| page.hints())
+            .unwrap_or_default()
+    }
+    fn collect_page_results(&mut self) {
+        let Some(page) = self.page() else {
+            return;
+        };
+        let effects = page.take_effects();
+        let notice = page.take_notice();
+        if notice.is_some() {
+            self.notice = notice;
+        }
+        if run_effects(effects) {
+            self.refresh();
+        }
+    }
+    fn collect_keybindings_results(&mut self) {
+        let effects = self.keybindings_screen.take_effects();
+        if let Some(notice) = self.keybindings_screen.take_notice() {
+            self.notice = Some(notice);
+        }
+        if run_effects(effects) {
+            self.refresh();
+        }
+    }
+    fn enter_bindings(&mut self) {
+        self.bindings_focused = true;
+        self.keybindings_screen.focus_top();
+        self.set_focus(Focus::Content);
+    }
+    fn enter_preset(&mut self, from_below: bool) {
+        self.bindings_focused = false;
+        if from_below {
+            self.keys_screen.focus_last();
+        }
+        self.set_focus(Focus::Content);
+    }
+    fn leave_pages(&mut self) {
+        let mut effects = vec![];
+        self.keybindings_screen.leave();
+        effects.extend(self.keybindings_screen.take_effects());
+        for category in PAGE_CATEGORIES {
+            if let Some(page) = self.page_for(category) {
+                page.leave();
+                effects.extend(page.take_effects());
+            }
+        }
+        if run_effects(effects) {
+            self.refresh();
+        }
+    }
     fn setting(&self, key: SettingKey) -> Option<&ConfigSettingState> {
         self.snapshot.setting(key)
     }
@@ -184,6 +308,10 @@ impl SettingsScreen {
     pub fn refresh(&mut self) {
         self.snapshot = read_config();
         self.keys_screen.set_snapshot(&self.snapshot);
+        self.keybindings_screen.set_snapshot(&self.snapshot);
+        self.blocks_screen.set_snapshot(&self.snapshot);
+        self.menu_screen.set_snapshot(&self.snapshot);
+        self.themes_screen.set_snapshot(&self.snapshot);
         if self.theme_note_needed() != self.theme_note_shown
             && !self.elements.has_open_overlay()
             && self.editing.is_none()
@@ -226,7 +354,7 @@ impl SettingsScreen {
             let query = self.search.get_text().trim().to_lowercase();
             let mut keys = SettingKey::all()
                 .into_iter()
-                .filter(|key| describe(*key).kind != SettingKind::Keybindings)
+                .filter(|key| is_row_kind(describe(*key).kind))
                 .filter(|key| {
                     if query.is_empty() {
                         return true;
@@ -243,40 +371,24 @@ impl SettingsScreen {
             settings_in(self.category())
         }
     }
-    fn read_only_rows(&self) -> Vec<Row> {
-        let mut rows = vec![];
-        let sections: [(&str, &Vec<String>); 4] = [
-            ("Plugin aliases", &self.snapshot.plugin_aliases),
-            (
-                "Plugins loaded at start (load_plugins)",
-                &self.snapshot.load_plugins,
-            ),
-            ("Environment variables (env)", &self.snapshot.env_vars),
-            (
-                "Right-click menu items (context_menu, only you)",
-                &self.snapshot.context_menu_items,
-            ),
-        ];
-        for (title, lines) in sections {
-            rows.push(Row::Heading(title.to_owned()));
-            if lines.is_empty() {
-                rows.push(Row::Line("  (none)".to_owned()));
-            }
-            for line in lines {
-                rows.push(Row::Line(format!("  {}", line)));
-            }
-        }
-        rows
-    }
     fn rebuild_rows(&mut self) {
         self.editing = None;
         self.theme_note_shown = self.theme_note_needed();
         let focused = self.elements.focused_key().copied();
         self.elements = FocusGroup::new().wrap(false);
         self.rows.clear();
-        if !self.search_active && self.category() == Category::PluginsEnvironmentAndMenu {
-            self.rows = self.read_only_rows();
-        } else {
+        if !self.search_active && self.category() == Category::FoldersAndFiles {
+            let folder = self
+                .snapshot
+                .config_file_path
+                .as_ref()
+                .and_then(|path| std::path::Path::new(path).parent())
+                .map(|folder| folder.display().to_string())
+                .unwrap_or_else(|| "none".to_owned());
+            self.rows
+                .push(Row::LabelledHeading("Config folder".to_owned(), folder));
+        }
+        if !self.showing_page() {
             let mut current_heading: Option<String> = None;
             for key in self.displayed_settings() {
                 let Some(element) = self.build_element(key) else {
@@ -343,7 +455,16 @@ impl SettingsScreen {
             })
             .max()
             .unwrap_or(0);
-        (widest + 4).clamp(MIN_DROPDOWN_WIDTH, MAX_VALUE_WIDTH)
+        let has_text = self.rows.iter().any(|row| match row {
+            Row::Setting(key) => matches!(describe(*key).kind, SettingKind::Text(_)),
+            _ => false,
+        });
+        let base = (widest + 4).clamp(MIN_DROPDOWN_WIDTH, MAX_VALUE_WIDTH);
+        if has_text {
+            base.max(TEXT_FIELD_WIDTH)
+        } else {
+            base
+        }
     }
     fn theme_options(&self, can_be_unset: bool, current: &Option<String>) -> Vec<String> {
         let mut options: Vec<String> = vec![];
@@ -367,6 +488,9 @@ impl SettingsScreen {
     fn choice_options(&self, key: SettingKey, info: &SettingInfo) -> Vec<String> {
         let current = self.current_value(key);
         match info.kind {
+            SettingKind::Choice(choices) if choices == INPUT_MODES => {
+                choices.iter().map(|c| mode_choice_label(c)).collect()
+            },
             SettingKind::Choice(choices) => choices.iter().map(|c| c.to_string()).collect(),
             SettingKind::OptionalChoice(choices) => std::iter::once(UNSET_CHOICE.to_owned())
                 .chain(choices.iter().map(|c| c.to_string()))
@@ -439,7 +563,7 @@ impl SettingsScreen {
                     .label_width(label_width)
                     .into()
             },
-            SettingKind::Keybindings => return None,
+            SettingKind::Keybindings | SettingKind::Block => return None,
         };
         Some(element)
     }
@@ -501,7 +625,7 @@ impl SettingsScreen {
                         }
                     }
                 },
-                SettingKind::Keybindings => {},
+                SettingKind::Keybindings | SettingKind::Block => {},
             }
         }
     }
@@ -626,6 +750,7 @@ impl SettingsScreen {
     }
     pub fn begin_close(&mut self) {
         self.restore_theme_preview();
+        self.leave_pages();
         let unsaved = self.snapshot.unsaved_count();
         if unsaved == 0 {
             close_self();
@@ -692,9 +817,11 @@ impl SettingsScreen {
         if let Some(action) = self.theme_preview.restore() {
             run_preview_action(action);
         }
+        self.leave_pages();
     }
     pub fn hidden(&mut self) {
         self.restore_theme_preview();
+        self.leave_pages();
         if self.elements.has_open_overlay() {
             self.elements.blur();
             if self.focus == Focus::Content {
@@ -715,6 +842,7 @@ impl SettingsScreen {
     pub fn update_mode_info(&mut self, mode_info: ModeInfo) {
         self.keys_screen
             .set_link_color(Some(mode_info.style.colors.text_unselected.emphasis_2));
+        self.keybindings_screen.set_mode_info(&mode_info);
         self.latest_mode_info = Some(mode_info);
         if self.theme_preview.active_key().is_none() {
             self.refresh();
@@ -724,15 +852,35 @@ impl SettingsScreen {
         if self.closing {
             close_self();
         }
-        let keys_screen_changed = self.keys_screen.handle_timer();
-        self.elements.handle_timer() || keys_screen_changed
+        let keys_screen_changed =
+            self.keys_screen.handle_timer() | self.keybindings_screen.handle_timer();
+        let mut pages_changed = false;
+        for category in PAGE_CATEGORIES {
+            if let Some(page) = self.page_for(category) {
+                pages_changed |= page.handle_timer();
+            }
+        }
+        self.elements.handle_timer() || keys_screen_changed || pages_changed
     }
     fn set_focus(&mut self, focus: Focus) {
         self.focus = focus;
         self.menu.set_focused(focus == Focus::Menu);
         self.search.set_focused(focus == Focus::Search);
+        if focus == Focus::Menu {
+            self.bindings_focused = false;
+        }
+        let keys_content = focus == Focus::Content && self.showing_keys_screen();
         self.keys_screen
-            .set_focused(focus == Focus::Content && self.showing_keys_screen());
+            .set_focused(keys_content && !self.bindings_focused);
+        self.keybindings_screen
+            .set_focused(keys_content && self.bindings_focused);
+        let page_focused = focus == Focus::Content && self.showing_page();
+        for category in PAGE_CATEGORIES {
+            let focused = page_focused && self.category() == category;
+            if let Some(page) = self.page_for(category) {
+                page.set_focused(focused);
+            }
+        }
         match focus {
             Focus::Content => {
                 if self.elements.focused_key().is_none() {
@@ -760,6 +908,8 @@ impl SettingsScreen {
     }
     fn select_category(&mut self) {
         self.restore_theme_preview();
+        self.leave_pages();
+        self.bindings_focused = false;
         self.scroll.set_offset(0);
         self.elements.blur();
         self.rebuild_rows();
@@ -806,8 +956,13 @@ impl SettingsScreen {
             return true;
         }
         let embedded_keys_screen = self.showing_keys_screen() && self.focus == Focus::Content;
-        let keys_capture = embedded_keys_screen
-            && (self.keys_screen.is_capturing_keys() || self.keys_screen.dialog_is_open());
+        let keys_capture = (embedded_keys_screen
+            && if self.bindings_focused {
+                self.keybindings_screen.captures_keys()
+            } else {
+                self.keys_screen.is_capturing_keys() || self.keys_screen.dialog_is_open()
+            })
+            || self.page_captures_keys();
         if !keys_capture && self.editing.is_none() {
             self.notice = None;
             if is_ctrl_key(&key, 'a') {
@@ -821,12 +976,27 @@ impl SettingsScreen {
                 return true;
             }
         }
+        if self.showing_keys_screen()
+            && !keys_capture
+            && self.editing.is_none()
+            && self.focus != Focus::Search
+            && is_plain_key(&key, BareKey::Char('/'))
+        {
+            self.bindings_focused = true;
+            self.keybindings_screen.focus_top();
+            self.set_focus(Focus::Content);
+            return true;
+        }
         match self.focus {
             Focus::Menu => self.handle_menu_key(key),
             Focus::Search => self.handle_search_key(key),
             Focus::Content => {
-                if self.showing_keys_screen() {
+                if self.showing_keys_screen() && self.bindings_focused {
+                    self.handle_bindings_key(key)
+                } else if self.showing_keys_screen() {
                     self.handle_keys_screen_key(key, keys_capture)
+                } else if self.showing_page() {
+                    self.handle_page_key(key)
                 } else {
                     self.handle_content_key(key)
                 }
@@ -838,7 +1008,7 @@ impl SettingsScreen {
             || is_plain_key(&key, BareKey::Right)
             || is_plain_key(&key, BareKey::Enter)
         {
-            if self.showing_keys_screen() || !self.rows.is_empty() {
+            if self.showing_keys_screen() || self.showing_page() || !self.rows.is_empty() {
                 self.set_focus(Focus::Content);
             }
             return true;
@@ -893,11 +1063,18 @@ impl SettingsScreen {
         }
     }
     fn handle_keys_screen_key(&mut self, key: KeyWithModifier, keys_capture: bool) -> bool {
-        let moves_focus = is_plain_key(&key, BareKey::Tab) || is_shift_tab(&key);
+        let moves_down = is_plain_key(&key, BareKey::Tab) || is_plain_key(&key, BareKey::Down);
+        let moves_back = is_shift_tab(&key);
         let should_render = self.keys_screen.handle_key(key);
-        if moves_focus && !keys_capture && !should_render {
-            self.set_focus(Focus::Menu);
-            return true;
+        if !keys_capture && !should_render {
+            if moves_down {
+                self.enter_bindings();
+                return true;
+            }
+            if moves_back {
+                self.set_focus(Focus::Menu);
+                return true;
+            }
         }
         if take_close_request() {
             self.begin_close();
@@ -905,6 +1082,51 @@ impl SettingsScreen {
             self.refresh();
         }
         should_render
+    }
+    fn handle_bindings_key(&mut self, key: KeyWithModifier) -> bool {
+        let response = self.keybindings_screen.handle_key(&key);
+        self.collect_keybindings_results();
+        match response {
+            PageResponse::Handled => true,
+            PageResponse::LeaveToMenu => {
+                self.set_focus(Focus::Menu);
+                true
+            },
+            PageResponse::LeaveUp => {
+                self.enter_preset(true);
+                true
+            },
+            PageResponse::Close => {
+                self.begin_close();
+                true
+            },
+            PageResponse::NotHandled => false,
+        }
+    }
+    fn handle_page_key(&mut self, key: KeyWithModifier) -> bool {
+        let response = match self.page() {
+            Some(page) => page.handle_key(&key),
+            None => return false,
+        };
+        self.collect_page_results();
+        match response {
+            PageResponse::Handled => true,
+            PageResponse::LeaveToMenu | PageResponse::LeaveUp => {
+                self.set_focus(Focus::Menu);
+                true
+            },
+            PageResponse::Close => {
+                self.begin_close();
+                true
+            },
+            PageResponse::NotHandled => {
+                if is_plain_key(&key, BareKey::Char('/')) {
+                    self.open_search();
+                    return true;
+                }
+                false
+            },
+        }
     }
     fn focused_dropdown_open(&self) -> bool {
         self.elements
@@ -1133,10 +1355,76 @@ impl SettingsScreen {
         if self.closing {
             return false;
         }
+        match mouse {
+            Mouse::Hover(line, column) | Mouse::LeftClick(line, column) => {
+                self.last_mouse = Some((line, column));
+            },
+            _ => {},
+        }
+        let mouse = match mouse {
+            Mouse::ScrollUp(_) | Mouse::ScrollDown(_) => {
+                if let Some((line, column)) = self.last_mouse {
+                    self.menu.handle_mouse(Mouse::Hover(line, column));
+                }
+                mouse
+            },
+            _ => mouse,
+        };
         if self.dialog.is_open() {
             let response = self.dialog.handle_mouse(mouse);
             self.dialog_response(response);
             return true;
+        }
+        match mouse {
+            Mouse::Hover(line, column) => {
+                self.file_link_hovered =
+                    self.file_link_at(line, column) && !crate::page::under_overlay(line, column);
+            },
+            Mouse::LeftClick(line, column) if self.file_link_at(line, column) => {
+                self.stop_editing(false);
+                self.open_config_file();
+                return true;
+            },
+            _ => {},
+        }
+        if self.showing_page() {
+            let page_busy = self.page_captures_keys();
+            match mouse {
+                Mouse::LeftClick(line, column)
+                    if !page_busy && self.menu.hit_test(line, column) => {},
+                Mouse::Hover(..) => {
+                    self.menu.handle_mouse(mouse);
+                    if let Some(page) = self.page() {
+                        page.handle_mouse(mouse);
+                    }
+                    self.collect_page_results();
+                    return true;
+                },
+                Mouse::ScrollUp(_) | Mouse::ScrollDown(_)
+                    if !page_busy && self.menu.handle_mouse(mouse).is_handled() =>
+                {
+                    return true;
+                },
+                _ => {
+                    let response = match self.page() {
+                        Some(page) => page.handle_mouse(mouse),
+                        None => PageResponse::NotHandled,
+                    };
+                    self.collect_page_results();
+                    if response == PageResponse::NotHandled {
+                        return false;
+                    }
+                    if matches!(mouse, Mouse::LeftClick(..)) && self.focus != Focus::Content {
+                        self.set_focus(Focus::Content);
+                    }
+                    return true;
+                },
+            }
+        }
+        if self.showing_keys_screen() {
+            if let Some(handled) = self.handle_keys_category_mouse(mouse) {
+                return handled;
+            }
         }
         if self.showing_keys_screen() {
             let on_menu = match mouse {
@@ -1150,7 +1438,8 @@ impl SettingsScreen {
                 let handled = self.keys_screen.handle_mouse(mouse);
                 if handled {
                     if let Mouse::LeftClick(..) = mouse {
-                        if self.focus != Focus::Content {
+                        if self.focus != Focus::Content || self.bindings_focused {
+                            self.bindings_focused = false;
                             self.set_focus(Focus::Content);
                         }
                     }
@@ -1160,17 +1449,6 @@ impl SettingsScreen {
                     return true;
                 }
             }
-        }
-        match mouse {
-            Mouse::Hover(line, column) => {
-                self.file_link_hovered = self.file_link_at(line, column);
-            },
-            Mouse::LeftClick(line, column) if self.file_link_at(line, column) => {
-                self.stop_editing(false);
-                self.open_config_file();
-                return true;
-            },
-            _ => {},
         }
         match mouse {
             Mouse::Hover(..) => {
@@ -1195,7 +1473,12 @@ impl SettingsScreen {
                 if self.menu.handle_mouse(mouse).is_handled() {
                     return true;
                 }
-                return self.scroll.handle_mouse(mouse).is_handled();
+                let delta = match mouse {
+                    Mouse::ScrollUp(lines) => -(lines.max(1) as isize),
+                    Mouse::ScrollDown(lines) => lines.max(1) as isize,
+                    _ => 0,
+                };
+                return self.scroll.scroll_by(delta);
             },
             Mouse::LeftClick(line, column) => {
                 if !self.elements.has_open_overlay() {
@@ -1266,7 +1549,7 @@ impl SettingsScreen {
                     self.row_offsets.insert(*key, (total, 1));
                     total += 1;
                 },
-                Row::Heading(_) => {
+                Row::Heading(_) | Row::LabelledHeading(..) => {
                     if index > 0 {
                         total += SECTION_PADDING;
                     }
@@ -1317,7 +1600,7 @@ impl SettingsScreen {
         let y0 = rows.saturating_sub(ui_height) / 2;
         self.render_header(x0, y0, ui_width);
         let body_y = y0 + HEADER_ROWS;
-        let footer_rows = if self.showing_keys_screen() {
+        let footer_rows = if self.showing_keys_screen() || self.showing_page() {
             1
         } else {
             FOOTER_ROWS
@@ -1348,20 +1631,149 @@ impl SettingsScreen {
         let content_width = ui_width.saturating_sub(menu_width + 2);
         self.elements.clear_areas();
         let showing_keys_screen = self.showing_keys_screen();
+        let showing_page = self.showing_page();
         if showing_keys_screen {
             self.scroll.clear_area();
             let keys_rows = body_height.saturating_sub(1);
-            self.keys_screen
-                .render(content_x, body_y, content_width, keys_rows);
+            self.render_keys_category(content_x, body_y, content_width, keys_rows);
+        } else if showing_page {
+            self.scroll.clear_area();
+            let page_rows = body_height.saturating_sub(1);
+            if let Some(page) = self.page() {
+                page.render(content_x, body_y, content_width, page_rows);
+            }
         } else {
             self.render_content(content_x, body_y, content_width, body_height);
         }
         self.render_footer(x0, y0 + ui_height, ui_width);
         self.elements.render_overlays(rows, cols);
+        note_group(&self.elements);
         if showing_keys_screen {
             self.keys_screen.render_overlays(rows, cols);
+            self.keybindings_screen.render_overlays(rows, cols);
+        }
+        if showing_page {
+            if let Some(page) = self.page() {
+                page.render_overlays(rows, cols);
+            }
         }
         self.dialog.render_centered(rows, cols);
+    }
+    fn render_keys_category(&mut self, x: usize, y: usize, width: usize, height: usize) {
+        self.bindings_area_y = None;
+        self.keys_summary_y = None;
+        self.bindings_hint_y = None;
+        let natural = self.keys_screen.content_height(width);
+        if natural + 2 + KEYBINDINGS_MIN_ROWS <= height {
+            self.keys_screen.render(x, y, width, natural);
+            let bindings_y = y + natural + 1;
+            self.keybindings_screen
+                .render(x, bindings_y, width, height - natural - 1);
+            self.bindings_area_y = Some(bindings_y);
+        } else if !self.bindings_focused {
+            self.keybindings_screen.clear_areas();
+            self.keys_screen.render(x, y, width, height);
+            if natural + 2 <= height {
+                let hint_y = y + natural + 1;
+                print_text_with_coordinates(
+                    Text::new(truncate(
+                        "Keybindings ↓ (Tab past the last field, or click here)",
+                        width,
+                    ))
+                    .color_range(2, ..11),
+                    x,
+                    hint_y,
+                    None,
+                    None,
+                );
+                self.bindings_hint_y = Some(hint_y);
+            }
+        } else {
+            self.keys_screen.render_preset_row(x, y, width);
+            let summary = format!(
+                "{} · ↑ at the top or click above to change",
+                self.keys_screen.summary()
+            );
+            print_text_with_coordinates(
+                Text::new(truncate(&summary, width)).dim_all(),
+                x,
+                y + 1,
+                None,
+                None,
+            );
+            self.keys_summary_y = Some(y);
+            self.keybindings_screen
+                .render(x, y + 3, width, height.saturating_sub(3));
+            self.bindings_area_y = Some(y + 3);
+        }
+    }
+    fn handle_keys_category_mouse(&mut self, mouse: Mouse) -> Option<bool> {
+        if self.keys_screen.dialog_is_open()
+            || (self.keys_screen.has_open_overlay() && !matches!(mouse, Mouse::Hover(..)))
+        {
+            return None;
+        }
+        let on_menu = match mouse {
+            Mouse::LeftClick(line, column) => self.menu.hit_test(line, column),
+            _ => false,
+        };
+        let bindings_busy = self.bindings_focused && self.keybindings_screen.is_busy();
+        if on_menu && !bindings_busy {
+            return None;
+        }
+        if let Mouse::Hover(..) = mouse {
+            self.menu.handle_mouse(outside_overlays(mouse));
+            self.keys_screen.handle_mouse(mouse);
+            self.keybindings_screen.handle_mouse(mouse);
+            self.collect_keybindings_results();
+            return Some(true);
+        }
+        let line = match mouse {
+            _ if self.keybindings_screen.is_dragging() => None,
+            Mouse::LeftClick(line, _)
+            | Mouse::RightClick(line, _)
+            | Mouse::Hold(line, _)
+            | Mouse::Release(line, _) => Some(line),
+            Mouse::ScrollUp(_) | Mouse::ScrollDown(_) => self.last_mouse.map(|(line, _)| line),
+            _ => None,
+        };
+        let at = |row: Option<usize>| match (row, line) {
+            (Some(row), Some(line)) => line == row as isize,
+            _ => false,
+        };
+        if !bindings_busy && matches!(mouse, Mouse::LeftClick(..)) {
+            if at(self.keys_summary_y) || at(self.keys_summary_y.map(|row| row + 1)) {
+                self.enter_preset(false);
+                self.keys_screen.focus_preset();
+                return Some(true);
+            }
+            if at(self.bindings_hint_y) {
+                self.enter_bindings();
+                return Some(true);
+            }
+        }
+        let in_bindings = bindings_busy
+            || self.keybindings_screen.is_dragging()
+            || match (line, self.bindings_area_y) {
+                (Some(line), Some(top)) => line >= top as isize,
+                (None, _) => self.bindings_focused,
+                _ => false,
+            };
+        if !in_bindings {
+            return None;
+        }
+        let response = self.keybindings_screen.handle_mouse(mouse);
+        self.collect_keybindings_results();
+        if response == PageResponse::NotHandled {
+            return Some(false);
+        }
+        if matches!(mouse, Mouse::LeftClick(..)) && !self.bindings_focused {
+            self.bindings_focused = true;
+            self.set_focus(Focus::Content);
+        } else if matches!(mouse, Mouse::LeftClick(..)) && self.focus != Focus::Content {
+            self.set_focus(Focus::Content);
+        }
+        Some(true)
     }
     fn render_menu_unsaved_markers(&self, x: usize, y: usize, width: usize, height: usize) {
         let items = self.menu.items();
@@ -1391,9 +1803,7 @@ impl SettingsScreen {
     fn natural_body_height(&self) -> usize {
         let tallest_category = CATEGORIES
             .iter()
-            .filter(|category| {
-                !category.is_keys_screen() && **category != Category::PluginsEnvironmentAndMenu
-            })
+            .filter(|category| category.has_rows())
             .map(|category| {
                 let keys = settings_in(*category);
                 let mut sections: Vec<&str> = keys.iter().map(|key| section(*key)).collect();
@@ -1462,7 +1872,7 @@ impl SettingsScreen {
             .unwrap_or(false)
     }
     fn focused_description(&self) -> Option<String> {
-        if self.focus != Focus::Content || self.showing_keys_screen() {
+        if self.focus != Focus::Content || self.showing_keys_screen() || self.showing_page() {
             return None;
         }
         let key = self.elements.focused_key()?;
@@ -1484,6 +1894,29 @@ impl SettingsScreen {
     fn render_footer(&self, x: usize, bottom: usize, cols: usize) {
         let y = bottom.saturating_sub(1);
         let description_y = bottom.saturating_sub(3);
+        if self.showing_page() || self.showing_bindings() {
+            if let Some(notice) = self.notice.as_ref() {
+                print_text_with_coordinates(
+                    Text::new(truncate(notice, cols)).color_all(3),
+                    x,
+                    y,
+                    None,
+                    None,
+                );
+            } else if self.focus == Focus::Content {
+                let hints = self.page_hints();
+                print_text_with_coordinates(key_hints("Help: ", &hints, cols), x, y, None, None);
+            } else {
+                let hints = [
+                    ("<↓↑>", "category"),
+                    ("<Tab>", "open"),
+                    ("</>", "search"),
+                    ("<Esc>", "close"),
+                ];
+                print_text_with_coordinates(key_hints("Help: ", &hints, cols), x, y, None, None);
+            }
+            return;
+        }
         if self.showing_keys_screen() {
             if let Some(notice) = self.notice.as_ref().or(self.keys_screen.notice()) {
                 print_text_with_coordinates(
@@ -1520,14 +1953,6 @@ impl SettingsScreen {
                 ("<Esc>", "close"),
             ],
             Focus::Search => &[("<↓>", "results"), ("<Esc>", "end search")],
-            Focus::Content
-                if self.showing_keys_screen() && self.keys_screen.is_editing_folder() =>
-            {
-                &[("<Enter>", "apply"), ("<Esc>", "cancel")]
-            },
-            Focus::Content if self.showing_keys_screen() && self.keys_screen.folder_is_focused() => {
-                &[("<Tab/↓↑>", "move"), ("<Enter>", "edit"), ("<Esc>", "close")]
-            },
             Focus::Content if self.showing_keys_screen() => &[
                 ("<Tab/↓↑>", "move"),
                 ("<Space>", "change"),
@@ -1598,6 +2023,20 @@ impl SettingsScreen {
                         );
                     }
                 },
+                Row::LabelledHeading(title, value) => {
+                    if let Some(screen_y) = self.scroll.screen_row(start) {
+                        let line = format!("{}  {}", title, value);
+                        let title_length = title.chars().count().min(content_width);
+                        print_text_with_coordinates(
+                            Text::new(truncate(&line, content_width))
+                                .color_range(2, ..title_length),
+                            x,
+                            screen_y,
+                            None,
+                            None,
+                        );
+                    }
+                },
                 Row::Line(line) => {
                     if let Some(screen_y) = self.scroll.screen_row(start) {
                         print_text_with_coordinates(
@@ -1630,9 +2069,24 @@ impl SettingsScreen {
         let (marker, unsaved, is_default) = self.marker_for(key);
         let label_width = self.label_width();
         let marker_width = marker.chars().count();
-        let value_width = value_width
-            .min(width.saturating_sub(label_width + marker_width + 2))
-            .max(MIN_DROPDOWN_WIDTH);
+        let full_width_text = self.elements.text_input(&key).is_some()
+            && !self.search_active
+            && self.category() == Category::FoldersAndFiles;
+        let widest_marker = self
+            .rows
+            .iter()
+            .filter_map(|row| match row {
+                Row::Setting(key) => Some(self.marker_for(*key).0.chars().count()),
+                _ => None,
+            })
+            .max()
+            .unwrap_or(0);
+        let value_width = if full_width_text {
+            width.saturating_sub(label_width + marker_width + 2)
+        } else {
+            value_width.min(width.saturating_sub(label_width + widest_marker + 2))
+        }
+        .max(MIN_DROPDOWN_WIDTH);
         let element_width = label_width + value_width;
         if let Some(element) = self.elements.get_mut(&key) {
             match element {

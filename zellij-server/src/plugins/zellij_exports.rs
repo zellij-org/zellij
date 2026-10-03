@@ -489,6 +489,14 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::SaveConfig => save_config(env),
                     PluginCommand::OverwriteConfigFile => overwrite_config_file(env),
                     PluginCommand::ReloadConfigFile => reload_config_file(env),
+                    PluginCommand::ReplaceConfigBlocks(blocks) => replace_config_blocks(env, blocks),
+                    PluginCommand::ResetKeys {
+                        keys,
+                        write_config_to_disk,
+                    } => reset_keys(env, keys, write_config_to_disk),
+                    PluginCommand::SaveKeybindsAsPreset { new_name } => {
+                        save_keybinds_as_preset(env, new_name)
+                    },
                     PluginCommand::CopyKeybindPreset { preset, new_name } => {
                         copy_keybind_preset(env, preset, new_name)
                     },
@@ -3107,6 +3115,31 @@ fn read_config(env: &PluginEnv) {
         .non_fatal();
 }
 
+fn save_keybinds_as_preset(env: &PluginEnv, new_name: String) {
+    use zellij_utils::plugin_api::plugin_command::copy_keybind_preset_response::Result as CopyResult;
+    let client_id = acting_client(env);
+    let (response_sender, response_receiver) = crossbeam::channel::bounded(1);
+    let result = match env.senders.send_to_server(ServerInstruction::SaveKeybindsAsPreset {
+        client_id,
+        new_name,
+        response_channel: response_sender,
+    }) {
+        Ok(()) => response_receiver
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap_or_else(|e| Err(format!("Failed to save the preset: {:?}", e))),
+        Err(e) => Err(format!("Failed to save the preset: {:?}", e)),
+    };
+    let response = ProtobufCopyKeybindPresetResponse {
+        result: Some(match result {
+            Ok(new_name) => CopyResult::NewName(new_name),
+            Err(error) => CopyResult::Error(error),
+        }),
+    };
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to send save result to plugin {}", env.name()))
+        .non_fatal();
+}
+
 fn copy_keybind_preset(env: &PluginEnv, preset: String, new_name: String) {
     use zellij_utils::plugin_api::plugin_command::copy_keybind_preset_response::Result as CopyResult;
     let client_id = acting_client(env);
@@ -3170,6 +3203,30 @@ fn reload_config_file(env: &PluginEnv) {
     env.senders
         .send_to_server(ServerInstruction::ReloadConfigFile { client_id })
         .with_context(|| "Failed to reload the config file")
+        .non_fatal();
+}
+
+fn replace_config_blocks(env: &PluginEnv, config: String) {
+    let client_id = acting_client(env);
+    env.senders
+        .send_to_server(ServerInstruction::ReplaceConfigBlocks { client_id, config })
+        .with_context(|| "Failed to replace config blocks")
+        .non_fatal();
+}
+
+fn reset_keys(
+    env: &PluginEnv,
+    keys: Vec<(InputMode, KeyWithModifier)>,
+    write_config_to_disk: bool,
+) {
+    let client_id = acting_client(env);
+    env.senders
+        .send_to_server(ServerInstruction::ResetKeys {
+            client_id,
+            keys,
+            write_config_to_disk,
+        })
+        .with_context(|| "Failed to reset keys")
         .non_fatal();
 }
 
@@ -6173,9 +6230,12 @@ fn check_command_permission(
         | PluginCommand::RevertConfig(..)
         | PluginCommand::UnsetConfigSetting(..)
         | PluginCommand::CopyKeybindPreset { .. }
+        | PluginCommand::SaveKeybindsAsPreset { .. }
         | PluginCommand::SaveConfig
         | PluginCommand::OverwriteConfigFile
-        | PluginCommand::ReloadConfigFile => PermissionType::Reconfigure,
+        | PluginCommand::ReloadConfigFile
+        | PluginCommand::ReplaceConfigBlocks(..)
+        | PluginCommand::ResetKeys { .. } => PermissionType::Reconfigure,
         PluginCommand::ChangeHostFolder(..) | PluginCommand::ListWindowsVolumes => {
             PermissionType::FullHdAccess
         },

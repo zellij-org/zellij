@@ -19,7 +19,7 @@ use unicode_width::UnicodeWidthStr;
 use uuid::Uuid;
 use zellij_utils::data::PaneContents;
 use zellij_utils::data::{
-    BorderStyle, BorderStyleOverride, Direction, KeyWithModifier, NewPanePlacement, PaneInfo,
+    BorderStyle, BorderStyleOverride, Direction, KeyModifier, KeyWithModifier, NewPanePlacement, PaneInfo,
     PermissionStatus, PermissionType, PluginPermission, RegexHighlight, ResizeStrategy, Style,
     StyledText, WebSharing,
 };
@@ -462,6 +462,7 @@ pub trait Pane {
         }
     }
     fn start_selection(&mut self, _start: &Position, _client_id: ClientId) {}
+    fn set_mouse_modifiers(&mut self, _modifiers: std::collections::BTreeSet<KeyModifier>) {}
     fn update_selection(&mut self, _position: &Position, _client_id: ClientId) {}
     fn end_selection(&mut self, _end: &Position, _client_id: ClientId) {}
     fn reset_selection(&mut self, _client_id: Option<ClientId>) {}

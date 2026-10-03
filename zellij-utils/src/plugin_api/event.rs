@@ -54,7 +54,7 @@ pub use super::generated_api::api::{
 #[allow(hidden_glob_reexports)]
 use crate::data::{
     ClientId, ClientInfo, ContextMenuContext, ContextMenuEntry, ContextMenuKind, CopyDestination,
-    Event, EventType, FileMetadata, HostTerminalThemeMode, InputMode, KeyWithModifier,
+    Event, EventType, FileMetadata, HostTerminalThemeMode, InputMode, KeyModifier, KeyWithModifier,
     KeybindPresetInfo, KeybindPresetSource, KeybindPresetWithError, KeybindsVec,
     LayoutInfo, LayoutMetadata, ModeInfo, Mouse, NestedSessionEndReason, NestedSessionKeybinds,
     NestedSessionKeybindsError, NestedSessionKeybindsResponse, PaneContents, PaneId, PaneInfo,
@@ -72,6 +72,22 @@ use std::net::IpAddr;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::Duration;
+
+pub fn mouse_modifiers(protobuf_event: &ProtobufEvent) -> std::collections::BTreeSet<KeyModifier> {
+    let mut modifiers = std::collections::BTreeSet::new();
+    if let Some(event::Payload::MouseEventPayload(payload)) = protobuf_event.payload.as_ref() {
+        if payload.shift {
+            modifiers.insert(KeyModifier::Shift);
+        }
+        if payload.ctrl {
+            modifiers.insert(KeyModifier::Ctrl);
+        }
+        if payload.alt {
+            modifiers.insert(KeyModifier::Alt);
+        }
+    }
+    modifiers
+}
 
 /// Converts a keybinding table into the protobuf form used wherever keybindings cross the
 /// plugin boundary.
@@ -950,6 +966,16 @@ impl TryFrom<Event> for ProtobufEvent {
             }),
             Event::Mouse(mouse_event) => {
                 let protobuf_mouse_payload = mouse_event.try_into()?;
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::Mouse as i32,
+                    payload: Some(event::Payload::MouseEventPayload(protobuf_mouse_payload)),
+                })
+            },
+            Event::MouseWithModifiers(mouse_event, modifiers) => {
+                let mut protobuf_mouse_payload: MouseEventPayload = mouse_event.try_into()?;
+                protobuf_mouse_payload.shift = modifiers.contains(&KeyModifier::Shift);
+                protobuf_mouse_payload.ctrl = modifiers.contains(&KeyModifier::Ctrl);
+                protobuf_mouse_payload.alt = modifiers.contains(&KeyModifier::Alt);
                 Ok(ProtobufEvent {
                     name: ProtobufEventType::Mouse as i32,
                     payload: Some(event::Payload::MouseEventPayload(protobuf_mouse_payload)),
@@ -2061,12 +2087,14 @@ impl TryFrom<Mouse> for MouseEventPayload {
                 mouse_event_payload: Some(mouse_event_payload::MouseEventPayload::LineCount(
                     number_of_lines as u32,
                 )),
+                ..Default::default()
             }),
             Mouse::ScrollDown(number_of_lines) => Ok(MouseEventPayload {
                 mouse_event_name: MouseEventName::MouseScrollDown as i32,
                 mouse_event_payload: Some(mouse_event_payload::MouseEventPayload::LineCount(
                     number_of_lines as u32,
                 )),
+                ..Default::default()
             }),
             Mouse::LeftClick(line, column) => Ok(MouseEventPayload {
                 mouse_event_name: MouseEventName::MouseLeftClick as i32,
@@ -2076,6 +2104,7 @@ impl TryFrom<Mouse> for MouseEventPayload {
                         column: column as i64,
                     },
                 )),
+                ..Default::default()
             }),
             Mouse::RightClick(line, column) => Ok(MouseEventPayload {
                 mouse_event_name: MouseEventName::MouseRightClick as i32,
@@ -2085,6 +2114,7 @@ impl TryFrom<Mouse> for MouseEventPayload {
                         column: column as i64,
                     },
                 )),
+                ..Default::default()
             }),
             Mouse::Hold(line, column) => Ok(MouseEventPayload {
                 mouse_event_name: MouseEventName::MouseHold as i32,
@@ -2094,6 +2124,7 @@ impl TryFrom<Mouse> for MouseEventPayload {
                         column: column as i64,
                     },
                 )),
+                ..Default::default()
             }),
             Mouse::Release(line, column) => Ok(MouseEventPayload {
                 mouse_event_name: MouseEventName::MouseRelease as i32,
@@ -2103,6 +2134,7 @@ impl TryFrom<Mouse> for MouseEventPayload {
                         column: column as i64,
                     },
                 )),
+                ..Default::default()
             }),
             Mouse::Hover(line, column) => Ok(MouseEventPayload {
                 mouse_event_name: MouseEventName::MouseHover as i32,
@@ -2112,18 +2144,21 @@ impl TryFrom<Mouse> for MouseEventPayload {
                         column: column as i64,
                     },
                 )),
+                ..Default::default()
             }),
             Mouse::ScrollLeft(cols) => Ok(MouseEventPayload {
                 mouse_event_name: MouseEventName::MouseScrollLeft as i32,
                 mouse_event_payload: Some(mouse_event_payload::MouseEventPayload::LineCount(
                     cols as u32,
                 )),
+                ..Default::default()
             }),
             Mouse::ScrollRight(cols) => Ok(MouseEventPayload {
                 mouse_event_name: MouseEventName::MouseScrollRight as i32,
                 mouse_event_payload: Some(mouse_event_payload::MouseEventPayload::LineCount(
                     cols as u32,
                 )),
+                ..Default::default()
             }),
         }
     }
@@ -2560,7 +2595,7 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::TabUpdate => ProtobufEventType::TabUpdate,
             EventType::PaneUpdate => ProtobufEventType::PaneUpdate,
             EventType::Key => ProtobufEventType::Key,
-            EventType::Mouse => ProtobufEventType::Mouse,
+            EventType::Mouse | EventType::MouseWithModifiers => ProtobufEventType::Mouse,
             EventType::Timer => ProtobufEventType::Timer,
             EventType::CopyToClipboard => ProtobufEventType::CopyToClipboard,
             EventType::SystemClipboardFailure => ProtobufEventType::SystemClipboardFailure,
@@ -4068,3 +4103,16 @@ impl From<ProtobufKeybindPresetWithError> for KeybindPresetWithError {
     }
 }
 
+#[test]
+fn a_mouse_event_with_modifiers_keeps_them_across_the_plugin_boundary() {
+    use prost::Message;
+    let modifiers: std::collections::BTreeSet<KeyModifier> =
+        [KeyModifier::Shift, KeyModifier::Ctrl].into_iter().collect();
+    let event = Event::MouseWithModifiers(crate::data::Mouse::LeftClick(2, 5), modifiers.clone());
+    let protobuf_event: ProtobufEvent = event.try_into().unwrap();
+    let decoded: ProtobufEvent =
+        Message::decode(protobuf_event.encode_to_vec().as_slice()).unwrap();
+    assert_eq!(mouse_modifiers(&decoded), modifiers);
+    let plain: Event = decoded.try_into().unwrap();
+    assert_eq!(plain, Event::Mouse(crate::data::Mouse::LeftClick(2, 5)));
+}

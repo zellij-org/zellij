@@ -218,6 +218,7 @@ fn shared_event_context(
     let slot_id = match event {
         Event::Key(..)
         | Event::Mouse(..)
+        | Event::MouseWithModifiers(..)
         | Event::PastedText(..)
         | Event::Visible(..)
         | Event::PermissionRequestResult(..)
@@ -232,6 +233,7 @@ fn shared_event_context(
 }
 
 pub struct WasmBridge {
+    latest_hovers: Arc<Mutex<HashMap<(PluginId, ClientId), u64>>>,
     connected_clients: Arc<Mutex<Vec<ClientId>>>,
     senders: ThreadSenders,
     plugin_dir: PathBuf,
@@ -339,6 +341,7 @@ impl WasmBridge {
             base_modes: HashMap::new(),
             downloader,
             previous_pane_render_report: None,
+            latest_hovers: Arc::new(Mutex::new(HashMap::new())),
             last_host_terminal_theme_mode: None,
             last_session_save_time: Arc::new(Mutex::new(None)),
             shared_instances: HashMap::new(),
@@ -1074,11 +1077,28 @@ impl WasmBridge {
             for (plugin_id, client_id, running_plugin, subscriptions) in &plugins_to_update {
                 let subs = subscriptions.lock().unwrap().clone();
                 // FIXME: This is very janky... Maybe I should write my own macro for Event -> EventType?
-                if let Ok(event_type) = EventType::from_str(&event.to_string()) {
+                if let Ok(event_type) = EventType::from_str(&event.to_string()).map(|event_type| {
+                    if event_type == EventType::MouseWithModifiers {
+                        EventType::Mouse
+                    } else {
+                        event_type
+                    }
+                }) {
                     if (subs.contains(&event_type)
                         || event_type == EventType::PermissionRequestResult)
                         && Self::message_is_directed_at_plugin(pid, cid, plugin_id, client_id)
                     {
+                        let hover_generation = if is_hover(&event) {
+                            let mut latest_hovers = self.latest_hovers.lock().unwrap();
+                            let generation = latest_hovers
+                                .entry((*plugin_id, *client_id))
+                                .or_insert(0);
+                            *generation += 1;
+                            Some(*generation)
+                        } else {
+                            None
+                        };
+                        let latest_hovers = self.latest_hovers.clone();
                         // Execute directly on pinned thread (no async I/O needed for event processing)
                         plugin_executor.execute_for_plugin(*plugin_id, {
                             let plugin_id = *plugin_id;
@@ -1093,6 +1113,17 @@ impl WasmBridge {
                                   _plugin_cache,
                                   _engine| {
                                 let _s = _s; // guard to allow the task to complete before cleanup/shutdown
+                                if let Some(generation) = hover_generation {
+                                    let superseded = latest_hovers
+                                        .lock()
+                                        .unwrap()
+                                        .get(&(plugin_id, client_id))
+                                        .map(|latest| *latest != generation)
+                                        .unwrap_or(false);
+                                    if superseded {
+                                        return;
+                                    }
+                                }
                                 let mut running_plugin = running_plugin.lock().unwrap();
                                 let mut plugin_render_assets = vec![];
                                 match apply_event_to_plugin(
@@ -3384,4 +3415,12 @@ fn change_host_dir_of_running_plugin(
     drop(std::mem::replace(&mut plugin_env.wasi_ctx, wasi_ctx));
     plugin_env.plugin_cwd = new_host_dir.clone();
     Ok(())
+}
+
+fn is_hover(event: &Event) -> bool {
+    matches!(
+        event,
+        Event::Mouse(zellij_utils::data::Mouse::Hover(..))
+            | Event::MouseWithModifiers(zellij_utils::data::Mouse::Hover(..), _)
+    )
 }

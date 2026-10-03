@@ -733,6 +733,64 @@ pub fn is_usable_keybind_preset_name(name: &str) -> bool {
             .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
 }
 
+fn user_keybinds_node(file_contents: Option<&str>, selection: &KeybindsSelection) -> KdlNode {
+    let from_file = file_contents
+        .and_then(|text| text.parse::<KdlDocument>().ok())
+        .and_then(|document| document.get("keybinds").cloned());
+    let mut node = match from_file {
+        Some(node) => node,
+        None => selection
+            .to_kdl()
+            .unwrap_or_else(|| KdlNode::new("keybinds")),
+    };
+    node.entries_mut().retain(|entry| entry.name().is_none());
+    node.set_leading("");
+    node.set_trailing("\n");
+    node
+}
+
+pub fn save_keybinds_as_preset(
+    file_contents: Option<&str>,
+    selection: &KeybindsSelection,
+    default_mode: Option<InputMode>,
+    new_name: &str,
+    keybinds_dir: &Path,
+) -> Result<PathBuf, String> {
+    if !is_usable_keybind_preset_name(new_name) {
+        return Err(format!(
+            "'{}' cannot be used as a preset name; use letters, digits, '-' and '_'",
+            new_name
+        ));
+    }
+    let target = keybinds_dir.join(format!("{}.kdl", new_name));
+    if target.exists() {
+        return Err(format!("{} already exists", target.display()));
+    }
+    let mut header = format!(
+        "preset {{\n    name {}\n    description {}\n",
+        kdl::KdlValue::String(new_name.to_owned()),
+        kdl::KdlValue::String("Saved from your own keybindings".to_owned())
+    );
+    if let Some(mode) = default_mode {
+        header.push_str(&format!(
+            "    default_mode {}\n",
+            kdl::KdlValue::String(format!("{:?}", mode).to_lowercase())
+        ));
+    }
+    header.push_str("}\n");
+    let text = format!(
+        "{}{}",
+        header,
+        user_keybinds_node(file_contents, selection)
+    );
+    KeybindPreset::from_kdl(&text)?;
+    std::fs::create_dir_all(keybinds_dir)
+        .map_err(|e| format!("Could not create {}: {}", keybinds_dir.display(), e))?;
+    std::fs::write(&target, text)
+        .map_err(|e| format!("Could not write {}: {}", target.display(), e))?;
+    Ok(target)
+}
+
 pub fn copy_keybind_preset_to_folder(
     value: &str,
     new_name: &str,
@@ -821,7 +879,10 @@ impl Config {
             false
         }
     }
-    pub fn resolve_keybinds(&mut self) {
+    pub fn preset_keybinds(&self) -> Keybinds {
+        self.resolved_keybind_preset().keybinds
+    }
+    fn resolved_keybind_preset(&self) -> ResolvedKeybindPreset {
         let command_line = self.command_line_keybinds();
         let preset_name = command_line
             .preset
@@ -854,6 +915,11 @@ impl Config {
                 fallback
             },
         };
+        resolved
+    }
+    pub fn resolve_keybinds(&mut self) {
+        let command_line = self.command_line_keybinds();
+        let resolved = self.resolved_keybind_preset();
         let mut keybinds = resolved.keybinds;
         let preset_given_on_command_line = command_line.preset.is_some();
         for changes in [

@@ -1111,3 +1111,22 @@ fn confirm_dialog_reserves_footer_rows_below_the_buttons() {
     assert!(centered.serialize(0, 0, 30, 20).contains(",c;"));
     assert!(!dialog.serialize(0, 0, 30, 20).contains(",c;"));
 }
+
+#[test]
+fn dragging_the_scroll_bar_scrolls_until_the_button_is_released() {
+    let mut view = ScrollView::new(50);
+    view.layout(0, 2, 20, 10);
+    let gutter_x = 11;
+    assert!(view.handle_mouse(Mouse::LeftClick(2, gutter_x)).is_handled());
+    assert!(view.is_dragging());
+    assert_eq!(view.offset(), 0);
+    view.handle_mouse(Mouse::Hold(11, 0));
+    assert_eq!(view.offset(), 40);
+    view.handle_mouse(Mouse::Hold(6, 3));
+    assert!(view.offset() > 0 && view.offset() < 40);
+    view.handle_mouse(Mouse::Release(6, 3));
+    assert!(!view.is_dragging());
+    let offset = view.offset();
+    assert_eq!(view.handle_mouse(Mouse::Hold(11, 0)), UiResponse::NotHandled);
+    assert_eq!(view.offset(), offset);
+}

@@ -132,6 +132,7 @@ enum MouseAction {
     StartSelection {
         pane_id: PaneId,
         position: Position,
+        modifiers: std::collections::BTreeSet<zellij_utils::data::KeyModifier>,
     },
     UpdateSelection {
         position: Position,
@@ -826,13 +827,18 @@ impl MouseHandler {
                 tab.floating_panes.focus_pane(pane_id, client_id);
                 Ok(MouseEffect::state_changed())
             },
-            MouseAction::StartSelection { pane_id, position } => {
+            MouseAction::StartSelection {
+                pane_id,
+                position,
+                modifiers,
+            } => {
                 let osc133_command_selection = tab.osc133_command_selection;
                 let word_separators = tab.word_separators.clone();
                 let pane = tab
                     .get_pane_with_id_mut(pane_id)
                     .ok_or_else(|| anyhow!("Failed to find pane {pane_id:?}"))?;
                 let relative_position = pane.relative_position(&position);
+                pane.set_mouse_modifiers(modifiers);
 
                 let mut leave_clipboard_message = false;
                 pane.set_selection_options(osc133_command_selection, &word_separators);
@@ -840,7 +846,7 @@ impl MouseHandler {
                 if pane.get_selected_text(client_id).is_some() {
                     leave_clipboard_message = true;
                 }
-                if pane.supports_mouse_selection() {
+                if pane.supports_mouse_selection() || matches!(pane_id, PaneId::Plugin(_)) {
                     tab.selecting_with_mouse_in_pane = Some(pane_id);
                 }
                 if leave_clipboard_message {
@@ -1071,7 +1077,7 @@ impl MouseHandler {
                 let relative_position = pane.relative_position(&position);
                 pane.set_selection_options(osc133_command_selection, &word_separators);
                 pane.start_selection(&relative_position, client_id);
-                if pane.supports_mouse_selection() {
+                if pane.supports_mouse_selection() || matches!(active_pane_id, PaneId::Plugin(_)) {
                     tab.selecting_with_mouse_in_pane = Some(active_pane_id);
                 }
             }
@@ -1519,6 +1525,22 @@ impl MouseHandler {
                     });
                 }
             }
+            if Some(details.pane_id) == ctx.active_pane_id && details.terminal_wants_mouse {
+                return Ok(MouseAction::SendToTerminal {
+                    pane_id: details.pane_id,
+                    event: *event,
+                });
+            }
+            if matches!(details.pane_id, PaneId::Plugin(_))
+                && Some(details.pane_id) == ctx.active_pane_id
+                && !details.terminal_wants_mouse
+            {
+                return Ok(MouseAction::StartSelection {
+                    pane_id: details.pane_id,
+                    position: event.position,
+                    modifiers: click_modifiers(event),
+                });
+            }
             return Ok(MouseAction::NoAction);
         }
 
@@ -1569,6 +1591,7 @@ impl MouseHandler {
                     return Ok(MouseAction::StartSelection {
                         pane_id: details.pane_id,
                         position: event.position,
+                        modifiers: click_modifiers(event),
                     });
                 }
             }
@@ -2336,4 +2359,57 @@ mod tests {
             }
         );
     }
+
+    #[test]
+    fn ctrl_click_goes_to_a_focused_program_that_wants_the_mouse() {
+        let position = Position::new(3, 4);
+        let mut details = clicked(PaneId::Terminal(1));
+        details.terminal_wants_mouse = true;
+        let context = context_with(details);
+        let event = MouseEvent::new_left_press_with_ctrl_event(position);
+        assert_eq!(
+            MouseHandler::determine_mouse_action(&event, &context).unwrap(),
+            MouseAction::SendToTerminal {
+                pane_id: PaneId::Terminal(1),
+                event,
+            }
+        );
+    }
+
+    #[test]
+    fn modified_clicks_on_a_focused_plugin_carry_their_modifiers() {
+        let position = Position::new(3, 4);
+        let mut context = context_with(clicked(PaneId::Plugin(1)));
+        context.active_pane_id = Some(PaneId::Plugin(1));
+        let ctrl_click = MouseEvent::new_left_press_with_ctrl_event(position);
+        let mut shift_click = MouseEvent::new_left_press_event(position);
+        shift_click.shift = true;
+        for (event, modifier) in [
+            (ctrl_click, zellij_utils::data::KeyModifier::Ctrl),
+            (shift_click, zellij_utils::data::KeyModifier::Shift),
+        ] {
+            assert_eq!(
+                MouseHandler::determine_mouse_action(&event, &context).unwrap(),
+                MouseAction::StartSelection {
+                    pane_id: PaneId::Plugin(1),
+                    position,
+                    modifiers: std::iter::once(modifier).collect(),
+                }
+            );
+        }
+    }
+}
+
+fn click_modifiers(
+    event: &MouseEvent,
+) -> std::collections::BTreeSet<zellij_utils::data::KeyModifier> {
+    use zellij_utils::data::KeyModifier;
+    let mut modifiers = std::collections::BTreeSet::new();
+    if event.shift {
+        modifiers.insert(KeyModifier::Shift);
+    }
+    if event.ctrl {
+        modifiers.insert(KeyModifier::Ctrl);
+    }
+    modifiers
 }

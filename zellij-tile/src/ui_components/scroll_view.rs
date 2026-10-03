@@ -18,6 +18,7 @@ pub struct ScrollView {
     focused: bool,
     hovered: bool,
     indicator_hover: Option<IndicatorHover>,
+    dragging: bool,
     area: Option<Rect>,
 }
 
@@ -48,6 +49,18 @@ impl ScrollView {
     }
     pub fn is_hovered(&self) -> bool {
         self.hovered
+    }
+    pub fn is_dragging(&self) -> bool {
+        self.dragging
+    }
+    fn offset_for_line(&self, line: isize) -> usize {
+        let area = self.area.unwrap_or_default();
+        let row = (line.max(area.y as isize) as usize - area.y).min(area.height.saturating_sub(1));
+        if area.height <= 1 {
+            0
+        } else {
+            row * self.max_offset() / (area.height - 1)
+        }
     }
     pub fn layout(&mut self, x: usize, y: usize, width: usize, height: usize) -> Range<usize> {
         self.area = Some(Rect::new(x, y, width, height));
@@ -245,19 +258,24 @@ impl Widget for ScrollView {
                 let moved = self.scroll_by(count.max(1) as isize);
                 self.moved(moved)
             },
+            Mouse::Hold(line, _) if self.dragging => {
+                let previous = self.offset;
+                let target = self.offset_for_line(line);
+                self.set_offset(target);
+                self.moved(self.offset != previous)
+            },
+            Mouse::Release(..) if self.dragging => {
+                self.dragging = false;
+                UiResponse::Consumed
+            },
             Mouse::LeftClick(line, column) | Mouse::Hold(line, column)
                 if self.needs_indicators()
                     && column == self.gutter_x()
                     && self.hit_test(line, column) =>
             {
-                let area = self.area.unwrap_or_default();
-                let row = line as usize - area.y;
-                let target = if area.height <= 1 {
-                    0
-                } else {
-                    row * self.max_offset() / (area.height - 1)
-                };
+                self.dragging = true;
                 let previous = self.offset;
+                let target = self.offset_for_line(line);
                 self.set_offset(target);
                 self.moved(self.offset != previous)
             },
@@ -291,5 +309,6 @@ impl Widget for ScrollView {
     }
     fn clear_area(&mut self) {
         self.area = None;
+        self.dragging = false;
     }
 }

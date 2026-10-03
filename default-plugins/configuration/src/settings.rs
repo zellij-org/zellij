@@ -3,47 +3,65 @@ use zellij_tile::prelude::*;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Category {
     Appearance,
+    Themes,
     PaneFrames,
     Keys,
+    ContextMenu,
     MouseAndClipboard,
     PanesAndLayouts,
     ScrollbackAndEditor,
     Sessions,
     TerminalSupport,
     Web,
-    PluginsEnvironmentAndMenu,
+    PluginsAndEnvironment,
+    FoldersAndFiles,
 }
 
-pub const CATEGORIES: [Category; 10] = [
+pub const CATEGORIES: [Category; 13] = [
     Category::Appearance,
     Category::PaneFrames,
     Category::Keys,
     Category::MouseAndClipboard,
+    Category::ContextMenu,
+    Category::Themes,
     Category::PanesAndLayouts,
     Category::ScrollbackAndEditor,
     Category::Sessions,
     Category::TerminalSupport,
     Category::Web,
-    Category::PluginsEnvironmentAndMenu,
+    Category::PluginsAndEnvironment,
+    Category::FoldersAndFiles,
 ];
 
 impl Category {
     pub fn title(&self) -> &'static str {
         match self {
             Category::Appearance => "Appearance",
+            Category::Themes => "Themes",
             Category::PaneFrames => "Pane frames and borders",
             Category::Keys => "Keys",
+            Category::ContextMenu => "Right-click menu",
             Category::MouseAndClipboard => "Mouse and clipboard",
             Category::PanesAndLayouts => "Panes and layouts",
             Category::ScrollbackAndEditor => "Scrollback and editor",
             Category::Sessions => "Sessions",
             Category::TerminalSupport => "Terminal support",
             Category::Web => "Web",
-            Category::PluginsEnvironmentAndMenu => "Plugins and environment",
+            Category::PluginsAndEnvironment => "Plugins and environment",
+            Category::FoldersAndFiles => "Files and folders",
         }
     }
     pub fn is_keys_screen(&self) -> bool {
         matches!(self, Category::Keys)
+    }
+    pub fn is_page(&self) -> bool {
+        matches!(
+            self,
+            Category::Themes | Category::ContextMenu | Category::PluginsAndEnvironment
+        )
+    }
+    pub fn has_rows(&self) -> bool {
+        !self.is_keys_screen() && !self.is_page()
     }
 }
 
@@ -70,6 +88,7 @@ pub enum SettingKind {
     Text(TextCheck),
     Number { min: i64, max: i64, step: i64 },
     Keybindings,
+    Block,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -86,11 +105,24 @@ pub const UNSET_CHOICE: &str = "(not set)";
 pub const MISSING_SUFFIX: &str = " (missing)";
 
 pub fn option_value(label: &str) -> &str {
+    if let Some(value) = INPUT_MODES
+        .iter()
+        .copied()
+        .find(|value| mode_choice_label(value) == label)
+    {
+        return value;
+    }
     label.strip_suffix(MISSING_SUFFIX).unwrap_or(label)
 }
 
+pub fn mode_choice_label(value: &str) -> String {
+    crate::page::mode_label(value)
+        .map(|label| label.to_owned())
+        .unwrap_or_else(|| value.to_owned())
+}
+
 const LINE_STYLES: &[&str] = &["single", "double", "heavy", "dashed", "heavy_dashed"];
-const INPUT_MODES: &[&str] = &[
+pub const INPUT_MODES: &[&str] = &[
     "normal", "locked", "pane", "tab", "resize", "move", "scroll", "session", "tmux",
 ];
 
@@ -201,7 +233,7 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::ThemeDir => info(
             "Theme folder",
-            Appearance,
+            FoldersAndFiles,
             "Folder searched for extra theme files",
             Text(TextCheck::Path),
             "themes in the config folder",
@@ -323,8 +355,48 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "Keybindings",
             Keys,
             "Keybinding preset, leader keys and your own keybindings",
-            Keybindings,
+            SettingKind::Keybindings,
             "default preset",
+            OnlyYou,
+        ),
+        SettingKey::PluginAliases => info(
+            "Plugin aliases",
+            PluginsAndEnvironment,
+            "Names for plugins, used by layouts, keybindings and other plugins",
+            Block,
+            "built-in aliases",
+            Everyone,
+        ),
+        SettingKey::LoadPlugins => info(
+            "Plugins loaded at start",
+            PluginsAndEnvironment,
+            "Plugins loaded in the background when a session starts",
+            Block,
+            "built-in list",
+            Everyone,
+        ),
+        SettingKey::Env => info(
+            "Environment variables",
+            PluginsAndEnvironment,
+            "Variables set for new panes",
+            Block,
+            "none",
+            Everyone,
+        ),
+        SettingKey::ContextMenu => info(
+            "Right-click menu items",
+            ContextMenu,
+            "Items of the right-click menus",
+            Block,
+            "built-in items",
+            OnlyYou,
+        ),
+        SettingKey::Themes => info(
+            "Themes",
+            Themes,
+            "Themes defined in the config file",
+            Block,
+            "none",
             OnlyYou,
         ),
         SettingKey::MouseMode => info(
@@ -457,7 +529,7 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::DefaultShell => info(
             "Default shell",
-            PanesAndLayouts,
+            FoldersAndFiles,
             "Program started in new terminal panes",
             Text(TextCheck::Path),
             "$SHELL",
@@ -465,7 +537,7 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::DefaultCwd => info(
             "Default folder",
-            PanesAndLayouts,
+            FoldersAndFiles,
             "Starting folder for new panes",
             Text(TextCheck::Path),
             "current folder",
@@ -473,7 +545,7 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::DefaultLayout => info(
             "Default layout",
-            PanesAndLayouts,
+            FoldersAndFiles,
             "Layout name or path used for new sessions",
             Text(TextCheck::Path),
             "default",
@@ -481,7 +553,7 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::KeybindsDir => info(
             "Keybinding preset folder",
-            Keys,
+            FoldersAndFiles,
             "Folder searched for keybinding presets",
             Text(TextCheck::Path),
             "keybinds in the config folder",
@@ -489,7 +561,7 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::LayoutDir => info(
             "Layout folder",
-            PanesAndLayouts,
+            FoldersAndFiles,
             "Folder searched for layouts",
             Text(TextCheck::Path),
             "layouts in the config folder",
@@ -541,7 +613,7 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         ),
         SettingKey::ScrollbackEditor => info(
             "Scrollback editor",
-            ScrollbackAndEditor,
+            FoldersAndFiles,
             "Editor that opens a pane's scrollback",
             Text(TextCheck::Path),
             "$EDITOR or $VISUAL",
@@ -810,7 +882,7 @@ pub fn describe(key: SettingKey) -> SettingInfo {
     }
 }
 
-pub const SECTION_ORDER: [&str; 18] = [
+pub const SECTION_ORDER: [&str; 21] = [
     "Theme",
     "Display",
     "Text",
@@ -828,13 +900,19 @@ pub const SECTION_ORDER: [&str; 18] = [
     "Behaviour",
     "Server",
     "Browser client",
+    "Folders",
+    "Starting points",
+    "Programs",
     "",
 ];
 
 pub fn section(key: SettingKey) -> &'static str {
     use SettingKey::*;
     match key {
-        Theme | ThemeDark | ThemeLight | ExplicitThemeHue | ThemeDir => "Theme",
+        Theme | ThemeDark | ThemeLight | ExplicitThemeHue => "Theme",
+        ThemeDir | LayoutDir | KeybindsDir => "Folders",
+        DefaultLayout | DefaultCwd => "Starting points",
+        DefaultShell | ScrollbackEditor => "Programs",
         SimplifiedUi | PaneFrames | PaneFrameStyle | VisualBell => "Display",
         StyledUnderlines | Osc8Hyperlinks => "Text",
         FrameRoundedCorners | FrameHideSessionName => "Frames",
@@ -857,8 +935,8 @@ pub fn section(key: SettingKey) -> &'static str {
         CopyCommand | CopyClipboard | CopyOnSelect | DangerouslyEnablePasteBufferRead => {
             "Clipboard"
         },
-        DefaultMode | DefaultShell | DefaultCwd => "New panes",
-        DefaultLayout | LayoutDir | AutoLayout | StackedResize | StackedPaneList => "Layouts",
+        DefaultMode => "New panes",
+        AutoLayout | StackedResize | StackedPaneList => "Layouts",
         NestedSessionHandling => "Nested sessions",
         SessionName | AttachToSession | ShowStartupTips | ShowReleaseNotes => "Startup",
         SessionSerialization
@@ -883,12 +961,15 @@ pub fn section(key: SettingKey) -> &'static str {
         | WebClientMacOptionIsMeta
         | WebClientBaseUrl => "Browser client",
         ScrollBufferSize
-        | ScrollbackEditor
         | SupportKittyKeyboardProtocol
         | SupportKittyGraphicsProtocol
         | HostNotificationProtocol
-        | KeybindsDir
-        | Keybinds => "",
+        | Keybinds
+        | PluginAliases
+        | LoadPlugins
+        | Env
+        | Themes
+        | ContextMenu => "",
     }
 }
 
@@ -910,15 +991,19 @@ pub fn sort_for_display(keys: &mut Vec<SettingKey>) {
     keys.sort_by_key(|key| (category_index(describe(*key).category), section_index(*key)));
 }
 
+pub fn is_row_kind(kind: SettingKind) -> bool {
+    !matches!(kind, SettingKind::Keybindings | SettingKind::Block)
+}
+
 pub fn settings_in(category: Category) -> Vec<SettingKey> {
-    if category.is_keys_screen() {
+    if !category.has_rows() {
         return vec![];
     }
     let mut keys = SettingKey::all()
         .into_iter()
         .filter(|key| {
             let info = describe(*key);
-            info.category == category && info.kind != SettingKind::Keybindings
+            info.category == category && is_row_kind(info.kind)
         })
         .collect::<Vec<_>>();
     sort_for_display(&mut keys);
@@ -986,12 +1071,11 @@ mod tests {
                     assert!(!choices.is_empty(), "{} has no choices", key)
                 },
                 SettingKind::Keybindings => assert_eq!(key, SettingKey::Keybinds),
+                SettingKind::Block => assert!(key.is_block(), "{} is not a block", key),
                 _ => {},
             }
             assert!(
-                !info.category.is_keys_screen()
-                    || info.kind == SettingKind::Keybindings
-                    || key == SettingKey::KeybindsDir,
+                !info.category.is_keys_screen() || info.kind == SettingKind::Keybindings,
                 "{} is in a keys screen but is not shown there",
                 key
             );
@@ -1002,7 +1086,11 @@ mod tests {
                 SettingKind::Number { .. } => key.value_shape() == SettingValueShape::Number,
                 _ => key.value_shape() == SettingValueShape::Text,
             };
-            assert!(shape_fits, "{} is written to the file in the wrong shape", key);
+            assert!(
+                shape_fits,
+                "{} is written to the file in the wrong shape",
+                key
+            );
         }
     }
 
@@ -1010,9 +1098,7 @@ mod tests {
     fn every_category_with_rows_has_settings() {
         for category in CATEGORIES {
             let has_rows = !settings_in(category).is_empty();
-            let expected =
-                !category.is_keys_screen() && category != Category::PluginsEnvironmentAndMenu;
-            assert_eq!(has_rows, expected, "{}", category.title());
+            assert_eq!(has_rows, category.has_rows(), "{}", category.title());
         }
     }
 
@@ -1046,5 +1132,13 @@ mod tests {
             kdl_for(SettingKey::WebClientFontSize, "14"),
             "web_client {\n    font_size 14\n}"
         );
+    }
+
+    #[test]
+    fn mode_choices_are_shown_capitalized_and_saved_lowercase() {
+        assert_eq!(mode_choice_label("normal"), "Normal");
+        assert_eq!(option_value("Normal"), "normal");
+        assert_eq!(option_value("Tmux"), "tmux");
+        assert_eq!(option_value("nord"), "nord");
     }
 }

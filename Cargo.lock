@@ -685,7 +685,9 @@ dependencies = [
 name = "configuration"
 version = "0.1.0"
 dependencies = [
+ "kdl",
  "zellij-tile",
+ "zellij-utils",
 ]
 
 [[package]]

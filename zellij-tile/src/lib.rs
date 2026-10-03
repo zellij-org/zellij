@@ -188,6 +188,9 @@ macro_rules! register_plugin {
                 let protobuf_bytes: Vec<u8> = $crate::shim::object_from_stdin().unwrap();
                 let protobuf_event: ProtobufEvent =
                     ProtobufEvent::decode(protobuf_bytes.as_slice()).unwrap();
+                $crate::shim::set_mouse_modifiers(
+                    zellij_tile::shim::plugin_api::event::mouse_modifiers(&protobuf_event),
+                );
                 let event = protobuf_event.try_into().unwrap();
                 state.borrow_mut().update(event)
             })

@@ -2,6 +2,7 @@ pub mod actions;
 pub mod cli_assets;
 pub mod command;
 pub mod config;
+pub mod config_blocks;
 pub mod config_file_edit;
 pub mod config_settings;
 pub mod context_menu;

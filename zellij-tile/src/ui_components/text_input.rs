@@ -33,6 +33,7 @@ pub struct TextInput {
     text_start_x: usize,
     text_area_width: usize,
     show_cursor: bool,
+    accent_brackets: bool,
 }
 
 impl fmt::Debug for TextInput {
@@ -78,6 +79,7 @@ impl TextInput {
             text_start_x: 0,
             text_area_width: 0,
             show_cursor: true,
+            accent_brackets: false,
         }
     }
 
@@ -87,6 +89,11 @@ impl TextInput {
 
     pub fn label(mut self, label: impl Into<String>) -> Self {
         self.label = label.into();
+        self
+    }
+
+    pub fn accent_brackets(mut self) -> Self {
+        self.accent_brackets = true;
         self
     }
 
@@ -466,6 +473,7 @@ impl TextInput {
         state_flag(&mut state, "ph", show_placeholder);
         state_flag(&mut state, "err", error.is_some());
         state_flag(&mut state, "h", self.hovered && !self.disabled);
+        state_flag(&mut state, "ab", self.accent_brackets);
         state_value(&mut state, "lw", label_width);
         if self.focused && self.show_cursor && !self.disabled {
             let cursor = if show_placeholder {

@@ -1999,6 +1999,54 @@ pub fn reload_config_file() {
     unsafe { host_run_plugin_command() };
 }
 
+thread_local! {
+    static MOUSE_MODIFIERS: std::cell::RefCell<std::collections::BTreeSet<KeyModifier>> =
+        std::cell::RefCell::new(std::collections::BTreeSet::new());
+}
+
+pub fn set_mouse_modifiers(modifiers: std::collections::BTreeSet<KeyModifier>) {
+    MOUSE_MODIFIERS.with(|current| *current.borrow_mut() = modifiers);
+}
+
+pub fn mouse_modifiers() -> std::collections::BTreeSet<KeyModifier> {
+    MOUSE_MODIFIERS.with(|current| current.borrow().clone())
+}
+
+pub fn replace_config_blocks(blocks: String) {
+    let plugin_command = PluginCommand::ReplaceConfigBlocks(blocks);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn reset_keys(keys: Vec<(InputMode, KeyWithModifier)>, write_config_to_disk: bool) {
+    let plugin_command = PluginCommand::ResetKeys {
+        keys,
+        write_config_to_disk,
+    };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn save_keybinds_as_preset(new_name: &str) -> Result<String, String> {
+    use zellij_utils::plugin_api::plugin_command::copy_keybind_preset_response::Result as CopyResult;
+    let plugin_command = PluginCommand::SaveKeybindsAsPreset {
+        new_name: new_name.to_owned(),
+    };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+    let response = bytes_from_stdin()
+        .ok()
+        .and_then(|bytes| ProtobufCopyKeybindPresetResponse::decode(bytes.as_slice()).ok());
+    match response.and_then(|response| response.result) {
+        Some(CopyResult::NewName(new_name)) => Ok(new_name),
+        Some(CopyResult::Error(error)) => Err(error),
+        None => Err("No response".to_owned()),
+    }
+}
+
 pub fn copy_keybind_preset(preset: &str, new_name: &str) -> Result<String, String> {
     use zellij_utils::plugin_api::plugin_command::copy_keybind_preset_response::Result as CopyResult;
     let plugin_command = PluginCommand::CopyKeybindPreset {

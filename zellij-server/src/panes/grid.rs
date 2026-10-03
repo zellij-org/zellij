@@ -5795,6 +5795,7 @@ pub struct Row {
     pub columns: VecDeque<TerminalCharacter>,
     pub is_canonical: bool,
     width: Option<usize>,
+    only_single_width: bool,
     pub bg_color: Option<AnsiCode>,
     osc133_markers: Vec<Osc133Marker>,
 }
@@ -5828,6 +5829,7 @@ impl Row {
             columns: VecDeque::new(),
             is_canonical: false,
             width: None,
+            only_single_width: false,
             bg_color: None,
             osc133_markers: vec![],
         }
@@ -5837,6 +5839,7 @@ impl Row {
             columns,
             is_canonical: false,
             width: None,
+            only_single_width: false,
             bg_color: None,
             osc133_markers: vec![],
         }
@@ -5870,10 +5873,14 @@ impl Row {
             self.width.unwrap()
         } else {
             let mut width = 0;
+            let mut only_single_width = true;
             for terminal_character in &self.columns {
-                width += terminal_character.width();
+                let character_width = terminal_character.width();
+                width += character_width;
+                only_single_width &= character_width == 1;
             }
             self.width = Some(width);
+            self.only_single_width = only_single_width;
             width
         }
     }
@@ -5937,6 +5944,7 @@ impl Row {
             Ordering::Equal => {
                 // this is unwrapped because this always happens after self.width_cached()
                 *self.width.as_mut().unwrap() += terminal_character.width();
+                self.only_single_width &= terminal_character.width() == 1;
                 // adding the character at the end of the current line
                 self.columns.push_back(terminal_character);
             },
@@ -5958,8 +5966,11 @@ impl Row {
             Ordering::Greater => {
                 // adding the character in the middle of the line
                 // we replace the character at its position
-                let (absolute_x_index, position_inside_character) =
-                    self.absolute_character_index_and_position_in_char(x);
+                let (absolute_x_index, position_inside_character) = if self.only_single_width {
+                    (x, 0)
+                } else {
+                    self.absolute_character_index_and_position_in_char(x)
+                };
                 let character_width = terminal_character.width();
                 let overwrite_start = x.saturating_sub(position_inside_character);
                 let overwrite_end =
@@ -5986,6 +5997,7 @@ impl Row {
                                     .insert(position_to_remove, EMPTY_TERMINAL_CHARACTER);
                             }
                         }
+                        self.width = None;
                     },
                     Ordering::Less => {
                         // the replaced character is wider than the current character
@@ -6000,10 +6012,12 @@ impl Row {
                             self.columns
                                 .insert(absolute_x_index + 1, EMPTY_TERMINAL_CHARACTER);
                         }
+                        self.width = None;
                     },
-                    _ => {},
+                    Ordering::Equal => {
+                        self.only_single_width &= character_width == 1;
+                    },
                 }
-                self.width = None;
             },
         }
     }

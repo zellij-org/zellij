@@ -4,7 +4,7 @@
 pub struct PluginCommand {
     #[prost(enumeration="CommandName", tag="1")]
     pub name: i32,
-    #[prost(oneof="plugin_command::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191")]
+    #[prost(oneof="plugin_command::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194")]
     pub payload: ::core::option::Option<plugin_command::Payload>,
 }
 /// Nested message and enum types in `PluginCommand`.
@@ -360,6 +360,12 @@ pub mod plugin_command {
         OverwriteConfigFilePayload(super::SaveConfigPayload),
         #[prost(message, tag="191")]
         ReloadConfigFilePayload(super::SaveConfigPayload),
+        #[prost(string, tag="192")]
+        ReplaceConfigBlocksPayload(::prost::alloc::string::String),
+        #[prost(message, tag="193")]
+        ResetKeysPayload(super::ResetKeysPayload),
+        #[prost(message, tag="194")]
+        SaveKeybindsAsPresetPayload(super::SaveKeybindsAsPresetPayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -480,6 +486,128 @@ pub struct ReadConfigResponse {
     pub context_menu_items: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
     #[prost(message, optional, tag="10")]
     pub keybinds: ::core::option::Option<KeybindsSelectionSnapshot>,
+    #[prost(message, optional, tag="11")]
+    pub blocks: ::core::option::Option<ConfigBlocks>,
+    #[prost(message, optional, tag="12")]
+    pub saved_blocks: ::core::option::Option<ConfigBlocks>,
+    #[prost(message, optional, tag="13")]
+    pub default_blocks: ::core::option::Option<ConfigBlocks>,
+    #[prost(message, repeated, tag="14")]
+    pub keybindings: ::prost::alloc::vec::Vec<KeybindingEntry>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ConfigPair {
+    #[prost(string, tag="1")]
+    pub key: ::prost::alloc::string::String,
+    #[prost(string, tag="2")]
+    pub value: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PluginEntry {
+    #[prost(string, tag="1")]
+    pub location: ::prost::alloc::string::String,
+    #[prost(string, optional, tag="2")]
+    pub cwd: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, repeated, tag="3")]
+    pub configuration: ::prost::alloc::vec::Vec<ConfigPair>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PluginAliasEntry {
+    #[prost(string, tag="1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(message, optional, tag="2")]
+    pub plugin: ::core::option::Option<PluginEntry>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EnvVarEntry {
+    #[prost(string, tag="1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(string, tag="2")]
+    pub value: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MenuItemEntry {
+    #[prost(string, optional, tag="1")]
+    pub label: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, repeated, tag="2")]
+    pub actions: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="3")]
+    pub shortcut: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MenuSectionEntries {
+    #[prost(string, tag="1")]
+    pub section: ::prost::alloc::string::String,
+    #[prost(message, repeated, tag="2")]
+    pub entries: ::prost::alloc::vec::Vec<MenuItemEntry>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ThemeEntry {
+    #[prost(string, tag="1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(enumeration="ThemeSource", tag="2")]
+    pub source: i32,
+    #[prost(string, repeated, tag="3")]
+    pub colours: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ConfigBlocks {
+    #[prost(message, repeated, tag="1")]
+    pub plugin_aliases: ::prost::alloc::vec::Vec<PluginAliasEntry>,
+    #[prost(message, repeated, tag="2")]
+    pub load_plugins: ::prost::alloc::vec::Vec<PluginEntry>,
+    #[prost(message, repeated, tag="3")]
+    pub env: ::prost::alloc::vec::Vec<EnvVarEntry>,
+    #[prost(message, repeated, tag="4")]
+    pub context_menu: ::prost::alloc::vec::Vec<MenuSectionEntries>,
+    #[prost(message, repeated, tag="5")]
+    pub themes: ::prost::alloc::vec::Vec<ThemeEntry>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct KeybindingEntry {
+    #[prost(enumeration="super::input_mode::InputMode", tag="1")]
+    pub mode: i32,
+    #[prost(string, tag="2")]
+    pub key: ::prost::alloc::string::String,
+    #[prost(string, repeated, tag="3")]
+    pub actions: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(enumeration="KeybindingSourceKind", tag="4")]
+    pub source: i32,
+    #[prost(string, optional, tag="5")]
+    pub shared_block: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, tag="6")]
+    pub unbound: bool,
+    #[prost(bool, tag="7")]
+    pub has_preset_binding: bool,
+    #[prost(string, repeated, tag="8")]
+    pub preset_actions: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(bool, tag="9")]
+    pub unsaved: bool,
+    #[prost(bool, tag="10")]
+    pub preset_same_as_actions: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SaveKeybindsAsPresetPayload {
+    #[prost(string, tag="1")]
+    pub new_name: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ResetKeysPayload {
+    #[prost(message, repeated, tag="1")]
+    pub keys: ::prost::alloc::vec::Vec<KeyToUnbind>,
+    #[prost(bool, tag="2")]
+    pub write_config_to_disk: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -2484,6 +2612,9 @@ pub enum CommandName {
     SetCliPipeExitCode = 246,
     OverwriteConfigFile = 247,
     ReloadConfigFile = 248,
+    ReplaceConfigBlocks = 249,
+    ResetKeys = 250,
+    SaveKeybindsAsPreset = 251,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -2715,6 +2846,9 @@ impl CommandName {
             CommandName::SetCliPipeExitCode => "SetCliPipeExitCode",
             CommandName::OverwriteConfigFile => "OverwriteConfigFile",
             CommandName::ReloadConfigFile => "ReloadConfigFile",
+            CommandName::ReplaceConfigBlocks => "ReplaceConfigBlocks",
+            CommandName::ResetKeys => "ResetKeys",
+            CommandName::SaveKeybindsAsPreset => "SaveKeybindsAsPreset",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -2943,6 +3077,70 @@ impl CommandName {
             "SetCliPipeExitCode" => Some(Self::SetCliPipeExitCode),
             "OverwriteConfigFile" => Some(Self::OverwriteConfigFile),
             "ReloadConfigFile" => Some(Self::ReloadConfigFile),
+            "ReplaceConfigBlocks" => Some(Self::ReplaceConfigBlocks),
+            "ResetKeys" => Some(Self::ResetKeys),
+            "SaveKeybindsAsPreset" => Some(Self::SaveKeybindsAsPreset),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum ThemeSource {
+    BuiltIn = 0,
+    ConfigFile = 1,
+    ThemeFolder = 2,
+}
+impl ThemeSource {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            ThemeSource::BuiltIn => "ThemeSourceBuiltIn",
+            ThemeSource::ConfigFile => "ThemeSourceConfigFile",
+            ThemeSource::ThemeFolder => "ThemeSourceThemeFolder",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "ThemeSourceBuiltIn" => Some(Self::BuiltIn),
+            "ThemeSourceConfigFile" => Some(Self::ConfigFile),
+            "ThemeSourceThemeFolder" => Some(Self::ThemeFolder),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum KeybindingSourceKind {
+    KeybindingSourcePreset = 0,
+    KeybindingSourceUser = 1,
+    KeybindingSourceShared = 2,
+    KeybindingSourceLayout = 3,
+}
+impl KeybindingSourceKind {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            KeybindingSourceKind::KeybindingSourcePreset => "KeybindingSourcePreset",
+            KeybindingSourceKind::KeybindingSourceUser => "KeybindingSourceUser",
+            KeybindingSourceKind::KeybindingSourceShared => "KeybindingSourceShared",
+            KeybindingSourceKind::KeybindingSourceLayout => "KeybindingSourceLayout",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "KeybindingSourcePreset" => Some(Self::KeybindingSourcePreset),
+            "KeybindingSourceUser" => Some(Self::KeybindingSourceUser),
+            "KeybindingSourceShared" => Some(Self::KeybindingSourceShared),
+            "KeybindingSourceLayout" => Some(Self::KeybindingSourceLayout),
             _ => None,
         }
     }

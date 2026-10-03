@@ -387,7 +387,7 @@ fn menu_shortcuts_follow_a_change_of_keybinding_preset() {
     zellij.send_stdin(b"\x1b[B");
     zellij.send_stdin(b"\x1b[B");
     zellij.wait_until("keys screen opened", |grid_snapshot| {
-        grid_snapshot.contains("Copy to my keybinds folder") && grid_snapshot.contains("Preset")
+        grid_snapshot.contains("Save as a preset") && grid_snapshot.contains("Preset")
     });
     zellij.send_stdin(&keys::TAB);
     zellij.send_stdin(&keys::ENTER);
@@ -399,11 +399,20 @@ fn menu_shortcuts_follow_a_change_of_keybinding_preset() {
     zellij.wait_until("unlock-first preset applied", |grid_snapshot| {
         grid_snapshot.contains("UNLOCK")
     });
-    zellij.send_stdin(&keys::ctrl('c'));
-    zellij.send_stdin(&keys::ctrl('c'));
-    zellij.wait_until("configuration plugin closed", |grid_snapshot| {
-        !grid_snapshot.contains("Configuration")
-    });
+    let zellij_ref = &zellij;
+    {
+        let zellij = zellij_ref;
+        for _ in 0..20 {
+            zellij.send_stdin(&keys::ctrl('c'));
+            std::thread::sleep(std::time::Duration::from_millis(250));
+            if !zellij.snapshot().contains("Configuration") {
+                break;
+            }
+        }
+        zellij.wait_until("configuration plugin closed", |grid_snapshot| {
+            !grid_snapshot.contains("Configuration")
+        });
+    }
 
     right_click(&zellij, 30, 10);
     zellij.wait_until("pane menu shows the unlock-first shortcuts", |grid_snapshot| {

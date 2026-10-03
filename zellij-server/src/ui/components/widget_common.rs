@@ -152,12 +152,31 @@ pub fn render_label(
     disabled: bool,
     style: &Style,
 ) -> String {
+    render_label_with_accent(label, width, focused, disabled, None, style)
+}
+
+pub fn render_label_with_accent(
+    label: &str,
+    width: usize,
+    focused: bool,
+    disabled: bool,
+    accent: Option<usize>,
+    style: &Style,
+) -> String {
     if width == 0 {
         return String::new();
     }
     let mut styles = colored(style.colors.text_unselected.base, None);
     if disabled {
         styles = disabled_look(styles);
+    } else if let Some(level) = accent {
+        let emphasis = match level {
+            0 => style.colors.text_unselected.emphasis_0,
+            1 => style.colors.text_unselected.emphasis_1,
+            3 => style.colors.text_unselected.emphasis_3,
+            _ => style.colors.text_unselected.emphasis_2,
+        };
+        styles = bold(colored(emphasis, None));
     } else if focused {
         styles = bold(colored(style.colors.text_unselected.emphasis_0, None));
     }
@@ -217,6 +236,21 @@ pub fn field_bracket_styles(
         bold(plain_styles(style))
     } else {
         plain_styles(style)
+    }
+}
+
+pub fn accented_field_bracket_styles(
+    style: &Style,
+    focused: bool,
+    hovered: bool,
+    disabled: bool,
+    error: bool,
+    accent: bool,
+) -> CharacterStyles {
+    if accent && !focused && !disabled && !error {
+        bold(colored(style.colors.text_unselected.emphasis_2, None))
+    } else {
+        field_bracket_styles(style, focused, hovered, disabled, error)
     }
 }
 
@@ -314,6 +348,28 @@ impl ButtonLook {
 }
 
 pub fn button_cells(label: &str, width: usize, look: ButtonLook, style: &Style) -> String {
+    button_cells_with_accent(label, width, look, false, style)
+}
+
+pub fn button_cells_with_accent(
+    label: &str,
+    width: usize,
+    look: ButtonLook,
+    accent_brackets: bool,
+    style: &Style,
+) -> String {
+    button_cells_styled(label, width, look, accent_brackets, false, &[], style)
+}
+
+pub fn button_cells_styled(
+    label: &str,
+    width: usize,
+    look: ButtonLook,
+    accent_brackets: bool,
+    left_aligned: bool,
+    label_colors: &[Option<usize>],
+    style: &Style,
+) -> String {
     let colors = style.colors;
     let (text_styles, bracket_styles) = match look {
         ButtonLook::Normal => (plain_styles(style), plain_styles(style)),
@@ -337,13 +393,60 @@ pub fn button_cells(label: &str, width: usize, look: ButtonLook, style: &Style) 
             disabled_look(plain_styles(style)),
         ),
     };
+    let bracket_styles = if accent_brackets && look != ButtonLook::Disabled {
+        bold(bracket_styles.foreground(Some(colors.text_unselected.emphasis_2.into())))
+    } else {
+        bracket_styles
+    };
     if width < 3 {
         return paint(text_styles, &fit(label, width));
     }
+    let inner = width - 2;
+    let (fitted, lead) = if left_aligned {
+        let fitted = truncate(label, inner.saturating_sub(1));
+        (fitted, 1.min(inner))
+    } else {
+        let fitted = truncate(label, inner);
+        let free = inner.saturating_sub(text_width(&fitted));
+        (fitted, free / 2)
+    };
+    let trail = inner.saturating_sub(lead + text_width(&fitted));
+    let declaration = if look == ButtonLook::Focused {
+        colors.text_selected
+    } else {
+        colors.text_unselected
+    };
+    let colorable = !matches!(look, ButtonLook::Pressed | ButtonLook::Disabled);
+    let emphasis = [
+        declaration.emphasis_0,
+        declaration.emphasis_1,
+        declaration.emphasis_2,
+        declaration.emphasis_3,
+    ];
+    let mut label_cells = String::new();
+    let mut run = String::new();
+    let mut run_styles = text_styles;
+    for (index, character) in fitted.chars().enumerate() {
+        let character_styles = match label_colors.get(index).copied().flatten() {
+            Some(level) if colorable && level < emphasis.len() => {
+                text_styles.foreground(Some(emphasis[level].into()))
+            },
+            _ => text_styles,
+        };
+        if character_styles != run_styles && !run.is_empty() {
+            label_cells.push_str(&paint(run_styles, &run));
+            run.clear();
+        }
+        run_styles = character_styles;
+        run.push(character);
+    }
+    label_cells.push_str(&paint(run_styles, &run));
     format!(
-        "{}{}{}",
+        "{}{}{}{}{}",
         paint(bracket_styles, "["),
-        paint(text_styles, &center(label, width - 2)),
+        paint(text_styles, &" ".repeat(lead)),
+        label_cells,
+        paint(text_styles, &" ".repeat(trail)),
         paint(bracket_styles, "]")
     )
 }
@@ -355,6 +458,33 @@ pub fn button_width(label: &str) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_left_aligned_button_starts_its_label_after_the_bracket() {
+        let style = Style::default();
+        let cells = button_cells_styled("Go", 10, ButtonLook::Normal, true, true, &[], &style);
+        let text = strip_styles(&cells);
+        assert_eq!(text, "[ Go     ]");
+        let centered = button_cells_styled("Go", 10, ButtonLook::Normal, false, false, &[], &style);
+        assert_eq!(strip_styles(&centered), "[   Go   ]");
+    }
+
+    fn strip_styles(text: &str) -> String {
+        let mut plain = String::new();
+        let mut in_escape = false;
+        for character in text.chars() {
+            if in_escape {
+                if character.is_ascii_alphabetic() {
+                    in_escape = false;
+                }
+            } else if character == '\u{1b}' {
+                in_escape = true;
+            } else {
+                plain.push(character);
+            }
+        }
+        plain
+    }
 
     #[test]
     fn more_items_indicators_use_emphasis_1() {

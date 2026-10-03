@@ -434,3 +434,194 @@ fn a_file_that_does_not_read_back_is_restored_from_the_backup() {
         file
     );
 }
+
+#[test]
+fn a_plugin_alias_is_added_changed_and_removed_keeping_comments() {
+    let added = saved_text_after(COMMENTED_FILE, |saved| {
+        reconfigure(saved, "plugins { other location=\"zellij:strider\"; }")
+    });
+    assert_eq!(
+        added,
+        COMMENTED_FILE.replace(
+            "    my-plugin location=\"file:/tmp/plugin.wasm\"\n",
+            "    my-plugin location=\"file:/tmp/plugin.wasm\"\n    other location=\"zellij:strider\"\n"
+        )
+    );
+    let changed = saved_text_after(COMMENTED_FILE, |saved| {
+        reconfigure(saved, "plugins { my-plugin location=\"file:/tmp/other.wasm\"; }")
+    });
+    assert_eq!(
+        changed,
+        COMMENTED_FILE.replace("/tmp/plugin.wasm", "/tmp/other.wasm")
+    );
+    let removed = saved_text_after(COMMENTED_FILE, |saved| {
+        let mut runtime = saved.clone();
+        runtime.plugins.aliases.remove("my-plugin");
+        runtime
+    });
+    assert!(!removed.contains("my-plugin"));
+    assert!(removed.starts_with("// my settings\n// are here\n\nmouse_mode false // I like it off\n"));
+    assert!(removed.ends_with("/* block comment */\npane_frames true\n"));
+}
+
+#[test]
+fn an_overridden_built_in_alias_back_at_its_default_is_removed_from_the_file() {
+    let file = "plugins {\n    tab-bar location=\"zellij:strider\"\n}\n";
+    let text = saved_text_after(file, |saved| {
+        let mut runtime = saved.clone();
+        runtime.plugins.aliases.insert(
+            "tab-bar".to_owned(),
+            defaults().plugins.aliases["tab-bar"].clone(),
+        );
+        runtime
+    });
+    assert_eq!(text, "plugins {\n}\n");
+}
+
+#[test]
+fn env_variables_are_added_changed_and_removed_in_place() {
+    let file = "env {\n    // mine\n    A \"1\" // first\n}\n";
+    let changed = saved_text_after(file, |saved| reconfigure(saved, "env { A \"2\"; B \"3\"; }"));
+    assert_eq!(changed, "env {\n    // mine\n    A \"2\" // first\n    B \"3\"\n}\n");
+    let removed = saved_text_after(file, |saved| {
+        let mut runtime = saved.clone();
+        runtime.env = crate::envs::EnvironmentVariables::default();
+        runtime
+    });
+    assert_eq!(removed, "");
+    let edits = edits_between(&load(file), &reconfigure(&load(file), "env { B \"3\"; }"));
+    assert_eq!(
+        edits,
+        vec![ConfigEdit::EnvVar {
+            name: "B".to_owned(),
+            value: Some("3".to_owned())
+        }]
+    );
+}
+
+#[test]
+fn load_plugins_are_added_reordered_and_removed_keeping_comments() {
+    let file = "load_plugins {\n    // first\n    \"zellij:strider\"\n    \"zellij:about\"\n}\n";
+    let reordered = saved_text_after(file, |saved| {
+        let mut runtime = saved.clone();
+        runtime.background_plugins.swap(0, 1);
+        runtime
+    });
+    assert_eq!(
+        reordered,
+        "load_plugins {\n    \"zellij:about\"\n    // first\n    \"zellij:strider\"\n}\n"
+    );
+    let added = saved_text_after(file, |saved| {
+        let mut runtime = saved.clone();
+        let mut more = load("load_plugins { \"zellij:bars\"; }").background_plugins;
+        runtime.background_plugins.append(&mut more);
+        runtime
+    });
+    assert_eq!(
+        added,
+        "load_plugins {\n    // first\n    \"zellij:strider\"\n    \"zellij:about\"\n    \"zellij:bars\"\n}\n"
+    );
+    let removed = saved_text_after(file, |saved| {
+        let mut runtime = saved.clone();
+        runtime.background_plugins.remove(1);
+        runtime
+    });
+    assert_eq!(removed, "load_plugins {\n    // first\n    \"zellij:strider\"\n}\n");
+}
+
+#[test]
+fn context_menu_items_are_edited_one_by_one_inside_their_section() {
+    let file = "context_menu {\n    pane clear-defaults=true {\n        // mine\n        item \"A\" { NewTab; }\n        item \"B\" { NewPane; }\n    }\n}\n";
+    let added = saved_text_after(file, |saved| {
+        let mut runtime = saved.clone();
+        let mut extra = load(
+            "context_menu { pane clear-defaults=true { separator; item \"C\" { Detach; }; }; }",
+        )
+        .context_menu
+        .pane;
+        runtime.context_menu.pane.append(&mut extra);
+        runtime
+    });
+    assert_eq!(
+        added,
+        "context_menu {\n    pane clear-defaults=true {\n        // mine\n        item \"A\" { NewTab; }\n        item \"B\" { NewPane; }\n        separator\n        item \"C\" { Detach; }\n    }\n}\n"
+    );
+    let moved = saved_text_after(file, |saved| {
+        let mut runtime = saved.clone();
+        runtime.context_menu.pane.swap(0, 1);
+        runtime
+    });
+    assert_eq!(
+        moved,
+        "context_menu {\n    pane clear-defaults=true {\n        item \"B\" { NewPane; }\n        // mine\n        item \"A\" { NewTab; }\n    }\n}\n"
+    );
+    let removed = saved_text_after(file, |saved| {
+        let mut runtime = saved.clone();
+        runtime.context_menu.pane.remove(1);
+        runtime
+    });
+    assert_eq!(
+        removed,
+        "context_menu {\n    pane clear-defaults=true {\n        // mine\n        item \"A\" { NewTab; }\n    }\n}\n"
+    );
+    let restored = saved_text_after(file, |saved| {
+        let mut runtime = saved.clone();
+        runtime.context_menu.pane = defaults().context_menu.pane.clone();
+        runtime
+    });
+    assert_eq!(restored, "context_menu {\n}\n");
+}
+
+#[test]
+fn a_section_merged_with_the_defaults_gets_clear_defaults_and_its_full_list() {
+    let file = "context_menu {\n    bar {\n        item \"Mine\" { Detach; }\n    }\n}\n";
+    let text = saved_text_after(file, |saved| {
+        let mut runtime = saved.clone();
+        runtime.context_menu.bar.remove(0);
+        runtime
+    });
+    assert!(text.contains("bar clear-defaults=true {"), "{}", text);
+    assert!(!text.contains("New pane"), "{}", text);
+    assert!(text.contains("item \"New tab\" { NewTab; }"), "{}", text);
+    assert!(text.contains("item \"Mine\" { Detach; }"), "{}", text);
+}
+
+const THEME_FILE: &str = "themes {\n    // my theme\n    mine {\n        text_unselected {\n            base 1 2 3 // fg\n            emphasis_0 4\n            emphasis_1 5\n            emphasis_2 6\n            emphasis_3 7\n        }\n    }\n}\n";
+
+#[test]
+fn a_theme_colour_is_changed_in_place() {
+    let text = saved_text_after(THEME_FILE, |saved| {
+        let mut runtime = saved.clone();
+        let mut theme = runtime.themes.get_theme("mine").unwrap().clone();
+        theme.palette.text_unselected.base = crate::data::PaletteColor::Rgb((9, 8, 7));
+        runtime.themes.insert("mine".to_owned(), theme);
+        runtime
+    });
+    assert_eq!(text, THEME_FILE.replace("base 1 2 3 // fg", "base 9 8 7 // fg"));
+}
+
+#[test]
+fn a_new_theme_is_added_and_a_deleted_one_removed() {
+    let added = saved_text_after(THEME_FILE, |saved| {
+        let mut runtime = saved.clone();
+        let theme = runtime.themes.get_theme("mine").unwrap().clone();
+        runtime.themes.insert("copy".to_owned(), theme);
+        runtime
+    });
+    assert!(added.starts_with(&THEME_FILE[..THEME_FILE.len() - 2]), "{}", added);
+    assert!(added.contains("    copy {\n        text_unselected {"), "{}", added);
+    let removed = saved_text_after(THEME_FILE, |saved| {
+        let mut runtime = saved.clone();
+        runtime.themes.remove("mine");
+        runtime
+    });
+    assert_eq!(removed, "");
+}
+
+#[test]
+fn every_new_edit_keeps_an_unrelated_file_byte_for_byte_when_nothing_changed() {
+    for file in [COMMENTED_FILE, THEME_FILE] {
+        let saved = load(file);
+        assert!(edits_between(&saved, &saved).is_empty());
+    }
+}

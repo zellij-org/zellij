@@ -122,6 +122,21 @@ zellij-utils = { path = "zellij-utils/", version = "0.46.0" }
 [profile.dev]
 debug = "line-tables-only"
 
+[profile.dev.package.wasmi]
+opt-level = 3
+
+[profile.dev.package.wasmi_core]
+opt-level = 3
+
+[profile.dev.package.wasmi_ir]
+opt-level = 3
+
+[profile.dev.package.wasmi_collections]
+opt-level = 3
+
+[profile.dev.package.vte]
+opt-level = 3
+
 [profile.dev-opt]
 inherits = "dev"
 

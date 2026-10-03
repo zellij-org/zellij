@@ -94,15 +94,54 @@ fn every_border_override_set(line_style: LineStyle) -> BorderStyleOverride {
     }
 }
 
+const EVERY_BLOCK_SET: &str = "keybinds preset=\"default\"
+plugins {
+    mine location=\"zellij:strider\" {
+        size \"3\"
+    }
+}
+load_plugins {
+    \"zellij:strider\"
+}
+env {
+    EDITOR \"vim\"
+}
+themes {
+    mine {
+        fg 1
+        bg 2
+        red 3
+        green 4
+        blue 5
+        yellow 6
+        magenta 7
+        orange 8
+        cyan 9
+        black 10
+        white 11
+    }
+}
+context_menu {
+    pane clear-defaults=true {
+        item \"Mine\" { NewTab; }
+    }
+}
+";
+
 pub(crate) fn every_setting_set() -> Config {
     let with_preset = Config::from_kdl(
-        "keybinds preset=\"default\"",
+        EVERY_BLOCK_SET,
         Some(Config::from_default_assets().unwrap()),
     )
     .unwrap();
     Config {
         keybinds: with_preset.keybinds.clone(),
         keybinds_layers: with_preset.keybinds_layers,
+        plugins: with_preset.plugins,
+        background_plugins: with_preset.background_plugins,
+        env: with_preset.env,
+        themes: with_preset.themes,
+        context_menu: with_preset.context_menu,
         options: every_option_set(),
         ui: UiConfig {
             pane_frames: FrameConfig {
@@ -143,6 +182,8 @@ fn kdl_names_in(config: &Config) -> BTreeSet<(SettingSection, String)> {
         let name = node.name().value();
         if !blocks.contains(&name) {
             names.insert((SettingSection::TopLevel, name.to_owned()));
+        } else if !["keybinds", "ui", "web_client"].contains(&name) {
+            names.insert((SettingSection::Blocks, name.to_owned()));
         }
     }
     names.insert((SettingSection::Keybinds, "keybinds".to_owned()));

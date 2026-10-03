@@ -5,7 +5,6 @@ use crate::data::{KeybindPresetInfo, KeybindPresetWithError, LayoutInfo, LayoutW
 
 use miette::{Diagnostic, LabeledSpan, NamedSource, SourceCode};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 use std::fs::File;
 use std::io::{self, Read};
 use std::path::Path;
@@ -41,7 +40,7 @@ pub struct Config {
     pub plugins: PluginAliases,
     pub ui: UiConfig,
     pub env: EnvironmentVariables,
-    pub background_plugins: HashSet<RunPluginOrAlias>,
+    pub background_plugins: Vec<RunPluginOrAlias>,
     pub web_client: WebClientConfig,
     #[serde(default)]
     pub context_menu: ContextMenuConfig,

@@ -71,7 +71,7 @@ fn saving_writes_only_the_changed_lines_and_keeps_comments() {
     zellij.send_stdin(ARROW_DOWN);
     zellij.send_stdin(ARROW_DOWN);
     zellij.wait_until("keys page shown", |grid_snapshot| {
-        grid_snapshot.contains("Copy to my keybinds folder")
+        grid_snapshot.contains("Save as a preset")
     });
     zellij.send_stdin(&keys::TAB);
     zellij.send_stdin(&keys::ENTER);

@@ -239,6 +239,9 @@ enum CommandName {
   SetCliPipeExitCode = 246;
   OverwriteConfigFile = 247;
   ReloadConfigFile = 248;
+  ReplaceConfigBlocks = 249;
+  ResetKeys = 250;
+  SaveKeybindsAsPreset = 251;
 }
 
 message PluginCommand {
@@ -419,6 +422,9 @@ message PluginCommand {
     SetCliPipeExitCodePayload set_cli_pipe_exit_code_payload = 189;
     SaveConfigPayload overwrite_config_file_payload = 190;
     SaveConfigPayload reload_config_file_payload = 191;
+    string replace_config_blocks_payload = 192;
+    ResetKeysPayload reset_keys_payload = 193;
+    SaveKeybindsAsPresetPayload save_keybinds_as_preset_payload = 194;
   }
 }
 
@@ -485,6 +491,91 @@ message ReadConfigResponse {
   repeated string env_vars = 8;
   repeated string context_menu_items = 9;
   KeybindsSelectionSnapshot keybinds = 10;
+  ConfigBlocks blocks = 11;
+  ConfigBlocks saved_blocks = 12;
+  ConfigBlocks default_blocks = 13;
+  repeated KeybindingEntry keybindings = 14;
+}
+
+message ConfigPair {
+  string key = 1;
+  string value = 2;
+}
+
+message PluginEntry {
+  string location = 1;
+  optional string cwd = 2;
+  repeated ConfigPair configuration = 3;
+}
+
+message PluginAliasEntry {
+  string name = 1;
+  PluginEntry plugin = 2;
+}
+
+message EnvVarEntry {
+  string name = 1;
+  string value = 2;
+}
+
+message MenuItemEntry {
+  optional string label = 1;
+  repeated string actions = 2;
+  optional string shortcut = 3;
+}
+
+message MenuSectionEntries {
+  string section = 1;
+  repeated MenuItemEntry entries = 2;
+}
+
+enum ThemeSource {
+  ThemeSourceBuiltIn = 0;
+  ThemeSourceConfigFile = 1;
+  ThemeSourceThemeFolder = 2;
+}
+
+message ThemeEntry {
+  string name = 1;
+  ThemeSource source = 2;
+  repeated string colours = 3;
+}
+
+message ConfigBlocks {
+  repeated PluginAliasEntry plugin_aliases = 1;
+  repeated PluginEntry load_plugins = 2;
+  repeated EnvVarEntry env = 3;
+  repeated MenuSectionEntries context_menu = 4;
+  repeated ThemeEntry themes = 5;
+}
+
+enum KeybindingSourceKind {
+  KeybindingSourcePreset = 0;
+  KeybindingSourceUser = 1;
+  KeybindingSourceShared = 2;
+  KeybindingSourceLayout = 3;
+}
+
+message KeybindingEntry {
+  input_mode.InputMode mode = 1;
+  string key = 2;
+  repeated string actions = 3;
+  KeybindingSourceKind source = 4;
+  optional string shared_block = 5;
+  bool unbound = 6;
+  bool has_preset_binding = 7;
+  repeated string preset_actions = 8;
+  bool unsaved = 9;
+  bool preset_same_as_actions = 10;
+}
+
+message SaveKeybindsAsPresetPayload {
+  string new_name = 1;
+}
+
+message ResetKeysPayload {
+  repeated KeyToUnbind keys = 1;
+  bool write_config_to_disk = 2;
 }
 
 message OpenContextMenuPayload {

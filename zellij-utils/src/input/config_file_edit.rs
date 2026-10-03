@@ -7,18 +7,32 @@ use strum::IntoEnumIterator;
 
 use super::actions::Action;
 use super::config::Config;
+use super::config_blocks::{
+    config_blocks, env_node, load_plugin_node, menu_entries, menu_item_node, plugin_alias_node,
+    styling_colours, theme_node, theme_slots,
+};
 use super::config_settings::{
-    copy_setting, differing_settings, setting_is_default, setting_kdl_value, setting_node_path,
-    setting_value,
+    copy_setting, default_config, differing_settings, setting_is_default, setting_kdl_value,
+    setting_node_path, setting_value,
 };
 use super::context_menu::{ContextMenuConfig, CONTEXT_MENU_SECTIONS};
 use super::keybind_presets::{KeybindChanges, KeybindsSelection, LEADER_PLACEHOLDERS};
 use super::keybinds::Keybinds;
 use super::options::Options;
-use crate::data::{ContextMenuEntry, InputMode, KeyWithModifier, SettingKey};
+use crate::data::{
+    ConfigBlocks, InputMode, KeyWithModifier, MenuItemEntry, PluginAliasEntry, PluginEntry,
+    SettingKey, ThemeEntry,
+};
 
 const KEYBINDS: &str = "keybinds";
 const CONTEXT_MENU: &str = "context_menu";
+const PLUGINS: &str = "plugins";
+const LOAD_PLUGINS: &str = "load_plugins";
+const ENV: &str = "env";
+const THEMES: &str = "themes";
+const PALETTE_COLOURS: [&str; 11] = [
+    "fg", "bg", "red", "green", "blue", "yellow", "magenta", "orange", "cyan", "black", "white",
+];
 const CLEAR_DEFAULTS: &str = "clear-defaults";
 const SHARED_BLOCKS: [&str; 3] = ["shared", "shared_except", "shared_among"];
 
@@ -47,10 +61,128 @@ pub enum ConfigEdit {
         key: KeyWithModifier,
         state: KeyState,
     },
-    ContextMenuSection {
-        section: &'static str,
-        entries: Vec<ContextMenuEntry>,
+    PluginAlias {
+        name: String,
+        alias: Option<PluginAliasEntry>,
     },
+    LoadPlugins {
+        base: Vec<PluginEntry>,
+        edits: Vec<ListEdit<PluginEntry>>,
+    },
+    EnvVar {
+        name: String,
+        value: Option<String>,
+    },
+    ContextMenuItems {
+        section: &'static str,
+        base: Vec<MenuItemEntry>,
+        edits: Vec<ListEdit<MenuItemEntry>>,
+    },
+    ContextMenuDefaults {
+        section: &'static str,
+        entries: Vec<MenuItemEntry>,
+    },
+    Theme {
+        name: String,
+        theme: Option<ThemeEntry>,
+    },
+    ThemeColours {
+        name: String,
+        theme: ThemeEntry,
+        slots: Vec<(&'static str, &'static str)>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ListEdit<T> {
+    Insert { index: usize, item: T },
+    Replace { index: usize, item: T },
+    Remove { index: usize },
+    Move { from: usize, to: usize },
+}
+
+pub fn apply_list_edits<T: Clone>(list: &mut Vec<T>, edits: &[ListEdit<T>]) {
+    for edit in edits {
+        match edit {
+            ListEdit::Insert { index, item } => list.insert((*index).min(list.len()), item.clone()),
+            ListEdit::Replace { index, item } => {
+                if let Some(target) = list.get_mut(*index) {
+                    *target = item.clone();
+                }
+            },
+            ListEdit::Remove { index } => {
+                if *index < list.len() {
+                    list.remove(*index);
+                }
+            },
+            ListEdit::Move { from, to } => {
+                if *from < list.len() {
+                    let item = list.remove(*from);
+                    list.insert((*to).min(list.len()), item);
+                }
+            },
+        }
+    }
+}
+
+pub fn list_edits<T: Clone + PartialEq>(old: &[T], new: &[T]) -> Vec<ListEdit<T>> {
+    if old == new {
+        return vec![];
+    }
+    if old.len() == new.len() {
+        for from in 0..old.len() {
+            for to in 0..old.len() {
+                if from == to {
+                    continue;
+                }
+                let mut moved = old.to_vec();
+                let item = moved.remove(from);
+                moved.insert(to, item);
+                if moved == new {
+                    return vec![ListEdit::Move { from, to }];
+                }
+            }
+        }
+    }
+    let (n, m) = (old.len(), new.len());
+    let mut common = vec![vec![0usize; m + 1]; n + 1];
+    for i in (0..n).rev() {
+        for j in (0..m).rev() {
+            common[i][j] = if old[i] == new[j] {
+                common[i + 1][j + 1] + 1
+            } else {
+                common[i + 1][j].max(common[i][j + 1])
+            };
+        }
+    }
+    let mut edits = vec![];
+    let (mut i, mut j, mut index) = (0, 0, 0);
+    while i < n || j < m {
+        if i < n && j < m && old[i] == new[j] {
+            i += 1;
+            j += 1;
+            index += 1;
+        } else if i < n && j < m && common[i + 1][j + 1] == common[i][j] {
+            edits.push(ListEdit::Replace {
+                index,
+                item: new[j].clone(),
+            });
+            i += 1;
+            j += 1;
+            index += 1;
+        } else if j < m && (i == n || common[i][j + 1] >= common[i + 1][j]) {
+            edits.push(ListEdit::Insert {
+                index,
+                item: new[j].clone(),
+            });
+            j += 1;
+            index += 1;
+        } else {
+            edits.push(ListEdit::Remove { index });
+            i += 1;
+        }
+    }
+    edits
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -141,32 +273,160 @@ fn keybind_edits(saved: &KeybindsSelection, runtime: &KeybindsSelection) -> Vec<
     edits
 }
 
+fn menu_section(menu: &ContextMenuConfig, section: &str) -> Vec<MenuItemEntry> {
+    menu.section(section)
+        .map(|entries| menu_entries(entries, None))
+        .unwrap_or_default()
+}
+
 fn context_menu_edits(saved: &ContextMenuConfig, runtime: &ContextMenuConfig) -> Vec<ConfigEdit> {
+    let defaults = &default_config().context_menu;
     CONTEXT_MENU_SECTIONS
         .iter()
         .filter_map(|section| {
-            let saved_entries = saved.section(section)?;
-            let runtime_entries = runtime.section(section)?;
-            if saved_entries != runtime_entries {
-                Some(ConfigEdit::ContextMenuSection {
+            let saved_entries = menu_section(saved, section);
+            let runtime_entries = menu_section(runtime, section);
+            if saved_entries == runtime_entries {
+                return None;
+            }
+            let default_entries = menu_section(defaults, section);
+            if runtime_entries == default_entries {
+                Some(ConfigEdit::ContextMenuDefaults {
                     section,
-                    entries: runtime_entries.clone(),
+                    entries: default_entries,
                 })
             } else {
-                None
+                Some(ConfigEdit::ContextMenuItems {
+                    section,
+                    edits: list_edits(&saved_entries, &runtime_entries),
+                    base: saved_entries,
+                })
             }
         })
         .collect()
 }
 
+fn named<T: Clone>(entries: &[T], name_of: impl Fn(&T) -> &str) -> BTreeMap<String, T> {
+    entries
+        .iter()
+        .map(|entry| (name_of(entry).to_owned(), entry.clone()))
+        .collect()
+}
+
+fn plugin_alias_edits(saved: &ConfigBlocks, runtime: &ConfigBlocks) -> Vec<ConfigEdit> {
+    let defaults = named(
+        &config_blocks(default_config(), false, None).plugin_aliases,
+        |alias: &PluginAliasEntry| &alias.name,
+    );
+    let saved = named(&saved.plugin_aliases, |alias| &alias.name);
+    let runtime = named(&runtime.plugin_aliases, |alias| &alias.name);
+    let names: BTreeSet<&String> = saved.keys().chain(runtime.keys()).collect();
+    names
+        .into_iter()
+        .filter(|name| saved.get(*name) != runtime.get(*name))
+        .map(|name| {
+            let alias = runtime.get(name).cloned();
+            let alias = if alias.is_some() && alias.as_ref() == defaults.get(name) {
+                None
+            } else {
+                alias
+            };
+            ConfigEdit::PluginAlias {
+                name: name.clone(),
+                alias,
+            }
+        })
+        .collect()
+}
+
+fn env_edits(saved: &ConfigBlocks, runtime: &ConfigBlocks) -> Vec<ConfigEdit> {
+    let saved = named(&saved.env, |entry| &entry.name);
+    let runtime = named(&runtime.env, |entry| &entry.name);
+    let names: BTreeSet<&String> = saved.keys().chain(runtime.keys()).collect();
+    names
+        .into_iter()
+        .filter(|name| saved.get(*name) != runtime.get(*name))
+        .map(|name| ConfigEdit::EnvVar {
+            name: name.clone(),
+            value: runtime.get(name).map(|entry| entry.value.clone()),
+        })
+        .collect()
+}
+
+fn theme_edits(saved: &ConfigBlocks, runtime: &ConfigBlocks) -> Vec<ConfigEdit> {
+    let saved = named(&saved.themes, |theme| &theme.name);
+    let runtime = named(&runtime.themes, |theme| &theme.name);
+    let names: BTreeSet<&String> = saved.keys().chain(runtime.keys()).collect();
+    let slots = theme_slots();
+    let mut edits = vec![];
+    for name in names {
+        match (saved.get(name), runtime.get(name)) {
+            (Some(saved_theme), Some(runtime_theme)) if saved_theme != runtime_theme => {
+                let changed: Vec<(&'static str, &'static str)> = slots
+                    .iter()
+                    .enumerate()
+                    .filter(|(index, _)| {
+                        saved_theme.colours.get(*index) != runtime_theme.colours.get(*index)
+                    })
+                    .map(|(_, slot)| *slot)
+                    .collect();
+                edits.push(ConfigEdit::ThemeColours {
+                    name: name.clone(),
+                    theme: runtime_theme.clone(),
+                    slots: changed,
+                });
+            },
+            (None, Some(runtime_theme)) => edits.push(ConfigEdit::Theme {
+                name: name.clone(),
+                theme: Some(runtime_theme.clone()),
+            }),
+            (Some(_), None) => edits.push(ConfigEdit::Theme {
+                name: name.clone(),
+                theme: None,
+            }),
+            _ => {},
+        }
+    }
+    edits
+}
+
+fn block_edits(key: SettingKey, saved: &Config, runtime: &Config) -> Vec<ConfigEdit> {
+    match key {
+        SettingKey::Keybinds => {
+            keybind_edits(&saved.keybinds_layers.user, &runtime.keybinds_layers.user)
+        },
+        SettingKey::ContextMenu => context_menu_edits(&saved.context_menu, &runtime.context_menu),
+        _ => {
+            let saved_blocks = config_blocks(saved, false, None);
+            let runtime_blocks = config_blocks(runtime, false, None);
+            match key {
+                SettingKey::PluginAliases => plugin_alias_edits(&saved_blocks, &runtime_blocks),
+                SettingKey::Env => env_edits(&saved_blocks, &runtime_blocks),
+                SettingKey::Themes => theme_edits(&saved_blocks, &runtime_blocks),
+                SettingKey::LoadPlugins => {
+                    if saved_blocks.load_plugins == runtime_blocks.load_plugins {
+                        vec![]
+                    } else {
+                        vec![ConfigEdit::LoadPlugins {
+                            edits: list_edits(
+                                &saved_blocks.load_plugins,
+                                &runtime_blocks.load_plugins,
+                            ),
+                            base: saved_blocks.load_plugins,
+                        }]
+                    }
+                },
+                _ => vec![],
+            }
+        },
+    }
+}
+
 pub fn edits_between(saved: &Config, runtime: &Config) -> Vec<ConfigEdit> {
     let mut edits = vec![];
     for key in differing_settings(saved, runtime) {
-        if key == SettingKey::Keybinds {
-            edits.extend(keybind_edits(
-                &saved.keybinds_layers.user,
-                &runtime.keybinds_layers.user,
-            ));
+        if key.is_block() {
+            edits.extend(block_edits(key, saved, runtime));
             continue;
         }
         if setting_is_default(runtime, key) {
@@ -178,33 +438,25 @@ pub fn edits_between(saved: &Config, runtime: &Config) -> Vec<ConfigEdit> {
             }
         }
     }
-    edits.extend(context_menu_edits(
-        &saved.context_menu,
-        &runtime.context_menu,
-    ));
     edits
 }
 
 pub fn edited_settings(edits: &[ConfigEdit]) -> BTreeSet<SettingKey> {
     edits
         .iter()
-        .filter_map(|edit| match edit {
-            ConfigEdit::SetSetting { key, .. } | ConfigEdit::RemoveSetting(key) => Some(*key),
+        .map(|edit| match edit {
+            ConfigEdit::SetSetting { key, .. } | ConfigEdit::RemoveSetting(key) => *key,
             ConfigEdit::KeybindsAttribute { .. }
             | ConfigEdit::KeybindsClearDefaults(_)
             | ConfigEdit::ModeClearDefaults(_)
-            | ConfigEdit::Key { .. } => Some(SettingKey::Keybinds),
-            ConfigEdit::ContextMenuSection { .. } => None,
-        })
-        .collect()
-}
-
-fn edited_context_menu_sections(edits: &[ConfigEdit]) -> Vec<&'static str> {
-    edits
-        .iter()
-        .filter_map(|edit| match edit {
-            ConfigEdit::ContextMenuSection { section, .. } => Some(*section),
-            _ => None,
+            | ConfigEdit::Key { .. } => SettingKey::Keybinds,
+            ConfigEdit::PluginAlias { .. } => SettingKey::PluginAliases,
+            ConfigEdit::LoadPlugins { .. } => SettingKey::LoadPlugins,
+            ConfigEdit::EnvVar { .. } => SettingKey::Env,
+            ConfigEdit::ContextMenuItems { .. } | ConfigEdit::ContextMenuDefaults { .. } => {
+                SettingKey::ContextMenu
+            },
+            ConfigEdit::Theme { .. } | ConfigEdit::ThemeColours { .. } => SettingKey::Themes,
         })
         .collect()
 }
@@ -344,7 +596,9 @@ fn open_block<'a>(
     if node.children().is_none() {
         node.set_children(KdlDocument::new());
     }
-    node.children_mut().as_mut().map(|children| (children, indent))
+    node.children_mut()
+        .as_mut()
+        .map(|children| (children, indent))
 }
 
 fn block_at_path<'a>(
@@ -374,7 +628,11 @@ fn replace_entry_keeping_format(node: &mut KdlNode, position: usize, mut entry: 
 }
 
 fn set_first_argument(node: &mut KdlNode, value: KdlValue) {
-    match node.entries().iter().position(|entry| entry.name().is_none()) {
+    match node
+        .entries()
+        .iter()
+        .position(|entry| entry.name().is_none())
+    {
         Some(position) => replace_entry_keeping_format(node, position, KdlEntry::new(value)),
         None => node.entries_mut().insert(0, KdlEntry::new(value)),
     }
@@ -689,7 +947,9 @@ fn keybinds_children(node: &mut KdlNode) -> &mut KdlDocument {
     if node.children().is_none() {
         node.set_children(KdlDocument::new());
     }
-    node.children_mut().as_mut().expect("children were just set")
+    node.children_mut()
+        .as_mut()
+        .expect("children were just set")
 }
 
 fn only_removes(edit: &ConfigEdit) -> bool {
@@ -757,49 +1017,558 @@ fn apply_keybinds_edit(document: &mut KdlDocument, edit: &ConfigEdit, runtime: &
     }
 }
 
-fn context_menu_section_node(section: &str, entries: &[ContextMenuEntry]) -> KdlNode {
-    let mut menu = ContextMenuConfig::default();
-    if let Some(target) = menu.section_mut(section) {
-        *target = entries.to_vec();
+fn split_leading(leading: &str) -> (String, String) {
+    match leading.find('\n') {
+        Some(newline) => (
+            leading[..=newline].to_owned(),
+            leading[newline + 1..].to_owned(),
+        ),
+        None => (String::new(), leading.to_owned()),
     }
-    let mut node = menu
-        .to_kdl()
-        .and_then(|menu_node| {
-            menu_node.children().and_then(|children| {
-                children
-                    .nodes()
-                    .iter()
-                    .find(|node| node_name(node) == section)
-                    .cloned()
-            })
-        })
-        .unwrap_or_else(|| KdlNode::new(section));
-    node.insert(CLEAR_DEFAULTS, true);
-    node
 }
 
-fn apply_context_menu_edit(document: &mut KdlDocument, section: &str, entries: &[ContextMenuEntry]) {
-    let Some((block, owner_indent)) = block_at_path(document, &[CONTEXT_MENU], true) else {
+fn insert_node_at(
+    document: &mut KdlDocument,
+    index: usize,
+    mut node: KdlNode,
+    indent: &str,
+    owner_indent: Option<&str>,
+    body: Option<&str>,
+) {
+    let body = body.unwrap_or(indent);
+    if index >= document.nodes().len() {
+        push_node(document, node, indent, owner_indent);
+        if let Some(last) = document.nodes_mut().last_mut() {
+            let leading = last.leading().unwrap_or("").to_owned();
+            let kept = leading.strip_suffix(indent).unwrap_or(&leading).to_owned();
+            last.set_leading(format!("{}{}", kept, body));
+        }
         return;
-    };
-    let replacement = context_menu_section_node(section, entries);
-    match block
+    }
+    let existing_leading = document.nodes()[index].leading().unwrap_or("").to_owned();
+    let (head, tail) = split_leading(&existing_leading);
+    node.set_leading(format!("{}{}", head, body));
+    node.set_trailing("\n");
+    document.nodes_mut()[index].set_leading(tail);
+    document.nodes_mut().insert(index, node);
+}
+
+fn take_node_at(document: &mut KdlDocument, position: usize) -> (KdlNode, String) {
+    let node = document.nodes_mut().remove(position);
+    let leading = node.leading().unwrap_or("").to_owned();
+    let (head, body) = split_leading(&leading);
+    if !head.is_empty() {
+        match document.nodes_mut().get_mut(position) {
+            Some(next) => {
+                let next_leading = format!("{}{}", head, next.leading().unwrap_or(""));
+                next.set_leading(next_leading);
+            },
+            None => {
+                let trailing = format!("{}{}", head, document.trailing().unwrap_or(""));
+                document.set_trailing(trailing);
+            },
+        }
+    }
+    (node, body)
+}
+
+fn replace_node_at(document: &mut KdlDocument, index: usize, mut node: KdlNode) {
+    let old = &document.nodes()[index];
+    if let Some(leading) = old.leading() {
+        node.set_leading(leading.to_owned());
+    }
+    if let Some(trailing) = old.trailing() {
+        node.set_trailing(trailing.to_owned());
+    }
+    document.nodes_mut()[index] = node;
+}
+
+fn apply_node_list_edits<T>(
+    block: &mut KdlDocument,
+    owner_indent: Option<&str>,
+    edits: &[ListEdit<T>],
+    make_node: impl Fn(&T) -> Option<KdlNode>,
+) {
+    let indent = child_indent(block, owner_indent);
+    for edit in edits {
+        match edit {
+            ListEdit::Insert { index, item } => {
+                if let Some(node) = make_node(item) {
+                    insert_node_at(block, *index, node, &indent, owner_indent, None);
+                }
+            },
+            ListEdit::Replace { index, item } => {
+                if *index < block.nodes().len() {
+                    if let Some(node) = make_node(item) {
+                        replace_node_at(block, *index, node);
+                    }
+                }
+            },
+            ListEdit::Remove { index } => {
+                if *index < block.nodes().len() {
+                    remove_node_at(block, *index);
+                }
+            },
+            ListEdit::Move { from, to } => {
+                if *from < block.nodes().len() {
+                    let (node, body) = take_node_at(block, *from);
+                    let body = if body.trim().is_empty() {
+                        None
+                    } else {
+                        Some(body)
+                    };
+                    insert_node_at(block, *to, node, &indent, owner_indent, body.as_deref());
+                }
+            },
+        }
+    }
+}
+
+fn rebuild_children<T: PartialEq>(
+    block: &mut KdlDocument,
+    owner_indent: Option<&str>,
+    base: &[T],
+    read_node: impl Fn(&KdlNode) -> Option<T>,
+    make_node: impl Fn(&T) -> Option<KdlNode>,
+) {
+    let current: Vec<Option<T>> = block.nodes().iter().map(|node| read_node(node)).collect();
+    let matches = current.len() == base.len()
+        && current
+            .iter()
+            .zip(base.iter())
+            .all(|(current, base)| current.as_ref() == Some(base));
+    if matches {
+        return;
+    }
+    let indent = child_indent(block, owner_indent);
+    while !block.nodes().is_empty() {
+        let last = block.nodes().len() - 1;
+        remove_node_at(block, last);
+    }
+    block.set_trailing("");
+    for item in base {
+        if let Some(node) = make_node(item) {
+            push_node(block, node, &indent, owner_indent);
+        }
+    }
+}
+
+fn last_block_position(document: &KdlDocument, name: &str) -> Option<usize> {
+    document
         .nodes()
         .iter()
-        .position(|node| node_name(node) == section)
-    {
-        Some(position) => {
-            let node = &mut block.nodes_mut()[position];
-            set_property(node, CLEAR_DEFAULTS, Some(KdlValue::Bool(true)));
-            match replacement.children() {
-                Some(children) => node.set_children(children.clone()),
-                None => node.clear_children(),
-            }
-        },
+        .rposition(|node| node_name(node) == name)
+}
+
+fn top_level_block<'a>(
+    document: &'a mut KdlDocument,
+    name: &str,
+    create: bool,
+) -> Option<(&'a mut KdlDocument, String)> {
+    let position = match last_block_position(document, name) {
+        Some(position) => position,
         None => {
-            let indent = child_indent(block, owner_indent.as_deref());
-            push_node(block, replacement, &indent, owner_indent.as_deref());
+            if !create {
+                return None;
+            }
+            let indent = child_indent(document, None);
+            push_node(document, KdlNode::new(name), &indent, None);
+            document.nodes().len() - 1
         },
+    };
+    let indent = node_indent(document, position, None);
+    let node = &mut document.nodes_mut()[position];
+    if node.children().is_none() {
+        node.set_children(KdlDocument::new());
+    }
+    node.children_mut()
+        .as_mut()
+        .map(|children| (children, indent))
+}
+
+fn remove_empty_top_level_blocks(document: &mut KdlDocument, name: &str) {
+    while let Some(position) = document.nodes().iter().position(|node| {
+        node_name(node) == name
+            && node
+                .children()
+                .map(|children| children.nodes().is_empty())
+                .unwrap_or(true)
+    }) {
+        remove_node_at(document, position);
+    }
+}
+
+fn set_named_node(document: &mut KdlDocument, block_name: &str, name: &str, node: Option<KdlNode>) {
+    let mut placed = false;
+    for block in document.nodes_mut() {
+        if node_name(block) != block_name {
+            continue;
+        }
+        let Some(children) = block.children_mut().as_mut() else {
+            continue;
+        };
+        let positions: Vec<usize> = children
+            .nodes()
+            .iter()
+            .enumerate()
+            .filter(|(_, n)| node_name(n) == name)
+            .map(|(position, _)| position)
+            .collect();
+        for position in positions.into_iter().rev() {
+            match &node {
+                Some(node) if !placed && position == first_position(children, name) => {
+                    replace_node_at(children, position, node.clone());
+                    placed = true;
+                },
+                _ => remove_node_at(children, position),
+            }
+        }
+    }
+    if let (Some(node), false) = (node, placed) {
+        if let Some((block, indent)) = top_level_block(document, block_name, true) {
+            let child_indent_text = child_indent(block, Some(&indent));
+            push_node(block, node, &child_indent_text, Some(&indent));
+        }
+    }
+}
+
+fn first_position(document: &KdlDocument, name: &str) -> usize {
+    document
+        .nodes()
+        .iter()
+        .position(|n| node_name(n) == name)
+        .unwrap_or(usize::MAX)
+}
+
+fn node_plugin_entry(node: &KdlNode, name_is_location: bool) -> PluginEntry {
+    let location = if name_is_location {
+        node_name(node).to_owned()
+    } else {
+        node.get("location")
+            .and_then(|entry| entry.value().as_string())
+            .unwrap_or("")
+            .to_owned()
+    };
+    let mut entry = PluginEntry {
+        location,
+        cwd: None,
+        configuration: vec![],
+    };
+    if let Some(children) = node.children() {
+        for child in children.nodes() {
+            let value = child
+                .entries()
+                .iter()
+                .find(|entry| entry.name().is_none())
+                .map(|entry| match entry.value() {
+                    KdlValue::String(text) | KdlValue::RawString(text) => text.clone(),
+                    other => other.to_string(),
+                })
+                .unwrap_or_default();
+            if node_name(child) == "cwd" {
+                entry.cwd = Some(value);
+            } else {
+                entry
+                    .configuration
+                    .push((node_name(child).to_owned(), value));
+            }
+        }
+    }
+    entry.configuration.sort();
+    entry
+}
+
+fn apply_load_plugins_edit(
+    document: &mut KdlDocument,
+    base: &[PluginEntry],
+    edits: &[ListEdit<PluginEntry>],
+) {
+    let Some((block, indent)) = top_level_block(document, LOAD_PLUGINS, true) else {
+        return;
+    };
+    rebuild_children(
+        block,
+        Some(&indent),
+        base,
+        |node| Some(node_plugin_entry(node, true)),
+        |entry| Some(load_plugin_node(entry)),
+    );
+    apply_node_list_edits(block, Some(&indent), edits, |entry| {
+        Some(load_plugin_node(entry))
+    });
+}
+
+fn apply_env_edit(document: &mut KdlDocument, name: &str, value: Option<&str>) {
+    let existing = document.nodes_mut().iter_mut().rev().find_map(|block| {
+        if node_name(block) != ENV {
+            return None;
+        }
+        block.children_mut().as_mut().and_then(|children| {
+            children
+                .nodes_mut()
+                .iter_mut()
+                .find(|n| node_name(n) == name)
+        })
+    });
+    match (existing, value) {
+        (Some(node), Some(value)) => set_first_argument(node, KdlValue::String(value.to_owned())),
+        (_, value) => set_named_node(
+            document,
+            ENV,
+            name,
+            value.map(|value| {
+                env_node(&crate::data::EnvVarEntry {
+                    name: name.to_owned(),
+                    value: value.to_owned(),
+                })
+            }),
+        ),
+    }
+    remove_empty_top_level_blocks(document, ENV);
+}
+
+fn menu_entry_of(node: &KdlNode) -> Option<MenuItemEntry> {
+    ContextMenuConfig::entry_from_kdl(node, &Options::default())
+        .ok()
+        .map(|entry| menu_entries(&[entry], None).remove(0))
+}
+
+fn context_menu_clears_everything(document: &KdlDocument) -> bool {
+    document
+        .nodes()
+        .iter()
+        .filter(|node| node_name(node) == CONTEXT_MENU)
+        .any(|node| {
+            node.get(CLEAR_DEFAULTS)
+                .map(|entry| entry.value().as_bool() == Some(true))
+                .unwrap_or(false)
+        })
+}
+
+fn context_menu_section<'a>(
+    document: &'a mut KdlDocument,
+    section: &str,
+) -> Option<(&'a mut KdlDocument, String)> {
+    let clears_everything = context_menu_clears_everything(document);
+    let (block, owner_indent) = top_level_block(document, CONTEXT_MENU, true)?;
+    let position = match block
+        .nodes()
+        .iter()
+        .rposition(|node| node_name(node) == section)
+    {
+        Some(position) => position,
+        None => {
+            let indent = child_indent(block, Some(&owner_indent));
+            let mut node = KdlNode::new(section);
+            node.set_children(KdlDocument::new());
+            push_node(block, node, &indent, Some(&owner_indent));
+            block.nodes().len() - 1
+        },
+    };
+    let indent = node_indent(block, position, Some(&owner_indent));
+    let node = &mut block.nodes_mut()[position];
+    if !clears_everything {
+        set_property(node, CLEAR_DEFAULTS, Some(KdlValue::Bool(true)));
+    }
+    if node.children().is_none() {
+        node.set_children(KdlDocument::new());
+    }
+    node.children_mut()
+        .as_mut()
+        .map(|children| (children, indent))
+}
+
+fn apply_context_menu_items(
+    document: &mut KdlDocument,
+    section: &str,
+    base: &[MenuItemEntry],
+    edits: &[ListEdit<MenuItemEntry>],
+) {
+    let Some((children, indent)) = context_menu_section(document, section) else {
+        return;
+    };
+    rebuild_children(children, Some(&indent), base, menu_entry_of, |entry| {
+        menu_item_node(entry).ok()
+    });
+    apply_node_list_edits(children, Some(&indent), edits, |entry| {
+        menu_item_node(entry).ok()
+    });
+}
+
+fn apply_context_menu_defaults(
+    document: &mut KdlDocument,
+    section: &str,
+    entries: &[MenuItemEntry],
+) {
+    if context_menu_clears_everything(document) {
+        if let Some((children, indent)) = context_menu_section(document, section) {
+            rebuild_children(children, Some(&indent), entries, menu_entry_of, |entry| {
+                menu_item_node(entry).ok()
+            });
+        }
+        return;
+    }
+    for block in document.nodes_mut() {
+        if node_name(block) != CONTEXT_MENU {
+            continue;
+        }
+        if let Some(children) = block.children_mut().as_mut() {
+            remove_nodes_named(children, section);
+        }
+    }
+}
+
+fn is_palette_theme(node: &KdlNode) -> bool {
+    node.children()
+        .map(|children| {
+            children
+                .nodes()
+                .iter()
+                .all(|child| PALETTE_COLOURS.contains(&node_name(child)))
+        })
+        .unwrap_or(false)
+}
+
+fn style_declaration_node(theme: &ThemeEntry, style: &str) -> Option<KdlNode> {
+    theme_node(theme).children().and_then(|children| {
+        children
+            .nodes()
+            .iter()
+            .find(|node| node_name(node) == style)
+            .cloned()
+    })
+}
+
+fn colour_node(theme: &ThemeEntry, style: &str, component: &str) -> Option<KdlNode> {
+    style_declaration_node(theme, style)?
+        .children()?
+        .nodes()
+        .iter()
+        .find(|node| node_name(node) == component)
+        .cloned()
+}
+
+fn apply_theme_colours(
+    document: &mut KdlDocument,
+    name: &str,
+    theme: &ThemeEntry,
+    slots: &[(&'static str, &'static str)],
+) {
+    let found = document.nodes_mut().iter_mut().rev().find_map(|block| {
+        if node_name(block) != THEMES {
+            return None;
+        }
+        block.children_mut().as_mut().and_then(|children| {
+            children
+                .nodes_mut()
+                .iter_mut()
+                .rfind(|n| node_name(n) == name)
+        })
+    });
+    let theme_node_in_file = match found {
+        Some(node) if !is_palette_theme(node) && node.children().is_some() => node,
+        _ => {
+            set_named_node(document, THEMES, name, Some(theme_node(theme)));
+            return;
+        },
+    };
+    let theme_indent = indent_of_leading(theme_node_in_file.leading()).unwrap_or_default();
+    let Some(styles) = theme_node_in_file.children_mut().as_mut() else {
+        return;
+    };
+    let styles_indent = child_indent(styles, Some(&theme_indent));
+    let mut handled_styles: BTreeSet<&str> = BTreeSet::new();
+    for (style, component) in slots {
+        if handled_styles.contains(style) {
+            continue;
+        }
+        let style_position = styles.nodes().iter().position(|n| node_name(n) == *style);
+        let replacement = style_declaration_node(theme, style);
+        match (style_position, replacement) {
+            (None, Some(node)) => {
+                push_node(styles, node, &styles_indent, Some(&theme_indent));
+                handled_styles.insert(*style);
+            },
+            (Some(position), None) => {
+                remove_node_at(styles, position);
+                handled_styles.insert(*style);
+            },
+            (Some(position), Some(_)) => {
+                let style_indent = node_indent(styles, position, Some(&theme_indent));
+                let style_node = &mut styles.nodes_mut()[position];
+                if style_node.children().is_none() {
+                    style_node.set_children(KdlDocument::new());
+                }
+                let Some(components) = style_node.children_mut().as_mut() else {
+                    continue;
+                };
+                let Some(new_colour) = colour_node(theme, style, component) else {
+                    continue;
+                };
+                match components
+                    .nodes_mut()
+                    .iter_mut()
+                    .find(|n| node_name(n) == *component)
+                {
+                    Some(existing) => {
+                        let first_entry = existing.entries().first().cloned();
+                        existing.clear_entries();
+                        for (index, entry) in new_colour.entries().iter().enumerate() {
+                            let mut entry = entry.clone();
+                            if index == 0 {
+                                if let Some(leading) =
+                                    first_entry.as_ref().and_then(|e| e.leading())
+                                {
+                                    entry.set_leading(leading.to_owned());
+                                }
+                            }
+                            existing.push(entry);
+                        }
+                    },
+                    None => {
+                        let component_indent = child_indent(components, Some(&style_indent));
+                        push_node(
+                            components,
+                            new_colour,
+                            &component_indent,
+                            Some(&style_indent),
+                        );
+                    },
+                }
+            },
+            (None, None) => {},
+        }
+    }
+}
+
+fn apply_theme_edit(document: &mut KdlDocument, name: &str, theme: Option<&ThemeEntry>) {
+    set_named_node(document, THEMES, name, theme.map(theme_node));
+    remove_empty_top_level_blocks(document, THEMES);
+}
+
+fn apply_block_edit(document: &mut KdlDocument, edit: &ConfigEdit) {
+    match edit {
+        ConfigEdit::PluginAlias { name, alias } => set_named_node(
+            document,
+            PLUGINS,
+            name,
+            alias.as_ref().map(plugin_alias_node),
+        ),
+        ConfigEdit::LoadPlugins { base, edits } => apply_load_plugins_edit(document, base, edits),
+        ConfigEdit::EnvVar { name, value } => apply_env_edit(document, name, value.as_deref()),
+        ConfigEdit::ContextMenuItems {
+            section,
+            base,
+            edits,
+        } => apply_context_menu_items(document, section, base, edits),
+        ConfigEdit::ContextMenuDefaults { section, entries } => {
+            apply_context_menu_defaults(document, section, entries)
+        },
+        ConfigEdit::Theme { name, theme } => apply_theme_edit(document, name, theme.as_ref()),
+        ConfigEdit::ThemeColours { name, theme, slots } => {
+            apply_theme_colours(document, name, theme, slots)
+        },
+        _ => {},
     }
 }
 
@@ -822,12 +1591,15 @@ pub fn apply_edits(
     };
     for edit in edits {
         match edit {
-            ConfigEdit::SetSetting { key, value } => set_setting(&mut document, *key, value.clone()),
-            ConfigEdit::RemoveSetting(key) => remove_setting(&mut document, *key),
-            ConfigEdit::ContextMenuSection { section, entries } => {
-                apply_context_menu_edit(&mut document, section, entries)
+            ConfigEdit::SetSetting { key, value } => {
+                set_setting(&mut document, *key, value.clone())
             },
-            _ => apply_keybinds_edit(&mut document, edit, runtime_keybinds),
+            ConfigEdit::RemoveSetting(key) => remove_setting(&mut document, *key),
+            ConfigEdit::KeybindsAttribute { .. }
+            | ConfigEdit::KeybindsClearDefaults(_)
+            | ConfigEdit::ModeClearDefaults(_)
+            | ConfigEdit::Key { .. } => apply_keybinds_edit(&mut document, edit, runtime_keybinds),
+            _ => apply_block_edit(&mut document, edit),
         }
     }
     Ok(document.to_string())
@@ -863,7 +1635,13 @@ pub fn written_file_matches(
     edits: &[ConfigEdit],
 ) -> Result<(), String> {
     let parsed = parse_saved_file(file_contents, runtime)?;
+    for edit in edits {
+        block_edit_reads_back(&parsed, runtime, edit)?;
+    }
     for key in edited_settings(edits) {
+        if key.is_block() && key != SettingKey::Keybinds {
+            continue;
+        }
         if key == SettingKey::Keybinds {
             let expected = normalized_keybinds(&runtime.keybinds_layers.user, &parsed.options);
             if parsed.keybinds_layers.user != expected {
@@ -873,26 +1651,108 @@ pub fn written_file_matches(
             return Err(format!("{} reads back differently", key));
         }
     }
-    for section in edited_context_menu_sections(edits) {
-        if parsed.context_menu.section(section) != runtime.context_menu.section(section) {
-            return Err(format!("context_menu {} reads back differently", section));
-        }
-    }
     Ok(())
+}
+
+fn config_file_theme<'a>(config: &'a Config, name: &str) -> Option<&'a crate::data::Styling> {
+    config
+        .themes
+        .get_theme(name)
+        .filter(|theme| !theme.sourced_from_external_file)
+        .map(|theme| &theme.palette)
+}
+
+fn block_edit_reads_back(
+    parsed: &Config,
+    runtime: &Config,
+    edit: &ConfigEdit,
+) -> Result<(), String> {
+    let matches = match edit {
+        ConfigEdit::PluginAlias { name, .. } => {
+            parsed.plugins.aliases.get(name) == runtime.plugins.aliases.get(name)
+        },
+        ConfigEdit::LoadPlugins { .. } => {
+            config_blocks(parsed, false, None).load_plugins
+                == config_blocks(runtime, false, None).load_plugins
+        },
+        ConfigEdit::EnvVar { name, .. } => {
+            parsed.env.inner().get(name) == runtime.env.inner().get(name)
+        },
+        ConfigEdit::ContextMenuItems { section, .. }
+        | ConfigEdit::ContextMenuDefaults { section, .. } => {
+            menu_section(&parsed.context_menu, section)
+                == menu_section(&runtime.context_menu, section)
+        },
+        ConfigEdit::Theme { name, .. } | ConfigEdit::ThemeColours { name, .. } => {
+            config_file_theme(parsed, name).map(styling_colours)
+                == config_file_theme(runtime, name).map(styling_colours)
+        },
+        _ => true,
+    };
+    if matches {
+        Ok(())
+    } else {
+        Err(format!(
+            "{:?} reads back differently",
+            edited_settings(&[edit.clone()])
+        ))
+    }
+}
+
+fn copy_block_edit(new_saved: &mut Config, runtime: &Config, edit: &ConfigEdit) {
+    match edit {
+        ConfigEdit::PluginAlias { name, .. } => match runtime.plugins.aliases.get(name) {
+            Some(alias) => {
+                new_saved
+                    .plugins
+                    .aliases
+                    .insert(name.clone(), alias.clone());
+            },
+            None => {
+                new_saved.plugins.aliases.remove(name);
+            },
+        },
+        ConfigEdit::LoadPlugins { .. } => {
+            new_saved.background_plugins = runtime.background_plugins.clone()
+        },
+        ConfigEdit::EnvVar { name, .. } => {
+            let mut env = new_saved.env.inner().clone();
+            match runtime.env.inner().get(name) {
+                Some(value) => env.insert(name.clone(), value.clone()),
+                None => env.remove(name),
+            };
+            new_saved.env = crate::envs::EnvironmentVariables::from_data(env);
+        },
+        ConfigEdit::ContextMenuItems { section, .. }
+        | ConfigEdit::ContextMenuDefaults { section, .. } => {
+            if let (Some(target), Some(source)) = (
+                new_saved.context_menu.section_mut(section),
+                runtime.context_menu.section(section),
+            ) {
+                *target = source.clone();
+            }
+        },
+        ConfigEdit::Theme { name, .. } | ConfigEdit::ThemeColours { name, .. } => {
+            match runtime.themes.get_theme(name) {
+                Some(theme) => new_saved.themes.insert(name.clone(), theme.clone()),
+                None => {
+                    new_saved.themes.remove(name);
+                },
+            }
+        },
+        _ => {},
+    }
 }
 
 pub fn saved_config_after_edits(saved: &Config, runtime: &Config, edits: &[ConfigEdit]) -> Config {
     let mut new_saved = saved.clone();
     for key in edited_settings(edits) {
-        copy_setting(&mut new_saved, runtime, key);
-    }
-    for section in edited_context_menu_sections(edits) {
-        if let (Some(target), Some(source)) = (
-            new_saved.context_menu.section_mut(section),
-            runtime.context_menu.section(section),
-        ) {
-            *target = source.clone();
+        if !key.is_block() || key == SettingKey::Keybinds {
+            copy_setting(&mut new_saved, runtime, key);
         }
+    }
+    for edit in edits {
+        copy_block_edit(&mut new_saved, runtime, edit);
     }
     new_saved
 }

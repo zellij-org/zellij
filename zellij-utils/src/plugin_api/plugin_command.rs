@@ -116,7 +116,13 @@ pub use super::generated_api::api::{
         ConfigSettingState as ProtobufConfigSettingState, CopyKeybindPresetPayload,
         CopyKeybindPresetResponse as ProtobufCopyKeybindPresetResponse,
         KeybindsSelectionSnapshot as ProtobufKeybindsSelectionSnapshot,
-        LeaderValue as ProtobufLeaderValue,
+        LeaderValue as ProtobufLeaderValue, ConfigBlocks as ProtobufConfigBlocks,
+        ConfigPair as ProtobufConfigPair, EnvVarEntry as ProtobufEnvVarEntry,
+        KeybindingEntry as ProtobufKeybindingEntry,
+        KeybindingSourceKind as ProtobufKeybindingSourceKind,
+        MenuItemEntry as ProtobufMenuItemEntry, MenuSectionEntries as ProtobufMenuSectionEntries,
+        PluginAliasEntry as ProtobufPluginAliasEntry, PluginEntry as ProtobufPluginEntry,
+        ResetKeysPayload, SaveKeybindsAsPresetPayload, ThemeEntry as ProtobufThemeEntry, ThemeSource as ProtobufThemeSource,
         RegexHighlight as ProtobufRegexHighlight, ReloadPluginPayload, RenameLayoutPayload,
         RenameLayoutResponse as ProtobufRenameLayoutResponse, RenameTabWithIdPayload,
         RenameWebLoginTokenPayload, RenameWebTokenResponse, ReplacePaneWithExistingPanePayload,
@@ -152,7 +158,9 @@ use crate::data::{
     HighlightLayer, HighlightStyle, HttpVerb, InputMode, KeyWithModifier, KillSessionsResponse,
     MessageToPlugin, NewPluginArgs, PaneId, PermissionType, PluginCommand, RegexHighlight,
     RenameLayoutResponse, SaveLayoutResponse, SessionInfo, SessionListSnapshot, SettingKey,
-    ConfigSettingState, ConfigSnapshot, KeybindsSelectionSnapshot,
+    ConfigBlocks, ConfigSettingState, ConfigSnapshot, EnvVarEntry, KeybindingEntry,
+    KeybindingSource, KeybindsSelectionSnapshot, MenuItemEntry, MenuSectionEntries,
+    PluginAliasEntry, PluginEntry, ThemeEntry, ThemeSource,
 };
 use crate::input::actions::Action;
 use crate::input::layout::PercentOrFixed;
@@ -161,6 +169,7 @@ use crate::data::{BorderStyleOverride, PopupOptions};
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
 use std::path::PathBuf;
+use std::str::FromStr;
 
 impl Into<FloatingPaneCoordinates> for ProtobufFloatingPaneCoordinates {
     fn into(self) -> FloatingPaneCoordinates {
@@ -2644,6 +2653,31 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 Some(Payload::ReloadConfigFilePayload(_)) => Ok(PluginCommand::ReloadConfigFile),
                 _ => Err("Mismatched payload for ReloadConfigFile"),
             },
+            Some(CommandName::ReplaceConfigBlocks) => match protobuf_plugin_command.payload {
+                Some(Payload::ReplaceConfigBlocksPayload(blocks)) => {
+                    Ok(PluginCommand::ReplaceConfigBlocks(blocks))
+                },
+                _ => Err("Mismatched payload for ReplaceConfigBlocks"),
+            },
+            Some(CommandName::SaveKeybindsAsPreset) => match protobuf_plugin_command.payload {
+                Some(Payload::SaveKeybindsAsPresetPayload(payload)) => {
+                    Ok(PluginCommand::SaveKeybindsAsPreset {
+                        new_name: payload.new_name,
+                    })
+                },
+                _ => Err("Mismatched payload for SaveKeybindsAsPreset"),
+            },
+            Some(CommandName::ResetKeys) => match protobuf_plugin_command.payload {
+                Some(Payload::ResetKeysPayload(payload)) => Ok(PluginCommand::ResetKeys {
+                    keys: payload
+                        .keys
+                        .into_iter()
+                        .filter_map(key_to_unbind_to_plugin_command_assets)
+                        .collect(),
+                    write_config_to_disk: payload.write_config_to_disk,
+                }),
+                _ => Err("Mismatched payload for ResetKeys"),
+            },
             Some(CommandName::CopyKeybindPreset) => match protobuf_plugin_command.payload {
                 Some(Payload::CopyKeybindPresetPayload(payload)) => {
                     Ok(PluginCommand::CopyKeybindPreset {
@@ -4574,6 +4608,26 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 name: CommandName::ReloadConfigFile as i32,
                 payload: Some(Payload::ReloadConfigFilePayload(SaveConfigPayload {})),
             }),
+            PluginCommand::ReplaceConfigBlocks(blocks) => Ok(ProtobufPluginCommand {
+                name: CommandName::ReplaceConfigBlocks as i32,
+                payload: Some(Payload::ReplaceConfigBlocksPayload(blocks)),
+            }),
+            PluginCommand::SaveKeybindsAsPreset { new_name } => Ok(ProtobufPluginCommand {
+                name: CommandName::SaveKeybindsAsPreset as i32,
+                payload: Some(Payload::SaveKeybindsAsPresetPayload(
+                    SaveKeybindsAsPresetPayload { new_name },
+                )),
+            }),
+            PluginCommand::ResetKeys {
+                keys,
+                write_config_to_disk,
+            } => Ok(ProtobufPluginCommand {
+                name: CommandName::ResetKeys as i32,
+                payload: Some(Payload::ResetKeysPayload(ResetKeysPayload {
+                    keys: keys.into_iter().filter_map(|k| k.try_into().ok()).collect(),
+                    write_config_to_disk,
+                })),
+            }),
             PluginCommand::RunContextMenuItem(index) => Ok(ProtobufPluginCommand {
                 name: CommandName::RunContextMenuItem as i32,
                 payload: Some(Payload::RunContextMenuItemPayload(index as u32)),
@@ -5774,8 +5828,218 @@ impl From<ConfigSnapshot> for ProtobufReadConfigResponse {
             env_vars: snapshot.env_vars,
             context_menu_items: snapshot.context_menu_items,
             keybinds: Some(snapshot.keybinds.into()),
+            blocks: Some(snapshot.blocks.into()),
+            saved_blocks: Some(snapshot.saved_blocks.into()),
+            default_blocks: Some(snapshot.default_blocks.into()),
+            keybindings: snapshot.keybindings.into_iter().map(Into::into).collect(),
         }
     }
+}
+
+fn plugin_entry_to_protobuf(entry: PluginEntry) -> ProtobufPluginEntry {
+    ProtobufPluginEntry {
+        location: entry.location,
+        cwd: entry.cwd,
+        configuration: entry
+            .configuration
+            .into_iter()
+            .map(|(key, value)| ProtobufConfigPair { key, value })
+            .collect(),
+    }
+}
+
+fn plugin_entry_from_protobuf(entry: ProtobufPluginEntry) -> PluginEntry {
+    PluginEntry {
+        location: entry.location,
+        cwd: entry.cwd,
+        configuration: entry
+            .configuration
+            .into_iter()
+            .map(|pair| (pair.key, pair.value))
+            .collect(),
+    }
+}
+
+impl From<ConfigBlocks> for ProtobufConfigBlocks {
+    fn from(blocks: ConfigBlocks) -> Self {
+        ProtobufConfigBlocks {
+            plugin_aliases: blocks
+                .plugin_aliases
+                .into_iter()
+                .map(|alias| ProtobufPluginAliasEntry {
+                    name: alias.name,
+                    plugin: Some(plugin_entry_to_protobuf(alias.plugin)),
+                })
+                .collect(),
+            load_plugins: blocks
+                .load_plugins
+                .into_iter()
+                .map(plugin_entry_to_protobuf)
+                .collect(),
+            env: blocks
+                .env
+                .into_iter()
+                .map(|entry| ProtobufEnvVarEntry {
+                    name: entry.name,
+                    value: entry.value,
+                })
+                .collect(),
+            context_menu: blocks
+                .context_menu
+                .into_iter()
+                .map(|section| ProtobufMenuSectionEntries {
+                    section: section.section,
+                    entries: section
+                        .entries
+                        .into_iter()
+                        .map(|entry| ProtobufMenuItemEntry {
+                            label: entry.label,
+                            actions: entry.actions,
+                            shortcut: entry.shortcut,
+                        })
+                        .collect(),
+                })
+                .collect(),
+            themes: blocks
+                .themes
+                .into_iter()
+                .map(|theme| ProtobufThemeEntry {
+                    name: theme.name,
+                    source: match theme.source {
+                        ThemeSource::BuiltIn => ProtobufThemeSource::BuiltIn,
+                        ThemeSource::ConfigFile => ProtobufThemeSource::ConfigFile,
+                        ThemeSource::ThemeFolder => ProtobufThemeSource::ThemeFolder,
+                    } as i32,
+                    colours: theme.colours,
+                })
+                .collect(),
+        }
+    }
+}
+
+impl From<ProtobufConfigBlocks> for ConfigBlocks {
+    fn from(blocks: ProtobufConfigBlocks) -> Self {
+        ConfigBlocks {
+            plugin_aliases: blocks
+                .plugin_aliases
+                .into_iter()
+                .map(|alias| PluginAliasEntry {
+                    name: alias.name,
+                    plugin: alias
+                        .plugin
+                        .map(plugin_entry_from_protobuf)
+                        .unwrap_or_default(),
+                })
+                .collect(),
+            load_plugins: blocks
+                .load_plugins
+                .into_iter()
+                .map(plugin_entry_from_protobuf)
+                .collect(),
+            env: blocks
+                .env
+                .into_iter()
+                .map(|entry| EnvVarEntry {
+                    name: entry.name,
+                    value: entry.value,
+                })
+                .collect(),
+            context_menu: blocks
+                .context_menu
+                .into_iter()
+                .map(|section| MenuSectionEntries {
+                    section: section.section,
+                    entries: section
+                        .entries
+                        .into_iter()
+                        .map(|entry| MenuItemEntry {
+                            label: entry.label,
+                            actions: entry.actions,
+                            shortcut: entry.shortcut,
+                        })
+                        .collect(),
+                })
+                .collect(),
+            themes: blocks
+                .themes
+                .into_iter()
+                .map(|theme| ThemeEntry {
+                    name: theme.name,
+                    source: match ProtobufThemeSource::try_from(theme.source) {
+                        Ok(ProtobufThemeSource::ConfigFile) => ThemeSource::ConfigFile,
+                        Ok(ProtobufThemeSource::ThemeFolder) => {
+                            ThemeSource::ThemeFolder
+                        },
+                        _ => ThemeSource::BuiltIn,
+                    },
+                    colours: theme.colours,
+                })
+                .collect(),
+        }
+    }
+}
+
+impl From<KeybindingEntry> for ProtobufKeybindingEntry {
+    fn from(entry: KeybindingEntry) -> Self {
+        let (source, shared_block) = match entry.source {
+            KeybindingSource::Preset => (ProtobufKeybindingSourceKind::KeybindingSourcePreset, None),
+            KeybindingSource::User => (ProtobufKeybindingSourceKind::KeybindingSourceUser, None),
+            KeybindingSource::Shared(block) => (
+                ProtobufKeybindingSourceKind::KeybindingSourceShared,
+                Some(block),
+            ),
+            KeybindingSource::Layout => (ProtobufKeybindingSourceKind::KeybindingSourceLayout, None),
+        };
+        let preset_same_as_actions = entry.preset_actions.as_ref() == Some(&entry.actions);
+        ProtobufKeybindingEntry {
+            mode: entry.mode as i32,
+            key: entry.key.to_kdl(),
+            has_preset_binding: entry.preset_actions.is_some(),
+            preset_actions: if preset_same_as_actions {
+                vec![]
+            } else {
+                entry.preset_actions.unwrap_or_default()
+            },
+            preset_same_as_actions,
+            actions: entry.actions,
+            source: source as i32,
+            shared_block,
+            unbound: entry.unbound,
+            unsaved: entry.unsaved,
+        }
+    }
+}
+
+fn keybinding_entry_from_protobuf(entry: ProtobufKeybindingEntry) -> Option<KeybindingEntry> {
+    let mode: InputMode = ProtobufInputMode::try_from(entry.mode)
+        .ok()?
+        .try_into()
+        .ok()?;
+    let key = KeyWithModifier::from_str(&entry.key).ok()?;
+    let source = match ProtobufKeybindingSourceKind::try_from(entry.source) {
+        Ok(ProtobufKeybindingSourceKind::KeybindingSourceUser) => KeybindingSource::User,
+        Ok(ProtobufKeybindingSourceKind::KeybindingSourceShared) => {
+            KeybindingSource::Shared(entry.shared_block.unwrap_or_default())
+        },
+        Ok(ProtobufKeybindingSourceKind::KeybindingSourceLayout) => KeybindingSource::Layout,
+        _ => KeybindingSource::Preset,
+    };
+    let preset_actions = if entry.preset_same_as_actions {
+        Some(entry.actions.clone())
+    } else if entry.has_preset_binding {
+        Some(entry.preset_actions)
+    } else {
+        None
+    };
+    Some(KeybindingEntry {
+        mode,
+        key,
+        actions: entry.actions,
+        source,
+        unbound: entry.unbound,
+        preset_actions,
+        unsaved: entry.unsaved,
+    })
 }
 
 impl From<KeybindsSelectionSnapshot> for ProtobufKeybindsSelectionSnapshot {
@@ -5857,6 +6121,14 @@ impl From<ProtobufReadConfigResponse> for ConfigSnapshot {
             load_plugins: response.load_plugins,
             env_vars: response.env_vars,
             context_menu_items: response.context_menu_items,
+            blocks: response.blocks.map(Into::into).unwrap_or_default(),
+            saved_blocks: response.saved_blocks.map(Into::into).unwrap_or_default(),
+            default_blocks: response.default_blocks.map(Into::into).unwrap_or_default(),
+            keybindings: response
+                .keybindings
+                .into_iter()
+                .filter_map(keybinding_entry_from_protobuf)
+                .collect(),
             keybinds: response.keybinds.map(Into::into).unwrap_or_default(),
         }
     }

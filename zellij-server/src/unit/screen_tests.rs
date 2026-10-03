@@ -762,6 +762,7 @@ impl MockScreen {
             web_sharing: WebSharing::Off,
             config_file_path: self.session_metadata.config_file_path.clone(),
             config_file: self.session_metadata.config_file.clone(),
+            applied_env: self.session_metadata.applied_env.clone(),
             key_passthrough_clients: self.session_metadata.key_passthrough_clients.clone(),
             popup_clients: self.session_metadata.popup_clients.clone(),
         }
@@ -818,6 +819,7 @@ impl MockScreen {
             web_sharing: WebSharing::Off,
             config_file_path: None,
             config_file: Default::default(),
+            applied_env: Default::default(),
             key_passthrough_clients: Default::default(),
             popup_clients: Default::default(),
         };

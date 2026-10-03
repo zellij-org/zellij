@@ -6909,7 +6909,7 @@ fn dropdown_ui_component_pads_the_field_and_truncates_long_values() {
     );
     assert_eq!(widget_lines(&grid)[0], "Mode [ normal    ▾ ]");
     assert!(styled_line(&grid, 0).contains(GREEN_FOREGROUND));
-    assert!(!styled_line(&grid, 0).contains(GRAY_BACKGROUND));
+    assert!(styled_line(&grid, 0).contains(GRAY_BACKGROUND));
     let long = render_ui_component(
         "dropdown",
         &format!(

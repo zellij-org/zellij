@@ -1,5 +1,5 @@
 use super::widget_common::{
-    colored, decode_text, dimmed, field_bracket_styles, field_styles, fit, label_width, move_to,
+    accented_field_bracket_styles, colored, decode_text, dimmed, field_styles, fit, label_width, move_to,
     paint, render_label, reversed, text_width, WidgetState,
 };
 use super::Coordinates;
@@ -42,7 +42,14 @@ pub fn text_input(
         text_width(&suffix) + 1
     };
     let text_area_width = inner_width - suffix_width;
-    let bracket_styles = field_bracket_styles(style, focused, hovered, disabled, invalid);
+    let bracket_styles = accented_field_bracket_styles(
+        style,
+        focused,
+        hovered,
+        disabled,
+        invalid,
+        state.flag("ab"),
+    );
     let value_styles = field_styles(style, focused, hovered, disabled);
     let text_styles = if placeholder {
         value_styles

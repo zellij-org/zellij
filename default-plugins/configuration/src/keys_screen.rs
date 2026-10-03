@@ -2,15 +2,15 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use zellij_tile::prelude::*;
 
-use crate::settings::{check_text, describe, kdl_for, kdl_string, SettingKind};
+use crate::settings::kdl_string;
 use crate::ui_components::{print_link, request_close};
 
 const LABEL_WIDTH: usize = 16;
-const FOLDER_LABEL_WIDTH: usize = 26;
-const FOLDER_FIELD_WIDTH: usize = 54;
 const PRESET_EXPLANATION: &str =
     "Presets change how modes are reached and help avoid key clashes with other programs";
 const FIELD_WIDTH: usize = 44;
+const CUSTOM_PRESET: &str = "custom";
+const SAVED_PRESET_NAME: &str = "my-keybindings";
 const MODIFIER_CHOICES: [&str; 8] = [
     "Ctrl",
     "Alt",
@@ -28,15 +28,13 @@ pub enum KeysField {
     Primary,
     Secondary,
     Unlock,
-    Copy,
-    SwitchToPreset,
+    SaveAsPreset,
     Save,
-    PresetFolder,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum KeysDialog {
-    SwitchToPreset,
+    SwitchToPreset(String),
 }
 
 pub struct KeysScreen {
@@ -49,6 +47,7 @@ pub struct KeysScreen {
     element_rows: Vec<(KeysField, usize)>,
     capturing_unlock: bool,
     file_link_area: Option<Rect>,
+    file_link_target: Option<String>,
     file_link_hovered: bool,
     link_color: Option<PaletteColor>,
     notice: Option<String>,
@@ -57,10 +56,18 @@ pub struct KeysScreen {
     needs_refresh: bool,
     pending_mode_switch: bool,
     focused: bool,
-    editing_folder: bool,
-    keybinds_dir: Option<String>,
-    keybinds_dir_unsaved: bool,
+    naming: Option<PresetNaming>,
+    config_file_path: Option<String>,
 }
+
+struct PresetNaming {
+    dialog: ConfirmDialog,
+    input: TextInput,
+    then_switch_to: Option<String>,
+    error: Option<String>,
+}
+
+const NAMING_WIDTH: usize = 60;
 
 impl KeysScreen {
     pub fn new(is_setup_wizard: bool) -> Self {
@@ -74,6 +81,7 @@ impl KeysScreen {
             element_rows: vec![],
             capturing_unlock: false,
             file_link_area: None,
+            file_link_target: None,
             file_link_hovered: false,
             link_color: None,
             notice: None,
@@ -82,24 +90,20 @@ impl KeysScreen {
             needs_refresh: false,
             pending_mode_switch: false,
             focused: is_setup_wizard,
-            editing_folder: false,
-            keybinds_dir: None,
-            keybinds_dir_unsaved: false,
+            naming: None,
+            config_file_path: None,
         };
         screen.rebuild();
         screen
     }
-    pub fn is_editing_folder(&self) -> bool {
-        self.editing_folder
-    }
-    pub fn folder_is_focused(&self) -> bool {
-        self.elements.focused_key() == Some(&KeysField::PresetFolder)
-    }
     pub fn is_capturing_keys(&self) -> bool {
-        self.capturing_unlock || self.editing_folder
+        self.capturing_unlock || self.naming.is_some()
+    }
+    pub fn has_open_overlay(&self) -> bool {
+        self.elements.has_open_overlay()
     }
     pub fn dialog_is_open(&self) -> bool {
-        self.dialog.is_open()
+        self.dialog.is_open() || self.naming.is_some()
     }
     pub fn take_needs_refresh(&mut self) -> bool {
         std::mem::replace(&mut self.needs_refresh, false)
@@ -126,6 +130,7 @@ impl KeysScreen {
         }
     }
     pub fn set_snapshot(&mut self, snapshot: &ConfigSnapshot) {
+        self.config_file_path = snapshot.config_file_path.clone();
         self.configured_default_mode = snapshot
             .setting(SettingKey::DefaultMode)
             .and_then(|setting| setting.current_value.clone());
@@ -133,20 +138,6 @@ impl KeysScreen {
             self.pending_mode_switch = false;
             let default_mode = snapshot.keybinds.default_mode.unwrap_or(InputMode::Normal);
             switch_to_input_mode(&default_mode);
-        }
-        let keybinds_dir_setting = snapshot.setting(SettingKey::KeybindsDir);
-        self.keybinds_dir_unsaved = keybinds_dir_setting
-            .map(|setting| setting.is_unsaved())
-            .unwrap_or(false);
-        let keybinds_dir = keybinds_dir_setting.and_then(|setting| setting.current_value.clone());
-        if self.keybinds_dir != keybinds_dir {
-            self.keybinds_dir = keybinds_dir;
-            if !self.editing_folder {
-                let text = self.keybinds_dir.clone().unwrap_or_default();
-                if let Some(input) = self.elements.text_input_mut(&KeysField::PresetFolder) {
-                    input.set_text(text);
-                }
-            }
         }
         if self.selection != snapshot.keybinds {
             self.selection = snapshot.keybinds.clone();
@@ -161,7 +152,7 @@ impl KeysScreen {
             }
         } else {
             self.capturing_unlock = false;
-            self.stop_editing_folder();
+            self.naming = None;
             self.elements.blur();
         }
     }
@@ -202,11 +193,22 @@ impl KeysScreen {
     }
     fn rebuild(&mut self) {
         let focused = self.elements.focused_key().copied();
-        self.editing_folder = false;
         self.elements = FocusGroup::new().wrap(self.is_setup_wizard);
-        if self.selection.clears_defaults && !self.is_setup_wizard {
-            self.elements
-                .add(KeysField::SwitchToPreset, Button::new("Switch to a preset"));
+        if self.is_custom() {
+            let mut names = vec![CUSTOM_PRESET.to_owned()];
+            names.extend(self.preset_names());
+            self.elements.add(
+                KeysField::Preset,
+                Dropdown::new("Preset", names)
+                    .selected(0)
+                    .label_width(self.preset_label_width())
+                    .accent_label()
+                    .accent_brackets(),
+            );
+            self.elements.add(
+                KeysField::SaveAsPreset,
+                Button::new("Save as a preset").accent_brackets(),
+            );
         } else {
             let names = self.preset_names();
             let selected = names
@@ -217,8 +219,16 @@ impl KeysScreen {
                 KeysField::Preset,
                 Dropdown::new("Preset", names)
                     .selected(selected)
-                    .label_width(LABEL_WIDTH),
+                    .label_width(self.preset_label_width())
+                    .accent_label()
+                    .accent_brackets(),
             );
+            if !self.is_setup_wizard && self.preset_file().is_none() {
+                self.elements.add(
+                    KeysField::SaveAsPreset,
+                    Button::new("Save as a preset").accent_brackets(),
+                );
+            }
             for (field, placeholder, label) in [
                 (KeysField::Primary, "primary", "Primary key"),
                 (KeysField::Secondary, "secondary", "Secondary key"),
@@ -233,7 +243,8 @@ impl KeysScreen {
                         field,
                         Dropdown::new(label, choices)
                             .selected(selected)
-                            .label_width(LABEL_WIDTH),
+                            .label_width(LABEL_WIDTH)
+                            .accent_brackets(),
                     );
                 }
             }
@@ -257,22 +268,7 @@ impl KeysScreen {
             if self.is_setup_wizard {
                 self.elements
                     .add(KeysField::Save, Button::new("Apply and save"));
-            } else {
-                self.elements.add(
-                    KeysField::Copy,
-                    Button::new("Copy to my keybinds folder to edit"),
-                );
             }
-        }
-        if !self.is_setup_wizard {
-            let info = describe(SettingKey::KeybindsDir);
-            self.elements.add(
-                KeysField::PresetFolder,
-                TextInput::new(self.keybinds_dir.clone().unwrap_or_default())
-                    .label(info.name)
-                    .label_width(FOLDER_LABEL_WIDTH)
-                    .placeholder(info.default),
-            );
         }
         if self.focused {
             let refocused = focused
@@ -287,7 +283,41 @@ impl KeysScreen {
         reconfigure(kdl, false);
         self.needs_refresh = true;
     }
+    fn preset_label_width(&self) -> usize {
+        if self.is_setup_wizard {
+            LABEL_WIDTH
+        } else {
+            crate::page::SHORT_LABEL_WIDTH
+        }
+    }
+    fn preset_field_width(&self, width: usize) -> usize {
+        if self.is_setup_wizard {
+            FIELD_WIDTH.min(width)
+        } else {
+            crate::page::SHORT_FIELD_WIDTH.min(width)
+        }
+    }
+    fn is_custom(&self) -> bool {
+        self.selection.clears_defaults && !self.is_setup_wizard
+    }
+    pub fn focus_preset(&mut self) {
+        self.elements.focus(&KeysField::Preset);
+    }
+    pub fn render_preset_row(&mut self, x: usize, y: usize, width: usize) {
+        self.elements.clear_areas();
+        self.file_link_area = None;
+        let field_width = self.preset_field_width(width);
+        if let Some(dropdown) = self.elements.dropdown_mut(&KeysField::Preset) {
+            dropdown.render(x, y, field_width);
+        }
+    }
     fn choose_preset(&mut self, name: &str) {
+        if self.is_custom() {
+            if name != CUSTOM_PRESET {
+                self.open_switch_dialog(name.to_owned());
+            }
+            return;
+        }
         if name == self.selection.active.name
             && self.selection.error.is_none()
             && !self.selection.set_on_command_line
@@ -349,6 +379,181 @@ impl KeysScreen {
             self.apply(format!("keybinds {}={}", placeholder, kdl_string(&value)));
         }
     }
+    fn unique_preset_name(&self, base: &str) -> String {
+        let taken = |name: &str| self.presets.iter().any(|preset| preset.name == name);
+        if !taken(base) {
+            return base.to_owned();
+        }
+        let mut index = 2;
+        loop {
+            let candidate = format!("{}-{}", base, index);
+            if !taken(&candidate) {
+                return candidate;
+            }
+            index += 1;
+        }
+    }
+    fn start_naming(&mut self, then_switch_to: Option<String>) {
+        let name = if self.is_custom() {
+            self.unique_preset_name(SAVED_PRESET_NAME)
+        } else {
+            self.copy_name_for(&self.selection.active.name)
+        };
+        let mut input = TextInput::new(name).label("Name").label_width(6).focused();
+        input.move_to_end();
+        let (title, save_label, explanation) = match &then_switch_to {
+            Some(preset) => (
+                "Save your keybindings first",
+                "Save and switch",
+                format!(
+                    "Your keybindings will be saved as a preset in your keybinds folder, then the {} preset will be used. You can go back to them at any time by choosing the saved preset here.",
+                    preset
+                ),
+            ),
+            None if !self.is_custom() => (
+                "Save as a preset",
+                "Save",
+                format!(
+                    "The {} preset will be saved as a new preset in your keybinds folder and used from now on. You can then edit its file to change any key.",
+                    self.selection.active.display_name
+                ),
+            ),
+            None => (
+                "Save as a preset",
+                "Save",
+                "Your keybindings will be saved as a preset in your keybinds folder and used from now on. The keybinds block in your config file will be replaced by the preset's name.".to_owned(),
+            ),
+        };
+        let dialog = ConfirmDialog::new(title, format!("{}\n\n\n", explanation))
+            .buttons(vec![save_label, "Cancel"])
+            .width(NAMING_WIDTH)
+            .opened();
+        self.naming = Some(PresetNaming {
+            dialog,
+            input,
+            then_switch_to,
+            error: None,
+        });
+    }
+    fn finish_naming(&mut self) {
+        let Some(naming) = self.naming.as_mut() else {
+            return;
+        };
+        naming.dialog.open();
+        let name = naming.input.get_text().trim().to_owned();
+        if !is_usable_preset_name(&name) {
+            naming.error = Some("Use letters, digits, '-' and '_' for the name".to_owned());
+            return;
+        }
+        if self.presets.iter().any(|preset| preset.name == name) {
+            if let Some(naming) = self.naming.as_mut() {
+                naming.error = Some(format!("A preset called {} already exists", name));
+            }
+            return;
+        }
+        if !self.is_custom() {
+            let preset = self.selection.active.name.clone();
+            match copy_keybind_preset(&preset, &name) {
+                Ok(saved) => {
+                    self.naming = None;
+                    self.notice = Some(format!(
+                        "Saved the {} preset as {} and switched to it",
+                        preset, saved
+                    ));
+                    self.apply(format!("keybinds preset={}", kdl_string(&saved)));
+                },
+                Err(error) => {
+                    if let Some(naming) = self.naming.as_mut() {
+                        naming.error = Some(format!("Could not save: {}", error));
+                    }
+                },
+            }
+            return;
+        }
+        match save_keybinds_as_preset(&name) {
+            Ok(saved) => {
+                let target = self
+                    .naming
+                    .take()
+                    .and_then(|naming| naming.then_switch_to)
+                    .unwrap_or_else(|| saved.clone());
+                self.switch_from_custom(&target, Some(&saved));
+            },
+            Err(error) => {
+                if let Some(naming) = self.naming.as_mut() {
+                    naming.error = Some(format!("Could not save: {}", error));
+                }
+            },
+        }
+    }
+    fn switch_from_custom(&mut self, preset: &str, saved: Option<&str>) {
+        unset_config_setting(SettingKey::Keybinds);
+        if self.configured_default_mode.is_some() {
+            unset_config_setting(SettingKey::DefaultMode);
+        }
+        self.pending_mode_switch = true;
+        self.apply(format!("keybinds preset={}", kdl_string(preset)));
+        self.notice = Some(match saved {
+            Some(saved) if saved == preset => format!(
+                "Saved your keybindings as the preset {} and switched to it",
+                saved
+            ),
+            Some(saved) => format!(
+                "Switched to the {} preset; your keybindings are saved as the preset {}",
+                preset, saved
+            ),
+            None => format!("Switched to the {} preset", preset),
+        });
+    }
+    fn cancel_naming(&mut self) {
+        self.naming = None;
+        self.notice = Some("Not saved".to_owned());
+    }
+    fn naming_choice(&mut self, response: UiResponse) {
+        match response {
+            UiResponse::Submitted(UiValue::Choice { index: 0, .. }) => self.finish_naming(),
+            UiResponse::Submitted(_) | UiResponse::Cancelled => self.cancel_naming(),
+            _ => {},
+        }
+    }
+    fn handle_naming_key(&mut self, key: &KeyWithModifier) {
+        let Some(naming) = self.naming.as_mut() else {
+            return;
+        };
+        let is_tab = key.bare_key == BareKey::Tab;
+        if key.has_no_modifiers() && key.bare_key == BareKey::Esc {
+            self.cancel_naming();
+            return;
+        }
+        if key.has_no_modifiers() && key.bare_key == BareKey::Enter {
+            if naming.dialog.selected_index() == 0 {
+                self.finish_naming();
+            } else {
+                self.cancel_naming();
+            }
+            return;
+        }
+        if is_tab {
+            let response = naming.dialog.handle_key(key);
+            self.naming_choice(response);
+            return;
+        }
+        if let UiResponse::Changed(_) = naming.input.handle_key(key) {
+            naming.error = None;
+        }
+    }
+    fn naming_input_position(
+        naming: &PresetNaming,
+        rows: usize,
+        cols: usize,
+    ) -> (usize, usize, usize) {
+        let (width, height) = naming.dialog.size_for(cols);
+        let height = height.min(rows);
+        let x = cols.saturating_sub(width) / 2;
+        let y = rows.saturating_sub(height) / 2;
+        let buttons_y = y + height.saturating_sub(2);
+        (x + 2, buttons_y.saturating_sub(3), width.saturating_sub(4))
+    }
     fn copy_name_for(&self, preset: &str) -> String {
         let stem = std::path::Path::new(preset)
             .file_stem()
@@ -378,22 +583,8 @@ impl KeysScreen {
             index += 1;
         }
     }
-    fn copy_preset(&mut self) {
-        let preset = self.selection.active.name.clone();
-        let new_name = self.copy_name_for(&preset);
-        match copy_keybind_preset(&preset, &new_name) {
-            Ok(new_name) => {
-                self.notice = Some(format!(
-                    "Copied to the keybinds folder as {}.kdl and selected",
-                    new_name
-                ));
-                self.apply(format!("keybinds preset={}", kdl_string(&new_name)));
-            },
-            Err(error) => self.notice = Some(format!("Could not copy the preset: {}", error)),
-        }
-    }
-    fn open_switch_dialog(&mut self) {
-        let mut message = "Your keybinds block has clear-defaults=true, so it defines every key itself. Switching removes that block and uses the default preset instead.".to_owned();
+    fn open_switch_dialog(&mut self, preset: String) {
+        let mut message = format!("Your keybinds block has clear-defaults=true, so it defines every key itself. Switching removes that block and uses the {} preset instead. Save your keybindings as a preset first to be able to go back to them by choosing it here.", preset);
         if let Some(default_mode) = &self.configured_default_mode {
             message.push_str(&format!(
                 " The default mode (\"{}\") is removed as well, so the preset's own starting mode applies.",
@@ -401,55 +592,41 @@ impl KeysScreen {
             ));
         }
         self.dialog = ConfirmDialog::new("Switch to a preset?", message)
-            .buttons(vec!["Switch", "Cancel"])
-            .width(60)
+            .buttons(vec![
+                "Save mine, then switch",
+                "Switch without saving",
+                "Cancel",
+            ])
+            .width(66)
             .opened();
-        self.dialog_purpose = Some(KeysDialog::SwitchToPreset);
+        self.dialog_purpose = Some(KeysDialog::SwitchToPreset(preset));
     }
     fn dialog_response(&mut self, response: UiResponse) {
-        if let UiResponse::Submitted(UiValue::Choice { index: 0, .. }) = response {
-            if self.dialog_purpose == Some(KeysDialog::SwitchToPreset) {
-                unset_config_setting(SettingKey::Keybinds);
-                if self.configured_default_mode.is_some() {
-                    unset_config_setting(SettingKey::DefaultMode);
-                }
-                self.pending_mode_switch = true;
-                self.apply("keybinds preset=\"default\"".to_owned());
-                self.notice = Some("Switched to the default preset".to_owned());
+        let choice = match response {
+            UiResponse::Submitted(UiValue::Choice { index, .. }) => Some(index),
+            _ => None,
+        };
+        if let (Some(choice @ (0 | 1)), Some(KeysDialog::SwitchToPreset(preset))) =
+            (choice, self.dialog_purpose.clone())
+        {
+            if choice == 0 {
+                self.start_naming(Some(preset));
+            } else {
+                self.switch_from_custom(&preset, None);
             }
         }
         if !self.dialog.is_open() {
             self.dialog_purpose = None;
+            if self.is_custom() {
+                if let Some(dropdown) = self.elements.dropdown_mut(&KeysField::Preset) {
+                    dropdown.set_selected(0);
+                }
+            }
         }
     }
     fn save(&mut self) {
         overwrite_config_file();
         request_close();
-    }
-    fn stop_editing_folder(&mut self) {
-        if self.editing_folder {
-            self.editing_folder = false;
-            let text = self.keybinds_dir.clone().unwrap_or_default();
-            if let Some(input) = self.elements.text_input_mut(&KeysField::PresetFolder) {
-                input.set_text(text);
-            }
-        }
-    }
-    fn set_keybinds_dir(&mut self, text: String) {
-        if let SettingKind::Text(check) = describe(SettingKey::KeybindsDir).kind {
-            if let Err(error) = check_text(check, &text) {
-                self.notice = Some(format!("Keybinding preset folder: {}", error));
-                return;
-            }
-        }
-        self.editing_folder = false;
-        if text.is_empty() {
-            unset_config_setting(SettingKey::KeybindsDir);
-        } else if self.keybinds_dir.as_deref() != Some(text.as_str()) {
-            reconfigure(kdl_for(SettingKey::KeybindsDir, &text), false);
-        }
-        self.notice = Some("Keybinding preset folder applied".to_owned());
-        self.needs_refresh = true;
     }
     fn handle_focus_event(&mut self, event: FocusEvent<KeysField>) -> bool {
         match event {
@@ -469,24 +646,16 @@ impl KeysScreen {
                         self.notice = Some("Press the new unlock key (Esc cancels)".to_owned());
                         self.rebuild();
                     },
-                    (KeysField::Copy, UiResponse::Activated) => self.copy_preset(),
-                    (KeysField::SwitchToPreset, UiResponse::Activated) => self.open_switch_dialog(),
-                    (KeysField::Save, UiResponse::Activated) => self.save(),
-                    (KeysField::PresetFolder, UiResponse::Submitted(UiValue::Text(text))) => {
-                        self.set_keybinds_dir(text)
+                    (KeysField::SaveAsPreset, UiResponse::Activated) => {
+                        self.start_naming(None);
                     },
-                    (KeysField::PresetFolder, UiResponse::Cancelled) => self.stop_editing_folder(),
+                    (KeysField::Save, UiResponse::Activated) => self.save(),
                     (_, UiResponse::Cancelled) => {},
                     _ => {},
                 }
                 true
             },
-            FocusEvent::FocusChanged(_) => {
-                if self.elements.focused_key() != Some(&KeysField::PresetFolder) {
-                    self.stop_editing_folder();
-                }
-                true
-            },
+            FocusEvent::FocusChanged(_) => true,
             FocusEvent::NotHandled => false,
         }
     }
@@ -511,9 +680,8 @@ impl KeysScreen {
             self.capture_unlock_key(key);
             return true;
         }
-        if self.editing_folder {
-            let event = self.elements.handle_key(&key);
-            self.handle_focus_event(event);
+        if self.naming.is_some() {
+            self.handle_naming_key(&key);
             return true;
         }
         self.notice = None;
@@ -521,28 +689,14 @@ impl KeysScreen {
             self.save();
             return true;
         }
-        let folder_focused = self.elements.focused_key() == Some(&KeysField::PresetFolder);
-        if folder_focused && key.bare_key == BareKey::Enter && key.has_no_modifiers() {
-            self.editing_folder = true;
-            if let Some(input) = self.elements.text_input_mut(&KeysField::PresetFolder) {
-                input.move_to_end();
-            }
-            return true;
-        }
-        let moves_focus = key.bare_key == BareKey::Tab;
-        let event = if folder_focused && !moves_focus {
-            FocusEvent::NotHandled
-        } else {
-            self.elements.handle_key(&key)
-        };
+        let event = self.elements.handle_key(&key);
         if self.handle_focus_event(event) {
             return true;
         }
         if key.has_no_modifiers() {
             match key.bare_key {
                 BareKey::Down => {
-                    self.elements.focus_next();
-                    return true;
+                    return self.elements.focus_next();
                 },
                 BareKey::Up => {
                     self.elements.focus_prev();
@@ -570,15 +724,28 @@ impl KeysScreen {
         if self.capturing_unlock {
             return false;
         }
+        if let Some(naming) = self.naming.as_mut() {
+            let response = naming.dialog.handle_mouse(mouse);
+            if matches!(response, UiResponse::Submitted(_)) {
+                self.naming_choice(response);
+                return true;
+            }
+            if let Some(naming) = self.naming.as_mut() {
+                naming.input.handle_mouse(mouse);
+            }
+            return true;
+        }
         match mouse {
             Mouse::LeftClick(line, column) if self.file_link_at(line, column) => {
-                if let Some(path) = self.preset_file() {
+                if let Some(path) = self.file_link_target.clone() {
                     open_file_floating(FileToOpen::new(path), None, BTreeMap::new());
                 }
                 return true;
             },
             Mouse::Hover(line, column) => {
-                let hovered = self.file_link_at(line, column);
+                let hovered = !self.elements.has_open_overlay()
+                    && !crate::page::under_overlay(line, column)
+                    && self.file_link_at(line, column);
                 let changed = hovered != self.file_link_hovered;
                 self.file_link_hovered = hovered;
                 let event = self.elements.handle_mouse(mouse);
@@ -639,10 +806,44 @@ impl KeysScreen {
             .map(|area| area.contains(line, column))
             .unwrap_or(false)
     }
-    pub fn render(&mut self, x: usize, y: usize, width: usize, height: usize) {
+    pub fn content_height(&self, width: usize) -> usize {
+        self.content(width).3
+    }
+    pub fn summary(&self) -> String {
+        if self.is_custom() {
+            return "Every key is defined in your config file".to_owned();
+        }
+        let leaders: Vec<String> = ["primary", "secondary", "unlock"]
+            .iter()
+            .filter(|placeholder| self.selection.active.uses_placeholder(placeholder))
+            .filter_map(|placeholder| {
+                self.leader_value(placeholder)
+                    .map(|value| format!("{} {}", placeholder, value))
+            })
+            .collect();
+        if leaders.is_empty() {
+            "No leader keys".to_owned()
+        } else {
+            format!("Leader keys: {}", leaders.join(" · "))
+        }
+    }
+    pub fn focus_last(&mut self) {
+        if let Some(last) = self.elements.keys().last().copied() {
+            self.elements.focus(&last);
+        }
+    }
+    fn content(
+        &self,
+        width: usize,
+    ) -> (
+        Vec<(usize, Text)>,
+        Vec<(KeysField, usize)>,
+        Option<(usize, usize, String)>,
+        usize,
+    ) {
         let mut lines: Vec<(usize, Text)> = vec![];
         let mut rows: Vec<(KeysField, usize)> = vec![];
-        let mut link_row: Option<(usize, String)> = None;
+        let mut link_row: Option<(usize, usize, String)> = None;
         let fit = |text: &str| truncate(text, width);
         let mut row = 0;
         if self.is_setup_wizard {
@@ -660,29 +861,56 @@ impl KeysScreen {
             ));
             row += 2;
         }
-        if self.selection.clears_defaults && !self.is_setup_wizard {
-            lines.push((row, Text::new(fit("Custom keybindings")).color_all(3)));
-            row += 1;
-            for line in [
-                "Your config file has a keybinds block with clear-defaults=true.",
-                "It defines every key itself, so no preset is used.",
-            ] {
-                lines.push((row, Text::new(fit(line))));
-                row += 1;
-            }
-            row += 1;
-            rows.push((KeysField::SwitchToPreset, row));
+        if self.is_custom() {
+            rows.push((KeysField::Preset, row));
+            rows.push((KeysField::SaveAsPreset, row));
             row += 2;
-            if self.elements.get(&KeysField::PresetFolder).is_some() {
-                rows.push((KeysField::PresetFolder, row));
-                row += 2;
+            let prefix = "Using custom keybinds block from";
+            match self.config_file_path.clone() {
+                Some(path) => {
+                    let prefix_lines = wrap_words(prefix, width);
+                    let last = prefix_lines.last().cloned().unwrap_or_default();
+                    let last_width = last.chars().count();
+                    for (index, line) in prefix_lines.iter().enumerate() {
+                        lines.push((row + index, Text::new(line).unbold_all().dim_all()));
+                    }
+                    row += prefix_lines.len().saturating_sub(1);
+                    if last_width + 1 + path.chars().count() <= width {
+                        link_row = Some((row, last_width + 1, path));
+                    } else {
+                        row += 1;
+                        link_row = Some((row, 0, path));
+                    }
+                    row += 1;
+                },
+                None => {
+                    for line in wrap_words(&format!("{} your config file", prefix), width) {
+                        lines.push((row, Text::new(line).unbold_all().dim_all()));
+                        row += 1;
+                    }
+                },
             }
+            row += 1;
         } else {
             rows.push((KeysField::Preset, row));
-            row += 1;
+            if self.elements.get(&KeysField::SaveAsPreset).is_some() {
+                rows.push((KeysField::SaveAsPreset, row));
+            }
+            if self.selection.set_on_command_line {
+                lines.push((
+                    row + 1,
+                    Text::new(fit(
+                        "Given on the command line for this session; choosing here replaces it",
+                    ))
+                    .dim_all(),
+                ));
+                row += 1;
+            }
+            row += 2;
             let active = self.selection.active.clone();
+            let is_file_preset = self.preset_file().is_some();
             if let Some(path) = self.preset_file() {
-                link_row = Some((row, path));
+                link_row = Some((row, 0, path));
                 row += 1;
             } else {
                 let description = active
@@ -690,8 +918,10 @@ impl KeysScreen {
                     .as_ref()
                     .map(|description| self.with_leader_values(description))
                     .unwrap_or_else(|| PRESET_EXPLANATION.to_owned());
-                lines.push((row, Text::new(fit(&description)).unbold_all().dim_all()));
-                row += 1;
+                if self.is_setup_wizard {
+                    lines.push((row, Text::new(fit(&description)).unbold_all().dim_all()));
+                    row += 1;
+                }
                 for (keys, text) in &active.examples {
                     lines.push((row, self.example_line(keys, text, width)));
                     row += 1;
@@ -712,7 +942,7 @@ impl KeysScreen {
                 row += 1;
                 has_leaders = true;
             }
-            if !has_leaders {
+            if !has_leaders && !is_file_preset {
                 lines.push((
                     row,
                     Text::new(fit(
@@ -725,25 +955,6 @@ impl KeysScreen {
             if self.elements.get(&KeysField::Save).is_some() {
                 row += 1;
                 rows.push((KeysField::Save, row));
-                row += 1;
-            }
-            if self.elements.get(&KeysField::Copy).is_some() {
-                rows.push((KeysField::Copy, row));
-                row += 1;
-            }
-            if self.elements.get(&KeysField::PresetFolder).is_some() {
-                rows.push((KeysField::PresetFolder, row));
-                row += 1;
-            }
-            if self.selection.set_on_command_line {
-                row += 1;
-                lines.push((
-                    row,
-                    Text::new(fit(
-                        "Given on the command line for this session; choosing here replaces it",
-                    ))
-                    .dim_all(),
-                ));
                 row += 1;
             }
         }
@@ -784,7 +995,20 @@ impl KeysScreen {
         }
         if let Some(notice) = self.notice.as_ref().filter(|_| self.is_setup_wizard) {
             lines.push((row, Text::new(fit(notice)).color_all(3)));
+            row += 1;
         }
+        let total = lines
+            .iter()
+            .map(|(line_row, _)| *line_row + 1)
+            .chain(rows.iter().map(|(_, field_row)| *field_row + 1))
+            .chain(link_row.iter().map(|(link_line, _, _)| *link_line + 1))
+            .max()
+            .unwrap_or(0)
+            .max(row.min(1));
+        (lines, rows, link_row, total)
+    }
+    pub fn render(&mut self, x: usize, y: usize, width: usize, height: usize) {
+        let (lines, rows, link_row, _) = self.content(width);
         let focused_row = self
             .elements
             .focused_key()
@@ -804,27 +1028,52 @@ impl KeysScreen {
             .map(|(field, field_row)| (field, field_row - offset))
             .collect();
         let link_row = link_row
-            .filter(|(link_line, _)| visible(*link_line))
-            .map(|(link_line, path)| (link_line - offset, path));
+            .filter(|(link_line, _, _)| visible(*link_line))
+            .map(|(link_line, column, path)| (link_line - offset, column, path));
         self.elements.clear_areas();
         self.element_rows = rows;
         self.file_link_area = None;
-        if let Some((link_line, path)) = link_row {
-            let link = truncate(&path, width);
-            self.file_link_area = Some(Rect::new(x, y + link_line, link.chars().count(), 1));
+        self.file_link_target = None;
+        if let Some((link_line, column, path)) = link_row {
+            let link = truncate(&path, width.saturating_sub(column));
+            self.file_link_area = Some(Rect::new(
+                x + column,
+                y + link_line,
+                link.chars().count(),
+                1,
+            ));
             print_link(
                 &link,
-                x,
+                x + column,
                 y + link_line,
                 self.link_color,
                 self.file_link_hovered,
             );
+            self.file_link_target = Some(path);
         }
         for (line_row, text) in lines {
             if line_row < height {
                 print_text_with_coordinates(text, x, y + line_row, None, None);
             }
         }
+        let save_width = self
+            .elements
+            .button(&KeysField::SaveAsPreset)
+            .map(|button| button.natural_width() + 2)
+            .filter(|_| {
+                self.element_rows
+                    .iter()
+                    .any(|(field, _)| *field == KeysField::SaveAsPreset)
+            })
+            .unwrap_or(0);
+        let preset_width = self
+            .preset_field_width(width)
+            .min(width.saturating_sub(save_width + 1));
+        let save_x = if self.is_setup_wizard {
+            preset_width + 2
+        } else {
+            crate::page::BESIDE_SHORT_FIELD
+        };
         let field_width = FIELD_WIDTH.min(width);
         let element_rows = self.element_rows.clone();
         for (field, field_row) in element_rows {
@@ -834,40 +1083,18 @@ impl KeysScreen {
             let screen_y = y + field_row;
             match self.elements.get_mut(&field) {
                 Some(Element::Dropdown(dropdown)) => {
-                    dropdown.render(x, screen_y, field_width);
-                    if field == KeysField::Preset && self.selection.set_on_command_line {
-                        let tag_x = field_width + 2;
-                        if tag_x < width {
-                            print_text_with_coordinates(
-                                Text::new(truncate("command line", width - tag_x)).dim_all(),
-                                x + tag_x,
-                                screen_y,
-                                None,
-                                None,
-                            );
-                        }
-                    }
-                },
-                Some(Element::TextInput(input)) => {
-                    input.set_show_cursor(self.editing_folder);
-                    let input_width = FOLDER_FIELD_WIDTH.min(width);
-                    input.render(x, screen_y, input_width);
-                    if self.keybinds_dir_unsaved && input_width + 2 < width {
-                        print_text_with_coordinates(
-                            Text::new(truncate("● unsaved", width - input_width - 2))
-                                .color_all(1),
-                            x + input_width + 2,
-                            screen_y,
-                            None,
-                            None,
-                        );
-                    }
+                    let dropdown_width = if field == KeysField::Preset {
+                        preset_width
+                    } else {
+                        field_width
+                    };
+                    dropdown.render(x, screen_y, dropdown_width);
                 },
                 Some(Element::Button(button)) => {
-                    let button_x = if field == KeysField::Unlock {
-                        x + LABEL_WIDTH
-                    } else {
-                        x
+                    let button_x = match field {
+                        KeysField::Unlock => x + LABEL_WIDTH,
+                        KeysField::SaveAsPreset => x + save_x,
+                        _ => x,
                     };
                     button.render(button_x, screen_y)
                 },
@@ -877,7 +1104,23 @@ impl KeysScreen {
     }
     pub fn render_overlays(&mut self, rows: usize, cols: usize) {
         self.elements.render_overlays(rows, cols);
+        crate::page::note_group(&self.elements);
         self.dialog.render_centered(rows, cols);
+        if let Some(naming) = self.naming.as_mut() {
+            naming.dialog.render_centered(rows, cols);
+            let (x, y, width) = Self::naming_input_position(naming, rows, cols);
+            naming.input.set_show_cursor(true);
+            naming.input.render(x, y, width);
+            if let Some(error) = &naming.error {
+                print_text_with_coordinates(
+                    Text::new(truncate(error, width)).error_color_all(),
+                    x,
+                    y + 1,
+                    None,
+                    None,
+                );
+            }
+        }
     }
 }
 
@@ -891,4 +1134,39 @@ fn truncate(text: &str, width: usize) -> String {
         truncated.push('…');
         truncated
     }
+}
+
+fn is_usable_preset_name(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+}
+
+fn wrap_words(text: &str, width: usize) -> Vec<String> {
+    let width = width.max(1);
+    let mut lines = vec![];
+    let mut line = String::new();
+    for word in text.split_whitespace() {
+        let mut word = word.to_owned();
+        if !line.is_empty() && line.chars().count() + 1 + word.chars().count() > width {
+            lines.push(std::mem::take(&mut line));
+        }
+        while word.chars().count() > width {
+            let head: String = word.chars().take(width).collect();
+            word = word.chars().skip(width).collect();
+            if !line.is_empty() {
+                lines.push(std::mem::take(&mut line));
+            }
+            lines.push(head);
+        }
+        if !line.is_empty() {
+            line.push(' ');
+        }
+        line.push_str(&word);
+    }
+    if !line.is_empty() {
+        lines.push(line);
+    }
+    lines
 }

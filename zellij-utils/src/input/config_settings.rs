@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use kdl::{KdlDocument, KdlNode, KdlValue};
 
 use super::config::Config;
+use super::config_blocks::copy_config_file_themes;
 use super::options::{
     Clipboard, HostNotificationProtocol, NestedSessionHandling, OnForceClose, Options,
     PaneFrameStyle,
@@ -11,9 +12,9 @@ use super::options::{
 use super::theme::{FrameConfig, UiConfig};
 use super::web_client::{CursorInactiveStyle, CursorStyle, WebClientConfig};
 use crate::data::{
-    BorderStyleOverride, ConfigSettingState, ContextMenuEntry, InputMode, LineStyle, SettingKey,
-    ThemeHue, WebSharing,
+    BorderStyleOverride, ConfigSettingState, ContextMenuEntry, InputMode, LineStyle, SettingKey, ThemeHue, WebSharing,
 };
+use crate::kdl::load_plugins_to_kdl;
 
 fn path_text(path: &Option<PathBuf>) -> Option<String> {
     path.as_ref().map(|p| p.display().to_string())
@@ -424,13 +425,13 @@ pub fn setting_values(config: &Config) -> BTreeMap<SettingKey, Option<String>> {
     let Config {
         keybinds: _keybinds_are_compared_directly,
         options,
-        themes: _themes_are_listed_by_name,
-        plugins: _plugin_aliases_are_read_only,
+        themes,
+        plugins,
         ui,
-        env: _env_is_read_only,
-        background_plugins: _load_plugins_are_read_only,
+        env,
+        background_plugins,
         web_client,
-        context_menu: _context_menu_is_read_only,
+        context_menu,
         keybinds_layers: _keybinds_layers_are_compared_directly,
     } = config;
     let mut values = BTreeMap::new();
@@ -449,6 +450,40 @@ pub fn setting_values(config: &Config) -> BTreeMap<SettingKey, Option<String>> {
     ui_values(ui, &mut values);
     web_client_values(web_client, &mut values);
     values.insert(SettingKey::Keybinds, None);
+    values.insert(
+        SettingKey::PluginAliases,
+        Some(plugins.to_kdl(false).to_string()),
+    );
+    values.insert(
+        SettingKey::LoadPlugins,
+        Some(load_plugins_to_kdl(background_plugins, false).to_string()),
+    );
+    values.insert(
+        SettingKey::Env,
+        Some(
+            env.to_kdl()
+                .map(|node| node.to_string())
+                .unwrap_or_default(),
+        ),
+    );
+    values.insert(
+        SettingKey::Themes,
+        Some(
+            themes
+                .to_kdl()
+                .map(|node| node.to_string())
+                .unwrap_or_default(),
+        ),
+    );
+    values.insert(
+        SettingKey::ContextMenu,
+        Some(
+            context_menu
+                .to_kdl()
+                .map(|node| node.to_string())
+                .unwrap_or_default(),
+        ),
+    );
     values
 }
 
@@ -571,9 +606,7 @@ pub fn copy_setting(target: &mut Config, source: &Config, key: SettingKey) {
         SettingKey::VisualBell => options.visual_bell = from.visual_bell,
         SettingKey::FocusFollowsMouse => options.focus_follows_mouse = from.focus_follows_mouse,
         SettingKey::MouseClickThrough => options.mouse_click_through = from.mouse_click_through,
-        SettingKey::ContextMenuEnabled => {
-            options.context_menu_enabled = from.context_menu_enabled
-        },
+        SettingKey::ContextMenuEnabled => options.context_menu_enabled = from.context_menu_enabled,
         SettingKey::Osc133CommandSelection => {
             options.osc133_command_selection = from.osc133_command_selection
         },
@@ -667,7 +700,17 @@ pub fn copy_setting(target: &mut Config, source: &Config, key: SettingKey) {
             target.keybinds_layers.user = source.keybinds_layers.user.clone();
             target.resolve_keybinds();
         },
+        SettingKey::PluginAliases => target.plugins = source.plugins.clone(),
+        SettingKey::LoadPlugins => target.background_plugins = source.background_plugins.clone(),
+        SettingKey::Env => target.env = source.env.clone(),
+        SettingKey::Themes => copy_config_file_themes(&mut target.themes, &source.themes),
+        SettingKey::ContextMenu => target.context_menu = source.context_menu.clone(),
     }
+}
+
+pub fn default_config() -> &'static Config {
+    static DEFAULT_CONFIG: std::sync::OnceLock<Config> = std::sync::OnceLock::new();
+    DEFAULT_CONFIG.get_or_init(|| Config::from_default_assets().unwrap_or_default())
 }
 
 pub fn unset_setting(config: &mut Config, key: SettingKey) {
@@ -739,9 +782,14 @@ pub fn setting_states(
     SettingKey::all()
         .into_iter()
         .map(|key| {
-            let (saved_value, current_value) = if key == SettingKey::Keybinds {
+            let (saved_value, current_value) = if key.is_block() {
+                let changed = if key == SettingKey::Keybinds {
+                    keybinds_changed
+                } else {
+                    saved_values.get(&key) != current_values.get(&key)
+                };
                 let saved_marker = Some("saved".to_owned());
-                let current_marker = if keybinds_changed {
+                let current_marker = if changed {
                     Some("changed".to_owned())
                 } else {
                     saved_marker.clone()

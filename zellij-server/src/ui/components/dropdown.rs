@@ -1,6 +1,6 @@
 use super::widget_common::{
-    bold, decode_text, field_bracket_styles, field_styles, fit, label_width, move_to, paint,
-    render_label, WidgetState,
+    accented_field_bracket_styles, bold, decode_text, field_styles, fit, label_width, move_to, paint,
+    render_label_with_accent, selected_row_styles, WidgetState,
 };
 use super::Coordinates;
 use zellij_utils::data::Style;
@@ -26,8 +26,13 @@ pub fn dropdown(
         .unwrap_or(value.chars().count() + MIN_FIELD_WIDTH)
         .max(MIN_FIELD_WIDTH);
     let active = focused || open;
-    let bracket_styles = field_bracket_styles(style, active, hovered, disabled, false);
-    let value_styles = field_styles(style, active, hovered, disabled);
+    let bracket_styles =
+        accented_field_bracket_styles(style, active, hovered, disabled, false, state.flag("ab"));
+    let value_styles = if active && !hovered && !disabled {
+        selected_row_styles(style)
+    } else {
+        field_styles(style, active, hovered, disabled)
+    };
     let arrow_styles = if disabled {
         value_styles
     } else if active {
@@ -37,7 +42,14 @@ pub fn dropdown(
     };
     let arrow = if open { "▴" } else { "▾" };
     let mut output = move_to(coordinates, 0, 0);
-    output.push_str(&render_label(&label, label_width, active, disabled, style));
+    output.push_str(&render_label_with_accent(
+        &label,
+        label_width,
+        active,
+        disabled,
+        state.number("lc").or(if state.flag("al") { Some(2) } else { None }),
+        style,
+    ));
     output.push_str(&paint(bracket_styles, "["));
     output.push_str(&paint(
         value_styles,
