@@ -109,6 +109,20 @@ impl ZellijSharedPlugin for State {
                     .push(format!("{:?}", set_selectable_slot(u32::MAX, false)));
                 RenderResponse::All
             },
+            "collapse_slots" => {
+                let results: Vec<String> = self
+                    .slots
+                    .keys()
+                    .copied()
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .map(|slot_id| format!("{:?}", set_collapsed_slot(slot_id, true)))
+                    .collect();
+                self.self_command_results.extend(results);
+                self.self_command_results
+                    .push(format!("{:?}", set_collapsed_slot(u32::MAX, true)));
+                RenderResponse::All
+            },
             "close_first_slot" => {
                 if let Some(slot_id) = self.slots.keys().next().copied() {
                     let result = close_slot(slot_id);

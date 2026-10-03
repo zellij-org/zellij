@@ -4508,6 +4508,7 @@ pub enum PluginCommand {
     HideSlot(SlotId),
     ShowSlot(SlotId, bool),
     CloseSlot(SlotId),
+    SetCollapsedSlot(SlotId, bool),
     OpenContextMenu {
         target: ContextMenuTarget,
         line: usize,

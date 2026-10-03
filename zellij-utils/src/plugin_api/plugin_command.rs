@@ -133,11 +133,11 @@ pub use super::generated_api::api::{
         SaveSessionResponse as ProtobufSaveSessionResponse, ScrollDownInPaneIdPayload,
         ScrollToBottomInPaneIdPayload, ScrollToTopInPaneIdPayload, ScrollUpInPaneIdPayload,
         SessionListSnapshot as ProtobufSessionListSnapshot, SetCliPipeExitCodePayload,
-        SetFloatingPanePinnedPayload, SetPaneBorderStylePayload, SetPaneBorderlessPayload,
-        SetPaneColorPayload, SetPaneFrameStylePayload as ProtobufSetPaneFrameStylePayload,
+        SetCollapsedSlotPayload, SetFloatingPanePinnedPayload, SetPaneBorderStylePayload,
+        SetPaneBorderlessPayload, SetPaneColorPayload,
+        SetPaneFrameStylePayload as ProtobufSetPaneFrameStylePayload,
         SetPaneRegexHighlightsPayload, SetPopupSizePayload, SetSelectableSlotPayload,
-        SetSelfCollapsedPayload,
-        SetSelfMouseSelectionSupportPayload,
+        SetSelfCollapsedPayload, SetSelfMouseSelectionSupportPayload,
         SetSoftKeyboardPayload as ProtobufSetSoftKeyboardPayload, SetTimeoutPayload,
         ShowCursorPayload, ShowFloatingPanesPayload as ProtobufShowFloatingPanesPayload,
         ShowFloatingPanesResponse as ProtobufShowFloatingPanesResponse, ShowPaneWithIdPayload,
@@ -2576,6 +2576,12 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 Some(Payload::CloseSlotPayload(slot_id)) => Ok(PluginCommand::CloseSlot(slot_id)),
                 _ => Err("Mismatched payload for CloseSlot"),
             },
+            Some(CommandName::SetCollapsedSlot) => match protobuf_plugin_command.payload {
+                Some(Payload::SetCollapsedSlotPayload(payload)) => Ok(
+                    PluginCommand::SetCollapsedSlot(payload.slot_id, payload.collapsed),
+                ),
+                _ => Err("Mismatched payload for SetCollapsedSlot"),
+            },
             Some(CommandName::OpenContextMenu) => match protobuf_plugin_command.payload {
                 Some(Payload::OpenContextMenuPayload(payload)) => {
                     let target = if payload.target_is_tab {
@@ -4581,6 +4587,13 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             PluginCommand::CloseSlot(slot_id) => Ok(ProtobufPluginCommand {
                 name: CommandName::CloseSlot as i32,
                 payload: Some(Payload::CloseSlotPayload(slot_id)),
+            }),
+            PluginCommand::SetCollapsedSlot(slot_id, collapsed) => Ok(ProtobufPluginCommand {
+                name: CommandName::SetCollapsedSlot as i32,
+                payload: Some(Payload::SetCollapsedSlotPayload(SetCollapsedSlotPayload {
+                    slot_id,
+                    collapsed,
+                })),
             }),
             PluginCommand::OpenContextMenu {
                 target,

@@ -119,6 +119,11 @@ pub fn close_slot(slot_id: SlotId) -> Result<(), String> {
     run_slot_command(PluginCommand::CloseSlot(slot_id))
 }
 
+/// The slot form of `set_self_collapsed`, for a shared plugin that decides outside of `render`.
+pub fn set_collapsed_slot(slot_id: SlotId, collapsed: bool) -> Result<(), String> {
+    run_slot_command(PluginCommand::SetCollapsedSlot(slot_id, collapsed))
+}
+
 pub fn request_permission(permissions: &[PermissionType]) {
     let plugin_command = PluginCommand::RequestPluginPermissions(permissions.into());
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();

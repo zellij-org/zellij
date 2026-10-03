@@ -248,6 +248,7 @@ enum CommandName {
   WriteThemeFile = 254;
   DeleteThemeFile = 255;
   SetSelfCollapsed = 256;
+  SetCollapsedSlot = 257;
 }
 
 message PluginCommand {
@@ -436,6 +437,7 @@ message PluginCommand {
     WriteThemeFilePayload write_theme_file_payload = 197;
     string delete_theme_file_payload = 198;
     SetSelfCollapsedPayload set_self_collapsed_payload = 199;
+    SetCollapsedSlotPayload set_collapsed_slot_payload = 200;
   }
 }
 
@@ -639,6 +641,11 @@ message SetPopupSizePayload {
 message SetSelectableSlotPayload {
   uint32 slot_id = 1;
   bool selectable = 2;
+}
+
+message SetCollapsedSlotPayload {
+  uint32 slot_id = 1;
+  bool collapsed = 2;
 }
 
 message ShowSlotPayload {
