@@ -4128,6 +4128,7 @@ pub enum PluginCommand {
     HideSlot(SlotId),
     ShowSlot(SlotId, bool),
     CloseSlot(SlotId),
+    SetCollapsedSlot(SlotId, bool),
 }
 
 // Response type for plugin API methods that open a pane in a new tab

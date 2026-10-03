@@ -310,6 +310,18 @@ fn close_slot(env: &PluginEnv, slot_id: PluginId) {
     write_slot_command_response(env, result);
 }
 
+fn set_collapsed_slot(env: &PluginEnv, slot_id: PluginId, collapsed: bool) {
+    let result = slot_command_target(env, slot_id).and_then(|_| {
+        env.senders
+            .send_to_screen(ScreenInstruction::SetPaneCollapsed(
+                PaneId::Plugin(slot_id),
+                collapsed,
+            ))
+            .map_err(|e| e.to_string())
+    });
+    write_slot_command_response(env, result);
+}
+
 pub fn zellij_exports(linker: &mut Linker<PluginEnv>) {
     linker
         .func_wrap("zellij", "host_run_plugin_command", host_run_plugin_command)
@@ -345,6 +357,9 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         show_slot(env, slot_id, should_float_if_hidden)
                     },
                     PluginCommand::CloseSlot(slot_id) => close_slot(env, slot_id),
+                    PluginCommand::SetCollapsedSlot(slot_id, collapsed) => {
+                        set_collapsed_slot(env, slot_id, collapsed)
+                    },
                     PluginCommand::Subscribe(event_list) => subscribe(env, event_list)?,
                     PluginCommand::Unsubscribe(event_list) => unsubscribe(env, event_list)?,
                     PluginCommand::SetSelectable(selectable) => set_selectable(env, selectable),
