@@ -193,6 +193,11 @@ scrollback_lines_to_serialize 1000
 // 
 styled_underlines false
  
+// Whether to automatically jump to the nearest search result while typing the search term.
+// (Requires restart)
+// Default: true
+// search_auto_jump_on_input true
+ 
 // How often in seconds sessions are serialized
 // 
 serialization_interval 1

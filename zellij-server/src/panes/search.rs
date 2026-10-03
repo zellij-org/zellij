@@ -414,14 +414,20 @@ impl Grid {
     pub fn set_search_string(&mut self, needle: &str) {
         self.search_results.needle = needle.to_string();
         self.search_viewport();
-        // If the current viewport does not contain any hits,
-        // we jump around until we find something. Starting
-        // going backwards.
-        if self.search_results.selections.is_empty() {
-            self.search_up();
-        }
-        if self.search_results.selections.is_empty() {
-            self.search_down();
+        // Whether typing the search term automatically jumps to the nearest
+        // hit (if the current viewport does not contain one) is configurable
+        // via `search_auto_jump_on_input` (default: on, like in Firefox and
+        // helix). See https://github.com/zellij-org/zellij/issues/5551
+        if self.search_auto_jump_on_input {
+            // If the current viewport does not contain any hits,
+            // we jump around until we find something. Starting
+            // going backwards.
+            if self.search_results.selections.is_empty() {
+                self.search_up();
+            }
+            if self.search_results.selections.is_empty() {
+                self.search_down();
+            }
         }
         // We still don't want to pre-select anything at this stage
         self.search_results.active = None;
