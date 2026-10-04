@@ -18094,3 +18094,32 @@ fn floating_plugin_panes_are_not_shown_again_when_their_tab_returns_with_the_sur
         "a plugin whose floating surface is hidden should not be told it is visible when its tab returns"
     );
 }
+
+#[test]
+fn suppressed_plugin_panes_get_mode_updates_but_are_not_visible() {
+    let (mut tab, plugin_receiver) = tab_with_floating_plugin_pane(1);
+    tab.suppress_pane(PaneId::Plugin(1), Some(1));
+    while plugin_receiver.try_recv().is_ok() {}
+
+    tab.update_input_modes().unwrap();
+
+    let mut got_mode_update = false;
+    while let Ok((instruction, _)) = plugin_receiver.try_recv() {
+        if let PluginInstruction::Update(updates) = instruction {
+            for (pid, _client_id, event) in updates {
+                if pid == Some(1) && matches!(event, Event::ModeUpdate(..)) {
+                    got_mode_update = true;
+                }
+            }
+        }
+    }
+    assert!(
+        got_mode_update,
+        "a suppressed plugin should still receive ModeUpdate so it can show itself again"
+    );
+    assert!(
+        !tab.get_plugin_ids().contains(&1),
+        "a suppressed plugin should not count as visible, since render targeting uses get_plugin_ids"
+    );
+    assert!(tab.get_plugin_ids_including_suppressed().contains(&1));
+}
