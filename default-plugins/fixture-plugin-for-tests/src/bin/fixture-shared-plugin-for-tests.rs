@@ -109,6 +109,20 @@ impl ZellijSharedPlugin for State {
                     .push(format!("{:?}", set_selectable_slot(u32::MAX, false)));
                 RenderResponse::All
             },
+            "collapse_slots" => {
+                let results: Vec<String> = self
+                    .slots
+                    .keys()
+                    .copied()
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .map(|slot_id| format!("{:?}", set_collapsed_slot(slot_id, true)))
+                    .collect();
+                self.self_command_results.extend(results);
+                self.self_command_results
+                    .push(format!("{:?}", set_collapsed_slot(u32::MAX, true)));
+                RenderResponse::All
+            },
             "close_first_slot" => {
                 if let Some(slot_id) = self.slots.keys().next().copied() {
                     let result = close_slot(slot_id);
@@ -123,6 +137,14 @@ impl ZellijSharedPlugin for State {
         }
     }
     fn render(&mut self, rows: usize, cols: usize, slot_id: SlotId, client_id: ClientId) {
+        let collapse = self
+            .slots
+            .get(&slot_id)
+            .and_then(|slot| slot.configuration.get("collapse_on_render"))
+            .is_some();
+        if collapse {
+            set_self_collapsed(true);
+        }
         print!("{}", render_line(self, rows, cols, slot_id, client_id));
     }
 }

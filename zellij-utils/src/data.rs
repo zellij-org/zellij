@@ -4043,6 +4043,10 @@ pub enum PluginCommand {
     EmbedMultiplePanes(Vec<PaneId>),
     QueryWebServerStatus,
     SetSelfMouseSelectionSupport(bool),
+    /// Give this plugin's own row or column in the layout back to its neighbors while it has
+    /// nothing to draw, and take it again when it does. The pane keeps its place in the layout
+    /// the whole time, so expanding restores exactly the size the layout asked for.
+    SetSelfCollapsed(bool),
     GenerateWebLoginToken(Option<String>, bool), // (token_label, read_only)
     RevokeWebLoginToken(String), // String -> token id (provided name or generated id)
     ListWebLoginTokens,
@@ -4124,6 +4128,7 @@ pub enum PluginCommand {
     HideSlot(SlotId),
     ShowSlot(SlotId, bool),
     CloseSlot(SlotId),
+    SetCollapsedSlot(SlotId, bool),
 }
 
 // Response type for plugin API methods that open a pane in a new tab

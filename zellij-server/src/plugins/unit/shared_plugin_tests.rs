@@ -1,4 +1,5 @@
 use super::plugin_tests::create_plugin_thread;
+use crate::panes::PaneId;
 use crate::plugins::{PluginId, PluginInstruction};
 use crate::screen::ScreenInstruction;
 use crate::ClientId;
@@ -83,6 +84,7 @@ struct ScreenLog {
     cache_path: PathBuf,
     renders: Renders,
     render_log: Vec<(PluginId, ClientId, String)>,
+    collapsed: HashSet<PaneId>,
 }
 
 impl ScreenLog {
@@ -97,6 +99,7 @@ impl ScreenLog {
             cache_path,
             renders: HashMap::new(),
             render_log: vec![],
+            collapsed: HashSet::new(),
         }
     }
     fn receive_one(&mut self, timeout: Duration) {
@@ -126,6 +129,9 @@ impl ScreenLog {
                         PermissionStatus::Granted,
                         Some(self.cache_path.clone()),
                     ));
+            },
+            ScreenInstruction::SetPaneCollapsed(pane_id, true) => {
+                self.collapsed.insert(pane_id);
             },
             _ => {},
         }
@@ -461,6 +467,99 @@ pub fn shared_plugin_slot_commands_are_checked() {
     assert!(
         results.starts_with("[\"Ok(())\""),
         "own slot is accepted: {}",
+        results
+    );
+    assert!(
+        results.contains("does not belong"),
+        "foreign slot is rejected: {}",
+        results
+    );
+}
+
+#[test]
+#[ignore]
+pub fn shared_plugin_collapses_the_slot_it_renders() {
+    let (sender, mut screen, teardown, _temp_folder) = start();
+    let client_id = 1;
+    let _ = sender.send(PluginInstruction::AddClient(client_id));
+    load(
+        &sender,
+        shared_fixture(&[("label", "a"), ("collapse_on_render", "true")]),
+        0,
+        client_id,
+    );
+    load(
+        &sender,
+        shared_fixture(&[("label", "b"), ("collapse_on_render", "true")]),
+        1,
+        client_id,
+    );
+    screen.wait_until("two slots rendered", |renders| {
+        slots_of_client(renders, client_id).len() == 2
+    });
+    let slots = slots_of_client(&screen.renders, client_id);
+    let expected: HashSet<PaneId> = slots
+        .iter()
+        .map(|slot_id| PaneId::Plugin(*slot_id))
+        .collect();
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while screen.collapsed != expected && Instant::now() < deadline {
+        screen.receive_one(Duration::from_millis(100));
+    }
+    teardown();
+    assert_eq!(
+        screen.collapsed, expected,
+        "each slot collapses its own pane, not the instance's"
+    );
+}
+
+#[test]
+#[ignore]
+pub fn shared_plugin_collapses_a_slot_by_id() {
+    let (sender, mut screen, teardown, _temp_folder) = start();
+    let client_id = 1;
+    let _ = sender.send(PluginInstruction::AddClient(client_id));
+    load(&sender, shared_fixture(&[("label", "a")]), 0, client_id);
+    load(&sender, shared_fixture(&[("label", "b")]), 1, client_id);
+    screen.wait_until("two slots rendered", |renders| {
+        slots_of_client(renders, client_id).len() == 2
+    });
+    let slots = slots_of_client(&screen.renders, client_id);
+    let _ = sender.send(PluginInstruction::KeybindPipe {
+        name: "collapse_slots".to_owned(),
+        payload: None,
+        plugin: None,
+        args: None,
+        configuration: None,
+        floating: None,
+        pane_id_to_replace: None,
+        pane_title: None,
+        cwd: None,
+        skip_cache: false,
+        cli_client_id: client_id,
+        plugin_and_client_id: Some((slots[0], client_id)),
+        notification_end: None,
+    });
+    screen.wait_until("slot command results rendered", |renders| {
+        field(&renders[&(slots[0], client_id)], "self_commands").contains("Err")
+    });
+    let expected: HashSet<PaneId> = slots
+        .iter()
+        .map(|slot_id| PaneId::Plugin(*slot_id))
+        .collect();
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while screen.collapsed != expected && Instant::now() < deadline {
+        screen.receive_one(Duration::from_millis(100));
+    }
+    teardown();
+    assert_eq!(
+        screen.collapsed, expected,
+        "every slot of the plugin is collapsed, from outside of render"
+    );
+    let results = field(&screen.renders[&(slots[0], client_id)], "self_commands");
+    assert!(
+        results.starts_with("[\"Ok(())\", \"Ok(())\""),
+        "own slots are accepted: {}",
         results
     );
     assert!(

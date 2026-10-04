@@ -118,6 +118,11 @@ pub fn close_slot(slot_id: SlotId) -> Result<(), String> {
     run_slot_command(PluginCommand::CloseSlot(slot_id))
 }
 
+/// The slot form of `set_self_collapsed`, for a shared plugin that decides outside of `render`.
+pub fn set_collapsed_slot(slot_id: SlotId, collapsed: bool) -> Result<(), String> {
+    run_slot_command(PluginCommand::SetCollapsedSlot(slot_id, collapsed))
+}
+
 pub fn request_permission(permissions: &[PermissionType]) {
     let plugin_command = PluginCommand::RequestPluginPermissions(permissions.into());
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
@@ -2747,6 +2752,23 @@ pub fn embed_multiple_panes(pane_ids: Vec<PaneId>) {
 
 pub fn set_self_mouse_selection_support(selection_support: bool) {
     let plugin_command = PluginCommand::SetSelfMouseSelectionSupport(selection_support);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Give this plugin's pane back to its neighbors while it has nothing to draw, or take it
+/// again when it does.
+///
+/// Intended for a plugin mounted in a layout as a bar, whose content is sometimes empty: the
+/// row a layout reserves for it stays reserved otherwise, and shows as a blank line. While
+/// collapsed the pane keeps its place in the layout and simply takes no space, so expanding
+/// restores the exact geometry the layout asked for. Calling it with the size the pane is
+/// already at does nothing.
+///
+/// Has no effect on a floating pane, which takes no space from its neighbors to begin with.
+pub fn set_self_collapsed(collapsed: bool) {
+    let plugin_command = PluginCommand::SetSelfCollapsed(collapsed);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
