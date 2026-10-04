@@ -143,6 +143,40 @@ fn watcher_client_functionality() {
 }
 
 #[test]
+fn watcher_keeps_rendering_floating_pane_after_main_detaches() {
+    let mut zellij = start_zellij();
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+
+    let watcher = zellij.attach_watcher(TERMINAL_SIZE);
+    watcher.wait_until("watcher connected", |grid_snapshot| {
+        grid_snapshot.status_bar_appears()
+    });
+
+    zellij.send_stdin(&keys::alt('n'));
+    let floating_terminal = zellij.expect_pty_spawn();
+    floating_terminal.output(PROMPT);
+    floating_terminal.output(b"FLOATING_BEFORE_DETACH");
+    watcher.wait_until("watcher sees the floating pane", |grid_snapshot| {
+        grid_snapshot.contains("FLOATING_BEFORE_DETACH")
+    });
+
+    zellij.detach_main_client();
+    floating_terminal.output(b"FLOATING_AFTER_DETACH");
+    watcher.wait_until(
+        "watcher keeps rendering floating pane output after main detaches",
+        |grid_snapshot| grid_snapshot.contains("FLOATING_AFTER_DETACH"),
+    );
+
+    let main = zellij.attach_client(TERMINAL_SIZE);
+    main.wait_until("main client re-attaches", |grid_snapshot| {
+        grid_snapshot.status_bar_appears()
+    });
+    main.quit();
+    watcher.quit();
+    zellij.quit();
+}
+
+#[test]
 fn watcher_larger_than_the_followed_content_is_padded_to_its_own_size() {
     let mut zellij = start_zellij();
     let first_terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
