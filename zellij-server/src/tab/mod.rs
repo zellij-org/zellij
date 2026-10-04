@@ -2109,7 +2109,7 @@ impl Tab {
         let mode_infos = self.mode_info.borrow();
         let mut plugin_updates = vec![];
         let currently_marking_pane_group = self.currently_marking_pane_group.borrow();
-        let tab_plugin_ids = self.get_plugin_ids();
+        let tab_plugin_ids = self.get_plugin_ids_including_suppressed();
         for client_id in self.connected_clients.borrow().iter() {
             let mut mode_info = mode_infos
                 .get(client_id)
@@ -5656,6 +5656,20 @@ impl Tab {
                 _ => None,
             })
             .collect()
+    }
+    /// Like `get_plugin_ids`, but also includes plugin panes that are suppressed (eg. hidden
+    /// with `hide_self`). These are still running and should keep receiving events, otherwise
+    /// a hidden plugin cannot know when to show itself again.
+    pub fn get_plugin_ids_including_suppressed(&self) -> Vec<PluginId> {
+        let mut plugin_ids = self.get_plugin_ids();
+        for pane_id in self.suppressed_panes.keys() {
+            if let PaneId::Plugin(plugin_id) = pane_id {
+                if !plugin_ids.contains(plugin_id) {
+                    plugin_ids.push(*plugin_id);
+                }
+            }
+        }
+        plugin_ids
     }
     pub fn get_pane_info(&self, pane_id: PaneId) -> Option<PaneInfo> {
         let current_pane_group: HashMap<ClientId, Vec<PaneId>> =
