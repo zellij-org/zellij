@@ -557,8 +557,8 @@ impl Page {
                         .color_range(3, 19..=24)
                         .color_indices(3, vec![28, 32]),
                     _ => Text::from("Check it out with: Ctrl o + w")
-                        .color_range(3, 19..=24)
-                        .color_indices(3, vec![28]),
+                        .color_substring(3, "Ctrl o")
+                        .color_last_substring(3, "w"),
                 }),
             )])])
             .with_paragraph(vec![ComponentLine::new(vec![ActiveComponent::new(
