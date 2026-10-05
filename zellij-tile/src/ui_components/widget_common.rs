@@ -195,41 +195,6 @@ pub(crate) fn typed_char(key: &KeyWithModifier) -> Option<char> {
     }
 }
 
-pub(crate) fn wrap_text(text: &str, width: usize) -> Vec<String> {
-    let width = width.max(1);
-    let mut lines = vec![];
-    for paragraph in text.split('\n') {
-        let mut line = String::new();
-        let mut line_width = 0;
-        for word in paragraph.split_whitespace() {
-            let word_width = text_width(word);
-            if line_width > 0 && line_width + 1 + word_width > width {
-                lines.push(std::mem::take(&mut line));
-                line_width = 0;
-            }
-            if line_width > 0 {
-                line.push(' ');
-                line_width += 1;
-            }
-            if word_width > width {
-                for character in word.chars() {
-                    if line_width + char_width(character) > width {
-                        lines.push(std::mem::take(&mut line));
-                        line_width = 0;
-                    }
-                    line.push(character);
-                    line_width += char_width(character);
-                }
-            } else {
-                line.push_str(word);
-                line_width += word_width;
-            }
-        }
-        lines.push(line);
-    }
-    lines
-}
-
 pub(crate) fn find_next_starting_with(
     labels: &[(usize, String)],
     current: Option<usize>,

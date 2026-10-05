@@ -1,7 +1,8 @@
 use super::widget_common::{
-    encode_text, is_plain, is_shift_tab, state_value, text_width, widget_dcs, wrap_text, Rect,
+    encode_text, is_plain, is_shift_tab, state_value, text_width, widget_dcs, Rect,
     UiResponse, UiValue, Widget,
 };
+use super::text::Text;
 use zellij_utils::data::{BareKey, KeyWithModifier, Mouse};
 
 const DEFAULT_WIDTH: usize = 50;
@@ -11,7 +12,7 @@ const BUTTON_GAP: usize = 2;
 #[derive(Debug, Clone)]
 pub struct ConfirmDialog {
     title: String,
-    message: String,
+    message: Text,
     buttons: Vec<String>,
     selected: usize,
     width: Option<usize>,
@@ -24,7 +25,7 @@ pub struct ConfirmDialog {
 }
 
 impl ConfirmDialog {
-    pub fn new(title: impl Into<String>, message: impl Into<String>) -> Self {
+    pub fn new(title: impl Into<String>, message: impl Into<Text>) -> Self {
         ConfirmDialog {
             title: title.into(),
             message: message.into(),
@@ -83,7 +84,7 @@ impl ConfirmDialog {
     pub fn title(&self) -> &str {
         &self.title
     }
-    pub fn set_message(&mut self, message: impl Into<String>) {
+    pub fn set_message(&mut self, message: impl Into<Text>) {
         self.message = message.into();
     }
     pub fn button_labels(&self) -> &[String] {
@@ -114,8 +115,8 @@ impl ConfirmDialog {
     fn button_widths(&self) -> Vec<usize> {
         self.buttons.iter().map(|b| text_width(b) + 4).collect()
     }
-    fn lines_for(&self, width: usize) -> Vec<String> {
-        wrap_text(&self.message, width.saturating_sub(4))
+    fn lines_for(&self, width: usize) -> Vec<Text> {
+        self.message.wrap(width.saturating_sub(4))
     }
     pub fn size_for(&self, cols: usize) -> (usize, usize) {
         let buttons_width: usize = self.button_widths().iter().sum::<usize>()
@@ -162,7 +163,7 @@ impl ConfirmDialog {
         }
         let mut fields = vec![encode_text(&self.title)];
         fields.extend(self.buttons.iter().map(|b| encode_text(b)));
-        fields.extend(lines.iter().map(|l| encode_text(l)));
+        fields.extend(lines.iter().map(|line| line.serialize()));
         widget_dcs("dialog", x, y, Some(width), Some(height), &state, &fields)
     }
     pub fn render(&mut self, x: usize, y: usize, width: usize, max_height: usize) {

@@ -3,6 +3,7 @@ mod pipes;
 mod plugin_loader;
 mod plugin_map;
 mod plugin_worker;
+mod prompt_requests;
 mod shared;
 mod wasm_bridge;
 mod watch_filesystem;
@@ -26,6 +27,7 @@ use crate::{pty::PtyInstruction, thread_bus::Bus, ClientId, ServerInstruction, S
 use zellij_utils::data::PaneRenderReport;
 use zellij_utils::input::layout::TabLayoutInfo;
 
+pub use prompt_requests::{PopupRequest, PromptCaller};
 pub use wasm_bridge::PluginRenderAsset;
 use wasm_bridge::{PipePopupRoute, WasmBridge};
 
@@ -45,6 +47,7 @@ use zellij_utils::{
         plugins::PluginAliases,
     },
     pane_size::Size,
+    prompt::{PromptRequest, PromptResult},
     session_serialization,
 };
 
@@ -175,6 +178,21 @@ pub enum PluginInstruction {
         pipe_id: String,
         error: String,
     },
+    PromptRequest {
+        caller: PromptCaller,
+        owner_client_id: ClientId,
+        caller_pane_id: Option<PaneId>,
+        request: PromptRequest,
+    },
+    PromptReplied {
+        prompt_plugin_id: PluginId,
+        request_id: u64,
+        result: PromptResult,
+    },
+    PromptPopupFailed {
+        caller: PromptCaller,
+        error: String,
+    },
     KeybindPipe {
         name: String,
         payload: Option<String>,
@@ -250,7 +268,7 @@ pub enum PluginInstruction {
         anchor_pane: Option<PaneId>,
         size: Size,
         initial_events: Vec<Event>,
-        pipe: Option<(String, BTreeMap<String, String>)>,
+        pipe: Option<(PopupRequest, BTreeMap<String, String>)>,
     },
     Exit,
 }
@@ -295,6 +313,9 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::CliPipe { .. } => PluginContext::CliPipe,
             PluginInstruction::SetCliPipeExitCode { .. } => PluginContext::SetCliPipeExitCode,
             PluginInstruction::PipePopupFailed { .. } => PluginContext::PipePopupFailed,
+            PluginInstruction::PromptRequest { .. } => PluginContext::PromptRequest,
+            PluginInstruction::PromptReplied { .. } => PluginContext::PromptReplied,
+            PluginInstruction::PromptPopupFailed { .. } => PluginContext::PromptPopupFailed,
             PluginInstruction::CachePluginEvents { .. } => PluginContext::CachePluginEvents,
             PluginInstruction::MessageFromPlugin { .. } => PluginContext::MessageFromPlugin,
             PluginInstruction::UnblockCliPipes { .. } => PluginContext::UnblockCliPipes,
@@ -508,13 +529,21 @@ pub(crate) fn plugin_thread_main(
                                 shutdown_send.clone(),
                             )?;
                         }
-                        if let Some((pipe_id, caller_args)) = pipe {
-                            let pipe_messages = wasm_bridge.attach_pipe_popup(
-                                &pipe_id,
-                                plugin_id,
-                                client_id,
-                                caller_args,
-                            );
+                        if let Some((popup_request, caller_args)) = pipe {
+                            let pipe_messages = match popup_request {
+                                PopupRequest::Cli(pipe_id) => wasm_bridge.attach_pipe_popup(
+                                    &pipe_id,
+                                    plugin_id,
+                                    client_id,
+                                    caller_args,
+                                ),
+                                PopupRequest::Prompt(caller) => wasm_bridge.attach_prompt_popup(
+                                    caller,
+                                    plugin_id,
+                                    client_id,
+                                    caller_args,
+                                ),
+                            };
                             wasm_bridge.pipe_messages(
                                 pipe_messages,
                                 shutdown_send.clone(),
@@ -524,11 +553,15 @@ pub(crate) fn plugin_thread_main(
                     },
                     Err(e) => {
                         log::error!("Failed to load popup plugin: {e}");
-                        if let Some((pipe_id, _)) = pipe {
-                            wasm_bridge.fail_pipe_popup(
-                                &pipe_id,
-                                format!("Failed to load the prompt plugin: {}", e),
-                            );
+                        let error = format!("Failed to load the prompt plugin: {}", e);
+                        match pipe {
+                            Some((PopupRequest::Cli(pipe_id), _)) => {
+                                wasm_bridge.fail_pipe_popup(&pipe_id, error);
+                            },
+                            Some((PopupRequest::Prompt(caller), _)) => {
+                                wasm_bridge.fail_prompt_popup(caller, error);
+                            },
+                            None => {},
                         }
                     },
                 }
@@ -1192,6 +1225,61 @@ pub(crate) fn plugin_thread_main(
             },
             PluginInstruction::PipePopupFailed { pipe_id, error } => {
                 wasm_bridge.fail_pipe_popup(&pipe_id, error);
+            },
+            PluginInstruction::PromptRequest {
+                caller,
+                owner_client_id,
+                caller_pane_id,
+                request,
+            } => {
+                let (name, args, payload) = request.to_pipe_message();
+                let pipe_message = PipeMessage::new(
+                    PipeSource::PromptRequest {
+                        caller_plugin_id: caller.plugin_id,
+                        request_id: caller.request_id,
+                    },
+                    name,
+                    &payload,
+                    &Some(args),
+                    true,
+                );
+                let plugin_url = if plugin_aliases
+                    .aliases
+                    .contains_key(zellij_utils::prompt::PROMPT_PLUGIN_ALIAS)
+                {
+                    zellij_utils::prompt::PROMPT_PLUGIN_ALIAS
+                } else {
+                    zellij_utils::prompt::PROMPT_PLUGIN_URL
+                };
+                wasm_bridge.start_prompt_popup(caller, pipe_message, request.is_notice());
+                match RunPluginOrAlias::from_url(plugin_url, &None, Some(&plugin_aliases), None) {
+                    Ok(run_plugin_or_alias) => {
+                        drop(bus.senders.send_to_screen(ScreenInstruction::OpenPromptPopup {
+                            caller,
+                            owner_client_id,
+                            caller_pane_id,
+                            run_plugin_or_alias,
+                            placement: request.placement,
+                            focused: request.focused,
+                        }));
+                    },
+                    Err(e) => {
+                        wasm_bridge.fail_prompt_popup(
+                            caller,
+                            format!("Failed to find the prompt plugin: {}", e),
+                        );
+                    },
+                }
+            },
+            PluginInstruction::PromptReplied {
+                prompt_plugin_id,
+                request_id,
+                result,
+            } => {
+                wasm_bridge.prompt_replied(prompt_plugin_id, request_id, result);
+            },
+            PluginInstruction::PromptPopupFailed { caller, error } => {
+                wasm_bridge.fail_prompt_popup(caller, error);
             },
             PluginInstruction::KeybindPipe {
                 name,

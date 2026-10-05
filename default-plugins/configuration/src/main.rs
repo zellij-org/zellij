@@ -76,6 +76,7 @@ impl ZellijPlugin for State {
                 EventType::ConfigFileChangedSinceRead,
                 EventType::BeforeClose,
                 EventType::Visible,
+                EventType::PromptResult,
             ]);
             set_close_directly(false);
             self.screen = Screen::Settings(SettingsScreen::new());
@@ -160,6 +161,9 @@ impl ZellijPlugin for State {
                 Event::ConfigFileChangedSinceRead => {
                     settings_screen.config_file_changed_since_read();
                     true
+                },
+                Event::PromptResult(request_id, result) => {
+                    settings_screen.prompt_result(request_id, result)
                 },
                 Event::BeforeClose => {
                     settings_screen.before_close();

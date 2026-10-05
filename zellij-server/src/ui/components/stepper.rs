@@ -1,5 +1,5 @@
 use super::widget_common::{
-    bold, center, colored, decode_text, dimmed, disabled_look, field_styles, fit,
+    bold, center, colored, decode_styled, decode_text, dimmed, disabled_look, field_styles, fit,
     hovered_row_styles, label_width, move_to, paint, plain_styles, render_label, reversed,
     text_width, WidgetState,
 };
@@ -18,9 +18,9 @@ pub fn stepper(
     let disabled = state.flag("d");
     let hovered = state.flag("h");
     let editing = state.flag("e") && focused && !disabled;
-    let label = fields.get(0).map(|f| decode_text(f)).unwrap_or_default();
+    let label = decode_styled(fields.get(0));
     let value = fields.get(1).map(|f| decode_text(f)).unwrap_or_default();
-    let label_width = label_width(state, &label);
+    let label_width = label_width(state, &label.text);
     let field_width = coordinates
         .width
         .map(|w| w.saturating_sub(label_width))

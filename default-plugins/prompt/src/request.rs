@@ -1,12 +1,12 @@
 use regex::Regex;
 use serde_json::Value;
-use std::collections::BTreeMap;
-use std::str::FromStr;
 use std::time::Duration;
-use zellij_utils::data::PaneId;
+use zellij_utils::data::{PaneId, StyledText};
+pub use zellij_utils::prompt::split_lines;
+#[cfg(test)]
+use zellij_utils::prompt::strip_line_ending;
 use zellij_utils::prompt::{
-    self, decode_items, decode_list, parse_bool, parse_duration, parse_form_spec, ChoiceItem,
-    FormSpec, PromptElement,
+    self, parse_bool, ChoiceItem, FormSpec, PipePrompt, PromptElement, PromptSpec,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -36,7 +36,7 @@ impl Pattern {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Spec {
     Confirm {
-        message: String,
+        message: StyledText,
         yes: String,
         no: String,
         default_yes: Option<bool>,
@@ -50,25 +50,25 @@ pub enum Spec {
         streaming: bool,
     },
     Input {
-        message: Option<String>,
+        message: Option<StyledText>,
         placeholder: Option<String>,
         validate: Option<Pattern>,
         required: bool,
         default: Option<String>,
     },
     Number {
-        message: Option<String>,
+        message: Option<StyledText>,
         min: Option<i64>,
         max: Option<i64>,
         step: i64,
         default: Option<i64>,
     },
     Toggle {
-        message: Option<String>,
+        message: Option<StyledText>,
         default: bool,
     },
     Select {
-        message: String,
+        message: StyledText,
         options: Vec<String>,
         default: Option<usize>,
     },
@@ -81,7 +81,7 @@ pub enum Spec {
         default: Option<serde_json::Map<String, Value>>,
     },
     Notify {
-        message: String,
+        message: StyledText,
         pane_name: Option<String>,
         tab_name: Option<String>,
         show_pane_name: bool,
@@ -98,218 +98,119 @@ pub struct Request {
 }
 
 fn compile(pattern: &str) -> Result<Pattern, String> {
-    Regex::new(pattern).map(Pattern).map_err(|e| e.to_string())
+    prompt::compile_pattern(pattern).map(Pattern)
 }
 
-fn flag(args: &BTreeMap<String, String>, key: &str) -> Result<bool, String> {
-    match args.get(key) {
-        None => Ok(false),
-        Some(value) if value.is_empty() => Ok(true),
-        Some(value) => parse_bool(value).map_err(|e| format!("{}: {}", key, e)),
-    }
-}
-
-fn integer(args: &BTreeMap<String, String>, key: &str) -> Result<Option<i64>, String> {
-    match args.get(key) {
-        None => Ok(None),
-        Some(value) => value
-            .trim()
-            .parse::<i64>()
+fn parse_default<T>(
+    default: &Option<String>,
+    parse: impl Fn(&str) -> Result<T, String>,
+) -> Result<Option<T>, String> {
+    match default {
+        Some(default) => parse(default)
             .map(Some)
-            .map_err(|_| format!("{}: '{}' is not a whole number", key, value)),
+            .map_err(|e| format!("default: {}", e)),
+        None => Ok(None),
     }
 }
 
-pub fn strip_line_ending(payload: &str, null: bool) -> String {
-    if null {
-        return payload.trim_end_matches('\0').to_owned();
-    }
-    let without_newline = payload.strip_suffix('\n').unwrap_or(payload);
-    without_newline
-        .strip_suffix('\r')
-        .unwrap_or(without_newline)
-        .to_owned()
-}
-
-pub fn split_lines(payload: &str, null: bool, labels: bool) -> Vec<ChoiceItem> {
-    let body = strip_line_ending(payload, null);
-    let separator = if null { '\0' } else { '\n' };
-    body.split(separator)
-        .map(|line| {
-            let line = if null {
-                line
-            } else {
-                line.strip_suffix('\r').unwrap_or(line)
-            };
-            ChoiceItem::from_line(line, labels)
-        })
-        .collect()
-}
-
+#[cfg(test)]
 pub fn parse_request(
     name: &str,
-    args: &BTreeMap<String, String>,
+    args: &std::collections::BTreeMap<String, String>,
     payload: Option<&str>,
 ) -> Result<Request, String> {
-    let element = PromptElement::from_str(name)?;
-    let timeout = match args.get(prompt::ARG_TIMEOUT) {
-        Some(timeout) => Some(parse_duration(timeout).map_err(|e| format!("timeout: {}", e))?),
-        None => None,
-    };
-    let default = args.get(prompt::ARG_DEFAULT).cloned();
+    request_from_pipe_prompt(prompt::parse_request(name, args, payload)?)
+}
+
+pub fn request_from_pipe_prompt(pipe_prompt: PipePrompt) -> Result<Request, String> {
+    let in_popup = pipe_prompt.in_popup();
+    let PipePrompt {
+        request,
+        json,
+        null,
+        labels,
+        streaming,
+        caller,
+    } = pipe_prompt;
+    let default = request.default.clone();
     let mut common = Common {
-        title: args.get(prompt::ARG_TITLE).cloned(),
-        timeout,
+        title: request.title.clone(),
+        timeout: request.timeout,
         default: default.clone(),
-        json: flag(args, prompt::ARG_JSON)?,
-        in_popup: args.contains_key(prompt::CALLER_PANE_TITLE_ARG),
+        json,
+        in_popup,
     };
-    let message = args.get(prompt::ARG_MESSAGE).cloned();
-    let spec = match element {
-        PromptElement::Confirm => {
-            let message = message
-                .or_else(|| payload.map(|p| strip_line_ending(p, false)))
-                .unwrap_or_else(|| "Are you sure?".to_owned());
-            let default_yes = match &default {
-                Some(default) => Some(parse_bool(default).map_err(|e| format!("default: {}", e))?),
-                None => None,
-            };
-            Spec::Confirm {
-                message,
-                yes: args
-                    .get(prompt::ARG_YES)
-                    .cloned()
-                    .unwrap_or_else(|| "Yes".to_owned()),
-                no: args
-                    .get(prompt::ARG_NO)
-                    .cloned()
-                    .unwrap_or_else(|| "No".to_owned()),
-                default_yes,
-            }
-        },
-        PromptElement::Choose => {
-            let null = flag(args, prompt::ARG_NULL)?;
-            let labels = flag(args, prompt::ARG_LABELS)?;
-            let (items, streaming) = match args.get(prompt::ARG_ITEMS) {
-                Some(items) => (decode_items(items), false),
-                None => (
-                    payload
-                        .map(|p| split_lines(p, null, labels))
-                        .unwrap_or_default(),
-                    payload.is_some(),
-                ),
-            };
-            Spec::Choose {
-                items,
-                multi: flag(args, prompt::ARG_MULTI)?,
-                labels,
-                null,
-                selected: args
-                    .get(prompt::ARG_SELECTED)
-                    .map(|s| decode_list(s))
-                    .unwrap_or_default(),
-                streaming,
-            }
-        },
-        PromptElement::Input => {
-            let validate = match args.get(prompt::ARG_VALIDATE) {
-                Some(pattern) => Some(compile(pattern).map_err(|e| format!("validate: {}", e))?),
-                None => None,
-            };
-            Spec::Input {
-                message,
-                placeholder: args.get(prompt::ARG_PLACEHOLDER).cloned(),
-                validate,
-                required: flag(args, prompt::ARG_REQUIRED)?,
-                default,
-            }
-        },
-        PromptElement::Number => {
-            let min = integer(args, prompt::ARG_MIN)?;
-            let max = integer(args, prompt::ARG_MAX)?;
-            if let (Some(min), Some(max)) = (min, max) {
-                if min > max {
-                    return Err("min is larger than max".to_owned());
-                }
-            }
-            let step = integer(args, prompt::ARG_STEP)?.unwrap_or(1);
-            if step <= 0 {
-                return Err("step must be larger than 0".to_owned());
-            }
-            let default = match &default {
-                Some(default) => Some(
-                    default
-                        .trim()
-                        .parse::<i64>()
-                        .map_err(|_| format!("default: '{}' is not a whole number", default))?,
-                ),
-                None => None,
-            };
-            if let Some(error) = default.and_then(|d| crate::ui::range_error(d, min, max)) {
-                return Err(format!("default: {}", error.to_lowercase()));
-            }
-            Spec::Number {
-                message,
-                min,
-                max,
-                step,
-                default,
-            }
-        },
-        PromptElement::Toggle => Spec::Toggle {
+    let spec = match request.spec {
+        PromptSpec::Confirm { message, yes, no } => Spec::Confirm {
             message,
-            default: match &default {
-                Some(default) => parse_bool(default).map_err(|e| format!("default: {}", e))?,
-                None => false,
-            },
+            yes,
+            no,
+            default_yes: parse_default(&default, parse_bool)?,
         },
-        PromptElement::Select => {
-            let options = args
-                .get(prompt::ARG_OPTIONS)
-                .map(|o| decode_list(o))
-                .unwrap_or_default();
-            if options.is_empty() {
-                return Err("select needs at least one option".to_owned());
-            }
-            let default = match &default {
-                Some(default) => {
-                    Some(options.iter().position(|o| o == default).ok_or_else(|| {
-                        format!("default: '{}' is not one of the options", default)
-                    })?)
-                },
+        PromptSpec::Choose {
+            items,
+            multi,
+            selected,
+        } => Spec::Choose {
+            items,
+            multi,
+            labels,
+            null,
+            selected,
+            streaming,
+        },
+        PromptSpec::Input {
+            message,
+            placeholder,
+            validate,
+            required,
+        } => Spec::Input {
+            message,
+            placeholder,
+            validate: match validate {
+                Some(pattern) => Some(compile(&pattern).map_err(|e| format!("validate: {}", e))?),
                 None => None,
-            };
+            },
+            required,
+            default,
+        },
+        PromptSpec::Number {
+            message,
+            min,
+            max,
+            step,
+        } => Spec::Number {
+            message,
+            min,
+            max,
+            step,
+            default: parse_default(&default, |d| {
+                d.trim()
+                    .parse::<i64>()
+                    .map_err(|_| format!("'{}' is not a whole number", d))
+            })?,
+        },
+        PromptSpec::Toggle { message } => Spec::Toggle {
+            message,
+            default: parse_default(&default, parse_bool)?.unwrap_or(false),
+        },
+        PromptSpec::Select { message, options } => {
+            let default = default
+                .as_ref()
+                .and_then(|default| options.iter().position(|o| o == default));
             Spec::Select {
-                message: message.unwrap_or_default(),
+                message,
                 options,
                 default,
             }
         },
-        PromptElement::Menu => {
-            let items = args
-                .get(prompt::ARG_ITEMS)
-                .map(|i| decode_items(i))
-                .unwrap_or_default();
-            if items.is_empty() {
-                return Err("menu needs at least one item".to_owned());
-            }
-            Spec::Menu { items }
-        },
-        PromptElement::Form => {
-            let text = payload.ok_or_else(|| {
-                "form needs the form description as the message payload".to_owned()
-            })?;
-            let spec = parse_form_spec(text)?;
+        PromptSpec::Menu { items } => Spec::Menu { items },
+        PromptSpec::Form { spec } => {
             let patterns = spec
                 .fields
                 .iter()
                 .map(|field| match &field.validate {
-                    Some(pattern) => compile(pattern).map(Some).map_err(|e| {
-                        format!(
-                            "invalid form description: field \"{}\": invalid \"validate\" pattern: {}",
-                            field.id, e
-                        )
-                    }),
+                    Some(pattern) => compile(pattern).map(Some),
                     None => Ok(None),
                 })
                 .collect::<Result<Vec<_>, _>>()?;
@@ -320,41 +221,30 @@ pub fn parse_request(
                 },
                 None => None,
             };
+            if common.title.is_none() {
+                common.title = spec.title.clone();
+            }
             Spec::Form {
                 spec,
                 patterns,
                 default,
             }
         },
-        PromptElement::Notify => {
-            let message = message
-                .or_else(|| payload.map(|p| strip_line_ending(p, false)))
-                .ok_or_else(|| "notify needs the text to show".to_owned())?;
-            let show_pane_name = !flag(args, prompt::ARG_NO_PANE_NAME)?;
-            let show_tab_name = !flag(args, prompt::ARG_NO_TAB_NAME)?;
-            let caller_pane = args
-                .get(prompt::CALLER_PANE_ID_ARG)
-                .and_then(|pane_id| PaneId::from_str(pane_id).ok());
-            Spec::Notify {
-                message,
-                pane_name: args.get(prompt::CALLER_PANE_TITLE_ARG).cloned(),
-                tab_name: args.get(prompt::CALLER_TAB_NAME_ARG).cloned(),
-                show_pane_name,
-                show_tab_name,
-                caller_pane,
-            }
+        PromptSpec::Notify {
+            message,
+            show_pane_name,
+            show_tab_name,
+        } => Spec::Notify {
+            message,
+            pane_name: caller.pane_title,
+            tab_name: caller.tab_name,
+            show_pane_name,
+            show_tab_name,
+            caller_pane: caller.pane_id,
         },
     };
-    if let Spec::Form {
-        spec: form_spec, ..
-    } = &spec
-    {
-        if common.title.is_none() {
-            common.title = form_spec.title.clone();
-        }
-    }
     Ok(Request {
-        element,
+        element: request.element,
         common,
         spec,
     })
@@ -363,6 +253,7 @@ pub fn parse_request(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeMap;
 
     fn args(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
         pairs
@@ -388,7 +279,7 @@ mod tests {
         assert_eq!(
             request.spec,
             Spec::Confirm {
-                message: "Force push?".to_owned(),
+                message: StyledText::plain("Force push?"),
                 yes: "Push".to_owned(),
                 no: "Cancel".to_owned(),
                 default_yes: Some(false),
@@ -416,7 +307,7 @@ mod tests {
         assert_eq!(
             request.spec,
             Spec::Notify {
-                message: "Build finished".to_owned(),
+                message: StyledText::plain("Build finished"),
                 pane_name: Some("make".to_owned()),
                 tab_name: Some("Build".to_owned()),
                 show_pane_name: true,
@@ -437,7 +328,7 @@ mod tests {
         assert_eq!(
             without_names.spec,
             Spec::Notify {
-                message: "Saved".to_owned(),
+                message: StyledText::plain("Saved"),
                 pane_name: None,
                 tab_name: None,
                 show_pane_name: false,
@@ -454,7 +345,7 @@ mod tests {
         let request = parse_request("confirm", &args(&[]), Some("Continue?\n")).unwrap();
         match request.spec {
             Spec::Confirm { message, yes, .. } => {
-                assert_eq!(message, "Continue?");
+                assert_eq!(message.text, "Continue?");
                 assert_eq!(yes, "Yes");
             },
             other => panic!("unexpected {:?}", other),
@@ -598,7 +489,7 @@ mod tests {
         assert_eq!(
             select.spec,
             Spec::Select {
-                message: "License".to_owned(),
+                message: StyledText::plain("License"),
                 options: vec!["MIT".to_owned(), "Apache-2.0".to_owned()],
                 default: Some(1),
             }

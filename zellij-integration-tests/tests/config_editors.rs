@@ -182,9 +182,31 @@ fn a_removed_preset_key_is_written_as_unbind_and_reset_back() {
         grid_snapshot.contains("Normal") && grid_snapshot.contains("Alt n")
     });
     zellij.send_stdin(DELETE);
-    zellij.wait_until("removal is confirmed first", |grid_snapshot| {
+    let grid_snapshot = zellij.wait_until("removal is confirmed first", |grid_snapshot| {
         grid_snapshot.contains("Delete Alt n from Normal mode?")
+            && grid_snapshot.contains("Don't ask again")
     });
+    let question_row = grid_snapshot.row_of_line("Delete Alt n from Normal mode?").unwrap();
+    let toggle_row = grid_snapshot.row_of_line("Don't ask again").unwrap();
+    let buttons_row = grid_snapshot.row_of_line("Cancel").unwrap();
+    assert!(grid_snapshot.lines()[question_row - 2].contains("Confirm"));
+    assert!(question_row < toggle_row && toggle_row < buttons_row);
+    let question_line = grid_snapshot.lines()[question_row].clone();
+    let delete_column = question_line[..question_line.find("Delete Alt n").unwrap()]
+        .chars()
+        .count();
+    let key_columns = delete_column + 7..delete_column + 12;
+    let plain_color = grid_snapshot.cell_foreground(delete_column, question_row);
+    for column in key_columns {
+        let key_color = grid_snapshot.cell_foreground(column, question_row);
+        assert!(key_color.is_some() && key_color != plain_color);
+        assert_eq!(key_color, grid_snapshot.cell_foreground(delete_column + 7, question_row));
+    }
+    assert_eq!(
+        grid_snapshot.cell_foreground(delete_column + 13, question_row),
+        plain_color
+    );
+    assert!(grid_snapshot.lines()[buttons_row].contains("Delete"));
     zellij.send_stdin(&keys::ENTER);
     zellij.wait_until("the key is unbound", |grid_snapshot| {
         grid_snapshot.contains("(unbound)") && grid_snapshot.contains("1 unsaved change ")
@@ -413,7 +435,7 @@ fn menu_items_and_separators_are_edited_with_the_mouse() {
     });
     zellij.send_stdin(DELETE);
     let grid_snapshot = zellij.wait_until("deleting asks first", |grid_snapshot| {
-        grid_snapshot.contains("Delete item?")
+        grid_snapshot.contains("Don't ask again") && grid_snapshot.contains("Cancel")
     });
     let row = grid_snapshot.row_of_line("Cancel").unwrap();
     let line = grid_snapshot.lines()[row].clone();
@@ -588,7 +610,7 @@ fn every_key_of_a_category_is_marked_and_deleted_together() {
     });
     zellij.send_stdin(DELETE);
     zellij.wait_until("deleting several keys asks first", |grid_snapshot| {
-        grid_snapshot.contains("Delete keys?")
+        grid_snapshot.contains("keys?") && grid_snapshot.contains("Don't ask again")
     });
     zellij.send_stdin(&keys::ENTER);
     zellij.wait_until("the keys are unbound", |grid_snapshot| {

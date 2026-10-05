@@ -73,6 +73,10 @@ fn reaction_to_file_change(state: SaveState) -> FileChangeReaction {
     }
 }
 
+const OVERWRITE_CHOICE: &str = "overwrite";
+const RELOAD_CHOICE: &str = "reload";
+const CANCEL_CHOICE: &str = "cancel";
+
 const RELOADED_FROM_OUTSIDE: &str =
     "The config file was changed outside the settings and has been reloaded.";
 
@@ -94,8 +98,7 @@ pub struct SettingsScreen {
     scroll: ScrollView,
     search: TextInput,
     search_active: bool,
-    dialog: ConfirmDialog,
-    dialog_purpose: Option<DialogPurpose>,
+    pending_prompts: Vec<(u64, DialogPurpose)>,
     awaiting_save: Option<Vec<SettingKey>>,
     awaiting_reload: bool,
     save_state: SaveState,
@@ -136,8 +139,7 @@ impl Default for SettingsScreen {
                 .placeholder("search all settings")
                 .search_mode(),
             search_active: false,
-            dialog: ConfirmDialog::new("", ""),
-            dialog_purpose: None,
+            pending_prompts: vec![],
             awaiting_save: None,
             awaiting_reload: false,
             save_state: SaveState::Idle,
@@ -718,16 +720,24 @@ impl SettingsScreen {
             .config_file_path
             .clone()
             .unwrap_or_else(|| "The config file".to_owned());
-        let message = format!(
-            "{} changed outside Zellij since it was last read. Overwrite applies your unsaved changes to the file as it is now. Reload reads the file again and keeps your changes unsaved.",
-            file
-        );
-        self.dialog = ConfirmDialog::new("Config file changed", message)
-            .buttons(vec!["Overwrite", "Reload", "Cancel"])
-            .width(64)
-            .opened();
+        let request = PromptRequest::menu(vec![
+            ChoiceItem::labeled(
+                OVERWRITE_CHOICE,
+                "Overwrite: apply your unsaved changes to the file as it is now",
+            ),
+            ChoiceItem::labeled(
+                RELOAD_CHOICE,
+                "Reload: read the file again and keep your changes unsaved",
+            ),
+            ChoiceItem::labeled(CANCEL_CHOICE, "Cancel"),
+        ])
+        .title(format!("{} changed outside Zellij", file));
         self.clear_all_hover();
-        self.dialog_purpose = Some(DialogPurpose::ChangedOutside);
+        self.ask(request, DialogPurpose::ChangedOutside);
+    }
+    fn ask(&mut self, request: PromptRequest, purpose: DialogPurpose) {
+        let request_id = prompt(request);
+        self.pending_prompts.push((request_id, purpose));
     }
     fn open_revert_all_dialog(&mut self) {
         let count = self.snapshot.unsaved_count();
@@ -736,12 +746,12 @@ impl SettingsScreen {
             count,
             if count == 1 { "" } else { "s" }
         );
-        self.dialog = ConfirmDialog::new("Revert all?", message)
-            .buttons(vec!["Revert all", "Cancel"])
-            .width(50)
-            .opened();
+        let request = PromptRequest::confirm(message)
+            .title("Revert all?")
+            .yes("Revert all")
+            .no("Cancel");
         self.clear_all_hover();
-        self.dialog_purpose = Some(DialogPurpose::RevertAll);
+        self.ask(request, DialogPurpose::RevertAll);
     }
     fn request_save(&mut self) {
         self.save();
@@ -753,33 +763,32 @@ impl SettingsScreen {
             self.notice = Some("Nothing to revert".to_owned());
         }
     }
-    fn dialog_response(&mut self, response: UiResponse) {
-        let purpose = self.dialog_purpose;
-        if purpose == Some(DialogPurpose::ChangedOutside) {
-            match response {
-                UiResponse::Submitted(UiValue::Choice { index: 0, .. }) => {
+    fn answer(&mut self, purpose: DialogPurpose, result: &PromptResult) {
+        let choice = match result {
+            PromptResult::Answered(PromptValue::Choice(choice)) => Some(choice.as_str()),
+            _ => None,
+        };
+        match purpose {
+            DialogPurpose::ChangedOutside => match choice {
+                Some(OVERWRITE_CHOICE) => {
                     self.awaiting_save = Some(self.snapshot.pending_restart_settings.clone());
                     self.awaiting_reload = false;
                     self.save_state = SaveState::AwaitingOverwrite;
                     overwrite_config_file();
                 },
-                UiResponse::Submitted(UiValue::Choice { index: 1, .. }) => {
+                Some(RELOAD_CHOICE) => {
                     self.awaiting_save = None;
                     self.awaiting_reload = true;
                     self.save_state = SaveState::Idle;
                     reload_config_file();
                 },
-                UiResponse::Submitted(_) | UiResponse::Cancelled => {
+                _ => {
                     self.save_state = SaveState::Idle;
                     self.notice = Some("Not saved".to_owned());
                 },
-                _ => {},
-            }
-        }
-        if let UiResponse::Submitted(UiValue::Choice { index: 0, .. }) = response {
-            match purpose {
-                Some(DialogPurpose::ChangedOutside) => {},
-                Some(DialogPurpose::RevertAll) => {
+            },
+            DialogPurpose::RevertAll => {
+                if *result == PromptResult::Confirmed(true) {
                     revert_config(None);
                     self.refresh();
                     let keys = self.elements.keys();
@@ -787,13 +796,41 @@ impl SettingsScreen {
                         self.force_sync_element(key);
                     }
                     self.notice = Some("All unsaved changes reverted".to_owned());
-                },
-                None => {},
+                }
+            },
+        }
+    }
+    pub fn prompt_result(&mut self, request_id: u64, result: PromptResult) -> bool {
+        if let Some(index) = self
+            .pending_prompts
+            .iter()
+            .position(|(pending_id, _)| *pending_id == request_id)
+        {
+            let (_, purpose) = self.pending_prompts.remove(index);
+            self.answer(purpose, &result);
+            return true;
+        }
+        if self.keybindings_screen.prompt_result(request_id, &result) {
+            self.collect_keybindings_results();
+            return true;
+        }
+        for category in PAGE_CATEGORIES {
+            let Some(page) = self.page_for(category) else {
+                continue;
+            };
+            if page.prompt_result(request_id, &result) {
+                let effects = page.take_effects();
+                let notice = page.take_notice();
+                if notice.is_some() {
+                    self.notice = notice;
+                }
+                if run_effects(effects) {
+                    self.refresh();
+                }
+                return true;
             }
         }
-        if !self.dialog.is_open() {
-            self.dialog_purpose = None;
-        }
+        false
     }
     pub fn begin_close(&mut self) {
         self.restore_theme_preview();
@@ -997,11 +1034,6 @@ impl SettingsScreen {
     fn handle_key_inner(&mut self, key: KeyWithModifier) -> bool {
         if self.closing {
             close_self();
-            return true;
-        }
-        if self.dialog.is_open() {
-            let response = self.dialog.handle_key(&key);
-            self.dialog_response(response);
             return true;
         }
         let embedded_keys_screen = self.showing_keys_screen() && self.focus == Focus::Content;
@@ -1395,7 +1427,7 @@ impl SettingsScreen {
         should_render
     }
     fn rows_accept_input(&self) -> bool {
-        !self.closing && !self.dialog.is_open() && self.editing.is_none()
+        !self.closing && self.editing.is_none()
     }
     fn clear_row_hover(&mut self) -> bool {
         self.elements.handle_mouse(Mouse::Hover(-1, 0)).is_handled()
@@ -1451,12 +1483,6 @@ impl SettingsScreen {
             },
             _ => mouse,
         };
-        if self.dialog.is_open() {
-            let (response, dialog_changed) =
-                changed_by(&mut self.dialog, |dialog| dialog.handle_mouse(mouse));
-            self.dialog_response(response);
-            return dialog_changed || !matches!(mouse, Mouse::Hover(..)) || !self.dialog.is_open();
-        }
         let link_changed = match mouse {
             Mouse::Hover(line, column) => {
                 let hovered =
@@ -1742,7 +1768,6 @@ impl SettingsScreen {
                 page.render_overlays(rows, cols);
             }
         }
-        self.dialog.render_centered(rows, cols);
     }
     fn render_keys_category(&mut self, x: usize, y: usize, width: usize, height: usize) {
         self.bindings_area_y = None;
@@ -2237,13 +2262,6 @@ mod tests {
         panic!("the menu was not laid out");
     }
 
-    fn choice(index: usize) -> UiResponse {
-        UiResponse::Submitted(UiValue::Choice {
-            index,
-            label: String::new(),
-        })
-    }
-
     #[test]
     fn hovering_an_inert_area_does_not_redraw() {
         let mut screen = rendered_screen();
@@ -2278,34 +2296,45 @@ mod tests {
         );
     }
 
+    fn last_prompt(screen: &SettingsScreen) -> (u64, DialogPurpose) {
+        *screen.pending_prompts.last().expect("a prompt was asked")
+    }
+
+    fn chosen(choice: &str) -> PromptResult {
+        PromptResult::Answered(PromptValue::Choice(choice.to_owned()))
+    }
+
     #[test]
-    fn the_save_state_follows_saves_and_dialog_choices() {
+    fn the_save_state_follows_saves_and_prompt_answers() {
         let mut screen = SettingsScreen::default();
         assert_eq!(screen.save_state, SaveState::Idle);
         screen.save();
         assert_eq!(screen.save_state, SaveState::AwaitingSave);
         screen.config_file_changed_since_read();
-        assert!(screen.dialog.is_open());
-        screen.dialog_response(choice(0));
+        let (request_id, purpose) = last_prompt(&screen);
+        assert_eq!(purpose, DialogPurpose::ChangedOutside);
+        assert!(screen.prompt_result(request_id, chosen(OVERWRITE_CHOICE)));
         assert_eq!(screen.save_state, SaveState::AwaitingOverwrite);
-        screen.dialog.close();
+        assert!(screen.pending_prompts.is_empty());
         screen.config_file_changed_since_read();
-        assert!(!screen.dialog.is_open());
+        assert!(screen.pending_prompts.is_empty());
         assert_eq!(screen.save_state, SaveState::AwaitingOverwrite);
         screen.config_write_failed(None);
         assert_eq!(screen.save_state, SaveState::Idle);
 
         screen.save();
         screen.config_file_changed_since_read();
-        assert!(screen.dialog.is_open());
-        screen.dialog_response(UiResponse::Cancelled);
+        let (request_id, _) = last_prompt(&screen);
+        assert!(screen.prompt_result(request_id, PromptResult::Cancelled));
         assert_eq!(screen.save_state, SaveState::Idle);
-        screen.dialog.close();
+        assert_eq!(screen.notice.as_deref(), Some("Not saved"));
 
         screen.save();
         screen.config_file_changed_since_read();
-        screen.dialog_response(choice(1));
+        let (request_id, _) = last_prompt(&screen);
+        assert!(screen.prompt_result(request_id, chosen(RELOAD_CHOICE)));
         assert_eq!(screen.save_state, SaveState::Idle);
         assert!(screen.awaiting_reload);
+        assert!(!screen.prompt_result(request_id, chosen(RELOAD_CHOICE)));
     }
 }

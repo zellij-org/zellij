@@ -5,6 +5,8 @@ use crate::plugins::pipes::{
     PipeStateChange,
 };
 use crate::plugins::plugin_loader::PluginLoader;
+use crate::plugins::prompt_requests::{PromptAction, PromptCaller, PromptRequests};
+use zellij_utils::prompt::PromptResult;
 use crate::plugins::plugin_map::{
     AtomicEvent, PluginEnv, PluginMap, PluginMetadata, RemovedPluginAssets, RunningPlugin,
     SharedSlot, Subscriptions,
@@ -290,6 +292,7 @@ pub struct WasmBridge {
         HashMap<RunPluginLocation, HashMap<PluginUserConfiguration, Vec<(PluginId, ClientId)>>>,
     pending_pipes: PendingPipes,
     pipe_popups: HashMap<String, PipePopup>,
+    prompt_requests: PromptRequests,
     layout_dir: Option<PathBuf>,
     available_layouts: Vec<LayoutInfo>,
     available_layout_errors: Vec<LayoutWithError>,
@@ -361,6 +364,7 @@ impl WasmBridge {
             cached_plugin_map: HashMap::new(),
             pending_pipes: Default::default(),
             pipe_popups: HashMap::new(),
+            prompt_requests: PromptRequests::default(),
             layout_dir,
             available_layouts,
             available_layout_errors,
@@ -728,6 +732,8 @@ impl WasmBridge {
         let pipes_to_release = self.pending_pipes.unload_plugin(&pid);
         self.send_pipe_releases(pipes_to_release);
         self.forget_pipe_popups_of_plugin(pid);
+        let prompt_actions = self.prompt_requests.plugin_unloaded(pid);
+        self.apply_prompt_actions(prompt_actions);
         let plugin_list = self.plugin_map.lock().unwrap().list_plugins();
         let _ = self
             .senders
@@ -736,6 +742,8 @@ impl WasmBridge {
         Ok(())
     }
     pub fn reload_plugin_with_id(&mut self, plugin_id: u32) -> Result<()> {
+        let prompt_actions = self.prompt_requests.caller_reloaded(plugin_id);
+        self.apply_prompt_actions(prompt_actions);
         if let Some(instance_id) = self.shared_instance_of(plugin_id) {
             self.reload_shared_instance(instance_id);
             return Ok(());
@@ -1598,6 +1606,10 @@ impl WasmBridge {
                 .pending_pipes
                 .unload_plugin_client(&plugin_id, &client_id);
             self.send_pipe_releases(pipes_to_release);
+            let prompt_actions = self
+                .prompt_requests
+                .caller_instance_gone(plugin_id, client_id);
+            self.apply_prompt_actions(prompt_actions);
         }
         self.cached_plugin_map.clear();
     }
@@ -2445,6 +2457,73 @@ impl WasmBridge {
             .release_with_code(pipe_id, PIPE_POPUP_ERROR_EXIT_CODE);
         self.send_pipe_releases(vec![release]);
     }
+    pub fn start_prompt_popup(
+        &mut self,
+        caller: PromptCaller,
+        pipe_message: PipeMessage,
+        is_notice: bool,
+    ) {
+        self.prompt_requests.start(caller, pipe_message, is_notice);
+    }
+    pub fn attach_prompt_popup(
+        &mut self,
+        caller: PromptCaller,
+        plugin_id: PluginId,
+        client_id: ClientId,
+        caller_args: BTreeMap<String, String>,
+    ) -> Vec<(Option<PluginId>, Option<ClientId>, PipeMessage)> {
+        let actions = self
+            .prompt_requests
+            .attach(caller, plugin_id, client_id, caller_args);
+        self.apply_prompt_actions(actions)
+    }
+    pub fn fail_prompt_popup(&mut self, caller: PromptCaller, error: String) {
+        let actions = self.prompt_requests.fail(caller, error);
+        self.apply_prompt_actions(actions);
+    }
+    pub fn prompt_replied(
+        &mut self,
+        prompt_plugin_id: PluginId,
+        request_id: u64,
+        result: PromptResult,
+    ) {
+        let actions = self
+            .prompt_requests
+            .reply(prompt_plugin_id, request_id, result);
+        self.apply_prompt_actions(actions);
+    }
+    fn apply_prompt_actions(
+        &mut self,
+        actions: Vec<PromptAction>,
+    ) -> Vec<(Option<PluginId>, Option<ClientId>, PipeMessage)> {
+        let mut pipe_messages = vec![];
+        for action in actions {
+            match action {
+                PromptAction::Deliver(caller, result) => {
+                    let _ = self
+                        .senders
+                        .send_to_plugin(PluginInstruction::Update(vec![
+                            caller.result_event(result)
+                        ]));
+                },
+                PromptAction::Send(plugin_id, client_id, pipe_message) => {
+                    pipe_messages.push((Some(plugin_id), Some(client_id), pipe_message));
+                },
+                PromptAction::Close(plugin_id) => {
+                    let _ = self.senders.send_to_screen(ScreenInstruction::ClosePane(
+                        PaneId::Plugin(plugin_id),
+                        None,
+                        None,
+                        None,
+                    ));
+                    let _ = self
+                        .senders
+                        .send_to_plugin(PluginInstruction::Unload(plugin_id));
+                },
+            }
+        }
+        pipe_messages
+    }
     fn forget_pipe_popups_of_plugin(&mut self, plugin_id: PluginId) {
         self.pipe_popups.retain(|_, pipe_popup| match pipe_popup {
             PipePopup::Open {
@@ -2756,6 +2835,8 @@ impl WasmBridge {
             );
             let pipes_to_release = self.pending_pipes.unload_plugin(&instance_id);
             self.send_pipe_releases(pipes_to_release);
+            let prompt_actions = self.prompt_requests.plugin_unloaded(instance_id);
+            self.apply_prompt_actions(prompt_actions);
         } else {
             self.plugin_executor.execute_for_plugin(
                 instance_id,

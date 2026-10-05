@@ -1,9 +1,9 @@
 use std::time::{Duration, Instant};
 use zellij_tile::prelude::*;
-use zellij_utils::prompt::{EXIT_ANSWERED, EXIT_CANCELLED, EXIT_ERROR};
 
-use crate::outcome::{default_answer, reply_for, Outcome};
-use crate::request::{parse_request, split_lines, Request, Spec};
+use crate::outcome::{default_answer, Outcome};
+use crate::reply::{expand, Destination, Intent};
+use crate::request::{request_from_pipe_prompt, split_lines, Request, Spec};
 use crate::ui::{
     hints_text, hints_width, text_width, truncate, Hint, Screen, Step, MAX_WIDTH, MIN_WIDTH,
 };
@@ -18,6 +18,7 @@ pub enum Effect {
     SetExitCode(String, i32),
     Output(String, String),
     UnblockPipe(String),
+    ReplyToPrompt(u64, PromptResult),
     SetPopupSize(usize, usize),
     SetTimeout(f64),
     ShowSelf,
@@ -28,7 +29,8 @@ pub enum Effect {
 
 #[derive(Default)]
 pub struct App {
-    pipe_id: Option<String>,
+    source: Option<PipeSource>,
+    destination: Option<Destination>,
     request: Option<Request>,
     screen: Option<Screen>,
     deadline: Option<Instant>,
@@ -36,56 +38,72 @@ pub struct App {
     released: bool,
     last_popup_size: Option<(usize, usize)>,
     last_input_render: Option<Instant>,
-    effects: Vec<Effect>,
+    effects: Vec<Intent>,
+}
+
+fn destination_of(source: &PipeSource) -> Option<Destination> {
+    match source {
+        PipeSource::Cli(pipe_id) => Some(Destination::cli(pipe_id.clone())),
+        PipeSource::PromptRequest { request_id, .. } => Some(Destination::plugin(*request_id)),
+        _ => None,
+    }
 }
 
 impl App {
     pub fn take_effects(&mut self) -> Vec<Effect> {
-        std::mem::take(&mut self.effects)
+        expand(std::mem::take(&mut self.effects))
+    }
+    fn push(&mut self, effect: Effect) {
+        self.effects.push(Intent::Do(effect));
     }
     #[cfg(test)]
     pub fn is_finished(&self) -> bool {
         self.finished
     }
     pub fn handle_pipe(&mut self, pipe_message: PipeMessage, now: Instant) -> bool {
-        let pipe_id = match &pipe_message.source {
-            PipeSource::Cli(pipe_id) => pipe_id.clone(),
-            _ => return false,
+        let Some(destination) = destination_of(&pipe_message.source) else {
+            return false;
         };
         if self.finished {
             return false;
         }
-        match &self.pipe_id {
-            None => self.start(pipe_id, pipe_message, now),
-            Some(current) if *current == pipe_id => self.continue_input(pipe_message, now),
+        match &self.source {
+            None => self.start(destination, pipe_message, now),
+            Some(current) if *current == pipe_message.source => {
+                self.continue_input(pipe_message, now)
+            },
             Some(_) => {
-                self.effects.push(Effect::Output(
-                    pipe_id.clone(),
-                    "zellij prompt: this prompt is already answering another request\n".to_owned(),
+                self.effects.push(Intent::Reply(
+                    destination,
+                    Outcome::Error("this prompt is already answering another request".to_owned()),
                 ));
-                self.effects
-                    .push(Effect::SetExitCode(pipe_id.clone(), EXIT_ERROR));
-                self.effects.push(Effect::UnblockPipe(pipe_id));
                 false
             },
         }
     }
-    fn start(&mut self, pipe_id: String, pipe_message: PipeMessage, now: Instant) -> bool {
-        self.pipe_id = Some(pipe_id.clone());
-        let request = match parse_request(
+    fn start(&mut self, destination: Destination, pipe_message: PipeMessage, now: Instant) -> bool {
+        self.source = Some(pipe_message.source.clone());
+        let parsed = zellij_utils::prompt::parse_request(
             &pipe_message.name,
             &pipe_message.args,
             pipe_message.payload.as_deref(),
-        ) {
-            Ok(request) => request,
+        )
+        .and_then(|pipe_prompt| {
+            let destination = destination.clone().for_request(&pipe_prompt);
+            request_from_pipe_prompt(pipe_prompt).map(|request| (destination, request))
+        });
+        let (destination, request) = match parsed {
+            Ok(parsed) => parsed,
             Err(error) => {
-                self.effects.push(Effect::BlockPipe(pipe_id));
+                self.destination = Some(destination.clone());
+                self.effects.push(Intent::Hold(destination));
                 self.finish(Outcome::Error(error));
                 return false;
             },
         };
+        self.destination = Some(destination.clone());
         if matches!(request.spec, Spec::Notify { .. }) {
-            return self.start_notice(pipe_id, request, now);
+            return self.start_notice(destination, request, now);
         }
         let is_streaming = matches!(
             request.spec,
@@ -95,12 +113,11 @@ impl App {
             }
         );
         if !is_streaming {
-            self.effects.push(Effect::BlockPipe(pipe_id.clone()));
+            self.effects.push(Intent::Hold(destination.clone()));
         }
-        self.effects
-            .push(Effect::SetExitCode(pipe_id, EXIT_CANCELLED));
+        self.effects.push(Intent::Pending(destination));
         if !request.common.in_popup {
-            self.effects.push(Effect::ShowSelf);
+            self.push(Effect::ShowSelf);
         }
         if let Some(timeout) = request.common.timeout {
             self.deadline = Some(now + timeout);
@@ -111,13 +128,11 @@ impl App {
         self.request_popup_size();
         true
     }
-    fn start_notice(&mut self, pipe_id: String, request: Request, now: Instant) -> bool {
-        self.effects
-            .push(Effect::SetExitCode(pipe_id.clone(), EXIT_ANSWERED));
-        self.effects.push(Effect::UnblockPipe(pipe_id));
+    fn start_notice(&mut self, destination: Destination, request: Request, now: Instant) -> bool {
+        self.effects.push(Intent::Acknowledge(destination));
         self.released = true;
         if !request.common.in_popup {
-            self.effects.push(Effect::ShowSelf);
+            self.push(Effect::ShowSelf);
         }
         if let Some(timeout) = request.common.timeout {
             self.deadline = Some(now + timeout);
@@ -125,7 +140,7 @@ impl App {
         }
         let screen = Screen::new(&request);
         if screen.watches_names() {
-            self.effects.push(Effect::WatchNames);
+            self.push(Effect::WatchNames);
         }
         self.screen = Some(screen);
         self.request = Some(request);
@@ -158,10 +173,10 @@ impl App {
     }
     fn close_notice(&mut self) {
         self.finished = true;
-        self.effects.push(Effect::CloseSelf);
+        self.push(Effect::CloseSelf);
     }
     fn continue_input(&mut self, pipe_message: PipeMessage, now: Instant) -> bool {
-        let Some(pipe_id) = self.pipe_id.clone() else {
+        let Some(destination) = self.destination.clone() else {
             return false;
         };
         let (is_choose, null, labels) = match self.request.as_ref().map(|r| &r.spec) {
@@ -191,11 +206,11 @@ impl App {
                 should_render
             },
             Some(_) => {
-                self.effects.push(Effect::BlockPipe(pipe_id));
+                self.effects.push(Intent::Hold(destination));
                 false
             },
             None => {
-                self.effects.push(Effect::BlockPipe(pipe_id));
+                self.effects.push(Intent::Hold(destination));
                 if let Some(screen) = self.screen.as_mut() {
                     screen.input_ended();
                 }
@@ -208,8 +223,7 @@ impl App {
         if let Some(deadline) = self.deadline {
             let remaining = deadline.saturating_duration_since(now);
             let next = remaining.min(Duration::from_secs(1));
-            self.effects
-                .push(Effect::SetTimeout(next.as_secs_f64().max(0.01)));
+            self.push(Effect::SetTimeout(next.as_secs_f64().max(0.01)));
         }
     }
     pub fn handle_timer(&mut self, now: Instant) -> bool {
@@ -274,8 +288,17 @@ impl App {
                 self.finish(outcome);
                 false
             },
-            Step::FocusPane(pane_id) => {
-                self.effects.push(Effect::FocusPane(pane_id));
+            Step::NoticeClicked(pane_id) => {
+                let Some(destination) = self.destination.clone() else {
+                    return false;
+                };
+                if pane_id.is_none() && destination.is_cli() {
+                    return false;
+                }
+                if let Some(pane_id) = pane_id {
+                    self.push(Effect::FocusPane(pane_id));
+                }
+                self.effects.push(Intent::NoticeClicked(destination));
                 self.close_notice();
                 false
             },
@@ -286,26 +309,12 @@ impl App {
             self.close_notice();
             return;
         }
-        let Some(pipe_id) = self.pipe_id.clone() else {
+        let Some(destination) = self.destination.clone() else {
             return;
         };
-        let (json, null) = match &self.request {
-            Some(request) => (
-                request.common.json,
-                matches!(request.spec, Spec::Choose { null: true, .. }),
-            ),
-            None => (false, false),
-        };
-        let reply = reply_for(&outcome, json, null);
-        if !reply.output.is_empty() {
-            self.effects
-                .push(Effect::Output(pipe_id.clone(), reply.output));
-        }
-        self.effects
-            .push(Effect::SetExitCode(pipe_id.clone(), reply.exit_code));
-        self.effects.push(Effect::UnblockPipe(pipe_id));
+        self.effects.push(Intent::Reply(destination, outcome));
         self.finished = true;
-        self.effects.push(Effect::CloseSelf);
+        self.push(Effect::CloseSelf);
     }
     fn has_confirm_footer(&self) -> bool {
         self.screen
@@ -413,7 +422,7 @@ impl App {
         if let Some(size) = self.desired_size() {
             if self.last_popup_size != Some(size) {
                 self.last_popup_size = Some(size);
-                self.effects.push(Effect::SetPopupSize(size.0, size.1));
+                self.push(Effect::SetPopupSize(size.0, size.1));
             }
         }
     }
@@ -913,5 +922,210 @@ mod tests {
         let mut app = App::default();
         app.handle_pipe(message("p", "confirm", &[], None), Instant::now());
         assert!(!app.is_framed());
+    }
+
+    fn plugin_message(request_id: u64, request: PromptRequest) -> PipeMessage {
+        let (name, mut args, payload) = request.to_pipe_message();
+        args.insert(
+            zellij_utils::prompt::CALLER_PANE_TITLE_ARG.to_owned(),
+            "fixture".to_owned(),
+        );
+        args.insert(
+            zellij_utils::prompt::CALLER_PANE_ID_ARG.to_owned(),
+            "plugin_3".to_owned(),
+        );
+        PipeMessage {
+            source: PipeSource::PromptRequest {
+                caller_plugin_id: 3,
+                request_id,
+            },
+            name,
+            payload,
+            args,
+            is_private: true,
+        }
+    }
+
+    fn answered_with(request: PromptRequest, keys: &[BareKey]) -> Vec<Effect> {
+        let mut app = App::default();
+        app.handle_pipe(plugin_message(5, request), Instant::now());
+        assert!(pipe_effects(&app.take_effects()).is_empty());
+        for key in keys {
+            app.handle_key(KeyWithModifier::new(key.clone()));
+        }
+        pipe_effects(&app.take_effects())
+    }
+
+    #[test]
+    fn a_plugin_request_is_answered_to_the_plugin_and_not_to_a_pipe() {
+        assert_eq!(
+            answered_with(PromptRequest::confirm("Go?"), &[BareKey::Enter]),
+            vec![
+                Effect::ReplyToPrompt(5, PromptResult::Confirmed(true)),
+                Effect::CloseSelf
+            ]
+        );
+        assert_eq!(
+            answered_with(PromptRequest::confirm("Go?"), &[BareKey::Esc]),
+            vec![
+                Effect::ReplyToPrompt(5, PromptResult::Cancelled),
+                Effect::CloseSelf
+            ]
+        );
+        assert_eq!(
+            answered_with(
+                PromptRequest::choose(vec!["a", "b"]),
+                &[BareKey::Down, BareKey::Enter]
+            ),
+            vec![
+                Effect::ReplyToPrompt(
+                    5,
+                    PromptResult::Answered(PromptValue::Choice("b".to_owned()))
+                ),
+                Effect::CloseSelf
+            ]
+        );
+        assert_eq!(
+            answered_with(
+                PromptRequest::input("Name").default("zellij"),
+                &[BareKey::Enter]
+            ),
+            vec![
+                Effect::ReplyToPrompt(
+                    5,
+                    PromptResult::Answered(PromptValue::Text("zellij".to_owned()))
+                ),
+                Effect::CloseSelf
+            ]
+        );
+    }
+
+    #[test]
+    fn a_plugin_request_that_times_out_answers_the_default_or_nothing() {
+        let now = Instant::now();
+        for (request, expected) in [
+            (
+                PromptRequest::input("Name").timeout(Duration::from_secs(2)),
+                PromptResult::TimedOut(None),
+            ),
+            (
+                PromptRequest::input("Name")
+                    .timeout(Duration::from_secs(2))
+                    .default("x"),
+                PromptResult::TimedOut(Some(PromptValue::Text("x".to_owned()))),
+            ),
+            (
+                PromptRequest::confirm("Go?")
+                    .timeout(Duration::from_secs(2))
+                    .default("yes"),
+                PromptResult::TimedOut(Some(PromptValue::Bool(true))),
+            ),
+        ] {
+            let mut app = App::default();
+            app.handle_pipe(plugin_message(5, request), now);
+            app.take_effects();
+            app.handle_timer(now + Duration::from_secs(3));
+            assert_eq!(
+                pipe_effects(&app.take_effects()),
+                vec![Effect::ReplyToPrompt(5, expected), Effect::CloseSelf]
+            );
+        }
+    }
+
+    #[test]
+    fn a_bad_or_busy_plugin_request_is_answered_with_an_error() {
+        let mut app = App::default();
+        let mut bad = plugin_message(5, PromptRequest::number("n"));
+        bad.args.insert("min".to_owned(), "x".to_owned());
+        app.handle_pipe(bad, Instant::now());
+        let effects = pipe_effects(&app.take_effects());
+        assert!(matches!(
+            &effects[0],
+            Effect::ReplyToPrompt(5, PromptResult::Error(message)) if message.contains("min")
+        ));
+        assert_eq!(effects[1], Effect::CloseSelf);
+        let mut app = App::default();
+        app.handle_pipe(plugin_message(5, PromptRequest::toggle("t")), Instant::now());
+        app.take_effects();
+        app.handle_pipe(plugin_message(6, PromptRequest::toggle("t")), Instant::now());
+        let effects = pipe_effects(&app.take_effects());
+        assert!(matches!(
+            &effects[0],
+            Effect::ReplyToPrompt(6, PromptResult::Error(_))
+        ));
+        assert!(!app.is_finished());
+    }
+
+    #[test]
+    fn output_options_of_the_cli_do_not_change_a_plugin_answer() {
+        let mut app = App::default();
+        let mut message = plugin_message(5, PromptRequest::choose(vec!["a"]));
+        message.args.insert("json".to_owned(), "true".to_owned());
+        message.args.insert("null".to_owned(), "true".to_owned());
+        app.handle_pipe(message, Instant::now());
+        app.take_effects();
+        app.handle_key(KeyWithModifier::new(BareKey::Enter));
+        assert_eq!(
+            pipe_effects(&app.take_effects())[0],
+            Effect::ReplyToPrompt(5, PromptResult::Answered(PromptValue::Choice("a".to_owned())))
+        );
+    }
+
+    #[test]
+    fn a_plugin_notice_answers_only_when_clicked() {
+        let now = Instant::now();
+        let start = || {
+            let mut app = App::default();
+            app.handle_pipe(
+                plugin_message(5, PromptRequest::notify("Done").timeout(Duration::from_secs(5))),
+                now,
+            );
+            assert_eq!(pipe_effects(&app.take_effects()), vec![Effect::WatchNames]);
+            let (cols, rows) = app.desired_size().unwrap();
+            app.render(rows, cols, now);
+            (app, cols)
+        };
+        let (mut app, _) = start();
+        app.handle_mouse(Mouse::LeftClick(1, 2));
+        assert_eq!(
+            pipe_effects(&app.take_effects()),
+            vec![
+                Effect::FocusPane(PaneId::Plugin(3)),
+                Effect::ReplyToPrompt(5, PromptResult::Answered(PromptValue::Bool(true))),
+                Effect::CloseSelf,
+            ]
+        );
+        let (mut app, cols) = start();
+        app.handle_mouse(Mouse::LeftClick(0, cols - 3));
+        assert_eq!(pipe_effects(&app.take_effects()), vec![Effect::CloseSelf]);
+        let (mut app, _) = start();
+        app.handle_timer(now + Duration::from_secs(6));
+        assert_eq!(pipe_effects(&app.take_effects()), vec![Effect::CloseSelf]);
+    }
+
+    #[test]
+    fn a_dialog_form_answers_the_plugin_with_its_fields() {
+        let request = || {
+            PromptRequest::form(vec![FormField::toggle("again", "Don't ask again")])
+                .title("Confirm")
+                .message("Delete Alt n from Normal mode?")
+                .buttons("Delete", "Cancel")
+        };
+        let mut values = std::collections::BTreeMap::new();
+        values.insert("again".to_owned(), PromptValue::Bool(true));
+        assert_eq!(
+            answered_with(request(), &[BareKey::Char(' '), BareKey::Enter]),
+            vec![
+                Effect::ReplyToPrompt(5, PromptResult::Answered(PromptValue::Form(values))),
+                Effect::CloseSelf
+            ]
+        );
+        assert_eq!(
+            answered_with(request(), &[BareKey::Esc]),
+            vec![
+                Effect::ReplyToPrompt(5, PromptResult::Cancelled),
+                Effect::CloseSelf
+            ]
+        );
     }
 }

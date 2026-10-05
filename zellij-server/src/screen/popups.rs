@@ -1,6 +1,6 @@
 use super::Screen;
 use crate::panes::PaneId;
-use crate::plugins::PluginInstruction;
+use crate::plugins::{PluginInstruction, PopupRequest, PromptCaller};
 use crate::tab::{ContextMenuRequest, PopupKind, PopupMouseOutcome, PopupPlacement};
 use crate::{ClientId, ServerInstruction};
 use std::collections::BTreeMap;
@@ -8,8 +8,9 @@ use std::time::Instant;
 use crate::route::PopupScroll;
 use zellij_utils::data::{
     ContextMenuContext, ContextMenuEntry, ContextMenuKind, ContextMenuTarget, Event, InputMode,
-    KeybindsVec, PipePopupPlacement, PopupOptions,
+    KeybindsVec, PipePopupPlacement, PopupCorner, PopupOptions,
 };
+use zellij_utils::prompt::PromptPlacement;
 use zellij_utils::input::context_menu::context_menu_shortcut;
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::actions::Action;
@@ -625,6 +626,90 @@ impl Screen {
                 });
             return;
         };
+        self.load_answer_popup(
+            PopupRequest::Cli(pipe_id),
+            run_plugin_or_alias,
+            client_id,
+            tab_id,
+            pane_in_tab,
+            caller_pane_id,
+            placement,
+            focused,
+        );
+    }
+    pub fn open_prompt_popup(
+        &mut self,
+        caller: PromptCaller,
+        owner_client_id: ClientId,
+        caller_pane_id: Option<PaneId>,
+        run_plugin_or_alias: RunPluginOrAlias,
+        placement: Option<PromptPlacement>,
+        focused: bool,
+    ) {
+        let tab_id = match self.active_tab_ids.get(&owner_client_id) {
+            Some(tab_id) if self.tabs.contains_key(tab_id) => *tab_id,
+            _ => {
+                let _ = self
+                    .bus
+                    .senders
+                    .send_to_plugin(PluginInstruction::PromptPopupFailed {
+                        caller,
+                        error: "The user this prompt is for is not attached".to_owned(),
+                    });
+                return;
+            },
+        };
+        let (pipe_placement, explicit_pane) = match placement {
+            None => (PipePopupPlacement::Pane, None),
+            Some(PromptPlacement::Pane(pane_id)) => {
+                (PipePopupPlacement::Pane, Some(PaneId::from(pane_id)))
+            },
+            Some(PromptPlacement::Center) => (PipePopupPlacement::Center, None),
+            Some(PromptPlacement::Mouse) => (PipePopupPlacement::Mouse, None),
+            Some(PromptPlacement::Cursor) => (PipePopupPlacement::Cursor, None),
+            Some(PromptPlacement::Corner(corner)) => (
+                match corner {
+                    PopupCorner::TopLeft => PipePopupPlacement::TopLeft,
+                    PopupCorner::TopRight => PipePopupPlacement::TopRight,
+                    PopupCorner::BottomLeft => PipePopupPlacement::BottomLeft,
+                    PopupCorner::BottomRight => PipePopupPlacement::BottomRight,
+                },
+                None,
+            ),
+        };
+        let caller_pane_id = caller_pane_id.filter(|pane_id| {
+            self.tabs
+                .values()
+                .any(|tab| tab.get_pane_with_id(*pane_id).is_some())
+        });
+        let placement_pane = self.tabs.get(&tab_id).and_then(|tab| {
+            explicit_pane
+                .or(caller_pane_id)
+                .filter(|pane_id| tab.get_pane_with_id(*pane_id).is_some())
+                .or_else(|| tab.get_active_pane_id(owner_client_id))
+        });
+        self.load_answer_popup(
+            PopupRequest::Prompt(caller),
+            run_plugin_or_alias,
+            owner_client_id,
+            tab_id,
+            placement_pane,
+            caller_pane_id,
+            pipe_placement,
+            focused,
+        );
+    }
+    fn load_answer_popup(
+        &mut self,
+        popup_request: PopupRequest,
+        run_plugin_or_alias: RunPluginOrAlias,
+        client_id: ClientId,
+        tab_id: usize,
+        pane_in_tab: Option<PaneId>,
+        caller_pane_id: Option<PaneId>,
+        placement: PipePopupPlacement,
+        focused: bool,
+    ) {
         let Some(tab) = self.tabs.get(&tab_id) else {
             return;
         };
@@ -729,7 +814,7 @@ impl Screen {
                     cols: PIPE_POPUP_INITIAL_COLS,
                 },
                 initial_events: vec![],
-                pipe: Some((pipe_id, caller_args)),
+                pipe: Some((popup_request, caller_args)),
             });
     }
     pub fn add_popup(

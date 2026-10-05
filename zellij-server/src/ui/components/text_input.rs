@@ -1,5 +1,5 @@
 use super::widget_common::{
-    accented_field_bracket_styles, colored, decode_text, dimmed, field_styles, fit, label_width, move_to,
+    accented_field_bracket_styles, colored, decode_styled, decode_text, dimmed, field_styles, fit, label_width, move_to,
     paint, render_label, reversed, text_width, WidgetState,
 };
 use super::Coordinates;
@@ -25,11 +25,11 @@ pub fn text_input(
     } else {
         None
     };
-    let label = fields.get(0).map(|f| decode_text(f)).unwrap_or_default();
+    let label = decode_styled(fields.get(0));
     let text = fields.get(1).map(|f| decode_text(f)).unwrap_or_default();
     let error = fields.get(2).map(|f| decode_text(f)).unwrap_or_default();
     let suffix = fields.get(3).map(|f| decode_text(f)).unwrap_or_default();
-    let label_width = label_width(state, &label);
+    let label_width = label_width(state, &label.text);
     let field_width = coordinates
         .width
         .map(|w| w.saturating_sub(label_width))

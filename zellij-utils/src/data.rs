@@ -953,6 +953,30 @@ pub struct StyledText {
     pub indices: Vec<Vec<usize>>,
 }
 
+impl StyledText {
+    pub fn plain(text: impl Into<String>) -> Self {
+        StyledText {
+            text: text.into(),
+            indices: vec![],
+        }
+    }
+    pub fn is_plain(&self) -> bool {
+        self.indices.iter().all(|level| level.is_empty())
+    }
+}
+
+impl From<&str> for StyledText {
+    fn from(text: &str) -> Self {
+        StyledText::plain(text)
+    }
+}
+
+impl From<String> for StyledText {
+    fn from(text: String) -> Self {
+        StyledText::plain(text)
+    }
+}
+
 /// These events can be subscribed to with subscribe method exported by `zellij-tile`.
 /// Once subscribed to, they will trigger the `update` method of the `ZellijPlugin` trait.
 #[derive(Debug, Clone, PartialEq, EnumDiscriminants, Display, Serialize, Deserialize)]
@@ -1063,6 +1087,7 @@ pub enum Event {
     ConfigChangesDropped(Vec<SettingKey>),
     AvailableKeybindPresets(Vec<KeybindPresetInfo>, Vec<KeybindPresetWithError>),
     ConfigFileChangedSinceRead,
+    PromptResult(u64, crate::prompt::PromptResult),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -3513,6 +3538,10 @@ pub enum PipeSource {
     Cli(String), // String is the pipe_id of the CLI pipe (used for blocking/unblocking)
     Plugin(u32), // u32 is the lugin id
     Keybind,     // TODO: consider including the actual keybind here?
+    PromptRequest {
+        caller_plugin_id: u32,
+        request_id: u64,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
@@ -4393,6 +4422,14 @@ pub enum PluginCommand {
     ResetKeys {
         keys: Vec<(InputMode, KeyWithModifier)>,
         write_config_to_disk: bool,
+    },
+    Prompt {
+        request_id: u64,
+        request: crate::prompt::PromptRequest,
+    },
+    ReplyToPrompt {
+        request_id: u64,
+        result: crate::prompt::PromptResult,
     },
 }
 

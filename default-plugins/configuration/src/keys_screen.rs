@@ -192,10 +192,9 @@ impl KeysScreen {
             names.extend(self.preset_names());
             self.elements.add(
                 KeysField::Preset,
-                Dropdown::new("Preset", names)
+                Dropdown::new(Text::new("Preset").color_all(2), names)
                     .selected(0)
                     .label_width(self.preset_label_width())
-                    .accent_label()
                     .accent_brackets(),
             );
             self.elements.add(
@@ -210,10 +209,9 @@ impl KeysScreen {
                 .unwrap_or(0);
             self.elements.add(
                 KeysField::Preset,
-                Dropdown::new("Preset", names)
+                Dropdown::new(Text::new("Preset").color_all(2), names)
                     .selected(selected)
                     .label_width(self.preset_label_width())
-                    .accent_label()
                     .accent_brackets(),
             );
             if !self.is_setup_wizard && self.preset_file().is_none() {

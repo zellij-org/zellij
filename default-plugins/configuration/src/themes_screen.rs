@@ -5,7 +5,7 @@ use zellij_utils::input::config_blocks::{
 
 use crate::blocks_screen::check_name;
 use crate::page::{
-    changed_by, is_click, is_plain, is_shift_tab, markers, print_dim, print_heading, truncate, typed,
+    is_click, is_plain, is_shift_tab, markers, print_dim, print_heading, truncate, typed,
     ButtonRow, ColumnLayout, Effect, Page, PageResponse, RowLook, RowScroll,
 };
 
@@ -75,7 +75,7 @@ pub struct ThemesScreen {
     selected: usize,
     colour_form: Option<ColourForm>,
     name_form: Option<NameForm>,
-    dialog: Option<(ConfirmDialog, String)>,
+    pending_delete: Option<(u64, String)>,
     effects: Vec<Effect>,
     notice: Option<String>,
     focused: bool,
@@ -94,7 +94,7 @@ impl Default for ThemesScreen {
             selected: 0,
             colour_form: None,
             name_form: None,
-            dialog: None,
+            pending_delete: None,
             effects: vec![],
             notice: None,
             focused: false,
@@ -373,16 +373,15 @@ impl ThemesScreen {
             ));
             return;
         }
-        self.dialog = Some((
-            ConfirmDialog::new(
-                "Delete theme?",
-                format!("Delete the theme {} from the config file?", theme.name),
-            )
-            .buttons(vec!["Delete", "Cancel"])
-            .width(56)
-            .opened(),
-            theme.name,
-        ));
+        if !crate::page::confirm_removals() {
+            self.delete_theme(&theme.name);
+            return;
+        }
+        let request_id = prompt(crate::page::removal_prompt(format!(
+            "Delete the theme {}?",
+            theme.name
+        )));
+        self.pending_delete = Some((request_id, theme.name));
     }
     fn revert_selected(&mut self) {
         let Some(theme) = self.selected_theme() else {
@@ -569,17 +568,6 @@ impl Page for ThemesScreen {
         );
     }
     fn handle_key(&mut self, key: &KeyWithModifier) -> PageResponse {
-        if let Some((dialog, name)) = self.dialog.as_mut() {
-            let response = dialog.handle_key(key);
-            let name = name.clone();
-            if !dialog.is_open() {
-                self.dialog = None;
-                if let UiResponse::Submitted(UiValue::Choice { index: 0, .. }) = response {
-                    self.delete_theme(&name);
-                }
-            }
-            return PageResponse::Handled;
-        }
         if self.colour_form.is_some() {
             self.handle_colour_key(key);
             return PageResponse::Handled;
@@ -746,20 +734,7 @@ impl Page for ThemesScreen {
         }
     }
     fn handle_mouse(&mut self, mouse: Mouse) -> PageResponse {
-        let is_hover = matches!(mouse, Mouse::Hover(..));
-        let changed = if let Some((dialog, name)) = self.dialog.as_mut() {
-            let (response, dialog_changed) =
-                changed_by(&mut *dialog, |dialog| dialog.handle_mouse(mouse));
-            let name = name.clone();
-            let closed = !dialog.is_open();
-            if closed {
-                self.dialog = None;
-                if let UiResponse::Submitted(UiValue::Choice { index: 0, .. }) = response {
-                    self.delete_theme(&name);
-                }
-            }
-            dialog_changed || closed || !is_hover
-        } else if self.colour_form.is_some() {
+        let changed = if self.colour_form.is_some() {
             self.handle_colour_mouse(mouse)
         } else if self.name_form.is_some() {
             self.handle_name_mouse(mouse)
@@ -780,13 +755,8 @@ impl Page for ThemesScreen {
             .unwrap_or(false);
         self.buttons.handle_timer() | self.form_buttons.handle_timer() | form_changed
     }
-    fn render_overlays(&mut self, rows: usize, cols: usize) {
-        if let Some((dialog, _)) = self.dialog.as_mut() {
-            dialog.render_centered(rows, cols);
-        }
-    }
     fn captures_keys(&self) -> bool {
-        self.colour_form.is_some() || self.name_form.is_some() || self.dialog.is_some()
+        self.colour_form.is_some() || self.name_form.is_some()
     }
     fn hints(&self) -> Vec<(&'static str, &'static str)> {
         if self.colour_form.is_some() {
@@ -796,7 +766,7 @@ impl Page for ThemesScreen {
                 ("<Esc>", "cancel"),
             ];
         }
-        if self.name_form.is_some() || self.dialog.is_some() {
+        if self.name_form.is_some() {
             return vec![("<Enter>", "confirm"), ("<Esc>", "cancel")];
         }
         vec![
@@ -818,10 +788,24 @@ impl Page for ThemesScreen {
     fn leave(&mut self) {
         self.cancel_colours();
         self.name_form = None;
-        self.dialog = None;
+        self.pending_delete = None;
     }
     fn set_focused(&mut self, focused: bool) {
         self.focused = focused;
+    }
+    fn prompt_result(&mut self, request_id: u64, result: &PromptResult) -> bool {
+        match self.pending_delete.take() {
+            Some((pending_id, name)) if pending_id == request_id => {
+                if crate::page::removal_confirmed(result) {
+                    self.delete_theme(&name);
+                }
+                true
+            },
+            other => {
+                self.pending_delete = other;
+                false
+            },
+        }
     }
 }
 

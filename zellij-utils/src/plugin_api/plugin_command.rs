@@ -122,7 +122,7 @@ pub use super::generated_api::api::{
         KeybindingSourceKind as ProtobufKeybindingSourceKind,
         MenuItemEntry as ProtobufMenuItemEntry, MenuSectionEntries as ProtobufMenuSectionEntries,
         PluginAliasEntry as ProtobufPluginAliasEntry, PluginEntry as ProtobufPluginEntry,
-        ResetKeysPayload, SaveKeybindsAsPresetPayload, ThemeEntry as ProtobufThemeEntry, ThemeSource as ProtobufThemeSource,
+        PromptPayload, ReplyToPromptPayload, ResetKeysPayload, SaveKeybindsAsPresetPayload, ThemeEntry as ProtobufThemeEntry, ThemeSource as ProtobufThemeSource,
         RegexHighlight as ProtobufRegexHighlight, ReloadPluginPayload, RenameLayoutPayload,
         RenameLayoutResponse as ProtobufRenameLayoutResponse, RenameTabWithIdPayload,
         RenameWebLoginTokenPayload, RenameWebTokenResponse, ReplacePaneWithExistingPanePayload,
@@ -2667,6 +2667,26 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for SaveKeybindsAsPreset"),
             },
+            Some(CommandName::Prompt) => match protobuf_plugin_command.payload {
+                Some(Payload::PromptPayload(payload)) => Ok(PluginCommand::Prompt {
+                    request_id: payload.request_id,
+                    request: payload
+                        .request
+                        .ok_or("Mismatched payload for Prompt")?
+                        .try_into()?,
+                }),
+                _ => Err("Mismatched payload for Prompt"),
+            },
+            Some(CommandName::ReplyToPrompt) => match protobuf_plugin_command.payload {
+                Some(Payload::ReplyToPromptPayload(payload)) => Ok(PluginCommand::ReplyToPrompt {
+                    request_id: payload.request_id,
+                    result: payload
+                        .result
+                        .ok_or("Mismatched payload for ReplyToPrompt")?
+                        .try_into()?,
+                }),
+                _ => Err("Mismatched payload for ReplyToPrompt"),
+            },
             Some(CommandName::ResetKeys) => match protobuf_plugin_command.payload {
                 Some(Payload::ResetKeysPayload(payload)) => Ok(PluginCommand::ResetKeys {
                     keys: payload
@@ -4612,6 +4632,23 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 name: CommandName::ReplaceConfigBlocks as i32,
                 payload: Some(Payload::ReplaceConfigBlocksPayload(blocks)),
             }),
+            PluginCommand::Prompt {
+                request_id,
+                request,
+            } => Ok(ProtobufPluginCommand {
+                name: CommandName::Prompt as i32,
+                payload: Some(Payload::PromptPayload(PromptPayload {
+                    request_id,
+                    request: Some(request.into()),
+                })),
+            }),
+            PluginCommand::ReplyToPrompt { request_id, result } => Ok(ProtobufPluginCommand {
+                name: CommandName::ReplyToPrompt as i32,
+                payload: Some(Payload::ReplyToPromptPayload(ReplyToPromptPayload {
+                    request_id,
+                    result: Some(result.into()),
+                })),
+            }),
             PluginCommand::SaveKeybindsAsPreset { new_name } => Ok(ProtobufPluginCommand {
                 name: CommandName::SaveKeybindsAsPreset as i32,
                 payload: Some(Payload::SaveKeybindsAsPresetPayload(
@@ -5622,6 +5659,48 @@ mod tests {
                 assert_eq!(decoded_border_style, border_style);
             },
             other => panic!("expected SetPaneBorderStyle, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn prompt_commands_protobuf_round_trip() {
+        use crate::prompt::{PromptPlacement, PromptRequest, PromptResult, PromptValue};
+        use prost::Message;
+        let request = PromptRequest::choose(vec!["a", "b"])
+            .multi()
+            .placement(PromptPlacement::Mouse);
+        let original = PluginCommand::Prompt {
+            request_id: 7,
+            request: request.clone(),
+        };
+        let protobuf: ProtobufPluginCommand = original.try_into().expect("encode");
+        let decoded_bytes = ProtobufPluginCommand::decode(protobuf.encode_to_vec().as_slice())
+            .expect("decode bytes");
+        match PluginCommand::try_from(decoded_bytes).expect("decode") {
+            PluginCommand::Prompt {
+                request_id,
+                request: decoded_request,
+            } => {
+                assert_eq!(request_id, 7);
+                assert_eq!(decoded_request, request);
+            },
+            other => panic!("expected Prompt, got {:?}", other),
+        }
+        let result = PromptResult::Answered(PromptValue::Choices(vec!["b".to_owned()]));
+        let original = PluginCommand::ReplyToPrompt {
+            request_id: 3,
+            result: result.clone(),
+        };
+        let protobuf: ProtobufPluginCommand = original.try_into().expect("encode");
+        match PluginCommand::try_from(protobuf).expect("decode") {
+            PluginCommand::ReplyToPrompt {
+                request_id,
+                result: decoded_result,
+            } => {
+                assert_eq!(request_id, 3);
+                assert_eq!(decoded_result, result);
+            },
+            other => panic!("expected ReplyToPrompt, got {:?}", other),
         }
     }
 

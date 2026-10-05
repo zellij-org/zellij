@@ -149,6 +149,20 @@ pub struct Styling {
     #[prost(message, repeated, tag="15")]
     pub multiplayer_user_colors: ::prost::alloc::vec::Vec<Color>,
 }
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct StyledText {
+    #[prost(string, tag="1")]
+    pub text: ::prost::alloc::string::String,
+    #[prost(message, repeated, tag="2")]
+    pub indices: ::prost::alloc::vec::Vec<StyledTextIndices>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct StyledTextIndices {
+    #[prost(uint32, repeated, tag="1")]
+    pub indices: ::prost::alloc::vec::Vec<u32>,
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum LineStyle {

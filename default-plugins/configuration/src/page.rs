@@ -12,17 +12,25 @@ pub const SHORT_FIELD_WIDTH: usize = 34;
 pub const BESIDE_SHORT_FIELD: usize = SHORT_FIELD_WIDTH + 2;
 pub const DIM: usize = usize::MAX;
 
-pub const DELETE_BUTTONS: [&str; 3] = ["Delete", "Delete, don't ask again", "Cancel"];
-
 pub fn confirm_removals() -> bool {
     CONFIRM_REMOVALS.with(|confirm| confirm.get())
 }
 
-pub fn removal_confirmed(response: &UiResponse) -> bool {
-    match response {
-        UiResponse::Submitted(UiValue::Choice { index: 0, .. }) => true,
-        UiResponse::Submitted(UiValue::Choice { index: 1, .. }) => {
-            CONFIRM_REMOVALS.with(|confirm| confirm.set(false));
+pub const DONT_ASK_AGAIN: &str = "dont_ask_again";
+
+pub fn removal_prompt(question: impl Into<StyledText>) -> PromptRequest {
+    PromptRequest::form(vec![FormField::toggle(DONT_ASK_AGAIN, "Don't ask again")])
+        .title("Confirm")
+        .message(question)
+        .buttons("Delete", "Cancel")
+}
+
+pub fn removal_confirmed(result: &PromptResult) -> bool {
+    match result {
+        PromptResult::Answered(PromptValue::Form(values)) => {
+            if values.get(DONT_ASK_AGAIN) == Some(&PromptValue::Bool(true)) {
+                CONFIRM_REMOVALS.with(|confirm| confirm.set(false));
+            }
             true
         },
         _ => false,
@@ -150,6 +158,9 @@ pub trait Page {
     fn take_notice(&mut self) -> Option<String>;
     fn leave(&mut self) {}
     fn set_focused(&mut self, _focused: bool) {}
+    fn prompt_result(&mut self, _request_id: u64, _result: &PromptResult) -> bool {
+        false
+    }
 }
 
 pub fn is_plain(key: &KeyWithModifier, bare_key: BareKey) -> bool {

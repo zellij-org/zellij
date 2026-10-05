@@ -1,4 +1,5 @@
 use super::menu_list::{MenuItem, MenuList};
+use super::text::Text;
 use super::widget_common::{
     default_label_width, encode_text, is_activation_key, is_plain, is_shift_tab, state_flag,
     state_value, update_hover, widget_dcs, Rect, UiResponse, UiValue, Widget,
@@ -10,7 +11,7 @@ const DEFAULT_MAX_LIST_ROWS: usize = 8;
 
 #[derive(Debug, Clone)]
 pub struct Dropdown {
-    label: String,
+    label: Text,
     options: Vec<String>,
     selected: usize,
     label_width: Option<usize>,
@@ -20,8 +21,6 @@ pub struct Dropdown {
     open: bool,
     opens_upward: bool,
     hovered: bool,
-    accent_label: bool,
-    label_color: Option<usize>,
     accent_brackets: bool,
     menu: MenuList,
     area: Option<Rect>,
@@ -29,7 +28,7 @@ pub struct Dropdown {
 }
 
 impl Dropdown {
-    pub fn new<S: Into<String>>(label: impl Into<String>, options: Vec<S>) -> Self {
+    pub fn new<S: Into<String>>(label: impl Into<Text>, options: Vec<S>) -> Self {
         Dropdown {
             label: label.into(),
             options: options.into_iter().map(|o| o.into()).collect(),
@@ -41,8 +40,6 @@ impl Dropdown {
             open: false,
             opens_upward: false,
             hovered: false,
-            accent_label: false,
-            label_color: None,
             accent_brackets: false,
             menu: MenuList::new(vec![]),
             area: None,
@@ -55,14 +52,6 @@ impl Dropdown {
     }
     pub fn accent_brackets(mut self) -> Self {
         self.accent_brackets = true;
-        self
-    }
-    pub fn label_color(mut self, level: usize) -> Self {
-        self.label_color = Some(level);
-        self
-    }
-    pub fn accent_label(mut self) -> Self {
-        self.accent_label = true;
         self
     }
     pub fn label_width(mut self, label_width: usize) -> Self {
@@ -90,7 +79,7 @@ impl Dropdown {
         self
     }
     pub fn label(&self) -> &str {
-        &self.label
+        self.label.content()
     }
     pub fn options(&self) -> &[String] {
         &self.options
@@ -173,7 +162,7 @@ impl Dropdown {
     }
     fn effective_label_width(&self) -> usize {
         self.label_width
-            .unwrap_or_else(|| default_label_width(&self.label))
+            .unwrap_or_else(|| default_label_width(self.label.content()))
     }
     fn choice(&self) -> UiValue {
         UiValue::Choice {
@@ -208,11 +197,6 @@ impl Dropdown {
         state_flag(&mut state, "d", self.disabled);
         state_flag(&mut state, "o", self.open);
         state_flag(&mut state, "h", self.hovered && !self.disabled);
-        state_flag(&mut state, "al", self.accent_label);
-        if let Some(level) = self.label_color {
-            state_value(&mut state, "lc", level);
-        }
-        state_flag(&mut state, "ab", self.accent_brackets);
         state_value(&mut state, "lw", label_width);
         widget_dcs(
             "dropdown",
@@ -222,7 +206,7 @@ impl Dropdown {
             Some(1),
             &state,
             &[
-                encode_text(&self.label),
+                self.label.serialize(),
                 encode_text(self.selected_value().unwrap_or("")),
             ],
         )

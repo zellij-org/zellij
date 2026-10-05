@@ -6,6 +6,7 @@ pub use super::generated_api::api::{
         pane_scrollback_response, ActionCompletePayload as ProtobufActionCompletePayload,
         ActivePaneScrollPayload as ProtobufActivePaneScrollPayload,
         AvailableKeybindPresetsPayload as ProtobufAvailableKeybindPresetsPayload,
+        PromptResultPayload as ProtobufPromptResultPayload,
         AvailableLayoutInfoPayload as ProtobufAvailableLayoutInfoPayload,
         ClientInfo as ProtobufClientInfo, ClientPaneHistory as ProtobufClientPaneHistory,
         ClientTabHistory as ProtobufClientTabHistory,
@@ -41,7 +42,6 @@ pub use super::generated_api::api::{
         PluginInfo as ProtobufPluginInfo, ResurrectableSession as ProtobufResurrectableSession,
         SelectedText as ProtobufSelectedText, SessionManifest as ProtobufSessionManifest,
         SoftKeyboardVisibilityChangedPayload as ProtobufSoftKeyboardVisibilityChangedPayload,
-        StyledText as ProtobufStyledText, StyledTextIndices as ProtobufStyledTextIndices,
         SyntaxError as ProtobufSyntaxError, TabInfo as ProtobufTabInfo,
         TabMetadata as ProtobufTabMetadata, UserActionPayload as ProtobufUserActionPayload,
         WebServerStatusPayload as ProtobufWebServerStatusPayload, WebSharing as ProtobufWebSharing,
@@ -49,7 +49,10 @@ pub use super::generated_api::api::{
     },
     input_mode::InputMode as ProtobufInputMode,
     key::Key as ProtobufKey,
-    style::Style as ProtobufStyle,
+    style::{
+        Style as ProtobufStyle, StyledText as ProtobufStyledText,
+        StyledTextIndices as ProtobufStyledTextIndices,
+    },
 };
 #[allow(hidden_glob_reexports)]
 use crate::data::{
@@ -562,6 +565,16 @@ impl TryFrom<ProtobufEvent> for Event {
             Some(ProtobufEventType::ConfigFileChangedSinceRead) => match protobuf_event.payload {
                 None => Ok(Event::ConfigFileChangedSinceRead),
                 _ => Err("Malformed payload for the ConfigFileChangedSinceRead Event"),
+            },
+            Some(ProtobufEventType::PromptResult) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::PromptResultPayload(payload)) => {
+                    let result = payload
+                        .result
+                        .ok_or("Malformed payload for the PromptResult Event")?
+                        .try_into()?;
+                    Ok(Event::PromptResult(payload.request_id, result))
+                },
+                _ => Err("Malformed payload for the PromptResult Event"),
             },
             Some(ProtobufEventType::WebServerStatus) => match protobuf_event.payload {
                 Some(ProtobufEventPayload::WebServerStatusPayload(web_server_status)) => {
@@ -1270,6 +1283,15 @@ impl TryFrom<Event> for ProtobufEvent {
             Event::ConfigFileChangedSinceRead => Ok(ProtobufEvent {
                 name: ProtobufEventType::ConfigFileChangedSinceRead as i32,
                 payload: None,
+            }),
+            Event::PromptResult(request_id, result) => Ok(ProtobufEvent {
+                name: ProtobufEventType::PromptResult as i32,
+                payload: Some(event::Payload::PromptResultPayload(
+                    ProtobufPromptResultPayload {
+                        request_id,
+                        result: Some(result.into()),
+                    },
+                )),
             }),
             Event::WebServerStatus(web_server_status) => Ok(ProtobufEvent {
                 name: ProtobufEventType::WebServerStatus as i32,
@@ -2583,6 +2605,7 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::ConfigChangesDropped => EventType::ConfigChangesDropped,
             ProtobufEventType::AvailableKeybindPresets => EventType::AvailableKeybindPresets,
             ProtobufEventType::ConfigFileChangedSinceRead => EventType::ConfigFileChangedSinceRead,
+            ProtobufEventType::PromptResult => EventType::PromptResult,
         })
     }
 }
@@ -2647,6 +2670,7 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::ConfigChangesDropped => ProtobufEventType::ConfigChangesDropped,
             EventType::AvailableKeybindPresets => ProtobufEventType::AvailableKeybindPresets,
             EventType::ConfigFileChangedSinceRead => ProtobufEventType::ConfigFileChangedSinceRead,
+            EventType::PromptResult => ProtobufEventType::PromptResult,
         })
     }
 }
@@ -4115,4 +4139,26 @@ fn a_mouse_event_with_modifiers_keeps_them_across_the_plugin_boundary() {
     assert_eq!(mouse_modifiers(&decoded), modifiers);
     let plain: Event = decoded.try_into().unwrap();
     assert_eq!(plain, Event::Mouse(crate::data::Mouse::LeftClick(2, 5)));
+}
+
+#[test]
+fn serialize_prompt_result_event() {
+    use crate::prompt::{PromptResult, PromptValue};
+    use prost::Message;
+    for result in [
+        PromptResult::Confirmed(true),
+        PromptResult::Answered(PromptValue::Choices(vec!["a".to_owned()])),
+        PromptResult::Cancelled,
+        PromptResult::TimedOut(None),
+        PromptResult::Error("bad".to_owned()),
+    ] {
+        let event = Event::PromptResult(9, result);
+        let protobuf_event: ProtobufEvent = event.clone().try_into().unwrap();
+        let decoded: ProtobufEvent =
+            Message::decode(protobuf_event.encode_to_vec().as_slice()).unwrap();
+        let decoded_event: Event = decoded.try_into().unwrap();
+        assert_eq!(event, decoded_event);
+    }
+    let event_type: ProtobufEventType = EventType::PromptResult.try_into().unwrap();
+    assert_eq!(EventType::try_from(event_type), Ok(EventType::PromptResult));
 }

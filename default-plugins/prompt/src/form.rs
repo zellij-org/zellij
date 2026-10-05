@@ -7,6 +7,8 @@ use crate::request::Pattern;
 use crate::ui::{check_text, print_error, text_width, truncate, Step};
 
 const CHOOSE_ROWS: usize = 6;
+const DIALOG_TEXT_WIDTH: usize = 56;
+const DIALOG_PADDING: usize = 2;
 
 pub struct FormScreen {
     spec: FormSpec,
@@ -157,6 +159,62 @@ impl FormScreen {
     }
     fn submit_key(&self) -> usize {
         self.spec.fields.len()
+    }
+    pub fn is_dialog(&self) -> bool {
+        self.spec.message.is_some()
+    }
+    pub fn has_switches(&self) -> bool {
+        self.spec.fields.iter().any(|field| {
+            matches!(field.kind, FormFieldKind::Toggle | FormFieldKind::Choose)
+        })
+    }
+    fn message_lines(&self, width: usize) -> Vec<Text> {
+        match &self.spec.message {
+            Some(message) => Text::from(message.clone()).wrap(width.min(DIALOG_TEXT_WIDTH).max(1)),
+            None => vec![],
+        }
+    }
+    fn header_rows(&self, width: usize) -> usize {
+        if self.is_dialog() {
+            1 + self.message_lines(width).len() + 1
+        } else {
+            0
+        }
+    }
+    fn field_body_width(&self, field: &FormField) -> usize {
+        match field.kind {
+            FormFieldKind::Choose | FormFieldKind::Select => {
+                field
+                    .options
+                    .iter()
+                    .map(|o| text_width(o))
+                    .max()
+                    .unwrap_or(0)
+                    + 12
+            },
+            FormFieldKind::Toggle if self.is_dialog() => TOGGLE_WIDTH,
+            FormFieldKind::Number if self.is_dialog() => 16,
+            _ => 30,
+        }
+    }
+    fn fields_width(&self) -> usize {
+        self.label_width
+            + self
+                .spec
+                .fields
+                .iter()
+                .map(|field| self.field_body_width(field))
+                .max()
+                .unwrap_or(0)
+    }
+    fn buttons_width(&self) -> usize {
+        let width_of = |key: usize| {
+            self.group
+                .button(&key)
+                .map(|b| b.natural_width())
+                .unwrap_or(8)
+        };
+        width_of(self.submit_key()) + 2 + width_of(self.cancel_key())
     }
     fn cancel_key(&self) -> usize {
         self.spec.fields.len() + 1
@@ -341,6 +399,16 @@ impl FormScreen {
         if key.is_key_without_modifier(BareKey::Esc) && !focused_is_editing_number {
             return Step::Done(Outcome::Cancelled);
         }
+        let focused_is_button = focused
+            .map(|k| k == self.submit_key() || k == self.cancel_key())
+            .unwrap_or(false);
+        if self.is_dialog()
+            && key.is_key_without_modifier(BareKey::Enter)
+            && !focused_is_button
+            && !focused_is_editing_number
+        {
+            return self.try_submit();
+        }
         if key.is_key_with_ctrl_modifier(BareKey::Char('a'))
             || key.is_key_with_ctrl_modifier(BareKey::Char('s'))
         {
@@ -420,20 +488,43 @@ impl FormScreen {
         };
         body + if self.errors[index].is_some() { 1 } else { 0 }
     }
-    fn content_height(&self) -> usize {
-        (0..self.spec.fields.len())
+    fn content_height(&self, width: usize) -> usize {
+        let fields = (0..self.spec.fields.len())
             .map(|index| self.block_height(index))
             .sum::<usize>()
-            + 2
+            + 2;
+        let bottom_padding = if self.is_dialog() { 1 } else { 0 };
+        self.header_rows(width) + fields + bottom_padding
     }
     pub fn render(&mut self, x: usize, y: usize, width: usize, height: usize) {
         self.group.clear_areas();
-        let total = self.content_height();
+        let total = self.content_height(width.saturating_sub(DIALOG_PADDING * 2));
         self.scroll.set_total_rows(total);
         self.scroll.layout(x, y, width, height);
-        let content_width = self.scroll.content_width();
+        let origin = x;
+        let full_width = self.scroll.content_width();
+        let centered_x = |item_width: usize| origin + full_width.saturating_sub(item_width) / 2;
+        let (x, content_width) = if self.is_dialog() {
+            let fields_width = self.fields_width().min(full_width);
+            (x + full_width.saturating_sub(fields_width) / 2, fields_width)
+        } else {
+            (x, full_width)
+        };
+        let message_lines = self.message_lines(width.saturating_sub(DIALOG_PADDING * 2));
+        for (index, line) in message_lines.into_iter().enumerate() {
+            if let Some(screen_y) = self.scroll.screen_row(1 + index) {
+                let line_width = text_width(line.content()).min(full_width);
+                print_text_with_coordinates(
+                    line,
+                    centered_x(line_width),
+                    screen_y,
+                    Some(line_width),
+                    None,
+                );
+            }
+        }
         let mut starts = vec![];
-        let mut row = 0;
+        let mut row = self.header_rows(width.saturating_sub(DIALOG_PADDING * 2));
         for index in 0..self.spec.fields.len() {
             starts.push(row);
             row += self.block_height(index);
@@ -531,11 +622,16 @@ impl FormScreen {
                     .button(&submit_key)
                     .map(|b| b.natural_width())
                     .unwrap_or(8);
+                let buttons_x = if self.is_dialog() {
+                    centered_x(self.buttons_width())
+                } else {
+                    x
+                };
                 if let Some(button) = self.group.button_mut(&submit_key) {
-                    button.render(x, screen_y);
+                    button.render(buttons_x, screen_y);
                 }
                 if let Some(button) = self.group.button_mut(&cancel_key) {
-                    button.render(x + submit_width + 2, screen_y);
+                    button.render(buttons_x + submit_width + 2, screen_y);
                 }
             }
         }
@@ -545,6 +641,22 @@ impl FormScreen {
         self.group.render_overlays(rows, cols);
     }
     pub fn desired_size(&self) -> (usize, usize) {
+        if self.is_dialog() {
+            let message_width = self
+                .spec
+                .message
+                .as_ref()
+                .map(|message| text_width(&message.text).min(DIALOG_TEXT_WIDTH))
+                .unwrap_or(0);
+            let inner = self
+                .fields_width()
+                .max(message_width)
+                .max(self.buttons_width());
+            return (
+                inner + DIALOG_PADDING * 2,
+                self.content_height(inner),
+            );
+        }
         let widest = self
             .spec
             .fields
@@ -563,7 +675,7 @@ impl FormScreen {
             })
             .max()
             .unwrap_or(30);
-        (self.label_width + widest + 4, self.content_height())
+        (self.label_width + widest + 4, self.content_height(usize::MAX))
     }
 }
 
@@ -643,6 +755,43 @@ mod tests {
             },
             other => panic!("unexpected {:?}", other),
         }
+    }
+
+    const DIALOG: &str = r#"{ "message": "Delete Alt n from Normal mode?",
+      "fields": [ { "id": "again", "type": "toggle", "label": "Don't ask again" } ],
+      "buttons": { "submit": "Delete", "cancel": "Cancel" } }"#;
+
+    #[test]
+    fn a_form_with_a_message_submits_on_enter_and_flips_toggles_on_space() {
+        let mut screen = form(DIALOG);
+        assert!(screen.is_dialog());
+        assert_eq!(screen.handle_key(&key(BareKey::Char(' '))), Step::Redraw);
+        match screen.handle_key(&key(BareKey::Enter)) {
+            Step::Done(Outcome::Answered(Answer::Form(values))) => {
+                assert_eq!(values, vec![("again".to_owned(), Value::Bool(true))]);
+            },
+            other => panic!("unexpected {:?}", other),
+        }
+        let mut screen = form(DIALOG);
+        screen.handle_key(&key(BareKey::Tab));
+        screen.handle_key(&key(BareKey::Tab));
+        assert_eq!(
+            screen.handle_key(&key(BareKey::Enter)),
+            Step::Done(Outcome::Cancelled)
+        );
+    }
+
+    #[test]
+    fn a_form_with_a_message_leaves_room_for_it_above_the_fields() {
+        let dialog = form(DIALOG);
+        let (width, height) = dialog.desired_size();
+        assert!(width >= "Delete Alt n from Normal mode?".len() + 4);
+        let plain = form(r#"{"fields":[{"id":"again","type":"toggle","label":"Don't ask again"}]}"#);
+        assert!(!plain.is_dialog());
+        assert_eq!(height, plain.desired_size().1 + 4);
+        let mut plain = plain;
+        plain.handle_key(&key(BareKey::Char(' ')));
+        assert_eq!(plain.handle_key(&key(BareKey::Enter)), Step::Redraw);
     }
 
     #[test]

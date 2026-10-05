@@ -1,3 +1,4 @@
+use super::text::Text;
 use super::text_input::TextInput;
 use super::widget_common::{
     default_label_width, encode_text, is_plain, state_flag, state_value, typed_char, update_hover,
@@ -13,7 +14,7 @@ fn accepts_number_char(character: char) -> bool {
 
 #[derive(Debug, Clone)]
 pub struct NumberStepper {
-    label: String,
+    label: Text,
     value: i64,
     step: i64,
     min: Option<i64>,
@@ -32,7 +33,7 @@ pub struct NumberStepper {
 }
 
 impl NumberStepper {
-    pub fn new(label: impl Into<String>, value: i64) -> Self {
+    pub fn new(label: impl Into<Text>, value: i64) -> Self {
         NumberStepper {
             label: label.into(),
             value,
@@ -91,7 +92,7 @@ impl NumberStepper {
         self
     }
     pub fn label(&self) -> &str {
-        &self.label
+        self.label.content()
     }
     pub fn value(&self) -> i64 {
         self.value
@@ -127,7 +128,7 @@ impl NumberStepper {
     }
     fn effective_label_width(&self) -> usize {
         self.label_width
-            .unwrap_or_else(|| default_label_width(&self.label))
+            .unwrap_or_else(|| default_label_width(self.label.content()))
     }
     fn effective_field_width(&self) -> usize {
         self.field_width.unwrap_or_else(|| {
@@ -202,7 +203,7 @@ impl NumberStepper {
             Some(label_width + field_width),
             Some(1),
             &state,
-            &[encode_text(&self.label), encode_text(&text)],
+            &[self.label.serialize(), encode_text(&text)],
         )
     }
     pub fn render(&mut self, x: usize, y: usize) {

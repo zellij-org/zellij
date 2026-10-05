@@ -7,6 +7,7 @@ use std::{
 use zellij_utils::data::*;
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::actions::Action;
+use zellij_utils::prompt::{PromptRequest, PromptResult};
 pub use zellij_utils::plugin_api;
 use zellij_utils::plugin_api::event::{
     nested_session_keybinds_response_from_protobuf, ProtobufNestedSessionKeybindsResponse,
@@ -3322,6 +3323,43 @@ pub fn set_pane_regex_highlights(pane_id: PaneId, highlights: Vec<RegexHighlight
 /// Requires `ChangeApplicationState` permission.
 pub fn clear_pane_highlights(pane_id: PaneId) {
     let plugin_command = PluginCommand::ClearPaneHighlights(pane_id);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+thread_local! {
+    static NEXT_PROMPT_REQUEST_ID: std::cell::Cell<u64> = std::cell::Cell::new(1);
+}
+
+/// Ask the user something through the `zellij:prompt` popup and return the id of the request.
+///
+/// The answer arrives later as `Event::PromptResult(id, result)`, sent only to this plugin
+/// instance; subscribe to `EventType::PromptResult` to receive it. An invalid request is
+/// answered at once with `PromptResult::Error` and opens no popup. If this plugin closes or
+/// reloads before the answer, its open prompts close and no result is sent.
+///
+/// Requires `OpenTerminalsOrPlugins` permission.
+pub fn prompt(request: PromptRequest) -> u64 {
+    let request_id = NEXT_PROMPT_REQUEST_ID.with(|next| {
+        let request_id = next.get();
+        next.set(request_id + 1);
+        request_id
+    });
+    let plugin_command = PluginCommand::Prompt {
+        request_id,
+        request,
+    };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+    request_id
+}
+
+/// Answer a request received from `PipeSource::PromptRequest`. Only the built-in
+/// `zellij:prompt` plugin may use this; calls from other plugins are ignored.
+pub fn reply_to_prompt(request_id: u64, result: PromptResult) {
+    let plugin_command = PluginCommand::ReplyToPrompt { request_id, result };
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };

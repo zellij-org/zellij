@@ -1,3 +1,4 @@
+use super::text::Text;
 use super::Coordinates;
 use crate::panes::terminal_character::{AnsiCode, CharacterStyles, RESET_STYLES};
 use std::collections::{HashMap, HashSet};
@@ -146,21 +147,10 @@ pub fn label_width(state: &WidgetState, label: &str) -> usize {
 }
 
 pub fn render_label(
-    label: &str,
+    label: &Text,
     width: usize,
     focused: bool,
     disabled: bool,
-    style: &Style,
-) -> String {
-    render_label_with_accent(label, width, focused, disabled, None, style)
-}
-
-pub fn render_label_with_accent(
-    label: &str,
-    width: usize,
-    focused: bool,
-    disabled: bool,
-    accent: Option<usize>,
     style: &Style,
 ) -> String {
     if width == 0 {
@@ -169,18 +159,67 @@ pub fn render_label_with_accent(
     let mut styles = colored(style.colors.text_unselected.base, None);
     if disabled {
         styles = disabled_look(styles);
-    } else if let Some(level) = accent {
-        let emphasis = match level {
-            0 => style.colors.text_unselected.emphasis_0,
-            1 => style.colors.text_unselected.emphasis_1,
-            3 => style.colors.text_unselected.emphasis_3,
-            _ => style.colors.text_unselected.emphasis_2,
-        };
-        styles = bold(colored(emphasis, None));
     } else if focused {
         styles = bold(colored(style.colors.text_unselected.emphasis_0, None));
     }
-    paint(styles, &fit(label, width))
+    paint_text(label, styles, width, !disabled, style)
+}
+
+pub fn decode_styled(field: Option<&String>) -> Text {
+    field
+        .map(|field| super::text::decode_text_field(field))
+        .unwrap_or_else(|| Text::plain(""))
+}
+
+pub fn paint_text(
+    text: &Text,
+    base: CharacterStyles,
+    width: usize,
+    colorable: bool,
+    style: &Style,
+) -> String {
+    let declaration = style.colors.text_unselected;
+    let truncated = text_width(&text.text) > width;
+    let room = if truncated {
+        width.saturating_sub(1)
+    } else {
+        width
+    };
+    let mut output = String::new();
+    let mut run = String::new();
+    let mut run_styles = base;
+    let mut used = 0;
+    for (index, character) in text.text.chars().enumerate() {
+        let character_width = character.width().unwrap_or(0);
+        if used + character_width > room {
+            break;
+        }
+        used += character_width;
+        let mut character_styles = base;
+        if colorable && text.is_styled_at(index) {
+            if let Some(color) = text.style_of_index(index, &declaration, &style.colors) {
+                character_styles = bold(character_styles.foreground(Some(color.into())));
+            }
+            if text.is_dimmed_at(index) {
+                character_styles = dimmed(character_styles.bold(Some(AnsiCode::Reset)));
+            } else if text.is_unbold_at(index) {
+                character_styles = character_styles.bold(Some(AnsiCode::Reset));
+            }
+        }
+        if character_styles != run_styles && !run.is_empty() {
+            output.push_str(&paint(run_styles, &run));
+            run.clear();
+        }
+        run_styles = character_styles;
+        run.push(character);
+    }
+    output.push_str(&paint(run_styles, &run));
+    if truncated && width > 0 {
+        output.push_str(&paint(base, "…"));
+        used += 1;
+    }
+    output.push_str(&paint(base, &" ".repeat(width.saturating_sub(used))));
+    output
 }
 
 pub fn frame_color(style: &Style, focused: bool) -> PaletteColor {
@@ -358,16 +397,15 @@ pub fn button_cells_with_accent(
     accent_brackets: bool,
     style: &Style,
 ) -> String {
-    button_cells_styled(label, width, look, accent_brackets, false, &[], style)
+    button_cells_styled(&Text::plain(label), width, look, accent_brackets, false, style)
 }
 
 pub fn button_cells_styled(
-    label: &str,
+    label: &Text,
     width: usize,
     look: ButtonLook,
     accent_brackets: bool,
     left_aligned: bool,
-    label_colors: &[Option<usize>],
     style: &Style,
 ) -> String {
     let colors = style.colors;
@@ -398,54 +436,36 @@ pub fn button_cells_styled(
     } else {
         bracket_styles
     };
+    let colorable = !matches!(look, ButtonLook::Pressed | ButtonLook::Disabled);
     if width < 3 {
-        return paint(text_styles, &fit(label, width));
+        return paint_text(label, text_styles, width, colorable, style);
     }
     let inner = width - 2;
-    let (fitted, lead) = if left_aligned {
-        let fitted = truncate(label, inner.saturating_sub(1));
-        (fitted, 1.min(inner))
+    let label_width = text_width(&label.text);
+    let (lead, room) = if left_aligned {
+        (1.min(inner), inner.saturating_sub(1))
     } else {
-        let fitted = truncate(label, inner);
-        let free = inner.saturating_sub(text_width(&fitted));
-        (fitted, free / 2)
+        let fitted_width = label_width.min(inner);
+        (inner.saturating_sub(fitted_width) / 2, inner)
     };
-    let trail = inner.saturating_sub(lead + text_width(&fitted));
-    let declaration = if look == ButtonLook::Focused {
-        colors.text_selected
-    } else {
-        colors.text_unselected
-    };
-    let colorable = !matches!(look, ButtonLook::Pressed | ButtonLook::Disabled);
-    let emphasis = [
-        declaration.emphasis_0,
-        declaration.emphasis_1,
-        declaration.emphasis_2,
-        declaration.emphasis_3,
-    ];
-    let mut label_cells = String::new();
-    let mut run = String::new();
-    let mut run_styles = text_styles;
-    for (index, character) in fitted.chars().enumerate() {
-        let character_styles = match label_colors.get(index).copied().flatten() {
-            Some(level) if colorable && level < emphasis.len() => {
-                text_styles.foreground(Some(emphasis[level].into()))
+    let label_cells_width = label_width.min(room);
+    let trail = inner.saturating_sub(lead + label_cells_width);
+    let label_style = if look == ButtonLook::Focused {
+        Style {
+            colors: zellij_utils::data::Styling {
+                text_unselected: colors.text_selected,
+                ..colors
             },
-            _ => text_styles,
-        };
-        if character_styles != run_styles && !run.is_empty() {
-            label_cells.push_str(&paint(run_styles, &run));
-            run.clear();
+            ..*style
         }
-        run_styles = character_styles;
-        run.push(character);
-    }
-    label_cells.push_str(&paint(run_styles, &run));
+    } else {
+        *style
+    };
     format!(
         "{}{}{}{}{}",
         paint(bracket_styles, "["),
         paint(text_styles, &" ".repeat(lead)),
-        label_cells,
+        paint_text(label, text_styles, label_cells_width, colorable, &label_style),
         paint(text_styles, &" ".repeat(trail)),
         paint(bracket_styles, "]")
     )
@@ -462,10 +482,11 @@ mod tests {
     #[test]
     fn a_left_aligned_button_starts_its_label_after_the_bracket() {
         let style = Style::default();
-        let cells = button_cells_styled("Go", 10, ButtonLook::Normal, true, true, &[], &style);
+        let go = Text::plain("Go");
+        let cells = button_cells_styled(&go, 10, ButtonLook::Normal, true, true, &style);
         let text = strip_styles(&cells);
         assert_eq!(text, "[ Go     ]");
-        let centered = button_cells_styled("Go", 10, ButtonLook::Normal, false, false, &[], &style);
+        let centered = button_cells_styled(&go, 10, ButtonLook::Normal, false, false, &style);
         assert_eq!(strip_styles(&centered), "[   Go   ]");
     }
 
@@ -484,6 +505,41 @@ mod tests {
             }
         }
         plain
+    }
+
+    fn styled(text: &str, level: usize, range: std::ops::Range<usize>) -> Text {
+        let mut indices = vec![vec![]; level + 1];
+        indices[level] = range.collect();
+        Text {
+            indices,
+            ..Text::plain(text)
+        }
+    }
+
+    #[test]
+    fn a_label_paints_its_text_styles_over_the_label_style() {
+        let style = Style::default();
+        let label = styled("Delete main?", 3, 7..11);
+        let painted = render_label(&label, 14, false, false, &style);
+        assert_eq!(strip_styles(&painted), "Delete main?  ");
+        let emphasis = bold(
+            colored(style.colors.text_unselected.base, None)
+                .foreground(Some(style.colors.text_unselected.emphasis_3.into())),
+        );
+        assert!(painted.contains(&paint(emphasis, "main")));
+        let disabled = render_label(&label, 14, false, true, &style);
+        assert!(!disabled.contains(&paint(emphasis, "main")));
+        assert_eq!(strip_styles(&render_label(&label, 8, false, false, &style)), "Delete …");
+    }
+
+    #[test]
+    fn a_button_label_keeps_its_text_styles() {
+        let style = Style::default();
+        let label = styled("Go on", 0, 3..5);
+        let cells = button_cells_styled(&label, 9, ButtonLook::Normal, false, false, &style);
+        assert_eq!(strip_styles(&cells), "[ Go on ]");
+        let emphasis = bold(plain_styles(&style).foreground(Some(style.colors.text_unselected.emphasis_0.into())));
+        assert!(cells.contains(&paint(emphasis, "on")));
     }
 
     #[test]

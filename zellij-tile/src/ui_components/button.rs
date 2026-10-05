@@ -1,14 +1,15 @@
 use super::widget_common::{
-    encode_text, is_activation_key, state_flag, text_width, update_hover, widget_dcs, Rect,
+    is_activation_key, state_flag, text_width, update_hover, widget_dcs, Rect,
     UiResponse, Widget,
 };
+use super::text::Text;
 use zellij_utils::data::{KeyWithModifier, Mouse};
 
 pub const BUTTON_PRESS_SECONDS: f64 = 0.4;
 
 #[derive(Debug, Clone)]
 pub struct Button {
-    label: String,
+    label: Text,
     width: Option<usize>,
     focused: bool,
     disabled: bool,
@@ -16,13 +17,12 @@ pub struct Button {
     hovered: bool,
     accent_brackets: bool,
     left_aligned: bool,
-    label_colors: Vec<Option<usize>>,
     pending_timers: usize,
     area: Option<Rect>,
 }
 
 impl Button {
-    pub fn new(label: impl Into<String>) -> Self {
+    pub fn new(label: impl Into<Text>) -> Self {
         Button {
             label: label.into(),
             width: None,
@@ -32,7 +32,6 @@ impl Button {
             hovered: false,
             accent_brackets: false,
             left_aligned: false,
-            label_colors: vec![],
             pending_timers: 0,
             area: None,
         }
@@ -44,18 +43,6 @@ impl Button {
     pub fn left_aligned(mut self) -> Self {
         self.left_aligned = true;
         self
-    }
-    pub fn set_label_colors(&mut self, ranges: &[(usize, std::ops::Range<usize>)]) {
-        let length = self.label.chars().count();
-        let mut colors = vec![None; length];
-        for (level, range) in ranges {
-            for index in range.clone() {
-                if index < length {
-                    colors[index] = Some(*level);
-                }
-            }
-        }
-        self.label_colors = colors;
     }
     pub fn width(mut self, width: usize) -> Self {
         self.width = Some(width);
@@ -81,11 +68,10 @@ impl Button {
         self.hovered
     }
     pub fn label(&self) -> &str {
-        &self.label
+        self.label.content()
     }
-    pub fn set_label(&mut self, label: impl Into<String>) {
+    pub fn set_label(&mut self, label: impl Into<Text>) {
         self.label = label.into();
-        self.label_colors.clear();
     }
     pub fn set_disabled(&mut self, disabled: bool) {
         self.disabled = disabled;
@@ -97,7 +83,7 @@ impl Button {
         self.pressed
     }
     pub fn natural_width(&self) -> usize {
-        self.width.unwrap_or_else(|| text_width(&self.label) + 4)
+        self.width.unwrap_or_else(|| text_width(self.label.content()) + 4)
     }
     pub fn serialize(&mut self, x: usize, y: usize) -> String {
         let width = self.natural_width();
@@ -120,19 +106,7 @@ impl Button {
         )
     }
     fn fields(&self) -> Vec<String> {
-        let mut fields = vec![encode_text(&self.label)];
-        if self.label_colors.iter().any(|color| color.is_some()) {
-            let colors: String = self
-                .label_colors
-                .iter()
-                .map(|color| match color {
-                    Some(level) => std::char::from_digit(*level as u32, 10).unwrap_or('.'),
-                    None => '.',
-                })
-                .collect();
-            fields.push(encode_text(&colors));
-        }
-        fields
+        vec![self.label.serialize()]
     }
     pub fn render(&mut self, x: usize, y: usize) {
         print!("{}", self.serialize(x, y));

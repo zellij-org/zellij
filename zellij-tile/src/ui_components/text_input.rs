@@ -2,6 +2,7 @@ use super::widget_common::{
     char_width, default_label_width, encode_text, is_plain, state_flag, state_value, text_width,
     typed_char, update_hover, widget_dcs, Rect, UiResponse, UiValue, Widget,
 };
+use super::text::Text;
 use std::fmt;
 use std::rc::Rc;
 use zellij_utils::data::{BareKey, KeyModifier, KeyWithModifier, Mouse};
@@ -18,7 +19,7 @@ pub struct TextInput {
     undo_stack: Vec<(String, usize)>,
     redo_stack: Vec<(String, usize)>,
     last_edit_was_insert: bool,
-    label: String,
+    label: Text,
     label_width: Option<usize>,
     placeholder: Option<String>,
     validator: Option<Validator>,
@@ -64,7 +65,7 @@ impl TextInput {
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
             last_edit_was_insert: false,
-            label: String::new(),
+            label: Text::default(),
             label_width: None,
             placeholder: None,
             validator: None,
@@ -87,7 +88,7 @@ impl TextInput {
         Self::new(String::new())
     }
 
-    pub fn label(mut self, label: impl Into<String>) -> Self {
+    pub fn label(mut self, label: impl Into<Text>) -> Self {
         self.label = label.into();
         self
     }
@@ -400,7 +401,7 @@ impl TextInput {
 
     fn effective_label_width(&self) -> usize {
         self.label_width
-            .unwrap_or_else(|| default_label_width(&self.label))
+            .unwrap_or_else(|| default_label_width(self.label.content()))
     }
 
     fn suffix(&self) -> String {
@@ -496,7 +497,7 @@ impl TextInput {
             Some(height),
             &state,
             &[
-                encode_text(&self.label),
+                self.label.serialize(),
                 encode_text(&text),
                 encode_text(&error.unwrap_or_default()),
                 encode_text(&suffix),

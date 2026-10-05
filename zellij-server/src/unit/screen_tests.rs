@@ -16552,3 +16552,130 @@ fn a_targeted_write_reaches_its_pane_while_a_popup_is_open() {
     assert!(harness.keys_sent_to_plugin(42).is_empty());
     harness.teardown_and_assert_popup_was_open();
 }
+
+fn screen_capturing_plugin_instructions(
+) -> (Screen, Receiver<(PluginInstruction, ErrorContext)>) {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> = channels::unbounded();
+    screen
+        .bus
+        .senders
+        .replace_to_plugin(SenderWithContext::new(to_plugin));
+    new_tab(&mut screen, 1, 0);
+    (screen, plugin_receiver)
+}
+
+fn prompt_caller() -> crate::plugins::PromptCaller {
+    crate::plugins::PromptCaller {
+        plugin_id: 77,
+        client_id: 1,
+        request_id: 4,
+    }
+}
+
+fn loaded_prompt_popup(
+    plugin_receiver: &Receiver<(PluginInstruction, ErrorContext)>,
+) -> (
+    ClientId,
+    crate::tab::PopupKind,
+    Option<PaneId>,
+    BTreeMap<String, String>,
+) {
+    plugin_receiver
+        .try_iter()
+        .find_map(|(instruction, _)| match instruction {
+            PluginInstruction::LoadPopup {
+                client_id,
+                kind,
+                anchor_pane,
+                pipe: Some((crate::plugins::PopupRequest::Prompt(caller), caller_args)),
+                ..
+            } if caller == prompt_caller() => Some((client_id, kind, anchor_pane, caller_args)),
+            _ => None,
+        })
+        .expect("a prompt popup was loaded")
+}
+
+#[test]
+fn a_plugin_prompt_without_a_visible_caller_pane_opens_over_the_focused_pane() {
+    let (mut screen, plugin_receiver) = screen_capturing_plugin_instructions();
+    let focused_pane = screen.get_active_tab(1).unwrap().get_active_pane_id(1);
+    screen.open_prompt_popup(
+        prompt_caller(),
+        1,
+        Some(PaneId::Plugin(77)),
+        RunPluginOrAlias::from_url("zellij:prompt", &None, None, None).unwrap(),
+        None,
+        true,
+    );
+    let (client_id, kind, anchor_pane, caller_args) = loaded_prompt_popup(&plugin_receiver);
+    assert_eq!(client_id, 1);
+    assert_eq!(kind, crate::tab::PopupKind::Prompt);
+    assert_eq!(anchor_pane, focused_pane);
+    assert!(caller_args.contains_key(zellij_utils::prompt::CALLER_PANE_TITLE_ARG));
+    assert!(!caller_args.contains_key(zellij_utils::prompt::CALLER_PANE_ID_ARG));
+}
+
+#[test]
+fn a_plugin_prompt_honours_an_explicit_pane_and_a_notice_takes_no_anchor() {
+    let (mut screen, plugin_receiver) = screen_capturing_plugin_instructions();
+    let focused_pane = screen
+        .get_active_tab(1)
+        .unwrap()
+        .get_active_pane_id(1)
+        .unwrap();
+    screen.open_prompt_popup(
+        prompt_caller(),
+        1,
+        Some(focused_pane),
+        RunPluginOrAlias::from_url("zellij:prompt", &None, None, None).unwrap(),
+        Some(zellij_utils::prompt::PromptPlacement::Pane(
+            focused_pane.into(),
+        )),
+        true,
+    );
+    let (_, _, anchor_pane, caller_args) = loaded_prompt_popup(&plugin_receiver);
+    assert_eq!(anchor_pane, Some(focused_pane));
+    let focused_pane_id: zellij_utils::data::PaneId = focused_pane.into();
+    assert_eq!(
+        caller_args.get(zellij_utils::prompt::CALLER_PANE_ID_ARG),
+        Some(&focused_pane_id.to_string())
+    );
+    screen.open_prompt_popup(
+        prompt_caller(),
+        1,
+        None,
+        RunPluginOrAlias::from_url("zellij:prompt", &None, None, None).unwrap(),
+        Some(zellij_utils::prompt::PromptPlacement::Corner(
+            zellij_utils::data::PopupCorner::TopRight,
+        )),
+        false,
+    );
+    let (_, kind, anchor_pane, _) = loaded_prompt_popup(&plugin_receiver);
+    assert_eq!(kind, crate::tab::PopupKind::Info);
+    assert_eq!(anchor_pane, None);
+}
+
+#[test]
+fn a_plugin_prompt_for_a_user_who_is_not_attached_fails() {
+    let (mut screen, plugin_receiver) = screen_capturing_plugin_instructions();
+    screen.open_prompt_popup(
+        prompt_caller(),
+        9,
+        None,
+        RunPluginOrAlias::from_url("zellij:prompt", &None, None, None).unwrap(),
+        None,
+        true,
+    );
+    let failed = plugin_receiver.try_iter().any(|(instruction, _)| {
+        matches!(
+            instruction,
+            PluginInstruction::PromptPopupFailed { caller, .. } if caller == prompt_caller()
+        )
+    });
+    assert!(failed);
+}

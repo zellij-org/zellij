@@ -1,7 +1,8 @@
 use super::widget_common::{
-    bold, button_cells, button_width, center, colored, decode_text, fit, move_to, paint,
+    bold, button_cells, button_width, colored, decode_text, move_to, paint, paint_text,
     text_width, truncate, ButtonLook, WidgetState,
 };
+use super::text::{decode_text_field, Text};
 use super::Coordinates;
 use zellij_utils::data::Style;
 
@@ -26,10 +27,10 @@ pub fn dialog(
         .take(button_count)
         .map(|f| decode_text(f))
         .collect();
-    let lines: Vec<String> = fields
+    let lines: Vec<Text> = fields
         .iter()
         .skip(1 + button_count)
-        .map(|f| decode_text(f))
+        .map(|f| decode_text_field(f))
         .collect();
     let width = coordinates.width.unwrap_or(40).max(MIN_WIDTH);
     let height = coordinates.height.unwrap_or(lines.len() + 5).max(4);
@@ -75,18 +76,27 @@ pub fn dialog(
                 style,
             ));
         } else {
+            let empty = Text::plain("");
             let line = row
                 .checked_sub(2)
                 .filter(|_| row < buttons_row)
                 .and_then(|index| lines.get(index))
-                .map(|l| l.as_str())
-                .unwrap_or("");
-            let line = if centered {
-                center(line, inner_width - 2)
+                .unwrap_or(&empty);
+            let text_room = inner_width - 2;
+            let lead = if centered {
+                text_room.saturating_sub(text_width(&line.text)) / 2
             } else {
-                fit(line, inner_width - 2)
+                0
             };
-            output.push_str(&paint(body_styles, &format!(" {} ", line)));
+            output.push_str(&paint(body_styles, &" ".repeat(1 + lead)));
+            output.push_str(&paint_text(
+                line,
+                body_styles,
+                text_room - lead,
+                true,
+                style,
+            ));
+            output.push_str(&paint(body_styles, " "));
         }
         output.push_str(&paint(border_styles, "│"));
     }
@@ -173,6 +183,27 @@ mod tests {
             .find(|cell| cell.contains("Hi"))
             .unwrap()
             .to_owned()
+    }
+
+    #[test]
+    fn a_styled_message_line_is_painted_with_its_colours() {
+        let state = WidgetState::parse("nb=0,c");
+        let fields = vec![String::new(), "$$$0$72,105".to_owned()];
+        let coordinates = Coordinates {
+            x: 0,
+            y: 0,
+            width: Some(20),
+            height: Some(5),
+        };
+        let style = Style::default();
+        let output =
+            String::from_utf8(dialog(&state, &fields, &style, &coordinates)).unwrap();
+        let emphasis = bold(
+            colored(style.colors.text_unselected.base, None)
+                .foreground(Some(style.colors.text_unselected.emphasis_3.into())),
+        );
+        assert!(output.contains(&paint(emphasis, "H")));
+        assert!(!output.contains(&paint(emphasis, "Hi")));
     }
 
     #[test]

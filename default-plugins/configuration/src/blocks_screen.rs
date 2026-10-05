@@ -616,6 +616,9 @@ impl Page for BlockPage {
     fn set_focused(&mut self, focused: bool) {
         self.list.set_focused(focused);
     }
+    fn prompt_result(&mut self, request_id: u64, result: &PromptResult) -> bool {
+        self.list.prompt_result(request_id, result)
+    }
 }
 
 #[cfg(test)]

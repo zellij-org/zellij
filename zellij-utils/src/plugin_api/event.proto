@@ -4,6 +4,7 @@ import "input_mode.proto";
 import "key.proto";
 import "style.proto";
 import "action.proto";
+import "prompt.proto";
 
 package api.event;
 
@@ -78,6 +79,7 @@ enum EventType {
     ConfigChangesDropped = 53;
     AvailableKeybindPresets = 54;
     ConfigFileChangedSinceRead = 55;
+    PromptResult = 56;
 }
 
 message EventNameList {
@@ -134,7 +136,13 @@ message Event {
     ContextMenuPayload context_menu_payload = 46;
     ConfigChangesDroppedPayload config_changes_dropped_payload = 47;
     AvailableKeybindPresetsPayload available_keybind_presets_payload = 48;
+    PromptResultPayload prompt_result_payload = 49;
   }
+}
+
+message PromptResultPayload {
+  uint64 request_id = 1;
+  api.prompt.PromptResult result = 2;
 }
 
 enum KeybindPresetSource {
@@ -242,21 +250,12 @@ message NestedSessionKeybindsResponse {
 }
 
 message HintTextPayload {
-  map<uint32, StyledText> hint_text = 1;
+  map<uint32, api.style.StyledText> hint_text = 1;
 }
 
 message ActivePaneScrollPayload {
   optional uint32 position = 1;
   optional uint32 length = 2;
-}
-
-message StyledText {
-  string text = 1;
-  repeated StyledTextIndices indices = 2;
-}
-
-message StyledTextIndices {
-  repeated uint32 indices = 1;
 }
 
 message HostTerminalThemeChangedPayload {

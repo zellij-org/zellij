@@ -1,5 +1,5 @@
 use super::widget_common::{
-    bold, colored, decode_text, disabled_look, field_bracket_styles, fit, gray, label_width, move_to,
+    bold, colored, decode_styled, disabled_look, field_bracket_styles, fit, gray, label_width, move_to,
     paint, plain_styles, render_label, WidgetState,
 };
 use super::Coordinates;
@@ -17,8 +17,8 @@ pub fn toggle(
     let disabled = state.flag("d");
     let hovered = state.flag("h");
     let on = state.flag("on");
-    let label = fields.get(0).map(|f| decode_text(f)).unwrap_or_default();
-    let label_width = label_width(state, &label);
+    let label = decode_styled(fields.get(0));
+    let label_width = label_width(state, &label.text);
     let width = coordinates
         .width
         .unwrap_or(label_width + TOGGLE_WIDTH)

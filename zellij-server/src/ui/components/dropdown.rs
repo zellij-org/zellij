@@ -1,6 +1,6 @@
 use super::widget_common::{
-    accented_field_bracket_styles, bold, decode_text, field_styles, fit, label_width, move_to, paint,
-    render_label_with_accent, selected_row_styles, WidgetState,
+    accented_field_bracket_styles, bold, decode_styled, decode_text, field_styles, fit, label_width, move_to, paint,
+    render_label, selected_row_styles, WidgetState,
 };
 use super::Coordinates;
 use zellij_utils::data::Style;
@@ -17,9 +17,9 @@ pub fn dropdown(
     let disabled = state.flag("d");
     let hovered = state.flag("h");
     let open = state.flag("o");
-    let label = fields.get(0).map(|f| decode_text(f)).unwrap_or_default();
+    let label = decode_styled(fields.get(0));
     let value = fields.get(1).map(|f| decode_text(f)).unwrap_or_default();
-    let label_width = label_width(state, &label);
+    let label_width = label_width(state, &label.text);
     let field_width = coordinates
         .width
         .map(|w| w.saturating_sub(label_width))
@@ -42,14 +42,7 @@ pub fn dropdown(
     };
     let arrow = if open { "▴" } else { "▾" };
     let mut output = move_to(coordinates, 0, 0);
-    output.push_str(&render_label_with_accent(
-        &label,
-        label_width,
-        active,
-        disabled,
-        state.number("lc").or(if state.flag("al") { Some(2) } else { None }),
-        style,
-    ));
+    output.push_str(&render_label(&label, label_width, active, disabled, style));
     output.push_str(&paint(bracket_styles, "["));
     output.push_str(&paint(
         value_styles,

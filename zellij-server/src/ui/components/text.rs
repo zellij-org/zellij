@@ -190,7 +190,41 @@ pub struct Text {
     pub indices: Vec<Vec<usize>>,
 }
 
+pub fn decode_text_field(raw: &str) -> Text {
+    let mut stringified = raw.to_owned();
+    let selected = parse_selected(&mut stringified);
+    let opaque = parse_opaque(&mut stringified);
+    let disabled = parse_disabled(&mut stringified);
+    let indices = parse_indices(&mut stringified);
+    let text = if stringified.is_empty() {
+        String::new()
+    } else {
+        parse_text(&mut stringified).unwrap_or_default()
+    };
+    Text {
+        text,
+        selected,
+        opaque,
+        disabled,
+        indices,
+    }
+}
+
 impl Text {
+    pub fn plain(text: impl Into<String>) -> Self {
+        Text {
+            text: text.into(),
+            selected: false,
+            opaque: false,
+            disabled: false,
+            indices: vec![],
+        }
+    }
+    pub fn is_styled_at(&self, index: usize) -> bool {
+        self.indices
+            .iter()
+            .any(|indices| indices.contains(&index))
+    }
     pub fn into_disabled(mut self) -> Self {
         self.selected = false;
         self.opaque = false;

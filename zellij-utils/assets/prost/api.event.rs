@@ -10,7 +10,7 @@ pub struct EventNameList {
 pub struct Event {
     #[prost(enumeration="EventType", tag="1")]
     pub name: i32,
-    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48")]
+    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49")]
     pub payload: ::core::option::Option<event::Payload>,
 }
 /// Nested message and enum types in `Event`.
@@ -110,7 +110,17 @@ pub mod event {
         ConfigChangesDroppedPayload(super::ConfigChangesDroppedPayload),
         #[prost(message, tag="48")]
         AvailableKeybindPresetsPayload(super::AvailableKeybindPresetsPayload),
+        #[prost(message, tag="49")]
+        PromptResultPayload(super::PromptResultPayload),
     }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PromptResultPayload {
+    #[prost(uint64, tag="1")]
+    pub request_id: u64,
+    #[prost(message, optional, tag="2")]
+    pub result: ::core::option::Option<super::prompt::PromptResult>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -253,7 +263,7 @@ pub mod nested_session_keybinds_response {
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct HintTextPayload {
     #[prost(map="uint32, message", tag="1")]
-    pub hint_text: ::std::collections::HashMap<u32, StyledText>,
+    pub hint_text: ::std::collections::HashMap<u32, super::style::StyledText>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -262,20 +272,6 @@ pub struct ActivePaneScrollPayload {
     pub position: ::core::option::Option<u32>,
     #[prost(uint32, optional, tag="2")]
     pub length: ::core::option::Option<u32>,
-}
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct StyledText {
-    #[prost(string, tag="1")]
-    pub text: ::prost::alloc::string::String,
-    #[prost(message, repeated, tag="2")]
-    pub indices: ::prost::alloc::vec::Vec<StyledTextIndices>,
-}
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct StyledTextIndices {
-    #[prost(uint32, repeated, tag="1")]
-    pub indices: ::prost::alloc::vec::Vec<u32>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1059,6 +1055,7 @@ pub enum EventType {
     ConfigChangesDropped = 53,
     AvailableKeybindPresets = 54,
     ConfigFileChangedSinceRead = 55,
+    PromptResult = 56,
 }
 impl EventType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1121,6 +1118,7 @@ impl EventType {
             EventType::ConfigChangesDropped => "ConfigChangesDropped",
             EventType::AvailableKeybindPresets => "AvailableKeybindPresets",
             EventType::ConfigFileChangedSinceRead => "ConfigFileChangedSinceRead",
+            EventType::PromptResult => "PromptResult",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1180,6 +1178,7 @@ impl EventType {
             "ConfigChangesDropped" => Some(Self::ConfigChangesDropped),
             "AvailableKeybindPresets" => Some(Self::AvailableKeybindPresets),
             "ConfigFileChangedSinceRead" => Some(Self::ConfigFileChangedSinceRead),
+            "PromptResult" => Some(Self::PromptResult),
             _ => None,
         }
     }

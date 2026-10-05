@@ -3,7 +3,7 @@ use crate::background_jobs::BackgroundJob;
 use crate::global_async_runtime::get_tokio_runtime;
 use crate::plugins::plugin_map::PluginEnv;
 use crate::plugins::wasm_bridge::handle_plugin_crash;
-use crate::plugins::PluginId;
+use crate::plugins::{PluginId, PromptCaller};
 use crate::pty::{ClientTabIndexOrPaneId, PtyInstruction};
 use crate::route::{route_action, wait_for_action_completion, NotificationEnd};
 use crate::ClientId;
@@ -71,8 +71,9 @@ use zellij_utils::{
         actions::Action,
         command::{OpenFilePayload, RunCommand, RunCommandAction, TerminalAction},
         config::ConfigError,
-        layout::{Layout, RunPluginOrAlias, TabLayoutInfo},
+        layout::{Layout, RunPluginLocation, RunPluginOrAlias, TabLayoutInfo},
     },
+    prompt::{PromptRequest, PromptResult},
     plugin_api::{
         event::{
             layout_parsing_error::ErrorType as ProtobufLayoutParsingErrorType,
@@ -496,6 +497,13 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     } => reset_keys(env, keys, write_config_to_disk),
                     PluginCommand::SaveKeybindsAsPreset { new_name } => {
                         save_keybinds_as_preset(env, new_name)
+                    },
+                    PluginCommand::Prompt {
+                        request_id,
+                        request,
+                    } => prompt(env, request_id, request),
+                    PluginCommand::ReplyToPrompt { request_id, result } => {
+                        reply_to_prompt(env, request_id, result)
                     },
                     PluginCommand::CopyKeybindPreset { preset, new_name } => {
                         copy_keybind_preset(env, preset, new_name)
@@ -3060,6 +3068,60 @@ fn show_pane_with_id(
                 should_float_if_hidden,
             ));
     }
+}
+
+fn prompt(env: &PluginEnv, request_id: u64, request: PromptRequest) {
+    let caller = PromptCaller {
+        plugin_id: env.plugin_id,
+        client_id: env.client_id,
+        request_id,
+    };
+    let instruction = prompt_instruction(caller, acting_client(env), self_pane_id(env), request);
+    env.senders
+        .send_to_plugin(instruction)
+        .with_context(|| format!("failed to send a prompt request"))
+        .non_fatal();
+}
+
+fn prompt_instruction(
+    caller: PromptCaller,
+    owner_client_id: ClientId,
+    caller_pane_plugin_id: PluginId,
+    request: PromptRequest,
+) -> PluginInstruction {
+    match request.check() {
+        Ok(()) => PluginInstruction::PromptRequest {
+            caller,
+            owner_client_id,
+            caller_pane_id: Some(PaneId::Plugin(caller_pane_plugin_id)),
+            request,
+        },
+        Err(error) => {
+            PluginInstruction::Update(vec![caller.result_event(PromptResult::Error(error))])
+        },
+    }
+}
+
+fn may_reply_to_prompt(location: &RunPluginLocation) -> bool {
+    matches!(location, RunPluginLocation::Zellij(tag) if tag.to_string() == zellij_utils::prompt::PROMPT_PLUGIN_ALIAS)
+}
+
+fn reply_to_prompt(env: &PluginEnv, request_id: u64, result: PromptResult) {
+    if !may_reply_to_prompt(&env.plugin.location) {
+        log::warn!(
+            "Ignoring a prompt reply from {}: only the prompt plugin can answer prompts",
+            env.plugin.location.display()
+        );
+        return;
+    }
+    env.senders
+        .send_to_plugin(PluginInstruction::PromptReplied {
+            prompt_plugin_id: env.plugin_id,
+            request_id,
+            result,
+        })
+        .with_context(|| format!("failed to send a prompt reply"))
+        .non_fatal();
 }
 
 fn close_self(env: &PluginEnv) {
@@ -6049,6 +6111,21 @@ fn check_command_permission(
         // there's no use to deny them anything
         return (PermissionStatus::Granted, None);
     }
+    let permission = match required_permission(command) {
+        Some(permission) => permission,
+        None => return (PermissionStatus::Granted, None),
+    };
+
+    if let Some(permissions) = plugin_env.permissions.lock().unwrap().as_ref() {
+        if permissions.contains(&permission) {
+            return (PermissionStatus::Granted, None);
+        }
+    }
+
+    (PermissionStatus::Denied, Some(permission))
+}
+
+fn required_permission(command: &PluginCommand) -> Option<PermissionType> {
     let permission = match command {
         PluginCommand::OpenFile(..)
         | PluginCommand::OpenFileFloating(..)
@@ -6202,6 +6279,9 @@ fn check_command_permission(
         | PluginCommand::OpenContextMenu { .. }
         | PluginCommand::OpenPluginPopup { .. }
         | PluginCommand::SetPopupSize { .. } => PermissionType::ChangeApplicationState,
+        PluginCommand::Prompt { .. } | PluginCommand::ReplyToPrompt { .. } => {
+            PermissionType::OpenTerminalsOrPlugins
+        },
         PluginCommand::RunContextMenuItem(..) => PermissionType::RunActionsAsUser,
         PluginCommand::UnblockCliPipeInput(..)
         | PluginCommand::BlockCliPipeInput(..)
@@ -6259,14 +6339,88 @@ fn check_command_permission(
         },
         PluginCommand::OpenCommandPaneInNewTab(..) => PermissionType::RunCommands,
         PluginCommand::OpenEditorPaneInNewTab(..) => PermissionType::OpenFiles,
-        _ => return (PermissionStatus::Granted, None),
+        _ => return None,
     };
+    Some(permission)
+}
 
-    if let Some(permissions) = plugin_env.permissions.lock().unwrap().as_ref() {
-        if permissions.contains(&permission) {
-            return (PermissionStatus::Granted, None);
+#[cfg(test)]
+mod prompt_tests {
+    use super::*;
+    use std::path::PathBuf;
+    use zellij_utils::data::Event;
+    use zellij_utils::data::PluginTag;
+
+    fn caller() -> PromptCaller {
+        PromptCaller {
+            plugin_id: 3,
+            client_id: 2,
+            request_id: 9,
         }
     }
 
-    (PermissionStatus::Denied, Some(permission))
+    #[test]
+    fn a_valid_request_opens_a_popup_for_the_acting_user_over_the_caller() {
+        let request = PromptRequest::confirm("Go?");
+        match prompt_instruction(caller(), 5, 4, request.clone()) {
+            PluginInstruction::PromptRequest {
+                caller: instruction_caller,
+                owner_client_id,
+                caller_pane_id,
+                request: instruction_request,
+            } => {
+                assert_eq!(instruction_caller, caller());
+                assert_eq!(owner_client_id, 5);
+                assert_eq!(caller_pane_id, Some(PaneId::Plugin(4)));
+                assert_eq!(instruction_request, request);
+            },
+            other => panic!("unexpected {:?}", other),
+        }
+    }
+
+    #[test]
+    fn an_invalid_request_answers_the_caller_with_an_error_and_opens_nothing() {
+        let request = PromptRequest::number("Port").min(5).max(1);
+        match prompt_instruction(caller(), 5, 4, request) {
+            PluginInstruction::Update(updates) => {
+                assert_eq!(updates.len(), 1);
+                let (plugin_id, client_id, event) = &updates[0];
+                assert_eq!((*plugin_id, *client_id), (Some(3), Some(2)));
+                assert!(matches!(
+                    event,
+                    Event::PromptResult(9, PromptResult::Error(message)) if message.contains("min")
+                ));
+            },
+            other => panic!("unexpected {:?}", other),
+        }
+    }
+
+    #[test]
+    fn prompting_needs_permission_to_open_plugins_and_only_the_prompt_plugin_may_reply() {
+        let request = PluginCommand::Prompt {
+            request_id: 1,
+            request: PromptRequest::confirm("x"),
+        };
+        assert_eq!(
+            required_permission(&request),
+            Some(PermissionType::OpenTerminalsOrPlugins)
+        );
+        let reply = PluginCommand::ReplyToPrompt {
+            request_id: 1,
+            result: PromptResult::Cancelled,
+        };
+        assert_eq!(
+            required_permission(&reply),
+            Some(PermissionType::OpenTerminalsOrPlugins)
+        );
+        assert!(may_reply_to_prompt(&RunPluginLocation::Zellij(PluginTag::new(
+            "prompt"
+        ))));
+        assert!(!may_reply_to_prompt(&RunPluginLocation::Zellij(PluginTag::new(
+            "configuration"
+        ))));
+        assert!(!may_reply_to_prompt(&RunPluginLocation::File(PathBuf::from(
+            "/tmp/prompt.wasm"
+        ))));
+    }
 }

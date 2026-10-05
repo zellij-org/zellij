@@ -1060,8 +1060,7 @@ pub struct ListEditor<K: EntryKind> {
     saved: Vec<K::Entry>,
     defaults: Vec<K::Entry>,
     form: Option<EntryForm>,
-    dialog: ConfirmDialog,
-    pending_delete: Option<usize>,
+    pending_delete: Option<(u64, usize)>,
     effects: Vec<Effect>,
     notice: Option<String>,
     base_mode: Option<InputMode>,
@@ -1078,7 +1077,6 @@ impl<K: EntryKind> ListEditor<K> {
             saved: vec![],
             defaults: vec![],
             form: None,
-            dialog: ConfirmDialog::new("", ""),
             pending_delete: None,
             effects: vec![],
             notice: None,
@@ -1301,14 +1299,11 @@ impl<K: EntryKind> ListEditor<K> {
             self.delete_now(index);
             return;
         }
-        self.pending_delete = Some(index);
-        self.dialog = ConfirmDialog::new(
-            format!("Delete {}?", self.kind.noun()),
-            format!("Delete {}?", truncate(&self.kind.summary(&entry), 50)),
-        )
-        .buttons(crate::page::DELETE_BUTTONS.to_vec())
-        .width(64)
-        .opened();
+        let request_id = prompt(crate::page::removal_prompt(format!(
+            "Delete {}?",
+            truncate(&self.kind.summary(&entry), 50)
+        )));
+        self.pending_delete = Some((request_id, index));
     }
     pub fn delete_now(&mut self, index: usize) {
         let mut list = self.current.clone();
@@ -1407,14 +1402,16 @@ impl<K: EntryKind> ListEditor<K> {
             FormResult::Pending => {},
         }
     }
-    fn dialog_response(&mut self, response: UiResponse) {
-        if crate::page::removal_confirmed(&response) {
-            if let Some(index) = self.pending_delete.take() {
-                self.delete_now(index);
-            }
-        }
-        if !self.dialog.is_open() {
-            self.pending_delete = None;
+    fn answer_delete(&mut self, request_id: u64, result: &PromptResult) -> bool {
+        match self.pending_delete {
+            Some((pending_id, index)) if pending_id == request_id => {
+                self.pending_delete = None;
+                if crate::page::removal_confirmed(result) {
+                    self.delete_now(index);
+                }
+                true
+            },
+            _ => false,
         }
     }
 }
@@ -1461,6 +1458,13 @@ pub trait Section {
     fn heading_note(&self) -> Option<String> {
         None
     }
+    fn prompt_result(&mut self, _request_id: u64, _result: &PromptResult) -> bool {
+        false
+    }
+    #[cfg(test)]
+    fn waits_for_prompt(&self) -> bool {
+        false
+    }
     fn render_overlays(&mut self, rows: usize, cols: usize);
     fn busy_hints(&self) -> Vec<(&'static str, &'static str)>;
     fn take_effects(&mut self) -> Vec<Effect>;
@@ -1469,6 +1473,13 @@ pub trait Section {
 }
 
 impl<K: EntryKind> Section for ListEditor<K> {
+    fn prompt_result(&mut self, request_id: u64, result: &PromptResult) -> bool {
+        self.answer_delete(request_id, result)
+    }
+    #[cfg(test)]
+    fn waits_for_prompt(&self) -> bool {
+        self.pending_delete.is_some()
+    }
     fn short_heading(&self) -> String {
         self.kind.short_title()
     }
@@ -1601,14 +1612,9 @@ impl<K: EntryKind> Section for ListEditor<K> {
         self.follow = None;
     }
     fn is_busy(&self) -> bool {
-        self.form.is_some() || self.dialog.is_open()
+        self.form.is_some()
     }
     fn handle_busy_key(&mut self, key: &KeyWithModifier) {
-        if self.dialog.is_open() {
-            let response = self.dialog.handle_key(key);
-            self.dialog_response(response);
-            return;
-        }
         let base_mode = self.base_mode;
         let for_menu = self.for_menu;
         if let Some(form) = self.form.as_mut() {
@@ -1618,12 +1624,6 @@ impl<K: EntryKind> Section for ListEditor<K> {
     }
     fn handle_busy_mouse(&mut self, mouse: Mouse) -> bool {
         let is_hover = matches!(mouse, Mouse::Hover(..));
-        if self.dialog.is_open() {
-            let (response, changed) =
-                changed_by(&mut self.dialog, |dialog| dialog.handle_mouse(mouse));
-            self.dialog_response(response);
-            return changed || !is_hover || !self.dialog.is_open();
-        }
         let base_mode = self.base_mode;
         let for_menu = self.for_menu;
         if let Some(form) = self.form.as_mut() {
@@ -1647,22 +1647,14 @@ impl<K: EntryKind> Section for ListEditor<K> {
         }
     }
     fn busy_over_list(&self) -> bool {
-        self.dialog_form || (self.form.is_none() && self.dialog.is_open())
+        self.dialog_form
     }
     fn render_overlays(&mut self, rows: usize, cols: usize) {
         if let Some(form) = self.form.as_mut() {
             form.render_overlays(rows, cols);
         }
-        self.dialog.render_centered(rows, cols);
     }
     fn busy_hints(&self) -> Vec<(&'static str, &'static str)> {
-        if self.dialog.is_open() {
-            return vec![
-                ("<←→>", "choose"),
-                ("<Enter>", "confirm"),
-                ("<Esc>", "cancel"),
-            ];
-        }
         self.form
             .as_ref()
             .map(|form| form.hints())
@@ -1676,9 +1668,6 @@ impl<K: EntryKind> Section for ListEditor<K> {
     }
     fn close(&mut self) {
         self.form = None;
-        if self.dialog.is_open() {
-            self.dialog.close();
-        }
         self.pending_delete = None;
     }
 }
@@ -1843,9 +1832,8 @@ impl SectionedList {
             search: TextInput::empty()
                 .placeholder("/ to search")
                 .search_mode(),
-            filter: Dropdown::new("Menu", vec![ALL_SECTIONS.to_owned()])
+            filter: Dropdown::new(Text::new("Menu").color_all(0), vec![ALL_SECTIONS.to_owned()])
                 .label_width(SHORT_LABEL_WIDTH)
-                .label_color(0)
                 .accent_brackets(),
             header_focus: HeaderFocus::List,
             section_buttons: vec![],
@@ -1856,9 +1844,8 @@ impl SectionedList {
         let options: Vec<String> = std::iter::once(ALL_SECTIONS.to_owned())
             .chain(self.sections.iter().map(|section| section.short_heading()))
             .collect();
-        self.filter = Dropdown::new(filter_label, options)
+        self.filter = Dropdown::new(Text::new(filter_label).color_all(0), options)
             .label_width(SHORT_LABEL_WIDTH)
-            .label_color(0)
             .accent_brackets();
         self
     }
@@ -2246,6 +2233,20 @@ impl SectionedList {
     }
     pub fn is_busy(&self) -> bool {
         self.busy_section().is_some()
+    }
+    #[cfg(test)]
+    pub fn waits_for_prompt(&self) -> bool {
+        self.sections.iter().any(|section| section.waits_for_prompt())
+    }
+    pub fn prompt_result(&mut self, request_id: u64, result: &PromptResult) -> bool {
+        let handled = self
+            .sections
+            .iter_mut()
+            .any(|section| section.prompt_result(request_id, result));
+        if handled {
+            self.collect();
+        }
+        handled
     }
     fn move_selection(&mut self, steps: isize) -> bool {
         let rows = self.rows();
@@ -2988,9 +2989,20 @@ mod tests {
     fn deleting_asks_first_and_reverting_restores_the_saved_list() {
         let mut editor = editor(false);
         editor.request_delete(0);
-        assert!(editor.is_busy());
+        let (request_id, _) = editor.pending_delete.expect("the delete asks first");
         assert!(Section::take_effects(&mut editor).is_empty());
-        editor.handle_busy_key(&enter());
+        assert!(!editor.answer_delete(request_id + 1, &PromptResult::Cancelled));
+        assert!(editor.answer_delete(
+            request_id,
+            &PromptResult::Answered(PromptValue::Form(
+                [(
+                    crate::page::DONT_ASK_AGAIN.to_owned(),
+                    PromptValue::Bool(false)
+                )]
+                .into_iter()
+                .collect()
+            ))
+        ));
         assert_eq!(
             Section::take_effects(&mut editor),
             vec![Effect::ReplaceBlocks("B=2".to_owned())]
@@ -3026,7 +3038,7 @@ mod tests {
         );
         editor.open_edit(0);
         editor.form_result(FormResult::Delete);
-        assert!(editor.dialog.is_open());
+        assert!(editor.pending_delete.is_some());
     }
 
     #[test]
@@ -3156,7 +3168,7 @@ mod tests {
         );
         assert!(!list.handle_key(&key('d')));
         assert!(list.handle_key(&KeyWithModifier::new(BareKey::Delete)));
-        assert!(list.is_busy());
+        assert!(list.waits_for_prompt());
     }
 
     #[test]

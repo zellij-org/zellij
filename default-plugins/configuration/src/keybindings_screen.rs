@@ -10,8 +10,8 @@ use crate::page::{
     BESIDE_SHORT_FIELD, SHORT_FIELD_WIDTH, SHORT_LABEL_WIDTH,
     action_argument_range, action_display_text, actions_summary, changed_by, confirm_removals, is_click, is_plain, is_shift_tab,
     markers, note_dropdown, note_overlay, outside_overlays, render_frame, print_dim, removal_confirmed,
-    truncate, typed, ColumnLayout, ColumnStyle, Effect, Page, PageResponse,
-    RowLook, RowScroll, DELETE_BUTTONS,
+    removal_prompt, truncate, typed, ColumnLayout, ColumnStyle, Effect, Page, PageResponse,
+    RowLook, RowScroll,
 };
 
 const FORM_LABEL_WIDTH: usize = 9;
@@ -369,7 +369,6 @@ pub fn binding_effects(
 enum DialogPurpose {
     Replace(KeyWithModifier),
     SaveKey(KeyWithModifier),
-    Delete(Vec<KeybindingEntry>),
 }
 
 struct BindingForm {
@@ -410,6 +409,7 @@ pub struct KeybindingsScreen {
     form: Option<BindingForm>,
     dialog: ConfirmDialog,
     dialog_purpose: Option<DialogPurpose>,
+    pending_deletes: Vec<(u64, Vec<KeybindingEntry>)>,
     effects: Vec<Effect>,
     notice: Option<String>,
     client_mode: InputMode,
@@ -429,18 +429,16 @@ impl Default for KeybindingsScreen {
         KeybindingsScreen {
             entries: vec![],
             selection: KeybindsSelectionSnapshot::default(),
-            mode_selector: Dropdown::new("Mode", modes)
+            mode_selector: Dropdown::new(Text::new("Mode").color_all(0), modes)
                 .label_width(SHORT_LABEL_WIDTH)
-                .label_color(0)
                 .accent_brackets(),
             filter: Dropdown::new(
-                "Filter",
+                Text::new("Filter").color_all(0),
                 std::iter::once(ALL_CATEGORIES)
                     .chain(CATEGORY_ORDER.iter().copied())
                     .collect::<Vec<_>>(),
             )
             .label_width(SHORT_LABEL_WIDTH)
-            .label_color(0)
             .accent_brackets(),
             search: TextInput::empty()
                 .placeholder("/ to search keys and actions")
@@ -451,6 +449,7 @@ impl Default for KeybindingsScreen {
             form: None,
             dialog: ConfirmDialog::new("", ""),
             dialog_purpose: None,
+            pending_deletes: vec![],
             effects: vec![],
             notice: None,
             client_mode: InputMode::Normal,
@@ -720,13 +719,22 @@ impl KeybindingsScreen {
                     self.notice = Some("Press another key, or Esc to stop".to_owned());
                 }
             },
-            Some(DialogPurpose::Delete(entries)) => {
-                if removal_confirmed(&response) {
-                    self.remove_now(entries);
-                }
-            },
             None => {},
         }
+    }
+    fn answer_delete(&mut self, request_id: u64, result: &PromptResult) -> bool {
+        let Some(index) = self
+            .pending_deletes
+            .iter()
+            .position(|(pending_id, _)| *pending_id == request_id)
+        else {
+            return false;
+        };
+        let (_, entries) = self.pending_deletes.remove(index);
+        if removal_confirmed(result) {
+            self.remove_now(entries);
+        }
+        true
     }
     fn apply_form(&mut self, actions: Vec<String>) {
         let Some(form) = self.form.take() else {
@@ -1071,45 +1079,28 @@ impl KeybindingsScreen {
             self.remove_now(removable);
             return;
         }
-        let message = match removable.as_slice() {
+        let question = match removable.as_slice() {
             [entry] => {
-                let what = match entry.source {
-                    KeybindingSource::Preset => "This writes an unbind for the preset's key.",
-                    _ => "This deletes your binding from the config file.",
-                };
-                format!(
-                    "Delete {} from {} mode? {}",
-                    entry.key,
-                    mode_name(entry.mode),
-                    what
-                )
+                let key = entry.key.to_string();
+                let key_start = "Delete ".chars().count();
+                let key_end = key_start + key.chars().count();
+                Text::new(format!("Delete {} from {} mode?", key, mode_name(entry.mode)))
+                    .color_range(3, key_start..key_end)
             },
             entries => {
                 let skipped = targets.len() - entries.len();
-                let mut message = format!(
-                    "Delete {} keys? Preset keys get an unbind, your own bindings are deleted from the config file.",
-                    entries.len()
-                );
+                let mut question = format!("Delete {} keys?", entries.len());
                 if skipped > 0 {
-                    message.push_str(&format!(
-                        " {} marked keys cannot be deleted and are left as they are.",
+                    question.push_str(&format!(
+                        " {} marked keys cannot be deleted and stay.",
                         skipped
                     ));
                 }
-                message
+                Text::new(question)
             },
         };
-        let title = if removable.len() == 1 {
-            "Delete key?"
-        } else {
-            "Delete keys?"
-        };
-        self.open_dialog(
-            title,
-            message,
-            DELETE_BUTTONS.to_vec(),
-            DialogPurpose::Delete(removable),
-        );
+        let request_id = prompt(removal_prompt(question));
+        self.pending_deletes.push((request_id, removable));
     }
     fn handle_list_key(&mut self, key: &KeyWithModifier) -> PageResponse {
         self.scroll.follow();
@@ -1429,12 +1420,13 @@ impl KeybindingsScreen {
             .min(width.saturating_sub(content_column))
             .max(5);
         size_button(&mut form.key_button, button_width);
-        form.key_button
-            .set_label(truncate(&key_label, button_width.saturating_sub(4)));
-        if form.key.is_some() && !form.capturing {
-            form.key_button
-                .set_label_colors(&[(3, 0..key_label.chars().count())]);
-        }
+        let shown_key = truncate(&key_label, button_width.saturating_sub(4));
+        let shown_key = if form.key.is_some() && !form.capturing {
+            Text::new(shown_key).color_all(3)
+        } else {
+            Text::new(shown_key)
+        };
+        form.key_button.set_label(shown_key);
         form.key_button.set_focused(key_active);
         form.key_button.render(x + content_column, y);
         form.picker.set_button_width(button_width);
@@ -1903,6 +1895,9 @@ impl Page for KeybindingsScreen {
     }
     fn set_focused(&mut self, focused: bool) {
         self.focused = focused;
+    }
+    fn prompt_result(&mut self, request_id: u64, result: &PromptResult) -> bool {
+        self.answer_delete(request_id, result)
     }
 }
 

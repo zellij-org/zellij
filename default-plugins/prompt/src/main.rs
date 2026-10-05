@@ -1,6 +1,7 @@
 mod app;
 mod form;
 mod outcome;
+mod reply;
 mod request;
 mod store;
 mod ui;
@@ -25,6 +26,7 @@ fn apply(effects: Vec<Effect>) {
             Effect::SetExitCode(pipe_id, exit_code) => set_cli_pipe_exit_code(&pipe_id, exit_code),
             Effect::Output(pipe_id, output) => cli_pipe_output(&pipe_id, &output),
             Effect::UnblockPipe(pipe_id) => unblock_cli_pipe_input(&pipe_id),
+            Effect::ReplyToPrompt(request_id, result) => reply_to_prompt(request_id, result),
             Effect::SetPopupSize(width, height) => set_popup_size(width, height),
             Effect::SetTimeout(seconds) => set_timeout(seconds),
             Effect::ShowSelf => show_self(true),

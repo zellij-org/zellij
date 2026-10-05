@@ -5187,6 +5187,7 @@ dependencies = [
  "openssl-sys",
  "percent-encoding",
  "prost",
+ "regex",
  "rusqlite",
  "serde",
  "serde_json",

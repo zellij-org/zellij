@@ -21,6 +21,21 @@ impl From<StyledText> for Text {
     }
 }
 
+impl From<&String> for Text {
+    fn from(content: &String) -> Self {
+        Text::from(content.clone())
+    }
+}
+
+impl From<Text> for StyledText {
+    fn from(text: Text) -> Self {
+        StyledText {
+            text: text.text,
+            indices: text.indices,
+        }
+    }
+}
+
 impl From<String> for Text {
     fn from(value: String) -> Self {
         Text {
@@ -355,6 +370,125 @@ impl Text {
 
     pub fn content(&self) -> &str {
         &self.text
+    }
+    pub fn width(&self) -> usize {
+        unicode_width::UnicodeWidthStr::width(self.text.as_str())
+    }
+    pub fn is_plain(&self) -> bool {
+        self.indices.iter().all(|level| level.is_empty())
+    }
+    pub fn wrap(&self, width: usize) -> Vec<Text> {
+        let width = width.max(1);
+        let chars: Vec<char> = self.text.chars().collect();
+        let char_width = |character: char| unicode_width::UnicodeWidthChar::width(character).unwrap_or(0);
+        let mut lines: Vec<Vec<Option<usize>>> = vec![];
+        let mut line: Vec<Option<usize>> = vec![];
+        let mut line_width = 0;
+        let mut position = 0;
+        while position <= chars.len() {
+            if position == chars.len() || chars[position] == '\n' {
+                lines.push(std::mem::take(&mut line));
+                line_width = 0;
+                position += 1;
+                continue;
+            }
+            if chars[position].is_whitespace() {
+                position += 1;
+                continue;
+            }
+            let word_end = (position..chars.len())
+                .find(|index| chars[*index].is_whitespace())
+                .unwrap_or(chars.len());
+            let mut word: Vec<usize> = (position..word_end).collect();
+            position = word_end;
+            loop {
+                let word_width: usize = word.iter().map(|index| char_width(chars[*index])).sum();
+                let separator = if line.is_empty() { 0 } else { 1 };
+                if line_width + separator + word_width <= width {
+                    if separator == 1 {
+                        line.push(None);
+                    }
+                    line.extend(word.iter().map(|index| Some(*index)));
+                    line_width += separator + word_width;
+                    break;
+                }
+                if !line.is_empty() {
+                    lines.push(std::mem::take(&mut line));
+                    line_width = 0;
+                    continue;
+                }
+                let mut taken = 0;
+                let mut split_at = 0;
+                for index in &word {
+                    let next = char_width(chars[*index]);
+                    if taken + next > width && split_at > 0 {
+                        break;
+                    }
+                    taken += next;
+                    split_at += 1;
+                }
+                let rest = word.split_off(split_at);
+                lines.push(word.into_iter().map(Some).collect());
+                word = rest;
+                if word.is_empty() {
+                    break;
+                }
+            }
+        }
+        while lines.len() > 1 && lines.last().map(|line| line.is_empty()).unwrap_or(false) {
+            lines.pop();
+        }
+        let levels_at = |original: usize| -> Vec<usize> {
+            self.indices
+                .iter()
+                .enumerate()
+                .filter(|(_, indices)| indices.contains(&original))
+                .map(|(level, _)| level)
+                .collect()
+        };
+        lines
+            .into_iter()
+            .map(|line| {
+                let mut content = String::new();
+                let mut indices: Vec<Vec<usize>> = vec![];
+                let mut mark = |levels: Vec<usize>, column: usize| {
+                    for level in levels {
+                        if indices.len() <= level {
+                            indices.resize(level + 1, vec![]);
+                        }
+                        indices[level].push(column);
+                    }
+                };
+                for (column, original) in line.iter().enumerate() {
+                    match original {
+                        Some(original) => {
+                            content.push(chars[*original]);
+                            mark(levels_at(*original), column);
+                        },
+                        None => {
+                            content.push(' ');
+                            let before = line[..column].iter().rev().find_map(|index| *index);
+                            let after = line[column + 1..].iter().find_map(|index| *index);
+                            if let (Some(before), Some(after)) = (before, after) {
+                                let after_levels = levels_at(after);
+                                let shared = levels_at(before)
+                                    .into_iter()
+                                    .filter(|level| after_levels.contains(level))
+                                    .collect();
+                                mark(shared, column);
+                            }
+                        },
+                    }
+                }
+                Text {
+                    text: content,
+                    selected: self.selected,
+                    opaque: self.opaque,
+                    disabled: self.disabled,
+                    indices,
+                }
+            })
+            .collect()
     }
     fn pad_indices(&mut self, index_level: usize) {
         if self.indices.get(index_level).is_none() {

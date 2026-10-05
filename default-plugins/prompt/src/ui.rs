@@ -17,7 +17,7 @@ pub enum Step {
     Nothing,
     Redraw,
     Done(Outcome),
-    FocusPane(PaneId),
+    NoticeClicked(Option<PaneId>),
 }
 
 impl Step {
@@ -343,6 +343,14 @@ impl Screen {
                 ("<Esc>", "cancel"),
             ],
             Screen::Menu(_) => &[("<↓↑>", "move"), ("<Enter>", "choose"), ("<Esc>", "cancel")],
+            Screen::Form(s) if s.is_dialog() && s.has_switches() => &[
+                ("<Space>", "switch"),
+                ("<Enter>", "confirm"),
+                ("<Esc>", "cancel"),
+            ],
+            Screen::Form(s) if s.is_dialog() => {
+                &[("<Tab>", "next"), ("<Enter>", "confirm"), ("<Esc>", "cancel")]
+            },
             Screen::Form(_) => &[("<Tab>", "next"), ("<Ctrl a>", "save"), ("<Esc>", "cancel")],
             Screen::Notify(_) => &[],
         }
@@ -373,14 +381,14 @@ pub struct ConfirmScreen {
 impl ConfirmScreen {
     pub fn new(
         title: String,
-        message: &str,
+        message: &StyledText,
         yes: &str,
         no: &str,
         default_yes: Option<bool>,
     ) -> Self {
         let selected = if default_yes == Some(false) { 1 } else { 0 };
         ConfirmScreen {
-            dialog: ConfirmDialog::new(title, message)
+            dialog: ConfirmDialog::new(title, Text::from(message.clone()))
                 .buttons(vec![yes.to_owned(), no.to_owned()])
                 .selected(selected)
                 .footer_rows(2)
@@ -808,7 +816,7 @@ pub struct InputScreen {
 
 impl InputScreen {
     pub fn new(
-        message: Option<String>,
+        message: Option<StyledText>,
         placeholder: Option<String>,
         pattern: Option<Pattern>,
         required: bool,
@@ -816,7 +824,7 @@ impl InputScreen {
     ) -> Self {
         let mut input = TextInput::new(default.unwrap_or_default()).focused();
         if let Some(message) = message {
-            input = input.label(message);
+            input = input.label(Text::from(message));
         }
         if let Some(placeholder) = placeholder {
             input = input.placeholder(placeholder);
@@ -880,27 +888,18 @@ impl InputScreen {
 }
 
 pub struct NumberScreen {
-    message: String,
+    message: StyledText,
     min: Option<i64>,
     max: Option<i64>,
     stepper: NumberStepper,
     error: Option<String>,
 }
 
-pub fn range_error(value: i64, min: Option<i64>, max: Option<i64>) -> Option<String> {
-    match (min, max) {
-        (Some(min), Some(max)) if value < min || value > max => {
-            Some(format!("Must be between {} and {}", min, max))
-        },
-        (Some(min), None) if value < min => Some(format!("Must be at least {}", min)),
-        (None, Some(max)) if value > max => Some(format!("Must be at most {}", max)),
-        _ => None,
-    }
-}
+pub use zellij_utils::prompt::range_error;
 
 impl NumberScreen {
     pub fn new(
-        message: Option<String>,
+        message: Option<StyledText>,
         min: Option<i64>,
         max: Option<i64>,
         step: i64,
@@ -977,11 +976,10 @@ impl NumberScreen {
         Step::redraw_if(self.stepper.handle_mouse(mouse).is_handled())
     }
     fn render(&mut self, x: usize, y: usize, width: usize, _height: usize) {
-        let message = truncate(&self.message, width);
-        let length = message.chars().count();
-        let message_left = width.saturating_sub(length) / 2;
+        let message = label_text(&self.message, width);
+        let message_left = width.saturating_sub(text_width(message.content())) / 2;
         print_text_with_coordinates(
-            Text::new(message).color_range(0, 0..length),
+            message,
             x + message_left,
             y,
             Some(width.saturating_sub(message_left)),
@@ -1002,19 +1000,19 @@ impl NumberScreen {
     }
     fn desired_size(&self) -> (usize, usize) {
         (
-            text_width(&self.message).max(self.stepper.width()).max(24) + 4,
+            text_width(&self.message.text).max(self.stepper.width()).max(24) + 4,
             4,
         )
     }
 }
 
 pub struct ToggleScreen {
-    message: String,
+    message: StyledText,
     toggle: Toggle,
 }
 
 impl ToggleScreen {
-    pub fn new(message: Option<String>, on: bool) -> Self {
+    pub fn new(message: Option<StyledText>, on: bool) -> Self {
         ToggleScreen {
             message: message.unwrap_or_default(),
             toggle: Toggle::new("", on).focused(),
@@ -1046,11 +1044,10 @@ impl ToggleScreen {
         Step::redraw_if(self.toggle.handle_mouse(mouse).is_handled())
     }
     fn render(&mut self, x: usize, y: usize, width: usize, _height: usize) {
-        let message = truncate(&self.message, width);
-        let length = message.chars().count();
-        let message_left = width.saturating_sub(length) / 2;
+        let message = label_text(&self.message, width);
+        let message_left = width.saturating_sub(text_width(message.content())) / 2;
         print_text_with_coordinates(
-            Text::new(message).color_range(0, 0..length),
+            message,
             x + message_left,
             y,
             Some(width.saturating_sub(message_left)),
@@ -1060,7 +1057,7 @@ impl ToggleScreen {
         self.toggle.render(x + left, y + 2);
     }
     fn desired_size(&self) -> (usize, usize) {
-        (text_width(&self.message).max(self.toggle.width()) + 4, 4)
+        (text_width(&self.message.text).max(self.toggle.width()) + 4, 4)
     }
 }
 
@@ -1070,9 +1067,9 @@ pub struct SelectScreen {
 }
 
 impl SelectScreen {
-    pub fn new(message: String, options: Vec<String>, default: Option<usize>) -> Self {
+    pub fn new(message: StyledText, options: Vec<String>, default: Option<usize>) -> Self {
         let list_rows = options.len().clamp(1, 8);
-        let mut dropdown = Dropdown::new(message, options)
+        let mut dropdown = Dropdown::new(Text::from(message), options)
             .max_list_rows(list_rows)
             .focused();
         if let Some(default) = default {
@@ -1178,46 +1175,25 @@ pub const NOTICE_MAX_TEXT_WIDTH: usize = 48;
 pub const NOTICE_MIN_TEXT_WIDTH: usize = 20;
 pub const NOTICE_CLOSE_MARK: &str = "✕";
 
-pub fn wrap_text(text: &str, width: usize) -> Vec<String> {
-    let width = width.max(1);
-    let mut lines = vec![];
-    for paragraph in text.split('\n') {
-        let mut line = String::new();
-        for word in paragraph.split_whitespace() {
-            let mut word: String = word.to_owned();
-            loop {
-                let line_width = text_width(&line);
-                let separator = if line.is_empty() { 0 } else { 1 };
-                if line_width + separator + text_width(&word) <= width {
-                    if separator == 1 {
-                        line.push(' ');
-                    }
-                    line.push_str(&word);
-                    break;
-                }
-                if !line.is_empty() {
-                    lines.push(std::mem::take(&mut line));
-                    continue;
-                }
-                let head: String = word.chars().take(width).collect();
-                word = word.chars().skip(width).collect();
-                lines.push(head);
-                if word.is_empty() {
-                    break;
-                }
-            }
+pub fn label_text(styled: &StyledText, width: usize) -> Text {
+    let content = truncate(&styled.text, width);
+    let length = content.chars().count();
+    if styled.is_plain() {
+        return Text::new(content).color_range(0, 0..length);
+    }
+    let mut text = Text::new(content);
+    for (level, indices) in styled.indices.iter().enumerate() {
+        let kept: Vec<usize> = indices.iter().copied().filter(|i| *i < length).collect();
+        if !kept.is_empty() {
+            text = text.color_indices(level, kept);
         }
-        lines.push(line);
     }
-    while lines.len() > 1 && lines.last().map(|l| l.is_empty()).unwrap_or(false) {
-        lines.pop();
-    }
-    lines
+    text
 }
 
 pub struct NotifyScreen {
     title: Option<String>,
-    message: String,
+    message: StyledText,
     pane_name: Option<String>,
     tab_name: Option<String>,
     show_pane_name: bool,
@@ -1234,7 +1210,7 @@ fn non_empty(name: Option<String>) -> Option<String> {
 }
 
 impl NotifyScreen {
-    pub fn new(title: Option<String>, message: String) -> Self {
+    pub fn new(title: Option<String>, message: StyledText) -> Self {
         NotifyScreen {
             title,
             message,
@@ -1342,6 +1318,7 @@ impl NotifyScreen {
     fn text_width_wanted(&self) -> usize {
         let message = self
             .message
+            .text
             .split('\n')
             .map(text_width)
             .max()
@@ -1360,7 +1337,7 @@ impl NotifyScreen {
     }
     pub fn desired_size(&self) -> (usize, usize) {
         let text_width_wanted = self.text_width_wanted();
-        let lines = wrap_text(&self.message, text_width_wanted).len();
+        let lines = Text::from(self.message.clone()).wrap(text_width_wanted).len();
         (text_width_wanted + 4, lines + self.from_rows() + 2)
     }
     pub fn close_mark_column(cols: usize) -> usize {
@@ -1377,9 +1354,7 @@ impl NotifyScreen {
                 if on_close_mark {
                     Step::Done(Outcome::Cancelled)
                 } else {
-                    self.caller_pane
-                        .map(Step::FocusPane)
-                        .unwrap_or(Step::Nothing)
+                    Step::NoticeClicked(self.caller_pane)
                 }
             },
             _ => Step::Nothing,
@@ -1421,7 +1396,7 @@ impl NotifyScreen {
         let body_rows = rows - 2;
         let message_rows = body_rows.saturating_sub(self.from_rows());
         let first_name_row = body_rows.saturating_sub(name_lines.len());
-        let lines = wrap_text(&self.message, text_width_available);
+        let lines = Text::from(self.message.clone()).wrap(text_width_available);
         for row in 0..body_rows {
             let line_y = y + 1 + row;
             print_text_with_coordinates(Text::new("│"), x, line_y, Some(1), None);
@@ -1429,7 +1404,7 @@ impl NotifyScreen {
             if row < message_rows {
                 if let Some(line) = lines.get(row) {
                     print_text_with_coordinates(
-                        Text::new(line.clone()),
+                        line.clone(),
                         x + 2,
                         line_y,
                         Some(text_width_available),
@@ -1465,6 +1440,14 @@ impl NotifyScreen {
 mod tests {
     use super::*;
 
+    fn wrapped(text: &str, width: usize) -> Vec<String> {
+        Text::new(text)
+            .wrap(width)
+            .iter()
+            .map(|line| line.content().to_owned())
+            .collect()
+    }
+
     fn key(bare_key: BareKey) -> KeyWithModifier {
         KeyWithModifier::new(bare_key)
     }
@@ -1476,11 +1459,11 @@ mod tests {
     #[test]
     fn notice_text_is_wrapped_at_word_boundaries() {
         assert_eq!(
-            wrap_text("the build finished without errors", 12),
+            wrapped("the build finished without errors", 12),
             vec!["the build", "finished", "without", "errors"]
         );
-        assert_eq!(wrap_text("abcdefghij", 4), vec!["abcd", "efgh", "ij"]);
-        assert_eq!(wrap_text("one\ntwo", 20), vec!["one", "two"]);
+        assert_eq!(wrapped("abcdefghij", 4), vec!["abcd", "efgh", "ij"]);
+        assert_eq!(wrapped("one\ntwo", 20), vec!["one", "two"]);
     }
 
     fn pane(id: u32, title: &str) -> PaneInfo {
@@ -1506,7 +1489,7 @@ mod tests {
     }
 
     fn notice(show_pane_name: bool, show_tab_name: bool) -> NotifyScreen {
-        let mut screen = NotifyScreen::new(None, "Done".to_owned())
+        let mut screen = NotifyScreen::new(None, "Done".into())
             .with_caller_pane(Some(PaneId::Terminal(3)))
             .showing_names(show_pane_name, show_tab_name);
         screen.set_pane_name(Some("make".to_owned()));
@@ -1536,7 +1519,7 @@ mod tests {
 
     #[test]
     fn the_tab_line_is_only_shown_when_the_sender_is_in_another_tab() {
-        let mut screen = NotifyScreen::new(None, "Done".to_owned())
+        let mut screen = NotifyScreen::new(None, "Done".into())
             .with_caller_pane(Some(PaneId::Terminal(3)));
         screen.set_pane_name(Some("make".to_owned()));
         let same_tab = manifest(vec![(0, vec![pane(3, "make")])]);
@@ -1565,12 +1548,12 @@ mod tests {
 
     #[test]
     fn a_notice_is_sized_for_its_text_and_the_from_line() {
-        let short = NotifyScreen::new(None, "Done".to_owned());
+        let short = NotifyScreen::new(None, "Done".into());
         assert_eq!(short.desired_size(), (NOTICE_MIN_TEXT_WIDTH + 4, 3));
-        let mut with_from = NotifyScreen::new(None, "Done".to_owned());
+        let mut with_from = NotifyScreen::new(None, "Done".into());
         with_from.set_pane_name(Some("shell".to_owned()));
         assert_eq!(with_from.desired_size().1, 5);
-        let long = NotifyScreen::new(None, "word ".repeat(30));
+        let long = NotifyScreen::new(None, "word ".repeat(30).into());
         let (width, height) = long.desired_size();
         assert_eq!(width, NOTICE_MAX_TEXT_WIDTH + 4);
         assert!(height > 3);
@@ -1747,7 +1730,7 @@ mod tests {
             Step::Done(Outcome::Answered(Answer::Bool(false)))
         );
         let mut select = SelectScreen::new(
-            "License".to_owned(),
+            "License".into(),
             vec!["MIT".to_owned(), "Apache-2.0".to_owned()],
             None,
         );
@@ -1840,7 +1823,7 @@ mod tests {
 
     #[test]
     fn toggle_layout_has_the_label_a_blank_line_the_switch_and_a_blank_line() {
-        let toggle = ToggleScreen::new(Some("Enable CI".to_owned()), true);
+        let toggle = ToggleScreen::new(Some("Enable CI".into()), true);
         assert_eq!(toggle.desired_size().1, 4);
     }
 
@@ -1848,5 +1831,17 @@ mod tests {
     fn long_text_is_cut_to_fit() {
         assert_eq!(truncate("abcdef", 4), "abc…");
         assert_eq!(truncate("abc", 4), "abc");
+    }
+
+    #[test]
+    fn styled_questions_are_handed_to_the_widgets() {
+        let colored: StyledText = Text::new("Delete main?").color_range(3, 7..11).into();
+        let input = InputScreen::new(Some(colored.clone()), None, None, false, None);
+        assert!(format!("{:?}", input.input).contains("Delete main?"));
+        assert!(format!("{:?}", input.input).contains("[7, 8, 9, 10]"));
+        let select = SelectScreen::new(colored.clone(), vec!["a".to_owned()], None);
+        assert_eq!(select.dropdown.label(), "Delete main?");
+        let plain = SelectScreen::new("Delete main?".into(), vec!["a".to_owned()], None);
+        assert_eq!(select.desired_size(), plain.desired_size());
     }
 }

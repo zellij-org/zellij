@@ -10,12 +10,15 @@ message PipeMessage {
     optional string payload = 5;
     repeated Arg args = 6;
     bool is_private = 7;
+    optional uint32 prompt_caller_plugin_id = 8;
+    optional uint64 prompt_request_id = 9;
 }
 
 enum PipeSource {
   Cli = 0;
   Plugin = 1;
   Keybind = 2;
+  PromptRequest = 3;
 }
 
 message Arg {

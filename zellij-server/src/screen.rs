@@ -970,6 +970,14 @@ pub enum ScreenInstruction {
         placement: zellij_utils::data::PipePopupPlacement,
         focused: bool,
     },
+    OpenPromptPopup {
+        caller: crate::plugins::PromptCaller,
+        owner_client_id: ClientId,
+        caller_pane_id: Option<PaneId>,
+        run_plugin_or_alias: RunPluginOrAlias,
+        placement: Option<zellij_utils::prompt::PromptPlacement>,
+        focused: bool,
+    },
     CloseTopPopup(ClientId),
     ScrollPopup(ClientId, crate::route::PopupScroll),
     DismissInfoPopups(ClientId, Option<NotificationEnd>),
@@ -1385,6 +1393,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::OpenPluginPopup { .. } => ScreenContext::OpenPluginPopup,
             ScreenInstruction::AddPopup { .. } => ScreenContext::AddPopup,
             ScreenInstruction::OpenPipePopup { .. } => ScreenContext::OpenPipePopup,
+            ScreenInstruction::OpenPromptPopup { .. } => ScreenContext::OpenPromptPopup,
             ScreenInstruction::SetPopupSize { .. } => ScreenContext::SetPopupSize,
             ScreenInstruction::CloseTopPopup(..) => ScreenContext::CloseTopPopup,
             ScreenInstruction::ScrollPopup(..) => ScreenContext::ScrollPopup,
@@ -13805,6 +13814,23 @@ pub(crate) fn screen_thread_main(
                     pipe_id,
                     run_plugin_or_alias,
                     caller_pane_id,
+                    placement,
+                    focused,
+                );
+            },
+            ScreenInstruction::OpenPromptPopup {
+                caller,
+                owner_client_id,
+                caller_pane_id,
+                run_plugin_or_alias,
+                placement,
+                focused,
+            } => {
+                screen.open_prompt_popup(
+                    caller,
+                    owner_client_id,
+                    caller_pane_id,
+                    run_plugin_or_alias,
                     placement,
                     focused,
                 );

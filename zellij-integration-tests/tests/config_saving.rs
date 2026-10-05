@@ -9,7 +9,6 @@ use zellij_integration_tests::{
 };
 
 const ARROW_DOWN: &[u8] = b"\x1b[B";
-const ARROW_RIGHT: &[u8] = b"\x1b[C";
 
 fn open_settings(zellij: &TestSession) {
     zellij.send_stdin(&keys::ctrl('o'));
@@ -113,9 +112,9 @@ fn change_then_edit_the_file_outside(zellij: &TestSession) -> (std::path::PathBu
     std::fs::write(&config_file_path, &outside).unwrap();
     zellij.send_stdin(&keys::ctrl('a'));
     zellij.wait_until("the outside change is reported", |grid_snapshot| {
-        grid_snapshot.contains("Config file changed")
-            && grid_snapshot.contains("Overwrite")
-            && grid_snapshot.contains("Reload")
+        grid_snapshot.contains("changed outside Zellij")
+            && grid_snapshot.contains("Overwrite:")
+            && grid_snapshot.contains("Reload:")
             && grid_snapshot.contains("Cancel")
     });
     (config_file_path, outside)
@@ -142,7 +141,7 @@ fn reload_after_an_outside_edit_keeps_the_changes_unsaved() {
     claim_first_terminal_and_wait_for_prompt(&zellij);
     let (config_file_path, outside) = change_then_edit_the_file_outside(&zellij);
 
-    zellij.send_stdin(ARROW_RIGHT);
+    zellij.send_stdin(ARROW_DOWN);
     zellij.send_stdin(&keys::ENTER);
     zellij.wait_until("reloaded with the change kept", |grid_snapshot| {
         grid_snapshot.contains("Reloaded the config file")
@@ -169,7 +168,7 @@ fn cancel_after_an_outside_edit_writes_nothing() {
     zellij.wait_until("not saved", |grid_snapshot| {
         grid_snapshot.contains("Not saved")
             && grid_snapshot.contains("1 unsaved change ")
-            && !grid_snapshot.contains("Config file changed")
+            && !grid_snapshot.contains("changed outside Zellij")
     });
     assert_eq!(std::fs::read_to_string(&config_file_path).unwrap(), outside);
     zellij.quit();

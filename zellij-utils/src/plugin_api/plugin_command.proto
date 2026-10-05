@@ -11,6 +11,7 @@ import "input_mode.proto";
 import "key.proto";
 import "pane_frame_style.proto";
 import "style.proto";
+import "prompt.proto";
 
 package api.plugin_command;
 
@@ -242,6 +243,8 @@ enum CommandName {
   ReplaceConfigBlocks = 249;
   ResetKeys = 250;
   SaveKeybindsAsPreset = 251;
+  Prompt = 252;
+  ReplyToPrompt = 253;
 }
 
 message PluginCommand {
@@ -425,7 +428,19 @@ message PluginCommand {
     string replace_config_blocks_payload = 192;
     ResetKeysPayload reset_keys_payload = 193;
     SaveKeybindsAsPresetPayload save_keybinds_as_preset_payload = 194;
+    PromptPayload prompt_payload = 195;
+    ReplyToPromptPayload reply_to_prompt_payload = 196;
   }
+}
+
+message PromptPayload {
+  uint64 request_id = 1;
+  api.prompt.PromptRequest request = 2;
+}
+
+message ReplyToPromptPayload {
+  uint64 request_id = 1;
+  api.prompt.PromptResult result = 2;
 }
 
 message SetCliPipeExitCodePayload {

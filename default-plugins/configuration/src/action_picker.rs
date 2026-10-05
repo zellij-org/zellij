@@ -1371,10 +1371,11 @@ impl ActionPicker {
                         {
                             Some(screen_y) => {
                                 let text = action_display_text(&actions[row]);
-                                button.set_label(truncate(&text, label_width));
+                                let mut label = Text::new(truncate(&text, label_width));
                                 if let Some(range) = action_argument_range(&text) {
-                                    button.set_label_colors(&[(0, range)]);
+                                    label = label.color_range(0, range);
                                 }
+                                button.set_label(label);
                                 if number_width > 0 {
                                     let number = format!("{}.", row + 1);
                                     print_text_with_coordinates(

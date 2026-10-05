@@ -1,14 +1,15 @@
 use super::widget_common::{
-    default_label_width, encode_text, is_activation_key, state_flag, state_value, update_hover,
+    default_label_width, is_activation_key, state_flag, state_value, update_hover,
     widget_dcs, Rect, UiResponse, UiValue, Widget,
 };
+use super::text::Text;
 use zellij_utils::data::{KeyWithModifier, Mouse};
 
 pub const TOGGLE_WIDTH: usize = 5;
 
 #[derive(Debug, Clone)]
 pub struct Toggle {
-    label: String,
+    label: Text,
     on: bool,
     label_width: Option<usize>,
     field_width: Option<usize>,
@@ -19,7 +20,7 @@ pub struct Toggle {
 }
 
 impl Toggle {
-    pub fn new(label: impl Into<String>, on: bool) -> Self {
+    pub fn new(label: impl Into<Text>, on: bool) -> Self {
         Toggle {
             label: label.into(),
             on,
@@ -57,7 +58,7 @@ impl Toggle {
         self.disabled = disabled;
     }
     pub fn label(&self) -> &str {
-        &self.label
+        self.label.content()
     }
     pub fn set_field_width(&mut self, field_width: usize) {
         self.field_width = Some(field_width.max(TOGGLE_WIDTH));
@@ -67,7 +68,7 @@ impl Toggle {
     }
     fn effective_label_width(&self) -> usize {
         self.label_width
-            .unwrap_or_else(|| default_label_width(&self.label))
+            .unwrap_or_else(|| default_label_width(self.label.content()))
     }
     fn flip(&mut self) -> UiResponse {
         self.on = !self.on;
@@ -89,7 +90,7 @@ impl Toggle {
             Some(width),
             Some(1),
             &state,
-            &[encode_text(&self.label)],
+            &[self.label.serialize()],
         )
     }
     pub fn render(&mut self, x: usize, y: usize) {
