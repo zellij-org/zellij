@@ -254,7 +254,7 @@ pub fn render_sample(
     height: usize,
 ) {
     print_text_with_coordinates(
-        Text::new(crate::page::truncate(
+        Text::from(crate::page::truncate(
             "Preview (e0-e3 show the emphasis colors)",
             width,
         ))
@@ -282,9 +282,9 @@ pub fn render_sample(
             if line_index == 0 {
                 let label = crate::page::truncate(group.label, LABEL_WIDTH.saturating_sub(1));
                 let text = if focused {
-                    Text::new(label).color_all(3)
+                    Text::from(label).color_all(3)
                 } else {
-                    Text::new(label).dim_all()
+                    Text::from(label).dim_all()
                 };
                 print_text_with_coordinates(text, x, y + row, None, None);
             }

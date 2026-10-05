@@ -440,17 +440,17 @@ impl App {
                     title,
                     "─".repeat(inner.saturating_sub(title_width + 3))
                 );
-                Text::new(line).color_range(2, 3..3 + title_width)
+                Text::from(line).color_range(2, 3..3 + title_width)
             },
-            _ => Text::new(format!("╭{}╮", "─".repeat(inner))),
+            _ => Text::from(format!("╭{}╮", "─".repeat(inner))),
         };
         print_text_with_coordinates(top, 0, 0, Some(cols), None);
         for row in 1..rows - 1 {
-            print_text_with_coordinates(Text::new("│"), 0, row, Some(1), None);
-            print_text_with_coordinates(Text::new("│"), cols - 1, row, Some(1), None);
+            print_text_with_coordinates(Text::from("│"), 0, row, Some(1), None);
+            print_text_with_coordinates(Text::from("│"), cols - 1, row, Some(1), None);
         }
         print_text_with_coordinates(
-            Text::new(format!("╰{}╯", "─".repeat(inner))),
+            Text::from(format!("╰{}╯", "─".repeat(inner))),
             0,
             rows - 1,
             Some(cols),
@@ -478,7 +478,7 @@ impl App {
             let title = truncate(title, width);
             let length = title.chars().count();
             print_text_with_coordinates(
-                Text::new(title).color_range(0, 0..length),
+                Text::from(title).color_range(0, 0..length),
                 x,
                 y,
                 Some(width),

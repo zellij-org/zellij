@@ -582,7 +582,7 @@ impl FormScreen {
                     let label = truncate(&format!("{}{}", field.label, hint), content_width);
                     let label_length = text_width(&field.label).min(label.chars().count());
                     print_text_with_coordinates(
-                        Text::new(label.clone())
+                        Text::from(label.clone())
                             .color_range(0, 0..label_length)
                             .dim_range(label_length..),
                         x,

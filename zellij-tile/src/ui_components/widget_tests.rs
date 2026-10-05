@@ -1133,21 +1133,21 @@ fn dragging_the_scroll_bar_scrolls_until_the_button_is_released() {
 
 #[test]
 fn wrapping_text_keeps_its_colours_on_every_line() {
-    let message = Text::new("Delete Alt n from Normal mode?").color_range(3, 7..12);
+    let message = Text::from("Delete Alt n from Normal mode?").color_range(3, 7..12);
     let lines = message.wrap(9);
     let contents: Vec<&str> = lines.iter().map(|line| line.content()).collect();
     assert_eq!(contents, vec!["Delete", "Alt n", "from", "Normal", "mode?"]);
-    assert_eq!(lines[1].serialize(), Text::new("Alt n").color_range(3, 0..5).serialize());
-    assert_eq!(lines[0].serialize(), Text::new("Delete").serialize());
+    assert_eq!(lines[1].serialize(), Text::from("Alt n").color_range(3, 0..5).serialize());
+    assert_eq!(lines[0].serialize(), Text::from("Delete").serialize());
     assert_eq!(
         message.wrap(60)[0].serialize(),
-        Text::new("Delete Alt n from Normal mode?")
+        Text::from("Delete Alt n from Normal mode?")
             .color_range(3, 7..12)
             .serialize()
     );
-    let apart = Text::new("Delete x y").color_range(3, 7..8);
+    let apart = Text::from("Delete x y").color_range(3, 7..8);
     assert_eq!(apart.wrap(60)[0].serialize(), apart.serialize());
-    let contents: Vec<String> = Text::new("abcdefghij\none")
+    let contents: Vec<String> = Text::from("abcdefghij\none")
         .wrap(4)
         .iter()
         .map(|line| line.content().to_owned())
@@ -1157,7 +1157,7 @@ fn wrapping_text_keeps_its_colours_on_every_line() {
 
 #[test]
 fn labels_and_messages_carry_their_text_styles_to_the_server() {
-    let label = Text::new("Delete main?").color_range(3, 7..11);
+    let label = Text::from("Delete main?").color_range(3, 7..11);
     let serialized = label.serialize();
     assert!(TextInput::new("").label(label.clone()).serialize(0, 0, 40).contains(&serialized));
     assert!(Dropdown::new(label.clone(), vec!["a"]).serialize(0, 0, 40).contains(&serialized));
@@ -1169,6 +1169,6 @@ fn labels_and_messages_carry_their_text_styles_to_the_server() {
         .serialize(0, 0, 60, 20)
         .contains(&serialized));
     assert_eq!(Button::new(label.clone()).label(), "Delete main?");
-    assert_eq!(Button::new("Go").serialize(0, 0), Button::new(Text::new("Go")).serialize(0, 0));
+    assert_eq!(Button::new("Go").serialize(0, 0), Button::new(Text::from("Go")).serialize(0, 0));
     assert!(Button::new("Go").serialize(0, 0).contains(&enc("Go")));
 }

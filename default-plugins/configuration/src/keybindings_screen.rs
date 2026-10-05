@@ -429,11 +429,11 @@ impl Default for KeybindingsScreen {
         KeybindingsScreen {
             entries: vec![],
             selection: KeybindsSelectionSnapshot::default(),
-            mode_selector: Dropdown::new(Text::new("Mode").color_all(0), modes)
+            mode_selector: Dropdown::new(Text::from("Mode").color_all(0), modes)
                 .label_width(SHORT_LABEL_WIDTH)
                 .accent_brackets(),
             filter: Dropdown::new(
-                Text::new("Filter").color_all(0),
+                Text::from("Filter").color_all(0),
                 std::iter::once(ALL_CATEGORIES)
                     .chain(CATEGORY_ORDER.iter().copied())
                     .collect::<Vec<_>>(),
@@ -1084,7 +1084,7 @@ impl KeybindingsScreen {
                 let key = entry.key.to_string();
                 let key_start = "Delete ".chars().count();
                 let key_end = key_start + key.chars().count();
-                Text::new(format!("Delete {} from {} mode?", key, mode_name(entry.mode)))
+                Text::from(format!("Delete {} from {} mode?", key, mode_name(entry.mode)))
                     .color_range(3, key_start..key_end)
             },
             entries => {
@@ -1096,7 +1096,7 @@ impl KeybindingsScreen {
                         skipped
                     ));
                 }
-                Text::new(question)
+                Text::from(question)
             },
         };
         let request_id = prompt(removal_prompt(question));
@@ -1409,7 +1409,7 @@ impl KeybindingsScreen {
             return;
         }
         let key_active = form.capturing || form.focus == FormFocus::Key;
-        let label = Text::new("Key");
+        let label = Text::from("Key");
         let label = if key_active {
             label.color_all(0)
         } else {
@@ -1422,9 +1422,9 @@ impl KeybindingsScreen {
         size_button(&mut form.key_button, button_width);
         let shown_key = truncate(&key_label, button_width.saturating_sub(4));
         let shown_key = if form.key.is_some() && !form.capturing {
-            Text::new(shown_key).color_all(3)
+            Text::from(shown_key).color_all(3)
         } else {
-            Text::new(shown_key)
+            Text::from(shown_key)
         };
         form.key_button.set_label(shown_key);
         form.key_button.set_focused(key_active);
@@ -1433,7 +1433,7 @@ impl KeybindingsScreen {
         let mut row = y + 1;
         for warning in &form.warnings {
             print_text_with_coordinates(
-                Text::new(truncate(
+                Text::from(truncate(
                     &format!("⚠ {}", warning),
                     width.saturating_sub(content_column),
                 ))
@@ -1610,7 +1610,7 @@ impl Page for KeybindingsScreen {
     }
     fn render(&mut self, x: usize, y: usize, width: usize, height: usize) {
         print_text_with_coordinates(
-            Text::new(truncate(TITLE, width)).color_all(2),
+            Text::from(truncate(TITLE, width)).color_all(2),
             x,
             y,
             None,
@@ -1744,7 +1744,7 @@ impl Page for KeybindingsScreen {
                 ListItem::Gap => {},
                 ListItem::Heading(label) => {
                     print_text_with_coordinates(
-                        Text::new(truncate(label, row_width)).color_all(0),
+                        Text::from(truncate(label, row_width)).color_all(0),
                         x,
                         screen_y,
                         None,

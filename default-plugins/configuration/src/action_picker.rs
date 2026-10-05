@@ -1289,7 +1289,7 @@ impl ActionPicker {
     pub fn render(&mut self, x: usize, y: usize, width: usize, height: usize) {
         if matches!(self.stage, Stage::Choose { .. }) {
             print_text_with_coordinates(
-                Text::new(truncate(&self.title, width)).color_all(0),
+                Text::from(truncate(&self.title, width)).color_all(0),
                 x,
                 y,
                 None,
@@ -1314,7 +1314,7 @@ impl ActionPicker {
         let active = self.active;
         match &mut self.stage {
             Stage::List => {
-                let label = Text::new(truncate(&title, width));
+                let label = Text::from(truncate(&title, width));
                 let label = if active && selected < actions.len() {
                     label.color_all(0)
                 } else {
@@ -1371,7 +1371,7 @@ impl ActionPicker {
                         {
                             Some(screen_y) => {
                                 let text = action_display_text(&actions[row]);
-                                let mut label = Text::new(truncate(&text, label_width));
+                                let mut label = Text::from(truncate(&text, label_width));
                                 if let Some(range) = action_argument_range(&text) {
                                     label = label.color_range(0, range);
                                 }
@@ -1379,7 +1379,7 @@ impl ActionPicker {
                                 if number_width > 0 {
                                     let number = format!("{}.", row + 1);
                                     print_text_with_coordinates(
-                                        Text::new(format!(
+                                        Text::from(format!(
                                             "{:>width$}",
                                             number,
                                             width = number_width - 1
@@ -1474,9 +1474,9 @@ impl ActionPicker {
                 self.scroll.clear();
                 group.clear_areas();
                 let label_width = *label_width;
-                print_text_with_coordinates(Text::new("Action").color_all(0), x, y, None, None);
+                print_text_with_coordinates(Text::from("Action").color_all(0), x, y, None, None);
                 print_text_with_coordinates(
-                    Text::new(truncate(spec.name, width.saturating_sub(label_width))),
+                    Text::from(truncate(spec.name, width.saturating_sub(label_width))),
                     x + label_width,
                     y,
                     None,
@@ -1503,7 +1503,7 @@ impl ActionPicker {
                 }
                 if let Some(error) = error {
                     print_text_with_coordinates(
-                        Text::new(truncate(error, width.saturating_sub(label_width)))
+                        Text::from(truncate(error, width.saturating_sub(label_width)))
                             .error_color_all(),
                         x + label_width,
                         row,

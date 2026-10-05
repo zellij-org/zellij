@@ -488,7 +488,7 @@ impl ColumnLayout {
     ) {
         let (line, marker_start) = self.line(columns, marker);
         let line = pad(&line, width);
-        let mut rendered = Text::new(&line);
+        let mut rendered = Text::from(&line);
         if marker_start < width {
             let marker_end = |label: &str| (marker_start + label.chars().count()).min(width);
             if marker.starts_with('●') {
@@ -518,7 +518,7 @@ impl ColumnLayout {
 
 pub fn print_heading(text: &str, x: usize, y: usize, width: usize) {
     print_text_with_coordinates(
-        Text::new(truncate(text, width)).color_all(2),
+        Text::from(truncate(text, width)).color_all(2),
         x,
         y,
         None,
@@ -527,7 +527,7 @@ pub fn print_heading(text: &str, x: usize, y: usize, width: usize) {
 }
 
 pub fn print_dim(text: &str, x: usize, y: usize, width: usize) {
-    print_text_with_coordinates(Text::new(truncate(text, width)).dim_all(), x, y, None, None);
+    print_text_with_coordinates(Text::from(truncate(text, width)).dim_all(), x, y, None, None);
 }
 
 pub fn markers(unsaved: bool, is_default: bool, restart_only: bool) -> String {

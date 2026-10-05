@@ -682,7 +682,7 @@ impl EntryForm {
             let shows_label = true;
             let focused = Some(*key) == focused_key;
             if shows_label {
-                let text = Text::new(truncate(&label, content_column.saturating_sub(1)));
+                let text = Text::from(truncate(&label, content_column.saturating_sub(1)));
                 let text = if focused { text.color_all(0) } else { text };
                 print_text_with_coordinates(text, x, row, None, None);
             }
@@ -701,7 +701,7 @@ impl EntryForm {
         }
         if let Some(error) = &self.error {
             print_text_with_coordinates(
-                Text::new(truncate(error, inner.saturating_sub(content_column)))
+                Text::from(truncate(error, inner.saturating_sub(content_column)))
                     .error_color_all(),
                 x + content_column,
                 row,
@@ -1025,7 +1025,7 @@ impl EntryForm {
         }
         if let Some(error) = &self.error {
             print_text_with_coordinates(
-                Text::new(truncate(error, width)).error_color_all(),
+                Text::from(truncate(error, width)).error_color_all(),
                 x,
                 button_y + 1,
                 None,
@@ -1832,7 +1832,7 @@ impl SectionedList {
             search: TextInput::empty()
                 .placeholder("/ to search")
                 .search_mode(),
-            filter: Dropdown::new(Text::new("Menu").color_all(0), vec![ALL_SECTIONS.to_owned()])
+            filter: Dropdown::new(Text::from("Menu").color_all(0), vec![ALL_SECTIONS.to_owned()])
                 .label_width(SHORT_LABEL_WIDTH)
                 .accent_brackets(),
             header_focus: HeaderFocus::List,
@@ -1844,7 +1844,7 @@ impl SectionedList {
         let options: Vec<String> = std::iter::once(ALL_SECTIONS.to_owned())
             .chain(self.sections.iter().map(|section| section.short_heading()))
             .collect();
-        self.filter = Dropdown::new(Text::new(filter_label).color_all(0), options)
+        self.filter = Dropdown::new(Text::from(filter_label).color_all(0), options)
             .label_width(SHORT_LABEL_WIDTH)
             .accent_brackets();
         self
@@ -2499,7 +2499,7 @@ impl SectionedList {
                             is_selected && index == self.action_choice,
                             self.hovered_action == Some((row_index, index)),
                         );
-                        let text = look.apply(Text::new(label).color_all(3));
+                        let text = look.apply(Text::from(label).color_all(3));
                         print_text_with_coordinates(text, column, screen_y, None, None);
                         spans.push((column, column + label_width));
                         column += label_width + ACTION_GAP;
@@ -2512,7 +2512,7 @@ impl SectionedList {
     fn render_styled(&mut self, title: &str, x: usize, y: usize, width: usize, height: usize) {
         let list_focused = self.focused && self.header_focus == HeaderFocus::List;
         print_text_with_coordinates(
-            Text::new(truncate(title, width)).color_all(2),
+            Text::from(truncate(title, width)).color_all(2),
             x,
             y,
             None,
@@ -2678,7 +2678,7 @@ impl SectionedList {
                     }
                     let length = heading.chars().count();
                     print_text_with_coordinates(
-                        Text::new(truncate(&line, row_width))
+                        Text::from(truncate(&line, row_width))
                             .color_range(0, ..length)
                             .dim_range(length..),
                         x,
@@ -2712,7 +2712,7 @@ impl SectionedList {
                         "─".repeat(rule - rule / 2)
                     );
                     print_text_with_coordinates(
-                        look.apply(Text::new(line).dim_all()),
+                        look.apply(Text::from(line).dim_all()),
                         x,
                         screen_y,
                         None,

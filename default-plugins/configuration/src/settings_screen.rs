@@ -216,7 +216,7 @@ fn key_hints(prefix: &str, hints: &[(&str, &str)], cols: usize) -> Text {
         key_ranges.push(key_start..key_start + key.chars().count());
         line.push_str(&entry);
     }
-    let mut text = Text::new(truncate(&line, cols));
+    let mut text = Text::from(truncate(&line, cols));
     for range in key_ranges {
         text = text.color_range(3, range);
     }
@@ -1692,7 +1692,7 @@ impl SettingsScreen {
                 MIN_COLS, MIN_ROWS
             );
             print_text_with_coordinates(
-                Text::new(truncate(&message, cols)).color_all(3),
+                Text::from(truncate(&message, cols)).color_all(3),
                 0,
                 rows / 2,
                 None,
@@ -1749,7 +1749,7 @@ impl SettingsScreen {
                 count => format!("{} matches", count),
             };
             print_text_with_coordinates(
-                Text::new(truncate(&matches, menu_width)).dim_all(),
+                Text::from(truncate(&matches, menu_width)).dim_all(),
                 x0 + 1,
                 body_y + 1 + SECTION_PADDING,
                 None,
@@ -1811,7 +1811,7 @@ impl SettingsScreen {
             if natural + 2 <= height {
                 let hint_y = y + natural + 1;
                 print_text_with_coordinates(
-                    Text::new(truncate(
+                    Text::from(truncate(
                         "Keybindings ↓ (Tab past the last field, or click here)",
                         width,
                     ))
@@ -1830,7 +1830,7 @@ impl SettingsScreen {
                 self.keys_screen.summary()
             );
             print_text_with_coordinates(
-                Text::new(truncate(&summary, width)).dim_all(),
+                Text::from(truncate(&summary, width)).dim_all(),
                 x,
                 y + 1,
                 None,
@@ -1929,7 +1929,7 @@ impl SettingsScreen {
             if column + 1 >= x + width {
                 continue;
             }
-            let mut marker = Text::new("●").color_all(1);
+            let mut marker = Text::from("●").color_all(1);
             if index == self.menu.selected_index() || self.menu.hovered_index() == Some(index) {
                 marker = marker.selected();
             }
@@ -1975,7 +1975,7 @@ impl SettingsScreen {
         print_text_with_coordinates(header, x, y + 2, None, None);
         match self.header_file() {
             Some(path) => {
-                print_text_with_coordinates(Text::new(FILE_PREFIX), x, y, None, None);
+                print_text_with_coordinates(Text::from(FILE_PREFIX), x, y, None, None);
                 let link_x = x + FILE_PREFIX.chars().count();
                 let link = truncate(&path, cols.saturating_sub(FILE_PREFIX.chars().count()));
                 self.file_link_area = Some(Rect::new(link_x, y, link.chars().count(), 1));
@@ -1984,7 +1984,7 @@ impl SettingsScreen {
             None => {
                 self.file_link_area = None;
                 print_text_with_coordinates(
-                    Text::new(truncate("File: none (settings cannot be saved)", cols)),
+                    Text::from(truncate("File: none (settings cannot be saved)", cols)),
                     x,
                     y,
                     None,
@@ -2059,7 +2059,7 @@ impl SettingsScreen {
         if self.showing_page() || self.showing_bindings() {
             if let Some(notice) = self.notice.as_ref() {
                 print_text_with_coordinates(
-                    Text::new(truncate(notice, cols)).color_all(3),
+                    Text::from(truncate(notice, cols)).color_all(3),
                     x,
                     y,
                     None,
@@ -2082,7 +2082,7 @@ impl SettingsScreen {
         if self.showing_keys_screen() {
             if let Some(notice) = self.notice.as_ref().or(self.keys_screen.notice()) {
                 print_text_with_coordinates(
-                    Text::new(truncate(notice, cols)).color_all(3),
+                    Text::from(truncate(notice, cols)).color_all(3),
                     x,
                     y,
                     None,
@@ -2092,7 +2092,7 @@ impl SettingsScreen {
             }
         } else if let Some(notice) = &self.notice {
             print_text_with_coordinates(
-                Text::new(truncate(notice, cols)).color_all(3),
+                Text::from(truncate(notice, cols)).color_all(3),
                 x,
                 description_y,
                 None,
@@ -2100,7 +2100,7 @@ impl SettingsScreen {
             );
         } else if let Some(description) = self.focused_description() {
             print_text_with_coordinates(
-                Text::new(truncate(&description, cols)).color_all(0),
+                Text::from(truncate(&description, cols)).color_all(0),
                 x,
                 description_y,
                 None,
@@ -2177,7 +2177,7 @@ impl SettingsScreen {
                 Row::Heading(title) => {
                     if let Some(screen_y) = self.scroll.screen_row(start) {
                         print_text_with_coordinates(
-                            Text::new(truncate(&title, content_width)).color_all(2),
+                            Text::from(truncate(&title, content_width)).color_all(2),
                             x,
                             screen_y,
                             None,
@@ -2190,7 +2190,7 @@ impl SettingsScreen {
                         let line = format!("{}  {}", title, value);
                         let title_length = title.chars().count().min(content_width);
                         print_text_with_coordinates(
-                            Text::new(truncate(&line, content_width))
+                            Text::from(truncate(&line, content_width))
                                 .color_range(2, ..title_length),
                             x,
                             screen_y,
@@ -2202,7 +2202,7 @@ impl SettingsScreen {
                 Row::Line(line) => {
                     if let Some(screen_y) = self.scroll.screen_row(start) {
                         print_text_with_coordinates(
-                            Text::new(truncate(&line, content_width)),
+                            Text::from(truncate(&line, content_width)),
                             x,
                             screen_y,
                             None,
@@ -2213,7 +2213,7 @@ impl SettingsScreen {
             }
         }
         if self.rows.is_empty() {
-            print_text_with_coordinates(Text::new("No settings match").dim_all(), x, y, None, None);
+            print_text_with_coordinates(Text::from("No settings match").dim_all(), x, y, None, None);
         }
         self.scroll.render_indicators();
     }
@@ -2275,7 +2275,7 @@ impl SettingsScreen {
             } else {
                 x + width.saturating_sub(marker_width)
             };
-            let mut marker_text = Text::new(&marker);
+            let mut marker_text = Text::from(&marker);
             if unsaved {
                 let unsaved_len = "● unsaved".chars().count();
                 marker_text = marker_text.color_range(1, ..unsaved_len);

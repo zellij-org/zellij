@@ -192,7 +192,7 @@ impl KeysScreen {
             names.extend(self.preset_names());
             self.elements.add(
                 KeysField::Preset,
-                Dropdown::new(Text::new("Preset").color_all(2), names)
+                Dropdown::new(Text::from("Preset").color_all(2), names)
                     .selected(0)
                     .label_width(self.preset_label_width())
                     .accent_brackets(),
@@ -209,7 +209,7 @@ impl KeysScreen {
                 .unwrap_or(0);
             self.elements.add(
                 KeysField::Preset,
-                Dropdown::new(Text::new("Preset").color_all(2), names)
+                Dropdown::new(Text::from("Preset").color_all(2), names)
                     .selected(selected)
                     .label_width(self.preset_label_width())
                     .accent_brackets(),
@@ -764,7 +764,7 @@ impl KeysScreen {
         let line = format!("{}{} {}", prefix, keys, text);
         let keys_start = prefix.chars().count();
         let keys_end = keys_start + keys.chars().count();
-        let mut styled = Text::new(truncate(&line, width))
+        let mut styled = Text::from(truncate(&line, width))
             .unbold_all()
             .color_range(3, keys_start..keys_end);
         let text_start = keys_end + 1;
@@ -838,7 +838,7 @@ impl KeysScreen {
         if self.is_setup_wizard {
             lines.push((
                 row,
-                Text::new(fit(
+                Text::from(fit(
                     "Hi there! How would you like your keybindings to work?",
                 ))
                 .color_all(2),
@@ -846,7 +846,7 @@ impl KeysScreen {
             row += 1;
             lines.push((
                 row,
-                Text::new(fit("You can change this later in the settings screen.")).dim_all(),
+                Text::from(fit("You can change this later in the settings screen.")).dim_all(),
             ));
             row += 2;
         }
@@ -861,7 +861,7 @@ impl KeysScreen {
                     let last = prefix_lines.last().cloned().unwrap_or_default();
                     let last_width = last.chars().count();
                     for (index, line) in prefix_lines.iter().enumerate() {
-                        lines.push((row + index, Text::new(line).unbold_all().dim_all()));
+                        lines.push((row + index, Text::from(line).unbold_all().dim_all()));
                     }
                     row += prefix_lines.len().saturating_sub(1);
                     if last_width + 1 + path.chars().count() <= width {
@@ -874,7 +874,7 @@ impl KeysScreen {
                 },
                 None => {
                     for line in wrap_words(&format!("{} your config file", prefix), width) {
-                        lines.push((row, Text::new(line).unbold_all().dim_all()));
+                        lines.push((row, Text::from(line).unbold_all().dim_all()));
                         row += 1;
                     }
                 },
@@ -888,7 +888,7 @@ impl KeysScreen {
             if self.selection.set_on_command_line {
                 lines.push((
                     row + 1,
-                    Text::new(fit(
+                    Text::from(fit(
                         "Given on the command line for this session; choosing here replaces it",
                     ))
                     .dim_all(),
@@ -908,7 +908,7 @@ impl KeysScreen {
                     .map(|description| self.with_leader_values(description))
                     .unwrap_or_else(|| PRESET_EXPLANATION.to_owned());
                 if self.is_setup_wizard {
-                    lines.push((row, Text::new(fit(&description)).unbold_all().dim_all()));
+                    lines.push((row, Text::from(fit(&description)).unbold_all().dim_all()));
                     row += 1;
                 }
                 for (keys, text) in &active.examples {
@@ -926,7 +926,7 @@ impl KeysScreen {
                 }
             }
             if self.elements.get(&KeysField::Unlock).is_some() {
-                lines.push((row, Text::new("Unlock key")));
+                lines.push((row, Text::from("Unlock key")));
                 rows.push((KeysField::Unlock, row));
                 row += 1;
                 has_leaders = true;
@@ -934,7 +934,7 @@ impl KeysScreen {
             if !has_leaders && !is_file_preset {
                 lines.push((
                     row,
-                    Text::new(fit(
+                    Text::from(fit(
                         "This preset has fixed keys; it has no leader keys to set.",
                     ))
                     .dim_all(),
@@ -950,7 +950,7 @@ impl KeysScreen {
         if self.selection.set_by_layout {
             lines.push((
                 row,
-                Text::new(fit(
+                Text::from(fit(
                     "The current layout chooses its own preset; it replaces this choice while it is loaded.",
                 ))
                 .dim_all(),
@@ -960,7 +960,7 @@ impl KeysScreen {
         if let Some(error) = &self.selection.error {
             lines.push((
                 row,
-                Text::new(fit(&format!("Using the default preset instead: {}", error)))
+                Text::from(fit(&format!("Using the default preset instead: {}", error)))
                     .color_all(3),
             ));
             row += 1;
@@ -974,7 +974,7 @@ impl KeysScreen {
             };
             lines.push((
                 row,
-                Text::new(fit(&format!(
+                Text::from(fit(&format!(
                     "Preset {} failed to load: {}{}",
                     broken.name, broken.error, suffix
                 )))
@@ -983,7 +983,7 @@ impl KeysScreen {
             row += 1;
         }
         if let Some(notice) = self.notice.as_ref().filter(|_| self.is_setup_wizard) {
-            lines.push((row, Text::new(fit(notice)).color_all(3)));
+            lines.push((row, Text::from(fit(notice)).color_all(3)));
             row += 1;
         }
         let total = lines
@@ -1102,7 +1102,7 @@ impl KeysScreen {
             naming.input.render(x, y, width);
             if let Some(error) = &naming.error {
                 print_text_with_coordinates(
-                    Text::new(truncate(error, width)).error_color_all(),
+                    Text::from(truncate(error, width)).error_color_all(),
                     x,
                     y + 1,
                     None,

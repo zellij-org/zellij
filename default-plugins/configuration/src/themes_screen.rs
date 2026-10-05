@@ -79,7 +79,7 @@ pub fn restore_effect(original_unsaved: bool, original_config_themes: &[ThemeEnt
 fn styled_advice(text: String, width: usize, error: Option<usize>, accent: Option<(usize, usize)>) -> Text {
     let text = truncate(&text, width);
     let length = text.chars().count();
-    let mut styled = Text::new(&text);
+    let mut styled = Text::from(&text);
     if let Some(end) = error {
         styled = styled.error_color_range(..end.min(length));
     }
@@ -320,7 +320,7 @@ impl Default for ThemesScreen {
                 .placeholder("/ to search themes")
                 .search_mode(),
             filter: Dropdown::new(
-                Text::new("Source").color_all(0),
+                Text::from("Source").color_all(0),
                 vec![ALL_SOURCES.to_owned()],
             )
             .label_width(SHORT_LABEL_WIDTH)
@@ -522,12 +522,12 @@ impl ThemesScreen {
             }
         );
         let name_end = from.chars().count();
-        let mut message = Text::new(&question).color_range(3, 0..name_end);
+        let mut message = Text::from(&question).color_range(3, 0..name_end);
         if let Some(error) = error {
             let start = question.chars().count() + 1;
             let text = format!("{} {}", question, error);
             let end = text.chars().count();
-            message = Text::new(text)
+            message = Text::from(text)
                 .color_range(3, 0..name_end)
                 .error_color_range(start..end);
         }
@@ -804,7 +804,7 @@ impl ThemesScreen {
         let name_start = "Delete the theme ".chars().count();
         let name_end = name_start + theme.name.chars().count();
         let request_id = prompt(crate::page::removal_prompt(
-            Text::new(format!("Delete the theme {}?", theme.name))
+            Text::from(format!("Delete the theme {}?", theme.name))
                 .color_range(3, name_start..name_end),
         ));
         self.pending_delete = Some((request_id, theme.name));
@@ -839,7 +839,7 @@ impl ThemesScreen {
         let name_start = "Delete the theme ".chars().count();
         let name_end = name_start + theme.name.chars().count();
         let request_id = prompt(
-            PromptRequest::confirm(Text::new(question).color_range(3, name_start..name_end))
+            PromptRequest::confirm(Text::from(question).color_range(3, name_start..name_end))
                 .title("Delete theme")
                 .yes("Delete")
                 .no("Cancel"),
@@ -1270,7 +1270,7 @@ impl ThemesScreen {
     }
     fn render_list(&mut self, x: usize, y: usize, width: usize, height: usize) {
         print_text_with_coordinates(
-            Text::new(truncate(TITLE, width)).color_all(2),
+            Text::from(truncate(TITLE, width)).color_all(2),
             x,
             y,
             None,
@@ -1423,7 +1423,7 @@ impl Page for ThemesScreen {
             self.form_buttons.render(x, y + 4, width);
             if let Some(error) = &form.error {
                 print_text_with_coordinates(
-                    Text::new(truncate(error, width)).error_color_all(),
+                    Text::from(truncate(error, width)).error_color_all(),
                     x,
                     y + 6,
                     None,
@@ -1488,16 +1488,16 @@ impl Page for ThemesScreen {
                     let ratio_x = x + SLOT_LABEL_WIDTH + VALUE_WIDTH + 5;
                     let invalid = !value.trim().is_empty() && parse_colour(&value).is_none();
                     let ratio = if invalid {
-                        Some(Text::new("invalid").error_color_all())
+                        Some(Text::from("invalid").error_color_all())
                     } else {
                         contrasts.get(index).cloned().flatten().map(|found| {
                             let label = format!("{:.1}:1", found.ratio);
                             if found.ratio < LOW_CONTRAST {
-                                Text::new(label).error_color_all()
+                                Text::from(label).error_color_all()
                             } else if found.ratio < GOOD_CONTRAST {
-                                Text::new(label).color_all(3)
+                                Text::from(label).color_all(3)
                             } else {
-                                Text::new(label).dim_all()
+                                Text::from(label).dim_all()
                             }
                         })
                     };
@@ -1519,7 +1519,7 @@ impl Page for ThemesScreen {
             form.buttons.render(x, advice_y + 2, width);
             if let Some(error) = &form.error {
                 print_text_with_coordinates(
-                    Text::new(truncate(error, width)).error_color_all(),
+                    Text::from(truncate(error, width)).error_color_all(),
                     x,
                     advice_y + 3,
                     None,

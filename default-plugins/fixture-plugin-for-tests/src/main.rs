@@ -26,7 +26,7 @@ impl State {
     fn handle_prompt_message(&mut self, name: &str, args: &BTreeMap<String, String>) {
         let request = match name {
             "prompt_confirm" => PromptRequest::confirm(
-                Text::new("Delete branch?").color_range(3, 7..13),
+                Text::from("Delete branch?").color_range(3, 7..13),
             )
                 .yes("Delete")
                 .no("Keep"),

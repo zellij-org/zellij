@@ -102,7 +102,7 @@ pub fn hints_text(hints: &[Hint], status: Option<&str>, width: usize) -> Text {
             status_range = Some(start..start + text_width(status));
         }
     }
-    let mut text = Text::new(line);
+    let mut text = Text::from(line);
     for range in key_ranges {
         text = text.color_range(3, range);
     }
@@ -116,7 +116,7 @@ pub fn print_error(text: &str, x: usize, y: usize, width: usize) {
     let text = truncate(text, width);
     let length = text.chars().count();
     print_text_with_coordinates(
-        Text::new(text).error_color_range(0..length),
+        Text::from(text).error_color_range(0..length),
         x,
         y,
         Some(width),
@@ -701,7 +701,7 @@ impl ChooseScreen {
     fn print_indicator(&self, text: String, x: usize, y: usize, width: usize) {
         let length = text.chars().count();
         print_text_with_coordinates(
-            Text::new(text).color_range(1, 0..length),
+            Text::from(text).color_range(1, 0..length),
             x,
             y,
             Some(width),
@@ -713,7 +713,7 @@ impl ChooseScreen {
         self.search.render(x, y, width);
         if self.items.is_empty() && !self.reading {
             print_text_with_coordinates(
-                Text::new("Nothing to choose from").dim_all(),
+                Text::from("Nothing to choose from").dim_all(),
                 x + 1,
                 y + 1,
                 Some(width.saturating_sub(1)),
@@ -1179,9 +1179,9 @@ pub fn label_text(styled: &StyledText, width: usize) -> Text {
     let content = truncate(&styled.text, width);
     let length = content.chars().count();
     if styled.is_plain() {
-        return Text::new(content).color_range(0, 0..length);
+        return Text::from(content).color_range(0, 0..length);
     }
-    let mut text = Text::new(content);
+    let mut text = Text::from(content);
     for (level, indices) in styled.indices.iter().enumerate() {
         let kept: Vec<usize> = indices.iter().copied().filter(|i| *i < length).collect();
         if !kept.is_empty() {
@@ -1386,7 +1386,7 @@ impl NotifyScreen {
         let close_start = text_width(&top) + 1;
         top.push_str(&close_section);
         top.push('╮');
-        let mut top_text = Text::new(top).color_range(3, close_start..close_start + 1);
+        let mut top_text = Text::from(top).color_range(3, close_start..close_start + 1);
         if let Some(range) = title_range {
             top_text = top_text.color_range(2, range);
         }
@@ -1399,8 +1399,8 @@ impl NotifyScreen {
         let lines = Text::from(self.message.clone()).wrap(text_width_available);
         for row in 0..body_rows {
             let line_y = y + 1 + row;
-            print_text_with_coordinates(Text::new("│"), x, line_y, Some(1), None);
-            print_text_with_coordinates(Text::new("│"), x + cols - 1, line_y, Some(1), None);
+            print_text_with_coordinates(Text::from("│"), x, line_y, Some(1), None);
+            print_text_with_coordinates(Text::from("│"), x + cols - 1, line_y, Some(1), None);
             if row < message_rows {
                 if let Some(line) = lines.get(row) {
                     print_text_with_coordinates(
@@ -1418,7 +1418,7 @@ impl NotifyScreen {
                 let from_line = truncate(from_line, text_width_available);
                 let length = text_width(&from_line);
                 print_text_with_coordinates(
-                    Text::new(from_line).dim_range(0..length),
+                    Text::from(from_line).dim_range(0..length),
                     x + 2,
                     line_y,
                     Some(text_width_available),
@@ -1427,7 +1427,7 @@ impl NotifyScreen {
             }
         }
         print_text_with_coordinates(
-            Text::new(format!("╰{}╯", "─".repeat(inner))),
+            Text::from(format!("╰{}╯", "─".repeat(inner))),
             x,
             y + rows - 1,
             Some(cols),
@@ -1441,7 +1441,7 @@ mod tests {
     use super::*;
 
     fn wrapped(text: &str, width: usize) -> Vec<String> {
-        Text::new(text)
+        Text::from(text)
             .wrap(width)
             .iter()
             .map(|line| line.content().to_owned())
@@ -1835,7 +1835,7 @@ mod tests {
 
     #[test]
     fn styled_questions_are_handed_to_the_widgets() {
-        let colored: StyledText = Text::new("Delete main?").color_range(3, 7..11).into();
+        let colored: StyledText = Text::from("Delete main?").color_range(3, 7..11).into();
         let input = InputScreen::new(Some(colored.clone()), None, None, false, None);
         assert!(format!("{:?}", input.input).contains("Delete main?"));
         assert!(format!("{:?}", input.input).contains("[7, 8, 9, 10]"));
