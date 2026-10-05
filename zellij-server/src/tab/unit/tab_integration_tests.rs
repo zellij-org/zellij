@@ -16839,3 +16839,74 @@ fn mismatched_neighbours_fall_back_to_single_when_the_ambient_style_is_mixed() {
     let snapshot = render_tab(&mut tab, size, client_id);
     assert!(snapshot.contains('│'), "{}", snapshot);
 }
+
+#[test]
+fn selection_stops_on_release_when_terminal_enabled_mouse_tracking_mid_drag() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_event(Position::new(2, 5)),
+        client_id,
+    )
+    .unwrap();
+    assert!(
+        tab.selecting_with_mouse_in_pane.is_some(),
+        "started selecting with mouse on click"
+    );
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_motion_event(Position::new(2, 10)),
+        client_id,
+    )
+    .unwrap();
+    // the application inside the pane enables mouse tracking while the user is
+    // still dragging (eg. a TUI app that was starting up when the drag began)
+    tab.handle_pty_bytes(1, Vec::from("\u{1b}[?1000h".as_bytes()))
+        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_release_event(Position::new(2, 10)),
+        client_id,
+    )
+    .unwrap();
+    assert!(
+        tab.selecting_with_mouse_in_pane.is_none(),
+        "stopped selecting with mouse on release even though the terminal now wants mouse events"
+    );
+}
+
+#[test]
+fn selection_state_cleared_on_release_when_pane_closed_mid_selection() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let new_pane_id = PaneId::Terminal(2);
+    tab.vertical_split(new_pane_id, None, client_id, None, None)
+        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_press_event(Position::new(2, 90)),
+        client_id,
+    )
+    .unwrap();
+    assert_eq!(
+        tab.selecting_with_mouse_in_pane,
+        Some(new_pane_id),
+        "started selecting with mouse in the new pane"
+    );
+    tab.close_pane(new_pane_id, false, None);
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_release_event(Position::new(2, 90)),
+        client_id,
+    )
+    .unwrap();
+    assert!(
+        tab.selecting_with_mouse_in_pane.is_none(),
+        "selection state cleared on release even though the selecting pane was closed mid-drag"
+    );
+}
