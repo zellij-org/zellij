@@ -12,6 +12,15 @@ impl WindowCommand {
     pub fn uses_launcher(&self) -> bool {
         self.arguments.is_empty()
     }
+
+    pub fn command_line(&self) -> String {
+        let program = format!("\"{}\"", self.program.display());
+        if self.arguments.is_empty() {
+            program
+        } else {
+            format!("{} {}", program, self.arguments)
+        }
+    }
 }
 
 pub fn window_command(exe: &Path) -> WindowCommand {
@@ -77,6 +86,27 @@ mod tests {
             }
         );
         assert!(command.uses_launcher());
+    }
+
+    #[test]
+    fn the_command_line_quotes_the_program_and_adds_the_verb_only_without_a_launcher() {
+        let dir = Path::new(r"C:\Program Files\Zellij");
+        let launcher = WindowCommand {
+            program: dir.join("zellij-window.exe"),
+            arguments: "",
+        };
+        assert_eq!(
+            launcher.command_line(),
+            r#""C:\Program Files\Zellij\zellij-window.exe""#
+        );
+        let direct = WindowCommand {
+            program: dir.join("zellij.exe"),
+            arguments: "window",
+        };
+        assert_eq!(
+            direct.command_line(),
+            r#""C:\Program Files\Zellij\zellij.exe" window"#
+        );
     }
 
     #[test]
