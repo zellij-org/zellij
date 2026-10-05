@@ -42,7 +42,7 @@ pub use super::generated_api::api::{
     },
     input_mode::InputMode as ProtobufInputMode,
     key::Key as ProtobufKey,
-    style::Style as ProtobufStyle,
+    style::{Style as ProtobufStyle, Styling as ProtobufStyling},
 };
 #[allow(hidden_glob_reexports)]
 use crate::data::{
@@ -51,7 +51,7 @@ use crate::data::{
     NestedSessionEndReason, NestedSessionKeybinds, NestedSessionKeybindsError,
     NestedSessionKeybindsResponse, PaneContents, PaneId, PaneInfo, PaneManifest, PaneMetadata,
     PaneScrollbackResponse, PermissionStatus, PluginCapabilities, PluginInfo, SelectedText,
-    SessionInfo, Style, StyledText, TabInfo, TabMetadata, WebServerStatus, WebSharing,
+    SessionInfo, Style, StyledText, Styling, TabInfo, TabMetadata, WebServerStatus, WebSharing,
 };
 
 use crate::errors::prelude::*;
@@ -2097,6 +2097,10 @@ impl TryFrom<ProtobufTabInfo> for TabInfo {
             tab_id: protobuf_tab_info.tab_id as usize,
             has_bell_notification: protobuf_tab_info.has_bell_notification,
             is_flashing_bell: protobuf_tab_info.is_flashing_bell,
+            ui_theme: protobuf_tab_info
+                .ui_theme
+                .map(Styling::try_from)
+                .transpose()?,
         })
     }
 }
@@ -2133,6 +2137,10 @@ impl TryFrom<TabInfo> for ProtobufTabInfo {
             tab_id: tab_info.tab_id as u32,
             has_bell_notification: tab_info.has_bell_notification,
             is_flashing_bell: tab_info.is_flashing_bell,
+            ui_theme: tab_info
+                .ui_theme
+                .map(ProtobufStyling::try_from)
+                .transpose()?,
         })
     }
 }
@@ -2696,6 +2704,17 @@ fn serialize_tab_update_event() {
 }
 
 #[test]
+fn tab_info_ui_theme_protobuf_round_trip() {
+    let tab_info = TabInfo {
+        ui_theme: Some(Style::default().colors),
+        ..Default::default()
+    };
+    let protobuf: ProtobufTabInfo = tab_info.clone().try_into().expect("encode");
+    let decoded: TabInfo = protobuf.try_into().expect("decode");
+    assert_eq!(decoded, tab_info);
+}
+
+#[test]
 fn serialize_tab_update_event_with_non_default_values() {
     use prost::Message;
     let tab_update_event = Event::TabUpdate(vec![
@@ -2720,6 +2739,7 @@ fn serialize_tab_update_event_with_non_default_values() {
             tab_id: 0,
             has_bell_notification: false,
             is_flashing_bell: false,
+            ui_theme: None,
         },
         TabInfo {
             position: 1,
@@ -2742,6 +2762,7 @@ fn serialize_tab_update_event_with_non_default_values() {
             tab_id: 1,
             has_bell_notification: false,
             is_flashing_bell: false,
+            ui_theme: None,
         },
         TabInfo::default(),
     ]);
@@ -3068,6 +3089,7 @@ fn serialize_session_update_event_with_non_default_values() {
             tab_id: 0,
             has_bell_notification: false,
             is_flashing_bell: false,
+            ui_theme: None,
         },
         TabInfo {
             position: 1,
@@ -3090,6 +3112,7 @@ fn serialize_session_update_event_with_non_default_values() {
             tab_id: 1,
             has_bell_notification: false,
             is_flashing_bell: false,
+            ui_theme: None,
         },
         TabInfo::default(),
     ];

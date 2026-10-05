@@ -227,6 +227,7 @@ enum CommandName {
   HideSlot = 234;
   ShowSlot = 235;
   CloseSlot = 236;
+  SetUiTheme = 237;
 }
 
 message PluginCommand {
@@ -395,6 +396,7 @@ message PluginCommand {
     uint32 hide_slot_payload = 177;
     ShowSlotPayload show_slot_payload = 178;
     uint32 close_slot_payload = 179;
+    SetUiThemePayload set_ui_theme_payload = 180;
   }
 }
 
@@ -1319,6 +1321,18 @@ message SetPaneColorPayload {
   PaneId pane_id = 1;
   optional string fg = 2;
   optional string bg = 3;
+}
+
+message SetUiThemePayload {
+  UiThemeTarget target = 1;
+  optional string theme_name = 2;
+}
+
+message UiThemeTarget {
+  oneof target {
+    uint64 tab_id = 1;
+    PaneId pane_id = 2;
+  }
 }
 
 message HighlightStyle {

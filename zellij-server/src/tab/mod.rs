@@ -281,6 +281,10 @@ pub(crate) struct Tab {
     mode_info: Rc<RefCell<HashMap<ClientId, ModeInfo>>>,
     default_mode_info: ModeInfo,
     pub style: Style,
+    ui_theme: Option<Styling>,
+    ui_theme_name: Option<String>,
+    pane_ui_themes: HashMap<PaneId, Styling>,
+    pane_ui_theme_names: HashMap<PaneId, String>,
     connected_clients: Rc<RefCell<HashSet<ClientId>>>,
     pane_frame_style: PaneFrameStyle,
     auto_layout: bool,
@@ -1062,6 +1066,10 @@ impl Tab {
             senders,
             should_clear_display_before_rendering: false,
             style,
+            ui_theme: None,
+            ui_theme_name: None,
+            pane_ui_themes: HashMap::new(),
+            pane_ui_theme_names: HashMap::new(),
             mode_info,
             default_mode_info,
             pane_frame_style,
@@ -1805,7 +1813,13 @@ impl Tab {
                 let mut pane_contents_and_ui = PaneContentsAndUi::new(
                     pane_box,
                     output,
-                    self.style,
+                    {
+                        let mut style = self.style;
+                        if let Some(ui_theme) = self.pane_ui_themes.get(member) {
+                            style.colors = *ui_theme;
+                        }
+                        style
+                    },
                     &active_panes,
                     multiple_users_exist_in_session,
                     None,
@@ -5276,6 +5290,7 @@ impl Tab {
                 &self.mouse_help_text_visible,
                 self.mouse_scroll_resize,
                 self.mouse_hover_tips,
+                &self.pane_ui_themes,
             )
             .with_context(err_context)
             .non_fatal();
@@ -5297,6 +5312,7 @@ impl Tab {
                     &self.mouse_help_text_visible,
                     self.mouse_scroll_resize,
                     self.mouse_hover_tips,
+                    &self.pane_ui_themes,
                 )
                 .with_context(err_context)
                 .non_fatal();
@@ -8200,6 +8216,65 @@ impl Tab {
         }
         Ok(())
     }
+    pub fn set_ui_theme(&mut self, name: Option<String>, styling: Option<Styling>) {
+        match (name, styling) {
+            (Some(name), Some(styling)) => {
+                self.ui_theme_name = Some(name);
+                self.ui_theme = Some(styling);
+            },
+            _ => {
+                self.ui_theme_name = None;
+                self.ui_theme = None;
+            },
+        }
+    }
+
+    pub fn set_pane_ui_theme(
+        &mut self,
+        pane_id: PaneId,
+        name: Option<String>,
+        styling: Option<Styling>,
+    ) {
+        match (name, styling) {
+            (Some(name), Some(styling)) => {
+                self.pane_ui_theme_names.insert(pane_id, name);
+                self.pane_ui_themes.insert(pane_id, styling);
+            },
+            _ => {
+                self.pane_ui_theme_names.remove(&pane_id);
+                self.pane_ui_themes.remove(&pane_id);
+            },
+        }
+    }
+
+    pub fn update_ui_themes(&mut self, themes: &HashMap<String, Styling>) {
+        self.ui_theme = self
+            .ui_theme_name
+            .as_deref()
+            .and_then(|name| themes.get(name).copied());
+        if self.ui_theme.is_none() {
+            self.ui_theme_name = None;
+        }
+        self.pane_ui_theme_names.retain(|pane_id, name| {
+            if let Some(styling) = themes.get(name).copied() {
+                self.pane_ui_themes.insert(*pane_id, styling);
+                true
+            } else {
+                self.pane_ui_themes.remove(pane_id);
+                false
+            }
+        });
+    }
+
+    pub fn ui_theme(&self) -> Option<Styling> {
+        self.ui_theme
+    }
+
+    #[cfg(test)]
+    pub fn pane_ui_theme(&self, pane_id: &PaneId) -> Option<Styling> {
+        self.pane_ui_themes.get(pane_id).copied()
+    }
+
     pub fn update_theme(&mut self, theme: Styling) {
         self.style.colors = theme;
         // The tab's `default_mode_info` is what `update_input_modes`
