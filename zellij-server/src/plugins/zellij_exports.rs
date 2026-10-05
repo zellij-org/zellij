@@ -4220,6 +4220,7 @@ fn change_floating_panes_coordinates(
         .senders
         .send_to_screen(ScreenInstruction::ChangeFloatingPanesCoordinates(
             pane_ids_and_coordinates,
+            false,
             None,
         ));
 }

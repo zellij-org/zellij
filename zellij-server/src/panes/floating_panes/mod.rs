@@ -6,7 +6,7 @@ use zellij_utils::{
 
 use crate::panes::kitty_graphics::KittyHostSupport;
 use crate::resize_pty;
-use crate::tab::{pane_info_for_pane, Pane};
+use crate::tab::{pane_info_for_pane, Pane, MIN_TERMINAL_HEIGHT, MIN_TERMINAL_WIDTH};
 use floating_pane_grid::FloatingPaneGrid;
 
 use crate::{
@@ -57,6 +57,7 @@ pub struct FloatingPanes {
     senders: ThreadSenders,
     window_title: Option<String>,
     dimmed_clients: HashSet<ClientId>,
+    panes_with_logged_render_errors: HashSet<PaneId>,
     fullscreen_covers_ui: Rc<RefCell<bool>>,
     fullscreen_pane_id: Option<PaneId>,
     floating_fullscreen_covers_ui: bool,
@@ -102,6 +103,7 @@ impl FloatingPanes {
             senders,
             window_title: None,
             dimmed_clients: HashSet::new(),
+            panes_with_logged_render_errors: HashSet::new(),
             fullscreen_covers_ui,
             fullscreen_pane_id: None,
             floating_fullscreen_covers_ui: false,
@@ -183,7 +185,10 @@ impl FloatingPanes {
     pub fn add_pane(&mut self, pane_id: PaneId, pane: Box<dyn Pane>) {
         self.desired_pane_positions
             .insert(pane_id, pane.position_and_size());
-        self.panes.insert(pane_id, pane);
+        if self.panes.insert(pane_id, pane).is_some() {
+            log::error!("Floating pane {:?} was added twice, replacing it", pane_id);
+        }
+        self.z_indices.retain(|p_id| *p_id != pane_id);
         self.z_indices.push(pane_id);
         self.make_sure_pinned_panes_are_on_top();
     }
@@ -234,6 +239,15 @@ impl FloatingPanes {
                 .insert(with_pane_id, desired_pane_position);
         }
         self.move_clients_between_panes(pane_id, with_pane_id);
+        self.active_panes.retarget_last_pane(pane_id, with_pane_id);
+        if let Some((dragged_pane_id, initial_position, last_position)) =
+            self.pane_being_moved_with_mouse
+        {
+            if dragged_pane_id == pane_id {
+                self.pane_being_moved_with_mouse =
+                    Some((with_pane_id, initial_position, last_position));
+            }
+        }
         let _ = self.set_pane_frames();
         Ok(removed_pane)
     }
@@ -308,21 +322,26 @@ impl FloatingPanes {
         self.show_panes
     }
     pub fn has_active_panes(&self) -> bool {
+        self.has_active_panes_for(None)
+    }
+    pub fn has_active_panes_for(&self, client_id_override: Option<ClientId>) -> bool {
         let connected_clients = self.connected_clients.borrow();
         self.active_panes.iter().any(|(client_id, pane_id)| {
-            connected_clients.contains(client_id) && self.panes.contains_key(pane_id)
+            (connected_clients.contains(client_id) || Some(*client_id) == client_id_override)
+                && self.panes.contains_key(pane_id)
         })
     }
-    pub fn client_has_active_pane(&self, client_id: ClientId) -> bool {
-        self.get_active_pane(client_id).is_some()
+    fn pane_is_remembered_as_focused(&self, pane_id: &PaneId) -> bool {
+        self.panes.contains_key(pane_id) && self.active_panes.pane_id_is_focused(pane_id)
     }
-    fn pane_is_focused_by_connected_client(&self, pane_id: &PaneId) -> bool {
-        let connected_clients = self.connected_clients.borrow();
-        self.active_panes
-            .iter()
-            .any(|(client_id, focused_pane_id)| {
-                connected_clients.contains(client_id) && focused_pane_id == pane_id
-            })
+    fn raise_pane(&mut self, pane_id: PaneId) {
+        if !self.panes.contains_key(&pane_id) {
+            return;
+        }
+        self.z_indices.retain(|p_id| *p_id != pane_id);
+        self.z_indices.push(pane_id);
+        self.make_sure_pinned_panes_are_on_top();
+        self.set_pane_active_at(pane_id);
     }
     pub fn has_panes(&self) -> bool {
         !self.panes.is_empty()
@@ -337,9 +356,13 @@ impl FloatingPanes {
         self.window_title = None; // clear so that it will be re-rendered once we toggle back
         self.show_panes = should_show_floating_panes;
         if should_show_floating_panes {
-            self.active_panes.focus_all_panes(&mut self.panes);
+            let connected_clients = self.connected_clients.borrow().clone();
+            self.active_panes
+                .focus_all_panes(&mut self.panes, &connected_clients);
         } else {
-            self.active_panes.unfocus_all_panes(&mut self.panes);
+            let connected_clients = self.connected_clients.borrow().clone();
+            self.active_panes
+                .unfocus_all_panes(&mut self.panes, &connected_clients);
         }
     }
     pub fn active_panes_contain(&self, client_id: &ClientId) -> bool {
@@ -400,8 +423,8 @@ impl FloatingPanes {
             y: viewport.y,
             ..Default::default()
         };
-        fallback_position.cols = Dimension::fixed(viewport.cols);
-        fallback_position.rows = Dimension::fixed(viewport.rows);
+        fallback_position.cols = Dimension::fixed(viewport.cols.max(MIN_TERMINAL_WIDTH));
+        fallback_position.rows = Dimension::fixed(viewport.rows.max(MIN_TERMINAL_HEIGHT));
         self.position_floating_pane_layout_or(floating_pane_layout, fallback_position)
     }
     fn apply_floating_pane_layout_to_position(
@@ -425,20 +448,22 @@ impl FloatingPanes {
             position.logical_position = Some(*logical_position);
         }
         if position.cols.as_usize() > viewport.cols {
-            position.cols = Dimension::fixed(viewport.cols);
+            position.cols = Dimension::fixed(viewport.cols.max(MIN_TERMINAL_WIDTH));
         }
         if position.rows.as_usize() > viewport.rows {
-            position.rows = Dimension::fixed(viewport.rows);
+            position.rows = Dimension::fixed(viewport.rows.max(MIN_TERMINAL_HEIGHT));
         }
-        if position.x + position.cols.as_usize() > viewport.cols {
+        let max_x = viewport.x + viewport.cols;
+        let max_y = viewport.y + viewport.rows;
+        if position.x + position.cols.as_usize() > max_x {
             position.x = position
                 .x
-                .saturating_sub((position.x + position.cols.as_usize()) - viewport.cols);
+                .saturating_sub((position.x + position.cols.as_usize()) - max_x);
         }
-        if position.y + position.rows.as_usize() > viewport.rows {
+        if position.y + position.rows.as_usize() > max_y {
             position.y = position
                 .y
-                .saturating_sub((position.y + position.rows.as_usize()) - viewport.rows);
+                .saturating_sub((position.y + position.rows.as_usize()) - max_y);
         }
         position
     }
@@ -616,15 +641,18 @@ impl FloatingPanes {
             let b_pos = self.z_indices.iter().position(|id| id == *b_id);
             a_pos.cmp(&b_pos)
         });
-        macro_rules! skip_pane_on_render_error {
-            ($label:lifetime, $result:expr) => {
+        macro_rules! log_render_error {
+            ($logged:expr, $failed:ident, $pane_id:expr, $err_context:expr, $result:expr) => {
                 if let Err(e) = $result {
-                    Err::<(), _>(e).with_context(err_context).non_fatal();
-                    continue $label;
+                    if !$logged.contains(&$pane_id) && !$failed.contains(&$pane_id) {
+                        Err::<(), _>(e).with_context($err_context).non_fatal();
+                    }
+                    $failed.insert($pane_id);
                 }
             };
         }
-        'panes: for (z_index, (kind, pane)) in floating_panes.iter_mut().enumerate() {
+        let mut panes_that_failed_to_render: HashSet<PaneId> = HashSet::new();
+        for (z_index, (kind, pane)) in floating_panes.iter_mut().enumerate() {
             let mut active_panes = active_panes.clone();
             let multiple_users_exist_in_session =
                 { self.connected_clients_in_app.borrow().len() > 1 };
@@ -673,19 +701,28 @@ impl FloatingPanes {
                         && !pane_frame_style.draws_full_frames()
                         && !pane_frame_style.draws_titles());
                 if !skip_frame {
-                    skip_pane_on_render_error!('panes, pane_contents_and_ui.render_pane_frame(
-                        *client_id,
-                        client_mode,
-                        self.session_is_mirrored,
-                        is_floating,
-                        pane_is_selectable,
-                    ));
+                    log_render_error!(
+                        self.panes_with_logged_render_errors,
+                        panes_that_failed_to_render,
+                        **kind,
+                        err_context,
+                        pane_contents_and_ui.render_pane_frame(
+                            *client_id,
+                            client_mode,
+                            self.session_is_mirrored,
+                            is_floating,
+                            pane_is_selectable,
+                        )
+                    );
                 }
                 if let PaneId::Plugin(..) = kind {
-                    skip_pane_on_render_error!(
-                    'panes,
-                                            pane_contents_and_ui.render_pane_contents_for_client(*client_id)
-                                        );
+                    log_render_error!(
+                        self.panes_with_logged_render_errors,
+                        panes_that_failed_to_render,
+                        **kind,
+                        err_context,
+                        pane_contents_and_ui.render_pane_contents_for_client(*client_id)
+                    );
                 }
                 pane_contents_and_ui.render_terminal_title_if_needed(
                     *client_id,
@@ -694,10 +731,13 @@ impl FloatingPanes {
                 );
                 // this is done for panes that don't have their own cursor (eg. panes of
                 // another user)
-                skip_pane_on_render_error!(
-                'panes,
-                                    pane_contents_and_ui.render_fake_cursor_if_needed(*client_id)
-                                );
+                log_render_error!(
+                    self.panes_with_logged_render_errors,
+                    panes_that_failed_to_render,
+                    **kind,
+                    err_context,
+                    pane_contents_and_ui.render_fake_cursor_if_needed(*client_id)
+                );
             }
             if let PaneId::Terminal(..) = kind {
                 if pane_has_guest_modal {
@@ -706,27 +746,41 @@ impl FloatingPanes {
                             pane_contents_and_ui.client_has_guest_modal(*client_id)
                         });
                     if !plain_clients.is_empty() {
-                        skip_pane_on_render_error!('panes, pane_contents_and_ui
-                        .render_pane_contents_to_multiple_clients(
-                            plain_clients.iter().copied()
-                        ));
+                        log_render_error!(
+                            self.panes_with_logged_render_errors,
+                            panes_that_failed_to_render,
+                            **kind,
+                            err_context,
+                            pane_contents_and_ui.render_pane_contents_to_multiple_clients(
+                                plain_clients.iter().copied()
+                            )
+                        );
                     } else {
                         pane_contents_and_ui.drain_pane_render_state();
                     }
                     for client_id in modal_clients {
-                        skip_pane_on_render_error!(
-                        'panes,
-                                                    pane_contents_and_ui.render_guest_modal_for_client(client_id)
-                                                );
+                        log_render_error!(
+                            self.panes_with_logged_render_errors,
+                            panes_that_failed_to_render,
+                            **kind,
+                            err_context,
+                            pane_contents_and_ui.render_guest_modal_for_client(client_id)
+                        );
                     }
                 } else {
-                    skip_pane_on_render_error!('panes, pane_contents_and_ui
-                    .render_pane_contents_to_multiple_clients(
-                        connected_clients.iter().copied()
-                    ));
+                    log_render_error!(
+                        self.panes_with_logged_render_errors,
+                        panes_that_failed_to_render,
+                        **kind,
+                        err_context,
+                        pane_contents_and_ui.render_pane_contents_to_multiple_clients(
+                            connected_clients.iter().copied()
+                        )
+                    );
                 }
             }
         }
+        self.panes_with_logged_render_errors = panes_that_failed_to_render;
         Ok(())
     }
 
@@ -938,7 +992,9 @@ impl FloatingPanes {
         } else {
             self.most_recently_active_selectable_pane(None)
         };
+        let mut newly_focused = false;
         if let Some(updated_active_pane) = updated_active_pane {
+            newly_focused = active_pane_id != Some(updated_active_pane);
             let connected_clients: Vec<ClientId> = connected_clients.iter().copied().collect();
             for client_id in connected_clients {
                 self.focus_pane(updated_active_pane, client_id);
@@ -946,7 +1002,7 @@ impl FloatingPanes {
             self.set_pane_active_at(updated_active_pane);
             self.set_force_render();
         }
-        Ok(false)
+        Ok(newly_focused)
     }
     pub fn focus_pane_on_edge(&mut self, direction: Direction, client_id: ClientId) {
         if self.fullscreen_pane_id.is_some() {
@@ -1242,7 +1298,7 @@ impl FloatingPanes {
 
             // we do this in case this moves the pane under another pane so that the pane user's
             // are focused on will always be on top
-            let is_focused = self.pane_is_focused_by_connected_client(&pane_id);
+            let is_focused = self.pane_is_remembered_as_focused(&pane_id);
             if is_focused {
                 self.z_indices.retain(|p_id| *p_id != pane_id);
                 self.z_indices.push(pane_id);
@@ -1488,6 +1544,7 @@ impl FloatingPanes {
                 }
                 self.active_panes
                     .insert(client_id, pane_to_focus, &mut self.panes);
+                self.raise_pane(pane_to_focus);
             },
             None => {
                 self.active_panes.remove(&client_id, &mut self.panes);
@@ -1621,6 +1678,15 @@ impl FloatingPanes {
         }
         self.pane_being_moved_with_mouse = Some((pane_id, last_position, last_position));
     }
+    #[cfg(test)]
+    pub fn pane_being_moved_with_mouse_id(&self) -> Option<PaneId> {
+        self.pane_being_moved_with_mouse
+            .map(|(pane_id, _, _)| pane_id)
+    }
+    #[cfg(test)]
+    pub fn panes_with_logged_render_errors(&self) -> &HashSet<PaneId> {
+        &self.panes_with_logged_render_errors
+    }
     pub fn pane_is_being_moved_with_mouse(&self) -> bool {
         self.pane_being_moved_with_mouse.is_some()
     }
@@ -1732,7 +1798,7 @@ impl FloatingPanes {
         }
     }
     pub fn reapply_pane_focus(&mut self) {
-        let focused_pane = {
+        let focused_pane_of_connected_client = {
             let connected_clients = self.connected_clients.borrow();
             self.active_panes
                 .iter()
@@ -1740,8 +1806,19 @@ impl FloatingPanes {
                 .map(|(_, pane_id)| *pane_id)
                 .find(|pane_id| self.pane_is_selectable(pane_id))
         };
-        if let Some(focused_pane) = focused_pane {
-            self.focus_pane_for_all_clients(focused_pane);
+        match focused_pane_of_connected_client {
+            Some(focused_pane) => self.focus_pane_for_all_clients(focused_pane),
+            None => {
+                let remembered_focused_pane = self
+                    .active_panes
+                    .values()
+                    .copied()
+                    .find(|pane_id| self.pane_is_selectable(pane_id))
+                    .or_else(|| self.most_recently_active_selectable_pane(None));
+                if let Some(pane_id) = remembered_focused_pane {
+                    self.raise_pane(pane_id);
+                }
+            },
         }
     }
     pub fn get_plugin_pane_id(&self, run_plugin_or_alias: &RunPluginOrAlias) -> Option<PaneId> {
@@ -1762,7 +1839,7 @@ impl FloatingPanes {
         let mut pane_infos = vec![];
         for (pane_id, pane) in self.panes.iter() {
             let mut pane_info_for_pane = pane_info_for_pane(pane_id, pane, current_pane_group);
-            let is_focused = self.pane_is_focused_by_connected_client(pane_id);
+            let is_focused = self.pane_is_remembered_as_focused(pane_id);
             pane_info_for_pane.is_floating = true;
             pane_info_for_pane.is_suppressed = false;
             pane_info_for_pane.is_focused = is_focused;

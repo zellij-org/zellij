@@ -1910,6 +1910,7 @@ pub(crate) fn route_action(
             senders
                 .send_to_screen(ScreenInstruction::ChangeFloatingPanesCoordinates(
                     vec![(pane_id.into(), coordinates)],
+                    true,
                     Some(NotificationEnd::new(completion_tx)),
                 ))
                 .with_context(err_context)?;

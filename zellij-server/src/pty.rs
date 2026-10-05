@@ -89,6 +89,7 @@ pub enum PtyInstruction {
         Option<NotificationEnd>,
     ),
     ClosePane(PaneId, Option<NotificationEnd>),
+    ClosePaneThatWasNotCreated(PaneId, Option<NotificationEnd>),
     CloseTab(Vec<PaneId>),
     ReRunCommandInPane(PaneId, RunCommand, Option<NotificationEnd>),
     DropToShellInPane {
@@ -168,6 +169,9 @@ impl From<&PtyInstruction> for PtyContext {
             PtyInstruction::UpdateActivePane(..) => PtyContext::UpdateActivePane,
             PtyInstruction::GoToTab(..) => PtyContext::GoToTab,
             PtyInstruction::ClosePane(..) => PtyContext::ClosePane,
+            PtyInstruction::ClosePaneThatWasNotCreated(..) => {
+                PtyContext::ClosePaneThatWasNotCreated
+            },
             PtyInstruction::CloseTab(_) => PtyContext::CloseTab,
             PtyInstruction::NewTab(..) => PtyContext::NewTab,
             PtyInstruction::OverrideLayout(..) => PtyContext::OverrideLayout,
@@ -577,14 +581,26 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     ))
                     .with_context(err_context)?;
             },
-            PtyInstruction::ClosePane(id, _completion_tx) => {
-                pty.close_pane(id)
+            PtyInstruction::ClosePane(id, completion_tx) => {
+                let close_result = pty.close_pane(id);
+                let action_unblocks_its_own_client = completion_tx.is_some();
+                drop(completion_tx);
+                close_result
                     .and_then(|_| {
-                        pty.bus
-                            .senders
-                            .send_to_server(ServerInstruction::UnblockInputThread)
+                        if action_unblocks_its_own_client {
+                            Ok(())
+                        } else {
+                            pty.bus
+                                .senders
+                                .send_to_server(ServerInstruction::UnblockInputThread)
+                        }
                     })
                     .with_context(|| format!("failed to close pane {:?}", id))?;
+            },
+            PtyInstruction::ClosePaneThatWasNotCreated(id, completion_tx) => {
+                let close_result = pty.close_pane(id);
+                drop(completion_tx);
+                close_result.with_context(|| format!("failed to close pane {:?}", id))?;
             },
             PtyInstruction::CloseTab(ids) => {
                 pty.close_tab(ids)

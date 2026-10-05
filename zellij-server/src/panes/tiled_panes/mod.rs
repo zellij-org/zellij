@@ -92,6 +92,7 @@ pub struct TiledPanes {
     tombstones_before_increase: Option<(PaneId, Vec<HashMap<PaneId, PaneGeom>>)>,
     tombstones_before_decrease: Option<(PaneId, Vec<HashMap<PaneId, PaneGeom>>)>,
     dimmed_clients: HashSet<ClientId>,
+    panes_with_logged_render_errors: HashSet<PaneId>,
 }
 
 impl TiledPanes {
@@ -139,6 +140,7 @@ impl TiledPanes {
             tombstones_before_increase: None,
             tombstones_before_decrease: None,
             dimmed_clients: HashSet::new(),
+            panes_with_logged_render_errors: HashSet::new(),
         }
     }
     pub fn set_client_dimmed(&mut self, client_id: ClientId, dimmed: bool) {
@@ -199,6 +201,7 @@ impl TiledPanes {
         }
 
         self.move_clients_between_panes(pane_id, with_pane_id);
+        self.active_panes.retarget_last_pane(pane_id, with_pane_id);
         self.reapply_pane_frames();
         Ok(removed_pane)
     }
@@ -1246,15 +1249,18 @@ impl TiledPanes {
             .filter(|(_, p)| p.selectable() && !p.borderless())
             .count();
         let omit_pane_title = self.pane_frame_style.draws_titles() && content_pane_count == 1;
-        macro_rules! skip_pane_on_render_error {
-            ($label:lifetime, $err_context:expr, $result:expr) => {
+        macro_rules! log_render_error {
+            ($logged:expr, $failed:ident, $pane_id:expr, $err_context:expr, $result:expr) => {
                 if let Err(e) = $result {
-                    Err::<(), _>(e).with_context($err_context).non_fatal();
-                    continue $label;
+                    if !$logged.contains(&$pane_id) && !$failed.contains(&$pane_id) {
+                        Err::<(), _>(e).with_context($err_context).non_fatal();
+                    }
+                    $failed.insert($pane_id);
                 }
             };
         }
-        'panes: for (kind, pane) in self.panes.iter_mut() {
+        let mut panes_that_failed_to_render: HashSet<PaneId> = HashSet::new();
+        for (kind, pane) in self.panes.iter_mut() {
             match kind {
                 PaneId::Terminal(_) => {
                     output.add_pane_contents(
@@ -1356,32 +1362,47 @@ impl TiledPanes {
                         || format!("failed to render tiled panes for client {client_id}");
                     if let PaneId::Plugin(..) = kind {
                         if !pane_is_one_liner_in_stack {
-                            skip_pane_on_render_error!('panes, err_context, pane_contents_and_ui
-                                .render_pane_contents_for_client(*client_id));
+                            log_render_error!(
+                                self.panes_with_logged_render_errors,
+                                panes_that_failed_to_render,
+                                *kind,
+                                err_context,
+                                pane_contents_and_ui.render_pane_contents_for_client(*client_id)
+                            );
                         }
                     }
                     let is_floating = false;
                     if pane_is_no_ui_fullscreen {
                     } else if self.pane_frame_style.draws_full_frames() {
-                        skip_pane_on_render_error!('panes, err_context, pane_contents_and_ui
-                        .render_pane_frame(
-                            *client_id,
-                            client_mode,
-                            self.session_is_mirrored,
-                            is_floating,
-                            pane_is_selectable,
-                        ));
+                        log_render_error!(
+                            self.panes_with_logged_render_errors,
+                            panes_that_failed_to_render,
+                            *kind,
+                            err_context,
+                            pane_contents_and_ui.render_pane_frame(
+                                *client_id,
+                                client_mode,
+                                self.session_is_mirrored,
+                                is_floating,
+                                pane_is_selectable,
+                            )
+                        );
                     } else if (self.pane_frame_style.draws_titles() || pane_is_stacked)
                         && reserved_rows_for_pane == 0
                     {
-                        skip_pane_on_render_error!('panes, err_context, pane_contents_and_ui
-                        .render_pane_frame(
-                            *client_id,
-                            client_mode,
-                            self.session_is_mirrored,
-                            is_floating,
-                            pane_is_selectable,
-                        ));
+                        log_render_error!(
+                            self.panes_with_logged_render_errors,
+                            panes_that_failed_to_render,
+                            *kind,
+                            err_context,
+                            pane_contents_and_ui.render_pane_frame(
+                                *client_id,
+                                client_mode,
+                                self.session_is_mirrored,
+                                is_floating,
+                                pane_is_selectable,
+                            )
+                        );
                         let boundaries =
                             client_id_to_boundaries
                                 .entry(*client_id)
@@ -1419,8 +1440,13 @@ impl TiledPanes {
                     );
                     // this is done for panes that don't have their own cursor (eg. panes of
                     // another user)
-                    skip_pane_on_render_error!('panes, err_context, pane_contents_and_ui
-                        .render_fake_cursor_if_needed(*client_id));
+                    log_render_error!(
+                        self.panes_with_logged_render_errors,
+                        panes_that_failed_to_render,
+                        *kind,
+                        err_context,
+                        pane_contents_and_ui.render_fake_cursor_if_needed(*client_id)
+                    );
                 }
                 if let PaneId::Terminal(..) = kind {
                     if !pane_is_one_liner_in_stack {
@@ -1430,27 +1456,43 @@ impl TiledPanes {
                                     pane_contents_and_ui.client_has_guest_modal(*client_id)
                                 });
                             if !plain_clients.is_empty() {
-                                skip_pane_on_render_error!('panes, err_context, pane_contents_and_ui
-                                .render_pane_contents_to_multiple_clients(
-                                    plain_clients.iter().copied(),
-                                ));
+                                log_render_error!(
+                                    self.panes_with_logged_render_errors,
+                                    panes_that_failed_to_render,
+                                    *kind,
+                                    err_context,
+                                    pane_contents_and_ui.render_pane_contents_to_multiple_clients(
+                                        plain_clients.iter().copied(),
+                                    )
+                                );
                             } else {
                                 pane_contents_and_ui.drain_pane_render_state();
                             }
                             for client_id in modal_clients {
-                                skip_pane_on_render_error!('panes, err_context, pane_contents_and_ui
-                                    .render_guest_modal_for_client(client_id));
+                                log_render_error!(
+                                    self.panes_with_logged_render_errors,
+                                    panes_that_failed_to_render,
+                                    *kind,
+                                    err_context,
+                                    pane_contents_and_ui.render_guest_modal_for_client(client_id)
+                                );
                             }
                         } else {
-                            skip_pane_on_render_error!('panes, err_context, pane_contents_and_ui
-                            .render_pane_contents_to_multiple_clients(
-                                connected_clients.iter().copied(),
-                            ));
+                            log_render_error!(
+                                self.panes_with_logged_render_errors,
+                                panes_that_failed_to_render,
+                                *kind,
+                                err_context,
+                                pane_contents_and_ui.render_pane_contents_to_multiple_clients(
+                                    connected_clients.iter().copied(),
+                                )
+                            );
                         }
                     }
                 }
             }
         }
+        self.panes_with_logged_render_errors = panes_that_failed_to_render;
         // render boundaries if needed
         for (client_id, boundaries) in client_id_to_boundaries {
             let mut boundaries_to_render = match boundaries
@@ -2970,10 +3012,14 @@ impl TiledPanes {
         self.panes_to_hide.remove(&pid);
     }
     pub fn unfocus_all_panes(&mut self) {
-        self.active_panes.unfocus_all_panes(&mut self.panes);
+        let connected_clients = self.connected_clients.borrow().clone();
+        self.active_panes
+            .unfocus_all_panes(&mut self.panes, &connected_clients);
     }
     pub fn focus_all_panes(&mut self) {
-        self.active_panes.focus_all_panes(&mut self.panes);
+        let connected_clients = self.connected_clients.borrow().clone();
+        self.active_panes
+            .focus_all_panes(&mut self.panes, &connected_clients);
     }
     pub fn drain(&mut self) -> BTreeMap<PaneId, Box<dyn Pane>> {
         self.unset_fullscreen();

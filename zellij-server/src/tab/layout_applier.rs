@@ -21,7 +21,7 @@ use zellij_utils::{
     data::{Palette, Style},
     input::layout::{FloatingPaneLayout, Run, RunPluginOrAlias, TiledPaneLayout},
     input::options::PaneFrameStyle,
-    pane_size::{PaneGeom, Size, SizeInPixels, Viewport},
+    pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},
 };
 
 pub struct LayoutApplier<'a> {
@@ -122,12 +122,33 @@ impl<'a> LayoutApplier<'a> {
     ) -> Result<bool> {
         // true => should_show_floating_panes
         let hide_floating_panes = layout.hide_floating_panes;
-        self.apply_tiled_panes_layout(layout, new_terminal_ids, &mut new_plugin_ids, client_id)?;
-        let layout_has_floating_panes = self.apply_floating_panes_layout(
-            floating_panes_layout,
-            new_floating_terminal_ids,
-            &mut new_plugin_ids,
-        )?;
+        let result = self
+            .apply_tiled_panes_layout(
+                layout,
+                new_terminal_ids.clone(),
+                &mut new_plugin_ids,
+                client_id,
+            )
+            .and_then(|_| {
+                self.apply_floating_panes_layout(
+                    floating_panes_layout,
+                    new_floating_terminal_ids.clone(),
+                    &mut new_plugin_ids,
+                )
+            });
+        if result.is_err() {
+            self.close_unused_floating_terminal_ids(
+                new_terminal_ids
+                    .iter()
+                    .chain(new_floating_terminal_ids.iter())
+                    .filter(|(pid, _)| {
+                        !self.floating_panes.panes_contain(&PaneId::Terminal(*pid))
+                            && !self.tiled_panes.panes_contain(&PaneId::Terminal(*pid))
+                    }),
+            );
+        }
+        self.unload_unused_plugin_ids(&new_plugin_ids);
+        let layout_has_floating_panes = result?;
         let should_show_floating_panes = layout_has_floating_panes && !hide_floating_panes;
         return Ok(should_show_floating_panes);
     }
@@ -144,29 +165,40 @@ impl<'a> LayoutApplier<'a> {
     ) -> Result<bool> {
         // true => should_show_floating_panes
         let hide_floating_panes = tiled_panes_layout.hide_floating_panes;
-        self.override_tiled_panes_layout_for_existing_panes(
-            &tiled_panes_layout,
-            new_terminal_ids,
-            &mut new_plugin_ids,
-            retain_existing_terminal_panes,
-            retain_existing_plugin_panes,
-            client_id,
-        )?;
-
-        let layout_has_floating_panes = self.override_floating_panes_layout_for_existing_panes(
-            &floating_panes_layout,
-            new_floating_terminal_ids,
-            &mut new_plugin_ids,
-            retain_existing_terminal_panes,
-            retain_existing_plugin_panes,
-        )?;
+        let result = self
+            .override_tiled_panes_layout_for_existing_panes(
+                &tiled_panes_layout,
+                new_terminal_ids,
+                &mut new_plugin_ids,
+                retain_existing_terminal_panes,
+                retain_existing_plugin_panes,
+                client_id,
+            )
+            .and_then(|_| {
+                self.override_floating_panes_layout_for_existing_panes(
+                    &floating_panes_layout,
+                    new_floating_terminal_ids.clone(),
+                    &mut new_plugin_ids,
+                    retain_existing_terminal_panes,
+                    retain_existing_plugin_panes,
+                )
+            });
+        if result.is_err() {
+            self.close_unused_floating_terminal_ids(
+                new_floating_terminal_ids
+                    .iter()
+                    .filter(|(pid, _)| !self.floating_panes.panes_contain(&PaneId::Terminal(*pid))),
+            );
+        }
+        self.unload_unused_plugin_ids(&new_plugin_ids);
+        let layout_has_floating_panes = result?;
         let should_show_floating_panes = layout_has_floating_panes && !hide_floating_panes;
         return Ok(should_show_floating_panes);
     }
     pub fn apply_tiled_panes_layout_to_existing_panes(
         &mut self,
         layout: &TiledPaneLayout,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         let positions_in_layout = self.flatten_layout(layout, true)?;
 
         let mut existing_tab_state = ExistingTabState::new(self.tiled_panes.drain());
@@ -222,13 +254,14 @@ impl<'a> LayoutApplier<'a> {
         // add the rest of the panes where tiled_panes finds room for them (eg. if the layout had
         // less panes than we've got in our state)
         let remaining_pane_ids: Vec<PaneId> = existing_tab_state.pane_ids();
-        pane_applier.handle_remaining_tiled_pane_ids(
+        let panes_were_floated = pane_applier.handle_remaining_tiled_pane_ids(
             remaining_pane_ids,
             existing_tab_state,
             None,
             None,
         );
         pane_applier.finalize_tiled_state();
+        self.tiled_panes.move_client_focus_to_existing_panes();
 
         LayoutApplier::offset_viewport(
             self.viewport.clone(),
@@ -236,7 +269,7 @@ impl<'a> LayoutApplier<'a> {
             self.tiled_panes,
             self.pane_frame_style,
         );
-        Ok(())
+        Ok(panes_were_floated)
     }
     pub fn override_tiled_panes_layout_for_existing_panes(
         &mut self,
@@ -286,11 +319,11 @@ impl<'a> LayoutApplier<'a> {
             retain_existing_plugin_panes,
         );
 
-        let (focus_pane_id, pane_ids_expanded_in_stack) = self.position_new_panes(
+        let position_result = self.position_new_panes(
             &mut new_terminal_ids,
             &mut new_plugin_ids,
             &mut positions_left_without_exact_matches,
-        )?;
+        );
 
         // we do this because we have to add the remaining tiled pane ids ONLY AFTER positioning
         // the new panes, otherwise the layout might get borked
@@ -300,16 +333,23 @@ impl<'a> LayoutApplier<'a> {
             &self.senders,
             &self.character_cell_size,
         );
-        if retain_existing_terminal_panes || retain_existing_plugin_panes {
-            pane_applier.handle_remaining_tiled_pane_ids(
-                remaining_pane_ids,
-                existing_tab_state,
-                last_logical_position,
-                Some(client_id),
-            );
-        }
-
+        let remaining_pane_ids: Vec<PaneId> = existing_tab_state.pane_ids();
+        pane_applier.handle_remaining_tiled_pane_ids(
+            remaining_pane_ids,
+            existing_tab_state,
+            last_logical_position,
+            Some(client_id),
+        );
+        let (focus_pane_id, pane_ids_expanded_in_stack) = match position_result {
+            Ok(result) => result,
+            Err(e) => {
+                self.close_unused_terminal_ids(&new_terminal_ids);
+                self.tiled_panes.move_client_focus_to_existing_panes();
+                return Err(e);
+            },
+        };
         pane_applier.finalize_tiled_state();
+        self.close_unused_terminal_ids(&new_terminal_ids);
 
         if let Some(pane_id) = focus_pane_id {
             *self.focus_pane_id = Some(pane_id);
@@ -476,10 +516,20 @@ impl<'a> LayoutApplier<'a> {
         };
         for (layout, position_and_size) in positions_in_layout {
             if let Some(Run::Plugin(run)) = layout.run.clone() {
-                let pid =
-                    self.new_tiled_plugin_pane(run, new_plugin_ids, &position_and_size, &layout)?;
+                let pid = match self.new_tiled_plugin_pane(
+                    run,
+                    new_plugin_ids,
+                    &position_and_size,
+                    &layout,
+                ) {
+                    Ok(pid) => pid,
+                    Err(e) => {
+                        Err::<(), _>(e).non_fatal();
+                        continue;
+                    },
+                };
                 if layout.is_expanded_in_stack {
-                    pane_ids_expanded_in_stack.push(PaneId::Terminal(pid));
+                    pane_ids_expanded_in_stack.push(PaneId::Plugin(pid));
                 }
                 set_focus_pane_id(&layout, PaneId::Plugin(pid));
             } else if !new_terminal_ids.is_empty() {
@@ -504,10 +554,12 @@ impl<'a> LayoutApplier<'a> {
                 .assign_geom_for_pane_with_run(run_instruction);
         }
         for (unused_pid, _) in new_terminal_ids {
-            let _ = self.senders.send_to_pty(PtyInstruction::ClosePane(
-                PaneId::Terminal(*unused_pid),
-                None,
-            ));
+            let _ = self
+                .senders
+                .send_to_pty(PtyInstruction::ClosePaneThatWasNotCreated(
+                    PaneId::Terminal(*unused_pid),
+                    None,
+                ));
         }
     }
     fn new_tiled_plugin_pane(
@@ -1049,6 +1101,25 @@ impl<'a> LayoutApplier<'a> {
             Ok(false)
         }
     }
+    fn close_unused_terminal_ids(&self, unused_terminal_ids: &[(u32, HoldForCommand)]) {
+        for (unused_pid, _) in unused_terminal_ids {
+            log::error!("No pane in layout for terminal {}, closing it", unused_pid);
+            let _ = self
+                .senders
+                .send_to_pty(PtyInstruction::ClosePaneThatWasNotCreated(
+                    PaneId::Terminal(*unused_pid),
+                    None,
+                ));
+        }
+    }
+    fn unload_unused_plugin_ids(&self, new_plugin_ids: &HashMap<RunPluginOrAlias, Vec<u32>>) {
+        for plugin_id in new_plugin_ids.values().flatten() {
+            log::error!("No pane in layout for plugin {}, unloading it", plugin_id);
+            let _ = self
+                .senders
+                .send_to_plugin(PluginInstruction::Unload(*plugin_id));
+        }
+    }
     fn close_unused_floating_terminal_ids<'b>(
         &self,
         unused_terminal_ids: impl Iterator<Item = &'b (u32, HoldForCommand)>,
@@ -1058,10 +1129,12 @@ impl<'a> LayoutApplier<'a> {
                 "No floating pane in layout for terminal {}, closing it",
                 unused_pid
             );
-            let _ = self.senders.send_to_pty(PtyInstruction::ClosePane(
-                PaneId::Terminal(*unused_pid),
-                None,
-            ));
+            let _ = self
+                .senders
+                .send_to_pty(PtyInstruction::ClosePaneThatWasNotCreated(
+                    PaneId::Terminal(*unused_pid),
+                    None,
+                ));
         }
     }
     fn resize_whole_tab(&mut self, new_screen_size: Size) -> Result<()> {
@@ -1418,10 +1491,11 @@ impl<'a> PaneApplier<'a> {
         mut existing_tab_state: ExistingTabState,
         mut last_logical_position: Option<usize>,
         client_id: Option<ClientId>,
-    ) {
+    ) -> bool {
+        let mut panes_were_floated = false;
         for pane_id in remaining_pane_ids {
             if let Some(pane) = existing_tab_state.remove_pane(&pane_id) {
-                if let Some(unplaced_pane) =
+                if let Some(mut unplaced_pane) =
                     self.tiled_panes.insert_pane(pane.pid(), pane, client_id)
                 {
                     log::error!("No room for pane {:?} in layout, floating it", pane_id);
@@ -1429,7 +1503,11 @@ impl<'a> PaneApplier<'a> {
                         .floating_panes
                         .find_room_for_new_pane()
                         .unwrap_or_else(|| unplaced_pane.position_and_size());
+                    if !unplaced_pane.borderless() {
+                        unplaced_pane.set_content_offset(Offset::frame(1));
+                    }
                     self.apply_position_and_size_to_floating_pane(unplaced_pane, position_and_size);
+                    panes_were_floated = true;
                     continue;
                 }
                 if let Some(l) = last_logical_position.take() {
@@ -1438,6 +1516,7 @@ impl<'a> PaneApplier<'a> {
                 }
             }
         }
+        panes_were_floated
     }
     pub fn handle_remaining_floating_pane_ids(
         &mut self,

@@ -222,6 +222,7 @@ pub struct WasmBridge {
     // message,
     // payload>
     loading_plugins: HashSet<(PluginId, RunPlugin)>, // tracks loading plugins without handles
+    plugins_to_unload_once_loaded: HashSet<PluginId>,
     pending_plugin_reloads: HashSet<RunPlugin>,
     path_to_default_shell: PathBuf,
     watcher: Option<Debouncer<RecommendedWatcher, RecommendedCache>>,
@@ -292,6 +293,7 @@ impl WasmBridge {
             cached_resizes_for_pending_plugins: HashMap::new(),
             cached_worker_messages: HashMap::new(),
             loading_plugins: HashSet::new(),
+            plugins_to_unload_once_loaded: HashSet::new(),
             pending_plugin_reloads: HashSet::new(),
             zellij_cwd,
             session_env_vars,
@@ -575,6 +577,15 @@ impl WasmBridge {
         if self.shared_slot_owner.contains_key(&pid) {
             self.unload_shared_slot(pid);
             return Ok(());
+        }
+        if self
+            .loading_plugins
+            .iter()
+            .any(|(loading_plugin_id, _)| *loading_plugin_id == pid)
+        {
+            self.loading_plugins
+                .retain(|(loading_plugin_id, _)| *loading_plugin_id != pid);
+            self.plugins_to_unload_once_loaded.insert(pid);
         }
 
         // Remove from plugin_map on main thread
@@ -1414,6 +1425,9 @@ impl WasmBridge {
             self.loading_plugins
                 .retain(|(p_id, _run_plugin)| p_id != &plugin_id);
             self.clear_plugin_map_cache();
+            if self.plugins_to_unload_once_loaded.remove(&plugin_id) {
+                self.unload_plugin(plugin_id).non_fatal();
+            }
         }
         for run_plugin in applied_plugin_paths.drain() {
             if self.pending_plugin_reloads.remove(&run_plugin) {
@@ -1654,6 +1668,7 @@ impl WasmBridge {
 
     pub fn cleanup(&mut self) {
         self.loading_plugins.clear();
+        self.plugins_to_unload_once_loaded.clear();
 
         let plugin_ids = self.plugin_map.lock().unwrap().plugin_ids();
         for plugin_id in &plugin_ids {

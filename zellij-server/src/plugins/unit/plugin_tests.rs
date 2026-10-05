@@ -13651,3 +13651,80 @@ pub fn nested_session_events_reach_subscribed_plugins() {
         scenario.rendered
     );
 }
+
+#[test]
+pub fn plugin_unloaded_while_loading_does_not_run_once_loaded() {
+    let temp_folder = tempdir().unwrap();
+    let cache_path = PathBuf::from(temp_folder.path()).join("permissions_test.kdl");
+    let (plugin_thread_sender, screen_receiver, teardown) = create_plugin_thread(None, None);
+    let run_plugin = RunPluginOrAlias::RunPlugin(RunPlugin {
+        _allow_exec_host_cmd: false,
+        location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
+        ..Default::default()
+    });
+    let client_id = 1;
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
+    let _ = plugin_thread_sender.send(PluginInstruction::Load(
+        Some(false),
+        false,
+        false,
+        Some("test_plugin".to_owned()),
+        run_plugin,
+        Some(1),
+        None,
+        client_id,
+        size,
+        None,
+        None,
+        false,
+        None,
+        None,
+        None,
+    ));
+    let first_plugin_id = 0;
+    let _ = plugin_thread_sender.send(PluginInstruction::Unload(first_plugin_id));
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let mut update_sent = false;
+    let mut rendered_after_unload = false;
+    while std::time::Instant::now() < deadline {
+        if !update_sent && deadline - std::time::Instant::now() < std::time::Duration::from_secs(3)
+        {
+            let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
+                None,
+                Some(client_id),
+                Event::InputReceived,
+            )]));
+            update_sent = true;
+        }
+        match screen_receiver.recv_timeout(std::time::Duration::from_millis(100)) {
+            Ok((ScreenInstruction::RequestPluginPermissions(plugin_id, permissions), _)) => {
+                let _ = plugin_thread_sender.send(PluginInstruction::PermissionRequestResult(
+                    plugin_id,
+                    Some(client_id),
+                    permissions.permissions,
+                    PermissionStatus::Granted,
+                    Some(cache_path.clone()),
+                ));
+            },
+            Ok((ScreenInstruction::PluginBytes(plugin_render_assets), _)) => {
+                if plugin_render_assets.iter().any(|asset| {
+                    asset.plugin_id == first_plugin_id
+                        && String::from_utf8_lossy(&asset.bytes).contains("InputReceived")
+                }) {
+                    rendered_after_unload = true;
+                }
+            },
+            _ => {},
+        }
+    }
+    teardown();
+    assert!(
+        !rendered_after_unload,
+        "the plugin keeps running after being unloaded while it was loading"
+    );
+}
