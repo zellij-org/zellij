@@ -36,6 +36,10 @@ fn user_config(text: &str) -> Config {
     Config::from_kdl(text, Some(Config::from_default_assets().unwrap())).unwrap()
 }
 
+fn kdl_string(text: &str) -> String {
+    kdl::KdlValue::String(text.to_owned()).to_string()
+}
+
 fn user_config_in_dir(text: &str, config_dir: &Path) -> Config {
     let mut base = Config::from_default_assets().unwrap();
     base.keybinds_layers.config_dir = Some(config_dir.to_path_buf());
@@ -301,8 +305,8 @@ fn the_keybinds_dir_option_moves_the_folder() {
     write_preset(&elsewhere, "mine", HARD_CODED_PRESET);
     let config = user_config_in_dir(
         &format!(
-            "keybinds_dir \"{}\"\nkeybinds preset=\"mine\"",
-            elsewhere.display()
+            "keybinds_dir {}\nkeybinds preset=\"mine\"",
+            kdl_string(&elsewhere.display().to_string())
         ),
         config_dir.path(),
     );
@@ -326,8 +330,10 @@ fn a_value_with_an_extension_or_a_slash_is_a_path_relative_to_the_config_dir() {
         "presets/fixed.kdl".to_owned(),
         absolute.display().to_string(),
     ] {
-        let config =
-            user_config_in_dir(&format!("keybinds preset=\"{}\"", value), config_dir.path());
+        let config = user_config_in_dir(
+            &format!("keybinds preset={}", kdl_string(&value)),
+            config_dir.path(),
+        );
         assert_eq!(
             config.keybinds_layers.active.info.source,
             KeybindPresetSource::File
@@ -744,8 +750,13 @@ fn a_relative_command_line_preset_path_is_resolved_from_the_current_directory() 
     let mut options = command_line_options(Some("presets/mine.kdl"), None);
     command_line_preset_relative_to(&mut options, Path::new("/work"));
     assert_eq!(
-        options.keybinds_preset.as_deref(),
-        Some("/work/presets/mine.kdl")
+        options.keybinds_preset,
+        Some(
+            Path::new("/work")
+                .join("presets/mine.kdl")
+                .display()
+                .to_string()
+        )
     );
     let mut options = command_line_options(Some("unlock-first"), None);
     command_line_preset_relative_to(&mut options, Path::new("/work"));
