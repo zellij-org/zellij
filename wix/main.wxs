@@ -86,7 +86,7 @@
     </InstallUISequence>
 
     <!-- ===== Components =====
-         Three components: binary (always), plus two conditional PATH components.
+         Four components: binary and launcher (always), plus two conditional PATH components.
          ALLUSERS is set by InstallScopeDlg: 1 for per-machine, empty for per-user.
          Default (quick install without scope dialog): ALLUSERS=2, which is <> 1,
          so path_user activates — correct for the per-user default. -->
@@ -96,6 +96,15 @@
                Guid="BC9D18AE-17CA-4790-ADB0-C64530DEDE57">
       <File Id="zellij_exe"
             Source="target\release\zellij.exe"
+            KeyPath="yes" />
+    </Component>
+
+    <!-- zellij-window.exe opens the window without a console; it starts zellij.exe next to it -->
+    <Component Id="launcher"
+               Directory="APPLICATIONFOLDER"
+               Guid="CE50A9CD-B208-4B0A-BFAD-9DC12A0399B5">
+      <File Id="zellij_window_exe"
+            Source="target\release\zellij-window.exe"
             KeyPath="yes" />
     </Component>
 
@@ -140,6 +149,7 @@
     <!-- ===== Feature ===== -->
     <Feature Id="MainFeature" Title="Zellij" Level="1">
       <ComponentRef Id="binary" />
+      <ComponentRef Id="launcher" />
       <ComponentRef Id="path_machine" />
       <ComponentRef Id="path_user" />
     </Feature>
