@@ -1939,7 +1939,12 @@ impl Pty {
                     .as_mut()
                     .context("no OS I/O interface found")
                     .and_then(|os_input| {
-                        os_input.re_run_command_in_terminal(id, run_command, quit_cb, &self.pane_env)
+                        os_input.re_run_command_in_terminal(
+                            id,
+                            run_command,
+                            quit_cb,
+                            &self.pane_env,
+                        )
                     })
                     .with_context(err_context)?;
                 let activity_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));

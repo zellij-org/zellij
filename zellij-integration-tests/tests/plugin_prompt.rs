@@ -100,9 +100,10 @@ fn wait_for_prompt_showing(zellij: &TestSession, text: &str) -> GridSnapshot {
 
 fn wait_for_result(zellij: &TestSession, result: &str) -> GridSnapshot {
     let expected = format!("Prompt result 1: {}", result);
-    zellij.wait_until(&format!("the plugin shows {:?}", expected), |grid_snapshot| {
-        grid_snapshot.contains(&expected) && !grid_snapshot.contains(PROMPT_MARKER)
-    })
+    zellij.wait_until(
+        &format!("the plugin shows {:?}", expected),
+        |grid_snapshot| grid_snapshot.contains(&expected) && !grid_snapshot.contains(PROMPT_MARKER),
+    )
 }
 
 #[test]
@@ -157,10 +158,7 @@ fn choose_with_multi_returns_every_ticked_item() {
         grid_snapshot.contains("2 ticked")
     });
     zellij.send_stdin(&keys::ENTER);
-    wait_for_result(
-        &zellij,
-        r#"Answered(Choices(["alpha", "gamma"]))"#,
-    );
+    wait_for_result(&zellij, r#"Answered(Choices(["alpha", "gamma"]))"#);
     zellij.quit();
 }
 

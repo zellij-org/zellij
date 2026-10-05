@@ -287,7 +287,11 @@ fn field_error(id: &str, message: impl fmt::Display) -> String {
     format!("invalid form description: field \"{}\": {}", id, message)
 }
 
-fn optional_string(object: &Map<String, Value>, key: &str, id: &str) -> Result<Option<String>, String> {
+fn optional_string(
+    object: &Map<String, Value>,
+    key: &str,
+    id: &str,
+) -> Result<Option<String>, String> {
     match object.get(key) {
         None | Some(Value::Null) => Ok(None),
         Some(Value::String(s)) => Ok(Some(s.clone())),
@@ -299,11 +303,18 @@ fn optional_bool(object: &Map<String, Value>, key: &str, id: &str) -> Result<boo
     match object.get(key) {
         None | Some(Value::Null) => Ok(false),
         Some(Value::Bool(b)) => Ok(*b),
-        Some(_) => Err(field_error(id, format!("\"{}\" must be true or false", key))),
+        Some(_) => Err(field_error(
+            id,
+            format!("\"{}\" must be true or false", key),
+        )),
     }
 }
 
-fn optional_integer(object: &Map<String, Value>, key: &str, id: &str) -> Result<Option<i64>, String> {
+fn optional_integer(
+    object: &Map<String, Value>,
+    key: &str,
+    id: &str,
+) -> Result<Option<i64>, String> {
     match object.get(key) {
         None | Some(Value::Null) => Ok(None),
         Some(Value::Number(n)) => n
@@ -314,7 +325,11 @@ fn optional_integer(object: &Map<String, Value>, key: &str, id: &str) -> Result<
     }
 }
 
-fn parse_field(index: usize, value: &Value, seen_ids: &mut HashSet<String>) -> Result<FormField, String> {
+fn parse_field(
+    index: usize,
+    value: &Value,
+    seen_ids: &mut HashSet<String>,
+) -> Result<FormField, String> {
     let position = format!("#{}", index + 1);
     let object = value
         .as_object()
@@ -373,7 +388,10 @@ fn parse_field(index: usize, value: &Value, seen_ids: &mut HashSet<String>) -> R
     };
     match kind {
         FormFieldKind::Select | FormFieldKind::Choose if options.is_empty() => {
-            return Err(field_error(&id, "\"options\" must list at least one option"));
+            return Err(field_error(
+                &id,
+                "\"options\" must list at least one option",
+            ));
         },
         _ => {},
     }
@@ -478,9 +496,8 @@ pub fn parse_form_spec(text: &str) -> Result<FormSpec, String> {
             text: s.clone(),
             indices: match object.get("message_styles") {
                 None | Some(Value::Null) => vec![],
-                Some(styles) => styles_from_json(styles).map_err(|e| {
-                    format!("invalid form description: \"message_styles\" {}", e)
-                })?,
+                Some(styles) => styles_from_json(styles)
+                    .map_err(|e| format!("invalid form description: \"message_styles\" {}", e))?,
             },
         }),
         Some(_) => return Err("invalid form description: \"message\" must be a string".to_owned()),
@@ -660,7 +677,10 @@ impl FormField {
     fn to_json(&self) -> Value {
         let mut object = Map::new();
         object.insert("id".to_owned(), Value::String(self.id.clone()));
-        object.insert("type".to_owned(), Value::String(self.kind.name().to_owned()));
+        object.insert(
+            "type".to_owned(),
+            Value::String(self.kind.name().to_owned()),
+        );
         object.insert("label".to_owned(), Value::String(self.label.clone()));
         if self.required {
             object.insert("required".to_owned(), Value::Bool(true));
@@ -710,7 +730,10 @@ impl FormSpec {
         if let Some(message) = &self.message {
             object.insert("message".to_owned(), Value::String(message.text.clone()));
             if !message.is_plain() {
-                object.insert("message_styles".to_owned(), styles_to_json(&message.indices));
+                object.insert(
+                    "message_styles".to_owned(),
+                    styles_to_json(&message.indices),
+                );
             }
         }
         object.insert(
@@ -718,8 +741,14 @@ impl FormSpec {
             Value::Array(self.fields.iter().map(|field| field.to_json()).collect()),
         );
         let mut buttons = Map::new();
-        buttons.insert("submit".to_owned(), Value::String(self.submit_label.clone()));
-        buttons.insert("cancel".to_owned(), Value::String(self.cancel_label.clone()));
+        buttons.insert(
+            "submit".to_owned(),
+            Value::String(self.submit_label.clone()),
+        );
+        buttons.insert(
+            "cancel".to_owned(),
+            Value::String(self.cancel_label.clone()),
+        );
         object.insert("buttons".to_owned(), Value::Object(buttons));
         Value::Object(object).to_string()
     }
@@ -1063,7 +1092,11 @@ impl PromptRequest {
         fn set_styled(args: &mut BTreeMap<String, String>, message: &StyledText) {
             insert(args, ARG_MESSAGE, message.text.clone());
             if !message.is_plain() {
-                insert(args, ARG_MESSAGE_STYLES, styles_to_json(&message.indices).to_string());
+                insert(
+                    args,
+                    ARG_MESSAGE_STYLES,
+                    styles_to_json(&message.indices).to_string(),
+                );
             }
         }
         if let Some(title) = &self.title {
@@ -1468,9 +1501,18 @@ mod tests {
     fn labeled_items_round_trip() {
         let items = vec![ChoiceItem::plain("a"), ChoiceItem::labeled("b", "Bee")];
         assert_eq!(decode_items(&encode_items(&items)), items);
-        assert_eq!(ChoiceItem::from_item_arg("v=Label"), ChoiceItem::labeled("v", "Label"));
-        assert_eq!(ChoiceItem::from_line("v\tLabel", true), ChoiceItem::labeled("v", "Label"));
-        assert_eq!(ChoiceItem::from_line("v\tLabel", false), ChoiceItem::plain("v\tLabel"));
+        assert_eq!(
+            ChoiceItem::from_item_arg("v=Label"),
+            ChoiceItem::labeled("v", "Label")
+        );
+        assert_eq!(
+            ChoiceItem::from_line("v\tLabel", true),
+            ChoiceItem::labeled("v", "Label")
+        );
+        assert_eq!(
+            ChoiceItem::from_line("v\tLabel", false),
+            ChoiceItem::plain("v\tLabel")
+        );
     }
 
     #[test]
@@ -1497,7 +1539,10 @@ mod tests {
         .unwrap();
         assert_eq!(dialog.message, Some(StyledText::plain("Delete it?")));
         assert_eq!(parse_form_spec(&dialog.to_json()), Ok(dialog));
-        assert!(parse_form_spec(r#"{ "message": 1, "fields": [ { "id": "a", "type": "toggle" } ] }"#).is_err());
+        assert!(parse_form_spec(
+            r#"{ "message": 1, "fields": [ { "id": "a", "type": "toggle" } ] }"#
+        )
+        .is_err());
         let styled = parse_form_spec(
             r#"{ "message": "Delete Alt n?", "message_styles": [ [], [], [], [7, 8, 9, 10, 11] ], "fields": [ { "id": "a", "type": "toggle" } ] }"#,
         )
@@ -1527,10 +1572,18 @@ mod tests {
             r#"{ "fields": [ { "id": "license", "type": "select", "options": ["MIT"], "default": "GPL" } ] }"#,
         )
         .unwrap_err();
-        assert!(error.contains("\"license\"") && error.contains("GPL"), "{}", error);
-        let error = parse_form_spec(r#"{ "fields": [ { "id": "a", "type": "slider" } ] }"#)
-            .unwrap_err();
-        assert!(error.contains("\"a\"") && error.contains("slider"), "{}", error);
+        assert!(
+            error.contains("\"license\"") && error.contains("GPL"),
+            "{}",
+            error
+        );
+        let error =
+            parse_form_spec(r#"{ "fields": [ { "id": "a", "type": "slider" } ] }"#).unwrap_err();
+        assert!(
+            error.contains("\"a\"") && error.contains("slider"),
+            "{}",
+            error
+        );
         let error = parse_form_spec(r#"{ "fields": [ { "type": "input" } ] }"#).unwrap_err();
         assert!(error.contains("#1"), "{}", error);
         let error = parse_form_spec(
@@ -1567,10 +1620,13 @@ mod tests {
                 .timeout(Duration::from_secs(30))
                 .default("no")
                 .placement(PromptPlacement::Center),
-            PromptRequest::choose(vec![ChoiceItem::plain("a"), ChoiceItem::labeled("b", "Bee")])
-                .multi()
-                .selected(vec!["b"])
-                .title("Pick"),
+            PromptRequest::choose(vec![
+                ChoiceItem::plain("a"),
+                ChoiceItem::labeled("b", "Bee"),
+            ])
+            .multi()
+            .selected(vec!["b"])
+            .title("Pick"),
             PromptRequest::input("Name")
                 .placeholder("your name")
                 .validate("^[a-z]+$")
@@ -1615,9 +1671,10 @@ mod tests {
                 indices: vec![vec![], vec![], vec![], vec![6, 7, 8, 9, 10, 11]],
             }),
             PromptRequest::form(vec![
-                FormField::input("name", "Name").required().validate("^[a-z]+$"),
-                FormField::select("license", "License", vec!["MIT", "GPL"])
-                    .default_value("MIT"),
+                FormField::input("name", "Name")
+                    .required()
+                    .validate("^[a-z]+$"),
+                FormField::select("license", "License", vec!["MIT", "GPL"]).default_value("MIT"),
                 FormField::toggle("ci", "Use CI").default_value(true),
                 FormField::number("port", "Port").min(1).max(10).step(1),
                 FormField::choose("files", "Files", vec!["a", "b"]).multi(),

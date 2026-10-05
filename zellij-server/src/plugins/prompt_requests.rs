@@ -235,9 +235,7 @@ mod tests {
         assert_eq!(asker.result_event(answer.clone()).0, Some(1));
         assert_eq!(asker.result_event(answer).1, Some(1));
         assert!(requests.is_waiting_for(&same_plugin_other_user));
-        assert!(requests
-            .reply(10, 7, PromptResult::Cancelled)
-            .is_empty());
+        assert!(requests.reply(10, 7, PromptResult::Cancelled).is_empty());
     }
 
     #[test]

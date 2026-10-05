@@ -1,25 +1,25 @@
 use super::Screen;
 use crate::panes::PaneId;
 use crate::plugins::{PluginInstruction, PopupRequest, PromptCaller};
+use crate::route::PopupScroll;
 use crate::tab::{ContextMenuRequest, PopupKind, PopupMouseOutcome, PopupPlacement};
 use crate::{ClientId, ServerInstruction};
 use std::collections::BTreeMap;
 use std::time::Instant;
-use crate::route::PopupScroll;
 use zellij_utils::data::{
     ContextMenuContext, ContextMenuEntry, ContextMenuKind, ContextMenuTarget, Event, InputMode,
     KeybindsVec, PipePopupPlacement, PopupCorner, PopupOptions,
 };
-use zellij_utils::prompt::PromptPlacement;
-use zellij_utils::input::context_menu::context_menu_shortcut;
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::actions::Action;
+use zellij_utils::input::context_menu::context_menu_shortcut;
 use zellij_utils::input::context_menu::ContextMenuConfig;
 use zellij_utils::input::layout::RunPluginOrAlias;
 use zellij_utils::input::mouse::MouseEvent;
 use zellij_utils::pane_size::{Size, Viewport};
 use zellij_utils::plugin_api::event::ProtobufContextMenuAction;
 use zellij_utils::position::Position;
+use zellij_utils::prompt::PromptPlacement;
 
 pub const CONTEXT_MENU_PLUGIN_ALIAS: &str = "context-menu";
 pub const PIPE_POPUP_INITIAL_COLS: usize = 50;
@@ -234,7 +234,12 @@ impl Screen {
             _ => vec![],
         }
     }
-    pub fn move_popups_to_new_tab(&mut self, client_id: ClientId, old_tab_id: usize, new_tab_id: usize) {
+    pub fn move_popups_to_new_tab(
+        &mut self,
+        client_id: ClientId,
+        old_tab_id: usize,
+        new_tab_id: usize,
+    ) {
         self.open_context_menus.remove(&client_id);
         let mut closed_plugin_ids = vec![];
         for tab in self.tabs.values_mut() {
@@ -459,9 +464,7 @@ impl Screen {
             .get(&client_id)
             .unwrap_or(&self.default_mode_info)
             .clone();
-        let base_mode = mode_info
-            .base_mode
-            .unwrap_or(self.default_mode_info.mode);
+        let base_mode = mode_info.base_mode.unwrap_or(self.default_mode_info.mode);
         mode_info.base_mode = Some(base_mode);
         let (width, height) = estimated_context_menu_size(&entries, &keybinds, base_mode);
         let anchor = Position::new(context.line as i32, context.column as u16);
@@ -836,8 +839,8 @@ impl Screen {
             Some(current_tab_id) if kind == PopupKind::Info => *current_tab_id,
             _ => tab_id,
         };
-        let client_is_still_on_tab = anchor_still_exists
-            && self.active_tab_ids.get(&client_id) == Some(&tab_id);
+        let client_is_still_on_tab =
+            anchor_still_exists && self.active_tab_ids.get(&client_id) == Some(&tab_id);
         if !client_is_still_on_tab {
             let _ = self
                 .bus
@@ -897,7 +900,9 @@ mod tests {
         let entries = vec![
             ContextMenuEntry::item(
                 "Close pane",
-                vec![ContextMenuAction::ClickedPane(ClickedPaneAction::CloseFocus)],
+                vec![ContextMenuAction::ClickedPane(
+                    ClickedPaneAction::CloseFocus,
+                )],
             ),
             ContextMenuEntry::item(
                 "Move tab left",
@@ -932,7 +937,10 @@ mod tests {
         ];
         assert_eq!(
             entries_available_to_plugins(entries),
-            vec![ContextMenuEntry::item("Detach", vec![Action::Detach.into()])]
+            vec![ContextMenuEntry::item(
+                "Detach",
+                vec![Action::Detach.into()]
+            )]
         );
     }
 
@@ -941,7 +949,9 @@ mod tests {
         let entries = vec![
             ContextMenuEntry::Item {
                 label: "Close pane".to_owned(),
-                actions: vec![ContextMenuAction::ClickedPane(ClickedPaneAction::CloseFocus)],
+                actions: vec![ContextMenuAction::ClickedPane(
+                    ClickedPaneAction::CloseFocus,
+                )],
             },
             ContextMenuEntry::Separator,
             ContextMenuEntry::Item {
@@ -972,10 +982,14 @@ mod tests {
                 )],
             ),
         ];
-        let (without_keys, height) = estimated_context_menu_size(&entries, &vec![], InputMode::Normal);
+        let (without_keys, height) =
+            estimated_context_menu_size(&entries, &vec![], InputMode::Normal);
         let (with_keys, _) = estimated_context_menu_size(&entries, &keybinds, InputMode::Normal);
         assert_eq!(height, 5);
         assert_eq!(without_keys, 17);
-        assert_eq!(with_keys, "Close pane".len() + 4 + "Ctrl p, x".len() + 1 + 3);
+        assert_eq!(
+            with_keys,
+            "Close pane".len() + 4 + "Ctrl p, x".len() + 1 + 3
+        );
     }
 }

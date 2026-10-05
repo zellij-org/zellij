@@ -13,10 +13,10 @@ use super::layout::{RunPlugin, RunPluginOrAlias};
 use super::plugins::PluginAliases;
 use super::theme::{Theme, Themes};
 use crate::data::{
-    ConfigBlocks, ContextMenuAction, ContextMenuEntry, EnvVarEntry, InputMode, KeyWithModifier, KeybindingEntry,
-    KeybindingSource, KeybindsVec, MenuItemEntry, MenuSectionEntries, MultiplayerColors,
-    PaletteColor, PluginAliasEntry, PluginEntry, StyleDeclaration, Styling, ThemeEntry,
-    ThemeSource, DEFAULT_STYLES,
+    ConfigBlocks, ContextMenuAction, ContextMenuEntry, EnvVarEntry, InputMode, KeyWithModifier,
+    KeybindingEntry, KeybindingSource, KeybindsVec, MenuItemEntry, MenuSectionEntries,
+    MultiplayerColors, PaletteColor, PluginAliasEntry, PluginEntry, StyleDeclaration, Styling,
+    ThemeEntry, ThemeSource, DEFAULT_STYLES,
 };
 use crate::envs::EnvironmentVariables;
 use crate::home::get_theme_dir;
@@ -102,7 +102,9 @@ pub fn parse_colour(text: &str) -> Option<PaletteColor> {
         };
     }
     let bare_hex = text.len() == 6 && text.chars().all(|c| c.is_ascii_hexdigit());
-    let hex = text.strip_prefix('#').or(if bare_hex { Some(text) } else { None });
+    let hex = text
+        .strip_prefix('#')
+        .or(if bare_hex { Some(text) } else { None });
     if let Some(hex) = hex {
         if !hex.is_ascii() {
             return None;
@@ -732,8 +734,7 @@ pub fn update_theme_file(path: &Path, name: &str, palette: &Styling) -> Result<(
     document.fmt();
     let new_text = document.to_string();
     check_theme_text(&new_text, name, path)?;
-    std::fs::write(path, new_text)
-        .map_err(|e| format!("Could not write {}: {}", path.display(), e))
+    std::fs::write(path, new_text).map_err(|e| format!("Could not write {}: {}", path.display(), e))
 }
 
 pub fn config_blocks(

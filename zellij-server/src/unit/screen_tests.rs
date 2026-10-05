@@ -16502,13 +16502,16 @@ fn a_key_press_reaches_the_focused_popup_and_not_the_pane() {
     let harness = MockScreenWithPrompt::new(42);
     let key = zellij_utils::data::KeyWithModifier::new(zellij_utils::data::BareKey::Char('a'));
     let (completion_tx, completion_rx) = tokio::sync::oneshot::channel();
-    let _ = harness.mock_screen.to_screen.send(ScreenInstruction::KeyToPopup(
-        key.clone(),
-        vec![b'a'],
-        false,
-        client_id,
-        Some(crate::route::NotificationEnd::new(completion_tx)),
-    ));
+    let _ = harness
+        .mock_screen
+        .to_screen
+        .send(ScreenInstruction::KeyToPopup(
+            key.clone(),
+            vec![b'a'],
+            false,
+            client_id,
+            Some(crate::route::NotificationEnd::new(completion_tx)),
+        ));
     let _ = crate::route::wait_for_action_completion(completion_rx, "KeyToPopup", false);
     assert_eq!(harness.keys_sent_to_plugin(42), vec![key]);
     let pty_writes = harness.pty_writes();
@@ -16555,8 +16558,7 @@ fn a_targeted_write_reaches_its_pane_while_a_popup_is_open() {
     harness.teardown_and_assert_popup_was_open();
 }
 
-fn screen_capturing_plugin_instructions(
-) -> (Screen, Receiver<(PluginInstruction, ErrorContext)>) {
+fn screen_capturing_plugin_instructions() -> (Screen, Receiver<(PluginInstruction, ErrorContext)>) {
     let size = Size {
         cols: 121,
         rows: 20,

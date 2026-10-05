@@ -23,11 +23,11 @@ use tokio::sync::oneshot;
 use wasmi::{Caller, Linker};
 use zellij_utils::consts::ipc_connect;
 use zellij_utils::data::{
-    BorderStyleOverride, PopupOptions, BreakPanesToNewTabResponse, BreakPanesToTabWithIdResponse,
-    BreakPanesToTabWithIndexResponse, CommandType, ConnectToSession, ContextMenuTarget,
-    DeleteAllDeadSessionsResponse, DeleteDeadSessionResponse, DeleteLayoutResponse,
-    EditLayoutResponse, Event, FloatingPaneCoordinates, FocusOrCreateTabResponse,
-    GetFocusedPaneInfoResponse, GetPaneCwdResponse, GetPanePidResponse,
+    BorderStyleOverride, BreakPanesToNewTabResponse, BreakPanesToTabWithIdResponse,
+    BreakPanesToTabWithIndexResponse, CommandType, ConfigSnapshot, ConnectToSession,
+    ContextMenuTarget, DeleteAllDeadSessionsResponse, DeleteDeadSessionResponse,
+    DeleteLayoutResponse, EditLayoutResponse, Event, FloatingPaneCoordinates,
+    FocusOrCreateTabResponse, GetFocusedPaneInfoResponse, GetPaneCwdResponse, GetPanePidResponse,
     GetPaneRunningCommandResponse, HttpVerb, KeyWithModifier, KillSessionsResponse, LayoutInfo,
     LayoutMetadata, LayoutParsingError, MessageToPlugin, NewPanePlacement, NewTabResponse,
     NewTabUnfocusedResponse, NewTiledPaneInTabResponse, OpenCommandPaneBackgroundResponse,
@@ -41,8 +41,8 @@ use zellij_utils::data::{
     OpenTerminalFloatingResponse, OpenTerminalInPlaceOfPluginResponse, OpenTerminalInPlaceResponse,
     OpenTerminalNearPluginResponse, OpenTerminalPaneInPlaceOfPaneIdResponse, OpenTerminalResponse,
     OriginatingPlugin, PaneFrameStyle, PaneScrollbackResponse, PermissionStatus, PermissionType,
-    PluginPermission, RegexHighlight, RenameLayoutResponse, SaveLayoutResponse, SettingKey,
-    TabMetadata, ConfigSnapshot,
+    PluginPermission, PopupOptions, RegexHighlight, RenameLayoutResponse, SaveLayoutResponse,
+    SettingKey, TabMetadata,
 };
 use zellij_utils::home::default_layout_dir;
 use zellij_utils::input::permission::PermissionCache;
@@ -73,7 +73,6 @@ use zellij_utils::{
         config::ConfigError,
         layout::{Layout, RunPluginLocation, RunPluginOrAlias, TabLayoutInfo},
     },
-    prompt::{PromptRequest, PromptResult},
     plugin_api::{
         event::{
             layout_parsing_error::ErrorType as ProtobufLayoutParsingErrorType,
@@ -84,18 +83,18 @@ use zellij_utils::{
             dump_layout_response, dump_session_layout_response, hide_floating_panes_response,
             parse_layout_response, save_session_response, show_floating_panes_response,
             ProtobufBreakPanesToNewTabResponse, ProtobufBreakPanesToTabWithIdResponse,
-            ProtobufBreakPanesToTabWithIndexResponse, ProtobufDeleteAllDeadSessionsResponse,
-            ProtobufDeleteDeadSessionResponse, ProtobufDeleteLayoutResponse,
-            ProtobufDumpLayoutResponse, ProtobufDumpSessionLayoutResponse,
-            ProtobufEditLayoutResponse, ProtobufFocusOrCreateTabResponse,
-            ProtobufGenerateRandomNameResponse, ProtobufGetFocusedPaneInfoResponse,
-            ProtobufGetLayoutDirResponse, ProtobufGetPaneCwdResponse, ProtobufGetPaneInfoResponse,
-            ProtobufGetPanePidResponse, ProtobufGetPaneRunningCommandResponse,
-            ProtobufGetSessionEnvironmentVariablesResponse, ProtobufGetSessionListResponse,
-            ProtobufGetTabInfoResponse, ProtobufHideFloatingPanesResponse,
-            ProtobufKillSessionsResponse, ProtobufNewTabResponse, ProtobufNewTabUnfocusedResponse,
-            ProtobufNewTabsResponse, ProtobufNewTiledPaneInTabResponse,
-            ProtobufOpenCommandPaneBackgroundResponse,
+            ProtobufBreakPanesToTabWithIndexResponse, ProtobufCopyKeybindPresetResponse,
+            ProtobufDeleteAllDeadSessionsResponse, ProtobufDeleteDeadSessionResponse,
+            ProtobufDeleteLayoutResponse, ProtobufDumpLayoutResponse,
+            ProtobufDumpSessionLayoutResponse, ProtobufEditLayoutResponse,
+            ProtobufFocusOrCreateTabResponse, ProtobufGenerateRandomNameResponse,
+            ProtobufGetFocusedPaneInfoResponse, ProtobufGetLayoutDirResponse,
+            ProtobufGetPaneCwdResponse, ProtobufGetPaneInfoResponse, ProtobufGetPanePidResponse,
+            ProtobufGetPaneRunningCommandResponse, ProtobufGetSessionEnvironmentVariablesResponse,
+            ProtobufGetSessionListResponse, ProtobufGetTabInfoResponse,
+            ProtobufHideFloatingPanesResponse, ProtobufKillSessionsResponse,
+            ProtobufNewTabResponse, ProtobufNewTabUnfocusedResponse, ProtobufNewTabsResponse,
+            ProtobufNewTiledPaneInTabResponse, ProtobufOpenCommandPaneBackgroundResponse,
             ProtobufOpenCommandPaneFloatingNearPluginResponse,
             ProtobufOpenCommandPaneFloatingResponse,
             ProtobufOpenCommandPaneInPlaceOfPaneIdResponse,
@@ -110,15 +109,14 @@ use zellij_utils::{
             ProtobufOpenTerminalInPlaceOfPluginResponse, ProtobufOpenTerminalInPlaceResponse,
             ProtobufOpenTerminalNearPluginResponse,
             ProtobufOpenTerminalPaneInPlaceOfPaneIdResponse, ProtobufOpenTerminalResponse,
-            ProtobufCopyKeybindPresetResponse, ProtobufParseLayoutResponse,
-            ProtobufWriteThemeFileResponse,
-            ProtobufPluginCommand, ProtobufReadConfigResponse,
-            ProtobufRenameLayoutResponse,
-            ProtobufSaveLayoutResponse, ProtobufSaveSessionResponse,
+            ProtobufParseLayoutResponse, ProtobufPluginCommand, ProtobufReadConfigResponse,
+            ProtobufRenameLayoutResponse, ProtobufSaveLayoutResponse, ProtobufSaveSessionResponse,
             ProtobufShowFloatingPanesResponse, ProtobufSlotCommandResponse,
+            ProtobufWriteThemeFileResponse,
         },
         plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion},
     },
+    prompt::{PromptRequest, PromptResult},
 };
 
 #[cfg(feature = "web_server_capability")]
@@ -3188,11 +3186,13 @@ fn save_keybinds_as_preset(env: &PluginEnv, new_name: String) {
     use zellij_utils::plugin_api::plugin_command::copy_keybind_preset_response::Result as CopyResult;
     let client_id = acting_client(env);
     let (response_sender, response_receiver) = crossbeam::channel::bounded(1);
-    let result = match env.senders.send_to_server(ServerInstruction::SaveKeybindsAsPreset {
-        client_id,
-        new_name,
-        response_channel: response_sender,
-    }) {
+    let result = match env
+        .senders
+        .send_to_server(ServerInstruction::SaveKeybindsAsPreset {
+            client_id,
+            new_name,
+            response_channel: response_sender,
+        }) {
         Ok(()) => response_receiver
             .recv_timeout(Duration::from_secs(5))
             .unwrap_or_else(|e| Err(format!("Failed to save the preset: {:?}", e))),
@@ -3218,13 +3218,15 @@ fn write_theme_file(
     use zellij_utils::plugin_api::plugin_command::write_theme_file_response::Result as WriteResult;
     let client_id = acting_client(env);
     let (response_sender, response_receiver) = crossbeam::channel::bounded(1);
-    let result = match env.senders.send_to_server(ServerInstruction::WriteThemeFile {
-        client_id,
-        name,
-        copy_from,
-        colours,
-        response_channel: response_sender,
-    }) {
+    let result = match env
+        .senders
+        .send_to_server(ServerInstruction::WriteThemeFile {
+            client_id,
+            name,
+            copy_from,
+            colours,
+            response_channel: response_sender,
+        }) {
         Ok(()) => response_receiver
             .recv_timeout(Duration::from_secs(5))
             .unwrap_or_else(|e| Err(format!("Failed to write the theme file: {:?}", e))),
@@ -3245,11 +3247,13 @@ fn delete_theme_file(env: &PluginEnv, name: String) {
     use zellij_utils::plugin_api::plugin_command::write_theme_file_response::Result as WriteResult;
     let client_id = acting_client(env);
     let (response_sender, response_receiver) = crossbeam::channel::bounded(1);
-    let result = match env.senders.send_to_server(ServerInstruction::DeleteThemeFile {
-        client_id,
-        name,
-        response_channel: response_sender,
-    }) {
+    let result = match env
+        .senders
+        .send_to_server(ServerInstruction::DeleteThemeFile {
+            client_id,
+            name,
+            response_channel: response_sender,
+        }) {
         Ok(()) => response_receiver
             .recv_timeout(Duration::from_secs(5))
             .unwrap_or_else(|e| Err(format!("Failed to delete the theme: {:?}", e))),
@@ -3262,7 +3266,12 @@ fn delete_theme_file(env: &PluginEnv, name: String) {
         }),
     };
     wasi_write_object(env, &response.encode_to_vec())
-        .with_context(|| format!("failed to send theme deletion result to plugin {}", env.name()))
+        .with_context(|| {
+            format!(
+                "failed to send theme deletion result to plugin {}",
+                env.name()
+            )
+        })
         .non_fatal();
 }
 
@@ -3270,12 +3279,14 @@ fn copy_keybind_preset(env: &PluginEnv, preset: String, new_name: String) {
     use zellij_utils::plugin_api::plugin_command::copy_keybind_preset_response::Result as CopyResult;
     let client_id = acting_client(env);
     let (response_sender, response_receiver) = crossbeam::channel::bounded(1);
-    let result = match env.senders.send_to_server(ServerInstruction::CopyKeybindPreset {
-        client_id,
-        preset,
-        new_name,
-        response_channel: response_sender,
-    }) {
+    let result = match env
+        .senders
+        .send_to_server(ServerInstruction::CopyKeybindPreset {
+            client_id,
+            preset,
+            new_name,
+            response_channel: response_sender,
+        }) {
         Ok(()) => response_receiver
             .recv_timeout(Duration::from_secs(5))
             .unwrap_or_else(|e| Err(format!("Failed to copy the preset: {:?}", e))),
@@ -6479,14 +6490,14 @@ mod prompt_tests {
             required_permission(&reply),
             Some(PermissionType::OpenTerminalsOrPlugins)
         );
-        assert!(may_reply_to_prompt(&RunPluginLocation::Zellij(PluginTag::new(
-            "prompt"
-        ))));
-        assert!(!may_reply_to_prompt(&RunPluginLocation::Zellij(PluginTag::new(
-            "configuration"
-        ))));
-        assert!(!may_reply_to_prompt(&RunPluginLocation::File(PathBuf::from(
-            "/tmp/prompt.wasm"
-        ))));
+        assert!(may_reply_to_prompt(&RunPluginLocation::Zellij(
+            PluginTag::new("prompt")
+        )));
+        assert!(!may_reply_to_prompt(&RunPluginLocation::Zellij(
+            PluginTag::new("configuration")
+        )));
+        assert!(!may_reply_to_prompt(&RunPluginLocation::File(
+            PathBuf::from("/tmp/prompt.wasm")
+        )));
     }
 }

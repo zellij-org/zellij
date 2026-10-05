@@ -693,10 +693,7 @@ const BAR_FILE: &str =
     "context_menu {\n    bar {\n        // mine\n        item \"Mine\" { Detach; }\n    }\n}\n";
 
 fn menu_item(label: &str) -> crate::data::ContextMenuEntry {
-    crate::data::ContextMenuEntry::item(
-        label,
-        new_tab().into_iter().map(Into::into).collect(),
-    )
+    crate::data::ContextMenuEntry::item(label, new_tab().into_iter().map(Into::into).collect())
 }
 
 #[test]

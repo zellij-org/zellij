@@ -856,7 +856,12 @@ impl Action {
                     ..
                 },
             ) => plugin.location_string() == bound_plugin.location_string(),
-            (Action::NewPane { direction: None, .. }, Action::NewPane { .. }) => true,
+            (
+                Action::NewPane {
+                    direction: None, ..
+                },
+                Action::NewPane { .. },
+            ) => true,
             _ => self == binding,
         }
     }
@@ -2638,15 +2643,18 @@ mod tests {
             skip_cache: false,
             tab_id: None,
         };
-        assert!(launch("configuration", true).matches_binding_for_shortcut(&launch("configuration", false)));
-        assert!(!launch("configuration", true).matches_binding_for_shortcut(&launch("session-manager", true)));
+        assert!(launch("configuration", true)
+            .matches_binding_for_shortcut(&launch("configuration", false)));
+        assert!(!launch("configuration", true)
+            .matches_binding_for_shortcut(&launch("session-manager", true)));
         let new_pane = |direction| Action::NewPane {
             direction,
             pane_name: None,
             start_suppressed: false,
         };
         assert!(new_pane(None).matches_binding_for_shortcut(&new_pane(Some(Direction::Down))));
-        assert!(!new_pane(Some(Direction::Up)).matches_binding_for_shortcut(&new_pane(Some(Direction::Down))));
+        assert!(!new_pane(Some(Direction::Up))
+            .matches_binding_for_shortcut(&new_pane(Some(Direction::Down))));
     }
 
     #[test]

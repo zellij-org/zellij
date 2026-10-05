@@ -221,9 +221,7 @@ impl Text {
         }
     }
     pub fn is_styled_at(&self, index: usize) -> bool {
-        self.indices
-            .iter()
-            .any(|indices| indices.contains(&index))
+        self.indices.iter().any(|indices| indices.contains(&index))
     }
     pub fn into_disabled(mut self) -> Self {
         self.selected = false;

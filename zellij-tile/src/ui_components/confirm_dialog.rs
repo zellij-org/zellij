@@ -1,8 +1,8 @@
-use super::widget_common::{
-    encode_text, is_plain, is_shift_tab, state_value, text_width, widget_dcs, Rect,
-    UiResponse, UiValue, Widget,
-};
 use super::text::Text;
+use super::widget_common::{
+    encode_text, is_plain, is_shift_tab, state_value, text_width, widget_dcs, Rect, UiResponse,
+    UiValue, Widget,
+};
 use zellij_utils::data::{BareKey, KeyWithModifier, Mouse};
 
 const DEFAULT_WIDTH: usize = 50;

@@ -167,12 +167,9 @@ fn choosing_rename_pane_renames_the_clicked_pane_and_not_the_focused_one() {
     }
     zellij.send_stdin(&keys::ENTER);
 
-    let grid_snapshot = zellij.wait_until(
-        "the clicked pane shows the new name",
-        |grid_snapshot| {
-            !grid_snapshot.contains("RENAMING PANE") && grid_snapshot.contains("CLICKED")
-        },
-    );
+    let grid_snapshot = zellij.wait_until("the clicked pane shows the new name", |grid_snapshot| {
+        !grid_snapshot.contains("RENAMING PANE") && grid_snapshot.contains("CLICKED")
+    });
     let middle = (TERMINAL_SIZE.cols / 2) as usize;
     let new_name_columns = columns_of_name(&grid_snapshot, "CLICKED");
     assert!(
@@ -407,14 +404,18 @@ fn menu_shortcuts_follow_a_change_of_keybinding_preset() {
     });
 
     right_click(&zellij, 30, 10);
-    zellij.wait_until("pane menu shows the unlock-first shortcuts", |grid_snapshot| {
-        grid_snapshot.contains(PANE_MENU_MARKER)
-            && grid_snapshot.contains("p, f")
-            && !grid_snapshot.contains("Ctrl p, f")
-    });
+    zellij.wait_until(
+        "pane menu shows the unlock-first shortcuts",
+        |grid_snapshot| {
+            grid_snapshot.contains(PANE_MENU_MARKER)
+                && grid_snapshot.contains("p, f")
+                && !grid_snapshot.contains("Ctrl p, f")
+        },
+    );
     zellij.send_stdin(&keys::ESC);
     zellij.wait_until("context menu closed", |grid_snapshot| {
-        !grid_snapshot.contains(COMMON_MENU_MARKER) && !grid_snapshot.contains(LAST_COMMON_MENU_ITEM)
+        !grid_snapshot.contains(COMMON_MENU_MARKER)
+            && !grid_snapshot.contains(LAST_COMMON_MENU_ITEM)
     });
     zellij.quit();
 }
@@ -464,7 +465,10 @@ fn turning_the_menu_off_in_the_settings_stops_right_clicks_from_opening_it() {
     let grid_snapshot = zellij.wait_until("output after the clicks rendered", |grid_snapshot| {
         grid_snapshot.contains("AFTER-CLICKS")
     });
-    assert!(!grid_snapshot.contains(COMMON_MENU_MARKER) && !grid_snapshot.contains(LAST_COMMON_MENU_ITEM));
+    assert!(
+        !grid_snapshot.contains(COMMON_MENU_MARKER)
+            && !grid_snapshot.contains(LAST_COMMON_MENU_ITEM)
+    );
     zellij.quit();
 }
 

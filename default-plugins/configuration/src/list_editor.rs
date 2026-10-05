@@ -4,12 +4,12 @@ use zellij_tile::prelude::*;
 
 use crate::action_picker::{ActionPicker, PickerResponse, DELETE_WIDTH};
 use crate::page::{
-    actions_summary, changed_by, is_click, is_move_key, is_plain, is_shift_tab, markers, print_heading, truncate,
-    typed, ColumnLayout, Effect, RowLook, RowScroll,
-};
-use crate::page::{
     action_argument_range, note_dropdown, outside_overlays, print_dim, ColumnStyle,
     BESIDE_SHORT_FIELD, DIM, SHORT_FIELD_WIDTH, SHORT_LABEL_WIDTH,
+};
+use crate::page::{
+    actions_summary, changed_by, is_click, is_move_key, is_plain, is_shift_tab, markers,
+    print_heading, truncate, typed, ColumnLayout, Effect, RowLook, RowScroll,
 };
 
 const FORM_LABEL_WIDTH: usize = 9;
@@ -622,7 +622,11 @@ impl EntryForm {
         let max_width = cols.saturating_sub(4).max(20);
         let max_height = rows.saturating_sub(2).max(6);
         let has_picker = self.picker.is_some();
-        let extra = if has_picker && !takeover { DELETE_WIDTH } else { 0 };
+        let extra = if has_picker && !takeover {
+            DELETE_WIDTH
+        } else {
+            0
+        };
         let (width, height) = match (takeover, picker_rows) {
             (true, Some(Some(wanted))) => (
                 (content_column + natural_width + 4)
@@ -654,7 +658,9 @@ impl EntryForm {
         let y = dialog_y + 2;
         let inner = width.saturating_sub(4);
         let bottom = dialog_y + height.saturating_sub(2);
-        let field_width = natural_width.min(inner.saturating_sub(content_column)).max(5);
+        let field_width = natural_width
+            .min(inner.saturating_sub(content_column))
+            .max(5);
         self.group.clear_areas();
         if let Some((_, picker)) = self.picker.as_mut() {
             picker.set_button_width(field_width);
@@ -701,8 +707,7 @@ impl EntryForm {
         }
         if let Some(error) = &self.error {
             print_text_with_coordinates(
-                Text::from(truncate(error, inner.saturating_sub(content_column)))
-                    .error_color_all(),
+                Text::from(truncate(error, inner.saturating_sub(content_column))).error_color_all(),
                 x + content_column,
                 row,
                 None,
@@ -945,7 +950,10 @@ impl EntryForm {
         }
         let event = self.group.handle_mouse(mouse);
         let changed = !is_hover || event.is_handled();
-        (self.handle_event(event, base_mode, for_menu, false), changed)
+        (
+            self.handle_event(event, base_mode, for_menu, false),
+            changed,
+        )
     }
     fn handle_timer(&mut self) -> bool {
         let picker_changed = self
@@ -962,11 +970,7 @@ impl EntryForm {
                     return picker.hints();
                 }
             }
-            return vec![
-                ("<↓↑>", "field"),
-                ("<Enter>", "done"),
-                ("<Esc>", "cancel"),
-            ];
+            return vec![("<↓↑>", "field"), ("<Enter>", "done"), ("<Esc>", "cancel")];
         }
         match &self.picker {
             Some((_, picker)) => picker.hints(),
@@ -1686,9 +1690,7 @@ impl Row {
     }
     fn section(&self) -> Option<usize> {
         match self {
-            Row::Heading(section)
-            | Row::Entry(section, _)
-            | Row::Actions(section) => {
+            Row::Heading(section) | Row::Entry(section, _) | Row::Actions(section) => {
                 Some(*section)
             },
             Row::Gap => None,
@@ -1829,12 +1831,13 @@ impl SectionedList {
             notice: None,
             focused: false,
             styled: None,
-            search: TextInput::empty()
-                .placeholder("/ to search")
-                .search_mode(),
-            filter: Dropdown::new(Text::from("Menu").color_all(0), vec![ALL_SECTIONS.to_owned()])
-                .label_width(SHORT_LABEL_WIDTH)
-                .accent_brackets(),
+            search: TextInput::empty().placeholder("/ to search").search_mode(),
+            filter: Dropdown::new(
+                Text::from("Menu").color_all(0),
+                vec![ALL_SECTIONS.to_owned()],
+            )
+            .label_width(SHORT_LABEL_WIDTH)
+            .accent_brackets(),
             header_focus: HeaderFocus::List,
             section_buttons: vec![],
         }
@@ -2236,7 +2239,9 @@ impl SectionedList {
     }
     #[cfg(test)]
     pub fn waits_for_prompt(&self) -> bool {
-        self.sections.iter().any(|section| section.waits_for_prompt())
+        self.sections
+            .iter()
+            .any(|section| section.waits_for_prompt())
     }
     pub fn prompt_result(&mut self, request_id: u64, result: &PromptResult) -> bool {
         let handled = self
@@ -2728,9 +2733,8 @@ impl SectionedList {
                     };
                     let look = RowLook::new(is_selected, self.scroll.is_hovered(row_index));
                     let group = if shared { 0 } else { section_of(row_index) };
-                    layouts[group].print_styled(
-                        columns, marker, x, screen_y, row_width, look, styles,
-                    );
+                    layouts[group]
+                        .print_styled(columns, marker, x, screen_y, row_width, look, styles);
                 },
             }
         }
@@ -2776,13 +2780,21 @@ impl SectionedList {
                     ]
                 },
                 HeaderFocus::Filter => {
-                    return vec![("<Space>", "choose menu"), ("<↓>", "items"), ("<Esc>", "close")]
+                    return vec![
+                        ("<Space>", "choose menu"),
+                        ("<↓>", "items"),
+                        ("<Esc>", "close"),
+                    ]
                 },
                 HeaderFocus::List => {},
             }
         }
         let mut hints = vec![("<↓↑>", "move")];
-        let delete_key = if self.styled.is_some() { "<Del>" } else { "<d>" };
+        let delete_key = if self.styled.is_some() {
+            "<Del>"
+        } else {
+            "<d>"
+        };
         match self.selected {
             Row::Actions(_) => {
                 hints.push(("<←→>", "choose"));

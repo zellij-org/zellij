@@ -25,11 +25,11 @@ struct State {
 impl State {
     fn handle_prompt_message(&mut self, name: &str, args: &BTreeMap<String, String>) {
         let request = match name {
-            "prompt_confirm" => PromptRequest::confirm(
-                Text::from("Delete branch?").color_range(3, 7..13),
-            )
-                .yes("Delete")
-                .no("Keep"),
+            "prompt_confirm" => {
+                PromptRequest::confirm(Text::from("Delete branch?").color_range(3, 7..13))
+                    .yes("Delete")
+                    .no("Keep")
+            },
             "prompt_choose_multi" => PromptRequest::choose(vec!["alpha", "beta", "gamma"])
                 .multi()
                 .title("Pick branches"),
@@ -39,7 +39,8 @@ impl State {
                 FormField::number("port", "Port").default_value(8080),
             ]),
             "prompt_input_timeout" => {
-                let request = PromptRequest::input("Name").timeout(std::time::Duration::from_secs(1));
+                let request =
+                    PromptRequest::input("Name").timeout(std::time::Duration::from_secs(1));
                 match args.get("default") {
                     Some(default) => request.default(default.clone()),
                     None => request,

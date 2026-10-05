@@ -326,9 +326,10 @@ fn tab_moves_through_the_leader_key_fields_before_leaving_the_keys_page() {
     });
 
     zellij.send_stdin(&keys::TAB);
-    zellij.wait_until("the keybindings below the preset are focused", |grid_snapshot| {
-        grid_snapshot.contains("search keys and actions")
-    });
+    zellij.wait_until(
+        "the keybindings below the preset are focused",
+        |grid_snapshot| grid_snapshot.contains("search keys and actions"),
+    );
     for _ in 0..4 {
         zellij.send_stdin(&keys::TAB);
     }
@@ -481,9 +482,10 @@ fn tab_past_the_fields_of_a_small_keys_page_reaches_the_keybindings_and_back() {
     for _ in 0..4 {
         zellij.send_stdin(&keys::TAB);
     }
-    zellij.wait_until("the keybindings below the preset are focused", |grid_snapshot| {
-        grid_snapshot.contains("search keys and actions")
-    });
+    zellij.wait_until(
+        "the keybindings below the preset are focused",
+        |grid_snapshot| grid_snapshot.contains("search keys and actions"),
+    );
     for _ in 0..4 {
         zellij.send_stdin(&keys::TAB);
     }

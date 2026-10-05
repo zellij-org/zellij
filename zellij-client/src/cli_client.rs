@@ -519,7 +519,9 @@ pub fn plan_prompt(
     }
     let mut input = PromptInput::Single(None);
     let element = match &prompt_cli.element {
-        PromptElementCli::Confirm { message, yes, no, .. } => {
+        PromptElementCli::Confirm {
+            message, yes, no, ..
+        } => {
             let message = message
                 .as_ref()
                 .ok_or_else(|| usage_error("confirm: the question is missing"))?;
@@ -541,7 +543,8 @@ pub fn plan_prompt(
             multi,
             labels,
             null,
-            selected, ..
+            selected,
+            ..
         } => {
             let mut choices: Vec<ChoiceItem> =
                 items.iter().map(|i| ChoiceItem::plain(i.clone())).collect();
@@ -577,7 +580,8 @@ pub fn plan_prompt(
             message,
             placeholder,
             validate,
-            required, ..
+            required,
+            ..
         } => {
             if let Some(message) = message {
                 args.insert(prompt::ARG_MESSAGE.to_owned(), message.clone());
@@ -598,7 +602,8 @@ pub fn plan_prompt(
             message,
             min,
             max,
-            step, ..
+            step,
+            ..
         } => {
             if let Some(message) = message {
                 args.insert(prompt::ARG_MESSAGE.to_owned(), message.clone());
@@ -649,7 +654,9 @@ pub fn plan_prompt(
             }
             PromptElement::Toggle
         },
-        PromptElementCli::Select { message, options, .. } => {
+        PromptElementCli::Select {
+            message, options, ..
+        } => {
             if options.is_empty() {
                 return Err(usage_error("select: give a label followed by the options"));
             }

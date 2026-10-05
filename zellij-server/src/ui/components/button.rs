@@ -11,7 +11,9 @@ pub fn button(
     coordinates: &Coordinates,
 ) -> Vec<u8> {
     let label = decode_styled(fields.get(0));
-    let width = coordinates.width.unwrap_or_else(|| button_width(&label.text));
+    let width = coordinates
+        .width
+        .unwrap_or_else(|| button_width(&label.text));
     let mut output = move_to(coordinates, 0, 0);
     output.push_str(&button_cells_styled(
         &label,

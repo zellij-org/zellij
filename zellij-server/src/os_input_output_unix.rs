@@ -273,17 +273,15 @@ fn handle_terminal(
     match openpty(None, &orig_termios) {
         Ok(open_pty_res) => handle_openpty(open_pty_res, cmd, quit_cb, terminal_id, pane_env),
         Err(e) => match failover_cmd {
-            Some(failover_cmd) => {
-                handle_terminal(
-                    failover_cmd,
-                    None,
-                    orig_termios,
-                    quit_cb,
-                    terminal_id,
-                    pane_env,
-                )
-                    .with_context(err_context)
-            },
+            Some(failover_cmd) => handle_terminal(
+                failover_cmd,
+                None,
+                orig_termios,
+                quit_cb,
+                terminal_id,
+                pane_env,
+            )
+            .with_context(err_context),
             None => Err::<(i32, i32), _>(e)
                 .context("failed to start pty")
                 .with_context(err_context)

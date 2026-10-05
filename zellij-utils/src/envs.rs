@@ -74,11 +74,10 @@ impl EnvironmentVariables {
         if self.env.is_empty() {
             return;
         }
-        let mut values_before_config: HashMap<String, Option<String>> =
-            var(ENV_BEFORE_CONFIG_KEY)
-                .ok()
-                .and_then(|encoded| serde_json::from_str(&encoded).ok())
-                .unwrap_or_default();
+        let mut values_before_config: HashMap<String, Option<String>> = var(ENV_BEFORE_CONFIG_KEY)
+            .ok()
+            .and_then(|encoded| serde_json::from_str(&encoded).ok())
+            .unwrap_or_default();
         for (k, v) in &self.env {
             values_before_config
                 .entry(k.clone())

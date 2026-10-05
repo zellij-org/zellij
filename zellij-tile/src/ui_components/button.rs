@@ -1,8 +1,7 @@
-use super::widget_common::{
-    is_activation_key, state_flag, text_width, update_hover, widget_dcs, Rect,
-    UiResponse, Widget,
-};
 use super::text::Text;
+use super::widget_common::{
+    is_activation_key, state_flag, text_width, update_hover, widget_dcs, Rect, UiResponse, Widget,
+};
 use zellij_utils::data::{KeyWithModifier, Mouse};
 
 pub const BUTTON_PRESS_SECONDS: f64 = 0.4;
@@ -83,7 +82,8 @@ impl Button {
         self.pressed
     }
     pub fn natural_width(&self) -> usize {
-        self.width.unwrap_or_else(|| text_width(self.label.content()) + 4)
+        self.width
+            .unwrap_or_else(|| text_width(self.label.content()) + 4)
     }
     pub fn serialize(&mut self, x: usize, y: usize) -> String {
         let width = self.natural_width();
@@ -95,15 +95,7 @@ impl Button {
         state_flag(&mut state, "h", self.hovered && !self.disabled);
         state_flag(&mut state, "ab", self.accent_brackets);
         state_flag(&mut state, "la", self.left_aligned);
-        widget_dcs(
-            "button",
-            x,
-            y,
-            Some(width),
-            Some(1),
-            &state,
-            &self.fields(),
-        )
+        widget_dcs("button", x, y, Some(width), Some(1), &state, &self.fields())
     }
     fn fields(&self) -> Vec<String> {
         vec![self.label.serialize()]

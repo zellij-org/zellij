@@ -1117,7 +1117,9 @@ fn dragging_the_scroll_bar_scrolls_until_the_button_is_released() {
     let mut view = ScrollView::new(50);
     view.layout(0, 2, 20, 10);
     let gutter_x = 11;
-    assert!(view.handle_mouse(Mouse::LeftClick(2, gutter_x)).is_handled());
+    assert!(view
+        .handle_mouse(Mouse::LeftClick(2, gutter_x))
+        .is_handled());
     assert!(view.is_dragging());
     assert_eq!(view.offset(), 0);
     view.handle_mouse(Mouse::Hold(11, 0));
@@ -1127,7 +1129,10 @@ fn dragging_the_scroll_bar_scrolls_until_the_button_is_released() {
     view.handle_mouse(Mouse::Release(6, 3));
     assert!(!view.is_dragging());
     let offset = view.offset();
-    assert_eq!(view.handle_mouse(Mouse::Hold(11, 0)), UiResponse::NotHandled);
+    assert_eq!(
+        view.handle_mouse(Mouse::Hold(11, 0)),
+        UiResponse::NotHandled
+    );
     assert_eq!(view.offset(), offset);
 }
 
@@ -1137,7 +1142,10 @@ fn wrapping_text_keeps_its_colours_on_every_line() {
     let lines = message.wrap(9);
     let contents: Vec<&str> = lines.iter().map(|line| line.content()).collect();
     assert_eq!(contents, vec!["Delete", "Alt n", "from", "Normal", "mode?"]);
-    assert_eq!(lines[1].serialize(), Text::from("Alt n").color_range(3, 0..5).serialize());
+    assert_eq!(
+        lines[1].serialize(),
+        Text::from("Alt n").color_range(3, 0..5).serialize()
+    );
     assert_eq!(lines[0].serialize(), Text::from("Delete").serialize());
     assert_eq!(
         message.wrap(60)[0].serialize(),
@@ -1159,16 +1167,30 @@ fn wrapping_text_keeps_its_colours_on_every_line() {
 fn labels_and_messages_carry_their_text_styles_to_the_server() {
     let label = Text::from("Delete main?").color_range(3, 7..11);
     let serialized = label.serialize();
-    assert!(TextInput::new("").label(label.clone()).serialize(0, 0, 40).contains(&serialized));
-    assert!(Dropdown::new(label.clone(), vec!["a"]).serialize(0, 0, 40).contains(&serialized));
-    assert!(Toggle::new(label.clone(), false).serialize(0, 0).contains(&serialized));
-    assert!(NumberStepper::new(label.clone(), 1).serialize(0, 0).contains(&serialized));
-    assert!(Button::new(label.clone()).serialize(0, 0).contains(&serialized));
+    assert!(TextInput::new("")
+        .label(label.clone())
+        .serialize(0, 0, 40)
+        .contains(&serialized));
+    assert!(Dropdown::new(label.clone(), vec!["a"])
+        .serialize(0, 0, 40)
+        .contains(&serialized));
+    assert!(Toggle::new(label.clone(), false)
+        .serialize(0, 0)
+        .contains(&serialized));
+    assert!(NumberStepper::new(label.clone(), 1)
+        .serialize(0, 0)
+        .contains(&serialized));
+    assert!(Button::new(label.clone())
+        .serialize(0, 0)
+        .contains(&serialized));
     assert!(ConfirmDialog::new("Confirm", label.clone())
         .opened()
         .serialize(0, 0, 60, 20)
         .contains(&serialized));
     assert_eq!(Button::new(label.clone()).label(), "Delete main?");
-    assert_eq!(Button::new("Go").serialize(0, 0), Button::new(Text::from("Go")).serialize(0, 0));
+    assert_eq!(
+        Button::new("Go").serialize(0, 0),
+        Button::new(Text::from("Go")).serialize(0, 0)
+    );
     assert!(Button::new("Go").serialize(0, 0).contains(&enc("Go")));
 }

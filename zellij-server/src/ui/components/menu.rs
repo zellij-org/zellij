@@ -225,7 +225,11 @@ fn paint_with_matches(
         let is_match = matched.contains(&index);
         if is_match != run_is_match && !run.is_empty() {
             output.push_str(&paint(
-                if run_is_match { match_styles } else { row_styles },
+                if run_is_match {
+                    match_styles
+                } else {
+                    row_styles
+                },
                 &run,
             ));
             run.clear();
@@ -234,7 +238,11 @@ fn paint_with_matches(
         run.push(character);
     }
     output.push_str(&paint(
-        if run_is_match { match_styles } else { row_styles },
+        if run_is_match {
+            match_styles
+        } else {
+            row_styles
+        },
         &run,
     ));
     output

@@ -1,18 +1,18 @@
 pub use super::generated_api::api::{
     action::{Action as ProtobufAction, Position as ProtobufPosition},
     event::{
+        context_menu_action::Action as ProtobufContextMenuActionKind,
         event::Payload as ProtobufEventPayload,
         layout_parsing_error::ErrorType as ProtobufLayoutParsingErrorType,
         pane_scrollback_response, ActionCompletePayload as ProtobufActionCompletePayload,
         ActivePaneScrollPayload as ProtobufActivePaneScrollPayload,
         AvailableKeybindPresetsPayload as ProtobufAvailableKeybindPresetsPayload,
-        PromptResultPayload as ProtobufPromptResultPayload,
         AvailableLayoutInfoPayload as ProtobufAvailableLayoutInfoPayload,
-        ClientInfo as ProtobufClientInfo, ClientPaneHistory as ProtobufClientPaneHistory,
+        ClickedPaneAction as ProtobufClickedPaneAction,
+        ClickedTabAction as ProtobufClickedTabAction, ClientInfo as ProtobufClientInfo,
+        ClientPaneHistory as ProtobufClientPaneHistory,
         ClientTabHistory as ProtobufClientTabHistory,
         CommandChangedPayload as ProtobufCommandChangedPayload, ContextItem as ProtobufContextItem,
-        context_menu_action::Action as ProtobufContextMenuActionKind,
-        ClickedPaneAction as ProtobufClickedPaneAction, ClickedTabAction as ProtobufClickedTabAction,
         ContextMenuAction as ProtobufContextMenuAction,
         ContextMenuEntry as ProtobufContextMenuEntry, ContextMenuKind as ProtobufContextMenuKind,
         ContextMenuPayload as ProtobufContextMenuPayload,
@@ -27,9 +27,8 @@ pub use super::generated_api::api::{
         KeybindPresetExample as ProtobufKeybindPresetExample,
         KeybindPresetInfo as ProtobufKeybindPresetInfo,
         KeybindPresetSource as ProtobufKeybindPresetSource,
-        KeybindPresetWithError as ProtobufKeybindPresetWithError,
-        LayoutInfo as ProtobufLayoutInfo, LayoutMetadata as ProtobufLayoutMetadata,
-        LayoutParsingError as ProtobufLayoutParsingError,
+        KeybindPresetWithError as ProtobufKeybindPresetWithError, LayoutInfo as ProtobufLayoutInfo,
+        LayoutMetadata as ProtobufLayoutMetadata, LayoutParsingError as ProtobufLayoutParsingError,
         LayoutWithError as ProtobufLayoutWithError, ModeUpdatePayload as ProtobufModeUpdatePayload,
         NestedSessionEndReason as ProtobufNestedSessionEndReason,
         NestedSessionKeybindsError as ProtobufNestedSessionKeybindsError,
@@ -42,8 +41,9 @@ pub use super::generated_api::api::{
         PaneRenderReportPayload as ProtobufPaneRenderReportPayload,
         PaneScrollbackResponse as ProtobufPaneScrollbackResponse, PaneType as ProtobufPaneType,
         PluginConfigurationChangedPayload as ProtobufPluginConfigurationChangedPayload,
-        PluginInfo as ProtobufPluginInfo, ResurrectableSession as ProtobufResurrectableSession,
-        SelectedText as ProtobufSelectedText, SessionManifest as ProtobufSessionManifest,
+        PluginInfo as ProtobufPluginInfo, PromptResultPayload as ProtobufPromptResultPayload,
+        ResurrectableSession as ProtobufResurrectableSession, SelectedText as ProtobufSelectedText,
+        SessionManifest as ProtobufSessionManifest,
         SoftKeyboardVisibilityChangedPayload as ProtobufSoftKeyboardVisibilityChangedPayload,
         SyntaxError as ProtobufSyntaxError, TabInfo as ProtobufTabInfo,
         TabMetadata as ProtobufTabMetadata, UserActionPayload as ProtobufUserActionPayload,
@@ -60,10 +60,10 @@ pub use super::generated_api::api::{
 #[allow(hidden_glob_reexports)]
 use crate::data::{
     ClickedPaneAction, ClickedTabAction, ClientId, ClientInfo, ContextMenuAction,
-    ContextMenuContext, ContextMenuEntry, ContextMenuKind, CopyDestination, Direction,
-    Event, EventType, FileMetadata, HostTerminalThemeMode, InputMode, KeyModifier, KeyWithModifier,
-    KeybindPresetInfo, KeybindPresetSource, KeybindPresetWithError, KeybindsVec,
-    LayoutInfo, LayoutMetadata, ModeInfo, Mouse, NestedSessionEndReason, NestedSessionKeybinds,
+    ContextMenuContext, ContextMenuEntry, ContextMenuKind, CopyDestination, Direction, Event,
+    EventType, FileMetadata, HostTerminalThemeMode, InputMode, KeyModifier, KeyWithModifier,
+    KeybindPresetInfo, KeybindPresetSource, KeybindPresetWithError, KeybindsVec, LayoutInfo,
+    LayoutMetadata, ModeInfo, Mouse, NestedSessionEndReason, NestedSessionKeybinds,
     NestedSessionKeybindsError, NestedSessionKeybindsResponse, PaneContents, PaneId, PaneInfo,
     PaneManifest, PaneMetadata, PaneScrollbackResponse, PermissionStatus, PluginCapabilities,
     PluginInfo, SelectedText, SessionInfo, SettingKey, Style, StyledText, TabInfo, TabMetadata,
@@ -4135,7 +4135,9 @@ impl From<ProtobufKeybindPresetWithError> for KeybindPresetWithError {
 fn a_mouse_event_with_modifiers_keeps_them_across_the_plugin_boundary() {
     use prost::Message;
     let modifiers: std::collections::BTreeSet<KeyModifier> =
-        [KeyModifier::Shift, KeyModifier::Ctrl].into_iter().collect();
+        [KeyModifier::Shift, KeyModifier::Ctrl]
+            .into_iter()
+            .collect();
     let event = Event::MouseWithModifiers(crate::data::Mouse::LeftClick(2, 5), modifiers.clone());
     let protobuf_event: ProtobufEvent = event.try_into().unwrap();
     let decoded: ProtobufEvent =
@@ -4238,9 +4240,7 @@ impl TryFrom<ContextMenuAction> for ProtobufContextMenuAction {
                     ClickedTabAction::Close => ProtobufClickedTabAction::Close,
                     ClickedTabAction::StartRename => ProtobufClickedTabAction::StartRename,
                     ClickedTabAction::Move(Direction::Left) => ProtobufClickedTabAction::MoveLeft,
-                    ClickedTabAction::Move(Direction::Right) => {
-                        ProtobufClickedTabAction::MoveRight
-                    },
+                    ClickedTabAction::Move(Direction::Right) => ProtobufClickedTabAction::MoveRight,
                     ClickedTabAction::Move(_) => {
                         return Err("Tabs can only be moved left or right")
                     },
@@ -4294,10 +4294,12 @@ mod context_menu_tests {
     #[test]
     fn tabs_only_move_left_or_right_and_empty_actions_are_rejected() {
         for direction in [Direction::Up, Direction::Down] {
-            assert!(ProtobufContextMenuAction::try_from(ContextMenuAction::ClickedTab(
-                ClickedTabAction::Move(direction)
-            ))
-            .is_err());
+            assert!(
+                ProtobufContextMenuAction::try_from(ContextMenuAction::ClickedTab(
+                    ClickedTabAction::Move(direction)
+                ))
+                .is_err()
+            );
         }
         assert!(ContextMenuAction::try_from(ProtobufContextMenuAction { action: None }).is_err());
         assert!(ContextMenuAction::try_from(ProtobufContextMenuAction {

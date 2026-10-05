@@ -1,8 +1,8 @@
-use super::widget_common::{
-    default_label_width, is_activation_key, state_flag, state_value, update_hover,
-    widget_dcs, Rect, UiResponse, UiValue, Widget,
-};
 use super::text::Text;
+use super::widget_common::{
+    default_label_width, is_activation_key, state_flag, state_value, update_hover, widget_dcs,
+    Rect, UiResponse, UiValue, Widget,
+};
 use zellij_utils::data::{KeyWithModifier, Mouse};
 
 pub const TOGGLE_WIDTH: usize = 5;

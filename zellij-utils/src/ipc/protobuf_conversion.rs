@@ -1219,6 +1219,7 @@ impl From<crate::input::actions::Action>
             CurrentTabInfoAction,
             DenyAction,
             DetachAction,
+            DismissInfoPopupsAction,
             DumpLayoutAction,
             DumpScreenAction,
             EditFileAction,
@@ -1270,6 +1271,7 @@ impl From<crate::input::actions::Action>
             NextSwapLayoutAction,
             NextSwapLayoutByTabIdAction,
             NoOpAction,
+            OpenContextMenuAction,
             OverrideLayoutAction,
             PageScrollDownAction,
             PageScrollDownByPaneIdAction,
@@ -1346,7 +1348,7 @@ impl From<crate::input::actions::Action>
             TogglePanePinnedAction,
             TogglePanePinnedByPaneIdAction,
             ToggleTabAction,
-            ToggleThemeAction, DismissInfoPopupsAction, OpenContextMenuAction,
+            ToggleThemeAction,
             UndoRenamePaneAction,
             UndoRenamePaneByPaneIdAction,
             UndoRenameTabAction,
@@ -3250,7 +3252,9 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                 crate::input::actions::Action::TogglePaneEmbedOrFloatingByPaneId {
                     pane_id: a
                         .pane_id
-                        .ok_or_else(|| anyhow!("TogglePaneEmbedOrFloatingByPaneId missing pane_id"))?
+                        .ok_or_else(|| {
+                            anyhow!("TogglePaneEmbedOrFloatingByPaneId missing pane_id")
+                        })?
                         .try_into()?,
                 },
             ),

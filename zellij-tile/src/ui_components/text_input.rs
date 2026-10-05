@@ -1,8 +1,8 @@
+use super::text::Text;
 use super::widget_common::{
     char_width, default_label_width, encode_text, is_plain, state_flag, state_value, text_width,
     typed_char, update_hover, widget_dcs, Rect, UiResponse, UiValue, Widget,
 };
-use super::text::Text;
 use std::fmt;
 use std::rc::Rc;
 use zellij_utils::data::{BareKey, KeyModifier, KeyWithModifier, Mouse};

@@ -397,7 +397,14 @@ pub fn button_cells_with_accent(
     accent_brackets: bool,
     style: &Style,
 ) -> String {
-    button_cells_styled(&Text::plain(label), width, look, accent_brackets, false, style)
+    button_cells_styled(
+        &Text::plain(label),
+        width,
+        look,
+        accent_brackets,
+        false,
+        style,
+    )
 }
 
 pub fn button_cells_styled(
@@ -465,7 +472,13 @@ pub fn button_cells_styled(
         "{}{}{}{}{}",
         paint(bracket_styles, "["),
         paint(text_styles, &" ".repeat(lead)),
-        paint_text(label, text_styles, label_cells_width, colorable, &label_style),
+        paint_text(
+            label,
+            text_styles,
+            label_cells_width,
+            colorable,
+            &label_style
+        ),
         paint(text_styles, &" ".repeat(trail)),
         paint(bracket_styles, "]")
     )
@@ -529,7 +542,10 @@ mod tests {
         assert!(painted.contains(&paint(emphasis, "main")));
         let disabled = render_label(&label, 14, false, true, &style);
         assert!(!disabled.contains(&paint(emphasis, "main")));
-        assert_eq!(strip_styles(&render_label(&label, 8, false, false, &style)), "Delete …");
+        assert_eq!(
+            strip_styles(&render_label(&label, 8, false, false, &style)),
+            "Delete …"
+        );
     }
 
     #[test]
@@ -538,7 +554,9 @@ mod tests {
         let label = styled("Go on", 0, 3..5);
         let cells = button_cells_styled(&label, 9, ButtonLook::Normal, false, false, &style);
         assert_eq!(strip_styles(&cells), "[ Go on ]");
-        let emphasis = bold(plain_styles(&style).foreground(Some(style.colors.text_unselected.emphasis_0.into())));
+        let emphasis = bold(
+            plain_styles(&style).foreground(Some(style.colors.text_unselected.emphasis_0.into())),
+        );
         assert!(cells.contains(&paint(emphasis, "on")));
     }
 

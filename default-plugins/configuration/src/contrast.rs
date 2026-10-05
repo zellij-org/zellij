@@ -88,7 +88,10 @@ pub fn suggest(foreground: PaletteColor, background: PaletteColor, target: f64) 
             let ratio = contrast(PaletteColor::Rgb(candidate), background);
             if ratio >= target {
                 let distance = step as f64;
-                if best.map(|(previous, _)| distance < previous).unwrap_or(true) {
+                if best
+                    .map(|(previous, _)| distance < previous)
+                    .unwrap_or(true)
+                {
                     best = Some((distance, candidate));
                 }
                 break;
@@ -191,7 +194,10 @@ mod tests {
 
     #[test]
     fn page_level_styles_are_checked_against_the_text_background() {
-        assert_eq!(background_slot("frame_selected"), "text_unselected.background");
+        assert_eq!(
+            background_slot("frame_selected"),
+            "text_unselected.background"
+        );
         assert_eq!(background_slot("table_title"), "text_unselected.background");
         assert_eq!(background_slot("list_selected"), "list_selected.background");
     }

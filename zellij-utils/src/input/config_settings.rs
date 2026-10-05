@@ -12,7 +12,8 @@ use super::options::{
 use super::theme::{FrameConfig, UiConfig};
 use super::web_client::{CursorInactiveStyle, CursorStyle, WebClientConfig};
 use crate::data::{
-    BorderStyleOverride, ConfigSettingState, ContextMenuEntry, InputMode, LineStyle, SettingKey, ThemeHue, WebSharing,
+    BorderStyleOverride, ConfigSettingState, ContextMenuEntry, InputMode, LineStyle, SettingKey,
+    ThemeHue, WebSharing,
 };
 use crate::kdl::load_plugins_to_kdl;
 

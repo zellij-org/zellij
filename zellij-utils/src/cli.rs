@@ -197,7 +197,11 @@ pub struct PromptCli {
     #[clap(subcommand)]
     pub element: PromptElementCli,
 
-    #[clap(long, global = true, help = "Title shown at the top of the popup (e.g. --title \"Git\")")]
+    #[clap(
+        long,
+        global = true,
+        help = "Title shown at the top of the popup (e.g. --title \"Git\")"
+    )]
     pub title: Option<String>,
 
     #[clap(
@@ -271,9 +275,12 @@ impl PromptCli {
 
 #[derive(Debug, Subcommand, Clone, Serialize, Deserialize)]
 pub enum PromptElementCli {
-    #[clap(about = "Ask a yes/no question; the exit code is the answer (e.g. zellij prompt confirm \"Force push?\" --yes Push --no Cancel)", after_help = "Examples:\n  zellij prompt confirm \"Force push?\"
+    #[clap(
+        about = "Ask a yes/no question; the exit code is the answer (e.g. zellij prompt confirm \"Force push?\" --yes Push --no Cancel)",
+        after_help = "Examples:\n  zellij prompt confirm \"Force push?\"
   zellij prompt confirm \"Force push?\" --yes Push --no Cancel && git push --force
-  zellij prompt confirm \"Deploy?\" --title Production --timeout 10s --default no")]
+  zellij prompt confirm \"Deploy?\" --title Production --timeout 10s --default no"
+    )]
     Confirm {
         #[clap(help = "The question (e.g. \"Force push?\")")]
         message: Option<String>,
@@ -284,67 +291,115 @@ pub enum PromptElementCli {
         #[clap(flatten)]
         answer: PromptAnswerArgs,
     },
-    #[clap(about = "Choose one or more items from the arguments or from stdin, one per line (e.g. git branch | zellij prompt choose)", after_help = "Examples:\n  git branch --format='%(refname:short)' | zellij prompt choose
+    #[clap(
+        about = "Choose one or more items from the arguments or from stdin, one per line (e.g. git branch | zellij prompt choose)",
+        after_help = "Examples:\n  git branch --format='%(refname:short)' | zellij prompt choose
   zellij prompt choose main develop feature/login --title Branch
   zellij prompt choose --multi --selected b a b c d
   printf 'main\\tMain branch\\ndev\\tDevelopment\\n' | zellij prompt choose --labels
   zellij prompt choose --item \"rm=Delete file\" --item \"mv=Rename file\"
-  ls | zellij prompt choose --json")]
+  ls | zellij prompt choose --json"
+    )]
     Choose {
         #[clap(help = "The items; read from stdin when none are given (e.g. main dev)")]
         items: Vec<String>,
-        #[clap(long = "item", allow_hyphen_values = true, help = "An item written as value=Label (e.g. --item \"rm=Delete file\")")]
+        #[clap(
+            long = "item",
+            allow_hyphen_values = true,
+            help = "An item written as value=Label (e.g. --item \"rm=Delete file\")"
+        )]
         item: Vec<String>,
-        #[clap(long, help = "Allow ticking several items (e.g. zellij prompt choose --multi a b c)")]
+        #[clap(
+            long,
+            help = "Allow ticking several items (e.g. zellij prompt choose --multi a b c)"
+        )]
         multi: bool,
-        #[clap(long, help = "Each stdin line is value<TAB>label (e.g. printf 'main\\tMain branch\\n' | zellij prompt choose --labels)")]
+        #[clap(
+            long,
+            help = "Each stdin line is value<TAB>label (e.g. printf 'main\\tMain branch\\n' | zellij prompt choose --labels)"
+        )]
         labels: bool,
-        #[clap(short = '0', long = "null", help = "Input and output are NUL-separated (e.g. find . -print0 | zellij prompt choose -0)")]
+        #[clap(
+            short = '0',
+            long = "null",
+            help = "Input and output are NUL-separated (e.g. find . -print0 | zellij prompt choose -0)"
+        )]
         null: bool,
-        #[clap(long, allow_hyphen_values = true, help = "An item ticked in advance (e.g. --selected b)")]
+        #[clap(
+            long,
+            allow_hyphen_values = true,
+            help = "An item ticked in advance (e.g. --selected b)"
+        )]
         selected: Vec<String>,
         #[clap(flatten)]
         answer: PromptAnswerArgs,
     },
-    #[clap(about = "Ask for a line of text (e.g. zellij prompt input \"Commit message\" --required)", after_help = "Examples:\n  zellij prompt input \"Commit message\" --placeholder \"what changed\" --required
+    #[clap(
+        about = "Ask for a line of text (e.g. zellij prompt input \"Commit message\" --required)",
+        after_help = "Examples:\n  zellij prompt input \"Commit message\" --placeholder \"what changed\" --required
   zellij prompt input Branch --validate '^[a-z-]+$' --default my-branch
-  zellij prompt input Name --timeout 10s --default anonymous")]
+  zellij prompt input Name --timeout 10s --default anonymous"
+    )]
     Input {
         #[clap(help = "The label (e.g. \"Commit message\")")]
         message: Option<String>,
-        #[clap(long, help = "Text shown while the field is empty (e.g. --placeholder \"what changed\")")]
+        #[clap(
+            long,
+            help = "Text shown while the field is empty (e.g. --placeholder \"what changed\")"
+        )]
         placeholder: Option<String>,
-        #[clap(long, allow_hyphen_values = true, help = "A regular expression the answer must match (e.g. --validate '^[a-z-]+$')")]
+        #[clap(
+            long,
+            allow_hyphen_values = true,
+            help = "A regular expression the answer must match (e.g. --validate '^[a-z-]+$')"
+        )]
         validate: Option<String>,
         #[clap(long, help = "Refuse an empty answer (e.g. --required)")]
         required: bool,
         #[clap(flatten)]
         answer: PromptAnswerArgs,
     },
-    #[clap(about = "Ask for a whole number (e.g. zellij prompt number Port --min 1 --max 65535 --default 8080)", after_help = "Examples:\n  zellij prompt number Port --min 1 --max 65535 --default 8080
-  zellij prompt number Workers --min 1 --max 64 --step 4 --default 8")]
+    #[clap(
+        about = "Ask for a whole number (e.g. zellij prompt number Port --min 1 --max 65535 --default 8080)",
+        after_help = "Examples:\n  zellij prompt number Port --min 1 --max 65535 --default 8080
+  zellij prompt number Workers --min 1 --max 64 --step 4 --default 8"
+    )]
     Number {
         #[clap(help = "The label (e.g. Port)")]
         message: Option<String>,
-        #[clap(long, allow_hyphen_values = true, help = "Smallest allowed value (e.g. --min 1)")]
+        #[clap(
+            long,
+            allow_hyphen_values = true,
+            help = "Smallest allowed value (e.g. --min 1)"
+        )]
         min: Option<i64>,
-        #[clap(long, allow_hyphen_values = true, help = "Largest allowed value (e.g. --max 65535)")]
+        #[clap(
+            long,
+            allow_hyphen_values = true,
+            help = "Largest allowed value (e.g. --max 65535)"
+        )]
         max: Option<i64>,
         #[clap(long, help = "Step used by the arrow keys (e.g. --step 10)")]
         step: Option<i64>,
         #[clap(flatten)]
         answer: PromptAnswerArgs,
     },
-    #[clap(about = "Ask for on or off; prints true or false (e.g. zellij prompt toggle \"Enable CI\" --default on)", after_help = "Examples:\n  zellij prompt toggle \"Enable CI\" --default on
-  zellij prompt toggle Verbose --json")]
+    #[clap(
+        about = "Ask for on or off; prints true or false (e.g. zellij prompt toggle \"Enable CI\" --default on)",
+        after_help = "Examples:\n  zellij prompt toggle \"Enable CI\" --default on
+  zellij prompt toggle Verbose --json"
+    )]
     Toggle {
         #[clap(help = "The label (e.g. \"Enable CI\")")]
         message: Option<String>,
         #[clap(flatten)]
         answer: PromptAnswerArgs,
     },
-    #[clap(about = "Choose one value from a dropdown (e.g. zellij prompt select License MIT Apache-2.0)", after_help = "Examples:\n  zellij prompt select License MIT Apache-2.0 GPL-3.0
-  zellij prompt select License MIT Apache-2.0 --default Apache-2.0")]
+    #[clap(
+        about = "Choose one value from a dropdown (e.g. zellij prompt select License MIT Apache-2.0)",
+        after_help = "Examples:\n  zellij prompt select License MIT Apache-2.0 GPL-3.0
+  zellij prompt select License MIT Apache-2.0 --default Apache-2.0"
+    )]
     Select {
         #[clap(help = "The label (e.g. License)")]
         message: Option<String>,
@@ -353,37 +408,63 @@ pub enum PromptElementCli {
         #[clap(flatten)]
         answer: PromptAnswerArgs,
     },
-    #[clap(about = "Show a menu and print the chosen item (e.g. zellij prompt menu Open Rename Delete)", after_help = "Examples:\n  zellij prompt menu Open Rename Delete
-  zellij prompt menu --item \"o=Open\" --item \"r=Rename\" --item \"d=Delete\" --at-mouse\n  zellij prompt menu Copy Paste --at-cursor\n  zellij prompt menu Open Close --at-center")]
+    #[clap(
+        about = "Show a menu and print the chosen item (e.g. zellij prompt menu Open Rename Delete)",
+        after_help = "Examples:\n  zellij prompt menu Open Rename Delete
+  zellij prompt menu --item \"o=Open\" --item \"r=Rename\" --item \"d=Delete\" --at-mouse\n  zellij prompt menu Copy Paste --at-cursor\n  zellij prompt menu Open Close --at-center"
+    )]
     Menu {
         #[clap(help = "The menu items (e.g. Open Rename Delete)")]
         items: Vec<String>,
-        #[clap(long = "item", allow_hyphen_values = true, help = "An item written as value=Label (e.g. --item \"rm=Delete\")")]
+        #[clap(
+            long = "item",
+            allow_hyphen_values = true,
+            help = "An item written as value=Label (e.g. --item \"rm=Delete\")"
+        )]
         item: Vec<String>,
         #[clap(flatten)]
         answer: PromptAnswerArgs,
     },
-    #[clap(about = "Show several fields described in JSON and print one JSON object (e.g. zellij prompt form --spec form.json)", after_help = "Examples:\n  echo '{\"title\":\"New project\",\"fields\":[{\"id\":\"name\",\"type\":\"input\",\"label\":\"Name\",\"required\":true},{\"id\":\"ci\",\"type\":\"toggle\",\"label\":\"Use CI\",\"default\":true}]}' | zellij prompt form
-  zellij prompt form --spec form.json")]
+    #[clap(
+        about = "Show several fields described in JSON and print one JSON object (e.g. zellij prompt form --spec form.json)",
+        after_help = "Examples:\n  echo '{\"title\":\"New project\",\"fields\":[{\"id\":\"name\",\"type\":\"input\",\"label\":\"Name\",\"required\":true},{\"id\":\"ci\",\"type\":\"toggle\",\"label\":\"Use CI\",\"default\":true}]}' | zellij prompt form
+  zellij prompt form --spec form.json"
+    )]
     Form {
-        #[clap(long, help = "File with the form description; read from stdin when not given (e.g. --spec form.json)")]
+        #[clap(
+            long,
+            help = "File with the form description; read from stdin when not given (e.g. --spec form.json)"
+        )]
         spec: Option<PathBuf>,
         #[clap(flatten)]
         answer: PromptAnswerArgs,
     },
-    #[clap(about = "Show a notice that does not take the keyboard and return at once with exit 0 (e.g. zellij prompt notify \"Build finished\" --timeout 5s)", after_help = "Examples:\n  zellij prompt notify \"Build finished\"
+    #[clap(
+        about = "Show a notice that does not take the keyboard and return at once with exit 0 (e.g. zellij prompt notify \"Build finished\" --timeout 5s)",
+        after_help = "Examples:\n  zellij prompt notify \"Build finished\"
   make && zellij prompt notify \"Build finished\" --title make --timeout 5s
   zellij prompt notify \"Tests failed\" --at bottom-left
   zellij prompt notify \"Saved\" --no-tab-name --timeout 3s
-  zellij prompt notify \"Saved\" --no-pane-name --no-tab-name")]
+  zellij prompt notify \"Saved\" --no-pane-name --no-tab-name"
+    )]
     Notify {
         #[clap(help = "The text to show; long text is wrapped (e.g. \"Build finished\")")]
         message: Option<String>,
-        #[clap(long, value_parser, help = "Where to show it: top-right, top-left, bottom-right, bottom-left, pane, center, mouse or cursor (e.g. --at bottom-right)")]
+        #[clap(
+            long,
+            value_parser,
+            help = "Where to show it: top-right, top-left, bottom-right, bottom-left, pane, center, mouse or cursor (e.g. --at bottom-right)"
+        )]
         at: Option<crate::data::PipePopupPlacement>,
-        #[clap(long, help = "Leave out the line with the name of the pane that sent the notice (e.g. --no-pane-name)")]
+        #[clap(
+            long,
+            help = "Leave out the line with the name of the pane that sent the notice (e.g. --no-pane-name)"
+        )]
         no_pane_name: bool,
-        #[clap(long, help = "Leave out the line with the tab name, shown when the pane that sent the notice is in another tab (e.g. --no-tab-name)")]
+        #[clap(
+            long,
+            help = "Leave out the line with the tab name, shown when the pane that sent the notice is in another tab (e.g. --no-tab-name)"
+        )]
         no_tab_name: bool,
     },
 }

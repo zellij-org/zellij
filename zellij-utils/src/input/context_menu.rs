@@ -461,7 +461,9 @@ mod tests {
             pane_id: PaneId::Terminal(9),
         });
         assert_eq!(
-            close_pane.clone().into_action(Some(PaneId::Terminal(2)), Some(5)),
+            close_pane
+                .clone()
+                .into_action(Some(PaneId::Terminal(2)), Some(5)),
             Some(Action::CloseFocusByPaneId {
                 pane_id: PaneId::Terminal(2)
             })
@@ -490,12 +492,7 @@ mod tests {
 
     #[test]
     fn statements_against_the_defaults_rebuild_the_entries() {
-        let defaults = vec![
-            item("a"),
-            item("b"),
-            ContextMenuEntry::Separator,
-            item("c"),
-        ];
+        let defaults = vec![item("a"), item("b"), ContextMenuEntry::Separator, item("c")];
         assert_eq!(
             context_menu_statements_against(&defaults, &defaults),
             Some(vec![])

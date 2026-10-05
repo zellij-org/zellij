@@ -527,7 +527,13 @@ pub fn print_heading(text: &str, x: usize, y: usize, width: usize) {
 }
 
 pub fn print_dim(text: &str, x: usize, y: usize, width: usize) {
-    print_text_with_coordinates(Text::from(truncate(text, width)).dim_all(), x, y, None, None);
+    print_text_with_coordinates(
+        Text::from(truncate(text, width)).dim_all(),
+        x,
+        y,
+        None,
+        None,
+    );
 }
 
 pub fn markers(unsaved: bool, is_default: bool, restart_only: bool) -> String {
@@ -842,8 +848,14 @@ mod tests {
     #[test]
     fn items_move_with_alt_or_shift_arrows() {
         let down = KeyWithModifier::new(BareKey::Down);
-        assert!(is_move_key(&down.clone().with_shift_modifier(), BareKey::Down));
-        assert!(is_move_key(&down.clone().with_alt_modifier(), BareKey::Down));
+        assert!(is_move_key(
+            &down.clone().with_shift_modifier(),
+            BareKey::Down
+        ));
+        assert!(is_move_key(
+            &down.clone().with_alt_modifier(),
+            BareKey::Down
+        ));
         assert!(!is_move_key(&down, BareKey::Down));
     }
 }

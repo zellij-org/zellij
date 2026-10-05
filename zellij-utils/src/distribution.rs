@@ -201,7 +201,9 @@ impl Distribution {
         self.layouts.iter().find(|layout| layout.name == name)
     }
     fn keybind_preset(&self, name: &str) -> Option<&DistributionKeybindPreset> {
-        self.keybind_presets.iter().find(|preset| preset.name == name)
+        self.keybind_presets
+            .iter()
+            .find(|preset| preset.name == name)
     }
 }
 
@@ -328,7 +330,11 @@ impl std::fmt::Display for DistributionError {
                 write!(f, "Layout name '{}' is declared more than once", name)
             },
             DistributionError::DuplicateKeybindPresetName(name) => {
-                write!(f, "Keybinding preset name '{}' is declared more than once", name)
+                write!(
+                    f,
+                    "Keybinding preset name '{}' is declared more than once",
+                    name
+                )
             },
         }
     }

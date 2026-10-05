@@ -1,7 +1,10 @@
 use zellij_tile::prelude::*;
 
-pub const PREVIEWED_THEME_SETTINGS: [SettingKey; 3] =
-    [SettingKey::Theme, SettingKey::ThemeDark, SettingKey::ThemeLight];
+pub const PREVIEWED_THEME_SETTINGS: [SettingKey; 3] = [
+    SettingKey::Theme,
+    SettingKey::ThemeDark,
+    SettingKey::ThemeLight,
+];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PreviewAction {
@@ -53,7 +56,11 @@ impl ThemePreview {
         unset_label: &str,
     ) -> Vec<PreviewAction> {
         let mut actions = vec![];
-        if self.active_key().map(|active| active != key).unwrap_or(false) {
+        if self
+            .active_key()
+            .map(|active| active != key)
+            .unwrap_or(false)
+        {
             actions.extend(self.restore());
         }
         let preview = self.active.get_or_insert_with(|| Preview {
@@ -195,7 +202,10 @@ mod tests {
                 Some(&unsaved_unset),
                 UNSET
             ),
-            vec![PreviewAction::Set(SettingKey::ThemeDark, "dracula".to_owned())]
+            vec![PreviewAction::Set(
+                SettingKey::ThemeDark,
+                "dracula".to_owned()
+            )]
         );
         assert_eq!(
             preview.restore(),

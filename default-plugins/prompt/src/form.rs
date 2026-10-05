@@ -164,9 +164,10 @@ impl FormScreen {
         self.spec.message.is_some()
     }
     pub fn has_switches(&self) -> bool {
-        self.spec.fields.iter().any(|field| {
-            matches!(field.kind, FormFieldKind::Toggle | FormFieldKind::Choose)
-        })
+        self.spec
+            .fields
+            .iter()
+            .any(|field| matches!(field.kind, FormFieldKind::Toggle | FormFieldKind::Choose))
     }
     fn message_lines(&self, width: usize) -> Vec<Text> {
         match &self.spec.message {
@@ -506,7 +507,10 @@ impl FormScreen {
         let centered_x = |item_width: usize| origin + full_width.saturating_sub(item_width) / 2;
         let (x, content_width) = if self.is_dialog() {
             let fields_width = self.fields_width().min(full_width);
-            (x + full_width.saturating_sub(fields_width) / 2, fields_width)
+            (
+                x + full_width.saturating_sub(fields_width) / 2,
+                fields_width,
+            )
         } else {
             (x, full_width)
         };
@@ -652,10 +656,7 @@ impl FormScreen {
                 .fields_width()
                 .max(message_width)
                 .max(self.buttons_width());
-            return (
-                inner + DIALOG_PADDING * 2,
-                self.content_height(inner),
-            );
+            return (inner + DIALOG_PADDING * 2, self.content_height(inner));
         }
         let widest = self
             .spec
@@ -675,7 +676,10 @@ impl FormScreen {
             })
             .max()
             .unwrap_or(30);
-        (self.label_width + widest + 4, self.content_height(usize::MAX))
+        (
+            self.label_width + widest + 4,
+            self.content_height(usize::MAX),
+        )
     }
 }
 
@@ -786,7 +790,8 @@ mod tests {
         let dialog = form(DIALOG);
         let (width, height) = dialog.desired_size();
         assert!(width >= "Delete Alt n from Normal mode?".len() + 4);
-        let plain = form(r#"{"fields":[{"id":"again","type":"toggle","label":"Don't ask again"}]}"#);
+        let plain =
+            form(r#"{"fields":[{"id":"again","type":"toggle","label":"Don't ask again"}]}"#);
         assert!(!plain.is_dialog());
         assert_eq!(height, plain.desired_size().1 + 4);
         let mut plain = plain;

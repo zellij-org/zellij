@@ -319,7 +319,10 @@ impl Tab {
         if popups.is_empty() {
             return;
         }
-        let plugin_ids: Vec<u32> = popups.iter().filter_map(|popup| popup.plugin_id()).collect();
+        let plugin_ids: Vec<u32> = popups
+            .iter()
+            .filter_map(|popup| popup.plugin_id())
+            .collect();
         let stack = self.popups.entry(client_id).or_default();
         let insert_at = stack
             .iter()
@@ -401,11 +404,9 @@ impl Tab {
     }
     pub fn close_top_popup(&mut self, client_id: ClientId) -> Option<u32> {
         let top_plugin_id = self.popup_plugin_id(client_id)?;
-        self.remove_popups_where(client_id, |popup| {
-            popup.plugin_id() == Some(top_plugin_id)
-        })
-        .into_iter()
-        .next()
+        self.remove_popups_where(client_id, |popup| popup.plugin_id() == Some(top_plugin_id))
+            .into_iter()
+            .next()
     }
     pub fn close_popup_with_plugin_id(&mut self, plugin_id: u32) -> Option<ClientId> {
         let client_id = self.popup_client_for_plugin(plugin_id)?;
@@ -426,7 +427,11 @@ impl Tab {
     pub fn popup_client_for_plugin(&self, plugin_id: u32) -> Option<ClientId> {
         self.popups
             .iter()
-            .find(|(_, stack)| stack.iter().any(|popup| popup.plugin_id() == Some(plugin_id)))
+            .find(|(_, stack)| {
+                stack
+                    .iter()
+                    .any(|popup| popup.plugin_id() == Some(plugin_id))
+            })
             .map(|(client_id, _)| *client_id)
     }
     pub fn popup_plugin_id(&self, client_id: ClientId) -> Option<u32> {
@@ -474,7 +479,10 @@ impl Tab {
     }
     #[cfg(test)]
     pub fn popup_count_for_client(&self, client_id: ClientId) -> usize {
-        self.popups.get(&client_id).map(|stack| stack.len()).unwrap_or(0)
+        self.popups
+            .get(&client_id)
+            .map(|stack| stack.len())
+            .unwrap_or(0)
     }
     #[cfg(test)]
     pub fn popup_geom(&self, client_id: ClientId) -> Option<PaneGeom> {
@@ -554,15 +562,11 @@ impl Tab {
         let Some(client_id) = self.popup_client_for_plugin(plugin_id) else {
             return;
         };
-        if let Some(popup) = self
-            .popups
-            .get_mut(&client_id)
-            .and_then(|stack| {
-                stack
-                    .iter_mut()
-                    .find(|popup| popup.plugin_id() == Some(plugin_id))
-            })
-        {
+        if let Some(popup) = self.popups.get_mut(&client_id).and_then(|stack| {
+            stack
+                .iter_mut()
+                .find(|popup| popup.plugin_id() == Some(plugin_id))
+        }) {
             popup.wanted_cols = wanted_cols;
             popup.wanted_rows = wanted_rows;
         }

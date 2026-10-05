@@ -1254,14 +1254,17 @@ pub(crate) fn plugin_thread_main(
                 wasm_bridge.start_prompt_popup(caller, pipe_message, request.is_notice());
                 match RunPluginOrAlias::from_url(plugin_url, &None, Some(&plugin_aliases), None) {
                     Ok(run_plugin_or_alias) => {
-                        drop(bus.senders.send_to_screen(ScreenInstruction::OpenPromptPopup {
-                            caller,
-                            owner_client_id,
-                            caller_pane_id,
-                            run_plugin_or_alias,
-                            placement: request.placement,
-                            focused: request.focused,
-                        }));
+                        drop(
+                            bus.senders
+                                .send_to_screen(ScreenInstruction::OpenPromptPopup {
+                                    caller,
+                                    owner_client_id,
+                                    caller_pane_id,
+                                    run_plugin_or_alias,
+                                    placement: request.placement,
+                                    focused: request.focused,
+                                }),
+                        );
                     },
                     Err(e) => {
                         wasm_bridge.fail_prompt_popup(

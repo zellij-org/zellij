@@ -103,14 +103,12 @@ impl ServerOsApi for FakeServerOsApi {
                 .cloned(),
             _ => None,
         };
-        let fake_async_reader =
-            self.shared_ptys
-                .register(
-                    terminal_id,
-                    Some(terminal_action),
-                    Some(quit_cb),
-                    pane_env.clone(),
-                );
+        let fake_async_reader = self.shared_ptys.register(
+            terminal_id,
+            Some(terminal_action),
+            Some(quit_cb),
+            pane_env.clone(),
+        );
         if let Some(contents) = opened_file_contents {
             let contents_with_carriage_returns =
                 contents.replace("\r\n", "\n").replace('\n', "\r\n");

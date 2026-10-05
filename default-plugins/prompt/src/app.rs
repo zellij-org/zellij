@@ -635,7 +635,10 @@ mod tests {
             message(
                 "p",
                 "notify",
-                &[("message", "Build finished"), ("_caller_pane_id", "terminal_7")],
+                &[
+                    ("message", "Build finished"),
+                    ("_caller_pane_id", "terminal_7"),
+                ],
                 None,
             ),
             now,
@@ -659,7 +662,10 @@ mod tests {
             message(
                 "p",
                 "notify",
-                &[("message", "Build finished"), ("_caller_pane_id", "terminal_7")],
+                &[
+                    ("message", "Build finished"),
+                    ("_caller_pane_id", "terminal_7"),
+                ],
                 None,
             ),
             now,
@@ -1045,9 +1051,15 @@ mod tests {
         ));
         assert_eq!(effects[1], Effect::CloseSelf);
         let mut app = App::default();
-        app.handle_pipe(plugin_message(5, PromptRequest::toggle("t")), Instant::now());
+        app.handle_pipe(
+            plugin_message(5, PromptRequest::toggle("t")),
+            Instant::now(),
+        );
         app.take_effects();
-        app.handle_pipe(plugin_message(6, PromptRequest::toggle("t")), Instant::now());
+        app.handle_pipe(
+            plugin_message(6, PromptRequest::toggle("t")),
+            Instant::now(),
+        );
         let effects = pipe_effects(&app.take_effects());
         assert!(matches!(
             &effects[0],
@@ -1067,7 +1079,10 @@ mod tests {
         app.handle_key(KeyWithModifier::new(BareKey::Enter));
         assert_eq!(
             pipe_effects(&app.take_effects())[0],
-            Effect::ReplyToPrompt(5, PromptResult::Answered(PromptValue::Choice("a".to_owned())))
+            Effect::ReplyToPrompt(
+                5,
+                PromptResult::Answered(PromptValue::Choice("a".to_owned()))
+            )
         );
     }
 
@@ -1077,7 +1092,10 @@ mod tests {
         let start = || {
             let mut app = App::default();
             app.handle_pipe(
-                plugin_message(5, PromptRequest::notify("Done").timeout(Duration::from_secs(5))),
+                plugin_message(
+                    5,
+                    PromptRequest::notify("Done").timeout(Duration::from_secs(5)),
+                ),
                 now,
             );
             assert_eq!(pipe_effects(&app.take_effects()), vec![Effect::WatchNames]);

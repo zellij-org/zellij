@@ -6,17 +6,15 @@ use zellij_utils::input::config_blocks::{
 };
 
 use crate::blocks_screen::check_name;
-use crate::contrast::{
-    slot_contrasts, suggest, SlotContrast, GOOD_CONTRAST, LOW_CONTRAST,
+use crate::contrast::{slot_contrasts, suggest, SlotContrast, GOOD_CONTRAST, LOW_CONTRAST};
+use crate::page::{
+    changed_by, is_click, is_plain, is_shift_tab, markers, note_dropdown, outside_overlays,
+    print_dim, print_heading, truncate, typed, under_overlay, ButtonRow, ColumnLayout, ColumnStyle,
+    Effect, Page, PageResponse, RowLook, RowScroll, BESIDE_SHORT_FIELD, DIM, SHORT_FIELD_WIDTH,
+    SHORT_LABEL_WIDTH,
 };
 use crate::theme_sample::{render_sample, SAMPLE_MIN_WIDTH};
 use crate::ui_components::print_link;
-use crate::page::{
-    changed_by, is_click, is_plain, is_shift_tab, markers, note_dropdown, outside_overlays,
-    print_dim, print_heading, truncate, typed, under_overlay, ButtonRow, ColumnLayout, ColumnStyle, Effect, Page,
-    PageResponse, RowLook, RowScroll, BESIDE_SHORT_FIELD, DIM, SHORT_FIELD_WIDTH,
-    SHORT_LABEL_WIDTH,
-};
 
 const SLOT_LABEL_WIDTH: usize = 34;
 const VALUE_WIDTH: usize = 14;
@@ -76,7 +74,12 @@ pub fn restore_effect(original_unsaved: bool, original_config_themes: &[ThemeEnt
     }
 }
 
-fn styled_advice(text: String, width: usize, error: Option<usize>, accent: Option<(usize, usize)>) -> Text {
+fn styled_advice(
+    text: String,
+    width: usize,
+    error: Option<usize>,
+    accent: Option<(usize, usize)>,
+) -> Text {
     let text = truncate(&text, width);
     let length = text.chars().count();
     let mut styled = Text::from(&text);
@@ -216,7 +219,10 @@ fn theme_columns(theme: &ThemeEntry, active: &str) -> Vec<String> {
 
 fn theme_styles(columns: &[String], found: Option<&ThemeMatch>) -> Vec<ColumnStyle> {
     let mut styles = vec![];
-    let length = columns.first().map(|name| name.chars().count()).unwrap_or(0);
+    let length = columns
+        .first()
+        .map(|name| name.chars().count())
+        .unwrap_or(0);
     for index in 0..length {
         let matched = found.map(|m| m.name.contains(&index)).unwrap_or(false);
         let color = if matched { MATCH_COLOR } else { 3 };
@@ -1046,7 +1052,9 @@ impl ThemesScreen {
         }
     }
     fn handle_search_key(&mut self, key: &KeyWithModifier) -> PageResponse {
-        if is_plain(key, BareKey::Enter) || is_plain(key, BareKey::Down) || is_plain(key, BareKey::Tab)
+        if is_plain(key, BareKey::Enter)
+            || is_plain(key, BareKey::Down)
+            || is_plain(key, BareKey::Tab)
         {
             if self.searching() {
                 self.focus = Focus::List;
@@ -1316,7 +1324,11 @@ impl ThemesScreen {
                     None
                 };
                 let styles = theme_styles(&columns, found.as_ref());
-                (columns, markers(self.is_unsaved(theme), false, false), styles)
+                (
+                    columns,
+                    markers(self.is_unsaved(theme), false, false),
+                    styles,
+                )
             })
             .collect();
         let natural = ColumnLayout::new(
@@ -1457,9 +1469,9 @@ impl Page for ThemesScreen {
             let focused = form.inputs.focused_key().copied().unwrap_or(0);
             let slots = theme_slots();
             let list_width = RowScroll::fitted_width(slots.len(), rows, LIST_WIDTH, width);
-            let visible = form
-                .scroll
-                .layout(x, list_y, list_width, rows, slots.len(), Some(focused));
+            let visible =
+                form.scroll
+                    .layout(x, list_y, list_width, rows, slots.len(), Some(focused));
             let sample_x = x + list_width + 3;
             let sample_fits = width >= list_width + 3 + SAMPLE_MIN_WIDTH;
             if sample_fits {
@@ -1508,13 +1520,7 @@ impl Page for ThemesScreen {
             }
             let advice_y = list_y + rows + 1;
             if let Some(advice) = contrast_advice(&slots, &contrasts, focused, width) {
-                print_text_with_coordinates(
-                    advice,
-                    x,
-                    advice_y,
-                    None,
-                    None,
-                );
+                print_text_with_coordinates(advice, x, advice_y, None, None);
             }
             form.buttons.render(x, advice_y + 2, width);
             if let Some(error) = &form.error {
@@ -1569,9 +1575,12 @@ impl Page for ThemesScreen {
         self.colour_form.is_some()
     }
     fn header_hints(&self) -> Option<Vec<(&'static str, &'static str)>> {
-        self.colour_form
-            .as_ref()
-            .map(|_| vec![("<Ctrl a>", "apply colors"), ("<Esc>", "back to configuration")])
+        self.colour_form.as_ref().map(|_| {
+            vec![
+                ("<Ctrl a>", "apply colors"),
+                ("<Esc>", "back to configuration"),
+            ]
+        })
     }
     fn header_file(&self) -> Option<String> {
         self.colour_form.as_ref().and_then(|form| form.file.clone())
@@ -1749,7 +1758,10 @@ mod tests {
 
     fn name_answer(name: &str) -> PromptResult {
         let mut values = Map::new();
-        values.insert(COPY_NAME_FIELD.to_owned(), PromptValue::Text(name.to_owned()));
+        values.insert(
+            COPY_NAME_FIELD.to_owned(),
+            PromptValue::Text(name.to_owned()),
+        );
         PromptResult::Answered(PromptValue::Form(values))
     }
 
@@ -1988,7 +2000,10 @@ mod tests {
             .iter()
             .flatten()
             .all(|found| found.ratio >= LOW_CONTRAST));
-        assert!(screen.take_notice().unwrap().starts_with("Raised the contrast"));
+        assert!(screen
+            .take_notice()
+            .unwrap()
+            .starts_with("Raised the contrast"));
     }
 
     #[test]

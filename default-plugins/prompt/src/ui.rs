@@ -348,9 +348,11 @@ impl Screen {
                 ("<Enter>", "confirm"),
                 ("<Esc>", "cancel"),
             ],
-            Screen::Form(s) if s.is_dialog() => {
-                &[("<Tab>", "next"), ("<Enter>", "confirm"), ("<Esc>", "cancel")]
-            },
+            Screen::Form(s) if s.is_dialog() => &[
+                ("<Tab>", "next"),
+                ("<Enter>", "confirm"),
+                ("<Esc>", "cancel"),
+            ],
             Screen::Form(_) => &[("<Tab>", "next"), ("<Ctrl a>", "save"), ("<Esc>", "cancel")],
             Screen::Notify(_) => &[],
         }
@@ -1000,7 +1002,10 @@ impl NumberScreen {
     }
     fn desired_size(&self) -> (usize, usize) {
         (
-            text_width(&self.message.text).max(self.stepper.width()).max(24) + 4,
+            text_width(&self.message.text)
+                .max(self.stepper.width())
+                .max(24)
+                + 4,
             4,
         )
     }
@@ -1057,7 +1062,10 @@ impl ToggleScreen {
         self.toggle.render(x + left, y + 2);
     }
     fn desired_size(&self) -> (usize, usize) {
-        (text_width(&self.message.text).max(self.toggle.width()) + 4, 4)
+        (
+            text_width(&self.message.text).max(self.toggle.width()) + 4,
+            4,
+        )
     }
 }
 
@@ -1267,15 +1275,18 @@ impl NotifyScreen {
         let Some(caller_pane) = self.caller_pane else {
             return false;
         };
-        let found = pane_manifest.panes.iter().find_map(|(tab_position, panes)| {
-            panes
-                .iter()
-                .find(|pane| match caller_pane {
-                    PaneId::Terminal(id) => !pane.is_plugin && pane.id == id,
-                    PaneId::Plugin(id) => pane.is_plugin && pane.id == id,
-                })
-                .map(|pane| (*tab_position, pane.title.clone()))
-        });
+        let found = pane_manifest
+            .panes
+            .iter()
+            .find_map(|(tab_position, panes)| {
+                panes
+                    .iter()
+                    .find(|pane| match caller_pane {
+                        PaneId::Terminal(id) => !pane.is_plugin && pane.id == id,
+                        PaneId::Plugin(id) => pane.is_plugin && pane.id == id,
+                    })
+                    .map(|pane| (*tab_position, pane.title.clone()))
+            });
         match found {
             Some((tab_position, title)) => {
                 self.caller_tab_position = Some(tab_position);
@@ -1323,7 +1334,11 @@ impl NotifyScreen {
             .map(text_width)
             .max()
             .unwrap_or(0);
-        let title = self.title.as_deref().map(|t| text_width(t) + 6).unwrap_or(0);
+        let title = self
+            .title
+            .as_deref()
+            .map(|t| text_width(t) + 6)
+            .unwrap_or(0);
         let from = self
             .name_lines()
             .iter()
@@ -1337,7 +1352,9 @@ impl NotifyScreen {
     }
     pub fn desired_size(&self) -> (usize, usize) {
         let text_width_wanted = self.text_width_wanted();
-        let lines = Text::from(self.message.clone()).wrap(text_width_wanted).len();
+        let lines = Text::from(self.message.clone())
+            .wrap(text_width_wanted)
+            .len();
         (text_width_wanted + 4, lines + self.from_rows() + 2)
     }
     pub fn close_mark_column(cols: usize) -> usize {
@@ -1519,8 +1536,8 @@ mod tests {
 
     #[test]
     fn the_tab_line_is_only_shown_when_the_sender_is_in_another_tab() {
-        let mut screen = NotifyScreen::new(None, "Done".into())
-            .with_caller_pane(Some(PaneId::Terminal(3)));
+        let mut screen =
+            NotifyScreen::new(None, "Done".into()).with_caller_pane(Some(PaneId::Terminal(3)));
         screen.set_pane_name(Some("make".to_owned()));
         let same_tab = manifest(vec![(0, vec![pane(3, "make")])]);
         screen.update_panes(&same_tab);
@@ -1535,7 +1552,10 @@ mod tests {
     #[test]
     fn the_names_follow_pane_and_tab_renames() {
         let mut screen = notice(true, true);
-        let panes = manifest(vec![(0, vec![pane(1, "other")]), (1, vec![pane(3, "cargo")])]);
+        let panes = manifest(vec![
+            (0, vec![pane(1, "other")]),
+            (1, vec![pane(3, "cargo")]),
+        ]);
         assert!(screen.update_panes(&panes));
         assert!(screen.update_tabs(&[active_tab(0, "Main"), tab(1, "Tests")]));
         assert!(!screen.update_panes(&panes));

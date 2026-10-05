@@ -687,8 +687,7 @@ impl TryFrom<ProtobufAction> for Action {
                 Some(_) => Err("ToggleTheme should not have a payload"),
                 None => Ok(Action::ToggleTheme),
             },
-            Some(ProtobufActionName::DismissInfoPopups) => match protobuf_action.optional_payload
-            {
+            Some(ProtobufActionName::DismissInfoPopups) => match protobuf_action.optional_payload {
                 Some(_) => Err("DismissInfoPopups should not have a payload"),
                 None => Ok(Action::DismissInfoPopups),
             },
@@ -1206,7 +1205,9 @@ impl TryFrom<ProtobufAction> for Action {
                         Ok(Action::TogglePaneEmbedOrFloatingByPaneId {
                             pane_id: payload
                                 .pane_id
-                                .ok_or("Missing pane id for Action::TogglePaneEmbedOrFloatingByPaneId")?
+                                .ok_or(
+                                    "Missing pane id for Action::TogglePaneEmbedOrFloatingByPaneId",
+                                )?
                                 .try_into()?,
                         })
                     },

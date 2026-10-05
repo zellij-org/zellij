@@ -196,17 +196,16 @@ fn closing_the_settings_pane_during_a_theme_preview_restores_the_theme() {
     });
 
     open_settings(&zellij);
-    zellij.wait_until("the original theme is back and nothing is unsaved", |grid_snapshot| {
-        grid_snapshot.contains("0 unsaved changes")
-    });
+    zellij.wait_until(
+        "the original theme is back and nothing is unsaved",
+        |grid_snapshot| grid_snapshot.contains("0 unsaved changes"),
+    );
     zellij.quit();
 }
 
 #[test]
 fn the_first_run_wizard_saves_the_chosen_preset_into_the_new_config_file() {
-    let mut zellij = TestRunner::new(TERMINAL_SIZE)
-        .without_config_file()
-        .start();
+    let mut zellij = TestRunner::new(TERMINAL_SIZE).without_config_file().start();
     let terminal = zellij.expect_pty_spawn();
     terminal.output(PROMPT);
     zellij.wait_until("the setup wizard opened", |grid_snapshot| {

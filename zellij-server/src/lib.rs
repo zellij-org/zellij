@@ -1611,9 +1611,15 @@ mod env_sync_tests {
         );
         assert!(std::env::var(name).is_err());
         assert_eq!(std::env::var(inherited).unwrap(), "from the shell");
-        assert_eq!(applied.pane_env().get(name), Some(&Some("first".to_owned())));
+        assert_eq!(
+            applied.pane_env().get(name),
+            Some(&Some("first".to_owned()))
+        );
         applied.sync(&wanted(&[(name, "second")]));
-        assert_eq!(applied.pane_env().get(name), Some(&Some("second".to_owned())));
+        assert_eq!(
+            applied.pane_env().get(name),
+            Some(&Some("second".to_owned()))
+        );
         applied.sync(&HashMap::new());
         assert_eq!(applied.pane_env().get(name), None);
         assert_eq!(applied.pane_env().get(inherited), None);
@@ -2587,7 +2593,10 @@ mod session_state_tests {
         let reconfigured_at = instructions
             .iter()
             .position(|instruction| {
-                matches!(instruction, ScreenInstruction::Reconfigure { client_id: 1, .. })
+                matches!(
+                    instruction,
+                    ScreenInstruction::Reconfigure { client_id: 1, .. }
+                )
             })
             .expect("the client was not reconfigured");
         let mode_changed_at = instructions
@@ -2783,8 +2792,8 @@ mod session_state_tests {
         session_configuration.set_layout_settings(config_without_layout);
         session_configuration.set_client_runtime_configuration(1, config_with_layout);
 
-        let (_, dropped_changes) =
-            session_configuration.change_saved_config(load("mouse_mode false\nscroll_buffer_size 5000"));
+        let (_, dropped_changes) = session_configuration
+            .change_saved_config(load("mouse_mode false\nscroll_buffer_size 5000"));
 
         assert!(dropped_changes.is_empty());
         assert_eq!(
@@ -5100,15 +5109,16 @@ mod theme_file_tests {
             .unwrap();
         assert_eq!(path, theme_dir.join("mine.kdl"));
         assert!(theme.sourced_from_external_file);
-        let dracula = config_blocks::built_in_themes().get_theme("dracula").unwrap();
+        let dracula = config_blocks::built_in_themes()
+            .get_theme("dracula")
+            .unwrap();
         assert_eq!(theme.palette, dracula.palette);
         let new_saved_config = session_configuration.saved_config_with_theme("mine", Some(theme));
         let (changes, dropped) = session_configuration.change_saved_config(new_saved_config);
         assert!(dropped.is_empty());
-        assert!(changes
-            .iter()
-            .any(|(client_id, config)| *client_id == 1
-                && config.themes.get_theme("mine").is_some()));
+        assert!(changes.iter().any(
+            |(client_id, config)| *client_id == 1 && config.themes.get_theme("mine").is_some()
+        ));
         let taken = session_configuration
             .write_theme_file(&1, "mine", Some("dracula"), &[])
             .unwrap_err();
@@ -5162,7 +5172,9 @@ mod theme_file_tests {
         assert!(!path.exists());
         assert_eq!(
             replacement,
-            config_blocks::built_in_themes().get_theme("dracula").cloned()
+            config_blocks::built_in_themes()
+                .get_theme("dracula")
+                .cloned()
         );
         let saved = session_configuration.saved_config_with_theme("gone", None);
         assert!(saved.themes.get_theme("gone").is_none());

@@ -112,7 +112,8 @@ mod tests {
         ] {
             let mut args = BTreeMap::new();
             args.insert("k".to_owned(), "v".to_owned());
-            let message = PipeMessage::new(source, "confirm", &Some("p".to_owned()), &Some(args), true);
+            let message =
+                PipeMessage::new(source, "confirm", &Some("p".to_owned()), &Some(args), true);
             let protobuf = ProtobufPipeMessage::try_from(message.clone()).unwrap();
             assert_eq!(PipeMessage::try_from(protobuf), Ok(message));
         }

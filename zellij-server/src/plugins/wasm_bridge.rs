@@ -5,17 +5,17 @@ use crate::plugins::pipes::{
     PipeStateChange,
 };
 use crate::plugins::plugin_loader::PluginLoader;
-use crate::plugins::prompt_requests::{PromptAction, PromptCaller, PromptRequests};
-use zellij_utils::prompt::PromptResult;
 use crate::plugins::plugin_map::{
     AtomicEvent, PluginEnv, PluginMap, PluginMetadata, RemovedPluginAssets, RunningPlugin,
     SharedSlot, Subscriptions,
 };
+use crate::plugins::prompt_requests::{PromptAction, PromptCaller, PromptRequests};
 use crate::plugins::shared::{
     add_slot_job, apply_events_job, apply_pipes_job, client_job, host_settings_job,
     remove_slot_job, resize_job, start_instance_job, visibility_job, wasm_module_exports_function,
     SharedKey, SHARED_MARKER_EXPORT, SHARED_PIPE_CLIENT,
 };
+use zellij_utils::prompt::PromptResult;
 
 use crate::plugins::plugin_worker::MessageToWorker;
 use crate::plugins::shared::SharedEventBatchEntry;
@@ -37,8 +37,8 @@ use wasmi::{Engine, Module};
 use zellij_utils::consts::{ZELLIJ_CACHE_DIR, ZELLIJ_SESSION_CACHE_DIR, ZELLIJ_TMP_DIR};
 use zellij_utils::data::{
     FloatingPaneCoordinates, HostTerminalThemeMode, InputMode, KeybindPresetInfo,
-    KeybindPresetWithError, KeybindsVec, LayoutInfo, LayoutWithError, PaneContents, PaneRenderReport, PermissionStatus, PermissionType, PipeMessage,
-    PipeSource,
+    KeybindPresetWithError, KeybindsVec, LayoutInfo, LayoutWithError, PaneContents,
+    PaneRenderReport, PermissionStatus, PermissionType, PipeMessage, PipeSource,
 };
 use zellij_utils::downloader::Downloader;
 use zellij_utils::input::permission::PermissionCache;
@@ -1147,11 +1147,10 @@ impl WasmBridge {
                                   _engine| {
                                 let _s = _s; // guard to allow the task to complete before cleanup/shutdown
                                 if let Some(generation) = hover_generation {
-                                    let superseded = latest_hovers.lock().unwrap().is_superseded(
-                                        plugin_id,
-                                        client_id,
-                                        generation,
-                                    );
+                                    let superseded = latest_hovers
+                                        .lock()
+                                        .unwrap()
+                                        .is_superseded(plugin_id, client_id, generation);
                                     if superseded {
                                         return;
                                     }
@@ -2500,11 +2499,9 @@ impl WasmBridge {
         for action in actions {
             match action {
                 PromptAction::Deliver(caller, result) => {
-                    let _ = self
-                        .senders
-                        .send_to_plugin(PluginInstruction::Update(vec![
-                            caller.result_event(result)
-                        ]));
+                    let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![
+                        caller.result_event(result)
+                    ]));
                 },
                 PromptAction::Send(plugin_id, client_id, pipe_message) => {
                     pipe_messages.push((Some(plugin_id), Some(client_id), pipe_message));

@@ -380,7 +380,8 @@ impl Text {
     pub fn wrap(&self, width: usize) -> Vec<Text> {
         let width = width.max(1);
         let chars: Vec<char> = self.text.chars().collect();
-        let char_width = |character: char| unicode_width::UnicodeWidthChar::width(character).unwrap_or(0);
+        let char_width =
+            |character: char| unicode_width::UnicodeWidthChar::width(character).unwrap_or(0);
         let mut lines: Vec<Vec<Option<usize>>> = vec![];
         let mut line: Vec<Option<usize>> = vec![];
         let mut line_width = 0;

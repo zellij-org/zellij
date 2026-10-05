@@ -3,8 +3,7 @@ use crate::outcome::{reply_for, Answer, Outcome};
 use serde_json::Value;
 use std::collections::BTreeMap;
 use zellij_utils::prompt::{
-    FormFieldKind, PipePrompt, PromptResult, PromptSpec, PromptValue, EXIT_ANSWERED,
-    EXIT_CANCELLED,
+    FormFieldKind, PipePrompt, PromptResult, PromptSpec, PromptValue, EXIT_ANSWERED, EXIT_CANCELLED,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -161,11 +160,11 @@ fn form_value(value: &Value, kind: Option<&FormFieldKind>) -> Option<PromptValue
     match value {
         Value::Null => None,
         Value::Bool(on) => Some(PromptValue::Bool(*on)),
-        Value::Number(number) => Some(PromptValue::Number(
-            number
-                .as_i64()
-                .unwrap_or_else(|| number.as_f64().unwrap_or_default() as i64),
-        )),
+        Value::Number(number) => {
+            Some(PromptValue::Number(number.as_i64().unwrap_or_else(|| {
+                number.as_f64().unwrap_or_default() as i64
+            })))
+        },
         Value::String(text) => match kind {
             Some(FormFieldKind::Select) | Some(FormFieldKind::Choose) => {
                 Some(PromptValue::Choice(text.clone()))
@@ -240,7 +239,10 @@ mod tests {
             PromptResult::Error("x".to_owned())
         );
         assert_eq!(
-            expand(vec![Intent::Reply(Destination::plugin(4), Outcome::Cancelled)]),
+            expand(vec![Intent::Reply(
+                Destination::plugin(4),
+                Outcome::Cancelled
+            )]),
             vec![Effect::ReplyToPrompt(4, PromptResult::Cancelled)]
         );
         assert!(expand(vec![

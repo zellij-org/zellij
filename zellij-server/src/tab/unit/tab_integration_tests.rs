@@ -17559,15 +17559,10 @@ fn keys_sent_to_plugin(
                     }
                 }
             },
-            PluginInstruction::PermissionRequestResult(
-                pid,
-                Some(1),
-                permissions,
-                status,
-                None,
-            ) if pid == plugin_id
-                && permissions
-                    == vec![zellij_utils::data::PermissionType::ReadApplicationState] =>
+            PluginInstruction::PermissionRequestResult(pid, Some(1), permissions, status, None)
+                if pid == plugin_id
+                    && permissions
+                        == vec![zellij_utils::data::PermissionType::ReadApplicationState] =>
             {
                 permission_results.push(status);
             },
@@ -17584,8 +17579,7 @@ fn a_popup_plugin_shows_its_permission_request_and_takes_the_answer() {
         rows: 20,
     };
     let client_id = 1;
-    let (mut tab, plugin_receiver) =
-        create_new_tab_with_plugin_receiver(size, ModeInfo::default());
+    let (mut tab, plugin_receiver) = create_new_tab_with_plugin_receiver(size, ModeInfo::default());
     tab.open_popup(
         client_id,
         42,
@@ -17610,7 +17604,8 @@ fn a_popup_plugin_shows_its_permission_request_and_takes_the_answer() {
     assert!(snapshot.contains("Allow?"), "{}", snapshot);
     keys_sent_to_plugin(&plugin_receiver, 42);
 
-    let key = |c: char| zellij_utils::data::KeyWithModifier::new(zellij_utils::data::BareKey::Char(c));
+    let key =
+        |c: char| zellij_utils::data::KeyWithModifier::new(zellij_utils::data::BareKey::Char(c));
     assert!(tab.send_key_to_popup(client_id, key('x'), vec![b'x'], false));
     let (keys, results) = keys_sent_to_plugin(&plugin_receiver, 42);
     assert!(keys.is_empty());
@@ -17675,8 +17670,11 @@ fn mouse_selection_is_released_when_the_selecting_plugin_pane_closes() {
     tab.handle_mouse_event(&MouseEvent::new_left_press_event(terminal_point), client_id)
         .unwrap();
     assert_eq!(tab.selecting_with_mouse_in_pane, Some(PaneId::Terminal(1)));
-    tab.handle_mouse_event(&MouseEvent::new_left_release_event(terminal_point), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_release_event(terminal_point),
+        client_id,
+    )
+    .unwrap();
     assert!(tab.selecting_with_mouse_in_pane.is_none());
 }
 
@@ -17693,7 +17691,10 @@ fn mouse_events_work_again_when_the_selecting_pane_is_gone() {
     tab.handle_mouse_event(&MouseEvent::new_left_press_event(terminal_point), client_id)
         .unwrap();
     assert_eq!(tab.selecting_with_mouse_in_pane, Some(PaneId::Terminal(1)));
-    tab.handle_mouse_event(&MouseEvent::new_left_release_event(terminal_point), client_id)
-        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_left_release_event(terminal_point),
+        client_id,
+    )
+    .unwrap();
     assert!(tab.selecting_with_mouse_in_pane.is_none());
 }

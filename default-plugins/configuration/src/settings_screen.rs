@@ -7,9 +7,9 @@ use crate::keybindings_screen::KeybindingsScreen;
 use crate::keys_screen::KeysScreen;
 use crate::page::{changed_by, note_group, outside_overlays, run_effects, Page, PageResponse};
 use crate::settings::{
-    check_text, describe, is_row_kind, kdl_for, mode_choice_label, option_value, section, settings_in,
-    sort_for_display, Category, Scope, SettingInfo, SettingKind, CATEGORIES, MISSING_SUFFIX,
-    INPUT_MODES, UNSET_CHOICE,
+    check_text, describe, is_row_kind, kdl_for, mode_choice_label, option_value, section,
+    settings_in, sort_for_display, Category, Scope, SettingInfo, SettingKind, CATEGORIES,
+    INPUT_MODES, MISSING_SUFFIX, UNSET_CHOICE,
 };
 use crate::theme_preview::{PreviewAction, ThemePreview, PREVIEWED_THEME_SETTINGS};
 use crate::themes_screen::ThemesScreen;
@@ -2213,7 +2213,13 @@ impl SettingsScreen {
             }
         }
         if self.rows.is_empty() {
-            print_text_with_coordinates(Text::from("No settings match").dim_all(), x, y, None, None);
+            print_text_with_coordinates(
+                Text::from("No settings match").dim_all(),
+                x,
+                y,
+                None,
+                None,
+            );
         }
         self.scroll.render_indicators();
     }

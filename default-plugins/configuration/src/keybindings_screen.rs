@@ -6,12 +6,11 @@ use zellij_utils::input::config_blocks::keybind_change_kdl;
 
 use crate::action_picker::{size_button, ActionPicker, PickerResponse, DELETE_WIDTH};
 use crate::page::{
-    DIM,
-    BESIDE_SHORT_FIELD, SHORT_FIELD_WIDTH, SHORT_LABEL_WIDTH,
-    action_argument_range, action_display_text, actions_summary, changed_by, confirm_removals, is_click, is_plain, is_shift_tab,
-    markers, note_dropdown, note_overlay, outside_overlays, render_frame, print_dim, removal_confirmed,
-    removal_prompt, truncate, typed, ColumnLayout, ColumnStyle, Effect, Page, PageResponse,
-    RowLook, RowScroll,
+    action_argument_range, action_display_text, actions_summary, changed_by, confirm_removals,
+    is_click, is_plain, is_shift_tab, markers, note_dropdown, note_overlay, outside_overlays,
+    print_dim, removal_confirmed, removal_prompt, render_frame, truncate, typed, ColumnLayout,
+    ColumnStyle, Effect, Page, PageResponse, RowLook, RowScroll, BESIDE_SHORT_FIELD, DIM,
+    SHORT_FIELD_WIDTH, SHORT_LABEL_WIDTH,
 };
 
 const FORM_LABEL_WIDTH: usize = 9;
@@ -540,8 +539,7 @@ impl KeybindingsScreen {
                 })
                 .collect();
             found.sort_by_key(|(_, score)| *score);
-            let entries: Vec<KeybindingEntry> =
-                found.into_iter().map(|(entry, _)| entry).collect();
+            let entries: Vec<KeybindingEntry> = found.into_iter().map(|(entry, _)| entry).collect();
             let items = (0..entries.len()).map(ListItem::Entry).collect();
             return (entries, items);
         }
@@ -838,8 +836,9 @@ impl KeybindingsScreen {
         }
         if self.mode_selector.is_open() || matches!(mouse, Mouse::LeftClick(..) | Mouse::Hover(..))
         {
-            let (response, selector_changed) =
-                changed_by(&mut self.mode_selector, |selector| selector.handle_mouse(mouse));
+            let (response, selector_changed) = changed_by(&mut self.mode_selector, |selector| {
+                selector.handle_mouse(mouse)
+            });
             hover_changed |= selector_changed;
             if let UiResponse::Changed(_) = response {
                 self.select_first();
@@ -1084,8 +1083,12 @@ impl KeybindingsScreen {
                 let key = entry.key.to_string();
                 let key_start = "Delete ".chars().count();
                 let key_end = key_start + key.chars().count();
-                Text::from(format!("Delete {} from {} mode?", key, mode_name(entry.mode)))
-                    .color_range(3, key_start..key_end)
+                Text::from(format!(
+                    "Delete {} from {} mode?",
+                    key,
+                    mode_name(entry.mode)
+                ))
+                .color_range(3, key_start..key_end)
             },
             entries => {
                 let skipped = targets.len() - entries.len();
@@ -1380,8 +1383,8 @@ impl KeybindingsScreen {
                 let width = (content_column
                     + natural_button_width.max(form.picker.action_name_width())
                     + 4)
-                    .max(FORM_DIALOG_MIN_WIDTH)
-                    .min(max_width);
+                .max(FORM_DIALOG_MIN_WIDTH)
+                .min(max_width);
                 (width, height.min(max_height).max(6))
             },
             None => (
@@ -1618,9 +1621,7 @@ impl Page for KeybindingsScreen {
         );
         let search_x = TITLE.chars().count() + 2;
         let search_end = BESIDE_SHORT_FIELD + Button::new("Unmark all").natural_width();
-        let search_width = search_end
-            .min(width)
-            .saturating_sub(search_x);
+        let search_width = search_end.min(width).saturating_sub(search_x);
         let search_focused = self.focused && self.focus == Focus::Search;
         self.search.set_focused(search_focused);
         self.search.set_show_cursor(search_focused);

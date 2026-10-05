@@ -186,7 +186,9 @@ fn a_removed_preset_key_is_written_as_unbind_and_reset_back() {
         grid_snapshot.contains("Delete Alt n from Normal mode?")
             && grid_snapshot.contains("Don't ask again")
     });
-    let question_row = grid_snapshot.row_of_line("Delete Alt n from Normal mode?").unwrap();
+    let question_row = grid_snapshot
+        .row_of_line("Delete Alt n from Normal mode?")
+        .unwrap();
     let toggle_row = grid_snapshot.row_of_line("Don't ask again").unwrap();
     let buttons_row = grid_snapshot.row_of_line("Cancel").unwrap();
     assert!(grid_snapshot.lines()[question_row - 2].contains("Confirm"));
@@ -200,7 +202,10 @@ fn a_removed_preset_key_is_written_as_unbind_and_reset_back() {
     for column in key_columns {
         let key_color = grid_snapshot.cell_foreground(column, question_row);
         assert!(key_color.is_some() && key_color != plain_color);
-        assert_eq!(key_color, grid_snapshot.cell_foreground(delete_column + 7, question_row));
+        assert_eq!(
+            key_color,
+            grid_snapshot.cell_foreground(delete_column + 7, question_row)
+        );
     }
     assert_eq!(
         grid_snapshot.cell_foreground(delete_column + 13, question_row),
@@ -341,7 +346,10 @@ fn an_env_variable_added_at_runtime_reaches_new_panes_but_not_the_server() {
     });
     close_settings(&zellij);
     let new_terminal = zellij_integration_tests::split_right_and_wait_for_prompt(&zellij);
-    assert_eq!(new_terminal.env_var(ADDED_VARIABLE).as_deref(), Some("added"));
+    assert_eq!(
+        new_terminal.env_var(ADDED_VARIABLE).as_deref(),
+        Some("added")
+    );
     assert_eq!(first_terminal.env_var(ADDED_VARIABLE), None);
     assert!(std::env::var(ADDED_VARIABLE).is_err());
     zellij.quit();
@@ -353,7 +361,10 @@ fn an_env_variable_removed_at_runtime_is_not_set_in_new_panes() {
         .with_config(&format!("env {{\n    {} \"start\"\n}}", REMOVED_VARIABLE))
         .start();
     let first_terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
-    assert_eq!(first_terminal.env_var(REMOVED_VARIABLE).as_deref(), Some("start"));
+    assert_eq!(
+        first_terminal.env_var(REMOVED_VARIABLE).as_deref(),
+        Some("start")
+    );
     open_settings(&zellij);
     open_page(&zellij, PLUGINS_PAGE, "Plugin aliases");
     zellij.wait_until("every list is shown on one page", |grid_snapshot| {
@@ -378,7 +389,10 @@ fn an_env_variable_removed_at_runtime_is_not_set_in_new_panes() {
     close_settings(&zellij);
     let new_terminal = zellij_integration_tests::split_right_and_wait_for_prompt(&zellij);
     assert_eq!(new_terminal.env_var(REMOVED_VARIABLE), None);
-    assert_eq!(first_terminal.env_var(REMOVED_VARIABLE).as_deref(), Some("start"));
+    assert_eq!(
+        first_terminal.env_var(REMOVED_VARIABLE).as_deref(),
+        Some("start")
+    );
     zellij.quit();
 }
 
@@ -651,7 +665,11 @@ fn the_keybinding_search_finds_keys_of_every_mode_and_hides_the_dropdowns() {
     let grid_snapshot = zellij.wait_until("tab keys of several modes found", |grid_snapshot| {
         grid_snapshot.contains("Tmux") && grid_snapshot.contains("NewTab")
     });
-    assert!(!grid_snapshot.contains("Filter  ["), "{}", grid_snapshot.text);
+    assert!(
+        !grid_snapshot.contains("Filter  ["),
+        "{}",
+        grid_snapshot.text
+    );
     assert!(
         grid_snapshot
             .lines()

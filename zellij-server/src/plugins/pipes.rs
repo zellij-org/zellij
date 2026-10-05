@@ -48,7 +48,9 @@ impl PendingPipes {
     }
     fn release(&mut self, pipe_id: String, is_final: bool) -> PipeRelease {
         let exit_code = if is_final {
-            self.exit_codes.remove(&pipe_id).map(|(exit_code, _)| exit_code)
+            self.exit_codes
+                .remove(&pipe_id)
+                .map(|(exit_code, _)| exit_code)
         } else {
             None
         };

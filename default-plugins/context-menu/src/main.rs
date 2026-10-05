@@ -274,11 +274,7 @@ mod tests {
             .map(|(k, v)| (k.to_string(), v.to_string()))
             .collect();
         Action::LaunchOrFocusPlugin {
-            plugin: RunPluginOrAlias::Alias(PluginAlias::new(
-                name,
-                &Some(configuration),
-                None,
-            )),
+            plugin: RunPluginOrAlias::Alias(PluginAlias::new(name, &Some(configuration), None)),
             should_float,
             move_to_focused_tab: true,
             should_open_in_place: false,
@@ -334,10 +330,7 @@ mod tests {
             (key('d'), vec![Action::Detach]),
             (
                 key('c'),
-                vec![
-                    plugin_launch("configuration", &[], true),
-                    back.clone(),
-                ],
+                vec![plugin_launch("configuration", &[], true), back.clone()],
             ),
         ];
         ModeInfo {
@@ -377,17 +370,11 @@ mod tests {
             Some("Ctrl t, x".to_owned())
         );
         assert_eq!(
-            shortcut_for(
-                &mode_info,
-                &[tab(ClickedTabAction::Move(Direction::Left))]
-            ),
+            shortcut_for(&mode_info, &[tab(ClickedTabAction::Move(Direction::Left))]),
             Some("Alt i".to_owned())
         );
         assert_eq!(
-            shortcut_for(
-                &mode_info,
-                &[tab(ClickedTabAction::Move(Direction::Right))]
-            ),
+            shortcut_for(&mode_info, &[tab(ClickedTabAction::Move(Direction::Right))]),
             None
         );
     }
@@ -396,10 +383,7 @@ mod tests {
     fn rename_actions_match_their_key_sequences() {
         let mode_info = mode_info(InputMode::Normal);
         assert_eq!(
-            shortcut_for(
-                &mode_info,
-                &[pane(ClickedPaneAction::StartRename)]
-            ),
+            shortcut_for(&mode_info, &[pane(ClickedPaneAction::StartRename)]),
             Some("Ctrl p, c".to_owned())
         );
         assert_eq!(
@@ -419,7 +403,10 @@ mod tests {
             Some("Ctrl o, c".to_owned())
         );
         assert_eq!(
-            shortcut_for(&mode_info, &[plugin_launch("session-manager", &[], true).into()]),
+            shortcut_for(
+                &mode_info,
+                &[plugin_launch("session-manager", &[], true).into()]
+            ),
             None
         );
     }
@@ -436,7 +423,10 @@ mod tests {
             shortcut_for(&mode_info, &[new_pane(None).into()]),
             Some("Alt n".to_owned())
         );
-        assert_eq!(shortcut_for(&mode_info, &[new_pane(Some(Direction::Down)).into()]), None);
+        assert_eq!(
+            shortcut_for(&mode_info, &[new_pane(Some(Direction::Down)).into()]),
+            None
+        );
     }
 
     #[test]
@@ -480,10 +470,7 @@ mod tests {
             Some("Ctrl p, x".to_owned())
         );
         assert_eq!(
-            shortcut_for(
-                &mode_info,
-                &[pane(ClickedPaneAction::ToggleInGroup)]
-            ),
+            shortcut_for(&mode_info, &[pane(ClickedPaneAction::ToggleInGroup)]),
             Some("Ctrl b, z".to_owned())
         );
     }
@@ -492,10 +479,7 @@ mod tests {
     fn actions_without_a_binding_show_nothing() {
         let mode_info = mode_info(InputMode::Normal);
         assert_eq!(
-            shortcut_for(
-                &mode_info,
-                &[pane(ClickedPaneAction::ToggleInGroup)]
-            ),
+            shortcut_for(&mode_info, &[pane(ClickedPaneAction::ToggleInGroup)]),
             None
         );
         assert_eq!(shortcut_for(&mode_info, &[]), None);

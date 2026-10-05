@@ -4736,7 +4736,9 @@ impl SettingKey {
                 "false" => Some(kdl::KdlValue::Bool(false)),
                 _ => None,
             },
-            SettingValueShape::Number => value.trim().parse::<i64>().ok().map(kdl::KdlValue::Base10),
+            SettingValueShape::Number => {
+                value.trim().parse::<i64>().ok().map(kdl::KdlValue::Base10)
+            },
             SettingValueShape::Text => Some(kdl::KdlValue::String(value.to_owned())),
         }
     }
@@ -5173,10 +5175,26 @@ mod popup_placement_tests {
     #[test]
     fn corner_placements_parse_and_print_back() {
         for (text, placement, corner) in [
-            ("top-left", PipePopupPlacement::TopLeft, PopupCorner::TopLeft),
-            ("top-right", PipePopupPlacement::TopRight, PopupCorner::TopRight),
-            ("bottom-left", PipePopupPlacement::BottomLeft, PopupCorner::BottomLeft),
-            ("bottom-right", PipePopupPlacement::BottomRight, PopupCorner::BottomRight),
+            (
+                "top-left",
+                PipePopupPlacement::TopLeft,
+                PopupCorner::TopLeft,
+            ),
+            (
+                "top-right",
+                PipePopupPlacement::TopRight,
+                PopupCorner::TopRight,
+            ),
+            (
+                "bottom-left",
+                PipePopupPlacement::BottomLeft,
+                PopupCorner::BottomLeft,
+            ),
+            (
+                "bottom-right",
+                PipePopupPlacement::BottomRight,
+                PopupCorner::BottomRight,
+            ),
         ] {
             assert_eq!(text.parse::<PipePopupPlacement>(), Ok(placement));
             assert_eq!(placement.to_string(), text);

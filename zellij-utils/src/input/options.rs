@@ -567,10 +567,18 @@ impl Options {
         let layout_dir = other.layout_dir.or_else(|| self.layout_dir.clone());
         let theme_dir = other.theme_dir.or_else(|| self.theme_dir.clone());
         let keybinds_dir = other.keybinds_dir.or_else(|| self.keybinds_dir.clone());
-        let keybinds_preset = other.keybinds_preset.or_else(|| self.keybinds_preset.clone());
-        let keybinds_primary = other.keybinds_primary.or_else(|| self.keybinds_primary.clone());
-        let keybinds_secondary = other.keybinds_secondary.or_else(|| self.keybinds_secondary.clone());
-        let keybinds_unlock = other.keybinds_unlock.or_else(|| self.keybinds_unlock.clone());
+        let keybinds_preset = other
+            .keybinds_preset
+            .or_else(|| self.keybinds_preset.clone());
+        let keybinds_primary = other
+            .keybinds_primary
+            .or_else(|| self.keybinds_primary.clone());
+        let keybinds_secondary = other
+            .keybinds_secondary
+            .or_else(|| self.keybinds_secondary.clone());
+        let keybinds_unlock = other
+            .keybinds_unlock
+            .or_else(|| self.keybinds_unlock.clone());
         let theme = other.theme.or_else(|| self.theme.clone());
         let theme_dark = other.theme_dark.or_else(|| self.theme_dark.clone());
         let theme_light = other.theme_light.or_else(|| self.theme_light.clone());
@@ -754,10 +762,18 @@ impl Options {
         let layout_dir = other.layout_dir.or_else(|| self.layout_dir.clone());
         let theme_dir = other.theme_dir.or_else(|| self.theme_dir.clone());
         let keybinds_dir = other.keybinds_dir.or_else(|| self.keybinds_dir.clone());
-        let keybinds_preset = other.keybinds_preset.or_else(|| self.keybinds_preset.clone());
-        let keybinds_primary = other.keybinds_primary.or_else(|| self.keybinds_primary.clone());
-        let keybinds_secondary = other.keybinds_secondary.or_else(|| self.keybinds_secondary.clone());
-        let keybinds_unlock = other.keybinds_unlock.or_else(|| self.keybinds_unlock.clone());
+        let keybinds_preset = other
+            .keybinds_preset
+            .or_else(|| self.keybinds_preset.clone());
+        let keybinds_primary = other
+            .keybinds_primary
+            .or_else(|| self.keybinds_primary.clone());
+        let keybinds_secondary = other
+            .keybinds_secondary
+            .or_else(|| self.keybinds_secondary.clone());
+        let keybinds_unlock = other
+            .keybinds_unlock
+            .or_else(|| self.keybinds_unlock.clone());
         let theme = other.theme.or_else(|| self.theme.clone());
         let theme_dark = other.theme_dark.or_else(|| self.theme_dark.clone());
         let theme_light = other.theme_light.or_else(|| self.theme_light.clone());

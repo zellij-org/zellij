@@ -9529,7 +9529,10 @@ pub(crate) fn screen_thread_main(
                     }
                 }
                 if title_changed {
-                    screen.generate_and_report_pane_state().map(|_| ()).non_fatal();
+                    screen
+                        .generate_and_report_pane_state()
+                        .map(|_| ())
+                        .non_fatal();
                 }
                 if let Some(vte_bytes) = vte_bytes {
                     if !screen.pane_will_never_be_created(&PaneId::Terminal(pid)) {

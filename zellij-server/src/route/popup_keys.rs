@@ -221,7 +221,10 @@ mod tests {
             key('f'),
             vec![Action::ToggleFocusFullscreen, switch_to(InputMode::Normal)],
         );
-        pane.insert(key('x'), vec![Action::CloseFocus, switch_to(InputMode::Normal)]);
+        pane.insert(
+            key('x'),
+            vec![Action::CloseFocus, switch_to(InputMode::Normal)],
+        );
         pane.insert(
             key('c'),
             vec![
@@ -229,9 +232,12 @@ mod tests {
                 Action::PaneNameInput { input: vec![0] },
             ],
         );
-        pane.insert(key('h'), vec![Action::MoveFocus {
-            direction: zellij_utils::data::Direction::Left,
-        }]);
+        pane.insert(
+            key('h'),
+            vec![Action::MoveFocus {
+                direction: zellij_utils::data::Direction::Left,
+            }],
+        );
         let mut map = HashMap::new();
         map.insert(InputMode::Normal, normal);
         map.insert(InputMode::Locked, locked);
@@ -387,15 +393,27 @@ mod tests {
 
     #[test]
     fn unbound_keys_in_the_base_mode_reach_the_popup() {
-        assert_eq!(dispatch(InputMode::Normal, key('a')), vec![to_popup(key('a'))]);
+        assert_eq!(
+            dispatch(InputMode::Normal, key('a')),
+            vec![to_popup(key('a'))]
+        );
         let esc = KeyWithModifier::new(BareKey::Esc);
-        assert_eq!(dispatch(InputMode::Normal, esc.clone()), vec![to_popup(esc)]);
+        assert_eq!(
+            dispatch(InputMode::Normal, esc.clone()),
+            vec![to_popup(esc)]
+        );
     }
 
     #[test]
     fn locked_mode_sends_every_key_but_the_unlock_key_to_the_popup() {
-        assert_eq!(dispatch(InputMode::Locked, ctrl('p')), vec![to_popup(ctrl('p'))]);
-        assert_eq!(dispatch(InputMode::Locked, key('x')), vec![to_popup(key('x'))]);
+        assert_eq!(
+            dispatch(InputMode::Locked, ctrl('p')),
+            vec![to_popup(ctrl('p'))]
+        );
+        assert_eq!(
+            dispatch(InputMode::Locked, key('x')),
+            vec![to_popup(key('x'))]
+        );
         assert_eq!(
             dispatch(InputMode::Locked, ctrl('g')),
             vec![PopupKeyAction::Route(switch_to(InputMode::Normal))]

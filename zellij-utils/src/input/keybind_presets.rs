@@ -778,11 +778,7 @@ pub fn save_keybinds_as_preset(
         ));
     }
     header.push_str("}\n");
-    let text = format!(
-        "{}{}",
-        header,
-        user_keybinds_node(file_contents, selection)
-    );
+    let text = format!("{}{}", header, user_keybinds_node(file_contents, selection));
     KeybindPreset::from_kdl(&text)?;
     std::fs::create_dir_all(keybinds_dir)
         .map_err(|e| format!("Could not create {}: {}", keybinds_dir.display(), e))?;

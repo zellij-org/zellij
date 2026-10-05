@@ -1,12 +1,12 @@
 mod kdl_layout_parser;
 use crate::data::ClientId;
-use crate::data::{ClickedPaneAction, ClickedTabAction, ContextMenuAction, ContextMenuEntry};
 use crate::data::{
     BareKey, BorderStyleOverride, Direction, FloatingPaneCoordinates, InputMode, KeyWithModifier,
     LayoutInfo, LayoutMetadata, LineStyle, MultiplayerColors, Palette, PaletteColor, PaneId,
     PaneInfo, PaneManifest, PermissionType, Resize, SessionInfo, StyleDeclaration, Styling,
     TabInfo, ThemeHue, WebSharing, DEFAULT_STYLES,
 };
+use crate::data::{ClickedPaneAction, ClickedTabAction, ContextMenuAction, ContextMenuEntry};
 use crate::envs::EnvironmentVariables;
 use crate::home::{find_default_config_dir, get_layout_dir};
 use crate::input::config::{Config, ConfigError, KdlError};
@@ -6003,10 +6003,9 @@ impl ContextMenuConfig {
                     )
                 })?;
                 if clear_section_defaults {
-                    *section =
-                        crate::input::context_menu::context_menu_entries_without_defaults(
-                            statements,
-                        );
+                    *section = crate::input::context_menu::context_menu_entries_without_defaults(
+                        statements,
+                    );
                 } else {
                     *section = merge_context_menu_entries(section, statements);
                 }
@@ -6017,10 +6016,7 @@ impl ContextMenuConfig {
     pub fn statement_from_kdl(
         entry_node: &KdlNode,
         config_options: &Options,
-    ) -> Result<
-        crate::input::context_menu::MenuStatement<ContextMenuEntry>,
-        ConfigError,
-    > {
+    ) -> Result<crate::input::context_menu::MenuStatement<ContextMenuEntry>, ConfigError> {
         if kdl_name!(entry_node) == "remove" {
             let label = entry_node
                 .entries()
@@ -6162,9 +6158,10 @@ pub fn context_menu_statement_to_kdl(statement: &MenuStatement<ContextMenuEntry>
                 Some(MenuPlacement::After(label)) => {
                     node.push(KdlEntry::new_prop("after", KdlValue::String(label.clone())))
                 },
-                Some(MenuPlacement::Before(label)) => {
-                    node.push(KdlEntry::new_prop("before", KdlValue::String(label.clone())))
-                },
+                Some(MenuPlacement::Before(label)) => node.push(KdlEntry::new_prop(
+                    "before",
+                    KdlValue::String(label.clone()),
+                )),
                 None => {},
             }
             node
@@ -6188,7 +6185,9 @@ impl ContextMenuAction {
                 return Ok(ContextMenuAction::ClickedPane(action));
             }
             match action_name {
-                "CloseTabById" => return Ok(ContextMenuAction::ClickedTab(ClickedTabAction::Close)),
+                "CloseTabById" => {
+                    return Ok(ContextMenuAction::ClickedTab(ClickedTabAction::Close))
+                },
                 "StartRenameTabByTabId" => {
                     return Ok(ContextMenuAction::ClickedTab(ClickedTabAction::StartRename))
                 },
@@ -9106,9 +9105,11 @@ fn config_options_to_string_with_some_options() {
 fn bare_config_from_default_assets_to_string() {
     let fake_config = Config::from_default_assets().unwrap();
     let fake_config_stringified = fake_config.to_string(false);
-    let deserialized_from_serialized =
-        Config::from_kdl(&fake_config_stringified, Some(Config::from_default_assets().unwrap()))
-            .unwrap();
+    let deserialized_from_serialized = Config::from_kdl(
+        &fake_config_stringified,
+        Some(Config::from_default_assets().unwrap()),
+    )
+    .unwrap();
     assert_eq!(
         fake_config, deserialized_from_serialized,
         "Deserialized serialized config equals original config"
@@ -9120,9 +9121,11 @@ fn bare_config_from_default_assets_to_string() {
 fn bare_config_from_default_assets_to_string_with_comments() {
     let fake_config = Config::from_default_assets().unwrap();
     let fake_config_stringified = fake_config.to_string(true);
-    let deserialized_from_serialized =
-        Config::from_kdl(&fake_config_stringified, Some(Config::from_default_assets().unwrap()))
-            .unwrap();
+    let deserialized_from_serialized = Config::from_kdl(
+        &fake_config_stringified,
+        Some(Config::from_default_assets().unwrap()),
+    )
+    .unwrap();
     assert_eq!(
         fake_config, deserialized_from_serialized,
         "Deserialized serialized config equals original config"
@@ -9203,7 +9206,9 @@ fn context_menu_parses_items_separators_and_target_less_actions() {
             ContextMenuEntry::Separator,
             ContextMenuEntry::item(
                 "Close pane",
-                vec![ContextMenuAction::ClickedPane(ClickedPaneAction::CloseFocus)]
+                vec![ContextMenuAction::ClickedPane(
+                    ClickedPaneAction::CloseFocus
+                )]
             ),
         ]
     );
@@ -9217,7 +9222,10 @@ fn context_menu_parses_items_separators_and_target_less_actions() {
     assert!(context_menu.bar.is_empty());
     assert_eq!(
         context_menu.common,
-        vec![ContextMenuEntry::item("Detach", vec![Action::Detach.into()])]
+        vec![ContextMenuEntry::item(
+            "Detach",
+            vec![Action::Detach.into()]
+        )]
     );
 }
 
@@ -9267,8 +9275,12 @@ fn context_menu_parses_explicit_targets_and_new_by_id_actions() {
                 pane_id: PaneId::Plugin(2)
             }
             .into()],
-            vec![ContextMenuAction::ClickedPane(ClickedPaneAction::ToggleInGroup)],
-            vec![ContextMenuAction::ClickedPane(ClickedPaneAction::StartRename)],
+            vec![ContextMenuAction::ClickedPane(
+                ClickedPaneAction::ToggleInGroup
+            )],
+            vec![ContextMenuAction::ClickedPane(
+                ClickedPaneAction::StartRename
+            )],
             vec![Action::NewFloatingPane {
                 command: None,
                 pane_name: None,
@@ -9314,7 +9326,10 @@ fn every_clicked_pane_or_tab_form_is_written_back_as_it_was_read() {
         let action = ContextMenuAction::from_kdl(node, &Options::default())
             .unwrap_or_else(|e| panic!("{} does not parse: {:?}", text, e));
         let is_clicked_form = !matches!(action, ContextMenuAction::Action(_));
-        assert_eq!(is_clicked_form, !text.contains("terminal_2") && !text.ends_with(" 3"));
+        assert_eq!(
+            is_clicked_form,
+            !text.contains("terminal_2") && !text.ends_with(" 3")
+        );
         let written = action.to_kdl().unwrap();
         let reparsed = ContextMenuAction::from_kdl(&written, &Options::default()).unwrap();
         assert_eq!(action, reparsed, "{} changed when written back", text);
@@ -9375,7 +9390,10 @@ fn context_menu_clear_defaults_for_one_section() {
     .unwrap();
     assert_eq!(
         context_menu.pane,
-        vec![ContextMenuEntry::item("Clear", vec![Action::ClearScreen.into()])]
+        vec![ContextMenuEntry::item(
+            "Clear",
+            vec![Action::ClearScreen.into()]
+        )]
     );
     assert_eq!(context_menu.tab, context_menu_base().tab);
     assert_eq!(context_menu.common, context_menu_base().common);
@@ -9398,7 +9416,10 @@ fn context_menu_clear_defaults_for_whole_block() {
     assert!(context_menu.common.is_empty());
     assert_eq!(
         context_menu.bar,
-        vec![ContextMenuEntry::item("Clear", vec![Action::ClearScreen.into()])]
+        vec![ContextMenuEntry::item(
+            "Clear",
+            vec![Action::ClearScreen.into()]
+        )]
     );
 }
 
@@ -9499,10 +9520,26 @@ fn a_changed_context_menu_is_written_as_changes_to_the_default_menu() {
     )
     .unwrap();
     let serialized = context_menu.to_kdl().unwrap().to_string();
-    assert!(!serialized.contains("context_menu clear-defaults"), "{}", serialized);
-    assert!(serialized.contains("remove \"New floating pane\""), "{}", serialized);
-    assert!(serialized.contains("after=\"Rename pane\""), "{}", serialized);
-    assert!(serialized.contains("bar clear-defaults=true"), "{}", serialized);
+    assert!(
+        !serialized.contains("context_menu clear-defaults"),
+        "{}",
+        serialized
+    );
+    assert!(
+        serialized.contains("remove \"New floating pane\""),
+        "{}",
+        serialized
+    );
+    assert!(
+        serialized.contains("after=\"Rename pane\""),
+        "{}",
+        serialized
+    );
+    assert!(
+        serialized.contains("bar clear-defaults=true"),
+        "{}",
+        serialized
+    );
     assert!(!serialized.contains("common"), "{}", serialized);
     assert!(!serialized.contains("item \"New tab\""), "{}", serialized);
     let reparsed = Config::from_kdl(&serialized, Some(Config::from_default_assets().unwrap()))
@@ -9631,7 +9668,11 @@ fn an_empty_context_menu_is_written_with_empty_sections() {
 
 #[test]
 fn keybinds_reject_by_id_actions_without_a_target() {
-    for action in ["CloseFocusByPaneId", "CloseTabById", "MoveTabByTabId \"left\""] {
+    for action in [
+        "CloseFocusByPaneId",
+        "CloseTabById",
+        "MoveTabByTabId \"left\"",
+    ] {
         let config = format!(
             "keybinds {{\n    normal {{\n        bind \"Alt x\" {{ {}; }}\n    }}\n}}",
             action
@@ -9676,7 +9717,9 @@ fn default_config_context_menu_round_trips_through_config_to_string() {
         close_pane,
         Some(ContextMenuEntry::item(
             "Close pane",
-            vec![ContextMenuAction::ClickedPane(ClickedPaneAction::CloseFocus)]
+            vec![ContextMenuAction::ClickedPane(
+                ClickedPaneAction::CloseFocus
+            )]
         ))
     );
     assert!(!config.context_menu.tab.is_empty());
@@ -9693,11 +9736,17 @@ fn config_merge_takes_non_empty_context_menu_sections_from_the_other_config() {
     let mut config = Config::default();
     config.context_menu = context_menu_base();
     let mut other = Config::default();
-    other.context_menu.bar = vec![ContextMenuEntry::item("Clear", vec![Action::ClearScreen.into()])];
+    other.context_menu.bar = vec![ContextMenuEntry::item(
+        "Clear",
+        vec![Action::ClearScreen.into()],
+    )];
     config.merge(other).unwrap();
     assert_eq!(config.context_menu.pane, context_menu_base().pane);
     assert_eq!(
         config.context_menu.bar,
-        vec![ContextMenuEntry::item("Clear", vec![Action::ClearScreen.into()])]
+        vec![ContextMenuEntry::item(
+            "Clear",
+            vec![Action::ClearScreen.into()]
+        )]
     );
 }

@@ -2,8 +2,9 @@ use kdl::{KdlDocument, KdlEntry, KdlNode, KdlValue};
 use zellij_tile::prelude::*;
 
 use crate::page::{
-    action_argument_range, action_display_text, is_move_key, mode_label, is_click, is_plain, is_shift_tab, print_dim,
-    short_action_text, truncate, typed, ColumnLayout, RowLook, RowScroll, DIM,
+    action_argument_range, action_display_text, is_click, is_move_key, is_plain, is_shift_tab,
+    mode_label, print_dim, short_action_text, truncate, typed, ColumnLayout, RowLook, RowScroll,
+    DIM,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -807,7 +808,8 @@ impl ActionPicker {
                 .unwrap_or(0),
             _ => 0,
         };
-        let list_width = self.actions
+        let list_width = self
+            .actions
             .iter()
             .map(|action| action_display_text(action).chars().count())
             .chain(std::iter::once(ADD_ROW.chars().count()))
@@ -1255,9 +1257,7 @@ impl ActionPicker {
     pub fn open_chooser(&mut self) {
         self.scroll.reset();
         self.stage = Stage::Choose {
-            search: TextInput::empty()
-                .placeholder("type to search")
-                .focused(),
+            search: TextInput::empty().placeholder("type to search").focused(),
             highlighted: 0,
         };
     }
@@ -1409,8 +1409,7 @@ impl ActionPicker {
                 self.done_button.set_focused(selected == count + 1);
                 self.cancel_button.set_focused(selected == count + 2);
                 let done_width = self.done_button.natural_width();
-                let buttons_width =
-                    done_width + BUTTON_GAP + self.cancel_button.natural_width();
+                let buttons_width = done_width + BUTTON_GAP + self.cancel_button.natural_width();
                 let buttons_x = x + width.saturating_sub(buttons_width) / 2;
                 self.done_button.render(buttons_x, buttons_y);
                 self.cancel_button
@@ -1516,7 +1515,8 @@ impl ActionPicker {
                     .iter()
                     .filter_map(|key| group.button(key).map(|button| button.natural_width()))
                     .collect();
-                let total = widths.iter().sum::<usize>() + BUTTON_GAP * widths.len().saturating_sub(1);
+                let total =
+                    widths.iter().sum::<usize>() + BUTTON_GAP * widths.len().saturating_sub(1);
                 let mut column = x + width.saturating_sub(total) / 2;
                 for key in [APPLY_BUTTON, BACK_BUTTON] {
                     if let Some(Element::Button(button)) = group.get_mut(&key) {

@@ -1,6 +1,6 @@
 use super::widget_common::{
-    accented_field_bracket_styles, bold, decode_styled, decode_text, field_styles, fit, label_width, move_to, paint,
-    render_label, selected_row_styles, WidgetState,
+    accented_field_bracket_styles, bold, decode_styled, decode_text, field_styles, fit,
+    label_width, move_to, paint, render_label, selected_row_styles, WidgetState,
 };
 use super::Coordinates;
 use zellij_utils::data::Style;

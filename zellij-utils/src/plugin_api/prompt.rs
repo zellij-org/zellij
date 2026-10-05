@@ -4,19 +4,17 @@ pub use super::generated_api::api::prompt::{
     FormField as ProtobufFormField, FormFieldKind as ProtobufFormFieldKind,
     FormSpec as ProtobufFormSpec, InputSpec as ProtobufInputSpec, MenuSpec as ProtobufMenuSpec,
     NotifySpec as ProtobufNotifySpec, NumberSpec as ProtobufNumberSpec,
-    PromptCancelled as ProtobufPromptCancelled,
-    PromptFormEntry as ProtobufPromptFormEntry,
+    PromptCancelled as ProtobufPromptCancelled, PromptFormEntry as ProtobufPromptFormEntry,
     PromptFormValue as ProtobufPromptFormValue, PromptPlacement as ProtobufPromptPlacement,
     PromptPlacementKind as ProtobufPromptPlacementKind, PromptRequest as ProtobufPromptRequest,
     PromptResult as ProtobufPromptResult, PromptTimedOut as ProtobufPromptTimedOut,
     PromptValue as ProtobufPromptValue, PromptValueList as ProtobufPromptValueList,
-    SelectSpec as ProtobufSelectSpec,
-    ToggleSpec as ProtobufToggleSpec,
+    SelectSpec as ProtobufSelectSpec, ToggleSpec as ProtobufToggleSpec,
 };
 use crate::data::PaneId;
 use crate::prompt::{
-    ChoiceItem, FormField, FormFieldKind, FormSpec, PromptElement, PromptPlacement,
-    PromptRequest, PromptResult, PromptSpec, PromptValue,
+    ChoiceItem, FormField, FormFieldKind, FormSpec, PromptElement, PromptPlacement, PromptRequest,
+    PromptResult, PromptSpec, PromptValue,
 };
 
 use std::convert::TryFrom;
@@ -244,11 +242,9 @@ impl From<PromptSpec> for prompt_request::Spec {
                 max,
                 step,
             }),
-            PromptSpec::Toggle { message } => {
-                prompt_request::Spec::Toggle(ProtobufToggleSpec {
-                    message: message.map(Into::into),
-                })
-            },
+            PromptSpec::Toggle { message } => prompt_request::Spec::Toggle(ProtobufToggleSpec {
+                message: message.map(Into::into),
+            }),
             PromptSpec::Select { message, options } => {
                 prompt_request::Spec::Select(ProtobufSelectSpec {
                     message: Some(message.into()),
@@ -428,12 +424,12 @@ impl TryFrom<ProtobufPromptResult> for PromptResult {
             prompt_result::Result::Answered(value) => PromptResult::Answered(value.try_into()?),
             prompt_result::Result::Confirmed(yes) => PromptResult::Confirmed(yes),
             prompt_result::Result::Cancelled(_) => PromptResult::Cancelled,
-            prompt_result::Result::TimedOut(timed_out) => PromptResult::TimedOut(match timed_out
-                .value
-            {
-                Some(value) => Some(value.try_into()?),
-                None => None,
-            }),
+            prompt_result::Result::TimedOut(timed_out) => {
+                PromptResult::TimedOut(match timed_out.value {
+                    Some(value) => Some(value.try_into()?),
+                    None => None,
+                })
+            },
             prompt_result::Result::Error(message) => PromptResult::Error(message),
         })
     }
@@ -505,10 +501,17 @@ mod tests {
                 .buttons("Delete", "Cancel"),
         );
         round_trip_request(PromptRequest::form(vec![
-            FormField::input("name", "Name").required().validate("^a$").placeholder("p"),
+            FormField::input("name", "Name")
+                .required()
+                .validate("^a$")
+                .placeholder("p"),
             FormField::select("l", "L", vec!["MIT"]).default_value("MIT"),
             FormField::toggle("t", "T").default_value(true),
-            FormField::number("n", "N").min(1).max(3).step(1).default_value(2),
+            FormField::number("n", "N")
+                .min(1)
+                .max(3)
+                .step(1)
+                .default_value(2),
             FormField::choose("c", "C", vec!["a", "b"]).multi(),
         ]));
         round_trip_request(

@@ -1,8 +1,8 @@
-use super::widget_common::{
-    bold, button_cells, button_width, colored, decode_text, move_to, paint, paint_text,
-    text_width, truncate, ButtonLook, WidgetState,
-};
 use super::text::{decode_text_field, Text};
+use super::widget_common::{
+    bold, button_cells, button_width, colored, decode_text, move_to, paint, paint_text, text_width,
+    truncate, ButtonLook, WidgetState,
+};
 use super::Coordinates;
 use zellij_utils::data::Style;
 
@@ -196,8 +196,7 @@ mod tests {
             height: Some(5),
         };
         let style = Style::default();
-        let output =
-            String::from_utf8(dialog(&state, &fields, &style, &coordinates)).unwrap();
+        let output = String::from_utf8(dialog(&state, &fields, &style, &coordinates)).unwrap();
         let emphasis = bold(
             colored(style.colors.text_unselected.base, None)
                 .foreground(Some(style.colors.text_unselected.emphasis_3.into())),

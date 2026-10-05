@@ -112,14 +112,30 @@ fn with_emphasis<'a>(before: &'a str, after: &'a str) -> Vec<(&'a str, Part)> {
 
 const ARROW: &str = "\u{e0b0}";
 
-fn ribbon(line: &mut Line, declaration: &StyleDeclaration, surrounding: PaletteColor, label: &str, arrows: bool) {
+fn ribbon(
+    line: &mut Line,
+    declaration: &StyleDeclaration,
+    surrounding: PaletteColor,
+    label: &str,
+    arrows: bool,
+) {
     if arrows {
-        line.push(ARROW, Some(surrounding), Some(declaration.background), false);
+        line.push(
+            ARROW,
+            Some(surrounding),
+            Some(declaration.background),
+            false,
+        );
     }
     let label = format!(" {}", label);
     line.styled(declaration, &with_emphasis(&label, " "), true);
     if arrows {
-        line.push(ARROW, Some(declaration.background), Some(surrounding), false);
+        line.push(
+            ARROW,
+            Some(declaration.background),
+            Some(surrounding),
+            false,
+        );
     }
 }
 
@@ -135,7 +151,12 @@ fn frame_lines(styling: &Styling, width: usize) -> [Line; 3] {
         let colour = declaration.map(|declaration| declaration.base);
         let title_part = format!(" {} ", title);
         let rule = inner - title_part.chars().count().min(inner);
-        lines[0].push(&format!("┌{}{}┐", title_part, "─".repeat(rule)), colour, None, false);
+        lines[0].push(
+            &format!("┌{}{}┐", title_part, "─".repeat(rule)),
+            colour,
+            None,
+            false,
+        );
         lines[1].push(&format!("│{}│", " ".repeat(inner)), colour, None, false);
         lines[2].push("└", colour, None, false);
         match declaration {
@@ -160,7 +181,13 @@ struct Group {
     lines: Vec<Line>,
 }
 
-fn styled_line(width: usize, declaration: &StyleDeclaration, before: &str, after: &str, background: bool) -> Line {
+fn styled_line(
+    width: usize,
+    declaration: &StyleDeclaration,
+    before: &str,
+    after: &str,
+    background: bool,
+) -> Line {
     let mut line = Line::new(width);
     line.styled(declaration, &with_emphasis(before, after), background);
     line
@@ -171,18 +198,42 @@ fn sample_groups(styling: &Styling, width: usize, arrows: bool) -> Vec<Group> {
     groups.push(Group {
         label: "Text",
         styles: &["text_unselected"],
-        lines: vec![styled_line(width, &styling.text_unselected, "Text", " ", true)],
+        lines: vec![styled_line(
+            width,
+            &styling.text_unselected,
+            "Text",
+            " ",
+            true,
+        )],
     });
     groups.push(Group {
         label: "Selected",
         styles: &["text_selected"],
-        lines: vec![styled_line(width, &styling.text_selected, "Selected text", " ", true)],
+        lines: vec![styled_line(
+            width,
+            &styling.text_selected,
+            "Selected text",
+            " ",
+            true,
+        )],
     });
     let surrounding = styling.text_unselected.background;
     let mut ribbons = Line::new(width);
-    ribbon(&mut ribbons, &styling.ribbon_unselected, surrounding, "Tab", arrows);
+    ribbon(
+        &mut ribbons,
+        &styling.ribbon_unselected,
+        surrounding,
+        "Tab",
+        arrows,
+    );
     ribbons.push(" ", None, Some(surrounding), false);
-    ribbon(&mut ribbons, &styling.ribbon_selected, surrounding, "Active", arrows);
+    ribbon(
+        &mut ribbons,
+        &styling.ribbon_selected,
+        surrounding,
+        "Active",
+        arrows,
+    );
     groups.push(Group {
         label: "Ribbons",
         styles: &["ribbon_unselected", "ribbon_selected"],
@@ -190,10 +241,20 @@ fn sample_groups(styling: &Styling, width: usize, arrows: bool) -> Vec<Group> {
     });
     groups.push(Group {
         label: "Table",
-        styles: &["table_title", "table_cell_unselected", "table_cell_selected"],
+        styles: &[
+            "table_title",
+            "table_cell_unselected",
+            "table_cell_selected",
+        ],
         lines: vec![
             styled_line(width, &styling.table_title, "NAME     ", " ", false),
-            styled_line(width, &styling.table_cell_unselected, "notes.txt", " ", true),
+            styled_line(
+                width,
+                &styling.table_cell_unselected,
+                "notes.txt",
+                " ",
+                true,
+            ),
             styled_line(width, &styling.table_cell_selected, "todo.md  ", " ", true),
         ],
     });
@@ -215,7 +276,13 @@ fn sample_groups(styling: &Styling, width: usize, arrows: bool) -> Vec<Group> {
         label: "Exit codes",
         styles: &["exit_code_success", "exit_code_error"],
         lines: vec![
-            styled_line(width, &styling.exit_code_success, "EXIT CODE: 0", " ", false),
+            styled_line(
+                width,
+                &styling.exit_code_success,
+                "EXIT CODE: 0",
+                " ",
+                false,
+            ),
             styled_line(width, &styling.exit_code_error, "EXIT CODE: 1", " ", false),
         ],
     });
@@ -268,7 +335,10 @@ pub fn render_sample(
     let styling = styling_from_colours(colours);
     let sample_width = width.saturating_sub(LABEL_WIDTH);
     let mut row = 2;
-    for (index, group) in sample_groups(&styling, sample_width, arrows).iter().enumerate() {
+    for (index, group) in sample_groups(&styling, sample_width, arrows)
+        .iter()
+        .enumerate()
+    {
         if index > 0 {
             row += 1;
         }
