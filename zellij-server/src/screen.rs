@@ -6847,10 +6847,10 @@ impl Screen {
             };
         }
         let mut plugin_ids = Vec::new();
-        // Active-tab plugins
+        // Active-tab plugins, including suppressed ones so they can decide to show themselves
         if let Some(active_tab_id) = self.active_tab_ids.get(&client_id) {
             if let Some(tab) = self.tabs.get(active_tab_id) {
-                plugin_ids.extend(tab.get_plugin_ids());
+                plugin_ids.extend(tab.get_plugin_ids_including_suppressed());
             }
         }
         // Background plugins subscribed to this event type
