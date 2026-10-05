@@ -50,7 +50,7 @@ use zellij_utils::input::options::{PaneFrameStyle, DEFAULT_WORD_SEPARATORS};
 use wasmi::Engine;
 
 use crate::{
-    os_input_output::ServerOsApi,
+    os_input_output::{env_value, PaneEnv, ServerOsApi},
     panes::PaneId,
     plugins::{plugin_thread_main, PluginInstruction},
     pty::{get_default_shell, pty_thread_main, Pty, PtyInstruction},
@@ -1013,7 +1013,7 @@ pub(crate) struct SessionMetaData {
 }
 
 impl SessionMetaData {
-    fn sync_process_env(&mut self, env: &HashMap<String, String>) {
+    fn sync_pane_env(&mut self, env: &HashMap<String, String>) {
         self.applied_env.sync(env);
     }
     pub fn get_client_keybinds_and_mode(
@@ -1097,7 +1097,8 @@ impl SessionMetaData {
         let mut converted_keybinds: Vec<(Arc<Keybinds>, SharedKeybinds)> = vec![];
         for (client_id, new_config) in config_changes {
             self.follow_keybinds_dir(&new_config);
-            self.sync_process_env(new_config.env.inner());
+            self.sync_pane_env(new_config.env.inner());
+            let pane_env = self.applied_env.pane_env();
             let base_mode = new_config.options.default_mode.unwrap_or_default();
             let base_mode_changed = self
                 .session_configuration
@@ -1170,7 +1171,10 @@ impl SessionMetaData {
                     host_theme_light,
                     explicit_theme_hue: new_config.options.explicit_theme_hue,
                     simplified_ui: new_config.options.simplified_ui.unwrap_or(false),
-                    default_shell: new_config.options.default_shell,
+                    default_shell: new_config
+                        .options
+                        .default_shell
+                        .or_else(|| env_value(&pane_env, "SHELL").map(PathBuf::from)),
                     pane_frame_style,
                     copy_command: new_config.options.copy_command,
                     copy_to_clipboard: new_config.options.copy_clipboard,
@@ -1185,7 +1189,11 @@ impl SessionMetaData {
                         .resolved_floating_border_style(),
                     stacked_resize: new_config.options.stacked_resize.unwrap_or(true),
                     stacked_pane_list: new_config.options.stacked_pane_list.unwrap_or(true),
-                    default_editor: new_config.options.scrollback_editor.clone(),
+                    default_editor: new_config.options.scrollback_editor.clone().or_else(|| {
+                        env_value(&pane_env, "EDITOR")
+                            .or_else(|| env_value(&pane_env, "VISUAL"))
+                            .map(PathBuf::from)
+                    }),
                     advanced_mouse_actions: new_config
                         .options
                         .advanced_mouse_actions
@@ -1247,6 +1255,7 @@ impl SessionMetaData {
                     client_id,
                     default_editor: new_config.options.scrollback_editor,
                     post_command_discovery_hook: new_config.options.post_command_discovery_hook,
+                    pane_env: pane_env.clone(),
                 })
                 .unwrap();
         }
@@ -1532,8 +1541,8 @@ impl SessionState {
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct AppliedEnv {
-    applied: HashMap<String, String>,
-    original_values: HashMap<String, Option<std::ffi::OsString>>,
+    config: HashMap<String, String>,
+    original_values: HashMap<String, Option<String>>,
 }
 
 impl AppliedEnv {
@@ -1549,39 +1558,31 @@ impl AppliedEnv {
             .iter()
             .map(|(name, value)| {
                 let original = match values_before_config.get(name) {
-                    Some(before) => before.clone().map(std::ffi::OsString::from),
-                    None => std::env::var_os(name)
-                        .filter(|current| current.as_os_str() != std::ffi::OsStr::new(value)),
+                    Some(before) => before.clone(),
+                    None => std::env::var(name).ok().filter(|current| current != value),
                 };
                 (name.clone(), original)
             })
             .collect();
         AppliedEnv {
-            applied: env.clone(),
+            config: env.clone(),
             original_values,
         }
     }
     fn sync(&mut self, wanted: &HashMap<String, String>) {
-        if wanted == &self.applied {
-            return;
+        self.config = wanted.clone();
+    }
+    pub(crate) fn pane_env(&self) -> PaneEnv {
+        let mut pane_env: PaneEnv = self
+            .original_values
+            .iter()
+            .filter(|(name, _)| !self.config.contains_key(*name))
+            .map(|(name, original)| (name.clone(), original.clone()))
+            .collect();
+        for (name, value) in &self.config {
+            pane_env.insert(name.clone(), Some(value.clone()));
         }
-        for name in self.applied.keys() {
-            if !wanted.contains_key(name) {
-                match self.original_values.get(name).cloned().flatten() {
-                    Some(original) => std::env::set_var(name, original),
-                    None => std::env::remove_var(name),
-                }
-            }
-        }
-        for (name, value) in wanted {
-            if self.applied.get(name) != Some(value) {
-                self.original_values
-                    .entry(name.clone())
-                    .or_insert_with(|| std::env::var_os(name));
-                std::env::set_var(name, value);
-            }
-        }
-        self.applied = wanted.clone();
+        pane_env
     }
 }
 
@@ -1589,73 +1590,74 @@ impl AppliedEnv {
 mod env_sync_tests {
     use super::*;
 
+    fn wanted(pairs: &[(&str, &str)]) -> HashMap<String, String> {
+        pairs
+            .iter()
+            .map(|(name, value)| (name.to_string(), value.to_string()))
+            .collect()
+    }
+
     #[test]
-    fn config_env_changes_reach_the_server_environment() {
-        let name = "ZELLIJ_SESSION_8_ENV_SYNC_TEST";
-        let other = "ZELLIJ_SESSION_8_ENV_SYNC_OTHER";
-        let inherited = "ZELLIJ_SESSION_8_ENV_SYNC_INHERITED";
+    fn config_env_changes_reach_new_panes_without_touching_the_server_environment() {
+        let name = "ZELLIJ_SESSION_12_ENV_PANE_TEST";
+        let inherited = "ZELLIJ_SESSION_12_ENV_PANE_INHERITED";
         std::env::remove_var(name);
         std::env::set_var(inherited, "from the shell");
         let mut applied = AppliedEnv::default();
-        let mut wanted = HashMap::new();
-        wanted.insert(name.to_owned(), "first".to_owned());
-        wanted.insert(other.to_owned(), "kept".to_owned());
-        wanted.insert(inherited.to_owned(), "from the config".to_owned());
-        applied.sync(&wanted);
-        assert_eq!(std::env::var(name).unwrap(), "first");
-        assert_eq!(std::env::var(inherited).unwrap(), "from the config");
-        wanted.insert(name.to_owned(), "second".to_owned());
-        applied.sync(&wanted);
-        assert_eq!(std::env::var(name).unwrap(), "second");
-        wanted.remove(name);
-        wanted.remove(inherited);
-        applied.sync(&wanted);
+        applied.sync(&wanted(&[(name, "first"), (inherited, "from the config")]));
+        assert_eq!(
+            applied.pane_env().get(inherited),
+            Some(&Some("from the config".to_owned()))
+        );
         assert!(std::env::var(name).is_err());
         assert_eq!(std::env::var(inherited).unwrap(), "from the shell");
-        assert_eq!(std::env::var(other).unwrap(), "kept");
-        wanted.insert(inherited.to_owned(), "again".to_owned());
-        applied.sync(&wanted);
-        assert_eq!(std::env::var(inherited).unwrap(), "again");
-        wanted.remove(inherited);
-        applied.sync(&wanted);
+        assert_eq!(applied.pane_env().get(name), Some(&Some("first".to_owned())));
+        applied.sync(&wanted(&[(name, "second")]));
+        assert_eq!(applied.pane_env().get(name), Some(&Some("second".to_owned())));
+        applied.sync(&HashMap::new());
+        assert_eq!(applied.pane_env().get(name), None);
+        assert_eq!(applied.pane_env().get(inherited), None);
+        assert!(std::env::var(name).is_err());
         assert_eq!(std::env::var(inherited).unwrap(), "from the shell");
-        std::env::remove_var(other);
         std::env::remove_var(inherited);
     }
 
     #[test]
-    fn a_variable_set_before_startup_gets_its_earlier_value_back_when_removed_from_the_config() {
-        let set_by_the_config = "ZELLIJ_SESSION_9_ENV_STARTUP_CONFIG";
-        let set_before = "ZELLIJ_SESSION_9_ENV_STARTUP_BEFORE";
-        std::env::set_var(set_by_the_config, "config value");
-        std::env::set_var(set_before, "earlier value");
-        let mut startup_env = HashMap::new();
-        startup_env.insert(set_by_the_config.to_owned(), "config value".to_owned());
-        startup_env.insert(set_before.to_owned(), "config value".to_owned());
-        let mut applied = AppliedEnv::at_startup_with(&startup_env, HashMap::new());
+    fn a_variable_set_at_startup_gets_its_earlier_value_in_new_panes_when_removed() {
+        let set_by_the_config = "ZELLIJ_SESSION_12_ENV_STARTUP_CONFIG";
+        let set_before = "ZELLIJ_SESSION_12_ENV_STARTUP_BEFORE";
+        let startup_env = wanted(&[
+            (set_by_the_config, "config value"),
+            (set_before, "config value"),
+        ]);
+        let mut values_before_config = HashMap::new();
+        values_before_config.insert(set_by_the_config.to_owned(), None);
+        values_before_config.insert(set_before.to_owned(), Some("earlier value".to_owned()));
+        let mut applied = AppliedEnv::at_startup_with(&startup_env, values_before_config);
+        assert_eq!(
+            applied.pane_env().get(set_before),
+            Some(&Some("config value".to_owned()))
+        );
         applied.sync(&HashMap::new());
-        assert!(std::env::var(set_by_the_config).is_err());
-        assert_eq!(std::env::var(set_before).unwrap(), "earlier value");
-        std::env::remove_var(set_before);
+        let pane_env = applied.pane_env();
+        assert_eq!(pane_env.get(set_by_the_config), Some(&None));
+        assert_eq!(
+            pane_env.get(set_before),
+            Some(&Some("earlier value".to_owned()))
+        );
+        applied.sync(&wanted(&[(set_before, "again")]));
+        assert_eq!(
+            applied.pane_env().get(set_before),
+            Some(&Some("again".to_owned()))
+        );
     }
 
     #[test]
-    fn values_handed_over_by_the_client_are_restored_when_removed_from_the_config() {
-        let shadowed = "ZELLIJ_SESSION_9_ENV_HANDED_OVER_SHADOWED";
-        let new = "ZELLIJ_SESSION_9_ENV_HANDED_OVER_NEW";
-        std::env::set_var(shadowed, "config value");
-        std::env::set_var(new, "config value");
-        let mut startup_env = HashMap::new();
-        startup_env.insert(shadowed.to_owned(), "config value".to_owned());
-        startup_env.insert(new.to_owned(), "config value".to_owned());
-        let mut values_before_config = HashMap::new();
-        values_before_config.insert(shadowed.to_owned(), Some("shell value".to_owned()));
-        values_before_config.insert(new.to_owned(), None);
-        let mut applied = AppliedEnv::at_startup_with(&startup_env, values_before_config);
+    fn a_startup_variable_without_an_earlier_value_is_unset_in_new_panes_when_removed() {
+        let name = "ZELLIJ_SESSION_12_ENV_STARTUP_NEW";
+        let mut applied = AppliedEnv::at_startup_with(&wanted(&[(name, "new")]), HashMap::new());
         applied.sync(&HashMap::new());
-        assert_eq!(std::env::var(shadowed).unwrap(), "shell value");
-        assert!(std::env::var(new).is_err());
-        std::env::remove_var(shadowed);
+        assert_eq!(applied.pane_env().get(name), Some(&None));
     }
 }
 
@@ -4420,6 +4422,7 @@ fn init_session(
 
     let default_mode = config.options.default_mode.unwrap_or_default();
     let default_keybinds: SharedKeybinds = Arc::new(config.keybinds.to_keybinds_vec());
+    let applied_env = AppliedEnv::at_startup(config.env.inner());
 
     let pty_thread = thread::Builder::new()
         .name("pty".to_string())
@@ -4439,6 +4442,7 @@ fn init_session(
                 cli_assets.is_debug,
                 config_options.scrollback_editor.clone(),
                 config_options.post_command_discovery_hook.clone(),
+                applied_env.pane_env(),
             );
 
             move || pty_thread_main(pty, layout.clone()).fatal()
@@ -4644,7 +4648,7 @@ fn init_session(
         web_sharing: WebSharing::Disabled,
         key_passthrough_clients: HashMap::new(),
         popup_clients: HashSet::new(),
-        applied_env: AppliedEnv::at_startup(config.env.inner()),
+        applied_env,
         config_file: ConfigFileState {
             contents_when_read: cli_assets
                 .config_file_path

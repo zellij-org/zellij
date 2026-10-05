@@ -1541,13 +1541,10 @@ mod tests {
     use super::*;
     use zellij_utils::input::options::Options;
 
-    fn parsed(text: &str) -> zellij_utils::input::actions::Action {
+    fn parsed(text: &str) -> ContextMenuAction {
         let document: KdlDocument = text.parse().unwrap();
-        zellij_utils::input::actions::Action::try_from((
-            document.nodes().first().unwrap(),
-            &Options::default(),
-        ))
-        .unwrap_or_else(|e| panic!("{} does not parse: {:?}", text, e))
+        ContextMenuAction::from_kdl(document.nodes().first().unwrap(), &Options::default())
+            .unwrap_or_else(|e| panic!("{} does not parse: {:?}", text, e))
     }
 
     fn sample_values(spec: &ActionSpec) -> Vec<String> {

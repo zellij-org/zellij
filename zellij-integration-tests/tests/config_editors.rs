@@ -315,6 +315,73 @@ fn an_env_variable_and_a_plugin_alias_are_added_and_saved() {
     zellij.quit();
 }
 
+const ADDED_VARIABLE: &str = "ZJ_TEST_ADDED";
+const REMOVED_VARIABLE: &str = "ZJ_TEST_REMOVED";
+
+#[test]
+fn an_env_variable_added_at_runtime_reaches_new_panes_but_not_the_server() {
+    let mut zellij = start_zellij();
+    let first_terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
+    open_settings(&zellij);
+    open_page(&zellij, PLUGINS_PAGE, "Plugin aliases");
+    zellij.wait_until("every list is shown on one page", |grid_snapshot| {
+        grid_snapshot.contains("zellij:about") && grid_snapshot.contains("<a> - add")
+    });
+    zellij.send_stdin(END);
+    zellij.send_stdin(&keys::key('a'));
+    zellij.wait_until("variable form shown", |grid_snapshot| {
+        grid_snapshot.contains("Add Variable")
+    });
+    type_text(&zellij, ADDED_VARIABLE);
+    zellij.send_stdin(&keys::TAB);
+    type_text(&zellij, "added");
+    zellij.send_stdin(&keys::ENTER);
+    zellij.wait_until("variable added", |grid_snapshot| {
+        grid_snapshot.contains(ADDED_VARIABLE) && grid_snapshot.contains("1 unsaved change ")
+    });
+    close_settings(&zellij);
+    let new_terminal = zellij_integration_tests::split_right_and_wait_for_prompt(&zellij);
+    assert_eq!(new_terminal.env_var(ADDED_VARIABLE).as_deref(), Some("added"));
+    assert_eq!(first_terminal.env_var(ADDED_VARIABLE), None);
+    assert!(std::env::var(ADDED_VARIABLE).is_err());
+    zellij.quit();
+}
+
+#[test]
+fn an_env_variable_removed_at_runtime_is_not_set_in_new_panes() {
+    let mut zellij = TestRunner::new(TERMINAL_SIZE)
+        .with_config(&format!("env {{\n    {} \"start\"\n}}", REMOVED_VARIABLE))
+        .start();
+    let first_terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
+    assert_eq!(first_terminal.env_var(REMOVED_VARIABLE).as_deref(), Some("start"));
+    open_settings(&zellij);
+    open_page(&zellij, PLUGINS_PAGE, "Plugin aliases");
+    zellij.wait_until("every list is shown on one page", |grid_snapshot| {
+        grid_snapshot.contains("zellij:about") && grid_snapshot.contains("<a> - add")
+    });
+    zellij.send_stdin(END);
+    zellij.wait_until("the variable is listed", |grid_snapshot| {
+        grid_snapshot.contains(REMOVED_VARIABLE)
+    });
+    zellij.send_stdin(ARROW_UP);
+    zellij.wait_until("the variable is selected", |grid_snapshot| {
+        grid_snapshot.contains("<Del> - delete")
+    });
+    zellij.send_stdin(DELETE);
+    zellij.wait_until("deleting asks first", |grid_snapshot| {
+        grid_snapshot.contains("Don't ask again")
+    });
+    zellij.send_stdin(&keys::ENTER);
+    zellij.wait_until("the variable is removed", |grid_snapshot| {
+        !grid_snapshot.contains(REMOVED_VARIABLE) && grid_snapshot.contains("1 unsaved change ")
+    });
+    close_settings(&zellij);
+    let new_terminal = zellij_integration_tests::split_right_and_wait_for_prompt(&zellij);
+    assert_eq!(new_terminal.env_var(REMOVED_VARIABLE), None);
+    assert_eq!(first_terminal.env_var(REMOVED_VARIABLE).as_deref(), Some("start"));
+    zellij.quit();
+}
+
 fn right_click(zellij: &TestSession, column: usize, line: usize) {
     zellij.send_stdin(format!("\u{1b}[<2;{};{}M", column, line).as_bytes());
     zellij.send_stdin(format!("\u{1b}[<2;{};{}m", column, line).as_bytes());
@@ -533,13 +600,16 @@ fn a_colour_of_the_active_config_file_theme_applies_live_and_saves() {
         grid_snapshot.tab_bar_appears()
     }));
     open_settings(&zellij);
-    open_page(&zellij, THEMES_PAGE, "Themes from the theme folder");
+    open_page(&zellij, THEMES_PAGE, "+ New theme");
     zellij.wait_until("themes listed with ours first", |grid_snapshot| {
-        grid_snapshot.contains("mine") && grid_snapshot.contains("(active)")
+        grid_snapshot
+            .row_of_line("  mine  ")
+            .map(|row| grid_snapshot.lines()[row].contains("active"))
+            .unwrap_or(false)
     });
     zellij.send_stdin(&keys::ENTER);
     zellij.wait_until("colour form shown", |grid_snapshot| {
-        grid_snapshot.contains("Colours of mine (active")
+        grid_snapshot.contains("Colors of mine (active: changes preview live)")
     });
     for _ in 0..19 {
         zellij.send_stdin(ARROW_DOWN);
@@ -555,9 +625,9 @@ fn a_colour_of_the_active_config_file_theme_applies_live_and_saves() {
     zellij.wait_until("the new colour previews on the tab bar", |grid_snapshot| {
         tab_background(grid_snapshot) != before
     });
-    zellij.send_stdin(&keys::ENTER);
+    zellij.send_stdin(&keys::ctrl('a'));
     zellij.wait_until("the colour is applied", |grid_snapshot| {
-        grid_snapshot.contains("Colours of mine applied")
+        grid_snapshot.contains("Colors of mine applied")
     });
     save_and_wait(&zellij);
     let saved = std::fs::read_to_string(&config_file_path).unwrap();

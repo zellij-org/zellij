@@ -201,10 +201,34 @@ enum ContextMenuKind {
   ContextMenuKindBar = 3;
 }
 
+enum ClickedPaneAction {
+  ClickedPaneActionCloseFocus = 0;
+  ClickedPaneActionToggleFocusFullscreen = 1;
+  ClickedPaneActionToggleEmbedOrFloating = 2;
+  ClickedPaneActionTogglePinned = 3;
+  ClickedPaneActionToggleInGroup = 4;
+  ClickedPaneActionStartRename = 5;
+}
+
+enum ClickedTabAction {
+  ClickedTabActionClose = 0;
+  ClickedTabActionStartRename = 1;
+  ClickedTabActionMoveLeft = 2;
+  ClickedTabActionMoveRight = 3;
+}
+
+message ContextMenuAction {
+  oneof action {
+    action.Action plain = 1;
+    ClickedPaneAction clicked_pane = 2;
+    ClickedTabAction clicked_tab = 3;
+  }
+}
+
 message ContextMenuEntry {
   bool is_separator = 1;
   string label = 2;
-  repeated action.Action actions = 3;
+  repeated ContextMenuAction actions = 3;
 }
 
 message ContextMenuPayload {

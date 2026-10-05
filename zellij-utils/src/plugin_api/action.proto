@@ -260,15 +260,15 @@ message Action {
 }
 
 message TargetPaneIdPayload {
-  optional PaneId pane_id = 1;
+  PaneId pane_id = 1;
 }
 
 message TargetTabIdPayload {
-  optional uint64 tab_id = 1;
+  uint64 tab_id = 1;
 }
 
 message MoveTabByTabIdPayload {
-  optional uint64 tab_id = 1;
+  uint64 tab_id = 1;
   MoveTabDirection direction = 2;
 }
 

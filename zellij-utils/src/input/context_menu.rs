@@ -1,4 +1,6 @@
-use crate::data::{ContextMenuEntry, ContextMenuKind, InputMode, KeyWithModifier, KeybindsVec};
+use crate::data::{
+    ContextMenuAction, ContextMenuEntry, ContextMenuKind, InputMode, KeyWithModifier, KeybindsVec,
+};
 use crate::input::actions::Action;
 use serde::{Deserialize, Serialize};
 
@@ -30,7 +32,7 @@ fn binding_matches(binding: &[Action], wanted: &[Action], base_mode: InputMode) 
 pub fn context_menu_shortcut(
     keybinds: &KeybindsVec,
     base_mode: InputMode,
-    actions: &[Action],
+    actions: &[ContextMenuAction],
 ) -> Option<String> {
     let wanted: Vec<Action> = actions
         .iter()
@@ -251,6 +253,72 @@ pub fn context_menu_entries_without_defaults(
     merge_menu_statements(&[], statements, context_menu_label, false)
 }
 
+fn statement_for(
+    working: &[ContextMenuEntry],
+    wanted: &[ContextMenuEntry],
+    index: usize,
+) -> Option<MenuStatement<ContextMenuEntry>> {
+    let entry = wanted[index].clone();
+    let current = working.get(index);
+    if entry.label().is_some() && current.and_then(|c| c.label()) == entry.label() {
+        return Some(MenuStatement::plain(entry));
+    }
+    let after = index
+        .checked_sub(1)
+        .and_then(|previous| wanted[previous].label())
+        .map(|label| MenuPlacement::After(label.to_owned()));
+    let before = || {
+        current
+            .and_then(|c| c.label())
+            .map(|label| MenuPlacement::Before(label.to_owned()))
+    };
+    match after.or_else(before) {
+        Some(placement) => Some(MenuStatement::Entry {
+            entry,
+            placement: Some(placement),
+        }),
+        None if index == working.len() && entry.label().is_some() => {
+            Some(MenuStatement::plain(entry))
+        },
+        None => None,
+    }
+}
+
+pub fn context_menu_statements_against(
+    entries: &[ContextMenuEntry],
+    defaults: &[ContextMenuEntry],
+) -> Option<Vec<MenuStatement<ContextMenuEntry>>> {
+    let labels: Vec<&str> = entries.iter().filter_map(|e| e.label()).collect();
+    let mut unique = labels.clone();
+    unique.sort();
+    unique.dedup();
+    if unique.len() != labels.len() {
+        return None;
+    }
+    let mut statements: Vec<MenuStatement<ContextMenuEntry>> = defaults
+        .iter()
+        .filter_map(|e| e.label())
+        .filter(|label| !labels.contains(label))
+        .map(|label| MenuStatement::Remove(label.to_owned()))
+        .collect();
+    let mut working = merge_context_menu_entries(defaults, statements.clone());
+    for index in 0..entries.len() {
+        if working.get(index) == Some(&entries[index]) {
+            continue;
+        }
+        let statement = statement_for(&working, entries, index)?;
+        working = merge_context_menu_entries(&working, vec![statement.clone()]);
+        statements.push(statement);
+        if working.get(..=index) != Some(&entries[..=index]) {
+            return None;
+        }
+    }
+    if working != entries || merge_context_menu_entries(defaults, statements.clone()) != entries {
+        return None;
+    }
+    Some(statements)
+}
+
 pub fn normalize_separators(entries: Vec<ContextMenuEntry>) -> Vec<ContextMenuEntry> {
     let mut normalized: Vec<ContextMenuEntry> = vec![];
     for entry in entries {
@@ -276,7 +344,7 @@ mod tests {
     use crate::input::actions::Action;
 
     fn item(label: &str) -> ContextMenuEntry {
-        ContextMenuEntry::item(label, vec![Action::Detach])
+        ContextMenuEntry::item(label, vec![Action::Detach.into()])
     }
 
     #[test]
@@ -327,14 +395,14 @@ mod tests {
         let merged = merge_context_menu_entries(
             &[item("a"), ContextMenuEntry::Separator, item("b")],
             vec![
-                MenuStatement::plain(ContextMenuEntry::item("a", vec![Action::Quit])),
+                MenuStatement::plain(ContextMenuEntry::item("a", vec![Action::Quit.into()])),
                 MenuStatement::plain(item("c")),
             ],
         );
         assert_eq!(
             merged,
             vec![
-                ContextMenuEntry::item("a", vec![Action::Quit]),
+                ContextMenuEntry::item("a", vec![Action::Quit.into()]),
                 ContextMenuEntry::Separator,
                 item("b"),
                 item("c"),
@@ -385,41 +453,81 @@ mod tests {
     }
 
     #[test]
-    fn missing_targets_are_filled_with_the_clicked_pane_or_tab() {
-        use crate::data::{Direction, PaneId};
-        let mut close_pane = Action::CloseFocusByPaneId { pane_id: None };
-        let mut move_tab = Action::MoveTabByTabId {
-            id: None,
-            direction: Direction::Left,
-        };
-        let mut explicit = Action::CloseFocusByPaneId {
-            pane_id: Some(PaneId::Terminal(9)),
-        };
-        assert!(close_pane.has_missing_target());
-        assert!(move_tab.has_missing_target());
-        assert!(!explicit.has_missing_target());
-        assert!(!Action::CloseFocus.has_missing_target());
-        for action in [&mut close_pane, &mut move_tab, &mut explicit] {
-            action.fill_context_menu_target(Some(PaneId::Terminal(2)), Some(5));
-        }
+    fn clicked_targets_are_filled_with_the_clicked_pane_or_tab() {
+        use crate::data::{ClickedPaneAction, ClickedTabAction, Direction, PaneId};
+        let close_pane = ContextMenuAction::ClickedPane(ClickedPaneAction::CloseFocus);
+        let move_tab = ContextMenuAction::ClickedTab(ClickedTabAction::Move(Direction::Left));
+        let explicit = ContextMenuAction::Action(Action::CloseFocusByPaneId {
+            pane_id: PaneId::Terminal(9),
+        });
         assert_eq!(
-            close_pane,
-            Action::CloseFocusByPaneId {
-                pane_id: Some(PaneId::Terminal(2))
-            }
+            close_pane.clone().into_action(Some(PaneId::Terminal(2)), Some(5)),
+            Some(Action::CloseFocusByPaneId {
+                pane_id: PaneId::Terminal(2)
+            })
         );
+        assert_eq!(close_pane.into_action(None, Some(5)), None);
         assert_eq!(
-            move_tab,
-            Action::MoveTabByTabId {
-                id: Some(5),
+            move_tab.clone().into_action(None, Some(5)),
+            Some(Action::MoveTabByTabId {
+                id: 5,
                 direction: Direction::Left
-            }
+            })
+        );
+        assert_eq!(move_tab.into_action(Some(PaneId::Terminal(2)), None), None);
+        assert_eq!(
+            explicit.into_action(Some(PaneId::Terminal(2)), Some(5)),
+            Some(Action::CloseFocusByPaneId {
+                pane_id: PaneId::Terminal(9)
+            })
+        );
+    }
+
+    fn statements_rebuild(entries: Vec<ContextMenuEntry>, defaults: Vec<ContextMenuEntry>) {
+        let statements = context_menu_statements_against(&entries, &defaults).unwrap();
+        assert_eq!(merge_context_menu_entries(&defaults, statements), entries);
+    }
+
+    #[test]
+    fn statements_against_the_defaults_rebuild_the_entries() {
+        let defaults = vec![
+            item("a"),
+            item("b"),
+            ContextMenuEntry::Separator,
+            item("c"),
+        ];
+        assert_eq!(
+            context_menu_statements_against(&defaults, &defaults),
+            Some(vec![])
+        );
+        statements_rebuild(
+            vec![item("a"), ContextMenuEntry::Separator, item("c")],
+            defaults.clone(),
+        );
+        statements_rebuild(
+            vec![
+                item("x"),
+                item("a"),
+                ContextMenuEntry::item("b", vec![Action::Quit.into()]),
+                ContextMenuEntry::Separator,
+                item("c"),
+                ContextMenuEntry::Separator,
+                item("y"),
+            ],
+            defaults.clone(),
+        );
+        statements_rebuild(
+            vec![item("b"), item("a"), ContextMenuEntry::Separator, item("c")],
+            defaults.clone(),
+        );
+        statements_rebuild(vec![item("z")], vec![]);
+        assert_eq!(
+            context_menu_statements_against(&[item("a"), item("a")], &defaults),
+            None
         );
         assert_eq!(
-            explicit,
-            Action::CloseFocusByPaneId {
-                pane_id: Some(PaneId::Terminal(9))
-            }
+            context_menu_statements_against(&[item("a"), item("b"), item("c")], &defaults),
+            None
         );
     }
 }

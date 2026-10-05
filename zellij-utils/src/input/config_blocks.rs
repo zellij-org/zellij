@@ -13,7 +13,7 @@ use super::layout::{RunPlugin, RunPluginOrAlias};
 use super::plugins::PluginAliases;
 use super::theme::{Theme, Themes};
 use crate::data::{
-    ConfigBlocks, ContextMenuEntry, EnvVarEntry, InputMode, KeyWithModifier, KeybindingEntry,
+    ConfigBlocks, ContextMenuAction, ContextMenuEntry, EnvVarEntry, InputMode, KeyWithModifier, KeybindingEntry,
     KeybindingSource, KeybindsVec, MenuItemEntry, MenuSectionEntries, MultiplayerColors,
     PaletteColor, PluginAliasEntry, PluginEntry, StyleDeclaration, Styling, ThemeEntry,
     ThemeSource, DEFAULT_STYLES,
@@ -444,6 +444,19 @@ pub fn action_texts(actions: &[Action]) -> Vec<String> {
     actions.iter().map(action_text).collect()
 }
 
+pub fn menu_action_texts(actions: &[ContextMenuAction]) -> Vec<String> {
+    actions
+        .iter()
+        .map(|action| match action {
+            ContextMenuAction::Action(action) => action_text(action),
+            other => other
+                .to_kdl()
+                .map(|node| bare_node(node).to_string().trim().to_owned())
+                .unwrap_or_default(),
+        })
+        .collect()
+}
+
 fn configuration_pairs(configuration: &BTreeMap<String, String>) -> Vec<(String, String)> {
     configuration
         .iter()
@@ -494,7 +507,7 @@ pub fn menu_entries(
             ContextMenuEntry::Separator => MenuItemEntry::separator(),
             ContextMenuEntry::Item { label, actions } => MenuItemEntry {
                 label: Some(label.clone()),
-                actions: action_texts(actions),
+                actions: menu_action_texts(actions),
                 shortcut: shortcuts.and_then(|(keybinds, base_mode)| {
                     context_menu_shortcut(keybinds, base_mode, actions)
                 }),

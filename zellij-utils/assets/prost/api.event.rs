@@ -188,13 +188,32 @@ pub struct NestedSessionModeUpdatePayload {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ContextMenuAction {
+    #[prost(oneof="context_menu_action::Action", tags="1, 2, 3")]
+    pub action: ::core::option::Option<context_menu_action::Action>,
+}
+/// Nested message and enum types in `ContextMenuAction`.
+pub mod context_menu_action {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Action {
+        #[prost(message, tag="1")]
+        Plain(super::super::action::Action),
+        #[prost(enumeration="super::ClickedPaneAction", tag="2")]
+        ClickedPane(i32),
+        #[prost(enumeration="super::ClickedTabAction", tag="3")]
+        ClickedTab(i32),
+    }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ContextMenuEntry {
     #[prost(bool, tag="1")]
     pub is_separator: bool,
     #[prost(string, tag="2")]
     pub label: ::prost::alloc::string::String,
     #[prost(message, repeated, tag="3")]
-    pub actions: ::prost::alloc::vec::Vec<super::action::Action>,
+    pub actions: ::prost::alloc::vec::Vec<ContextMenuAction>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1266,6 +1285,76 @@ impl ContextMenuKind {
             "ContextMenuKindPaneFrame" => Some(Self::PaneFrame),
             "ContextMenuKindTab" => Some(Self::Tab),
             "ContextMenuKindBar" => Some(Self::Bar),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum ClickedPaneAction {
+    CloseFocus = 0,
+    ToggleFocusFullscreen = 1,
+    ToggleEmbedOrFloating = 2,
+    TogglePinned = 3,
+    ToggleInGroup = 4,
+    StartRename = 5,
+}
+impl ClickedPaneAction {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            ClickedPaneAction::CloseFocus => "ClickedPaneActionCloseFocus",
+            ClickedPaneAction::ToggleFocusFullscreen => "ClickedPaneActionToggleFocusFullscreen",
+            ClickedPaneAction::ToggleEmbedOrFloating => "ClickedPaneActionToggleEmbedOrFloating",
+            ClickedPaneAction::TogglePinned => "ClickedPaneActionTogglePinned",
+            ClickedPaneAction::ToggleInGroup => "ClickedPaneActionToggleInGroup",
+            ClickedPaneAction::StartRename => "ClickedPaneActionStartRename",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "ClickedPaneActionCloseFocus" => Some(Self::CloseFocus),
+            "ClickedPaneActionToggleFocusFullscreen" => Some(Self::ToggleFocusFullscreen),
+            "ClickedPaneActionToggleEmbedOrFloating" => Some(Self::ToggleEmbedOrFloating),
+            "ClickedPaneActionTogglePinned" => Some(Self::TogglePinned),
+            "ClickedPaneActionToggleInGroup" => Some(Self::ToggleInGroup),
+            "ClickedPaneActionStartRename" => Some(Self::StartRename),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum ClickedTabAction {
+    Close = 0,
+    StartRename = 1,
+    MoveLeft = 2,
+    MoveRight = 3,
+}
+impl ClickedTabAction {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            ClickedTabAction::Close => "ClickedTabActionClose",
+            ClickedTabAction::StartRename => "ClickedTabActionStartRename",
+            ClickedTabAction::MoveLeft => "ClickedTabActionMoveLeft",
+            ClickedTabAction::MoveRight => "ClickedTabActionMoveRight",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "ClickedTabActionClose" => Some(Self::Close),
+            "ClickedTabActionStartRename" => Some(Self::StartRename),
+            "ClickedTabActionMoveLeft" => Some(Self::MoveLeft),
+            "ClickedTabActionMoveRight" => Some(Self::MoveRight),
             _ => None,
         }
     }

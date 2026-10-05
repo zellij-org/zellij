@@ -1303,8 +1303,6 @@ pub struct GoToTabByIdAction {
 pub struct CloseTabByIdAction {
     #[prost(uint64, tag="1")]
     pub id: u64,
-    #[prost(bool, tag="2")]
-    pub id_is_omitted: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -2366,8 +2364,6 @@ pub struct MoveTabByTabIdAction {
     pub id: u64,
     #[prost(enumeration="Direction", tag="2")]
     pub direction: i32,
-    #[prost(bool, tag="3")]
-    pub id_is_omitted: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -2384,8 +2380,8 @@ pub struct StartRenamePaneByPaneIdAction {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StartRenameTabByTabIdAction {
-    #[prost(uint64, optional, tag="1")]
-    pub id: ::core::option::Option<u64>,
+    #[prost(uint64, tag="1")]
+    pub id: u64,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

@@ -152,7 +152,7 @@ fn spawn_and_read_output() {
         Box::new(|_pane_id, _exit_status, _run_command| {});
 
     let (_terminal_id, mut reader, _child_pid) = server
-        .spawn_terminal(action, quit_cb, None)
+        .spawn_terminal(action, quit_cb, None, &Default::default())
         .expect("spawn_terminal should succeed");
 
     // Read output from the spawned terminal
@@ -221,7 +221,12 @@ fn tcgetpgrp_returns_foreground_group() {
     };
     let quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send> = Box::new(|_, _, _| {});
     let (terminal_id, _reader, child_pid) = server
-        .spawn_terminal(TerminalAction::RunCommand(cmd), quit_cb, None)
+        .spawn_terminal(
+            TerminalAction::RunCommand(cmd),
+            quit_cb,
+            None,
+            &Default::default(),
+        )
         .expect("spawn_terminal should succeed");
 
     // poll (bounded to ~2s) for the child to finish setting up its controlling terminal
@@ -283,4 +288,59 @@ fn client_buffer_reports_disconnect_when_receiver_is_gone() {
     });
     assert!(matches!(result, Err(TrySendError::Disconnected(_))));
     assert_eq!(buffer.queued.load(Ordering::Acquire), 0);
+}
+
+#[cfg(unix)]
+#[test]
+fn the_pane_environment_is_added_to_and_removed_from_the_child_environment() {
+    use crate::os_input_output::PaneEnv;
+    use crate::panes::PaneId;
+    use zellij_utils::input::command::TerminalAction;
+
+    let server = make_server();
+    let cmd = RunCommand {
+        command: PathBuf::from("sh"),
+        args: vec![
+            "-c".to_string(),
+            "echo \"start:${ZELLIJ_PANE_ENV_TEST}:${HOME-unset}:end\"".to_string(),
+        ],
+        ..Default::default()
+    };
+    let mut pane_env = PaneEnv::new();
+    pane_env.insert(
+        "ZELLIJ_PANE_ENV_TEST".to_owned(),
+        Some("from the config".to_owned()),
+    );
+    pane_env.insert("HOME".to_owned(), None);
+    let quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send> = Box::new(|_, _, _| {});
+    let (_terminal_id, mut reader, _child_pid) = server
+        .spawn_terminal(TerminalAction::RunCommand(cmd), quit_cb, None, &pane_env)
+        .expect("spawn_terminal should succeed");
+    let expected = "start:from the config:unset:end";
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let output = rt.block_on(async {
+        let mut output = Vec::new();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while std::time::Instant::now() < deadline
+            && !String::from_utf8_lossy(&output).contains(expected)
+        {
+            match tokio::time::timeout(
+                std::time::Duration::from_millis(500),
+                reader.read_chunk(4096),
+            )
+            .await
+            {
+                Ok(Ok(bytes)) if bytes.is_empty() => break,
+                Ok(Ok(bytes)) => output.extend_from_slice(&bytes),
+                Ok(Err(_)) => break,
+                Err(_) => {},
+            }
+        }
+        String::from_utf8_lossy(&output).to_string()
+    });
+    assert!(output.contains(expected), "got: '{}'", output);
+    assert!(std::env::var("ZELLIJ_PANE_ENV_TEST").is_err());
 }

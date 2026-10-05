@@ -3814,7 +3814,7 @@ fn test_client_messages() {
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::ToggleFocusFullscreenByPaneId {
-            pane_id: Some(PaneId::Terminal(1)),
+            pane_id: PaneId::Terminal(1),
         },
         terminal_id: Some(1),
         client_id: Some(100),
@@ -3830,7 +3830,7 @@ fn test_client_messages() {
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::TogglePaneEmbedOrFloatingByPaneId {
-            pane_id: Some(PaneId::Terminal(1)),
+            pane_id: PaneId::Terminal(1),
         },
         terminal_id: Some(1),
         client_id: Some(100),
@@ -3838,7 +3838,7 @@ fn test_client_messages() {
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::CloseFocusByPaneId {
-            pane_id: Some(PaneId::Terminal(1)),
+            pane_id: PaneId::Terminal(1),
         },
         terminal_id: Some(1),
         client_id: Some(100),
@@ -3863,8 +3863,36 @@ fn test_client_messages() {
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::TogglePanePinnedByPaneId {
-            pane_id: Some(PaneId::Terminal(1)),
+            pane_id: PaneId::Terminal(1),
         },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::TogglePaneInGroupByPaneId {
+            pane_id: PaneId::Plugin(2),
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::StartRenamePaneByPaneId {
+            pane_id: PaneId::Terminal(3),
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::StartRenameTabByTabId { id: 4 },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::CloseTabById { id: 5 },
         terminal_id: Some(1),
         client_id: Some(100),
         is_cli_client: true,
@@ -3927,7 +3955,7 @@ fn test_client_messages() {
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::MoveTabByTabId {
-            id: Some(1),
+            id: 1,
             direction: Direction::Left,
         },
         terminal_id: Some(1),
@@ -4309,4 +4337,31 @@ fn rename_active_pane_wire_roundtrip() {
         .expect("Failed to convert decoded protobuf back to Rust");
 
     assert_eq!(original, roundtrip);
+}
+
+#[test]
+fn by_id_actions_without_a_pane_id_are_rejected_over_ipc() {
+    use crate::client_server_contract::client_server_contract::{
+        action::ActionType, Action as ProtoAction, CloseFocusByPaneIdAction,
+        StartRenamePaneByPaneIdAction, ToggleFullscreenByPaneIdAction,
+        TogglePaneEmbedOrFloatingByPaneIdAction, TogglePaneInGroupByPaneIdAction,
+        TogglePanePinnedByPaneIdAction,
+    };
+    let without_pane_id = vec![
+        ActionType::CloseFocusByPaneId(CloseFocusByPaneIdAction { pane_id: None }),
+        ActionType::ToggleFullscreenByPaneId(ToggleFullscreenByPaneIdAction { pane_id: None }),
+        ActionType::TogglePaneEmbedOrFloatingByPaneId(TogglePaneEmbedOrFloatingByPaneIdAction {
+            pane_id: None,
+        }),
+        ActionType::TogglePanePinnedByPaneId(TogglePanePinnedByPaneIdAction { pane_id: None }),
+        ActionType::TogglePaneInGroupByPaneId(TogglePaneInGroupByPaneIdAction { pane_id: None }),
+        ActionType::StartRenamePaneByPaneId(StartRenamePaneByPaneIdAction { pane_id: None }),
+    ];
+    for action_type in without_pane_id {
+        let described = format!("{:?}", action_type);
+        let decoded = Action::try_from(ProtoAction {
+            action_type: Some(action_type),
+        });
+        assert!(decoded.is_err(), "{} decoded without a pane id", described);
+    }
 }

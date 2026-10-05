@@ -8166,66 +8166,70 @@ Config {
             Item {
                 label: "New pane",
                 actions: [
-                    NewPane {
-                        direction: None,
-                        pane_name: None,
-                        start_suppressed: false,
-                    },
+                    Action(
+                        NewPane {
+                            direction: None,
+                            pane_name: None,
+                            start_suppressed: false,
+                        },
+                    ),
                 ],
             },
             Item {
                 label: "New floating pane",
                 actions: [
-                    NewFloatingPane {
-                        command: None,
-                        pane_name: None,
-                        coordinates: None,
-                        near_current_pane: false,
-                        no_focus: false,
-                        tab_id: None,
-                    },
+                    Action(
+                        NewFloatingPane {
+                            command: None,
+                            pane_name: None,
+                            coordinates: None,
+                            near_current_pane: false,
+                            no_focus: false,
+                            tab_id: None,
+                        },
+                    ),
                 ],
             },
             Separator,
             Item {
                 label: "Fullscreen",
                 actions: [
-                    ToggleFocusFullscreenByPaneId {
-                        pane_id: None,
-                    },
+                    ClickedPane(
+                        ToggleFocusFullscreen,
+                    ),
                 ],
             },
             Item {
                 label: "Float / Embed",
                 actions: [
-                    TogglePaneEmbedOrFloatingByPaneId {
-                        pane_id: None,
-                    },
+                    ClickedPane(
+                        ToggleEmbedOrFloating,
+                    ),
                 ],
             },
             Item {
                 label: "Rename pane",
                 actions: [
-                    StartRenamePaneByPaneId {
-                        pane_id: None,
-                    },
+                    ClickedPane(
+                        StartRename,
+                    ),
                 ],
             },
             Item {
                 label: "Add to group",
                 actions: [
-                    TogglePaneInGroupByPaneId {
-                        pane_id: None,
-                    },
+                    ClickedPane(
+                        ToggleInGroup,
+                    ),
                 ],
             },
             Separator,
             Item {
                 label: "Close pane",
                 actions: [
-                    CloseFocusByPaneId {
-                        pane_id: None,
-                    },
+                    ClickedPane(
+                        CloseFocus,
+                    ),
                 ],
             },
         ],
@@ -8233,52 +8237,56 @@ Config {
             Item {
                 label: "New tab",
                 actions: [
-                    NewTab {
-                        tiled_layout: None,
-                        floating_layouts: [],
-                        swap_tiled_layouts: None,
-                        swap_floating_layouts: None,
-                        tab_name: None,
-                        should_change_focus_to_new_tab: true,
-                        cwd: None,
-                        initial_panes: None,
-                        first_pane_unblock_condition: None,
-                    },
+                    Action(
+                        NewTab {
+                            tiled_layout: None,
+                            floating_layouts: [],
+                            swap_tiled_layouts: None,
+                            swap_floating_layouts: None,
+                            tab_name: None,
+                            should_change_focus_to_new_tab: true,
+                            cwd: None,
+                            initial_panes: None,
+                            first_pane_unblock_condition: None,
+                        },
+                    ),
                 ],
             },
             Item {
                 label: "Rename tab",
                 actions: [
-                    StartRenameTabByTabId {
-                        id: None,
-                    },
+                    ClickedTab(
+                        StartRename,
+                    ),
                 ],
             },
             Item {
                 label: "Move tab left",
                 actions: [
-                    MoveTabByTabId {
-                        id: None,
-                        direction: Left,
-                    },
+                    ClickedTab(
+                        Move(
+                            Left,
+                        ),
+                    ),
                 ],
             },
             Item {
                 label: "Move tab right",
                 actions: [
-                    MoveTabByTabId {
-                        id: None,
-                        direction: Right,
-                    },
+                    ClickedTab(
+                        Move(
+                            Right,
+                        ),
+                    ),
                 ],
             },
             Separator,
             Item {
                 label: "Close tab",
                 actions: [
-                    CloseTabById {
-                        id: None,
-                    },
+                    ClickedTab(
+                        Close,
+                    ),
                 ],
             },
         ],
@@ -8286,27 +8294,31 @@ Config {
             Item {
                 label: "New pane",
                 actions: [
-                    NewPane {
-                        direction: None,
-                        pane_name: None,
-                        start_suppressed: false,
-                    },
+                    Action(
+                        NewPane {
+                            direction: None,
+                            pane_name: None,
+                            start_suppressed: false,
+                        },
+                    ),
                 ],
             },
             Item {
                 label: "New tab",
                 actions: [
-                    NewTab {
-                        tiled_layout: None,
-                        floating_layouts: [],
-                        swap_tiled_layouts: None,
-                        swap_floating_layouts: None,
-                        tab_name: None,
-                        should_change_focus_to_new_tab: true,
-                        cwd: None,
-                        initial_panes: None,
-                        first_pane_unblock_condition: None,
-                    },
+                    Action(
+                        NewTab {
+                            tiled_layout: None,
+                            floating_layouts: [],
+                            swap_tiled_layouts: None,
+                            swap_floating_layouts: None,
+                            tab_name: None,
+                            should_change_focus_to_new_tab: true,
+                            cwd: None,
+                            initial_panes: None,
+                            first_pane_unblock_condition: None,
+                        },
+                    ),
                 ],
             },
         ],
@@ -8314,57 +8326,63 @@ Config {
             Item {
                 label: "Settings…",
                 actions: [
-                    LaunchOrFocusPlugin {
-                        plugin: Alias(
-                            PluginAlias {
-                                name: "configuration",
-                                configuration: Some(
-                                    PluginUserConfiguration(
-                                        {},
+                    Action(
+                        LaunchOrFocusPlugin {
+                            plugin: Alias(
+                                PluginAlias {
+                                    name: "configuration",
+                                    configuration: Some(
+                                        PluginUserConfiguration(
+                                            {},
+                                        ),
                                     ),
-                                ),
-                                initial_cwd: None,
-                                run_plugin: None,
-                            },
-                        ),
-                        should_float: true,
-                        move_to_focused_tab: true,
-                        should_open_in_place: false,
-                        close_replaced_pane: false,
-                        skip_cache: false,
-                        tab_id: None,
-                    },
+                                    initial_cwd: None,
+                                    run_plugin: None,
+                                },
+                            ),
+                            should_float: true,
+                            move_to_focused_tab: true,
+                            should_open_in_place: false,
+                            close_replaced_pane: false,
+                            skip_cache: false,
+                            tab_id: None,
+                        },
+                    ),
                 ],
             },
             Item {
                 label: "Session manager",
                 actions: [
-                    LaunchOrFocusPlugin {
-                        plugin: Alias(
-                            PluginAlias {
-                                name: "session-manager",
-                                configuration: Some(
-                                    PluginUserConfiguration(
-                                        {},
+                    Action(
+                        LaunchOrFocusPlugin {
+                            plugin: Alias(
+                                PluginAlias {
+                                    name: "session-manager",
+                                    configuration: Some(
+                                        PluginUserConfiguration(
+                                            {},
+                                        ),
                                     ),
-                                ),
-                                initial_cwd: None,
-                                run_plugin: None,
-                            },
-                        ),
-                        should_float: true,
-                        move_to_focused_tab: true,
-                        should_open_in_place: false,
-                        close_replaced_pane: false,
-                        skip_cache: false,
-                        tab_id: None,
-                    },
+                                    initial_cwd: None,
+                                    run_plugin: None,
+                                },
+                            ),
+                            should_float: true,
+                            move_to_focused_tab: true,
+                            should_open_in_place: false,
+                            close_replaced_pane: false,
+                            skip_cache: false,
+                            tab_id: None,
+                        },
+                    ),
                 ],
             },
             Item {
                 label: "Detach",
                 actions: [
-                    Detach,
+                    Action(
+                        Detach,
+                    ),
                 ],
             },
         ],

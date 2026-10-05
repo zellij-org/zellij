@@ -18,7 +18,7 @@ use zellij_utils::input::context_menu::ContextMenuConfig;
 use zellij_utils::input::layout::RunPluginOrAlias;
 use zellij_utils::input::mouse::MouseEvent;
 use zellij_utils::pane_size::{Size, Viewport};
-use zellij_utils::plugin_api::action::ProtobufAction;
+use zellij_utils::plugin_api::event::ProtobufContextMenuAction;
 use zellij_utils::position::Position;
 
 pub const CONTEXT_MENU_PLUGIN_ALIAS: &str = "context-menu";
@@ -55,7 +55,7 @@ pub fn entries_available_to_plugins(entries: Vec<ContextMenuEntry>) -> Vec<Conte
             ContextMenuEntry::Separator => true,
             ContextMenuEntry::Item { actions, .. } => actions
                 .iter()
-                .all(|action| ProtobufAction::try_from(action.clone()).is_ok()),
+                .all(|action| ProtobufContextMenuAction::try_from(action.clone()).is_ok()),
         })
         .collect()
 }
@@ -227,14 +227,9 @@ impl Screen {
             Some(ContextMenuEntry::Item { actions, .. }) => actions
                 .iter()
                 .cloned()
-                .map(|mut action| {
-                    action.fill_context_menu_target(
-                        context.target_pane_id(),
-                        context.target_tab_id(),
-                    );
-                    action
+                .filter_map(|action| {
+                    action.into_action(context.target_pane_id(), context.target_tab_id())
                 })
-                .filter(|action| !action.has_missing_target())
                 .collect(),
             _ => vec![],
         }
@@ -894,19 +889,64 @@ impl Screen {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zellij_utils::data::{BareKey, KeyWithModifier};
+    use zellij_utils::data::{BareKey, ClickedPaneAction, ContextMenuAction, KeyWithModifier};
+
+    #[test]
+    fn items_for_the_clicked_pane_or_tab_and_with_explicit_ids_reach_the_plugin() {
+        use zellij_utils::data::{ClickedTabAction, Direction};
+        let entries = vec![
+            ContextMenuEntry::item(
+                "Close pane",
+                vec![ContextMenuAction::ClickedPane(ClickedPaneAction::CloseFocus)],
+            ),
+            ContextMenuEntry::item(
+                "Move tab left",
+                vec![ContextMenuAction::ClickedTab(ClickedTabAction::Move(
+                    Direction::Left,
+                ))],
+            ),
+            ContextMenuEntry::Separator,
+            ContextMenuEntry::item(
+                "Close pane 3",
+                vec![Action::CloseFocusByPaneId {
+                    pane_id: zellij_utils::data::PaneId::Terminal(3),
+                }
+                .into()],
+            ),
+            ContextMenuEntry::item("Detach", vec![Action::Detach.into()]),
+        ];
+        assert_eq!(entries_available_to_plugins(entries.clone()), entries);
+    }
+
+    #[test]
+    fn items_that_cannot_reach_the_plugin_are_left_out() {
+        use zellij_utils::data::{ClickedTabAction, Direction};
+        let entries = vec![
+            ContextMenuEntry::item(
+                "Move tab up",
+                vec![ContextMenuAction::ClickedTab(ClickedTabAction::Move(
+                    Direction::Up,
+                ))],
+            ),
+            ContextMenuEntry::item("Detach", vec![Action::Detach.into()]),
+        ];
+        assert_eq!(
+            entries_available_to_plugins(entries),
+            vec![ContextMenuEntry::item("Detach", vec![Action::Detach.into()])]
+        );
+    }
 
     #[test]
     fn the_estimated_menu_width_leaves_room_for_the_shortcuts() {
         let entries = vec![
             ContextMenuEntry::Item {
                 label: "Close pane".to_owned(),
-                actions: vec![Action::CloseFocusByPaneId { pane_id: None }],
+                actions: vec![ContextMenuAction::ClickedPane(ClickedPaneAction::CloseFocus)],
             },
             ContextMenuEntry::Separator,
             ContextMenuEntry::Item {
                 label: "Detach".to_owned(),
-                actions: vec![Action::Detach],
+                actions: vec![Action::Detach.into()],
             },
         ];
         let keybinds: KeybindsVec = vec![

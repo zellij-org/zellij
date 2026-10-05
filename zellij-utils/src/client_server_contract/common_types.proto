@@ -728,7 +728,6 @@ message GoToTabByIdAction {
 
 message CloseTabByIdAction {
   uint64 id = 1;
-  bool id_is_omitted = 2;
 }
 
 message RenameTabByIdAction {
@@ -1363,9 +1362,9 @@ message PreviousSwapLayoutByTabIdAction { uint64 id = 1; }
 message NextSwapLayoutByTabIdAction { uint64 id = 1; }
 message ApplyTiledSwapLayoutByTabIdAction { uint64 id = 1; string name = 2; }
 message ApplyFloatingSwapLayoutByTabIdAction { uint64 id = 1; string name = 2; }
-message MoveTabByTabIdAction { uint64 id = 1; Direction direction = 2; bool id_is_omitted = 3; }
+message MoveTabByTabIdAction { uint64 id = 1; Direction direction = 2; }
 message TogglePaneInGroupByPaneIdAction { PaneId pane_id = 1; }
 message StartRenamePaneByPaneIdAction { PaneId pane_id = 1; }
-message StartRenameTabByTabIdAction { optional uint64 id = 1; }
+message StartRenameTabByTabIdAction { uint64 id = 1; }
 message DismissInfoPopupsAction {}
 message OpenContextMenuAction {}

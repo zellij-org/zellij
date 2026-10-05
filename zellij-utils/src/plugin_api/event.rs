@@ -11,6 +11,9 @@ pub use super::generated_api::api::{
         ClientInfo as ProtobufClientInfo, ClientPaneHistory as ProtobufClientPaneHistory,
         ClientTabHistory as ProtobufClientTabHistory,
         CommandChangedPayload as ProtobufCommandChangedPayload, ContextItem as ProtobufContextItem,
+        context_menu_action::Action as ProtobufContextMenuActionKind,
+        ClickedPaneAction as ProtobufClickedPaneAction, ClickedTabAction as ProtobufClickedTabAction,
+        ContextMenuAction as ProtobufContextMenuAction,
         ContextMenuEntry as ProtobufContextMenuEntry, ContextMenuKind as ProtobufContextMenuKind,
         ContextMenuPayload as ProtobufContextMenuPayload,
         CopyDestination as ProtobufCopyDestination, CwdChangedPayload as ProtobufCwdChangedPayload,
@@ -56,7 +59,8 @@ pub use super::generated_api::api::{
 };
 #[allow(hidden_glob_reexports)]
 use crate::data::{
-    ClientId, ClientInfo, ContextMenuContext, ContextMenuEntry, ContextMenuKind, CopyDestination,
+    ClickedPaneAction, ClickedTabAction, ClientId, ClientInfo, ContextMenuAction,
+    ContextMenuContext, ContextMenuEntry, ContextMenuKind, CopyDestination, Direction,
     Event, EventType, FileMetadata, HostTerminalThemeMode, InputMode, KeyModifier, KeyWithModifier,
     KeybindPresetInfo, KeybindPresetSource, KeybindPresetWithError, KeybindsVec,
     LayoutInfo, LayoutMetadata, ModeInfo, Mouse, NestedSessionEndReason, NestedSessionKeybinds,
@@ -780,7 +784,7 @@ impl TryFrom<ProtobufEvent> for Event {
                         } else {
                             let mut actions = vec![];
                             for action in entry.actions {
-                                actions.push(Action::try_from(action)?);
+                                actions.push(ContextMenuAction::try_from(action)?);
                             }
                             entries.push(ContextMenuEntry::Item {
                                 label: entry.label,
@@ -1560,7 +1564,7 @@ impl TryFrom<Event> for ProtobufEvent {
                         ContextMenuEntry::Item { label, actions } => {
                             let mut protobuf_actions = vec![];
                             for action in actions {
-                                protobuf_actions.push(ProtobufAction::try_from(action)?);
+                                protobuf_actions.push(ProtobufContextMenuAction::try_from(action)?);
                             }
                             protobuf_entries.push(ProtobufContextMenuEntry {
                                 is_separator: false,
@@ -4161,4 +4165,175 @@ fn serialize_prompt_result_event() {
     }
     let event_type: ProtobufEventType = EventType::PromptResult.try_into().unwrap();
     assert_eq!(EventType::try_from(event_type), Ok(EventType::PromptResult));
+}
+
+impl TryFrom<ProtobufContextMenuAction> for ContextMenuAction {
+    type Error = &'static str;
+    fn try_from(protobuf_action: ProtobufContextMenuAction) -> Result<Self, &'static str> {
+        match protobuf_action.action {
+            Some(ProtobufContextMenuActionKind::Plain(action)) => {
+                Ok(ContextMenuAction::Action(Action::try_from(action)?))
+            },
+            Some(ProtobufContextMenuActionKind::ClickedPane(action)) => {
+                let action = match ProtobufClickedPaneAction::try_from(action) {
+                    Ok(ProtobufClickedPaneAction::CloseFocus) => ClickedPaneAction::CloseFocus,
+                    Ok(ProtobufClickedPaneAction::ToggleFocusFullscreen) => {
+                        ClickedPaneAction::ToggleFocusFullscreen
+                    },
+                    Ok(ProtobufClickedPaneAction::ToggleEmbedOrFloating) => {
+                        ClickedPaneAction::ToggleEmbedOrFloating
+                    },
+                    Ok(ProtobufClickedPaneAction::TogglePinned) => ClickedPaneAction::TogglePinned,
+                    Ok(ProtobufClickedPaneAction::ToggleInGroup) => {
+                        ClickedPaneAction::ToggleInGroup
+                    },
+                    Ok(ProtobufClickedPaneAction::StartRename) => ClickedPaneAction::StartRename,
+                    Err(_) => return Err("Unknown clicked pane action in a context menu entry"),
+                };
+                Ok(ContextMenuAction::ClickedPane(action))
+            },
+            Some(ProtobufContextMenuActionKind::ClickedTab(action)) => {
+                let action = match ProtobufClickedTabAction::try_from(action) {
+                    Ok(ProtobufClickedTabAction::Close) => ClickedTabAction::Close,
+                    Ok(ProtobufClickedTabAction::StartRename) => ClickedTabAction::StartRename,
+                    Ok(ProtobufClickedTabAction::MoveLeft) => {
+                        ClickedTabAction::Move(Direction::Left)
+                    },
+                    Ok(ProtobufClickedTabAction::MoveRight) => {
+                        ClickedTabAction::Move(Direction::Right)
+                    },
+                    Err(_) => return Err("Unknown clicked tab action in a context menu entry"),
+                };
+                Ok(ContextMenuAction::ClickedTab(action))
+            },
+            None => Err("Empty action in a context menu entry"),
+        }
+    }
+}
+
+impl TryFrom<ContextMenuAction> for ProtobufContextMenuAction {
+    type Error = &'static str;
+    fn try_from(action: ContextMenuAction) -> Result<Self, &'static str> {
+        let action = match action {
+            ContextMenuAction::Action(action) => {
+                ProtobufContextMenuActionKind::Plain(ProtobufAction::try_from(action)?)
+            },
+            ContextMenuAction::ClickedPane(action) => {
+                let action = match action {
+                    ClickedPaneAction::CloseFocus => ProtobufClickedPaneAction::CloseFocus,
+                    ClickedPaneAction::ToggleFocusFullscreen => {
+                        ProtobufClickedPaneAction::ToggleFocusFullscreen
+                    },
+                    ClickedPaneAction::ToggleEmbedOrFloating => {
+                        ProtobufClickedPaneAction::ToggleEmbedOrFloating
+                    },
+                    ClickedPaneAction::TogglePinned => ProtobufClickedPaneAction::TogglePinned,
+                    ClickedPaneAction::ToggleInGroup => ProtobufClickedPaneAction::ToggleInGroup,
+                    ClickedPaneAction::StartRename => ProtobufClickedPaneAction::StartRename,
+                };
+                ProtobufContextMenuActionKind::ClickedPane(action as i32)
+            },
+            ContextMenuAction::ClickedTab(action) => {
+                let action = match action {
+                    ClickedTabAction::Close => ProtobufClickedTabAction::Close,
+                    ClickedTabAction::StartRename => ProtobufClickedTabAction::StartRename,
+                    ClickedTabAction::Move(Direction::Left) => ProtobufClickedTabAction::MoveLeft,
+                    ClickedTabAction::Move(Direction::Right) => {
+                        ProtobufClickedTabAction::MoveRight
+                    },
+                    ClickedTabAction::Move(_) => {
+                        return Err("Tabs can only be moved left or right")
+                    },
+                };
+                ProtobufContextMenuActionKind::ClickedTab(action as i32)
+            },
+        };
+        Ok(ProtobufContextMenuAction {
+            action: Some(action),
+        })
+    }
+}
+
+#[cfg(test)]
+mod context_menu_tests {
+    use super::*;
+
+    fn every_context_menu_action() -> Vec<ContextMenuAction> {
+        let mut actions: Vec<ContextMenuAction> = ClickedPaneAction::ALL
+            .into_iter()
+            .map(ContextMenuAction::ClickedPane)
+            .collect();
+        actions.extend([
+            ContextMenuAction::ClickedTab(ClickedTabAction::Close),
+            ContextMenuAction::ClickedTab(ClickedTabAction::StartRename),
+            ContextMenuAction::ClickedTab(ClickedTabAction::Move(Direction::Left)),
+            ContextMenuAction::ClickedTab(ClickedTabAction::Move(Direction::Right)),
+            ContextMenuAction::Action(Action::Detach),
+            ContextMenuAction::Action(Action::CloseFocusByPaneId {
+                pane_id: PaneId::Terminal(3),
+            }),
+            ContextMenuAction::Action(Action::MoveTabByTabId {
+                id: 2,
+                direction: Direction::Right,
+            }),
+        ]);
+        actions
+    }
+
+    #[test]
+    fn every_context_menu_action_survives_protobuf() {
+        for original in every_context_menu_action() {
+            let protobuf = ProtobufContextMenuAction::try_from(original.clone())
+                .unwrap_or_else(|e| panic!("{:?} did not encode: {}", original, e));
+            let decoded = ContextMenuAction::try_from(protobuf)
+                .unwrap_or_else(|e| panic!("{:?} did not decode: {}", original, e));
+            assert_eq!(original, decoded);
+        }
+    }
+
+    #[test]
+    fn tabs_only_move_left_or_right_and_empty_actions_are_rejected() {
+        for direction in [Direction::Up, Direction::Down] {
+            assert!(ProtobufContextMenuAction::try_from(ContextMenuAction::ClickedTab(
+                ClickedTabAction::Move(direction)
+            ))
+            .is_err());
+        }
+        assert!(ContextMenuAction::try_from(ProtobufContextMenuAction { action: None }).is_err());
+        assert!(ContextMenuAction::try_from(ProtobufContextMenuAction {
+            action: Some(ProtobufContextMenuActionKind::ClickedPane(99)),
+        })
+        .is_err());
+        assert!(ContextMenuAction::try_from(ProtobufContextMenuAction {
+            action: Some(ProtobufContextMenuActionKind::ClickedTab(99)),
+        })
+        .is_err());
+    }
+
+    #[test]
+    fn a_context_menu_event_keeps_its_items_and_their_targets() {
+        let context = ContextMenuContext {
+            kind: ContextMenuKind::Tab,
+            pane_id: None,
+            pane_is_floating: false,
+            tab_index: Some(1),
+            tab_id: Some(4),
+            tab_count: 3,
+            line: 2,
+            column: 7,
+            client_id: 1,
+        };
+        let entries = vec![
+            ContextMenuEntry::item(
+                "Close tab",
+                vec![ContextMenuAction::ClickedTab(ClickedTabAction::Close)],
+            ),
+            ContextMenuEntry::Separator,
+            ContextMenuEntry::item("Everything", every_context_menu_action()),
+        ];
+        let original = Event::ContextMenu(context, entries);
+        let protobuf = ProtobufEvent::try_from(original.clone()).unwrap();
+        let decoded = Event::try_from(protobuf).unwrap();
+        assert_eq!(original, decoded);
+    }
 }

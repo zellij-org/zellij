@@ -236,7 +236,11 @@ fn every_setting_has_a_value_when_set_and_reads_back_from_the_file() {
             assert!(values[&key].is_some(), "{} has no value", key);
         }
     }
-    let read_back = Config::from_kdl(&config.to_string(false), None).unwrap();
+    let read_back = Config::from_kdl(
+        &config.to_string(false),
+        Some(Config::from_default_assets().unwrap()),
+    )
+    .unwrap();
     assert_eq!(setting_values(&read_back), values);
     assert!(!settings_differ(&read_back, &config, SettingKey::Keybinds));
 }

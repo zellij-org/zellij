@@ -452,14 +452,14 @@ pub struct TargetPaneIdPayload {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct TargetTabIdPayload {
-    #[prost(uint64, optional, tag="1")]
-    pub tab_id: ::core::option::Option<u64>,
+    #[prost(uint64, tag="1")]
+    pub tab_id: u64,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MoveTabByTabIdPayload {
-    #[prost(uint64, optional, tag="1")]
-    pub tab_id: ::core::option::Option<u64>,
+    #[prost(uint64, tag="1")]
+    pub tab_id: u64,
     #[prost(enumeration="MoveTabDirection", tag="2")]
     pub direction: i32,
 }

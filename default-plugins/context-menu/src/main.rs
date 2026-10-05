@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use zellij_tile::prelude::actions::Action;
 use zellij_tile::prelude::*;
 use zellij_utils::input::context_menu::context_menu_shortcut;
 
@@ -24,36 +23,29 @@ struct ContextMenuPlugin {
 
 register_plugin!(ContextMenuPlugin);
 
-fn item_state(actions: &[Action], context: &ContextMenuContext) -> ItemState {
+fn item_state(actions: &[ContextMenuAction], context: &ContextMenuContext) -> ItemState {
     let has_pane_target = context.target_pane_id().is_some();
     let has_tab_target = context.target_tab_id().is_some();
     let mut state = ItemState::Enabled;
     for action in actions {
-        if action.has_missing_target() {
-            if action.targets_pane() && !has_pane_target {
-                return ItemState::Hidden;
-            }
-            if action.targets_tab() && !has_tab_target {
-                return ItemState::Hidden;
-            }
-        }
         match action {
-            Action::TogglePanePinnedByPaneId { pane_id: None } if !context.pane_is_floating => {
+            ContextMenuAction::ClickedPane(_) if !has_pane_target => return ItemState::Hidden,
+            ContextMenuAction::ClickedTab(_) if !has_tab_target => return ItemState::Hidden,
+            ContextMenuAction::ClickedPane(ClickedPaneAction::TogglePinned)
+                if !context.pane_is_floating =>
+            {
                 return ItemState::Hidden;
             },
-            Action::MoveTabByTabId {
-                id: None,
-                direction: Direction::Left,
-            } if context.tab_index == Some(0) => {
+            ContextMenuAction::ClickedTab(ClickedTabAction::Move(Direction::Left))
+                if context.tab_index == Some(0) =>
+            {
                 state = ItemState::Disabled;
             },
-            Action::MoveTabByTabId {
-                id: None,
-                direction: Direction::Right,
-            } if context
-                .tab_index
-                .map(|tab_index| tab_index + 1 >= context.tab_count)
-                .unwrap_or(false) =>
+            ContextMenuAction::ClickedTab(ClickedTabAction::Move(Direction::Right))
+                if context
+                    .tab_index
+                    .map(|tab_index| tab_index + 1 >= context.tab_count)
+                    .unwrap_or(false) =>
             {
                 state = ItemState::Disabled;
             },
@@ -63,7 +55,7 @@ fn item_state(actions: &[Action], context: &ContextMenuContext) -> ItemState {
     state
 }
 
-fn shortcut_for(mode_info: &ModeInfo, wanted: &[Action]) -> Option<String> {
+fn shortcut_for(mode_info: &ModeInfo, wanted: &[ContextMenuAction]) -> Option<String> {
     context_menu_shortcut(
         &mode_info.keybinds,
         mode_info.base_mode.unwrap_or(InputMode::Normal),
@@ -219,6 +211,7 @@ impl ZellijPlugin for ContextMenuPlugin {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use zellij_tile::prelude::actions::Action;
     use zellij_utils::input::layout::{PluginAlias, RunPluginOrAlias};
 
     fn key(c: char) -> KeyWithModifier {
@@ -231,6 +224,44 @@ mod tests {
 
     fn alt(c: char) -> KeyWithModifier {
         KeyWithModifier::new(BareKey::Char(c)).with_alt_modifier()
+    }
+
+    fn pane(action: ClickedPaneAction) -> ContextMenuAction {
+        ContextMenuAction::ClickedPane(action)
+    }
+
+    fn tab(action: ClickedTabAction) -> ContextMenuAction {
+        ContextMenuAction::ClickedTab(action)
+    }
+
+    #[test]
+    fn items_for_the_clicked_pane_or_tab_follow_the_context() {
+        let context = |kind, pane_is_floating, tab_index| ContextMenuContext {
+            kind,
+            pane_id: Some(PaneId::Terminal(1)),
+            pane_is_floating,
+            tab_index: Some(tab_index),
+            tab_id: Some(tab_index),
+            tab_count: 2,
+            line: 0,
+            column: 0,
+            client_id: 1,
+        };
+        let pinned = [pane(ClickedPaneAction::TogglePinned)];
+        let close_pane = [pane(ClickedPaneAction::CloseFocus)];
+        let left = [tab(ClickedTabAction::Move(Direction::Left))];
+        let right = [tab(ClickedTabAction::Move(Direction::Right))];
+        let tiled = context(ContextMenuKind::Pane, false, 0);
+        assert_eq!(item_state(&pinned, &tiled), ItemState::Hidden);
+        assert_eq!(item_state(&close_pane, &tiled), ItemState::Enabled);
+        assert_eq!(item_state(&left, &tiled), ItemState::Disabled);
+        assert_eq!(item_state(&right, &tiled), ItemState::Enabled);
+        let floating = context(ContextMenuKind::Pane, true, 1);
+        assert_eq!(item_state(&pinned, &floating), ItemState::Enabled);
+        assert_eq!(item_state(&right, &floating), ItemState::Disabled);
+        let tab_bar = context(ContextMenuKind::Tab, false, 1);
+        assert_eq!(item_state(&close_pane, &tab_bar), ItemState::Hidden);
+        assert_eq!(item_state(&left, &tab_bar), ItemState::Enabled);
     }
 
     fn switch_to(input_mode: InputMode) -> Action {
@@ -328,12 +359,12 @@ mod tests {
         assert_eq!(
             shortcut_for(
                 &mode_info,
-                &[Action::ToggleFocusFullscreenByPaneId { pane_id: None }]
+                &[pane(ClickedPaneAction::ToggleFocusFullscreen)]
             ),
             Some("Ctrl p, f".to_owned())
         );
         assert_eq!(
-            shortcut_for(&mode_info, &[Action::CloseFocusByPaneId { pane_id: None }]),
+            shortcut_for(&mode_info, &[pane(ClickedPaneAction::CloseFocus)]),
             Some("Ctrl p, x".to_owned())
         );
     }
@@ -342,26 +373,20 @@ mod tests {
     fn by_id_tab_actions_match_their_focused_tab_bindings() {
         let mode_info = mode_info(InputMode::Normal);
         assert_eq!(
-            shortcut_for(&mode_info, &[Action::CloseTabById { id: None }]),
+            shortcut_for(&mode_info, &[tab(ClickedTabAction::Close)]),
             Some("Ctrl t, x".to_owned())
         );
         assert_eq!(
             shortcut_for(
                 &mode_info,
-                &[Action::MoveTabByTabId {
-                    id: None,
-                    direction: Direction::Left
-                }]
+                &[tab(ClickedTabAction::Move(Direction::Left))]
             ),
             Some("Alt i".to_owned())
         );
         assert_eq!(
             shortcut_for(
                 &mode_info,
-                &[Action::MoveTabByTabId {
-                    id: None,
-                    direction: Direction::Right
-                }]
+                &[tab(ClickedTabAction::Move(Direction::Right))]
             ),
             None
         );
@@ -373,12 +398,12 @@ mod tests {
         assert_eq!(
             shortcut_for(
                 &mode_info,
-                &[Action::StartRenamePaneByPaneId { pane_id: None }]
+                &[pane(ClickedPaneAction::StartRename)]
             ),
             Some("Ctrl p, c".to_owned())
         );
         assert_eq!(
-            shortcut_for(&mode_info, &[Action::StartRenameTabByTabId { id: None }]),
+            shortcut_for(&mode_info, &[tab(ClickedTabAction::StartRename)]),
             Some("Ctrl t, r".to_owned())
         );
     }
@@ -389,12 +414,12 @@ mod tests {
         assert_eq!(
             shortcut_for(
                 &mode_info,
-                &[plugin_launch("configuration", &[("x", "y")], false)]
+                &[plugin_launch("configuration", &[("x", "y")], false).into()]
             ),
             Some("Ctrl o, c".to_owned())
         );
         assert_eq!(
-            shortcut_for(&mode_info, &[plugin_launch("session-manager", &[], true)]),
+            shortcut_for(&mode_info, &[plugin_launch("session-manager", &[], true).into()]),
             None
         );
     }
@@ -408,10 +433,10 @@ mod tests {
             start_suppressed: false,
         };
         assert_eq!(
-            shortcut_for(&mode_info, &[new_pane(None)]),
+            shortcut_for(&mode_info, &[new_pane(None).into()]),
             Some("Alt n".to_owned())
         );
-        assert_eq!(shortcut_for(&mode_info, &[new_pane(Some(Direction::Down))]), None);
+        assert_eq!(shortcut_for(&mode_info, &[new_pane(Some(Direction::Down)).into()]), None);
     }
 
     #[test]
@@ -419,13 +444,13 @@ mod tests {
         let mut mode_info = mode_info(InputMode::Locked);
         mode_info.mode = InputMode::Pane;
         assert_eq!(
-            shortcut_for(&mode_info, &[Action::Detach]),
+            shortcut_for(&mode_info, &[Action::Detach.into()]),
             Some("Ctrl o, d".to_owned())
         );
         assert_eq!(
             shortcut_for(
                 &mode_info,
-                &[Action::ToggleFocusFullscreenByPaneId { pane_id: None }]
+                &[pane(ClickedPaneAction::ToggleFocusFullscreen)]
             ),
             Some("Ctrl p, f".to_owned())
         );
@@ -451,13 +476,13 @@ mod tests {
             ],
         ));
         assert_eq!(
-            shortcut_for(&mode_info, &[Action::CloseFocusByPaneId { pane_id: None }]),
+            shortcut_for(&mode_info, &[pane(ClickedPaneAction::CloseFocus)]),
             Some("Ctrl p, x".to_owned())
         );
         assert_eq!(
             shortcut_for(
                 &mode_info,
-                &[Action::TogglePaneInGroupByPaneId { pane_id: None }]
+                &[pane(ClickedPaneAction::ToggleInGroup)]
             ),
             Some("Ctrl b, z".to_owned())
         );
@@ -469,7 +494,7 @@ mod tests {
         assert_eq!(
             shortcut_for(
                 &mode_info,
-                &[Action::TogglePaneInGroupByPaneId { pane_id: None }]
+                &[pane(ClickedPaneAction::ToggleInGroup)]
             ),
             None
         );

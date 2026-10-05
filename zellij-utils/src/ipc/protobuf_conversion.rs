@@ -1981,10 +1981,7 @@ impl From<crate::input::actions::Action>
                 ActionType::GoToTabById(GoToTabByIdAction { id })
             },
             crate::input::actions::Action::CloseTabById { id } => {
-                ActionType::CloseTabById(CloseTabByIdAction {
-                    id: id.unwrap_or(0),
-                    id_is_omitted: id.is_none(),
-                })
+                ActionType::CloseTabById(CloseTabByIdAction { id })
             },
             crate::input::actions::Action::RenameTabById { id, name } => {
                 ActionType::RenameTabById(RenameTabByIdAction { id, name })
@@ -2227,7 +2224,7 @@ impl From<crate::input::actions::Action>
             },
             crate::input::actions::Action::ToggleFocusFullscreenByPaneId { pane_id } => {
                 ActionType::ToggleFullscreenByPaneId(ToggleFullscreenByPaneIdAction {
-                    pane_id: pane_id.map(|p| p.into()),
+                    pane_id: Some(pane_id.into()),
                 })
             },
             crate::input::actions::Action::ToggleFocusNoUiFullscreenByPaneId { pane_id } => {
@@ -2238,13 +2235,13 @@ impl From<crate::input::actions::Action>
             crate::input::actions::Action::TogglePaneEmbedOrFloatingByPaneId { pane_id } => {
                 ActionType::TogglePaneEmbedOrFloatingByPaneId(
                     TogglePaneEmbedOrFloatingByPaneIdAction {
-                        pane_id: pane_id.map(|p| p.into()),
+                        pane_id: Some(pane_id.into()),
                     },
                 )
             },
             crate::input::actions::Action::CloseFocusByPaneId { pane_id } => {
                 ActionType::CloseFocusByPaneId(CloseFocusByPaneIdAction {
-                    pane_id: pane_id.map(|p| p.into()),
+                    pane_id: Some(pane_id.into()),
                 })
             },
             crate::input::actions::Action::RenamePaneByPaneId { pane_id, name } => {
@@ -2260,17 +2257,17 @@ impl From<crate::input::actions::Action>
             },
             crate::input::actions::Action::TogglePanePinnedByPaneId { pane_id } => {
                 ActionType::TogglePanePinnedByPaneId(TogglePanePinnedByPaneIdAction {
-                    pane_id: pane_id.map(|p| p.into()),
+                    pane_id: Some(pane_id.into()),
                 })
             },
             crate::input::actions::Action::TogglePaneInGroupByPaneId { pane_id } => {
                 ActionType::TogglePaneInGroupByPaneId(TogglePaneInGroupByPaneIdAction {
-                    pane_id: pane_id.map(|p| p.into()),
+                    pane_id: Some(pane_id.into()),
                 })
             },
             crate::input::actions::Action::StartRenamePaneByPaneId { pane_id } => {
                 ActionType::StartRenamePaneByPaneId(StartRenamePaneByPaneIdAction {
-                    pane_id: pane_id.map(|p| p.into()),
+                    pane_id: Some(pane_id.into()),
                 })
             },
             crate::input::actions::Action::StartRenameTabByTabId { id } => {
@@ -2311,9 +2308,8 @@ impl From<crate::input::actions::Action>
             },
             crate::input::actions::Action::MoveTabByTabId { id, direction } => {
                 ActionType::MoveTabByTabId(MoveTabByTabIdAction {
-                    id: id.unwrap_or(0),
+                    id,
                     direction: direction_to_proto_i32(direction),
-                    id_is_omitted: id.is_none(),
                 })
             },
         };
@@ -2949,11 +2945,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             },
             ActionType::CloseTabById(close_tab_by_id_action) => {
                 Ok(crate::input::actions::Action::CloseTabById {
-                    id: if close_tab_by_id_action.id_is_omitted {
-                        None
-                    } else {
-                        Some(close_tab_by_id_action.id)
-                    },
+                    id: close_tab_by_id_action.id,
                 })
             },
             ActionType::RenameTabById(rename_tab_by_id_action) => {
@@ -3240,7 +3232,10 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             },
             ActionType::ToggleFullscreenByPaneId(a) => Ok(
                 crate::input::actions::Action::ToggleFocusFullscreenByPaneId {
-                    pane_id: a.pane_id.map(|p| p.try_into()).transpose()?,
+                    pane_id: a
+                        .pane_id
+                        .ok_or_else(|| anyhow!("ToggleFullscreenByPaneId missing pane_id"))?
+                        .try_into()?,
                 },
             ),
             ActionType::ToggleNoUiFullscreenByPaneId(a) => Ok(
@@ -3253,12 +3248,18 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             ),
             ActionType::TogglePaneEmbedOrFloatingByPaneId(a) => Ok(
                 crate::input::actions::Action::TogglePaneEmbedOrFloatingByPaneId {
-                    pane_id: a.pane_id.map(|p| p.try_into()).transpose()?,
+                    pane_id: a
+                        .pane_id
+                        .ok_or_else(|| anyhow!("TogglePaneEmbedOrFloatingByPaneId missing pane_id"))?
+                        .try_into()?,
                 },
             ),
             ActionType::CloseFocusByPaneId(a) => {
                 Ok(crate::input::actions::Action::CloseFocusByPaneId {
-                    pane_id: a.pane_id.map(|p| p.try_into()).transpose()?,
+                    pane_id: a
+                        .pane_id
+                        .ok_or_else(|| anyhow!("CloseFocusByPaneId missing pane_id"))?
+                        .try_into()?,
                 })
             },
             ActionType::RenamePaneByPaneId(a) => {
@@ -3277,17 +3278,26 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             },
             ActionType::TogglePanePinnedByPaneId(a) => {
                 Ok(crate::input::actions::Action::TogglePanePinnedByPaneId {
-                    pane_id: a.pane_id.map(|p| p.try_into()).transpose()?,
+                    pane_id: a
+                        .pane_id
+                        .ok_or_else(|| anyhow!("TogglePanePinnedByPaneId missing pane_id"))?
+                        .try_into()?,
                 })
             },
             ActionType::TogglePaneInGroupByPaneId(a) => {
                 Ok(crate::input::actions::Action::TogglePaneInGroupByPaneId {
-                    pane_id: a.pane_id.map(|p| p.try_into()).transpose()?,
+                    pane_id: a
+                        .pane_id
+                        .ok_or_else(|| anyhow!("TogglePaneInGroupByPaneId missing pane_id"))?
+                        .try_into()?,
                 })
             },
             ActionType::StartRenamePaneByPaneId(a) => {
                 Ok(crate::input::actions::Action::StartRenamePaneByPaneId {
-                    pane_id: a.pane_id.map(|p| p.try_into()).transpose()?,
+                    pane_id: a
+                        .pane_id
+                        .ok_or_else(|| anyhow!("StartRenamePaneByPaneId missing pane_id"))?
+                        .try_into()?,
                 })
             },
             ActionType::StartRenameTabByTabId(a) => {
@@ -3332,7 +3342,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             ActionType::MoveTabByTabId(a) => {
                 let direction = proto_i32_to_direction(a.direction)?;
                 Ok(crate::input::actions::Action::MoveTabByTabId {
-                    id: if a.id_is_omitted { None } else { Some(a.id) },
+                    id: a.id,
                     direction,
                 })
             },

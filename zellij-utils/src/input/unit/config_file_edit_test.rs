@@ -693,7 +693,10 @@ const BAR_FILE: &str =
     "context_menu {\n    bar {\n        // mine\n        item \"Mine\" { Detach; }\n    }\n}\n";
 
 fn menu_item(label: &str) -> crate::data::ContextMenuEntry {
-    crate::data::ContextMenuEntry::item(label, new_tab())
+    crate::data::ContextMenuEntry::item(
+        label,
+        new_tab().into_iter().map(Into::into).collect(),
+    )
 }
 
 #[test]
@@ -738,7 +741,7 @@ fn a_changed_default_item_is_written_as_an_item_with_its_label() {
     let text = saved_text_after(BAR_FILE, |saved| {
         let mut runtime = saved.clone();
         runtime.context_menu.bar[1] =
-            crate::data::ContextMenuEntry::item("New tab", vec![Action::Detach]);
+            crate::data::ContextMenuEntry::item("New tab", vec![Action::Detach.into()]);
         runtime
     });
     assert_eq!(
@@ -811,11 +814,11 @@ fn a_file_without_merge_statements_reads_as_before() {
     let file = "context_menu {\n    bar {\n        item \"New tab\" { Detach; }\n        separator\n        item \"Mine\" { Detach; }\n    }\n}\n";
     let config = load(file);
     let mut expected = defaults().context_menu.bar.clone();
-    expected[1] = crate::data::ContextMenuEntry::item("New tab", vec![Action::Detach]);
+    expected[1] = crate::data::ContextMenuEntry::item("New tab", vec![Action::Detach.into()]);
     expected.push(crate::data::ContextMenuEntry::Separator);
     expected.push(crate::data::ContextMenuEntry::item(
         "Mine",
-        vec![Action::Detach],
+        vec![Action::Detach.into()],
     ));
     assert_eq!(config.context_menu.bar, expected);
 }

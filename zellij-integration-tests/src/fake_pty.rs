@@ -3,7 +3,7 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
-use zellij_server::os_input_output::AsyncReader;
+use zellij_server::os_input_output::{AsyncReader, PaneEnv};
 use zellij_server::panes::PaneId;
 use zellij_utils::input::command::{RunCommand, TerminalAction};
 
@@ -13,6 +13,7 @@ pub(crate) const FAKE_PID_BASE: u32 = 100_000;
 
 pub(crate) struct FakePtyState {
     pub terminal_action: Option<TerminalAction>,
+    pub pane_env: PaneEnv,
     pub output_tx: Option<tokio::sync::mpsc::UnboundedSender<Vec<u8>>>,
     pub stdin: Vec<u8>,
     pub size: Option<(u16, u16)>,
@@ -105,6 +106,7 @@ impl SharedPtys {
         terminal_id: u32,
         terminal_action: Option<TerminalAction>,
         quit_cb: Option<QuitCb>,
+        pane_env: PaneEnv,
     ) -> Box<dyn AsyncReader> {
         let (output_tx, output_rx) = tokio::sync::mpsc::unbounded_channel();
         self.mutate(|fake_pty_registry| {
@@ -112,6 +114,7 @@ impl SharedPtys {
                 terminal_id,
                 FakePtyState {
                     terminal_action,
+                    pane_env,
                     output_tx: Some(output_tx),
                     stdin: Vec::new(),
                     size: None,
@@ -318,6 +321,17 @@ impl FakePtyHandle {
                 .get(&self.terminal_id)
                 .and_then(|fake_pty_state| fake_pty_state.terminal_action.clone())
         })
+    }
+
+    pub fn env_var(&self, name: &str) -> Option<String> {
+        let pane_env = self.shared_ptys.read(|fake_pty_registry| {
+            fake_pty_registry
+                .fake_pty_states
+                .get(&self.terminal_id)
+                .map(|fake_pty_state| fake_pty_state.pane_env.clone())
+                .unwrap_or_default()
+        });
+        zellij_server::os_input_output::env_value(&pane_env, name)
     }
 
     pub fn disable_echo(&self) {

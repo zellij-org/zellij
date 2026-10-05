@@ -1123,14 +1123,132 @@ impl ContextMenuContext {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ClickedPaneAction {
+    CloseFocus,
+    ToggleFocusFullscreen,
+    ToggleEmbedOrFloating,
+    TogglePinned,
+    ToggleInGroup,
+    StartRename,
+}
+
+impl ClickedPaneAction {
+    pub const ALL: [ClickedPaneAction; 6] = [
+        ClickedPaneAction::CloseFocus,
+        ClickedPaneAction::ToggleFocusFullscreen,
+        ClickedPaneAction::ToggleEmbedOrFloating,
+        ClickedPaneAction::TogglePinned,
+        ClickedPaneAction::ToggleInGroup,
+        ClickedPaneAction::StartRename,
+    ];
+    pub fn kdl_name(&self) -> &'static str {
+        match self {
+            ClickedPaneAction::CloseFocus => "CloseFocusByPaneId",
+            ClickedPaneAction::ToggleFocusFullscreen => "ToggleFocusFullscreenByPaneId",
+            ClickedPaneAction::ToggleEmbedOrFloating => "TogglePaneEmbedOrFloatingByPaneId",
+            ClickedPaneAction::TogglePinned => "TogglePanePinnedByPaneId",
+            ClickedPaneAction::ToggleInGroup => "TogglePaneInGroupByPaneId",
+            ClickedPaneAction::StartRename => "StartRenamePaneByPaneId",
+        }
+    }
+    pub fn from_kdl_name(name: &str) -> Option<Self> {
+        ClickedPaneAction::ALL
+            .into_iter()
+            .find(|action| action.kdl_name() == name)
+    }
+    pub fn with_pane(&self, pane_id: PaneId) -> Action {
+        match self {
+            ClickedPaneAction::CloseFocus => Action::CloseFocusByPaneId { pane_id },
+            ClickedPaneAction::ToggleFocusFullscreen => {
+                Action::ToggleFocusFullscreenByPaneId { pane_id }
+            },
+            ClickedPaneAction::ToggleEmbedOrFloating => {
+                Action::TogglePaneEmbedOrFloatingByPaneId { pane_id }
+            },
+            ClickedPaneAction::TogglePinned => Action::TogglePanePinnedByPaneId { pane_id },
+            ClickedPaneAction::ToggleInGroup => Action::TogglePaneInGroupByPaneId { pane_id },
+            ClickedPaneAction::StartRename => Action::StartRenamePaneByPaneId { pane_id },
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ClickedTabAction {
+    Close,
+    StartRename,
+    Move(Direction),
+}
+
+impl ClickedTabAction {
+    pub fn kdl_name(&self) -> &'static str {
+        match self {
+            ClickedTabAction::Close => "CloseTabById",
+            ClickedTabAction::StartRename => "StartRenameTabByTabId",
+            ClickedTabAction::Move(_) => "MoveTabByTabId",
+        }
+    }
+    pub fn with_tab(&self, id: u64) -> Action {
+        match self {
+            ClickedTabAction::Close => Action::CloseTabById { id },
+            ClickedTabAction::StartRename => Action::StartRenameTabByTabId { id },
+            ClickedTabAction::Move(direction) => Action::MoveTabByTabId {
+                id,
+                direction: *direction,
+            },
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum ContextMenuAction {
+    Action(Action),
+    ClickedPane(ClickedPaneAction),
+    ClickedTab(ClickedTabAction),
+}
+
+impl From<Action> for ContextMenuAction {
+    fn from(action: Action) -> Self {
+        ContextMenuAction::Action(action)
+    }
+}
+
+impl ContextMenuAction {
+    pub fn into_action(self, pane_id: Option<PaneId>, tab_id: Option<u64>) -> Option<Action> {
+        match self {
+            ContextMenuAction::Action(action) => Some(action),
+            ContextMenuAction::ClickedPane(action) => pane_id.map(|id| action.with_pane(id)),
+            ContextMenuAction::ClickedTab(action) => tab_id.map(|id| action.with_tab(id)),
+        }
+    }
+    pub fn keybinding_equivalent(&self) -> Vec<Action> {
+        match self {
+            ContextMenuAction::Action(action) => action.keybinding_equivalent(),
+            ContextMenuAction::ClickedPane(action) => action
+                .with_pane(PaneId::Terminal(0))
+                .keybinding_equivalent(),
+            ContextMenuAction::ClickedTab(action) => action.with_tab(0).keybinding_equivalent(),
+        }
+    }
+    pub fn as_action(&self) -> Option<&Action> {
+        match self {
+            ContextMenuAction::Action(action) => Some(action),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum ContextMenuEntry {
-    Item { label: String, actions: Vec<Action> },
+    Item {
+        label: String,
+        actions: Vec<ContextMenuAction>,
+    },
     Separator,
 }
 
 impl ContextMenuEntry {
-    pub fn item(label: impl Into<String>, actions: Vec<Action>) -> Self {
+    pub fn item(label: impl Into<String>, actions: Vec<ContextMenuAction>) -> Self {
         ContextMenuEntry::Item {
             label: label.into(),
             actions,
