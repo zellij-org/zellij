@@ -505,6 +505,7 @@ pub enum PtyContext {
     NewTab,
     OverrideLayout,
     ClosePane,
+    ClosePaneThatWasNotCreated,
     CloseTab,
     ReRunCommandInPane,
     DropToShellInPane,

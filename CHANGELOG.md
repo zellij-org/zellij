@@ -22,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: memory-usage optimizations and multiple-pane-single-instance-plugins (https://github.com/zellij-org/zellij/pull/5662)
 * fix: erasing wide CJK character correctness (https://github.com/zellij-org/zellij/pull/5657)
 * fix: plugins hidden with `hide_self` keep receiving mode, tab and pane updates (https://github.com/zellij-org/zellij/pull/5680)
+* fix: screen surface stability (https://github.com/zellij-org/zellij/pull/5683)
 
 ## [0.45.1] - 2026-08-28
 * fix: nested-session detection over SSH (https://github.com/zellij-org/zellij/pull/5522)

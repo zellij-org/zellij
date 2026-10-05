@@ -61,7 +61,7 @@ fn validate_session(name: &str) -> Result<String, String> {
 )]
 pub struct CliArgs {
     /// Maximum panes on screen, caution: opening more panes will close old ones
-    #[clap(long, value_parser)]
+    #[clap(long, value_parser = clap::builder::RangedU64ValueParser::<usize>::new().range(1..))]
     pub max_panes: Option<usize>,
 
     /// Change where zellij looks for plugins
@@ -1696,6 +1696,12 @@ mod tests {
             Some(Command::Subscribe(s)) => s,
             other => panic!("Expected Subscribe, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn max_panes_must_be_at_least_one() {
+        assert!(try_parse(&["--max-panes", "0"]).is_err());
+        assert_eq!(try_parse(&["--max-panes", "1"]).unwrap().max_panes, Some(1));
     }
 
     #[test]

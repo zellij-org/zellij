@@ -218,8 +218,9 @@ impl<'a> FloatingPaneGrid<'a> {
                         } else {
                             new_pane_geom.cols.set_inner(
                                 new_pane_geom.cols.as_usize()
-                                    + (max_right_coords
-                                        - (new_pane_geom.x + new_pane_geom.cols.as_usize())),
+                                    + max_right_coords.saturating_sub(
+                                        new_pane_geom.x + new_pane_geom.cols.as_usize(),
+                                    ),
                             );
                         }
                     }
@@ -256,8 +257,9 @@ impl<'a> FloatingPaneGrid<'a> {
                         } else {
                             new_pane_geom.rows.set_inner(
                                 new_pane_geom.rows.as_usize()
-                                    + (max_bottom_coords
-                                        - (new_pane_geom.y + new_pane_geom.rows.as_usize())),
+                                    + max_bottom_coords.saturating_sub(
+                                        new_pane_geom.y + new_pane_geom.rows.as_usize(),
+                                    ),
                             );
                         }
                     }
@@ -519,7 +521,7 @@ impl<'a> FloatingPaneGrid<'a> {
             geometry.x += increment;
             geometry
                 .cols
-                .set_inner(geometry.cols.as_usize() - increment);
+                .set_inner(geometry.cols.as_usize().saturating_sub(increment));
         };
 
         // Move right border
@@ -544,7 +546,7 @@ impl<'a> FloatingPaneGrid<'a> {
             );
             geometry
                 .cols
-                .set_inner(geometry.cols.as_usize() - increment);
+                .set_inner(geometry.cols.as_usize().saturating_sub(increment));
         };
 
         // Move upper border
@@ -567,7 +569,7 @@ impl<'a> FloatingPaneGrid<'a> {
             geometry.y += increment;
             geometry
                 .rows
-                .set_inner(geometry.rows.as_usize() - increment);
+                .set_inner(geometry.rows.as_usize().saturating_sub(increment));
         }
 
         // Move lower border
@@ -592,7 +594,7 @@ impl<'a> FloatingPaneGrid<'a> {
             );
             geometry
                 .rows
-                .set_inner(geometry.rows.as_usize() - increment);
+                .set_inner(geometry.rows.as_usize().saturating_sub(increment));
         }
 
         self.set_pane_geom(*pane_id, geometry)
@@ -882,7 +884,10 @@ fn half_size_top_left_geom(space: &Viewport, offset: usize) -> PaneGeom {
 
 fn half_size_top_right_geom(space: &Viewport, offset: usize) -> PaneGeom {
     let mut geom = PaneGeom {
-        x: ((space.x + space.cols) - (space.cols / 3) - 2).saturating_sub(offset),
+        x: (space.x + space.cols)
+            .saturating_sub(space.cols / 3)
+            .saturating_sub(2)
+            .saturating_sub(offset),
         y: space.y + 2 + offset,
         cols: Dimension::fixed(space.cols / 3),
         rows: Dimension::fixed(space.rows / 3),
@@ -898,7 +903,10 @@ fn half_size_top_right_geom(space: &Viewport, offset: usize) -> PaneGeom {
 fn half_size_bottom_left_geom(space: &Viewport, offset: usize) -> PaneGeom {
     let mut geom = PaneGeom {
         x: space.x + 2 + offset,
-        y: ((space.y + space.rows) - (space.rows / 3) - 2).saturating_sub(offset),
+        y: (space.y + space.rows)
+            .saturating_sub(space.rows / 3)
+            .saturating_sub(2)
+            .saturating_sub(offset),
         cols: Dimension::fixed(space.cols / 3),
         rows: Dimension::fixed(space.rows / 3),
         stacked: None,
@@ -912,8 +920,14 @@ fn half_size_bottom_left_geom(space: &Viewport, offset: usize) -> PaneGeom {
 
 fn half_size_bottom_right_geom(space: &Viewport, offset: usize) -> PaneGeom {
     let mut geom = PaneGeom {
-        x: ((space.x + space.cols) - (space.cols / 3) - 2).saturating_sub(offset),
-        y: ((space.y + space.rows) - (space.rows / 3) - 2).saturating_sub(offset),
+        x: (space.x + space.cols)
+            .saturating_sub(space.cols / 3)
+            .saturating_sub(2)
+            .saturating_sub(offset),
+        y: (space.y + space.rows)
+            .saturating_sub(space.rows / 3)
+            .saturating_sub(2)
+            .saturating_sub(offset),
         cols: Dimension::fixed(space.cols / 3),
         rows: Dimension::fixed(space.rows / 3),
         stacked: None,

@@ -6,13 +6,13 @@ use zellij_utils::{
 
 use crate::panes::kitty_graphics::KittyHostSupport;
 use crate::resize_pty;
-use crate::tab::{pane_info_for_pane, Pane};
+use crate::tab::{pane_info_for_pane, Pane, MIN_TERMINAL_HEIGHT, MIN_TERMINAL_WIDTH};
 use floating_pane_grid::FloatingPaneGrid;
 
 use crate::{
     os_input_output::ServerOsApi,
     output::{FloatingPanesStack, Output},
-    panes::{ActivePanes, PaneId},
+    panes::{ActivePanes, PaneId, ReplacePaneResult},
     plugins::PluginInstruction,
     thread_bus::ThreadSenders,
     ui::pane_contents_and_ui::PaneContentsAndUi,
@@ -57,6 +57,7 @@ pub struct FloatingPanes {
     senders: ThreadSenders,
     window_title: Option<String>,
     dimmed_clients: HashSet<ClientId>,
+    panes_with_logged_render_errors: HashSet<PaneId>,
     fullscreen_covers_ui: Rc<RefCell<bool>>,
     fullscreen_pane_id: Option<PaneId>,
     floating_fullscreen_covers_ui: bool,
@@ -102,6 +103,7 @@ impl FloatingPanes {
             senders,
             window_title: None,
             dimmed_clients: HashSet::new(),
+            panes_with_logged_render_errors: HashSet::new(),
             fullscreen_covers_ui,
             fullscreen_pane_id: None,
             floating_fullscreen_covers_ui: false,
@@ -183,7 +185,10 @@ impl FloatingPanes {
     pub fn add_pane(&mut self, pane_id: PaneId, pane: Box<dyn Pane>) {
         self.desired_pane_positions
             .insert(pane_id, pane.position_and_size());
-        self.panes.insert(pane_id, pane);
+        if self.panes.insert(pane_id, pane).is_some() {
+            log::error!("Floating pane {:?} was added twice, replacing it", pane_id);
+        }
+        self.z_indices.retain(|p_id| *p_id != pane_id);
         self.z_indices.push(pane_id);
         self.make_sure_pinned_panes_are_on_top();
     }
@@ -191,68 +196,97 @@ impl FloatingPanes {
         &mut self,
         pane: Box<dyn Pane>,
         client_id: ClientId,
-    ) -> Result<Box<dyn Pane>> {
-        self.active_panes
-            .get(&client_id)
-            .with_context(|| format!("failed to determine active pane for client {client_id}"))
-            .copied()
-            .and_then(|active_pane_id| self.replace_pane(active_pane_id, pane))
-            .with_context(|| format!("failed to replace active pane for client {client_id}"))
+    ) -> ReplacePaneResult {
+        let Some(active_pane_id) = self.active_panes.get(&client_id).copied() else {
+            log::error!(
+                "No active floating pane to replace for client {}",
+                client_id
+            );
+            return Err(pane);
+        };
+        self.replace_pane(active_pane_id, pane)
     }
     pub fn replace_pane(
         &mut self,
         pane_id: PaneId,
         mut with_pane: Box<dyn Pane>,
-    ) -> Result<Box<dyn Pane>> {
-        let err_context = || format!("failed to replace pane {pane_id:?} with pane");
-
+    ) -> ReplacePaneResult {
         let with_pane_id = with_pane.pid();
+        let Some(removed_pane) = self.panes.remove(&pane_id) else {
+            log::error!("Cannot replace floating pane {:?}: pane not found", pane_id);
+            return Err(with_pane);
+        };
         with_pane.set_content_offset(Offset::frame(1));
-        let removed_pane = self
-            .panes
-            .remove(&pane_id)
-            .with_context(|| format!("failed to remove unknown pane with ID {pane_id:?}"))
-            .and_then(|removed_pane| {
-                let removed_pane_id = removed_pane.pid();
-                let with_pane_id = with_pane.pid();
-                let removed_pane_geom = removed_pane.position_and_size();
-                let removed_pane_geom_override = removed_pane.geom_override();
-                with_pane.set_geom(removed_pane_geom);
-                match removed_pane_geom_override {
-                    Some(geom_override) => with_pane.set_geom_override(geom_override),
-                    None => with_pane.reset_size_and_position_override(),
-                };
-                self.panes.insert(with_pane_id, with_pane);
-                if self.fullscreen_pane_id == Some(pane_id) {
-                    self.fullscreen_pane_id = Some(with_pane_id);
-                }
-                let z_index = self
-                    .z_indices
-                    .iter()
-                    .position(|pane_id| pane_id == &removed_pane_id)
-                    .context("no z-index found for pane to be removed with ID {removed_pane_id:?}")
-                    .with_context(err_context)?;
-                self.z_indices.remove(z_index);
-                self.z_indices.insert(z_index, with_pane_id);
-                self.make_sure_pinned_panes_are_on_top();
-                Ok(removed_pane)
-            });
-
-        // update the desired_pane_positions to relate to the new pane
+        with_pane.set_geom(removed_pane.position_and_size());
+        match removed_pane.geom_override() {
+            Some(geom_override) => with_pane.set_geom_override(geom_override),
+            None => with_pane.reset_size_and_position_override(),
+        };
+        self.panes.insert(with_pane_id, with_pane);
+        if self.fullscreen_pane_id == Some(pane_id) {
+            self.fullscreen_pane_id = Some(with_pane_id);
+        }
+        match self.z_indices.iter().position(|id| *id == pane_id) {
+            Some(z_index) => self.z_indices[z_index] = with_pane_id,
+            None => {
+                log::error!("No z-index found for replaced floating pane {:?}", pane_id);
+                self.z_indices.push(with_pane_id);
+            },
+        }
+        self.make_sure_pinned_panes_are_on_top();
         if let Some(desired_pane_position) = self.desired_pane_positions.remove(&pane_id) {
             self.desired_pane_positions
                 .insert(with_pane_id, desired_pane_position);
         }
-
-        // move clients from the previously active pane to the new pane we just inserted
         self.move_clients_between_panes(pane_id, with_pane_id);
+        self.active_panes.retarget_last_pane(pane_id, with_pane_id);
+        if let Some((dragged_pane_id, initial_position, last_position)) =
+            self.pane_being_moved_with_mouse
+        {
+            if dragged_pane_id == pane_id {
+                self.pane_being_moved_with_mouse =
+                    Some((with_pane_id, initial_position, last_position));
+            }
+        }
         let _ = self.set_pane_frames();
-        removed_pane
+        Ok(removed_pane)
     }
     pub fn remove_pane(&mut self, pane_id: PaneId) -> Option<Box<dyn Pane>> {
+        if self.fullscreen_pane_id == Some(pane_id) {
+            self.unset_fullscreen();
+        }
+        if self.pane_being_moved_with_mouse.map(|(id, _, _)| id) == Some(pane_id) {
+            self.pane_being_moved_with_mouse = None;
+        }
         self.z_indices.retain(|p_id| *p_id != pane_id);
         self.desired_pane_positions.remove(&pane_id);
-        self.panes.remove(&pane_id)
+        let removed_pane = self.panes.remove(&pane_id);
+        self.move_clients_out_of_pane(pane_id);
+        removed_pane
+    }
+    pub fn discard_state_of_missing_panes(&mut self) {
+        if let Some(fullscreen_pane_id) = self.fullscreen_pane_id {
+            if !self.panes.contains_key(&fullscreen_pane_id) {
+                self.fullscreen_pane_id = None;
+                self.floating_fullscreen_covers_ui = false;
+            }
+        }
+        if let Some((pane_id, _, _)) = self.pane_being_moved_with_mouse {
+            if !self.panes.contains_key(&pane_id) {
+                self.pane_being_moved_with_mouse = None;
+            }
+        }
+        let mut seen = HashSet::new();
+        let panes = &self.panes;
+        self.z_indices
+            .retain(|pane_id| panes.contains_key(pane_id) && seen.insert(*pane_id));
+        for pane_id in self.panes.keys() {
+            if !self.z_indices.contains(pane_id) {
+                self.z_indices.push(*pane_id);
+            }
+        }
+        self.make_sure_pinned_panes_are_on_top();
+        self.move_client_focus_to_existing_panes();
     }
     pub fn hold_pane(
         &mut self,
@@ -288,7 +322,26 @@ impl FloatingPanes {
         self.show_panes
     }
     pub fn has_active_panes(&self) -> bool {
-        !self.active_panes.is_empty()
+        self.has_active_panes_for(None)
+    }
+    pub fn has_active_panes_for(&self, client_id_override: Option<ClientId>) -> bool {
+        let connected_clients = self.connected_clients.borrow();
+        self.active_panes.iter().any(|(client_id, pane_id)| {
+            (connected_clients.contains(client_id) || Some(*client_id) == client_id_override)
+                && self.panes.contains_key(pane_id)
+        })
+    }
+    fn pane_is_remembered_as_focused(&self, pane_id: &PaneId) -> bool {
+        self.panes.contains_key(pane_id) && self.active_panes.pane_id_is_focused(pane_id)
+    }
+    fn raise_pane(&mut self, pane_id: PaneId) {
+        if !self.panes.contains_key(&pane_id) {
+            return;
+        }
+        self.z_indices.retain(|p_id| *p_id != pane_id);
+        self.z_indices.push(pane_id);
+        self.make_sure_pinned_panes_are_on_top();
+        self.set_pane_active_at(pane_id);
     }
     pub fn has_panes(&self) -> bool {
         !self.panes.is_empty()
@@ -299,21 +352,17 @@ impl FloatingPanes {
     pub fn get_pane_z_index(&self, pane_id: PaneId) -> Option<usize> {
         self.z_indices.iter().position(|id| id == &pane_id)
     }
-    pub fn active_pane_id_or_focused_pane_id(&self, client_id: Option<ClientId>) -> Option<PaneId> {
-        // returns the focused pane of any client_id - should be safe because the way things are
-        // set up at the time of writing, all clients are focused on the same floating pane due to
-        // z_index issues
-        client_id
-            .and_then(|client_id| self.active_panes.get(&client_id).copied())
-            .or_else(|| self.panes.keys().next().copied())
-    }
     pub fn toggle_show_panes(&mut self, should_show_floating_panes: bool) {
         self.window_title = None; // clear so that it will be re-rendered once we toggle back
         self.show_panes = should_show_floating_panes;
         if should_show_floating_panes {
-            self.active_panes.focus_all_panes(&mut self.panes);
+            let connected_clients = self.connected_clients.borrow().clone();
+            self.active_panes
+                .focus_all_panes(&mut self.panes, &connected_clients);
         } else {
-            self.active_panes.unfocus_all_panes(&mut self.panes);
+            let connected_clients = self.connected_clients.borrow().clone();
+            self.active_panes
+                .unfocus_all_panes(&mut self.panes, &connected_clients);
         }
     }
     pub fn active_panes_contain(&self, client_id: &ClientId) -> bool {
@@ -350,17 +399,40 @@ impl FloatingPanes {
         floating_pane_layout: &FloatingPaneLayout,
     ) -> Result<PaneGeom> {
         let err_context = || format!("failed to find position for floating pane");
-        let display_area = *self.display_area.borrow();
+        let position = self.find_room_for_new_pane().with_context(err_context)?;
+        Ok(self.apply_floating_pane_layout_to_position(position, floating_pane_layout))
+    }
+    pub fn position_floating_pane_layout_or(
+        &mut self,
+        floating_pane_layout: &FloatingPaneLayout,
+        fallback_position: PaneGeom,
+    ) -> PaneGeom {
+        let position = self.find_room_for_new_pane().unwrap_or_else(|| {
+            log::error!("No room for floating pane, using fallback position");
+            fallback_position
+        });
+        self.apply_floating_pane_layout_to_position(position, floating_pane_layout)
+    }
+    pub fn position_floating_pane_layout_or_fill_viewport(
+        &mut self,
+        floating_pane_layout: &FloatingPaneLayout,
+    ) -> PaneGeom {
         let viewport = *self.viewport.borrow();
-        let floating_pane_grid = FloatingPaneGrid::new(
-            &mut self.panes,
-            &mut self.desired_pane_positions,
-            display_area,
-            viewport,
-        );
-        let mut position = floating_pane_grid
-            .find_room_for_new_pane()
-            .with_context(err_context)?;
+        let mut fallback_position = PaneGeom {
+            x: viewport.x,
+            y: viewport.y,
+            ..Default::default()
+        };
+        fallback_position.cols = Dimension::fixed(viewport.cols.max(MIN_TERMINAL_WIDTH));
+        fallback_position.rows = Dimension::fixed(viewport.rows.max(MIN_TERMINAL_HEIGHT));
+        self.position_floating_pane_layout_or(floating_pane_layout, fallback_position)
+    }
+    fn apply_floating_pane_layout_to_position(
+        &self,
+        mut position: PaneGeom,
+        floating_pane_layout: &FloatingPaneLayout,
+    ) -> PaneGeom {
+        let viewport = *self.viewport.borrow();
         position.apply_floating_pane_position(
             floating_pane_layout.x.clone(),
             floating_pane_layout.y.clone(),
@@ -376,22 +448,24 @@ impl FloatingPanes {
             position.logical_position = Some(*logical_position);
         }
         if position.cols.as_usize() > viewport.cols {
-            position.cols = Dimension::fixed(viewport.cols);
+            position.cols = Dimension::fixed(viewport.cols.max(MIN_TERMINAL_WIDTH));
         }
         if position.rows.as_usize() > viewport.rows {
-            position.rows = Dimension::fixed(viewport.rows);
+            position.rows = Dimension::fixed(viewport.rows.max(MIN_TERMINAL_HEIGHT));
         }
-        if position.x + position.cols.as_usize() > viewport.cols {
+        let max_x = viewport.x + viewport.cols;
+        let max_y = viewport.y + viewport.rows;
+        if position.x + position.cols.as_usize() > max_x {
             position.x = position
                 .x
-                .saturating_sub((position.x + position.cols.as_usize()) - viewport.cols);
+                .saturating_sub((position.x + position.cols.as_usize()) - max_x);
         }
-        if position.y + position.rows.as_usize() > viewport.rows {
+        if position.y + position.rows.as_usize() > max_y {
             position.y = position
                 .y
-                .saturating_sub((position.y + position.rows.as_usize()) - viewport.rows);
+                .saturating_sub((position.y + position.rows.as_usize()) - max_y);
         }
-        Ok(position)
+        position
     }
     pub fn first_floating_pane_id(&self) -> Option<PaneId> {
         self.panes.keys().next().copied()
@@ -412,9 +486,6 @@ impl FloatingPanes {
             .filter(|(_p_id, p)| p.selectable())
             .last()
             .is_some()
-    }
-    pub fn first_active_floating_pane_id(&self) -> Option<PaneId> {
-        self.active_panes.values().next().copied()
     }
     pub fn set_force_render(&mut self) {
         for pane in self.panes.values_mut() {
@@ -443,7 +514,8 @@ impl FloatingPanes {
                 pane.set_frame(false);
                 pane.set_content_offset(Offset::default());
                 resize_pty!(pane, os_api, self.senders, self.character_cell_size)
-                    .with_context(|| err_context(&pane.pid()))?;
+                    .with_context(|| err_context(&pane.pid()))
+                    .non_fatal();
                 continue;
             }
             if regular_fullscreen_pane_id == Some(pane.pid()) {
@@ -461,7 +533,8 @@ impl FloatingPanes {
                     pane.set_content_offset(Offset::default());
                 }
                 resize_pty!(pane, os_api, self.senders, self.character_cell_size)
-                    .with_context(|| err_context(&pane.pid()))?;
+                    .with_context(|| err_context(&pane.pid()))
+                    .non_fatal();
                 continue;
             }
             // floating panes should always have a frame unless explicitly set otherwise
@@ -472,7 +545,8 @@ impl FloatingPanes {
                 pane.set_content_offset(Offset::default());
             }
             resize_pty!(pane, os_api, self.senders, self.character_cell_size)
-                .with_context(|| err_context(&pane.pid()))?;
+                .with_context(|| err_context(&pane.pid()))
+                .non_fatal();
         }
         Ok(())
     }
@@ -567,6 +641,17 @@ impl FloatingPanes {
             let b_pos = self.z_indices.iter().position(|id| id == *b_id);
             a_pos.cmp(&b_pos)
         });
+        macro_rules! log_render_error {
+            ($logged:expr, $failed:ident, $pane_id:expr, $err_context:expr, $result:expr) => {
+                if let Err(e) = $result {
+                    if !$logged.contains(&$pane_id) && !$failed.contains(&$pane_id) {
+                        Err::<(), _>(e).with_context($err_context).non_fatal();
+                    }
+                    $failed.insert($pane_id);
+                }
+            };
+        }
+        let mut panes_that_failed_to_render: HashSet<PaneId> = HashSet::new();
         for (z_index, (kind, pane)) in floating_panes.iter_mut().enumerate() {
             let mut active_panes = active_panes.clone();
             let multiple_users_exist_in_session =
@@ -616,20 +701,28 @@ impl FloatingPanes {
                         && !pane_frame_style.draws_full_frames()
                         && !pane_frame_style.draws_titles());
                 if !skip_frame {
-                    pane_contents_and_ui
-                        .render_pane_frame(
+                    log_render_error!(
+                        self.panes_with_logged_render_errors,
+                        panes_that_failed_to_render,
+                        **kind,
+                        err_context,
+                        pane_contents_and_ui.render_pane_frame(
                             *client_id,
                             client_mode,
                             self.session_is_mirrored,
                             is_floating,
                             pane_is_selectable,
                         )
-                        .with_context(err_context)?;
+                    );
                 }
                 if let PaneId::Plugin(..) = kind {
-                    pane_contents_and_ui
-                        .render_pane_contents_for_client(*client_id)
-                        .with_context(err_context)?;
+                    log_render_error!(
+                        self.panes_with_logged_render_errors,
+                        panes_that_failed_to_render,
+                        **kind,
+                        err_context,
+                        pane_contents_and_ui.render_pane_contents_for_client(*client_id)
+                    );
                 }
                 pane_contents_and_ui.render_terminal_title_if_needed(
                     *client_id,
@@ -638,9 +731,13 @@ impl FloatingPanes {
                 );
                 // this is done for panes that don't have their own cursor (eg. panes of
                 // another user)
-                pane_contents_and_ui
-                    .render_fake_cursor_if_needed(*client_id)
-                    .with_context(err_context)?;
+                log_render_error!(
+                    self.panes_with_logged_render_errors,
+                    panes_that_failed_to_render,
+                    **kind,
+                    err_context,
+                    pane_contents_and_ui.render_fake_cursor_if_needed(*client_id)
+                );
             }
             if let PaneId::Terminal(..) = kind {
                 if pane_has_guest_modal {
@@ -649,24 +746,41 @@ impl FloatingPanes {
                             pane_contents_and_ui.client_has_guest_modal(*client_id)
                         });
                     if !plain_clients.is_empty() {
-                        pane_contents_and_ui
-                            .render_pane_contents_to_multiple_clients(plain_clients.iter().copied())
-                            .with_context(err_context)?;
+                        log_render_error!(
+                            self.panes_with_logged_render_errors,
+                            panes_that_failed_to_render,
+                            **kind,
+                            err_context,
+                            pane_contents_and_ui.render_pane_contents_to_multiple_clients(
+                                plain_clients.iter().copied()
+                            )
+                        );
                     } else {
                         pane_contents_and_ui.drain_pane_render_state();
                     }
                     for client_id in modal_clients {
-                        pane_contents_and_ui
-                            .render_guest_modal_for_client(client_id)
-                            .with_context(err_context)?;
+                        log_render_error!(
+                            self.panes_with_logged_render_errors,
+                            panes_that_failed_to_render,
+                            **kind,
+                            err_context,
+                            pane_contents_and_ui.render_guest_modal_for_client(client_id)
+                        );
                     }
                 } else {
-                    pane_contents_and_ui
-                        .render_pane_contents_to_multiple_clients(connected_clients.iter().copied())
-                        .with_context(err_context)?;
+                    log_render_error!(
+                        self.panes_with_logged_render_errors,
+                        panes_that_failed_to_render,
+                        **kind,
+                        err_context,
+                        pane_contents_and_ui.render_pane_contents_to_multiple_clients(
+                            connected_clients.iter().copied()
+                        )
+                    );
                 }
             }
         }
+        self.panes_with_logged_render_errors = panes_that_failed_to_render;
         Ok(())
     }
 
@@ -686,7 +800,8 @@ impl FloatingPanes {
     pub fn resize_pty_all_panes(&mut self, _os_api: &mut Box<dyn ServerOsApi>) -> Result<()> {
         for pane in self.panes.values_mut() {
             resize_pty!(pane, os_api, self.senders, self.character_cell_size)
-                .with_context(|| format!("failed to resize PTY in pane {:?}", pane.pid()))?;
+                .with_context(|| format!("failed to resize PTY in pane {:?}", pane.pid()))
+                .non_fatal();
         }
         Ok(())
     }
@@ -698,10 +813,12 @@ impl FloatingPanes {
         strategy: &ResizeStrategy,
     ) -> Result<bool> {
         // true => successfully resized
-        if let Some(active_floating_pane_id) = self.active_panes.get(&client_id) {
-            return self.resize_pane_with_id(*strategy, *active_floating_pane_id);
+        match self.active_panes.get(&client_id).copied() {
+            Some(active_floating_pane_id) if self.panes.contains_key(&active_floating_pane_id) => {
+                self.resize_pane_with_id(*strategy, active_floating_pane_id)
+            },
+            _ => Ok(false),
         }
-        Ok(false)
     }
     pub fn resize_pane_with_id(
         &mut self,
@@ -728,7 +845,8 @@ impl FloatingPanes {
 
         for pane in self.panes.values_mut() {
             resize_pty!(pane, os_api, self.senders, self.character_cell_size)
-                .with_context(err_context)?;
+                .with_context(err_context)
+                .non_fatal();
         }
         self.set_force_render();
         Ok(true)
@@ -759,7 +877,8 @@ impl FloatingPanes {
 
         for pane in self.panes.values_mut() {
             resize_pty!(pane, os_api, self.senders, self.character_cell_size)
-                .with_context(err_context)?;
+                .with_context(err_context)
+                .non_fatal();
         }
         self.set_force_render();
         Ok(())
@@ -771,9 +890,18 @@ impl FloatingPanes {
         }
     }
 
-    fn reenter_fullscreen_on_active_pane(&mut self, client_id: ClientId, covers_ui: bool) {
-        if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
-            self.set_fullscreen(active_pane_id, covers_ui);
+    fn reenter_fullscreen_on_active_pane(
+        &mut self,
+        client_id: ClientId,
+        previous_fullscreen_pane_id: Option<PaneId>,
+        covers_ui: bool,
+    ) {
+        let pane_to_fullscreen = self
+            .get_active_pane_id(client_id)
+            .filter(|pane_id| self.panes.contains_key(pane_id))
+            .or_else(|| previous_fullscreen_pane_id.filter(|id| self.panes.contains_key(id)));
+        if let Some(pane_to_fullscreen) = pane_to_fullscreen {
+            self.set_fullscreen(pane_to_fullscreen, covers_ui);
         }
     }
     pub fn move_focus(
@@ -788,15 +916,24 @@ impl FloatingPanes {
         };
         if self.fullscreen_pane_id.is_some() {
             let covers_ui = self.floating_fullscreen_covers_ui;
+            let previous_fullscreen_pane_id = self.fullscreen_pane_id;
             self.unset_fullscreen();
             let ret = self.move_focus(client_id, connected_clients, direction);
-            self.reenter_fullscreen_on_active_pane(client_id, covers_ui);
+            self.reenter_fullscreen_on_active_pane(
+                client_id,
+                previous_fullscreen_pane_id,
+                covers_ui,
+            );
             return ret;
         }
 
         let display_area = *self.display_area.borrow();
         let viewport = *self.viewport.borrow();
-        let active_pane_id = self.active_panes.get(&client_id).copied();
+        let active_pane_id = self
+            .active_panes
+            .get(&client_id)
+            .copied()
+            .filter(|pane_id| self.panes.contains_key(pane_id));
         let updated_active_pane = if let Some(active_pane_id) = active_pane_id {
             let floating_pane_grid = FloatingPaneGrid::new(
                 &mut self.panes,
@@ -853,31 +990,31 @@ impl FloatingPanes {
                 None => Some(active_pane_id),
             }
         } else {
-            active_pane_id
+            self.most_recently_active_selectable_pane(None)
         };
-        match updated_active_pane {
-            Some(updated_active_pane) => {
-                let connected_clients: Vec<ClientId> = connected_clients.iter().copied().collect();
-                for client_id in connected_clients {
-                    self.focus_pane(updated_active_pane, client_id);
-                }
-                self.set_pane_active_at(updated_active_pane);
-                self.set_force_render();
-            },
-            None => {
-                // TODO: can this happen?
-                self.active_panes.clear(&mut self.panes);
-                self.z_indices.clear();
-            },
+        let mut newly_focused = false;
+        if let Some(updated_active_pane) = updated_active_pane {
+            newly_focused = active_pane_id != Some(updated_active_pane);
+            let connected_clients: Vec<ClientId> = connected_clients.iter().copied().collect();
+            for client_id in connected_clients {
+                self.focus_pane(updated_active_pane, client_id);
+            }
+            self.set_pane_active_at(updated_active_pane);
+            self.set_force_render();
         }
-        Ok(false)
+        Ok(newly_focused)
     }
     pub fn focus_pane_on_edge(&mut self, direction: Direction, client_id: ClientId) {
         if self.fullscreen_pane_id.is_some() {
             let covers_ui = self.floating_fullscreen_covers_ui;
+            let previous_fullscreen_pane_id = self.fullscreen_pane_id;
             self.unset_fullscreen();
             self.focus_pane_on_edge(direction, client_id);
-            self.reenter_fullscreen_on_active_pane(client_id, covers_ui);
+            self.reenter_fullscreen_on_active_pane(
+                client_id,
+                previous_fullscreen_pane_id,
+                covers_ui,
+            );
             return;
         }
         let display_area = *self.display_area.borrow();
@@ -933,9 +1070,14 @@ impl FloatingPanes {
     pub fn focus_last_pane(&mut self, client_id: ClientId) {
         if self.fullscreen_pane_id.is_some() {
             let covers_ui = self.floating_fullscreen_covers_ui;
+            let previous_fullscreen_pane_id = self.fullscreen_pane_id;
             self.unset_fullscreen();
             self.focus_last_pane(client_id);
-            self.reenter_fullscreen_on_active_pane(client_id, covers_ui);
+            self.reenter_fullscreen_on_active_pane(
+                client_id,
+                previous_fullscreen_pane_id,
+                covers_ui,
+            );
             return;
         }
         let currently_active_pane_id = self.active_panes.get(&client_id).copied();
@@ -966,15 +1108,20 @@ impl FloatingPanes {
             .map(|(pane_id, _pane)| *pane_id)
     }
 
-    pub fn move_active_pane_down(&mut self, client_id: ClientId) {
-        if let Some(active_pane_id) = self.active_panes.get(&client_id) {
-            self.move_pane_down(*active_pane_id);
+    pub fn move_active_pane_down(&mut self, client_id: ClientId) -> bool {
+        match self.active_panes.get(&client_id).copied() {
+            Some(active_pane_id) => self.move_pane_down(active_pane_id),
+            None => false,
         }
     }
-    pub fn move_pane_down(&mut self, pane_id: PaneId) {
+    pub fn move_pane_down(&mut self, pane_id: PaneId) -> bool {
         if self.fullscreen_pane_id.is_some() {
-            return;
+            return false;
         }
+        let Some(geom_before_move) = self.panes.get(&pane_id).map(|p| p.position_and_size()) else {
+            log::error!("Cannot move floating pane {:?}: pane not found", pane_id);
+            return false;
+        };
         let display_area = *self.display_area.borrow();
         let viewport = *self.viewport.borrow();
         let mut floating_pane_grid = FloatingPaneGrid::new(
@@ -985,16 +1132,22 @@ impl FloatingPanes {
         );
         floating_pane_grid.move_pane_down(&pane_id).non_fatal();
         self.set_force_render();
+        self.panes.get(&pane_id).map(|p| p.position_and_size()) != Some(geom_before_move)
     }
-    pub fn move_active_pane_up(&mut self, client_id: ClientId) {
-        if let Some(active_pane_id) = self.active_panes.get(&client_id) {
-            self.move_pane_up(*active_pane_id);
+    pub fn move_active_pane_up(&mut self, client_id: ClientId) -> bool {
+        match self.active_panes.get(&client_id).copied() {
+            Some(active_pane_id) => self.move_pane_up(active_pane_id),
+            None => false,
         }
     }
-    pub fn move_pane_up(&mut self, pane_id: PaneId) {
+    pub fn move_pane_up(&mut self, pane_id: PaneId) -> bool {
         if self.fullscreen_pane_id.is_some() {
-            return;
+            return false;
         }
+        let Some(geom_before_move) = self.panes.get(&pane_id).map(|p| p.position_and_size()) else {
+            log::error!("Cannot move floating pane {:?}: pane not found", pane_id);
+            return false;
+        };
         let display_area = *self.display_area.borrow();
         let viewport = *self.viewport.borrow();
         let mut floating_pane_grid = FloatingPaneGrid::new(
@@ -1005,16 +1158,22 @@ impl FloatingPanes {
         );
         floating_pane_grid.move_pane_up(&pane_id).non_fatal();
         self.set_force_render();
+        self.panes.get(&pane_id).map(|p| p.position_and_size()) != Some(geom_before_move)
     }
-    pub fn move_active_pane_left(&mut self, client_id: ClientId) {
-        if let Some(active_pane_id) = self.active_panes.get(&client_id) {
-            self.move_pane_left(*active_pane_id);
+    pub fn move_active_pane_left(&mut self, client_id: ClientId) -> bool {
+        match self.active_panes.get(&client_id).copied() {
+            Some(active_pane_id) => self.move_pane_left(active_pane_id),
+            None => false,
         }
     }
-    pub fn move_pane_left(&mut self, pane_id: PaneId) {
+    pub fn move_pane_left(&mut self, pane_id: PaneId) -> bool {
         if self.fullscreen_pane_id.is_some() {
-            return;
+            return false;
         }
+        let Some(geom_before_move) = self.panes.get(&pane_id).map(|p| p.position_and_size()) else {
+            log::error!("Cannot move floating pane {:?}: pane not found", pane_id);
+            return false;
+        };
         let display_area = *self.display_area.borrow();
         let viewport = *self.viewport.borrow();
         let mut floating_pane_grid = FloatingPaneGrid::new(
@@ -1025,16 +1184,22 @@ impl FloatingPanes {
         );
         floating_pane_grid.move_pane_left(&pane_id).non_fatal();
         self.set_force_render();
+        self.panes.get(&pane_id).map(|p| p.position_and_size()) != Some(geom_before_move)
     }
-    pub fn move_active_pane_right(&mut self, client_id: ClientId) {
-        if let Some(active_pane_id) = self.active_panes.get(&client_id) {
-            self.move_pane_right(*active_pane_id);
+    pub fn move_active_pane_right(&mut self, client_id: ClientId) -> bool {
+        match self.active_panes.get(&client_id).copied() {
+            Some(active_pane_id) => self.move_pane_right(active_pane_id),
+            None => false,
         }
     }
-    pub fn move_pane_right(&mut self, pane_id: PaneId) {
+    pub fn move_pane_right(&mut self, pane_id: PaneId) -> bool {
         if self.fullscreen_pane_id.is_some() {
-            return;
+            return false;
         }
+        let Some(geom_before_move) = self.panes.get(&pane_id).map(|p| p.position_and_size()) else {
+            log::error!("Cannot move floating pane {:?}: pane not found", pane_id);
+            return false;
+        };
         let display_area = *self.display_area.borrow();
         let viewport = *self.viewport.borrow();
         let mut floating_pane_grid = FloatingPaneGrid::new(
@@ -1045,6 +1210,7 @@ impl FloatingPanes {
         );
         floating_pane_grid.move_pane_right(&pane_id).non_fatal();
         self.set_force_render();
+        self.panes.get(&pane_id).map(|p| p.position_and_size()) != Some(geom_before_move)
     }
     pub fn move_active_pane(
         &mut self,
@@ -1132,7 +1298,7 @@ impl FloatingPanes {
 
             // we do this in case this moves the pane under another pane so that the pane user's
             // are focused on will always be on top
-            let is_focused = self.active_panes.pane_id_is_focused(&pane_id);
+            let is_focused = self.pane_is_remembered_as_focused(&pane_id);
             if is_focused {
                 self.z_indices.retain(|p_id| *p_id != pane_id);
                 self.z_indices.push(pane_id);
@@ -1189,6 +1355,10 @@ impl FloatingPanes {
         }
     }
     pub fn focus_pane_for_all_clients(&mut self, pane_id: PaneId) {
+        if !self.panes.contains_key(&pane_id) {
+            log::error!("Cannot focus floating pane {:?}: pane not found", pane_id);
+            return;
+        }
         let connected_clients: Vec<ClientId> =
             self.connected_clients.borrow().iter().copied().collect();
         for client_id in connected_clients {
@@ -1266,12 +1436,9 @@ impl FloatingPanes {
                 pane.set_content_offset(Offset::default());
             }
         }
-        let _ = resize_pty!(
-            self.panes.get_mut(&pane_id).unwrap(),
-            os_api,
-            self.senders,
-            self.character_cell_size
-        );
+        if let Some(pane) = self.panes.get_mut(&pane_id) {
+            let _ = resize_pty!(pane, os_api, self.senders, self.character_cell_size);
+        }
         self.fullscreen_pane_id = Some(pane_id);
         self.floating_fullscreen_covers_ui = covers_ui;
         self.focus_pane_for_all_clients(pane_id);
@@ -1332,37 +1499,55 @@ impl FloatingPanes {
         }
     }
     pub fn focus_pane(&mut self, pane_id: PaneId, client_id: ClientId) {
+        if !self.pane_is_selectable(&pane_id) {
+            log::error!("Cannot focus pane {:?} as it is not selectable!", pane_id);
+            return;
+        }
         if let Some(focused_pane) = self.active_panes.get(&client_id) {
             if pane_id != *focused_pane {
                 self.active_panes.set_last_pane(client_id, *focused_pane);
             }
         }
-        let pane_is_selectable = self
-            .panes
-            .get(&pane_id)
-            .map(|p| p.selectable())
-            .unwrap_or(false);
-        if !pane_is_selectable {
-            log::error!("Cannot focus pane {:?} as it is not selectable!", pane_id);
-            return;
-        }
         self.active_panes
             .insert(client_id, pane_id, &mut self.panes);
         self.focus_pane_for_all_clients(pane_id);
     }
-    pub fn focus_pane_if_client_not_focused(&mut self, pane_id: PaneId, client_id: ClientId) {
-        match self.active_panes.get(&client_id) {
-            Some(already_focused_pane_id) => self.focus_pane(*already_focused_pane_id, client_id),
-            None => self.focus_pane(pane_id, client_id),
-        }
+    fn pane_is_selectable(&self, pane_id: &PaneId) -> bool {
+        self.panes
+            .get(pane_id)
+            .map(|p| p.selectable())
+            .unwrap_or(false)
     }
-    pub fn focus_first_pane_if_client_not_focused(&mut self, client_id: ClientId) {
-        match self.active_panes.get(&client_id) {
-            Some(already_focused_pane_id) => self.focus_pane(*already_focused_pane_id, client_id),
-            None => {
-                if let Some(first_pane_id) = self.panes.iter().next().map(|(p_id, _)| *p_id) {
-                    self.focus_pane(first_pane_id, client_id);
+    pub fn focus_pane_for_joining_client(&mut self, client_id: ClientId) {
+        let pane_focused_by_others = {
+            let connected_clients = self.connected_clients.borrow();
+            self.active_panes
+                .iter()
+                .filter(|(c_id, _)| **c_id != client_id && connected_clients.contains(c_id))
+                .map(|(_, pane_id)| *pane_id)
+                .find(|pane_id| self.pane_is_selectable(pane_id))
+        };
+        let own_focused_pane = self
+            .active_panes
+            .get(&client_id)
+            .copied()
+            .filter(|pane_id| self.pane_is_selectable(pane_id));
+        let pane_to_focus = pane_focused_by_others
+            .or(own_focused_pane)
+            .or_else(|| self.most_recently_active_selectable_pane(None));
+        match pane_to_focus {
+            Some(pane_to_focus) => {
+                if let Some(focused_pane) = self.active_panes.get(&client_id).copied() {
+                    if focused_pane != pane_to_focus {
+                        self.active_panes.set_last_pane(client_id, focused_pane);
+                    }
                 }
+                self.active_panes
+                    .insert(client_id, pane_to_focus, &mut self.panes);
+                self.raise_pane(pane_to_focus);
+            },
+            None => {
+                self.active_panes.remove(&client_id, &mut self.panes);
             },
         }
     }
@@ -1493,6 +1678,15 @@ impl FloatingPanes {
         }
         self.pane_being_moved_with_mouse = Some((pane_id, last_position, last_position));
     }
+    #[cfg(test)]
+    pub fn pane_being_moved_with_mouse_id(&self) -> Option<PaneId> {
+        self.pane_being_moved_with_mouse
+            .map(|(pane_id, _, _)| pane_id)
+    }
+    #[cfg(test)]
+    pub fn panes_with_logged_render_errors(&self) -> &HashSet<PaneId> {
+        &self.panes_with_logged_render_errors
+    }
     pub fn pane_is_being_moved_with_mouse(&self) -> bool {
         self.pane_being_moved_with_mouse.is_some()
     }
@@ -1572,6 +1766,9 @@ impl FloatingPanes {
     pub fn get_active_pane_id(&self, client_id: ClientId) -> Option<PaneId> {
         self.active_panes.get(&client_id).copied()
     }
+    pub fn get_last_pane_id(&self, client_id: ClientId) -> Option<PaneId> {
+        self.active_panes.get_last(&client_id).copied()
+    }
     pub fn get_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
         self.panes.iter()
     }
@@ -1579,6 +1776,7 @@ impl FloatingPanes {
         self.panes.len()
     }
     pub fn drain(&mut self) -> BTreeMap<PaneId, Box<dyn Pane>> {
+        self.pane_being_moved_with_mouse = None;
         self.z_indices.clear();
         self.desired_pane_positions.clear();
         match self.panes.iter().next().map(|(pid, _p)| *pid) {
@@ -1600,50 +1798,27 @@ impl FloatingPanes {
         }
     }
     pub fn reapply_pane_focus(&mut self) {
-        if let Some(focused_pane) = self.first_active_floating_pane_id() {
-            // floating pane focus is the same for all clients
-            self.focus_pane_for_all_clients(focused_pane);
-        }
-    }
-    pub fn switch_active_pane_with(&mut self, _os_api: &mut Box<dyn ServerOsApi>, pane_id: PaneId) {
-        if let Some(active_pane_id) = self.first_active_floating_pane_id() {
-            let Some(current_position) = self.panes.get(&active_pane_id) else {
-                log::error!("Can't find current position");
-                return;
-            };
-            let prev_geom = current_position.position_and_size();
-            let prev_geom_override = current_position.geom_override();
-
-            let Some(new_position) = self.panes.get_mut(&pane_id) else {
-                log::error!("Can't find position");
-                return;
-            };
-            let next_geom = new_position.position_and_size();
-            let next_geom_override = new_position.geom_override();
-            new_position.set_geom(prev_geom);
-            if let Some(geom) = prev_geom_override {
-                new_position.set_geom_override(geom);
-            }
-            resize_pty!(new_position, os_api, self.senders, self.character_cell_size).non_fatal();
-            new_position.set_should_render(true);
-
-            let Some(current_position) = self.panes.get_mut(&active_pane_id) else {
-                log::error!("Can't find current position");
-                return;
-            };
-            current_position.set_geom(next_geom);
-            if let Some(geom) = next_geom_override {
-                current_position.set_geom_override(geom);
-            }
-            resize_pty!(
-                current_position,
-                os_api,
-                self.senders,
-                self.character_cell_size
-            )
-            .non_fatal();
-            current_position.set_should_render(true);
-            self.focus_pane_for_all_clients(active_pane_id);
+        let focused_pane_of_connected_client = {
+            let connected_clients = self.connected_clients.borrow();
+            self.active_panes
+                .iter()
+                .filter(|(client_id, _)| connected_clients.contains(client_id))
+                .map(|(_, pane_id)| *pane_id)
+                .find(|pane_id| self.pane_is_selectable(pane_id))
+        };
+        match focused_pane_of_connected_client {
+            Some(focused_pane) => self.focus_pane_for_all_clients(focused_pane),
+            None => {
+                let remembered_focused_pane = self
+                    .active_panes
+                    .values()
+                    .copied()
+                    .find(|pane_id| self.pane_is_selectable(pane_id))
+                    .or_else(|| self.most_recently_active_selectable_pane(None));
+                if let Some(pane_id) = remembered_focused_pane {
+                    self.raise_pane(pane_id);
+                }
+            },
         }
     }
     pub fn get_plugin_pane_id(&self, run_plugin_or_alias: &RunPluginOrAlias) -> Option<PaneId> {
@@ -1664,7 +1839,7 @@ impl FloatingPanes {
         let mut pane_infos = vec![];
         for (pane_id, pane) in self.panes.iter() {
             let mut pane_info_for_pane = pane_info_for_pane(pane_id, pane, current_pane_group);
-            let is_focused = self.active_panes.pane_id_is_focused(pane_id);
+            let is_focused = self.pane_is_remembered_as_focused(pane_id);
             pane_info_for_pane.is_floating = true;
             pane_info_for_pane.is_suppressed = false;
             pane_info_for_pane.is_focused = is_focused;

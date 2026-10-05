@@ -1,13 +1,19 @@
-use super::Tab;
+use super::{Pane, PaneNotCreatedReason, Tab};
+use crate::background_jobs::BackgroundJob;
 use crate::pane_groups::PaneGroups;
 use crate::panes::kitty_graphics::KittyImageStore;
 use crate::panes::sixel::SixelImageStore;
 use crate::plugins::PluginInstruction;
+use crate::pty::PtyInstruction;
 use crate::pty_writer::PtyWriteInstruction;
+use crate::route::{ActionCompletionResult, NotificationEnd};
 use crate::screen::CopyOptions;
+use crate::screen::ScreenInstruction;
+use crate::ServerInstruction;
 use crate::{os_input_output::ServerOsApi, panes::PaneId, thread_bus::ThreadSenders, ClientId};
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
+use tokio::sync::oneshot;
 use zellij_utils::channels::{unbounded, ChannelWithContext, Receiver, SenderWithContext};
 use zellij_utils::data::{Direction, Event, NewPanePlacement, Resize, ResizeStrategy, WebSharing};
 use zellij_utils::errors::prelude::*;
@@ -18178,4 +18184,2445 @@ fn suppressed_plugin_panes_get_mode_updates_but_are_not_visible() {
         "a suppressed plugin should not count as visible, since render targeting uses get_plugin_ids"
     );
     assert!(tab.get_plugin_ids_including_suppressed().contains(&1));
+}
+
+struct TabReceivers {
+    pty: Receiver<(PtyInstruction, ErrorContext)>,
+    plugin: Receiver<(PluginInstruction, ErrorContext)>,
+    pty_writer: Receiver<(PtyWriteInstruction, ErrorContext)>,
+    _screen: Receiver<(ScreenInstruction, ErrorContext)>,
+    _server: Receiver<(ServerInstruction, ErrorContext)>,
+    _background_jobs: Receiver<(BackgroundJob, ErrorContext)>,
+}
+
+fn create_new_tab_with_receivers(
+    size: Size,
+    stacked_pane_list: bool,
+    should_silently_fail: bool,
+) -> (Tab, TabReceivers) {
+    let (mut tab, receivers) =
+        create_tab_with_receivers_without_layout(size, stacked_pane_list, should_silently_fail);
+    tab.apply_layout(
+        TiledPaneLayout::default(),
+        vec![],
+        vec![(1, None)],
+        vec![],
+        HashMap::new(),
+        1,
+        None,
+    )
+    .unwrap();
+    (tab, receivers)
+}
+
+fn create_tab_with_receivers_without_layout(
+    size: Size,
+    stacked_pane_list: bool,
+    should_silently_fail: bool,
+) -> (Tab, TabReceivers) {
+    let (to_pty, pty): ChannelWithContext<PtyInstruction> = unbounded();
+    let (to_plugin, plugin): ChannelWithContext<PluginInstruction> = unbounded();
+    let (to_pty_writer, pty_writer): ChannelWithContext<PtyWriteInstruction> = unbounded();
+    let (to_screen, screen): ChannelWithContext<ScreenInstruction> = unbounded();
+    let (to_server, server): ChannelWithContext<ServerInstruction> = unbounded();
+    let (to_background_jobs, background_jobs): ChannelWithContext<BackgroundJob> = unbounded();
+    let senders = ThreadSenders {
+        to_screen: Some(SenderWithContext::new(to_screen)),
+        to_pty: Some(SenderWithContext::new(to_pty)),
+        to_plugin: Some(SenderWithContext::new(to_plugin)),
+        to_server: Some(SenderWithContext::new(to_server)),
+        to_pty_writer: Some(SenderWithContext::new(to_pty_writer)),
+        to_background_jobs: Some(SenderWithContext::new(to_background_jobs)),
+        should_silently_fail,
+    };
+    let client_id = 1;
+    let mut connected_clients = HashMap::new();
+    connected_clients.insert(client_id, false);
+    let tab = Tab::new(
+        0,
+        0,
+        String::new(),
+        size,
+        Rc::new(RefCell::new(None)),
+        Rc::new(RefCell::new(true)),
+        Rc::new(RefCell::new(stacked_pane_list)),
+        Rc::new(RefCell::new(SixelImageStore::default())),
+        Rc::new(RefCell::new(KittyImageStore::default())),
+        Box::new(FakeInputOutput {}),
+        senders,
+        None,
+        Style::default(),
+        ModeInfo::default(),
+        PaneFrameStyle::Full,
+        true,
+        Rc::new(RefCell::new(connected_clients)),
+        Rc::new(RefCell::new(HashMap::new())),
+        true,
+        Some(client_id),
+        CopyOptions::default(),
+        Rc::new(RefCell::new(Palette::default())),
+        Rc::new(RefCell::new(HashMap::new())),
+        (vec![], vec![]),
+        PathBuf::from("my_default_shell"),
+        false,
+        true,
+        true,
+        true,
+        false,
+        None,
+        false,
+        WebSharing::Off,
+        Rc::new(RefCell::new(PaneGroups::new(ThreadSenders::default()))),
+        Rc::new(RefCell::new(HashMap::new())),
+        true,
+        true,
+        true,
+        true,
+        false,
+        false,
+        IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+        8080,
+    );
+    (
+        tab,
+        TabReceivers {
+            pty,
+            plugin,
+            pty_writer,
+            _screen: screen,
+            _server: server,
+            _background_jobs: background_jobs,
+        },
+    )
+}
+
+fn closed_pane_ids(receivers: &TabReceivers) -> Vec<PaneId> {
+    receivers
+        .pty
+        .try_iter()
+        .filter_map(|(instruction, _)| match instruction {
+            PtyInstruction::ClosePane(pane_id, _)
+            | PtyInstruction::ClosePaneThatWasNotCreated(pane_id, _) => Some(pane_id),
+            _ => None,
+        })
+        .collect()
+}
+
+fn pane_closed_events(receivers: &TabReceivers) -> Vec<zellij_utils::data::PaneId> {
+    receivers
+        .plugin
+        .try_iter()
+        .flat_map(|(instruction, _)| match instruction {
+            PluginInstruction::Update(events) => events
+                .into_iter()
+                .filter_map(|(_, _, event)| match event {
+                    Event::PaneClosed(pane_id) => Some(pane_id),
+                    _ => None,
+                })
+                .collect::<Vec<_>>(),
+            _ => vec![],
+        })
+        .collect()
+}
+
+fn completion_and_receiver() -> (NotificationEnd, oneshot::Receiver<ActionCompletionResult>) {
+    let (sender, receiver) = oneshot::channel();
+    (NotificationEnd::new(sender), receiver)
+}
+
+fn assert_reported_as_not_created(
+    mut receiver: oneshot::Receiver<ActionCompletionResult>,
+    reason: PaneNotCreatedReason,
+) {
+    let result = receiver
+        .try_recv()
+        .expect("the caller is notified that the action ended");
+    assert_eq!(
+        result.exit_status,
+        Some(1),
+        "the action is reported as failed"
+    );
+    assert_eq!(
+        result.affected_pane_id, None,
+        "the id of the pane that was not created is not reported"
+    );
+    assert_eq!(result.error_message.as_deref(), Some(reason.message()));
+}
+
+fn new_tiled_pane_in_tab(tab: &mut Tab, id: u32) {
+    tab.new_pane(
+        PaneId::Terminal(id),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(1),
+        None,
+    )
+    .unwrap();
+}
+
+fn detached_terminal_pane(id: u32) -> Box<dyn Pane> {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut donor_tab = create_new_tab(size, true);
+    new_tiled_pane_in_tab(&mut donor_tab, id);
+    donor_tab
+        .tiled_panes
+        .extract_pane(PaneId::Terminal(id))
+        .unwrap()
+}
+
+fn tab_with_three_panes() -> Tab {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, false);
+    new_tiled_pane_in_tab(&mut tab, 2);
+    new_tiled_pane_in_tab(&mut tab, 3);
+    tab
+}
+
+fn focused_tiled_pane_exists(tab: &Tab, client_id: ClientId) -> bool {
+    tab.tiled_panes
+        .focused_pane_id(client_id)
+        .map(|id| tab.tiled_panes.panes_contain(&id))
+        .unwrap_or(false)
+}
+
+#[test]
+pub fn hiding_a_focused_pane_in_a_stack_list_moves_absent_clients_to_the_visible_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 40,
+    };
+    let (mut tab, _receivers) = create_new_tab_with_receivers(size, true, true);
+    new_tiled_pane_in_tab(&mut tab, 2);
+    assert_eq!(
+        tab.tiled_panes.focused_pane_id(1),
+        Some(PaneId::Terminal(2))
+    );
+    tab.remove_client(1);
+    tab.new_pane(
+        PaneId::Terminal(3),
+        None,
+        None,
+        false,
+        false,
+        NewPanePlacement::Stacked {
+            pane_id_to_stack_under: Some(zellij_utils::data::PaneId::Terminal(2)),
+            borderless: None,
+            border_style: None,
+        },
+        None,
+        None,
+    )
+    .unwrap();
+    assert!(
+        !tab.tiled_panes.panes_contain(&PaneId::Terminal(2)),
+        "the previously focused pane is now a hidden member of the stack list"
+    );
+    assert!(
+        focused_tiled_pane_exists(&tab, 1),
+        "the absent client's focus was moved to the visible member of the stack list"
+    );
+    tab.add_client(1, None).unwrap();
+    tab.focus_pane_on_edge(Direction::Left, 1);
+    assert!(focused_tiled_pane_exists(&tab, 1));
+}
+
+#[test]
+pub fn returning_client_with_focus_on_a_removed_pane_is_moved_to_an_existing_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, false);
+    new_tiled_pane_in_tab(&mut tab, 2);
+    tab.remove_client(1);
+    tab.tiled_panes.extract_pane(PaneId::Terminal(2));
+    tab.add_client(1, None).unwrap();
+    assert_eq!(
+        tab.tiled_panes.focused_pane_id(1),
+        Some(PaneId::Terminal(1))
+    );
+    tab.focus_pane_on_edge(Direction::Right, 1);
+    assert!(focused_tiled_pane_exists(&tab, 1));
+}
+
+#[test]
+pub fn new_client_is_not_focused_on_a_remembered_pane_that_was_closed() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, false);
+    new_tiled_pane_in_tab(&mut tab, 2);
+    tab.remove_client(1);
+    tab.close_pane(PaneId::Terminal(2), false, None);
+    tab.add_client(2, None).unwrap();
+    assert_eq!(
+        tab.tiled_panes.focused_pane_id(2),
+        Some(PaneId::Terminal(1))
+    );
+}
+
+#[test]
+pub fn focus_commands_do_not_crash_when_only_floating_panes_are_selectable() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, false);
+    tab.new_pane(
+        PaneId::Terminal(2),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::Floating(None),
+        Some(1),
+        None,
+    )
+    .unwrap();
+    tab.hide_floating_panes();
+    tab.set_pane_selectable(PaneId::Terminal(1), false);
+    assert_eq!(tab.tiled_panes.focused_pane_id(1), None);
+    tab.focus_pane_on_edge(Direction::Left, 1);
+    tab.focus_next_pane(1);
+    tab.focus_previous_pane(1);
+    tab.focus_last_pane(1);
+    tab.move_active_pane(1);
+    tab.move_active_pane_backwards(1);
+    assert_eq!(tab.tiled_panes.focused_pane_id(1), None);
+}
+
+#[test]
+pub fn replacing_a_missing_pane_does_not_point_clients_at_the_replacement() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, false);
+    new_tiled_pane_in_tab(&mut tab, 2);
+    tab.tiled_panes.extract_pane(PaneId::Terminal(2));
+    let unplaced = tab
+        .tiled_panes
+        .replace_pane(PaneId::Terminal(2), detached_terminal_pane(3))
+        .err()
+        .expect("the replacement pane is handed back");
+    assert_eq!(unplaced.pid(), PaneId::Terminal(3));
+    assert!(!tab.tiled_panes.panes_contain(&PaneId::Terminal(3)));
+    assert_ne!(
+        tab.tiled_panes.focused_pane_id(1),
+        Some(PaneId::Terminal(3)),
+        "clients are not moved to a pane that was never inserted"
+    );
+}
+
+#[test]
+pub fn failing_to_focus_a_pane_does_not_change_the_last_focused_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, false);
+    new_tiled_pane_in_tab(&mut tab, 2);
+    assert_eq!(
+        tab.tiled_panes.get_last_pane_id(1),
+        Some(PaneId::Terminal(1))
+    );
+    tab.tiled_panes.focus_pane(PaneId::Terminal(99), 1);
+    assert_eq!(
+        tab.tiled_panes.focused_pane_id(1),
+        Some(PaneId::Terminal(2))
+    );
+    assert_eq!(
+        tab.tiled_panes.get_last_pane_id(1),
+        Some(PaneId::Terminal(1))
+    );
+}
+
+#[test]
+pub fn focus_commands_do_not_crash_when_client_has_no_focused_tiled_pane() {
+    let mut tab = tab_with_three_panes();
+    tab.tiled_panes.clear_active_panes();
+    tab.focus_next_pane(1);
+    tab.focus_previous_pane(1);
+    tab.focus_last_pane(1);
+    tab.move_active_pane(1);
+    tab.move_active_pane_backwards(1);
+    assert!(!tab.move_focus_left(1).unwrap());
+    assert!(!tab.move_focus_right(1).unwrap());
+    assert!(!tab.move_focus_up(1).unwrap());
+    assert!(!tab.move_focus_down(1).unwrap());
+    tab.focus_pane_on_edge(Direction::Left, 1);
+    assert!(focused_tiled_pane_exists(&tab, 1));
+}
+
+#[test]
+pub fn focus_on_edge_with_a_removed_focused_pane_still_focuses_the_edge_pane() {
+    let mut tab = tab_with_three_panes();
+    let focused = tab.tiled_panes.focused_pane_id(1).unwrap();
+    tab.tiled_panes.extract_pane(focused);
+    tab.tiled_panes.focus_pane_on_edge(Direction::Left, 1);
+    assert!(focused_tiled_pane_exists(&tab, 1));
+}
+
+#[test]
+pub fn focus_last_pane_with_a_removed_focused_pane_still_focuses_the_last_pane() {
+    let mut tab = tab_with_three_panes();
+    let last = tab.tiled_panes.get_last_pane_id(1).unwrap();
+    let focused = tab.tiled_panes.focused_pane_id(1).unwrap();
+    tab.tiled_panes.extract_pane(focused);
+    tab.tiled_panes.focus_last_pane(1);
+    assert_eq!(tab.tiled_panes.focused_pane_id(1), Some(last));
+}
+
+#[test]
+pub fn moving_focus_with_a_removed_focused_pane_does_not_crash() {
+    let mut tab = tab_with_three_panes();
+    let focused = tab.tiled_panes.focused_pane_id(1).unwrap();
+    tab.tiled_panes.extract_pane(focused);
+    tab.tiled_panes.move_focus_left(1);
+    tab.tiled_panes.move_focus_right(1);
+    tab.tiled_panes.move_focus_up(1);
+    tab.tiled_panes.move_focus_down(1);
+    tab.tiled_panes.focus_next_pane(1);
+    tab.tiled_panes.focus_previous_pane(1);
+}
+
+#[test]
+pub fn moving_a_missing_pane_does_not_crash_or_change_the_layout() {
+    let mut tab = tab_with_three_panes();
+    let geoms_before: Vec<PaneGeom> = tab
+        .tiled_panes
+        .panes
+        .values()
+        .map(|p| p.position_and_size())
+        .collect();
+    let missing = PaneId::Terminal(99);
+    tab.move_pane(missing);
+    tab.move_pane_down(missing);
+    tab.move_pane_up(missing);
+    tab.move_pane_left(missing);
+    tab.move_pane_right(missing);
+    tab.tiled_panes.switch_active_pane_with(missing);
+    let geoms_after: Vec<PaneGeom> = tab
+        .tiled_panes
+        .panes
+        .values()
+        .map(|p| p.position_and_size())
+        .collect();
+    assert_eq!(geoms_before, geoms_after);
+}
+
+#[test]
+pub fn moving_panes_when_resize_messages_cannot_be_sent_still_swaps_them() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let (mut tab, receivers) = create_new_tab_with_receivers(size, false, false);
+    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
+        .unwrap();
+    let TabReceivers {
+        pty_writer, plugin, ..
+    } = receivers;
+    drop(pty_writer);
+    drop(plugin);
+    let left_geom_before = tab
+        .tiled_panes
+        .get_pane(PaneId::Terminal(1))
+        .unwrap()
+        .position_and_size();
+    tab.move_pane_right(PaneId::Terminal(1));
+    assert_ne!(
+        tab.tiled_panes
+            .get_pane(PaneId::Terminal(1))
+            .unwrap()
+            .position_and_size(),
+        left_geom_before,
+        "the pane was moved even though its pty could not be told about the new size"
+    );
+    tab.move_pane_left(PaneId::Terminal(1));
+    tab.move_pane(PaneId::Terminal(1));
+    tab.tiled_panes.switch_active_pane_with(PaneId::Terminal(2));
+    assert_eq!(tab.tiled_panes.panes.len(), 2);
+}
+
+#[test]
+pub fn stacked_moves_when_resize_messages_cannot_be_sent_do_not_crash() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let (mut tab, receivers) = create_new_tab_with_receivers(size, false, false);
+    tab.new_pane(
+        PaneId::Terminal(2),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::Stacked {
+            pane_id_to_stack_under: None,
+            borderless: None,
+            border_style: None,
+        },
+        Some(1),
+        None,
+    )
+    .unwrap();
+    let TabReceivers {
+        pty_writer, plugin, ..
+    } = receivers;
+    drop(pty_writer);
+    drop(plugin);
+    tab.move_pane_up(PaneId::Terminal(2));
+    tab.move_pane_down(PaneId::Terminal(1));
+    tab.resize(
+        1,
+        ResizeStrategy::new(Resize::Decrease, Some(Direction::Up)),
+    )
+    .non_fatal();
+    tab.resize(
+        1,
+        ResizeStrategy::new(Resize::Increase, Some(Direction::Down)),
+    )
+    .non_fatal();
+    assert_eq!(tab.tiled_panes.panes.len(), 2);
+}
+
+#[test]
+pub fn leaving_fullscreen_after_a_hidden_pane_was_replaced_does_not_crash() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, false);
+    new_tiled_pane_in_tab(&mut tab, 2);
+    tab.focus_pane_with_id(PaneId::Terminal(1), false, false, 1)
+        .unwrap();
+    tab.toggle_active_pane_fullscreen(1);
+    assert!(tab.tiled_panes.fullscreen_is_active());
+    assert!(tab.tiled_panes.panes_to_hide_contains(PaneId::Terminal(2)));
+    tab.suppress_pane_and_replace_with_other_pane(
+        PaneId::Terminal(2),
+        detached_terminal_pane(3),
+        None,
+    );
+    assert!(
+        tab.tiled_panes.panes_to_hide_contains(PaneId::Terminal(3)),
+        "the replacement pane stays hidden behind the fullscreen pane"
+    );
+    assert!(!tab.tiled_panes.panes_to_hide_contains(PaneId::Terminal(2)));
+    tab.toggle_active_pane_fullscreen(1);
+    assert!(!tab.tiled_panes.fullscreen_is_active());
+    assert!(tab.tiled_panes.panes_contain(&PaneId::Terminal(3)));
+}
+
+#[test]
+pub fn new_pane_without_room_is_closed_and_reported_as_failed() {
+    let size = Size { cols: 8, rows: 4 };
+    let (mut tab, receivers) = create_new_tab_with_receivers(size, false, true);
+    let (completion, completion_receiver) = completion_and_receiver();
+    tab.new_pane(
+        PaneId::Terminal(2),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(1),
+        Some(completion),
+    )
+    .unwrap();
+    assert!(!tab.has_pane_with_pid(&PaneId::Terminal(2)));
+    assert_eq!(closed_pane_ids(&receivers), vec![PaneId::Terminal(2)]);
+    assert_eq!(
+        pane_closed_events(&receivers),
+        vec![zellij_utils::data::PaneId::Terminal(2)]
+    );
+    assert_reported_as_not_created(completion_receiver, PaneNotCreatedReason::NoRoom);
+    assert_eq!(
+        tab.tiled_panes.get_last_pane_id(1),
+        None,
+        "the last focused pane is not changed by the failed pane"
+    );
+}
+
+#[test]
+pub fn new_floating_pane_without_room_is_closed() {
+    let size = Size { cols: 8, rows: 4 };
+    let (mut tab, receivers) = create_new_tab_with_receivers(size, false, true);
+    let (completion, completion_receiver) = completion_and_receiver();
+    tab.new_pane(
+        PaneId::Terminal(2),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::Floating(None),
+        Some(1),
+        Some(completion),
+    )
+    .unwrap();
+    assert!(!tab.has_pane_with_pid(&PaneId::Terminal(2)));
+    assert_eq!(closed_pane_ids(&receivers), vec![PaneId::Terminal(2)]);
+    assert_reported_as_not_created(completion_receiver, PaneNotCreatedReason::NoRoom);
+}
+
+#[test]
+pub fn split_without_room_is_closed_and_reported_as_failed() {
+    let size = Size { cols: 121, rows: 4 };
+    let (mut tab, receivers) = create_new_tab_with_receivers(size, false, true);
+    let (completion, completion_receiver) = completion_and_receiver();
+    tab.horizontal_split(PaneId::Terminal(2), None, 1, Some(completion), None)
+        .unwrap();
+    assert!(!tab.has_pane_with_pid(&PaneId::Terminal(2)));
+    assert_eq!(closed_pane_ids(&receivers), vec![PaneId::Terminal(2)]);
+    assert_reported_as_not_created(completion_receiver, PaneNotCreatedReason::NoRoom);
+}
+
+#[test]
+pub fn split_while_floating_panes_are_visible_is_closed() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let (mut tab, receivers) = create_new_tab_with_receivers(size, false, true);
+    tab.new_pane(
+        PaneId::Terminal(2),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::Floating(None),
+        Some(1),
+        None,
+    )
+    .unwrap();
+    let (completion, completion_receiver) = completion_and_receiver();
+    tab.vertical_split(PaneId::Terminal(3), None, 1, Some(completion), None)
+        .unwrap();
+    assert!(!tab.has_pane_with_pid(&PaneId::Terminal(3)));
+    assert_eq!(closed_pane_ids(&receivers), vec![PaneId::Terminal(3)]);
+    assert_reported_as_not_created(
+        completion_receiver,
+        PaneNotCreatedReason::FloatingPanesVisible,
+    );
+}
+
+#[test]
+pub fn splitting_with_a_plugin_pane_closes_the_plugin() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let (mut tab, receivers) = create_new_tab_with_receivers(size, false, true);
+    tab.vertical_split(PaneId::Plugin(5), None, 1, None, None)
+        .unwrap();
+    tab.horizontal_split_of_pane_id(
+        PaneId::Plugin(6),
+        None,
+        None,
+        PaneId::Terminal(1),
+        None,
+        None,
+    )
+    .unwrap();
+    assert!(!tab.has_pane_with_pid(&PaneId::Plugin(5)));
+    assert!(!tab.has_pane_with_pid(&PaneId::Plugin(6)));
+    assert_eq!(
+        closed_pane_ids(&receivers),
+        vec![PaneId::Plugin(5), PaneId::Plugin(6)]
+    );
+}
+
+#[test]
+pub fn splitting_a_missing_pane_closes_the_new_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let (mut tab, receivers) = create_new_tab_with_receivers(size, false, true);
+    let (completion, completion_receiver) = completion_and_receiver();
+    tab.vertical_split_of_pane_id(
+        PaneId::Terminal(2),
+        None,
+        None,
+        PaneId::Terminal(99),
+        Some(completion),
+        None,
+    )
+    .unwrap();
+    assert!(!tab.has_pane_with_pid(&PaneId::Terminal(2)));
+    assert_eq!(closed_pane_ids(&receivers), vec![PaneId::Terminal(2)]);
+    assert_reported_as_not_created(
+        completion_receiver,
+        PaneNotCreatedReason::TargetPaneNotFound,
+    );
+}
+
+#[test]
+pub fn splitting_a_pane_without_room_closes_the_new_pane() {
+    let size = Size { cols: 8, rows: 4 };
+    let (mut tab, receivers) = create_new_tab_with_receivers(size, false, true);
+    let (completion, completion_receiver) = completion_and_receiver();
+    tab.horizontal_split_of_pane_id(
+        PaneId::Terminal(2),
+        None,
+        None,
+        PaneId::Terminal(1),
+        Some(completion),
+        None,
+    )
+    .unwrap();
+    assert!(!tab.has_pane_with_pid(&PaneId::Terminal(2)));
+    assert_eq!(closed_pane_ids(&receivers), vec![PaneId::Terminal(2)]);
+    assert_reported_as_not_created(completion_receiver, PaneNotCreatedReason::NoRoom);
+}
+
+#[test]
+pub fn stacked_pane_without_a_target_is_closed() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let (mut tab, receivers) = create_new_tab_with_receivers(size, false, true);
+    let (completion, completion_receiver) = completion_and_receiver();
+    tab.new_pane(
+        PaneId::Terminal(2),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::Stacked {
+            pane_id_to_stack_under: None,
+            borderless: None,
+            border_style: None,
+        },
+        None,
+        Some(completion),
+    )
+    .unwrap();
+    assert!(!tab.has_pane_with_pid(&PaneId::Terminal(2)));
+    assert_eq!(closed_pane_ids(&receivers), vec![PaneId::Terminal(2)]);
+    assert_reported_as_not_created(
+        completion_receiver,
+        PaneNotCreatedReason::NoClientOrTargetPane,
+    );
+}
+
+#[test]
+pub fn stacked_pane_without_room_is_closed() {
+    let size = Size { cols: 8, rows: 4 };
+    let (mut tab, receivers) = create_new_tab_with_receivers(size, false, true);
+    let (completion, completion_receiver) = completion_and_receiver();
+    tab.new_pane(
+        PaneId::Terminal(2),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::Stacked {
+            pane_id_to_stack_under: Some(zellij_utils::data::PaneId::Terminal(1)),
+            borderless: None,
+            border_style: None,
+        },
+        Some(1),
+        Some(completion),
+    )
+    .unwrap();
+    assert!(!tab.has_pane_with_pid(&PaneId::Terminal(2)));
+    assert_eq!(closed_pane_ids(&receivers), vec![PaneId::Terminal(2)]);
+    assert_reported_as_not_created(completion_receiver, PaneNotCreatedReason::NoRoom);
+    let (completion, completion_receiver) = completion_and_receiver();
+    tab.new_pane(
+        PaneId::Terminal(3),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::Stacked {
+            pane_id_to_stack_under: None,
+            borderless: None,
+            border_style: None,
+        },
+        Some(1),
+        Some(completion),
+    )
+    .unwrap();
+    assert!(!tab.has_pane_with_pid(&PaneId::Terminal(3)));
+    assert_eq!(closed_pane_ids(&receivers), vec![PaneId::Terminal(3)]);
+    assert_reported_as_not_created(completion_receiver, PaneNotCreatedReason::NoRoom);
+}
+
+#[test]
+pub fn tiled_panes_hand_back_panes_they_could_not_place() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let missing = PaneId::Terminal(99);
+    assert!(tab
+        .tiled_panes
+        .split_pane_id_horizontally(PaneId::Terminal(2), detached_terminal_pane(2), missing)
+        .is_some());
+    assert!(tab
+        .tiled_panes
+        .split_pane_id_vertically(PaneId::Terminal(2), detached_terminal_pane(2), missing)
+        .is_some());
+    assert!(tab
+        .tiled_panes
+        .add_pane_to_stack_of_pane_id(PaneId::Terminal(2), detached_terminal_pane(2), missing)
+        .is_some());
+    tab.tiled_panes.clear_active_panes();
+    assert!(tab
+        .tiled_panes
+        .split_pane_horizontally(PaneId::Terminal(2), detached_terminal_pane(2), 1)
+        .is_some());
+    assert!(tab
+        .tiled_panes
+        .split_pane_vertically(PaneId::Terminal(2), detached_terminal_pane(2), 1)
+        .is_some());
+    assert!(tab
+        .tiled_panes
+        .add_pane_to_stack_of_active_pane(PaneId::Terminal(2), detached_terminal_pane(2), 1)
+        .is_some());
+    assert!(!tab.tiled_panes.panes_contain(&PaneId::Terminal(2)));
+
+    let tiny = Size { cols: 8, rows: 4 };
+    let mut tiny_tab = create_new_tab(tiny, true);
+    assert!(tiny_tab
+        .tiled_panes
+        .insert_pane(PaneId::Terminal(2), detached_terminal_pane(2), Some(1))
+        .is_some());
+    assert!(tiny_tab
+        .tiled_panes
+        .insert_pane_without_relayout(PaneId::Terminal(2), detached_terminal_pane(2), None)
+        .is_some());
+    assert!(tiny_tab
+        .tiled_panes
+        .add_pane_to_stack(&PaneId::Terminal(1), detached_terminal_pane(2))
+        .is_some());
+}
+
+fn new_suppressed_pane_in_tab(tab: &mut Tab, id: u32) {
+    tab.new_pane(
+        PaneId::Terminal(id),
+        None,
+        None,
+        true,
+        false,
+        NewPanePlacement::default(),
+        Some(1),
+        None,
+    )
+    .unwrap();
+}
+
+#[test]
+pub fn existing_pane_without_tiled_room_is_floated_instead_of_dropped() {
+    let size = Size { cols: 10, rows: 10 };
+    let (mut tab, receivers) = create_new_tab_with_receivers(size, false, true);
+    new_suppressed_pane_in_tab(&mut tab, 2);
+    tab.unsuppress_pane(PaneId::Terminal(2), false);
+    assert!(tab.floating_panes.panes_contain(&PaneId::Terminal(2)));
+    assert!(closed_pane_ids(&receivers).is_empty());
+}
+
+#[test]
+pub fn existing_pane_without_floating_room_is_tiled_instead_of_dropped() {
+    let size = Size { cols: 121, rows: 9 };
+    let (mut tab, receivers) = create_new_tab_with_receivers(size, false, true);
+    new_suppressed_pane_in_tab(&mut tab, 2);
+    tab.unsuppress_pane(PaneId::Terminal(2), true);
+    assert!(tab.tiled_panes.panes_contain(&PaneId::Terminal(2)));
+    assert!(closed_pane_ids(&receivers).is_empty());
+}
+
+#[test]
+pub fn existing_pane_without_any_room_stays_suppressed_instead_of_dropped() {
+    let size = Size { cols: 8, rows: 4 };
+    let (mut tab, receivers) = create_new_tab_with_receivers(size, false, true);
+    new_suppressed_pane_in_tab(&mut tab, 2);
+    tab.unsuppress_pane(PaneId::Terminal(2), false);
+    assert!(tab.has_pane_with_pid(&PaneId::Terminal(2)));
+    assert!(!tab.has_non_suppressed_pane_with_pid(&PaneId::Terminal(2)));
+    tab.unsuppress_pane(PaneId::Terminal(2), true);
+    assert!(tab.has_pane_with_pid(&PaneId::Terminal(2)));
+    assert!(closed_pane_ids(&receivers).is_empty());
+}
+
+#[test]
+pub fn stacking_onto_a_missing_pane_keeps_the_panes() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    tab.stack_panes(PaneId::Terminal(99), vec![detached_terminal_pane(2)]);
+    assert!(tab.has_non_suppressed_pane_with_pid(&PaneId::Terminal(2)));
+}
+
+#[test]
+pub fn stacking_onto_a_full_stack_keeps_the_panes() {
+    let size = Size { cols: 121, rows: 9 };
+    let mut tab = create_new_tab(size, true);
+    tab.new_pane(
+        PaneId::Terminal(2),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::Stacked {
+            pane_id_to_stack_under: Some(zellij_utils::data::PaneId::Terminal(1)),
+            borderless: None,
+            border_style: None,
+        },
+        Some(1),
+        None,
+    )
+    .unwrap();
+    for id in 3..12 {
+        tab.stack_panes(PaneId::Terminal(1), vec![detached_terminal_pane(id)]);
+    }
+    for id in 2..12 {
+        assert!(
+            tab.has_pane_with_pid(&PaneId::Terminal(id)),
+            "pane {} was kept",
+            id
+        );
+    }
+}
+
+#[test]
+pub fn replacing_missing_panes_hands_the_replacement_back() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, false);
+    let missing = PaneId::Terminal(99);
+    let unplaced = tab
+        .floating_panes
+        .replace_pane(missing, detached_terminal_pane(2))
+        .err()
+        .expect("the replacement pane is handed back");
+    assert_eq!(unplaced.pid(), PaneId::Terminal(2));
+    let unplaced = tab
+        .floating_panes
+        .replace_active_pane(detached_terminal_pane(2), 1)
+        .err()
+        .expect("the replacement pane is handed back");
+    assert_eq!(unplaced.pid(), PaneId::Terminal(2));
+    tab.tiled_panes.clear_active_panes();
+    let unplaced = tab
+        .tiled_panes
+        .replace_active_pane(detached_terminal_pane(2), 1)
+        .err()
+        .expect("the replacement pane is handed back");
+    assert_eq!(unplaced.pid(), PaneId::Terminal(2));
+    assert!(!tab.has_pane_with_pid(&PaneId::Terminal(2)));
+}
+
+#[test]
+pub fn replacing_a_floating_pane_keeps_its_stacking_order() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, false);
+    tab.new_pane(
+        PaneId::Terminal(2),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::Floating(None),
+        Some(1),
+        None,
+    )
+    .unwrap();
+    let removed = tab
+        .floating_panes
+        .replace_pane(PaneId::Terminal(2), detached_terminal_pane(3))
+        .ok()
+        .expect("the floating pane is replaced");
+    assert_eq!(removed.pid(), PaneId::Terminal(2));
+    assert!(tab.floating_panes.panes_contain(&PaneId::Terminal(3)));
+    assert_eq!(
+        tab.floating_panes.active_pane_id(1),
+        Some(PaneId::Terminal(3))
+    );
+}
+
+#[test]
+pub fn editor_pane_that_cannot_replace_its_target_is_closed() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let (mut tab, receivers) = create_new_tab_with_receivers(size, false, true);
+    tab.replace_pane_with_editor_pane(PaneId::Terminal(5), PaneId::Terminal(99))
+        .unwrap();
+    new_suppressed_pane_in_tab(&mut tab, 2);
+    tab.replace_pane_with_editor_pane(PaneId::Terminal(6), PaneId::Terminal(2))
+        .unwrap();
+    tab.replace_pane_with_editor_pane(PaneId::Plugin(7), PaneId::Terminal(1))
+        .unwrap();
+    tab.tiled_panes.clear_active_panes();
+    tab.replace_active_pane_with_editor_pane(PaneId::Terminal(8), 1)
+        .unwrap();
+    for id in [
+        PaneId::Terminal(5),
+        PaneId::Terminal(6),
+        PaneId::Plugin(7),
+        PaneId::Terminal(8),
+    ] {
+        assert!(!tab.has_pane_with_pid(&id));
+    }
+    assert_eq!(
+        closed_pane_ids(&receivers),
+        vec![
+            PaneId::Terminal(5),
+            PaneId::Terminal(6),
+            PaneId::Plugin(7),
+            PaneId::Terminal(8)
+        ]
+    );
+    assert!(tab.has_pane_with_pid(&PaneId::Terminal(1)));
+    assert!(tab.has_pane_with_pid(&PaneId::Terminal(2)));
+}
+
+#[test]
+pub fn in_place_pane_that_cannot_replace_its_target_is_closed_and_reported_as_failed() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let (mut tab, receivers) = create_new_tab_with_receivers(size, false, true);
+    let (completion, completion_receiver) = completion_and_receiver();
+    tab.suppress_pane_and_replace_with_pid(
+        PaneId::Terminal(99),
+        PaneId::Terminal(5),
+        false,
+        None,
+        Some(completion),
+        None,
+    )
+    .unwrap();
+    tab.suppress_pane_and_replace_with_pid(
+        PaneId::Terminal(99),
+        PaneId::Plugin(6),
+        false,
+        None,
+        None,
+        None,
+    )
+    .unwrap();
+    assert!(!tab.has_pane_with_pid(&PaneId::Terminal(5)));
+    assert!(!tab.has_pane_with_pid(&PaneId::Plugin(6)));
+    assert_eq!(
+        closed_pane_ids(&receivers),
+        vec![PaneId::Terminal(5), PaneId::Plugin(6)]
+    );
+    assert_reported_as_not_created(
+        completion_receiver,
+        PaneNotCreatedReason::PaneToReplaceNotFound,
+    );
+}
+
+#[test]
+pub fn in_place_plugin_that_closes_the_replaced_pane_closes_its_process() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let (mut tab, receivers) = create_new_tab_with_receivers(size, false, true);
+    tab.suppress_pane_and_replace_with_pid(
+        PaneId::Terminal(1),
+        PaneId::Plugin(6),
+        true,
+        None,
+        None,
+        None,
+    )
+    .unwrap();
+    assert!(tab.has_pane_with_pid(&PaneId::Plugin(6)));
+    assert!(!tab.has_pane_with_pid(&PaneId::Terminal(1)));
+    assert_eq!(closed_pane_ids(&receivers), vec![PaneId::Terminal(1)]);
+}
+
+#[test]
+pub fn existing_pane_that_cannot_replace_its_target_is_handed_back() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let (mut tab, receivers) = create_new_tab_with_receivers(size, false, true);
+    let unplaced = tab
+        .suppress_pane_and_replace_with_other_pane(
+            PaneId::Terminal(99),
+            detached_terminal_pane(2),
+            None,
+        )
+        .expect("the pane is handed back");
+    assert_eq!(unplaced.pid(), PaneId::Terminal(2));
+    let unplaced = tab
+        .close_pane_and_replace_with_other_pane(
+            PaneId::Terminal(99),
+            detached_terminal_pane(3),
+            None,
+        )
+        .expect("the pane is handed back");
+    assert_eq!(unplaced.pid(), PaneId::Terminal(3));
+    assert!(closed_pane_ids(&receivers).is_empty());
+}
+
+#[test]
+pub fn closing_an_editor_restores_the_tiled_pane_while_floating_panes_are_visible() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, false);
+    tab.replace_pane_with_editor_pane(PaneId::Terminal(5), PaneId::Terminal(1))
+        .unwrap();
+    assert!(tab.tiled_panes.panes_contain(&PaneId::Terminal(5)));
+    tab.new_pane(
+        PaneId::Terminal(2),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::Floating(None),
+        Some(1),
+        None,
+    )
+    .unwrap();
+    assert!(tab.are_floating_panes_visible());
+    tab.close_pane(PaneId::Terminal(5), false, None);
+    assert!(
+        tab.tiled_panes.panes_contain(&PaneId::Terminal(1)),
+        "the original pane is restored in place of the editor"
+    );
+    assert!(!tab.has_pane_with_pid(&PaneId::Terminal(5)));
+}
+
+#[test]
+pub fn restoring_a_suppressed_pane_whose_replacer_is_gone_places_it_in_the_tab() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, false);
+    new_tiled_pane_in_tab(&mut tab, 2);
+    tab.replace_pane_with_editor_pane(PaneId::Terminal(5), PaneId::Terminal(2))
+        .unwrap();
+    tab.tiled_panes.extract_pane(PaneId::Terminal(5));
+    tab.close_pane(PaneId::Terminal(5), false, None);
+    assert!(
+        tab.has_non_suppressed_pane_with_pid(&PaneId::Terminal(2)),
+        "the original pane is not lost"
+    );
+}
+
+#[test]
+pub fn closing_a_self_suppressed_pane_removes_it() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, false);
+    new_suppressed_pane_in_tab(&mut tab, 2);
+    tab.close_pane(PaneId::Terminal(2), false, None);
+    assert!(!tab.has_pane_with_pid(&PaneId::Terminal(2)));
+}
+
+fn new_floating_pane_in_tab(tab: &mut Tab, id: u32) {
+    tab.new_pane(
+        PaneId::Terminal(id),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::Floating(None),
+        Some(1),
+        None,
+    )
+    .unwrap();
+}
+
+fn tab_with_two_floating_panes() -> Tab {
+    let size = Size {
+        cols: 121,
+        rows: 40,
+    };
+    let mut tab = create_new_tab(size, false);
+    new_floating_pane_in_tab(&mut tab, 2);
+    new_floating_pane_in_tab(&mut tab, 3);
+    tab
+}
+
+fn leave_only_floating_pane(tab: &mut Tab, pane_id_to_keep: PaneId) {
+    let mut drained = tab.floating_panes.drain();
+    let pane = drained.remove(&pane_id_to_keep).unwrap();
+    tab.floating_panes.add_pane(pane_id_to_keep, pane);
+}
+
+fn floating_focus_is_valid(tab: &Tab, client_id: ClientId) -> bool {
+    tab.floating_panes
+        .active_pane_id(client_id)
+        .map(|id| tab.floating_panes.panes_contain(&id))
+        .unwrap_or(false)
+}
+
+#[test]
+pub fn a_pane_that_fails_to_render_does_not_fail_the_tab_render() {
+    let mut tab = tab_with_two_floating_panes();
+    let failing_floating = Box::new(super::test_panes::FailingRenderPane {
+        inner: detached_terminal_pane(5),
+    });
+    tab.add_floating_pane(failing_floating, PaneId::Terminal(5), None, true, Some(1))
+        .unwrap();
+    let failing_tiled = Box::new(super::test_panes::FailingRenderPane {
+        inner: detached_terminal_pane(6),
+    });
+    tab.add_tiled_pane(failing_tiled, PaneId::Terminal(6), false, None)
+        .unwrap();
+    assert!(tab.floating_panes.panes_contain(&PaneId::Terminal(5)));
+    assert!(tab.tiled_panes.panes_contain(&PaneId::Terminal(6)));
+    let mut output = crate::output::Output::default();
+    assert!(tab.render(&mut output, None).is_ok());
+    let mut tiled_output = crate::output::Output::default();
+    tiled_output.add_clients(&[1].into_iter().collect(), tab.link_handler.clone(), None);
+    let floating_panes_are_visible = false;
+    assert!(tab
+        .tiled_panes
+        .render(
+            &mut tiled_output,
+            floating_panes_are_visible,
+            &HashMap::new(),
+            HashMap::new(),
+            None,
+            &HashMap::new(),
+            false,
+            false,
+        )
+        .is_ok());
+    let mut floating_output = crate::output::Output::default();
+    floating_output.add_clients(&[1].into_iter().collect(), tab.link_handler.clone(), None);
+    assert!(tab
+        .floating_panes
+        .render(
+            &mut floating_output,
+            &HashMap::new(),
+            HashMap::new(),
+            None,
+            &HashMap::new(),
+            false,
+            false,
+        )
+        .is_ok());
+}
+
+#[test]
+pub fn failing_resize_messages_do_not_fail_resizing_all_panes() {
+    let size = Size {
+        cols: 121,
+        rows: 40,
+    };
+    let (mut tab, receivers) = create_new_tab_with_receivers(size, false, false);
+    new_floating_pane_in_tab(&mut tab, 2);
+    new_floating_pane_in_tab(&mut tab, 3);
+    let TabReceivers {
+        pty_writer, plugin, ..
+    } = receivers;
+    drop(pty_writer);
+    drop(plugin);
+    assert!(tab.resize_pty_all_panes().is_ok());
+    assert!(tab
+        .resize_whole_tab(Size {
+            cols: 100,
+            rows: 30
+        })
+        .is_ok());
+    assert_eq!(tab.floating_panes.visible_panes_count(), 2);
+    assert!(tab
+        .floating_panes
+        .resize_pane_with_id(
+            ResizeStrategy::new(Resize::Increase, None),
+            PaneId::Terminal(2)
+        )
+        .is_ok());
+}
+
+#[test]
+pub fn resizing_with_a_removed_focused_floating_pane_does_nothing() {
+    let mut tab = tab_with_two_floating_panes();
+    assert_eq!(
+        tab.floating_panes.active_pane_id(1),
+        Some(PaneId::Terminal(3))
+    );
+    leave_only_floating_pane(&mut tab, PaneId::Terminal(2));
+    let geom_before = tab
+        .floating_panes
+        .get_pane(PaneId::Terminal(2))
+        .unwrap()
+        .position_and_size();
+    assert!(tab
+        .resize(1, ResizeStrategy::new(Resize::Increase, None))
+        .is_ok());
+    assert_eq!(
+        tab.floating_panes
+            .get_pane(PaneId::Terminal(2))
+            .unwrap()
+            .position_and_size(),
+        geom_before
+    );
+}
+
+#[test]
+pub fn removing_a_floating_pane_clears_fullscreen_drag_and_focus_on_it() {
+    let mut tab = tab_with_two_floating_panes();
+    tab.floating_panes
+        .toggle_pane_fullscreen(PaneId::Terminal(3));
+    assert_eq!(
+        tab.floating_panes.fullscreen_pane_id(),
+        Some(PaneId::Terminal(3))
+    );
+    tab.floating_panes.set_pane_being_moved_with_mouse(
+        PaneId::Terminal(3),
+        zellij_utils::position::Position::new(10, 10),
+    );
+    let removed = tab.floating_panes.remove_pane(PaneId::Terminal(3));
+    assert!(removed.is_some());
+    assert_eq!(tab.floating_panes.fullscreen_pane_id(), None);
+    assert!(!tab.floating_panes.pane_is_being_moved_with_mouse());
+    assert_eq!(
+        tab.floating_panes.active_pane_id(1),
+        Some(PaneId::Terminal(2))
+    );
+}
+
+#[test]
+pub fn closing_a_floating_pane_being_dragged_stops_the_drag() {
+    let mut tab = tab_with_two_floating_panes();
+    tab.floating_panes.set_pane_being_moved_with_mouse(
+        PaneId::Terminal(3),
+        zellij_utils::position::Position::new(10, 10),
+    );
+    tab.close_pane(PaneId::Terminal(3), false, None);
+    assert!(!tab.floating_panes.pane_is_being_moved_with_mouse());
+}
+
+#[test]
+pub fn focusing_a_missing_floating_pane_for_all_clients_changes_nothing() {
+    let mut tab = tab_with_two_floating_panes();
+    let missing = PaneId::Terminal(99);
+    tab.floating_panes.focus_pane_for_all_clients(missing);
+    assert_eq!(
+        tab.floating_panes.active_pane_id(1),
+        Some(PaneId::Terminal(3))
+    );
+    assert_eq!(tab.floating_panes.get_pane_z_index(missing), None);
+}
+
+#[test]
+pub fn failing_to_focus_a_floating_pane_does_not_change_the_last_focused_pane() {
+    let mut tab = tab_with_two_floating_panes();
+    tab.floating_panes.focus_pane(PaneId::Terminal(2), 1);
+    tab.floating_panes.focus_pane(PaneId::Terminal(3), 1);
+    assert_eq!(
+        tab.floating_panes.get_last_pane_id(1),
+        Some(PaneId::Terminal(2))
+    );
+    tab.floating_panes.focus_pane(PaneId::Terminal(99), 1);
+    assert_eq!(
+        tab.floating_panes.active_pane_id(1),
+        Some(PaneId::Terminal(3))
+    );
+    assert_eq!(
+        tab.floating_panes.get_last_pane_id(1),
+        Some(PaneId::Terminal(2))
+    );
+}
+
+#[test]
+pub fn moving_focus_with_a_removed_focused_floating_pane_focuses_an_existing_pane() {
+    let mut tab = tab_with_two_floating_panes();
+    leave_only_floating_pane(&mut tab, PaneId::Terminal(2));
+    assert!(!floating_focus_is_valid(&tab, 1));
+    tab.move_focus_left(1).unwrap();
+    assert!(floating_focus_is_valid(&tab, 1));
+    assert!(tab
+        .floating_panes
+        .get_pane_z_index(PaneId::Terminal(2))
+        .is_some());
+}
+
+#[test]
+pub fn moving_focus_without_a_focused_floating_pane_keeps_stacking_order() {
+    let mut tab = tab_with_two_floating_panes();
+    tab.floating_panes.defocus_pane(1);
+    tab.move_focus_right(1).unwrap();
+    assert!(floating_focus_is_valid(&tab, 1));
+    assert!(tab
+        .floating_panes
+        .get_pane_z_index(PaneId::Terminal(2))
+        .is_some());
+    assert!(tab
+        .floating_panes
+        .get_pane_z_index(PaneId::Terminal(3))
+        .is_some());
+}
+
+#[test]
+pub fn focusing_the_edge_keeps_fullscreen_when_the_focused_pane_was_removed() {
+    let mut tab = tab_with_two_floating_panes();
+    tab.floating_panes
+        .toggle_pane_fullscreen(PaneId::Terminal(2));
+    tab.floating_panes.focus_pane(PaneId::Terminal(3), 1);
+    leave_only_floating_pane(&mut tab, PaneId::Terminal(2));
+    tab.floating_panes
+        .get_pane_mut(PaneId::Terminal(2))
+        .unwrap()
+        .set_selectable(false);
+    tab.floating_panes.focus_pane_on_edge(Direction::Left, 1);
+    assert_eq!(
+        tab.floating_panes.fullscreen_pane_id(),
+        Some(PaneId::Terminal(2))
+    );
+}
+
+#[test]
+pub fn joining_client_does_not_move_the_focus_of_other_clients() {
+    let mut tab = tab_with_two_floating_panes();
+    tab.add_client(2, None).unwrap();
+    tab.floating_panes.focus_pane(PaneId::Terminal(2), 2);
+    tab.remove_client(2);
+    tab.floating_panes.focus_pane(PaneId::Terminal(3), 1);
+    assert_eq!(
+        tab.floating_panes.active_pane_id(2),
+        Some(PaneId::Terminal(2))
+    );
+    tab.add_client(2, None).unwrap();
+    assert_eq!(
+        tab.floating_panes.active_pane_id(1),
+        Some(PaneId::Terminal(3)),
+        "the client that was already here keeps its focus"
+    );
+    assert_eq!(
+        tab.floating_panes.active_pane_id(2),
+        Some(PaneId::Terminal(3)),
+        "the joining client shares the focus of the clients already here"
+    );
+}
+
+#[test]
+pub fn joining_client_is_focused_on_a_selectable_floating_pane() {
+    let mut tab = tab_with_two_floating_panes();
+    tab.floating_panes
+        .get_pane_mut(PaneId::Terminal(2))
+        .unwrap()
+        .set_selectable(false);
+    tab.remove_client(1);
+    tab.add_client(3, None).unwrap();
+    assert_eq!(
+        tab.floating_panes.active_pane_id(3),
+        Some(PaneId::Terminal(3))
+    );
+}
+
+#[test]
+pub fn focus_of_disconnected_clients_does_not_count_as_floating_focus() {
+    let mut tab = tab_with_two_floating_panes();
+    assert!(tab.floating_panes.has_active_panes());
+    tab.remove_client(1);
+    assert!(!tab.floating_panes.has_active_panes());
+    assert!(tab.floating_panes.has_active_panes_for(Some(1)));
+}
+
+#[test]
+pub fn background_tab_reports_the_remembered_floating_focus() {
+    let mut tab = tab_with_two_floating_panes();
+    tab.remove_client(1);
+    let focused: Vec<_> = tab
+        .floating_panes
+        .pane_info(&HashMap::new())
+        .into_iter()
+        .filter(|p| p.is_focused)
+        .map(|p| p.id)
+        .collect();
+    assert_eq!(focused, vec![3]);
+}
+
+#[test]
+pub fn moving_a_missing_floating_pane_reports_no_move() {
+    let mut tab = tab_with_two_floating_panes();
+    let missing = PaneId::Terminal(99);
+    assert!(!tab.floating_panes.move_pane_left(missing));
+    assert!(!tab.floating_panes.move_pane_right(missing));
+    assert!(!tab.floating_panes.move_pane_up(missing));
+    assert!(!tab.floating_panes.move_pane_down(missing));
+    leave_only_floating_pane(&mut tab, PaneId::Terminal(2));
+    assert!(!tab.floating_panes.move_active_pane_left(1));
+    assert!(tab.floating_panes.move_pane_right(PaneId::Terminal(2)));
+}
+
+#[test]
+pub fn toggling_fullscreen_with_a_removed_focused_floating_pane_does_nothing() {
+    let mut tab = tab_with_two_floating_panes();
+    leave_only_floating_pane(&mut tab, PaneId::Terminal(2));
+    tab.toggle_active_pane_fullscreen(1);
+    tab.toggle_active_pane_no_ui_fullscreen(1);
+    assert!(!tab.floating_panes.fullscreen_is_active());
+    assert!(!tab.tiled_panes.fullscreen_is_active());
+}
+
+#[test]
+pub fn mouse_resize_of_a_closed_floating_pane_releases_the_mouse() {
+    let mut tab = tab_with_two_floating_panes();
+    let start_geom = tab
+        .floating_panes
+        .get_pane(PaneId::Terminal(3))
+        .unwrap()
+        .position_and_size();
+    tab.pane_being_resized_with_mouse = Some(super::PaneResizeState {
+        pane_id: PaneId::Terminal(3),
+        edge: super::PaneEdge::Right,
+        start_position: zellij_utils::position::Position::new(10, 10),
+        start_geom,
+        is_floating: true,
+    });
+    tab.close_pane(PaneId::Terminal(3), false, None);
+    let motion = zellij_utils::input::mouse::MouseEvent::new_left_motion_event(
+        zellij_utils::position::Position::new(12, 14),
+    );
+    assert!(tab.handle_mouse_event(&motion, 1).is_ok());
+    assert!(tab.pane_being_resized_with_mouse.is_none());
+    tab.pane_being_resized_with_mouse = Some(super::PaneResizeState {
+        pane_id: PaneId::Terminal(99),
+        edge: super::PaneEdge::Right,
+        start_position: zellij_utils::position::Position::new(10, 10),
+        start_geom,
+        is_floating: true,
+    });
+    let release = zellij_utils::input::mouse::MouseEvent::new_left_release_event(
+        zellij_utils::position::Position::new(12, 14),
+    );
+    assert!(tab.handle_mouse_event(&release, 1).is_ok());
+    assert!(tab.pane_being_resized_with_mouse.is_none());
+}
+
+#[test]
+pub fn floating_pane_positions_do_not_underflow_on_tiny_viewports() {
+    for (cols, rows) in [(1, 1), (2, 2), (3, 3), (9, 9)] {
+        let size = Size { cols, rows };
+        let (mut tab, receivers) = create_new_tab_with_receivers(size, false, true);
+        tab.new_pane(
+            PaneId::Terminal(2),
+            None,
+            None,
+            false,
+            true,
+            NewPanePlacement::Floating(None),
+            Some(1),
+            None,
+        )
+        .unwrap();
+        assert!(!tab.floating_panes.panes_contain(&PaneId::Terminal(2)));
+        assert_eq!(closed_pane_ids(&receivers), vec![PaneId::Terminal(2)]);
+    }
+}
+
+#[test]
+pub fn focusing_a_suppressed_pane_finds_it_by_its_own_id() {
+    let size = Size {
+        cols: 121,
+        rows: 40,
+    };
+    let mut tab = create_new_tab(size, false);
+    tab.replace_pane_with_editor_pane(PaneId::Terminal(5), PaneId::Terminal(1))
+        .unwrap();
+    assert!(!tab.has_non_suppressed_pane_with_pid(&PaneId::Terminal(1)));
+    tab.focus_suppressed_pane_for_all_clients(PaneId::Terminal(1));
+    assert!(tab.floating_panes.panes_contain(&PaneId::Terminal(1)));
+    assert_eq!(
+        tab.floating_panes.active_pane_id(1),
+        Some(PaneId::Terminal(1))
+    );
+}
+
+#[test]
+pub fn focusing_a_suppressed_pane_without_floating_room_tiles_it() {
+    let size = Size { cols: 121, rows: 9 };
+    let mut tab = create_new_tab(size, false);
+    new_suppressed_pane_in_tab(&mut tab, 2);
+    tab.focus_suppressed_pane_for_all_clients(PaneId::Terminal(2));
+    assert!(tab.tiled_panes.panes_contain(&PaneId::Terminal(2)));
+    assert!(!tab.floating_panes.panes_contain(&PaneId::Terminal(2)));
+    assert_eq!(tab.floating_panes.active_pane_id(1), None);
+    assert!(!tab.are_floating_panes_visible());
+}
+
+#[test]
+pub fn changing_floating_coordinates_of_a_tiled_pane_floats_it() {
+    let size = Size {
+        cols: 121,
+        rows: 40,
+    };
+    let mut tab = create_new_tab(size, false);
+    new_tiled_pane_in_tab(&mut tab, 2);
+    let coordinates = zellij_utils::data::FloatingPaneCoordinates {
+        x: Some(zellij_utils::input::layout::PercentOrFixed::Fixed(5)),
+        y: Some(zellij_utils::input::layout::PercentOrFixed::Fixed(5)),
+        width: Some(zellij_utils::input::layout::PercentOrFixed::Fixed(30)),
+        height: Some(zellij_utils::input::layout::PercentOrFixed::Fixed(10)),
+        pinned: None,
+        borderless: None,
+        border_style: None,
+    };
+    tab.change_floating_pane_coordinates(&PaneId::Terminal(2), coordinates.clone(), true)
+        .unwrap();
+    assert!(tab.floating_panes.panes_contain(&PaneId::Terminal(2)));
+    let geom = tab
+        .floating_panes
+        .get_pane(PaneId::Terminal(2))
+        .unwrap()
+        .position_and_size();
+    assert_eq!((geom.x, geom.y), (5, 5));
+    assert!(tab
+        .change_floating_pane_coordinates(&PaneId::Terminal(1), coordinates, true)
+        .is_err());
+    assert!(tab.tiled_panes.panes_contain(&PaneId::Terminal(1)));
+}
+
+#[test]
+pub fn new_plugin_pane_without_a_plugin_thread_is_closed() {
+    let size = Size {
+        cols: 121,
+        rows: 40,
+    };
+    let (mut tab, receivers) = create_new_tab_with_receivers(size, false, true);
+    tab.senders.to_plugin = None;
+    for (id, placement) in [
+        (7, NewPanePlacement::Floating(None)),
+        (8, NewPanePlacement::default()),
+        (
+            9,
+            NewPanePlacement::Stacked {
+                pane_id_to_stack_under: None,
+                borderless: None,
+                border_style: None,
+            },
+        ),
+    ] {
+        let (completion, completion_receiver) = completion_and_receiver();
+        tab.new_pane(
+            PaneId::Plugin(id),
+            None,
+            None,
+            false,
+            true,
+            placement,
+            Some(1),
+            Some(completion),
+        )
+        .unwrap();
+        assert!(!tab.has_pane_with_pid(&PaneId::Plugin(id)));
+        assert_eq!(closed_pane_ids(&receivers), vec![PaneId::Plugin(id)]);
+        assert_reported_as_not_created(
+            completion_receiver,
+            PaneNotCreatedReason::PluginThreadUnavailable,
+        );
+    }
+    tab.suppress_pane_and_replace_with_pid(
+        PaneId::Terminal(1),
+        PaneId::Plugin(10),
+        false,
+        None,
+        None,
+        None,
+    )
+    .unwrap();
+    assert!(tab.tiled_panes.panes_contain(&PaneId::Terminal(1)));
+    assert_eq!(closed_pane_ids(&receivers), vec![PaneId::Plugin(10)]);
+}
+
+#[test]
+pub fn suppressing_into_an_occupied_slot_keeps_both_panes() {
+    let size = Size {
+        cols: 121,
+        rows: 40,
+    };
+    let mut tab = create_new_tab(size, false);
+    tab.replace_pane_with_editor_pane(PaneId::Terminal(5), PaneId::Terminal(1))
+        .unwrap();
+    new_tiled_pane_in_tab(&mut tab, 2);
+    tab.suppress_pane_and_replace_with_pid(
+        PaneId::Terminal(2),
+        PaneId::Terminal(5),
+        false,
+        None,
+        None,
+        None,
+    )
+    .unwrap();
+    assert!(tab.has_pane_with_pid(&PaneId::Terminal(1)));
+    assert!(tab.has_pane_with_pid(&PaneId::Terminal(2)));
+}
+
+#[derive(Clone, Default)]
+struct RecordingOsApi {
+    writes: std::sync::Arc<std::sync::Mutex<Vec<(u32, String)>>>,
+}
+
+impl ServerOsApi for RecordingOsApi {
+    fn set_terminal_size_using_terminal_id(
+        &self,
+        _id: u32,
+        _cols: u16,
+        _rows: u16,
+        _width_in_pixels: Option<u16>,
+        _height_in_pixels: Option<u16>,
+    ) -> Result<()> {
+        Ok(())
+    }
+    fn spawn_terminal(
+        &self,
+        _file_to_open: TerminalAction,
+        _quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
+        _default_editor: Option<PathBuf>,
+    ) -> Result<(u32, Box<dyn AsyncReader>, Option<u32>)> {
+        unimplemented!()
+    }
+    fn write_to_tty_stdin(&self, id: u32, buf: &[u8]) -> Result<usize> {
+        self.writes
+            .lock()
+            .unwrap()
+            .push((id, String::from_utf8_lossy(buf).to_string()));
+        Ok(buf.len())
+    }
+    fn tcdrain(&self, _id: u32) -> Result<()> {
+        Ok(())
+    }
+    fn kill(&self, _pid: u32) -> Result<()> {
+        Ok(())
+    }
+    fn force_kill(&self, _pid: u32) -> Result<()> {
+        Ok(())
+    }
+    fn box_clone(&self) -> Box<dyn ServerOsApi> {
+        Box::new((*self).clone())
+    }
+    fn send_to_client(&self, _client_id: ClientId, _msg: ServerToClientMsg) -> Result<()> {
+        Ok(())
+    }
+    fn register_client(
+        &mut self,
+        _client_id: ClientId,
+        _receiver: &IpcReceiverWithContext<ClientToServerMsg>,
+    ) -> Result<()> {
+        Ok(())
+    }
+    fn register_client_with_reply(
+        &mut self,
+        _client_id: ClientId,
+        _reply_stream: LocalSocketStream,
+    ) -> Result<()> {
+        Ok(())
+    }
+    fn remove_client(&mut self, _client_id: ClientId) -> Result<()> {
+        Ok(())
+    }
+    fn load_palette(&self) -> Palette {
+        Palette::default()
+    }
+    fn get_cwd(&self, _pid: u32) -> Option<PathBuf> {
+        None
+    }
+    fn write_to_file(&mut self, _buf: String, _name: Option<String>) -> Result<()> {
+        Ok(())
+    }
+    fn re_run_command_in_terminal(
+        &self,
+        _terminal_id: u32,
+        _run_command: RunCommand,
+        _quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
+    ) -> Result<(Box<dyn AsyncReader>, Option<u32>)> {
+        unimplemented!()
+    }
+    fn clear_terminal_id(&self, _terminal_id: u32) -> Result<()> {
+        Ok(())
+    }
+    fn send_sigint(&self, _pid: u32) -> Result<()> {
+        Ok(())
+    }
+}
+
+fn plugin_run() -> zellij_utils::input::layout::RunPluginOrAlias {
+    zellij_utils::input::layout::RunPluginOrAlias::from_url(
+        "file:/path/to/fake/plugin",
+        &None,
+        None,
+        None,
+    )
+    .unwrap()
+}
+
+#[test]
+pub fn max_panes_limits_tiled_panes_without_crashing() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let (mut tab, receivers) = create_new_tab_with_receivers(size, false, true);
+    tab.max_panes = Some(1);
+    new_tiled_pane_in_tab(&mut tab, 2);
+    assert!(tab.tiled_panes.panes_contain(&PaneId::Terminal(2)));
+    assert!(!tab.tiled_panes.panes_contain(&PaneId::Terminal(1)));
+    assert!(closed_pane_ids(&receivers).contains(&PaneId::Terminal(1)));
+    tab.max_panes = Some(0);
+    new_tiled_pane_in_tab(&mut tab, 3);
+    assert!(tab.has_pane_with_pid(&PaneId::Terminal(3)));
+}
+
+#[test]
+pub fn resizing_to_a_tiny_size_with_fixed_bars_keeps_all_panes() {
+    let size = Size { cols: 50, rows: 20 };
+    let mut top_bar = TiledPaneLayout::default();
+    top_bar.split_size = Some(SplitSize::Fixed(1));
+    let mut bottom_bar = TiledPaneLayout::default();
+    bottom_bar.split_size = Some(SplitSize::Fixed(2));
+    let mut layout = TiledPaneLayout::default();
+    layout.children_split_direction = SplitDirection::Horizontal;
+    layout.children = vec![top_bar, TiledPaneLayout::default(), bottom_bar];
+    let mut tab = create_new_tab_with_layout(size, layout);
+    assert_eq!(tab.tiled_panes.panes.len(), 3);
+    for rows in [3, 2, 1, 20] {
+        assert!(tab.resize_whole_tab(Size { cols: 50, rows }).is_ok());
+        assert_eq!(tab.tiled_panes.panes.len(), 3);
+    }
+}
+
+#[test]
+pub fn in_place_pane_without_a_target_is_closed_and_reported_as_failed() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let (mut tab, receivers) = create_new_tab_with_receivers(size, false, true);
+    let (completion, completion_receiver) = completion_and_receiver();
+    tab.new_in_place_pane(
+        PaneId::Terminal(5),
+        None,
+        None,
+        None,
+        false,
+        None,
+        Some(completion),
+        None,
+    )
+    .unwrap();
+    assert!(!tab.has_pane_with_pid(&PaneId::Terminal(5)));
+    assert_eq!(closed_pane_ids(&receivers), vec![PaneId::Terminal(5)]);
+    assert_reported_as_not_created(
+        completion_receiver,
+        PaneNotCreatedReason::NoClientOrTargetPane,
+    );
+    tab.tiled_panes.clear_active_panes();
+    let (completion, completion_receiver) = completion_and_receiver();
+    tab.new_in_place_pane(
+        PaneId::Terminal(6),
+        None,
+        None,
+        None,
+        false,
+        Some(1),
+        Some(completion),
+        None,
+    )
+    .unwrap();
+    assert!(!tab.has_pane_with_pid(&PaneId::Terminal(6)));
+    assert_eq!(closed_pane_ids(&receivers), vec![PaneId::Terminal(6)]);
+    assert_reported_as_not_created(
+        completion_receiver,
+        PaneNotCreatedReason::PaneToReplaceNotFound,
+    );
+}
+
+#[test]
+pub fn pane_moved_to_floating_with_focus_shows_floating_panes() {
+    let size = Size { cols: 10, rows: 10 };
+    let mut tab = create_new_tab(size, false);
+    new_suppressed_pane_in_tab(&mut tab, 2);
+    assert!(!tab.are_floating_panes_visible());
+    tab.focus_pane_with_id(PaneId::Terminal(2), false, false, 1)
+        .unwrap();
+    assert!(tab.floating_panes.panes_contain(&PaneId::Terminal(2)));
+    assert!(tab.are_floating_panes_visible());
+    assert_eq!(
+        tab.get_active_pane_id(1),
+        Some(PaneId::Terminal(2)),
+        "the moved pane is focused"
+    );
+}
+
+#[test]
+pub fn pane_moved_to_tiled_hides_the_empty_floating_layer() {
+    let size = Size { cols: 121, rows: 9 };
+    let mut tab = create_new_tab(size, false);
+    tab.show_floating_panes();
+    tab.add_floating_pane(
+        detached_terminal_pane(3),
+        PaneId::Terminal(3),
+        None,
+        true,
+        Some(1),
+    )
+    .unwrap();
+    assert!(tab.tiled_panes.panes_contain(&PaneId::Terminal(3)));
+    assert!(!tab.are_floating_panes_visible());
+}
+
+#[test]
+pub fn broken_stack_list_is_dissolved_and_its_members_are_kept() {
+    let size = Size {
+        cols: 121,
+        rows: 40,
+    };
+    let (mut tab, _receivers) = create_new_tab_with_receivers(size, true, true);
+    new_tiled_pane_in_tab(&mut tab, 2);
+    tab.new_pane(
+        PaneId::Terminal(3),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::Stacked {
+            pane_id_to_stack_under: None,
+            borderless: None,
+            border_style: None,
+        },
+        Some(1),
+        None,
+    )
+    .unwrap();
+    assert!(tab.has_stack_lists());
+    assert!(tab.pane_is_hidden_stack_list_member(&PaneId::Terminal(2)));
+    let visible = tab.tiled_panes.extract_pane(PaneId::Terminal(3)).unwrap();
+    tab.focus_pane_with_id(PaneId::Terminal(2), false, false, 1)
+        .unwrap();
+    assert!(!tab.has_stack_lists());
+    assert!(tab.tiled_panes.panes_contain(&PaneId::Terminal(2)));
+    assert!(focused_tiled_pane_exists(&tab, 1));
+    drop(visible);
+}
+
+#[test]
+pub fn changing_coordinates_from_a_plugin_does_not_float_tiled_panes() {
+    let size = Size {
+        cols: 121,
+        rows: 40,
+    };
+    let mut tab = create_new_tab(size, false);
+    new_tiled_pane_in_tab(&mut tab, 2);
+    let coordinates = zellij_utils::data::FloatingPaneCoordinates {
+        x: Some(zellij_utils::input::layout::PercentOrFixed::Fixed(5)),
+        y: None,
+        width: None,
+        height: None,
+        pinned: None,
+        borderless: None,
+        border_style: None,
+    };
+    assert!(tab
+        .change_floating_pane_coordinates(&PaneId::Terminal(2), coordinates.clone(), false)
+        .is_err());
+    assert!(tab.tiled_panes.panes_contain(&PaneId::Terminal(2)));
+    new_suppressed_pane_in_tab(&mut tab, 3);
+    tab.change_floating_pane_coordinates(&PaneId::Terminal(3), coordinates, false)
+        .unwrap();
+    assert!(tab.floating_panes.panes_contain(&PaneId::Terminal(3)));
+}
+
+#[test]
+pub fn joining_client_has_its_floating_pane_brought_to_the_top() {
+    let mut tab = tab_with_two_floating_panes();
+    tab.remove_client(1);
+    tab.add_floating_pane(
+        detached_terminal_pane(4),
+        PaneId::Terminal(4),
+        None,
+        false,
+        None,
+    )
+    .unwrap();
+    let z = |tab: &Tab, id| tab.floating_panes.get_pane_z_index(PaneId::Terminal(id));
+    assert!(z(&tab, 4) > z(&tab, 3));
+    tab.add_client(1, None).unwrap();
+    assert_eq!(
+        tab.floating_panes.active_pane_id(1),
+        Some(PaneId::Terminal(3))
+    );
+    assert!(z(&tab, 3) > z(&tab, 4));
+}
+
+#[test]
+pub fn reapplying_focus_without_clients_keeps_the_focused_pane_on_top() {
+    let mut tab = tab_with_two_floating_panes();
+    tab.remove_client(1);
+    tab.floating_panes
+        .add_pane(PaneId::Terminal(4), detached_terminal_pane(4));
+    let z = |tab: &Tab, id| tab.floating_panes.get_pane_z_index(PaneId::Terminal(id));
+    assert!(z(&tab, 4) > z(&tab, 3));
+    tab.floating_panes.reapply_pane_focus();
+    assert!(z(&tab, 3) > z(&tab, 4));
+}
+
+#[test]
+pub fn moving_focus_without_floating_focus_reports_that_focus_moved() {
+    let mut tab = tab_with_two_floating_panes();
+    tab.floating_panes.defocus_pane(1);
+    assert!(tab.move_focus_left(1).unwrap());
+    assert!(floating_focus_is_valid(&tab, 1));
+    leave_only_floating_pane(&mut tab, PaneId::Terminal(2));
+    tab.floating_panes.focus_pane(PaneId::Terminal(2), 1);
+    assert!(!tab.move_focus_left(1).unwrap());
+}
+
+#[test]
+pub fn input_routing_and_active_pane_agree_without_floating_focus() {
+    let mut tab = tab_with_two_floating_panes();
+    tab.floating_panes.defocus_pane(1);
+    assert_eq!(tab.get_active_pane_id(1), None);
+    assert!(tab.get_active_pane_or_floating_pane_mut(1).is_none());
+    tab.toggle_active_pane_fullscreen(1);
+    assert!(!tab.tiled_panes.fullscreen_is_active());
+}
+
+#[test]
+pub fn failed_tiled_add_keeps_fullscreen() {
+    let size = Size { cols: 12, rows: 10 };
+    let (mut tab, receivers) = create_new_tab_with_receivers(size, false, true);
+    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
+        .unwrap();
+    assert_eq!(tab.tiled_panes.panes.len(), 2);
+    tab.focus_pane_with_id(PaneId::Terminal(1), false, false, 1)
+        .unwrap();
+    tab.toggle_active_pane_fullscreen(1);
+    assert_eq!(
+        tab.tiled_panes.fullscreen_pane_id(),
+        Some(PaneId::Terminal(1))
+    );
+    new_tiled_pane_in_tab(&mut tab, 3);
+    assert!(!tab.has_pane_with_pid(&PaneId::Terminal(3)));
+    assert!(closed_pane_ids(&receivers).contains(&PaneId::Terminal(3)));
+    assert_eq!(
+        tab.tiled_panes.fullscreen_pane_id(),
+        Some(PaneId::Terminal(1))
+    );
+}
+
+#[test]
+pub fn focus_events_are_sent_once_per_pane_and_only_for_connected_clients() {
+    let os_api = RecordingOsApi::default();
+    let writes = os_api.writes.clone();
+    let boxed_os_api: Box<dyn ServerOsApi> = Box::new(os_api);
+    let mut active_panes = crate::panes::ActivePanes::new(&boxed_os_api);
+    let mut panes: std::collections::BTreeMap<PaneId, Box<dyn Pane>> =
+        std::collections::BTreeMap::new();
+    for id in [2, 3] {
+        panes.insert(
+            PaneId::Terminal(id),
+            Box::new(super::test_panes::FocusReportingPane {
+                inner: detached_terminal_pane(id),
+            }),
+        );
+    }
+    active_panes.insert(1, PaneId::Terminal(2), &mut panes);
+    active_panes.insert(2, PaneId::Terminal(2), &mut panes);
+    active_panes.insert(3, PaneId::Terminal(3), &mut panes);
+    writes.lock().unwrap().clear();
+    let connected_clients: std::collections::HashSet<ClientId> = [1, 2].into_iter().collect();
+    active_panes.focus_all_panes(&mut panes, &connected_clients);
+    assert_eq!(*writes.lock().unwrap(), vec![(2, "focus-in".to_owned())]);
+    writes.lock().unwrap().clear();
+    active_panes.unfocus_all_panes(&mut panes, &connected_clients);
+    assert_eq!(*writes.lock().unwrap(), vec![(2, "focus-out".to_owned())]);
+}
+
+#[test]
+pub fn replacing_a_pane_moves_the_last_pane_record_and_the_drag_to_the_replacement() {
+    let mut tab = tab_with_two_floating_panes();
+    tab.floating_panes.focus_pane(PaneId::Terminal(2), 1);
+    tab.floating_panes.focus_pane(PaneId::Terminal(3), 1);
+    assert_eq!(
+        tab.floating_panes.get_last_pane_id(1),
+        Some(PaneId::Terminal(2))
+    );
+    tab.floating_panes.set_pane_being_moved_with_mouse(
+        PaneId::Terminal(2),
+        zellij_utils::position::Position::new(10, 10),
+    );
+    tab.floating_panes
+        .replace_pane(PaneId::Terminal(2), detached_terminal_pane(5))
+        .ok()
+        .unwrap();
+    assert_eq!(
+        tab.floating_panes.get_last_pane_id(1),
+        Some(PaneId::Terminal(5))
+    );
+    assert_eq!(
+        tab.floating_panes.pane_being_moved_with_mouse_id(),
+        Some(PaneId::Terminal(5))
+    );
+    let mut tiled_tab = tab_with_three_panes();
+    let last = tiled_tab.tiled_panes.get_last_pane_id(1).unwrap();
+    tiled_tab
+        .tiled_panes
+        .replace_pane(last, detached_terminal_pane(6))
+        .ok()
+        .unwrap();
+    assert_eq!(
+        tiled_tab.tiled_panes.get_last_pane_id(1),
+        Some(PaneId::Terminal(6))
+    );
+    tiled_tab.tiled_panes.focus_last_pane(1);
+    assert_eq!(
+        tiled_tab.tiled_panes.focused_pane_id(1),
+        Some(PaneId::Terminal(6))
+    );
+}
+
+#[test]
+pub fn adding_a_floating_pane_twice_keeps_one_stacking_entry() {
+    let mut tab = tab_with_two_floating_panes();
+    let pane = tab
+        .floating_panes
+        .drain()
+        .remove(&PaneId::Terminal(2))
+        .unwrap();
+    let mut tab_with_duplicate = tab_with_two_floating_panes();
+    tab_with_duplicate
+        .floating_panes
+        .add_pane(PaneId::Terminal(2), pane);
+    assert_eq!(tab_with_duplicate.floating_panes.visible_panes_count(), 2);
+    assert_eq!(
+        tab_with_duplicate
+            .floating_panes
+            .stack()
+            .map(|stack| stack.layers.len()),
+        Some(2)
+    );
+    assert_eq!(
+        tab_with_duplicate
+            .floating_panes
+            .get_pane_z_index(PaneId::Terminal(2)),
+        Some(1)
+    );
+}
+
+#[test]
+pub fn hidden_pane_is_kept_when_its_resize_message_fails() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let (mut tab, receivers) = create_new_tab_with_receivers(size, false, false);
+    let TabReceivers {
+        pty_writer, plugin, ..
+    } = receivers;
+    drop(pty_writer);
+    drop(plugin);
+    new_suppressed_pane_in_tab(&mut tab, 2);
+    assert!(tab.has_pane_with_pid(&PaneId::Terminal(2)));
+}
+
+#[test]
+pub fn closing_a_pane_suppressed_by_itself_reports_it_as_closed() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let (mut tab, receivers) = create_new_tab_with_receivers(size, false, true);
+    new_suppressed_pane_in_tab(&mut tab, 2);
+    tab.close_pane(PaneId::Terminal(2), false, Some(0));
+    assert!(!tab.has_pane_with_pid(&PaneId::Terminal(2)));
+    assert_eq!(
+        pane_closed_events(&receivers),
+        vec![zellij_utils::data::PaneId::Terminal(2)]
+    );
+}
+
+#[test]
+pub fn focusing_a_suppressed_pane_prefers_the_entry_stored_under_its_own_id() {
+    let size = Size {
+        cols: 121,
+        rows: 40,
+    };
+    let mut tab = create_new_tab(size, false);
+    new_tiled_pane_in_tab(&mut tab, 2);
+    tab.replace_pane_with_editor_pane(PaneId::Terminal(5), PaneId::Terminal(2))
+        .unwrap();
+    new_suppressed_pane_in_tab(&mut tab, 6);
+    tab.suppress_pane_and_replace_with_other_pane(
+        PaneId::Terminal(1),
+        detached_terminal_pane(7),
+        None,
+    );
+    tab.focus_suppressed_pane_for_all_clients(PaneId::Terminal(6));
+    assert!(tab.floating_panes.panes_contain(&PaneId::Terminal(6)));
+    assert!(tab.has_pane_with_pid(&PaneId::Terminal(2)));
+    assert!(!tab.has_non_suppressed_pane_with_pid(&PaneId::Terminal(2)));
+}
+
+#[test]
+pub fn floating_panes_render_for_a_watcher_following_a_departed_client() {
+    let mut tab = tab_with_two_floating_panes();
+    tab.remove_client(1);
+    let mut output = crate::output::Output::default();
+    tab.render(&mut output, Some(1)).unwrap();
+    let rendered = output.drain_pane_render_report();
+    assert!(
+        rendered
+            .all_pane_contents
+            .values()
+            .any(|contents| contents.contains_key(&zellij_utils::data::PaneId::Terminal(3))),
+        "the floating pane contents are rendered for the watcher"
+    );
+}
+
+#[test]
+pub fn a_pane_that_keeps_failing_to_render_is_remembered_and_others_still_render() {
+    let mut tab = tab_with_two_floating_panes();
+    let failing = Box::new(super::test_panes::FailingRenderPane {
+        inner: detached_terminal_pane(5),
+    });
+    tab.add_floating_pane(failing, PaneId::Terminal(5), None, true, Some(1))
+        .unwrap();
+    tab.add_client(2, None).unwrap();
+    for _ in 0..2 {
+        let mut output = crate::output::Output::default();
+        tab.render(&mut output, None).unwrap();
+        assert!(tab
+            .floating_panes
+            .panes_with_logged_render_errors()
+            .contains(&PaneId::Terminal(5)));
+        let report = output.drain_pane_render_report();
+        for client_id in [1, 2] {
+            assert!(report
+                .all_pane_contents
+                .get(&client_id)
+                .map(|c| c.contains_key(&zellij_utils::data::PaneId::Terminal(2)))
+                .unwrap_or(false));
+        }
+    }
+    tab.close_pane(PaneId::Terminal(5), false, None);
+    let mut output = crate::output::Output::default();
+    tab.render(&mut output, None).unwrap();
+    assert!(tab
+        .floating_panes
+        .panes_with_logged_render_errors()
+        .is_empty());
+}
+
+#[test]
+pub fn layout_whose_floating_panes_are_not_created_opens_no_shell_and_unloads_unused_plugins() {
+    let size = Size {
+        cols: 121,
+        rows: 40,
+    };
+    let (mut tab, receivers) = create_tab_with_receivers_without_layout(size, false, true);
+    let mut floating_layout = zellij_utils::input::layout::FloatingPaneLayout::default();
+    floating_layout.run = Some(zellij_utils::input::layout::Run::Plugin(plugin_run()));
+    let mut new_plugin_ids = HashMap::new();
+    let other_plugin = zellij_utils::input::layout::RunPluginOrAlias::from_url(
+        "file:/path/to/other/plugin",
+        &None,
+        None,
+        None,
+    )
+    .unwrap();
+    new_plugin_ids.insert(other_plugin, vec![9]);
+    tab.apply_layout(
+        TiledPaneLayout::default(),
+        vec![floating_layout],
+        vec![(1, None)],
+        vec![],
+        new_plugin_ids,
+        1,
+        None,
+    )
+    .unwrap();
+    assert!(!tab.are_floating_panes_visible());
+    let spawned_terminals = receivers
+        .pty
+        .try_iter()
+        .filter(|(instruction, _)| matches!(instruction, PtyInstruction::SpawnTerminal(..)))
+        .count();
+    assert_eq!(spawned_terminals, 0);
+    let unloaded: Vec<u32> = receivers
+        .plugin
+        .try_iter()
+        .filter_map(|(instruction, _)| match instruction {
+            PluginInstruction::Unload(plugin_id) => Some(plugin_id),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(unloaded, vec![9]);
+}
+
+#[test]
+pub fn failed_layout_override_does_not_leave_the_tab_pending() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, false);
+    let mut too_big = TiledPaneLayout::default();
+    too_big.split_size = Some(SplitSize::Fixed(500));
+    let mut layout = TiledPaneLayout::default();
+    layout.children_split_direction = SplitDirection::Horizontal;
+    layout.children = vec![too_big.clone(), too_big];
+    tab.is_pending = true;
+    tab.override_layout(
+        layout,
+        vec![],
+        None,
+        None,
+        vec![],
+        vec![],
+        HashMap::new(),
+        true,
+        true,
+        1,
+        None,
+    )
+    .unwrap();
+    assert!(!tab.is_pending());
+    assert!(tab.has_pane_with_pid(&PaneId::Terminal(1)));
+}
+
+#[test]
+pub fn floating_panes_survive_shrinking_the_tab_to_a_tiny_size() {
+    let mut tab = tab_with_two_floating_panes();
+    for size in [
+        Size { cols: 9, rows: 9 },
+        Size {
+            cols: 121,
+            rows: 40,
+        },
+    ] {
+        tab.resize_whole_tab(size).unwrap();
+        assert!(tab.floating_panes.panes_contain(&PaneId::Terminal(2)));
+        assert!(tab.floating_panes.panes_contain(&PaneId::Terminal(3)));
+        assert!(floating_focus_is_valid(&tab, 1));
+    }
+}
+
+#[test]
+pub fn returning_a_pane_from_a_hidden_floating_layer_keeps_the_layer_hidden() {
+    let mut tab = tab_with_two_floating_panes();
+    tab.hide_floating_panes();
+    let location = tab.pane_location(&PaneId::Terminal(3));
+    assert_eq!(location, super::PaneLocation::Floating { visible: false });
+    let pane = tab.extract_pane(PaneId::Terminal(3), true).unwrap();
+    tab.return_pane(pane, location);
+    assert!(tab.floating_panes.panes_contain(&PaneId::Terminal(3)));
+    assert!(!tab.are_floating_panes_visible());
+}
+
+#[test]
+pub fn changing_coordinates_from_a_plugin_does_not_float_a_tiled_pane_that_suppresses_another() {
+    let size = Size {
+        cols: 121,
+        rows: 40,
+    };
+    let mut tab = create_new_tab(size, false);
+    new_tiled_pane_in_tab(&mut tab, 2);
+    tab.replace_pane_with_editor_pane(PaneId::Terminal(5), PaneId::Terminal(2))
+        .unwrap();
+    let coordinates = zellij_utils::data::FloatingPaneCoordinates {
+        x: Some(zellij_utils::input::layout::PercentOrFixed::Fixed(5)),
+        y: None,
+        width: None,
+        height: None,
+        pinned: None,
+        borderless: None,
+        border_style: None,
+    };
+    assert!(tab
+        .change_floating_pane_coordinates(&PaneId::Terminal(5), coordinates, false)
+        .is_err());
+    assert!(tab.tiled_panes.panes_contain(&PaneId::Terminal(5)));
+}
+
+#[test]
+pub fn recovering_a_broken_stack_list_keeps_an_editor_paired_with_the_pane_it_edits() {
+    let size = Size {
+        cols: 121,
+        rows: 40,
+    };
+    let (mut tab, _receivers) = create_new_tab_with_receivers(size, true, true);
+    new_tiled_pane_in_tab(&mut tab, 2);
+    tab.new_pane(
+        PaneId::Terminal(3),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::Stacked {
+            pane_id_to_stack_under: None,
+            borderless: None,
+            border_style: None,
+        },
+        Some(1),
+        None,
+    )
+    .unwrap();
+    tab.replace_pane_with_editor_pane(PaneId::Terminal(5), PaneId::Terminal(3))
+        .unwrap();
+    assert!(tab.focus_hidden_stack_list_member(PaneId::Terminal(2), 1));
+    let stack_list_id = tab.stack_list_id_of_member(&PaneId::Terminal(5)).unwrap();
+    tab.tiled_panes.extract_pane(PaneId::Terminal(2)).unwrap();
+    tab.recover_broken_stack_list(stack_list_id);
+    assert!(!tab.has_stack_lists());
+    assert!(tab.tiled_panes.panes_contain(&PaneId::Terminal(5)));
+    assert_eq!(
+        tab.suppressed_panes
+            .get(&PaneId::Terminal(5))
+            .map(|(_, pane)| pane.pid()),
+        Some(PaneId::Terminal(3)),
+        "the edited pane is still restored when the editor closes"
+    );
+    for (key, (_, pane)) in tab.suppressed_panes.iter() {
+        assert!(
+            *key == pane.pid() || *key == PaneId::Terminal(5),
+            "pane {:?} is stored under another pane's id {:?}",
+            pane.pid(),
+            key
+        );
+    }
+}
+
+#[test]
+pub fn reasons_for_panes_that_were_not_created_do_not_accumulate() {
+    let size = Size { cols: 121, rows: 4 };
+    let (mut tab, _receivers) = create_new_tab_with_receivers(size, false, true);
+    for id in 2..10 {
+        tab.horizontal_split(PaneId::Terminal(id), None, 1, None, None)
+            .unwrap();
+    }
+    assert_eq!(tab.pane_not_created_reasons_count(), 8);
+    tab.clear_pane_not_created_reasons();
+    assert_eq!(tab.pane_not_created_reasons_count(), 0);
 }

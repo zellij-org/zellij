@@ -1,4 +1,6 @@
-use super::{screen_thread_main, CopyOptions, Screen, ScreenInstruction};
+use super::{
+    screen_thread_main, CopyOptions, Screen, ScreenInstruction, MAX_REMEMBERED_PANES_NEVER_CREATED,
+};
 use crate::panes::kitty_graphics::{KittyHostCapability, KittyImageStore};
 use crate::panes::PaneId;
 use crate::{
@@ -521,6 +523,38 @@ impl MockScreen {
         self.last_opened_tab_index = Some(tab_index);
         std::thread::sleep(std::time::Duration::from_millis(100)); // give time for the async render
         screen_thread
+    }
+    pub fn run_without_tabs(&mut self) -> std::thread::JoinHandle<()> {
+        let config = self.config.clone();
+        let client_attributes = self.client_attributes.clone();
+        let screen_bus = Bus::new(
+            vec![self.screen_receiver.take().unwrap()],
+            Some(&self.to_screen.clone()),
+            Some(&self.to_pty.clone()),
+            Some(&self.to_plugin.clone()),
+            Some(&self.to_server.clone()),
+            Some(&self.to_pty_writer.clone()),
+            Some(&self.to_background_jobs.clone()),
+            Some(Box::new(self.os_input.clone())),
+        )
+        .should_silently_fail();
+        let default_keybinds = std::sync::Arc::new(config.keybinds.to_keybinds_vec());
+        std::thread::Builder::new()
+            .name("screen_thread".to_string())
+            .spawn(move || {
+                set_var("ZELLIJ_SESSION_NAME", "zellij-test");
+                screen_thread_main(
+                    screen_bus,
+                    None,
+                    client_attributes,
+                    config,
+                    false,
+                    Box::new(Layout::default()),
+                    default_keybinds,
+                )
+                .expect("TEST")
+            })
+            .unwrap()
     }
     // same as the above function, but starts a plugin with a plugin alias
     pub fn run_with_alias(
@@ -15005,4 +15039,1089 @@ fn per_client_modes_are_kept_across_tabs() {
         screen.get_active_tab(2).unwrap().get_client_input_mode(2),
         Some(InputMode::Normal)
     );
+}
+
+#[test]
+pub fn moving_focus_into_a_tab_whose_focused_pane_was_hidden_in_a_stack_list_does_not_crash() {
+    let size = Size {
+        cols: 121,
+        rows: 40,
+    };
+    let client_id = 1;
+    let mut screen = create_new_screen(size, true, true);
+    *screen.stacked_pane_list.borrow_mut() = true;
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    assert_eq!(screen.get_active_tab(client_id).unwrap().position, 1);
+    screen
+        .tabs
+        .get_mut(&0)
+        .unwrap()
+        .new_pane(
+            PaneId::Terminal(3),
+            None,
+            None,
+            false,
+            false,
+            NewPanePlacement::Stacked {
+                pane_id_to_stack_under: Some(zellij_utils::data::PaneId::Terminal(1)),
+                borderless: None,
+                border_style: None,
+            },
+            None,
+            None,
+        )
+        .unwrap();
+    assert!(
+        !screen
+            .tabs
+            .get(&0)
+            .unwrap()
+            .has_non_suppressed_pane_with_pid(&PaneId::Terminal(1)),
+        "the pane focused when the client left the tab is now hidden in the stack list"
+    );
+    screen.move_focus_left_or_previous_tab(client_id).unwrap();
+    let active_tab = screen.get_active_tab(client_id).unwrap();
+    assert_eq!(active_tab.position, 0);
+    let focused_pane_id = active_tab
+        .get_active_pane_id(client_id)
+        .expect("client has a focused pane");
+    assert!(active_tab.has_non_suppressed_pane_with_pid(&focused_pane_id));
+}
+
+fn completion_and_receiver() -> (
+    crate::route::NotificationEnd,
+    tokio::sync::oneshot::Receiver<crate::route::ActionCompletionResult>,
+) {
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    (crate::route::NotificationEnd::new(sender), receiver)
+}
+
+fn send_new_pane_and_collect_result(
+    size: Size,
+    pid: u32,
+    client_or_tab_index: ClientTabIndexOrPaneId,
+    set_blocking: bool,
+) -> (crate::route::ActionCompletionResult, Vec<PaneId>) {
+    let mut mock_screen = MockScreen::new(size);
+    let pty_receiver = mock_screen.pty_receiver.take().unwrap();
+    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
+    let pty_thread = log_actions_in_thread!(
+        received_pty_instructions,
+        PtyInstruction::Exit,
+        pty_receiver
+    );
+    let screen_thread = mock_screen.run(None, vec![]);
+    let (completion, mut completion_receiver) = completion_and_receiver();
+    let _ = mock_screen.to_screen.send(ScreenInstruction::NewPane(
+        PaneId::Terminal(pid),
+        None,
+        None,
+        None,
+        NewPanePlacement::default(),
+        false,
+        client_or_tab_index,
+        Some(completion),
+        set_blocking,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![pty_thread, screen_thread]);
+    let closed_panes = received_pty_instructions
+        .lock()
+        .unwrap()
+        .drain(..)
+        .filter_map(|instruction| match instruction {
+            PtyInstruction::ClosePane(pane_id, _)
+            | PtyInstruction::ClosePaneThatWasNotCreated(pane_id, _) => Some(pane_id),
+            _ => None,
+        })
+        .collect();
+    let result = completion_receiver
+        .try_recv()
+        .expect("the caller is notified that the action ended");
+    (result, closed_panes)
+}
+
+fn assert_new_pane_reported_as_not_created(
+    result: &crate::route::ActionCompletionResult,
+    closed_panes: &[PaneId],
+    pid: u32,
+    reason: crate::tab::PaneNotCreatedReason,
+) {
+    assert_eq!(result.exit_status, Some(1));
+    assert_eq!(result.affected_pane_id, None);
+    assert_eq!(result.error_message.as_deref(), Some(reason.message()));
+    assert!(
+        closed_panes.contains(&PaneId::Terminal(pid)),
+        "the process of the pane that was not created is closed"
+    );
+}
+
+#[test]
+pub fn new_pane_without_room_reports_failure_to_its_caller() {
+    let size = Size { cols: 8, rows: 4 };
+    let (result, closed_panes) =
+        send_new_pane_and_collect_result(size, 5, ClientTabIndexOrPaneId::ClientId(1), false);
+    assert_new_pane_reported_as_not_created(
+        &result,
+        &closed_panes,
+        5,
+        crate::tab::PaneNotCreatedReason::NoRoom,
+    );
+}
+
+#[test]
+pub fn blocking_new_pane_without_room_reports_failure_to_its_caller() {
+    let size = Size { cols: 8, rows: 4 };
+    let (result, closed_panes) =
+        send_new_pane_and_collect_result(size, 5, ClientTabIndexOrPaneId::ClientId(1), true);
+    assert_new_pane_reported_as_not_created(
+        &result,
+        &closed_panes,
+        5,
+        crate::tab::PaneNotCreatedReason::NoRoom,
+    );
+}
+
+#[test]
+pub fn new_pane_in_a_missing_tab_is_closed_and_reported_as_failed() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    for set_blocking in [false, true] {
+        let (result, closed_panes) = send_new_pane_and_collect_result(
+            size,
+            5,
+            ClientTabIndexOrPaneId::TabIndex(99),
+            set_blocking,
+        );
+        assert_new_pane_reported_as_not_created(
+            &result,
+            &closed_panes,
+            5,
+            crate::tab::PaneNotCreatedReason::TabNotFound,
+        );
+    }
+}
+
+#[test]
+pub fn new_pane_next_to_a_missing_pane_is_closed_and_reported_as_failed() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    for set_blocking in [false, true] {
+        let (result, closed_panes) = send_new_pane_and_collect_result(
+            size,
+            5,
+            ClientTabIndexOrPaneId::PaneId(PaneId::Terminal(99)),
+            set_blocking,
+        );
+        assert_new_pane_reported_as_not_created(
+            &result,
+            &closed_panes,
+            5,
+            crate::tab::PaneNotCreatedReason::TargetPaneNotFound,
+        );
+    }
+}
+
+#[test]
+pub fn new_pane_with_room_reports_its_id_to_its_caller() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let (result, closed_panes) =
+        send_new_pane_and_collect_result(size, 5, ClientTabIndexOrPaneId::ClientId(1), false);
+    assert_eq!(result.exit_status, None);
+    assert_eq!(result.affected_pane_id, Some(PaneId::Terminal(5)));
+    assert!(closed_panes.is_empty());
+}
+
+#[test]
+pub fn replacing_a_suppressed_pane_with_a_pane_from_another_tab_returns_it_to_its_tab() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    screen
+        .tabs
+        .get_mut(&0)
+        .unwrap()
+        .new_pane(
+            PaneId::Terminal(3),
+            None,
+            None,
+            true,
+            false,
+            NewPanePlacement::default(),
+            None,
+            None,
+        )
+        .unwrap();
+    for suppress_replaced_pane in [true, false] {
+        screen.replace_pane_with_existing_pane(
+            PaneId::Terminal(3),
+            PaneId::Terminal(2),
+            suppress_replaced_pane,
+            None,
+        );
+        assert!(
+            screen
+                .tabs
+                .get(&1)
+                .unwrap()
+                .has_non_suppressed_pane_with_pid(&PaneId::Terminal(2)),
+            "the pane is returned to its tab instead of being dropped"
+        );
+    }
+}
+
+fn send_replace_pane_and_collect_result(
+    client_or_tab_index: ClientTabIndexOrPaneId,
+) -> (crate::route::ActionCompletionResult, Vec<PaneId>) {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut mock_screen = MockScreen::new(size);
+    let pty_receiver = mock_screen.pty_receiver.take().unwrap();
+    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
+    let pty_thread = log_actions_in_thread!(
+        received_pty_instructions,
+        PtyInstruction::Exit,
+        pty_receiver
+    );
+    let screen_thread = mock_screen.run(None, vec![]);
+    let (completion, mut completion_receiver) = completion_and_receiver();
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ReplacePane(
+        PaneId::Terminal(5),
+        None,
+        None,
+        None,
+        false,
+        client_or_tab_index,
+        Some(completion),
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![pty_thread, screen_thread]);
+    let closed_panes = received_pty_instructions
+        .lock()
+        .unwrap()
+        .drain(..)
+        .filter_map(|instruction| match instruction {
+            PtyInstruction::ClosePane(pane_id, _)
+            | PtyInstruction::ClosePaneThatWasNotCreated(pane_id, _) => Some(pane_id),
+            _ => None,
+        })
+        .collect();
+    let result = completion_receiver
+        .try_recv()
+        .expect("the caller is notified that the action ended");
+    (result, closed_panes)
+}
+
+#[test]
+pub fn replace_pane_that_cannot_be_placed_is_closed_and_reported_as_failed() {
+    for (target, reason) in [
+        (
+            ClientTabIndexOrPaneId::PaneId(PaneId::Terminal(99)),
+            crate::tab::PaneNotCreatedReason::PaneToReplaceNotFound,
+        ),
+        (
+            ClientTabIndexOrPaneId::TabIndex(0),
+            crate::tab::PaneNotCreatedReason::PaneToReplaceNotFound,
+        ),
+        (
+            ClientTabIndexOrPaneId::ClientId(99),
+            crate::tab::PaneNotCreatedReason::TabNotFound,
+        ),
+    ] {
+        let (result, closed_panes) = send_replace_pane_and_collect_result(target);
+        assert_new_pane_reported_as_not_created(&result, &closed_panes, 5, reason);
+    }
+}
+
+#[test]
+pub fn replace_pane_that_is_placed_reports_its_id() {
+    let (result, closed_panes) =
+        send_replace_pane_and_collect_result(ClientTabIndexOrPaneId::ClientId(1));
+    assert_eq!(result.exit_status, None);
+    assert_eq!(result.affected_pane_id, Some(PaneId::Terminal(5)));
+    assert!(closed_panes.is_empty());
+}
+
+#[test]
+pub fn moving_a_plugin_to_the_tab_of_a_client_without_a_tab_keeps_the_plugin() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let (mut screen, _capture) = create_new_screen_with_theme_capture(size);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    let run_plugin =
+        RunPluginOrAlias::from_url("file:/path/to/fake/plugin", &None, None, None).unwrap();
+    screen
+        .tabs
+        .get_mut(&1)
+        .unwrap()
+        .new_pane(
+            PaneId::Plugin(5),
+            None,
+            Some(zellij_utils::input::layout::Run::Plugin(run_plugin.clone())),
+            false,
+            true,
+            NewPanePlacement::default(),
+            Some(1),
+            None,
+        )
+        .unwrap();
+    assert!(screen.has_pane_with_pid(&PaneId::Plugin(5)));
+    let client_without_a_tab = 99;
+    let _ = screen.focus_plugin_pane(
+        &run_plugin,
+        false,
+        true,
+        false,
+        client_without_a_tab,
+        &mut None,
+    );
+    assert!(screen.has_pane_with_pid(&PaneId::Plugin(5)));
+}
+
+#[test]
+pub fn breaking_panes_to_a_tab_that_cannot_be_found_returns_them() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    new_tab(&mut screen, 3, 2);
+    screen
+        .tabs
+        .get_mut(&2)
+        .unwrap()
+        .new_pane(
+            PaneId::Terminal(4),
+            None,
+            None,
+            false,
+            true,
+            NewPanePlacement::default(),
+            None,
+            None,
+        )
+        .unwrap();
+    screen.close_tab_by_id(0).unwrap();
+    assert!(screen.get_indexed_tab_mut(0).is_none());
+    screen
+        .break_multiple_panes_to_tab_with_index(vec![PaneId::Terminal(4)], 0, false, 1)
+        .unwrap();
+    assert!(
+        screen.has_pane_with_pid(&PaneId::Terminal(4)),
+        "the pane is returned instead of being lost"
+    );
+}
+
+#[test]
+pub fn breaking_out_panes_for_a_client_without_a_tab_does_not_stop_the_screen() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut mock_screen = MockScreen::new(size);
+    let pty_receiver = mock_screen.pty_receiver.take().unwrap();
+    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
+    let pty_thread = log_actions_in_thread!(
+        received_pty_instructions,
+        PtyInstruction::Exit,
+        pty_receiver
+    );
+    let screen_thread = mock_screen.run(None, vec![]);
+    let client_without_a_tab = 99;
+    let _ = mock_screen.to_screen.send(ScreenInstruction::BreakPane(
+        None,
+        client_without_a_tab,
+        None,
+    ));
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::BreakPaneRight(
+            client_without_a_tab,
+            None,
+        ));
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::BreakPaneLeft(client_without_a_tab, None));
+    let _ = mock_screen.to_screen.send(ScreenInstruction::Resize(
+        client_without_a_tab,
+        zellij_utils::data::ResizeStrategy::new(Resize::Increase, None),
+        None,
+    ));
+    let (completion, mut completion_receiver) = completion_and_receiver();
+    let _ = mock_screen.to_screen.send(ScreenInstruction::NewPane(
+        PaneId::Terminal(5),
+        None,
+        None,
+        None,
+        NewPanePlacement::default(),
+        false,
+        ClientTabIndexOrPaneId::ClientId(1),
+        Some(completion),
+        false,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![pty_thread, screen_thread]);
+    let result = completion_receiver
+        .try_recv()
+        .expect("the screen is still handling instructions");
+    assert_eq!(result.affected_pane_id, Some(PaneId::Terminal(5)));
+}
+
+#[test]
+pub fn changing_coordinates_of_a_missing_pane_reports_failure() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut mock_screen = MockScreen::new(size);
+    let screen_thread = mock_screen.run(None, vec![]);
+    let coordinates = FloatingPaneCoordinates {
+        x: None,
+        y: None,
+        width: None,
+        height: None,
+        pinned: None,
+        borderless: None,
+        border_style: None,
+    };
+    let (completion, mut completion_receiver) = completion_and_receiver();
+    let _ = mock_screen
+        .to_screen
+        .send(ScreenInstruction::ChangeFloatingPanesCoordinates(
+            vec![(PaneId::Terminal(99), coordinates)],
+            true,
+            Some(completion),
+        ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![screen_thread]);
+    let result = completion_receiver
+        .try_recv()
+        .expect("the caller is notified that the action ended");
+    assert_eq!(result.exit_status, Some(1));
+    assert!(result.error_message.is_some());
+}
+
+struct ScreenRunResult {
+    completion: crate::route::ActionCompletionResult,
+    pty_instructions: Vec<PtyInstruction>,
+    plugin_instructions: Vec<PluginInstruction>,
+}
+
+fn send_instructions_and_collect(
+    size: Size,
+    with_tab: bool,
+    setup: impl FnOnce(&MockScreen),
+    make_instruction: impl FnOnce(crate::route::NotificationEnd) -> ScreenInstruction,
+) -> ScreenRunResult {
+    let mut mock_screen = MockScreen::new(size);
+    let pty_receiver = mock_screen.pty_receiver.take().unwrap();
+    let plugin_receiver = mock_screen.plugin_receiver.take().unwrap();
+    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
+    let received_plugin_instructions = Arc::new(Mutex::new(vec![]));
+    let pty_thread = log_actions_in_thread!(
+        received_pty_instructions,
+        PtyInstruction::Exit,
+        pty_receiver
+    );
+    let plugin_thread = log_actions_in_thread!(
+        received_plugin_instructions,
+        PluginInstruction::Exit,
+        plugin_receiver
+    );
+    let screen_thread = if with_tab {
+        mock_screen.run(None, vec![])
+    } else {
+        mock_screen.run_without_tabs()
+    };
+    setup(&mock_screen);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let (completion, mut completion_receiver) = completion_and_receiver();
+    let _ = mock_screen.to_screen.send(make_instruction(completion));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![pty_thread, plugin_thread, screen_thread]);
+    let completion = completion_receiver
+        .try_recv()
+        .expect("the caller is notified that the action ended");
+    let pty_instructions = received_pty_instructions
+        .lock()
+        .unwrap()
+        .drain(..)
+        .collect();
+    let plugin_instructions = received_plugin_instructions
+        .lock()
+        .unwrap()
+        .drain(..)
+        .collect();
+    ScreenRunResult {
+        completion,
+        pty_instructions,
+        plugin_instructions,
+    }
+}
+
+fn closed_pane_ids_in(pty_instructions: &[PtyInstruction]) -> Vec<PaneId> {
+    pty_instructions
+        .iter()
+        .filter_map(|instruction| match instruction {
+            PtyInstruction::ClosePane(pane_id, _)
+            | PtyInstruction::ClosePaneThatWasNotCreated(pane_id, _) => Some(*pane_id),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+pub fn moving_an_unknown_tab_reports_failure() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    assert!(!screen.move_tab_by_id(99, Direction::Right).unwrap());
+    new_tab(&mut screen, 2, 1);
+    assert!(!screen.move_tab_by_id(99, Direction::Left).unwrap());
+    assert!(screen.move_tab_by_id(0, Direction::Right).unwrap());
+    assert_eq!(screen.tabs.len(), 2);
+    screen.switch_tabs(0, 0);
+    assert_eq!(screen.tabs.len(), 2);
+    let result = send_instructions_and_collect(
+        size,
+        true,
+        |_| {},
+        |completion| ScreenInstruction::MoveTabWithTabId(99, Direction::Right, Some(completion)),
+    );
+    assert_eq!(result.completion.exit_status, Some(1));
+    assert_eq!(
+        result.completion.error_message.as_deref(),
+        Some("Tab with id 99 not found")
+    );
+}
+
+#[test]
+pub fn overriding_with_an_empty_layout_keeps_all_tabs_and_reports_failure() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let result = send_instructions_and_collect(
+        size,
+        true,
+        |_| {},
+        |completion| {
+            ScreenInstruction::OverrideLayout(
+                None,
+                None,
+                vec![],
+                false,
+                false,
+                false,
+                1,
+                Some(completion),
+            )
+        },
+    );
+    assert_eq!(result.completion.exit_status, Some(1));
+    assert!(!result
+        .pty_instructions
+        .iter()
+        .any(|i| matches!(i, PtyInstruction::CloseTab(..))));
+    assert!(!result
+        .plugin_instructions
+        .iter()
+        .any(|i| matches!(i, PluginInstruction::OverrideLayout(..))));
+}
+
+#[test]
+pub fn new_pane_when_no_tab_exists_is_closed_and_reported_as_failed() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    for set_blocking in [false, true] {
+        let result = send_instructions_and_collect(
+            size,
+            false,
+            |_| {},
+            |completion| {
+                ScreenInstruction::NewPane(
+                    PaneId::Terminal(5),
+                    None,
+                    None,
+                    None,
+                    NewPanePlacement::default(),
+                    false,
+                    ClientTabIndexOrPaneId::ClientId(1),
+                    Some(completion),
+                    set_blocking,
+                )
+            },
+        );
+        assert_new_pane_reported_as_not_created(
+            &result.completion,
+            &closed_pane_ids_in(&result.pty_instructions),
+            5,
+            crate::tab::PaneNotCreatedReason::TabNotFound,
+        );
+    }
+}
+
+#[test]
+pub fn breaking_out_a_pane_that_fails_reports_failure() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_without_a_tab = 99;
+    for make_instruction in [
+        (|c| ScreenInstruction::BreakPane(None, 99, Some(c)))
+            as fn(crate::route::NotificationEnd) -> ScreenInstruction,
+        |c| ScreenInstruction::BreakPaneRight(99, Some(c)),
+        |c| ScreenInstruction::BreakPaneLeft(99, Some(c)),
+    ] {
+        let result = send_instructions_and_collect(size, true, |_| {}, make_instruction);
+        assert_eq!(result.completion.exit_status, Some(1));
+        assert!(result.completion.error_message.is_some());
+    }
+    let _ = client_without_a_tab;
+}
+
+#[test]
+pub fn pane_from_another_floating_layer_returns_to_floating_when_replace_fails() {
+    let size = Size {
+        cols: 121,
+        rows: 40,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    screen
+        .tabs
+        .get_mut(&0)
+        .unwrap()
+        .new_pane(
+            PaneId::Terminal(3),
+            None,
+            None,
+            true,
+            false,
+            NewPanePlacement::default(),
+            None,
+            None,
+        )
+        .unwrap();
+    screen
+        .tabs
+        .get_mut(&1)
+        .unwrap()
+        .new_pane(
+            PaneId::Terminal(4),
+            None,
+            None,
+            false,
+            true,
+            NewPanePlacement::Floating(None),
+            Some(1),
+            None,
+        )
+        .unwrap();
+    screen.replace_pane_with_existing_pane(PaneId::Terminal(3), PaneId::Terminal(4), true, None);
+    let tab = screen.tabs.get(&1).unwrap();
+    assert!(tab.pane_id_is_floating(&PaneId::Terminal(4)));
+    assert!(tab.are_floating_panes_visible());
+}
+
+#[test]
+pub fn returning_a_pane_to_a_missing_tab_places_it_in_another_tab() {
+    let size = Size {
+        cols: 121,
+        rows: 40,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    let tab = screen.tabs.get_mut(&1).unwrap();
+    tab.new_pane(
+        PaneId::Terminal(4),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::Floating(None),
+        Some(1),
+        None,
+    )
+    .unwrap();
+    let pane = tab.extract_pane(PaneId::Terminal(4), true).unwrap();
+    assert!(!screen.tabs.get(&1).unwrap().are_floating_panes_visible());
+    screen.return_pane_to_tab(
+        1,
+        pane,
+        crate::tab::PaneLocation::Floating { visible: true },
+    );
+    let tab = screen.tabs.get(&1).unwrap();
+    assert!(tab.pane_id_is_floating(&PaneId::Terminal(4)));
+    assert!(tab.are_floating_panes_visible());
+    let pane = screen
+        .tabs
+        .get_mut(&1)
+        .unwrap()
+        .extract_pane(PaneId::Terminal(4), true)
+        .unwrap();
+    screen.return_pane_to_tab(77, pane, crate::tab::PaneLocation::Tiled);
+    assert!(screen.has_pane_with_pid(&PaneId::Terminal(4)));
+}
+
+#[test]
+pub fn changing_floating_coordinates_reports_the_new_pane_state_to_plugins() {
+    let size = Size {
+        cols: 121,
+        rows: 40,
+    };
+    let coordinates = FloatingPaneCoordinates {
+        x: None,
+        y: None,
+        width: None,
+        height: None,
+        pinned: None,
+        borderless: None,
+        border_style: None,
+    };
+    let count_updates = |result: &ScreenRunResult| {
+        result
+            .plugin_instructions
+            .iter()
+            .filter(|i| matches!(i, PluginInstruction::Update(..)))
+            .count()
+    };
+    let baseline = send_instructions_and_collect(
+        size,
+        true,
+        |_| {},
+        |completion| {
+            ScreenInstruction::TogglePaneBorderless(PaneId::Terminal(99), Some(completion))
+        },
+    );
+    let result = send_instructions_and_collect(
+        size,
+        true,
+        |_| {},
+        |completion| {
+            ScreenInstruction::ChangeFloatingPanesCoordinates(
+                vec![(PaneId::Terminal(0), coordinates)],
+                true,
+                Some(completion),
+            )
+        },
+    );
+    assert!(count_updates(&result) > count_updates(&baseline));
+}
+
+fn dump_active_pane_after(size: Size, instructions: Vec<ScreenInstruction>) -> String {
+    let mut mock_screen = MockScreen::new(size);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(None, vec![]);
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    for instruction in instructions {
+        let _ = mock_screen.to_screen.send(instruction);
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let cli_action = CliAction::DumpScreen {
+        path: Some(PathBuf::from("/tmp/dump_pending_events")),
+        full: true,
+        pane_id: None,
+        ansi: false,
+    };
+    send_cli_action_to_server(&session_metadata, cli_action, 1);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+    let filesystem = mock_screen.os_input.fake_filesystem.lock().unwrap();
+    filesystem
+        .values()
+        .next()
+        .cloned()
+        .expect("DumpScreen should have written a file")
+}
+
+fn new_pane_instruction(pid: u32, target: ClientTabIndexOrPaneId) -> ScreenInstruction {
+    ScreenInstruction::NewPane(
+        PaneId::Terminal(pid),
+        None,
+        None,
+        None,
+        NewPanePlacement::default(),
+        false,
+        target,
+        None,
+        false,
+    )
+}
+
+#[test]
+pub fn output_for_a_pane_that_was_never_created_is_not_kept() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let dumped = dump_active_pane_after(
+        size,
+        vec![
+            new_pane_instruction(5, ClientTabIndexOrPaneId::TabIndex(99)),
+            ScreenInstruction::PtyBytes(5, "lost-output\r\n".as_bytes().to_vec()),
+            new_pane_instruction(5, ClientTabIndexOrPaneId::ClientId(1)),
+        ],
+    );
+    assert!(!dumped.contains("lost-output"), "{:?}", dumped);
+}
+
+#[test]
+pub fn early_output_reaches_a_pane_opened_in_place() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let dumped = dump_active_pane_after(
+        size,
+        vec![
+            ScreenInstruction::PtyBytes(6, "early-output\r\n".as_bytes().to_vec()),
+            ScreenInstruction::ReplacePane(
+                PaneId::Terminal(6),
+                None,
+                None,
+                None,
+                false,
+                ClientTabIndexOrPaneId::ClientId(1),
+                None,
+            ),
+        ],
+    );
+    assert!(dumped.contains("early-output"), "{:?}", dumped);
+}
+
+#[test]
+pub fn apply_layout_reports_a_pane_that_exists() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let unused_plugin =
+        RunPluginOrAlias::from_url("file:/path/to/unused/plugin", &None, None, None).unwrap();
+    let result = send_instructions_and_collect(
+        size,
+        true,
+        |mock_screen| {
+            let _ = mock_screen.to_screen.send(ScreenInstruction::NewTab(
+                None,
+                None,
+                None,
+                vec![],
+                None,
+                (Some(vec![]), Some(vec![])),
+                None,
+                false,
+                false,
+                (1, false),
+                None,
+            ));
+        },
+        |completion| {
+            let mut plugin_ids = HashMap::new();
+            plugin_ids.insert(unused_plugin, vec![42]);
+            ScreenInstruction::ApplyLayout(
+                TiledPaneLayout::default(),
+                vec![],
+                vec![(7, None)],
+                vec![],
+                plugin_ids,
+                1,
+                false,
+                (1, false),
+                Some(completion),
+                None,
+            )
+        },
+    );
+    assert_eq!(
+        result.completion.affected_pane_id,
+        Some(PaneId::Terminal(7))
+    );
+    assert!(result
+        .plugin_instructions
+        .iter()
+        .any(|i| matches!(i, PluginInstruction::Unload(42))));
+}
+
+#[test]
+pub fn a_pane_that_fails_to_render_does_not_stop_the_screen_from_rendering() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    let tab = screen.tabs.get_mut(&1).unwrap();
+    tab.new_pane(
+        PaneId::Terminal(3),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::Floating(None),
+        Some(1),
+        None,
+    )
+    .unwrap();
+    let pane = tab.extract_pane(PaneId::Terminal(3), true).unwrap();
+    let failing_pane = Box::new(crate::tab::test_panes::FailingRenderPane { inner: pane });
+    tab.add_floating_pane(failing_pane, PaneId::Terminal(3), None, true, Some(1))
+        .unwrap();
+    tab.show_floating_panes();
+    assert!(screen.render_to_clients().is_ok());
+    assert!(screen.render(None).is_ok());
+}
+
+fn screen_with_pty_receiver(
+    size: Size,
+) -> (
+    Screen,
+    zellij_utils::channels::Receiver<(PtyInstruction, ErrorContext)>,
+) {
+    let mut screen = create_new_screen(size, true, true);
+    let (to_pty, pty_receiver): ChannelWithContext<PtyInstruction> = channels::unbounded();
+    screen.bus.senders.to_pty = Some(SenderWithContext::new(to_pty));
+    (screen, pty_receiver)
+}
+
+fn closed_pane_ids_from(
+    pty_receiver: &zellij_utils::channels::Receiver<(PtyInstruction, ErrorContext)>,
+) -> Vec<PaneId> {
+    let instructions: Vec<PtyInstruction> = pty_receiver.try_iter().map(|(i, _)| i).collect();
+    closed_pane_ids_in(&instructions)
+}
+
+#[test]
+pub fn applying_a_layout_to_a_missing_tab_closes_each_terminal_once() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let (mut screen, pty_receiver) = screen_with_pty_receiver(size);
+    new_tab(&mut screen, 1, 0);
+    let (blocking_completion, mut blocking_receiver) = completion_and_receiver();
+    screen
+        .apply_layout(
+            TiledPaneLayout::default(),
+            vec![],
+            vec![(7, None), (8, None)],
+            vec![(9, None)],
+            HashMap::new(),
+            99,
+            false,
+            (1, false),
+            Some((7, blocking_completion)),
+        )
+        .unwrap();
+    let mut closed = closed_pane_ids_from(&pty_receiver);
+    closed.sort();
+    assert_eq!(
+        closed,
+        vec![
+            PaneId::Terminal(7),
+            PaneId::Terminal(8),
+            PaneId::Terminal(9)
+        ]
+    );
+    let result = blocking_receiver
+        .try_recv()
+        .expect("the blocking caller is released");
+    assert_eq!(result.exit_status, Some(1));
+}
+
+#[test]
+pub fn a_pane_that_was_not_created_for_an_unknown_reason_is_closed() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let (mut screen, pty_receiver) = screen_with_pty_receiver(size);
+    new_tab(&mut screen, 1, 0);
+    let (completion, mut completion_receiver) = completion_and_receiver();
+    let mut completion = Some(completion);
+    screen.finish_pane_creation(PaneId::Terminal(5), &mut completion, &mut HashMap::new());
+    drop(completion);
+    assert_eq!(
+        closed_pane_ids_from(&pty_receiver),
+        vec![PaneId::Terminal(5)]
+    );
+    assert_eq!(completion_receiver.try_recv().unwrap().exit_status, Some(1));
+}
+
+#[test]
+pub fn bookkeeping_for_panes_that_were_not_created_stays_bounded() {
+    let size = Size { cols: 121, rows: 4 };
+    let (mut screen, _pty_receiver) = screen_with_pty_receiver(size);
+    new_tab(&mut screen, 1, 0);
+    screen
+        .tabs
+        .get_mut(&0)
+        .unwrap()
+        .horizontal_split(PaneId::Terminal(2), None, 1, None, None)
+        .unwrap();
+    assert_eq!(
+        screen
+            .tabs
+            .get(&0)
+            .unwrap()
+            .pane_not_created_reasons_count(),
+        1
+    );
+    screen.finish_pane_creation(PaneId::Terminal(1), &mut None, &mut HashMap::new());
+    assert_eq!(
+        screen
+            .tabs
+            .get(&0)
+            .unwrap()
+            .pane_not_created_reasons_count(),
+        0
+    );
+    assert!(screen.pane_not_created_reasons.is_empty());
+    for id in 1000..(1000 + MAX_REMEMBERED_PANES_NEVER_CREATED as u32 + 50) {
+        screen.remember_pane_never_created(PaneId::Terminal(id));
+    }
+    assert_eq!(
+        screen.pane_ids_never_created.len(),
+        MAX_REMEMBERED_PANES_NEVER_CREATED
+    );
+    assert!(screen.pane_will_never_be_created(&PaneId::Terminal(
+        1000 + MAX_REMEMBERED_PANES_NEVER_CREATED as u32 + 49
+    )));
+    screen.remember_pane_never_created(PaneId::Plugin(3));
+    assert!(!screen.pane_will_never_be_created(&PaneId::Plugin(3)));
 }

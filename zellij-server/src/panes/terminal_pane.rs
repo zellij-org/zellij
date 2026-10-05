@@ -1156,6 +1156,9 @@ impl Pane for TerminalPane {
     fn invoked_with(&self) -> &Option<Run> {
         &self.invoked_with
     }
+    fn take_notification_end(&mut self) -> Option<NotificationEnd> {
+        self.notification_end.take()
+    }
     fn set_title(&mut self, title: String) {
         self.pane_title = title;
     }
