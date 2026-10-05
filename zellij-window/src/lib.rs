@@ -62,6 +62,8 @@ mod sprites;
 mod terminal;
 #[cfg(test)]
 mod test_server;
+#[cfg(windows)]
+mod unattended;
 #[cfg(test)]
 mod vte_terminal;
 mod window;
@@ -92,8 +94,15 @@ use zellij_utils::input::window::StartupMode;
 pub fn run(args: WindowArgs, opts: CliArgs) -> Result<()> {
     diagnostics::log_crashes();
     identity::declare();
+    #[cfg(windows)]
+    let unattended = unattended::prepare();
     spawn::forget_launching_session();
-    open(args, opts)
+    let result = open(args, opts);
+    #[cfg(windows)]
+    if let (Some(unattended), Err(error)) = (&unattended, &result) {
+        unattended.report(error);
+    }
+    result
 }
 
 pub fn install_desktop_entry() -> Result<()> {
