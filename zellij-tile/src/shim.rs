@@ -44,6 +44,7 @@ use zellij_utils::plugin_api::plugin_command::{
     ProtobufOpenTerminalInPlaceResponse, ProtobufOpenTerminalNearPluginResponse,
     ProtobufOpenTerminalPaneInPlaceOfPaneIdResponse, ProtobufOpenTerminalResponse,
     ProtobufCopyKeybindPresetResponse, ProtobufParseLayoutResponse, ProtobufPluginCommand,
+    ProtobufWriteThemeFileResponse,
     ProtobufReadConfigResponse, ProtobufRenameLayoutResponse,
     ProtobufSaveLayoutResponse, ProtobufSaveSessionResponse, ProtobufShowFloatingPanesResponse,
     ProtobufSlotCommandResponse, RenameWebTokenResponse, RevokeAllWebTokensResponse,
@@ -2044,6 +2045,48 @@ pub fn save_keybinds_as_preset(new_name: &str) -> Result<String, String> {
     match response.and_then(|response| response.result) {
         Some(CopyResult::NewName(new_name)) => Ok(new_name),
         Some(CopyResult::Error(error)) => Err(error),
+        None => Err("No response".to_owned()),
+    }
+}
+
+pub fn write_theme_file(
+    name: &str,
+    copy_from: Option<&str>,
+    colours: &[String],
+) -> Result<String, String> {
+    use zellij_utils::plugin_api::plugin_command::write_theme_file_response::Result as WriteResult;
+    let plugin_command = PluginCommand::WriteThemeFile {
+        name: name.to_owned(),
+        copy_from: copy_from.map(|from| from.to_owned()),
+        colours: colours.to_vec(),
+    };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+    let response = bytes_from_stdin()
+        .ok()
+        .and_then(|bytes| ProtobufWriteThemeFileResponse::decode(bytes.as_slice()).ok());
+    match response.and_then(|response| response.result) {
+        Some(WriteResult::Path(path)) => Ok(path),
+        Some(WriteResult::Error(error)) => Err(error),
+        None => Err("No response".to_owned()),
+    }
+}
+
+pub fn delete_theme_file(name: &str) -> Result<String, String> {
+    use zellij_utils::plugin_api::plugin_command::write_theme_file_response::Result as WriteResult;
+    let plugin_command = PluginCommand::DeleteThemeFile {
+        name: name.to_owned(),
+    };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+    let response = bytes_from_stdin()
+        .ok()
+        .and_then(|bytes| ProtobufWriteThemeFileResponse::decode(bytes.as_slice()).ok());
+    match response.and_then(|response| response.result) {
+        Some(WriteResult::Path(path)) => Ok(path),
+        Some(WriteResult::Error(error)) => Err(error),
         None => Err("No response".to_owned()),
     }
 }

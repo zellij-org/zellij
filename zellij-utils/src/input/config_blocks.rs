@@ -1,5 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 use kdl::{KdlDocument, KdlEntry, KdlNode, KdlValue};
@@ -19,6 +19,7 @@ use crate::data::{
     ThemeSource, DEFAULT_STYLES,
 };
 use crate::envs::EnvironmentVariables;
+use crate::home::get_theme_dir;
 use crate::kdl::{context_menu_item_to_kdl, load_plugins_from_kdl, theme_to_kdl};
 
 pub const THEME_STYLES: [&str; 14] = [
@@ -90,7 +91,19 @@ fn hex_channel(text: &str) -> Option<u8> {
 
 pub fn parse_colour(text: &str) -> Option<PaletteColor> {
     let text = text.trim();
-    if let Some(hex) = text.strip_prefix('#') {
+    let lower = text.to_ascii_lowercase();
+    if let Some(inner) = lower
+        .strip_prefix("rgb(")
+        .and_then(|rest| rest.strip_suffix(')'))
+    {
+        return match parse_colour(inner)? {
+            PaletteColor::Rgb(rgb) => Some(PaletteColor::Rgb(rgb)),
+            PaletteColor::EightBit(_) => None,
+        };
+    }
+    let bare_hex = text.len() == 6 && text.chars().all(|c| c.is_ascii_hexdigit());
+    let hex = text.strip_prefix('#').or(if bare_hex { Some(text) } else { None });
+    if let Some(hex) = hex {
         if !hex.is_ascii() {
             return None;
         }
@@ -525,28 +538,189 @@ pub fn theme_source(name: &str, theme: &Theme) -> ThemeSource {
     }
 }
 
-pub fn theme_entries(themes: &Themes, include_external: bool) -> Vec<ThemeEntry> {
+pub fn theme_entries(
+    themes: &Themes,
+    include_external: bool,
+    theme_dir: Option<&Path>,
+) -> Vec<ThemeEntry> {
+    let files = match theme_dir {
+        Some(dir) if include_external => theme_files(dir),
+        _ => BTreeMap::new(),
+    };
     let sorted: BTreeMap<&String, &Theme> = themes.inner().iter().collect();
     sorted
         .into_iter()
         .filter(|(_, theme)| include_external || !theme.sourced_from_external_file)
-        .map(|(name, theme)| ThemeEntry {
-            name: name.clone(),
-            source: theme_source(name, theme),
-            colours: if theme.sourced_from_external_file {
-                vec![]
-            } else {
-                styling_colours(&theme.palette)
-            },
+        .map(|(name, theme)| {
+            let source = theme_source(name, theme);
+            ThemeEntry {
+                name: name.clone(),
+                source,
+                colours: if source == ThemeSource::BuiltIn {
+                    vec![]
+                } else {
+                    styling_colours(&theme.palette)
+                },
+                file_path: if source == ThemeSource::ThemeFolder {
+                    files.get(name).map(|path| path.display().to_string())
+                } else {
+                    None
+                },
+            }
         })
         .collect()
 }
 
-pub fn copy_theme_kdl(from: &str, to: &str) -> String {
-    let mut node = KdlNode::new("copy_theme");
-    node.insert("from", from.to_owned());
-    node.insert("to", to.to_owned());
-    node.to_string()
+pub fn theme_dir(config: &Config) -> Option<PathBuf> {
+    config
+        .options
+        .theme_dir
+        .clone()
+        .or_else(|| get_theme_dir(config.keybinds_config_dir()))
+}
+
+pub fn theme_files(dir: &Path) -> BTreeMap<String, PathBuf> {
+    let mut paths: Vec<PathBuf> = std::fs::read_dir(dir)
+        .map(|entries| {
+            entries
+                .filter_map(|entry| entry.ok())
+                .map(|entry| entry.path())
+                .filter(|path| {
+                    path.is_file() && path.extension().map(|e| e == "kdl").unwrap_or(false)
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    paths.sort();
+    let mut files = BTreeMap::new();
+    for path in paths {
+        if let Ok(themes) = Themes::from_path(path.clone()) {
+            for name in themes.inner().keys() {
+                files.insert(name.clone(), path.clone());
+            }
+        }
+    }
+    files
+}
+
+pub fn is_usable_theme_file_name(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+}
+
+fn check_theme_text(text: &str, name: &str, path: &Path) -> Result<(), String> {
+    let themes = Themes::from_string(&text.to_owned(), true)
+        .map_err(|e| format!("Could not write a valid theme to {}: {}", path.display(), e))?;
+    if themes.get_theme(name).is_none() {
+        return Err(format!(
+            "Could not write the theme {} to {}",
+            name,
+            path.display()
+        ));
+    }
+    Ok(())
+}
+
+pub fn create_theme_file(dir: &Path, name: &str, palette: &Styling) -> Result<PathBuf, String> {
+    if !is_usable_theme_file_name(name) {
+        return Err(format!(
+            "{} cannot be a file name; use only letters, digits, - and _",
+            name
+        ));
+    }
+    if dir.exists() && !dir.is_dir() {
+        return Err(format!("{} exists but is not a folder", dir.display()));
+    }
+    let target = dir.join(format!("{}.kdl", name));
+    if target.exists() {
+        return Err(format!("{} already exists", target.display()));
+    }
+    let mut themes_node = KdlNode::new("themes");
+    let mut children = KdlDocument::new();
+    children.nodes_mut().push(theme_to_kdl(name, palette));
+    themes_node.set_children(children);
+    let mut document = KdlDocument::new();
+    document.nodes_mut().push(themes_node);
+    document.fmt();
+    let text = document.to_string();
+    check_theme_text(&text, name, &target)?;
+    std::fs::create_dir_all(dir)
+        .map_err(|e| format!("Could not create {}: {}", dir.display(), e))?;
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&target)
+        .map_err(|e| match e.kind() {
+            std::io::ErrorKind::AlreadyExists => format!("{} already exists", target.display()),
+            _ => format!("Could not create {}: {}", target.display(), e),
+        })?;
+    std::io::Write::write_all(&mut file, text.as_bytes())
+        .map_err(|e| format!("Could not write {}: {}", target.display(), e))?;
+    Ok(target)
+}
+
+pub fn delete_theme_from_file(path: &Path, name: &str) -> Result<bool, String> {
+    let text = std::fs::read_to_string(path)
+        .map_err(|e| format!("Could not read {}: {}", path.display(), e))?;
+    let mut document: KdlDocument = text
+        .parse()
+        .map_err(|e: kdl::KdlError| format!("Could not read {}: {}", path.display(), e))?;
+    let missing = || format!("{} does not define the theme {}", path.display(), name);
+    let themes_node = document
+        .nodes_mut()
+        .iter_mut()
+        .find(|node| node.name().value() == "themes")
+        .ok_or_else(missing)?;
+    let children = themes_node.children_mut().as_mut().ok_or_else(missing)?;
+    let before = children.nodes().len();
+    children
+        .nodes_mut()
+        .retain(|node| node.name().value() != name);
+    let themes_left = children.nodes().len();
+    if themes_left == before {
+        return Err(missing());
+    }
+    if themes_left == 0 && document.nodes().len() == 1 {
+        std::fs::remove_file(path)
+            .map_err(|e| format!("Could not delete {}: {}", path.display(), e))?;
+        return Ok(true);
+    }
+    document.fmt();
+    std::fs::write(path, document.to_string())
+        .map_err(|e| format!("Could not write {}: {}", path.display(), e))?;
+    Ok(false)
+}
+
+pub fn update_theme_file(path: &Path, name: &str, palette: &Styling) -> Result<(), String> {
+    let text = std::fs::read_to_string(path)
+        .map_err(|e| format!("Could not read {}: {}", path.display(), e))?;
+    let mut document: KdlDocument = text
+        .parse()
+        .map_err(|e: kdl::KdlError| format!("Could not read {}: {}", path.display(), e))?;
+    let missing = || format!("{} does not define the theme {}", path.display(), name);
+    let themes_node = document
+        .nodes_mut()
+        .iter_mut()
+        .find(|node| node.name().value() == "themes")
+        .ok_or_else(missing)?;
+    let theme_node = themes_node
+        .children_mut()
+        .as_mut()
+        .and_then(|children| {
+            children
+                .nodes_mut()
+                .iter_mut()
+                .find(|node| node.name().value() == name)
+        })
+        .ok_or_else(missing)?;
+    *theme_node = theme_to_kdl(name, palette);
+    document.fmt();
+    let new_text = document.to_string();
+    check_theme_text(&new_text, name, path)?;
+    std::fs::write(path, new_text)
+        .map_err(|e| format!("Could not write {}: {}", path.display(), e))
 }
 
 pub fn config_blocks(
@@ -591,7 +765,11 @@ pub fn config_blocks(
                     .unwrap_or_default(),
             })
             .collect(),
-        themes: theme_entries(&config.themes, include_external_themes),
+        themes: theme_entries(
+            &config.themes,
+            include_external_themes,
+            theme_dir(config).as_deref(),
+        ),
     }
 }
 
@@ -626,22 +804,6 @@ pub fn replace_config_blocks(config: &mut Config, kdl: &str) -> Result<(), Strin
                     Themes::default()
                 };
                 copy_config_file_themes(&mut config.themes, &replacement);
-            },
-            "copy_theme" => {
-                let property = |name: &str| {
-                    node.get(name)
-                        .and_then(|entry| entry.value().as_string())
-                        .map(|value| value.to_owned())
-                        .ok_or_else(|| format!("copy_theme needs a {} name", name))
-                };
-                let (from, to) = (property("from")?, property("to")?);
-                let mut theme = config
-                    .themes
-                    .get_theme(&from)
-                    .cloned()
-                    .ok_or_else(|| format!("There is no theme called {}", from))?;
-                theme.sourced_from_external_file = false;
-                config.themes.insert(to, theme);
             },
             "context_menu" => {
                 config.context_menu = ContextMenuConfig::from_kdl(

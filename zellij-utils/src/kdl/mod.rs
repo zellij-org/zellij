@@ -1480,23 +1480,26 @@ impl TryFrom<(&str, &KdlDocument)> for PaletteColor {
             }
         };
         let is_eight_bit = || kdl_first_entry_as_i64!(color).is_some() && entry_count == 1;
+        let out_of_range = || {
+            ConfigError::new_kdl_error(
+                "color values must be numbers from 0 to 255".into(),
+                color.span().offset(),
+                color.span().len(),
+            )
+        };
+        let channel = |value: Option<i64>| -> Result<u8, ConfigError> {
+            let value = value.ok_or(ConfigError::new_kdl_error(
+                format!("invalid rgb color"),
+                color.span().offset(),
+                color.span().len(),
+            ))?;
+            u8::try_from(value).map_err(|_| out_of_range())
+        };
         if is_rgb() {
             let mut channels = kdl_entries_as_i64!(color);
-            let r = channels.next().unwrap().ok_or(ConfigError::new_kdl_error(
-                format!("invalid rgb color"),
-                color.span().offset(),
-                color.span().len(),
-            ))? as u8;
-            let g = channels.next().unwrap().ok_or(ConfigError::new_kdl_error(
-                format!("invalid rgb color"),
-                color.span().offset(),
-                color.span().len(),
-            ))? as u8;
-            let b = channels.next().unwrap().ok_or(ConfigError::new_kdl_error(
-                format!("invalid rgb color"),
-                color.span().offset(),
-                color.span().len(),
-            ))? as u8;
+            let r = channel(channels.next().unwrap())?;
+            let g = channel(channels.next().unwrap())?;
+            let b = channel(channels.next().unwrap())?;
             Ok(PaletteColor::Rgb((r, g, b)))
         } else if is_three_digit_hex() {
             // eg. #fff (hex, will be converted to rgb)
@@ -1556,7 +1559,12 @@ impl TryFrom<(&str, &KdlDocument)> for PaletteColor {
                 color.span().offset(),
                 color.span().len(),
             ))?;
-            Ok(PaletteColor::EightBit(n as u8))
+            Ok(PaletteColor::EightBit(channel(Some(n))?))
+        } else if let Some(colour) = kdl_first_entry_as_string!(color)
+            .filter(|_| entry_count == 1)
+            .and_then(crate::input::config_blocks::parse_colour)
+        {
+            Ok(colour)
         } else {
             Err(ConfigError::new_kdl_error(
                 "Failed to parse color".into(),

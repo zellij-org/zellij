@@ -668,6 +668,8 @@ pub enum ServerContext {
     ReloadConfigFile,
     CopyKeybindPreset,
     SaveKeybindsAsPreset,
+    WriteThemeFile,
+    DeleteThemeFile,
     StartWebServer,
     ShareCurrentSession,
     StopSharingCurrentSession,

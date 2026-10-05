@@ -4419,6 +4419,14 @@ pub enum PluginCommand {
     SaveKeybindsAsPreset {
         new_name: String,
     },
+    WriteThemeFile {
+        name: String,
+        copy_from: Option<String>,
+        colours: Vec<String>,
+    },
+    DeleteThemeFile {
+        name: String,
+    },
     ResetKeys {
         keys: Vec<(InputMode, KeyWithModifier)>,
         write_config_to_disk: bool,
@@ -4709,6 +4717,7 @@ pub struct ThemeEntry {
     pub name: String,
     pub source: ThemeSource,
     pub colours: Vec<String>,
+    pub file_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]

@@ -10,6 +10,7 @@ pub use super::generated_api::api::{
     plugin_command::{
         break_panes_to_new_tab_response, break_panes_to_tab_with_id_response,
         break_panes_to_tab_with_index_response, copy_keybind_preset_response,
+        write_theme_file_response,
         delete_layout_response, dump_layout_response,
         dump_session_layout_response, edit_layout_response, focus_or_create_tab_response,
         get_focused_pane_info_response, get_pane_cwd_response, get_pane_pid_response,
@@ -115,6 +116,7 @@ pub use super::generated_api::api::{
         RebindKeysPayload, ReconfigurePayload, RevertConfigPayload, SaveConfigPayload,
         ConfigSettingState as ProtobufConfigSettingState, CopyKeybindPresetPayload,
         CopyKeybindPresetResponse as ProtobufCopyKeybindPresetResponse,
+        WriteThemeFileResponse as ProtobufWriteThemeFileResponse,
         KeybindsSelectionSnapshot as ProtobufKeybindsSelectionSnapshot,
         LeaderValue as ProtobufLeaderValue, ConfigBlocks as ProtobufConfigBlocks,
         ConfigPair as ProtobufConfigPair, EnvVarEntry as ProtobufEnvVarEntry,
@@ -122,7 +124,7 @@ pub use super::generated_api::api::{
         KeybindingSourceKind as ProtobufKeybindingSourceKind,
         MenuItemEntry as ProtobufMenuItemEntry, MenuSectionEntries as ProtobufMenuSectionEntries,
         PluginAliasEntry as ProtobufPluginAliasEntry, PluginEntry as ProtobufPluginEntry,
-        PromptPayload, ReplyToPromptPayload, ResetKeysPayload, SaveKeybindsAsPresetPayload, ThemeEntry as ProtobufThemeEntry, ThemeSource as ProtobufThemeSource,
+        PromptPayload, ReplyToPromptPayload, ResetKeysPayload, SaveKeybindsAsPresetPayload, ThemeEntry as ProtobufThemeEntry, WriteThemeFilePayload, ThemeSource as ProtobufThemeSource,
         RegexHighlight as ProtobufRegexHighlight, ReloadPluginPayload, RenameLayoutPayload,
         RenameLayoutResponse as ProtobufRenameLayoutResponse, RenameTabWithIdPayload,
         RenameWebLoginTokenPayload, RenameWebTokenResponse, ReplacePaneWithExistingPanePayload,
@@ -2667,6 +2669,22 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for SaveKeybindsAsPreset"),
             },
+            Some(CommandName::WriteThemeFile) => match protobuf_plugin_command.payload {
+                Some(Payload::WriteThemeFilePayload(payload)) => {
+                    Ok(PluginCommand::WriteThemeFile {
+                        name: payload.name,
+                        copy_from: payload.copy_from,
+                        colours: payload.colours,
+                    })
+                },
+                _ => Err("Mismatched payload for WriteThemeFile"),
+            },
+            Some(CommandName::DeleteThemeFile) => match protobuf_plugin_command.payload {
+                Some(Payload::DeleteThemeFilePayload(name)) => {
+                    Ok(PluginCommand::DeleteThemeFile { name })
+                },
+                _ => Err("Mismatched payload for DeleteThemeFile"),
+            },
             Some(CommandName::Prompt) => match protobuf_plugin_command.payload {
                 Some(Payload::PromptPayload(payload)) => Ok(PluginCommand::Prompt {
                     request_id: payload.request_id,
@@ -4655,6 +4673,22 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     SaveKeybindsAsPresetPayload { new_name },
                 )),
             }),
+            PluginCommand::WriteThemeFile {
+                name,
+                copy_from,
+                colours,
+            } => Ok(ProtobufPluginCommand {
+                name: CommandName::WriteThemeFile as i32,
+                payload: Some(Payload::WriteThemeFilePayload(WriteThemeFilePayload {
+                    name,
+                    copy_from,
+                    colours,
+                })),
+            }),
+            PluginCommand::DeleteThemeFile { name } => Ok(ProtobufPluginCommand {
+                name: CommandName::DeleteThemeFile as i32,
+                payload: Some(Payload::DeleteThemeFilePayload(name)),
+            }),
             PluginCommand::ResetKeys {
                 keys,
                 write_config_to_disk,
@@ -5663,6 +5697,56 @@ mod tests {
     }
 
     #[test]
+    fn theme_file_commands_protobuf_round_trip() {
+        let commands = vec![
+            PluginCommand::WriteThemeFile {
+                name: "mine".to_owned(),
+                copy_from: Some("dracula".to_owned()),
+                colours: vec![],
+            },
+            PluginCommand::WriteThemeFile {
+                name: "mine".to_owned(),
+                copy_from: None,
+                colours: vec!["#102030".to_owned(), String::new(), "7".to_owned()],
+            },
+            PluginCommand::DeleteThemeFile {
+                name: "mine".to_owned(),
+            },
+        ];
+        for original in commands {
+            let expected = format!("{:?}", original);
+            let protobuf: ProtobufPluginCommand = original.try_into().expect("encode");
+            let decoded: PluginCommand = protobuf.try_into().expect("decode");
+            assert_eq!(format!("{:?}", decoded), expected);
+        }
+    }
+
+    #[test]
+    fn theme_entries_keep_their_file_path_through_protobuf() {
+        use crate::data::{ConfigBlocks, ThemeEntry, ThemeSource};
+        let blocks = ConfigBlocks {
+            themes: vec![
+                ThemeEntry {
+                    name: "ocean".to_owned(),
+                    source: ThemeSource::ThemeFolder,
+                    colours: vec!["#102030".to_owned()],
+                    file_path: Some("/themes/ocean.kdl".to_owned()),
+                },
+                ThemeEntry {
+                    name: "dracula".to_owned(),
+                    source: ThemeSource::BuiltIn,
+                    colours: vec![],
+                    file_path: None,
+                },
+            ],
+            ..Default::default()
+        };
+        let protobuf: ProtobufConfigBlocks = blocks.clone().into();
+        let decoded: ConfigBlocks = protobuf.into();
+        assert_eq!(decoded, blocks);
+    }
+
+    #[test]
     fn prompt_commands_protobuf_round_trip() {
         use crate::prompt::{PromptPlacement, PromptRequest, PromptResult, PromptValue};
         use prost::Message;
@@ -5990,6 +6074,7 @@ impl From<ConfigBlocks> for ProtobufConfigBlocks {
                         ThemeSource::ThemeFolder => ProtobufThemeSource::ThemeFolder,
                     } as i32,
                     colours: theme.colours,
+                    file_path: theme.file_path,
                 })
                 .collect(),
         }
@@ -6052,6 +6137,7 @@ impl From<ProtobufConfigBlocks> for ConfigBlocks {
                         _ => ThemeSource::BuiltIn,
                     },
                     colours: theme.colours,
+                    file_path: theme.file_path,
                 })
                 .collect(),
         }

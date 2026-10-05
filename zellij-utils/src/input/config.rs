@@ -430,7 +430,7 @@ pub async fn watch_config_file_changes<F, Fut>(
     fn load_config_and_watched_paths(
         config_file_path: &Path,
         config_dir: Option<&Path>,
-    ) -> Option<(Config, Vec<PathBuf>)> {
+    ) -> Option<(Config, Vec<PathBuf>, Option<PathBuf>)> {
         let cli_args_for_config = cli_args_for_config(config_file_path, config_dir);
         Setup::from_cli_args(&cli_args_for_config)
             .map(|(config, _, config_options, _, _)| {
@@ -439,9 +439,10 @@ pub async fn watch_config_file_changes<F, Fut>(
                     let config_dir = config_dir
                         .map(Path::to_path_buf)
                         .or_else(home::find_default_config_dir);
-                    home::get_theme_dir(config_dir).filter(|dir| dir.exists())
+                    home::get_theme_dir(config_dir)
                 });
-                watched_paths.extend(theme_dir);
+                let missing_theme_dir = theme_dir.clone().filter(|dir| !dir.exists());
+                watched_paths.extend(theme_dir.filter(|dir| dir.exists()));
                 let keybinds_dir = config.keybinds_dir().filter(|dir| dir.exists());
                 if let Some(preset_file) = config.active_keybind_preset_file() {
                     let is_in_keybinds_dir = keybinds_dir
@@ -453,7 +454,7 @@ pub async fn watch_config_file_changes<F, Fut>(
                     }
                 }
                 watched_paths.extend(keybinds_dir);
-                (config, watched_paths)
+                (config, watched_paths, missing_theme_dir)
             })
             .ok()
     }
@@ -487,7 +488,7 @@ pub async fn watch_config_file_changes<F, Fut>(
             return None;
         }
 
-        let (new_config, new_watched_paths) =
+        let (new_config, new_watched_paths, _) =
             match load_config_and_watched_paths(config_file_path, config_dir) {
                 Some(loaded) => loaded,
                 None => {
@@ -501,9 +502,10 @@ pub async fn watch_config_file_changes<F, Fut>(
 
     loop {
         if config_file_path.exists() {
-            let watched_paths = load_config_and_watched_paths(config_file_path.as_path(), config_dir)
-                .map(|(_, watched_paths)| watched_paths)
-                .unwrap_or_default();
+            let (watched_paths, missing_theme_dir) =
+                load_config_and_watched_paths(config_file_path.as_path(), config_dir)
+                    .map(|(_, watched_paths, missing_theme_dir)| (watched_paths, missing_theme_dir))
+                    .unwrap_or_default();
             let (tx, mut rx) = mpsc::unbounded_channel();
 
             let mut watcher = match PollWatcher::new(
@@ -534,7 +536,30 @@ pub async fn watch_config_file_changes<F, Fut>(
                 }
             }
 
-            while let Some(event_result) = rx.recv().await {
+            loop {
+                let event_result = tokio::select! {
+                    received = rx.recv() => match received {
+                        Some(event_result) => event_result,
+                        None => break,
+                    },
+                    _ = tokio::time::sleep(Duration::from_secs(3)), if missing_theme_dir.is_some() => {
+                        let created = missing_theme_dir
+                            .as_ref()
+                            .map(|dir| dir.exists())
+                            .unwrap_or(false);
+                        if created {
+                            reload_config_after_change(
+                                config_file_path.as_path(),
+                                config_dir,
+                                &watched_paths,
+                                &on_config_change,
+                            )
+                            .await;
+                            break;
+                        }
+                        continue;
+                    },
+                };
                 let event = match event_result {
                     Ok(event) => event,
                     Err(e) => {

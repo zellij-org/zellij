@@ -152,7 +152,7 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         SettingKey::Theme => info(
             "Theme",
             Appearance,
-            "Colour theme, previewed live while browsing",
+            "Color theme, previewed live while browsing",
             Theme {
                 can_be_unset: false,
             },
@@ -218,7 +218,7 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         SettingKey::StyledUnderlines => info(
             "Styled underlines",
             Appearance,
-            "Pass curly and coloured underlines to the terminal",
+            "Pass curly and colored underlines to the terminal",
             Toggle,
             "true",
             Everyone,

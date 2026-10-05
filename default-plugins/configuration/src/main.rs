@@ -1,5 +1,6 @@
 mod action_picker;
 mod blocks_screen;
+mod contrast;
 mod keybindings_screen;
 mod keys_screen;
 mod list_editor;
@@ -7,6 +8,7 @@ mod page;
 mod settings;
 mod settings_screen;
 mod theme_preview;
+mod theme_sample;
 mod themes_screen;
 mod ui_components;
 

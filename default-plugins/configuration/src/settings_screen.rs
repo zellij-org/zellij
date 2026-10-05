@@ -26,10 +26,12 @@ const MENU_PADDING: usize = 4;
 const SECTION_PADDING: usize = 1;
 const FOOTER_ROWS: usize = 4;
 const CONTENT_WIDTH: usize = 80;
+const FULL_SCREEN_WIDTH: usize = 140;
 const KEYS_SCREEN_ROWS: usize = 18;
 const CLOSE_NOTICE_SECONDS: f64 = 1.5;
 const DEFAULT_THEME: &str = "default";
 const FILE_PREFIX: &str = "File: ";
+const WINDOW_TITLE: &str = "Configuration";
 const KEYBINDINGS_MIN_ROWS: usize = 8;
 const PAGE_CATEGORIES: [Category; 3] = [
     Category::Themes,
@@ -120,6 +122,7 @@ pub struct SettingsScreen {
     last_size: (usize, usize),
     editing: Option<SettingKey>,
     file_link_area: Option<Rect>,
+    window_title: String,
     file_link_hovered: bool,
     last_mouse: Option<(isize, usize)>,
 }
@@ -161,6 +164,7 @@ impl Default for SettingsScreen {
             last_size: (0, 0),
             editing: None,
             file_link_area: None,
+            window_title: WINDOW_TITLE.to_owned(),
             file_link_hovered: false,
             last_mouse: None,
         }
@@ -929,6 +933,7 @@ impl SettingsScreen {
         self.keys_screen
             .set_link_color(Some(mode_info.style.colors.text_unselected.emphasis_2));
         self.keybindings_screen.set_mode_info(&mode_info);
+        self.themes_screen.set_mode_info(&mode_info);
         self.latest_mode_info = Some(mode_info);
         if self.theme_preview.active_key().is_none() {
             self.refresh();
@@ -1705,10 +1710,24 @@ impl SettingsScreen {
             + MENU_PADDING)
             .min(cols / 3)
             .max(16);
-        let ui_width = (menu_width + 2 + CONTENT_WIDTH).min(cols);
-        let ui_height = (HEADER_ROWS + self.natural_body_height() + FOOTER_ROWS).min(rows);
+        let full_screen = self.showing_page()
+            && self
+                .page_ref(self.category())
+                .map(|page| page.full_screen())
+                .unwrap_or(false);
+        let ui_width = if full_screen {
+            cols.saturating_sub(2).min(FULL_SCREEN_WIDTH)
+        } else {
+            (menu_width + 2 + CONTENT_WIDTH).min(cols)
+        };
+        let ui_height = if full_screen {
+            rows.saturating_sub(2)
+        } else {
+            (HEADER_ROWS + self.natural_body_height() + FOOTER_ROWS).min(rows)
+        };
         let x0 = cols.saturating_sub(ui_width) / 2;
         let y0 = rows.saturating_sub(ui_height) / 2;
+        self.update_window_title();
         self.render_header(x0, y0, ui_width);
         let body_y = y0 + HEADER_ROWS;
         let footer_rows = if self.showing_keys_screen() || self.showing_page() {
@@ -1717,7 +1736,10 @@ impl SettingsScreen {
             FOOTER_ROWS
         };
         let body_height = ui_height.saturating_sub(HEADER_ROWS + footer_rows);
-        if self.search_active {
+        if full_screen {
+            self.menu.clear_area();
+            self.search.clear_area();
+        } else if self.search_active {
             self.menu.clear_area();
             self.search.set_match_count(None);
             self.search.render(x0, body_y, menu_width);
@@ -1738,8 +1760,11 @@ impl SettingsScreen {
             self.menu.render(x0, body_y, menu_width, body_height);
             self.render_menu_unsaved_markers(x0, body_y, menu_width, body_height);
         }
-        let content_x = x0 + menu_width + 2;
-        let content_width = ui_width.saturating_sub(menu_width + 2);
+        let (content_x, content_width) = if full_screen {
+            (x0, ui_width)
+        } else {
+            (x0 + menu_width + 2, ui_width.saturating_sub(menu_width + 2))
+        };
         self.elements.clear_areas();
         let showing_keys_screen = self.showing_keys_screen();
         let showing_page = self.showing_page();
@@ -1935,16 +1960,20 @@ impl SettingsScreen {
             unsaved,
             if unsaved == 1 { "" } else { "s" }
         );
-        let mut header = key_hints(
-            &format!("{} · ", count),
-            &[("<Ctrl a>", "save"), ("<Ctrl r>", "revert all")],
-            cols,
-        );
+        let page_hints = if self.showing_page() {
+            self.page_ref(self.category())
+                .and_then(|page| page.header_hints())
+        } else {
+            None
+        };
+        let hints =
+            page_hints.unwrap_or_else(|| vec![("<Ctrl a>", "save"), ("<Ctrl r>", "revert all")]);
+        let mut header = key_hints(&format!("{} · ", count), &hints, cols);
         if unsaved > 0 {
             header = header.color_range(1, ..count.chars().count().min(cols));
         }
         print_text_with_coordinates(header, x, y + 2, None, None);
-        match self.snapshot.config_file_path.clone() {
+        match self.header_file() {
             Some(path) => {
                 print_text_with_coordinates(Text::new(FILE_PREFIX), x, y, None, None);
                 let link_x = x + FILE_PREFIX.chars().count();
@@ -1971,8 +2000,30 @@ impl SettingsScreen {
             .map(|mode_info| mode_info.style.colors.text_unselected.emphasis_2);
         print_link(link, x, y, color, self.file_link_hovered);
     }
+    fn header_file(&self) -> Option<String> {
+        let page_file = if self.showing_page() {
+            self.page_ref(self.category())
+                .and_then(|page| page.header_file())
+        } else {
+            None
+        };
+        page_file.or_else(|| self.snapshot.config_file_path.clone())
+    }
+    fn update_window_title(&mut self) {
+        let title = if self.showing_page() {
+            self.page_ref(self.category())
+                .and_then(|page| page.window_title())
+        } else {
+            None
+        }
+        .unwrap_or_else(|| WINDOW_TITLE.to_owned());
+        if title != self.window_title {
+            rename_plugin_pane(get_plugin_ids().plugin_id, &title);
+            self.window_title = title;
+        }
+    }
     fn open_config_file(&mut self) {
-        if let Some(path) = self.snapshot.config_file_path.clone() {
+        if let Some(path) = self.header_file() {
             self.restore_theme_preview();
             open_file_floating(FileToOpen::new(path), None, BTreeMap::new());
         }

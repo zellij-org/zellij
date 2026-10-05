@@ -105,6 +105,7 @@ pub enum Effect {
     Revert(SettingKey),
     ResetKeys(Vec<(InputMode, KeyWithModifier)>),
     SwitchMode(InputMode),
+    Refresh,
 }
 
 pub fn run_effects(effects: Vec<Effect>) -> bool {
@@ -128,6 +129,7 @@ pub fn run_effects(effects: Vec<Effect>) -> bool {
                 changed_config = true;
             },
             Effect::SwitchMode(mode) => switch_to_input_mode(&mode),
+            Effect::Refresh => changed_config = true,
         }
     }
     changed_config
@@ -158,6 +160,18 @@ pub trait Page {
     fn take_notice(&mut self) -> Option<String>;
     fn leave(&mut self) {}
     fn set_focused(&mut self, _focused: bool) {}
+    fn full_screen(&self) -> bool {
+        false
+    }
+    fn header_file(&self) -> Option<String> {
+        None
+    }
+    fn window_title(&self) -> Option<String> {
+        None
+    }
+    fn header_hints(&self) -> Option<Vec<(&'static str, &'static str)>> {
+        None
+    }
     fn prompt_result(&mut self, _request_id: u64, _result: &PromptResult) -> bool {
         false
     }
@@ -674,11 +688,6 @@ impl ButtonRow {
     pub fn new(labels: &[&str]) -> Self {
         ButtonRow {
             buttons: labels.iter().map(|label| Button::new(*label)).collect(),
-        }
-    }
-    pub fn set_disabled(&mut self, index: usize, disabled: bool) {
-        if let Some(button) = self.buttons.get_mut(index) {
-            button.set_disabled(disabled);
         }
     }
     pub fn render(&mut self, x: usize, y: usize, width: usize) {

@@ -45,6 +45,143 @@ fn colours_are_read_in_every_accepted_format() {
 }
 
 #[test]
+fn colours_are_also_read_as_bare_hex_and_rgb_calls() {
+    assert_eq!(
+        parse_colour("6fde21"),
+        Some(PaletteColor::Rgb((111, 222, 33)))
+    );
+    assert_eq!(
+        parse_colour("123456"),
+        Some(PaletteColor::Rgb((0x12, 0x34, 0x56)))
+    );
+    assert_eq!(
+        parse_colour("rgb(111, 222, 33)"),
+        Some(PaletteColor::Rgb((111, 222, 33)))
+    );
+    assert_eq!(
+        parse_colour("RGB(1 2 3)"),
+        Some(PaletteColor::Rgb((1, 2, 3)))
+    );
+    assert_eq!(parse_colour("rgb(5)"), None);
+    assert_eq!(parse_colour("rgb(300, 0, 0)"), None);
+    assert_eq!(parse_colour("111 222 333"), None);
+    assert_eq!(parse_colour("12345"), None);
+}
+
+fn sample_palette() -> crate::data::Styling {
+    let mut styling = DEFAULT_STYLES;
+    set_slot_colour(
+        &mut styling,
+        "text_unselected",
+        "base",
+        PaletteColor::Rgb((1, 2, 3)),
+    );
+    styling
+}
+
+fn read_theme(path: &std::path::Path, name: &str) -> Option<crate::input::theme::Theme> {
+    crate::input::theme::Themes::from_path(path.to_path_buf())
+        .ok()?
+        .get_theme(name)
+        .cloned()
+}
+
+#[test]
+fn a_theme_file_is_created_once_under_the_theme_name() {
+    let dir = tempfile::tempdir().unwrap();
+    let theme_dir = dir.path().join("themes");
+    let palette = sample_palette();
+    let path = create_theme_file(&theme_dir, "mine", &palette).unwrap();
+    assert_eq!(path, theme_dir.join("mine.kdl"));
+    let theme = read_theme(&path, "mine").unwrap();
+    assert!(theme.sourced_from_external_file);
+    assert_eq!(styling_colours(&theme.palette), styling_colours(&palette));
+    let again = create_theme_file(&theme_dir, "mine", &palette).unwrap_err();
+    assert!(again.contains("already exists"));
+    assert!(again.contains("mine.kdl"));
+    assert!(create_theme_file(&theme_dir, "no/slashes", &palette)
+        .unwrap_err()
+        .contains("cannot be a file name"));
+    assert!(create_theme_file(&theme_dir, "", &palette).is_err());
+}
+
+#[test]
+fn a_theme_folder_that_is_a_file_is_reported() {
+    let dir = tempfile::tempdir().unwrap();
+    let not_a_folder = dir.path().join("themes");
+    std::fs::write(&not_a_folder, "").unwrap();
+    let error = create_theme_file(&not_a_folder, "mine", &sample_palette()).unwrap_err();
+    assert!(error.contains("not a folder"));
+}
+
+const TWO_THEMES: &str = "themes {\n    first {\n        fg 1\n        bg 2\n        red 3\n        green 4\n        blue 5\n        yellow 6\n        magenta 7\n        orange 8\n        cyan 9\n        black 10\n        white 11\n    }\n    second {\n        fg 11\n        bg 10\n        red 9\n        green 8\n        blue 7\n        yellow 6\n        magenta 5\n        orange 4\n        cyan 3\n        black 2\n        white 1\n    }\n}\n";
+
+#[test]
+fn updating_a_theme_file_changes_only_that_theme() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("both.kdl");
+    std::fs::write(&path, TWO_THEMES).unwrap();
+    let second_before = read_theme(&path, "second").unwrap();
+    let palette = sample_palette();
+    update_theme_file(&path, "first", &palette).unwrap();
+    assert_eq!(
+        styling_colours(&read_theme(&path, "first").unwrap().palette),
+        styling_colours(&palette)
+    );
+    assert_eq!(read_theme(&path, "second").unwrap(), second_before);
+    let missing = update_theme_file(&path, "third", &palette).unwrap_err();
+    assert!(missing.contains("does not define the theme third"));
+    assert!(update_theme_file(&dir.path().join("gone.kdl"), "first", &palette).is_err());
+}
+
+#[test]
+fn deleting_the_last_theme_of_a_file_deletes_the_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("both.kdl");
+    std::fs::write(&path, TWO_THEMES).unwrap();
+    assert_eq!(delete_theme_from_file(&path, "first"), Ok(false));
+    assert!(read_theme(&path, "first").is_none());
+    assert!(read_theme(&path, "second").is_some());
+    assert!(delete_theme_from_file(&path, "first").is_err());
+    assert_eq!(delete_theme_from_file(&path, "second"), Ok(true));
+    assert!(!path.exists());
+}
+
+#[test]
+fn theme_files_are_found_by_theme_name() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("both.kdl"), TWO_THEMES).unwrap();
+    std::fs::write(dir.path().join("broken.kdl"), "themes {").unwrap();
+    std::fs::write(dir.path().join("notes.txt"), TWO_THEMES).unwrap();
+    let files = theme_files(dir.path());
+    assert_eq!(files.len(), 2);
+    assert_eq!(files.get("first"), Some(&dir.path().join("both.kdl")));
+    assert_eq!(files.get("second"), Some(&dir.path().join("both.kdl")));
+}
+
+#[test]
+fn theme_folder_themes_carry_their_file_and_colours() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("both.kdl"), TWO_THEMES).unwrap();
+    let mut config = load("");
+    config.options.theme_dir = Some(dir.path().to_path_buf());
+    assert_eq!(theme_dir(&config), Some(dir.path().to_path_buf()));
+    config.themes = config
+        .themes
+        .merge(crate::input::theme::Themes::from_dir(dir.path().to_path_buf()).unwrap());
+    let blocks = config_blocks(&config, true, None);
+    let first = blocks.theme("first").unwrap();
+    assert_eq!(first.source, ThemeSource::ThemeFolder);
+    assert_eq!(
+        first.file_path.as_deref(),
+        Some(dir.path().join("both.kdl").display().to_string().as_str())
+    );
+    assert_eq!(first.colours.len(), theme_slots().len());
+    let saved_blocks = config_blocks(&config, false, None);
+    assert!(saved_blocks.theme("first").is_none());
+}
+
+#[test]
 fn styling_survives_the_colour_list() {
     let mut styling = DEFAULT_STYLES;
     styling.frame_unselected = Some(styling.frame_highlight);
@@ -87,34 +224,6 @@ fn replacing_blocks_removes_entries_that_merging_cannot() {
     assert!(!config.plugins.aliases.contains_key("mine"));
     assert!(!config.plugins.aliases.contains_key("tab-bar"));
     assert!(replace_config_blocks(&mut config, "options {}").is_err());
-}
-
-#[test]
-fn a_theme_is_copied_into_the_config_file_under_a_new_name() {
-    let mut config = load("");
-    let mut external = crate::input::theme::Themes::from_string(
-        &"themes { folder { fg 1; bg 2; red 3; green 4; blue 5; yellow 6; magenta 7; orange 8; cyan 9; black 10; white 11; }; }".to_owned(),
-        true,
-    )
-    .unwrap();
-    config.themes = config.themes.merge(std::mem::take(&mut external));
-    replace_config_blocks(&mut config, &copy_theme_kdl("folder", "mine")).unwrap();
-    let copy = config.themes.get_theme("mine").unwrap();
-    assert!(!copy.sourced_from_external_file);
-    assert_eq!(
-        copy.palette,
-        config.themes.get_theme("folder").unwrap().palette
-    );
-    let blocks = config_blocks(&config, true, None);
-    assert!(blocks.theme("folder").unwrap().colours.is_empty());
-    assert_eq!(
-        blocks.theme("mine").unwrap().source,
-        ThemeSource::ConfigFile
-    );
-    assert_eq!(
-        blocks.theme("mine").unwrap().colours.len(),
-        theme_slots().len()
-    );
 }
 
 #[test]

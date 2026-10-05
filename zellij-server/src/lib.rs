@@ -87,6 +87,7 @@ use zellij_utils::{
         layout::{FloatingPaneLayout, Layout, PluginAlias, Run, RunPluginOrAlias},
         options::Options,
         plugins::PluginAliases,
+        theme::{Theme, Themes},
     },
     ipc::{
         ClientAttributes, ClientToServerMsg, ExitReason, IpcReceiverWithContext, ServerToClientMsg,
@@ -177,6 +178,18 @@ pub enum ServerInstruction {
         new_name: String,
         response_channel: crossbeam::channel::Sender<Result<String, String>>,
     },
+    WriteThemeFile {
+        client_id: ClientId,
+        name: String,
+        copy_from: Option<String>,
+        colours: Vec<String>,
+        response_channel: crossbeam::channel::Sender<Result<String, String>>,
+    },
+    DeleteThemeFile {
+        client_id: ClientId,
+        name: String,
+        response_channel: crossbeam::channel::Sender<Result<String, String>>,
+    },
     RebindKeys {
         client_id: ClientId,
         keys_to_rebind: Vec<(InputMode, KeyWithModifier, Vec<Action>)>,
@@ -252,6 +265,8 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::ReloadConfigFile { .. } => ServerContext::ReloadConfigFile,
             ServerInstruction::CopyKeybindPreset { .. } => ServerContext::CopyKeybindPreset,
             ServerInstruction::SaveKeybindsAsPreset { .. } => ServerContext::SaveKeybindsAsPreset,
+            ServerInstruction::WriteThemeFile { .. } => ServerContext::WriteThemeFile,
+            ServerInstruction::DeleteThemeFile { .. } => ServerContext::DeleteThemeFile,
             ServerInstruction::StartWebServer(..) => ServerContext::StartWebServer,
             ServerInstruction::ShareCurrentSession(..) => ServerContext::ShareCurrentSession,
             ServerInstruction::StopSharingCurrentSession(..) => {
@@ -462,6 +477,89 @@ impl SessionConfiguration {
             config.keybinds_config_dir().as_deref(),
         )
         .map(|_| new_name.to_owned())
+    }
+    pub fn write_theme_file(
+        &self,
+        client_id: &ClientId,
+        name: &str,
+        copy_from: Option<&str>,
+        colours: &[String],
+    ) -> Result<(PathBuf, Theme), String> {
+        let config = self.get_client_configuration(client_id);
+        let theme_dir = config_blocks::theme_dir(&config)
+            .ok_or_else(|| "There is no theme folder to write the theme to".to_owned())?;
+        match copy_from {
+            Some(from) => {
+                if config.themes.get_theme(name).is_some() {
+                    return Err(format!("A theme called {} already exists", name));
+                }
+                let source = config
+                    .themes
+                    .get_theme(from)
+                    .ok_or_else(|| format!("There is no theme called {}", from))?;
+                let path = config_blocks::create_theme_file(&theme_dir, name, &source.palette)?;
+                Ok((
+                    path,
+                    Theme {
+                        sourced_from_external_file: true,
+                        palette: source.palette.clone(),
+                    },
+                ))
+            },
+            None => {
+                let path = config_blocks::theme_files(&theme_dir)
+                    .remove(name)
+                    .ok_or_else(|| {
+                        format!(
+                            "No file in {} defines the theme {}",
+                            theme_dir.display(),
+                            name
+                        )
+                    })?;
+                let palette = config_blocks::styling_from_colours(colours);
+                config_blocks::update_theme_file(&path, name, &palette)?;
+                Ok((
+                    path,
+                    Theme {
+                        sourced_from_external_file: true,
+                        palette,
+                    },
+                ))
+            },
+        }
+    }
+    pub fn saved_config_with_theme(&self, name: &str, theme: Option<Theme>) -> Config {
+        let mut config = self.saved_config.clone();
+        config.themes.remove(name);
+        if let Some(theme) = theme {
+            config.themes.insert(name.to_owned(), theme);
+        }
+        config
+    }
+    pub fn delete_theme_file(
+        &self,
+        client_id: &ClientId,
+        name: &str,
+    ) -> Result<(PathBuf, Option<Theme>), String> {
+        let config = self.get_client_configuration(client_id);
+        let theme_dir = config_blocks::theme_dir(&config)
+            .ok_or_else(|| "There is no theme folder to delete the theme from".to_owned())?;
+        let path = config_blocks::theme_files(&theme_dir)
+            .remove(name)
+            .ok_or_else(|| {
+                format!(
+                    "No file in {} defines the theme {}",
+                    theme_dir.display(),
+                    name
+                )
+            })?;
+        config_blocks::delete_theme_from_file(&path, name)?;
+        let replacement = config_blocks::theme_files(&theme_dir)
+            .remove(name)
+            .and_then(|other| Themes::from_path(other).ok())
+            .and_then(|themes| themes.get_theme(name).cloned())
+            .or_else(|| config_blocks::built_in_themes().get_theme(name).cloned());
+        Ok((path, replacement))
     }
     pub fn change_saved_config(
         &mut self,
@@ -3851,6 +3949,75 @@ pub fn start_server_impl(
                     .unwrap_or_else(|| Err("No active session".to_owned()));
                 let _ = response_channel.send(result);
             },
+            ServerInstruction::WriteThemeFile {
+                client_id,
+                name,
+                copy_from,
+                colours,
+                response_channel,
+            } => {
+                let written = session_data
+                    .read()
+                    .unwrap()
+                    .as_ref()
+                    .map(|session_data| {
+                        session_data.session_configuration.write_theme_file(
+                            &client_id,
+                            &name,
+                            copy_from.as_deref(),
+                            &colours,
+                        )
+                    })
+                    .unwrap_or_else(|| Err("No active session".to_owned()));
+                let result = match written {
+                    Ok((path, theme)) => {
+                        let new_saved_config =
+                            session_data.read().unwrap().as_ref().map(|session_data| {
+                                session_data
+                                    .session_configuration
+                                    .saved_config_with_theme(&name, Some(theme))
+                            });
+                        if let Some(new_saved_config) = new_saved_config {
+                            apply_new_saved_config(new_saved_config, &session_data);
+                        }
+                        Ok(path.display().to_string())
+                    },
+                    Err(error) => Err(error),
+                };
+                let _ = response_channel.send(result);
+            },
+            ServerInstruction::DeleteThemeFile {
+                client_id,
+                name,
+                response_channel,
+            } => {
+                let deleted = session_data
+                    .read()
+                    .unwrap()
+                    .as_ref()
+                    .map(|session_data| {
+                        session_data
+                            .session_configuration
+                            .delete_theme_file(&client_id, &name)
+                    })
+                    .unwrap_or_else(|| Err("No active session".to_owned()));
+                let result = match deleted {
+                    Ok((path, replacement)) => {
+                        let new_saved_config =
+                            session_data.read().unwrap().as_ref().map(|session_data| {
+                                session_data
+                                    .session_configuration
+                                    .saved_config_with_theme(&name, replacement)
+                            });
+                        if let Some(new_saved_config) = new_saved_config {
+                            apply_new_saved_config(new_saved_config, &session_data);
+                        }
+                        Ok(path.display().to_string())
+                    },
+                    Err(error) => Err(error),
+                };
+                let _ = response_channel.send(result);
+            },
             ServerInstruction::RebindKeys {
                 client_id,
                 keys_to_rebind,
@@ -4901,4 +5068,102 @@ fn get_available_layouts(config_options: &Options) -> (Vec<LayoutInfo>, Vec<Layo
         .as_ref()
         .map(|l| format!("{}", l.display()));
     Layout::list_available_layouts(layout_dir, &default_layout_name)
+}
+
+#[cfg(test)]
+mod theme_file_tests {
+    use super::*;
+
+    fn session_with_theme_dir(theme_dir: &Path) -> SessionConfiguration {
+        let mut config = Config::from_default_assets().unwrap();
+        config.themes = config
+            .themes
+            .merge(config_blocks::built_in_themes().clone());
+        config.options.theme_dir = Some(theme_dir.to_path_buf());
+        let mut session_configuration = SessionConfiguration::default();
+        session_configuration.set_saved_configuration(config.clone());
+        session_configuration.set_client_runtime_configuration(1, config);
+        session_configuration
+    }
+
+    #[test]
+    fn a_copied_theme_is_written_to_its_own_file_and_reaches_the_clients() {
+        let dir = tempfile::tempdir().unwrap();
+        let theme_dir = dir.path().join("themes");
+        let mut session_configuration = session_with_theme_dir(&theme_dir);
+        let (path, theme) = session_configuration
+            .write_theme_file(&1, "mine", Some("dracula"), &[])
+            .unwrap();
+        assert_eq!(path, theme_dir.join("mine.kdl"));
+        assert!(theme.sourced_from_external_file);
+        let dracula = config_blocks::built_in_themes().get_theme("dracula").unwrap();
+        assert_eq!(theme.palette, dracula.palette);
+        let new_saved_config = session_configuration.saved_config_with_theme("mine", Some(theme));
+        let (changes, dropped) = session_configuration.change_saved_config(new_saved_config);
+        assert!(dropped.is_empty());
+        assert!(changes
+            .iter()
+            .any(|(client_id, config)| *client_id == 1
+                && config.themes.get_theme("mine").is_some()));
+        let taken = session_configuration
+            .write_theme_file(&1, "mine", Some("dracula"), &[])
+            .unwrap_err();
+        assert!(taken.contains("already exists"));
+        let unknown = session_configuration
+            .write_theme_file(&1, "other", Some("no-such-theme"), &[])
+            .unwrap_err();
+        assert!(unknown.contains("no-such-theme"));
+    }
+
+    #[test]
+    fn editing_a_theme_file_rewrites_its_colours() {
+        let dir = tempfile::tempdir().unwrap();
+        let theme_dir = dir.path().join("themes");
+        let session_configuration = session_with_theme_dir(&theme_dir);
+        session_configuration
+            .write_theme_file(&1, "mine", Some("dracula"), &[])
+            .unwrap();
+        let mut colours = config_blocks::styling_colours(&zellij_utils::data::DEFAULT_STYLES);
+        colours[0] = "#010203".to_owned();
+        let (path, theme) = session_configuration
+            .write_theme_file(&1, "mine", None, &colours)
+            .unwrap();
+        let on_disk = zellij_utils::input::theme::Themes::from_path(path)
+            .unwrap()
+            .get_theme("mine")
+            .cloned()
+            .unwrap();
+        assert_eq!(on_disk.palette, theme.palette);
+        assert_eq!(
+            config_blocks::styling_colours(&on_disk.palette)[0],
+            "#010203"
+        );
+        assert!(session_configuration
+            .write_theme_file(&1, "not-in-a-file", None, &colours)
+            .is_err());
+    }
+
+    #[test]
+    fn deleting_a_folder_theme_brings_back_the_built_in_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let theme_dir = dir.path().join("themes");
+        let session_configuration = session_with_theme_dir(&theme_dir);
+        let mut palette = zellij_utils::data::DEFAULT_STYLES;
+        palette.text_unselected.base = zellij_utils::data::PaletteColor::Rgb((1, 2, 3));
+        let path = config_blocks::create_theme_file(&theme_dir, "dracula", &palette).unwrap();
+        let (deleted_path, replacement) = session_configuration
+            .delete_theme_file(&1, "dracula")
+            .unwrap();
+        assert_eq!(deleted_path, path);
+        assert!(!path.exists());
+        assert_eq!(
+            replacement,
+            config_blocks::built_in_themes().get_theme("dracula").cloned()
+        );
+        let saved = session_configuration.saved_config_with_theme("gone", None);
+        assert!(saved.themes.get_theme("gone").is_none());
+        assert!(session_configuration
+            .delete_theme_file(&1, "dracula")
+            .is_err());
+    }
 }

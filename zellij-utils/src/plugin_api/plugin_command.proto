@@ -245,6 +245,8 @@ enum CommandName {
   SaveKeybindsAsPreset = 251;
   Prompt = 252;
   ReplyToPrompt = 253;
+  WriteThemeFile = 254;
+  DeleteThemeFile = 255;
 }
 
 message PluginCommand {
@@ -430,6 +432,8 @@ message PluginCommand {
     SaveKeybindsAsPresetPayload save_keybinds_as_preset_payload = 194;
     PromptPayload prompt_payload = 195;
     ReplyToPromptPayload reply_to_prompt_payload = 196;
+    WriteThemeFilePayload write_theme_file_payload = 197;
+    string delete_theme_file_payload = 198;
   }
 }
 
@@ -456,6 +460,19 @@ message CopyKeybindPresetPayload {
 message CopyKeybindPresetResponse {
   oneof result {
     string new_name = 1;
+    string error = 2;
+  }
+}
+
+message WriteThemeFilePayload {
+  string name = 1;
+  optional string copy_from = 2;
+  repeated string colours = 3;
+}
+
+message WriteThemeFileResponse {
+  oneof result {
+    string path = 1;
     string error = 2;
   }
 }
@@ -554,6 +571,7 @@ message ThemeEntry {
   string name = 1;
   ThemeSource source = 2;
   repeated string colours = 3;
+  optional string file_path = 4;
 }
 
 message ConfigBlocks {

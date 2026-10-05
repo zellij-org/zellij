@@ -111,6 +111,7 @@ use zellij_utils::{
             ProtobufOpenTerminalNearPluginResponse,
             ProtobufOpenTerminalPaneInPlaceOfPaneIdResponse, ProtobufOpenTerminalResponse,
             ProtobufCopyKeybindPresetResponse, ProtobufParseLayoutResponse,
+            ProtobufWriteThemeFileResponse,
             ProtobufPluginCommand, ProtobufReadConfigResponse,
             ProtobufRenameLayoutResponse,
             ProtobufSaveLayoutResponse, ProtobufSaveSessionResponse,
@@ -495,6 +496,12 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         keys,
                         write_config_to_disk,
                     } => reset_keys(env, keys, write_config_to_disk),
+                    PluginCommand::WriteThemeFile {
+                        name,
+                        copy_from,
+                        colours,
+                    } => write_theme_file(env, name, copy_from, colours),
+                    PluginCommand::DeleteThemeFile { name } => delete_theme_file(env, name),
                     PluginCommand::SaveKeybindsAsPreset { new_name } => {
                         save_keybinds_as_preset(env, new_name)
                     },
@@ -3199,6 +3206,63 @@ fn save_keybinds_as_preset(env: &PluginEnv, new_name: String) {
     };
     wasi_write_object(env, &response.encode_to_vec())
         .with_context(|| format!("failed to send save result to plugin {}", env.name()))
+        .non_fatal();
+}
+
+fn write_theme_file(
+    env: &PluginEnv,
+    name: String,
+    copy_from: Option<String>,
+    colours: Vec<String>,
+) {
+    use zellij_utils::plugin_api::plugin_command::write_theme_file_response::Result as WriteResult;
+    let client_id = acting_client(env);
+    let (response_sender, response_receiver) = crossbeam::channel::bounded(1);
+    let result = match env.senders.send_to_server(ServerInstruction::WriteThemeFile {
+        client_id,
+        name,
+        copy_from,
+        colours,
+        response_channel: response_sender,
+    }) {
+        Ok(()) => response_receiver
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap_or_else(|e| Err(format!("Failed to write the theme file: {:?}", e))),
+        Err(e) => Err(format!("Failed to write the theme file: {:?}", e)),
+    };
+    let response = ProtobufWriteThemeFileResponse {
+        result: Some(match result {
+            Ok(path) => WriteResult::Path(path),
+            Err(error) => WriteResult::Error(error),
+        }),
+    };
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to send theme file result to plugin {}", env.name()))
+        .non_fatal();
+}
+
+fn delete_theme_file(env: &PluginEnv, name: String) {
+    use zellij_utils::plugin_api::plugin_command::write_theme_file_response::Result as WriteResult;
+    let client_id = acting_client(env);
+    let (response_sender, response_receiver) = crossbeam::channel::bounded(1);
+    let result = match env.senders.send_to_server(ServerInstruction::DeleteThemeFile {
+        client_id,
+        name,
+        response_channel: response_sender,
+    }) {
+        Ok(()) => response_receiver
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap_or_else(|e| Err(format!("Failed to delete the theme: {:?}", e))),
+        Err(e) => Err(format!("Failed to delete the theme: {:?}", e)),
+    };
+    let response = ProtobufWriteThemeFileResponse {
+        result: Some(match result {
+            Ok(path) => WriteResult::Path(path),
+            Err(error) => WriteResult::Error(error),
+        }),
+    };
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to send theme deletion result to plugin {}", env.name()))
         .non_fatal();
 }
 
@@ -6311,6 +6375,8 @@ fn required_permission(command: &PluginCommand) -> Option<PermissionType> {
         | PluginCommand::UnsetConfigSetting(..)
         | PluginCommand::CopyKeybindPreset { .. }
         | PluginCommand::SaveKeybindsAsPreset { .. }
+        | PluginCommand::WriteThemeFile { .. }
+        | PluginCommand::DeleteThemeFile { .. }
         | PluginCommand::SaveConfig
         | PluginCommand::OverwriteConfigFile
         | PluginCommand::ReloadConfigFile
