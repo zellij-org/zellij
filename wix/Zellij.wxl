@@ -2,4 +2,5 @@
 <WixLocalization xmlns="http://wixtoolset.org/schemas/v4/wxl" Culture="en-US">
   <String Id="AdvancedWelcomeEulaDlgDescriptionPerMachine" Value="Click Install to install Zellij for all users. Click Advanced to choose install scope and directory." />
   <String Id="AdvancedWelcomeEulaDlgDescriptionPerUser" Value="Click Install to install Zellij just for you. Click Advanced to choose install scope and directory." />
+  <String Id="ZellijStartMenuShortcutCheckBox" Value="Create a Start menu shortcut" />
 </WixLocalization>
