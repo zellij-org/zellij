@@ -1,18 +1,21 @@
 use super::{PinnedExecutor, PluginId, PluginInstruction};
 use crate::global_async_runtime::get_tokio_runtime;
 use crate::plugins::pipes::{
-    apply_pipe_message_to_plugin, pipes_to_block_or_unblock, PendingPipes, PipeStateChange,
+    apply_pipe_message_to_plugin, pipes_to_block_or_unblock, PendingPipes, PipeRelease,
+    PipeStateChange,
 };
 use crate::plugins::plugin_loader::PluginLoader;
 use crate::plugins::plugin_map::{
     AtomicEvent, PluginEnv, PluginMap, PluginMetadata, RemovedPluginAssets, RunningPlugin,
     SharedSlot, Subscriptions,
 };
+use crate::plugins::prompt_requests::{PromptAction, PromptCaller, PromptRequests};
 use crate::plugins::shared::{
     add_slot_job, apply_events_job, apply_pipes_job, client_job, host_settings_job,
     remove_slot_job, resize_job, start_instance_job, visibility_job, wasm_module_exports_function,
     SharedKey, SHARED_MARKER_EXPORT, SHARED_PIPE_CLIENT,
 };
+use zellij_utils::prompt::PromptResult;
 
 use crate::plugins::plugin_worker::MessageToWorker;
 use crate::plugins::shared::SharedEventBatchEntry;
@@ -33,9 +36,9 @@ use url::Url;
 use wasmi::{Engine, Module};
 use zellij_utils::consts::{ZELLIJ_CACHE_DIR, ZELLIJ_SESSION_CACHE_DIR, ZELLIJ_TMP_DIR};
 use zellij_utils::data::{
-    FloatingPaneCoordinates, HostTerminalThemeMode, InputMode, KeybindsVec, LayoutInfo,
-    LayoutWithError, PaneContents, PaneRenderReport, PermissionStatus, PermissionType, PipeMessage,
-    PipeSource,
+    FloatingPaneCoordinates, HostTerminalThemeMode, InputMode, KeybindPresetInfo,
+    KeybindPresetWithError, KeybindsVec, LayoutInfo, LayoutWithError, PaneContents,
+    PaneRenderReport, PermissionStatus, PermissionType, PipeMessage, PipeSource,
 };
 use zellij_utils::downloader::Downloader;
 use zellij_utils::input::permission::PermissionCache;
@@ -74,8 +77,31 @@ fn make_plugin_url_path_safe(url: String) -> String {
 
 #[derive(Debug, Clone)]
 pub enum EventOrPipeMessage {
-    Event(Event),
-    PipeMessage(PipeMessage),
+    Event(Event, Option<ClientId>),
+    PipeMessage(PipeMessage, Option<ClientId>),
+}
+
+pub const PIPE_POPUP_CLOSED_EXIT_CODE: i32 = 1;
+pub const PIPE_POPUP_ERROR_EXIT_CODE: i32 = 2;
+
+#[derive(Debug, Clone)]
+enum PipePopup {
+    Opening {
+        queued: Vec<PipeMessage>,
+        cli_client_id: ClientId,
+    },
+    Open {
+        plugin_id: PluginId,
+        client_id: ClientId,
+        caller_args: BTreeMap<String, String>,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub enum PipePopupRoute {
+    New(PipeMessage),
+    Queued,
+    Deliver(PluginId, ClientId, PipeMessage),
 }
 
 #[derive(Debug, Clone, Default)]
@@ -194,6 +220,7 @@ fn shared_event_context(
     let slot_id = match event {
         Event::Key(..)
         | Event::Mouse(..)
+        | Event::MouseWithModifiers(..)
         | Event::PastedText(..)
         | Event::Visible(..)
         | Event::PermissionRequestResult(..)
@@ -207,7 +234,39 @@ fn shared_event_context(
     EventContext { slot_id, client_id }
 }
 
+#[derive(Debug, Default)]
+pub(crate) struct HoverGenerations {
+    latest: HashMap<(PluginId, ClientId), u64>,
+}
+
+impl HoverGenerations {
+    pub fn queue(&mut self, plugin_id: PluginId, client_id: ClientId) -> u64 {
+        let generation = self.latest.entry((plugin_id, client_id)).or_insert(0);
+        *generation += 1;
+        *generation
+    }
+    pub fn is_superseded(&self, plugin_id: PluginId, client_id: ClientId, generation: u64) -> bool {
+        self.latest
+            .get(&(plugin_id, client_id))
+            .map(|latest| *latest != generation)
+            .unwrap_or(false)
+    }
+}
+
+pub(crate) fn subscription_event_type(
+    event: &Event,
+) -> Result<EventType, <EventType as FromStr>::Err> {
+    EventType::from_str(&event.to_string()).map(|event_type| {
+        if event_type == EventType::MouseWithModifiers {
+            EventType::Mouse
+        } else {
+            event_type
+        }
+    })
+}
+
 pub struct WasmBridge {
+    latest_hovers: Arc<Mutex<HoverGenerations>>,
     connected_clients: Arc<Mutex<Vec<ClientId>>>,
     senders: ThreadSenders,
     plugin_dir: PathBuf,
@@ -232,9 +291,13 @@ pub struct WasmBridge {
     cached_plugin_map:
         HashMap<RunPluginLocation, HashMap<PluginUserConfiguration, Vec<(PluginId, ClientId)>>>,
     pending_pipes: PendingPipes,
+    pipe_popups: HashMap<String, PipePopup>,
+    prompt_requests: PromptRequests,
     layout_dir: Option<PathBuf>,
     available_layouts: Vec<LayoutInfo>,
     available_layout_errors: Vec<LayoutWithError>,
+    available_keybind_presets: Vec<KeybindPresetInfo>,
+    available_keybind_preset_errors: Vec<KeybindPresetWithError>,
     default_mode: InputMode,
     default_keybinds: SharedKeybinds,
     keybinds: HashMap<ClientId, SharedKeybinds>,
@@ -300,15 +363,20 @@ impl WasmBridge {
             default_shell,
             cached_plugin_map: HashMap::new(),
             pending_pipes: Default::default(),
+            pipe_popups: HashMap::new(),
+            prompt_requests: PromptRequests::default(),
             layout_dir,
             available_layouts,
             available_layout_errors,
+            available_keybind_presets: vec![],
+            available_keybind_preset_errors: vec![],
             default_mode,
             default_keybinds,
             keybinds: HashMap::new(),
             base_modes: HashMap::new(),
             downloader,
             previous_pane_render_report: None,
+            latest_hovers: Arc::new(Mutex::new(HoverGenerations::default())),
             last_host_terminal_theme_mode: None,
             last_session_save_time: Arc::new(Mutex::new(None)),
             shared_instances: HashMap::new(),
@@ -661,13 +729,11 @@ impl WasmBridge {
 
         // Main thread cleanup
         self.cached_plugin_map.clear();
-        let mut pipes_to_unblock = self.pending_pipes.unload_plugin(&pid);
-        for pipe_name in pipes_to_unblock.drain(..) {
-            let _ = self
-                .senders
-                .send_to_server(ServerInstruction::UnblockCliPipeInput(pipe_name))
-                .context("failed to unblock input pipe");
-        }
+        let pipes_to_release = self.pending_pipes.unload_plugin(&pid);
+        self.send_pipe_releases(pipes_to_release);
+        self.forget_pipe_popups_of_plugin(pid);
+        let prompt_actions = self.prompt_requests.plugin_unloaded(pid);
+        self.apply_prompt_actions(prompt_actions);
         let plugin_list = self.plugin_map.lock().unwrap().list_plugins();
         let _ = self
             .senders
@@ -676,6 +742,8 @@ impl WasmBridge {
         Ok(())
     }
     pub fn reload_plugin_with_id(&mut self, plugin_id: u32) -> Result<()> {
+        let prompt_actions = self.prompt_requests.caller_reloaded(plugin_id);
+        self.apply_prompt_actions(prompt_actions);
         if let Some(instance_id) = self.shared_instance_of(plugin_id) {
             self.reload_shared_instance(instance_id);
             return Ok(());
@@ -1048,11 +1116,22 @@ impl WasmBridge {
             for (plugin_id, client_id, running_plugin, subscriptions) in &plugins_to_update {
                 let subs = subscriptions.lock().unwrap().clone();
                 // FIXME: This is very janky... Maybe I should write my own macro for Event -> EventType?
-                if let Ok(event_type) = EventType::from_str(&event.to_string()) {
+                if let Ok(event_type) = subscription_event_type(&event) {
                     if (subs.contains(&event_type)
                         || event_type == EventType::PermissionRequestResult)
                         && Self::message_is_directed_at_plugin(pid, cid, plugin_id, client_id)
                     {
+                        let hover_generation = if is_hover(&event) {
+                            Some(
+                                self.latest_hovers
+                                    .lock()
+                                    .unwrap()
+                                    .queue(*plugin_id, *client_id),
+                            )
+                        } else {
+                            None
+                        };
+                        let latest_hovers = self.latest_hovers.clone();
                         // Execute directly on pinned thread (no async I/O needed for event processing)
                         plugin_executor.execute_for_plugin(*plugin_id, {
                             let plugin_id = *plugin_id;
@@ -1067,6 +1146,15 @@ impl WasmBridge {
                                   _plugin_cache,
                                   _engine| {
                                 let _s = _s; // guard to allow the task to complete before cleanup/shutdown
+                                if let Some(generation) = hover_generation {
+                                    let superseded = latest_hovers
+                                        .lock()
+                                        .unwrap()
+                                        .is_superseded(plugin_id, client_id, generation);
+                                    if superseded {
+                                        return;
+                                    }
+                                }
                                 let mut running_plugin = running_plugin.lock().unwrap();
                                 let mut plugin_render_assets = vec![];
                                 match apply_event_to_plugin(
@@ -1106,10 +1194,10 @@ impl WasmBridge {
 
         // loop once more to update the cached events for the pending plugins (probably currently
         // being loaded, we'll send them these events when they load)
-        for (pid, _cid, event) in updates.drain(..) {
+        for (pid, cid, event) in updates.drain(..) {
             for (plugin_id, cached_events) in self.cached_events_for_pending_plugins.iter_mut() {
                 if pid.is_none() || pid.as_ref() == Some(plugin_id) {
-                    cached_events.push(EventOrPipeMessage::Event(event.clone()));
+                    cached_events.push(EventOrPipeMessage::Event(event.clone(), cid));
                 }
             }
         }
@@ -1382,7 +1470,10 @@ impl WasmBridge {
                 .collect();
             for (plugin_id, cached_events) in self.cached_events_for_pending_plugins.iter_mut() {
                 if message_pid.is_none() || message_pid.as_ref() == Some(plugin_id) {
-                    cached_events.push(EventOrPipeMessage::PipeMessage(pipe_message.clone()));
+                    cached_events.push(EventOrPipeMessage::PipeMessage(
+                        pipe_message.clone(),
+                        message_cid,
+                    ));
                     if let PipeSource::Cli(pipe_id) = &pipe_message.source {
                         for client_id in &all_connected_clients {
                             if Self::message_is_directed_at_plugin(
@@ -1510,15 +1601,14 @@ impl WasmBridge {
                 }
             });
 
-            let mut pipes_to_unblock = self
+            let pipes_to_release = self
                 .pending_pipes
                 .unload_plugin_client(&plugin_id, &client_id);
-            for pipe_name in pipes_to_unblock.drain(..) {
-                let _ = self
-                    .senders
-                    .send_to_server(ServerInstruction::UnblockCliPipeInput(pipe_name))
-                    .context("failed to unblock input pipe");
-            }
+            self.send_pipe_releases(pipes_to_release);
+            let prompt_actions = self
+                .prompt_requests
+                .caller_instance_gone(plugin_id, client_id);
+            self.apply_prompt_actions(prompt_actions);
         }
         self.cached_plugin_map.clear();
     }
@@ -1823,8 +1913,14 @@ impl WasmBridge {
                             let _s = _s; // guard to allow the task to complete before cleanup/shutdown
                             for event_or_pipe_message in events_or_pipe_messages {
                                 match event_or_pipe_message {
-                                    EventOrPipeMessage::Event(event) => {
-                                        match EventType::from_str(&event.to_string())
+                                    EventOrPipeMessage::Event(event, target_client_id) => {
+                                        if target_client_id
+                                            .map(|target| target != client_id)
+                                            .unwrap_or(false)
+                                        {
+                                            continue;
+                                        }
+                                        match subscription_event_type(&event)
                                             .with_context(err_context)
                                         {
                                             Ok(event_type) => {
@@ -1860,7 +1956,16 @@ impl WasmBridge {
                                             },
                                         }
                                     },
-                                    EventOrPipeMessage::PipeMessage(pipe_message) => {
+                                    EventOrPipeMessage::PipeMessage(
+                                        pipe_message,
+                                        target_client_id,
+                                    ) => {
+                                        if target_client_id
+                                            .map(|target| target != client_id)
+                                            .unwrap_or(false)
+                                        {
+                                            continue;
+                                        }
                                         let mut running_plugin = running_plugin.lock().unwrap();
                                         let mut plugin_render_assets = vec![];
 
@@ -2230,13 +2335,13 @@ impl WasmBridge {
     pub fn update_cli_pipe_state(
         &mut self,
         pipe_state_changes: Vec<PluginRenderAsset>,
-    ) -> Vec<String> {
-        let mut pipe_names_to_unblock = vec![];
+    ) -> Vec<PipeRelease> {
+        let mut pipes_to_release = vec![];
         for pipe_state_change in pipe_state_changes {
             let client_id = pipe_state_change.client_id;
             let plugin_id = pipe_state_change.plugin_id;
             for (cli_pipe_name, pipe_state_change) in pipe_state_change.cli_pipes {
-                pipe_names_to_unblock.append(&mut self.pending_pipes.update_pipe_state_change(
+                pipes_to_release.append(&mut self.pending_pipes.update_pipe_state_change(
                     &cli_pipe_name,
                     pipe_state_change,
                     &plugin_id,
@@ -2244,14 +2349,186 @@ impl WasmBridge {
                 ));
             }
         }
-        let pipe_names_to_unblock =
-            pipe_names_to_unblock
-                .into_iter()
-                .fold(HashSet::new(), |mut acc, p| {
-                    acc.insert(p);
-                    acc
-                });
-        pipe_names_to_unblock.into_iter().collect()
+        let mut seen = HashSet::new();
+        pipes_to_release.retain(|release| seen.insert(release.clone()));
+        pipes_to_release
+    }
+    pub fn set_cli_pipe_exit_code(&mut self, pipe_id: &str, exit_code: i32, plugin_id: PluginId) {
+        self.pending_pipes
+            .set_exit_code(pipe_id, exit_code, plugin_id);
+    }
+    pub fn cli_pipe_is_finished(&self, pipe_id: &str) -> bool {
+        self.pending_pipes.is_finished(pipe_id)
+    }
+    pub fn cli_pipe_is_pending(&self, pipe_id: &str) -> bool {
+        self.pending_pipes.is_pending(pipe_id)
+    }
+    fn send_pipe_releases(&self, releases: Vec<PipeRelease>) {
+        for release in releases {
+            let _ = self
+                .senders
+                .send_to_server(ServerInstruction::UnblockCliPipeInput(
+                    release.pipe_id,
+                    release.exit_code,
+                ))
+                .context("failed to unblock input pipe");
+        }
+    }
+    pub fn route_pipe_popup_message(
+        &mut self,
+        pipe_id: &str,
+        pipe_message: PipeMessage,
+    ) -> PipePopupRoute {
+        match self.pipe_popups.get_mut(pipe_id) {
+            Some(PipePopup::Opening { queued, .. }) => {
+                queued.push(pipe_message);
+                PipePopupRoute::Queued
+            },
+            Some(PipePopup::Open {
+                plugin_id,
+                client_id,
+                caller_args,
+            }) => {
+                let mut pipe_message = pipe_message;
+                pipe_message.args.extend(caller_args.clone());
+                PipePopupRoute::Deliver(*plugin_id, *client_id, pipe_message)
+            },
+            None => PipePopupRoute::New(pipe_message),
+        }
+    }
+    pub fn start_pipe_popup(
+        &mut self,
+        pipe_id: &str,
+        pipe_message: PipeMessage,
+        cli_client_id: ClientId,
+    ) {
+        self.pipe_popups.insert(
+            pipe_id.to_owned(),
+            PipePopup::Opening {
+                queued: vec![pipe_message],
+                cli_client_id,
+            },
+        );
+    }
+    pub fn attach_pipe_popup(
+        &mut self,
+        pipe_id: &str,
+        plugin_id: PluginId,
+        client_id: ClientId,
+        caller_args: BTreeMap<String, String>,
+    ) -> Vec<(Option<PluginId>, Option<ClientId>, PipeMessage)> {
+        let queued = match self.pipe_popups.remove(pipe_id) {
+            Some(PipePopup::Opening { queued, .. }) => queued,
+            _ => vec![],
+        };
+        self.pipe_popups.insert(
+            pipe_id.to_owned(),
+            PipePopup::Open {
+                plugin_id,
+                client_id,
+                caller_args: caller_args.clone(),
+            },
+        );
+        self.pending_pipes
+            .set_exit_code(pipe_id, PIPE_POPUP_CLOSED_EXIT_CODE, plugin_id);
+        queued
+            .into_iter()
+            .map(|mut pipe_message| {
+                pipe_message.args.extend(caller_args.clone());
+                (Some(plugin_id), Some(client_id), pipe_message)
+            })
+            .collect()
+    }
+    pub fn fail_pipe_popup(&mut self, pipe_id: &str, error: String) {
+        let cli_client_id = match self.pipe_popups.remove(pipe_id) {
+            Some(PipePopup::Opening { cli_client_id, .. }) => Some(cli_client_id),
+            _ => None,
+        };
+        if let Some(cli_client_id) = cli_client_id {
+            let _ = self.senders.send_to_server(ServerInstruction::LogError(
+                vec![error],
+                cli_client_id,
+                None,
+            ));
+        }
+        let release = self
+            .pending_pipes
+            .release_with_code(pipe_id, PIPE_POPUP_ERROR_EXIT_CODE);
+        self.send_pipe_releases(vec![release]);
+    }
+    pub fn start_prompt_popup(
+        &mut self,
+        caller: PromptCaller,
+        pipe_message: PipeMessage,
+        is_notice: bool,
+    ) {
+        self.prompt_requests.start(caller, pipe_message, is_notice);
+    }
+    pub fn attach_prompt_popup(
+        &mut self,
+        caller: PromptCaller,
+        plugin_id: PluginId,
+        client_id: ClientId,
+        caller_args: BTreeMap<String, String>,
+    ) -> Vec<(Option<PluginId>, Option<ClientId>, PipeMessage)> {
+        let actions = self
+            .prompt_requests
+            .attach(caller, plugin_id, client_id, caller_args);
+        self.apply_prompt_actions(actions)
+    }
+    pub fn fail_prompt_popup(&mut self, caller: PromptCaller, error: String) {
+        let actions = self.prompt_requests.fail(caller, error);
+        self.apply_prompt_actions(actions);
+    }
+    pub fn prompt_replied(
+        &mut self,
+        prompt_plugin_id: PluginId,
+        request_id: u64,
+        result: PromptResult,
+    ) {
+        let actions = self
+            .prompt_requests
+            .reply(prompt_plugin_id, request_id, result);
+        self.apply_prompt_actions(actions);
+    }
+    fn apply_prompt_actions(
+        &mut self,
+        actions: Vec<PromptAction>,
+    ) -> Vec<(Option<PluginId>, Option<ClientId>, PipeMessage)> {
+        let mut pipe_messages = vec![];
+        for action in actions {
+            match action {
+                PromptAction::Deliver(caller, result) => {
+                    let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![
+                        caller.result_event(result)
+                    ]));
+                },
+                PromptAction::Send(plugin_id, client_id, pipe_message) => {
+                    pipe_messages.push((Some(plugin_id), Some(client_id), pipe_message));
+                },
+                PromptAction::Close(plugin_id) => {
+                    let _ = self.senders.send_to_screen(ScreenInstruction::ClosePane(
+                        PaneId::Plugin(plugin_id),
+                        None,
+                        None,
+                        None,
+                    ));
+                    let _ = self
+                        .senders
+                        .send_to_plugin(PluginInstruction::Unload(plugin_id));
+                },
+            }
+        }
+        pipe_messages
+    }
+    fn forget_pipe_popups_of_plugin(&mut self, plugin_id: PluginId) {
+        self.pipe_popups.retain(|_, pipe_popup| match pipe_popup {
+            PipePopup::Open {
+                plugin_id: popup_plugin_id,
+                ..
+            } => *popup_plugin_id != plugin_id,
+            PipePopup::Opening { .. } => true,
+        });
     }
     fn message_is_directed_at_plugin(
         message_pid: Option<PluginId>,
@@ -2294,15 +2571,42 @@ impl WasmBridge {
             )]));
         }
     }
+    pub fn update_available_keybind_presets(
+        &mut self,
+        presets: Vec<KeybindPresetInfo>,
+        errors: Vec<KeybindPresetWithError>,
+    ) {
+        if self.available_keybind_presets != presets
+            || self.available_keybind_preset_errors != errors
+        {
+            self.available_keybind_presets = presets.clone();
+            self.available_keybind_preset_errors = errors.clone();
+            let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![(
+                None,
+                None,
+                Event::AvailableKeybindPresets(presets, errors),
+            )]));
+        }
+    }
     pub fn state_update_for_plugin(&self, plugin_id: PluginId) {
-        let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![(
-            Some(plugin_id),
-            None,
-            Event::AvailableLayoutInfo(
-                self.available_layouts.clone(),
-                self.available_layout_errors.clone(),
+        let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![
+            (
+                Some(plugin_id),
+                None,
+                Event::AvailableLayoutInfo(
+                    self.available_layouts.clone(),
+                    self.available_layout_errors.clone(),
+                ),
             ),
-        )]));
+            (
+                Some(plugin_id),
+                None,
+                Event::AvailableKeybindPresets(
+                    self.available_keybind_presets.clone(),
+                    self.available_keybind_preset_errors.clone(),
+                ),
+            ),
+        ]));
     }
     pub fn shared_instance_ids(&self) -> Vec<PluginId> {
         self.shared_instances.keys().copied().collect()
@@ -2526,12 +2830,10 @@ impl WasmBridge {
                     remove_slot_job(senders, plugin_map, instance_id, slot_id, true);
                 },
             );
-            let mut pipes_to_unblock = self.pending_pipes.unload_plugin(&instance_id);
-            for pipe_name in pipes_to_unblock.drain(..) {
-                let _ = self
-                    .senders
-                    .send_to_server(ServerInstruction::UnblockCliPipeInput(pipe_name));
-            }
+            let pipes_to_release = self.pending_pipes.unload_plugin(&instance_id);
+            self.send_pipe_releases(pipes_to_release);
+            let prompt_actions = self.prompt_requests.plugin_unloaded(instance_id);
+            self.apply_prompt_actions(prompt_actions);
         } else {
             self.plugin_executor.execute_for_plugin(
                 instance_id,
@@ -3023,6 +3325,7 @@ pub fn check_event_permission(
         | Event::CwdChanged(..)
         | Event::CommandChanged(..)
         | Event::AvailableLayoutInfo(..)
+        | Event::AvailableKeybindPresets(..)
         | Event::PluginConfigurationChanged(..)
         | Event::HighlightClicked { .. }
         | Event::SoftKeyboardVisibilityChanged(..)
@@ -3030,7 +3333,11 @@ pub fn check_event_permission(
         | Event::ActivePaneScroll(..)
         | Event::NestedSessionModeUpdate { .. }
         | Event::NestedSessionEnded { .. }
+        | Event::ContextMenu(..)
         | Event::InputReceived => PermissionType::ReadApplicationState,
+        Event::ConfigChangesDropped(..) | Event::ConfigFileChangedSinceRead => {
+            PermissionType::Reconfigure
+        },
         Event::WebServerStatus(..) => PermissionType::StartWebServer,
         Event::PaneRenderReport(..) => PermissionType::ReadPaneContents,
         Event::UserAction(..) => PermissionType::InterceptInput,
@@ -3211,3 +3518,15 @@ fn change_host_dir_of_running_plugin(
     plugin_env.plugin_cwd = new_host_dir.clone();
     Ok(())
 }
+
+pub(crate) fn is_hover(event: &Event) -> bool {
+    matches!(
+        event,
+        Event::Mouse(zellij_utils::data::Mouse::Hover(..))
+            | Event::MouseWithModifiers(zellij_utils::data::Mouse::Hover(..), _)
+    )
+}
+
+#[cfg(test)]
+#[path = "unit/hover_merge_tests.rs"]
+mod hover_merge_tests;

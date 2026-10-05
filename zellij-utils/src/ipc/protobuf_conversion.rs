@@ -417,11 +417,13 @@ impl From<ServerToClientMsg> for ProtoServerToClientMsg {
                     connect_to_session: Some(connect_to_session.into()),
                 })
             },
-            ServerToClientMsg::UnblockCliPipeInput { pipe_name } => {
-                server_to_client_msg::Message::UnblockCliPipeInput(UnblockCliPipeInputMsg {
-                    pipe_name,
-                })
-            },
+            ServerToClientMsg::UnblockCliPipeInput {
+                pipe_name,
+                exit_code,
+            } => server_to_client_msg::Message::UnblockCliPipeInput(UnblockCliPipeInputMsg {
+                pipe_name,
+                exit_code,
+            }),
             ServerToClientMsg::CliPipeOutput { pipe_name, output } => {
                 server_to_client_msg::Message::CliPipeOutput(CliPipeOutputMsg { pipe_name, output })
             },
@@ -656,6 +658,7 @@ impl TryFrom<ProtoServerToClientMsg> for ServerToClientMsg {
             Some(server_to_client_msg::Message::UnblockCliPipeInput(unblock)) => {
                 Ok(ServerToClientMsg::UnblockCliPipeInput {
                     pipe_name: unblock.pipe_name,
+                    exit_code: unblock.exit_code,
                 })
             },
             Some(server_to_client_msg::Message::CliPipeOutput(pipe_output)) => {
@@ -932,6 +935,13 @@ impl From<crate::input::options::Options>
                 .map(|p| p.to_string_lossy().to_string()),
             layout_dir: options.layout_dir.map(|p| p.to_string_lossy().to_string()),
             theme_dir: options.theme_dir.map(|p| p.to_string_lossy().to_string()),
+            keybinds_dir: options
+                .keybinds_dir
+                .map(|p| p.to_string_lossy().to_string()),
+            keybinds_preset: options.keybinds_preset,
+            keybinds_primary: options.keybinds_primary,
+            keybinds_secondary: options.keybinds_secondary,
+            keybinds_unlock: options.keybinds_unlock,
             mouse_mode: options.mouse_mode,
             pane_frames: options.pane_frames,
             mirror_session: options.mirror_session,
@@ -991,6 +1001,7 @@ impl From<crate::input::options::Options>
             visual_bell: options.visual_bell,
             focus_follows_mouse: options.focus_follows_mouse,
             mouse_click_through: options.mouse_click_through,
+            context_menu_enabled: options.context_menu_enabled,
             osc133_command_selection: options.osc133_command_selection,
             word_separators: options.word_separators,
             host_notification_protocol: options
@@ -1050,6 +1061,11 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
             default_layout: options.default_layout.map(std::path::PathBuf::from),
             layout_dir: options.layout_dir.map(std::path::PathBuf::from),
             theme_dir: options.theme_dir.map(std::path::PathBuf::from),
+            keybinds_dir: options.keybinds_dir.map(std::path::PathBuf::from),
+            keybinds_preset: options.keybinds_preset,
+            keybinds_primary: options.keybinds_primary,
+            keybinds_secondary: options.keybinds_secondary,
+            keybinds_unlock: options.keybinds_unlock,
             mouse_mode: options.mouse_mode,
             pane_frames: options.pane_frames,
             pane_frame_style: options.pane_frame_style.as_deref().and_then(|s| match s {
@@ -1129,6 +1145,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
             visual_bell: options.visual_bell,
             focus_follows_mouse: options.focus_follows_mouse,
             mouse_click_through: options.mouse_click_through,
+            context_menu_enabled: options.context_menu_enabled,
             osc133_command_selection: options.osc133_command_selection,
             word_separators: options.word_separators,
             host_notification_protocol: options
@@ -1202,6 +1219,7 @@ impl From<crate::input::actions::Action>
             CurrentTabInfoAction,
             DenyAction,
             DetachAction,
+            DismissInfoPopupsAction,
             DumpLayoutAction,
             DumpScreenAction,
             EditFileAction,
@@ -1253,6 +1271,7 @@ impl From<crate::input::actions::Action>
             NextSwapLayoutAction,
             NextSwapLayoutByTabIdAction,
             NoOpAction,
+            OpenContextMenuAction,
             OverrideLayoutAction,
             PageScrollDownAction,
             PageScrollDownByPaneIdAction,
@@ -1302,6 +1321,8 @@ impl From<crate::input::actions::Action>
             SkipConfirmAction,
             StackPanesAction,
             StartOrReloadPluginAction,
+            StartRenamePaneByPaneIdAction,
+            StartRenameTabByTabIdAction,
             SwitchFocusAction,
             SwitchModeForAllClientsAction,
             SwitchSessionAction,
@@ -1323,6 +1344,7 @@ impl From<crate::input::actions::Action>
             TogglePaneEmbedOrFloatingByPaneIdAction,
             TogglePaneFramesAction,
             TogglePaneInGroupAction,
+            TogglePaneInGroupByPaneIdAction,
             TogglePanePinnedAction,
             TogglePanePinnedByPaneIdAction,
             ToggleTabAction,
@@ -1743,6 +1765,12 @@ impl From<crate::input::actions::Action>
             crate::input::actions::Action::ToggleTheme => {
                 ActionType::ToggleTheme(ToggleThemeAction {})
             },
+            crate::input::actions::Action::DismissInfoPopups => {
+                ActionType::DismissInfoPopups(DismissInfoPopupsAction {})
+            },
+            crate::input::actions::Action::OpenContextMenu => {
+                ActionType::OpenContextMenu(OpenContextMenuAction {})
+            },
             crate::input::actions::Action::SwitchSession {
                 name,
                 tab_position,
@@ -1983,6 +2011,8 @@ impl From<crate::input::actions::Action>
                 in_place,
                 cwd,
                 pane_title,
+                popup,
+                popup_no_focus,
             } => ActionType::CliPipe(CliPipeAction {
                 pipe_id,
                 name,
@@ -2000,6 +2030,8 @@ impl From<crate::input::actions::Action>
                 in_place,
                 cwd: cwd.map(|p| p.to_string_lossy().to_string()),
                 pane_title,
+                popup: popup.map(|p| p.to_string()),
+                popup_no_focus,
             }),
             crate::input::actions::Action::KeybindPipe {
                 name,
@@ -2229,6 +2261,19 @@ impl From<crate::input::actions::Action>
                 ActionType::TogglePanePinnedByPaneId(TogglePanePinnedByPaneIdAction {
                     pane_id: Some(pane_id.into()),
                 })
+            },
+            crate::input::actions::Action::TogglePaneInGroupByPaneId { pane_id } => {
+                ActionType::TogglePaneInGroupByPaneId(TogglePaneInGroupByPaneIdAction {
+                    pane_id: Some(pane_id.into()),
+                })
+            },
+            crate::input::actions::Action::StartRenamePaneByPaneId { pane_id } => {
+                ActionType::StartRenamePaneByPaneId(StartRenamePaneByPaneIdAction {
+                    pane_id: Some(pane_id.into()),
+                })
+            },
+            crate::input::actions::Action::StartRenameTabByTabId { id } => {
+                ActionType::StartRenameTabByTabId(StartRenameTabByTabIdAction { id })
             },
             crate::input::actions::Action::FocusPaneByPaneId { pane_id } => {
                 ActionType::FocusPaneByPaneId(FocusPaneByPaneIdAction {
@@ -2676,6 +2721,10 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             ActionType::SetDarkTheme(_) => Ok(crate::input::actions::Action::SetDarkTheme),
             ActionType::SetLightTheme(_) => Ok(crate::input::actions::Action::SetLightTheme),
             ActionType::ToggleTheme(_) => Ok(crate::input::actions::Action::ToggleTheme),
+            ActionType::DismissInfoPopups(_) => {
+                Ok(crate::input::actions::Action::DismissInfoPopups)
+            },
+            ActionType::OpenContextMenu(_) => Ok(crate::input::actions::Action::OpenContextMenu),
             ActionType::SwitchSession(switch_session_action) => {
                 Ok(crate::input::actions::Action::SwitchSession {
                     name: switch_session_action.name.clone(),
@@ -2943,6 +2992,10 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                 in_place: cli_pipe_action.in_place,
                 cwd: cli_pipe_action.cwd.map(PathBuf::from),
                 pane_title: cli_pipe_action.pane_title,
+                popup: cli_pipe_action
+                    .popup
+                    .and_then(|p| p.parse::<crate::data::PipePopupPlacement>().ok()),
+                popup_no_focus: cli_pipe_action.popup_no_focus,
             }),
             ActionType::KeybindPipe(keybind_pipe_action) => {
                 Ok(crate::input::actions::Action::KeybindPipe {
@@ -3234,6 +3287,25 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                         .ok_or_else(|| anyhow!("TogglePanePinnedByPaneId missing pane_id"))?
                         .try_into()?,
                 })
+            },
+            ActionType::TogglePaneInGroupByPaneId(a) => {
+                Ok(crate::input::actions::Action::TogglePaneInGroupByPaneId {
+                    pane_id: a
+                        .pane_id
+                        .ok_or_else(|| anyhow!("TogglePaneInGroupByPaneId missing pane_id"))?
+                        .try_into()?,
+                })
+            },
+            ActionType::StartRenamePaneByPaneId(a) => {
+                Ok(crate::input::actions::Action::StartRenamePaneByPaneId {
+                    pane_id: a
+                        .pane_id
+                        .ok_or_else(|| anyhow!("StartRenamePaneByPaneId missing pane_id"))?
+                        .try_into()?,
+                })
+            },
+            ActionType::StartRenameTabByTabId(a) => {
+                Ok(crate::input::actions::Action::StartRenameTabByTabId { id: a.id })
             },
             ActionType::FocusPaneByPaneId(a) => {
                 Ok(crate::input::actions::Action::FocusPaneByPaneId {

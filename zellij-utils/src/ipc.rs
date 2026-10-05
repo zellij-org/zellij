@@ -277,6 +277,7 @@ pub enum ServerToClientMsg {
     },
     UnblockCliPipeInput {
         pipe_name: String,
+        exit_code: Option<i32>,
     },
     CliPipeOutput {
         pipe_name: String,

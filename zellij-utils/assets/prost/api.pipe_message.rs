@@ -16,6 +16,10 @@ pub struct PipeMessage {
     pub args: ::prost::alloc::vec::Vec<Arg>,
     #[prost(bool, tag="7")]
     pub is_private: bool,
+    #[prost(uint32, optional, tag="8")]
+    pub prompt_caller_plugin_id: ::core::option::Option<u32>,
+    #[prost(uint64, optional, tag="9")]
+    pub prompt_request_id: ::core::option::Option<u64>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -31,6 +35,7 @@ pub enum PipeSource {
     Cli = 0,
     Plugin = 1,
     Keybind = 2,
+    PromptRequest = 3,
 }
 impl PipeSource {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -42,6 +47,7 @@ impl PipeSource {
             PipeSource::Cli => "Cli",
             PipeSource::Plugin => "Plugin",
             PipeSource::Keybind => "Keybind",
+            PipeSource::PromptRequest => "PromptRequest",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -50,6 +56,7 @@ impl PipeSource {
             "Cli" => Some(Self::Cli),
             "Plugin" => Some(Self::Plugin),
             "Keybind" => Some(Self::Keybind),
+            "PromptRequest" => Some(Self::PromptRequest),
             _ => None,
         }
     }

@@ -73,9 +73,18 @@ fn find_executable(candidate: &std::path::Path) -> Option<PathBuf> {
     None
 }
 
+pub type PaneEnv = BTreeMap<String, Option<String>>;
+
+pub fn env_value(pane_env: &PaneEnv, name: &str) -> Option<String> {
+    match pane_env.get(name) {
+        Some(value) => value.clone(),
+        None => env::var(name).ok(),
+    }
+}
+
 /// Resolve a command to its absolute path, searching the working directory,
 /// then PATH (and PATHEXT on Windows).
-pub(crate) fn resolve_command(cmd: &RunCommand) -> Option<PathBuf> {
+pub(crate) fn resolve_command(cmd: &RunCommand, pane_env: &PaneEnv) -> Option<PathBuf> {
     let command = &cmd.command;
     match cmd.cwd.as_ref() {
         Some(cwd) => {
@@ -89,7 +98,11 @@ pub(crate) fn resolve_command(cmd: &RunCommand) -> Option<PathBuf> {
             }
         },
     }
-    if let Some(paths) = env::var_os("PATH") {
+    let paths = match pane_env.get("PATH") {
+        Some(value) => value.clone().map(std::ffi::OsString::from),
+        None => env::var_os("PATH"),
+    };
+    if let Some(paths) = paths {
         for path in env::split_paths(&paths) {
             if let Some(resolved) = find_executable(&path.join(command)) {
                 return Some(resolved);
@@ -100,8 +113,8 @@ pub(crate) fn resolve_command(cmd: &RunCommand) -> Option<PathBuf> {
 }
 
 #[cfg(not(windows))]
-pub(crate) fn command_exists(cmd: &RunCommand) -> bool {
-    resolve_command(cmd).is_some()
+pub(crate) fn command_exists(cmd: &RunCommand, pane_env: &PaneEnv) -> bool {
+    resolve_command(cmd, pane_env).is_some()
 }
 
 // this is a utility method to separate the arguments from a pathbuf before we turn it into a
@@ -137,6 +150,7 @@ fn separate_command_arguments(command: &mut PathBuf, args: &mut Vec<String>) {
 fn build_command(
     terminal_action: TerminalAction,
     default_editor: Option<PathBuf>,
+    pane_env: &PaneEnv,
 ) -> (RunCommand, Option<RunCommand>) {
     let mut failover_cmd_args = None;
     let cmd = match terminal_action {
@@ -148,8 +162,9 @@ fn build_command(
             }
             let mut command = default_editor.unwrap_or_else(|| {
                 PathBuf::from(
-                    env::var("EDITOR")
-                        .unwrap_or_else(|_| env::var("VISUAL").unwrap_or_else(|_| "vi".into())),
+                    env_value(pane_env, "EDITOR")
+                        .or_else(|| env_value(pane_env, "VISUAL"))
+                        .unwrap_or_else(|| "vi".into()),
                 )
             });
 
@@ -365,6 +380,7 @@ pub trait ServerOsApi: Send + Sync {
         terminal_action: TerminalAction,
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         default_editor: Option<PathBuf>,
+        pane_env: &PaneEnv,
     ) -> Result<(u32, Box<dyn AsyncReader>, Option<u32>)>;
     // reserves a terminal id without actually opening a terminal
     fn reserve_terminal_id(&self) -> Result<u32> {
@@ -422,6 +438,7 @@ pub trait ServerOsApi: Send + Sync {
         terminal_id: u32,
         run_command: RunCommand,
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
+        pane_env: &PaneEnv,
     ) -> Result<(Box<dyn AsyncReader>, Option<u32>)>;
     fn clear_terminal_id(&self, terminal_id: u32) -> Result<()>;
     fn cache_resizes(&mut self) {}
@@ -449,6 +466,7 @@ impl ServerOsApi for ServerOsInputOutput {
         terminal_action: TerminalAction,
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         default_editor: Option<PathBuf>,
+        pane_env: &PaneEnv,
     ) -> Result<(u32, Box<dyn AsyncReader>, Option<u32>)> {
         let err_context = || "failed to spawn terminal".to_string();
 
@@ -459,11 +477,11 @@ impl ServerOsApi for ServerOsInputOutput {
 
         self.pty_backend.reserve_terminal_id(terminal_id);
 
-        let (cmd, failover_cmd) = build_command(terminal_action, default_editor);
+        let (cmd, failover_cmd) = build_command(terminal_action, default_editor, pane_env);
 
         let (async_reader, child_fd) = self
             .pty_backend
-            .spawn_terminal(cmd, failover_cmd, quit_cb, terminal_id)
+            .spawn_terminal(cmd, failover_cmd, quit_cb, terminal_id, pane_env)
             .with_context(err_context)?;
 
         Ok((terminal_id, async_reader, Some(child_fd as u32)))
@@ -713,10 +731,11 @@ impl ServerOsApi for ServerOsInputOutput {
         terminal_id: u32,
         run_command: RunCommand,
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
+        pane_env: &PaneEnv,
     ) -> Result<(Box<dyn AsyncReader>, Option<u32>)> {
         let (async_reader, child_fd) =
             self.pty_backend
-                .spawn_terminal(run_command, None, quit_cb, terminal_id)?;
+                .spawn_terminal(run_command, None, quit_cb, terminal_id, pane_env)?;
         Ok((async_reader, Some(child_fd as u32)))
     }
     fn clear_terminal_id(&self, terminal_id: u32) -> Result<()> {

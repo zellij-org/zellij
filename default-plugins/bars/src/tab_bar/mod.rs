@@ -5,7 +5,7 @@ use std::cmp::{max, min};
 use std::collections::{BTreeMap, VecDeque};
 use std::convert::TryInto;
 
-use tab::get_tab_to_focus;
+use tab::{get_clicked_line_part, get_tab_to_focus};
 use zellij_tile::prelude::*;
 
 use crate::keybinds::KeybindStore;
@@ -293,6 +293,15 @@ impl TabBar {
                         client.hovered_tab_idx = new_hovered_tab_idx;
                         should_render = true;
                     }
+                },
+                Mouse::RightClick(line, col) => {
+                    let target = match get_clicked_line_part(&slot_client.tab_line, *col)
+                        .and_then(|line_part| line_part.tab_index)
+                    {
+                        Some(tab_index) => ContextMenuTarget::Tab(tab_index),
+                        None => ContextMenuTarget::Bar,
+                    };
+                    open_context_menu(target, (*line).max(0) as usize, *col);
                 },
                 Mouse::ScrollUp(_) => {
                     switch_tab_to(min(client.active_tab_idx + 1, client.tabs.len()) as u32);

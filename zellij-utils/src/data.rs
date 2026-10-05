@@ -953,6 +953,30 @@ pub struct StyledText {
     pub indices: Vec<Vec<usize>>,
 }
 
+impl StyledText {
+    pub fn plain(text: impl Into<String>) -> Self {
+        StyledText {
+            text: text.into(),
+            indices: vec![],
+        }
+    }
+    pub fn is_plain(&self) -> bool {
+        self.indices.iter().all(|level| level.is_empty())
+    }
+}
+
+impl From<&str> for StyledText {
+    fn from(text: &str) -> Self {
+        StyledText::plain(text)
+    }
+}
+
+impl From<String> for StyledText {
+    fn from(text: String) -> Self {
+        StyledText::plain(text)
+    }
+}
+
 /// These events can be subscribed to with subscribe method exported by `zellij-tile`.
 /// Once subscribed to, they will trigger the `update` method of the `ZellijPlugin` trait.
 #[derive(Debug, Clone, PartialEq, EnumDiscriminants, Display, Serialize, Deserialize)]
@@ -967,6 +991,7 @@ pub enum Event {
     Key(KeyWithModifier),
     /// A mouse event happened while the user is focused on this plugin's pane
     Mouse(Mouse),
+    MouseWithModifiers(Mouse, BTreeSet<KeyModifier>),
     /// A timer expired set by the `set_timeout` method exported by `zellij-tile`.
     Timer(f64),
     /// Text was copied to the clipboard anywhere in the app
@@ -1058,6 +1083,189 @@ pub enum Event {
         pane_id: PaneId,
         reason: NestedSessionEndReason,
     },
+    ContextMenu(ContextMenuContext, Vec<ContextMenuEntry>),
+    ConfigChangesDropped(Vec<SettingKey>),
+    AvailableKeybindPresets(Vec<KeybindPresetInfo>, Vec<KeybindPresetWithError>),
+    ConfigFileChangedSinceRead,
+    PromptResult(u64, crate::prompt::PromptResult),
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ContextMenuKind {
+    Pane,
+    PaneFrame,
+    Tab,
+    Bar,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ContextMenuContext {
+    pub kind: ContextMenuKind,
+    pub pane_id: Option<PaneId>,
+    pub pane_is_floating: bool,
+    pub tab_index: Option<usize>,
+    pub tab_id: Option<usize>,
+    pub tab_count: usize,
+    pub line: usize,
+    pub column: usize,
+    pub client_id: ClientId,
+}
+
+impl ContextMenuContext {
+    pub fn target_pane_id(&self) -> Option<PaneId> {
+        match self.kind {
+            ContextMenuKind::Pane | ContextMenuKind::PaneFrame => self.pane_id,
+            _ => None,
+        }
+    }
+    pub fn target_tab_id(&self) -> Option<u64> {
+        self.tab_id.map(|id| id as u64)
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ClickedPaneAction {
+    CloseFocus,
+    ToggleFocusFullscreen,
+    ToggleEmbedOrFloating,
+    TogglePinned,
+    ToggleInGroup,
+    StartRename,
+}
+
+impl ClickedPaneAction {
+    pub const ALL: [ClickedPaneAction; 6] = [
+        ClickedPaneAction::CloseFocus,
+        ClickedPaneAction::ToggleFocusFullscreen,
+        ClickedPaneAction::ToggleEmbedOrFloating,
+        ClickedPaneAction::TogglePinned,
+        ClickedPaneAction::ToggleInGroup,
+        ClickedPaneAction::StartRename,
+    ];
+    pub fn kdl_name(&self) -> &'static str {
+        match self {
+            ClickedPaneAction::CloseFocus => "CloseFocusByPaneId",
+            ClickedPaneAction::ToggleFocusFullscreen => "ToggleFocusFullscreenByPaneId",
+            ClickedPaneAction::ToggleEmbedOrFloating => "TogglePaneEmbedOrFloatingByPaneId",
+            ClickedPaneAction::TogglePinned => "TogglePanePinnedByPaneId",
+            ClickedPaneAction::ToggleInGroup => "TogglePaneInGroupByPaneId",
+            ClickedPaneAction::StartRename => "StartRenamePaneByPaneId",
+        }
+    }
+    pub fn from_kdl_name(name: &str) -> Option<Self> {
+        ClickedPaneAction::ALL
+            .into_iter()
+            .find(|action| action.kdl_name() == name)
+    }
+    pub fn with_pane(&self, pane_id: PaneId) -> Action {
+        match self {
+            ClickedPaneAction::CloseFocus => Action::CloseFocusByPaneId { pane_id },
+            ClickedPaneAction::ToggleFocusFullscreen => {
+                Action::ToggleFocusFullscreenByPaneId { pane_id }
+            },
+            ClickedPaneAction::ToggleEmbedOrFloating => {
+                Action::TogglePaneEmbedOrFloatingByPaneId { pane_id }
+            },
+            ClickedPaneAction::TogglePinned => Action::TogglePanePinnedByPaneId { pane_id },
+            ClickedPaneAction::ToggleInGroup => Action::TogglePaneInGroupByPaneId { pane_id },
+            ClickedPaneAction::StartRename => Action::StartRenamePaneByPaneId { pane_id },
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ClickedTabAction {
+    Close,
+    StartRename,
+    Move(Direction),
+}
+
+impl ClickedTabAction {
+    pub fn kdl_name(&self) -> &'static str {
+        match self {
+            ClickedTabAction::Close => "CloseTabById",
+            ClickedTabAction::StartRename => "StartRenameTabByTabId",
+            ClickedTabAction::Move(_) => "MoveTabByTabId",
+        }
+    }
+    pub fn with_tab(&self, id: u64) -> Action {
+        match self {
+            ClickedTabAction::Close => Action::CloseTabById { id },
+            ClickedTabAction::StartRename => Action::StartRenameTabByTabId { id },
+            ClickedTabAction::Move(direction) => Action::MoveTabByTabId {
+                id,
+                direction: *direction,
+            },
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum ContextMenuAction {
+    Action(Action),
+    ClickedPane(ClickedPaneAction),
+    ClickedTab(ClickedTabAction),
+}
+
+impl From<Action> for ContextMenuAction {
+    fn from(action: Action) -> Self {
+        ContextMenuAction::Action(action)
+    }
+}
+
+impl ContextMenuAction {
+    pub fn into_action(self, pane_id: Option<PaneId>, tab_id: Option<u64>) -> Option<Action> {
+        match self {
+            ContextMenuAction::Action(action) => Some(action),
+            ContextMenuAction::ClickedPane(action) => pane_id.map(|id| action.with_pane(id)),
+            ContextMenuAction::ClickedTab(action) => tab_id.map(|id| action.with_tab(id)),
+        }
+    }
+    pub fn keybinding_equivalent(&self) -> Vec<Action> {
+        match self {
+            ContextMenuAction::Action(action) => action.keybinding_equivalent(),
+            ContextMenuAction::ClickedPane(action) => action
+                .with_pane(PaneId::Terminal(0))
+                .keybinding_equivalent(),
+            ContextMenuAction::ClickedTab(action) => action.with_tab(0).keybinding_equivalent(),
+        }
+    }
+    pub fn as_action(&self) -> Option<&Action> {
+        match self {
+            ContextMenuAction::Action(action) => Some(action),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum ContextMenuEntry {
+    Item {
+        label: String,
+        actions: Vec<ContextMenuAction>,
+    },
+    Separator,
+}
+
+impl ContextMenuEntry {
+    pub fn item(label: impl Into<String>, actions: Vec<ContextMenuAction>) -> Self {
+        ContextMenuEntry::Item {
+            label: label.into(),
+            actions,
+        }
+    }
+    pub fn label(&self) -> Option<&str> {
+        match self {
+            ContextMenuEntry::Item { label, .. } => Some(label.as_str()),
+            ContextMenuEntry::Separator => None,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ContextMenuTarget {
+    Tab(usize),
+    Bar,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -2149,6 +2357,54 @@ pub enum LayoutInfo {
     File(String, LayoutMetadata),
     Url(String),
     Stringified(String),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Deserialize, Serialize)]
+pub enum KeybindPresetSource {
+    #[default]
+    BuiltIn,
+    Folder,
+    File,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct KeybindPresetInfo {
+    pub name: String,
+    pub display_name: String,
+    pub description: Option<String>,
+    pub source: KeybindPresetSource,
+    pub placeholders: Vec<String>,
+    pub path: Option<String>,
+    pub examples: Vec<(String, String)>,
+}
+
+impl KeybindPresetInfo {
+    pub fn uses_placeholder(&self, placeholder: &str) -> bool {
+        self.placeholders.iter().any(|p| p == placeholder)
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct KeybindPresetWithError {
+    pub name: String,
+    pub path: String,
+    pub error: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct KeybindsSelectionSnapshot {
+    pub preset: Option<String>,
+    pub primary: Option<String>,
+    pub secondary: Option<String>,
+    pub unlock: Option<String>,
+    pub clears_defaults: bool,
+    pub has_own_keybindings: bool,
+    pub active: KeybindPresetInfo,
+    pub active_values: BTreeMap<String, String>,
+    pub error: Option<String>,
+    pub set_by_layout: bool,
+    pub default_mode: Option<InputMode>,
+    pub set_on_command_line: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -3400,6 +3656,129 @@ pub enum PipeSource {
     Cli(String), // String is the pipe_id of the CLI pipe (used for blocking/unblocking)
     Plugin(u32), // u32 is the lugin id
     Keybind,     // TODO: consider including the actual keybind here?
+    PromptRequest {
+        caller_plugin_id: u32,
+        request_id: u64,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
+pub enum PopupCorner {
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+}
+
+impl PopupCorner {
+    pub fn is_top(&self) -> bool {
+        matches!(self, PopupCorner::TopLeft | PopupCorner::TopRight)
+    }
+    pub fn is_left(&self) -> bool {
+        matches!(self, PopupCorner::TopLeft | PopupCorner::BottomLeft)
+    }
+}
+
+impl FromStr for PopupCorner {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_ascii_lowercase().replace('_', "-").as_str() {
+            "top-left" => Ok(PopupCorner::TopLeft),
+            "top-right" => Ok(PopupCorner::TopRight),
+            "bottom-left" => Ok(PopupCorner::BottomLeft),
+            "bottom-right" => Ok(PopupCorner::BottomRight),
+            other => Err(format!(
+                "invalid popup corner '{}', expected one of: top-left, top-right, bottom-left, bottom-right",
+                other
+            )),
+        }
+    }
+}
+
+impl fmt::Display for PopupCorner {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            PopupCorner::TopLeft => write!(f, "top-left"),
+            PopupCorner::TopRight => write!(f, "top-right"),
+            PopupCorner::BottomLeft => write!(f, "bottom-left"),
+            PopupCorner::BottomRight => write!(f, "bottom-right"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
+pub struct PopupOptions {
+    pub focused: bool,
+    pub corner: Option<PopupCorner>,
+}
+
+impl Default for PopupOptions {
+    fn default() -> Self {
+        PopupOptions {
+            focused: true,
+            corner: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Deserialize, Serialize)]
+pub enum PipePopupPlacement {
+    #[default]
+    Pane,
+    Center,
+    Mouse,
+    Cursor,
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+}
+
+impl PipePopupPlacement {
+    pub fn corner(&self) -> Option<PopupCorner> {
+        match self {
+            PipePopupPlacement::TopLeft => Some(PopupCorner::TopLeft),
+            PipePopupPlacement::TopRight => Some(PopupCorner::TopRight),
+            PipePopupPlacement::BottomLeft => Some(PopupCorner::BottomLeft),
+            PipePopupPlacement::BottomRight => Some(PopupCorner::BottomRight),
+            _ => None,
+        }
+    }
+}
+
+impl FromStr for PipePopupPlacement {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_ascii_lowercase().replace('_', "-").as_str() {
+            "pane" => Ok(PipePopupPlacement::Pane),
+            "center" | "centre" => Ok(PipePopupPlacement::Center),
+            "mouse" => Ok(PipePopupPlacement::Mouse),
+            "cursor" => Ok(PipePopupPlacement::Cursor),
+            "top-left" => Ok(PipePopupPlacement::TopLeft),
+            "top-right" => Ok(PipePopupPlacement::TopRight),
+            "bottom-left" => Ok(PipePopupPlacement::BottomLeft),
+            "bottom-right" => Ok(PipePopupPlacement::BottomRight),
+            other => Err(format!(
+                "invalid popup placement '{}', expected one of: pane, center, mouse, cursor, top-left, top-right, bottom-left, bottom-right",
+                other
+            )),
+        }
+    }
+}
+
+impl fmt::Display for PipePopupPlacement {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            PipePopupPlacement::Pane => write!(f, "pane"),
+            PipePopupPlacement::Center => write!(f, "center"),
+            PipePopupPlacement::Mouse => write!(f, "mouse"),
+            PipePopupPlacement::Cursor => write!(f, "cursor"),
+            PipePopupPlacement::TopLeft => write!(f, "top-left"),
+            PipePopupPlacement::TopRight => write!(f, "top-right"),
+            PipePopupPlacement::BottomLeft => write!(f, "bottom-left"),
+            PipePopupPlacement::BottomRight => write!(f, "bottom-right"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -3941,6 +4320,7 @@ pub enum PluginCommand {
     UnblockCliPipeInput(String),   // String => pipe name
     BlockCliPipeInput(String),     // String => pipe name
     CliPipeOutput(String, String), // String => pipe name, String => output
+    SetCliPipeExitCode(String, i32),
     MessageToPlugin(MessageToPlugin),
     DisconnectOtherClients,
     KillSessions(Vec<String>), // one or more session names
@@ -4124,6 +4504,420 @@ pub enum PluginCommand {
     HideSlot(SlotId),
     ShowSlot(SlotId, bool),
     CloseSlot(SlotId),
+    OpenContextMenu {
+        target: ContextMenuTarget,
+        line: usize,
+        column: usize,
+    },
+    OpenPluginPopup {
+        plugin_url: String,
+        configuration: BTreeMap<String, String>,
+        line: usize,
+        column: usize,
+        width: usize,
+        height: usize,
+        options: PopupOptions,
+    },
+    SetPopupSize {
+        width: usize,
+        height: usize,
+    },
+    RunContextMenuItem(usize),
+    ReadConfig,
+    RevertConfig(Option<SettingKey>),
+    UnsetConfigSetting(SettingKey),
+    SaveConfig,
+    OverwriteConfigFile,
+    ReloadConfigFile,
+    CopyKeybindPreset {
+        preset: String,
+        new_name: String,
+    },
+    ReplaceConfigBlocks(String),
+    SaveKeybindsAsPreset {
+        new_name: String,
+    },
+    WriteThemeFile {
+        name: String,
+        copy_from: Option<String>,
+        colours: Vec<String>,
+    },
+    DeleteThemeFile {
+        name: String,
+    },
+    ResetKeys {
+        keys: Vec<(InputMode, KeyWithModifier)>,
+        write_config_to_disk: bool,
+    },
+    Prompt {
+        request_id: u64,
+        request: crate::prompt::PromptRequest,
+    },
+    ReplyToPrompt {
+        request_id: u64,
+        result: crate::prompt::PromptResult,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum SettingSection {
+    TopLevel,
+    PaneFrames,
+    WebClient,
+    Keybinds,
+    Blocks,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum SettingValueShape {
+    Flag,
+    Number,
+    Text,
+}
+
+macro_rules! setting_keys {
+    ($($variant:ident => ($section:ident, $kdl_name:literal, $requires_restart:literal, $shape:ident)),* $(,)?) => {
+        #[derive(
+            Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, EnumIter,
+        )]
+        pub enum SettingKey {
+            $($variant),*
+        }
+        impl SettingKey {
+            pub fn kdl_name(&self) -> &'static str {
+                match self {
+                    $(SettingKey::$variant => $kdl_name),*
+                }
+            }
+            pub fn section(&self) -> SettingSection {
+                match self {
+                    $(SettingKey::$variant => SettingSection::$section),*
+                }
+            }
+            pub fn requires_restart(&self) -> bool {
+                match self {
+                    $(SettingKey::$variant => $requires_restart),*
+                }
+            }
+            pub fn value_shape(&self) -> SettingValueShape {
+                match self {
+                    $(SettingKey::$variant => SettingValueShape::$shape),*
+                }
+            }
+        }
+    };
+}
+
+setting_keys! {
+    SimplifiedUi => (TopLevel, "simplified_ui", false, Flag),
+    Theme => (TopLevel, "theme", false, Text),
+    ThemeDark => (TopLevel, "theme_dark", false, Text),
+    ThemeLight => (TopLevel, "theme_light", false, Text),
+    ExplicitThemeHue => (TopLevel, "explicit_theme_hue", false, Text),
+    DefaultMode => (TopLevel, "default_mode", false, Text),
+    DefaultShell => (TopLevel, "default_shell", false, Text),
+    DefaultCwd => (TopLevel, "default_cwd", false, Text),
+    DefaultLayout => (TopLevel, "default_layout", true, Text),
+    LayoutDir => (TopLevel, "layout_dir", false, Text),
+    ThemeDir => (TopLevel, "theme_dir", false, Text),
+    KeybindsDir => (TopLevel, "keybinds_dir", false, Text),
+    MouseMode => (TopLevel, "mouse_mode", true, Flag),
+    PaneFrames => (TopLevel, "pane_frames", false, Flag),
+    PaneFrameStyle => (TopLevel, "pane_frame_style", false, Text),
+    MirrorSession => (TopLevel, "mirror_session", true, Flag),
+    OnForceClose => (TopLevel, "on_force_close", true, Text),
+    ScrollBufferSize => (TopLevel, "scroll_buffer_size", true, Number),
+    CopyCommand => (TopLevel, "copy_command", false, Text),
+    CopyClipboard => (TopLevel, "copy_clipboard", false, Text),
+    CopyOnSelect => (TopLevel, "copy_on_select", false, Flag),
+    Osc8Hyperlinks => (TopLevel, "osc8_hyperlinks", true, Flag),
+    ScrollbackEditor => (TopLevel, "scrollback_editor", false, Text),
+    SessionName => (TopLevel, "session_name", true, Text),
+    AttachToSession => (TopLevel, "attach_to_session", true, Flag),
+    AutoLayout => (TopLevel, "auto_layout", false, Flag),
+    SessionSerialization => (TopLevel, "session_serialization", true, Flag),
+    SerializePaneViewport => (TopLevel, "serialize_pane_viewport", true, Flag),
+    ScrollbackLinesToSerialize => (TopLevel, "scrollback_lines_to_serialize", true, Number),
+    StyledUnderlines => (TopLevel, "styled_underlines", true, Flag),
+    SerializationInterval => (TopLevel, "serialization_interval", true, Number),
+    DisableSessionMetadata => (TopLevel, "disable_session_metadata", true, Flag),
+    SupportKittyKeyboardProtocol => (TopLevel, "support_kitty_keyboard_protocol", true, Flag),
+    SupportKittyGraphicsProtocol => (TopLevel, "support_kitty_graphics_protocol", true, Flag),
+    WebServer => (TopLevel, "web_server", true, Flag),
+    WebSharing => (TopLevel, "web_sharing", true, Text),
+    StackedResize => (TopLevel, "stacked_resize", false, Flag),
+    StackedPaneList => (TopLevel, "stacked_pane_list", false, Flag),
+    ShowStartupTips => (TopLevel, "show_startup_tips", true, Flag),
+    ShowReleaseNotes => (TopLevel, "show_release_notes", true, Flag),
+    AdvancedMouseActions => (TopLevel, "advanced_mouse_actions", false, Flag),
+    MouseScrollResize => (TopLevel, "mouse_scroll_resize", false, Flag),
+    ScrollModeSync => (TopLevel, "scroll_mode_sync", false, Flag),
+    MouseHoverEffects => (TopLevel, "mouse_hover_effects", false, Flag),
+    MouseHoverTips => (TopLevel, "mouse_hover_tips", false, Flag),
+    VisualBell => (TopLevel, "visual_bell", false, Flag),
+    FocusFollowsMouse => (TopLevel, "focus_follows_mouse", false, Flag),
+    MouseClickThrough => (TopLevel, "mouse_click_through", false, Flag),
+    ContextMenuEnabled => (TopLevel, "context_menu_enabled", false, Flag),
+    Osc133CommandSelection => (TopLevel, "osc133_command_selection", false, Flag),
+    WordSeparators => (TopLevel, "word_separators", false, Text),
+    HostNotificationProtocol => (TopLevel, "host_notification_protocol", false, Text),
+    WebServerIp => (TopLevel, "web_server_ip", true, Text),
+    WebServerPort => (TopLevel, "web_server_port", true, Number),
+    WebServerCert => (TopLevel, "web_server_cert", true, Text),
+    WebServerKey => (TopLevel, "web_server_key", true, Text),
+    EnforceHttpsForLocalhost => (TopLevel, "enforce_https_for_localhost", true, Flag),
+    PostCommandDiscoveryHook => (TopLevel, "post_command_discovery_hook", false, Text),
+    ClientAsyncWorkerTasks => (TopLevel, "client_async_worker_tasks", true, Number),
+    NestedSessionHandling => (TopLevel, "nested_session_handling", false, Text),
+    DangerouslyEnablePasteBufferRead => (TopLevel, "dangerously_enable_paste_buffer_read", false, Flag),
+    FrameRoundedCorners => (PaneFrames, "rounded_corners", false, Flag),
+    FrameHideSessionName => (PaneFrames, "hide_session_name", false, Flag),
+    FrameBorderStyle => (PaneFrames, "border_style", false, Text),
+    FrameBorderTop => (PaneFrames, "border_top", false, Text),
+    FrameBorderRight => (PaneFrames, "border_right", false, Text),
+    FrameBorderBottom => (PaneFrames, "border_bottom", false, Text),
+    FrameBorderLeft => (PaneFrames, "border_left", false, Text),
+    FrameBorderRoundedCorners => (PaneFrames, "border_rounded_corners", false, Flag),
+    FrameFloatingBorderStyle => (PaneFrames, "floating_border_style", false, Text),
+    FrameFloatingBorderTop => (PaneFrames, "floating_border_top", false, Text),
+    FrameFloatingBorderRight => (PaneFrames, "floating_border_right", false, Text),
+    FrameFloatingBorderBottom => (PaneFrames, "floating_border_bottom", false, Text),
+    FrameFloatingBorderLeft => (PaneFrames, "floating_border_left", false, Text),
+    FrameFloatingBorderRoundedCorners => (PaneFrames, "floating_border_rounded_corners", false, Flag),
+    WebClientFont => (WebClient, "font", true, Text),
+    WebClientFontSize => (WebClient, "font_size", true, Number),
+    WebClientCursorBlink => (WebClient, "cursor_blink", true, Flag),
+    WebClientCursorStyle => (WebClient, "cursor_style", true, Text),
+    WebClientCursorInactiveStyle => (WebClient, "cursor_inactive_style", true, Text),
+    WebClientMacOptionIsMeta => (WebClient, "mac_option_is_meta", true, Flag),
+    WebClientBaseUrl => (WebClient, "base_url", true, Text),
+    Keybinds => (Keybinds, "keybinds", false, Text),
+    PluginAliases => (Blocks, "plugins", false, Text),
+    LoadPlugins => (Blocks, "load_plugins", true, Text),
+    Env => (Blocks, "env", true, Text),
+    Themes => (Blocks, "themes", false, Text),
+    ContextMenu => (Blocks, "context_menu", false, Text),
+}
+
+impl SettingKey {
+    pub fn all() -> Vec<SettingKey> {
+        use strum::IntoEnumIterator;
+        SettingKey::iter().collect()
+    }
+    pub fn id(&self) -> String {
+        match self.section() {
+            SettingSection::TopLevel | SettingSection::Keybinds | SettingSection::Blocks => {
+                self.kdl_name().to_owned()
+            },
+            SettingSection::PaneFrames => format!("ui.pane_frames.{}", self.kdl_name()),
+            SettingSection::WebClient => format!("web_client.{}", self.kdl_name()),
+        }
+    }
+    pub fn from_id(id: &str) -> Option<SettingKey> {
+        SettingKey::all().into_iter().find(|key| key.id() == id)
+    }
+    pub fn parent_nodes(&self) -> &'static [&'static str] {
+        match self.section() {
+            SettingSection::TopLevel | SettingSection::Keybinds | SettingSection::Blocks => &[],
+            SettingSection::PaneFrames => &["ui", "pane_frames"],
+            SettingSection::WebClient => &["web_client"],
+        }
+    }
+    pub fn is_block(&self) -> bool {
+        matches!(
+            self.section(),
+            SettingSection::Keybinds | SettingSection::Blocks
+        )
+    }
+    pub fn kdl_value(&self, value: &str) -> Option<kdl::KdlValue> {
+        match self.value_shape() {
+            SettingValueShape::Flag => match value {
+                "true" => Some(kdl::KdlValue::Bool(true)),
+                "false" => Some(kdl::KdlValue::Bool(false)),
+                _ => None,
+            },
+            SettingValueShape::Number => {
+                value.trim().parse::<i64>().ok().map(kdl::KdlValue::Base10)
+            },
+            SettingValueShape::Text => Some(kdl::KdlValue::String(value.to_owned())),
+        }
+    }
+    pub fn kdl_snippet(&self, value: &str) -> String {
+        let value_text = self
+            .kdl_value(value)
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| kdl::KdlValue::String(value.to_owned()).to_string());
+        let mut text = format!("{} {}", self.kdl_name(), value_text);
+        for parent in self.parent_nodes().iter().rev() {
+            let inner = text
+                .lines()
+                .map(|line| format!("    {}", line))
+                .collect::<Vec<_>>()
+                .join("\n");
+            text = format!("{} {{\n{}\n}}", parent, inner);
+        }
+        text
+    }
+}
+
+impl fmt::Display for SettingKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.id())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConfigSettingState {
+    pub key: SettingKey,
+    pub saved_value: Option<String>,
+    pub current_value: Option<String>,
+    pub set_in_file: bool,
+}
+
+impl ConfigSettingState {
+    pub fn is_unsaved(&self) -> bool {
+        self.saved_value != self.current_value
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct PluginEntry {
+    pub location: String,
+    pub cwd: Option<String>,
+    pub configuration: Vec<(String, String)>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PluginAliasEntry {
+    pub name: String,
+    pub plugin: PluginEntry,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EnvVarEntry {
+    pub name: String,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MenuItemEntry {
+    pub label: Option<String>,
+    pub actions: Vec<String>,
+    pub shortcut: Option<String>,
+}
+
+impl MenuItemEntry {
+    pub fn separator() -> Self {
+        MenuItemEntry::default()
+    }
+    pub fn is_separator(&self) -> bool {
+        self.label.is_none()
+    }
+    pub fn same_item(&self, other: &MenuItemEntry) -> bool {
+        self.label == other.label && self.actions == other.actions
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MenuSectionEntries {
+    pub section: String,
+    pub entries: Vec<MenuItemEntry>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ThemeSource {
+    #[default]
+    BuiltIn,
+    ConfigFile,
+    ThemeFolder,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ThemeEntry {
+    pub name: String,
+    pub source: ThemeSource,
+    pub colours: Vec<String>,
+    pub file_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConfigBlocks {
+    pub plugin_aliases: Vec<PluginAliasEntry>,
+    pub load_plugins: Vec<PluginEntry>,
+    pub env: Vec<EnvVarEntry>,
+    pub context_menu: Vec<MenuSectionEntries>,
+    pub themes: Vec<ThemeEntry>,
+}
+
+impl ConfigBlocks {
+    pub fn menu_section(&self, section: &str) -> Vec<MenuItemEntry> {
+        self.context_menu
+            .iter()
+            .find(|entries| entries.section == section)
+            .map(|entries| entries.entries.clone())
+            .unwrap_or_default()
+    }
+    pub fn theme(&self, name: &str) -> Option<&ThemeEntry> {
+        self.themes.iter().find(|theme| theme.name == name)
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum KeybindingSource {
+    #[default]
+    Preset,
+    User,
+    Shared(String),
+    Layout,
+}
+
+impl KeybindingSource {
+    pub fn label(&self) -> String {
+        match self {
+            KeybindingSource::Preset => "preset".to_owned(),
+            KeybindingSource::User => "user file".to_owned(),
+            KeybindingSource::Shared(block) => format!("user file, {}", block),
+            KeybindingSource::Layout => "layout".to_owned(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KeybindingEntry {
+    pub mode: InputMode,
+    pub key: KeyWithModifier,
+    pub actions: Vec<String>,
+    pub source: KeybindingSource,
+    pub unbound: bool,
+    pub preset_actions: Option<Vec<String>>,
+    pub unsaved: bool,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConfigSnapshot {
+    pub settings: Vec<ConfigSettingState>,
+    pub config_file_path: Option<String>,
+    pub backup_file_path: Option<String>,
+    pub pending_restart_settings: Vec<SettingKey>,
+    pub theme_names: Vec<String>,
+    pub plugin_aliases: Vec<String>,
+    pub load_plugins: Vec<String>,
+    pub env_vars: Vec<String>,
+    pub context_menu_items: Vec<String>,
+    pub blocks: ConfigBlocks,
+    pub saved_blocks: ConfigBlocks,
+    pub default_blocks: ConfigBlocks,
+    pub keybindings: Vec<KeybindingEntry>,
+    pub keybinds: KeybindsSelectionSnapshot,
+}
+
+impl ConfigSnapshot {
+    pub fn setting(&self, key: SettingKey) -> Option<&ConfigSettingState> {
+        self.settings.iter().find(|setting| setting.key == key)
+    }
+    pub fn unsaved_count(&self) -> usize {
+        self.settings.iter().filter(|s| s.is_unsaved()).count()
+    }
 }
 
 // Response type for plugin API methods that open a pane in a new tab
@@ -4372,4 +5166,59 @@ fn a_floating_placement_carries_its_border_style_in_the_coordinates() {
         })
     );
     assert_eq!(placement.get_border_style(), coordinates.border_style);
+}
+
+#[cfg(test)]
+mod popup_placement_tests {
+    use super::*;
+
+    #[test]
+    fn corner_placements_parse_and_print_back() {
+        for (text, placement, corner) in [
+            (
+                "top-left",
+                PipePopupPlacement::TopLeft,
+                PopupCorner::TopLeft,
+            ),
+            (
+                "top-right",
+                PipePopupPlacement::TopRight,
+                PopupCorner::TopRight,
+            ),
+            (
+                "bottom-left",
+                PipePopupPlacement::BottomLeft,
+                PopupCorner::BottomLeft,
+            ),
+            (
+                "bottom-right",
+                PipePopupPlacement::BottomRight,
+                PopupCorner::BottomRight,
+            ),
+        ] {
+            assert_eq!(text.parse::<PipePopupPlacement>(), Ok(placement));
+            assert_eq!(placement.to_string(), text);
+            assert_eq!(placement.corner(), Some(corner));
+            assert_eq!(text.parse::<PopupCorner>(), Ok(corner));
+            assert_eq!(corner.to_string(), text);
+        }
+        assert_eq!(
+            "Top_Right".parse::<PipePopupPlacement>(),
+            Ok(PipePopupPlacement::TopRight)
+        );
+        assert_eq!(PipePopupPlacement::Pane.corner(), None);
+        assert!("middle".parse::<PipePopupPlacement>().is_err());
+        assert!("center".parse::<PopupCorner>().is_err());
+    }
+
+    #[test]
+    fn popup_options_default_to_a_focused_popup_without_a_corner() {
+        assert_eq!(
+            PopupOptions::default(),
+            PopupOptions {
+                focused: true,
+                corner: None
+            }
+        );
+    }
 }

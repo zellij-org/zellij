@@ -52,6 +52,8 @@ members = [
     "default-plugins/share",
     "default-plugins/multiple-select",
     "default-plugins/layout-manager",
+    "default-plugins/prompt",
+    "default-plugins/context-menu",
     "zellij-client",
     "zellij-integration-tests",
     "zellij-server",
@@ -119,6 +121,21 @@ zellij-utils = { path = "zellij-utils/", version = "0.46.0" }
 
 [profile.dev]
 debug = "line-tables-only"
+
+[profile.dev.package.wasmi]
+opt-level = 3
+
+[profile.dev.package.wasmi_core]
+opt-level = 3
+
+[profile.dev.package.wasmi_ir]
+opt-level = 3
+
+[profile.dev.package.wasmi_collections]
+opt-level = 3
+
+[profile.dev.package.vte]
+opt-level = 3
 
 [profile.dev-opt]
 inherits = "dev"

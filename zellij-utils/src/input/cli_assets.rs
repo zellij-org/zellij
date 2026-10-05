@@ -52,7 +52,7 @@ pub struct CliAssets {
 
 impl CliAssets {
     pub fn load_config_and_layout(&self) -> (Config, Layout) {
-        let config = {
+        let mut config = {
             if self.should_ignore_config {
                 Config::from_default_assets().unwrap_or_else(|_| Default::default())
             } else if let Some(ref path) = self.config_file_path {
@@ -64,6 +64,16 @@ impl CliAssets {
                 Config::from_default_assets().unwrap_or_else(|_| Default::default())
             }
         };
+        let config_dir = self.config_dir.clone().or_else(find_default_config_dir);
+        let keybinds_dir_override = self
+            .configuration_options
+            .as_ref()
+            .and_then(|options| options.keybinds_dir.clone());
+        if config.keybinds_layers.config_dir != config_dir || keybinds_dir_override.is_some() {
+            config.keybinds_layers.config_dir = config_dir;
+            config.keybinds_layers.keybinds_dir_override = keybinds_dir_override;
+            config.resolve_keybinds();
+        }
 
         let (mut layout, mut config_with_merged_layout_opts) = {
             let layout_dir = self

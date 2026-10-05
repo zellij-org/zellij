@@ -392,6 +392,9 @@ impl StatusBar {
                 client.display_system_clipboard_failure = false;
             },
             Event::Mouse(mouse_event) => match mouse_event {
+                Mouse::RightClick(line, col) => {
+                    open_context_menu(ContextMenuTarget::Bar, (*line).max(0) as usize, *col);
+                },
                 Mouse::LeftClick(_, col) => {
                     let col = *col;
                     if col_in_range(slot_client.new_pane_ribbon_range, col) {

@@ -1415,7 +1415,7 @@ impl Layout {
                 .next()
                 .map(|l| l.recursively_add_start_suspended_including_template(Some(true)));
         }
-        let config = Config::from_kdl(&raw_layout, config)?; // this merges the two config, with
+        let config = Config::from_layout_kdl(&raw_layout, config)?; // this merges the two config, with
         layout.map(|l| (l, config))
     }
     pub fn stringified_from_path_or_default(
@@ -1481,7 +1481,7 @@ impl Layout {
                 .map(|(r, f)| (r.as_str(), f.as_str())),
             None,
         )?;
-        let config = Config::from_kdl(&raw_layout, Some(config))?; // this merges the two config, with
+        let config = Config::from_layout_kdl(&raw_layout, Some(config))?; // this merges the two config, with
         Ok((layout, config))
     }
     #[cfg(not(target_family = "wasm"))]
@@ -1490,7 +1490,7 @@ impl Layout {
             .map_err(|e| ConfigError::DownloadError(format!("{}", e)))?;
         let mut layout = Layout::from_kdl(&raw_layout, Some(url.into()), None, None)?;
         layout.recursively_add_start_suspended_including_template(Some(true));
-        let config = Config::from_kdl(&raw_layout, Some(config))?; // this merges the two config, with
+        let config = Config::from_layout_kdl(&raw_layout, Some(config))?; // this merges the two config, with
         Ok((layout, config))
     }
     pub fn from_stringified_layout(
@@ -1498,7 +1498,7 @@ impl Layout {
         config: Config,
     ) -> Result<(Layout, Config), ConfigError> {
         let layout = Layout::from_kdl(&stringified_layout, None, None, None)?;
-        let config = Config::from_kdl(&stringified_layout, Some(config))?; // this merges the two config, with
+        let config = Config::from_layout_kdl(&stringified_layout, Some(config))?; // this merges the two config, with
         Ok((layout, config))
     }
     #[cfg(target_family = "wasm")]
@@ -1538,7 +1538,7 @@ impl Layout {
                 .map(|(r, f)| (r.as_str(), f.as_str())),
             None,
         )?;
-        let config = Config::from_kdl(&raw_layout, Some(config))?; // this merges the two config, with
+        let config = Config::from_layout_kdl(&raw_layout, Some(config))?; // this merges the two config, with
         Ok((layout, config))
     }
     pub fn default_layout_asset() -> Layout {

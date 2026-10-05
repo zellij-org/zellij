@@ -11,6 +11,7 @@ import "input_mode.proto";
 import "key.proto";
 import "pane_frame_style.proto";
 import "style.proto";
+import "prompt.proto";
 
 package api.plugin_command;
 
@@ -227,6 +228,25 @@ enum CommandName {
   HideSlot = 234;
   ShowSlot = 235;
   CloseSlot = 236;
+  OpenContextMenu = 237;
+  OpenPluginPopup = 238;
+  SetPopupSize = 239;
+  RunContextMenuItem = 240;
+  ReadConfig = 241;
+  RevertConfig = 242;
+  UnsetConfigSetting = 243;
+  SaveConfig = 244;
+  CopyKeybindPreset = 245;
+  SetCliPipeExitCode = 246;
+  OverwriteConfigFile = 247;
+  ReloadConfigFile = 248;
+  ReplaceConfigBlocks = 249;
+  ResetKeys = 250;
+  SaveKeybindsAsPreset = 251;
+  Prompt = 252;
+  ReplyToPrompt = 253;
+  WriteThemeFile = 254;
+  DeleteThemeFile = 255;
 }
 
 message PluginCommand {
@@ -395,7 +415,223 @@ message PluginCommand {
     uint32 hide_slot_payload = 177;
     ShowSlotPayload show_slot_payload = 178;
     uint32 close_slot_payload = 179;
+    OpenContextMenuPayload open_context_menu_payload = 180;
+    OpenPluginPopupPayload open_plugin_popup_payload = 181;
+    SetPopupSizePayload set_popup_size_payload = 182;
+    uint32 run_context_menu_item_payload = 183;
+    ReadConfigPayload read_config_payload = 184;
+    RevertConfigPayload revert_config_payload = 185;
+    string unset_config_setting_payload = 186;
+    SaveConfigPayload save_config_payload = 187;
+    CopyKeybindPresetPayload copy_keybind_preset_payload = 188;
+    SetCliPipeExitCodePayload set_cli_pipe_exit_code_payload = 189;
+    SaveConfigPayload overwrite_config_file_payload = 190;
+    SaveConfigPayload reload_config_file_payload = 191;
+    string replace_config_blocks_payload = 192;
+    ResetKeysPayload reset_keys_payload = 193;
+    SaveKeybindsAsPresetPayload save_keybinds_as_preset_payload = 194;
+    PromptPayload prompt_payload = 195;
+    ReplyToPromptPayload reply_to_prompt_payload = 196;
+    WriteThemeFilePayload write_theme_file_payload = 197;
+    string delete_theme_file_payload = 198;
   }
+}
+
+message PromptPayload {
+  uint64 request_id = 1;
+  api.prompt.PromptRequest request = 2;
+}
+
+message ReplyToPromptPayload {
+  uint64 request_id = 1;
+  api.prompt.PromptResult result = 2;
+}
+
+message SetCliPipeExitCodePayload {
+  string pipe_name = 1;
+  int32 exit_code = 2;
+}
+
+message CopyKeybindPresetPayload {
+  string preset = 1;
+  string new_name = 2;
+}
+
+message CopyKeybindPresetResponse {
+  oneof result {
+    string new_name = 1;
+    string error = 2;
+  }
+}
+
+message WriteThemeFilePayload {
+  string name = 1;
+  optional string copy_from = 2;
+  repeated string colours = 3;
+}
+
+message WriteThemeFileResponse {
+  oneof result {
+    string path = 1;
+    string error = 2;
+  }
+}
+
+message LeaderValue {
+  string name = 1;
+  string value = 2;
+}
+
+message KeybindsSelectionSnapshot {
+  optional string preset = 1;
+  optional string primary = 2;
+  optional string secondary = 3;
+  optional string unlock = 4;
+  bool clears_defaults = 5;
+  bool has_own_keybindings = 6;
+  event.KeybindPresetInfo active = 7;
+  repeated LeaderValue active_values = 8;
+  optional string error = 9;
+  bool set_by_layout = 10;
+  optional input_mode.InputMode default_mode = 11;
+  bool set_on_command_line = 12;
+}
+
+message ReadConfigPayload {}
+
+message RevertConfigPayload {
+  optional string key = 1;
+}
+
+message SaveConfigPayload {}
+
+message ConfigSettingState {
+  string key = 1;
+  optional string saved_value = 2;
+  optional string current_value = 3;
+  bool set_in_file = 4;
+}
+
+message ReadConfigResponse {
+  repeated ConfigSettingState settings = 1;
+  optional string config_file_path = 2;
+  optional string backup_file_path = 3;
+  repeated string pending_restart_settings = 4;
+  repeated string theme_names = 5;
+  repeated string plugin_aliases = 6;
+  repeated string load_plugins = 7;
+  repeated string env_vars = 8;
+  repeated string context_menu_items = 9;
+  KeybindsSelectionSnapshot keybinds = 10;
+  ConfigBlocks blocks = 11;
+  ConfigBlocks saved_blocks = 12;
+  ConfigBlocks default_blocks = 13;
+  repeated KeybindingEntry keybindings = 14;
+}
+
+message ConfigPair {
+  string key = 1;
+  string value = 2;
+}
+
+message PluginEntry {
+  string location = 1;
+  optional string cwd = 2;
+  repeated ConfigPair configuration = 3;
+}
+
+message PluginAliasEntry {
+  string name = 1;
+  PluginEntry plugin = 2;
+}
+
+message EnvVarEntry {
+  string name = 1;
+  string value = 2;
+}
+
+message MenuItemEntry {
+  optional string label = 1;
+  repeated string actions = 2;
+  optional string shortcut = 3;
+}
+
+message MenuSectionEntries {
+  string section = 1;
+  repeated MenuItemEntry entries = 2;
+}
+
+enum ThemeSource {
+  ThemeSourceBuiltIn = 0;
+  ThemeSourceConfigFile = 1;
+  ThemeSourceThemeFolder = 2;
+}
+
+message ThemeEntry {
+  string name = 1;
+  ThemeSource source = 2;
+  repeated string colours = 3;
+  optional string file_path = 4;
+}
+
+message ConfigBlocks {
+  repeated PluginAliasEntry plugin_aliases = 1;
+  repeated PluginEntry load_plugins = 2;
+  repeated EnvVarEntry env = 3;
+  repeated MenuSectionEntries context_menu = 4;
+  repeated ThemeEntry themes = 5;
+}
+
+enum KeybindingSourceKind {
+  KeybindingSourcePreset = 0;
+  KeybindingSourceUser = 1;
+  KeybindingSourceShared = 2;
+  KeybindingSourceLayout = 3;
+}
+
+message KeybindingEntry {
+  input_mode.InputMode mode = 1;
+  string key = 2;
+  repeated string actions = 3;
+  KeybindingSourceKind source = 4;
+  optional string shared_block = 5;
+  bool unbound = 6;
+  bool has_preset_binding = 7;
+  repeated string preset_actions = 8;
+  bool unsaved = 9;
+  bool preset_same_as_actions = 10;
+}
+
+message SaveKeybindsAsPresetPayload {
+  string new_name = 1;
+}
+
+message ResetKeysPayload {
+  repeated KeyToUnbind keys = 1;
+  bool write_config_to_disk = 2;
+}
+
+message OpenContextMenuPayload {
+  bool target_is_tab = 1;
+  uint32 tab_index = 2;
+  uint32 line = 3;
+  uint32 column = 4;
+}
+
+message OpenPluginPopupPayload {
+  string plugin_url = 1;
+  repeated ContextItem configuration = 2;
+  uint32 line = 3;
+  uint32 column = 4;
+  uint32 width = 5;
+  uint32 height = 6;
+  optional bool focused = 7;
+  optional string corner = 8;
+}
+
+message SetPopupSizePayload {
+  uint32 width = 1;
+  uint32 height = 2;
 }
 
 message SetSelectableSlotPayload {

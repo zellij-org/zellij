@@ -1,7 +1,7 @@
 use crate::background_jobs::write_session_state_to_disk;
 use crate::background_jobs::BackgroundJob;
 use crate::global_async_runtime::get_tokio_runtime as async_runtime;
-use crate::os_input_output::{AsyncReader, NullAsyncReader};
+use crate::os_input_output::{env_value, AsyncReader, NullAsyncReader, PaneEnv};
 use crate::route::NotificationEnd;
 use crate::terminal_bytes::TerminalBytes;
 use crate::{
@@ -139,6 +139,7 @@ pub enum PtyInstruction {
         client_id: ClientId,
         default_editor: Option<PathBuf>,
         post_command_discovery_hook: Option<String>,
+        pane_env: PaneEnv,
     },
     ListClientsToPlugin(SessionLayoutMetadata, PluginId, ClientId),
     ReportPluginCwd(PluginId, PathBuf),
@@ -208,6 +209,7 @@ pub(crate) struct Pty {
     task_handles: HashMap<u32, JoinHandle<()>>, // terminal_id to join-handle
     default_editor: Option<PathBuf>,
     post_command_discovery_hook: Option<String>,
+    pane_env: PaneEnv,
     plugin_cwds: HashMap<u32, PathBuf>,   // plugin_id -> cwd
     terminal_cwds: HashMap<u32, PathBuf>, // terminal_id -> cwd
     pane_activity_flags: HashMap<u32, std::sync::Arc<std::sync::atomic::AtomicBool>>,
@@ -660,7 +662,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 // this otherwise (also look for a place that turns get_default_shell into a
                 // RunCommand, we might have done this before)
                 let run_command = RunCommand {
-                    command: shell.unwrap_or_else(|| get_default_shell()),
+                    command: shell.unwrap_or_else(|| default_shell_from(&pty.pane_env)),
                     hold_on_close: false,
                     hold_on_start: false,
                     cwd: working_dir,
@@ -879,9 +881,10 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
             PtyInstruction::Reconfigure {
                 default_editor,
                 post_command_discovery_hook,
+                pane_env,
                 client_id: _,
             } => {
-                pty.reconfigure(default_editor, post_command_discovery_hook);
+                pty.reconfigure(default_editor, post_command_discovery_hook, pane_env);
             },
             PtyInstruction::SendSigintToPaneId(pane_id) => {
                 pty.send_sigint_to_pane(pane_id);
@@ -928,6 +931,7 @@ impl Pty {
         debug_to_file: bool,
         default_editor: Option<PathBuf>,
         post_command_discovery_hook: Option<String>,
+        pane_env: PaneEnv,
     ) -> Self {
         Pty {
             active_panes: HashMap::new(),
@@ -938,6 +942,7 @@ impl Pty {
             default_editor,
             originating_plugins: HashMap::new(),
             post_command_discovery_hook,
+            pane_env,
             plugin_cwds: HashMap::new(),
             terminal_cwds: HashMap::new(),
             pane_activity_flags: HashMap::new(),
@@ -972,7 +977,7 @@ impl Pty {
                 default_shell
             },
             None => {
-                let shell = get_default_shell();
+                let shell = default_shell_from(&self.pane_env);
                 TerminalAction::RunCommand(RunCommand {
                     args: vec![],
                     command: shell,
@@ -1145,7 +1150,12 @@ impl Pty {
             .as_mut()
             .context("no OS I/O interface found")
             .and_then(|os_input| {
-                os_input.spawn_terminal(terminal_action, quit_cb, self.default_editor.clone())
+                os_input.spawn_terminal(
+                    terminal_action,
+                    quit_cb,
+                    self.default_editor.clone(),
+                    &self.pane_env,
+                )
             })
             .with_context(err_context)?;
         let activity_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -1697,7 +1707,7 @@ impl Pty {
                         .as_mut()
                         .context("no OS I/O interface found")
                         .with_context(err_context)?
-                        .spawn_terminal(cmd, quit_cb, self.default_editor.clone())
+                        .spawn_terminal(cmd, quit_cb, self.default_editor.clone(), &self.pane_env)
                         .with_context(err_context)
                     {
                         Ok((terminal_id, reader, child_pid)) => {
@@ -1732,7 +1742,7 @@ impl Pty {
                     .as_mut()
                     .context("no OS I/O interface found")
                     .with_context(err_context)?
-                    .spawn_terminal(shell, quit_cb, self.default_editor.clone())
+                    .spawn_terminal(shell, quit_cb, self.default_editor.clone(), &self.pane_env)
                     .with_context(err_context)
                 {
                     Ok((terminal_id, reader, child_pid)) => {
@@ -1766,6 +1776,7 @@ impl Pty {
                         )),
                         quit_cb,
                         self.default_editor.clone(),
+                        &self.pane_env,
                     )
                     .with_context(err_context)
                 {
@@ -1792,7 +1803,12 @@ impl Pty {
                     .as_mut()
                     .context("no OS I/O interface found")
                     .with_context(err_context)?
-                    .spawn_terminal(default_shell.clone(), quit_cb, self.default_editor.clone())
+                    .spawn_terminal(
+                        default_shell.clone(),
+                        quit_cb,
+                        self.default_editor.clone(),
+                        &self.pane_env,
+                    )
                     .with_context(err_context)
                 {
                     Ok((terminal_id, reader, child_pid)) => {
@@ -1923,7 +1939,12 @@ impl Pty {
                     .as_mut()
                     .context("no OS I/O interface found")
                     .and_then(|os_input| {
-                        os_input.re_run_command_in_terminal(id, run_command, quit_cb)
+                        os_input.re_run_command_in_terminal(
+                            id,
+                            run_command,
+                            quit_cb,
+                            &self.pane_env,
+                        )
                     })
                     .with_context(err_context)?;
                 let activity_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -2007,7 +2028,7 @@ impl Pty {
                 terminal_ids_to_cwds.insert(terminal_id, cwd.clone());
             }
         }
-        session_layout_metadata.update_default_shell(get_default_shell());
+        session_layout_metadata.update_default_shell(default_shell_from(&self.pane_env));
         session_layout_metadata.update_terminal_commands(terminal_ids_to_commands);
         session_layout_metadata.update_terminal_cwds(terminal_ids_to_cwds);
         session_layout_metadata.update_default_editor(&self.default_editor);
@@ -2211,9 +2232,11 @@ impl Pty {
         &mut self,
         default_editor: Option<PathBuf>,
         post_command_discovery_hook: Option<String>,
+        pane_env: PaneEnv,
     ) {
         self.default_editor = default_editor;
         self.post_command_discovery_hook = post_command_discovery_hook;
+        self.pane_env = pane_env;
     }
 
     pub fn notify_cwd_from_osc7(&mut self, terminal_id: u32, path: PathBuf) {
@@ -2415,20 +2438,24 @@ fn send_command_not_found_to_screen(
     Ok(())
 }
 
-#[cfg(not(windows))]
 pub fn get_default_shell() -> PathBuf {
-    PathBuf::from(std::env::var("SHELL").unwrap_or_else(|_| {
+    default_shell_from(&PaneEnv::new())
+}
+
+#[cfg(not(windows))]
+pub fn default_shell_from(pane_env: &PaneEnv) -> PathBuf {
+    PathBuf::from(env_value(pane_env, "SHELL").unwrap_or_else(|| {
         log::warn!("Cannot read SHELL env, falling back to use /bin/sh");
         "/bin/sh".to_string()
     }))
 }
 
 #[cfg(windows)]
-pub fn get_default_shell() -> PathBuf {
-    if let Ok(shell) = std::env::var("SHELL") {
+pub fn default_shell_from(pane_env: &PaneEnv) -> PathBuf {
+    if let Some(shell) = env_value(pane_env, "SHELL") {
         return PathBuf::from(shell);
     }
-    PathBuf::from(std::env::var("COMSPEC").unwrap_or_else(|_| {
+    PathBuf::from(env_value(pane_env, "COMSPEC").unwrap_or_else(|| {
         log::warn!("Cannot read SHELL or COMSPEC env, falling back to use cmd.exe");
         "cmd.exe".to_string()
     }))

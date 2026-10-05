@@ -1,5 +1,6 @@
 ---
 source: zellij-utils/src/setup.rs
+assertion_line: 948
 expression: "format!(\"{:#?}\", config)"
 ---
 Config {
@@ -101,6 +102,11 @@ Config {
         default_layout: None,
         layout_dir: None,
         theme_dir: None,
+        keybinds_dir: None,
+        keybinds_preset: None,
+        keybinds_primary: None,
+        keybinds_secondary: None,
+        keybinds_unlock: None,
         mouse_mode: None,
         pane_frames: None,
         pane_frame_style: None,
@@ -137,6 +143,7 @@ Config {
         visual_bell: None,
         focus_follows_mouse: None,
         mouse_click_through: None,
+        context_menu_enabled: None,
         osc133_command_selection: None,
         word_separators: None,
         host_notification_protocol: None,
@@ -191,6 +198,18 @@ Config {
                 ),
                 initial_cwd: None,
             },
+            "context-menu": RunPlugin {
+                _allow_exec_host_cmd: false,
+                location: Zellij(
+                    PluginTag(
+                        "context-menu",
+                    ),
+                ),
+                configuration: PluginUserConfiguration(
+                    {},
+                ),
+                initial_cwd: None,
+            },
             "filepicker": RunPlugin {
                 _allow_exec_host_cmd: false,
                 location: Zellij(
@@ -210,6 +229,18 @@ Config {
                 location: Zellij(
                     PluginTag(
                         "plugin-manager",
+                    ),
+                ),
+                configuration: PluginUserConfiguration(
+                    {},
+                ),
+                initial_cwd: None,
+            },
+            "prompt": RunPlugin {
+                _allow_exec_host_cmd: false,
+                location: Zellij(
+                    PluginTag(
+                        "prompt",
                     ),
                 ),
                 configuration: PluginUserConfiguration(
@@ -308,7 +339,7 @@ Config {
         },
     },
     env: {},
-    background_plugins: {
+    background_plugins: [
         RunPlugin(
             RunPlugin {
                 _allow_exec_host_cmd: false,
@@ -325,7 +356,7 @@ Config {
                 initial_cwd: None,
             },
         ),
-    },
+    ],
     web_client: WebClientConfig {
         font: "monospace",
         theme: None,
@@ -335,5 +366,401 @@ Config {
         mac_option_is_meta: true,
         base_url: None,
         font_size: None,
+    },
+    context_menu: ContextMenuConfig {
+        pane: [
+            Item {
+                label: "New pane",
+                actions: [
+                    Action(
+                        NewPane {
+                            direction: None,
+                            pane_name: None,
+                            start_suppressed: false,
+                        },
+                    ),
+                ],
+            },
+            Item {
+                label: "New floating pane",
+                actions: [
+                    Action(
+                        NewFloatingPane {
+                            command: None,
+                            pane_name: None,
+                            coordinates: None,
+                            near_current_pane: false,
+                            no_focus: false,
+                            tab_id: None,
+                        },
+                    ),
+                ],
+            },
+            Separator,
+            Item {
+                label: "Fullscreen",
+                actions: [
+                    ClickedPane(
+                        ToggleFocusFullscreen,
+                    ),
+                ],
+            },
+            Item {
+                label: "Float / Embed",
+                actions: [
+                    ClickedPane(
+                        ToggleEmbedOrFloating,
+                    ),
+                ],
+            },
+            Item {
+                label: "Rename pane",
+                actions: [
+                    ClickedPane(
+                        StartRename,
+                    ),
+                ],
+            },
+            Item {
+                label: "Add to group",
+                actions: [
+                    ClickedPane(
+                        ToggleInGroup,
+                    ),
+                ],
+            },
+            Separator,
+            Item {
+                label: "Close pane",
+                actions: [
+                    ClickedPane(
+                        CloseFocus,
+                    ),
+                ],
+            },
+        ],
+        tab: [
+            Item {
+                label: "New tab",
+                actions: [
+                    Action(
+                        NewTab {
+                            tiled_layout: None,
+                            floating_layouts: [],
+                            swap_tiled_layouts: None,
+                            swap_floating_layouts: None,
+                            tab_name: None,
+                            should_change_focus_to_new_tab: true,
+                            cwd: None,
+                            initial_panes: None,
+                            first_pane_unblock_condition: None,
+                        },
+                    ),
+                ],
+            },
+            Item {
+                label: "Rename tab",
+                actions: [
+                    ClickedTab(
+                        StartRename,
+                    ),
+                ],
+            },
+            Item {
+                label: "Move tab left",
+                actions: [
+                    ClickedTab(
+                        Move(
+                            Left,
+                        ),
+                    ),
+                ],
+            },
+            Item {
+                label: "Move tab right",
+                actions: [
+                    ClickedTab(
+                        Move(
+                            Right,
+                        ),
+                    ),
+                ],
+            },
+            Separator,
+            Item {
+                label: "Close tab",
+                actions: [
+                    ClickedTab(
+                        Close,
+                    ),
+                ],
+            },
+        ],
+        bar: [
+            Item {
+                label: "New pane",
+                actions: [
+                    Action(
+                        NewPane {
+                            direction: None,
+                            pane_name: None,
+                            start_suppressed: false,
+                        },
+                    ),
+                ],
+            },
+            Item {
+                label: "New tab",
+                actions: [
+                    Action(
+                        NewTab {
+                            tiled_layout: None,
+                            floating_layouts: [],
+                            swap_tiled_layouts: None,
+                            swap_floating_layouts: None,
+                            tab_name: None,
+                            should_change_focus_to_new_tab: true,
+                            cwd: None,
+                            initial_panes: None,
+                            first_pane_unblock_condition: None,
+                        },
+                    ),
+                ],
+            },
+        ],
+        common: [
+            Item {
+                label: "Settings…",
+                actions: [
+                    Action(
+                        LaunchOrFocusPlugin {
+                            plugin: Alias(
+                                PluginAlias {
+                                    name: "configuration",
+                                    configuration: Some(
+                                        PluginUserConfiguration(
+                                            {},
+                                        ),
+                                    ),
+                                    initial_cwd: None,
+                                    run_plugin: None,
+                                },
+                            ),
+                            should_float: true,
+                            move_to_focused_tab: true,
+                            should_open_in_place: false,
+                            close_replaced_pane: false,
+                            skip_cache: false,
+                            tab_id: None,
+                        },
+                    ),
+                ],
+            },
+            Item {
+                label: "Session manager",
+                actions: [
+                    Action(
+                        LaunchOrFocusPlugin {
+                            plugin: Alias(
+                                PluginAlias {
+                                    name: "session-manager",
+                                    configuration: Some(
+                                        PluginUserConfiguration(
+                                            {},
+                                        ),
+                                    ),
+                                    initial_cwd: None,
+                                    run_plugin: None,
+                                },
+                            ),
+                            should_float: true,
+                            move_to_focused_tab: true,
+                            should_open_in_place: false,
+                            close_replaced_pane: false,
+                            skip_cache: false,
+                            tab_id: None,
+                        },
+                    ),
+                ],
+            },
+            Item {
+                label: "Detach",
+                actions: [
+                    Action(
+                        Detach,
+                    ),
+                ],
+            },
+        ],
+    },
+    keybinds_layers: KeybindsLayers {
+        user: KeybindsSelection {
+            preset: None,
+            primary: None,
+            secondary: None,
+            unlock: None,
+            changes: KeybindChanges {
+                clear_defaults: true,
+                modes: {
+                    Normal: ModeKeybindChanges {
+                        clear_defaults: false,
+                        bind: {
+                            KeyWithModifier {
+                                bare_key: Char(
+                                    'b',
+                                ),
+                                key_modifiers: {},
+                            }: [
+                                SwitchToMode {
+                                    input_mode: Locked,
+                                },
+                            ],
+                            KeyWithModifier {
+                                bare_key: Char(
+                                    'c',
+                                ),
+                                key_modifiers: {
+                                    Ctrl,
+                                },
+                            }: [
+                                SwitchToMode {
+                                    input_mode: Resize,
+                                },
+                            ],
+                        },
+                        unbind: {},
+                    },
+                    Resize: ModeKeybindChanges {
+                        clear_defaults: false,
+                        bind: {
+                            KeyWithModifier {
+                                bare_key: Char(
+                                    'b',
+                                ),
+                                key_modifiers: {},
+                            }: [
+                                SwitchToMode {
+                                    input_mode: Locked,
+                                },
+                            ],
+                            KeyWithModifier {
+                                bare_key: Char(
+                                    'c',
+                                ),
+                                key_modifiers: {
+                                    Ctrl,
+                                },
+                            }: [
+                                SwitchToMode {
+                                    input_mode: Resize,
+                                },
+                            ],
+                        },
+                        unbind: {},
+                    },
+                },
+            },
+        },
+        layout: KeybindsSelection {
+            preset: None,
+            primary: None,
+            secondary: None,
+            unlock: None,
+            changes: KeybindChanges {
+                clear_defaults: false,
+                modes: {
+                    Normal: ModeKeybindChanges {
+                        clear_defaults: false,
+                        bind: {
+                            KeyWithModifier {
+                                bare_key: Char(
+                                    'b',
+                                ),
+                                key_modifiers: {},
+                            }: [
+                                SwitchToMode {
+                                    input_mode: Session,
+                                },
+                            ],
+                            KeyWithModifier {
+                                bare_key: Char(
+                                    'b',
+                                ),
+                                key_modifiers: {
+                                    Ctrl,
+                                },
+                            }: [
+                                SwitchToMode {
+                                    input_mode: Resize,
+                                },
+                            ],
+                        },
+                        unbind: {},
+                    },
+                    Scroll: ModeKeybindChanges {
+                        clear_defaults: false,
+                        bind: {
+                            KeyWithModifier {
+                                bare_key: Char(
+                                    'b',
+                                ),
+                                key_modifiers: {},
+                            }: [
+                                SwitchToMode {
+                                    input_mode: Locked,
+                                },
+                            ],
+                            KeyWithModifier {
+                                bare_key: Char(
+                                    'c',
+                                ),
+                                key_modifiers: {
+                                    Ctrl,
+                                },
+                            }: [
+                                SwitchToMode {
+                                    input_mode: Resize,
+                                },
+                            ],
+                        },
+                        unbind: {},
+                    },
+                },
+            },
+        },
+        config_dir: None,
+        keybinds_dir_override: None,
+        injected_default_mode: None,
+        config_default_mode: None,
+        active: ActiveKeybindPreset {
+            info: KeybindPresetInfo {
+                name: "default",
+                display_name: "Default",
+                description: Some(
+                    "All modes available directly from the base mode, eg.:",
+                ),
+                source: BuiltIn,
+                placeholders: [
+                    "primary",
+                    "secondary",
+                ],
+                path: None,
+                examples: [
+                    (
+                        "{primary} p",
+                        "to enter PANE mode",
+                    ),
+                    (
+                        "{primary} t",
+                        "to enter TAB mode",
+                    ),
+                ],
+            },
+            values: {
+                "primary": "Ctrl",
+                "secondary": "Alt",
+            },
+            error: None,
+        },
     },
 }

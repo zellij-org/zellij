@@ -86,6 +86,12 @@ impl Themes {
     pub fn inner(&self) -> &HashMap<String, Theme> {
         &self.0
     }
+    pub fn remove(&mut self, theme_name: &str) -> Option<Theme> {
+        self.0.remove(theme_name)
+    }
+    pub fn retain(&mut self, keep: impl FnMut(&String, &mut Theme) -> bool) {
+        self.0.retain(keep);
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]

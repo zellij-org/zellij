@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use interprocess::local_socket::Stream as LocalSocketStream;
-use zellij_server::os_input_output::{AsyncReader, ServerOsApi};
+use zellij_server::os_input_output::{AsyncReader, PaneEnv, ServerOsApi};
 use zellij_server::panes::PaneId;
 use zellij_server::ClientId;
 use zellij_utils::data::Palette;
@@ -91,6 +91,7 @@ impl ServerOsApi for FakeServerOsApi {
         terminal_action: TerminalAction,
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         _default_editor: Option<PathBuf>,
+        pane_env: &PaneEnv,
     ) -> Result<(u32, Box<dyn AsyncReader>, Option<u32>)> {
         let terminal_id = self.shared_ptys.next_terminal_id();
         let opened_file_contents = match &terminal_action {
@@ -102,9 +103,12 @@ impl ServerOsApi for FakeServerOsApi {
                 .cloned(),
             _ => None,
         };
-        let fake_async_reader =
-            self.shared_ptys
-                .register(terminal_id, Some(terminal_action), Some(quit_cb));
+        let fake_async_reader = self.shared_ptys.register(
+            terminal_id,
+            Some(terminal_action),
+            Some(quit_cb),
+            pane_env.clone(),
+        );
         if let Some(contents) = opened_file_contents {
             let contents_with_carriage_returns =
                 contents.replace("\r\n", "\n").replace('\n', "\r\n");
@@ -119,7 +123,9 @@ impl ServerOsApi for FakeServerOsApi {
     }
     fn reserve_terminal_id(&self) -> Result<u32> {
         let terminal_id = self.shared_ptys.next_terminal_id();
-        let _ = self.shared_ptys.register(terminal_id, None, None);
+        let _ = self
+            .shared_ptys
+            .register(terminal_id, None, None, PaneEnv::new());
         Ok(terminal_id)
     }
     fn write_to_tty_stdin(&self, terminal_id: u32, buf: &[u8]) -> Result<usize> {
@@ -207,6 +213,7 @@ impl ServerOsApi for FakeServerOsApi {
         terminal_id: u32,
         _run_command: RunCommand,
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
+        _pane_env: &PaneEnv,
     ) -> Result<(Box<dyn AsyncReader>, Option<u32>)> {
         let fake_async_reader = self.shared_ptys.rerun(terminal_id, quit_cb);
         Ok((fake_async_reader, Some(FAKE_PID_BASE + terminal_id)))

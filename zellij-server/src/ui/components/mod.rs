@@ -1,8 +1,18 @@
+mod button;
 mod component_coordinates;
+mod dialog;
+mod dropdown;
+mod menu;
 mod nested_list;
 mod ribbon;
+mod scroll_indicator;
+mod side_menu;
+mod stepper;
 mod table;
 mod text;
+mod text_input;
+mod toggle;
+mod widget_common;
 
 use crate::panes::grid::Grid;
 use lazy_static::lazy_static;
@@ -16,6 +26,22 @@ use nested_list::{nested_list, parse_nested_list_items};
 use ribbon::ribbon;
 use table::table;
 use text::{parse_text, parse_text_params, stringify_text, text, Text};
+use widget_common::{WidgetRenderer, WidgetState};
+
+fn widget_renderer(component_name: &str) -> Option<WidgetRenderer> {
+    match component_name {
+        "button" => Some(button::button),
+        "dialog" => Some(dialog::dialog),
+        "dropdown" => Some(dropdown::dropdown),
+        "menu" => Some(menu::menu),
+        "scroll_indicator" => Some(scroll_indicator::scroll_indicator),
+        "side_menu" => Some(side_menu::side_menu),
+        "stepper" => Some(stepper::stepper),
+        "text_input" => Some(text_input::text_input),
+        "toggle" => Some(toggle::toggle),
+        _ => None,
+    }
+}
 
 macro_rules! parse_next_param {
     ($next_param:expr, $type:ident, $component_name:expr, $item_name:expr) => {{
@@ -119,6 +145,17 @@ impl<'a> UiComponentParser<'a> {
                 .with_context(|| format!("text must have, well, text..."))?;
             let encoded_text = text(stringified_params, &self.style, component_coordinates);
             parse_vte_bytes!(self, encoded_text);
+            Ok(())
+        } else if let Some(render_widget) = widget_renderer(component_name.as_str()) {
+            let coordinates = component_coordinates
+                .with_context(|| format!("{} must have coordinates", component_name))?;
+            let state = params_iter
+                .next()
+                .map(|raw_state| WidgetState::parse(raw_state))
+                .unwrap_or_default();
+            let fields: Vec<String> = params_iter.map(|field| field.clone()).collect();
+            let encoded_widget = render_widget(&state, &fields, &self.style, &coordinates);
+            parse_vte_bytes!(self, encoded_widget);
             Ok(())
         } else {
             Err(anyhow!("Unknown component: {}", component_name))

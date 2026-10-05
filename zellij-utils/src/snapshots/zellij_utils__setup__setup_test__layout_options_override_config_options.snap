@@ -1,5 +1,6 @@
 ---
 source: zellij-utils/src/setup.rs
+assertion_line: 858
 expression: "format!(\"{:#?}\", options)"
 ---
 Options {
@@ -14,6 +15,11 @@ Options {
     default_layout: None,
     layout_dir: None,
     theme_dir: None,
+    keybinds_dir: None,
+    keybinds_preset: None,
+    keybinds_primary: None,
+    keybinds_secondary: None,
+    keybinds_unlock: None,
     mouse_mode: None,
     pane_frames: Some(
         false,
@@ -52,6 +58,7 @@ Options {
     visual_bell: None,
     focus_follows_mouse: None,
     mouse_click_through: None,
+    context_menu_enabled: None,
     osc133_command_selection: None,
     word_separators: None,
     host_notification_protocol: None,

@@ -321,6 +321,11 @@ message Action {
     ApplyFloatingSwapLayoutAction apply_floating_swap_layout = 153;
     ApplyTiledSwapLayoutByTabIdAction apply_tiled_swap_layout_by_tab_id = 154;
     ApplyFloatingSwapLayoutByTabIdAction apply_floating_swap_layout_by_tab_id = 155;
+    TogglePaneInGroupByPaneIdAction toggle_pane_in_group_by_pane_id = 157;
+    StartRenamePaneByPaneIdAction start_rename_pane_by_pane_id = 158;
+    StartRenameTabByTabIdAction start_rename_tab_by_tab_id = 159;
+    DismissInfoPopupsAction dismiss_info_popups = 160;
+    OpenContextMenuAction open_context_menu = 161;
   }
 }
 
@@ -747,6 +752,8 @@ message CliPipeAction {
   optional bool in_place = 10;
   optional string cwd = 11;
   optional string pane_title = 12;
+  optional string popup = 13;
+  bool popup_no_focus = 14;
 }
 
 message KeybindPipeAction {
@@ -1273,6 +1280,12 @@ message Options {
   optional string host_notification_protocol = 67;
   optional bool scroll_mode_sync = 68;
   optional ThemeHue explicit_theme_hue = 69;
+  optional string keybinds_dir = 70;
+  optional string keybinds_preset = 71;
+  optional string keybinds_primary = 72;
+  optional string keybinds_secondary = 73;
+  optional string keybinds_unlock = 74;
+  optional bool context_menu_enabled = 75;
 }
 
 enum OnForceClose {
@@ -1350,3 +1363,8 @@ message NextSwapLayoutByTabIdAction { uint64 id = 1; }
 message ApplyTiledSwapLayoutByTabIdAction { uint64 id = 1; string name = 2; }
 message ApplyFloatingSwapLayoutByTabIdAction { uint64 id = 1; string name = 2; }
 message MoveTabByTabIdAction { uint64 id = 1; Direction direction = 2; }
+message TogglePaneInGroupByPaneIdAction { PaneId pane_id = 1; }
+message StartRenamePaneByPaneIdAction { PaneId pane_id = 1; }
+message StartRenameTabByTabIdAction { uint64 id = 1; }
+message DismissInfoPopupsAction {}
+message OpenContextMenuAction {}

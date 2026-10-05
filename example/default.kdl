@@ -1,5 +1,15 @@
-// If you'd like to override the default keybindings completely, be sure to change "keybinds" to "keybinds clear-defaults=true"
-keybinds {
+// Keybindings come from a preset: a file in the "keybinds" folder next to this file, or one of
+// the presets built into Zellij ("default" and "unlock-first"). Print a built-in preset with
+// "zellij setup --dump-keybinds <name>".
+// "primary", "secondary" and "unlock" set the leader keys of presets that use them.
+// If a leader key is empty or two of them are equal, Zellij warns and uses the default preset.
+// Keybindings that come from a layout are shown in the settings screen but cannot be edited there.
+// Bindings inside the block are applied on top of the preset. To replace the preset
+// completely, add clear-defaults=true to the block.
+// For a single session, "zellij options --keybinds-preset <name>" (and --keybinds-primary,
+// --keybinds-secondary, --keybinds-unlock) choose a preset without changing this file.
+//
+keybinds preset="default" primary="Ctrl" secondary="Alt" unlock="Ctrl g" {
     normal {
         // uncomment this and adjust key if using copy_on_select=false
         // bind "Alt c" { Copy; }
@@ -237,11 +247,19 @@ keybinds {
 
 // Plugin aliases - can be used to change the implementation of Zellij
 // changing these requires a restart to take effect
+// Built-in aliases cannot be deleted: this block can only add to or override them
+// (removing an override brings back the built-in one)
 plugins {
-    tab-bar location="zellij:tab-bar"
-    status-bar location="zellij:status-bar"
+    tab-bar location="zellij:bars" {
+        role "tab-bar"
+    }
+    status-bar location="zellij:bars" {
+        role "status-bar"
+    }
     strider location="zellij:strider"
-    compact-bar location="zellij:compact-bar"
+    compact-bar location="zellij:bars" {
+        role "compact-bar"
+    }
     session-manager location="zellij:session-manager"
     welcome-screen location="zellij:session-manager" {
         welcome_screen true
@@ -252,14 +270,72 @@ plugins {
     configuration location="zellij:configuration"
     plugin-manager location="zellij:plugin-manager"
     about location="zellij:about"
+    context-menu location="zellij:context-menu"
+    prompt location="zellij:prompt"
 }
 
 // Plugins to load in the background when a new session starts
+// (Requires restart)
 load_plugins {
-    "zellij:link"
+    "zellij:bars" {
+        role "link"
+    }
     // "file:/path/to/my-plugin.wasm"
     // "https://example.com/my-plugin.wasm"
 }
+
+// Right-click menu items, per clicked target: "pane", "tab", "bar" (tab bar or status bar background)
+// "common" items are added to the end of every menu
+// Actions ending in "ByPaneId"/"ById"/"ByTabId" apply to the clicked pane or tab when no id is given
+// Add clear-defaults=true to the block or to a section to replace the default items
+// Without clear-defaults, a section changes the default items:
+//   item "Label" { ... }                     replaces the item with that label, or adds it at the end
+//   item "Label" after="Other" { ... }       places the item after "Other" (before="Other" places it before)
+//   separator after="Other"                  adds a separator after (or before=) "Other"
+//   remove "Label"                           removes the item with that label
+// Unknown labels are ignored by remove and place the item at the end with after/before
+// An empty "context_menu clear-defaults=true {}" leaves the menu empty, so it never opens,
+// but right clicks are still taken by Zellij; use "context_menu_enabled false" to turn the menu off
+// context_menu {
+//     pane {
+//         item "New pane" { NewPane; }
+//         item "New floating pane" { NewFloatingPane; }
+//         separator
+//         item "Fullscreen" { ToggleFocusFullscreenByPaneId; }
+//         item "Float / Embed" { TogglePaneEmbedOrFloatingByPaneId; }
+//         item "Rename pane" { StartRenamePaneByPaneId; }
+//         item "Add to group" { TogglePaneInGroupByPaneId; }
+//         separator
+//         item "Close pane" { CloseFocusByPaneId; }
+//     }
+//     tab {
+//         item "New tab" { NewTab; }
+//         item "Rename tab" { StartRenameTabByTabId; }
+//         item "Move tab left" { MoveTabByTabId "left"; }
+//         item "Move tab right" { MoveTabByTabId "right"; }
+//         separator
+//         item "Close tab" { CloseTabById; }
+//     }
+//     bar {
+//         item "New pane" { NewPane; }
+//         item "New tab" { NewTab; }
+//     }
+//     common {
+//         item "Settings…" {
+//             LaunchOrFocusPlugin "configuration" {
+//                 floating true
+//                 move_to_focused_tab true
+//             }
+//         }
+//         item "Session manager" {
+//             LaunchOrFocusPlugin "session-manager" {
+//                 floating true
+//                 move_to_focused_tab true
+//             }
+//         }
+//         item "Detach" { Detach; }
+//     }
+// }
 
 // Choose what to do when zellij receives SIGTERM, SIGINT, SIGQUIT or SIGHUP
 // eg. when terminal window with an active zellij session is closed
@@ -269,6 +345,15 @@ load_plugins {
 //   - quit
 //
 // on_force_close "quit"
+
+// Choose how to handle a nested Zellij session detected running inside a pane
+// Options:
+//   - ask (Default - prompt with a modal to zoom in or control on focus)
+//   - fullscreen (always zoom into the nested session)
+//   - descend (always control the nested session on focus)
+//   - never (never prompt or descend; do it manually)
+//
+// nested_session_handling "ask"
 
 //  Send a request for a simplified ui (without arrow fonts) to plugins
 //  Options:
@@ -293,6 +378,12 @@ load_plugins {
 //
 // pane_frames true
 
+// Set the pane frame style when pane_frames is enabled
+// Options:
+//   - titles (default - draw a title above each pane)
+//   - full (draw a full frame around each pane)
+//   - none (equivalent to pane_frames false)
+//
 // pane_frame_style "titles"
 
 // Configure the look of the pane frame borders
@@ -355,6 +446,7 @@ load_plugins {
 // Define color themes for Zellij
 // For more examples, see: https://github.com/zellij-org/zellij/tree/main/example/themes
 // Once these themes are defined, one of them should to be selected in the "theme" section of this file
+// Built-in themes and themes from theme_dir are read-only in the settings screen (copy one to edit it)
 //
 // themes {
 //     dracula {
@@ -377,13 +469,29 @@ load_plugins {
 //
 // theme "default"
 
+// Themes to use when the host terminal reports a dark or light color palette.
+// Both must be set for automatic switching to take place, otherwise `theme`
+// remains authoritative. Until the host terminal reports (or if it never does),
+// the dark theme is used.
+//
+// theme_dark "nightfox"
+// theme_light "dayfox"
+
+// Pin the session to a dark or light appearance, ignoring what the host
+// terminal reports. Resolved before the first render. When unset, the host
+// terminal decides.
+// Options: dark, light
+//
+// explicit_theme_hue "dark"
+
 // The name of the default layout to load on startup
 // Default: "default"
 // (Requires restart)
 //
 // default_layout "compact"
 
-// Choose the mode that zellij uses when starting up.
+// Choose the mode that zellij uses when starting up and returns to after actions.
+// Changes apply to the running session without a restart.
 // Default: normal
 //
 // default_mode "locked"
@@ -445,14 +553,19 @@ load_plugins {
 // mirror_session true
 
 // The folder in which Zellij will look for layouts
-// (Requires restart)
 //
 // layout_dir "/path/to/my/layout_dir"
 
 // The folder in which Zellij will look for themes
-// (Requires restart)
+// Changes apply to the running session without a restart.
+// Themes from this folder are read-only in the settings screen (copy one to edit it)
 //
 // theme_dir "/path/to/my/theme_dir"
+
+// The folder in which Zellij will look for keybinding presets
+// Default: a "keybinds" folder in the config directory
+//
+// keybinds_dir "/path/to/my/keybinds_dir"
 
 // Enable or disable the rendering of styled and colored underlines (undercurl).
 // May need to be disabled for certain unsupported terminals
@@ -521,16 +634,19 @@ load_plugins {
 
 // A path to a certificate file to be used when setting up the web client to serve the
 // connection over HTTPs
+// (Requires restart)
 //
 // web_server_cert "/path/to/my/cert.pem"
 
 // A path to a key file to be used when setting up the web client to serve the
 // connection over HTTPs
+// (Requires restart)
 //
 // web_server_key "/path/to/my/key.pem"
 
 // Whether to enforce https connections to the web server when it is bound to localhost
 // (127.0.0.0/8)
+// (Requires restart)
 //
 // Note: https is ALWAYS enforced when bound to non-local interfaces
 //
@@ -549,12 +665,21 @@ load_plugins {
 //
 // stacked_resize false
 
+// Whether to let programs running inside panes read the paste buffer (clipboard)
+// with the OSC 52 escape sequence. When enabled, any program in any pane -
+// including one running on a remote machine over SSH - can read the clipboard
+// without the user being asked.
+// Default: false
+//
+// dangerously_enable_paste_buffer_read true
+
 // Whether stacked panes display as a list with the expanded pane pinned to the bottom
 // Default: true
 //
 // stacked_pane_list false
 
 // Whether to show release notes on first version run
+// (Requires restart)
 // Default: true
 //
 // show_release_notes false
@@ -584,7 +709,20 @@ load_plugins {
 //
 // mouse_hover_tips false
 
+// Whether triple-clicking inside command output marked by the shell (OSC 133) selects
+// the command and its output instead of the logical line
+// Default: true
+//
+// osc133_command_selection false
+
+// Characters that terminate a word when double-clicking to select it
+// whitespace is always a separator and need not be listed here
+// Default: "[]{}<>()"
+//
+// word_separators "[]{}<>()"
+
 // Whether to output OSC8 hyperlink sequences
+// (Requires restart)
 // Default: true
 //
 // osc8_hyperlinks false
@@ -598,13 +736,59 @@ load_plugins {
 // post_command_discovery_hook "echo $RESURRECT_COMMAND | sed <your_regex_here>"
 
 // Number of async worker tasks to spawn per active client.
+// (Requires restart)
 //
 // Allocating few tasks may result in resource contention and lags. Small values (around 4) should
 // typically work best. Set to 0 to use the number of (physical) CPU cores.
-// NOTE: This only applies to web clients at the moment."#;
+// NOTE: This only applies to web clients at the moment.
 // client_async_worker_tasks 4
 
+// How often (in seconds) sessions are saved to disk so they can be resurrected
+// (Requires restart)
+// Default: 60
+//
+// serialization_interval 60
 
+// Whether to show a startup tip when a new session starts
+// (Requires restart)
+// Default: true
+//
+// show_startup_tips false
+
+// Whether to flash pane and tab frames (and add a [!] suffix) when a terminal bell rings
+// Default: true
+//
+// visual_bell false
+
+// Whether hovering the mouse over a pane focuses it
+// Default: false
+//
+// focus_follows_mouse true
+
+// Whether the click that focuses a pane is also sent to the program running in it
+// Default: false
+//
+// mouse_click_through true
+
+// Whether a right click opens the right-click menu
+// When off, right clicks go to the focused pane only and Alt + right click clears the pane group
+// Plugins can still open the menu through their API
+// Default: true
+//
+// context_menu_enabled false
+
+// How notifications from programs inside Zellij are passed to the outer terminal
+// Options:
+//   - auto (Default - pick the best protocol the terminal supports)
+//   - osc9
+//   - osc99
+//   - bell
+//   - off
+//
+// host_notification_protocol "auto"
+
+// Settings for the web client (font, font_size, cursor_blink, cursor_style, ...)
+// (Requires restart)
 web_client {
     font "monospace"
 }

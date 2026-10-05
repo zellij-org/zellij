@@ -1,4 +1,4 @@
-use crate::os_input_output::{resolve_command, AsyncReader};
+use crate::os_input_output::{resolve_command, AsyncReader, PaneEnv};
 use crate::panes::PaneId;
 
 use std::{
@@ -202,12 +202,18 @@ fn build_command_line(cmd: &RunCommand) -> Vec<u16> {
 /// Build a UTF-16 environment block (each entry `KEY=VALUE\0`, terminated by
 /// an extra `\0`) from the current process environment, adding
 /// `ZELLIJ_PANE_ID`.
-fn build_environment_block(terminal_id: u32) -> Vec<u16> {
-    let mut block: Vec<u16> = Vec::new();
-    for (key, value) in std::env::vars() {
-        if key == "ZELLIJ_PANE_ID" {
-            continue;
+fn build_environment_block(terminal_id: u32, pane_env: &PaneEnv) -> Vec<u16> {
+    let mut variables: BTreeMap<String, String> = std::env::vars()
+        .filter(|(key, _)| !key.eq_ignore_ascii_case("ZELLIJ_PANE_ID"))
+        .collect();
+    for (key, value) in pane_env {
+        variables.retain(|existing, _| !existing.eq_ignore_ascii_case(key));
+        if let Some(value) = value {
+            variables.insert(key.clone(), value.clone());
         }
+    }
+    let mut block: Vec<u16> = Vec::new();
+    for (key, value) in variables {
         let entry = format!("{}={}", key, value);
         block.extend(OsStr::new(&entry).encode_wide());
         block.push(0);
@@ -297,6 +303,7 @@ fn spawn_child_process(
     hpcon: HPCON,
     cmd: &RunCommand,
     terminal_id: u32,
+    pane_env: &PaneEnv,
 ) -> io::Result<(HANDLE, HANDLE, u32)> {
     // --- proc thread attribute list ---
     let mut attr_size: usize = 0;
@@ -338,7 +345,7 @@ fn spawn_child_process(
 
     // --- command line & environment ---
     let mut cmd_line = build_command_line(cmd);
-    let env_block = build_environment_block(terminal_id);
+    let env_block = build_environment_block(terminal_id, pane_env);
 
     let cwd: Option<Vec<u16>> = cmd.cwd.as_ref().and_then(|p| {
         if p.exists() && p.is_dir() {
@@ -419,6 +426,7 @@ impl WindowsPtyBackend {
         cmd: RunCommand,
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         terminal_id: u32,
+        pane_env: &PaneEnv,
     ) -> Result<(Box<dyn AsyncReader>, u32)> {
         let err_context = |c: &RunCommand| {
             format!(
@@ -464,7 +472,7 @@ impl WindowsPtyBackend {
 
         // 5. Spawn child process
         let (process_handle, thread_handle, child_pid) =
-            match spawn_child_process(hpcon, &cmd, terminal_id) {
+            match spawn_child_process(hpcon, &cmd, terminal_id, pane_env) {
                 Ok(r) => r,
                 Err(e) => {
                     unsafe {
@@ -522,15 +530,16 @@ impl WindowsPtyBackend {
         failover_cmd: Option<RunCommand>,
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         terminal_id: u32,
+        pane_env: &PaneEnv,
     ) -> Result<(Box<dyn AsyncReader>, u32)> {
-        if let Some(resolved) = resolve_command(&cmd) {
+        if let Some(resolved) = resolve_command(&cmd, pane_env) {
             cmd.command = resolved;
-            return self.do_spawn(cmd, quit_cb, terminal_id);
+            return self.do_spawn(cmd, quit_cb, terminal_id, pane_env);
         }
         if let Some(mut failover) = failover_cmd {
-            if let Some(resolved) = resolve_command(&failover) {
+            if let Some(resolved) = resolve_command(&failover, pane_env) {
                 failover.command = resolved;
-                return self.do_spawn(failover, quit_cb, terminal_id);
+                return self.do_spawn(failover, quit_cb, terminal_id, pane_env);
             }
         }
         Err(ZellijError::CommandNotFound {

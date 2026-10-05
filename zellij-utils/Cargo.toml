@@ -26,6 +26,7 @@ log = { workspace = true }
 miette = { workspace = true }
 percent-encoding = { version = "2.1.0", default-features = false, features = ["std"] }
 prost = { workspace = true }
+regex = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 shellexpand = { version = "3.0.0", default-features = false, features = ["base-0", "tilde"] }

@@ -6,7 +6,8 @@ use crate::plugins::plugin_map::{PluginMap, RunningPlugin, SharedSlot, Subscript
 use crate::plugins::plugin_worker::MessageToWorker;
 use crate::plugins::wasm_bridge::{
     check_event_permission, handle_plugin_crash, handle_plugin_loading_failure,
-    handle_plugin_successful_loading, LoadingContext, PluginCache, PluginRenderAsset,
+    handle_plugin_successful_loading, subscription_event_type, LoadingContext, PluginCache,
+    PluginRenderAsset,
 };
 use crate::plugins::zellij_exports::{wasi_read_bytes, wasi_read_string, wasi_write_object};
 use crate::plugins::PluginInstruction;
@@ -16,7 +17,6 @@ use crate::{thread_bus::ThreadSenders, ClientId, SharedKeybinds};
 use prost::Message;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
-use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use wasmi::Engine;
 use zellij_utils::data::KeybindsVec;
@@ -446,7 +446,7 @@ pub fn apply_events_job(
     let mut render = RenderResponse::Nothing;
     let strip_keybinds = subscriptions.contains(&EventType::InitialKeybinds);
     for (mut event, context, mut keybinds) in events {
-        let Ok(event_type) = EventType::from_str(&event.to_string()) else {
+        let Ok(event_type) = subscription_event_type(&event) else {
             continue;
         };
         if let Event::ModeUpdate(mode_info) = &mut event {

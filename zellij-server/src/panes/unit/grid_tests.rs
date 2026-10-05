@@ -6816,6 +6816,309 @@ fn ui_component_flag_prefixes_parse_order_independently() {
     }
 }
 
+fn widget_lines(grid: &Grid) -> Vec<String> {
+    grid.as_character_lines()
+        .iter()
+        .map(|line| {
+            line.iter()
+                .map(|c| c.character)
+                .collect::<String>()
+                .trim_end()
+                .to_owned()
+        })
+        .collect()
+}
+
+fn styled_line(grid: &Grid, line_index: usize) -> String {
+    grid.as_character_lines()
+        .get(line_index)
+        .map(|line| {
+            line.iter()
+                .map(|c| format!("{}{}", *c.styles, c.character))
+                .collect::<String>()
+        })
+        .unwrap_or_default()
+}
+
+fn styles_at(
+    grid: &Grid,
+    line_index: usize,
+    column: usize,
+) -> crate::panes::terminal_character::CharacterStyles {
+    *grid.as_character_lines()[line_index][column].styles
+}
+
+const GRAY_BACKGROUND: &str = "\u{1b}[48;5;238m";
+const LIGHT_GRAY_BACKGROUND: &str = "\u{1b}[48;5;245m";
+const GREEN_BACKGROUND: &str = "\u{1b}[48;5;154m";
+const GREEN_FOREGROUND: &str = "\u{1b}[38;5;154m";
+const RED_FOREGROUND: &str = "\u{1b}[38;5;124m";
+
+#[test]
+fn button_ui_component_renders_each_look_in_grays() {
+    use crate::panes::terminal_character::AnsiCode;
+    let label = serialize_text_bytes("Save");
+    let normal = render_ui_component("button", &format!("1/1/8/1;;{}", label));
+    assert_eq!(widget_lines(&normal)[1], " [ Save ]");
+    assert!(!styled_line(&normal, 1).contains(GRAY_BACKGROUND));
+    let hovered = render_ui_component("button", &format!("1/1/8/1;h;{}", label));
+    assert!(styled_line(&hovered, 1).contains(GRAY_BACKGROUND));
+    let focused = render_ui_component("button", &format!("1/1/8/1;f;{}", label));
+    assert!(styled_line(&focused, 1).contains(GRAY_BACKGROUND));
+    assert!(styled_line(&focused, 1).contains(GREEN_FOREGROUND));
+    assert_eq!(styles_at(&focused, 1, 3).bold, Some(AnsiCode::On));
+    let pressed = render_ui_component("button", &format!("1/1/8/1;p;{}", label));
+    assert!(styled_line(&pressed, 1).contains(LIGHT_GRAY_BACKGROUND));
+    let disabled = render_ui_component("button", &format!("1/1/8/1;d;{}", label));
+    assert_eq!(styles_at(&disabled, 1, 3).italic, Some(AnsiCode::On));
+    assert_eq!(styles_at(&disabled, 1, 3).dim, Some(AnsiCode::On));
+    for grid in [&normal, &hovered, &focused, &pressed, &disabled] {
+        assert!(!styled_line(grid, 1).contains(GREEN_BACKGROUND));
+    }
+}
+
+#[test]
+fn toggle_ui_component_renders_on_off_hover_and_dim_disabled() {
+    use crate::panes::terminal_character::AnsiCode;
+    let label = serialize_text_bytes("Wrap");
+    let on = render_ui_component("toggle", &format!("0/0/10/1;f,on,lw=5;{}", label));
+    assert_eq!(widget_lines(&on)[0], "Wrap [on ]");
+    assert!(!styled_line(&on, 0).contains(GRAY_BACKGROUND));
+    assert!(styled_line(&on, 0).contains(GREEN_FOREGROUND));
+    let off = render_ui_component("toggle", &format!("0/0/10/1;lw=5;{}", label));
+    assert_eq!(widget_lines(&off)[0], "Wrap [off]");
+    assert!(!styled_line(&off, 0).contains(GRAY_BACKGROUND));
+    let hovered = render_ui_component("toggle", &format!("0/0/10/1;h,lw=5;{}", label));
+    assert!(styled_line(&hovered, 0).contains(GRAY_BACKGROUND));
+    let disabled = render_ui_component("toggle", &format!("0/0/10/1;d,on,lw=5;{}", label));
+    assert_eq!(widget_lines(&disabled)[0], "Wrap [on ]");
+    assert_eq!(styles_at(&disabled, 0, 6).italic, Some(AnsiCode::On));
+    assert_eq!(styles_at(&disabled, 0, 6).dim, Some(AnsiCode::On));
+    assert!(!styled_line(&disabled, 0).contains(GRAY_BACKGROUND));
+}
+
+#[test]
+fn dropdown_ui_component_pads_the_field_and_truncates_long_values() {
+    let grid = render_ui_component(
+        "dropdown",
+        &format!(
+            "0/0/20/1;f,lw=5;{};{}",
+            serialize_text_bytes("Mode"),
+            serialize_text_bytes("normal")
+        ),
+    );
+    assert_eq!(widget_lines(&grid)[0], "Mode [ normal    ▾ ]");
+    assert!(styled_line(&grid, 0).contains(GREEN_FOREGROUND));
+    assert!(styled_line(&grid, 0).contains(GRAY_BACKGROUND));
+    let long = render_ui_component(
+        "dropdown",
+        &format!(
+            "0/0/16/1;lw=0;;{}",
+            serialize_text_bytes("a very long value indeed")
+        ),
+    );
+    assert_eq!(widget_lines(&long)[0], "[ a very lo… ▾ ]");
+    assert!(!styled_line(&long, 0).contains(GRAY_BACKGROUND));
+    let hovered = render_ui_component(
+        "dropdown",
+        &format!("0/0/16/1;h,lw=0;;{}", serialize_text_bytes("x")),
+    );
+    assert!(styled_line(&hovered, 0).contains(GRAY_BACKGROUND));
+}
+
+#[test]
+fn menu_ui_component_renders_border_separator_shortcut_and_gray_highlight() {
+    use crate::panes::terminal_character::AnsiCode;
+    let rows = format!(
+        "{}:{};-;d{};m{}",
+        serialize_text_bytes("Copy"),
+        serialize_text_bytes("^C"),
+        serialize_text_bytes("Delete"),
+        serialize_text_bytes("Rename")
+    );
+    let grid = render_ui_component("menu", &format!("2/1/16/6;b,f,hl=0;{}", rows));
+    let lines = widget_lines(&grid);
+    assert_eq!(lines[1], "  ┌──────────────┐");
+    assert_eq!(lines[2], "  │   Copy    ^C │");
+    assert_eq!(lines[3], "  ├──────────────┤");
+    assert_eq!(lines[4], "  │   Delete     │");
+    assert_eq!(lines[5], "  │ ● Rename     │");
+    assert_eq!(lines[6], "  └──────────────┘");
+    assert!(styled_line(&grid, 2).contains(GRAY_BACKGROUND));
+    assert!(!styled_line(&grid, 5).contains(GRAY_BACKGROUND));
+    for line in 1..7 {
+        assert!(!styled_line(&grid, line).contains(GREEN_BACKGROUND));
+    }
+    assert_eq!(styles_at(&grid, 4, 6).italic, Some(AnsiCode::On));
+    assert_eq!(styles_at(&grid, 4, 6).dim, Some(AnsiCode::On));
+}
+
+#[test]
+fn menu_ui_component_shows_hidden_row_counts_instead_of_a_bar() {
+    let rows = ["B", "C"]
+        .iter()
+        .map(|r| serialize_text_bytes(r))
+        .collect::<Vec<_>>()
+        .join(";");
+    let bordered = render_ui_component("menu", &format!("0/0/14/4;b,above=1,below=6;{}", rows));
+    let lines = widget_lines(&bordered);
+    assert_eq!(lines[0], "┌─ ↑ [+1] ───┐");
+    assert_eq!(lines[1], "│   B        │");
+    assert_eq!(lines[3], "└─ ↓ [+6] ───┘");
+    assert!(lines.iter().all(|line| !line.contains('┃')));
+    let borderless = render_ui_component("menu", &format!("0/0/12/4;ind,above=0,below=5;{}", rows));
+    let lines = widget_lines(&borderless);
+    assert_eq!(lines[0], "");
+    assert_eq!(lines[1], "   B");
+    assert_eq!(lines[3], " ↓ [+5]");
+}
+
+#[test]
+fn text_input_ui_component_renders_cursor_placeholder_and_error() {
+    use crate::panes::terminal_character::AnsiCode;
+    let grid = render_ui_component(
+        "text_input",
+        &format!(
+            "0/0/14/2;f,err,lw=0,cur=1;;{};{};",
+            serialize_text_bytes("12a"),
+            serialize_text_bytes("digits only")
+        ),
+    );
+    let lines = widget_lines(&grid);
+    assert_eq!(lines[0], "[ 12a        ]");
+    assert_eq!(lines[1], "✗ digits only");
+    assert_eq!(styles_at(&grid, 0, 3).reverse, Some(AnsiCode::On));
+    assert!(styled_line(&grid, 0).contains(RED_FOREGROUND));
+    assert!(styled_line(&grid, 1).contains(RED_FOREGROUND));
+    let placeholder = render_ui_component(
+        "text_input",
+        &format!(
+            "0/0/20/1;ph,lw=5;{};{};;",
+            serialize_text_bytes("Name"),
+            serialize_text_bytes("type here")
+        ),
+    );
+    assert_eq!(widget_lines(&placeholder)[0], "Name [ type here   ]");
+    assert_eq!(styles_at(&placeholder, 0, 7).italic, Some(AnsiCode::On));
+    let search = render_ui_component(
+        "text_input",
+        &format!(
+            "0/0/24/1;h,lw=0;;{};;{}",
+            serialize_text_bytes("ab"),
+            serialize_text_bytes("3 matches")
+        ),
+    );
+    assert_eq!(widget_lines(&search)[0], "[ ab         3 matches ]");
+    assert!(styled_line(&search, 0).contains(GRAY_BACKGROUND));
+}
+
+#[test]
+fn stepper_ui_component_renders_arrows_and_value() {
+    use crate::panes::terminal_character::AnsiCode;
+    let grid = render_ui_component(
+        "stepper",
+        &format!(
+            "0/0/15/1;f,lmin,lw=6;{};{}",
+            serialize_text_bytes("Width"),
+            serialize_text_bytes("10000")
+        ),
+    );
+    assert_eq!(widget_lines(&grid)[0], "Width ‹ 10000 ›");
+    assert_eq!(styles_at(&grid, 0, 6).dim, Some(AnsiCode::On));
+    assert_eq!(styles_at(&grid, 0, 14).bold, Some(AnsiCode::On));
+    let hovered = render_ui_component(
+        "stepper",
+        &format!("0/0/9/1;h,hinc,lw=0;;{}", serialize_text_bytes("10000")),
+    );
+    assert!(styled_line(&hovered, 0).contains(GRAY_BACKGROUND));
+    assert_eq!(styles_at(&hovered, 0, 8).bold, Some(AnsiCode::On));
+}
+
+#[test]
+fn scroll_indicator_ui_component_renders_arrow_counts() {
+    let grid = render_ui_component("scroll_indicator", "3/0/10/4;r,above=4,below=0");
+    let lines = widget_lines(&grid);
+    assert_eq!(lines[0], "      ↑ [+4]");
+    assert_eq!(lines[1], "");
+    assert_eq!(lines[3], "");
+    let both = render_ui_component("scroll_indicator", "0/0/10/3;above=0,below=12,hd");
+    let lines = widget_lines(&both);
+    assert_eq!(lines[0], "");
+    assert_eq!(lines[2], " ↓ [+12]");
+    assert!(styled_line(&both, 2).contains(GRAY_BACKGROUND));
+}
+
+#[test]
+fn scroll_indicator_ui_component_renders_a_bar_with_counts_to_its_right() {
+    let grid = render_ui_component(
+        "scroll_indicator",
+        "10/0/9/4;bar,f,tot=8,off=4,above=4,below=0,hu",
+    );
+    let lines = widget_lines(&grid);
+    assert_eq!(lines[0], "          │ ↑ [+4]");
+    assert_eq!(lines[1], "          │");
+    assert_eq!(lines[2], "          ┃");
+    assert_eq!(lines[3], "          ┃");
+    assert!(styled_line(&grid, 0).contains(GRAY_BACKGROUND));
+    assert!(styled_line(&grid, 2).contains(GREEN_FOREGROUND));
+}
+
+#[test]
+fn side_menu_ui_component_renders_gray_selection_hover_and_indicators() {
+    let items = format!(
+        "{};{}",
+        serialize_text_bytes("General"),
+        serialize_text_bytes("Theme")
+    );
+    let grid = render_ui_component("side_menu", &format!("0/0/10/3;sel=1,hov=0;{}", items));
+    let lines = widget_lines(&grid);
+    assert_eq!(lines[0], " General │");
+    assert_eq!(lines[1], " Theme   │");
+    assert_eq!(lines[2], "         │");
+    assert!(styled_line(&grid, 1).contains(GRAY_BACKGROUND));
+    assert!(styled_line(&grid, 0).contains(GRAY_BACKGROUND));
+    assert!(!styled_line(&grid, 1).contains(GREEN_BACKGROUND));
+    let scrolled = render_ui_component(
+        "side_menu",
+        &format!("0/0/10/4;f,ind,above=2,below=1;{}", items),
+    );
+    let lines = widget_lines(&scrolled);
+    assert_eq!(lines[0], " ↑ [+2]  │");
+    assert_eq!(lines[1], " General │");
+    assert_eq!(lines[3], " ↓ [+1]  │");
+}
+
+#[test]
+fn dialog_ui_component_renders_an_opaque_box_with_bracketed_buttons() {
+    let fields = [
+        serialize_text_bytes("Quit"),
+        serialize_text_bytes("Yes"),
+        serialize_text_bytes("No"),
+        serialize_text_bytes("Really quit?"),
+    ]
+    .join(";");
+    let grid = render_ui_component(
+        "dialog",
+        &format!("0/0/20/6;sel=1,nb=2,bx=3,hb=0;{}", fields),
+    );
+    let lines = widget_lines(&grid);
+    assert_eq!(lines[0], "╭─ Quit ───────────╮");
+    assert_eq!(lines[1], "│                  │");
+    assert_eq!(lines[2], "│ Really quit?     │");
+    assert_eq!(lines[3], "│                  │");
+    assert_eq!(lines[4], "│  [ Yes ]  [ No ] │");
+    assert_eq!(lines[5], "╰──────────────────╯");
+    assert!(styled_line(&grid, 4).contains(GRAY_BACKGROUND));
+    assert!(!styled_line(&grid, 4).contains(GREEN_BACKGROUND));
+    assert!(styled_line(&grid, 0).contains(GREEN_FOREGROUND));
+}
+
+#[test]
+fn widget_ui_components_require_coordinates() {
+    let grid = render_ui_component("button", &format!(";{}", serialize_text_bytes("Save")));
+    assert!(widget_lines(&grid).iter().all(|line| line.is_empty()));
+}
+
 use crate::panes::kitty_graphics::{InterceptorResult, KittyApcInterceptor, KittyHostSupport};
 use crate::panes::sixel::PixelRect;
 
@@ -9675,4 +9978,114 @@ fn shrinking_keeps_cursor_on_its_own_line_when_it_sits_past_the_content() {
     assert_eq!(rendered_row(&grid, 0), "first");
     assert_eq!(rendered_row(&grid, 1), "X prompt text here okay");
     assert_eq!(grid.viewport.len(), 2);
+}
+
+fn row_of(text: &str) -> super::super::Row {
+    super::super::Row::from_columns(
+        text.chars()
+            .map(crate::panes::terminal_character::TerminalCharacter::new)
+            .collect(),
+    )
+}
+
+fn assert_cached_width_is_fresh(row: &mut super::super::Row) {
+    let fresh: usize = row.columns.iter().map(|character| character.width()).sum();
+    assert_eq!(row.width_cached(), fresh);
+    assert_eq!(row.width(), fresh);
+}
+
+#[test]
+fn same_width_overwrite_keeps_the_row_width_cache() {
+    use crate::panes::terminal_character::TerminalCharacter;
+    let mut row = row_of("abcdef");
+    assert_eq!(row.width_cached(), 6);
+    row.add_character_at(TerminalCharacter::new('X'), 2);
+    assert!(row.width.is_some());
+    assert_eq!(row_text(&row), "abXdef");
+    assert_cached_width_is_fresh(&mut row);
+}
+
+#[test]
+fn same_width_wide_overwrite_keeps_the_row_width_cache() {
+    use crate::panes::terminal_character::TerminalCharacter;
+    let mut row = row_of("a中b");
+    assert_eq!(row.width_cached(), 4);
+    row.add_character_at(TerminalCharacter::new('文'), 1);
+    assert!(row.width.is_some());
+    assert_eq!(row_text(&row), "a文b");
+    assert_cached_width_is_fresh(&mut row);
+}
+
+#[test]
+fn wider_overwrite_invalidates_the_row_width_cache() {
+    use crate::panes::terminal_character::TerminalCharacter;
+    let mut row = row_of("abcdef");
+    assert_eq!(row.width_cached(), 6);
+    row.add_character_at(TerminalCharacter::new('中'), 1);
+    assert!(row.width.is_none());
+    assert_eq!(row_text(&row), "a中def");
+    assert_cached_width_is_fresh(&mut row);
+    assert_eq!(row.width_cached(), 6);
+}
+
+#[test]
+fn narrower_overwrite_invalidates_the_row_width_cache() {
+    use crate::panes::terminal_character::TerminalCharacter;
+    let mut row = row_of("a中b");
+    assert_eq!(row.width_cached(), 4);
+    row.add_character_at(TerminalCharacter::new('x'), 1);
+    assert!(row.width.is_none());
+    assert_cached_width_is_fresh(&mut row);
+    assert_eq!(row.width_cached(), 4);
+    let mut row = row_of("a中b");
+    row.width_cached();
+    row.add_character_at(TerminalCharacter::new('y'), 2);
+    assert!(row.width.is_none());
+    assert_cached_width_is_fresh(&mut row);
+    assert_eq!(row.width_cached(), 4);
+}
+
+#[test]
+fn appending_wide_and_zero_width_characters_keeps_the_width_correct() {
+    use crate::panes::terminal_character::TerminalCharacter;
+    let mut row = row_of("ab");
+    assert_eq!(row.width_cached(), 2);
+    row.add_character_at(TerminalCharacter::new('中'), 2);
+    assert_cached_width_is_fresh(&mut row);
+    assert_eq!(row.width_cached(), 4);
+    let zero_width = TerminalCharacter::new('\u{0301}');
+    assert_eq!(zero_width.width(), 0);
+    row.add_character_at(zero_width, 4);
+    assert_cached_width_is_fresh(&mut row);
+    assert_eq!(row.width_cached(), 4);
+    row.add_character_at(TerminalCharacter::new('c'), 4);
+    assert_cached_width_is_fresh(&mut row);
+    assert_eq!(row.width_cached(), 5);
+}
+
+#[test]
+fn overwriting_next_to_a_zero_width_character_keeps_the_width_correct() {
+    use crate::panes::terminal_character::TerminalCharacter;
+    let mut row = row_of("ab");
+    row.columns.push_back(TerminalCharacter::new('\u{0301}'));
+    row.columns.push_back(TerminalCharacter::new('c'));
+    assert_eq!(row.width_cached(), 3);
+    row.add_character_at(TerminalCharacter::new('Z'), 2);
+    assert!(row.width.is_some());
+    assert_eq!(row.columns[3].character, 'Z');
+    assert_cached_width_is_fresh(&mut row);
+    assert_eq!(row.width_cached(), 3);
+    row.add_character_at(TerminalCharacter::new('中'), 0);
+    assert_cached_width_is_fresh(&mut row);
+}
+
+#[test]
+fn writing_past_the_end_pads_and_keeps_the_width_correct() {
+    use crate::panes::terminal_character::TerminalCharacter;
+    let mut row = row_of("a中");
+    assert_eq!(row.width_cached(), 3);
+    row.add_character_at(TerminalCharacter::new('z'), 6);
+    assert!(row.width.is_none());
+    assert_cached_width_is_fresh(&mut row);
+    assert_eq!(row.width_cached(), 7);
 }

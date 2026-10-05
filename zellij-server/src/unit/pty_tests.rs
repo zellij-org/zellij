@@ -61,6 +61,7 @@ impl ServerOsApi for MockOsApi {
         _: TerminalAction,
         _: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         _: Option<PathBuf>,
+        _pane_env: &crate::os_input_output::PaneEnv,
     ) -> anyhow::Result<(u32, Box<dyn AsyncReader>, Option<u32>)> {
         unimplemented!()
     }
@@ -147,6 +148,7 @@ impl ServerOsApi for MockOsApi {
         _: u32,
         _: RunCommand,
         _: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
+        _pane_env: &crate::os_input_output::PaneEnv,
     ) -> anyhow::Result<(Box<dyn AsyncReader>, Option<u32>)> {
         unimplemented!()
     }
@@ -163,7 +165,7 @@ fn make_pty_with_plugin_receiver(
     let mut bus: Bus<PtyInstruction> = Bus::empty().should_silently_fail();
     bus.os_input = Some(Box::new(mock));
     bus.senders.to_plugin = Some(plugin_sender);
-    let pty = Pty::new(bus, false, None, None);
+    let pty = Pty::new(bus, false, None, None, Default::default());
     (pty, plugin_rx)
 }
 

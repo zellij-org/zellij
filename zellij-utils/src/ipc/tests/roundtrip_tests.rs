@@ -474,6 +474,11 @@ fn test_client_messages() {
                 default_layout: Some(PathBuf::from("default_layout")),
                 layout_dir: Some(PathBuf::from("layout_dir")),
                 theme_dir: Some(PathBuf::from("theme_dir")),
+                keybinds_dir: Some(PathBuf::from("keybinds_dir")),
+                keybinds_preset: Some("unlock-first".to_owned()),
+                keybinds_primary: Some("Ctrl".to_owned()),
+                keybinds_secondary: Some("Alt".to_owned()),
+                keybinds_unlock: Some("Ctrl g".to_owned()),
                 mouse_mode: Some(true),
                 pane_frames: Some(true),
                 pane_frame_style: Some(PaneFrameStyle::Full),
@@ -517,6 +522,7 @@ fn test_client_messages() {
                 visual_bell: Some(true),
                 focus_follows_mouse: Some(false),
                 mouse_click_through: Some(false),
+                context_menu_enabled: Some(false),
                 osc133_command_selection: Some(false),
                 word_separators: Some("[]{}<>():".to_owned()),
                 host_notification_protocol: Some(HostNotificationProtocol::Osc99),
@@ -3021,6 +3027,8 @@ fn test_client_messages() {
             in_place: None,
             cwd: None,
             pane_title: None,
+            popup: None,
+            popup_no_focus: false,
         },
         terminal_id: Some(1),
         client_id: Some(100),
@@ -3040,6 +3048,29 @@ fn test_client_messages() {
             in_place: Some(false),
             cwd: Some(PathBuf::from("/path/to/cwd")),
             pane_title: Some("pane_title".to_owned()),
+            popup: Some(crate::data::PipePopupPlacement::Center),
+            popup_no_focus: false,
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::CliPipe {
+            pipe_id: "pipe_id_name".to_owned(),
+            name: Some("notify".to_owned()),
+            payload: Some("Build finished".to_owned()),
+            args: None,
+            plugin: Some("zellij:prompt".to_owned()),
+            configuration: None,
+            launch_new: true,
+            skip_cache: false,
+            floating: None,
+            in_place: None,
+            cwd: None,
+            pane_title: None,
+            popup: Some(crate::data::PipePopupPlacement::TopRight),
+            popup_no_focus: true,
         },
         terminal_id: Some(1),
         client_id: Some(100),
@@ -3839,6 +3870,34 @@ fn test_client_messages() {
         is_cli_client: true,
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::TogglePaneInGroupByPaneId {
+            pane_id: PaneId::Plugin(2),
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::StartRenamePaneByPaneId {
+            pane_id: PaneId::Terminal(3),
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::StartRenameTabByTabId { id: 4 },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::CloseTabById { id: 5 },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::FocusPaneByPaneId {
             pane_id: PaneId::Terminal(1),
         },
@@ -3978,6 +4037,15 @@ fn test_server_messages() {
     });
     test_server_roundtrip!(ServerToClientMsg::UnblockCliPipeInput {
         pipe_name: "stdout".to_string(),
+        exit_code: None,
+    });
+    test_server_roundtrip!(ServerToClientMsg::UnblockCliPipeInput {
+        pipe_name: "stdout".to_string(),
+        exit_code: Some(124),
+    });
+    test_server_roundtrip!(ServerToClientMsg::UnblockCliPipeInput {
+        pipe_name: "stdout".to_string(),
+        exit_code: Some(0),
     });
     test_server_roundtrip!(ServerToClientMsg::CliPipeOutput {
         pipe_name: "stderr".to_string(),
@@ -4269,4 +4337,31 @@ fn rename_active_pane_wire_roundtrip() {
         .expect("Failed to convert decoded protobuf back to Rust");
 
     assert_eq!(original, roundtrip);
+}
+
+#[test]
+fn by_id_actions_without_a_pane_id_are_rejected_over_ipc() {
+    use crate::client_server_contract::client_server_contract::{
+        action::ActionType, Action as ProtoAction, CloseFocusByPaneIdAction,
+        StartRenamePaneByPaneIdAction, ToggleFullscreenByPaneIdAction,
+        TogglePaneEmbedOrFloatingByPaneIdAction, TogglePaneInGroupByPaneIdAction,
+        TogglePanePinnedByPaneIdAction,
+    };
+    let without_pane_id = vec![
+        ActionType::CloseFocusByPaneId(CloseFocusByPaneIdAction { pane_id: None }),
+        ActionType::ToggleFullscreenByPaneId(ToggleFullscreenByPaneIdAction { pane_id: None }),
+        ActionType::TogglePaneEmbedOrFloatingByPaneId(TogglePaneEmbedOrFloatingByPaneIdAction {
+            pane_id: None,
+        }),
+        ActionType::TogglePanePinnedByPaneId(TogglePanePinnedByPaneIdAction { pane_id: None }),
+        ActionType::TogglePaneInGroupByPaneId(TogglePaneInGroupByPaneIdAction { pane_id: None }),
+        ActionType::StartRenamePaneByPaneId(StartRenamePaneByPaneIdAction { pane_id: None }),
+    ];
+    for action_type in without_pane_id {
+        let described = format!("{:?}", action_type);
+        let decoded = Action::try_from(ProtoAction {
+            action_type: Some(action_type),
+        });
+        assert!(decoded.is_err(), "{} decoded without a pane id", described);
+    }
 }

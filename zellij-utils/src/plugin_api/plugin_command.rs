@@ -9,14 +9,15 @@ pub use super::generated_api::api::{
     pane_frame_style::PaneFrameStyle as ProtobufPaneFrameStyle,
     plugin_command::{
         break_panes_to_new_tab_response, break_panes_to_tab_with_id_response,
-        break_panes_to_tab_with_index_response, delete_layout_response, dump_layout_response,
-        dump_session_layout_response, edit_layout_response, focus_or_create_tab_response,
-        get_focused_pane_info_response, get_pane_cwd_response, get_pane_pid_response,
-        get_pane_running_command_response, get_session_list_response, hide_floating_panes_response,
+        break_panes_to_tab_with_index_response, copy_keybind_preset_response,
+        delete_layout_response, dump_layout_response, dump_session_layout_response,
+        edit_layout_response, focus_or_create_tab_response, get_focused_pane_info_response,
+        get_pane_cwd_response, get_pane_pid_response, get_pane_running_command_response,
+        get_session_list_response, hide_floating_panes_response,
         highlight_style::Style as ProtobufHighlightStyleVariant, new_tab_response,
         new_tab_unfocused_response, parse_layout_response, plugin_command::Payload,
         rename_layout_response, save_layout_response, save_session_response,
-        show_floating_panes_response, BreakPanesToNewTabPayload,
+        show_floating_panes_response, write_theme_file_response, BreakPanesToNewTabPayload,
         BreakPanesToNewTabResponse as ProtobufBreakPanesToNewTabResponse,
         BreakPanesToTabWithIdPayload,
         BreakPanesToTabWithIdResponse as ProtobufBreakPanesToTabWithIdResponse,
@@ -24,9 +25,12 @@ pub use super::generated_api::api::{
         BreakPanesToTabWithIndexResponse as ProtobufBreakPanesToTabWithIndexResponse,
         ChangeFloatingPanesCoordinatesPayload, ChangeHostFolderPayload, ClearPaneHighlightsPayload,
         ClearScreenForPaneIdPayload, CliPipeOutputPayload, CloseMultiplePanesPayload,
-        CloseTabWithIdPayload, CloseTabWithIndexPayload, CommandName, ContextItem,
-        CopyToClipboardPayload, CreateTokenResponse as ProtobufCreateTokenResponse,
-        CreateTokenResponse, CurrentSessionLastSavedTimePayload,
+        CloseTabWithIdPayload, CloseTabWithIndexPayload, CommandName,
+        ConfigBlocks as ProtobufConfigBlocks, ConfigPair as ProtobufConfigPair,
+        ConfigSettingState as ProtobufConfigSettingState, ContextItem, CopyKeybindPresetPayload,
+        CopyKeybindPresetResponse as ProtobufCopyKeybindPresetResponse, CopyToClipboardPayload,
+        CreateTokenResponse as ProtobufCreateTokenResponse, CreateTokenResponse,
+        CurrentSessionLastSavedTimePayload,
         CurrentSessionLastSavedTimeResponse as ProtobufCurrentSessionLastSavedTimeResponse,
         CursorPosition, CustomIndexHighlight as ProtobufCustomIndexHighlight,
         CustomRgbHighlight as ProtobufCustomRgbHighlight,
@@ -36,7 +40,7 @@ pub use super::generated_api::api::{
         DumpLayoutResponse as ProtobufDumpLayoutResponse, DumpSessionLayoutPayload,
         DumpSessionLayoutResponse as ProtobufDumpSessionLayoutResponse, EditLayoutPayload,
         EditLayoutResponse as ProtobufEditLayoutResponse, EditScrollbackForPaneWithIdPayload,
-        EmbedMultiplePanesPayload, EnvVariable, ExecCmdPayload,
+        EmbedMultiplePanesPayload, EnvVarEntry as ProtobufEnvVarEntry, EnvVariable, ExecCmdPayload,
         FixedOrPercent as ProtobufFixedOrPercent,
         FixedOrPercentValue as ProtobufFixedOrPercentValue, FloatMultiplePanesPayload,
         FloatingPaneCoordinates as ProtobufFloatingPaneCoordinates,
@@ -62,11 +66,15 @@ pub use super::generated_api::api::{
         HideFloatingPanesResponse as ProtobufHideFloatingPanesResponse, HidePaneWithIdPayload,
         HighlightAndUnhighlightPanesPayload, HighlightLayer as ProtobufHighlightLayer,
         HighlightStyle as ProtobufHighlightStyle, HttpVerb as ProtobufHttpVerb, IdAndNewName,
-        KeyToRebind, KeyToUnbind, KillSessionsPayload,
-        KillSessionsResponse as ProtobufKillSessionsResponse, ListTokensResponse,
-        LoadNewPluginPayload, MessageToPluginPayload, MovePaneWithPaneIdInDirectionPayload,
-        MovePaneWithPaneIdPayload, MovePayload, NewPluginArgs as ProtobufNewPluginArgs,
-        NewTabPayload, NewTabResponse as ProtobufNewTabResponse, NewTabUnfocusedPayload,
+        KeyToRebind, KeyToUnbind, KeybindingEntry as ProtobufKeybindingEntry,
+        KeybindingSourceKind as ProtobufKeybindingSourceKind,
+        KeybindsSelectionSnapshot as ProtobufKeybindsSelectionSnapshot, KillSessionsPayload,
+        KillSessionsResponse as ProtobufKillSessionsResponse, LeaderValue as ProtobufLeaderValue,
+        ListTokensResponse, LoadNewPluginPayload, MenuItemEntry as ProtobufMenuItemEntry,
+        MenuSectionEntries as ProtobufMenuSectionEntries, MessageToPluginPayload,
+        MovePaneWithPaneIdInDirectionPayload, MovePaneWithPaneIdPayload, MovePayload,
+        NewPluginArgs as ProtobufNewPluginArgs, NewTabPayload,
+        NewTabResponse as ProtobufNewTabResponse, NewTabUnfocusedPayload,
         NewTabUnfocusedResponse as ProtobufNewTabUnfocusedResponse,
         NewTabsResponse as ProtobufNewTabsResponse, NewTabsWithLayoutInfoPayload,
         NewTiledPaneInTabPayload, NewTiledPaneInTabResponse as ProtobufNewTiledPaneInTabResponse,
@@ -82,7 +90,7 @@ pub use super::generated_api::api::{
         OpenCommandPaneNearPluginPayload,
         OpenCommandPaneNearPluginResponse as ProtobufOpenCommandPaneNearPluginResponse,
         OpenCommandPanePayload, OpenCommandPaneResponse as ProtobufOpenCommandPaneResponse,
-        OpenEditPaneInPlaceOfPaneIdPayload,
+        OpenContextMenuPayload, OpenEditPaneInPlaceOfPaneIdPayload,
         OpenEditPaneInPlaceOfPaneIdResponse as ProtobufOpenEditPaneInPlaceOfPaneIdResponse,
         OpenFileFloatingNearPluginPayload,
         OpenFileFloatingNearPluginResponse as ProtobufOpenFileFloatingNearPluginResponse,
@@ -96,7 +104,7 @@ pub use super::generated_api::api::{
         OpenPluginPaneFloatingPayload,
         OpenPluginPaneFloatingResponse as ProtobufOpenPluginPaneFloatingResponse,
         OpenPluginPaneInNewTabPayload as ProtobufOpenPluginPaneInNewTabPayload,
-        OpenTerminalFloatingNearPluginPayload,
+        OpenPluginPopupPayload, OpenTerminalFloatingNearPluginPayload,
         OpenTerminalFloatingNearPluginResponse as ProtobufOpenTerminalFloatingNearPluginResponse,
         OpenTerminalFloatingResponse as ProtobufOpenTerminalFloatingResponse,
         OpenTerminalInPlaceOfPluginPayload,
@@ -109,50 +117,60 @@ pub use super::generated_api::api::{
         OpenTerminalResponse as ProtobufOpenTerminalResponse, OverrideLayoutPayload,
         PageScrollDownInPaneIdPayload, PageScrollUpInPaneIdPayload, PaneId as ProtobufPaneId,
         PaneIdAndFloatingPaneCoordinates, PaneType as ProtobufPaneType, ParseLayoutPayload,
-        ParseLayoutResponse as ProtobufParseLayoutResponse, PluginCommand as ProtobufPluginCommand,
-        PluginMessagePayload, RebindKeysPayload, ReconfigurePayload,
+        ParseLayoutResponse as ProtobufParseLayoutResponse,
+        PluginAliasEntry as ProtobufPluginAliasEntry, PluginCommand as ProtobufPluginCommand,
+        PluginEntry as ProtobufPluginEntry, PluginMessagePayload, PromptPayload, ReadConfigPayload,
+        ReadConfigResponse as ProtobufReadConfigResponse, RebindKeysPayload, ReconfigurePayload,
         RegexHighlight as ProtobufRegexHighlight, ReloadPluginPayload, RenameLayoutPayload,
         RenameLayoutResponse as ProtobufRenameLayoutResponse, RenameTabWithIdPayload,
         RenameWebLoginTokenPayload, RenameWebTokenResponse, ReplacePaneWithExistingPanePayload,
-        RequestPluginPermissionPayload, RerunCommandPanePayload, ResizePaneIdWithDirectionPayload,
-        ResizePayload, RevokeAllWebTokensResponse, RevokeTokenResponse, RevokeWebLoginTokenPayload,
+        ReplyToPromptPayload, RequestPluginPermissionPayload, RerunCommandPanePayload,
+        ResetKeysPayload, ResizePaneIdWithDirectionPayload, ResizePayload, RevertConfigPayload,
+        RevokeAllWebTokensResponse, RevokeTokenResponse, RevokeWebLoginTokenPayload,
         RunActionPayload, RunCommandPayload, RunningCommand as ProtobufRunningCommand,
-        SaveLayoutPayload, SaveLayoutResponse as ProtobufSaveLayoutResponse, SaveSessionPayload,
+        SaveConfigPayload, SaveKeybindsAsPresetPayload, SaveLayoutPayload,
+        SaveLayoutResponse as ProtobufSaveLayoutResponse, SaveSessionPayload,
         SaveSessionResponse as ProtobufSaveSessionResponse, ScrollDownInPaneIdPayload,
         ScrollToBottomInPaneIdPayload, ScrollToTopInPaneIdPayload, ScrollUpInPaneIdPayload,
-        SessionListSnapshot as ProtobufSessionListSnapshot, SetFloatingPanePinnedPayload,
-        SetPaneBorderStylePayload, SetPaneBorderlessPayload, SetPaneColorPayload,
-        SetPaneFrameStylePayload as ProtobufSetPaneFrameStylePayload,
-        SetPaneRegexHighlightsPayload, SetSelectableSlotPayload,
+        SessionListSnapshot as ProtobufSessionListSnapshot, SetCliPipeExitCodePayload,
+        SetFloatingPanePinnedPayload, SetPaneBorderStylePayload, SetPaneBorderlessPayload,
+        SetPaneColorPayload, SetPaneFrameStylePayload as ProtobufSetPaneFrameStylePayload,
+        SetPaneRegexHighlightsPayload, SetPopupSizePayload, SetSelectableSlotPayload,
         SetSelfMouseSelectionSupportPayload,
         SetSoftKeyboardPayload as ProtobufSetSoftKeyboardPayload, SetTimeoutPayload,
         ShowCursorPayload, ShowFloatingPanesPayload as ProtobufShowFloatingPanesPayload,
         ShowFloatingPanesResponse as ProtobufShowFloatingPanesResponse, ShowPaneWithIdPayload,
         ShowSlotPayload, SlotCommandResponse as ProtobufSlotCommandResponse, StackPanesPayload,
         SubscribePayload, SwitchSessionPayload, SwitchTabToIdPayload, SwitchTabToPayload,
+        ThemeEntry as ProtobufThemeEntry, ThemeSource as ProtobufThemeSource,
         ToggleFloatingPanesPayload, TogglePaneBorderlessPayload,
         TogglePaneEmbedOrEjectForPaneIdPayload, TogglePaneIdFullscreenPayload, UnsubscribePayload,
-        WebRequestPayload, WriteCharsToPaneIdPayload, WriteToPaneIdPayload,
+        WebRequestPayload, WriteCharsToPaneIdPayload, WriteThemeFilePayload,
+        WriteThemeFileResponse as ProtobufWriteThemeFileResponse, WriteToPaneIdPayload,
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
 };
 
 use crate::data::{
-    ConnectToSession, DeleteAllDeadSessionsResponse, DeleteDeadSessionResponse,
-    DeleteLayoutResponse, EditLayoutResponse, FloatingPaneCoordinates, GetFocusedPaneInfoResponse,
+    ConfigBlocks, ConfigSettingState, ConfigSnapshot, ConnectToSession, ContextMenuTarget,
+    DeleteAllDeadSessionsResponse, DeleteDeadSessionResponse, DeleteLayoutResponse,
+    EditLayoutResponse, EnvVarEntry, FloatingPaneCoordinates, GetFocusedPaneInfoResponse,
     GetPaneCwdResponse, GetPanePidResponse, GetPaneRunningCommandResponse, GetSessionListResponse,
-    HighlightLayer, HighlightStyle, HttpVerb, InputMode, KeyWithModifier, KillSessionsResponse,
-    MessageToPlugin, NewPluginArgs, PaneId, PermissionType, PluginCommand, RegexHighlight,
-    RenameLayoutResponse, SaveLayoutResponse, SessionInfo, SessionListSnapshot,
+    HighlightLayer, HighlightStyle, HttpVerb, InputMode, KeyWithModifier, KeybindingEntry,
+    KeybindingSource, KeybindsSelectionSnapshot, KillSessionsResponse, MenuItemEntry,
+    MenuSectionEntries, MessageToPlugin, NewPluginArgs, PaneId, PermissionType, PluginAliasEntry,
+    PluginCommand, PluginEntry, RegexHighlight, RenameLayoutResponse, SaveLayoutResponse,
+    SessionInfo, SessionListSnapshot, SettingKey, ThemeEntry, ThemeSource,
 };
 use crate::input::actions::Action;
 use crate::input::layout::PercentOrFixed;
 
-use crate::data::BorderStyleOverride;
+use crate::data::{BorderStyleOverride, PopupOptions};
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
 use std::path::PathBuf;
+use std::str::FromStr;
 
 impl Into<FloatingPaneCoordinates> for ProtobufFloatingPaneCoordinates {
     fn into(self) -> FloatingPaneCoordinates {
@@ -1448,6 +1466,13 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for PipeOutput"),
             },
+            Some(CommandName::SetCliPipeExitCode) => match protobuf_plugin_command.payload {
+                Some(Payload::SetCliPipeExitCodePayload(SetCliPipeExitCodePayload {
+                    pipe_name,
+                    exit_code,
+                })) => Ok(PluginCommand::SetCliPipeExitCode(pipe_name, exit_code)),
+                _ => Err("Mismatched payload for SetCliPipeExitCode"),
+            },
             Some(CommandName::MessageToPlugin) => match protobuf_plugin_command.payload {
                 Some(Payload::MessageToPluginPayload(MessageToPluginPayload {
                     plugin_url,
@@ -2544,6 +2569,161 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 Some(Payload::CloseSlotPayload(slot_id)) => Ok(PluginCommand::CloseSlot(slot_id)),
                 _ => Err("Mismatched payload for CloseSlot"),
             },
+            Some(CommandName::OpenContextMenu) => match protobuf_plugin_command.payload {
+                Some(Payload::OpenContextMenuPayload(payload)) => {
+                    let target = if payload.target_is_tab {
+                        ContextMenuTarget::Tab(payload.tab_index as usize)
+                    } else {
+                        ContextMenuTarget::Bar
+                    };
+                    Ok(PluginCommand::OpenContextMenu {
+                        target,
+                        line: payload.line as usize,
+                        column: payload.column as usize,
+                    })
+                },
+                _ => Err("Mismatched payload for OpenContextMenu"),
+            },
+            Some(CommandName::OpenPluginPopup) => match protobuf_plugin_command.payload {
+                Some(Payload::OpenPluginPopupPayload(payload)) => {
+                    Ok(PluginCommand::OpenPluginPopup {
+                        plugin_url: payload.plugin_url,
+                        configuration: payload
+                            .configuration
+                            .into_iter()
+                            .map(|item| (item.name, item.value))
+                            .collect(),
+                        line: payload.line as usize,
+                        column: payload.column as usize,
+                        width: payload.width as usize,
+                        height: payload.height as usize,
+                        options: PopupOptions {
+                            focused: payload.focused.unwrap_or(true),
+                            corner: payload
+                                .corner
+                                .as_deref()
+                                .and_then(|corner| corner.parse().ok()),
+                        },
+                    })
+                },
+                _ => Err("Mismatched payload for OpenPluginPopup"),
+            },
+            Some(CommandName::SetPopupSize) => match protobuf_plugin_command.payload {
+                Some(Payload::SetPopupSizePayload(payload)) => Ok(PluginCommand::SetPopupSize {
+                    width: payload.width as usize,
+                    height: payload.height as usize,
+                }),
+                _ => Err("Mismatched payload for SetPopupSize"),
+            },
+            Some(CommandName::RunContextMenuItem) => match protobuf_plugin_command.payload {
+                Some(Payload::RunContextMenuItemPayload(index)) => {
+                    Ok(PluginCommand::RunContextMenuItem(index as usize))
+                },
+                _ => Err("Mismatched payload for RunContextMenuItem"),
+            },
+            Some(CommandName::ReadConfig) => match protobuf_plugin_command.payload {
+                Some(Payload::ReadConfigPayload(_)) => Ok(PluginCommand::ReadConfig),
+                _ => Err("Mismatched payload for ReadConfig"),
+            },
+            Some(CommandName::RevertConfig) => match protobuf_plugin_command.payload {
+                Some(Payload::RevertConfigPayload(payload)) => match payload.key {
+                    Some(key) => SettingKey::from_id(&key)
+                        .map(|key| PluginCommand::RevertConfig(Some(key)))
+                        .ok_or("Unknown setting for RevertConfig"),
+                    None => Ok(PluginCommand::RevertConfig(None)),
+                },
+                _ => Err("Mismatched payload for RevertConfig"),
+            },
+            Some(CommandName::UnsetConfigSetting) => match protobuf_plugin_command.payload {
+                Some(Payload::UnsetConfigSettingPayload(key)) => SettingKey::from_id(&key)
+                    .map(PluginCommand::UnsetConfigSetting)
+                    .ok_or("Unknown setting for UnsetConfigSetting"),
+                _ => Err("Mismatched payload for UnsetConfigSetting"),
+            },
+            Some(CommandName::SaveConfig) => match protobuf_plugin_command.payload {
+                Some(Payload::SaveConfigPayload(_)) => Ok(PluginCommand::SaveConfig),
+                _ => Err("Mismatched payload for SaveConfig"),
+            },
+            Some(CommandName::OverwriteConfigFile) => match protobuf_plugin_command.payload {
+                Some(Payload::OverwriteConfigFilePayload(_)) => {
+                    Ok(PluginCommand::OverwriteConfigFile)
+                },
+                _ => Err("Mismatched payload for OverwriteConfigFile"),
+            },
+            Some(CommandName::ReloadConfigFile) => match protobuf_plugin_command.payload {
+                Some(Payload::ReloadConfigFilePayload(_)) => Ok(PluginCommand::ReloadConfigFile),
+                _ => Err("Mismatched payload for ReloadConfigFile"),
+            },
+            Some(CommandName::ReplaceConfigBlocks) => match protobuf_plugin_command.payload {
+                Some(Payload::ReplaceConfigBlocksPayload(blocks)) => {
+                    Ok(PluginCommand::ReplaceConfigBlocks(blocks))
+                },
+                _ => Err("Mismatched payload for ReplaceConfigBlocks"),
+            },
+            Some(CommandName::SaveKeybindsAsPreset) => match protobuf_plugin_command.payload {
+                Some(Payload::SaveKeybindsAsPresetPayload(payload)) => {
+                    Ok(PluginCommand::SaveKeybindsAsPreset {
+                        new_name: payload.new_name,
+                    })
+                },
+                _ => Err("Mismatched payload for SaveKeybindsAsPreset"),
+            },
+            Some(CommandName::WriteThemeFile) => match protobuf_plugin_command.payload {
+                Some(Payload::WriteThemeFilePayload(payload)) => {
+                    Ok(PluginCommand::WriteThemeFile {
+                        name: payload.name,
+                        copy_from: payload.copy_from,
+                        colours: payload.colours,
+                    })
+                },
+                _ => Err("Mismatched payload for WriteThemeFile"),
+            },
+            Some(CommandName::DeleteThemeFile) => match protobuf_plugin_command.payload {
+                Some(Payload::DeleteThemeFilePayload(name)) => {
+                    Ok(PluginCommand::DeleteThemeFile { name })
+                },
+                _ => Err("Mismatched payload for DeleteThemeFile"),
+            },
+            Some(CommandName::Prompt) => match protobuf_plugin_command.payload {
+                Some(Payload::PromptPayload(payload)) => Ok(PluginCommand::Prompt {
+                    request_id: payload.request_id,
+                    request: payload
+                        .request
+                        .ok_or("Mismatched payload for Prompt")?
+                        .try_into()?,
+                }),
+                _ => Err("Mismatched payload for Prompt"),
+            },
+            Some(CommandName::ReplyToPrompt) => match protobuf_plugin_command.payload {
+                Some(Payload::ReplyToPromptPayload(payload)) => Ok(PluginCommand::ReplyToPrompt {
+                    request_id: payload.request_id,
+                    result: payload
+                        .result
+                        .ok_or("Mismatched payload for ReplyToPrompt")?
+                        .try_into()?,
+                }),
+                _ => Err("Mismatched payload for ReplyToPrompt"),
+            },
+            Some(CommandName::ResetKeys) => match protobuf_plugin_command.payload {
+                Some(Payload::ResetKeysPayload(payload)) => Ok(PluginCommand::ResetKeys {
+                    keys: payload
+                        .keys
+                        .into_iter()
+                        .filter_map(key_to_unbind_to_plugin_command_assets)
+                        .collect(),
+                    write_config_to_disk: payload.write_config_to_disk,
+                }),
+                _ => Err("Mismatched payload for ResetKeys"),
+            },
+            Some(CommandName::CopyKeybindPreset) => match protobuf_plugin_command.payload {
+                Some(Payload::CopyKeybindPresetPayload(payload)) => {
+                    Ok(PluginCommand::CopyKeybindPreset {
+                        preset: payload.preset,
+                        new_name: payload.new_name,
+                    })
+                },
+                _ => Err("Mismatched payload for CopyKeybindPreset"),
+            },
             Some(CommandName::GetNestedSessionKeybinds) => match protobuf_plugin_command.payload {
                 Some(Payload::GetNestedSessionKeybindsPayload(payload)) => {
                     let pane_id = payload
@@ -3422,6 +3602,15 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     pipe_name,
                     output,
                 })),
+            }),
+            PluginCommand::SetCliPipeExitCode(pipe_name, exit_code) => Ok(ProtobufPluginCommand {
+                name: CommandName::SetCliPipeExitCode as i32,
+                payload: Some(Payload::SetCliPipeExitCodePayload(
+                    SetCliPipeExitCodePayload {
+                        pipe_name,
+                        exit_code,
+                    },
+                )),
             }),
             PluginCommand::MessageToPlugin(message_to_plugin) => {
                 let plugin_config: Vec<_> = message_to_plugin
@@ -4379,6 +4568,145 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             PluginCommand::CloseSlot(slot_id) => Ok(ProtobufPluginCommand {
                 name: CommandName::CloseSlot as i32,
                 payload: Some(Payload::CloseSlotPayload(slot_id)),
+            }),
+            PluginCommand::OpenContextMenu {
+                target,
+                line,
+                column,
+            } => {
+                let (target_is_tab, tab_index) = match target {
+                    ContextMenuTarget::Tab(tab_index) => (true, tab_index as u32),
+                    ContextMenuTarget::Bar => (false, 0),
+                };
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::OpenContextMenu as i32,
+                    payload: Some(Payload::OpenContextMenuPayload(OpenContextMenuPayload {
+                        target_is_tab,
+                        tab_index,
+                        line: line as u32,
+                        column: column as u32,
+                    })),
+                })
+            },
+            PluginCommand::OpenPluginPopup {
+                plugin_url,
+                configuration,
+                line,
+                column,
+                width,
+                height,
+                options,
+            } => Ok(ProtobufPluginCommand {
+                name: CommandName::OpenPluginPopup as i32,
+                payload: Some(Payload::OpenPluginPopupPayload(OpenPluginPopupPayload {
+                    plugin_url,
+                    configuration: configuration
+                        .into_iter()
+                        .map(|(name, value)| ContextItem { name, value })
+                        .collect(),
+                    line: line as u32,
+                    column: column as u32,
+                    width: width as u32,
+                    height: height as u32,
+                    focused: Some(options.focused),
+                    corner: options.corner.map(|corner| corner.to_string()),
+                })),
+            }),
+            PluginCommand::ReadConfig => Ok(ProtobufPluginCommand {
+                name: CommandName::ReadConfig as i32,
+                payload: Some(Payload::ReadConfigPayload(ReadConfigPayload {})),
+            }),
+            PluginCommand::RevertConfig(key) => Ok(ProtobufPluginCommand {
+                name: CommandName::RevertConfig as i32,
+                payload: Some(Payload::RevertConfigPayload(RevertConfigPayload {
+                    key: key.map(|key| key.id()),
+                })),
+            }),
+            PluginCommand::UnsetConfigSetting(key) => Ok(ProtobufPluginCommand {
+                name: CommandName::UnsetConfigSetting as i32,
+                payload: Some(Payload::UnsetConfigSettingPayload(key.id())),
+            }),
+            PluginCommand::CopyKeybindPreset { preset, new_name } => Ok(ProtobufPluginCommand {
+                name: CommandName::CopyKeybindPreset as i32,
+                payload: Some(Payload::CopyKeybindPresetPayload(
+                    CopyKeybindPresetPayload { preset, new_name },
+                )),
+            }),
+            PluginCommand::SaveConfig => Ok(ProtobufPluginCommand {
+                name: CommandName::SaveConfig as i32,
+                payload: Some(Payload::SaveConfigPayload(SaveConfigPayload {})),
+            }),
+            PluginCommand::OverwriteConfigFile => Ok(ProtobufPluginCommand {
+                name: CommandName::OverwriteConfigFile as i32,
+                payload: Some(Payload::OverwriteConfigFilePayload(SaveConfigPayload {})),
+            }),
+            PluginCommand::ReloadConfigFile => Ok(ProtobufPluginCommand {
+                name: CommandName::ReloadConfigFile as i32,
+                payload: Some(Payload::ReloadConfigFilePayload(SaveConfigPayload {})),
+            }),
+            PluginCommand::ReplaceConfigBlocks(blocks) => Ok(ProtobufPluginCommand {
+                name: CommandName::ReplaceConfigBlocks as i32,
+                payload: Some(Payload::ReplaceConfigBlocksPayload(blocks)),
+            }),
+            PluginCommand::Prompt {
+                request_id,
+                request,
+            } => Ok(ProtobufPluginCommand {
+                name: CommandName::Prompt as i32,
+                payload: Some(Payload::PromptPayload(PromptPayload {
+                    request_id,
+                    request: Some(request.into()),
+                })),
+            }),
+            PluginCommand::ReplyToPrompt { request_id, result } => Ok(ProtobufPluginCommand {
+                name: CommandName::ReplyToPrompt as i32,
+                payload: Some(Payload::ReplyToPromptPayload(ReplyToPromptPayload {
+                    request_id,
+                    result: Some(result.into()),
+                })),
+            }),
+            PluginCommand::SaveKeybindsAsPreset { new_name } => Ok(ProtobufPluginCommand {
+                name: CommandName::SaveKeybindsAsPreset as i32,
+                payload: Some(Payload::SaveKeybindsAsPresetPayload(
+                    SaveKeybindsAsPresetPayload { new_name },
+                )),
+            }),
+            PluginCommand::WriteThemeFile {
+                name,
+                copy_from,
+                colours,
+            } => Ok(ProtobufPluginCommand {
+                name: CommandName::WriteThemeFile as i32,
+                payload: Some(Payload::WriteThemeFilePayload(WriteThemeFilePayload {
+                    name,
+                    copy_from,
+                    colours,
+                })),
+            }),
+            PluginCommand::DeleteThemeFile { name } => Ok(ProtobufPluginCommand {
+                name: CommandName::DeleteThemeFile as i32,
+                payload: Some(Payload::DeleteThemeFilePayload(name)),
+            }),
+            PluginCommand::ResetKeys {
+                keys,
+                write_config_to_disk,
+            } => Ok(ProtobufPluginCommand {
+                name: CommandName::ResetKeys as i32,
+                payload: Some(Payload::ResetKeysPayload(ResetKeysPayload {
+                    keys: keys.into_iter().filter_map(|k| k.try_into().ok()).collect(),
+                    write_config_to_disk,
+                })),
+            }),
+            PluginCommand::RunContextMenuItem(index) => Ok(ProtobufPluginCommand {
+                name: CommandName::RunContextMenuItem as i32,
+                payload: Some(Payload::RunContextMenuItemPayload(index as u32)),
+            }),
+            PluginCommand::SetPopupSize { width, height } => Ok(ProtobufPluginCommand {
+                name: CommandName::SetPopupSize as i32,
+                payload: Some(Payload::SetPopupSizePayload(SetPopupSizePayload {
+                    width: width as u32,
+                    height: height as u32,
+                })),
             }),
             PluginCommand::GetNestedSessionKeybinds(pane_id) => {
                 let protobuf_pane_id: ProtobufPaneId = pane_id.try_into()?;
@@ -5367,6 +5695,98 @@ mod tests {
     }
 
     #[test]
+    fn theme_file_commands_protobuf_round_trip() {
+        let commands = vec![
+            PluginCommand::WriteThemeFile {
+                name: "mine".to_owned(),
+                copy_from: Some("dracula".to_owned()),
+                colours: vec![],
+            },
+            PluginCommand::WriteThemeFile {
+                name: "mine".to_owned(),
+                copy_from: None,
+                colours: vec!["#102030".to_owned(), String::new(), "7".to_owned()],
+            },
+            PluginCommand::DeleteThemeFile {
+                name: "mine".to_owned(),
+            },
+        ];
+        for original in commands {
+            let expected = format!("{:?}", original);
+            let protobuf: ProtobufPluginCommand = original.try_into().expect("encode");
+            let decoded: PluginCommand = protobuf.try_into().expect("decode");
+            assert_eq!(format!("{:?}", decoded), expected);
+        }
+    }
+
+    #[test]
+    fn theme_entries_keep_their_file_path_through_protobuf() {
+        use crate::data::{ConfigBlocks, ThemeEntry, ThemeSource};
+        let blocks = ConfigBlocks {
+            themes: vec![
+                ThemeEntry {
+                    name: "ocean".to_owned(),
+                    source: ThemeSource::ThemeFolder,
+                    colours: vec!["#102030".to_owned()],
+                    file_path: Some("/themes/ocean.kdl".to_owned()),
+                },
+                ThemeEntry {
+                    name: "dracula".to_owned(),
+                    source: ThemeSource::BuiltIn,
+                    colours: vec![],
+                    file_path: None,
+                },
+            ],
+            ..Default::default()
+        };
+        let protobuf: ProtobufConfigBlocks = blocks.clone().into();
+        let decoded: ConfigBlocks = protobuf.into();
+        assert_eq!(decoded, blocks);
+    }
+
+    #[test]
+    fn prompt_commands_protobuf_round_trip() {
+        use crate::prompt::{PromptPlacement, PromptRequest, PromptResult, PromptValue};
+        use prost::Message;
+        let request = PromptRequest::choose(vec!["a", "b"])
+            .multi()
+            .placement(PromptPlacement::Mouse);
+        let original = PluginCommand::Prompt {
+            request_id: 7,
+            request: request.clone(),
+        };
+        let protobuf: ProtobufPluginCommand = original.try_into().expect("encode");
+        let decoded_bytes = ProtobufPluginCommand::decode(protobuf.encode_to_vec().as_slice())
+            .expect("decode bytes");
+        match PluginCommand::try_from(decoded_bytes).expect("decode") {
+            PluginCommand::Prompt {
+                request_id,
+                request: decoded_request,
+            } => {
+                assert_eq!(request_id, 7);
+                assert_eq!(decoded_request, request);
+            },
+            other => panic!("expected Prompt, got {:?}", other),
+        }
+        let result = PromptResult::Answered(PromptValue::Choices(vec!["b".to_owned()]));
+        let original = PluginCommand::ReplyToPrompt {
+            request_id: 3,
+            result: result.clone(),
+        };
+        let protobuf: ProtobufPluginCommand = original.try_into().expect("encode");
+        match PluginCommand::try_from(protobuf).expect("decode") {
+            PluginCommand::ReplyToPrompt {
+                request_id,
+                result: decoded_result,
+            } => {
+                assert_eq!(request_id, 3);
+                assert_eq!(decoded_result, result);
+            },
+            other => panic!("expected ReplyToPrompt, got {:?}", other),
+        }
+    }
+
+    #[test]
     fn an_empty_pane_border_style_round_trips() {
         use crate::data::{BorderStyleOverride, PaneId};
         let original =
@@ -5539,6 +5959,342 @@ impl From<ProtobufSlotCommandResponse> for Result<(), String> {
         match response.error {
             Some(error) => Err(error),
             None => Ok(()),
+        }
+    }
+}
+
+impl From<ConfigSnapshot> for ProtobufReadConfigResponse {
+    fn from(snapshot: ConfigSnapshot) -> Self {
+        ProtobufReadConfigResponse {
+            settings: snapshot
+                .settings
+                .into_iter()
+                .map(|setting| ProtobufConfigSettingState {
+                    key: setting.key.id(),
+                    saved_value: setting.saved_value,
+                    current_value: setting.current_value,
+                    set_in_file: setting.set_in_file,
+                })
+                .collect(),
+            config_file_path: snapshot.config_file_path,
+            backup_file_path: snapshot.backup_file_path,
+            pending_restart_settings: snapshot
+                .pending_restart_settings
+                .iter()
+                .map(|key| key.id())
+                .collect(),
+            theme_names: snapshot.theme_names,
+            plugin_aliases: snapshot.plugin_aliases,
+            load_plugins: snapshot.load_plugins,
+            env_vars: snapshot.env_vars,
+            context_menu_items: snapshot.context_menu_items,
+            keybinds: Some(snapshot.keybinds.into()),
+            blocks: Some(snapshot.blocks.into()),
+            saved_blocks: Some(snapshot.saved_blocks.into()),
+            default_blocks: Some(snapshot.default_blocks.into()),
+            keybindings: snapshot.keybindings.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+fn plugin_entry_to_protobuf(entry: PluginEntry) -> ProtobufPluginEntry {
+    ProtobufPluginEntry {
+        location: entry.location,
+        cwd: entry.cwd,
+        configuration: entry
+            .configuration
+            .into_iter()
+            .map(|(key, value)| ProtobufConfigPair { key, value })
+            .collect(),
+    }
+}
+
+fn plugin_entry_from_protobuf(entry: ProtobufPluginEntry) -> PluginEntry {
+    PluginEntry {
+        location: entry.location,
+        cwd: entry.cwd,
+        configuration: entry
+            .configuration
+            .into_iter()
+            .map(|pair| (pair.key, pair.value))
+            .collect(),
+    }
+}
+
+impl From<ConfigBlocks> for ProtobufConfigBlocks {
+    fn from(blocks: ConfigBlocks) -> Self {
+        ProtobufConfigBlocks {
+            plugin_aliases: blocks
+                .plugin_aliases
+                .into_iter()
+                .map(|alias| ProtobufPluginAliasEntry {
+                    name: alias.name,
+                    plugin: Some(plugin_entry_to_protobuf(alias.plugin)),
+                })
+                .collect(),
+            load_plugins: blocks
+                .load_plugins
+                .into_iter()
+                .map(plugin_entry_to_protobuf)
+                .collect(),
+            env: blocks
+                .env
+                .into_iter()
+                .map(|entry| ProtobufEnvVarEntry {
+                    name: entry.name,
+                    value: entry.value,
+                })
+                .collect(),
+            context_menu: blocks
+                .context_menu
+                .into_iter()
+                .map(|section| ProtobufMenuSectionEntries {
+                    section: section.section,
+                    entries: section
+                        .entries
+                        .into_iter()
+                        .map(|entry| ProtobufMenuItemEntry {
+                            label: entry.label,
+                            actions: entry.actions,
+                            shortcut: entry.shortcut,
+                        })
+                        .collect(),
+                })
+                .collect(),
+            themes: blocks
+                .themes
+                .into_iter()
+                .map(|theme| ProtobufThemeEntry {
+                    name: theme.name,
+                    source: match theme.source {
+                        ThemeSource::BuiltIn => ProtobufThemeSource::BuiltIn,
+                        ThemeSource::ConfigFile => ProtobufThemeSource::ConfigFile,
+                        ThemeSource::ThemeFolder => ProtobufThemeSource::ThemeFolder,
+                    } as i32,
+                    colours: theme.colours,
+                    file_path: theme.file_path,
+                })
+                .collect(),
+        }
+    }
+}
+
+impl From<ProtobufConfigBlocks> for ConfigBlocks {
+    fn from(blocks: ProtobufConfigBlocks) -> Self {
+        ConfigBlocks {
+            plugin_aliases: blocks
+                .plugin_aliases
+                .into_iter()
+                .map(|alias| PluginAliasEntry {
+                    name: alias.name,
+                    plugin: alias
+                        .plugin
+                        .map(plugin_entry_from_protobuf)
+                        .unwrap_or_default(),
+                })
+                .collect(),
+            load_plugins: blocks
+                .load_plugins
+                .into_iter()
+                .map(plugin_entry_from_protobuf)
+                .collect(),
+            env: blocks
+                .env
+                .into_iter()
+                .map(|entry| EnvVarEntry {
+                    name: entry.name,
+                    value: entry.value,
+                })
+                .collect(),
+            context_menu: blocks
+                .context_menu
+                .into_iter()
+                .map(|section| MenuSectionEntries {
+                    section: section.section,
+                    entries: section
+                        .entries
+                        .into_iter()
+                        .map(|entry| MenuItemEntry {
+                            label: entry.label,
+                            actions: entry.actions,
+                            shortcut: entry.shortcut,
+                        })
+                        .collect(),
+                })
+                .collect(),
+            themes: blocks
+                .themes
+                .into_iter()
+                .map(|theme| ThemeEntry {
+                    name: theme.name,
+                    source: match ProtobufThemeSource::try_from(theme.source) {
+                        Ok(ProtobufThemeSource::ConfigFile) => ThemeSource::ConfigFile,
+                        Ok(ProtobufThemeSource::ThemeFolder) => ThemeSource::ThemeFolder,
+                        _ => ThemeSource::BuiltIn,
+                    },
+                    colours: theme.colours,
+                    file_path: theme.file_path,
+                })
+                .collect(),
+        }
+    }
+}
+
+impl From<KeybindingEntry> for ProtobufKeybindingEntry {
+    fn from(entry: KeybindingEntry) -> Self {
+        let (source, shared_block) = match entry.source {
+            KeybindingSource::Preset => {
+                (ProtobufKeybindingSourceKind::KeybindingSourcePreset, None)
+            },
+            KeybindingSource::User => (ProtobufKeybindingSourceKind::KeybindingSourceUser, None),
+            KeybindingSource::Shared(block) => (
+                ProtobufKeybindingSourceKind::KeybindingSourceShared,
+                Some(block),
+            ),
+            KeybindingSource::Layout => {
+                (ProtobufKeybindingSourceKind::KeybindingSourceLayout, None)
+            },
+        };
+        let preset_same_as_actions = entry.preset_actions.as_ref() == Some(&entry.actions);
+        ProtobufKeybindingEntry {
+            mode: entry.mode as i32,
+            key: entry.key.to_kdl(),
+            has_preset_binding: entry.preset_actions.is_some(),
+            preset_actions: if preset_same_as_actions {
+                vec![]
+            } else {
+                entry.preset_actions.unwrap_or_default()
+            },
+            preset_same_as_actions,
+            actions: entry.actions,
+            source: source as i32,
+            shared_block,
+            unbound: entry.unbound,
+            unsaved: entry.unsaved,
+        }
+    }
+}
+
+fn keybinding_entry_from_protobuf(entry: ProtobufKeybindingEntry) -> Option<KeybindingEntry> {
+    let mode: InputMode = ProtobufInputMode::try_from(entry.mode)
+        .ok()?
+        .try_into()
+        .ok()?;
+    let key = KeyWithModifier::from_str(&entry.key).ok()?;
+    let source = match ProtobufKeybindingSourceKind::try_from(entry.source) {
+        Ok(ProtobufKeybindingSourceKind::KeybindingSourceUser) => KeybindingSource::User,
+        Ok(ProtobufKeybindingSourceKind::KeybindingSourceShared) => {
+            KeybindingSource::Shared(entry.shared_block.unwrap_or_default())
+        },
+        Ok(ProtobufKeybindingSourceKind::KeybindingSourceLayout) => KeybindingSource::Layout,
+        _ => KeybindingSource::Preset,
+    };
+    let preset_actions = if entry.preset_same_as_actions {
+        Some(entry.actions.clone())
+    } else if entry.has_preset_binding {
+        Some(entry.preset_actions)
+    } else {
+        None
+    };
+    Some(KeybindingEntry {
+        mode,
+        key,
+        actions: entry.actions,
+        source,
+        unbound: entry.unbound,
+        preset_actions,
+        unsaved: entry.unsaved,
+    })
+}
+
+impl From<KeybindsSelectionSnapshot> for ProtobufKeybindsSelectionSnapshot {
+    fn from(snapshot: KeybindsSelectionSnapshot) -> Self {
+        ProtobufKeybindsSelectionSnapshot {
+            preset: snapshot.preset,
+            primary: snapshot.primary,
+            secondary: snapshot.secondary,
+            unlock: snapshot.unlock,
+            clears_defaults: snapshot.clears_defaults,
+            has_own_keybindings: snapshot.has_own_keybindings,
+            active: Some(snapshot.active.into()),
+            active_values: snapshot
+                .active_values
+                .into_iter()
+                .map(|(name, value)| ProtobufLeaderValue { name, value })
+                .collect(),
+            error: snapshot.error,
+            set_by_layout: snapshot.set_by_layout,
+            set_on_command_line: snapshot.set_on_command_line,
+            default_mode: snapshot
+                .default_mode
+                .and_then(|mode| ProtobufInputMode::try_from(mode).ok())
+                .map(|mode| mode as i32),
+        }
+    }
+}
+
+impl From<ProtobufKeybindsSelectionSnapshot> for KeybindsSelectionSnapshot {
+    fn from(snapshot: ProtobufKeybindsSelectionSnapshot) -> Self {
+        KeybindsSelectionSnapshot {
+            preset: snapshot.preset,
+            primary: snapshot.primary,
+            secondary: snapshot.secondary,
+            unlock: snapshot.unlock,
+            clears_defaults: snapshot.clears_defaults,
+            has_own_keybindings: snapshot.has_own_keybindings,
+            active: snapshot.active.map(Into::into).unwrap_or_default(),
+            active_values: snapshot
+                .active_values
+                .into_iter()
+                .map(|leader_value| (leader_value.name, leader_value.value))
+                .collect(),
+            error: snapshot.error,
+            set_by_layout: snapshot.set_by_layout,
+            set_on_command_line: snapshot.set_on_command_line,
+            default_mode: snapshot
+                .default_mode
+                .and_then(|mode| ProtobufInputMode::try_from(mode).ok())
+                .and_then(|mode| InputMode::try_from(mode).ok()),
+        }
+    }
+}
+
+impl From<ProtobufReadConfigResponse> for ConfigSnapshot {
+    fn from(response: ProtobufReadConfigResponse) -> Self {
+        ConfigSnapshot {
+            settings: response
+                .settings
+                .into_iter()
+                .filter_map(|setting| {
+                    SettingKey::from_id(&setting.key).map(|key| ConfigSettingState {
+                        key,
+                        saved_value: setting.saved_value,
+                        current_value: setting.current_value,
+                        set_in_file: setting.set_in_file,
+                    })
+                })
+                .collect(),
+            config_file_path: response.config_file_path,
+            backup_file_path: response.backup_file_path,
+            pending_restart_settings: response
+                .pending_restart_settings
+                .iter()
+                .filter_map(|key| SettingKey::from_id(key))
+                .collect(),
+            theme_names: response.theme_names,
+            plugin_aliases: response.plugin_aliases,
+            load_plugins: response.load_plugins,
+            env_vars: response.env_vars,
+            context_menu_items: response.context_menu_items,
+            blocks: response.blocks.map(Into::into).unwrap_or_default(),
+            saved_blocks: response.saved_blocks.map(Into::into).unwrap_or_default(),
+            default_blocks: response.default_blocks.map(Into::into).unwrap_or_default(),
+            keybindings: response
+                .keybindings
+                .into_iter()
+                .filter_map(keybinding_entry_from_protobuf)
+                .collect(),
+            keybinds: response.keybinds.map(Into::into).unwrap_or_default(),
         }
     }
 }
