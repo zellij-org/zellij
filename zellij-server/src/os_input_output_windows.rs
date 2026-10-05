@@ -28,7 +28,7 @@ use windows_sys::Win32::System::Threading::{
     CreateProcessW, DeleteProcThreadAttributeList, GetExitCodeProcess,
     InitializeProcThreadAttributeList, OpenProcess, TerminateProcess, UpdateProcThreadAttribute,
     WaitForSingleObject, CREATE_UNICODE_ENVIRONMENT, EXTENDED_STARTUPINFO_PRESENT, INFINITE,
-    PROCESS_INFORMATION, PROCESS_TERMINATE, STARTUPINFOEXW, STARTUPINFOW,
+    PROCESS_INFORMATION, PROCESS_TERMINATE, STARTF_USESTDHANDLES, STARTUPINFOEXW, STARTUPINFOW,
 };
 
 use zellij_utils::{errors::prelude::*, input::command::RunCommand};
@@ -341,6 +341,10 @@ fn spawn_child_process(
     // --- startup info ---
     let mut si: STARTUPINFOEXW = unsafe { std::mem::zeroed() };
     si.StartupInfo.cb = std::mem::size_of::<STARTUPINFOEXW>() as u32;
+    // Null standard handles make the child use the pseudo console. Without this flag a child
+    // takes the server's own standard handles whenever those are redirected (as they are when
+    // the server is started without a console), and a shell reading a NUL stdin exits at once.
+    si.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
     si.lpAttributeList = attr_list;
 
     // --- command line & environment ---

@@ -204,6 +204,71 @@ fn spawn_and_read_output() {
     );
 }
 
+// Run with this process's stdin redirected to NUL by the test below, the way a server started
+// by the zellij-window launcher runs: a pane's shell must still read the pseudo console.
+#[cfg(windows)]
+#[test]
+#[ignore = "run by a_pane_shell_reads_the_pseudo_console_even_when_the_server_input_is_redirected"]
+fn an_interactive_shell_in_a_pane_waits_for_input() {
+    use crate::panes::PaneId;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+    use zellij_utils::input::command::TerminalAction;
+
+    let server = make_server();
+    let exited = Arc::new(AtomicBool::new(false));
+    let quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send> = Box::new({
+        let exited = exited.clone();
+        move |_pane_id, _exit_status, _run_command| exited.store(true, Ordering::SeqCst)
+    });
+    let cmd = RunCommand {
+        command: PathBuf::from("cmd"),
+        ..Default::default()
+    };
+    let (_terminal_id, _reader, child_pid) = server
+        .spawn_terminal(
+            TerminalAction::RunCommand(cmd),
+            quit_cb,
+            None,
+            &Default::default(),
+        )
+        .expect("spawn_terminal should succeed");
+
+    std::thread::sleep(std::time::Duration::from_secs(2));
+    let still_running = !exited.load(Ordering::SeqCst);
+    if let Some(child_pid) = child_pid {
+        let _ = server.force_kill(child_pid);
+    }
+    assert!(
+        still_running,
+        "the shell exited at once: it read the server's own stdin instead of the pseudo console"
+    );
+}
+
+#[cfg(windows)]
+#[test]
+fn a_pane_shell_reads_the_pseudo_console_even_when_the_server_input_is_redirected() {
+    let module = module_path!()
+        .split_once("::")
+        .map_or(module_path!(), |(_crate, path)| path);
+    let output = Command::new(std::env::current_exe().expect("the test binary has a path"))
+        .args([
+            "--exact",
+            &format!("{}::an_interactive_shell_in_a_pane_waits_for_input", module),
+            "--ignored",
+            "--nocapture",
+        ])
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("failed to run the test binary with its stdin on NUL");
+    assert!(
+        output.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
 #[cfg(unix)]
 #[test]
 fn tcgetpgrp_returns_foreground_group() {
