@@ -2305,12 +2305,7 @@ impl Tab {
         self.floating_panes.move_client_focus_to_existing_panes();
         let other_clients_exist_in_tab = { !self.connected_clients.borrow().is_empty() };
         if other_clients_exist_in_tab {
-            if let Some(first_active_floating_pane_id) =
-                self.floating_panes.first_active_floating_pane_id()
-            {
-                self.floating_panes
-                    .focus_pane_if_client_not_focused(first_active_floating_pane_id, client_id);
-            }
+            self.floating_panes.focus_pane_for_joining_client(client_id);
             if let Some(first_active_tiled_pane_id) = self.tiled_panes.first_active_pane_id() {
                 self.tiled_panes
                     .focus_pane_if_client_not_focused(first_active_tiled_pane_id, client_id);
@@ -2340,8 +2335,7 @@ impl Tab {
             };
             self.tiled_panes
                 .focus_pane_if_client_not_focused(focus_pane_id, client_id);
-            self.floating_panes
-                .focus_first_pane_if_client_not_focused(client_id);
+            self.floating_panes.focus_pane_for_joining_client(client_id);
             self.connected_clients.borrow_mut().insert(client_id);
             self.mode_info.borrow_mut().insert(
                 client_id,
@@ -2731,7 +2725,12 @@ impl Tab {
     ) -> Result<()> {
         let err_context = || format!("failed to create new pane with id {pid:?}");
         self.close_down_to_max_terminals()
-            .with_context(err_context)?;
+            .with_context(err_context)
+            .non_fatal();
+        if matches!(pid, PaneId::Plugin(_)) && self.senders.to_plugin.is_none() {
+            self.close_unplaced_pane_id(pid, blocking_notification, None);
+            return Ok(());
+        }
         let mut new_pane = match pid {
             PaneId::Terminal(term_pid) => {
                 let next_terminal_position = self.get_next_terminal_position();
@@ -2846,7 +2845,12 @@ impl Tab {
             self.hide_floating_panes();
         }
         self.close_down_to_max_terminals()
-            .with_context(err_context)?;
+            .with_context(err_context)
+            .non_fatal();
+        if matches!(pid, PaneId::Plugin(_)) && self.senders.to_plugin.is_none() {
+            self.close_unplaced_pane_id(pid, blocking_notification, None);
+            return Ok(());
+        }
         let mut new_pane = match pid {
             PaneId::Terminal(term_pid) => {
                 let next_terminal_position = self.get_next_terminal_position();
@@ -2951,7 +2955,12 @@ impl Tab {
             self.show_floating_panes();
         }
         self.close_down_to_max_terminals()
-            .with_context(err_context)?;
+            .with_context(err_context)
+            .non_fatal();
+        if matches!(pid, PaneId::Plugin(_)) && self.senders.to_plugin.is_none() {
+            self.close_unplaced_pane_id(pid, blocking_notification, None);
+            return Ok(());
+        }
         let mut new_pane = match pid {
             PaneId::Terminal(term_pid) => {
                 let next_terminal_position = self.get_next_terminal_position();
@@ -3105,7 +3114,12 @@ impl Tab {
             self.hide_floating_panes();
         }
         self.close_down_to_max_terminals()
-            .with_context(err_context)?;
+            .with_context(err_context)
+            .non_fatal();
+        if matches!(pid, PaneId::Plugin(_)) && self.senders.to_plugin.is_none() {
+            self.close_unplaced_pane_id(pid, blocking_notification, None);
+            return Ok(());
+        }
         let mut new_pane = match pid {
             PaneId::Terminal(term_pid) => {
                 let next_terminal_position = self.get_next_terminal_position();
@@ -3282,7 +3296,10 @@ impl Tab {
                 } else if self.tiled_panes.panes_contain(&pane_id_to_replace) {
                     self.tiled_panes.replace_pane(pane_id_to_replace, new_pane)
                 } else {
-                    log::error!("Cannot replace pane {:?} with an editor", pane_id_to_replace);
+                    log::error!(
+                        "Cannot replace pane {:?} with an editor",
+                        pane_id_to_replace
+                    );
                     Err(new_pane)
                 };
                 match replaced_pane {
@@ -3390,13 +3407,17 @@ impl Tab {
                         self.character_cell_size
                     );
                     let is_scrollback_editor = false;
-                    self.suppressed_panes.insert(
+                    self.insert_suppressed_pane(
                         PaneId::Terminal(new_pane_id),
                         (is_scrollback_editor, replaced_pane),
                     );
                 }
             },
             PaneId::Plugin(plugin_pid) => {
+                if self.senders.to_plugin.is_none() {
+                    self.close_unplaced_pane_id(new_pane_id, completion_tx, None);
+                    return Ok(());
+                }
                 let mut new_pane = PluginPane::new(
                     plugin_pid,
                     PaneGeom::default(), // this will be filled out later
@@ -3455,7 +3476,7 @@ impl Tab {
                         self.character_cell_size
                     );
                     let is_scrollback_editor = false;
-                    self.suppressed_panes.insert(
+                    self.insert_suppressed_pane(
                         PaneId::Plugin(plugin_pid),
                         (is_scrollback_editor, replaced_pane),
                     );
@@ -3490,11 +3511,11 @@ impl Tab {
                     None,
                     Event::PaneClosed(pane_id.into()),
                 )]));
-                let _ = self
-                    .senders
-                    .send_to_screen(ScreenInstruction::NotifyPaneClosedToSubscribers {
-                        pane_id: pane_id.into(),
-                    });
+                let _ =
+                    self.senders
+                        .send_to_screen(ScreenInstruction::NotifyPaneClosedToSubscribers {
+                            pane_id: pane_id.into(),
+                        });
                 drop(replaced_pane);
                 None
             },
@@ -3541,7 +3562,8 @@ impl Tab {
             return Ok(());
         }
         self.close_down_to_max_terminals()
-            .with_context(err_context)?;
+            .with_context(err_context)
+            .non_fatal();
         if self.tiled_panes.fullscreen_is_active() {
             self.unset_fullscreen();
         }
@@ -3613,7 +3635,8 @@ impl Tab {
             return Ok(());
         }
         self.close_down_to_max_terminals()
-            .with_context(err_context)?;
+            .with_context(err_context)
+            .non_fatal();
         if self.tiled_panes.fullscreen_is_active() {
             self.unset_fullscreen();
         }
@@ -3721,13 +3744,15 @@ impl Tab {
     ) -> Result<()> {
         let err_context =
             || format!("failed to split pane {target_pane_id:?} without changing focus");
-        if self.floating_panes.panes_are_visible() || !self.tiled_panes.panes_contain(&target_pane_id)
+        if self.floating_panes.panes_are_visible()
+            || !self.tiled_panes.panes_contain(&target_pane_id)
         {
             self.close_unplaced_pane_id(pid, completion_tx, None);
             return Ok(());
         }
         self.close_down_to_max_terminals()
-            .with_context(err_context)?;
+            .with_context(err_context)
+            .non_fatal();
         if self.tiled_panes.fullscreen_is_active() {
             self.tiled_panes.unset_fullscreen();
         }
@@ -3844,7 +3869,9 @@ impl Tab {
         &mut self,
         client_id: ClientId,
     ) -> Option<&mut Box<dyn Pane>> {
-        if self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes() {
+        if self.floating_panes.panes_are_visible()
+            && self.floating_panes.client_has_active_pane(client_id)
+        {
             self.floating_panes.get_active_pane_mut(client_id)
         } else {
             self.get_active_pane_mut(client_id)
@@ -4744,7 +4771,8 @@ impl Tab {
     }
     pub fn toggle_active_pane_fullscreen(&mut self, client_id: ClientId) {
         if self.floating_panes.fullscreen_is_active()
-            || (self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes())
+            || (self.floating_panes.panes_are_visible()
+                && self.floating_panes.client_has_active_pane(client_id))
         {
             self.floating_panes.toggle_active_pane_fullscreen(client_id);
             self.set_force_render();
@@ -4776,7 +4804,8 @@ impl Tab {
     }
     pub fn toggle_active_pane_no_ui_fullscreen(&mut self, client_id: ClientId) {
         if self.floating_panes.fullscreen_is_active()
-            || (self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes())
+            || (self.floating_panes.panes_are_visible()
+                && self.floating_panes.client_has_active_pane(client_id))
         {
             self.floating_panes
                 .toggle_active_pane_no_ui_fullscreen(client_id);
@@ -4967,9 +4996,11 @@ impl Tab {
                 self.mouse_scroll_resize,
                 self.mouse_hover_tips,
             )
-            .with_context(err_context)?;
+            .with_context(err_context)
+            .non_fatal();
         self.render_stack_list_headers(output, client_id_override)
-            .with_context(err_context)?;
+            .with_context(err_context)
+            .non_fatal();
         let no_ui_fullscreen_active = self.tiled_panes.fullscreen_covers_ui();
         if !no_ui_fullscreen_active
             && ((self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes())
@@ -4985,7 +5016,8 @@ impl Tab {
                     self.mouse_scroll_resize,
                     self.mouse_hover_tips,
                 )
-                .with_context(err_context)?;
+                .with_context(err_context)
+                .non_fatal();
         }
 
         self.render_cursor(output);
@@ -5497,9 +5529,10 @@ impl Tab {
     }
     pub fn move_active_pane_down(&mut self, client_id: ClientId) {
         if self.floating_panes.panes_are_visible() {
-            self.floating_panes.move_active_pane_down(client_id);
-            self.swap_layouts.set_is_floating_damaged();
-            self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" behind
+            if self.floating_panes.move_active_pane_down(client_id) {
+                self.swap_layouts.set_is_floating_damaged();
+                self.set_force_render();
+            }
         } else {
             if !self.has_selectable_panes() {
                 return;
@@ -5513,9 +5546,10 @@ impl Tab {
     }
     pub fn move_pane_down(&mut self, pane_id: PaneId) {
         if self.floating_panes.panes_are_visible() {
-            self.floating_panes.move_pane_down(pane_id);
-            self.swap_layouts.set_is_floating_damaged();
-            self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" behind
+            if self.floating_panes.move_pane_down(pane_id) {
+                self.swap_layouts.set_is_floating_damaged();
+                self.set_force_render();
+            }
         } else {
             if !self.has_selectable_panes() {
                 return;
@@ -5529,9 +5563,10 @@ impl Tab {
     }
     pub fn move_active_pane_up(&mut self, client_id: ClientId) {
         if self.floating_panes.panes_are_visible() {
-            self.floating_panes.move_active_pane_up(client_id);
-            self.swap_layouts.set_is_floating_damaged();
-            self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" behind
+            if self.floating_panes.move_active_pane_up(client_id) {
+                self.swap_layouts.set_is_floating_damaged();
+                self.set_force_render();
+            }
         } else {
             if !self.has_selectable_panes() {
                 return;
@@ -5545,9 +5580,10 @@ impl Tab {
     }
     pub fn move_pane_up(&mut self, pane_id: PaneId) {
         if self.floating_panes.panes_are_visible() {
-            self.floating_panes.move_pane_up(pane_id);
-            self.swap_layouts.set_is_floating_damaged();
-            self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" behind
+            if self.floating_panes.move_pane_up(pane_id) {
+                self.swap_layouts.set_is_floating_damaged();
+                self.set_force_render();
+            }
         } else {
             if !self.has_selectable_panes() {
                 return;
@@ -5561,9 +5597,10 @@ impl Tab {
     }
     pub fn move_active_pane_right(&mut self, client_id: ClientId) {
         if self.floating_panes.panes_are_visible() {
-            self.floating_panes.move_active_pane_right(client_id);
-            self.swap_layouts.set_is_floating_damaged();
-            self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" behind
+            if self.floating_panes.move_active_pane_right(client_id) {
+                self.swap_layouts.set_is_floating_damaged();
+                self.set_force_render();
+            }
         } else {
             if !self.has_selectable_panes() {
                 return;
@@ -5577,9 +5614,10 @@ impl Tab {
     }
     pub fn move_pane_right(&mut self, pane_id: PaneId) {
         if self.floating_panes.panes_are_visible() {
-            self.floating_panes.move_pane_right(pane_id);
-            self.swap_layouts.set_is_floating_damaged();
-            self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" behind
+            if self.floating_panes.move_pane_right(pane_id) {
+                self.swap_layouts.set_is_floating_damaged();
+                self.set_force_render();
+            }
         } else {
             if !self.has_selectable_panes() {
                 return;
@@ -5593,9 +5631,10 @@ impl Tab {
     }
     pub fn move_active_pane_left(&mut self, client_id: ClientId) {
         if self.floating_panes.panes_are_visible() {
-            self.floating_panes.move_active_pane_left(client_id);
-            self.swap_layouts.set_is_floating_damaged();
-            self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" behind
+            if self.floating_panes.move_active_pane_left(client_id) {
+                self.swap_layouts.set_is_floating_damaged();
+                self.set_force_render();
+            }
         } else {
             if !self.has_selectable_panes() {
                 return;
@@ -5609,9 +5648,10 @@ impl Tab {
     }
     pub fn move_pane_left(&mut self, pane_id: PaneId) {
         if self.floating_panes.panes_are_visible() {
-            self.floating_panes.move_pane_left(pane_id);
-            self.swap_layouts.set_is_floating_damaged();
-            self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" behind
+            if self.floating_panes.move_pane_left(pane_id) {
+                self.swap_layouts.set_is_floating_damaged();
+                self.set_force_render();
+            }
         } else {
             if !self.has_selectable_panes() {
                 return;
@@ -7211,7 +7251,9 @@ impl Tab {
                                     Ok(())
                                 },
                                 Err(pane) => {
-                                    log::error!("Could not find pane to replace, showing it instead");
+                                    log::error!(
+                                        "Could not find pane to replace, showing it instead"
+                                    );
                                     self.add_tiled_pane(pane, pane_id, false, Some(client_id))
                                 },
                             }
@@ -7229,12 +7271,26 @@ impl Tab {
             self.tiled_panes.focus_pane_for_all_clients(pane_id);
             return;
         }
-        match self.suppressed_panes.remove(&pane_id) {
+        match self
+            .suppressed_panes
+            .extract_if(|_key, (_, pane)| pane.pid() == pane_id)
+            .next()
+            .map(|(_key, (_, pane))| pane)
+        {
             Some(pane) => {
                 self.show_floating_panes();
-                self.add_floating_pane(pane.1, pane_id, None, true, None)
+                self.add_floating_pane(pane, pane_id, None, true, None)
                     .non_fatal();
-                self.floating_panes.focus_pane_for_all_clients(pane_id);
+                if self.floating_panes.panes_contain(&pane_id) {
+                    self.floating_panes.focus_pane_for_all_clients(pane_id);
+                } else {
+                    if !self.floating_panes.has_panes() {
+                        self.hide_floating_panes();
+                    }
+                    if self.tiled_panes.panes_contain(&pane_id) {
+                        self.tiled_panes.focus_pane_for_all_clients(pane_id);
+                    }
+                }
             },
             None => {
                 log::error!("Could not find suppressed pane with id: {:?}", pane_id);
@@ -7561,11 +7617,17 @@ impl Tab {
         let should_focus = client_id.is_some();
         let pane = match failed_layer {
             PaneLayer::Tiled => {
-                log::error!("No room for pane {:?} as a tiled pane, floating it", pane_id);
+                log::error!(
+                    "No room for pane {:?} as a tiled pane, floating it",
+                    pane_id
+                );
                 self.try_add_floating_pane(pane, pane_id, None, should_focus, client_id)?
             },
             PaneLayer::Floating => {
-                log::error!("No room for pane {:?} as a floating pane, tiling it", pane_id);
+                log::error!(
+                    "No room for pane {:?} as a floating pane, tiling it",
+                    pane_id
+                );
                 self.try_add_tiled_pane(pane, pane_id, false, client_id)?
             },
         };
@@ -7627,9 +7689,9 @@ impl Tab {
             self.tiled_panes.unset_fullscreen();
         }
         self.dissolve_stack_lists_for_classic_mutation();
-        if let Some(pane) = self
-            .tiled_panes
-            .add_pane_to_stack_of_pane_id(pane_id, pane, root_pane_id)
+        if let Some(pane) =
+            self.tiled_panes
+                .add_pane_to_stack_of_pane_id(pane_id, pane, root_pane_id)
         {
             self.sync_stacked_pane_list_mode();
             self.close_unplaced_pane(pane, None);
@@ -8021,7 +8083,7 @@ impl Tab {
             // if these panes are not floating, we make them floating (assuming doing so wouldn't
             // be removing the last selectable tiled pane in the tab, which would close it)
             if (self.tiled_panes.panes_contain(&pane_id)
-                && self.get_selectable_tiled_panes().count() <= 1)
+                && self.get_selectable_tiled_panes().count() > 1)
                 || self.suppressed_panes.contains_key(pane_id)
             {
                 if let Some(pane) = self.extract_pane(*pane_id, true) {
@@ -8187,7 +8249,7 @@ impl Tab {
         terminal_pane_id: u32,
     ) {
         let is_scrollback_editor = true;
-        self.suppressed_panes.insert(
+        self.insert_suppressed_pane(
             PaneId::Terminal(terminal_pane_id),
             (is_scrollback_editor, replaced_pane),
         );
@@ -8293,36 +8355,40 @@ impl Tab {
         match direction {
             Some(Direction::Left) => {
                 if self.floating_panes.panes_contain(&pane_id) {
-                    self.floating_panes.move_pane_left(pane_id);
-                    self.swap_layouts.set_is_floating_damaged();
-                    self.set_force_render();
+                    if self.floating_panes.move_pane_left(pane_id) {
+                        self.swap_layouts.set_is_floating_damaged();
+                        self.set_force_render();
+                    }
                 } else {
                     self.tiled_panes.move_pane_left(pane_id);
                 }
             },
             Some(Direction::Right) => {
                 if self.floating_panes.panes_contain(&pane_id) {
-                    self.floating_panes.move_pane_right(pane_id);
-                    self.swap_layouts.set_is_floating_damaged();
-                    self.set_force_render();
+                    if self.floating_panes.move_pane_right(pane_id) {
+                        self.swap_layouts.set_is_floating_damaged();
+                        self.set_force_render();
+                    }
                 } else {
                     self.tiled_panes.move_pane_right(pane_id);
                 }
             },
             Some(Direction::Up) => {
                 if self.floating_panes.panes_contain(&pane_id) {
-                    self.floating_panes.move_pane_up(pane_id);
-                    self.swap_layouts.set_is_floating_damaged();
-                    self.set_force_render();
+                    if self.floating_panes.move_pane_up(pane_id) {
+                        self.swap_layouts.set_is_floating_damaged();
+                        self.set_force_render();
+                    }
                 } else {
                     self.tiled_panes.move_pane_up(pane_id);
                 }
             },
             Some(Direction::Down) => {
                 if self.floating_panes.panes_contain(&pane_id) {
-                    self.floating_panes.move_pane_down(pane_id);
-                    self.swap_layouts.set_is_floating_damaged();
-                    self.set_force_render();
+                    if self.floating_panes.move_pane_down(pane_id) {
+                        self.swap_layouts.set_is_floating_damaged();
+                        self.set_force_render();
+                    }
                 } else {
                     self.tiled_panes.move_pane_down(pane_id);
                 }

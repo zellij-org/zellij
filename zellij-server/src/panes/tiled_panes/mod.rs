@@ -605,7 +605,8 @@ impl TiledPanes {
     pub fn resize_pty_all_panes(&mut self) -> Result<()> {
         for pane in self.panes.values_mut() {
             resize_pty!(pane, self.os_api, self.senders, self.character_cell_size)
-                .with_context(|| format!("failed to resize PTY in pane {:?}", pane.pid()))?;
+                .with_context(|| format!("failed to resize PTY in pane {:?}", pane.pid()))
+                .non_fatal();
         }
         Ok(())
     }
@@ -1245,7 +1246,15 @@ impl TiledPanes {
             .filter(|(_, p)| p.selectable() && !p.borderless())
             .count();
         let omit_pane_title = self.pane_frame_style.draws_titles() && content_pane_count == 1;
-        for (kind, pane) in self.panes.iter_mut() {
+        macro_rules! skip_pane_on_render_error {
+            ($label:lifetime, $err_context:expr, $result:expr) => {
+                if let Err(e) = $result {
+                    Err::<(), _>(e).with_context($err_context).non_fatal();
+                    continue $label;
+                }
+            };
+        }
+        'panes: for (kind, pane) in self.panes.iter_mut() {
             match kind {
                 PaneId::Terminal(_) => {
                     output.add_pane_contents(
@@ -1347,35 +1356,32 @@ impl TiledPanes {
                         || format!("failed to render tiled panes for client {client_id}");
                     if let PaneId::Plugin(..) = kind {
                         if !pane_is_one_liner_in_stack {
-                            pane_contents_and_ui
-                                .render_pane_contents_for_client(*client_id)
-                                .with_context(err_context)?;
+                            skip_pane_on_render_error!('panes, err_context, pane_contents_and_ui
+                                .render_pane_contents_for_client(*client_id));
                         }
                     }
                     let is_floating = false;
                     if pane_is_no_ui_fullscreen {
                     } else if self.pane_frame_style.draws_full_frames() {
-                        pane_contents_and_ui
-                            .render_pane_frame(
-                                *client_id,
-                                client_mode,
-                                self.session_is_mirrored,
-                                is_floating,
-                                pane_is_selectable,
-                            )
-                            .with_context(err_context)?;
+                        skip_pane_on_render_error!('panes, err_context, pane_contents_and_ui
+                        .render_pane_frame(
+                            *client_id,
+                            client_mode,
+                            self.session_is_mirrored,
+                            is_floating,
+                            pane_is_selectable,
+                        ));
                     } else if (self.pane_frame_style.draws_titles() || pane_is_stacked)
                         && reserved_rows_for_pane == 0
                     {
-                        pane_contents_and_ui
-                            .render_pane_frame(
-                                *client_id,
-                                client_mode,
-                                self.session_is_mirrored,
-                                is_floating,
-                                pane_is_selectable,
-                            )
-                            .with_context(err_context)?;
+                        skip_pane_on_render_error!('panes, err_context, pane_contents_and_ui
+                        .render_pane_frame(
+                            *client_id,
+                            client_mode,
+                            self.session_is_mirrored,
+                            is_floating,
+                            pane_is_selectable,
+                        ));
                         let boundaries =
                             client_id_to_boundaries
                                 .entry(*client_id)
@@ -1413,9 +1419,8 @@ impl TiledPanes {
                     );
                     // this is done for panes that don't have their own cursor (eg. panes of
                     // another user)
-                    pane_contents_and_ui
-                        .render_fake_cursor_if_needed(*client_id)
-                        .with_context(err_context)?;
+                    skip_pane_on_render_error!('panes, err_context, pane_contents_and_ui
+                        .render_fake_cursor_if_needed(*client_id));
                 }
                 if let PaneId::Terminal(..) = kind {
                     if !pane_is_one_liner_in_stack {
@@ -1425,25 +1430,22 @@ impl TiledPanes {
                                     pane_contents_and_ui.client_has_guest_modal(*client_id)
                                 });
                             if !plain_clients.is_empty() {
-                                pane_contents_and_ui
-                                    .render_pane_contents_to_multiple_clients(
-                                        plain_clients.iter().copied(),
-                                    )
-                                    .with_context(err_context)?;
+                                skip_pane_on_render_error!('panes, err_context, pane_contents_and_ui
+                                .render_pane_contents_to_multiple_clients(
+                                    plain_clients.iter().copied(),
+                                ));
                             } else {
                                 pane_contents_and_ui.drain_pane_render_state();
                             }
                             for client_id in modal_clients {
-                                pane_contents_and_ui
-                                    .render_guest_modal_for_client(client_id)
-                                    .with_context(err_context)?;
+                                skip_pane_on_render_error!('panes, err_context, pane_contents_and_ui
+                                    .render_guest_modal_for_client(client_id));
                             }
                         } else {
-                            pane_contents_and_ui
-                                .render_pane_contents_to_multiple_clients(
-                                    connected_clients.iter().copied(),
-                                )
-                                .with_context(err_context)?;
+                            skip_pane_on_render_error!('panes, err_context, pane_contents_and_ui
+                            .render_pane_contents_to_multiple_clients(
+                                connected_clients.iter().copied(),
+                            ));
                         }
                     }
                 }
@@ -1451,16 +1453,24 @@ impl TiledPanes {
         }
         // render boundaries if needed
         for (client_id, boundaries) in client_id_to_boundaries {
-            let mut boundaries_to_render = boundaries
+            let mut boundaries_to_render = match boundaries
                 .render(self.client_id_to_boundaries.get(&client_id))
-                .with_context(err_context)?;
+                .with_context(err_context)
+            {
+                Ok(boundaries_to_render) => boundaries_to_render,
+                Err(e) => {
+                    Err::<(), _>(e).non_fatal();
+                    continue;
+                },
+            };
             self.client_id_to_boundaries.insert(client_id, boundaries);
             if self.dimmed_clients.contains(&client_id) {
                 crate::ui::pane_contents_and_ui::dim_character_chunks(&mut boundaries_to_render);
             }
             output
                 .add_character_chunks_to_client(client_id, boundaries_to_render, None)
-                .with_context(err_context)?;
+                .with_context(err_context)
+                .non_fatal();
         }
         if floating_panes_are_visible {
             // we do this here so that when they are toggled off, we will make sure to re-render the title
@@ -2269,9 +2279,7 @@ impl TiledPanes {
                 let next_index = pane_grid.next_selectable_pane_id_to_the_left(&active_pane_id);
                 match next_index {
                     Some(p) => {
-                        if let Some(previously_active_pane) =
-                            self.panes.get_mut(&active_pane_id)
-                        {
+                        if let Some(previously_active_pane) = self.panes.get_mut(&active_pane_id) {
                             previously_active_pane.set_should_render(true);
                             previously_active_pane.render_full_viewport();
                         }
@@ -2306,9 +2314,7 @@ impl TiledPanes {
                     .or_else(|| pane_grid.progress_stack_down_if_in_stack(&active_pane_id));
                 match next_index {
                     Some(p) => {
-                        if let Some(previously_active_pane) =
-                            self.panes.get_mut(&active_pane_id)
-                        {
+                        if let Some(previously_active_pane) = self.panes.get_mut(&active_pane_id) {
                             previously_active_pane.set_should_render(true);
                             previously_active_pane.render_full_viewport();
                         }
@@ -2352,9 +2358,7 @@ impl TiledPanes {
                     .or_else(|| pane_grid.progress_stack_up_if_in_stack(&active_pane_id));
                 match next_index {
                     Some(p) => {
-                        if let Some(previously_active_pane) =
-                            self.panes.get_mut(&active_pane_id)
-                        {
+                        if let Some(previously_active_pane) = self.panes.get_mut(&active_pane_id) {
                             previously_active_pane.set_should_render(true);
                             previously_active_pane.render_full_viewport();
                         }
@@ -2396,9 +2400,7 @@ impl TiledPanes {
                 let next_index = pane_grid.next_selectable_pane_id_to_the_right(&active_pane_id);
                 match next_index {
                     Some(p) => {
-                        if let Some(previously_active_pane) =
-                            self.panes.get_mut(&active_pane_id)
-                        {
+                        if let Some(previously_active_pane) = self.panes.get_mut(&active_pane_id) {
                             previously_active_pane.set_should_render(true);
                             previously_active_pane.render_full_viewport();
                         }
