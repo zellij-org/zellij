@@ -1194,3 +1194,77 @@ pub fn guest_modal_no_modal_passes_input_through() {
         Some(crate::tab::AdjustedInput::WriteBytesToTerminal(_))
     ));
 }
+
+#[test]
+fn user_variables_accept_both_osc_terminators_and_base64_padding() {
+    let mut pane = make_terminal_pane_for_bell();
+    pane.handle_pty_bytes(
+        b"\x1b]1337;SetUserVar=project=UkYtQkpU\x07\x1b]1337;SetUserVar=branch=bWFpbg==\x1b\\"
+            .to_vec(),
+    );
+    let variables = pane.user_variables().unwrap();
+    assert_eq!(
+        variables.get("project").map(String::as_str),
+        Some("UkYtQkpU")
+    );
+    assert_eq!(
+        variables.get("branch").map(String::as_str),
+        Some("bWFpbg==")
+    );
+    pane.handle_pty_bytes(b"\x1b]1337;SetUserVar=project=\x07".to_vec());
+    assert_eq!(
+        pane.user_variables()
+            .unwrap()
+            .get("project")
+            .map(String::as_str),
+        Some("")
+    );
+}
+
+#[test]
+fn user_variables_reject_malformed_assignments_and_other_iterm_commands() {
+    use vte::Perform;
+    let mut pane = make_terminal_pane_for_bell();
+    for bytes in [
+        b"\x1b]1337;SetUserVar=project=not-base64\x07".as_slice(),
+        b"\x1b]1337;SetUserVar==VkZP\x07".as_slice(),
+        b"\x1b]1337;SetUserVar=project=VkZP;StealFocus\x07".as_slice(),
+        b"\x1b]1337;StealFocus\x07".as_slice(),
+    ] {
+        pane.handle_pty_bytes(bytes.to_vec());
+    }
+    pane.grid
+        .osc_dispatch(&[b"1337", b"SetUserVar=project\x1b=VkZP"], true);
+    assert!(pane.user_variables().unwrap().is_empty());
+}
+
+#[test]
+fn user_variables_bound_storage_without_discarding_existing_values() {
+    let mut pane = make_terminal_pane_for_bell();
+    for i in 0..256 {
+        pane.handle_pty_bytes(format!("\x1b]1337;SetUserVar=key{}=QQ==\x07", i).into_bytes());
+    }
+    pane.handle_pty_bytes(b"\x1b]1337;SetUserVar=overflow=QQ==\x07".to_vec());
+    assert_eq!(pane.user_variables().unwrap().len(), 256);
+    assert!(!pane.user_variables().unwrap().contains_key("overflow"));
+    // Reaching the key limit must not prevent an existing variable from changing.
+    pane.handle_pty_bytes(b"\x1b]1337;SetUserVar=key0=Qg==\x07".to_vec());
+    assert_eq!(
+        pane.user_variables()
+            .unwrap()
+            .get("key0")
+            .map(String::as_str),
+        Some("Qg==")
+    );
+    // This is valid base64 but exceeds the per-assignment size limit.
+    pane.handle_pty_bytes(
+        format!("\x1b]1337;SetUserVar=key0={}\x07", "A".repeat(8192)).into_bytes(),
+    );
+    assert_eq!(
+        pane.user_variables()
+            .unwrap()
+            .get("key0")
+            .map(String::as_str),
+        Some("Qg==")
+    );
+}

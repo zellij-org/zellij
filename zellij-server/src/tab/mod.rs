@@ -706,6 +706,9 @@ pub trait Pane {
         false
     }
     fn consume_bell(&mut self) {}
+    fn user_variables(&self) -> Option<&BTreeMap<String, String>> {
+        None
+    }
     fn osc7_payload(&self) -> Option<&str> {
         None
     }
