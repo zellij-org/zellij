@@ -12,7 +12,7 @@ use floating_pane_grid::FloatingPaneGrid;
 use crate::{
     os_input_output::ServerOsApi,
     output::{FloatingPanesStack, Output},
-    panes::{ActivePanes, PaneId},
+    panes::{ActivePanes, PaneId, ReplacePaneResult},
     plugins::PluginInstruction,
     thread_bus::ThreadSenders,
     ui::pane_contents_and_ui::PaneContentsAndUi,
@@ -191,63 +191,48 @@ impl FloatingPanes {
         &mut self,
         pane: Box<dyn Pane>,
         client_id: ClientId,
-    ) -> Result<Box<dyn Pane>> {
-        self.active_panes
-            .get(&client_id)
-            .with_context(|| format!("failed to determine active pane for client {client_id}"))
-            .copied()
-            .and_then(|active_pane_id| self.replace_pane(active_pane_id, pane))
-            .with_context(|| format!("failed to replace active pane for client {client_id}"))
+    ) -> ReplacePaneResult {
+        let Some(active_pane_id) = self.active_panes.get(&client_id).copied() else {
+            log::error!("No active floating pane to replace for client {}", client_id);
+            return Err(pane);
+        };
+        self.replace_pane(active_pane_id, pane)
     }
     pub fn replace_pane(
         &mut self,
         pane_id: PaneId,
         mut with_pane: Box<dyn Pane>,
-    ) -> Result<Box<dyn Pane>> {
-        let err_context = || format!("failed to replace pane {pane_id:?} with pane");
-
+    ) -> ReplacePaneResult {
         let with_pane_id = with_pane.pid();
+        let Some(removed_pane) = self.panes.remove(&pane_id) else {
+            log::error!("Cannot replace floating pane {:?}: pane not found", pane_id);
+            return Err(with_pane);
+        };
         with_pane.set_content_offset(Offset::frame(1));
-        let removed_pane = self
-            .panes
-            .remove(&pane_id)
-            .with_context(|| format!("failed to remove unknown pane with ID {pane_id:?}"))
-            .and_then(|removed_pane| {
-                let removed_pane_id = removed_pane.pid();
-                let with_pane_id = with_pane.pid();
-                let removed_pane_geom = removed_pane.position_and_size();
-                let removed_pane_geom_override = removed_pane.geom_override();
-                with_pane.set_geom(removed_pane_geom);
-                match removed_pane_geom_override {
-                    Some(geom_override) => with_pane.set_geom_override(geom_override),
-                    None => with_pane.reset_size_and_position_override(),
-                };
-                self.panes.insert(with_pane_id, with_pane);
-                if self.fullscreen_pane_id == Some(pane_id) {
-                    self.fullscreen_pane_id = Some(with_pane_id);
-                }
-                let z_index = self
-                    .z_indices
-                    .iter()
-                    .position(|pane_id| pane_id == &removed_pane_id)
-                    .context("no z-index found for pane to be removed with ID {removed_pane_id:?}")
-                    .with_context(err_context)?;
-                self.z_indices.remove(z_index);
-                self.z_indices.insert(z_index, with_pane_id);
-                self.make_sure_pinned_panes_are_on_top();
-                Ok(removed_pane)
-            });
-
-        // update the desired_pane_positions to relate to the new pane
+        with_pane.set_geom(removed_pane.position_and_size());
+        match removed_pane.geom_override() {
+            Some(geom_override) => with_pane.set_geom_override(geom_override),
+            None => with_pane.reset_size_and_position_override(),
+        };
+        self.panes.insert(with_pane_id, with_pane);
+        if self.fullscreen_pane_id == Some(pane_id) {
+            self.fullscreen_pane_id = Some(with_pane_id);
+        }
+        match self.z_indices.iter().position(|id| *id == pane_id) {
+            Some(z_index) => self.z_indices[z_index] = with_pane_id,
+            None => {
+                log::error!("No z-index found for replaced floating pane {:?}", pane_id);
+                self.z_indices.push(with_pane_id);
+            },
+        }
+        self.make_sure_pinned_panes_are_on_top();
         if let Some(desired_pane_position) = self.desired_pane_positions.remove(&pane_id) {
             self.desired_pane_positions
                 .insert(with_pane_id, desired_pane_position);
         }
-
-        // move clients from the previously active pane to the new pane we just inserted
         self.move_clients_between_panes(pane_id, with_pane_id);
         let _ = self.set_pane_frames();
-        removed_pane
+        Ok(removed_pane)
     }
     pub fn remove_pane(&mut self, pane_id: PaneId) -> Option<Box<dyn Pane>> {
         self.z_indices.retain(|p_id| *p_id != pane_id);

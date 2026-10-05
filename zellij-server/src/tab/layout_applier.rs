@@ -1388,7 +1388,17 @@ impl<'a> PaneApplier<'a> {
     ) {
         for pane_id in remaining_pane_ids {
             if let Some(pane) = existing_tab_state.remove_pane(&pane_id) {
-                self.tiled_panes.insert_pane(pane.pid(), pane, client_id);
+                if let Some(unplaced_pane) =
+                    self.tiled_panes.insert_pane(pane.pid(), pane, client_id)
+                {
+                    log::error!("No room for pane {:?} in layout, floating it", pane_id);
+                    let position_and_size = self
+                        .floating_panes
+                        .find_room_for_new_pane()
+                        .unwrap_or_else(|| unplaced_pane.position_and_size());
+                    self.apply_position_and_size_to_floating_pane(unplaced_pane, position_and_size);
+                    continue;
+                }
                 if let Some(l) = last_logical_position.take() {
                     self.tiled_panes.set_pane_logical_position(pane_id, l);
                     last_logical_position = Some(l + 1);

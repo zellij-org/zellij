@@ -7506,3 +7506,96 @@ fn test_borderless_plugins_filling_the_screen_leave_a_non_empty_viewport() {
     );
     assert!(viewport.rows > 0 && viewport.cols > 0, "{:?}", viewport);
 }
+
+#[test]
+fn test_override_tiled_retained_pane_without_room_is_floated() {
+    let initial_kdl = r#"
+        layout {
+            pane command="htop"
+            pane command="vim"
+        }
+    "#;
+    let (initial_tiled, initial_floating) = parse_kdl_layout(initial_kdl);
+    let terminal_ids = vec![(1, None), (2, None)];
+    let size = Size { cols: 10, rows: 10 };
+    let (
+        viewport,
+        senders,
+        sixel_image_store,
+        link_handler,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+        character_cell_size,
+        connected_clients,
+        style,
+        display_area,
+        mut tiled_panes,
+        mut floating_panes,
+        draw_pane_frames,
+        mut focus_pane_id,
+        os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        osc8_hyperlinks,
+        explicitly_disable_kitty_keyboard_protocol,
+        pty_receiver,
+        _plugin_receiver,
+    ) = create_layout_applier_fixtures_with_receivers(size);
+    let mut applier = LayoutApplier::new(
+        &viewport,
+        &senders,
+        &sixel_image_store,
+        &Rc::new(RefCell::new(KittyImageStore::default())),
+        &link_handler,
+        &terminal_emulator_colors,
+        &terminal_emulator_color_codes,
+        &character_cell_size,
+        &connected_clients,
+        &style,
+        &display_area,
+        &mut tiled_panes,
+        &mut floating_panes,
+        draw_pane_frames,
+        &mut focus_pane_id,
+        &os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        osc8_hyperlinks,
+        explicitly_disable_kitty_keyboard_protocol,
+        None,
+    );
+    applier
+        .apply_layout(
+            initial_tiled,
+            initial_floating,
+            terminal_ids,
+            vec![],
+            HashMap::new(),
+            1,
+        )
+        .unwrap();
+    let override_kdl = r#"
+        layout {
+            pane command="htop"
+        }
+    "#;
+    let (override_tiled, _) = parse_kdl_layout(override_kdl);
+    applier
+        .override_tiled_panes_layout_for_existing_panes(
+            &override_tiled,
+            vec![],
+            &mut HashMap::new(),
+            true,
+            false,
+            1,
+        )
+        .unwrap();
+    drop(applier);
+    assert!(collect_close_pane_messages(&pty_receiver).is_empty());
+    let retained_pane_is_kept = tiled_panes.panes_contain(&PaneId::Terminal(2))
+        || floating_panes.panes_contain(&PaneId::Terminal(2));
+    assert!(retained_pane_is_kept, "the retained pane was not dropped");
+    assert!(floating_panes.panes_contain(&PaneId::Terminal(2)));
+}

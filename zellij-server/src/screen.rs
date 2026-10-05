@@ -98,8 +98,8 @@ use crate::{
     plugins::{DumpSessionLayoutResponse, PluginId, PluginInstruction, PluginRenderAsset},
     pty::{get_default_shell, ClientTabIndexOrPaneId, PtyInstruction, VteBytes},
     pty_writer::PtyWriteInstruction,
-    tab::{GuestChoiceIndicator, SuppressedPanes, Tab},
-    thread_bus::Bus,
+    tab::{GuestChoiceIndicator, SuppressedPanes, Tab, NO_ROOM_FOR_NEW_PANE},
+    thread_bus::{Bus, ThreadSenders},
     ui::loading_indication::LoadingIndication,
     ClientId, ServerInstruction,
 };
@@ -7441,8 +7441,9 @@ impl Screen {
         match client_id_tab_index_or_pane_id {
             ClientTabIndexOrPaneId::ClientId(client_id)
             | ClientTabIndexOrPaneId::ClientIdNoFocus(client_id) => {
-                active_tab!(self, client_id, |tab: &mut Tab| {
-                    match tab.get_active_pane_id(client_id) {
+                let senders = self.bus.senders.clone();
+                match self.get_active_tab_mut(client_id) {
+                    Ok(tab) => match tab.get_active_pane_id(client_id) {
                         Some(pane_id) => {
                             suppress_pane(tab, pane_id, new_pane_id);
                         },
@@ -7451,9 +7452,14 @@ impl Screen {
                                 "Failed to find active pane for client id: {:?}",
                                 client_id
                             );
+                            close_pane_that_was_not_created(&senders, new_pane_id, None);
                         },
-                    }
-                });
+                    },
+                    Err(err) => {
+                        Err::<(), _>(err).non_fatal();
+                        close_pane_that_was_not_created(&senders, new_pane_id, None);
+                    },
+                }
             },
             ClientTabIndexOrPaneId::PaneId(pane_id) => {
                 let tab_index = self
@@ -7471,15 +7477,20 @@ impl Screen {
                     },
                     None => {
                         log::error!("Could not find pane with id: {:?}", pane_id);
+                        close_pane_that_was_not_created(&self.bus.senders, new_pane_id, None);
                     },
                 };
             },
             ClientTabIndexOrPaneId::TabIndex(_tab_index)
             | ClientTabIndexOrPaneId::TabIndexNoFocus(_tab_index) => {
                 log::error!("Cannot replace pane with tab index");
+                close_pane_that_was_not_created(&self.bus.senders, new_pane_id, None);
             },
         }
         Ok(())
+    }
+    pub fn has_pane_with_pid(&self, pane_id: &PaneId) -> bool {
+        self.tabs.values().any(|tab| tab.has_pane_with_pid(pane_id))
     }
     pub fn replace_pane_with_existing_pane(
         &mut self,
@@ -7521,23 +7532,36 @@ impl Screen {
             log::error!("Failed to find pane");
             return;
         };
-        if let Some(tab) = self
+        let unplaced_pane = match self
             .tabs
             .iter_mut()
             .find(|(_, t)| t.position == tab_index_of_pane_id_to_replace)
         {
-            if suppress_replaced_pane {
-                tab.1.suppress_pane_and_replace_with_other_pane(
-                    pane_id_to_replace,
-                    extracted_pane_from_other_tab,
-                    None,
-                );
-            } else {
-                tab.1.close_pane_and_replace_with_other_pane(
-                    pane_id_to_replace,
-                    extracted_pane_from_other_tab,
-                    None,
-                );
+            Some(tab) if suppress_replaced_pane => tab.1.suppress_pane_and_replace_with_other_pane(
+                pane_id_to_replace,
+                extracted_pane_from_other_tab,
+                None,
+            ),
+            Some(tab) => tab.1.close_pane_and_replace_with_other_pane(
+                pane_id_to_replace,
+                extracted_pane_from_other_tab,
+                None,
+            ),
+            None => Some(extracted_pane_from_other_tab),
+        };
+        if let Some(unplaced_pane) = unplaced_pane {
+            log::error!(
+                "Could not replace pane {:?}, returning pane {:?} to its tab",
+                pane_id_to_replace,
+                pane_id_of_existing_pane
+            );
+            if let Some((_, tab)) = self
+                .tabs
+                .iter_mut()
+                .find(|(_, t)| t.position == tab_index_of_existing_pane)
+            {
+                tab.add_tiled_pane(unplaced_pane, pane_id_of_existing_pane, false, None)
+                    .non_fatal();
             }
         }
         let _ = self.log_and_report_session_state();
@@ -8756,6 +8780,25 @@ fn find_already_running_panes(
     (tiled_to_ignore, floating_indices)
 }
 
+fn mark_pane_as_not_created(completion: &mut Option<NotificationEnd>) {
+    if let Some(completion) = completion.as_mut() {
+        completion.set_exit_status(1);
+        completion.set_error_message(NO_ROOM_FOR_NEW_PANE.to_owned());
+        completion.clear_affected_pane_id();
+    }
+}
+
+fn close_pane_that_was_not_created(
+    senders: &ThreadSenders,
+    pid: PaneId,
+    mut completion: Option<NotificationEnd>,
+) {
+    mark_pane_as_not_created(&mut completion);
+    senders
+        .send_to_pty(PtyInstruction::ClosePane(pid, completion))
+        .non_fatal();
+}
+
 // The box is here in order to make the
 // NewClient enum smaller
 #[allow(clippy::boxed_local)]
@@ -9026,7 +9069,11 @@ pub(crate) fn screen_thread_main(
             ) => {
                 completion_tx.as_mut().map(|c| c.set_affected_pane_id(pid));
 
-                let blocking_notification = if set_blocking { completion_tx } else { None };
+                let (blocking_notification, mut completion_tx) = if set_blocking {
+                    (completion_tx, None)
+                } else {
+                    (None, completion_tx)
+                };
 
                 match client_or_tab_index {
                     ClientTabIndexOrPaneId::ClientId(client_id)
@@ -9105,9 +9152,15 @@ pub(crate) fn screen_thread_main(
                             }
                         } else {
                             log::error!("Tab index not found: {:?}", tab_index);
+                            close_pane_that_was_not_created(
+                                &screen.bus.senders,
+                                pid,
+                                blocking_notification,
+                            );
                         }
                     },
                     ClientTabIndexOrPaneId::PaneId(pane_id) => {
+                        let mut blocking_notification = blocking_notification;
                         let mut found = false;
                         let all_tabs = screen.get_tabs_mut();
                         let should_focus_pane = false;
@@ -9127,7 +9180,7 @@ pub(crate) fn screen_thread_main(
                                                 initial_pane_title,
                                                 invoked_with,
                                                 pane_id,
-                                                blocking_notification,
+                                                blocking_notification.take(),
                                                 borderless,
                                             )?;
                                         } else {
@@ -9136,7 +9189,7 @@ pub(crate) fn screen_thread_main(
                                                 initial_pane_title,
                                                 invoked_with,
                                                 pane_id,
-                                                blocking_notification,
+                                                blocking_notification.take(),
                                                 borderless,
                                             )?;
                                         }
@@ -9150,7 +9203,7 @@ pub(crate) fn screen_thread_main(
                                             should_focus_pane,
                                             new_pane_placement,
                                             None,
-                                            blocking_notification,
+                                            blocking_notification.take(),
                                         )?;
                                     },
                                 }
@@ -9167,14 +9220,26 @@ pub(crate) fn screen_thread_main(
                                 "Failed to find tab containing pane with id: {:?}",
                                 pane_id
                             );
+                            close_pane_that_was_not_created(
+                                &screen.bus.senders,
+                                pid,
+                                blocking_notification,
+                            );
                         }
                     },
                 };
-                if let Some(pending_events) = pending_events_waiting_for_pane.remove(&pid) {
-                    for event in pending_events {
-                        screen.bus.senders.send_to_screen(event).non_fatal();
+                let pane_was_created = screen.has_pane_with_pid(&pid);
+                if pane_was_created {
+                    if let Some(pending_events) = pending_events_waiting_for_pane.remove(&pid) {
+                        for event in pending_events {
+                            screen.bus.senders.send_to_screen(event).non_fatal();
+                        }
                     }
+                } else {
+                    pending_events_waiting_for_pane.remove(&pid);
+                    mark_pane_as_not_created(&mut completion_tx);
                 }
+                drop(completion_tx);
                 screen.log_and_report_session_state()?;
 
                 screen.render(None)?;
@@ -9183,13 +9248,19 @@ pub(crate) fn screen_thread_main(
                 match client_tab_index_or_pane_id {
                     ClientTabIndexOrPaneId::ClientId(client_id)
                     | ClientTabIndexOrPaneId::ClientIdNoFocus(client_id) => {
-                        active_tab!(screen, client_id, |tab: &mut Tab| tab
-                            .replace_active_pane_with_editor_pane(pid, client_id), ?);
+                        match screen.get_active_tab_mut(client_id) {
+                            Ok(tab) => tab.replace_active_pane_with_editor_pane(pid, client_id)?,
+                            Err(err) => {
+                                Err::<(), _>(err).non_fatal();
+                                close_pane_that_was_not_created(&screen.bus.senders, pid, None);
+                            },
+                        }
                         screen.log_and_report_session_state()?;
                     },
                     ClientTabIndexOrPaneId::TabIndex(_tab_index)
                     | ClientTabIndexOrPaneId::TabIndexNoFocus(_tab_index) => {
                         log::error!("Cannot OpenInPlaceEditor with a TabIndex");
+                        close_pane_that_was_not_created(&screen.bus.senders, pid, None);
                     },
                     ClientTabIndexOrPaneId::PaneId(pane_id_to_replace) => {
                         let mut found = false;
@@ -9207,6 +9278,7 @@ pub(crate) fn screen_thread_main(
                                 "Could not find pane with id {:?} to replace",
                                 pane_id_to_replace
                             );
+                            close_pane_that_was_not_created(&screen.bus.senders, pid, None);
                         }
                     },
                 }
@@ -11667,9 +11739,16 @@ pub(crate) fn screen_thread_main(
                         )?;
                     } else {
                         log::error!("Must have pane id to replace or connected client_id if replacing a pane");
+                        close_pane_that_was_not_created(
+                            &screen.bus.senders,
+                            PaneId::Plugin(plugin_id),
+                            None,
+                        );
                     }
                 } else if let Some(client_id) = client_id {
+                    let mut found_tab = false;
                     active_tab_and_connected_client_id!(screen, client_id, |active_tab: &mut Tab, _client_id: ClientId| {
+                        found_tab = true;
                         active_tab.new_pane(
                             PaneId::Plugin(plugin_id),
                             Some(pane_title),
@@ -11681,6 +11760,13 @@ pub(crate) fn screen_thread_main(
                             None,
                         )
                     }, ?);
+                    if !found_tab {
+                        close_pane_that_was_not_created(
+                            &screen.bus.senders,
+                            PaneId::Plugin(plugin_id),
+                            None,
+                        );
+                    }
                 } else if let Some(active_tab) =
                     tab_index.and_then(|tab_index| screen.tabs.get_mut(&tab_index))
                 {
@@ -11696,7 +11782,16 @@ pub(crate) fn screen_thread_main(
                     )?;
                 } else {
                     log::error!("Tab index not found: {:?}", tab_index);
+                    close_pane_that_was_not_created(
+                        &screen.bus.senders,
+                        PaneId::Plugin(plugin_id),
+                        None,
+                    );
                 }
+                if !screen.has_pane_with_pid(&PaneId::Plugin(plugin_id)) {
+                    mark_pane_as_not_created(&mut completion_tx);
+                }
+                drop(completion_tx);
                 if let Some(loading_indication) = plugin_loading_message_cache.remove(&plugin_id) {
                     screen.update_plugin_loading_stage(plugin_id, loading_indication);
                     screen.render(None)?;
@@ -12203,6 +12298,10 @@ pub(crate) fn screen_thread_main(
                     close_replaced_pane,
                     client_id_tab_index_or_pane_id,
                 )?;
+                if !screen.has_pane_with_pid(&new_pane_id) {
+                    mark_pane_as_not_created(&mut completion_tx);
+                }
+                drop(completion_tx);
 
                 screen.log_and_report_session_state()?;
             },
