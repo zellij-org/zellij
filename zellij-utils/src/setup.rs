@@ -323,13 +323,13 @@ pub struct Setup {
     #[clap(long, value_name = "SHELL", value_parser)]
     pub generate_auto_start: Option<String>,
 
-    /// Install a desktop entry and icon so the zellij window appears in application launchers.
-    /// The entry runs this binary by absolute path, so re-run this after moving the binary.
-    /// Linux only for now
+    /// Install a launcher entry so the zellij window appears in application launchers: a
+    /// desktop entry and icon on Linux, a Start menu shortcut on Windows. The entry runs this
+    /// binary by absolute path, so re-run this after moving the binary
     #[clap(long, value_parser, exclusive = true)]
     pub install_desktop_entry: bool,
 
-    /// Remove the desktop entry and icon written by --install-desktop-entry
+    /// Remove the launcher entry written by --install-desktop-entry
     #[clap(long, value_parser, exclusive = true)]
     pub uninstall_desktop_entry: bool,
 }

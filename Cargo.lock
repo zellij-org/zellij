@@ -6618,6 +6618,7 @@ dependencies = [
  "unicode-width 0.2.2",
  "url",
  "vte 0.15.0",
+ "windows",
  "windows-sys 0.59.0",
  "winit",
  "zellij-client",

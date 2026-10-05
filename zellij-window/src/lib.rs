@@ -8,6 +8,8 @@ mod blur;
 mod client_loop;
 mod clipboard;
 mod color;
+#[cfg(windows)]
+mod com;
 mod composition;
 mod connection;
 mod desktop_entry;
@@ -31,6 +33,8 @@ mod identity;
 mod image_io;
 mod input;
 mod kitty;
+#[cfg(windows)]
+mod launcher;
 mod links;
 mod momentum;
 mod mouse;
