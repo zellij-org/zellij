@@ -757,16 +757,17 @@ fn render_common_modifiers(
                 .join("-")
         )
     };
+    let prefix_text_len = prefix_text.len();
 
     let prefix = if mode_info.session_dimmed.unwrap_or(false) {
-        serialize_text(&Text::new(&prefix_text).disabled().opaque())
+        serialize_text(&Text::from(prefix_text).disabled().opaque())
     } else {
-        serialize_text(&Text::new(&prefix_text).opaque())
+        serialize_text(&Text::from(prefix_text).opaque())
     };
     let suffix_separator = palette.superkey_suffix_separator.paint(separator);
     line_part_to_render.part =
         format!("{}{}{}", line_part_to_render.part, prefix, suffix_separator);
-    line_part_to_render.len += prefix_text.chars().count() + separator.chars().count();
+    line_part_to_render.len += prefix_text_len + separator.chars().count();
 }
 
 fn render_secondary_info(
@@ -1229,7 +1230,7 @@ fn secondary_keybinds(
     if short_line.len <= max_len {
         (short_line, new_pane_range, floating_range)
     } else if max_len >= 3 {
-        let overflow_text = Text::new(format!("{:>width$}", "...", width = max_len));
+        let overflow_text = Text::from(format!("{:>width$}", "...", width = max_len));
         let part = if help.session_dimmed.unwrap_or(false) {
             serialize_text(&overflow_text.disabled().opaque())
         } else {
@@ -1250,14 +1251,15 @@ fn secondary_keybinds(
 }
 
 fn text_as_line_part_with_emphasis(text: String, emphases_index: usize, dimmed: bool) -> LinePart {
+    let text_width = text.width();
     let part = if dimmed {
-        serialize_text(&Text::new(&text).disabled().opaque())
+        serialize_text(&Text::from(text).disabled().opaque())
     } else {
-        serialize_text(&Text::new(&text).color_range(emphases_index, ..).opaque())
+        serialize_text(&Text::from(text).color_range(emphases_index, ..).opaque())
     };
     LinePart {
         part,
-        len: text.width(),
+        len: text_width,
     }
 }
 
@@ -1395,11 +1397,11 @@ fn add_shortcut(
 
     ret.append(&style_key_with_modifier(&keys, key_color_index, dimmed));
     let ribbon = if dimmed {
-        serialize_ribbon(&Text::new(format!("{}", text)).disabled())
+        serialize_ribbon(&Text::from(format!("{}", text)).disabled())
     } else if selected {
-        serialize_ribbon(&Text::new(format!("{}", text)).selected())
+        serialize_ribbon(&Text::from(format!("{}", text)).selected())
     } else {
-        serialize_ribbon(&Text::new(format!("{}", text)))
+        serialize_ribbon(&Text::from(format!("{}", text)))
     };
     ret.part = format!("{}{}", ret.part, ribbon);
     let supports_arrow_fonts = !help.capabilities.arrow_fonts;
@@ -1450,16 +1452,16 @@ fn add_shortcut_with_inline_key(
     );
 
     let ribbon = if help.session_dimmed.unwrap_or(false) {
-        serialize_ribbon(&Text::new(format!("<{}> {}", key_string, text)).disabled())
+        serialize_ribbon(&Text::from(format!("<{}> {}", key_string, text)).disabled())
     } else if is_selected {
         serialize_ribbon(
-            &Text::new(format!("<{}> {}", key_string, text))
+            &Text::from(format!("<{}> {}", key_string, text))
                 .color_range(0, 1..key_string.width() + 1)
                 .selected(),
         )
     } else {
         serialize_ribbon(
-            &Text::new(format!("<{}> {}", key_string, text))
+            &Text::from(format!("<{}> {}", key_string, text))
                 .color_range(0, 1..key_string.width() + 1),
         )
     };
@@ -1493,15 +1495,15 @@ fn add_shortcut_with_key_only(
     );
 
     let ribbon = if help.session_dimmed.unwrap_or(false) {
-        serialize_ribbon(&Text::new(format!("{}", key_string)).disabled())
+        serialize_ribbon(&Text::from(format!("{}", key_string)).disabled())
     } else if is_selected {
         serialize_ribbon(
-            &Text::new(format!("{}", key_string))
+            &Text::from(format!("{}", key_string))
                 .color_range(0, ..)
                 .selected(),
         )
     } else {
-        serialize_ribbon(&Text::new(format!("{}", key_string)).color_range(0, ..))
+        serialize_ribbon(&Text::from(format!("{}", key_string)).color_range(0, ..))
     };
     ret.part = ribbon;
     let supports_arrow_fonts = !help.capabilities.arrow_fonts;
@@ -2009,26 +2011,28 @@ fn style_key_with_modifier(
 
     if no_common_modifier || key.len() == 1 {
         let key_string_text = format!(" {} ", key.join(key_separator));
+        let key_string_text_width = key_string_text.width();
         let text = if dimmed {
-            Text::new(&key_string_text).disabled().opaque()
+            Text::from(key_string_text).disabled().opaque()
         } else if let Some(color_index) = color_index {
-            Text::new(&key_string_text)
+            Text::from(key_string_text)
                 .color_range(color_index, ..)
                 .opaque()
         } else {
-            Text::new(&key_string_text).opaque()
+            Text::from(key_string_text).opaque()
         };
         LinePart {
             part: serialize_text(&text),
-            len: key_string_text.width(),
+            len: key_string_text_width,
         }
     } else {
         let key_string_without_modifier = format!("{}", key.join(key_separator));
         let key_string_text = format!(" {} <{}> ", modifier_str, key_string_without_modifier);
+        let key_string_text_width = key_string_text.width();
         let text = if dimmed {
-            Text::new(&key_string_text).disabled().opaque()
+            Text::from(key_string_text).disabled().opaque()
         } else if let Some(color_index) = color_index {
-            Text::new(&key_string_text)
+            Text::from(key_string_text)
                 .color_range(color_index, ..modifier_str.width() + 1)
                 .color_range(
                     color_index,
@@ -2037,11 +2041,11 @@ fn style_key_with_modifier(
                 )
                 .opaque()
         } else {
-            Text::new(&key_string_text).opaque()
+            Text::from(key_string_text).opaque()
         };
         LinePart {
             part: serialize_text(&text),
-            len: key_string_text.width(),
+            len: key_string_text_width,
         }
     }
 }

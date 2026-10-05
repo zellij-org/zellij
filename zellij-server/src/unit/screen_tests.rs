@@ -8291,6 +8291,77 @@ pub fn closing_tab_updates_input_modes_of_destination_tab_plugins() {
 }
 
 #[test]
+pub fn suppressed_plugin_keeps_receiving_events() {
+    // Tab 0: plugin panes 2 and 3, the client switches here and plugin 2 hides itself.
+    // It should still hear about mode and tab changes so it can decide to show itself again.
+    let size = Size { cols: 80, rows: 10 };
+    let client_id = 10;
+
+    let mut mock_screen = MockScreen::new(size);
+    mock_screen.new_tab_with_plugins(vec![2, 3]);
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(None, vec![]);
+
+    let received_plugin_instructions = Arc::new(Mutex::new(vec![]));
+    let plugin_receiver = mock_screen.plugin_receiver.take().unwrap();
+    let plugin_thread = log_actions_in_thread!(
+        received_plugin_instructions,
+        PluginInstruction::Exit,
+        plugin_receiver
+    );
+
+    let goto_tab = CliAction::GoToTab { index: 1 };
+    send_cli_action_to_server(&session_metadata, goto_tab, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let _ = mock_screen.to_screen.send(ScreenInstruction::SuppressPane(
+        PaneId::Plugin(2),
+        client_id,
+    ));
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let instructions_before_mode_change = received_plugin_instructions.lock().unwrap().len();
+
+    let _ = mock_screen.to_screen.send(ScreenInstruction::ChangeMode(
+        InputMode::Locked,
+        None,
+        client_id,
+        None,
+    ));
+    let rename_tab = CliAction::RenameTab {
+        name: "renamed".to_owned(),
+        tab_id: None,
+    };
+    send_cli_action_to_server(&session_metadata, rename_tab, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    mock_screen.teardown(vec![plugin_thread, screen_thread]);
+
+    let instructions = received_plugin_instructions.lock().unwrap();
+    let mut mode_updates_received: Vec<u32> = vec![];
+    let mut tab_updates_received: Vec<u32> = vec![];
+    for instruction in instructions[instructions_before_mode_change..].iter() {
+        if let PluginInstruction::Update(updates) = instruction {
+            for (pid, _cid, event) in updates {
+                match (pid, event) {
+                    (Some(pid), Event::ModeUpdate(..)) => mode_updates_received.push(*pid),
+                    (Some(pid), Event::TabUpdate(..)) => tab_updates_received.push(*pid),
+                    _ => {},
+                }
+            }
+        }
+    }
+    assert!(
+        mode_updates_received.contains(&2),
+        "suppressed plugin 2 should receive a ModeUpdate, got: {:?}",
+        mode_updates_received
+    );
+    assert!(
+        tab_updates_received.contains(&2),
+        "suppressed plugin 2 should receive a TabUpdate, got: {:?}",
+        tab_updates_received
+    );
+}
+
+#[test]
 pub fn inactive_tab_plugins_get_fresh_state_on_activation() {
     // Tab 0: plugin pane 2 (from new_tab_with_plugins)
     // Tab 1: terminal panes only (from run, client starts here)

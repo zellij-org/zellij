@@ -2109,7 +2109,7 @@ impl Tab {
         let mode_infos = self.mode_info.borrow();
         let mut plugin_updates = vec![];
         let currently_marking_pane_group = self.currently_marking_pane_group.borrow();
-        let tab_plugin_ids = self.get_plugin_ids();
+        let tab_plugin_ids = self.get_plugin_ids_including_suppressed();
         for client_id in self.connected_clients.borrow().iter() {
             let mut mode_info = mode_infos
                 .get(client_id)
@@ -2350,13 +2350,16 @@ impl Tab {
                 None
             };
         }
+        let was_dimmed = self.dimmed_clients.contains(&client_id);
         self.mode_info.borrow_mut().remove(&client_id);
         self.connected_clients.borrow_mut().remove(&client_id);
         self.mouse_help_text_visible.remove(&client_id);
         self.mouse_last_pane_id.remove(&client_id);
         self.last_mouse_activity_time.remove(&client_id);
-        self.set_client_dimmed(client_id, false);
-        self.set_force_render();
+        if is_connected_to_this_tab || was_dimmed {
+            self.set_client_dimmed(client_id, false);
+            self.set_force_render();
+        }
     }
     pub fn drain_connected_clients(
         &mut self,
@@ -5656,6 +5659,20 @@ impl Tab {
                 _ => None,
             })
             .collect()
+    }
+    /// Like `get_plugin_ids`, but also includes plugin panes that are suppressed (eg. hidden
+    /// with `hide_self`). These are still running and should keep receiving events, otherwise
+    /// a hidden plugin cannot know when to show itself again.
+    pub fn get_plugin_ids_including_suppressed(&self) -> Vec<PluginId> {
+        let mut plugin_ids = self.get_plugin_ids();
+        for pane_id in self.suppressed_panes.keys() {
+            if let PaneId::Plugin(plugin_id) = pane_id {
+                if !plugin_ids.contains(plugin_id) {
+                    plugin_ids.push(*plugin_id);
+                }
+            }
+        }
+        plugin_ids
     }
     pub fn get_pane_info(&self, pane_id: PaneId) -> Option<PaneInfo> {
         let current_pane_group: HashMap<ClientId, Vec<PaneId>> =

@@ -27,7 +27,7 @@ impl<'a> TooltipRenderer<'a> {
 
                 if base_x + x + total_element_width > cols {
                     let remaining_space = cols.saturating_sub(base_x + x);
-                    let ellipsis = Text::new("...").opaque();
+                    let ellipsis = Text::from("...").opaque();
                     print_text_with_coordinates(
                         ellipsis,
                         base_x + x,
@@ -81,11 +81,11 @@ impl<'a> TooltipRenderer<'a> {
         let mut is_first = true;
         for (key, description) in actions {
             let text = if is_first {
-                Text::new(format!("{} ", &key)).color_all(3).opaque()
+                Text::from(format!("{} ", key)).color_all(3).opaque()
             } else {
-                Text::new(format!(" {} ", &key)).color_all(3).opaque()
+                Text::from(format!(" {} ", key)).color_all(3).opaque()
             };
-            let ribbon = Text::new(&description);
+            let ribbon = Text::from(description.clone());
 
             let line_length = if is_first {
                 key.chars().count() + description.chars().count()
@@ -120,7 +120,7 @@ impl<'a> TooltipRenderer<'a> {
                 },
             };
             let total_width = tooltip_text.chars().count();
-            table = table.add_styled_row(vec![Text::new(tooltip_text).color_all(0)]);
+            table = table.add_styled_row(vec![Text::from(tooltip_text).color_all(0)]);
             row_count += 1;
             (table, row_count, total_width)
         } else {
@@ -131,8 +131,8 @@ impl<'a> TooltipRenderer<'a> {
                 key_width = key_width.max(key.chars().count());
                 action_width = action_width.max(description_formatted.chars().count());
                 table = table.add_styled_row(vec![
-                    Text::new(&key).color_all(3),
-                    Text::new(description_formatted),
+                    Text::from(key).color_all(3),
+                    Text::from(description_formatted),
                 ]);
                 row_count += 1;
             }

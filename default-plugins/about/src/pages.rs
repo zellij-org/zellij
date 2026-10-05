@@ -130,7 +130,7 @@ impl Page {
                     })),
                 ]));
         page.with_paragraph(vec![ComponentLine::new(vec![
-            ActiveComponent::new(TextOrCustomRender::Text(Text::new("Full Changelog: "))),
+            ActiveComponent::new(TextOrCustomRender::Text(Text::from("Full Changelog: "))),
             ActiveComponent::new(TextOrCustomRender::Text(changelog_link_unselected(
                 zellij_version.clone(),
             )))
@@ -202,15 +202,15 @@ impl Page {
         ));
         let mut page = Page::new()
             .with_kind(PageKind::NestedSessions)
-            .with_title(Text::new("Nested Sessions").color_range(0, ..))
+            .with_title(Text::from("Nested Sessions").color_range(0, ..))
             .with_paragraph(vec![
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new(
+                    Text::from(
                         "Zellij now detects when it is started inside another Zellij session.",
                     ),
                 ))]),
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new(format!(
+                    Text::from(format!(
                         "Allowing you to decide between (SESSION mode, returns to {}):",
                         base_mode_name
                     ))
@@ -237,29 +237,33 @@ impl Page {
         let mut page = Page::new()
             .with_kind(PageKind::PaneFocus)
             .with_title(
-                Text::new("Focus Last Pane and Fullscreen Floating Panes").color_range(0, ..),
+                Text::from("Focus Last Pane and Fullscreen Floating Panes").color_range(0, ..),
             )
             .with_paragraph(vec![
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("A new action returns focus to the pane that was focused before the"),
+                    Text::from(
+                        "A new action returns focus to the pane that was focused before the",
+                    ),
                 ))]),
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("current one, so that two panes can be alternated with a single"),
+                    Text::from("current one, so that two panes can be alternated with a single"),
                 ))]),
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("keypress."),
+                    Text::from("keypress."),
                 ))]),
             ])
             .with_paragraph(bind_lines(&keybinding_state, &[Action::FocusLastPane], ""))
             .with_paragraph(vec![
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("Floating panes can now be made fullscreen, just like tiled panes."),
+                    Text::from("Floating panes can now be made fullscreen, just like tiled panes."),
                 ))]),
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("The focused floating pane expands over the whole viewport, or over"),
+                    Text::from(
+                        "The focused floating pane expands over the whole viewport, or over",
+                    ),
                 ))]),
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("the entire screen when hiding the UI."),
+                    Text::from("the entire screen when hiding the UI."),
                 ))]),
             ]);
         if let Some(missing_binds_note) =
@@ -290,10 +294,10 @@ impl Page {
         ));
         let mut page = Page::new()
             .with_kind(PageKind::ScrollByCommand)
-            .with_title(Text::new("Scroll By Command").color_range(0, ..))
+            .with_title(Text::from("Scroll By Command").color_range(0, ..))
             .with_paragraph(vec![ComponentLine::new(vec![ActiveComponent::new(
                 TextOrCustomRender::Text(
-                    Text::new(
+                    Text::from(
                         "Zellij can now navigate the commands marked by the shell (OSC 133):",
                     )
                     .color_substring(2, "OSC 133"),
@@ -302,11 +306,11 @@ impl Page {
             .with_paragraph(command_bind_lines)
             .with_paragraph(vec![
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("- Hold <Alt> with the mouse wheel to scroll through commands.")
+                    Text::from("- Hold <Alt> with the mouse wheel to scroll through commands.")
                         .color_substring(3, "<Alt>"),
                 ))]),
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("- Triple-click to select an entire command.")
+                    Text::from("- Triple-click to select an entire command.")
                         .color_substring(2, "Triple-click"),
                 ))]),
                 opt_out_line("triple-click selection", "osc133_command_selection false"),
@@ -350,7 +354,7 @@ impl Page {
                     )
                 };
                 ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new(bind_text)
+                    Text::from(bind_text)
                         .color_substring(3, &mode_name)
                         .color_substring(3, &bind.key_text())
                         .color_substring(3, &base_mode_name),
@@ -363,7 +367,7 @@ impl Page {
             .iter()
             .map(|(bind, currently_bound_to)| {
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new(format!(
+                    Text::from(format!(
                         "{} is currently bound to {} and will be overwritten",
                         bind.key_text(),
                         currently_bound_to
@@ -376,13 +380,13 @@ impl Page {
         let status = keybinding_state.borrow().status().clone();
         let mut page = Page::new()
             .with_kind(PageKind::UpdateKeybindings)
-            .with_title(Text::new("Update Keybindings").color_range(0, ..))
+            .with_title(Text::from("Update Keybindings").color_range(0, ..))
             .with_paragraph(vec![ComponentLine::new(feature_sentence(
                 &keybinding_state,
                 &main_screen_builder,
             ))])
             .with_bulletin_list(
-                BulletinList::new(Text::new("New keybindings:").color_range(2, ..))
+                BulletinList::new(Text::from("New keybindings:").color_range(2, ..))
                     .with_items(keybind_items),
             );
         if !conflicting_binds.is_empty() {
@@ -391,7 +395,7 @@ impl Page {
         match status {
             ApplyStatus::NotApplied => page
                 .with_paragraph(vec![ComponentLine::new(vec![
-                    ActiveComponent::new(TextOrCustomRender::Text(Text::new(
+                    ActiveComponent::new(TextOrCustomRender::Text(Text::from(
                         "Add these keybindings to your configuration file? (",
                     ))),
                     ActiveComponent::new(TextOrCustomRender::Text(confirm_text()))
@@ -407,7 +411,7 @@ impl Page {
                                 Page::new_update_keybindings(keybinding_state, main_screen_builder)
                             }
                         })),
-                    ActiveComponent::new(TextOrCustomRender::Text(Text::new("/"))),
+                    ActiveComponent::new(TextOrCustomRender::Text(Text::from("/"))),
                     ActiveComponent::new(TextOrCustomRender::Text(cancel_text()))
                         .with_hover(TextOrCustomRender::CustomRender(
                             Box::new(cancel_key_selected),
@@ -417,10 +421,10 @@ impl Page {
                             let main_screen_builder = main_screen_builder.clone();
                             move || main_screen_builder()
                         })),
-                    ActiveComponent::new(TextOrCustomRender::Text(Text::new(")"))),
+                    ActiveComponent::new(TextOrCustomRender::Text(Text::from(")"))),
                 ])])
                 .with_help(Box::new(|_hovering_over_link, _menu_item_is_selected| {
-                    Text::new("Help: <y> - Add Keybindings, <n> - Cancel, <ESC> - Go back")
+                    Text::from("Help: <y> - Add Keybindings, <n> - Cancel, <ESC> - Go back")
                         .color_substring(1, "<y>")
                         .color_substring(1, "<n>")
                         .color_substring(1, "<ESC>")
@@ -436,24 +440,24 @@ impl Page {
     }
     fn new_kitty_graphics() -> Page {
         Page::new()
-            .with_title(Text::new("Kitty Graphics Protocol").color_range(0, ..))
+            .with_title(Text::from("Kitty Graphics Protocol").color_range(0, ..))
             .with_paragraph(vec![
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("Zellij now implements the Kitty graphics protocol.")
+                    Text::from("Zellij now implements the Kitty graphics protocol.")
                         .color_substring(2, "Kitty graphics protocol"),
                 ))]),
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("Images displayed by image viewers, plotting libraries and"),
+                    Text::from("Images displayed by image viewers, plotting libraries and"),
                 ))]),
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("documentation tools are rendered inside panes, and keep working"),
+                    Text::from("documentation tools are rendered inside panes, and keep working"),
                 ))]),
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("when panes are scrolled, moved, resized or stacked."),
+                    Text::from("when panes are scrolled, moved, resized or stacked."),
                 ))]),
             ])
             .with_paragraph(vec![ComponentLine::new(vec![ActiveComponent::new(
-                TextOrCustomRender::Text(Text::new(
+                TextOrCustomRender::Text(Text::from(
                     "The host terminal needs to support the protocol as well.",
                 )),
             )])])
@@ -463,37 +467,37 @@ impl Page {
     }
     fn new_mobile_web_ui(link_executable: Rc<RefCell<String>>) -> Page {
         Page::new()
-            .with_title(Text::new("Mobile Web UI").color_range(0, ..))
+            .with_title(Text::from("Mobile Web UI").color_range(0, ..))
             .with_paragraph(vec![
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("The web client now has a dedicated mobile interface."),
+                    Text::from("The web client now has a dedicated mobile interface."),
                 ))]),
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("It provides touch controls and a layout adapted to small screens,")
+                    Text::from("It provides touch controls and a layout adapted to small screens,")
                         .color_substring(1, "touch controls"),
                 ))]),
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("making sessions usable from a phone or a tablet."),
+                    Text::from("making sessions usable from a phone or a tablet."),
                 ))]),
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("Sessions and panes can be switched directly from this interface.")
+                    Text::from("Sessions and panes can be switched directly from this interface.")
                         .color_substring(1, "Sessions and panes"),
                 ))]),
             ])
             .with_paragraph(vec![
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("The web client can also be installed as a standalone app (PWA)")
+                    Text::from("The web client can also be installed as a standalone app (PWA)")
                         .color_substring(1, "standalone app (PWA)"),
                 ))]),
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("directly from the browser."),
+                    Text::from("directly from the browser."),
                 ))]),
             ])
             .with_paragraph(vec![ComponentLine::new(vec![
                 ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("Learn more: ").color_range(2, ..),
+                    Text::from("Learn more: ").color_range(2, ..),
                 )),
-                ActiveComponent::new(TextOrCustomRender::Text(Text::new(
+                ActiveComponent::new(TextOrCustomRender::Text(Text::from(
                     "https://zellij.dev/tutorials/web-client/",
                 )))
                 .with_hover(TextOrCustomRender::CustomRender(
@@ -511,34 +515,36 @@ impl Page {
     }
     fn new_ui() -> Page {
         Page::new()
-            .with_title(Text::new("New UI").color_range(0, ..))
+            .with_title(Text::from("New UI").color_range(0, ..))
             .with_paragraph(vec![ComponentLine::new(vec![ActiveComponent::new(
-                TextOrCustomRender::Text(Text::new("The Zellij interface has been redesigned.")),
+                TextOrCustomRender::Text(Text::from("The Zellij interface has been redesigned.")),
             )])])
             .with_paragraph(vec![
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("1. Title frames: pane frames are now off by default, leaving only")
+                    Text::from("1. Title frames: pane frames are now off by default, leaving only")
                         .color_substring(2, "Title frames"),
                 ))]),
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("   the title line if there is more than one pane in a tab. For a"),
+                    Text::from("   the title line if there is more than one pane in a tab. For a"),
                 ))]),
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("   single pane, the tab's title will be the pane's title."),
+                    Text::from("   single pane, the tab's title will be the pane's title."),
                 ))]),
                 config_option_line("pane_frame_style \"full\""),
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("2. Stacked lists: pane stacks have been redesigned to appear in a")
+                    Text::from("2. Stacked lists: pane stacks have been redesigned to appear in a")
                         .color_substring(2, "Stacked lists"),
                 ))]),
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("   compact list above the whole stack, allowing the full list of"),
+                    Text::from("   compact list above the whole stack, allowing the full list of"),
                 ))]),
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("   panes to be seen in one place, rather than both above and below"),
+                    Text::from(
+                        "   panes to be seen in one place, rather than both above and below",
+                    ),
                 ))]),
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("   the expanded pane."),
+                    Text::from("   the expanded pane."),
                 ))]),
                 config_option_line("stacked_pane_list false"),
             ])
@@ -548,24 +554,24 @@ impl Page {
     }
     fn new_per_client_tab_sizes() -> Page {
         Page::new()
-            .with_title(Text::new("Per-Client Tab Sizes").color_range(0, ..))
+            .with_title(Text::from("Per-Client Tab Sizes").color_range(0, ..))
             .with_paragraph(vec![
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("Tabs can now have different sizes for different clients."),
+                    Text::from("Tabs can now have different sizes for different clients."),
                 ))]),
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("When several clients are attached to the same session and are"),
+                    Text::from("When several clients are attached to the same session and are"),
                 ))]),
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("focused on different tabs, each tab is sized to its own client."),
+                    Text::from("focused on different tabs, each tab is sized to its own client."),
                 ))]),
             ])
             .with_paragraph(vec![
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("Previously, all tabs shared the size of the smallest client."),
+                    Text::from("Previously, all tabs shared the size of the smallest client."),
                 ))]),
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("Tabs are only shrunk when clients are focused on the same tab."),
+                    Text::from("Tabs are only shrunk when clients are focused on the same tab."),
                 ))]),
             ])
             .with_help(Box::new(|_hovering_over_link, _menu_item_is_selected| {
@@ -576,20 +582,20 @@ impl Page {
 
 fn keybinding_status_text(status: &ApplyStatus) -> Text {
     match status {
-        ApplyStatus::Applying => Text::new("Adding keybindings...").color_range(2, ..),
+        ApplyStatus::Applying => Text::from("Adding keybindings...").color_range(2, ..),
         ApplyStatus::Applied => {
-            Text::new("Keybindings added and saved to your config file.").color_range(2, ..)
+            Text::from("Keybindings added and saved to your config file.").color_range(2, ..)
         },
-        ApplyStatus::Failed(Some(config_file)) => Text::new(format!(
+        ApplyStatus::Failed(Some(config_file)) => Text::from(format!(
             "Keybindings added to this session, but {} could not be written.",
             config_file
         ))
         .color_range(3, ..),
-        ApplyStatus::Failed(None) => Text::new(
+        ApplyStatus::Failed(None) => Text::from(
             "Keybindings added to this session, but the config file could not be written.",
         )
         .color_range(3, ..),
-        ApplyStatus::NotApplied => Text::new(""),
+        ApplyStatus::NotApplied => Text::from(""),
     }
 }
 
@@ -604,7 +610,7 @@ fn missing_binds_note(
     match status {
         ApplyStatus::NotApplied if has_missing_binds => Some(vec![ComponentLine::new(vec![
             ActiveComponent::new(TextOrCustomRender::Text(
-                Text::new("Note: these keybindings are not in your config file. Add them? (")
+                Text::from("Note: these keybindings are not in your config file. Add them? (")
                     .color_substring(2, "Note:"),
             )),
             ActiveComponent::new(TextOrCustomRender::Text(confirm_text()))
@@ -624,7 +630,7 @@ fn missing_binds_note(
                         }
                     }
                 })),
-            ActiveComponent::new(TextOrCustomRender::Text(Text::new("/"))),
+            ActiveComponent::new(TextOrCustomRender::Text(Text::from("/"))),
             ActiveComponent::new(TextOrCustomRender::Text(cancel_text()))
                 .with_hover(TextOrCustomRender::CustomRender(
                     Box::new(cancel_key_selected),
@@ -634,7 +640,7 @@ fn missing_binds_note(
                     let main_screen_builder = main_screen_builder.clone();
                     move || main_screen_builder()
                 })),
-            ActiveComponent::new(TextOrCustomRender::Text(Text::new(")"))),
+            ActiveComponent::new(TextOrCustomRender::Text(Text::from(")"))),
         ])]),
         ApplyStatus::NotApplied => None,
         status => Some(vec![ComponentLine::new(vec![ActiveComponent::new(
@@ -662,13 +668,13 @@ fn option_title_line(title: &str) -> ComponentLine {
         character.is_ascii_digit() || character == '.' || character == ' '
     });
     ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-        Text::new(title).color_substring(2, title_without_number),
+        Text::from(title).color_substring(2, title_without_number),
     ))])
 }
 
 fn opt_out_line(what: &str, config_option: &str) -> ComponentLine {
     ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-        Text::new(format!("  ↳ Opt out of {} with: {}", what, config_option))
+        Text::from(format!("  ↳ Opt out of {} with: {}", what, config_option))
             .color_substring(1, "Opt out")
             .color_substring(3, config_option),
     ))])
@@ -676,7 +682,7 @@ fn opt_out_line(what: &str, config_option: &str) -> ComponentLine {
 
 fn config_option_line(config_option: &str) -> ComponentLine {
     ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-        Text::new(format!("   Opt out with: {}", config_option))
+        Text::from(format!("   Opt out with: {}", config_option))
             .color_substring(1, "Opt out with")
             .color_substring(3, config_option),
     ))])
@@ -684,7 +690,7 @@ fn config_option_line(config_option: &str) -> ComponentLine {
 
 fn option_text_line(text: &str) -> ComponentLine {
     ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-        Text::new(text),
+        Text::from(text),
     ))])
 }
 
@@ -702,7 +708,7 @@ fn bind_lines(
                 .map(|bind| {
                     let mode_name = format!("{:?}", bind.mode).to_uppercase();
                     ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                        Text::new(format!(
+                        Text::from(format!(
                             "{}{} mode + {} - {}",
                             indent,
                             mode_name,
@@ -732,7 +738,7 @@ fn merged_bind_line(
     };
     let mode_name = first_bind.mode_name();
     let key_texts: Vec<String> = binds.iter().map(|bind| bind.key_text()).collect();
-    let mut text = Text::new(format!(
+    let mut text = Text::from(format!(
         "{} mode + {} - {}",
         mode_name,
         key_texts.join(" / "),
@@ -748,11 +754,11 @@ fn merged_bind_line(
 }
 
 fn confirm_text() -> Text {
-    Text::new("y").color_range(3, ..)
+    Text::from("y").color_range(3, ..)
 }
 
 fn cancel_text() -> Text {
-    Text::new("n").color_range(3, ..)
+    Text::from("n").color_range(3, ..)
 }
 
 fn confirm_key_selected(x: usize, y: usize) -> usize {
@@ -772,7 +778,7 @@ fn single_character_len() -> usize {
 fn feature_link(label: &'static str, target_page: ClickAction) -> ActiveComponent {
     let hover_label = label.to_owned();
     ActiveComponent::new(TextOrCustomRender::Text(
-        Text::new(label).color_range(3, ..),
+        Text::from(label).color_range(3, ..),
     ))
     .with_hover(TextOrCustomRender::CustomRender(
         Box::new(move |x, y| {
@@ -795,7 +801,7 @@ fn feature_sentence(
     main_screen_builder: &Rc<dyn Fn() -> Page>,
 ) -> Vec<ActiveComponent> {
     let features = keybinding_state.borrow().features_to_add();
-    let mut sentence = vec![ActiveComponent::new(TextOrCustomRender::Text(Text::new(
+    let mut sentence = vec![ActiveComponent::new(TextOrCustomRender::Text(Text::from(
         "This version includes new keybindings for ",
     )))];
     for (feature_index, feature) in features.iter().enumerate() {
@@ -805,7 +811,7 @@ fn feature_sentence(
             } else {
                 ", "
             };
-            sentence.push(ActiveComponent::new(TextOrCustomRender::Text(Text::new(
+            sentence.push(ActiveComponent::new(TextOrCustomRender::Text(Text::from(
                 separator,
             ))));
         }
@@ -819,7 +825,7 @@ fn feature_sentence(
             }),
         ));
     }
-    sentence.push(ActiveComponent::new(TextOrCustomRender::Text(Text::new(
+    sentence.push(ActiveComponent::new(TextOrCustomRender::Text(Text::from(
         ".",
     ))));
     sentence
@@ -1110,7 +1116,7 @@ impl Page {
 
 fn render_error(error: &str, y: usize) {
     print_text_with_coordinates(
-        Text::new(format!("ERROR: {}", error)).color_range(3, ..),
+        Text::from(format!("ERROR: {}", error)).color_range(3, ..),
         0,
         y,
         None,
@@ -1123,7 +1129,7 @@ fn changelog_link_unselected(version: String) -> Text {
         "https://github.com/zellij-org/zellij/releases/tag/v{}",
         version
     );
-    Text::new(full_changelog_text)
+    Text::from(full_changelog_text)
 }
 
 fn changelog_link_selected(version: String) -> Box<dyn Fn(usize, usize) -> usize> {
@@ -1143,7 +1149,7 @@ fn changelog_link_selected_len(version: String) -> Box<dyn Fn() -> usize> {
 }
 
 fn sponsors_link_text_unselected() -> Text {
-    Text::new("https://github.com/sponsors/imsnif")
+    Text::from("https://github.com/sponsors/imsnif")
 }
 
 fn sponsors_link_text_selected(x: usize, y: usize) -> usize {
@@ -1174,16 +1180,16 @@ fn web_client_link_selected_len() -> usize {
 
 // Text components
 fn whats_new_title() -> Text {
-    Text::new("What's new?")
+    Text::from("What's new?")
 }
 
 fn main_screen_title(version: String, is_release_notes: bool) -> Text {
     if is_release_notes {
         let title_text = format!("Hi there, welcome to Zellij {}!", &version);
-        Text::new(title_text).color_range(2, 21..=27 + version.chars().count())
+        Text::from(title_text).color_range(2, 21..=27 + version.chars().count())
     } else {
         let title_text = format!("Zellij {}", &version);
-        Text::new(title_text).color_range(2, ..)
+        Text::from(title_text).color_range(2, ..)
     }
 }
 
@@ -1229,7 +1235,7 @@ fn release_notes_main_help(
 }
 
 fn color_help_keys(help_text: String) -> Text {
-    Text::new(help_text)
+    Text::from(help_text)
         .color_substring(1, "<↓↑>")
         .color_substring(1, "<ENTER>")
         .color_substring(2, "Update Keybindings")
@@ -1239,7 +1245,7 @@ fn color_help_keys(help_text: String) -> Text {
 }
 
 fn link_hover_help() -> Text {
-    Text::new("Help: Click or Shift-Click to open in browser")
+    Text::from("Help: Click or Shift-Click to open in browser")
         .color_range(3, 6..=10)
         .color_range(3, 15..=25)
 }
@@ -1247,27 +1253,27 @@ fn link_hover_help() -> Text {
 fn esc_go_back_plus_link_hover(hovering_over_link: bool, _menu_item_is_selected: bool) -> Text {
     if hovering_over_link {
         let help_text = format!("Help: Click or Shift-Click to open in browser");
-        Text::new(help_text)
+        Text::from(help_text)
             .color_range(3, 6..=10)
             .color_range(3, 15..=25)
     } else {
         let help_text = format!("Help: <ESC> - Go back");
-        Text::new(help_text).color_range(1, 6..=10)
+        Text::from(help_text).color_range(1, 6..=10)
     }
 }
 
 fn esc_to_go_back_help() -> Text {
     let help_text = format!("Help: <ESC> - Go back");
-    Text::new(help_text).color_range(1, 6..=10)
+    Text::from(help_text).color_range(1, 6..=10)
 }
 
 fn main_menu_item(item_name: &str) -> Text {
-    Text::new(item_name).color_range(0, ..)
+    Text::from(item_name).color_range(0, ..)
 }
 
 fn support_the_developer_text() -> Text {
     let support_text = format!("Please support the Zellij developer <3: ");
-    Text::new(support_text).color_range(3, ..)
+    Text::from(support_text).color_range(3, ..)
 }
 
 pub enum TextOrCustomRender {
@@ -1424,7 +1430,7 @@ impl BulletinList {
         let mut item_bulletin = 1;
         let mut running_y = y + 1;
         for item in &mut self.items {
-            let mut item_bulletin_text = Text::new(format!("{}. ", item_bulletin));
+            let mut item_bulletin_text = Text::from(format!("{}. ", item_bulletin));
             if item.is_active {
                 item_bulletin_text = item_bulletin_text.selected();
             }

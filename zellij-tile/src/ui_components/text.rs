@@ -15,27 +15,28 @@ impl From<StyledText> for Text {
     fn from(styled_text: StyledText) -> Self {
         Text {
             text: styled_text.text,
-            selected: false,
-            opaque: false,
-            disabled: false,
             indices: styled_text.indices,
+            ..Default::default()
         }
     }
 }
 
-impl Text {
-    pub fn new<S: AsRef<str>>(content: S) -> Self
-    where
-        S: ToString,
-    {
+impl From<String> for Text {
+    fn from(value: String) -> Self {
         Text {
-            text: content.to_string(),
-            selected: false,
-            opaque: false,
-            disabled: false,
-            indices: vec![],
+            text: value,
+            ..Default::default()
         }
     }
+}
+
+impl From<&str> for Text {
+    fn from(value: &str) -> Self {
+        Text::from(value.to_owned())
+    }
+}
+
+impl Text {
     pub fn selected(mut self) -> Self {
         self.selected = true;
         self
@@ -69,7 +70,7 @@ impl Text {
             Bound::Included(s) => *s + 1,
             Bound::Excluded(s) => *s,
         };
-        let indices = (start..end).into_iter();
+        let indices = start..end;
         self.indices
             .get_mut(DIM_LEVEL)
             .map(|i| i.append(&mut indices.into_iter().collect()));
@@ -112,7 +113,7 @@ impl Text {
             Bound::Included(s) => *s + 1,
             Bound::Excluded(s) => *s,
         };
-        let indices = (start..end).into_iter();
+        let indices = start..end;
         self.indices
             .get_mut(UNBOLD_LEVEL)
             .map(|i| i.append(&mut indices.into_iter().collect()));
@@ -155,7 +156,7 @@ impl Text {
             Bound::Included(s) => *s + 1,
             Bound::Excluded(s) => *s,
         };
-        let indices = (start..end).into_iter();
+        let indices = start..end;
         self.indices
             .get_mut(ERROR_COLOR_LEVEL)
             .map(|i| i.append(&mut indices.into_iter().collect()));
@@ -178,7 +179,6 @@ impl Text {
         substr: S,
         occurrence_index: usize,
     ) -> Self {
-        const ERROR_COLOR_LEVEL: usize = 6;
         let substr = substr.as_ref();
         let mut start = 0;
         let mut count = 0;
@@ -186,7 +186,7 @@ impl Text {
         while let Some(pos) = self.text[start..].find(substr) {
             if count == occurrence_index {
                 let abs_pos = start + pos;
-                return self.color_range(ERROR_COLOR_LEVEL, abs_pos..abs_pos + substr.len());
+                return self.error_color_range(abs_pos..abs_pos + substr.len());
             }
             count += 1;
             start = start + pos + substr.len();
@@ -196,25 +196,16 @@ impl Text {
     }
 
     pub fn error_color_last_substring<S: AsRef<str>>(self, substr: S) -> Self {
-        const ERROR_COLOR_LEVEL: usize = 6;
         let substr = substr.as_ref();
-        let mut start = 0;
-        let mut last_pos = None;
 
-        while let Some(pos) = self.text[start..].find(substr) {
-            last_pos = Some(start + pos);
-            start = start + pos + substr.len();
-        }
-
-        if let Some(abs_pos) = last_pos {
-            return self.color_range(ERROR_COLOR_LEVEL, abs_pos..abs_pos + substr.len());
+        if let Some(pos) = self.text.rfind(substr) {
+            return self.error_color_range(pos..pos + substr.len());
         }
         self
     }
 
     pub fn error_color_all(self) -> Self {
-        const ERROR_COLOR_LEVEL: usize = 6;
-        self.color_range(ERROR_COLOR_LEVEL, ..)
+        self.error_color_range(..)
     }
     pub fn success_color_indices(mut self, mut indices: Vec<usize>) -> Self {
         const SUCCESS_COLOR_LEVEL: usize = 7;
@@ -237,7 +228,7 @@ impl Text {
             Bound::Included(s) => *s + 1,
             Bound::Excluded(s) => *s,
         };
-        let indices = (start..end).into_iter();
+        let indices = start..end;
         self.indices
             .get_mut(SUCCESS_COLOR_LEVEL)
             .map(|i| i.append(&mut indices.into_iter().collect()));
@@ -260,7 +251,6 @@ impl Text {
         substr: S,
         occurrence_index: usize,
     ) -> Self {
-        const SUCCESS_COLOR_LEVEL: usize = 7;
         let substr = substr.as_ref();
         let mut start = 0;
         let mut count = 0;
@@ -268,7 +258,7 @@ impl Text {
         while let Some(pos) = self.text[start..].find(substr) {
             if count == occurrence_index {
                 let abs_pos = start + pos;
-                return self.color_range(SUCCESS_COLOR_LEVEL, abs_pos..abs_pos + substr.len());
+                return self.success_color_range(abs_pos..abs_pos + substr.len());
             }
             count += 1;
             start = start + pos + substr.len();
@@ -278,25 +268,16 @@ impl Text {
     }
 
     pub fn success_color_last_substring<S: AsRef<str>>(self, substr: S) -> Self {
-        const SUCCESS_COLOR_LEVEL: usize = 7;
         let substr = substr.as_ref();
-        let mut start = 0;
-        let mut last_pos = None;
 
-        while let Some(pos) = self.text[start..].find(substr) {
-            last_pos = Some(start + pos);
-            start = start + pos + substr.len();
-        }
-
-        if let Some(abs_pos) = last_pos {
-            return self.color_range(SUCCESS_COLOR_LEVEL, abs_pos..abs_pos + substr.len());
+        if let Some(pos) = self.text.rfind(substr) {
+            return self.success_color_range(pos..pos + substr.len());
         }
         self
     }
 
     pub fn success_color_all(self) -> Self {
-        const SUCCESS_COLOR_LEVEL: usize = 7;
-        self.color_range(SUCCESS_COLOR_LEVEL, ..)
+        self.success_color_range(..)
     }
     pub fn color_indices(mut self, index_level: usize, mut indices: Vec<usize>) -> Self {
         self.pad_indices(index_level);
@@ -317,7 +298,7 @@ impl Text {
             Bound::Included(s) => *s + 1,
             Bound::Excluded(s) => *s,
         };
-        let indices = (start..end).into_iter();
+        let indices = start..end;
         self.indices
             .get_mut(index_level)
             .map(|i| i.append(&mut indices.into_iter().collect()));
@@ -365,16 +346,9 @@ impl Text {
 
     pub fn color_last_substring<S: AsRef<str>>(self, index_level: usize, substr: S) -> Self {
         let substr = substr.as_ref();
-        let mut start = 0;
-        let mut last_pos = None;
 
-        while let Some(pos) = self.text[start..].find(substr) {
-            last_pos = Some(start + pos);
-            start = start + pos + substr.len();
-        }
-
-        if let Some(abs_pos) = last_pos {
-            return self.color_range(index_level, abs_pos..abs_pos + substr.len());
+        if let Some(pos) = self.text.rfind(substr) {
+            return self.color_range(index_level, pos..pos + substr.len());
         }
         self
     }
@@ -428,6 +402,9 @@ impl Text {
     }
     pub fn len(&self) -> usize {
         self.text.chars().count()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.text.is_empty()
     }
 }
 
@@ -490,26 +467,34 @@ mod tests {
     }
 
     #[test]
+    fn from_str_equal_from_string() {
+        let from_str = Text::from("x").serialize();
+        let from_string = Text::from(String::from("x")).serialize();
+
+        assert_eq!(from_str, from_string);
+    }
+
+    #[test]
     fn disabled_flag_serializes_with_a_d_prefix() {
-        let serialized = Text::new("x").disabled().serialize();
+        let serialized = Text::from("x").disabled().serialize();
         assert_eq!(serialized, format!("d{}", text_body("x")));
     }
 
     #[test]
     fn opaque_and_disabled_serialize_in_push_order() {
-        let serialized = Text::new("x").disabled().opaque().serialize();
+        let serialized = Text::from("x").disabled().opaque().serialize();
         assert_eq!(serialized, format!("zd{}", text_body("x")));
     }
 
     #[test]
     fn all_flags_serialize_in_selected_opaque_disabled_order() {
-        let serialized = Text::new("x").disabled().opaque().selected().serialize();
+        let serialized = Text::from("x").disabled().opaque().selected().serialize();
         assert_eq!(serialized, format!("xzd{}", text_body("x")));
     }
 
     #[test]
     fn flags_do_not_disturb_indices_or_text() {
-        let serialized = Text::new("Foo bar baz")
+        let serialized = Text::from("Foo bar baz")
             .disabled()
             .color_indices(0, vec![0, 1, 2])
             .serialize();
