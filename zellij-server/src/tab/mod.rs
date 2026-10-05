@@ -2350,13 +2350,16 @@ impl Tab {
                 None
             };
         }
+        let was_dimmed = self.dimmed_clients.contains(&client_id);
         self.mode_info.borrow_mut().remove(&client_id);
         self.connected_clients.borrow_mut().remove(&client_id);
         self.mouse_help_text_visible.remove(&client_id);
         self.mouse_last_pane_id.remove(&client_id);
         self.last_mouse_activity_time.remove(&client_id);
-        self.set_client_dimmed(client_id, false);
-        self.set_force_render();
+        if is_connected_to_this_tab || was_dimmed {
+            self.set_client_dimmed(client_id, false);
+            self.set_force_render();
+        }
     }
     pub fn drain_connected_clients(
         &mut self,
