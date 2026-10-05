@@ -59,11 +59,10 @@ use zellij_utils::input::window::{
 const BLINK_INTERVAL: Duration = Duration::from_millis(500);
 const DISPLAY_RECHECK: Duration = Duration::from_secs(1);
 const ZOOM_STEP: f64 = 1.1;
-const APPLICATION_ID: &str = "zellij";
 pub(crate) const ICON_PNG: &[u8] = include_bytes!("../../assets/logo128.png");
 
 pub(crate) fn application_id() -> &'static str {
-    APPLICATION_ID
+    crate::identity::identity().app_id
 }
 
 #[derive(Debug)]

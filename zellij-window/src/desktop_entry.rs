@@ -176,11 +176,12 @@ mod xdg {
 
     pub fn render(exec: &str) -> String {
         let id = application_id();
+        let name = crate::identity::identity().display_name;
         format!(
             "[Desktop Entry]\n\
              Version=1.0\n\
              Type=Application\n\
-             Name=Zellij\n\
+             Name={name}\n\
              GenericName=Terminal Workspace\n\
              Comment=Manage Your Terminal Applications\n\
              Exec={exec} window\n\
