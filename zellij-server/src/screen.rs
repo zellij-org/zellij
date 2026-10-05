@@ -1622,6 +1622,8 @@ pub(crate) struct Screen {
     // also be this session
     resurrectable_sessions_cache: BTreeMap<String, Duration>, // String is the session name,
     // duration is its creation time
+    // `SessionUpdate` subscribers expect an initial event, so the first scan is always broadcast
+    session_infos_broadcast: bool,
     default_layout: Box<Layout>,
     default_shell: PathBuf,
     styled_underlines: bool,
@@ -1848,6 +1850,7 @@ impl Screen {
             debug,
             session_name,
             peer_sessions_cache,
+            session_infos_broadcast: false,
             default_layout,
             default_layout_name,
             default_shell,
@@ -6382,27 +6385,72 @@ impl Screen {
 
         Ok(())
     }
+    /// `creation_time` holds the time elapsed since the session was created and is recomputed on
+    /// every scan, so two scans of an unchanged session differ in it even though nothing about the
+    /// session changed.
+    fn session_info_is_same(cached: &SessionInfo, new: &SessionInfo) -> bool {
+        let mut cached = cached.clone();
+        let mut new = new.clone();
+        cached.creation_time = Duration::default();
+        new.creation_time = Duration::default();
+        cached == new
+    }
+
+    fn session_infos_are_same(
+        cached: &BTreeMap<String, SessionInfo>,
+        new: &BTreeMap<String, SessionInfo>,
+    ) -> bool {
+        cached.len() == new.len()
+            && cached.iter().zip(new.iter()).all(
+                |((cached_name, cached_info), (new_name, new_info))| {
+                    cached_name == new_name && Self::session_info_is_same(cached_info, new_info)
+                },
+            )
+    }
+
+    /// Resurrection durations are elapsed times as well, so only the set of resurrectable session
+    /// names tells us whether the resurrectable part of the session list changed.
+    fn resurrectable_sessions_are_same(
+        cached: &BTreeMap<String, Duration>,
+        new: &BTreeMap<String, Duration>,
+    ) -> bool {
+        cached.len() == new.len() && cached.keys().eq(new.keys())
+    }
+
     pub fn update_session_infos(
         &mut self,
         new_session_infos: BTreeMap<String, SessionInfo>,
         resurrectable_sessions: BTreeMap<String, Duration>,
     ) -> Result<()> {
+        // A session list scan pushes its result here, and plugins querying the session list trigger
+        // such a scan. Broadcasting on every scan would therefore wake up the very plugin that just
+        // asked, and a plugin that renders on `SessionUpdate` while querying the session list in its
+        // render would keep itself rendering forever.
+        let session_list_changed = !self.session_infos_broadcast
+            || !Self::session_infos_are_same(&self.peer_sessions_cache, &new_session_infos)
+            || !Self::resurrectable_sessions_are_same(
+                &self.resurrectable_sessions_cache,
+                &resurrectable_sessions,
+            );
         self.peer_sessions_cache = new_session_infos;
         self.resurrectable_sessions_cache = resurrectable_sessions;
-        self.bus
-            .senders
-            .send_to_plugin(PluginInstruction::Update(vec![(
-                None,
-                None,
-                Event::SessionUpdate(
-                    self.peer_sessions_cache.values().cloned().collect(),
-                    self.resurrectable_sessions_cache
-                        .iter()
-                        .map(|(n, c)| (n.clone(), c.clone()))
-                        .collect(),
-                ),
-            )]))
-            .context("failed to update session info")?;
+        if session_list_changed {
+            self.session_infos_broadcast = true;
+            self.bus
+                .senders
+                .send_to_plugin(PluginInstruction::Update(vec![(
+                    None,
+                    None,
+                    Event::SessionUpdate(
+                        self.peer_sessions_cache.values().cloned().collect(),
+                        self.resurrectable_sessions_cache
+                            .iter()
+                            .map(|(n, c)| (n.clone(), c.clone()))
+                            .collect(),
+                    ),
+                )]))
+                .context("failed to update session info")?;
+        }
         self.report_mobile_state();
         Ok(())
     }
