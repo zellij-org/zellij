@@ -553,12 +553,13 @@ impl Page {
             )
             .with_paragraph(vec![ComponentLine::new(vec![ActiveComponent::new(
                 TextOrCustomRender::Text(match *base_mode.borrow() {
-                    InputMode::Locked => Text::from("Check it out with with: Ctrl g + o + w")
-                        .color_range(3, 24..=29)
-                        .color_indices(3, vec![33, 37]),
-                    _ => Text::from("Check it out with with: Ctrl o + w")
-                        .color_range(3, 24..=29)
-                        .color_indices(3, vec![33]),
+                    InputMode::Locked => Text::from("Check it out with: Ctrl g + o + w")
+                        .color_substring(3, "Ctrl g")
+                        .color_nth_substring(3, "o", 1)
+                        .color_last_substring(3, "w"),
+                    _ => Text::from("Check it out with: Ctrl o + w")
+                        .color_substring(3, "Ctrl o")
+                        .color_last_substring(3, "w"),
                 }),
             )])])
             .with_paragraph(vec![ComponentLine::new(vec![ActiveComponent::new(
@@ -650,14 +651,15 @@ impl Page {
                     ActiveComponent::new(TextOrCustomRender::Text(
                             match *base_mode.borrow() {
                                 InputMode::Locked => {
-                                    Text::from("Check it out with with: Ctrl g + o + p")
-                                        .color_range(3, 24..=29)
-                                        .color_indices(3, vec![33, 37])
+                                    Text::from("Check it out with: Ctrl g + o + p")
+                                        .color_substring(3, "Ctrl g")
+                                        .color_nth_substring(3, "o", 1)
+                                        .color_last_substring(3, "p")
                                 },
                                 _ => {
-                                    Text::from("Check it out with with: Ctrl o + p")
-                                        .color_range(3, 24..=29)
-                                        .color_indices(3, vec![33])
+                                    Text::from("Check it out with: Ctrl o + p")
+                                        .color_substring(3, "Ctrl o")
+                                        .color_last_substring(3, "p")
                                 }
                             }
                     )),

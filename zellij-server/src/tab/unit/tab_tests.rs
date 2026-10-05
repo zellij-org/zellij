@@ -895,6 +895,62 @@ pub fn cannot_split_panes_horizontally_when_active_pane_is_too_small() {
 }
 
 #[test]
+pub fn removing_a_client_not_connected_to_the_tab_does_not_force_render() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
+    for pane in tab.tiled_panes.panes.values_mut() {
+        pane.set_should_render(false);
+    }
+    tab.remove_client(99);
+    assert!(
+        tab.tiled_panes.panes.values().all(|p| !p.should_render()),
+        "removing a client that never viewed this tab must not trigger a full re-render"
+    );
+}
+
+#[test]
+pub fn removing_a_client_not_connected_to_the_tab_clears_its_dimming() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
+    tab.set_client_dimmed(99, true);
+    for pane in tab.tiled_panes.panes.values_mut() {
+        pane.set_should_render(false);
+    }
+    tab.remove_client(99);
+    assert!(!tab.dimmed_clients.contains(&99));
+    assert!(
+        tab.tiled_panes.panes.values().all(|p| p.should_render()),
+        "removing a dimmed client must re-render to clear the dimming"
+    );
+}
+
+#[test]
+pub fn removing_a_client_connected_to_the_tab_forces_render() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let stacked_resize = true;
+    let mut tab = create_new_tab(size, stacked_resize);
+    for pane in tab.tiled_panes.panes.values_mut() {
+        pane.set_should_render(false);
+    }
+    tab.remove_client(1);
+    assert!(
+        tab.tiled_panes.panes.values().all(|p| p.should_render()),
+        "removing a client that was viewing this tab must re-render it for the remaining clients"
+    );
+}
+
+#[test]
 pub fn split_in_direction_without_a_connected_client_still_creates_the_pane() {
     let size = Size {
         cols: 121,
@@ -18093,4 +18149,33 @@ fn floating_plugin_panes_are_not_shown_again_when_their_tab_returns_with_the_sur
         !drain_visible_events(&plugin_receiver).contains(&(Some(1), true)),
         "a plugin whose floating surface is hidden should not be told it is visible when its tab returns"
     );
+}
+
+#[test]
+fn suppressed_plugin_panes_get_mode_updates_but_are_not_visible() {
+    let (mut tab, plugin_receiver) = tab_with_floating_plugin_pane(1);
+    tab.suppress_pane(PaneId::Plugin(1), Some(1));
+    while plugin_receiver.try_recv().is_ok() {}
+
+    tab.update_input_modes().unwrap();
+
+    let mut got_mode_update = false;
+    while let Ok((instruction, _)) = plugin_receiver.try_recv() {
+        if let PluginInstruction::Update(updates) = instruction {
+            for (pid, _client_id, event) in updates {
+                if pid == Some(1) && matches!(event, Event::ModeUpdate(..)) {
+                    got_mode_update = true;
+                }
+            }
+        }
+    }
+    assert!(
+        got_mode_update,
+        "a suppressed plugin should still receive ModeUpdate so it can show itself again"
+    );
+    assert!(
+        !tab.get_plugin_ids().contains(&1),
+        "a suppressed plugin should not count as visible, since render targeting uses get_plugin_ids"
+    );
+    assert!(tab.get_plugin_ids_including_suppressed().contains(&1));
 }
