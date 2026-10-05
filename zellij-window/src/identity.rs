@@ -3,10 +3,7 @@ use zellij_utils::distribution::{distribution, Distribution};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Identity {
     pub app_id: &'static str,
-    #[cfg_attr(
-        not(all(unix, not(target_os = "macos"), not(target_os = "android"))),
-        allow(dead_code)
-    )]
+    #[cfg_attr(target_os = "macos", allow(dead_code))]
     pub display_name: &'static str,
     #[cfg(windows)]
     pub windows_app_id: String,
