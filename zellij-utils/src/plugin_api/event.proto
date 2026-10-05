@@ -607,6 +607,7 @@ message PaneInfo {
     optional string default_fg = 24;
     optional string default_bg = 25;
     optional string nested_session_name = 26;
+    bool is_collapsed = 27;
 }
 
 message IndexInPaneGroup {

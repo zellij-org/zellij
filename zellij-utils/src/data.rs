@@ -2896,6 +2896,7 @@ pub struct PaneInfo {
     /// Whether a pane is suppressed - suppressed panes are not visible to the user, but still run
     /// in the background
     pub is_suppressed: bool,
+    pub is_collapsed: bool,
     /// The full title of the pane as it appears in the UI (if there is room for it)
     pub title: String,
     /// Whether a pane exited or not, note that most panes close themselves before setting this

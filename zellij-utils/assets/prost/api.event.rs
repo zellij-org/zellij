@@ -786,6 +786,8 @@ pub struct PaneInfo {
     pub default_bg: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(string, optional, tag="26")]
     pub nested_session_name: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, tag="27")]
+    pub is_collapsed: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

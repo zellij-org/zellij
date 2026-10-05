@@ -59,6 +59,9 @@ impl PanesToHide {
     pub fn is_covered(&self, pane_id: &PaneId) -> bool {
         self.covered.contains(pane_id)
     }
+    pub fn covered(&self) -> impl Iterator<Item = &PaneId> {
+        self.covered.iter()
+    }
     /// Uncover every covered pane and return them, to be covered again with `restore_covered`.
     pub fn take_covered(&mut self) -> HashSet<PaneId> {
         std::mem::take(&mut self.covered)

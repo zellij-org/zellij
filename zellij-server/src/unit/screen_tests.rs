@@ -16686,3 +16686,34 @@ fn a_plugin_prompt_for_a_user_who_is_not_attached_fails() {
     });
     assert!(failed);
 }
+
+#[test]
+fn a_session_with_a_collapsed_pane_serializes_as_if_the_pane_were_expanded() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    {
+        let tab = screen.get_active_tab_mut(1).unwrap();
+        tab.horizontal_split(PaneId::Terminal(2), None, 1, None, None)
+            .unwrap();
+        tab.focus_pane_with_id(PaneId::Terminal(1), false, false, 1)
+            .unwrap();
+    }
+    let serialize = |screen: &Screen| {
+        zellij_utils::session_serialization::serialize_session_layout(
+            screen.get_layout_metadata(None, None).into(),
+        )
+    };
+    let expanded = serialize(&screen).expect("the expanded session should serialize");
+
+    screen
+        .get_active_tab_mut(1)
+        .unwrap()
+        .set_pane_collapsed(PaneId::Terminal(2), true);
+    let collapsed = serialize(&screen).expect("a collapsed pane should not break serialization");
+
+    assert_eq!(collapsed, expanded);
+}

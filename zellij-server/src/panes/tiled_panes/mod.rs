@@ -1081,6 +1081,10 @@ impl TiledPanes {
             log::error!("Cannot focus pane {:?} as it is not selectable!", pane_id);
             return;
         }
+        if self.panes_to_hide.is_covered(&pane_id) && self.fullscreen_is_active != Some(pane_id) {
+            log::error!("Cannot focus pane {:?} as it is collapsed!", pane_id);
+            return;
+        }
         if let Some(focused_pane) = self.active_panes.get(&client_id).copied() {
             if pane_id != focused_pane {
                 self.active_panes.set_last_pane(client_id, focused_pane);
@@ -2740,6 +2744,11 @@ impl TiledPanes {
             .panes
             .get(&pane_id)
             .and_then(|pane| pane.position_and_size().logical_position);
+        let neighbors_already_hold_its_space =
+            self.panes_to_hide.is_covered(&pane_id) && self.fullscreen_is_active != Some(pane_id);
+        if neighbors_already_hold_its_space {
+            self.hand_collapsed_pane_constraints_to_neighbors(pane_id);
+        }
         self.panes_to_hide.forget(&pane_id);
         let mut pane_grid = TiledPaneGrid::new(
             &mut self.panes,
@@ -2747,7 +2756,12 @@ impl TiledPanes {
             *self.display_area.borrow(),
             *self.viewport.borrow(),
         );
-        let closed_pane = if pane_grid.fill_space_over_pane(pane_id) {
+        let closed_pane = if neighbors_already_hold_its_space {
+            let closed_pane = self.panes.remove(&pane_id);
+            self.move_clients_out_of_pane(pane_id);
+            self.set_pane_frames(self.pane_frame_style);
+            closed_pane
+        } else if pane_grid.fill_space_over_pane(pane_id) {
             // successfully filled space over pane
             let closed_pane = self.panes.remove(&pane_id);
             self.move_clients_out_of_pane(pane_id);
@@ -3022,10 +3036,142 @@ impl TiledPanes {
     /// The caller relays out the tab afterwards, which is also where the pane's geometry is
     /// kept current: see `take_collapsed_panes`.
     pub fn set_pane_collapsed(&mut self, pane_id: PaneId, collapsed: bool) -> bool {
-        if collapsed {
-            self.panes_to_hide.set_covered(pane_id)
-        } else {
-            self.panes_to_hide.unset_covered(&pane_id)
+        if !collapsed {
+            return self.panes_to_hide.unset_covered(&pane_id);
+        }
+        if !self.panes_to_hide.set_covered(pane_id) {
+            return false;
+        }
+        let another_pane_can_take_focus = self.panes.iter().any(|(id, pane)| {
+            *id != pane_id && pane.selectable() && !self.panes_to_hide.contains(id)
+        });
+        if another_pane_can_take_focus {
+            self.move_clients_out_of_pane(pane_id);
+        }
+        true
+    }
+    pub fn serialization_geoms_with_collapsed_panes_expanded(&self) -> HashMap<PaneId, PaneGeom> {
+        let collapsed_spaces: Vec<PaneGeom> = self
+            .panes_to_hide
+            .covered()
+            .filter_map(|pane_id| self.panes.get(pane_id))
+            .map(|pane| pane.position_and_size())
+            .collect();
+        self.geoms_with_spaces_given_back(&collapsed_spaces)
+    }
+    fn geoms_with_spaces_given_back(
+        &self,
+        collapsed_spaces: &[PaneGeom],
+    ) -> HashMap<PaneId, PaneGeom> {
+        let mut geoms: HashMap<PaneId, PaneGeom> = HashMap::new();
+        if collapsed_spaces.is_empty() {
+            return geoms;
+        }
+        let mut stacks: BTreeMap<usize, Vec<(PaneId, PaneGeom)>> = BTreeMap::new();
+        let mut standalone_panes = vec![];
+        for (pane_id, pane) in &self.panes {
+            if self.panes_to_hide.is_covered(pane_id) {
+                continue;
+            }
+            let geom = pane.position_and_size();
+            match geom.stacked {
+                Some(stack_id) => stacks
+                    .entry(stack_id)
+                    .or_insert_with(Vec::new)
+                    .push((*pane_id, geom)),
+                None => standalone_panes.push((*pane_id, geom)),
+            }
+        }
+        for (pane_id, geom) in standalone_panes {
+            let mut expanded = geom;
+            for space in collapsed_spaces {
+                if let Some(shrunk) = shrink_off_collapsed_space(expanded, space) {
+                    expanded = shrunk;
+                }
+            }
+            if expanded != geom {
+                geoms.insert(pane_id, expanded);
+            }
+        }
+        for (_stack_id, mut members) in stacks {
+            members.sort_by_key(|(_, geom)| geom.y);
+            let Some(stack_geom) = bounding_geom_of_stack(&members) else {
+                continue;
+            };
+            let mut expanded = stack_geom;
+            for space in collapsed_spaces {
+                if let Some(shrunk) = shrink_off_collapsed_space(expanded, space) {
+                    expanded = shrunk;
+                }
+            }
+            if expanded == stack_geom {
+                continue;
+            }
+            for (pane_id, geom) in fit_stack_members_into(&members, expanded) {
+                geoms.insert(pane_id, geom);
+            }
+        }
+        geoms
+    }
+    fn hand_collapsed_pane_constraints_to_neighbors(&mut self, pane_id: PaneId) {
+        let Some(space) = self
+            .panes
+            .get(&pane_id)
+            .map(|pane| pane.position_and_size())
+        else {
+            return;
+        };
+        let expanded_geoms = self.geoms_with_spaces_given_back(&[space]);
+        let mut row_gains = vec![];
+        let mut col_gains = vec![];
+        for (neighbor_id, expanded) in &expanded_geoms {
+            let Some(current) = self.panes.get(neighbor_id).map(|p| p.position_and_size()) else {
+                continue;
+            };
+            let row_gain = current
+                .rows
+                .as_usize()
+                .saturating_sub(expanded.rows.as_usize());
+            let col_gain = current
+                .cols
+                .as_usize()
+                .saturating_sub(expanded.cols.as_usize());
+            if row_gain > 0 && current.rows.is_percent() {
+                row_gains.push((*neighbor_id, row_gain));
+            }
+            if col_gain > 0 && current.cols.is_percent() {
+                col_gains.push((*neighbor_id, col_gain));
+            }
+        }
+        let distribute = |gains: &[(PaneId, usize)], freed_percent: Option<f64>| {
+            let total_gain: usize = gains.iter().map(|(_, gain)| gain).sum();
+            freed_percent
+                .filter(|_| total_gain > 0)
+                .map(|freed_percent| {
+                    gains
+                        .iter()
+                        .map(|(id, gain)| (*id, freed_percent * *gain as f64 / total_gain as f64))
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default()
+        };
+        for (neighbor_id, share) in distribute(&row_gains, space.rows.as_percent()) {
+            if let Some(neighbor) = self.panes.get_mut(&neighbor_id) {
+                let mut geom = neighbor.position_and_size();
+                if let Some(percent) = geom.rows.as_percent() {
+                    geom.rows.set_percent(percent + share);
+                    neighbor.set_geom(geom);
+                }
+            }
+        }
+        for (neighbor_id, share) in distribute(&col_gains, space.cols.as_percent()) {
+            if let Some(neighbor) = self.panes.get_mut(&neighbor_id) {
+                let mut geom = neighbor.position_and_size();
+                if let Some(percent) = geom.cols.as_percent() {
+                    geom.cols.set_percent(percent + share);
+                    neighbor.set_geom(geom);
+                }
+            }
         }
     }
     pub fn pane_is_collapsed(&self, pane_id: &PaneId) -> bool {
@@ -3128,6 +3274,7 @@ impl TiledPanes {
             let is_focused = self.active_panes.pane_id_is_focused(pane_id);
             pane_info_for_pane.is_floating = false;
             pane_info_for_pane.is_suppressed = false;
+            pane_info_for_pane.is_collapsed = self.panes_to_hide.is_covered(pane_id);
             pane_info_for_pane.is_focused = is_focused;
             pane_info_for_pane.is_fullscreen = is_focused && self.fullscreen_is_active();
             pane_infos.push(pane_info_for_pane);
@@ -3247,4 +3394,86 @@ pub fn pane_geom_is_inside_viewport(viewport: &Viewport, geom: &PaneGeom) -> boo
         && geom.y + geom.rows.as_usize() <= viewport.y + viewport.rows
         && geom.x >= viewport.x
         && geom.x + geom.cols.as_usize() <= viewport.x + viewport.cols
+}
+
+fn shrink_off_collapsed_space(geom: PaneGeom, space: &PaneGeom) -> Option<PaneGeom> {
+    let cols = (geom.x, geom.x + geom.cols.as_usize());
+    let rows = (geom.y, geom.y + geom.rows.as_usize());
+    let space_cols = (space.x, space.x + space.cols.as_usize());
+    let space_rows = (space.y, space.y + space.rows.as_usize());
+    let overlaps = cols.0 < space_cols.1
+        && space_cols.0 < cols.1
+        && rows.0 < space_rows.1
+        && space_rows.0 < rows.1;
+    if !overlaps {
+        return None;
+    }
+    let mut shrunk = geom;
+    if space_cols.0 <= cols.0 && cols.1 <= space_cols.1 {
+        let (start, end) = shrink_span_off(rows, space_rows)?;
+        shrunk.y = start;
+        shrunk.rows.set_inner(end - start);
+    } else if space_rows.0 <= rows.0 && rows.1 <= space_rows.1 {
+        let (start, end) = shrink_span_off(cols, space_cols)?;
+        shrunk.x = start;
+        shrunk.cols.set_inner(end - start);
+    } else {
+        return None;
+    }
+    Some(shrunk)
+}
+
+fn shrink_span_off(
+    (start, end): (usize, usize),
+    (space_start, space_end): (usize, usize),
+) -> Option<(usize, usize)> {
+    let (new_start, new_end) = if start < space_start {
+        (start, space_start.min(end))
+    } else {
+        (space_end.max(start), end)
+    };
+    if new_end > new_start {
+        Some((new_start, new_end))
+    } else {
+        None
+    }
+}
+
+fn bounding_geom_of_stack(members: &[(PaneId, PaneGeom)]) -> Option<PaneGeom> {
+    let (_, first) = members.first()?;
+    let (_, last) = members.last()?;
+    let mut bounding = *first;
+    bounding
+        .rows
+        .set_inner((last.y + last.rows.as_usize()).saturating_sub(first.y));
+    Some(bounding)
+}
+
+fn fit_stack_members_into(
+    members: &[(PaneId, PaneGeom)],
+    stack_geom: PaneGeom,
+) -> Vec<(PaneId, PaneGeom)> {
+    let flexible_position = members
+        .iter()
+        .position(|(_, geom)| !geom.rows.is_fixed())
+        .unwrap_or(0);
+    let flexible_rows = stack_geom.rows.as_usize().saturating_sub(members.len()) + 1;
+    members
+        .iter()
+        .enumerate()
+        .map(|(i, (pane_id, geom))| {
+            let mut fitted = *geom;
+            fitted.x = stack_geom.x;
+            fitted.cols.set_inner(stack_geom.cols.as_usize());
+            if i == flexible_position {
+                fitted.rows.set_inner(flexible_rows);
+            }
+            fitted.y = if i <= flexible_position {
+                stack_geom.y + i
+            } else {
+                stack_geom.y + i + flexible_rows - 1
+            };
+            (*pane_id, fitted)
+        })
+        .collect()
 }

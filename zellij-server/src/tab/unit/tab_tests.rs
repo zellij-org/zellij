@@ -22,6 +22,7 @@ use zellij_utils::input::layout::{SplitDirection, SplitSize, TiledPaneLayout};
 use zellij_utils::input::options::PaneFrameStyle;
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{PaneGeom, Size, SizeInPixels};
+use zellij_utils::position::Position;
 
 use crate::os_input_output::AsyncReader;
 use std::cell::RefCell;
@@ -20831,4 +20832,279 @@ fn a_collapsed_pane_follows_the_tab_when_it_is_resized() {
     );
     assert_eq!(geom_of(&tab, bar).rows.as_usize(), 1);
     assert_eq!(geom_of(&tab, bar).cols.as_usize(), 118);
+}
+
+fn tiled_geoms_as_serialized(tab: &Tab) -> HashMap<PaneId, PaneGeom> {
+    let overrides = tab.tiled_pane_serialization_geoms();
+    tab.get_tiled_panes()
+        .map(|(pane_id, pane)| {
+            (
+                *pane_id,
+                overrides
+                    .get(pane_id)
+                    .copied()
+                    .unwrap_or_else(|| pane.position_and_size()),
+            )
+        })
+        .collect()
+}
+
+fn all_tiled_geoms(tab: &Tab) -> HashMap<PaneId, PaneGeom> {
+    tab.get_tiled_panes()
+        .map(|(pane_id, pane)| (*pane_id, pane.position_and_size()))
+        .collect()
+}
+
+#[test]
+fn a_collapsed_bar_is_serialized_as_if_it_were_expanded() {
+    let mut tab = tab_with_a_one_row_bar_under_a_pane(Size {
+        cols: 121,
+        rows: 20,
+    });
+    let before = all_tiled_geoms(&tab);
+
+    tab.set_pane_collapsed(PaneId::Terminal(1), true);
+
+    assert_ne!(all_tiled_geoms(&tab), before);
+    assert_eq!(tiled_geoms_as_serialized(&tab), before);
+}
+
+#[test]
+fn a_collapsed_column_is_serialized_as_if_it_were_expanded() {
+    let mut tab = create_new_tab(
+        Size {
+            cols: 121,
+            rows: 20,
+        },
+        true,
+    );
+    tab.vertical_split(PaneId::Terminal(2), None, 1, None, None)
+        .unwrap();
+    let before = all_tiled_geoms(&tab);
+
+    tab.set_pane_collapsed(PaneId::Terminal(2), true);
+
+    assert_ne!(all_tiled_geoms(&tab), before);
+    assert_eq!(tiled_geoms_as_serialized(&tab), before);
+}
+
+#[test]
+fn a_collapsed_pane_between_two_panes_is_serialized_as_if_it_were_expanded() {
+    let mut tab = tab_with_a_pane_above_a_pane();
+    tab.horizontal_split(PaneId::Terminal(3), None, 1, None, None)
+        .unwrap();
+    let before = all_tiled_geoms(&tab);
+
+    tab.set_pane_collapsed(PaneId::Terminal(2), true);
+
+    assert_ne!(all_tiled_geoms(&tab), before);
+    assert_eq!(tiled_geoms_as_serialized(&tab), before);
+}
+
+#[test]
+fn a_collapsed_bar_under_a_stack_is_serialized_as_if_it_were_expanded() {
+    let mut layout = TiledPaneLayout::default();
+    layout.children_split_direction = SplitDirection::Horizontal;
+    let mut stack = TiledPaneLayout::default();
+    stack.children_are_stacked = true;
+    stack.children = vec![
+        TiledPaneLayout::default(),
+        TiledPaneLayout::default(),
+        TiledPaneLayout::default(),
+    ];
+    let mut bar = TiledPaneLayout::default();
+    bar.split_size = Some(SplitSize::Fixed(1));
+    layout.children = vec![stack, bar];
+    let mut tab = create_new_tab_with_layout(
+        Size {
+            cols: 121,
+            rows: 20,
+        },
+        layout,
+    );
+    let bar = PaneId::Terminal(3);
+    assert!(geom_of(&tab, PaneId::Terminal(0)).is_stacked());
+    let before = all_tiled_geoms(&tab);
+
+    tab.set_pane_collapsed(bar, true);
+
+    assert_ne!(all_tiled_geoms(&tab), before);
+    assert_eq!(tiled_geoms_as_serialized(&tab), before);
+}
+
+#[test]
+fn nothing_is_overridden_for_serialization_when_no_pane_is_collapsed() {
+    let tab = tab_with_a_pane_above_a_pane();
+
+    assert!(tab.tiled_pane_serialization_geoms().is_empty());
+}
+
+#[test]
+fn collapsing_the_focused_pane_moves_focus_to_a_visible_pane() {
+    let mut tab = tab_with_a_pane_above_a_pane();
+    assert_eq!(tab.get_active_pane_id(1), Some(PaneId::Terminal(2)));
+
+    tab.set_pane_collapsed(PaneId::Terminal(2), true);
+
+    assert_eq!(tab.get_active_pane_id(1), Some(PaneId::Terminal(1)));
+}
+
+#[test]
+fn a_collapsed_pane_cannot_be_focused() {
+    let mut tab = tab_with_a_pane_above_a_pane();
+    tab.set_pane_collapsed(PaneId::Terminal(2), true);
+
+    tab.focus_pane_with_id(PaneId::Terminal(2), false, false, 1)
+        .unwrap();
+
+    assert_eq!(tab.get_active_pane_id(1), Some(PaneId::Terminal(1)));
+}
+
+#[test]
+fn a_collapsed_pane_cannot_be_focused_while_another_pane_is_fullscreen() {
+    let mut tab = tab_with_a_pane_above_a_pane();
+    tab.set_pane_collapsed(PaneId::Terminal(2), true);
+    tab.toggle_active_pane_fullscreen(1);
+    assert!(tab.tiled_panes.fullscreen_is_active());
+
+    tab.focus_pane_with_id(PaneId::Terminal(2), false, false, 1)
+        .unwrap();
+
+    assert_eq!(tab.get_active_pane_id(1), Some(PaneId::Terminal(1)));
+    assert!(
+        tab.tiled_panes.fullscreen_is_active(),
+        "refusing to focus a collapsed pane should leave fullscreen alone"
+    );
+}
+
+#[test]
+fn collapsing_the_only_selectable_pane_keeps_its_focus() {
+    let mut tab = create_new_tab(
+        Size {
+            cols: 121,
+            rows: 20,
+        },
+        true,
+    );
+
+    tab.set_pane_collapsed(PaneId::Terminal(1), true);
+
+    assert_eq!(tab.get_active_pane_id(1), Some(PaneId::Terminal(1)));
+}
+
+#[test]
+fn a_click_on_a_collapsed_panes_space_reaches_the_pane_that_grew_over_it() {
+    let mut tab = tab_with_a_pane_above_a_pane();
+    tab.set_pane_collapsed(PaneId::Terminal(1), true);
+    let point = Position::new(2, 5);
+    assert!(
+        geom_of(&tab, PaneId::Terminal(1)).contains(&point),
+        "the collapsed pane should still describe the space it will come back to"
+    );
+
+    assert_eq!(
+        tab.get_pane_id_at(&point, true).unwrap(),
+        Some(PaneId::Terminal(2))
+    );
+    assert_eq!(
+        tab.get_pane_id_at(&point, false).unwrap(),
+        Some(PaneId::Terminal(2))
+    );
+}
+
+#[test]
+fn closing_a_collapsed_pane_leaves_its_neighbors_where_they_are() {
+    let mut tab = tab_with_a_pane_above_a_pane();
+    tab.horizontal_split(PaneId::Terminal(3), None, 1, None, None)
+        .unwrap();
+    tab.set_pane_collapsed(PaneId::Terminal(2), true);
+    let place_of = |tab: &Tab, pane_id: PaneId| {
+        let geom = geom_of(tab, pane_id);
+        (geom.x, geom.y, geom.cols.as_usize(), geom.rows.as_usize())
+    };
+    let top = place_of(&tab, PaneId::Terminal(1));
+    let bottom = place_of(&tab, PaneId::Terminal(3));
+
+    tab.close_pane(PaneId::Terminal(2), false, None);
+
+    assert_eq!(place_of(&tab, PaneId::Terminal(1)), top);
+    assert_eq!(place_of(&tab, PaneId::Terminal(3)), bottom);
+    assert_eq!(
+        geom_of(&tab, PaneId::Terminal(1)).rows.as_usize()
+            + geom_of(&tab, PaneId::Terminal(3)).rows.as_usize(),
+        20
+    );
+    let percents = geom_of(&tab, PaneId::Terminal(1))
+        .rows
+        .as_percent()
+        .unwrap()
+        + geom_of(&tab, PaneId::Terminal(3))
+            .rows
+            .as_percent()
+            .unwrap();
+    assert!(
+        (percents - 100.0).abs() < 0.001,
+        "the closed pane's share should go to the panes that took its space, got {}",
+        percents
+    );
+}
+
+#[test]
+fn closing_a_collapsed_bar_leaves_the_pane_above_it_holding_the_whole_tab() {
+    let mut tab = tab_with_a_one_row_bar_under_a_pane(Size {
+        cols: 121,
+        rows: 20,
+    });
+    let main_pane = PaneId::Terminal(0);
+    let bar = PaneId::Terminal(1);
+    tab.set_pane_collapsed(bar, true);
+    let before = geom_of(&tab, main_pane);
+
+    tab.close_pane(bar, false, None);
+
+    assert_eq!(geom_of(&tab, main_pane), before);
+    assert_eq!(geom_of(&tab, main_pane).rows.as_usize(), 20);
+}
+
+#[test]
+fn panes_keep_their_place_after_a_collapsed_pane_closes_and_the_tab_resizes() {
+    let mut tab = tab_with_a_pane_above_a_pane();
+    tab.horizontal_split(PaneId::Terminal(3), None, 1, None, None)
+        .unwrap();
+    tab.set_pane_collapsed(PaneId::Terminal(2), true);
+    tab.close_pane(PaneId::Terminal(2), false, None);
+
+    tab.resize_whole_tab(Size {
+        cols: 121,
+        rows: 40,
+    })
+    .unwrap();
+
+    let top = geom_of(&tab, PaneId::Terminal(1));
+    let bottom = geom_of(&tab, PaneId::Terminal(3));
+    assert_eq!(top.y, 0);
+    assert_eq!(bottom.y, top.rows.as_usize());
+    assert_eq!(top.rows.as_usize() + bottom.rows.as_usize(), 40);
+}
+
+#[test]
+fn pane_info_reports_whether_a_pane_is_collapsed() {
+    let mut tab = tab_with_a_pane_above_a_pane();
+    let is_collapsed = |tab: &Tab, id: u32| {
+        tab.tiled_panes
+            .pane_info(&HashMap::new())
+            .into_iter()
+            .find(|info| info.id == id && !info.is_plugin)
+            .map(|info| info.is_collapsed)
+            .unwrap()
+    };
+
+    tab.set_pane_collapsed(PaneId::Terminal(2), true);
+
+    assert!(is_collapsed(&tab, 2));
+    assert!(!is_collapsed(&tab, 1));
+
+    tab.set_pane_collapsed(PaneId::Terminal(2), false);
+
+    assert!(!is_collapsed(&tab, 2));
 }

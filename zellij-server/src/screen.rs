@@ -8698,7 +8698,7 @@ impl Screen {
                 );
             }
 
-            let stack_list_geoms = tab.stack_list_serialization_geoms();
+            let serialization_geoms = tab.tiled_pane_serialization_geoms();
             let tiled_panes: Vec<PaneLayoutMetadata> = tab
                 .get_tiled_panes()
                 .map(|(pane_id, p)| {
@@ -8707,7 +8707,7 @@ impl Screen {
                     // is currently only the case the scrollback editing panes, and
                     // when dumping the layout we want the "real" pane and not the
                     // editor pane
-                    let geom_override = stack_list_geoms.get(pane_id).copied();
+                    let geom_override = serialization_geoms.get(pane_id).copied();
                     let (pane_id, p) = match suppressed_panes.remove(pane_id) {
                         Some((is_scrollback_editor, suppressed_pane)) if *is_scrollback_editor => {
                             (suppressed_pane.pid(), suppressed_pane)

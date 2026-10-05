@@ -1200,10 +1200,13 @@ impl Tab {
             .filter(|(pane_id, _)| self.stack_list_of_member.contains_key(pane_id))
             .map(|(pane_id, (_, pane))| (pane_id, pane))
     }
-    pub fn stack_list_serialization_geoms(&self) -> HashMap<PaneId, PaneGeom> {
+    pub fn tiled_pane_serialization_geoms(&self) -> HashMap<PaneId, PaneGeom> {
+        let expanded_geoms = self
+            .tiled_panes
+            .serialization_geoms_with_collapsed_panes_expanded();
         let mut synthetic_geoms = HashMap::new();
         if self.stack_lists.is_empty() {
-            return synthetic_geoms;
+            return expanded_geoms;
         }
         let mut next_synthetic_stack_id = self
             .tiled_panes
@@ -1216,7 +1219,10 @@ impl Tab {
             let Some(visible_pane) = self.tiled_panes.get_pane(list.visible) else {
                 continue;
             };
-            let full_rect = visible_pane.position_and_size();
+            let full_rect = expanded_geoms
+                .get(&list.visible)
+                .copied()
+                .unwrap_or_else(|| visible_pane.position_and_size());
             let collapsed_member_count = list.members.len().saturating_sub(1);
             let mut running_y = full_rect.y;
             for member in &list.members {
@@ -1242,12 +1248,15 @@ impl Tab {
             }
             next_synthetic_stack_id += 1;
         }
+        for (pane_id, geom) in expanded_geoms {
+            synthetic_geoms.entry(pane_id).or_insert(geom);
+        }
         synthetic_geoms
     }
     pub fn hidden_stack_list_members_for_serialization(
         &self,
     ) -> Vec<(PaneId, &Box<dyn Pane>, PaneGeom)> {
-        let synthetic_geoms = self.stack_list_serialization_geoms();
+        let synthetic_geoms = self.tiled_pane_serialization_geoms();
         let mut hidden_members = vec![];
         for list in self.stack_lists.values() {
             for member in &list.members {
@@ -7028,10 +7037,12 @@ impl Tab {
 
         let found_pane_id = if search_selectable {
             self.get_selectable_tiled_panes()
+                .filter(|(id, _)| !self.tiled_panes.pane_is_collapsed(id))
                 .find(|(_, p)| pane_contains_point(p, point, &stacked_pane_ids_under_flexible_pane))
                 .map(|(&id, _)| id)
         } else {
             self.get_tiled_panes()
+                .filter(|(id, _)| !self.tiled_panes.pane_is_collapsed(id))
                 .find(|(_, p)| pane_contains_point(p, point, &stacked_pane_ids_under_flexible_pane))
                 .map(|(&id, _)| id)
         };
