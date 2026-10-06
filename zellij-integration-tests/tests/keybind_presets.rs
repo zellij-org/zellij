@@ -373,7 +373,7 @@ fn the_keys_page_describes_the_preset_with_examples_using_the_current_leader_key
     zellij.wait_until("the unlock-first examples", |grid_snapshot| {
         grid_snapshot.contains("Ctrl g + p to enter PANE mode")
     });
-    zellij.quit();
+    zellij.kill_session();
 }
 
 fn left_click(zellij: &TestSession, column: usize, line: usize) {

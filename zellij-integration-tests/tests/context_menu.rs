@@ -417,7 +417,7 @@ fn menu_shortcuts_follow_a_change_of_keybinding_preset() {
         !grid_snapshot.contains(COMMON_MENU_MARKER)
             && !grid_snapshot.contains(LAST_COMMON_MENU_ITEM)
     });
-    zellij.quit();
+    zellij.kill_session();
 }
 
 #[test]

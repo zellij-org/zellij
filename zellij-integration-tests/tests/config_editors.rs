@@ -539,9 +539,14 @@ fn menu_items_and_separators_are_edited_with_the_mouse() {
         !grid_snapshot.contains("Edit Item")
     });
     zellij.send_stdin(DELETE);
-    let grid_snapshot = zellij.wait_until("deleting asks first", |grid_snapshot| {
-        grid_snapshot.contains("Don't ask again") && grid_snapshot.contains("Cancel")
-    });
+    let grid_snapshot = zellij.wait_until(
+        "deleting asks first in a popup sized to its content",
+        |grid_snapshot| {
+            grid_snapshot.contains("Don't ask again")
+                && grid_snapshot.contains("Cancel")
+                && grid_snapshot.contains("<Esc> - cancel │")
+        },
+    );
     let row = grid_snapshot.row_of_line("Cancel").unwrap();
     let line = grid_snapshot.lines()[row].clone();
     let column = line[..line.find("Delete").unwrap()].chars().count();
