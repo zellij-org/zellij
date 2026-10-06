@@ -1,7 +1,8 @@
 use zellij_utils::data::{BareKey, HostTerminalThemeMode, KeyWithModifier, PaletteColor, Styling};
 use zellij_utils::input::theme::Theme;
 use zellij_utils::input::window::{
-    BellMode, CursorStyle, NotificationMode, PaddingColor, StartupMode, WindowConfig, WindowTheme,
+    BellMode, CursorStyle, NotificationMode, OptionAsAlt, PaddingColor, StartupMode, WindowConfig,
+    WindowTheme,
 };
 
 use crate::color::{Paints, Srgb};
@@ -44,6 +45,7 @@ pub struct Options {
     pub scroll_animation: std::time::Duration,
     pub scroll_momentum: bool,
     pub scroll_momentum_friction: f64,
+    pub option_as_alt: OptionAsAlt,
 }
 
 pub const DEFAULT_SCROLL_ANIMATION_MS: u16 = 100;
@@ -163,6 +165,7 @@ pub fn resolve(settings: &Settings, mode: Option<HostTerminalThemeMode>) -> Opti
                 .scroll_momentum_friction
                 .unwrap_or(DEFAULT_SCROLL_MOMENTUM_FRICTION),
         ),
+        option_as_alt: section.macos_option_as_alt.unwrap_or_default(),
     }
 }
 
@@ -314,6 +317,7 @@ pub struct Change {
     pub minimum_contrast: bool,
     pub scroll_animation: bool,
     pub scroll_momentum: bool,
+    pub option_as_alt: bool,
 }
 
 impl Change {
@@ -347,6 +351,7 @@ impl Change {
                 || current.scroll_animation != next.scroll_animation,
             scroll_momentum: current.scroll_momentum != next.scroll_momentum
                 || current.scroll_momentum_friction != next.scroll_momentum_friction,
+            option_as_alt: current.option_as_alt != next.option_as_alt,
         }
     }
 
@@ -372,6 +377,7 @@ impl Change {
             || self.minimum_contrast
             || self.scroll_animation
             || self.scroll_momentum
+            || self.option_as_alt
     }
 
     pub fn needs_redraw(&self) -> bool {
@@ -391,7 +397,7 @@ mod tests {
     use std::str::FromStr;
     use zellij_utils::data::{KeyModifier, StyleDeclaration, DEFAULT_STYLES};
     use zellij_utils::input::theme::TerminalColors;
-    use zellij_utils::input::window::{OpacityMode, WindowConfig};
+    use zellij_utils::input::window::{OpacityMode, OptionAsAlt, WindowConfig};
 
     use crate::color::{ANSI_16, DEFAULT_BACKGROUND, DEFAULT_FOREGROUND};
 
@@ -889,6 +895,43 @@ mod tests {
         next.blur = true;
         let change = Change::between(&current, &next);
         assert!(change.blur && change.is_anything());
+        assert!(!change.needs_redraw());
+    }
+
+    #[test]
+    fn the_left_option_key_is_alt_unless_configured_otherwise() {
+        assert_eq!(Options::default().option_as_alt, OptionAsAlt::Left);
+        for side in [
+            OptionAsAlt::None,
+            OptionAsAlt::Left,
+            OptionAsAlt::Right,
+            OptionAsAlt::Both,
+        ] {
+            let options = resolve(
+                &settings(WindowConfig {
+                    macos_option_as_alt: Some(side),
+                    ..WindowConfig::default()
+                }),
+                None,
+            );
+            assert_eq!(options.option_as_alt, side);
+        }
+    }
+
+    #[test]
+    fn an_option_as_alt_change_is_reported_without_a_redraw() {
+        let current = Options::default();
+        let mut next = current.clone();
+        next.option_as_alt = OptionAsAlt::None;
+        let change = Change::between(&current, &next);
+        assert_eq!(
+            change,
+            Change {
+                option_as_alt: true,
+                ..Change::default()
+            }
+        );
+        assert!(change.is_anything());
         assert!(!change.needs_redraw());
     }
 

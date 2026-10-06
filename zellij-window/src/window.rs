@@ -49,7 +49,7 @@ use crate::scroll_animation::{ScrollAnimations, ScrollLayer, ScrollSettings};
 use crate::settings::Settings;
 use crate::terminal::{self, FrameError, TerminalState};
 use crate::window_state::{self, Shown, Startup, WindowState};
-use zellij_utils::input::window::{NotificationMode, PaddingColor, StartupMode};
+use zellij_utils::input::window::{NotificationMode, OptionAsAlt, PaddingColor, StartupMode};
 
 const BLINK_INTERVAL: Duration = Duration::from_millis(500);
 const DISPLAY_RECHECK: Duration = Duration::from_secs(1);
@@ -121,6 +121,7 @@ struct App {
     role: Role,
     geometry: GeometryHandle,
     modifiers: ModifiersState,
+    alt_keys: input::AltKeys,
     pointer: PointerState,
     composition: Composition,
     composed_row: Option<usize>,
@@ -370,6 +371,11 @@ impl App {
         if change.blur {
             if let Some(surfaces) = &self.surfaces {
                 surfaces.window.set_blur(self.options.blur);
+            }
+        }
+        if change.option_as_alt {
+            if let Some(surfaces) = &self.surfaces {
+                set_option_as_alt(&surfaces.window, self.options.option_as_alt);
             }
         }
     }
@@ -895,7 +901,12 @@ impl App {
     }
 
     fn on_key(&mut self, event: &KeyEvent) {
-        self.press(input::Press::of(event, self.modifiers));
+        let option_as_alt = input::option_acts_as_alt(
+            Platform::current(),
+            self.options.option_as_alt,
+            self.alt_keys,
+        );
+        self.press(input::Press::of(event, self.modifiers, option_as_alt));
     }
 
     fn press(&mut self, press: input::Press) {
@@ -1300,15 +1311,18 @@ impl App {
     }
 
     fn bring_up(&mut self, event_loop: &ActiveEventLoop) -> Result<Surfaces> {
-        let attributes = named(startup_attributes(
-            WindowAttributes::default()
-                .with_title(self.title.clone())
-                .with_window_icon(window_icon())
-                .with_transparent(true)
-                .with_blur(self.options.blur)
-                .with_inner_size(self.requested_size()),
-            self.startup.mode,
-        ));
+        let attributes = with_option_as_alt(
+            named(startup_attributes(
+                WindowAttributes::default()
+                    .with_title(self.title.clone())
+                    .with_window_icon(window_icon())
+                    .with_transparent(true)
+                    .with_blur(self.options.blur)
+                    .with_inner_size(self.requested_size()),
+                self.startup.mode,
+            )),
+            self.options.option_as_alt,
+        );
 
         let (window, config) = DisplayBuilder::new()
             .with_window_attributes(Some(attributes))
@@ -1423,6 +1437,7 @@ impl ApplicationHandler<Wake> for App {
             },
             WindowEvent::ModifiersChanged(modifiers) => {
                 self.modifiers = modifiers.state();
+                self.alt_keys = input::AltKeys::of(&modifiers);
                 self.refresh_pointer();
             },
             WindowEvent::KeyboardInput {
@@ -1686,6 +1701,7 @@ impl Rendering {
             role,
             geometry,
             modifiers: ModifiersState::empty(),
+            alt_keys: input::AltKeys::default(),
             pointer: PointerState::new(),
             composition: Composition::new(),
             composed_row: None,
@@ -1861,6 +1877,37 @@ fn named(attributes: WindowAttributes) -> WindowAttributes {
     attributes
 }
 
+#[cfg(target_os = "macos")]
+fn native_option_as_alt(side: OptionAsAlt) -> winit::platform::macos::OptionAsAlt {
+    use winit::platform::macos::OptionAsAlt as Native;
+    match side {
+        OptionAsAlt::None => Native::None,
+        OptionAsAlt::Left => Native::OnlyLeft,
+        OptionAsAlt::Right => Native::OnlyRight,
+        OptionAsAlt::Both => Native::Both,
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn with_option_as_alt(attributes: WindowAttributes, side: OptionAsAlt) -> WindowAttributes {
+    use winit::platform::macos::WindowAttributesExtMacOS;
+    attributes.with_option_as_alt(native_option_as_alt(side))
+}
+
+#[cfg(not(target_os = "macos"))]
+fn with_option_as_alt(attributes: WindowAttributes, _side: OptionAsAlt) -> WindowAttributes {
+    attributes
+}
+
+#[cfg(target_os = "macos")]
+fn set_option_as_alt(window: &Window, side: OptionAsAlt) {
+    use winit::platform::macos::WindowExtMacOS;
+    window.set_option_as_alt(native_option_as_alt(side));
+}
+
+#[cfg(not(target_os = "macos"))]
+fn set_option_as_alt(_window: &Window, _side: OptionAsAlt) {}
+
 fn pick_config(configs: Box<dyn Iterator<Item = Config> + '_>) -> Config {
     let configs: Vec<Config> = configs.collect();
     let best = best_config(
@@ -1961,6 +2008,7 @@ mod tests {
             scroll_animation: Duration::from_millis(100),
             scroll_momentum: true,
             scroll_momentum_friction: 2.0,
+            option_as_alt: OptionAsAlt::Left,
         }
     }
 
@@ -2503,6 +2551,20 @@ mod tests {
             zellij_utils::structured_render::FrameBuilder::new(cols as u16, rows as u16, seq);
         builder.sideband_mut().extend_from_slice(sideband);
         builder.finish()
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn every_option_as_alt_side_reaches_the_windowing_system() {
+        use winit::platform::macos::OptionAsAlt as Native;
+        for (side, native) in [
+            (OptionAsAlt::None, Native::None),
+            (OptionAsAlt::Left, Native::OnlyLeft),
+            (OptionAsAlt::Right, Native::OnlyRight),
+            (OptionAsAlt::Both, Native::Both),
+        ] {
+            assert_eq!(native_option_as_alt(side), native, "{:?}", side);
+        }
     }
 
     #[test]

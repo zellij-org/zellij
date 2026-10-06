@@ -273,6 +273,53 @@ impl PaddingColor {
     }
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum OptionAsAlt {
+    None,
+    // TODO: decide the default. "left" makes zellij's Alt bindings work out of
+    // the box; "none" is what most terminals ship; or add a layout-aware "auto"
+    // (Alt on U.S. layouts only, like Ghostty).
+    #[default]
+    Left,
+    Right,
+    Both,
+}
+
+impl OptionAsAlt {
+    pub fn from_kdl(kdl: &KdlNode) -> Result<Self, ConfigError> {
+        let named = kdl
+            .entries()
+            .iter()
+            .next()
+            .and_then(|entry| entry.value().as_string());
+        match named.map(str::to_ascii_lowercase).as_deref() {
+            Some("left") => Ok(OptionAsAlt::Left),
+            Some("right") => Ok(OptionAsAlt::Right),
+            Some("both") => Ok(OptionAsAlt::Both),
+            Some("none") => Ok(OptionAsAlt::None),
+            _ => Err(ConfigError::new_kdl_error(
+                "macos_option_as_alt must be \"left\", \"right\", \"both\" or \"none\"".to_owned(),
+                kdl.span().offset(),
+                kdl.span().len(),
+            )),
+        }
+    }
+
+    pub fn to_kdl(&self) -> KdlNode {
+        let mut node = KdlNode::new("macos_option_as_alt");
+        node.push(KdlValue::String(
+            match self {
+                OptionAsAlt::Left => "left",
+                OptionAsAlt::Right => "right",
+                OptionAsAlt::Both => "both",
+                OptionAsAlt::None => "none",
+            }
+            .to_owned(),
+        ));
+        node
+    }
+}
+
 pub const FONT_WEIGHT_NAMES: &[(&str, u16)] = &[
     ("thin", 100),
     ("hairline", 100),
@@ -395,6 +442,7 @@ pub struct WindowConfig {
     pub opacity: Option<f32>,
     pub opacity_mode: Option<OpacityMode>,
     pub blur: Option<bool>,
+    pub macos_option_as_alt: Option<OptionAsAlt>,
     pub theme: Option<WindowTheme>,
     pub padding: Option<f32>,
     pub padding_top: Option<f32>,
@@ -484,6 +532,9 @@ impl WindowConfig {
         }
         if let Some(blur) = kdl_get_child_entry_bool_value!(kdl, "blur") {
             window.blur = Some(blur);
+        }
+        if let Some(option_as_alt) = kdl_get_child!(kdl, "macos_option_as_alt") {
+            window.macos_option_as_alt = Some(OptionAsAlt::from_kdl(option_as_alt)?);
         }
         if let Some(theme) = kdl_get_child!(kdl, "theme") {
             window.theme = Some(WindowTheme::from_kdl(theme)?);
@@ -652,6 +703,9 @@ impl WindowConfig {
             blur_node.push(KdlValue::Bool(blur));
             children.nodes_mut().push(blur_node);
         }
+        if let Some(option_as_alt) = self.macos_option_as_alt {
+            children.nodes_mut().push(option_as_alt.to_kdl());
+        }
         if let Some(theme) = self.theme.as_ref().and_then(|theme| theme.to_kdl()) {
             children.nodes_mut().push(theme);
         }
@@ -771,6 +825,7 @@ impl WindowConfig {
         merged.opacity = other.opacity.or(merged.opacity);
         merged.opacity_mode = other.opacity_mode.or(merged.opacity_mode);
         merged.blur = other.blur.or(merged.blur);
+        merged.macos_option_as_alt = other.macos_option_as_alt.or(merged.macos_option_as_alt);
         merged.theme = match (merged.theme, other.theme) {
             (Some(mine), Some(theirs)) => Some(mine.merge(theirs)),
             (mine, theirs) => theirs.or(mine),
@@ -1171,6 +1226,7 @@ mod tests {
                 opacity 0.85
                 opacity_mode "everything"
                 blur true
+                macos_option_as_alt "right"
                 theme {
                     foreground "#e5e5e5"
                     background 0 0 0
@@ -1225,6 +1281,7 @@ mod tests {
         assert_eq!(parsed.opacity, Some(0.85));
         assert_eq!(parsed.opacity_mode, Some(OpacityMode::Everything));
         assert_eq!(parsed.blur, Some(true));
+        assert_eq!(parsed.macos_option_as_alt, Some(OptionAsAlt::Right));
         let theme = parsed.theme.clone().unwrap();
         assert_eq!(theme.foreground, Some(PaletteColor::Rgb((229, 229, 229))));
         assert_eq!(theme.background, Some(PaletteColor::Rgb((0, 0, 0))));
@@ -1524,6 +1581,45 @@ mod tests {
         );
         assert!(section("window {\n opacity_mode\n}").is_err());
         assert_eq!(OpacityMode::default(), OpacityMode::Background);
+    }
+
+    #[test]
+    fn every_option_as_alt_side_is_named_and_an_unknown_one_lists_the_valid_ones() {
+        for (text, expected) in [
+            ("left", OptionAsAlt::Left),
+            ("right", OptionAsAlt::Right),
+            ("both", OptionAsAlt::Both),
+            ("none", OptionAsAlt::None),
+            ("Left", OptionAsAlt::Left),
+        ] {
+            let parsed =
+                section(&format!("window {{\n macos_option_as_alt \"{}\"\n}}", text)).unwrap();
+            assert_eq!(parsed.macos_option_as_alt, Some(expected), "{}", text);
+            let emitted = parsed.to_kdl().unwrap().to_string();
+            assert_eq!(section(&emitted).unwrap(), parsed, "{}", emitted);
+        }
+        let err = section("window {\n macos_option_as_alt \"sideways\"\n}").unwrap_err();
+        let message = format!("{:?}", err);
+        assert!(
+            ["left", "right", "both", "none"]
+                .iter()
+                .all(|side| message.contains(side)),
+            "{}",
+            message
+        );
+        assert!(section("window {\n macos_option_as_alt\n}").is_err());
+        assert!(section("window {\n macos_option_as_alt true\n}").is_err());
+        assert_eq!(section("window {\n}").unwrap().macos_option_as_alt, None);
+        assert_eq!(OptionAsAlt::default(), OptionAsAlt::Left);
+    }
+
+    #[test]
+    fn a_later_section_supersedes_the_option_as_alt_side() {
+        let first = section("window {\n macos_option_as_alt \"both\"\n}").unwrap();
+        let kept = first.merge(section("window {\n blur true\n}").unwrap());
+        assert_eq!(kept.macos_option_as_alt, Some(OptionAsAlt::Both));
+        let replaced = kept.merge(section("window {\n macos_option_as_alt \"none\"\n}").unwrap());
+        assert_eq!(replaced.macos_option_as_alt, Some(OptionAsAlt::None));
     }
 
     #[test]
