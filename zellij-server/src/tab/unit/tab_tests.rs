@@ -21214,7 +21214,7 @@ pub fn a_shift_click_bypasses_a_program_that_asked_for_the_mouse() {
 }
 
 #[test]
-pub fn a_shift_right_click_is_still_the_programs_because_the_pane_decides_that_one() {
+pub fn a_shift_right_click_opens_the_context_menu_instead_of_going_to_the_program() {
     use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
 
     let size = Size {
@@ -21231,17 +21231,20 @@ pub fn a_shift_right_click_is_still_the_programs_because_the_pane_decides_that_o
     event.right = true;
     event.shift = true;
     event.position = zellij_utils::position::Position::new(5, 5);
-    tab.handle_mouse_event(&event, 1).unwrap();
+    let effect = tab.handle_mouse_event(&event, 1).unwrap();
 
     let writes = drain_pty_writer(&rx);
     assert!(
-        writes.iter().any(|write| matches!(
+        !writes.iter().any(|write| matches!(
             write,
             PtyWriteInstruction::Write(bytes, _, _)
                 if String::from_utf8_lossy(bytes).starts_with("\u{1b}[<")
         )),
-        "the right button never consulted terminal_wants_mouse, so shift does not move it; \
-         selection is a left-button gesture, got {writes:?}"
+        "shift must hold the right click back from the program, got {writes:?}"
+    );
+    assert!(
+        effect.open_context_menu.is_some(),
+        "a shift right click over a program that wants the mouse opens the context menu"
     );
 }
 

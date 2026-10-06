@@ -748,7 +748,10 @@ pub fn update_theme_file(path: &Path, name: &str, palette: &Styling) -> Result<(
         .cloned();
     *theme_node = theme_to_kdl(name, palette);
     if let Some(terminal_colors) = terminal_colors {
-        theme_node.ensure_children().nodes_mut().push(terminal_colors);
+        theme_node
+            .ensure_children()
+            .nodes_mut()
+            .push(terminal_colors);
     }
     document.fmt();
     let new_text = document.to_string();

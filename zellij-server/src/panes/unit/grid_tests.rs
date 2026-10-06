@@ -98,11 +98,12 @@ fn erase_line_end_past_row_end_styles_only_cells_from_cursor() {
 
     assert_eq!(row.width_cached(), 6);
     assert_eq!(row_to_string(&row), "ab    ");
-    assert!(row
-        .columns[2..4]
+    assert!(row.columns[2..4]
         .iter()
         .all(|cell| *cell == EMPTY_TERMINAL_CHARACTER));
-    assert!(row.columns[4..6].iter().all(|cell| *cell == erase_character));
+    assert!(row.columns[4..6]
+        .iter()
+        .all(|cell| *cell == erase_character));
 }
 
 #[test]
@@ -6898,11 +6899,11 @@ fn styles_at(
     *grid.as_character_lines()[line_index][column].styles
 }
 
-const GRAY_BACKGROUND: &str = "\u{1b}[48;5;238m";
-const LIGHT_GRAY_BACKGROUND: &str = "\u{1b}[48;5;245m";
-const GREEN_BACKGROUND: &str = "\u{1b}[48;5;154m";
-const GREEN_FOREGROUND: &str = "\u{1b}[38;5;154m";
-const RED_FOREGROUND: &str = "\u{1b}[38;5;124m";
+const GRAY_BACKGROUND: &str = "\u{1b}[48;2;56;56;56m";
+const LIGHT_GRAY_BACKGROUND: &str = "\u{1b}[48;2;215;215;215m";
+const GREEN_BACKGROUND: &str = "\u{1b}[48;2;150;220;90m";
+const GREEN_FOREGROUND: &str = "\u{1b}[38;2;150;220;90m";
+const RED_FOREGROUND: &str = "\u{1b}[38;2;255;95;110m";
 
 #[test]
 fn button_ui_component_renders_each_look_in_grays() {

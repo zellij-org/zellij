@@ -6911,7 +6911,10 @@ impl Themes {
             has_themes = true;
             let mut current_theme_node = theme_to_kdl(&theme_name, &theme.palette);
             if let Some(terminal_colors) = theme.terminal_colors {
-                current_theme_node.ensure_children().nodes_mut().push(terminal_colors.to_kdl());
+                current_theme_node
+                    .ensure_children()
+                    .nodes_mut()
+                    .push(terminal_colors.to_kdl());
             }
             themes.nodes_mut().push(current_theme_node);
         }
