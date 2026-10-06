@@ -1553,7 +1553,7 @@ impl Tab {
                 self.senders,
                 self.character_cell_size
             )
-            .with_context(err_context)?;
+            .non_fatal();
             let is_scrollback_editor = false;
             self.suppressed_panes
                 .insert(pid, (is_scrollback_editor, new_pane));
@@ -1666,7 +1666,7 @@ impl Tab {
                 self.senders,
                 self.character_cell_size
             )
-            .with_context(err_context)?;
+            .non_fatal();
             let is_scrollback_editor = false;
             self.suppressed_panes
                 .insert(pid, (is_scrollback_editor, new_pane));
@@ -1764,7 +1764,7 @@ impl Tab {
                 self.senders,
                 self.character_cell_size
             )
-            .with_context(err_context)?;
+            .non_fatal();
             let is_scrollback_editor = false;
             self.suppressed_panes
                 .insert(pid, (is_scrollback_editor, new_pane));
@@ -1914,7 +1914,7 @@ impl Tab {
                 self.senders,
                 self.character_cell_size
             )
-            .with_context(err_context)?;
+            .non_fatal();
             let is_scrollback_editor = false;
             self.suppressed_panes
                 .insert(pid, (is_scrollback_editor, new_pane));
@@ -1958,15 +1958,18 @@ impl Tab {
                         self.insert_scrollback_editor_replaced_pane(replaced_pane, pid);
                         self.get_active_pane(client_id)
                             .with_context(|| format!("no active pane found for client {client_id}"))
-                            .and_then(|current_active_pane| {
+                            .map(|current_active_pane| {
+                                // a resize that cannot reach this pane's PTY or plugin is a
+                                // LOGGED event, never an Err: this `?` ends at the screen
+                                // thread's `.fatal()`, which panics every pane in the session
                                 resize_pty!(
                                     current_active_pane,
                                     self.os_api,
                                     self.senders,
                                     self.character_cell_size
                                 )
-                            })
-                            .with_context(err_context)?;
+                                .non_fatal();
+                            })?;
                     },
                     None => {
                         Err::<(), _>(anyhow!(
@@ -2101,7 +2104,7 @@ impl Tab {
                                 self.os_api,
                                 self.senders,
                                 self.character_cell_size
-                            );
+                            ).non_fatal();
                             let is_scrollback_editor = false;
                             self.suppressed_panes.insert(
                                 PaneId::Terminal(new_pane_id),
@@ -2166,7 +2169,7 @@ impl Tab {
                                 self.os_api,
                                 self.senders,
                                 self.character_cell_size
-                            );
+                            ).non_fatal();
                             let is_scrollback_editor = false;
                             self.suppressed_panes.insert(
                                 PaneId::Plugin(plugin_pid),
@@ -2542,7 +2545,7 @@ impl Tab {
                     self.senders,
                     self.character_cell_size
                 )
-                .with_context(err_context)?;
+                .non_fatal();
             }
             terminal_output.handle_pty_bytes(bytes);
             let messages_to_pty = terminal_output.drain_messages_to_pty();
@@ -3819,7 +3822,7 @@ impl Tab {
                         self.os_api,
                         self.senders,
                         self.character_cell_size
-                    )?;
+                    ).non_fatal();
                 }
                 Ok(replaced_pane)
             })
@@ -4904,7 +4907,7 @@ impl Tab {
         floating_pane_coordinates: Option<FloatingPaneCoordinates>,
         should_focus_new_pane: bool,
     ) -> Result<()> {
-        let err_context = || format!("failed to add floating pane");
+        let _err_context = || format!("failed to add floating pane");
         if let Some(mut new_pane_geom) = self.floating_panes.find_room_for_new_pane() {
             if let Some(floating_pane_coordinates) = &floating_pane_coordinates {
                 let viewport = self.viewport.borrow();
@@ -4927,7 +4930,7 @@ impl Tab {
                 pane.render_full_viewport(); // to make sure the frame is re-rendered
             }
             resize_pty!(pane, self.os_api, self.senders, self.character_cell_size)
-                .with_context(err_context)?;
+                .non_fatal();
             self.floating_panes.add_pane(pane_id, pane);
             if should_focus_new_pane {
                 self.floating_panes.focus_pane_for_all_clients(pane_id);

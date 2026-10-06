@@ -602,7 +602,7 @@ impl<'a> LayoutApplier<'a> {
             self.os_api,
             self.senders,
             self.character_cell_size
-        )?;
+        ).non_fatal();
         self.floating_panes
             .add_pane(PaneId::Plugin(pid), Box::new(new_pane));
         if floating_pane_layout.focus.unwrap_or(false) {
@@ -661,7 +661,7 @@ impl<'a> LayoutApplier<'a> {
             self.os_api,
             self.senders,
             self.character_cell_size
-        )?;
+        ).non_fatal();
         self.floating_panes
             .add_pane(PaneId::Terminal(*pid), Box::new(new_pane));
         if floating_pane_layout.focus.unwrap_or(false) {
@@ -1291,7 +1291,7 @@ impl<'a> PaneApplier<'a> {
         if layout.is_expanded_in_stack {
             self.pane_ids_expanded_in_stack.push(pane.pid());
         }
-        let _ = resize_pty!(pane, self.os_api, self.senders, self.character_cell_size);
+        let _ = resize_pty!(pane, self.os_api, self.senders, self.character_cell_size).non_fatal();
         self.tiled_panes
             .add_pane_with_existing_geom(pane.pid(), pane);
     }
@@ -1321,7 +1321,7 @@ impl<'a> PaneApplier<'a> {
         position_and_size: PaneGeom,
     ) {
         pane.set_geom(position_and_size);
-        let _ = resize_pty!(pane, self.os_api, self.senders, self.character_cell_size);
+        let _ = resize_pty!(pane, self.os_api, self.senders, self.character_cell_size).non_fatal();
         self.floating_panes.add_pane(pane.pid(), pane);
     }
 

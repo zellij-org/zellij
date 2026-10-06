@@ -360,7 +360,9 @@ impl FloatingPanes {
         }
     }
     pub fn set_pane_frames(&mut self) -> Result<()> {
-        let err_context =
+        // kept for the 4-arg `resize_pty!` arm's shape; the sites now log with
+        // `.non_fatal()`, so this closure is no longer read (see that macro)
+        let _err_context =
             |pane_id: &PaneId| format!("failed to activate frame on pane {pane_id:?}");
 
         for pane in self.panes.values_mut() {
@@ -372,7 +374,7 @@ impl FloatingPanes {
                 pane.set_content_offset(Offset::default());
             }
             resize_pty!(pane, os_api, self.senders, self.character_cell_size)
-                .with_context(|| err_context(&pane.pid()))?;
+                .non_fatal();
         }
         Ok(())
     }
@@ -517,7 +519,7 @@ impl FloatingPanes {
     pub fn resize_pty_all_panes(&mut self, _os_api: &mut Box<dyn ServerOsApi>) -> Result<()> {
         for pane in self.panes.values_mut() {
             resize_pty!(pane, os_api, self.senders, self.character_cell_size)
-                .with_context(|| format!("failed to resize PTY in pane {:?}", pane.pid()))?;
+                .non_fatal();
         }
         Ok(())
     }
@@ -559,7 +561,7 @@ impl FloatingPanes {
 
         for pane in self.panes.values_mut() {
             resize_pty!(pane, os_api, self.senders, self.character_cell_size)
-                .with_context(err_context)?;
+                .non_fatal();
         }
         self.set_force_render();
         Ok(true)
