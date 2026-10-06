@@ -344,3 +344,128 @@ fn the_pane_environment_is_added_to_and_removed_from_the_child_environment() {
     assert!(output.contains(expected), "got: '{}'", output);
     assert!(std::env::var("ZELLIJ_PANE_ENV_TEST").is_err());
 }
+
+#[cfg(unix)]
+#[test]
+fn command_env_overrides_the_pane_environment_but_not_zellij_pane_id() {
+    use crate::os_input_output::PaneEnv;
+    use crate::panes::PaneId;
+    use std::collections::BTreeMap;
+    use zellij_utils::input::command::TerminalAction;
+
+    let server = make_server();
+    let env: BTreeMap<String, String> = [
+        ("ZELLIJ_TEST_FOO".to_owned(), "from the command".to_owned()),
+        ("ZELLIJ_TEST_BAR".to_owned(), "bar baz".to_owned()),
+        ("ZELLIJ_PANE_ID".to_owned(), "999999".to_owned()),
+    ]
+    .into();
+    let cmd = RunCommand {
+        command: PathBuf::from("sh"),
+        args: vec![
+            "-c".to_string(),
+            "echo \"start:${ZELLIJ_TEST_FOO}:${ZELLIJ_TEST_BAR}:${ZELLIJ_PANE_ID}:end\""
+                .to_string(),
+        ],
+        env,
+        ..Default::default()
+    };
+    let mut pane_env = PaneEnv::new();
+    pane_env.insert(
+        "ZELLIJ_TEST_FOO".to_owned(),
+        Some("from the config".to_owned()),
+    );
+    let quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send> = Box::new(|_, _, _| {});
+    let (terminal_id, mut reader, _child_pid) = server
+        .spawn_terminal(TerminalAction::RunCommand(cmd), quit_cb, None, &pane_env)
+        .expect("spawn_terminal should succeed");
+    let expected = format!("start:from the command:bar baz:{}:end", terminal_id);
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let output = rt.block_on(async {
+        let mut output = Vec::new();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while std::time::Instant::now() < deadline
+            && !String::from_utf8_lossy(&output).contains(&expected)
+        {
+            match tokio::time::timeout(
+                std::time::Duration::from_millis(500),
+                reader.read_chunk(4096),
+            )
+            .await
+            {
+                Ok(Ok(bytes)) if bytes.is_empty() => break,
+                Ok(Ok(bytes)) => output.extend_from_slice(&bytes),
+                Ok(Err(_)) => break,
+                Err(_) => {},
+            }
+        }
+        String::from_utf8_lossy(&output).to_string()
+    });
+    assert!(output.contains(&expected), "got: '{}'", output);
+}
+
+#[test]
+fn pane_env_for_command_layers_the_command_env_on_top() {
+    use crate::os_input_output::{pane_env_for_command, PaneEnv};
+
+    let mut pane_env = PaneEnv::new();
+    pane_env.insert("FROM_CONFIG".to_owned(), Some("config".to_owned()));
+    pane_env.insert("OVERRIDDEN".to_owned(), Some("config".to_owned()));
+    pane_env.insert("UNSET_BY_CONFIG".to_owned(), None);
+    pane_env.insert("SET_AGAIN".to_owned(), None);
+    let cmd = RunCommand {
+        env: [
+            ("OVERRIDDEN".to_owned(), "command".to_owned()),
+            ("SET_AGAIN".to_owned(), "command".to_owned()),
+            ("ZELLIJ_PANE_ID".to_owned(), "999".to_owned()),
+        ]
+        .into(),
+        ..Default::default()
+    };
+
+    let mut expected = PaneEnv::new();
+    expected.insert("FROM_CONFIG".to_owned(), Some("config".to_owned()));
+    expected.insert("OVERRIDDEN".to_owned(), Some("command".to_owned()));
+    expected.insert("UNSET_BY_CONFIG".to_owned(), None);
+    expected.insert("SET_AGAIN".to_owned(), Some("command".to_owned()));
+    assert_eq!(pane_env_for_command(&cmd, &pane_env), expected);
+}
+
+#[test]
+fn pane_env_for_command_without_command_env_is_the_pane_env() {
+    use crate::os_input_output::{pane_env_for_command, PaneEnv};
+
+    let mut pane_env = PaneEnv::new();
+    pane_env.insert("FROM_CONFIG".to_owned(), Some("config".to_owned()));
+    assert_eq!(
+        pane_env_for_command(&RunCommand::default(), &pane_env),
+        pane_env
+    );
+}
+
+#[test]
+fn pane_env_for_command_matches_names_like_the_platform() {
+    use crate::os_input_output::{pane_env_for_command, PaneEnv};
+
+    let mut pane_env = PaneEnv::new();
+    pane_env.insert("Path".to_owned(), Some("config".to_owned()));
+    let cmd = RunCommand {
+        env: [
+            ("PATH".to_owned(), "command".to_owned()),
+            ("zellij_pane_id".to_owned(), "999".to_owned()),
+        ]
+        .into(),
+        ..Default::default()
+    };
+
+    let mut expected = PaneEnv::new();
+    expected.insert("PATH".to_owned(), Some("command".to_owned()));
+    if cfg!(not(windows)) {
+        expected.insert("Path".to_owned(), Some("config".to_owned()));
+        expected.insert("zellij_pane_id".to_owned(), Some("999".to_owned()));
+    }
+    assert_eq!(pane_env_for_command(&cmd, &pane_env), expected);
+}

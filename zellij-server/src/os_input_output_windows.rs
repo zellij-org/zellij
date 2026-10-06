@@ -1,4 +1,4 @@
-use crate::os_input_output::{resolve_command, AsyncReader, PaneEnv};
+use crate::os_input_output::{pane_env_for_command, resolve_command, AsyncReader, PaneEnv};
 use crate::panes::PaneId;
 
 use std::{
@@ -532,14 +532,16 @@ impl WindowsPtyBackend {
         terminal_id: u32,
         pane_env: &PaneEnv,
     ) -> Result<(Box<dyn AsyncReader>, u32)> {
-        if let Some(resolved) = resolve_command(&cmd, pane_env) {
+        let cmd_env = pane_env_for_command(&cmd, pane_env);
+        if let Some(resolved) = resolve_command(&cmd, &cmd_env) {
             cmd.command = resolved;
-            return self.do_spawn(cmd, quit_cb, terminal_id, pane_env);
+            return self.do_spawn(cmd, quit_cb, terminal_id, &cmd_env);
         }
         if let Some(mut failover) = failover_cmd {
-            if let Some(resolved) = resolve_command(&failover, pane_env) {
+            let failover_env = pane_env_for_command(&failover, pane_env);
+            if let Some(resolved) = resolve_command(&failover, &failover_env) {
                 failover.command = resolved;
-                return self.do_spawn(failover, quit_cb, terminal_id, pane_env);
+                return self.do_spawn(failover, quit_cb, terminal_id, &failover_env);
             }
         }
         Err(ZellijError::CommandNotFound {
