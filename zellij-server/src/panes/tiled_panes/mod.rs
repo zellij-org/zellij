@@ -601,7 +601,7 @@ impl TiledPanes {
                 }
             }
 
-            resize_pty!(pane, self.os_api, self.senders, self.character_cell_size).unwrap();
+            resize_pty!(pane, self.os_api, self.senders, self.character_cell_size).non_fatal();
         }
         self.reset_boundaries();
     }
@@ -1758,7 +1758,7 @@ impl TiledPanes {
 
         for pane in self.panes.values_mut() {
             // TODO: only for the panes whose width/height actually changed
-            resize_pty!(pane, self.os_api, self.senders, self.character_cell_size).unwrap();
+            resize_pty!(pane, self.os_api, self.senders, self.character_cell_size).non_fatal();
         }
         self.reset_boundaries();
         Ok(pane_size_changed)
