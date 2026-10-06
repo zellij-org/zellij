@@ -11005,6 +11005,7 @@ pub(crate) fn screen_thread_main(
                         continue;
                     }
                 }
+                let mut closed_pane_was_never_created = false;
                 match client_id {
                     Some(client_id) => {
                         active_tab!(screen, client_id, |tab: &mut Tab| tab.close_pane(
@@ -11025,6 +11026,7 @@ pub(crate) fn screen_thread_main(
                         if !found {
                             if screen.pane_ids_never_created.remove(&id) {
                                 pending_events_waiting_for_pane.remove(&id);
+                                closed_pane_was_never_created = true;
                             } else {
                                 pending_events_waiting_for_pane.entry(id).or_default().push(
                                     ScreenInstruction::ClosePane(id, None, None, exit_status),
@@ -11042,10 +11044,12 @@ pub(crate) fn screen_thread_main(
                 // child exit path (quit_cb) only sends ScreenInstruction::ClosePane
                 // and never sends PtyInstruction::ClosePane. The handler in Pty is
                 // idempotent, so this is safe even if ClosePane was already sent.
-                let _ = screen
-                    .bus
-                    .senders
-                    .send_to_pty(PtyInstruction::ClosePane(id, None));
+                let pty_cleanup = if closed_pane_was_never_created {
+                    PtyInstruction::ClosePaneThatWasNotCreated(id, None)
+                } else {
+                    PtyInstruction::ClosePane(id, None)
+                };
+                let _ = screen.bus.senders.send_to_pty(pty_cleanup);
 
                 let connected_client_ids: Vec<ClientId> =
                     screen.active_tab_ids.keys().copied().collect();

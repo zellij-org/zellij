@@ -100,7 +100,7 @@ fn saving_writes_only_the_changed_lines_and_keeps_comments() {
     zellij.wait_until("nothing is left unsaved", |grid_snapshot| {
         grid_snapshot.contains("0 unsaved changes")
     });
-    zellij.quit();
+    zellij.kill_session();
 }
 
 fn change_then_edit_the_file_outside(zellij: &TestSession) -> (std::path::PathBuf, String) {
@@ -237,5 +237,5 @@ fn the_first_run_wizard_saves_the_chosen_preset_into_the_new_config_file() {
     zellij.wait_until("the wizard closed", |grid_snapshot| {
         !grid_snapshot.contains("How would you like your keybindings to work?")
     });
-    zellij.quit();
+    zellij.kill_session();
 }
