@@ -95,6 +95,42 @@ pub fn wait_for_action_completion(
     }
 }
 
+fn wait_for_cli_action_completion(
+    receiver: oneshot::Receiver<ActionCompletionResult>,
+    action_name: &str,
+) -> ActionCompletionResult {
+    let runtime = get_tokio_runtime();
+    match runtime
+        .block_on(async { tokio::time::timeout(ACTION_COMPLETION_TIMEOUT, receiver).await })
+    {
+        Ok(Ok(result)) => result,
+        Ok(Err(_)) => ActionCompletionResult {
+            exit_status: None,
+            affected_pane_id: None,
+            affected_tab_id: None,
+            error_message: None,
+            stdout_message: None,
+        },
+        Err(_) => {
+            log::error!(
+                "Action {} did not complete within {:?} timeout",
+                action_name,
+                ACTION_COMPLETION_TIMEOUT
+            );
+            ActionCompletionResult {
+                exit_status: None,
+                affected_pane_id: None,
+                affected_tab_id: None,
+                error_message: Some(format!(
+                    "Action {} did not complete within {:?}, its outcome is unknown",
+                    action_name, ACTION_COMPLETION_TIMEOUT
+                )),
+                stdout_message: None,
+            }
+        },
+    }
+}
+
 // This is used to wait for actions that span multiple threads until they logically end
 // dropping this struct sends a notification through the oneshot channel to the receiver, letting
 // it know the action is ended and thus releasing it
@@ -235,6 +271,7 @@ pub(crate) fn route_action(
     mut seen_cli_pipes: Option<&mut HashSet<String>>,
     default_mode: InputMode,
     os_input: Option<Box<dyn ServerOsApi>>,
+    is_cli_client: bool,
 ) -> Result<(bool, Option<ActionCompletionResult>)> {
     let mut should_break = false;
     let err_context = || format!("failed to route action for client {client_id}");
@@ -2302,7 +2339,11 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
         },
     }
-    let result = wait_for_action_completion(completion_rx, &action_name, wait_forever);
+    let result = if is_cli_client && !wait_forever {
+        wait_for_cli_action_completion(completion_rx, &action_name)
+    } else {
+        wait_for_action_completion(completion_rx, &action_name, wait_forever)
+    };
     if let Some(error_message) = &result.error_message {
         if let Some(cli_client_id) = cli_client_id {
             if let Some(ref os_input) = os_input {
@@ -2602,6 +2643,7 @@ pub(crate) fn route_thread_main(
                                         Some(&mut seen_cli_pipes),
                                         client_input_mode,
                                         Some(os_input.clone()),
+                                        false,
                                     ) {
                                         Ok(route_action_should_break) => {
                                             if route_action_should_break.0 {
@@ -2678,6 +2720,7 @@ pub(crate) fn route_thread_main(
                                     Some(&mut seen_cli_pipes),
                                     client_input_mode,
                                     Some(os_input.clone()),
+                                    is_cli_client,
                                 ) {
                                     Ok(route_action_should_break) => {
                                         if route_action_should_break.0 {

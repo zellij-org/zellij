@@ -137,6 +137,7 @@ macro_rules! apply_action {
             None,
             $env.default_mode.clone(),
             None,
+            false,
         ) {
             Ok((_, result)) => result,
             Err(e) => {
@@ -401,6 +402,7 @@ fn run_context_menu_item(env: &PluginEnv, index: usize) {
                 None,
                 default_mode,
                 None,
+                false,
             ) {
                 log::error!("Failed to run context menu action: {:?}", e);
             }
@@ -1847,6 +1849,7 @@ fn run_action(env: &PluginEnv, mut action: Action, context: BTreeMap<String, Str
             None,
             default_mode,
             None,
+            false,
         ) {
             Ok((_should_break, result)) => {
                 // Extract pane_id from ActionCompletionResult
@@ -5473,6 +5476,7 @@ fn try_edit_layout(
         None,
         env.default_mode.clone(),
         None,
+        false,
     )
     .map(|_| ())
     .map_err(|e| format!("Failed to route edit action: {:?}", e))
