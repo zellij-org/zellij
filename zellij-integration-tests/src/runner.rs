@@ -944,10 +944,11 @@ impl TestSession {
         let socket_path = zellij_utils::consts::ZELLIJ_SOCK_DIR.join(&self.session_name);
         let stream = zellij_utils::consts::ipc_connect(&socket_path)
             .unwrap_or_else(|err| panic!("failed to connect to {:?}: {:?}", socket_path, err));
-        let _ = zellij_utils::ipc::IpcSenderWithContext::<
-            zellij_utils::ipc::ClientToServerMsg,
-        >::new(stream)
-        .send_client_msg(zellij_utils::ipc::ClientToServerMsg::KillSession);
+        let _ =
+            zellij_utils::ipc::IpcSenderWithContext::<zellij_utils::ipc::ClientToServerMsg>::new(
+                stream,
+            )
+            .send_client_msg(zellij_utils::ipc::ClientToServerMsg::KillSession);
         self.main_client.join();
         if let Some(server_thread) = self.server_thread.lock().unwrap().take() {
             join_server_thread_with_timeout(server_thread);
