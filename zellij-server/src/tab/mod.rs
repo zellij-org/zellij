@@ -4718,7 +4718,11 @@ impl Tab {
         bytes: VteBytes,
     ) -> Result<()> {
         if let Some(popup_pane) = self.popup_pane_mut(pid) {
+            let has_content = !bytes.is_empty();
             popup_pane.handle_plugin_bytes(client_id, bytes);
+            if has_content {
+                self.reveal_popup(pid);
+            }
             return Ok(());
         }
         if let Some(plugin_pane) = self
@@ -8340,7 +8344,11 @@ impl Tab {
     }
     pub fn request_plugin_permissions(&mut self, pid: u32, permissions: Option<PluginPermission>) {
         if let Some(popup_pane) = self.popup_pane_mut(pid) {
+            let asks_for_permissions = permissions.is_some();
             popup_pane.request_permissions_from_user(permissions);
+            if asks_for_permissions {
+                self.reveal_popup(pid);
+            }
             self.set_force_render();
             return;
         }

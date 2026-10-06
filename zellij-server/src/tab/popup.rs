@@ -39,6 +39,7 @@ pub(crate) struct Popup {
     pub wanted_cols: usize,
     pub wanted_rows: usize,
     pub anchor_pane: Option<PaneId>,
+    pub held_back: bool,
 }
 
 impl Popup {
@@ -242,6 +243,7 @@ impl Tab {
             wanted_cols,
             wanted_rows,
             anchor_pane: None,
+            held_back: false,
         });
         self.reflow_popups_for_client(client_id, Some(plugin_id));
         self.set_force_render();
@@ -253,6 +255,30 @@ impl Tab {
             .get(&client_id)
             .map(|stack| stack.iter().filter_map(|popup| popup.plugin_id()).collect())
             .unwrap_or_default()
+    }
+    fn popup_with_plugin_id_mut(&mut self, plugin_id: u32) -> Option<&mut Popup> {
+        self.popups
+            .values_mut()
+            .flat_map(|stack| stack.iter_mut())
+            .find(|popup| popup.plugin_id() == Some(plugin_id))
+    }
+    pub fn hold_back_popup(&mut self, plugin_id: u32) {
+        if let Some(popup) = self.popup_with_plugin_id_mut(plugin_id) {
+            popup.held_back = true;
+        }
+    }
+    pub fn reveal_popup(&mut self, plugin_id: u32) -> bool {
+        let Some(popup) = self.popup_with_plugin_id_mut(plugin_id) else {
+            return false;
+        };
+        if !popup.held_back {
+            return false;
+        }
+        popup.held_back = false;
+        popup.pane.set_should_render(true);
+        popup.pane.render_full_viewport();
+        self.set_force_render();
+        true
     }
     pub fn set_popup_anchor(&mut self, plugin_id: u32, anchor_pane: Option<PaneId>) {
         if let Some(popup) = self
@@ -494,7 +520,8 @@ impl Tab {
         self.popups
             .get(&client_id)
             .map(|stack| {
-                let mut drawing_order: Vec<&Popup> = stack.iter().collect();
+                let mut drawing_order: Vec<&Popup> =
+                    stack.iter().filter(|popup| !popup.held_back).collect();
                 drawing_order.sort_by_key(|popup| popup.takes_focus());
                 drawing_order
                     .into_iter()
@@ -691,7 +718,8 @@ impl Tab {
             if !connected_clients.contains(client_id) {
                 continue;
             }
-            let mut drawing_order: Vec<&mut Popup> = stack.iter_mut().collect();
+            let mut drawing_order: Vec<&mut Popup> =
+                stack.iter_mut().filter(|popup| !popup.held_back).collect();
             drawing_order.sort_by_key(|popup| popup.takes_focus());
             for (layer, popup) in drawing_order.into_iter().enumerate() {
                 if force {

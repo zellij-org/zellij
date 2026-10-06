@@ -189,7 +189,7 @@ impl ZellijPlugin for ContextMenuPlugin {
             Event::ModeUpdate(mode_info) => {
                 self.mode_info = Some(mode_info);
                 self.rebuild();
-                true
+                self.menu.is_some()
             },
             Event::Key(key) => self.handle_key(key),
             Event::Mouse(mouse) => self.handle_mouse(mouse),

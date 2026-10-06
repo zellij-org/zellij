@@ -71,6 +71,10 @@ pub enum BackgroundJob {
     ClearHelpText {
         client_id: ClientId,
     },
+    RevealPopupAfter {
+        plugin_id: u32,
+        delay_ms: u64,
+    },
     ClearCommandOutputFlash {
         pane_id: PaneId,
     },
@@ -107,6 +111,7 @@ impl From<&BackgroundJob> for BackgroundJobContext {
                 BackgroundJobContext::QueryZellijWebServerStatus
             },
             BackgroundJob::ClearHelpText { .. } => BackgroundJobContext::ClearHelpText,
+            BackgroundJob::RevealPopupAfter { .. } => BackgroundJobContext::RevealPopup,
             BackgroundJob::ClearCommandOutputFlash { .. } => {
                 BackgroundJobContext::ClearCommandOutputFlash
             },
@@ -632,6 +637,18 @@ pub(crate) fn background_jobs_main(
                         let _ = senders.send_to_screen(
                             ScreenInstruction::ClearPaneFrameColorOverride(pane_ids),
                         );
+                    }
+                });
+            },
+            BackgroundJob::RevealPopupAfter {
+                plugin_id,
+                delay_ms,
+            } => {
+                runtime.spawn({
+                    let senders = bus.senders.clone();
+                    async move {
+                        tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+                        let _ = senders.send_to_screen(ScreenInstruction::RevealPopup(plugin_id));
                     }
                 });
             },

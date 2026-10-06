@@ -3353,6 +3353,16 @@ pub fn check_event_permission(
     (PermissionStatus::Denied, Some(permission))
 }
 
+pub(crate) fn apply_pending_popup_size(running_plugin: &mut RunningPlugin) -> bool {
+    let Some((columns, rows)) = running_plugin.store.data_mut().pending_popup_size.take() else {
+        return false;
+    };
+    let changed = running_plugin.rows != rows || running_plugin.columns != columns;
+    running_plugin.rows = rows;
+    running_plugin.columns = columns;
+    changed
+}
+
 pub fn apply_event_to_plugin(
     plugin_id: PluginId,
     client_id: ClientId,
@@ -3362,9 +3372,7 @@ pub fn apply_event_to_plugin(
     senders: ThreadSenders,
     plugin_subscriptions: &HashSet<EventType>,
 ) -> Result<()> {
-    let instance = &running_plugin.instance;
-    let rows = running_plugin.rows;
-    let columns = running_plugin.columns;
+    let instance = running_plugin.instance.clone();
 
     let err_context = || format!("Failed to apply event to plugin {plugin_id}");
     match check_event_permission(running_plugin.store.data(), event) {
@@ -3398,6 +3406,11 @@ pub fn apply_event_to_plugin(
                         // screen
                         should_render = true;
                     }
+                    if apply_pending_popup_size(running_plugin) {
+                        should_render = true;
+                    }
+                    let rows = running_plugin.rows;
+                    let columns = running_plugin.columns;
                     if rows > 0 && columns > 0 && should_render {
                         let rendered_bytes = instance
                             .get_typed_func::<(i32, i32), ()>(&mut running_plugin.store, "render")

@@ -17620,6 +17620,81 @@ fn a_focused_popup_takes_keys_and_clicks_above_information_popups() {
     assert!(!tab.has_popup_for_client(client_id));
 }
 
+#[test]
+fn a_held_back_popup_is_hidden_until_its_plugin_draws_something() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let (mut tab, _plugin_receiver) =
+        create_new_tab_with_plugin_receiver(size, ModeInfo::default());
+    open_test_prompt_popup(&mut tab, client_id, 42, 3);
+    tab.hold_back_popup(42);
+    let hidden = render_snapshot_for_client(&mut tab, client_id, size);
+    assert!(!hidden.contains("held back text"), "{}", hidden);
+    tab.handle_plugin_bytes(42, client_id, vec![]).unwrap();
+    let still_hidden = render_snapshot_for_client(&mut tab, client_id, size);
+    assert!(!still_hidden.contains("held back text"), "{}", still_hidden);
+    tab.handle_plugin_bytes(42, client_id, b"held back text".to_vec())
+        .unwrap();
+    let shown = render_snapshot_for_client(&mut tab, client_id, size);
+    assert!(shown.contains("held back text"), "{}", shown);
+}
+
+#[test]
+fn a_held_back_popup_is_shown_when_revealed_without_drawing() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let (mut tab, _plugin_receiver) =
+        create_new_tab_with_plugin_receiver(size, ModeInfo::default());
+    open_test_prompt_popup(&mut tab, client_id, 42, 3);
+    tab.handle_plugin_bytes(42, client_id, b"fallback text".to_vec())
+        .unwrap();
+    tab.hold_back_popup(42);
+    let hidden = render_snapshot_for_client(&mut tab, client_id, size);
+    assert!(!hidden.contains("fallback text"), "{}", hidden);
+    assert!(tab.reveal_popup(42));
+    assert!(!tab.reveal_popup(42));
+    let shown = render_snapshot_for_client(&mut tab, client_id, size);
+    assert!(shown.contains("fallback text"), "{}", shown);
+}
+
+#[test]
+fn a_held_back_popup_asking_for_permissions_is_shown() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let (mut tab, _plugin_receiver) =
+        create_new_tab_with_plugin_receiver(size, ModeInfo::default());
+    tab.open_popup(
+        client_id,
+        42,
+        crate::tab::PopupPlacement::At(Position::new(3, 3)),
+        crate::tab::PopupKind::Prompt,
+        60,
+        8,
+        None,
+        String::from("prompt"),
+    )
+    .unwrap();
+    tab.hold_back_popup(42);
+    tab.request_plugin_permissions(
+        42,
+        Some(zellij_utils::data::PluginPermission::new(
+            "my-plugin".to_owned(),
+            vec![zellij_utils::data::PermissionType::ReadApplicationState],
+        )),
+    );
+    let snapshot = render_snapshot_for_client(&mut tab, client_id, size);
+    assert!(snapshot.contains("asks permission to"), "{}", snapshot);
+}
+
 fn render_snapshot_for_client(tab: &mut Tab, client_id: ClientId, size: Size) -> String {
     let mut output = Output::default();
     tab.render(&mut output, None).unwrap();

@@ -423,7 +423,8 @@ fn run_context_menu_item(env: &PluginEnv, index: usize) {
     });
 }
 
-fn set_popup_size(env: &PluginEnv, width: usize, height: usize) {
+fn set_popup_size(env: &mut PluginEnv, width: usize, height: usize) {
+    env.pending_popup_size = Some((width, height));
     env.senders
         .send_to_screen(ScreenInstruction::SetPopupSize {
             plugin_id: env.plugin_id,

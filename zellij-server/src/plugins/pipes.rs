@@ -1,6 +1,6 @@
 use super::{PluginId, PluginInstruction};
 use crate::plugins::plugin_map::RunningPlugin;
-use crate::plugins::wasm_bridge::PluginRenderAsset;
+use crate::plugins::wasm_bridge::{apply_pending_popup_size, PluginRenderAsset};
 use crate::plugins::zellij_exports::{wasi_read_string, wasi_write_object};
 use std::collections::{HashMap, HashSet};
 use zellij_utils::data::{PipeMessage, PipeSource};
@@ -316,9 +316,7 @@ fn apply_pipe_message_to_plugin_inner(
     plugin_render_assets: &mut Vec<PluginRenderAsset>,
     senders: &ThreadSenders,
 ) -> Result<()> {
-    let instance = &running_plugin.instance;
-    let rows = running_plugin.rows;
-    let columns = running_plugin.columns;
+    let instance = running_plugin.instance.clone();
 
     let err_context = || format!("Failed to apply event to plugin {plugin_id}");
     let protobuf_pipe_message: ProtobufPipeMessage = pipe_message
@@ -335,7 +333,12 @@ fn apply_pipe_message_to_plugin_inner(
             let should_render = pipe
                 .call(&mut running_plugin.store, ())
                 .with_context(err_context)?;
-            let should_render = should_render == 1;
+            let mut should_render = should_render == 1;
+            if apply_pending_popup_size(running_plugin) {
+                should_render = true;
+            }
+            let rows = running_plugin.rows;
+            let columns = running_plugin.columns;
             if rows > 0 && columns > 0 && should_render {
                 let rendered_bytes = instance
                     .get_typed_func::<(i32, i32), ()>(&mut running_plugin.store, "render")
