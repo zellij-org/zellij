@@ -206,9 +206,8 @@ fn a_removed_preset_key_is_written_as_unbind_and_reset_back() {
             && toggle_row < buttons_row
             && key_color.is_some()
             && key_color != plain_color
-            && (delete_column + 7..delete_column + 12).all(|column| {
-                grid_snapshot.cell_foreground(column, question_row) == key_color
-            })
+            && (delete_column + 7..delete_column + 12)
+                .all(|column| grid_snapshot.cell_foreground(column, question_row) == key_color)
             && grid_snapshot.cell_foreground(delete_column + 13, question_row) == plain_color
     });
     let question_row = grid_snapshot
