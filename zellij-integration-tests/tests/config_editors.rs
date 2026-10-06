@@ -183,8 +183,33 @@ fn a_removed_preset_key_is_written_as_unbind_and_reset_back() {
     });
     zellij.send_stdin(DELETE);
     let grid_snapshot = zellij.wait_until("removal is confirmed first", |grid_snapshot| {
-        grid_snapshot.contains("Delete Alt n from Normal mode?")
-            && grid_snapshot.contains("Don't ask again")
+        let (Some(question_row), Some(toggle_row), Some(buttons_row)) = (
+            grid_snapshot.row_of_line("Delete Alt n from Normal mode?"),
+            grid_snapshot.row_of_line("Don't ask again"),
+            grid_snapshot.row_of_line("Cancel"),
+        ) else {
+            return false;
+        };
+        let lines = grid_snapshot.lines();
+        let Some(question_line) = lines.get(question_row) else {
+            return false;
+        };
+        let Some(delete_offset) = question_line.find("Delete Alt n") else {
+            return false;
+        };
+        let delete_column = question_line[..delete_offset].chars().count();
+        let plain_color = grid_snapshot.cell_foreground(delete_column, question_row);
+        let key_color = grid_snapshot.cell_foreground(delete_column + 7, question_row);
+        question_row >= 2
+            && lines[question_row - 2].contains("Confirm")
+            && lines[buttons_row].contains("Delete")
+            && toggle_row < buttons_row
+            && key_color.is_some()
+            && key_color != plain_color
+            && (delete_column + 7..delete_column + 12).all(|column| {
+                grid_snapshot.cell_foreground(column, question_row) == key_color
+            })
+            && grid_snapshot.cell_foreground(delete_column + 13, question_row) == plain_color
     });
     let question_row = grid_snapshot
         .row_of_line("Delete Alt n from Normal mode?")
