@@ -1,24 +1,29 @@
 use std::collections::BTreeSet;
 
-use winit::event::KeyEvent;
-use winit::keyboard::{Key, ModifiersState, NamedKey};
+use winit::event::{KeyEvent, Modifiers};
+use winit::keyboard::{Key, ModifiersKeyState, ModifiersState, NamedKey};
 use zellij_utils::data::{BareKey, KeyModifier, KeyWithModifier};
 use zellij_utils::input::actions::Action;
+use zellij_utils::input::window::OptionAsAlt;
 use zellij_utils::ipc::ClientToServerMsg;
+
+use crate::platform::Platform;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Press {
     pub logical: Key,
     pub unmodified: Option<Key>,
     pub modifiers: ModifiersState,
+    pub option_as_alt: bool,
 }
 
 impl Press {
-    pub fn of(event: &KeyEvent, modifiers: ModifiersState) -> Self {
+    pub fn of(event: &KeyEvent, modifiers: ModifiersState, option_as_alt: bool) -> Self {
         Self {
             logical: event.logical_key.clone(),
             unmodified: unmodified_key(event),
             modifiers,
+            option_as_alt,
         }
     }
 
@@ -27,16 +32,43 @@ impl Press {
             logical,
             unmodified: None,
             modifiers,
+            option_as_alt: false,
         }
     }
 
     fn effective_modifiers(&self) -> ModifiersState {
         let mut modifiers = self.modifiers;
-        if alt_shifted_the_character(&self.logical, self.unmodified.as_ref()) {
+        if !self.option_as_alt && alt_shifted_the_character(&self.logical, self.unmodified.as_ref())
+        {
             modifiers.remove(ModifiersState::ALT);
         }
         modifiers
     }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct AltKeys {
+    pub left: bool,
+    pub right: bool,
+}
+
+impl AltKeys {
+    pub fn of(modifiers: &Modifiers) -> Self {
+        Self {
+            left: modifiers.lalt_state() == ModifiersKeyState::Pressed,
+            right: modifiers.ralt_state() == ModifiersKeyState::Pressed,
+        }
+    }
+}
+
+pub fn option_acts_as_alt(platform: Platform, side: OptionAsAlt, held: AltKeys) -> bool {
+    platform == Platform::MacOs
+        && match side {
+            OptionAsAlt::None => false,
+            OptionAsAlt::Left => held.left,
+            OptionAsAlt::Right => held.right,
+            OptionAsAlt::Both => held.left || held.right,
+        }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -222,6 +254,7 @@ mod tests {
     use winit::keyboard::{NativeKey, SmolStr};
 
     use crate::connection::{send, test_attach_at as attach_at, Capabilities, Geometry};
+    use crate::platform::Platform;
     use crate::test_server::FakeServer;
 
     fn character(text: &str) -> Key {
@@ -241,6 +274,21 @@ mod tests {
             logical: character(logical),
             unmodified: Some(character(unmodified)),
             modifiers,
+            option_as_alt: false,
+        }
+    }
+
+    fn converted(logical: &str, unmodified: &str, modifiers: ModifiersState) -> Press {
+        Press {
+            option_as_alt: true,
+            ..layered(logical, unmodified, modifiers)
+        }
+    }
+
+    fn sent(press: &Press) -> Vec<u8> {
+        match key_message(press) {
+            Some(ClientToServerMsg::Key { raw_bytes, .. }) => raw_bytes,
+            other => panic!("expected a key message, got {:?}", other),
         }
     }
 
@@ -483,6 +531,94 @@ mod tests {
     }
 
     #[test]
+    fn an_option_key_converted_to_alt_is_an_alt_chord() {
+        let pressed = converted("h", "h", ModifiersState::ALT);
+        assert_eq!(
+            translate(&pressed),
+            Some(KeyWithModifier::new(BareKey::Char('h')).with_alt_modifier())
+        );
+        assert_eq!(sent(&pressed), b"\x1bh");
+    }
+
+    #[test]
+    fn a_converted_option_keeps_its_alt_on_a_shifted_symbol() {
+        let both = ModifiersState::ALT | ModifiersState::SHIFT;
+        let pressed = converted("+", "=", both);
+        assert_eq!(
+            translate(&pressed),
+            Some(KeyWithModifier::new(BareKey::Char('+')).with_alt_modifier()),
+            "the conversion leaves Shift in the character; that is not Option being spent"
+        );
+        assert_eq!(sent(&pressed), b"\x1b+");
+        let keys = vec![KeyWithModifier::new(BareKey::Char('+'))
+            .with_alt_modifier()
+            .with_shift_modifier()];
+        assert!(claims(&keys, &pressed));
+    }
+
+    #[test]
+    fn an_option_key_left_typing_characters_is_not_an_alt_chord() {
+        let both = ModifiersState::ALT | ModifiersState::SHIFT;
+        for (logical, unmodified, modifiers) in [("˙", "h", ModifiersState::ALT), ("±", "=", both)]
+        {
+            let pressed = layered(logical, unmodified, modifiers);
+            assert_eq!(
+                key_message(&pressed),
+                key_message(&press(character(logical), none())),
+                "{} must arrive as plain text",
+                logical
+            );
+        }
+    }
+
+    #[test]
+    fn only_the_configured_option_key_acts_as_alt_and_only_on_macos() {
+        let left = AltKeys {
+            left: true,
+            right: false,
+        };
+        let right = AltKeys {
+            left: false,
+            right: true,
+        };
+        let both = AltKeys {
+            left: true,
+            right: true,
+        };
+        let cases = [
+            (OptionAsAlt::Left, left, true),
+            (OptionAsAlt::Left, right, false),
+            (OptionAsAlt::Left, both, true),
+            (OptionAsAlt::Right, left, false),
+            (OptionAsAlt::Right, right, true),
+            (OptionAsAlt::Right, both, true),
+            (OptionAsAlt::Both, left, true),
+            (OptionAsAlt::Both, right, true),
+            (OptionAsAlt::Both, both, true),
+            (OptionAsAlt::Both, AltKeys::default(), false),
+            (OptionAsAlt::None, left, false),
+            (OptionAsAlt::None, right, false),
+            (OptionAsAlt::None, both, false),
+        ];
+        for (side, held, expected) in cases {
+            assert_eq!(
+                option_acts_as_alt(Platform::MacOs, side, held),
+                expected,
+                "{:?} with {:?}",
+                side,
+                held
+            );
+            for platform in [Platform::Linux, Platform::Windows] {
+                assert!(
+                    !option_acts_as_alt(platform, side, held),
+                    "{:?} has no Option key to convert",
+                    platform
+                );
+            }
+        }
+    }
+
+    #[test]
     fn a_shift_level_is_never_mistaken_for_an_alt_level() {
         assert!(!alt_shifted_the_character(
             &character("A"),
@@ -508,6 +644,7 @@ mod tests {
             logical: character("@"),
             unmodified: None,
             modifiers: ModifiersState::ALT,
+            option_as_alt: false,
         };
         assert_eq!(
             translate(&pressed),

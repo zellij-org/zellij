@@ -749,6 +749,11 @@ web_client {
 //     // Plasma, and ignored elsewhere.
 //     blur false
 //
+//     // Which Option key acts as Alt on macOS: "left" (the default), "right",
+//     // "both" or "none". The other one keeps typing characters such as å or ˙.
+//     // Ignored on other platforms.
+//     macos_option_as_alt "left"
+//
 //     // How a new window opens: "windowed", "maximized", "fullscreen", or
 //     // "remember" (the default), which reopens at the size, counted in rows
 //     // and columns, and in the state the last window was closed in. With

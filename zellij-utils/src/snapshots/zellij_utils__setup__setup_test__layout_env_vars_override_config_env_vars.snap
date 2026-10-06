@@ -6819,6 +6819,7 @@ Config {
         opacity: None,
         opacity_mode: None,
         blur: None,
+        macos_option_as_alt: None,
         theme: None,
         padding: None,
         padding_top: None,
