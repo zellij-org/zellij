@@ -1738,11 +1738,13 @@ fn test_reapply_layout_exact_match() {
             pane command="htop"
             pane command="vim"
             pane
+            pane
+            pane
         }
     "#;
 
     let (tiled_layout, floating_layout) = parse_kdl_layout(initial_kdl);
-    let terminal_ids = vec![(1, None), (2, None), (3, None)];
+    let terminal_ids = vec![(1, None), (2, None), (3, None), (4, None), (5, None)];
 
     let size = Size {
         cols: 120,
@@ -1798,7 +1800,7 @@ fn test_reapply_layout_exact_match() {
 
     applier
         .apply_layout(
-            tiled_layout,
+            tiled_layout.clone(),
             floating_layout,
             terminal_ids,
             vec![],
@@ -1811,6 +1813,8 @@ fn test_reapply_layout_exact_match() {
     let new_kdl = r#"
         layout {
             pane
+            pane
+            pane
             pane command="htop"
             pane command="vim"
         }
@@ -1818,9 +1822,19 @@ fn test_reapply_layout_exact_match() {
 
     let (new_layout, _) = parse_kdl_layout(new_kdl);
 
-    applier
-        .apply_tiled_panes_layout_to_existing_panes(&new_layout)
-        .unwrap();
+    for layout in [&new_layout, &tiled_layout, &new_layout] {
+        applier
+            .apply_tiled_panes_layout_to_existing_panes(layout)
+            .unwrap();
+    }
+
+    let mut panes = tiled_panes.get_panes().collect::<Vec<_>>();
+    panes.sort_by_key(|(_, pane)| pane.position_and_size().y);
+    assert_eq!(
+        panes.into_iter().map(|(id, _)| *id).collect::<Vec<_>>(),
+        [3, 4, 5, 1, 2].map(PaneId::Terminal),
+        "Exact command matches must preserve the other panes' relative order"
+    );
 
     let snapshot = take_pane_state_snapshot(
         &tiled_panes,

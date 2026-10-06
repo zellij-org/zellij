@@ -229,24 +229,16 @@ impl<'a> LayoutApplier<'a> {
             }
         }
 
-        // look for matches according to the logical position in the layout
-        let mut positions_left = vec![];
+        // Map surviving logical positions to the new slots in relative order.
+        let mut logical_positions: Vec<_> = existing_tab_state
+            .pane_candidates()
+            .iter()
+            .filter_map(|(_, pane)| pane.position_and_size().logical_position)
+            .collect();
+        logical_positions.dedup();
+        let mut logical_positions = logical_positions.into_iter();
         for (layout, position_and_size) in positions_left_without_exact_matches {
-            if let Some(pane) = existing_tab_state.find_and_extract_pane_with_same_logical_position(
-                position_and_size.logical_position,
-            ) {
-                pane_applier.apply_position_and_size_to_tiled_pane(pane, position_and_size, layout);
-            } else {
-                positions_left.push((layout, position_and_size));
-            }
-        }
-
-        // fill the remaining panes by order of their logical position
-        for (layout, position_and_size) in positions_left {
-            // now let's try to find panes on a best-effort basis
-            if let Some(pane) =
-                existing_tab_state.find_and_extract_pane(position_and_size.logical_position)
-            {
+            if let Some(pane) = existing_tab_state.find_and_extract_pane(logical_positions.next()) {
                 pane_applier.apply_position_and_size_to_tiled_pane(pane, position_and_size, layout);
             }
         }
