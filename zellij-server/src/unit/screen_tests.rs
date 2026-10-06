@@ -150,6 +150,7 @@ fn send_cli_action_to_server(
             None,
             default_mode,
             None,
+            false,
         )
         .unwrap();
     }
@@ -177,6 +178,7 @@ fn route_arbitrary_action_to_server(
         None,
         default_mode,
         None,
+        false,
     )
     .unwrap();
 }
@@ -5452,6 +5454,7 @@ pub fn set_pane_border_style_reports_an_unknown_pane() {
         None,
         InputMode::Normal,
         None,
+        false,
     )
     .unwrap();
     let completion = completion.unwrap();

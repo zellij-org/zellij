@@ -1849,6 +1849,106 @@ fn test_reapply_layout_exact_match() {
 }
 
 #[test]
+fn test_reapply_layout_command_pane_moved_from_last_to_first_preserves_order() {
+    let initial_kdl = r#"
+        layout {
+            pane
+            pane
+            pane
+            pane command="sleep"
+        }
+    "#;
+
+    let (tiled_layout, floating_layout) = parse_kdl_layout(initial_kdl);
+    let terminal_ids = vec![(1, None), (2, None), (3, None), (4, None)];
+
+    let size = Size {
+        cols: 120,
+        rows: 40,
+    };
+    let (
+        viewport,
+        senders,
+        sixel_image_store,
+        link_handler,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+        character_cell_size,
+        connected_clients,
+        style,
+        display_area,
+        mut tiled_panes,
+        mut floating_panes,
+        draw_pane_frames,
+        mut focus_pane_id,
+        os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        osc8_hyperlinks,
+        explicitly_disable_kitty_keyboard_protocol,
+    ) = create_layout_applier_fixtures(size);
+
+    let mut applier = LayoutApplier::new(
+        &viewport,
+        &senders,
+        &sixel_image_store,
+        &Rc::new(RefCell::new(KittyImageStore::default())),
+        &link_handler,
+        &terminal_emulator_colors,
+        &terminal_emulator_color_codes,
+        &character_cell_size,
+        &connected_clients,
+        &style,
+        &display_area,
+        &mut tiled_panes,
+        &mut floating_panes,
+        draw_pane_frames,
+        &mut focus_pane_id,
+        &os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        osc8_hyperlinks,
+        explicitly_disable_kitty_keyboard_protocol,
+        None,
+    );
+
+    applier
+        .apply_layout(
+            tiled_layout,
+            floating_layout,
+            terminal_ids,
+            vec![],
+            HashMap::new(),
+            1,
+        )
+        .unwrap();
+
+    let new_kdl = r#"
+        layout {
+            pane command="sleep"
+            pane
+            pane
+            pane
+        }
+    "#;
+    let (new_layout, _) = parse_kdl_layout(new_kdl);
+
+    applier
+        .apply_tiled_panes_layout_to_existing_panes(&new_layout)
+        .unwrap();
+
+    let mut panes = tiled_panes.get_panes().collect::<Vec<_>>();
+    panes.sort_by_key(|(_, pane)| pane.position_and_size().y);
+    assert_eq!(
+        panes.into_iter().map(|(id, _)| *id).collect::<Vec<_>>(),
+        [4, 1, 2, 3].map(PaneId::Terminal),
+        "Moving a command pane from last to first must preserve the other panes' relative order"
+    );
+}
+
+#[test]
 fn test_reapply_layout_logical_position_match() {
     // Apply initial layout - 3 panes in horizontal split
     let initial_kdl = r#"
