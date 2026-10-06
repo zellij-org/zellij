@@ -776,6 +776,7 @@ fn is_restricted_mode(mode: InputMode) -> bool {
             | InputMode::RenamePane
             | InputMode::Prompt
             | InputMode::Tmux
+            | InputMode::ConfirmQuit
     )
 }
 

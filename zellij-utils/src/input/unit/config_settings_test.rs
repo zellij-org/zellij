@@ -65,6 +65,7 @@ fn every_option_set() -> Options {
         mouse_hover_effects: Some(false),
         mouse_hover_tips: Some(false),
         visual_bell: Some(false),
+        confirm_quit: Some(true),
         focus_follows_mouse: Some(true),
         mouse_click_through: Some(true),
         context_menu_enabled: Some(false),
