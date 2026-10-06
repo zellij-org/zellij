@@ -1,4 +1,5 @@
 use super::Screen;
+use crate::background_jobs::BackgroundJob;
 use crate::panes::PaneId;
 use crate::plugins::{PluginInstruction, PopupRequest, PromptCaller};
 use crate::route::PopupScroll;
@@ -20,6 +21,8 @@ use zellij_utils::pane_size::{Size, Viewport};
 use zellij_utils::plugin_api::event::ProtobufContextMenuAction;
 use zellij_utils::position::Position;
 use zellij_utils::prompt::PromptPlacement;
+
+const POPUP_REVEAL_FALLBACK_MS: u64 = 1000;
 
 pub const CONTEXT_MENU_PLUGIN_ALIAS: &str = "context-menu";
 pub const PIPE_POPUP_INITIAL_COLS: usize = 50;
@@ -865,6 +868,7 @@ impl Screen {
                     title,
                 )?;
                 tab.set_popup_anchor(plugin_id, anchor_pane);
+                tab.hold_back_popup(plugin_id);
                 replaced
             },
             None => return Ok(()),
@@ -875,6 +879,7 @@ impl Screen {
                 .senders
                 .send_to_plugin(PluginInstruction::Unload(replaced_plugin_id));
         }
+        self.schedule_popup_reveal(plugin_id, POPUP_REVEAL_FALLBACK_MS);
         self.report_popup_state(client_id);
         self.render(None)
     }
@@ -886,6 +891,25 @@ impl Screen {
             }
         }
         self.render(None)
+    }
+    pub fn reveal_popup(&mut self, plugin_id: u32) -> Result<()> {
+        let revealed = self
+            .tabs
+            .values_mut()
+            .any(|tab| tab.reveal_popup(plugin_id));
+        if revealed {
+            self.render(None)?;
+        }
+        Ok(())
+    }
+    fn schedule_popup_reveal(&self, plugin_id: u32, delay_ms: u64) {
+        let _ = self
+            .bus
+            .senders
+            .send_to_background_jobs(BackgroundJob::RevealPopupAfter {
+                plugin_id,
+                delay_ms,
+            });
     }
 }
 

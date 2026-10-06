@@ -1012,6 +1012,7 @@ pub enum ScreenInstruction {
         width: usize,
         height: usize,
     },
+    RevealPopup(u32),
     UpdateContextMenuConfig(ClientId, ContextMenuConfig),
     UpdateMousebinds(ClientId, Arc<Mousebinds>),
     GetContextMenuItemActions {
@@ -1433,6 +1434,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::OpenPipePopup { .. } => ScreenContext::OpenPipePopup,
             ScreenInstruction::OpenPromptPopup { .. } => ScreenContext::OpenPromptPopup,
             ScreenInstruction::SetPopupSize { .. } => ScreenContext::SetPopupSize,
+            ScreenInstruction::RevealPopup(..) => ScreenContext::RevealPopup,
             ScreenInstruction::CloseTopPopup(..) => ScreenContext::CloseTopPopup,
             ScreenInstruction::ScrollPopup(..) => ScreenContext::ScrollPopup,
             ScreenInstruction::DismissInfoPopups(..) => ScreenContext::DismissInfoPopups,
@@ -14493,6 +14495,9 @@ pub(crate) fn screen_thread_main(
                 height,
             } => {
                 screen.set_popup_size(plugin_id, width, height)?;
+            },
+            ScreenInstruction::RevealPopup(plugin_id) => {
+                screen.reveal_popup(plugin_id)?;
             },
             ScreenInstruction::UpdateContextMenuConfig(client_id, context_menu_config) => {
                 screen.update_context_menu_config(client_id, context_menu_config);
