@@ -133,10 +133,11 @@ pub use super::generated_api::api::{
         SaveSessionResponse as ProtobufSaveSessionResponse, ScrollDownInPaneIdPayload,
         ScrollToBottomInPaneIdPayload, ScrollToTopInPaneIdPayload, ScrollUpInPaneIdPayload,
         SessionListSnapshot as ProtobufSessionListSnapshot, SetCliPipeExitCodePayload,
-        SetFloatingPanePinnedPayload, SetPaneBorderStylePayload, SetPaneBorderlessPayload,
-        SetPaneColorPayload, SetPaneFrameStylePayload as ProtobufSetPaneFrameStylePayload,
+        SetCollapsedSlotPayload, SetFloatingPanePinnedPayload, SetPaneBorderStylePayload,
+        SetPaneBorderlessPayload, SetPaneColorPayload,
+        SetPaneFrameStylePayload as ProtobufSetPaneFrameStylePayload,
         SetPaneRegexHighlightsPayload, SetPopupSizePayload, SetSelectableSlotPayload,
-        SetSelfMouseSelectionSupportPayload,
+        SetSelfCollapsedPayload, SetSelfMouseSelectionSupportPayload,
         SetSoftKeyboardPayload as ProtobufSetSoftKeyboardPayload, SetTimeoutPayload,
         ShowCursorPayload, ShowFloatingPanesPayload as ProtobufShowFloatingPanesPayload,
         ShowFloatingPanesResponse as ProtobufShowFloatingPanesResponse, ShowPaneWithIdPayload,
@@ -2441,6 +2442,12 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     _ => Err("SetSelfMouseSelectionSupport requires a payload"),
                 }
             },
+            Some(CommandName::SetSelfCollapsed) => match protobuf_plugin_command.payload {
+                Some(Payload::SetSelfCollapsedPayload(set_self_collapsed_payload)) => Ok(
+                    PluginCommand::SetSelfCollapsed(set_self_collapsed_payload.collapsed),
+                ),
+                _ => Err("SetSelfCollapsed requires a payload"),
+            },
             Some(CommandName::GenerateWebLoginToken) => match protobuf_plugin_command.payload {
                 Some(Payload::GenerateWebLoginTokenPayload(generate_web_login_token_payload)) => {
                     Ok(PluginCommand::GenerateWebLoginToken(
@@ -2568,6 +2575,12 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
             Some(CommandName::CloseSlot) => match protobuf_plugin_command.payload {
                 Some(Payload::CloseSlotPayload(slot_id)) => Ok(PluginCommand::CloseSlot(slot_id)),
                 _ => Err("Mismatched payload for CloseSlot"),
+            },
+            Some(CommandName::SetCollapsedSlot) => match protobuf_plugin_command.payload {
+                Some(Payload::SetCollapsedSlotPayload(payload)) => Ok(
+                    PluginCommand::SetCollapsedSlot(payload.slot_id, payload.collapsed),
+                ),
+                _ => Err("Mismatched payload for SetCollapsedSlot"),
             },
             Some(CommandName::OpenContextMenu) => match protobuf_plugin_command.payload {
                 Some(Payload::OpenContextMenuPayload(payload)) => {
@@ -4431,6 +4444,12 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     )),
                 })
             },
+            PluginCommand::SetSelfCollapsed(collapsed) => Ok(ProtobufPluginCommand {
+                name: CommandName::SetSelfCollapsed as i32,
+                payload: Some(Payload::SetSelfCollapsedPayload(SetSelfCollapsedPayload {
+                    collapsed,
+                })),
+            }),
             PluginCommand::GenerateWebLoginToken(token_label, read_only) => {
                 Ok(ProtobufPluginCommand {
                     name: CommandName::GenerateWebLoginToken as i32,
@@ -4568,6 +4587,13 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             PluginCommand::CloseSlot(slot_id) => Ok(ProtobufPluginCommand {
                 name: CommandName::CloseSlot as i32,
                 payload: Some(Payload::CloseSlotPayload(slot_id)),
+            }),
+            PluginCommand::SetCollapsedSlot(slot_id, collapsed) => Ok(ProtobufPluginCommand {
+                name: CommandName::SetCollapsedSlot as i32,
+                payload: Some(Payload::SetCollapsedSlotPayload(SetCollapsedSlotPayload {
+                    slot_id,
+                    collapsed,
+                })),
             }),
             PluginCommand::OpenContextMenu {
                 target,

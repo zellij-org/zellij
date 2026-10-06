@@ -1,5 +1,6 @@
 use super::is_inside_viewport;
 use super::pane_resizer::PaneResizer;
+use super::panes_to_hide::PanesToHide;
 use super::stacked_panes::StackedPanes;
 use crate::tab::{MIN_TERMINAL_HEIGHT, MIN_TERMINAL_WIDTH};
 use crate::{panes::PaneId, tab::Pane};
@@ -34,7 +35,7 @@ pub struct TiledPaneGrid<'a> {
 impl<'a> TiledPaneGrid<'a> {
     pub fn new(
         panes: impl IntoIterator<Item = (&'a PaneId, &'a mut Box<dyn Pane>)>,
-        panes_to_hide: &HashSet<PaneId>,
+        panes_to_hide: &PanesToHide,
         display_area: Size,
         viewport: Viewport,
     ) -> Self {

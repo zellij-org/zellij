@@ -212,6 +212,7 @@ fn is_self_command(command: &PluginCommand) -> bool {
             | PluginCommand::ShowSelf(..)
             | PluginCommand::CloseSelf
             | PluginCommand::SetSelfMouseSelectionSupport(..)
+            | PluginCommand::SetSelfCollapsed(..)
     ) || self_command_has_response(command)
 }
 
@@ -308,6 +309,18 @@ fn close_slot(env: &PluginEnv, slot_id: PluginId) {
             .map_err(|e| e.to_string())?;
         env.senders
             .send_to_plugin(PluginInstruction::Unload(slot_id))
+            .map_err(|e| e.to_string())
+    });
+    write_slot_command_response(env, result);
+}
+
+fn set_collapsed_slot(env: &PluginEnv, slot_id: PluginId, collapsed: bool) {
+    let result = slot_command_target(env, slot_id).and_then(|_| {
+        env.senders
+            .send_to_screen(ScreenInstruction::SetPaneCollapsed(
+                PaneId::Plugin(slot_id),
+                collapsed,
+            ))
             .map_err(|e| e.to_string())
     });
     write_slot_command_response(env, result);
@@ -456,6 +469,9 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         show_slot(env, slot_id, should_float_if_hidden)
                     },
                     PluginCommand::CloseSlot(slot_id) => close_slot(env, slot_id),
+                    PluginCommand::SetCollapsedSlot(slot_id, collapsed) => {
+                        set_collapsed_slot(env, slot_id, collapsed)
+                    },
                     PluginCommand::OpenContextMenu {
                         target,
                         line,
@@ -1055,6 +1071,9 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::StopSharingCurrentSession => stop_sharing_current_session(env),
                     PluginCommand::SetSelfMouseSelectionSupport(selection_support) => {
                         set_self_mouse_selection_support(env, selection_support);
+                    },
+                    PluginCommand::SetSelfCollapsed(collapsed) => {
+                        set_self_collapsed(env, collapsed);
                     },
                     PluginCommand::GenerateWebLoginToken(token_label, read_only) => {
                         generate_web_login_token(env, token_label, read_only);
@@ -6035,6 +6054,22 @@ fn set_self_mouse_selection_support(env: &PluginEnv, selection_support: bool) {
             format!(
                 "failed to set plugin {} selectable from plugin {}",
                 selection_support,
+                env.name()
+            )
+        })
+        .non_fatal();
+}
+
+fn set_self_collapsed(env: &PluginEnv, collapsed: bool) {
+    env.senders
+        .send_to_screen(ScreenInstruction::SetPaneCollapsed(
+            PaneId::Plugin(self_pane_id(env)),
+            collapsed,
+        ))
+        .with_context(|| {
+            format!(
+                "failed to set collapsed {} from plugin {}",
+                collapsed,
                 env.name()
             )
         })

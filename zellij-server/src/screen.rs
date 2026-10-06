@@ -930,6 +930,7 @@ pub enum ScreenInstruction {
     ToggleGroupMarking(ClientId, Option<NotificationEnd>),
     SessionSharingStatusChange(bool),
     SetMouseSelectionSupport(PaneId, bool),
+    SetPaneCollapsed(PaneId, bool),
     InterceptKeyPresses(PluginId, ClientId),
     ClearKeyPressesIntercepts(ClientId),
     TogglePaneIdInGroup(PaneId, ClientId, Option<NotificationEnd>),
@@ -1376,6 +1377,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::SetMouseSelectionSupport(..) => {
                 ScreenContext::SetMouseSelectionSupport
             },
+            ScreenInstruction::SetPaneCollapsed(..) => ScreenContext::SetPaneCollapsed,
             ScreenInstruction::InterceptKeyPresses(..) => ScreenContext::InterceptKeyPresses,
             ScreenInstruction::ClearKeyPressesIntercepts(..) => {
                 ScreenContext::ClearKeyPressesIntercepts
@@ -8696,7 +8698,7 @@ impl Screen {
                 );
             }
 
-            let stack_list_geoms = tab.stack_list_serialization_geoms();
+            let serialization_geoms = tab.tiled_pane_serialization_geoms();
             let tiled_panes: Vec<PaneLayoutMetadata> = tab
                 .get_tiled_panes()
                 .map(|(pane_id, p)| {
@@ -8705,7 +8707,7 @@ impl Screen {
                     // is currently only the case the scrollback editing panes, and
                     // when dumping the layout we want the "real" pane and not the
                     // editor pane
-                    let geom_override = stack_list_geoms.get(pane_id).copied();
+                    let geom_override = serialization_geoms.get(pane_id).copied();
                     let (pane_id, p) = match suppressed_panes.remove(pane_id) {
                         Some((is_scrollback_editor, suppressed_pane)) if *is_scrollback_editor => {
                             (suppressed_pane.pid(), suppressed_pane)
@@ -10962,6 +10964,30 @@ pub(crate) fn screen_thread_main(
                     pending_events_waiting_for_tab.push(
                         ScreenInstruction::SetMouseSelectionSupport(pid, selection_support),
                     );
+                }
+                screen.render(None)?;
+                screen.log_and_report_session_state()?;
+            },
+            ScreenInstruction::SetPaneCollapsed(pid, collapsed) => {
+                let all_tabs = screen.get_tabs_mut();
+                let mut found_pane = false;
+                for tab in all_tabs.values_mut() {
+                    if tab.has_pane_with_pid(&pid) {
+                        tab.set_pane_collapsed(pid, collapsed);
+                        found_pane = true;
+                        break;
+                    }
+                }
+                if !found_pane {
+                    // a plugin can ask for this before its pane has been placed in a tab. Unlike
+                    // the other deferred instructions this one is sent whenever the plugin's
+                    // content comes and goes, so only the last word on a given pane is worth
+                    // keeping and the queue stays one entry deep per pane
+                    pending_events_waiting_for_tab.retain(|event| {
+                        !matches!(event, ScreenInstruction::SetPaneCollapsed(pending_pid, _) if *pending_pid == pid)
+                    });
+                    pending_events_waiting_for_tab
+                        .push(ScreenInstruction::SetPaneCollapsed(pid, collapsed));
                 }
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;

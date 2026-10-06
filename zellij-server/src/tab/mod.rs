@@ -1200,10 +1200,13 @@ impl Tab {
             .filter(|(pane_id, _)| self.stack_list_of_member.contains_key(pane_id))
             .map(|(pane_id, (_, pane))| (pane_id, pane))
     }
-    pub fn stack_list_serialization_geoms(&self) -> HashMap<PaneId, PaneGeom> {
+    pub fn tiled_pane_serialization_geoms(&self) -> HashMap<PaneId, PaneGeom> {
+        let expanded_geoms = self
+            .tiled_panes
+            .serialization_geoms_with_collapsed_panes_expanded();
         let mut synthetic_geoms = HashMap::new();
         if self.stack_lists.is_empty() {
-            return synthetic_geoms;
+            return expanded_geoms;
         }
         let mut next_synthetic_stack_id = self
             .tiled_panes
@@ -1216,7 +1219,10 @@ impl Tab {
             let Some(visible_pane) = self.tiled_panes.get_pane(list.visible) else {
                 continue;
             };
-            let full_rect = visible_pane.position_and_size();
+            let full_rect = expanded_geoms
+                .get(&list.visible)
+                .copied()
+                .unwrap_or_else(|| visible_pane.position_and_size());
             let collapsed_member_count = list.members.len().saturating_sub(1);
             let mut running_y = full_rect.y;
             for member in &list.members {
@@ -1242,12 +1248,15 @@ impl Tab {
             }
             next_synthetic_stack_id += 1;
         }
+        for (pane_id, geom) in expanded_geoms {
+            synthetic_geoms.entry(pane_id).or_insert(geom);
+        }
         synthetic_geoms
     }
     pub fn hidden_stack_list_members_for_serialization(
         &self,
     ) -> Vec<(PaneId, &Box<dyn Pane>, PaneGeom)> {
-        let synthetic_geoms = self.stack_list_serialization_geoms();
+        let synthetic_geoms = self.tiled_pane_serialization_geoms();
         let mut hidden_members = vec![];
         for list in self.stack_lists.values() {
             for member in &list.members {
@@ -2106,11 +2115,34 @@ impl Tab {
         if self.tiled_panes.fullscreen_is_active() {
             self.tiled_panes.unset_fullscreen();
         }
+        // a new layout places every pane, so the collapsed ones take part and are collapsed
+        // again over the result. See TiledPanes::take_collapsed_panes.
+        let collapsed_panes_to_restore = self.tiled_panes.take_collapsed_panes();
         self.dissolve_stack_lists_for_classic_mutation();
         let layout_candidate = self
             .swap_layouts
             .swap_tiled_panes(&self.tiled_panes, search_backwards);
-        self.apply_tiled_layout_candidate(layout_candidate)
+        let result = self.apply_tiled_layout_candidate(layout_candidate);
+        self.restore_collapsed_panes_after_relayout(collapsed_panes_to_restore);
+        result
+    }
+    /// The second half of `TiledPanes::take_collapsed_panes`: collapse the panes again over
+    /// the layout that was just applied, and let the rest of the layout take their rows.
+    ///
+    /// The layout offsets the viewport while the collapsed panes are still taking part, so a
+    /// collapsed bar would go on holding its row out of the viewport. Offset it again once
+    /// they are gone, the same as `resize_whole_tab` does.
+    fn restore_collapsed_panes_after_relayout(&mut self, collapsed_panes: HashSet<PaneId>) {
+        if self.tiled_panes.restore_collapsed_panes(collapsed_panes) {
+            let display_area = *self.display_area.borrow();
+            self.tiled_panes.resize(display_area);
+            LayoutApplier::offset_viewport(
+                self.viewport.clone(),
+                self.display_area.clone(),
+                &mut self.tiled_panes,
+                self.pane_frame_style,
+            );
+        }
     }
     fn apply_tiled_layout_candidate(
         &mut self,
@@ -2175,10 +2207,14 @@ impl Tab {
         pane_count
     }
     pub fn apply_tiled_swap_layout(&mut self, layout_name: &str) -> Result<bool> {
+        // taken before the candidate is chosen, so the layout is sized for the collapsed
+        // panes too, the same as relayout_tiled_panes
+        let collapsed_panes_to_restore = self.tiled_panes.take_collapsed_panes();
         let Some((position, layout_candidate)) = self
             .swap_layouts
             .tiled_layout_candidate_by_name(layout_name, self.settled_tiled_pane_count())
         else {
+            self.restore_collapsed_panes_after_relayout(collapsed_panes_to_restore);
             return Ok(false);
         };
         if self.tiled_panes.fullscreen_is_active() {
@@ -2187,7 +2223,9 @@ impl Tab {
         self.dissolve_stack_lists_for_classic_mutation();
         self.swap_layouts
             .set_current_tiled_layout_position(position);
-        self.apply_tiled_layout_candidate(Some(layout_candidate))?;
+        let result = self.apply_tiled_layout_candidate(Some(layout_candidate));
+        self.restore_collapsed_panes_after_relayout(collapsed_panes_to_restore);
+        result?;
         Ok(true)
     }
     pub fn apply_floating_swap_layout(&mut self, layout_name: &str) -> Result<bool> {
@@ -5532,6 +5570,9 @@ impl Tab {
         // resize so the user-visible state is preserved. Without this, hidden
         // panes retain stale geometry from before the resize and the layout
         // solver fails when fullscreen is later toggled off.
+        // Collapsed panes come along for the same reason, and are collapsed again below once
+        // the new geometry is theirs. See TiledPanes::take_collapsed_panes.
+        let collapsed_panes_to_restore = self.tiled_panes.take_collapsed_panes();
         let fullscreen_pane_to_restore = self.tiled_panes.fullscreen_pane_id();
         let fullscreen_covered_ui = self.tiled_panes.fullscreen_covers_ui();
         if fullscreen_pane_to_restore.is_some() {
@@ -5560,6 +5601,13 @@ impl Tab {
         {
             self.swap_layouts.set_is_tiled_damaged();
             let _ = self.relayout_tiled_panes(false);
+        }
+        if self
+            .tiled_panes
+            .restore_collapsed_panes(collapsed_panes_to_restore)
+        {
+            // solve once more, now without them, so their neighbors take the space back
+            self.tiled_panes.resize(new_screen_size);
         }
         self.set_should_clear_display_before_rendering();
         LayoutApplier::offset_viewport(
@@ -6109,6 +6157,24 @@ impl Tab {
     }
     pub fn set_mouse_selection_support(&mut self, pane_id: PaneId, selection_support: bool) {
         MouseHandler::set_mouse_selection_support(self, pane_id, selection_support);
+    }
+    /// Hand a tiled pane's space to its neighbors, or take it back.
+    ///
+    /// A pane that has nothing to show, such as a status bar whose content is empty, would
+    /// otherwise keep the row a layout reserved for it and draw it blank. Collapsing takes it
+    /// out of the layout's arithmetic without taking it out of the layout, so expanding puts it
+    /// back at the size the layout asked for.
+    ///
+    /// Floating panes take no space from their neighbors, so there is nothing to give back.
+    pub fn set_pane_collapsed(&mut self, pane_id: PaneId, collapsed: bool) {
+        if !self.tiled_panes.panes_contain(&pane_id) {
+            return;
+        }
+        if !self.tiled_panes.set_pane_collapsed(pane_id, collapsed) {
+            return;
+        }
+        let size = self.size;
+        self.resize_whole_tab(size).non_fatal();
     }
     pub fn close_pane(
         &mut self,
@@ -6971,10 +7037,12 @@ impl Tab {
 
         let found_pane_id = if search_selectable {
             self.get_selectable_tiled_panes()
+                .filter(|(id, _)| !self.tiled_panes.pane_is_collapsed(id))
                 .find(|(_, p)| pane_contains_point(p, point, &stacked_pane_ids_under_flexible_pane))
                 .map(|(&id, _)| id)
         } else {
             self.get_tiled_panes()
+                .filter(|(id, _)| !self.tiled_panes.pane_is_collapsed(id))
                 .find(|(_, p)| pane_contains_point(p, point, &stacked_pane_ids_under_flexible_pane))
                 .map(|(&id, _)| id)
         };

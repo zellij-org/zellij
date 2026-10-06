@@ -2896,6 +2896,7 @@ pub struct PaneInfo {
     /// Whether a pane is suppressed - suppressed panes are not visible to the user, but still run
     /// in the background
     pub is_suppressed: bool,
+    pub is_collapsed: bool,
     /// The full title of the pane as it appears in the UI (if there is room for it)
     pub title: String,
     /// Whether a pane exited or not, note that most panes close themselves before setting this
@@ -4423,6 +4424,10 @@ pub enum PluginCommand {
     EmbedMultiplePanes(Vec<PaneId>),
     QueryWebServerStatus,
     SetSelfMouseSelectionSupport(bool),
+    /// Give this plugin's own row or column in the layout back to its neighbors while it has
+    /// nothing to draw, and take it again when it does. The pane keeps its place in the layout
+    /// the whole time, so expanding restores exactly the size the layout asked for.
+    SetSelfCollapsed(bool),
     GenerateWebLoginToken(Option<String>, bool), // (token_label, read_only)
     RevokeWebLoginToken(String), // String -> token id (provided name or generated id)
     ListWebLoginTokens,
@@ -4504,6 +4509,7 @@ pub enum PluginCommand {
     HideSlot(SlotId),
     ShowSlot(SlotId, bool),
     CloseSlot(SlotId),
+    SetCollapsedSlot(SlotId, bool),
     OpenContextMenu {
         target: ContextMenuTarget,
         line: usize,
