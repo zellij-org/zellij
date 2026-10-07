@@ -61,6 +61,8 @@ mod scene;
 mod screen_buffer;
 mod scroll_animation;
 mod selection;
+#[cfg(windows)]
+mod session_end;
 mod settings;
 mod sixel;
 mod spawn;
