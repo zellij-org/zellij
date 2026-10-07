@@ -211,7 +211,7 @@ pub fn auth_line(uid: u32) -> String {
 pub use linux::deliver;
 
 #[cfg(windows)]
-pub use toast::deliver;
+pub use toast::{deliver, on_activation};
 
 #[cfg(not(any(target_os = "linux", windows)))]
 pub use elsewhere::deliver;
@@ -228,10 +228,13 @@ mod elsewhere {
 #[cfg(windows)]
 mod toast {
     use std::cell::RefCell;
+    use std::collections::VecDeque;
+    use std::sync::Mutex;
 
     use anyhow::{Context, Result};
     use windows::core::HSTRING;
     use windows::Data::Xml::Dom::XmlDocument;
+    use windows::Foundation::TypedEventHandler;
     use windows::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
     use windows::UI::Notifications::{
         NotificationSetting, ToastNotification, ToastNotificationManager, ToastNotifier,
@@ -240,9 +243,28 @@ mod toast {
     use super::Notification;
     use crate::identity::identity;
 
+    const KEPT_TOASTS: usize = 32;
+
+    static ON_ACTIVATION: Mutex<Option<Box<dyn Fn() + Send>>> = Mutex::new(None);
+
     thread_local! {
         static NOTIFIER: RefCell<Option<ToastNotifier>> = const { RefCell::new(None) };
+        static KEPT: RefCell<VecDeque<ToastNotification>> = const { RefCell::new(VecDeque::new()) };
         static COMPLAINED: RefCell<bool> = const { RefCell::new(false) };
+    }
+
+    pub fn on_activation(callback: impl Fn() + Send + 'static) {
+        *ON_ACTIVATION.lock().unwrap_or_else(|e| e.into_inner()) = Some(Box::new(callback));
+    }
+
+    fn activated() {
+        if let Some(callback) = ON_ACTIVATION
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_ref()
+        {
+            callback();
+        }
     }
 
     pub fn deliver(notification: &Notification) -> bool {
@@ -274,8 +296,21 @@ mod toast {
                 &notification.body,
             )))
             .context("the notification could not be turned into a toast")?;
-        notifier.Show(&ToastNotification::CreateToastNotification(&document)?)?;
+        let toast = ToastNotification::CreateToastNotification(&document)?;
+        toast.Activated(&TypedEventHandler::new(|_, _| {
+            activated();
+            Ok(())
+        }))?;
+        notifier.Show(&toast)?;
+        KEPT.with(|kept| keep(&mut kept.borrow_mut(), toast, KEPT_TOASTS));
         Ok(true)
+    }
+
+    fn keep<T>(kept: &mut VecDeque<T>, item: T, limit: usize) {
+        if kept.len() >= limit {
+            kept.pop_front();
+        }
+        kept.push_back(item);
     }
 
     fn open_notifier() -> Result<ToastNotifier> {
@@ -346,6 +381,31 @@ mod toast {
     #[cfg(test)]
     mod tests {
         use super::*;
+
+        #[test]
+        fn only_the_most_recent_toasts_are_kept_for_their_clicks() {
+            let mut kept = VecDeque::new();
+            for toast in 0..5 {
+                keep(&mut kept, toast, 3);
+            }
+            assert_eq!(kept, [2, 3, 4]);
+        }
+
+        #[test]
+        fn clicking_a_toast_reaches_the_window_that_asked_to_hear_about_it() {
+            use std::sync::atomic::{AtomicUsize, Ordering};
+            use std::sync::Arc;
+
+            let clicks = Arc::new(AtomicUsize::new(0));
+            on_activation({
+                let clicks = clicks.clone();
+                move || {
+                    clicks.fetch_add(1, Ordering::SeqCst);
+                }
+            });
+            activated();
+            assert_eq!(clicks.load(Ordering::SeqCst), 1);
+        }
 
         #[test]
         fn a_toast_is_tried_unless_windows_says_notifications_are_off() {
