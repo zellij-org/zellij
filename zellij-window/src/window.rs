@@ -111,6 +111,8 @@ impl RenderSink for ProxySink {
 struct Surfaces {
     #[cfg(windows)]
     _taskbar: Option<crate::taskbar::TaskbarEntry>,
+    #[cfg(windows)]
+    _session_end: Option<crate::session_end::SessionEnd>,
     window: Window,
     surface: Surface<WindowSurface>,
     context: PossiblyCurrentContext,
@@ -153,6 +155,8 @@ struct App {
     display_checked: Instant,
     startup: Startup,
     state_path: Option<PathBuf>,
+    #[cfg(windows)]
+    remembered: crate::session_end::SharedRemembered,
     shown: Shown,
     windowed_cells: (usize, usize),
     windowed_known: bool,
@@ -467,6 +471,8 @@ impl App {
             self.windowed_cells = (fitted.cols, fitted.rows);
             self.windowed_known = true;
         }
+        #[cfg(windows)]
+        self.share_window_state();
         self.reflow(width, height);
     }
 
@@ -491,6 +497,8 @@ impl App {
             self.windowed_cells = (fitted.cols, fitted.rows);
             self.windowed_known = true;
         }
+        #[cfg(windows)]
+        self.share_window_state();
     }
 
     fn window_state(&self) -> WindowState {
@@ -506,14 +514,23 @@ impl App {
             return;
         };
         self.observe_window();
-        let mut state = self.window_state();
-        if !self.windowed_known {
-            if let Some(previous) = window_state::load_from(&path) {
-                state.cols = previous.cols;
-                state.rows = previous.rows;
-            }
-        }
-        window_state::store(&path, state);
+        window_state::store(
+            &path,
+            window_state::to_remember(self.window_state(), self.windowed_known, &path),
+        );
+    }
+
+    #[cfg(windows)]
+    fn share_window_state(&self) {
+        let remembered = self
+            .state_path
+            .as_ref()
+            .map(|path| crate::session_end::Remembered {
+                path: path.clone(),
+                state: self.window_state(),
+                windowed_known: self.windowed_known,
+            });
+        *self.remembered.lock().unwrap_or_else(|e| e.into_inner()) = remembered;
     }
 
     fn reflow(&mut self, width: u32, height: u32) {
@@ -1672,6 +1689,14 @@ impl App {
         Ok(Surfaces {
             #[cfg(windows)]
             _taskbar: crate::taskbar::describe(&window),
+            #[cfg(windows)]
+            _session_end: crate::session_end::watch(
+                &window,
+                self.remembered.clone(),
+                self.session
+                    .as_ref()
+                    .map(|session| session.detacher.clone()),
+            ),
             window,
             surface,
             context,
@@ -2039,6 +2064,8 @@ impl Rendering {
             display_checked: Instant::now(),
             startup: self.startup,
             state_path: None,
+            #[cfg(windows)]
+            remembered: Arc::new(Mutex::new(None)),
             shown: Shown::of(self.startup.mode),
             windowed_cells: (self.startup.cols, self.startup.rows),
             windowed_known: self.startup.mode == StartupMode::Windowed,
@@ -3303,6 +3330,31 @@ mod tests {
             }),
             "the size a minimized window reports was remembered as its windowed size"
         );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_resize_keeps_what_a_windows_session_end_would_save_up_to_date() {
+        let mut harness = Harness::new(2, true, "");
+        let dir = remembering(&mut harness);
+        harness.app.resized(720, 600);
+        let shared = harness
+            .app
+            .remembered
+            .lock()
+            .unwrap()
+            .clone()
+            .expect("a resize shared nothing to save at a session end");
+        assert_eq!(shared.path, dir.path().join("window-state.json"));
+        assert_eq!(
+            shared.state,
+            WindowState {
+                cols: 90,
+                rows: 30,
+                state: Shown::Windowed,
+            }
+        );
+        assert!(shared.windowed_known);
     }
 
     #[test]
