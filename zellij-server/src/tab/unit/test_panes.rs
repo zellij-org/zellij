@@ -141,6 +141,12 @@ impl Pane for FailingRenderPane {
     fn scroll_down(&mut self, count: usize, client_id: ClientId) {
         self.inner.scroll_down(count, client_id)
     }
+    fn scroll_left(&mut self, count: usize, client_id: ClientId) {
+        self.inner.scroll_left(count, client_id)
+    }
+    fn scroll_right(&mut self, count: usize, client_id: ClientId) {
+        self.inner.scroll_right(count, client_id)
+    }
     fn clear_scroll(&mut self) {
         self.inner.clear_scroll()
     }
@@ -340,6 +346,12 @@ impl Pane for FocusReportingPane {
     }
     fn scroll_down(&mut self, count: usize, client_id: ClientId) {
         self.inner.scroll_down(count, client_id)
+    }
+    fn scroll_left(&mut self, count: usize, client_id: ClientId) {
+        self.inner.scroll_left(count, client_id)
+    }
+    fn scroll_right(&mut self, count: usize, client_id: ClientId) {
+        self.inner.scroll_right(count, client_id)
     }
     fn clear_scroll(&mut self) {
         self.inner.clear_scroll()
