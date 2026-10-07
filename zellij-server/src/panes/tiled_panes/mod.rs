@@ -3037,6 +3037,10 @@ impl TiledPanes {
     /// kept current: see `take_collapsed_panes`.
     pub fn set_pane_collapsed(&mut self, pane_id: PaneId, collapsed: bool) -> bool {
         if !collapsed {
+            if !self.panes_to_hide.is_covered(&pane_id) {
+                return false;
+            }
+            self.give_collapsed_space_back(&[pane_id]);
             return self.panes_to_hide.unset_covered(&pane_id);
         }
         if !self.panes_to_hide.set_covered(pane_id) {
@@ -3191,7 +3195,28 @@ impl TiledPanes {
     /// Paired with `restore_collapsed_panes`. Nesting is safe: the inner call finds nothing
     /// left to take and restores nothing.
     pub fn take_collapsed_panes(&mut self) -> HashSet<PaneId> {
+        let collapsed: Vec<PaneId> = self.panes_to_hide.covered().copied().collect();
+        self.give_collapsed_space_back(&collapsed);
         self.panes_to_hide.take_covered()
+    }
+    /// Shrink the neighbors of collapsed panes back off the space those panes hold in the
+    /// layout, ahead of the panes rejoining the solve.
+    ///
+    /// Until then the neighbors still spread over that space, and the solver, which
+    /// rebuilds the layout tree from where panes sit, finds two panes on the same columns
+    /// or rows: it can then place the rejoining pane on the wrong side of a neighbor, e.g.
+    /// a sidebar between two split panes instead of left of them.
+    fn give_collapsed_space_back(&mut self, collapsed: &[PaneId]) {
+        let spaces: Vec<PaneGeom> = collapsed
+            .iter()
+            .filter_map(|pane_id| self.panes.get(pane_id))
+            .map(|pane| pane.position_and_size())
+            .collect();
+        for (pane_id, geom) in self.geoms_with_spaces_given_back(&spaces) {
+            if let Some(pane) = self.panes.get_mut(&pane_id) {
+                pane.set_geom(geom);
+            }
+        }
     }
     /// Put back what `take_collapsed_panes` took, and say whether there was anything to put
     /// back. The caller solves again when there was, so the neighbors reclaim the space.

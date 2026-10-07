@@ -20834,6 +20834,67 @@ fn a_collapsed_pane_follows_the_tab_when_it_is_resized() {
     assert_eq!(geom_of(&tab, bar).cols.as_usize(), 118);
 }
 
+#[test]
+fn a_collapsed_sidebar_over_a_split_with_a_bar_below_follows_the_tab_when_it_is_resized() {
+    // the whole shape of a sidebar layout in use: sidebar and pane side by side over a
+    // one-row bar, and the pane split once more
+    let mut row = TiledPaneLayout::default();
+    row.children_split_direction = SplitDirection::Vertical;
+    let mut sidebar = TiledPaneLayout::default();
+    sidebar.split_size = Some(SplitSize::Fixed(28));
+    row.children = vec![sidebar, TiledPaneLayout::default()];
+    let mut bar = TiledPaneLayout::default();
+    bar.split_size = Some(SplitSize::Fixed(1));
+    let mut layout = TiledPaneLayout::default();
+    layout.children_split_direction = SplitDirection::Horizontal;
+    layout.children = vec![row, bar];
+    let mut tab = create_new_tab_with_layout(
+        Size {
+            cols: 130,
+            rows: 30,
+        },
+        layout,
+    );
+    let sidebar = PaneId::Terminal(0);
+    let bar = PaneId::Terminal(1);
+    let left = PaneId::Terminal(2);
+    let right = PaneId::Terminal(3);
+    tab.vertical_split_of_pane_id(right, None, None, left, None, None)
+        .unwrap();
+    let span = |tab: &Tab, id| (geom_of(tab, id).x, geom_of(tab, id).cols.as_usize());
+    assert_eq!(span(&tab, sidebar), (0, 28));
+    assert_eq!(geom_of(&tab, bar).rows.as_usize(), 1);
+    let (left_before, right_before) = (span(&tab, left), span(&tab, right));
+    assert_eq!(left_before.0, 28);
+
+    // whether the solver gets this wrong depends on hash map order, so go round a few times
+    for cols in [160, 140, 185, 130, 170, 150] {
+        tab.set_pane_collapsed(sidebar, true);
+        tab.resize_whole_tab(Size { cols, rows: 30 }).unwrap();
+        tab.set_pane_collapsed(sidebar, false);
+
+        assert_eq!(
+            span(&tab, sidebar),
+            (0, 28),
+            "at {cols} columns the sidebar should come back as the leftmost 28 columns, not between the panes"
+        );
+        assert_eq!(
+            span(&tab, left).0,
+            28,
+            "at {cols} columns the left pane should start right of the sidebar"
+        );
+        assert_eq!(
+            span(&tab, left).1 + span(&tab, right).1,
+            cols - 28,
+            "at {cols} columns the split panes should share the rest of the tab"
+        );
+        assert!(
+            left_before.0 < right_before.0 && span(&tab, left).0 < span(&tab, right).0,
+            "at {cols} columns the split panes should keep their order"
+        );
+    }
+}
+
 fn tiled_geoms_as_serialized(tab: &Tab) -> HashMap<PaneId, PaneGeom> {
     let overrides = tab.tiled_pane_serialization_geoms();
     tab.get_tiled_panes()
