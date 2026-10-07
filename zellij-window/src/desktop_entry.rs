@@ -439,9 +439,16 @@ mod start_menu {
     pub fn uninstall() -> Result<()> {
         let _com = Com::initialize()?;
         let dir = known_folder(&FOLDERID_Programs)?;
-        match uninstall_from(&dir)? {
-            Some(path) => println!("Removed {}", path.display()),
-            None => println!("Nothing to remove under {}", dir.display()),
+        let mut removed: Vec<String> = uninstall_from(&dir)?
+            .map(|path| path.display().to_string())
+            .into_iter()
+            .collect();
+        removed.extend(crate::app_registration::unregister()?);
+        if removed.is_empty() {
+            println!("Nothing to remove");
+        }
+        for item in removed {
+            println!("Removed {}", item);
         }
         Ok(())
     }

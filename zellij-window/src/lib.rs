@@ -2,6 +2,8 @@
 mod diagnostics;
 #[cfg(test)]
 mod adversarial;
+#[cfg(windows)]
+mod app_registration;
 mod atlas;
 mod bell;
 mod blur;
