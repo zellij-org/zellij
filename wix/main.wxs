@@ -140,6 +140,23 @@
                      KeyPath="yes" />
     </Component>
 
+    <!-- The window registers its toast identity at run time, per user
+         (HKCU\Software\Classes\AppUserModelId\zellij.window). Remove it on uninstall for the
+         user who uninstalls. The key path is a per-user marker, as per-user data needs. -->
+    <Component Id="toast_identity_cleanup"
+               Directory="APPLICATIONFOLDER"
+               Guid="1AD461F8-55DD-4A4A-A3E0-8C9D43064871">
+      <RegistryValue Root="HKCU"
+                     Key="Software\Zellij"
+                     Name="ToastIdentityCleanup"
+                     Type="integer"
+                     Value="1"
+                     KeyPath="yes" />
+      <RemoveRegistryKey Root="HKCU"
+                         Key="Software\Classes\AppUserModelId\zellij.window"
+                         Action="removeOnUninstall" />
+    </Component>
+
     <Component Id="path_machine"
                Directory="APPLICATIONFOLDER"
                Guid="85C2CC85-8379-4C27-8337-A90EAD9AC265"
@@ -182,6 +199,7 @@
     <Feature Id="MainFeature" Title="Zellij" Level="1">
       <ComponentRef Id="binary" />
       <ComponentRef Id="launcher" />
+      <ComponentRef Id="toast_identity_cleanup" />
       <ComponentRef Id="path_machine" />
       <ComponentRef Id="path_user" />
     </Feature>
