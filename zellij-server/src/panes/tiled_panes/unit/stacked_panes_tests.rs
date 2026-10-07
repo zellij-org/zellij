@@ -67,6 +67,25 @@ macro_rules! mock_stacked_pane {
     };
 }
 
+macro_rules! mock_stacked_pane_with_pid {
+    ($pane_id:expr, $dimension:expr, $inner:expr, $y:expr, $mock_panes:expr) => {
+        let mut mock_pane_rows = $dimension;
+        mock_pane_rows.set_inner($inner);
+        let mut mock_pane: Box<dyn Pane> = Box::new(MockPane::with_id(
+            $pane_id,
+            PaneGeom {
+                x: 0,
+                y: $y,
+                rows: mock_pane_rows,
+                cols: Dimension::percent(100.0),
+                stacked: Some(0),
+                ..Default::default()
+            },
+        ));
+        $mock_panes.insert($pane_id, &mut mock_pane);
+    };
+}
+
 macro_rules! mock_stacked_pane_with_id {
     ($pane_id:expr, $dimension:expr, $inner:expr, $x:expr, $y:expr, $logical_position:expr, $mock_panes:expr, $stack_id:expr) => {
         let mut mock_pane_rows = $dimension;
@@ -1037,11 +1056,21 @@ fn break_next_to_last_pane_out_of_stack() {
 
 struct MockPane {
     pane_geom: PaneGeom,
+    pane_id: Option<PaneId>,
 }
 
 impl MockPane {
     pub fn new(pane_geom: PaneGeom) -> Self {
-        MockPane { pane_geom }
+        MockPane {
+            pane_geom,
+            pane_id: None,
+        }
+    }
+    pub fn with_id(pane_id: PaneId, pane_geom: PaneGeom) -> Self {
+        MockPane {
+            pane_geom,
+            pane_id: Some(pane_id),
+        }
     }
 }
 
@@ -1150,7 +1179,7 @@ impl Pane for MockPane {
         unimplemented!()
     }
     fn pid(&self) -> PaneId {
-        unimplemented!()
+        self.pane_id.unwrap_or_else(|| unimplemented!())
     }
     fn reduce_height(&mut self, _percent: f64) {
         unimplemented!()
@@ -1251,4 +1280,78 @@ impl Pane for MockPane {
     ) -> PaneContents {
         unimplemented!()
     }
+}
+
+#[test]
+fn closing_one_liner_above_flexible_pane_in_two_pane_stack_dissolves_stack() {
+    let mut mock_panes: HashMap<PaneId, &mut Box<dyn Pane>> = HashMap::new();
+    mock_stacked_pane_with_pid!(PaneId::Terminal(1), Dimension::fixed(1), 1, 0, mock_panes);
+    mock_stacked_pane_with_pid!(
+        PaneId::Terminal(2),
+        Dimension::percent(100.0),
+        49,
+        1,
+        mock_panes
+    );
+    let mock_panes = Rc::new(RefCell::new(mock_panes));
+    StackedPanes::new(mock_panes.clone())
+        .fill_space_over_pane_in_stack(&PaneId::Terminal(1))
+        .unwrap();
+    let remaining_geom = mock_panes
+        .borrow()
+        .get(&PaneId::Terminal(2))
+        .unwrap()
+        .current_geom();
+    assert_eq!(remaining_geom.stacked, None);
+    assert_eq!(remaining_geom.y, 0);
+    assert_eq!(remaining_geom.rows.as_usize(), 50);
+}
+
+#[test]
+fn closing_one_liner_below_flexible_pane_in_two_pane_stack_dissolves_stack() {
+    let mut mock_panes: HashMap<PaneId, &mut Box<dyn Pane>> = HashMap::new();
+    mock_stacked_pane_with_pid!(
+        PaneId::Terminal(1),
+        Dimension::percent(100.0),
+        49,
+        0,
+        mock_panes
+    );
+    mock_stacked_pane_with_pid!(PaneId::Terminal(2), Dimension::fixed(1), 1, 49, mock_panes);
+    let mock_panes = Rc::new(RefCell::new(mock_panes));
+    StackedPanes::new(mock_panes.clone())
+        .fill_space_over_pane_in_stack(&PaneId::Terminal(2))
+        .unwrap();
+    let remaining_geom = mock_panes
+        .borrow()
+        .get(&PaneId::Terminal(1))
+        .unwrap()
+        .current_geom();
+    assert_eq!(remaining_geom.stacked, None);
+    assert_eq!(remaining_geom.y, 0);
+    assert_eq!(remaining_geom.rows.as_usize(), 50);
+}
+
+#[test]
+fn closing_one_liner_in_three_pane_stack_keeps_stack() {
+    let mut mock_panes: HashMap<PaneId, &mut Box<dyn Pane>> = HashMap::new();
+    mock_stacked_pane_with_pid!(PaneId::Terminal(1), Dimension::fixed(1), 1, 0, mock_panes);
+    mock_stacked_pane_with_pid!(
+        PaneId::Terminal(2),
+        Dimension::percent(100.0),
+        48,
+        1,
+        mock_panes
+    );
+    mock_stacked_pane_with_pid!(PaneId::Terminal(3), Dimension::fixed(1), 1, 49, mock_panes);
+    let mock_panes = Rc::new(RefCell::new(mock_panes));
+    StackedPanes::new(mock_panes.clone())
+        .fill_space_over_pane_in_stack(&PaneId::Terminal(1))
+        .unwrap();
+    let flexible_geom = mock_panes
+        .borrow()
+        .get(&PaneId::Terminal(2))
+        .unwrap()
+        .current_geom();
+    assert_eq!(flexible_geom.stacked, Some(0));
 }

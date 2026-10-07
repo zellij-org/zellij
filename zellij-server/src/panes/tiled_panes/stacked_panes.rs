@@ -1109,6 +1109,9 @@ impl<'a> StackedPanes<'a> {
         flexible_pane_position_and_size
             .rows
             .set_inner(flexible_pane_position_and_size.rows.as_usize() + 1);
+        if all_stacked_pane_positions.len() == 2 {
+            flexible_pane_position_and_size.stacked = None;
+        }
         flexible_pane.set_geom(flexible_pane_position_and_size);
         for (i, (pid, _position)) in all_stacked_pane_positions.iter().enumerate() {
             if i > position_of_flexible_pane && i < position_of_current_pane {
@@ -1142,6 +1145,9 @@ impl<'a> StackedPanes<'a> {
         flexible_pane_position_and_size
             .rows
             .set_inner(flexible_pane_position_and_size.rows.as_usize() + 1);
+        if all_stacked_pane_positions.len() == 2 {
+            flexible_pane_position_and_size.stacked = None;
+        }
         flexible_pane.set_geom(flexible_pane_position_and_size);
         for (i, (pid, _position)) in all_stacked_pane_positions.iter().enumerate() {
             if i > position_of_current_pane && i <= position_of_flexible_pane {
