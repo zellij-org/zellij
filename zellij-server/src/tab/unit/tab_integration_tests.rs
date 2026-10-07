@@ -5305,6 +5305,104 @@ fn pane_faux_scrolling_in_alternate_mode() {
     assert_eq!(pty_instruction_bus.clone_output(), expected);
 }
 
+fn horizontal_scroll_output_for_mouse_mode(mouse_mode: &str) -> Vec<String> {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+
+    let mut pty_instruction_bus = MockPtyInstructionBus::new();
+    let mut tab = create_new_tab_with_mock_pty_writer(
+        size,
+        ModeInfo::default(),
+        pty_instruction_bus.pty_write_sender(),
+    );
+    pty_instruction_bus.start();
+
+    tab.handle_pty_bytes(1, mouse_mode.as_bytes().to_vec())
+        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_scroll_left_event(Position::new(5, 71)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_scroll_right_event(Position::new(5, 71)),
+        client_id,
+    )
+    .unwrap();
+
+    pty_instruction_bus.exit();
+    pty_instruction_bus.clone_output()
+}
+
+#[test]
+fn pane_in_sgr_mouse_mode_receives_horizontal_scroll() {
+    assert_eq!(
+        horizontal_scroll_output_for_mouse_mode("\u{1b}[?1000;1006h"),
+        vec![
+            "\u{1b}[<66;71;5M".to_string(),
+            "\u{1b}[<67;71;5M".to_string(),
+        ]
+    );
+}
+
+#[test]
+fn pane_in_utf8_mouse_mode_receives_horizontal_scroll() {
+    assert_eq!(
+        horizontal_scroll_output_for_mouse_mode("\u{1b}[?1000;1005h"),
+        vec!["\u{1b}[Mbg%".to_string(), "\u{1b}[Mcg%".to_string()]
+    );
+}
+
+#[test]
+fn horizontal_scroll_is_not_sent_to_panes_without_mouse_tracking() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id: ClientId = 1;
+
+    let mut pty_instruction_bus = MockPtyInstructionBus::new();
+    let mut tab = create_new_tab_with_mock_pty_writer(
+        size,
+        ModeInfo::default(),
+        pty_instruction_bus.pty_write_sender(),
+    );
+    pty_instruction_bus.start();
+
+    tab.handle_mouse_event(
+        &MouseEvent::new_scroll_left_event(Position::new(1, 1)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_scroll_right_event(Position::new(1, 1)),
+        client_id,
+    )
+    .unwrap();
+
+    tab.handle_pty_bytes(1, "\u{1b}[?1049h".as_bytes().to_vec())
+        .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_scroll_left_event(Position::new(1, 1)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_mouse_event(
+        &MouseEvent::new_scroll_right_event(Position::new(1, 1)),
+        client_id,
+    )
+    .unwrap();
+    tab.handle_scrollwheel_up(&Position::new(1, 1), 1, client_id)
+        .unwrap();
+
+    pty_instruction_bus.exit();
+
+    assert_eq!(pty_instruction_bus.clone_output(), vec!["\u{1b}[A"]);
+}
+
 #[test]
 fn move_pane_focus_sends_tty_csi_event() {
     let size = Size {

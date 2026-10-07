@@ -18085,6 +18085,50 @@ fn tab_with_floating_plugin_pane(
 }
 
 #[test]
+fn horizontal_scroll_over_a_plugin_pane_is_sent_to_the_plugin_in_the_same_direction() {
+    let (mut tab, plugin_receiver) = tab_with_floating_plugin_pane(1);
+    let plugin_pane = tab.get_pane_with_id(PaneId::Plugin(1)).unwrap();
+    let position = Position::new(
+        (plugin_pane.get_content_y() + 1) as i32,
+        (plugin_pane.get_content_x() + 1) as u16,
+    );
+    while plugin_receiver.try_recv().is_ok() {}
+
+    tab.handle_mouse_event(
+        &zellij_utils::input::mouse::MouseEvent::new_scroll_left_event(position),
+        1,
+    )
+    .unwrap();
+    tab.handle_mouse_event(
+        &zellij_utils::input::mouse::MouseEvent::new_scroll_right_event(position),
+        1,
+    )
+    .unwrap();
+
+    let mut horizontal_scroll_events = vec![];
+    while let Ok((instruction, _)) = plugin_receiver.try_recv() {
+        if let PluginInstruction::Update(updates) = instruction {
+            for (pid, _client_id, event) in updates {
+                if let Event::Mouse(
+                    mouse @ (zellij_utils::data::Mouse::ScrollLeft(_)
+                    | zellij_utils::data::Mouse::ScrollRight(_)),
+                ) = event
+                {
+                    horizontal_scroll_events.push((pid, mouse));
+                }
+            }
+        }
+    }
+    assert_eq!(
+        horizontal_scroll_events,
+        vec![
+            (Some(1), zellij_utils::data::Mouse::ScrollLeft(4)),
+            (Some(1), zellij_utils::data::Mouse::ScrollRight(4)),
+        ]
+    );
+}
+
+#[test]
 fn floating_plugin_panes_are_notified_when_the_floating_surface_is_hidden() {
     let (mut tab, plugin_receiver) = tab_with_floating_plugin_pane(1);
     drain_visible_events(&plugin_receiver);
