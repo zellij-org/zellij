@@ -463,15 +463,16 @@ pub fn resurrection_layout(session_name_to_resurrect: &str) -> Result<Option<Lay
     ) {
         Ok(layout) => Ok(Some(layout)),
         Err(e) => {
+            let error_text = crate::input::keybind_presets::config_error_text(&e);
             log::error!(
                 "Failed to parse resurrection layout file {}: {}",
                 layout_file_name.display(),
-                e
+                error_text
             );
             return Err(format!(
                 "Failed to parse resurrection layout file {}: {}.",
                 layout_file_name.display(),
-                e
+                error_text
             ));
         },
     }

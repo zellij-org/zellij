@@ -129,7 +129,29 @@ fn serialize_tab(
     }
 }
 
+fn flatten_nested_stacks(mut layout: TiledPaneLayout) -> TiledPaneLayout {
+    layout.children = layout
+        .children
+        .into_iter()
+        .map(flatten_nested_stacks)
+        .collect();
+    if layout.children_are_stacked
+        && layout.children.len() == 1
+        && layout.external_children_index.is_none()
+        && layout.children[0].children_are_stacked
+    {
+        let only_child = layout.children.remove(0);
+        layout.children = only_child.children;
+        layout.external_children_index = only_child.external_children_index;
+    }
+    if layout.children_are_stacked && layout.children.iter().any(|c| !c.children.is_empty()) {
+        layout.children_are_stacked = false;
+    }
+    layout
+}
+
 fn tiled_panes_to_serialize(root: TiledPaneLayout) -> Vec<TiledPaneLayout> {
+    let root = flatten_nested_stacks(root);
     let root_is_leaf = root.children.is_empty() && root.external_children_index.is_none();
     if root_is_leaf {
         if root == TiledPaneLayout::default() {
@@ -153,8 +175,8 @@ fn serialize_tiled_and_floating_panes(
     serialized_tab_children: &mut KdlDocument,
 ) {
     for tiled_pane_layout in tiled_panes {
-        let ignore_size = false;
-        let tiled_pane_node = serialize_tiled_pane(tiled_pane_layout, ignore_size, pane_contents);
+        let is_in_stack = false;
+        let tiled_pane_node = serialize_tiled_pane(tiled_pane_layout, is_in_stack, pane_contents);
         serialized_tab_children.nodes_mut().push(tiled_pane_node);
     }
     if !floating_panes_layout.is_empty() {
@@ -173,7 +195,7 @@ fn serialize_tiled_and_floating_panes(
 
 fn serialize_tiled_pane(
     layout: &TiledPaneLayout,
-    ignore_size: bool,
+    is_in_stack: bool,
     pane_contents: &mut BTreeMap<String, String>,
 ) -> KdlNode {
     let (command, args) = extract_command_and_args(&layout.run);
@@ -195,7 +217,7 @@ fn serialize_tiled_pane(
         &mut tiled_pane_node,
     );
 
-    serialize_tiled_layout_attributes(&layout, ignore_size, &mut tiled_pane_node);
+    serialize_tiled_layout_attributes(&layout, is_in_stack, &mut tiled_pane_node);
     if let Some(ref fg) = layout.default_fg {
         tiled_pane_node
             .entries_mut()
@@ -227,8 +249,8 @@ fn serialize_tiled_pane(
                     .nodes_mut()
                     .push(KdlNode::new("children"));
             } else {
-                let ignore_size = layout.children_are_stacked;
-                let child_pane_node = serialize_tiled_pane(&pane, ignore_size, pane_contents);
+                let is_in_stack = layout.children_are_stacked;
+                let child_pane_node = serialize_tiled_pane(&pane, is_in_stack, pane_contents);
                 tiled_pane_node_children.nodes_mut().push(child_pane_node);
             }
         }
@@ -298,10 +320,10 @@ fn serialize_pane_title_and_attributes(
     match (&command, &edit) {
         (Some(command), _) => kdl_node
             .entries_mut()
-            .push(KdlEntry::new_prop("command", command.to_owned())),
+            .push(KdlEntry::new_prop("command", escape_dollar_signs(command))),
         (None, Some(edit)) => kdl_node
             .entries_mut()
-            .push(KdlEntry::new_prop("edit", edit.to_owned())),
+            .push(KdlEntry::new_prop("edit", escape_dollar_signs(edit))),
         _ => {},
     };
     if let Some(name) = name {
@@ -314,7 +336,7 @@ fn serialize_pane_title_and_attributes(
         if !path.is_empty() && !has_children {
             kdl_node
                 .entries_mut()
-                .push(KdlEntry::new_prop("cwd", path.to_owned()));
+                .push(KdlEntry::new_prop("cwd", escape_dollar_signs(&path)));
         }
     }
     if focus.unwrap_or(false) {
@@ -373,10 +395,10 @@ fn serialize_plugin(
 
 fn serialize_tiled_layout_attributes(
     layout: &TiledPaneLayout,
-    ignore_size: bool,
+    is_in_stack: bool,
     kdl_node: &mut KdlNode,
 ) {
-    if !ignore_size {
+    if !is_in_stack {
         match layout.split_size {
             Some(SplitSize::Fixed(size)) => kdl_node
                 .entries_mut()
@@ -404,7 +426,7 @@ fn serialize_tiled_layout_attributes(
             .entries_mut()
             .push(KdlEntry::new_prop("stacked", KdlValue::Bool(true)));
     }
-    if layout.is_expanded_in_stack {
+    if layout.is_expanded_in_stack && is_in_stack {
         kdl_node
             .entries_mut()
             .push(KdlEntry::new_prop("expanded", KdlValue::Bool(true)));
@@ -537,9 +559,13 @@ fn serialize_start_suspended(command: &Option<String>, pane_node_children: &mut 
 fn serialize_global_cwd(global_cwd: &Option<PathBuf>) -> Option<KdlNode> {
     global_cwd.as_ref().map(|cwd| {
         let mut node = KdlNode::new("cwd");
-        node.push(cwd.display().to_string());
+        node.push(escape_dollar_signs(&cwd.display().to_string()));
         node
     })
+}
+
+fn escape_dollar_signs(value: &str) -> String {
+    value.replace('$', "$$")
 }
 
 fn serialize_new_tab_template(
@@ -913,8 +939,8 @@ fn get_floating_panes_layout_from_panegeoms(
             }
             FloatingPaneLayout {
                 name: m.title.clone(),
-                height: Some(m.geom.rows.into()),
-                width: Some(m.geom.cols.into()),
+                height: Some(at_least_one(m.geom.rows.into())),
+                width: Some(at_least_one(m.geom.cols.into())),
                 x: Some(PercentOrFixed::Fixed(m.geom.x)),
                 y: Some(PercentOrFixed::Fixed(m.geom.y)),
                 pinned: Some(m.geom.is_pinned),
@@ -930,6 +956,13 @@ fn get_floating_panes_layout_from_panegeoms(
             }
         })
         .collect()
+}
+
+fn at_least_one(size: PercentOrFixed) -> PercentOrFixed {
+    match size {
+        PercentOrFixed::Percent(percent) => PercentOrFixed::Percent(percent.max(1)),
+        PercentOrFixed::Fixed(fixed) => PercentOrFixed::Fixed(fixed.max(1)),
+    }
 }
 
 fn get_x_lims(geoms: &Vec<PaneLayoutManifest>) -> Option<(usize, usize)> {
@@ -1165,7 +1198,9 @@ fn get_split_sizes(constraints: &Vec<Constraint>) -> Vec<Option<SplitSize>> {
                 if size == &max_percent {
                     None
                 } else {
-                    Some(SplitSize::Percent((100.0 * size / max_percent) as usize))
+                    Some(SplitSize::Percent(
+                        ((100.0 * size / max_percent) as usize).max(1),
+                    ))
                 }
             },
         };
@@ -2460,6 +2495,217 @@ mod tests {
             .unwrap();
         assert_eq!(tiled.children[0].border_style, Some(border_style));
         assert_eq!(floating[0].border_style, Some(floating_border_style));
+    }
+
+    fn round_trip_geom(x: usize, y: usize, rows: Dimension, cols: Dimension) -> PaneGeom {
+        PaneGeom {
+            x,
+            y,
+            rows,
+            cols,
+            stacked: None,
+            is_pinned: false,
+            logical_position: None,
+        }
+    }
+
+    fn serialize_and_parse(
+        global_layout_manifest: GlobalLayoutManifest,
+    ) -> (String, crate::input::layout::Layout) {
+        let (kdl, _) = serialize_session_layout(global_layout_manifest).unwrap();
+        let layout =
+            crate::input::layout::Layout::from_kdl(&kdl, Some("layout".to_owned()), None, None)
+                .unwrap_or_else(|e| panic!("failed to parse serialized layout: {:?}\n{}", e, kdl));
+        (kdl, layout)
+    }
+
+    #[test]
+    fn lone_pane_with_stale_stack_id_round_trips() {
+        let mut lone_geom = round_trip_geom(0, 0, Dimension::fixed(10), Dimension::fixed(10));
+        lone_geom.stacked = Some(3);
+        let mut left_geom = round_trip_geom(0, 0, Dimension::fixed(10), Dimension::fixed(10));
+        left_geom.stacked = Some(4);
+        let right_geom = round_trip_geom(10, 0, Dimension::fixed(10), Dimension::fixed(10));
+        let global_layout_manifest = GlobalLayoutManifest {
+            tabs: vec![
+                (
+                    "single".to_owned(),
+                    TabLayoutManifest {
+                        tiled_panes: vec![PaneLayoutManifest {
+                            geom: lone_geom,
+                            ..Default::default()
+                        }],
+                        ..Default::default()
+                    },
+                ),
+                (
+                    "split".to_owned(),
+                    TabLayoutManifest {
+                        tiled_panes: vec![
+                            PaneLayoutManifest {
+                                geom: left_geom,
+                                ..Default::default()
+                            },
+                            PaneLayoutManifest {
+                                geom: right_geom,
+                                ..Default::default()
+                            },
+                        ],
+                        ..Default::default()
+                    },
+                ),
+            ],
+            ..Default::default()
+        };
+        let (kdl, _layout) = serialize_and_parse(global_layout_manifest);
+        assert!(!kdl.contains("expanded"), "{}", kdl);
+    }
+
+    #[test]
+    fn stacked_panes_keep_expanded_flag_in_round_trip() {
+        let mut top = round_trip_geom(0, 0, Dimension::fixed(1), Dimension::fixed(10));
+        top.stacked = Some(0);
+        let mut middle = round_trip_geom(0, 1, Dimension::fixed(10), Dimension::fixed(10));
+        middle.stacked = Some(0);
+        let global_layout_manifest = GlobalLayoutManifest {
+            tabs: vec![(
+                "stack".to_owned(),
+                TabLayoutManifest {
+                    tiled_panes: vec![
+                        PaneLayoutManifest {
+                            geom: top,
+                            ..Default::default()
+                        },
+                        PaneLayoutManifest {
+                            geom: middle,
+                            ..Default::default()
+                        },
+                    ],
+                    ..Default::default()
+                },
+            )],
+            ..Default::default()
+        };
+        let (kdl, _layout) = serialize_and_parse(global_layout_manifest);
+        assert!(kdl.contains("stacked=true"), "{}", kdl);
+        assert!(kdl.contains("expanded=true"), "{}", kdl);
+    }
+
+    #[test]
+    fn dollar_signs_in_paths_survive_a_round_trip() {
+        use crate::input::command::RunCommand;
+        let pane_cwd = PathBuf::from("/tmp/routes/$programId+");
+        let command = PathBuf::from("/opt/$HOME/bin/tool");
+        let global_cwd = PathBuf::from("/srv/$ZELLIJ_UNSET_TEST_VAR");
+        let global_layout_manifest = GlobalLayoutManifest {
+            global_cwd: Some(global_cwd.clone()),
+            tabs: vec![(
+                "tab".to_owned(),
+                TabLayoutManifest {
+                    tiled_panes: vec![PaneLayoutManifest {
+                        geom: round_trip_geom(0, 0, Dimension::fixed(10), Dimension::fixed(10)),
+                        run: Some(Run::Command(RunCommand {
+                            command: command.clone(),
+                            ..Default::default()
+                        })),
+                        cwd: Some(pane_cwd.clone()),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                },
+            )],
+            ..Default::default()
+        };
+        let (_kdl, layout) = serialize_and_parse(global_layout_manifest);
+        let (tiled, _floating) = layout
+            .tabs()
+            .into_iter()
+            .next()
+            .map(|(_, t, f)| (t, f))
+            .unwrap();
+        let pane = &tiled.children[0];
+        match &pane.run {
+            Some(Run::Command(run_command)) => {
+                assert_eq!(run_command.command, command);
+                assert_eq!(run_command.cwd, Some(pane_cwd));
+            },
+            other => panic!("unexpected run: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn stacked_pane_template_round_trips_without_nested_stacks() {
+        let default_layout = crate::input::layout::Layout::from_kdl(
+            r#"
+            layout {
+                pane_template name="stack" stacked=true {
+                    children
+                }
+                stack {
+                    pane
+                    pane
+                }
+                swap_tiled_layout name="stacked" {
+                    tab {
+                        stack {
+                            pane
+                            pane
+                        }
+                    }
+                }
+            }
+            "#,
+            Some("layout".to_owned()),
+            None,
+            None,
+        )
+        .unwrap();
+        let global_layout_manifest = GlobalLayoutManifest {
+            default_layout: Box::new(default_layout),
+            ..Default::default()
+        };
+        let (kdl, layout) = serialize_and_parse(global_layout_manifest);
+        assert!(!kdl.contains("expanded"), "{}", kdl);
+        let (template_tiled, _) = layout.template.unwrap();
+        let stack = &template_tiled.children[0];
+        assert!(stack.children_are_stacked, "{}", kdl);
+        assert_eq!(stack.children.len(), 2, "{}", kdl);
+        assert!(stack.children.iter().all(|c| c.children.is_empty()));
+    }
+
+    #[test]
+    fn tiny_splits_are_never_serialized_as_zero_percent() {
+        let mut tiny_rows = Dimension::percent(0.4);
+        tiny_rows.set_inner(1);
+        let mut big_rows = Dimension::percent(99.6);
+        big_rows.set_inner(99);
+        let mut tiny_floating_rows = Dimension::percent(0.4);
+        tiny_floating_rows.set_inner(1);
+        let global_layout_manifest = GlobalLayoutManifest {
+            tabs: vec![(
+                "tab".to_owned(),
+                TabLayoutManifest {
+                    tiled_panes: vec![
+                        PaneLayoutManifest {
+                            geom: round_trip_geom(0, 0, tiny_rows, Dimension::fixed(10)),
+                            ..Default::default()
+                        },
+                        PaneLayoutManifest {
+                            geom: round_trip_geom(0, 1, big_rows, Dimension::fixed(10)),
+                            ..Default::default()
+                        },
+                    ],
+                    floating_panes: vec![PaneLayoutManifest {
+                        geom: round_trip_geom(2, 2, tiny_floating_rows, Dimension::fixed(10)),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                },
+            )],
+            ..Default::default()
+        };
+        let (kdl, _layout) = serialize_and_parse(global_layout_manifest);
+        assert!(!kdl.contains("\"0%\""), "{}", kdl);
     }
 
     fn get_dim(dim_hm: &Value) -> Dimension {
