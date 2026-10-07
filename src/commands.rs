@@ -599,9 +599,9 @@ fn attach_with_session_name(
     create: bool,
 ) -> ClientInfo {
     match &session_name {
-        Some(session) if create => match session_exists(session) {
-            Ok(true) => ClientInfo::Attach(session_name.unwrap(), config_options),
-            Ok(false) => ClientInfo::New(session_name.unwrap(), None, None, None),
+        Some(session) if create => match match_session_name(session) {
+            Ok(SessionNameMatch::Exact(s)) => ClientInfo::Attach(s, config_options),
+            Ok(_) => ClientInfo::New(session_name.unwrap(), None, None, None),
             Err(kind) => {
                 eprintln!("{}", session_listing_error_message(kind));
                 process::exit(1);
