@@ -434,8 +434,8 @@ pub trait Pane {
     }
     fn scroll_up(&mut self, count: usize, client_id: ClientId);
     fn scroll_down(&mut self, count: usize, client_id: ClientId);
-    fn scroll_left(&mut self, _count: usize, _client_id: ClientId) {}
-    fn scroll_right(&mut self, _count: usize, _client_id: ClientId) {}
+    fn scroll_left(&mut self, count: usize, client_id: ClientId);
+    fn scroll_right(&mut self, count: usize, client_id: ClientId);
     fn scroll_to_previous_prompt(&mut self, _client_id: ClientId) {}
     fn scroll_to_next_prompt(&mut self, _client_id: ClientId) {}
     fn select_command_at_scroll_position(&mut self, _client_id: ClientId) {}
@@ -737,6 +737,12 @@ pub trait Pane {
         None
     }
     fn mouse_scroll_down(&self, _position: &Position) -> Option<String> {
+        None
+    }
+    fn mouse_scroll_left(&self, _position: &Position) -> Option<String> {
+        None
+    }
+    fn mouse_scroll_right(&self, _position: &Position) -> Option<String> {
         None
     }
     fn focus_event(&self) -> Option<String> {
