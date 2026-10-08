@@ -1090,6 +1090,56 @@ mod tests {
     }
 
     #[test]
+    fn sessions_without_a_folder_or_a_branch_are_still_suggested() {
+        let mut test = TestIndex::new();
+        let target = context("/p", Some("/p/.git"), Some("main"));
+        test.mark_running("never-recorded");
+        test.add(
+            "no-folder",
+            SessionContext {
+                branch: Some("dev".to_owned()),
+                ..Default::default()
+            },
+            30,
+        );
+        test.mark_running("no-folder");
+        test.add("no-branch", context("/elsewhere", None, None), 20);
+        test.mark_running("no-branch");
+        test.add("no-context", SessionContext::default(), 10);
+        test.mark_resumable("no-context");
+        let rules = default_rules();
+        let candidates = test
+            .index
+            .suggestion_candidates(&target, &rules, ThenOrder::Recent, "me", 10, 1000)
+            .unwrap();
+        let ranked = rank_candidates(&target, &rules, ThenOrder::Recent, candidates, &[]);
+        let found: BTreeMap<String, (SessionState, SessionContext)> = ranked
+            .into_iter()
+            .map(|r| {
+                (
+                    r.candidate.row.name.clone(),
+                    (r.candidate.state, r.candidate.row.context),
+                )
+            })
+            .collect();
+        assert_eq!(found.len(), 4, "{:?}", found.keys());
+        let never_recorded = &found["never-recorded"];
+        assert_eq!(never_recorded.0, SessionState::Running);
+        assert_eq!(never_recorded.1, SessionContext::default());
+        let no_folder = &found["no-folder"];
+        assert_eq!(no_folder.0, SessionState::Running);
+        assert_eq!(no_folder.1.folder, None);
+        assert_eq!(no_folder.1.branch.as_deref(), Some("dev"));
+        let no_branch = &found["no-branch"];
+        assert_eq!(no_branch.0, SessionState::Running);
+        assert_eq!(no_branch.1.branch, None);
+        let no_context = &found["no-context"];
+        assert_eq!(no_context.0, SessionState::Resumable);
+        assert_eq!(no_context.1.folder, None);
+        assert_eq!(no_context.1.branch, None);
+    }
+
+    #[test]
     fn outside_git_only_folder_tiers_apply() {
         let target = context("/p", None, None);
         let candidate = context("/p", None, None);

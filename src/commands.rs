@@ -655,9 +655,7 @@ pub(crate) fn start_client(opts: CliArgs) {
             config = config_without_layout.clone();
             config_options = config_options_without_layout.clone();
             is_a_reconnect = true;
-            if let Some(session_card) = reconnect_to_session.session_card {
-                config_options.session_card = Some(session_card);
-            }
+            reconnect_to_session.apply_to_options(&mut config_options);
         }
 
         let start_client_plan = |session_name: std::string::String| {

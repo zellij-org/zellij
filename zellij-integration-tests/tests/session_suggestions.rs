@@ -3,14 +3,21 @@
 use std::time::Instant;
 use zellij_integration_tests::{
     claim_first_terminal_and_wait_for_prompt, col, default_timeout, keys,
-    split_right_and_wait_for_prompt, BackgroundTestSession, LayoutInfo, TestRunner, TestSession,
-    PROMPT, TERMINAL_SIZE,
+    split_right_and_wait_for_prompt, test_env, BackgroundTestSession, GridSnapshot, LayoutInfo,
+    TestRunner, TestSession, PROMPT, TERMINAL_SIZE,
 };
+use zellij_utils::input::options::Options;
+use zellij_utils::session_index::{SessionIndex, SessionRow};
 
 const SESSION_FEATURES_ON: &str = "session_card true\nsession_indicator true\nmouse_mode true";
+const CARD_OFF_INDICATOR_ON: &str = "session_card false\nsession_indicator true\nmouse_mode true";
 const CARD_TITLE: &str = "Running Sessions";
 const DONT_SHOW_AGAIN: &str = "Don't show again";
 const SHOW_ALL_SHORTCUT: &str = "<Ctrl f>";
+const NO_OTHER_SESSIONS_YET: &str = "No other sessions yet";
+const NO_OTHER_LIVE_SESSIONS: &str = "No other live sessions";
+const ONE_RESURRECTABLE: &str = "+1 resurrectable session";
+const PLACEHOLDER: &str = "—";
 const RESUME_LAYOUT: &str = r#"
 layout {
     pane size=1 borderless=true {
@@ -90,6 +97,81 @@ fn wait_for_path_to_disappear(path: &std::path::Path, what: &str) {
         }
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
+}
+
+fn leave_a_resurrectable_session() -> String {
+    let mut zellij = TestRunner::new(TERMINAL_SIZE)
+        .with_config(&format!("{}\nsession_serialization true", SESSION_FEATURES_ON))
+        .skip_concurrency_slot()
+        .start();
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+    zellij.save_session();
+    zellij.wait_for_serialized_session();
+    let session_name = zellij.session_name().to_owned();
+    zellij.quit();
+    let socket = zellij_utils::consts::ZELLIJ_SOCK_DIR.join(&session_name);
+    wait_for_path_to_disappear(&socket, "the exited session socket");
+    assert!(zellij_utils::consts::session_layout_cache_file_name(&session_name).exists());
+    session_name
+}
+
+fn wait_for_index_row(session_name: &str, what: &str, ready: impl Fn(&SessionRow) -> bool) {
+    let deadline = Instant::now() + default_timeout();
+    loop {
+        let row = SessionIndex::open_default()
+            .ok()
+            .and_then(|index| index.get(session_name).ok().flatten());
+        if row.as_ref().is_some_and(&ready) {
+            return;
+        }
+        if Instant::now() >= deadline {
+            panic!("timed out waiting for {}", what);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+}
+
+fn line_with(grid_snapshot: &GridSnapshot, needle: &str) -> String {
+    grid_snapshot
+        .lines()
+        .into_iter()
+        .find(|line| line.contains(needle))
+        .unwrap_or_else(|| panic!("{} is not on screen:\n{}", needle, grid_snapshot.text))
+}
+
+fn wait_for_the_card_to_close(zellij: &TestSession) {
+    zellij.wait_until("the session card closed", |grid_snapshot| {
+        !grid_snapshot.contains(CARD_TITLE)
+    });
+}
+
+fn assert_no_card_after_the_session_settles(zellij: &TestSession) {
+    open_and_close_session_manager(zellij);
+    let grid_snapshot = zellij.snapshot();
+    assert!(
+        !grid_snapshot.contains(CARD_TITLE),
+        "the session card is shown:\n{}",
+        grid_snapshot.text
+    );
+}
+
+fn create_git_repository(name: &str, branch: &str) -> std::path::PathBuf {
+    let folder = test_env::init().join(name);
+    std::fs::create_dir_all(&folder).unwrap();
+    let git = |args: &[&str]| {
+        let status = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&folder)
+            .args(["-c", "user.name=test", "-c", "user.email=test@example.com"])
+            .args(args)
+            .status()
+            .expect("git is installed");
+        assert!(status.success(), "git {:?} failed", args);
+    };
+    git(&["init", "-q"]);
+    git(&["checkout", "-q", "-b", branch]);
+    git(&["commit", "-q", "--allow-empty", "-m", "init"]);
+    folder
 }
 
 #[test]
@@ -366,15 +448,21 @@ fn ctrl_f_in_the_focused_card_opens_the_session_manager_with_an_expandable_list(
     zellij.quit();
 }
 
-#[test]
-fn enter_in_the_welcome_screen_starts_a_default_session_without_the_card() {
-    let mut zellij = TestRunner::new(TERMINAL_SIZE)
+fn start_welcome_screen() -> TestSession {
+    TestRunner::new(TERMINAL_SIZE)
         .with_config(SESSION_FEATURES_ON)
         .with_layout(LayoutInfo::BuiltIn("welcome".to_owned()))
-        .start();
+        .start()
+}
+
+#[test]
+fn enter_in_the_welcome_screen_starts_a_default_session_without_the_card() {
+    let background = start_running_session_in_background();
+    let mut zellij = start_welcome_screen();
     zellij.wait_until("the welcome screen is shown", |grid_snapshot| {
         grid_snapshot.contains("Enter a session name to create it")
             && grid_snapshot.contains("New session with a random name")
+            && grid_snapshot.contains(background.session_name())
     });
     zellij.send_stdin(&keys::ENTER);
     let deadline = Instant::now() + default_timeout();
@@ -391,4 +479,270 @@ fn enter_in_the_welcome_screen_starts_a_default_session_without_the_card() {
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
     zellij.quit();
+}
+
+#[test]
+fn the_startup_card_lists_live_sessions_but_not_resurrectable_ones_and_closes_on_the_first_command() {
+    let resurrectable = leave_a_resurrectable_session();
+    let background = start_running_session_in_background();
+    let mut zellij = start_session_with_session_features();
+    let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
+    let grid_snapshot = zellij.wait_until(
+        "the card lists the live session and counts the resurrectable one",
+        |grid_snapshot| {
+            grid_snapshot.contains(CARD_TITLE)
+                && grid_snapshot.contains(background.session_name())
+                && grid_snapshot.contains(ONE_RESURRECTABLE)
+        },
+    );
+    assert!(
+        !grid_snapshot.contains(&resurrectable),
+        "the resurrectable session is listed on the card:\n{}",
+        grid_snapshot.text
+    );
+    zellij.send_stdin(b"ls");
+    zellij.send_stdin(&keys::ENTER);
+    terminal.wait_for_stdin("the command reached the terminal", |stdin| {
+        stdin.ends_with(b"ls\r")
+    });
+    wait_for_the_card_to_close(&zellij);
+    zellij.quit();
+}
+
+#[test]
+fn without_other_live_sessions_there_is_no_card_even_with_resurrectable_sessions() {
+    let _resurrectable = leave_a_resurrectable_session();
+    let mut zellij = start_session_with_session_features();
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+    zellij.wait_until("the bar says there are no other sessions", |grid_snapshot| {
+        grid_snapshot
+            .lines()
+            .first()
+            .is_some_and(|tab_bar| tab_bar.contains("No Other Sessions"))
+    });
+    assert_no_card_after_the_session_settles(&zellij);
+    zellij.send_stdin(&keys::F9);
+    zellij.wait_until(
+        "f9 shows the card, which knows about the resurrectable session",
+        |grid_snapshot| {
+            grid_snapshot.contains(CARD_TITLE)
+                && grid_snapshot.contains(NO_OTHER_LIVE_SESSIONS)
+                && grid_snapshot.contains(ONE_RESURRECTABLE)
+        },
+    );
+    zellij.quit();
+}
+
+#[test]
+fn a_session_created_from_the_welcome_screen_has_no_card_even_with_other_live_sessions() {
+    let background = start_running_session_in_background();
+    let mut zellij = start_welcome_screen();
+    zellij.wait_until("the welcome screen lists the live session", |grid_snapshot| {
+        grid_snapshot.contains("New session with a random name")
+            && grid_snapshot.contains(background.session_name())
+    });
+    zellij.send_stdin(&keys::ENTER);
+    let switch = zellij.follow_switch();
+    assert_eq!(switch.session_card, Some(false));
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+    zellij.wait_until("the new session sees the live session", |grid_snapshot| {
+        grid_snapshot
+            .lines()
+            .first()
+            .is_some_and(|tab_bar| tab_bar.contains("1 running session"))
+    });
+    assert_no_card_after_the_session_settles(&zellij);
+    zellij.quit();
+}
+
+#[test]
+fn a_named_session_created_from_the_welcome_screen_has_no_card_even_with_other_live_sessions() {
+    let background = start_running_session_in_background();
+    let mut zellij = start_welcome_screen();
+    zellij.wait_until("the welcome screen lists the live session", |grid_snapshot| {
+        grid_snapshot.contains("New session with a random name")
+            && grid_snapshot.contains(background.session_name())
+    });
+    zellij.send_stdin(b"brand-new");
+    zellij.wait_until("the welcome screen offers to create it", |grid_snapshot| {
+        grid_snapshot.contains("brand-new") && grid_snapshot.contains("Create new")
+    });
+    zellij.send_stdin(&keys::ENTER);
+    let switch = zellij.follow_switch();
+    assert_eq!(switch.name.as_deref(), Some("brand-new"));
+    assert_eq!(zellij.session_name(), "brand-new");
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+    zellij.wait_until("the new session sees the live session", |grid_snapshot| {
+        grid_snapshot
+            .lines()
+            .first()
+            .is_some_and(|tab_bar| tab_bar.contains("1 running session"))
+    });
+    assert_no_card_after_the_session_settles(&zellij);
+    zellij.quit();
+}
+
+#[test]
+fn with_the_card_turned_off_it_is_not_shown_at_startup_but_f9_still_opens_it() {
+    let background = start_running_session_in_background();
+    let mut zellij = TestRunner::new(TERMINAL_SIZE)
+        .with_config(CARD_OFF_INDICATOR_ON)
+        .start();
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+    assert_no_card_after_the_session_settles(&zellij);
+    focus_the_card_with_f9(&zellij);
+    zellij.wait_until("the card lists the live session", |grid_snapshot| {
+        grid_snapshot.contains(background.session_name())
+    });
+    zellij.quit();
+}
+
+#[test]
+fn f9_opens_and_closes_the_card_in_the_default_keys_preset() {
+    let mut zellij = start_session_with_session_features();
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+    zellij.send_stdin(&keys::F9);
+    zellij.wait_until("f9 opened the card", |grid_snapshot| {
+        grid_snapshot.contains(CARD_TITLE) && grid_snapshot.contains(NO_OTHER_SESSIONS_YET)
+    });
+    zellij.send_stdin(&keys::F9);
+    wait_for_the_card_to_close(&zellij);
+    zellij.quit();
+}
+
+#[test]
+fn f9_opens_and_closes_the_card_in_locked_mode_of_the_unlock_first_preset() {
+    let mut zellij = TestRunner::new(TERMINAL_SIZE)
+        .with_config(SESSION_FEATURES_ON)
+        .with_cli_options(Options {
+            keybinds_preset: Some("unlock-first".to_owned()),
+            ..Default::default()
+        })
+        .start();
+    let terminal = zellij.expect_pty_spawn();
+    terminal.output(PROMPT);
+    zellij.wait_until("the session starts locked", |grid_snapshot| {
+        grid_snapshot.tab_bar_appears()
+            && grid_snapshot.contains("UNLOCK")
+            && grid_snapshot.cursor_is_at(col(2).row(1))
+    });
+    zellij.send_stdin(&keys::F9);
+    zellij.wait_until("f9 opened the card", |grid_snapshot| {
+        grid_snapshot.contains(CARD_TITLE) && grid_snapshot.contains(NO_OTHER_SESSIONS_YET)
+    });
+    zellij.send_stdin(&keys::F9);
+    wait_for_the_card_to_close(&zellij);
+    zellij.send_stdin(&keys::ctrl('g'));
+    zellij.wait_until("the session is unlocked", |grid_snapshot| {
+        grid_snapshot.contains("PANE")
+    });
+    zellij.quit();
+}
+
+#[test]
+fn escape_closes_a_focused_card_without_reaching_the_terminal() {
+    let background = start_running_session_in_background();
+    let mut zellij = start_session_with_session_features();
+    let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
+    wait_for_card_listing(&zellij, background.session_name());
+    focus_the_card_with_f9(&zellij);
+    zellij.send_stdin(&keys::ESC);
+    wait_for_the_card_to_close(&zellij);
+    zellij.send_stdin(&keys::key('x'));
+    let stdin = terminal.wait_for_stdin("the next key reached the terminal", |stdin| {
+        stdin.ends_with(b"x")
+    });
+    assert!(
+        !stdin.contains(&0x1b),
+        "the escape reached the terminal: {:?}",
+        stdin
+    );
+    zellij.quit();
+}
+
+#[test]
+fn sessions_without_a_folder_or_a_branch_are_listed() {
+    let never_recorded = TestRunner::new(TERMINAL_SIZE)
+        .skip_concurrency_slot()
+        .start_in_background();
+    let outside_git = start_running_session_in_background();
+    let repository = create_git_repository("gitrepo", "feat-x");
+    let in_git = TestRunner::new(TERMINAL_SIZE)
+        .with_config(&format!(
+            "{}\ndefault_cwd \"{}\"",
+            SESSION_FEATURES_ON,
+            repository.display()
+        ))
+        .skip_concurrency_slot()
+        .start_in_background();
+    wait_for_index_row(
+        outside_git.session_name(),
+        "the folder of the session outside git",
+        |row| row.context.folder.is_some(),
+    );
+    wait_for_index_row(
+        in_git.session_name(),
+        "the branch of the session in git",
+        |row| row.context.branch.as_deref() == Some("feat-x"),
+    );
+    let mut zellij = start_session_with_session_features();
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+    let grid_snapshot = zellij.wait_until("the card lists all three sessions", |grid_snapshot| {
+        grid_snapshot.contains(CARD_TITLE)
+            && grid_snapshot.contains(never_recorded.session_name())
+            && grid_snapshot.contains(outside_git.session_name())
+            && grid_snapshot.contains(in_git.session_name())
+    });
+    let never_recorded_line = line_with(&grid_snapshot, never_recorded.session_name());
+    assert_eq!(
+        never_recorded_line.matches(PLACEHOLDER).count(),
+        2,
+        "{}",
+        never_recorded_line
+    );
+    let outside_git_line = line_with(&grid_snapshot, outside_git.session_name());
+    assert!(outside_git_line.contains("cwd"), "{}", outside_git_line);
+    assert_eq!(
+        outside_git_line.matches(PLACEHOLDER).count(),
+        1,
+        "{}",
+        outside_git_line
+    );
+    let in_git_line = line_with(&grid_snapshot, in_git.session_name());
+    assert!(in_git_line.contains("gitrepo"), "{}", in_git_line);
+    assert!(in_git_line.contains("feat-x"), "{}", in_git_line);
+    assert!(!in_git_line.contains(PLACEHOLDER), "{}", in_git_line);
+    zellij.quit();
+}
+
+#[test]
+fn switching_after_a_command_was_typed_keeps_the_current_session() {
+    let background = start_running_session_in_background();
+    let mut zellij = start_session_with_session_features();
+    let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
+    let current_session = zellij.session_name().to_owned();
+    wait_for_card_listing(&zellij, background.session_name());
+    zellij.send_stdin(b"ls");
+    zellij.send_stdin(&keys::ENTER);
+    terminal.wait_for_stdin("the command reached the terminal", |stdin| {
+        stdin.ends_with(b"ls\r")
+    });
+    wait_for_the_card_to_close(&zellij);
+    focus_the_card_with_f9(&zellij);
+    zellij.send_stdin(&keys::ENTER);
+    zellij.wait_for_main_client_to_exit();
+    assert!(zellij
+        .received_server_messages()
+        .iter()
+        .any(|message| message.starts_with("SwitchSession")));
+    let client = zellij.attach_client(TERMINAL_SIZE);
+    client.wait_until("the kept session can be attached to", |grid_snapshot| {
+        grid_snapshot.tab_bar_appears() && grid_snapshot.contains(&current_session)
+    });
+    assert!(zellij_utils::consts::ZELLIJ_SOCK_DIR
+        .join(&current_session)
+        .exists());
+    let index = SessionIndex::open_default().unwrap();
+    assert!(index.get(&current_session).unwrap().is_some());
+    client.quit();
 }

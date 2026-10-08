@@ -1459,6 +1459,36 @@ mod tests {
     }
 
     #[test]
+    fn sessions_without_a_folder_or_a_branch_are_listed_with_placeholders() {
+        let no_folder = SessionSuggestion {
+            folder: None,
+            ..suggestion("no-folder", true, FolderRelation::Other)
+        };
+        let no_branch = SessionSuggestion {
+            branch: None,
+            ..suggestion("no-branch", true, FolderRelation::Other)
+        };
+        let neither = SessionSuggestion {
+            name: "neither".to_owned(),
+            is_running: true,
+            ..Default::default()
+        };
+        let panel = panel_with(vec![no_folder, no_branch, neither]);
+        let listed = panel.card_suggestions();
+        let names: Vec<&str> = listed.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, vec!["no-folder", "no-branch", "neither"]);
+        let table = build_card_table(&listed, vec![], 68, Some("main"));
+        assert_eq!(
+            row_text(&table, 1),
+            vec!["no-folder", "—", "main", "2m ago"]
+        );
+        let no_branch_row = row_text(&table, 2);
+        assert!(no_branch_row[1].ends_with("zellij"), "{:?}", no_branch_row);
+        assert_eq!(no_branch_row[2], "—");
+        assert_eq!(row_text(&table, 3), vec!["neither", "—", "—", "0s ago"]);
+    }
+
+    #[test]
     fn keyboard_selection_stays_inside_the_list() {
         let mut panel = panel_with(
             (0..4)
