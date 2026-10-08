@@ -376,7 +376,7 @@ impl TabBar {
                 is_hovered,
                 client.mode_info.style.colors,
                 client.mode_info.capabilities,
-                dimmed,
+                &client.mode_info,
             );
             is_alternate_tab = !is_alternate_tab;
             all_tabs.push(tab);

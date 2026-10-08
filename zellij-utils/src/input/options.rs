@@ -466,6 +466,11 @@ pub struct Options {
     #[serde(default)]
     pub nested_session_handling: Option<NestedSessionHandling>,
 
+    /// Highlight ancestor tabs while controlling a nested Zellij session (default: true)
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub nested_session_ancestor_tab_highlight: Option<bool>,
+
     #[clap(long, value_parser)]
     #[serde(default)]
     pub dangerously_enable_paste_buffer_read: Option<bool>,
@@ -656,6 +661,9 @@ impl Options {
         let nested_session_handling = other
             .nested_session_handling
             .or(self.nested_session_handling);
+        let nested_session_ancestor_tab_highlight = other
+            .nested_session_ancestor_tab_highlight
+            .or(self.nested_session_ancestor_tab_highlight);
         let dangerously_enable_paste_buffer_read = other
             .dangerously_enable_paste_buffer_read
             .or(self.dangerously_enable_paste_buffer_read);
@@ -725,6 +733,7 @@ impl Options {
             post_command_discovery_hook,
             client_async_worker_tasks,
             nested_session_handling,
+            nested_session_ancestor_tab_highlight,
             dangerously_enable_paste_buffer_read,
         }
     }
@@ -847,6 +856,9 @@ impl Options {
         let nested_session_handling = other
             .nested_session_handling
             .or(self.nested_session_handling);
+        let nested_session_ancestor_tab_highlight = other
+            .nested_session_ancestor_tab_highlight
+            .or(self.nested_session_ancestor_tab_highlight);
         let dangerously_enable_paste_buffer_read = other
             .dangerously_enable_paste_buffer_read
             .or(self.dangerously_enable_paste_buffer_read);
@@ -916,6 +928,7 @@ impl Options {
             post_command_discovery_hook,
             client_async_worker_tasks,
             nested_session_handling,
+            nested_session_ancestor_tab_highlight,
             dangerously_enable_paste_buffer_read,
         }
     }
@@ -932,6 +945,78 @@ impl Options {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn nested_session_ancestor_tab_highlight_merges_without_forcing_the_default() {
+        let disabled = Options {
+            nested_session_ancestor_tab_highlight: Some(false),
+            ..Default::default()
+        };
+        let enabled = Options {
+            nested_session_ancestor_tab_highlight: Some(true),
+            ..Default::default()
+        };
+        assert_eq!(
+            Options::default().nested_session_ancestor_tab_highlight,
+            None
+        );
+        assert_eq!(
+            Options::default()
+                .merge(Options::default())
+                .nested_session_ancestor_tab_highlight,
+            None
+        );
+        assert_eq!(
+            disabled
+                .merge(Options::default())
+                .nested_session_ancestor_tab_highlight,
+            Some(false)
+        );
+        assert_eq!(
+            enabled
+                .merge(disabled.clone())
+                .nested_session_ancestor_tab_highlight,
+            Some(false)
+        );
+        assert_eq!(
+            disabled
+                .merge(enabled.clone())
+                .nested_session_ancestor_tab_highlight,
+            Some(true)
+        );
+        assert_eq!(
+            disabled
+                .merge_from_cli(Options::default())
+                .nested_session_ancestor_tab_highlight,
+            Some(false)
+        );
+        assert_eq!(
+            disabled
+                .merge_from_cli(enabled)
+                .nested_session_ancestor_tab_highlight,
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn nested_session_ancestor_tab_highlight_has_a_command_line_flag() {
+        use clap::Parser;
+        #[derive(Parser)]
+        struct OptionsCli {
+            #[clap(flatten)]
+            options: Options,
+        }
+        let parsed = OptionsCli::try_parse_from([
+            "zellij",
+            "--nested-session-ancestor-tab-highlight",
+            "false",
+        ])
+        .unwrap();
+        assert_eq!(
+            parsed.options.nested_session_ancestor_tab_highlight,
+            Some(false)
+        );
+    }
 
     #[test]
     fn pane_frame_style_from_str_accepts_all_variants() {

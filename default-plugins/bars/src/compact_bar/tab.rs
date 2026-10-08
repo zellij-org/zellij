@@ -26,8 +26,15 @@ pub fn render_tab(
     is_alternate_tab: bool,
     palette: Styling,
     separator: &str,
-    dimmed: bool,
+    mode_info: &ModeInfo,
 ) -> LinePart {
+    let dimmed = mode_info.session_ascended == Some(true) || mode_info.session_dimmed == Some(true);
+    let highlight_ancestor = tab.active
+        && mode_info.session_dimmed == Some(true)
+        && mode_info.session_ascended != Some(true)
+        && mode_info
+            .nested_session_ancestor_tab_highlight
+            .unwrap_or(true);
     let focused_clients = tab.other_focused_client_slots.as_slice();
     let separator_width = separator.width();
     let alternate_tab_color = if is_alternate_tab {
@@ -54,13 +61,20 @@ pub fn render_tab(
         palette.ribbon_unselected.base
     };
     let separator_fill_color = palette.text_unselected.background;
-    let background_color = if dimmed {
+    let background_color = if highlight_ancestor {
+        crate::ancestor_tab_highlight_color(palette.ribbon_selected.background)
+    } else if dimmed {
         palette.ribbon_unselected.background
     } else {
         background_color
     };
     let text_style = if dimmed {
-        style!(palette.ribbon_unselected.base, background_color).italic()
+        let foreground = if highlight_ancestor {
+            palette.ribbon_selected.base
+        } else {
+            palette.ribbon_unselected.base
+        };
+        style!(foreground, background_color).italic()
     } else {
         style!(foreground_color, background_color).bold()
     };
@@ -102,7 +116,7 @@ pub fn tab_style(
     mut is_alternate_tab: bool,
     palette: Styling,
     capabilities: PluginCapabilities,
-    dimmed: bool,
+    mode_info: &ModeInfo,
 ) -> LinePart {
     let separator = tab_separator(capabilities);
 
@@ -118,7 +132,14 @@ pub fn tab_style(
         is_alternate_tab = false;
     }
 
-    render_tab(tabname, tab, is_alternate_tab, palette, separator, dimmed)
+    render_tab(
+        tabname,
+        tab,
+        is_alternate_tab,
+        palette,
+        separator,
+        mode_info,
+    )
 }
 
 pub(crate) fn get_tab_to_focus(
@@ -133,6 +154,76 @@ pub(crate) fn get_tab_to_focus(
         return Some(clicked_tab_idx);
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ancestor_highlight_respects_the_flag_and_session_focus() {
+        for flag in [None, Some(true), Some(false)] {
+            for (ascended, dimmed) in [
+                (None, Some(true)),
+                (None, None),
+                (Some(true), None),
+                (Some(true), Some(true)),
+            ] {
+                for active in [false, true] {
+                    let mut mode_info = ModeInfo {
+                        session_ascended: ascended,
+                        session_dimmed: dimmed,
+                        nested_session_ancestor_tab_highlight: flag,
+                        ..Default::default()
+                    };
+                    mode_info.style.colors.ribbon_selected.background =
+                        PaletteColor::Rgb((10, 100, 240));
+                    mode_info.style.colors.ribbon_selected.base = PaletteColor::Rgb((11, 12, 13));
+                    let palette = mode_info.style.colors;
+                    let is_dimmed = ascended == Some(true) || dimmed == Some(true);
+                    let highlighted = active
+                        && dimmed == Some(true)
+                        && ascended != Some(true)
+                        && flag != Some(false);
+                    let declaration = if highlighted || (active && !is_dimmed) {
+                        palette.ribbon_selected
+                    } else {
+                        palette.ribbon_unselected
+                    };
+                    let background = if highlighted {
+                        PaletteColor::Rgb((132, 177, 247))
+                    } else {
+                        declaration.background
+                    };
+                    let style = style!(declaration.base, background);
+                    let style = if is_dimmed {
+                        style.italic()
+                    } else {
+                        style.bold()
+                    };
+                    let fill = palette.text_unselected.background;
+                    let expected = ANSIStrings(&[
+                        style!(fill, background).paint(""),
+                        style.paint(" tab "),
+                        style!(background, fill).paint(""),
+                    ])
+                    .to_string();
+                    let tab = TabInfo {
+                        active,
+                        position: 2,
+                        ..Default::default()
+                    };
+                    let rendered = render_tab("tab".into(), &tab, false, palette, "", &mode_info);
+                    assert_eq!(
+                        rendered.part, expected,
+                        "flag={flag:?}, ascended={ascended:?}, dimmed={dimmed:?}, active={active}"
+                    );
+                    assert_eq!(rendered.len, 5);
+                    assert_eq!(rendered.tab_index, Some(2));
+                }
+            }
+        }
+    }
 }
 
 pub(crate) fn get_clicked_line_part(

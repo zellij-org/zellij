@@ -66,6 +66,7 @@ mod not_wasm {
             nested_ascend_keys: vec![],
             session_ascended: None,
             nested_descend_keys: vec![],
+            nested_session_ancestor_tab_highlight: None,
         }
     }
 

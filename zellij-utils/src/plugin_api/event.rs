@@ -2451,6 +2451,8 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
             nested_ascend_keys,
             session_ascended,
             nested_descend_keys,
+            nested_session_ancestor_tab_highlight: protobuf_mode_update_payload
+                .nested_session_ancestor_tab_highlight,
         };
         Ok(mode_info)
     }
@@ -2517,6 +2519,7 @@ impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
             nested_ascend_keys,
             session_ascended,
             nested_descend_keys,
+            nested_session_ancestor_tab_highlight: mode_info.nested_session_ancestor_tab_highlight,
         })
     }
 }
@@ -2781,16 +2784,21 @@ impl From<Option<FileMetadata>> for ProtobufFileMetadata {
 #[test]
 fn serialize_mode_update_event() {
     use prost::Message;
-    let mode_update_event = Event::ModeUpdate(Default::default());
-    let protobuf_event: ProtobufEvent = mode_update_event.clone().try_into().unwrap();
-    let serialized_protobuf_event = protobuf_event.encode_to_vec();
-    let deserialized_protobuf_event: ProtobufEvent =
-        Message::decode(serialized_protobuf_event.as_slice()).unwrap();
-    let deserialized_event: Event = deserialized_protobuf_event.try_into().unwrap();
-    assert_eq!(
-        mode_update_event, deserialized_event,
-        "Event properly serialized/deserialized without change"
-    );
+    for highlight in [None, Some(true), Some(false)] {
+        let mode_update_event = Event::ModeUpdate(ModeInfo {
+            nested_session_ancestor_tab_highlight: highlight,
+            ..Default::default()
+        });
+        let protobuf_event: ProtobufEvent = mode_update_event.clone().try_into().unwrap();
+        let serialized_protobuf_event = protobuf_event.encode_to_vec();
+        let deserialized_protobuf_event: ProtobufEvent =
+            Message::decode(serialized_protobuf_event.as_slice()).unwrap();
+        let deserialized_event: Event = deserialized_protobuf_event.try_into().unwrap();
+        assert_eq!(
+            mode_update_event, deserialized_event,
+            "Event properly serialized/deserialized without change"
+        );
+    }
 }
 
 #[test]
@@ -2897,6 +2905,7 @@ fn serialize_mode_update_event_with_non_default_values() {
             KeyWithModifier::new(BareKey::Char('o')).with_ctrl_modifier(),
             KeyWithModifier::new(BareKey::Down),
         ],
+        nested_session_ancestor_tab_highlight: Some(false),
     });
     let protobuf_event: ProtobufEvent = mode_update_event.clone().try_into().unwrap();
     let serialized_protobuf_event = protobuf_event.encode_to_vec();

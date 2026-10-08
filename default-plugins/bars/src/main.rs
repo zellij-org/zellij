@@ -13,6 +13,28 @@ use link::Link;
 use status_bar::StatusBar;
 use tab_bar::TabBar;
 
+fn ancestor_tab_highlight_color(color: PaletteColor) -> PaletteColor {
+    let (r, g, b) = match color {
+        PaletteColor::Rgb(rgb) => rgb,
+        PaletteColor::EightBit(index) => zellij_utils::shared::eightbit_to_rgb(index),
+    };
+    let lighten = |channel: u8| ((u16::from(channel) + 255) / 2) as u8;
+    PaletteColor::Rgb((lighten(r), lighten(g), lighten(b)))
+}
+
+#[cfg(test)]
+#[test]
+fn ancestor_background_lightening_supports_rgb_and_palette_colors() {
+    assert_eq!(
+        ancestor_tab_highlight_color(PaletteColor::Rgb((10, 100, 240))),
+        PaletteColor::Rgb((132, 177, 247))
+    );
+    assert_eq!(
+        ancestor_tab_highlight_color(PaletteColor::EightBit(154)),
+        PaletteColor::Rgb((215, 255, 127))
+    );
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Role {
     TabBar,

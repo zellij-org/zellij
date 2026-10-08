@@ -1286,6 +1286,7 @@ message Options {
   optional string keybinds_secondary = 73;
   optional string keybinds_unlock = 74;
   optional bool context_menu_enabled = 75;
+  optional bool nested_session_ancestor_tab_highlight = 76;
 }
 
 enum OnForceClose {

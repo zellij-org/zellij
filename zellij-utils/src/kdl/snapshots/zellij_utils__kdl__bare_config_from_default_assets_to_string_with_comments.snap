@@ -412,6 +412,10 @@ web_client {
 //   - "never" (never prompt or descend; do it manually)
 // 
 // nested_session_handling "ask"
+
+// Highlight ancestor tabs while controlling a nested Zellij session.
+// Default: true
+// nested_session_ancestor_tab_highlight true
  
 // Which escape sequence desktop notifications coming from panes are
 // forwarded to the host terminal with.

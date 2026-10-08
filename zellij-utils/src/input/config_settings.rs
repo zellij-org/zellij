@@ -166,6 +166,7 @@ fn option_values(options: &Options, values: &mut BTreeMap<SettingKey, Option<Str
         post_command_discovery_hook,
         client_async_worker_tasks,
         nested_session_handling,
+        nested_session_ancestor_tab_highlight,
         dangerously_enable_paste_buffer_read,
     } = options;
     let entries = [
@@ -316,6 +317,10 @@ fn option_values(options: &Options, values: &mut BTreeMap<SettingKey, Option<Str
             nested_session_handling
                 .as_ref()
                 .map(nested_session_handling_text),
+        ),
+        (
+            SettingKey::NestedSessionAncestorTabHighlight,
+            display_text(nested_session_ancestor_tab_highlight),
         ),
         (
             SettingKey::DangerouslyEnablePasteBufferRead,
@@ -630,6 +635,10 @@ pub fn copy_setting(target: &mut Config, source: &Config, key: SettingKey) {
         },
         SettingKey::NestedSessionHandling => {
             options.nested_session_handling = from.nested_session_handling
+        },
+        SettingKey::NestedSessionAncestorTabHighlight => {
+            options.nested_session_ancestor_tab_highlight =
+                from.nested_session_ancestor_tab_highlight
         },
         SettingKey::DangerouslyEnablePasteBufferRead => {
             options.dangerously_enable_paste_buffer_read = from.dangerously_enable_paste_buffer_read

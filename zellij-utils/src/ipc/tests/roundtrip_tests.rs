@@ -31,6 +31,21 @@ use std::path::PathBuf;
 const ROUNDTRIP_TEST_STACK_SIZE: usize = 32 * 1024 * 1024;
 
 #[test]
+fn nested_session_ancestor_tab_highlight_ipc_preserves_presence_and_value() {
+    use crate::client_server_contract::client_server_contract::Options as ProtoOptions;
+    for value in [None, Some(true), Some(false)] {
+        let options = Options {
+            nested_session_ancestor_tab_highlight: value,
+            ..Default::default()
+        };
+        let wire: ProtoOptions = options.clone().into();
+        assert_eq!(wire.nested_session_ancestor_tab_highlight, value);
+        let decoded: Options = wire.try_into().unwrap();
+        assert_eq!(decoded, options);
+    }
+}
+
+#[test]
 fn server_client_contract() {
     std::thread::Builder::new()
         .stack_size(ROUNDTRIP_TEST_STACK_SIZE)
@@ -527,6 +542,7 @@ fn test_client_messages() {
                 word_separators: Some("[]{}<>():".to_owned()),
                 host_notification_protocol: Some(HostNotificationProtocol::Osc99),
                 nested_session_handling: Some(NestedSessionHandling::Fullscreen),
+                nested_session_ancestor_tab_highlight: Some(false),
                 dangerously_enable_paste_buffer_read: Some(true),
             }),
             layout: None,

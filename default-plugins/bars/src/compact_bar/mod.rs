@@ -803,9 +803,6 @@ fn prepare_tab_data(client: &ClientState) -> TabRenderData {
     let mut active_swap_layout_name = None;
     let mut is_swap_layout_dirty = false;
     let mut is_alternate_tab = false;
-    let dimmed = client.mode_info.session_ascended == Some(true)
-        || client.mode_info.session_dimmed == Some(true);
-
     for tab in &client.tabs {
         let tab_name = get_tab_display_name(client, tab);
 
@@ -823,7 +820,7 @@ fn prepare_tab_data(client: &ClientState) -> TabRenderData {
             is_alternate_tab,
             client.mode_info.style.colors,
             client.mode_info.capabilities,
-            dimmed,
+            &client.mode_info,
         );
 
         is_alternate_tab = !is_alternate_tab;

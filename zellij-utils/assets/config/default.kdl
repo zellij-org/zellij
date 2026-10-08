@@ -125,6 +125,12 @@ context_menu {
 //
 // nested_session_handling "ask"
 
+// Highlight the active tab in unfocused ancestor sessions using selected colors
+// with a lighter background.
+// Default: true
+//
+// nested_session_ancestor_tab_highlight true
+
 //  Send a request for a simplified ui (without arrow fonts) to plugins
 //  Options:
 //    - true

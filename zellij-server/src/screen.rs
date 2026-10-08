@@ -651,6 +651,7 @@ pub enum ScreenInstruction {
         Size,                // client viewport size
         Option<usize>,       // tab position to focus
         Option<(u32, bool)>, // (pane_id, is_plugin) => pane_id to focus
+        bool,                // highlight ancestor tabs for this client
     ),
     RemoveClient(ClientId),
     UpdateSearch(Vec<u8>, ClientId, Option<NotificationEnd>),
@@ -855,6 +856,7 @@ pub enum ScreenInstruction {
         word_separators: String,
         host_notification_protocol: HostNotificationProtocol,
         nested_session_handling: NestedSessionHandling,
+        nested_session_ancestor_tab_highlight: bool,
         dangerously_enable_paste_buffer_read: bool,
     },
     RerunCommandPane(u32, Option<NotificationEnd>), // u32 - terminal pane id
@@ -5738,6 +5740,17 @@ impl Screen {
             .with_context(err_context)
     }
 
+    fn set_client_ancestor_tab_highlight(&mut self, client_id: ClientId, enabled: bool) {
+        let mode_info = self
+            .mode_info
+            .entry(client_id)
+            .or_insert_with(|| self.default_mode_info.clone());
+        mode_info.nested_session_ancestor_tab_highlight = Some(enabled);
+        for tab in self.tabs.values_mut() {
+            tab.change_mode_info(mode_info.clone(), client_id);
+        }
+    }
+
     pub fn add_client(&mut self, client_id: ClientId, is_web_client: bool) -> Result<()> {
         let err_context = |tab_index| {
             format!("failed to attach client {client_id} to tab with index {tab_index}")
@@ -8083,6 +8096,7 @@ impl Screen {
         word_separators: String,
         host_notification_protocol: HostNotificationProtocol,
         nested_session_handling: NestedSessionHandling,
+        nested_session_ancestor_tab_highlight: bool,
         dangerously_enable_paste_buffer_read: bool,
         client_id: ClientId,
     ) -> Result<()> {
@@ -8103,6 +8117,8 @@ impl Screen {
         // keybinds and base mode must be kept in sync with reconfigures.
         self.update_keybinds(new_keybinds, client_id);
         self.default_mode_info.update_default_mode(new_default_mode);
+        self.default_mode_info.nested_session_ancestor_tab_highlight =
+            Some(nested_session_ancestor_tab_highlight);
         self.default_shell = default_shell.clone().unwrap_or_else(|| get_default_shell());
         self.default_editor = default_editor.clone().or_else(|| get_default_editor());
         self.auto_layout = auto_layout;
@@ -8172,6 +8188,8 @@ impl Screen {
             mode_info.update_theme(theme);
             mode_info.update_arrow_fonts(should_support_arrow_fonts);
             mode_info.update_hide_session_name(hide_session_name);
+            mode_info.nested_session_ancestor_tab_highlight =
+                Some(nested_session_ancestor_tab_highlight);
             for tab in self.tabs.values_mut() {
                 tab.change_mode_info(mode_info.clone(), client_id);
                 tab.mark_active_pane_for_rerender(client_id);
@@ -9472,6 +9490,10 @@ pub(crate) fn screen_thread_main(
         web_server_port,
         nested_session_handling,
     );
+    screen
+        .default_mode_info
+        .nested_session_ancestor_tab_highlight =
+        config_options.nested_session_ancestor_tab_highlight;
     screen.default_keybinds = default_keybinds;
     screen.default_context_menu_config = config.context_menu.clone();
     screen.update_context_menu_enabled(config_options.context_menu_enabled.unwrap_or(true));
@@ -11676,9 +11698,11 @@ pub(crate) fn screen_thread_main(
                 client_size,
                 tab_position_to_focus,
                 pane_id_to_focus,
+                ancestor_tab_highlight,
             ) => {
                 screen.set_client_size(client_id, client_size);
                 screen.add_client(client_id, is_web_client)?;
+                screen.set_client_ancestor_tab_highlight(client_id, ancestor_tab_highlight);
                 let pane_id = pane_id_to_focus.map(|(pane_id, is_plugin)| {
                     if is_plugin {
                         PaneId::Plugin(pane_id)
@@ -13152,6 +13176,7 @@ pub(crate) fn screen_thread_main(
                 word_separators,
                 host_notification_protocol,
                 nested_session_handling,
+                nested_session_ancestor_tab_highlight,
                 dangerously_enable_paste_buffer_read,
             } => {
                 screen.update_context_menu_enabled(context_menu_enabled);
@@ -13188,6 +13213,7 @@ pub(crate) fn screen_thread_main(
                         word_separators,
                         host_notification_protocol,
                         nested_session_handling,
+                        nested_session_ancestor_tab_highlight,
                         dangerously_enable_paste_buffer_read,
                         client_id,
                     )
