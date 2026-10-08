@@ -16,6 +16,13 @@ use crate::client_screen::{ClientScreen, HostTerminal};
 type ServerSpawner = Box<dyn FnOnce(PathBuf) + Send>;
 
 fn server_message_name(msg: &ServerToClientMsg) -> String {
+    if let ServerToClientMsg::SwitchSession { connect_to_session } = msg {
+        return format!(
+            "SwitchSession layout={:?} session_card={:?}",
+            connect_to_session.layout.as_ref().map(|layout| layout.name().to_owned()),
+            connect_to_session.session_card
+        );
+    }
     match msg {
         ServerToClientMsg::Render { .. } => "Render",
         ServerToClientMsg::RenderFrame { .. } => "RenderFrame",

@@ -1226,6 +1226,7 @@ pub enum ActionName {
     OpenContextMenu = 126,
     MoveTabToPosition = 127,
     RunInBackground = 128,
+    ToggleSessionCard = 129,
 }
 impl ActionName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1360,6 +1361,7 @@ impl ActionName {
             ActionName::OpenContextMenu => "OpenContextMenu",
             ActionName::MoveTabToPosition => "MoveTabToPosition",
             ActionName::RunInBackground => "RunInBackground",
+            ActionName::ToggleSessionCard => "ToggleSessionCard",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1491,6 +1493,7 @@ impl ActionName {
             "OpenContextMenu" => Some(Self::OpenContextMenu),
             "MoveTabToPosition" => Some(Self::MoveTabToPosition),
             "RunInBackground" => Some(Self::RunInBackground),
+            "ToggleSessionCard" => Some(Self::ToggleSessionCard),
             _ => None,
         }
     }

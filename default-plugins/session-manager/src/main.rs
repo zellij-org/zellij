@@ -1,6 +1,8 @@
 mod new_session_info;
+mod panel;
 mod resurrectable_sessions;
 mod session_list;
+mod session_tree;
 mod single_screen;
 mod ui;
 use std::collections::BTreeMap;
@@ -13,12 +15,15 @@ use ui::{
     components::{
         render_controls_line, render_error, render_new_session_block, render_prompt,
         render_renaming_session_screen, render_screen_toggle, render_single_screen_prompt,
-        render_unified_results, render_unsaved_changes_line, Colors,
+        render_unsaved_changes_line, Colors,
     },
-    welcome_screen::{render_banner, render_welcome_boundaries},
     SessionUiInfo,
 };
 
+use panel::{
+    card_target_at, render_card, render_preview, render_session_tree, CardTarget, Panel,
+    PanelSize, NO_OTHER_SESSIONS_TEXT,
+};
 use resurrectable_sessions::ResurrectableSessions;
 use session_list::SessionList;
 
@@ -55,10 +60,39 @@ pub(crate) struct State {
     is_web_client: bool,
     current_session_last_saved_time: Option<u64>,
     is_visible: bool,
-    refresh_timer_armed: bool,
+    pub(crate) panel: Panel,
+    current_panes: PaneManifest,
+    last_tab_count: Option<usize>,
+    top_offset: usize,
+    last_terminal_pane_count: Option<usize>,
 }
 
+const WELCOME_TEXT: &str = "Enter a session name to create it, attach to it if it's running or resurrect it if it's exited.";
+
 register_plugin!(State);
+
+fn wrap_words(text: &str, width: usize) -> Vec<String> {
+    let mut lines = vec![];
+    let mut current = String::new();
+    for word in text.split_whitespace() {
+        let needed = if current.is_empty() {
+            word.chars().count()
+        } else {
+            current.chars().count() + 1 + word.chars().count()
+        };
+        if needed > width && !current.is_empty() {
+            lines.push(std::mem::take(&mut current));
+        }
+        if !current.is_empty() {
+            current.push(' ');
+        }
+        current.push_str(word);
+    }
+    if !current.is_empty() {
+        lines.push(current);
+    }
+    lines
+}
 
 impl ZellijPlugin for State {
     fn load(&mut self, configuration: BTreeMap<String, String>) {
@@ -87,14 +121,53 @@ impl ZellijPlugin for State {
             EventType::Timer,
             EventType::Visible,
         ]);
-        rename_plugin_pane(get_plugin_ids().plugin_id, "Session Manager");
-        self.refresh_session_list();
-        if !self.is_welcome_screen {
-            self.arm_refresh_timer();
+        let plugin_id = get_plugin_ids().plugin_id;
+        rename_plugin_pane(plugin_id, "Session Manager");
+        {
+            self.panel.own_plugin_id = Some(plugin_id);
+            self.single_screen_state.ordered_names = Some(vec![]);
+            let role = configuration.get("role").map(|r| r.as_str());
+            match role {
+                Some("card") | Some("card_focused") | Some("card_startup") => {
+                    let focused = role == Some("card_focused");
+                    self.panel.opened_at_startup = role == Some("card_startup");
+                    self.panel.popup_focused = focused;
+                    self.panel.hovered = if focused {
+                        Some(CardTarget::Row(0))
+                    } else {
+                        None
+                    };
+                    self.panel.is_popup = true;
+                    self.panel.needs_initial_layout = false;
+                    self.panel.size = Some(PanelSize::Card);
+                },
+                _ => {
+                    self.panel.size = Some(PanelSize::Manager);
+                    self.panel.needs_initial_layout = !self.is_welcome_screen;
+                },
+            }
+            subscribe(&[
+                EventType::Mouse,
+                EventType::TabUpdate,
+                EventType::PaneUpdate,
+                EventType::AvailableLayoutInfo,
+                EventType::SessionSuggestions,
+                EventType::SessionCountsUpdate,
+                EventType::TerminalCommandSubmitted,
+                EventType::SessionPreview,
+                EventType::SavedSessionPreview,
+            ]);
+            self.panel.request_suggestions();
+            self.panel.report_size();
         }
     }
 
     fn pipe(&mut self, pipe_message: PipeMessage) -> bool {
+        if self.panel.size.is_some() {
+            if let Some(should_render) = self.handle_panel_pipe(&pipe_message) {
+                return should_render;
+            }
+        }
         if pipe_message.name == "filepicker_result" {
             match (pipe_message.payload, pipe_message.args.get("request_id")) {
                 (Some(payload), Some(request_id)) => {
@@ -124,7 +197,7 @@ impl ZellijPlugin for State {
         let mut should_render = false;
         match event {
             Event::Timer(_) => {
-                self.refresh_timer_armed = false;
+                self.panel.preview_timer_armed = false;
                 if !self.is_visible {
                     return false;
                 }
@@ -133,27 +206,28 @@ impl ZellijPlugin for State {
                     self.current_session_last_saved_time = new_saved_time;
                     should_render = true;
                 }
-                if self.refresh_session_list() {
+                if self.refresh_selected_preview() {
                     should_render = true;
                 }
-                self.arm_refresh_timer();
             },
             Event::Visible(is_visible) => {
                 let was_visible = self.is_visible;
                 self.is_visible = is_visible;
                 if is_visible && !was_visible {
-                    if self.refresh_session_list() {
-                        should_render = true;
-                    }
-                    self.arm_refresh_timer();
+                    self.panel.request_suggestions();
                 }
             },
             Event::ModeUpdate(mode_info) => {
+                if let Some(session_name) = mode_info.session_name.as_ref() {
+                    if !self.is_welcome_screen {
+                        self.session_name = Some(session_name.clone());
+                    }
+                }
                 self.colors = Colors::new(mode_info.style.colors);
                 let was_web_client = self.is_web_client;
                 self.is_web_client = mode_info.is_web_client.unwrap_or(false);
-                if was_web_client != self.is_web_client {
-                    self.refresh_session_list();
+                if was_web_client != self.is_web_client && self.is_welcome_screen {
+                    self.panel.request_suggestions();
                 }
                 should_render = true;
             },
@@ -162,6 +236,121 @@ impl ZellijPlugin for State {
             },
             Event::PermissionRequestResult(_result) => {
                 should_render = true;
+            },
+            Event::SessionUpdate(session_infos, _) if self.panel.size.is_some() => {
+                for session_info in &session_infos {
+                    if session_info.is_current_session {
+                        self.new_session_info
+                            .update_layout_list(session_info.available_layouts.clone());
+                        self.session_name = Some(session_info.name.clone());
+                    }
+                }
+                self.refresh_layout_list();
+                should_render = self.single_screen_state.mode == SingleScreenMode::SelectingLayout;
+            },
+            Event::AvailableLayoutInfo(layouts, _) => {
+                self.new_session_info.update_layout_list(layouts);
+                self.refresh_layout_list();
+                should_render = true;
+            },
+            Event::TabUpdate(tabs) => {
+                let grew = self
+                    .last_tab_count
+                    .map(|previous| tabs.len() > previous)
+                    .unwrap_or(false);
+                self.last_tab_count = Some(tabs.len());
+                if grew && self.panel.size == Some(PanelSize::Card) {
+                    self.panel.close();
+                    return false;
+                }
+                if let Some(active_tab) = tabs.iter().find(|t| t.active) {
+                    self.panel.display.columns = active_tab.display_area_columns;
+                    self.panel.display.rows = active_tab.display_area_rows;
+                    self.panel.display.viewport_columns = active_tab.viewport_columns;
+                    self.panel.display.viewport_rows = active_tab.viewport_rows;
+                }
+                if self.panel.needs_initial_layout && self.panel.display.columns > 0 {
+                    self.panel.needs_initial_layout = false;
+                    if let Some(size) = self.panel.size {
+                        self.panel.size = None;
+                        self.panel.apply_size(size);
+                    }
+                }
+            },
+            Event::PaneUpdate(pane_manifest) => {
+                let terminal_panes = pane_manifest
+                    .panes
+                    .values()
+                    .flatten()
+                    .filter(|p| !p.is_plugin)
+                    .count();
+                let grew = self
+                    .last_terminal_pane_count
+                    .map(|previous| terminal_panes > previous)
+                    .unwrap_or(false);
+                self.last_terminal_pane_count = Some(terminal_panes);
+                self.current_panes = pane_manifest;
+                if grew && self.panel.size == Some(PanelSize::Card) {
+                    self.panel.close();
+                    return false;
+                }
+            },
+            Event::SessionSuggestions(suggestions) => {
+                self.panel.command_submitted |= suggestions.command_submitted;
+                self.panel.suggestions = Some(suggestions);
+                if self.panel.size != Some(PanelSize::Card) {
+                    self.apply_suggestions_to_list();
+                }
+                if self.panel.size == Some(PanelSize::Card) {
+                    if self.panel.is_popup {
+                        let (width, height) = self.panel.card_dimensions();
+                        set_popup_size(width, height);
+                    }
+                }
+                should_render = true;
+            },
+            Event::SessionCountsUpdate(_) => {
+                if self.panel.is_open() {
+                    self.panel.request_suggestions();
+                }
+            },
+            Event::TerminalCommandSubmitted => {
+                self.panel.command_submitted = true;
+                if self.panel.size == Some(PanelSize::Card) {
+                    self.panel.close();
+                    return false;
+                }
+            },
+            Event::SessionPreview(preview) => {
+                let known = self
+                    .panel
+                    .tree
+                    .children
+                    .get(&preview.session_name)
+                    .map(|tabs| !tabs.is_empty())
+                    .unwrap_or(false);
+                let tree_changed = !known
+                    && !preview.tabs.is_empty()
+                    && self
+                        .panel
+                        .tree
+                        .set_children_from_tabs(&preview.session_name, &preview.tabs);
+                should_render = self.apply_session_preview(preview) || tree_changed;
+            },
+            Event::SavedSessionPreview(preview) => {
+                if self.panel.tree.set_children_from_saved(&preview) {
+                    should_render = true;
+                }
+                if self.panel.preview_session.as_deref() == Some(preview.session_name.as_str())
+                    && self.panel.saved_preview.as_ref() != Some(&preview)
+                {
+                    self.panel.saved_preview = Some(preview);
+                    self.panel.preview = None;
+                    should_render = true;
+                }
+            },
+            Event::Mouse(mouse) => {
+                should_render = self.handle_mouse(mouse);
             },
             Event::SessionUpdate(session_infos, resurrectable_session_list) => {
                 for session_info in &session_infos {
@@ -200,13 +389,71 @@ impl ZellijPlugin for State {
     }
 
     fn render(&mut self, rows: usize, cols: usize) {
+        match self.panel.size {
+            Some(PanelSize::Card) => {
+                if self.panel.suggestions.is_some() {
+                    render_card(&mut self.panel, rows, cols);
+                }
+            },
+            Some(PanelSize::Manager) if self.no_other_sessions() => {
+                self.render_welcome_text(cols);
+                self.render_classic(rows, cols);
+            },
+            Some(PanelSize::Manager)
+                if self.single_screen_state.mode == SingleScreenMode::SelectingLayout =>
+            {
+                self.render_welcome_text(cols);
+                self.render_classic(rows, cols);
+            },
+            Some(PanelSize::Manager) if cols >= 60 => {
+                let list_cols = (cols / 2).max(30);
+                self.render_welcome_text(list_cols);
+                self.render_classic(rows, list_cols);
+                let top = self.top_offset;
+                render_preview(
+                    &mut self.panel,
+                    list_cols + 1,
+                    top,
+                    cols.saturating_sub(list_cols + 1),
+                    rows.saturating_sub(top),
+                );
+            },
+            _ => {
+                self.render_welcome_text(cols);
+                self.render_classic(rows, cols);
+            },
+        }
+    }
+}
+
+impl State {
+    fn render_welcome_text(&mut self, list_cols: usize) {
+        self.top_offset = 0;
+        if !self.is_welcome_screen
+            || self.panel.size.is_none()
+            || self.single_screen_state.mode != SingleScreenMode::SearchAndSelect
+        {
+            return;
+        }
+        let content_width = std::cmp::min(list_cols, 90);
+        let x = list_cols.saturating_sub(content_width) / 2;
+        let lines = wrap_words(WELCOME_TEXT, content_width.max(10));
+        for (index, line) in lines.iter().enumerate() {
+            print_text_with_coordinates(
+                Text::from(line.as_str()).color_range(2, ..),
+                x,
+                index + 1,
+                None,
+                None,
+            );
+        }
+        self.top_offset = lines.len() + 2;
+    }
+    fn render_classic(&mut self, rows: usize, cols: usize) {
         let (x, y, width, height) = self.main_menu_size(rows, cols);
 
         let background = self.colors.palette.text_unselected.background;
 
-        if self.is_welcome_screen {
-            render_banner(x, 0, rows.saturating_sub(height), width);
-        }
 
         if self.active_screen != ActiveScreen::SingleScreen {
             render_screen_toggle(
@@ -271,7 +518,21 @@ impl ZellijPlugin for State {
                             let content_width = std::cmp::min(width, 90);
                             let x_centered = x + (width.saturating_sub(content_width)) / 2;
 
-                            let enter_action = if !self.single_screen_state.search_term.is_empty() {
+                            let selected_result = self.single_screen_state.get_selected_result();
+                            let enter_action = if let (Some(result), true) =
+                                (selected_result, self.panel.size.is_some())
+                            {
+                                match result {
+                                    UnifiedSearchResult::ActiveSession { .. } => Some("Attach"),
+                                    UnifiedSearchResult::ResurrectableSession { .. } => {
+                                        Some("Resurrect")
+                                    },
+                                }
+                            } else if self.single_screen_state.search_term.is_empty()
+                                && self.panel.size.is_some()
+                            {
+                                Some("New session with a random name")
+                            } else if !self.single_screen_state.search_term.is_empty() {
                                 if let Some(result) = self.single_screen_state.get_selected_result()
                                 {
                                     match result {
@@ -300,15 +561,25 @@ impl ZellijPlugin for State {
                                 x_centered,
                                 y_offset,
                             );
-                            render_unified_results(
-                                &self.single_screen_state.render_cache,
-                                self.single_screen_state.selected_index,
-                                max_table_rows,
-                                content_width,
-                                self.colors,
-                                x_centered,
-                                y_offset + 2,
-                            );
+                            if self.no_other_sessions() {
+                                print_text_with_coordinates(
+                                    Text::from(NO_OTHER_SESSIONS_TEXT),
+                                    x_centered,
+                                    y_offset + 2,
+                                    None,
+                                    None,
+                                );
+                            } else {
+                                render_session_tree(
+                                    &mut self.panel,
+                                    &self.single_screen_state.render_cache,
+                                    self.single_screen_state.selected_index,
+                                    max_table_rows,
+                                    content_width,
+                                    x_centered,
+                                    y_offset + 2,
+                                );
+                            }
                         }
                     },
                     SingleScreenMode::SelectingLayout => {
@@ -400,11 +671,12 @@ impl ZellijPlugin for State {
         }
         if let Some(error) = self.error.as_ref() {
             render_error(&error, height, width, x, y);
-        } else if (self.active_screen == ActiveScreen::AttachToSession
-            || self.active_screen == ActiveScreen::SingleScreen)
-            && !self.is_welcome_screen
+        } else if self.active_screen == ActiveScreen::AttachToSession
+            || self.active_screen == ActiveScreen::SingleScreen
         {
-            let help_x = if self.active_screen == ActiveScreen::SingleScreen {
+            let help_x = if self.active_screen == ActiveScreen::SingleScreen
+                && self.single_screen_state.mode == SingleScreenMode::SearchAndSelect
+            {
                 let content_width = std::cmp::min(width, 90);
                 x + (width.saturating_sub(content_width)) / 2
             } else {
@@ -416,26 +688,23 @@ impl ZellijPlugin for State {
                 self.colors,
                 help_x,
                 rows.saturating_sub(1),
+                self.panel.size == Some(PanelSize::Manager),
             );
             let adjusted_x = help_x + help_offset;
             let adjusted_width = width.saturating_sub(help_offset);
-            render_unsaved_changes_line(
-                adjusted_width,
-                adjusted_x,
-                rows,
-                self.current_session_last_saved_time,
-            );
+            if !self.is_welcome_screen {
+                render_unsaved_changes_line(
+                    adjusted_width,
+                    adjusted_x,
+                    rows,
+                    self.current_session_last_saved_time,
+                );
+            }
         } else {
-            let _ = render_controls_line(self.active_screen, width, self.colors, x, rows);
-        }
-        if self.is_welcome_screen {
-            render_welcome_boundaries(rows, cols); // explicitly done in the end to override some
-                                                   // stuff, see comment in function
+            let _ = render_controls_line(self.active_screen, width, self.colors, x, rows, false);
         }
     }
-}
 
-impl State {
     fn reset_selected_index(&mut self) {
         self.sessions.reset_selected_index();
     }
@@ -443,6 +712,9 @@ impl State {
         if self.error.is_some() {
             self.error = None;
             return true;
+        }
+        if let Some(should_render) = self.handle_panel_key(&key) {
+            return should_render;
         }
         match self.active_screen {
             ActiveScreen::NewSession => self.handle_new_session_key(key),
@@ -870,6 +1142,11 @@ impl State {
                 self.renaming_session_name = Some(String::new());
                 should_render = true;
             },
+            BareKey::Char('l') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
+                self.single_screen_state.selected_index = None;
+                self.single_screen_state.transition_to_layout_selection();
+                should_render = true;
+            },
             BareKey::Delete if key.has_no_modifiers() => {
                 let selected = self
                     .single_screen_state
@@ -1156,12 +1433,12 @@ impl State {
                                     if *is_current_session {
                                         self.show_error("Already attached...");
                                     } else {
-                                        switch_session_with_focus(&session_name, None, None);
+                                        self.open_session(&session_name, true);
                                         switched_session = true;
                                     }
                                 },
                                 UnifiedSearchResult::ResurrectableSession { .. } => {
-                                    switch_session(Some(&session_name));
+                                    self.open_session(&session_name, false);
                                     switched_session = true;
                                 },
                             }
@@ -1199,7 +1476,7 @@ impl State {
                                 if self.session_name.as_deref() == Some(&typed_name) {
                                     self.show_error("Already attached...");
                                 } else {
-                                    switch_session_with_focus(&typed_name, None, None);
+                                    self.open_session(&typed_name, true);
                                     if self.is_welcome_screen {
                                         quit_zellij();
                                     } else {
@@ -1210,7 +1487,7 @@ impl State {
                             }
                             // Check exact match against resurrectable sessions
                             if self.resurrectable_sessions.has_session(&typed_name) {
-                                switch_session(Some(&typed_name));
+                                self.open_session(&typed_name, false);
                                 if self.is_welcome_screen {
                                     quit_zellij();
                                 } else {
@@ -1218,8 +1495,11 @@ impl State {
                                 }
                                 return;
                             }
-                            // No match - transition to layout selection
-                            self.single_screen_state.transition_to_layout_selection();
+                            if self.panel.size.is_some() {
+                                self.create_session_with_default_layout();
+                            } else {
+                                self.single_screen_state.transition_to_layout_selection();
+                            }
                         }
                     },
                     SingleScreenMode::SelectingLayout => {
@@ -1236,10 +1516,14 @@ impl State {
                         if switched_session {
                             match layout {
                                 Some(layout_info) => {
-                                    switch_session_with_layout(new_session_name, layout_info, cwd);
+                                    self.switch_to_new_session(
+                                        new_session_name,
+                                        Some(layout_info),
+                                        cwd,
+                                    );
                                 },
                                 None => {
-                                    switch_session(new_session_name);
+                                    self.switch_to_new_session(new_session_name, None, None);
                                 },
                             }
                         }
@@ -1256,6 +1540,62 @@ impl State {
                 }
             },
         }
+    }
+    fn create_session_with_default_layout(&mut self) {
+        let typed_name = self.single_screen_state.search_term.clone();
+        let name = if typed_name.is_empty() {
+            None
+        } else {
+            Some(typed_name.as_str())
+        };
+        let cwd = self.single_screen_state.new_session_folder.clone();
+        let layout = self.default_layout_info();
+        self.switch_to_new_session(name, Some(layout), cwd);
+        self.single_screen_state.search_term.clear();
+        if self.is_welcome_screen {
+            quit_zellij();
+        } else {
+            close_self();
+        }
+    }
+    fn switch_to_new_session(
+        &self,
+        name: Option<&str>,
+        layout: Option<LayoutInfo>,
+        cwd: Option<std::path::PathBuf>,
+    ) {
+        switch_session_with_options(ConnectToSession {
+            name: name.map(|n| n.to_owned()),
+            layout,
+            cwd,
+            session_card: if self.is_welcome_screen {
+                Some(false)
+            } else {
+                None
+            },
+            ..Default::default()
+        });
+    }
+    fn default_layout_info(&self) -> LayoutInfo {
+        let configured = read_config()
+            .setting(SettingKey::DefaultLayout)
+            .and_then(|setting| setting.current_value.clone())
+            .map(|value| value.trim().trim_matches('"').to_owned())
+            .filter(|value| !value.is_empty() && value != "welcome");
+        let wanted = configured.unwrap_or_else(|| "default".to_owned());
+        let stem = |name: &str| {
+            std::path::Path::new(name)
+                .file_stem()
+                .map(|stem| stem.to_string_lossy().to_string())
+                .unwrap_or_else(|| name.to_owned())
+        };
+        self.single_screen_state
+            .layout_list
+            .layout_list
+            .iter()
+            .find(|layout| layout.name() == wanted || stem(layout.name()) == stem(&wanted))
+            .cloned()
+            .unwrap_or_else(|| LayoutInfo::BuiltIn("default".to_owned()))
     }
     fn toggle_active_screen(&mut self) {
         self.active_screen = match self.active_screen {
@@ -1274,46 +1614,6 @@ impl State {
                 .update_session_name(&old_session_name, new_name);
         }
         self.session_name = Some(new_name.to_owned());
-    }
-    fn arm_refresh_timer(&mut self) {
-        if !self.refresh_timer_armed {
-            set_timeout(1.0);
-            self.refresh_timer_armed = true;
-        }
-    }
-
-    fn refresh_session_list(&mut self) -> bool {
-        let snapshot = match get_session_list() {
-            Ok(snapshot) => snapshot,
-            Err(_) => return false,
-        };
-        for session_info in &snapshot.live_sessions {
-            if session_info.is_current_session {
-                self.new_session_info
-                    .update_layout_list(session_info.available_layouts.clone());
-            }
-        }
-        self.resurrectable_sessions
-            .update(snapshot.resurrectable_sessions);
-        self.update_session_infos(snapshot.live_sessions);
-        if !self.is_multi_screen {
-            self.single_screen_state.update_search_term(
-                &self.sessions.session_ui_infos,
-                &self.resurrectable_sessions.all_resurrectable_sessions,
-            );
-            let previous_selection = self.single_screen_state.layout_list.selected_layout_index;
-            let previous_search_term = self
-                .single_screen_state
-                .layout_list
-                .layout_search_term
-                .clone();
-            self.single_screen_state.layout_list = self.new_session_info.get_layout_list_clone();
-            self.single_screen_state.layout_list.layout_search_term = previous_search_term;
-            self.single_screen_state.layout_list.update_search_term();
-            self.single_screen_state.layout_list.selected_layout_index =
-                previous_selection.min(self.single_screen_state.layout_list.max_index());
-        }
-        true
     }
 
     fn update_session_infos(&mut self, session_infos: Vec<SessionInfo>) {
@@ -1358,24 +1658,8 @@ impl State {
             .set_sessions(session_ui_infos, forbidden_sessions);
     }
     fn main_menu_size(&self, rows: usize, cols: usize) -> (usize, usize, usize, usize) {
-        // x, y, width, height
-        let width = if self.is_welcome_screen {
-            std::cmp::min(cols, 101)
-        } else {
-            cols
-        };
-        let x = if self.is_welcome_screen {
-            (cols.saturating_sub(width) as f64 / 2.0).floor() as usize + 2
-        } else {
-            0
-        };
-        let y = if self.is_welcome_screen {
-            (rows.saturating_sub(15) as f64 / 2.0).floor() as usize
-        } else {
-            0
-        };
-        let height = rows.saturating_sub(y);
-        (x, y, width, height)
+        let y = self.top_offset;
+        (0, y, cols, rows.saturating_sub(y))
     }
     fn render_single_screen_folder_prompt(&self, x: usize, y: usize, max_cols: usize) {
         match self.single_screen_state.new_session_folder.as_ref() {
@@ -1455,5 +1739,633 @@ impl State {
             None,
             None,
         );
+    }
+}
+
+impl State {
+    fn open_session(&self, name: &str, is_running: bool) {
+        self.open_session_at(name, is_running, None, None);
+    }
+    fn open_session_at(
+        &self,
+        name: &str,
+        is_running: bool,
+        tab: Option<usize>,
+        pane: Option<(u32, bool)>,
+    ) {
+        if self.is_welcome_screen {
+            if is_running {
+                switch_session_with_focus(name, tab, pane);
+            } else {
+                switch_session(Some(name));
+            }
+        } else if !self.panel.command_submitted {
+            switch_session_and_close_current(name, tab, pane);
+        } else if is_running {
+            switch_session_with_focus(name, tab, pane);
+        } else {
+            switch_session(Some(name));
+        }
+    }
+    fn go_to_size(&mut self, size: PanelSize) {
+        let was_card = self.panel.size == Some(PanelSize::Card);
+        self.panel.apply_size(size);
+        if size != PanelSize::Card {
+            if was_card {
+                self.apply_suggestions_to_list();
+            }
+            self.request_preview_for_selection();
+        }
+    }
+    fn size_down(&mut self) {
+        if self.is_welcome_screen {
+            return;
+        }
+        match self.panel.size {
+            Some(PanelSize::Manager) => self.panel.close(),
+            Some(PanelSize::Card) => self.panel.close(),
+            None => {},
+        }
+    }
+    fn handle_panel_pipe(&mut self, pipe_message: &PipeMessage) -> Option<bool> {
+        match pipe_message.name.as_str() {
+            "expand" => {
+                match self.panel.size {
+                    Some(PanelSize::Card) => self.go_to_size(PanelSize::Manager),
+                    _ => {},
+                }
+                Some(true)
+            },
+            "close" => {
+                self.panel.close();
+                Some(false)
+            },
+            "focus_card" => {
+                if self.panel.size == Some(PanelSize::Card) {
+                    self.panel.popup_focused = true;
+                    if !matches!(self.panel.hovered, Some(CardTarget::Row(_))) {
+                        self.panel.hovered = Some(CardTarget::Row(0));
+                    }
+                    self.panel.card_follow_selection = true;
+                    self.resize_card_popup();
+                }
+                Some(true)
+            },
+            "escape" => {
+                if self.panel.size == Some(PanelSize::Card) {
+                    self.panel.close();
+                }
+                Some(false)
+            },
+            _ => None,
+        }
+    }
+    fn apply_suggestions_to_list(&mut self) {
+        let Some(suggestions) = self.panel.suggestions.as_ref() else {
+            return;
+        };
+        let mut running = vec![];
+        let mut resumable = vec![];
+        let mut ordered_names = vec![];
+        for suggestion in &suggestions.suggestions {
+            ordered_names.push(suggestion.name.clone());
+            if suggestion.is_running {
+                let tab_count = suggestion.tabs.len();
+                let pane_count = suggestion
+                    .tabs
+                    .iter()
+                    .flat_map(|t| t.panes.iter())
+                    .filter(|p| !p.is_plugin)
+                    .count();
+                let connected_users = suggestion.connected_clients;
+                let tabs = (0..tab_count)
+                    .map(|position| crate::ui::TabUiInfo {
+                        name: format!("Tab #{}", position + 1),
+                        panes: if position == 0 {
+                            (0..pane_count)
+                                .map(|pane_id| crate::ui::PaneUiInfo {
+                                    name: String::new(),
+                                    exit_code: None,
+                                    pane_id: pane_id as u32,
+                                    is_plugin: false,
+                                })
+                                .collect()
+                        } else {
+                            vec![]
+                        },
+                        position,
+                    })
+                    .collect();
+                running.push(SessionUiInfo {
+                    name: suggestion.name.clone(),
+                    tabs,
+                    connected_users,
+                    is_current_session: false,
+                    creation_time: std::time::Duration::from_secs(suggestion.created_secs_ago),
+                });
+            } else {
+                resumable.push((
+                    suggestion.name.clone(),
+                    std::time::Duration::from_secs(suggestion.created_secs_ago),
+                ));
+            }
+        }
+        for suggestion in &suggestions.suggestions {
+            if suggestion.is_running && !suggestion.tabs.is_empty() {
+                self.panel
+                    .tree
+                    .set_children_from_tabs(&suggestion.name, &suggestion.tabs);
+            }
+        }
+        self.single_screen_state.ordered_names = Some(ordered_names);
+        self.sessions.set_sessions(running, vec![]);
+        self.resurrectable_sessions.update(resumable);
+        self.single_screen_state.update_search_term(
+            &self.sessions.session_ui_infos,
+            &self.resurrectable_sessions.all_resurrectable_sessions,
+        );
+    }
+    fn apply_session_preview(&mut self, preview: SessionPreview) -> bool {
+        let mut should_render = false;
+        if self.panel.preview_session.as_deref() == Some(preview.session_name.as_str())
+            && self.panel.preview.as_ref() != Some(&preview)
+        {
+            self.panel.preview = Some(preview);
+            self.panel.saved_preview = None;
+            should_render = true;
+        }
+        should_render
+    }
+    fn selected_session(&self) -> Option<(String, bool, bool)> {
+        self.single_screen_state
+            .get_selected_result()
+            .map(|result| match result {
+                UnifiedSearchResult::ActiveSession {
+                    session_name,
+                    is_current_session,
+                    ..
+                } => (session_name.clone(), true, *is_current_session),
+                UnifiedSearchResult::ResurrectableSession { session_name, .. } => {
+                    (session_name.clone(), false, false)
+                },
+            })
+    }
+    fn request_preview_for_selection(&mut self) {
+        if !matches!(
+            self.panel.size,
+            Some(PanelSize::Manager)
+        ) {
+            return;
+        }
+        match self.selected_session() {
+            Some((name, is_running, is_current)) => {
+                let (tab, pane) = if self.panel.tree.node_session == name {
+                    match self.panel.tree.node {
+                        session_tree::TreeNode::Session => (None, None),
+                        session_tree::TreeNode::Tab(tab) => (Some(tab), None),
+                        session_tree::TreeNode::Pane(tab, pane) => (Some(tab), Some(pane)),
+                    }
+                } else {
+                    (None, None)
+                };
+                self.panel
+                    .request_tree_preview(&name, is_running, is_current, tab, pane);
+                if is_current {
+                    self.preview_current_session();
+                }
+                if is_running {
+                    self.panel.arm_preview_timer();
+                }
+            },
+            None => self.panel.clear_preview(),
+        }
+    }
+    fn preview_current_session(&mut self) {
+        let focused = self
+            .current_panes
+            .panes
+            .values()
+            .flatten()
+            .find(|p| p.is_focused && !p.is_plugin)
+            .map(|p| p.id);
+        let contents = focused
+            .and_then(|id| get_pane_scrollback(PaneId::Terminal(id), false).ok())
+            .map(|c| c.viewport.join("\n"))
+            .unwrap_or_default();
+        self.panel.preview = Some(SessionPreview {
+            session_name: self.session_name.clone().unwrap_or_default(),
+            contents,
+            ..Default::default()
+        });
+    }
+    fn refresh_selected_preview(&mut self) -> bool {
+        if !self.is_visible
+            || !matches!(
+                self.panel.size,
+                Some(PanelSize::Manager)
+            )
+        {
+            return false;
+        }
+        match self.selected_session() {
+            Some((name, true, is_current)) => {
+                if is_current {
+                    self.preview_current_session();
+                } else {
+                    get_session_preview(&name, self.panel.preview_tab, self.panel.preview_pane_id);
+                }
+                self.panel.arm_preview_timer();
+                is_current
+            },
+            _ => false,
+        }
+    }
+    fn refresh_layout_list(&mut self) {
+        let previous_selection = self.single_screen_state.layout_list.selected_layout_index;
+        let previous_search_term = self
+            .single_screen_state
+            .layout_list
+            .layout_search_term
+            .clone();
+        self.single_screen_state.layout_list = self.new_session_info.get_layout_list_clone();
+        self.single_screen_state.layout_list.layout_search_term = previous_search_term;
+        self.single_screen_state.layout_list.update_search_term();
+        self.single_screen_state.layout_list.selected_layout_index =
+            previous_selection.min(self.single_screen_state.layout_list.max_index());
+    }
+    fn handle_panel_key(&mut self, key: &KeyWithModifier) -> Option<bool> {
+        let size = self.panel.size?;
+        if self.renaming_session_name.is_some()
+            || self.show_kill_all_sessions_warning
+            || self.single_screen_state.mode != single_screen::SingleScreenMode::SearchAndSelect
+        {
+            return None;
+        }
+        match size {
+            PanelSize::Card => match key.bare_key {
+                BareKey::Esc if key.has_no_modifiers() => {
+                    self.size_down();
+                    Some(true)
+                },
+                BareKey::Enter if key.has_no_modifiers() => {
+                    if let Some(CardTarget::Row(index)) = self.panel.hovered.clone() {
+                        self.open_card_row(index);
+                    } else {
+                        self.go_to_size(PanelSize::Manager);
+                    }
+                    Some(true)
+                },
+                _ => {
+                    let ctrl = key.has_only_modifiers(&[KeyModifier::Ctrl]);
+                    let shift = key.has_only_modifiers(&[KeyModifier::Shift]);
+                    let plain = key.has_no_modifiers();
+                    let page = self.panel.card_page_rows.max(1) as isize;
+                    let half = (page / 2).max(1);
+                    match key.bare_key {
+                        BareKey::Down | BareKey::Char('j') | BareKey::Tab if plain => {
+                            self.panel.move_card_selection(1)
+                        },
+                        BareKey::Char('n') if ctrl => self.panel.move_card_selection(1),
+                        BareKey::Up | BareKey::Char('k') if plain => {
+                            self.panel.move_card_selection(-1)
+                        },
+                        BareKey::Tab if shift => self.panel.move_card_selection(-1),
+                        BareKey::Char('p') if ctrl => self.panel.move_card_selection(-1),
+                        BareKey::PageDown if plain => self.panel.move_card_selection(page),
+                        BareKey::Char('f') if ctrl => {
+                            self.go_to_size(PanelSize::Manager);
+                            return Some(true);
+                        },
+                        BareKey::PageUp if plain => self.panel.move_card_selection(-page),
+                        BareKey::Char('b') if ctrl => self.panel.move_card_selection(-page),
+                        BareKey::Char('d') if ctrl => self.panel.move_card_selection(half),
+                        BareKey::Char('u') if ctrl => self.panel.move_card_selection(-half),
+                        BareKey::Home | BareKey::Char('g') if plain => {
+                            self.panel.select_card_edge(false)
+                        },
+                        BareKey::End if plain => self.panel.select_card_edge(true),
+                        BareKey::Char('G') if plain || shift => self.panel.select_card_edge(true),
+                        _ => return Some(false),
+                    }
+                    Some(true)
+                },
+            },
+            PanelSize::Manager => match key.bare_key {
+                BareKey::Esc if key.has_no_modifiers() => {
+                    if self.single_screen_state.selected_index.is_some()
+                        && !self.single_screen_state.search_term.is_empty()
+                    {
+                        return None;
+                    }
+                    self.size_down();
+                    Some(true)
+                },
+                BareKey::Up if key.has_no_modifiers() => {
+                    self.tree_move(-1);
+                    Some(true)
+                },
+                BareKey::Down if key.has_no_modifiers() => {
+                    self.tree_move(1);
+                    Some(true)
+                },
+                BareKey::PageUp if key.has_no_modifiers() => {
+                    let page = self.panel.tree.page_rows.max(1) as isize;
+                    self.tree_move(-page);
+                    Some(true)
+                },
+                BareKey::PageDown if key.has_no_modifiers() => {
+                    let page = self.panel.tree.page_rows.max(1) as isize;
+                    self.tree_move(page);
+                    Some(true)
+                },
+                BareKey::Char('u') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
+                    let half = (self.panel.tree.page_rows / 2).max(1) as isize;
+                    self.tree_move(-half);
+                    Some(true)
+                },
+                BareKey::Char('d') if key.has_only_modifiers(&[KeyModifier::Ctrl]) => {
+                    let half = (self.panel.tree.page_rows / 2).max(1) as isize;
+                    self.tree_move(half);
+                    Some(true)
+                },
+                BareKey::Home if key.has_no_modifiers() => {
+                    self.tree_select(0);
+                    Some(true)
+                },
+                BareKey::End if key.has_no_modifiers() => {
+                    let last = self.panel.tree.rows.len().saturating_sub(1);
+                    self.tree_select(last);
+                    Some(true)
+                },
+                BareKey::Right if key.has_no_modifiers() => {
+                    self.tree_right();
+                    Some(true)
+                },
+                BareKey::Left if key.has_no_modifiers() => {
+                    self.tree_left();
+                    Some(true)
+                },
+                BareKey::Enter if key.has_no_modifiers() => {
+                    if self.open_tree_child() {
+                        Some(false)
+                    } else {
+                        None
+                    }
+                },
+                _ => None,
+            },
+        }
+    }
+    fn no_other_sessions(&self) -> bool {
+        self.panel
+            .suggestions
+            .as_ref()
+            .map(|s| s.suggestions.is_empty())
+            .unwrap_or(false)
+    }
+    fn tree_cursor(&self) -> Option<usize> {
+        self.panel
+            .tree
+            .cursor_position(&self.panel.tree.rows, self.single_screen_state.selected_index)
+    }
+    fn tree_select(&mut self, index: usize) {
+        self.tree_point_at(index);
+        self.panel.tree.follow = true;
+    }
+    fn tree_point_at(&mut self, index: usize) {
+        let Some(row) = self.panel.tree.rows.get(index).cloned() else {
+            return;
+        };
+        self.single_screen_state.selected_index = Some(row.original_index);
+        self.panel.tree.node = row.node;
+        self.panel.tree.node_session = row.session;
+        self.request_preview_for_selection();
+    }
+    fn tree_move(&mut self, delta: isize) {
+        let len = self.panel.tree.rows.len();
+        if len == 0 {
+            return;
+        }
+        let next = match self.tree_cursor() {
+            Some(cursor) => (cursor as isize + delta).clamp(0, len as isize - 1) as usize,
+            None if delta < 0 => len - 1,
+            None => 0,
+        };
+        self.tree_select(next);
+    }
+    fn tree_right(&mut self) {
+        let Some(cursor) = self.tree_cursor() else {
+            self.tree_move(1);
+            return;
+        };
+        let Some(row) = self.panel.tree.rows.get(cursor).cloned() else {
+            return;
+        };
+        if !row.expandable {
+            return;
+        }
+        if row.expanded {
+            let has_child = self
+                .panel
+                .tree
+                .rows
+                .get(cursor + 1)
+                .map(|next| next.depth > row.depth)
+                .unwrap_or(false);
+            if has_child {
+                self.tree_select(cursor + 1);
+            }
+        } else {
+            self.panel.tree.toggle(&row);
+            self.panel.tree.follow = true;
+        }
+    }
+    fn tree_left(&mut self) {
+        let Some(cursor) = self.tree_cursor() else {
+            return;
+        };
+        let Some(row) = self.panel.tree.rows.get(cursor).cloned() else {
+            return;
+        };
+        if row.expandable && row.expanded {
+            self.panel.tree.toggle(&row);
+            self.panel.tree.follow = true;
+            return;
+        }
+        if row.depth == 0 {
+            return;
+        }
+        let parent = self.panel.tree.rows[..cursor]
+            .iter()
+            .rposition(|r| r.depth < row.depth);
+        if let Some(parent) = parent {
+            self.tree_select(parent);
+        }
+    }
+    fn open_tree_child(&mut self) -> bool {
+        use session_tree::TreeNode;
+        let Some(row) = self.tree_cursor().and_then(|c| self.panel.tree.rows.get(c).cloned()) else {
+            return false;
+        };
+        let (tab, pane) = match row.node {
+            TreeNode::Session => return false,
+            TreeNode::Tab(tab) => (tab, None),
+            TreeNode::Pane(tab, pane) => (tab, Some(pane)),
+        };
+        let is_running = matches!(self.selected_session(), Some((_, true, _)));
+        if !is_running {
+            return false;
+        }
+        let pane_id = pane.and_then(|pane| {
+            self.panel
+                .tree
+                .children
+                .get(&row.session)
+                .and_then(|tabs| tabs.get(tab))
+                .and_then(|t| t.panes.get(pane))
+                .map(|p| (p.id, p.is_plugin))
+        });
+        self.open_session_at(&row.session, true, Some(tab), pane_id);
+        if self.is_welcome_screen {
+            quit_zellij();
+            return true;
+        }
+        self.panel.size = None;
+        self.panel.report_size();
+        close_self();
+        true
+    }
+    fn tree_row_at(&self, line: isize, column: usize) -> Option<usize> {
+        if line < 0 {
+            return None;
+        }
+        let line = line as usize;
+        self.panel
+            .tree
+            .row_targets
+            .iter()
+            .find(|(y, range, _)| *y == line && range.contains(&column))
+            .map(|(_, _, index)| *index)
+    }
+    fn tree_marker_at(&self, line: isize, column: usize) -> Option<usize> {
+        if line < 0 {
+            return None;
+        }
+        let line = line as usize;
+        self.panel
+            .tree
+            .marker_targets
+            .iter()
+            .find(|(y, x, _)| *y == line && *x == column)
+            .map(|(_, _, index)| *index)
+    }
+    fn open_card_row(&mut self, index: usize) {
+        let rows = self.panel.card_suggestions();
+        if let Some(suggestion) = rows.get(index) {
+            self.open_session(&suggestion.name, suggestion.is_running);
+            self.panel.size = None;
+            self.panel.report_size();
+            close_self();
+        }
+    }
+    fn resize_card_popup(&self) {
+        if self.panel.size == Some(PanelSize::Card) && self.panel.is_popup {
+            let (width, height) = self.panel.card_dimensions();
+            set_popup_size(width, height);
+        }
+    }
+    fn handle_mouse(&mut self, mouse: Mouse) -> bool {
+        match self.panel.size {
+            Some(PanelSize::Card) => match mouse {
+                Mouse::LeftClick(line, column) => {
+                    if self.panel.is_popup && !self.panel.popup_focused {
+                        self.panel.popup_focused = true;
+                        set_popup_focused(true);
+                        self.resize_card_popup();
+                    }
+                    match card_target_at(&self.panel, line, column) {
+                        Some(CardTarget::Row(index)) => self.open_card_row(index),
+                        Some(CardTarget::ShowAll) => self.go_to_size(PanelSize::Manager),
+                        Some(CardTarget::Close) => self.panel.close(),
+                        Some(CardTarget::DontShowAgain) => {
+                            reconfigure(SettingKey::SessionCard.kdl_snippet("false"), true);
+                            self.panel.close();
+                        },
+                        None => {},
+                    }
+                    true
+                },
+                Mouse::Hover(line, column) => {
+                    let hovered = card_target_at(&self.panel, line, column);
+                    if hovered != self.panel.hovered {
+                        self.panel.hovered = hovered;
+                        true
+                    } else {
+                        false
+                    }
+                },
+                Mouse::ScrollDown(lines) => {
+                    self.panel.move_card_selection(lines.max(1) as isize);
+                    true
+                },
+                Mouse::ScrollUp(lines) => {
+                    self.panel.move_card_selection(-(lines.max(1) as isize));
+                    true
+                },
+                _ => false,
+            },
+            Some(PanelSize::Manager) => match mouse {
+                Mouse::LeftClick(line, column) => {
+                    if let Some(index) = self.tree_marker_at(line, column) {
+                        if let Some(row) = self.panel.tree.rows.get(index).cloned() {
+                            self.panel.tree.toggle(&row);
+                        }
+                        return true;
+                    }
+                    match self.tree_row_at(line, column) {
+                        Some(index) => {
+                            self.tree_point_at(index);
+                            if !self.open_tree_child() {
+                                self.handle_selection();
+                            }
+                            true
+                        },
+                        None => false,
+                    }
+                },
+                Mouse::Hover(line, column) => match self.tree_row_at(line, column) {
+                    Some(index) if self.tree_cursor() != Some(index) => {
+                        self.tree_point_at(index);
+                        true
+                    },
+                    _ => false,
+                },
+                Mouse::ScrollDown(lines) => {
+                    self.tree_move(lines.max(1) as isize);
+                    true
+                },
+                Mouse::ScrollUp(lines) => {
+                    self.tree_move(-(lines.max(1) as isize));
+                    true
+                },
+                _ => false,
+            },
+            _ => false,
+        }
+    }
+}
+
+#[cfg(test)]
+mod welcome_text_tests {
+    use super::wrap_words;
+
+    #[test]
+    fn welcome_text_is_wrapped_by_word() {
+        assert_eq!(
+            wrap_words("one two three four", 9),
+            vec!["one two", "three", "four"]
+        );
+        assert_eq!(wrap_words("averyveryverylongword x", 5), vec!["averyveryverylongword", "x"]);
+        assert!(wrap_words("", 10).is_empty());
     }
 }

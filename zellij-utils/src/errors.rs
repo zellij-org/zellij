@@ -451,6 +451,15 @@ pub enum ScreenContext {
     OpenContextMenu,
     OpenContextMenuFromPlugin,
     OpenPluginPopup,
+    OpenSessionCard,
+    TerminalInputSubmitted,
+    TerminalEscapePressed,
+    ToggleSessionCard,
+    SetPopupFocused,
+    PopupToFloatingPane,
+    ShowSwapLayoutNotification,
+    SetSwapLayoutNotification,
+    GetSessionPreview,
     OpenPipePopup,
     OpenPromptPopup,
     AddPopup,
@@ -553,6 +562,7 @@ pub enum PtyContext {
     UpdateAndReportCwds,
     NotifyCwdFromOsc7,
     RunInBackground,
+    PromptReturned,
     Exit,
 }
 
@@ -615,6 +625,7 @@ pub enum PluginContext {
     GetLastSessionSaveTime,
     DetectPluginConfigChanges,
     HighlightClicked,
+    PopupBecamePane,
 }
 
 /// Stack call representations corresponding to the different types of [`ClientInstruction`]s.
@@ -659,6 +670,9 @@ pub enum ServerContext {
     Log,
     LogError,
     SwitchSession,
+    SwitchSessionAndCloseCurrent,
+    TerminalCommandSubmitted,
+    SessionRenamed,
     UnblockCliPipeInput,
     CliPipeOutput,
     AssociatePipeWithClient,
@@ -732,6 +746,9 @@ pub enum BackgroundJobContext {
     StartNestedGuestPing,
     StopNestedGuestPing,
     TrimAllocator,
+    SessionSuggestions,
+    SessionPreview,
+    SavedSessionPreview,
     Exit,
 }
 

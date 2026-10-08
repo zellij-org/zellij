@@ -433,3 +433,15 @@ web_client {
 //   - "off" (do not forward notifications to the host terminal)
 // 
 // host_notification_protocol "auto"
+ 
+// Whether to show a card listing other relevant sessions when a new session starts
+// default is true
+// session_card false
+ 
+// Whether to show the other sessions indicator in the tab bar and compact bar
+// default is true
+// session_indicator false
+ 
+// Whether to briefly show the name of the new swap layout when it is changed
+// default is true
+// swap_layout_notification false

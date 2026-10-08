@@ -732,6 +732,11 @@ impl WasmBridge {
         let pipes_to_release = self.pending_pipes.unload_plugin(&pid);
         self.send_pipe_releases(pipes_to_release);
         self.forget_pipe_popups_of_plugin(pid);
+        let _ = self
+            .senders
+            .send_to_background_jobs(BackgroundJob::SessionSuggestions(
+                crate::session_suggestions::SessionSuggestionsJob::Unsubscribe { plugin_id: pid },
+            ));
         let prompt_actions = self.prompt_requests.plugin_unloaded(pid);
         self.apply_prompt_actions(prompt_actions);
         let plugin_list = self.plugin_map.lock().unwrap().list_plugins();
@@ -2521,6 +2526,21 @@ impl WasmBridge {
         }
         pipe_messages
     }
+    pub fn popup_became_pane(&mut self, plugin_id: PluginId) {
+        self.forget_pipe_popups_of_plugin(plugin_id);
+        let running_plugins: Vec<Arc<Mutex<RunningPlugin>>> = self
+            .plugin_map
+            .lock()
+            .unwrap()
+            .running_plugins()
+            .into_iter()
+            .filter(|(id, _, _)| *id == plugin_id)
+            .map(|(_, _, running_plugin)| running_plugin)
+            .collect();
+        for running_plugin in running_plugins {
+            running_plugin.lock().unwrap().store.data_mut().pending_popup_size = None;
+        }
+    }
     fn forget_pipe_popups_of_plugin(&mut self, plugin_id: PluginId) {
         self.pipe_popups.retain(|_, pipe_popup| match pipe_popup {
             PipePopup::Open {
@@ -3334,7 +3354,13 @@ pub fn check_event_permission(
         | Event::NestedSessionModeUpdate { .. }
         | Event::NestedSessionEnded { .. }
         | Event::ContextMenu(..)
+        | Event::SessionSuggestions(..)
+        | Event::SessionCountsUpdate(..)
+        | Event::FolderSessionsUpdate(..)
+        | Event::TerminalCommandSubmitted
+        | Event::SavedSessionPreview(..)
         | Event::InputReceived => PermissionType::ReadApplicationState,
+        Event::SessionPreview(..) => PermissionType::ReadPaneContents,
         Event::ConfigChangesDropped(..) | Event::ConfigFileChangedSinceRead => {
             PermissionType::Reconfigure
         },

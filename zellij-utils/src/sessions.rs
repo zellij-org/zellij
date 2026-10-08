@@ -358,6 +358,9 @@ pub fn delete_session(name: &str, force: bool) {
             }
         });
     }
+    if let Ok(index) = crate::session_index::SessionIndex::open_default() {
+        let _ = index.delete(name);
+    }
     if let Err(e) = std::fs::remove_dir_all(session_info_folder_for_session(name)) {
         if e.kind() == std::io::ErrorKind::NotFound {
             eprintln!("Session: {:?} not found.", name);

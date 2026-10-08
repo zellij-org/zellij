@@ -247,6 +247,10 @@ pub enum ClientToServerMsg {
         supported: bool,
     },
     RequestSessionList,
+    RequestSessionPreview {
+        tab_index: Option<u32>,
+        pane_id: Option<(u32, bool)>,
+    },
     SetMobileRenderPreferences {
         single_pane: bool,
         fit: bool,

@@ -31,7 +31,7 @@ pub(crate) fn wheel_steps(event: &MouseEvent, bound_lines: usize) -> (usize, usi
     }
 }
 
-fn clear_hover_for_client(tab: &mut Tab, client_id: ClientId) -> bool {
+pub(super) fn clear_hover_for_client(tab: &mut Tab, client_id: ClientId) -> bool {
     clear_hover_for_client_keeping_plugin(tab, client_id, None)
 }
 
