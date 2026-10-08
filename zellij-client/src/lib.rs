@@ -1034,6 +1034,9 @@ pub fn start_client(
     let has_certificate =
         config_options.web_server_cert.is_some() && config_options.web_server_key.is_some();
     let enforce_https_for_localhost = config_options.enforce_https_for_localhost.unwrap_or(false);
+    let dangerously_allow_web_serving_without_a_certificate = config_options
+        .dangerously_allow_web_serving_without_a_certificate
+        .unwrap_or(false);
 
     let terminal_teardown = TerminalTeardown {
         include_kitty_exit: !explicitly_disable_kitty_keyboard_protocol,
@@ -1504,6 +1507,7 @@ pub fn start_client(
                     web_server_port,
                     has_certificate,
                     enforce_https_for_localhost,
+                    dangerously_allow_web_serving_without_a_certificate,
                 );
                 match spawn_web_server(&cli_args) {
                     Ok(_) => {

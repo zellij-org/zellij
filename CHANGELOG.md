@@ -28,6 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: let a plugin give its layout space back while it has nothing to draw (https://github.com/zellij-org/zellij/pull/5590)
 * fix: occasional resurrection layout serialization corruption (https://github.com/zellij-org/zellij/pull/5690)
 * fix: support horizontal scroll for programs that request it (https://github.com/zellij-org/zellij/pull/4860)
+* feat: allow config to dangerously disable https certificate enforcement on non-localhost (https://github.com/zellij-org/zellij/pull/5694)
 
 ## [0.45.1] - 2026-08-28
 * fix: nested-session detection over SSH (https://github.com/zellij-org/zellij/pull/5522)

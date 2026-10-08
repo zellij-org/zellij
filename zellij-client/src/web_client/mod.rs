@@ -101,13 +101,26 @@ pub fn start_web_client(
     let web_server_key = custom_server_key.or_else(|| config.options.web_server_key.clone());
     let has_https_certificate = web_server_cert.is_some() && web_server_key.is_some();
 
-    if let Err(e) = should_use_https(
+    match should_use_https(
         web_server_ip,
         has_https_certificate,
         config.options.enforce_https_for_localhost.unwrap_or(false),
+        config
+            .options
+            .dangerously_allow_web_serving_without_a_certificate
+            .unwrap_or(false),
     ) {
-        eprintln!("{}", e);
-        std::process::exit(2);
+        Ok(false) if !web_server_ip.is_loopback() => {
+            eprintln!(
+                "WARNING: serving the web client on {} over plain HTTP without an SSL certificate (dangerously_allow_web_serving_without_a_certificate is enabled). Traffic, including login tokens, is not encrypted.",
+                web_server_ip
+            );
+        },
+        Ok(_) => {},
+        Err(e) => {
+            eprintln!("{}", e);
+            std::process::exit(2);
+        },
     };
     let (runtime, listener, tls_config) = if run_daemonized {
         daemonize_web_server(

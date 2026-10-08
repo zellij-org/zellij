@@ -163,6 +163,7 @@ fn option_values(options: &Options, values: &mut BTreeMap<SettingKey, Option<Str
         web_server_cert,
         web_server_key,
         enforce_https_for_localhost,
+        dangerously_allow_web_serving_without_a_certificate,
         post_command_discovery_hook,
         client_async_worker_tasks,
         nested_session_handling,
@@ -302,6 +303,10 @@ fn option_values(options: &Options, values: &mut BTreeMap<SettingKey, Option<Str
         (
             SettingKey::EnforceHttpsForLocalhost,
             display_text(enforce_https_for_localhost),
+        ),
+        (
+            SettingKey::DangerouslyAllowWebServingWithoutACertificate,
+            display_text(dangerously_allow_web_serving_without_a_certificate),
         ),
         (
             SettingKey::PostCommandDiscoveryHook,
@@ -621,6 +626,10 @@ pub fn copy_setting(target: &mut Config, source: &Config, key: SettingKey) {
         SettingKey::WebServerKey => options.web_server_key = from.web_server_key.clone(),
         SettingKey::EnforceHttpsForLocalhost => {
             options.enforce_https_for_localhost = from.enforce_https_for_localhost
+        },
+        SettingKey::DangerouslyAllowWebServingWithoutACertificate => {
+            options.dangerously_allow_web_serving_without_a_certificate =
+                from.dangerously_allow_web_serving_without_a_certificate
         },
         SettingKey::PostCommandDiscoveryHook => {
             options.post_command_discovery_hook = from.post_command_discovery_hook.clone()
