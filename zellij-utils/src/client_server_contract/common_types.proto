@@ -1286,6 +1286,7 @@ message Options {
   optional string keybinds_secondary = 73;
   optional string keybinds_unlock = 74;
   optional bool context_menu_enabled = 75;
+  optional bool dangerously_allow_web_serving_without_a_certificate = 76;
 }
 
 enum OnForceClose {

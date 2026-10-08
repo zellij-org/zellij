@@ -807,6 +807,14 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "false",
             Everyone,
         ),
+        SettingKey::DangerouslyAllowWebServingWithoutACertificate => info(
+            "Allow HTTP without certificate",
+            Web,
+            "DANGEROUS: serve unencrypted HTTP on non-localhost addresses",
+            Toggle,
+            "false",
+            Everyone,
+        ),
         SettingKey::ClientAsyncWorkerTasks => info(
             "Web worker tasks",
             Web,
@@ -952,6 +960,7 @@ pub fn section(key: SettingKey) -> &'static str {
         | WebServerCert
         | WebServerKey
         | EnforceHttpsForLocalhost
+        | DangerouslyAllowWebServingWithoutACertificate
         | ClientAsyncWorkerTasks => "Server",
         WebClientFont
         | WebClientFontSize

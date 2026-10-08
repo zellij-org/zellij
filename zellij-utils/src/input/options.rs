@@ -447,6 +447,7 @@ pub struct Options {
     pub web_server_cert: Option<PathBuf>,
     pub web_server_key: Option<PathBuf>,
     pub enforce_https_for_localhost: Option<bool>,
+    pub dangerously_allow_web_serving_without_a_certificate: Option<bool>,
     /// A command to run after the discovery of running commands when serializing, for the purpose
     /// of manipulating the command (eg. with a regex) before it gets serialized
     #[clap(long, value_parser)]
@@ -647,6 +648,9 @@ impl Options {
         let enforce_https_for_localhost = other
             .enforce_https_for_localhost
             .or(self.enforce_https_for_localhost);
+        let dangerously_allow_web_serving_without_a_certificate = other
+            .dangerously_allow_web_serving_without_a_certificate
+            .or(self.dangerously_allow_web_serving_without_a_certificate);
         let post_command_discovery_hook = other
             .post_command_discovery_hook
             .or(self.post_command_discovery_hook.clone());
@@ -722,6 +726,7 @@ impl Options {
             web_server_cert,
             web_server_key,
             enforce_https_for_localhost,
+            dangerously_allow_web_serving_without_a_certificate,
             post_command_discovery_hook,
             client_async_worker_tasks,
             nested_session_handling,
@@ -838,6 +843,9 @@ impl Options {
         let enforce_https_for_localhost = other
             .enforce_https_for_localhost
             .or(self.enforce_https_for_localhost);
+        let dangerously_allow_web_serving_without_a_certificate = other
+            .dangerously_allow_web_serving_without_a_certificate
+            .or(self.dangerously_allow_web_serving_without_a_certificate);
         let post_command_discovery_hook = other
             .post_command_discovery_hook
             .or_else(|| self.post_command_discovery_hook.clone());
@@ -913,6 +921,7 @@ impl Options {
             web_server_cert,
             web_server_key,
             enforce_https_for_localhost,
+            dangerously_allow_web_serving_without_a_certificate,
             post_command_discovery_hook,
             client_async_worker_tasks,
             nested_session_handling,

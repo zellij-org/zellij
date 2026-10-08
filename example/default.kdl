@@ -648,11 +648,22 @@ load_plugins {
 // (127.0.0.0/8)
 // (Requires restart)
 //
-// Note: https is ALWAYS enforced when bound to non-local interfaces
+// Note: https is enforced when bound to non-local interfaces, unless
+// dangerously_allow_web_serving_without_a_certificate is set
 //
 // Default: false
 //
 // enforce_https_for_localhost true
+
+// DANGEROUS: allow the web server to serve plain, unencrypted HTTP when bound to a
+// non-local interface without web_server_cert and web_server_key.
+// Anyone on the network can read and tamper with the traffic, including login tokens.
+// Only use behind a trusted TLS-terminating proxy or on a fully trusted network.
+// Does not override enforce_https_for_localhost.
+// Default: false
+// (Requires restart)
+//
+// dangerously_allow_web_serving_without_a_certificate true
 
 // The port the web server should listen on when it starts
 // Default: 8082

@@ -76,6 +76,7 @@ fn every_option_set() -> Options {
         web_server_cert: Some(PathBuf::from("/tmp/cert.pem")),
         web_server_key: Some(PathBuf::from("/tmp/key.pem")),
         enforce_https_for_localhost: Some(true),
+        dangerously_allow_web_serving_without_a_certificate: Some(true),
         post_command_discovery_hook: Some("echo hook".to_owned()),
         client_async_worker_tasks: Some(8),
         nested_session_handling: Some(NestedSessionHandling::Never),

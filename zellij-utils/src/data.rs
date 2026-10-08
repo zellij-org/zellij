@@ -4672,6 +4672,7 @@ setting_keys! {
     WebServerCert => (TopLevel, "web_server_cert", true, Text),
     WebServerKey => (TopLevel, "web_server_key", true, Text),
     EnforceHttpsForLocalhost => (TopLevel, "enforce_https_for_localhost", true, Flag),
+    DangerouslyAllowWebServingWithoutACertificate => (TopLevel, "dangerously_allow_web_serving_without_a_certificate", true, Flag),
     PostCommandDiscoveryHook => (TopLevel, "post_command_discovery_hook", false, Text),
     ClientAsyncWorkerTasks => (TopLevel, "client_async_worker_tasks", true, Number),
     NestedSessionHandling => (TopLevel, "nested_session_handling", false, Text),

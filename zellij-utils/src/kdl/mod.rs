@@ -3128,6 +3128,12 @@ impl Options {
         let enforce_https_for_localhost =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "enforce_https_for_localhost")
                 .map(|(v, _)| v);
+        let dangerously_allow_web_serving_without_a_certificate =
+            kdl_property_first_arg_as_bool_or_error!(
+                kdl_options,
+                "dangerously_allow_web_serving_without_a_certificate"
+            )
+            .map(|(v, _)| v);
         let post_command_discovery_hook =
             kdl_property_first_arg_as_string_or_error!(kdl_options, "post_command_discovery_hook")
                 .map(|(hook, _entry)| hook.to_string());
@@ -3257,6 +3263,7 @@ impl Options {
             web_server_cert,
             web_server_key,
             enforce_https_for_localhost,
+            dangerously_allow_web_serving_without_a_certificate,
             post_command_discovery_hook,
             client_async_worker_tasks,
             nested_session_handling,
@@ -4400,11 +4407,12 @@ impl Options {
     }
     fn enforce_https_for_localhost_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!(
-            "{}\n{}\n{}\n{}\n{}\n{}\n{}",
+            "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
             "/// Whether to enforce https connections to the web server when it is bound to localhost",
             "/// (127.0.0.0/8)",
             "///",
-            "/// Note: https is ALWAYS enforced when bound to non-local interfaces",
+            "/// Note: https is enforced when bound to non-local interfaces, unless",
+            "/// dangerously_allow_web_serving_without_a_certificate is set",
             "///",
             "/// Default: false",
             "// ",
@@ -4417,6 +4425,42 @@ impl Options {
         };
         if let Some(enforce_https_for_localhost) = self.enforce_https_for_localhost {
             let mut node = create_node(enforce_https_for_localhost);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(false);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn dangerously_allow_web_serving_without_a_certificate_to_kdl(
+        &self,
+        add_comments: bool,
+    ) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+            " ",
+            "// DANGEROUS: allow the web server to serve plain, unencrypted HTTP when bound to a",
+            "// non-local interface without web_server_cert and web_server_key.",
+            "// Anyone on the network can read and tamper with the traffic, including login tokens.",
+            "// Only use behind a trusted TLS-terminating proxy or on a fully trusted network.",
+            "// Does not override enforce_https_for_localhost.",
+            "// Default: false",
+            "// (Requires restart)",
+            "//",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("dangerously_allow_web_serving_without_a_certificate");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(value) = self.dangerously_allow_web_serving_without_a_certificate {
+            let mut node = create_node(value);
             if add_comments {
                 node.set_leading(format!("{}\n", comment_text));
             }
@@ -5170,6 +5214,11 @@ impl Options {
             self.enforce_https_for_localhost_to_kdl(add_comments)
         {
             nodes.push(enforce_https_for_localhost);
+        }
+        if let Some(dangerously_allow_web_serving_without_a_certificate) =
+            self.dangerously_allow_web_serving_without_a_certificate_to_kdl(add_comments)
+        {
+            nodes.push(dangerously_allow_web_serving_without_a_certificate);
         }
         if let Some(stacked_resize) = self.stacked_resize_to_kdl(add_comments) {
             nodes.push(stacked_resize);
@@ -8886,6 +8935,48 @@ fn explicit_theme_hue_round_trips_through_kdl() {
         Some(ThemeHue::Dark),
         "explicit_theme_hue survives a serialize/parse round trip"
     );
+}
+
+#[test]
+fn dangerously_allow_web_serving_without_a_certificate_is_parsed_and_round_trips() {
+    for (fake_config, expected) in [
+        (
+            "dangerously_allow_web_serving_without_a_certificate true",
+            Some(true),
+        ),
+        (
+            "dangerously_allow_web_serving_without_a_certificate false",
+            Some(false),
+        ),
+        ("", None),
+    ] {
+        let document: KdlDocument = fake_config.parse().unwrap();
+        let deserialized = Options::from_kdl(&document).unwrap();
+        assert_eq!(
+            deserialized.dangerously_allow_web_serving_without_a_certificate, expected,
+            "parsed from {:?}",
+            fake_config
+        );
+        let mut serialized = Options::to_kdl(&deserialized, false);
+        let mut fake_document = KdlDocument::new();
+        fake_document.nodes_mut().append(&mut serialized);
+        let deserialized_from_serialized =
+            Options::from_kdl(&fake_document.to_string().parse::<KdlDocument>().unwrap()).unwrap();
+        assert_eq!(
+            deserialized_from_serialized.dangerously_allow_web_serving_without_a_certificate,
+            expected,
+            "round trip of {:?}",
+            fake_config
+        );
+    }
+}
+
+#[test]
+fn dangerously_allow_web_serving_without_a_certificate_rejects_non_bool() {
+    let document: KdlDocument = "dangerously_allow_web_serving_without_a_certificate \"yes\""
+        .parse()
+        .unwrap();
+    assert!(Options::from_kdl(&document).is_err());
 }
 
 #[test]
