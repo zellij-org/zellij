@@ -21152,6 +21152,7 @@ fn pane_info_reports_whether_a_pane_is_collapsed() {
     tab.set_pane_collapsed(PaneId::Terminal(2), false);
 
     assert!(!is_collapsed(&tab, 2));
+}
 
 fn left_click_at(row: usize, column: usize, shift: bool) -> zellij_utils::input::mouse::MouseEvent {
     use zellij_utils::input::mouse::{MouseEvent, MouseEventType};

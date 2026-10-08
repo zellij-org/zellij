@@ -16,7 +16,9 @@ pub struct MouseEvent {
     pub middle: bool,
     pub wheel_up: bool,
     pub wheel_down: bool,
+    #[serde(default)]
     pub wheel_left: bool,
+    #[serde(default)]
     pub wheel_right: bool,
     #[serde(default)]
     pub wheel_lines: u16,

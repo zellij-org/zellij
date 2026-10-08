@@ -16862,6 +16862,7 @@ fn a_session_with_a_collapsed_pane_serializes_as_if_the_pane_were_expanded() {
     let collapsed = serialize(&screen).expect("a collapsed pane should not break serialization");
 
     assert_eq!(collapsed, expanded);
+}
 
 fn rendered_payload_for_client(
     server_receiver: &ServerReceiver,
