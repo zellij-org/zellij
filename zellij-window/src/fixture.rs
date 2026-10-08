@@ -93,9 +93,11 @@ pub fn parse<R: BufRead>(reader: R, origin: &str) -> Result<Fixture> {
                     );
                 }
                 if new_header.contract_version != CLIENT_SERVER_CONTRACT_VERSION {
-                    eprintln!(
-                        "zellij-window: {} was recorded against client-server contract {}, this build carries {}",
-                        origin, new_header.contract_version, CLIENT_SERVER_CONTRACT_VERSION
+                    report!(
+                        "{} was recorded against client-server contract {}, this build carries {}",
+                        origin,
+                        new_header.contract_version,
+                        CLIENT_SERVER_CONTRACT_VERSION
                     );
                 }
                 header = Some(new_header);

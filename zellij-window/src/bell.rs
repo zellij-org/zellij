@@ -8,7 +8,7 @@ fn announce_once() {
     use std::sync::Once;
     static ANNOUNCED: Once = Once::new();
     ANNOUNCED.call_once(|| {
-        eprintln!("zellij-window: this platform offers no bell; the window will only flash");
+        report!("this platform offers no bell; the window will only flash");
     });
 }
 

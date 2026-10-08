@@ -310,8 +310,8 @@ impl GlyphCache {
 
     pub fn note_overflow(&mut self, now: Instant) {
         if self.overflowed_at.is_none() {
-            eprintln!(
-                "zellij-window: the screen holds more distinct glyphs than the glyph atlas can; \
+            report!(
+                "the screen holds more distinct glyphs than the glyph atlas can; \
                  some will be drawn blank until it changes"
             );
         }
@@ -493,7 +493,7 @@ impl GlyphCache {
             }),
             Err(_) if width_fits => Insertion::OutOfRoom,
             Err(e) => {
-                eprintln!("zellij-window: glyph atlas insertion failed: {}", e);
+                report!("glyph atlas insertion failed: {}", e);
                 Insertion::Impossible
             },
         }

@@ -16,6 +16,12 @@ use crate::discovery::Discovery;
 pub use swash::GlyphId;
 
 pub const DEFAULT_FONT_SIZE: f32 = 16.0;
+pub const DEFAULT_FONT_POINTS: f32 = 12.0;
+#[cfg(target_os = "macos")]
+const PIXELS_PER_INCH: f32 = 72.0;
+#[cfg(not(target_os = "macos"))]
+const PIXELS_PER_INCH: f32 = 96.0;
+const POINTS_PER_INCH: f32 = 72.0;
 pub const DEFAULT_LIGATURES: bool = true;
 pub const DEFAULT_FONT_WEIGHT: u16 = 400;
 const BOLD_WEIGHT_STEP: u16 = 300;
@@ -243,6 +249,15 @@ impl Default for FontOptions {
     }
 }
 
+pub fn points_to_pixels(points: f32) -> f32 {
+    points * PIXELS_PER_INCH / POINTS_PER_INCH
+}
+
+#[cfg(test)]
+pub fn pixels_to_points(pixels: f32) -> f32 {
+    pixels * POINTS_PER_INCH / PIXELS_PER_INCH
+}
+
 impl FontOptions {
     pub fn scaled(&self, scale: f64) -> Self {
         Self {
@@ -365,8 +380,8 @@ impl FontStack {
         if let Some(family) = &options.family {
             match stack.requested_family(family) {
                 Some(primary) => stack.primary = primary,
-                None => eprintln!(
-                    "zellij-window: no font family named {:?} resolved; \
+                None => report!(
+                    "no font family named {:?} resolved; \
                      rendering with the embedded font instead",
                     family
                 ),
@@ -653,9 +668,7 @@ impl FontStack {
             Some(data) => *data,
             None => {
                 let data = std::fs::read(&path)
-                    .map_err(|e| {
-                        eprintln!("zellij-window: failed to read the font {:?}: {}", path, e)
-                    })
+                    .map_err(|e| report!("failed to read the font {:?}: {}", path, e))
                     .ok()?;
                 let leaked: &'static [u8] = Box::leak(data.into_boxed_slice());
                 self.files.insert(path.clone(), leaked);
@@ -1496,6 +1509,25 @@ mod tests {
         let second = fonts.rasterize(glyph, 1).unwrap();
         assert_eq!(first.coverage, second.coverage);
         assert_eq!((first.left, first.top), (second.left, second.top));
+    }
+
+    #[test]
+    fn a_point_is_a_ninety_sixth_of_an_inch_off_macos_and_a_pixel_on_it() {
+        let expected = if cfg!(target_os = "macos") {
+            12.0
+        } else {
+            16.0
+        };
+        assert_eq!(points_to_pixels(DEFAULT_FONT_POINTS), expected);
+        assert_eq!(pixels_to_points(points_to_pixels(17.5)), 17.5);
+    }
+
+    #[test]
+    fn the_default_point_size_matches_the_cell_the_window_has_always_drawn_off_macos() {
+        if cfg!(target_os = "macos") {
+            return;
+        }
+        assert_eq!(points_to_pixels(DEFAULT_FONT_POINTS), DEFAULT_FONT_SIZE);
     }
 
     #[test]

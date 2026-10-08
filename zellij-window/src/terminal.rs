@@ -241,10 +241,7 @@ impl TerminalState {
                     data,
                 } => {
                     if *format != GRAPHICS_FORMAT_RGBA8 {
-                        eprintln!(
-                            "zellij-window: image {} arrived in unknown format {}",
-                            id, format
-                        );
+                        report!("image {} arrived in unknown format {}", id, format);
                         continue;
                     }
                     let expected = *byte_len as usize;
@@ -261,8 +258,8 @@ impl TerminalState {
                         continue;
                     };
                     if pixels.len() < *width as usize * *height as usize * 4 {
-                        eprintln!(
-                            "zellij-window: image {} carried {} bytes for {}x{}",
+                        report!(
+                            "image {} carried {} bytes for {}x{}",
                             id,
                             pixels.len(),
                             width,

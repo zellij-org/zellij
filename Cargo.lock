@@ -6603,6 +6603,7 @@ dependencies = [
  "interprocess",
  "khronos-egl",
  "libloading",
+ "log",
  "png",
  "serde",
  "serde_json",

@@ -114,9 +114,7 @@ mod scanner {
             database.load_system_fonts();
             let scanner = Self::from_database(database);
             if scanner.is_none() {
-                eprintln!(
-                    "zellij-window: no system fonts were found; falling back to the embedded fonts"
-                );
+                report!("no system fonts were found; falling back to the embedded fonts");
             }
             scanner.map(Mutex::new)
         }

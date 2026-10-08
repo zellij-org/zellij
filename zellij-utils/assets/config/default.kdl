@@ -608,8 +608,8 @@ web_client {
 //     // configuration. An unresolvable family falls back to the built-in font.
 //     font "Iosevka Term"
 //
-//     // Font size in pixels
-//     font_size 16
+//     // Font size in points, as other terminals measure it
+//     font_size 12
 //
 //     // Whether to consult the system's fonts for characters the primary font
 //     // lacks

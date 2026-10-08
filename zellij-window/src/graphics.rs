@@ -61,7 +61,7 @@ pub fn create_context(
         match unsafe { display.create_context(config, &request.attributes(handle)) } {
             Ok(context) => {
                 if platform != Platform::Linux {
-                    eprintln!("zellij-window: drawing through {}", request.describe());
+                    report!("drawing through {}", request.describe());
                 }
                 return Ok(context);
             },

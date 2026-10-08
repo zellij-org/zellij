@@ -420,25 +420,19 @@ impl Graphics {
 
 pub fn read_shared_media(path: &str, expected: usize) -> Option<Vec<u8>> {
     if expected > MAX_IMAGE_BYTES {
-        eprintln!(
-            "zellij-window: refusing a {} byte image from {:?}",
-            expected, path
-        );
+        report!("refusing a {} byte image from {:?}", expected, path);
         return None;
     }
     let path = Path::new(path);
     if !path.starts_with(SHM_DIR) && !path.starts_with(std::env::temp_dir()) {
-        eprintln!(
-            "zellij-window: refusing to read graphics media from {:?}",
-            path
-        );
+        report!("refusing to read graphics media from {:?}", path);
         return None;
     }
     match std::fs::read(path) {
         Ok(bytes) if bytes.len() >= expected => Some(bytes[..expected].to_vec()),
         Ok(bytes) => {
-            eprintln!(
-                "zellij-window: {:?} carries {} bytes, not the {} its record named",
+            report!(
+                "{:?} carries {} bytes, not the {} its record named",
                 path,
                 bytes.len(),
                 expected
@@ -446,7 +440,7 @@ pub fn read_shared_media(path: &str, expected: usize) -> Option<Vec<u8>> {
             None
         },
         Err(e) => {
-            eprintln!("zellij-window: failed to read {:?}: {}", path, e);
+            report!("failed to read {:?}: {}", path, e);
             None
         },
     }

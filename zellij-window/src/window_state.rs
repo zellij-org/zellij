@@ -88,10 +88,7 @@ pub fn save_to(path: &Path, state: WindowState) -> Result<()> {
 
 pub fn store(path: &Path, state: WindowState) {
     if let Err(e) = save_to(path, state) {
-        eprintln!(
-            "zellij-window: the window size could not be remembered: {:#}",
-            e
-        );
+        report!("the window size could not be remembered: {:#}", e);
     }
 }
 

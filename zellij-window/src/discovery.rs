@@ -32,7 +32,7 @@ impl Discovery {
         match self.0.lock() {
             Ok(backend) => backend.match_codepoint(request, character),
             Err(_) => {
-                eprintln!("zellij-window: the font discovery mutex was poisoned");
+                report!("the font discovery mutex was poisoned");
                 None
             },
         }
@@ -47,7 +47,7 @@ impl Discovery {
         match self.0.lock() {
             Ok(backend) => backend.match_family(family, request),
             Err(_) => {
-                eprintln!("zellij-window: the font discovery mutex was poisoned");
+                report!("the font discovery mutex was poisoned");
                 None
             },
         }
@@ -162,8 +162,8 @@ mod fontconfig {
     impl Fontconfig {
         pub(super) fn load() -> Option<Mutex<Self>> {
             let Some(library) = library_name() else {
-                eprintln!(
-                    "zellij-window: system font discovery has no backend on this platform; \
+                report!(
+                    "system font discovery has no backend on this platform; \
                      falling back to the embedded fonts"
                 );
                 return None;
@@ -175,8 +175,8 @@ mod fontconfig {
             let api = match unsafe { load(library) } {
                 Ok(api) => api,
                 Err(e) => {
-                    eprintln!(
-                        "zellij-window: system font discovery is unavailable ({}); \
+                    report!(
+                        "system font discovery is unavailable ({}); \
                          falling back to the embedded fonts",
                         e
                     );
@@ -186,7 +186,7 @@ mod fontconfig {
 
             let config = unsafe { (api.init_load_config_and_fonts)() };
             if config.is_null() {
-                eprintln!("zellij-window: fontconfig produced no configuration");
+                report!("fontconfig produced no configuration");
                 return None;
             }
 

@@ -1,5 +1,8 @@
 use anyhow::{anyhow, Context, Result};
+use zellij_utils::ipc::ExitReason;
 use zellij_utils::structured_render::{FrameBuilder, WireCell};
+
+use crate::client_loop::Ending;
 
 use crate::connection::Geometry;
 use crate::font::FontStack;
@@ -7,6 +10,29 @@ use crate::options::Options;
 use crate::terminal::TerminalState;
 
 const MARGIN: usize = 2;
+
+const LOST: &str = "The connection to the session closed without a reason. The session's server \
+                    may have crashed.";
+
+pub fn trouble(ending: &Ending) -> Option<String> {
+    match ending {
+        Ending::Switched(_) => None,
+        Ending::Exited(
+            ExitReason::Normal | ExitReason::NormalDetached | ExitReason::CustomExitStatus(_),
+        ) => None,
+        Ending::Exited(reason) => Some(reason.to_string().trim().to_owned()),
+        Ending::Lost => Some(LOST.to_owned()),
+        Ending::Failed(message) => Some(message.clone()),
+    }
+}
+
+pub fn ended(trouble: &str) -> String {
+    format!(
+        "{}\n\nDetails are in the log at {}\n\nClose this window to exit.",
+        trouble,
+        crate::diagnostics::log_file().display()
+    )
+}
 
 pub fn frame(message: &str, rows: usize, cols: usize) -> Vec<u8> {
     let mut builder = FrameBuilder::new(cols as u16, rows as u16, 0);
@@ -125,6 +151,64 @@ mod tests {
         let view = zellij_utils::structured_render::decode(&bytes).unwrap();
         assert!(view.header().full_repaint());
         assert!(view.header().clear());
+    }
+
+    #[test]
+    fn a_normal_ending_needs_no_explanation() {
+        for reason in [
+            ExitReason::Normal,
+            ExitReason::NormalDetached,
+            ExitReason::CustomExitStatus(3),
+        ] {
+            assert_eq!(
+                trouble(&Ending::Exited(reason.clone())),
+                None,
+                "{:?}",
+                reason
+            );
+        }
+        assert_eq!(
+            trouble(&Ending::Switched(
+                zellij_utils::data::ConnectToSession::default()
+            )),
+            None
+        );
+    }
+
+    #[test]
+    fn every_other_ending_is_explained_in_the_servers_own_words() {
+        for reason in [
+            ExitReason::ForceDetached,
+            ExitReason::CannotAttach,
+            ExitReason::Disconnect,
+            ExitReason::WebClientsForbidden,
+            ExitReason::KickedByHost,
+            ExitReason::Error("the screen thread failed".to_owned()),
+        ] {
+            let explained = trouble(&Ending::Exited(reason.clone()))
+                .unwrap_or_else(|| panic!("{:?} went unexplained", reason));
+            assert_eq!(explained, reason.to_string().trim(), "{:?}", reason);
+        }
+    }
+
+    #[test]
+    fn a_dropped_connection_and_a_client_failure_are_explained() {
+        assert_eq!(trouble(&Ending::Lost), Some(LOST.to_owned()));
+        assert_eq!(
+            trouble(&Ending::Failed("the server is too old".to_owned())),
+            Some("the server is too old".to_owned())
+        );
+    }
+
+    #[test]
+    fn an_ending_message_names_the_log_and_how_to_leave() {
+        let message = ended("Disconnected by host");
+        assert!(message.starts_with("Disconnected by host"));
+        assert!(message.contains(&crate::diagnostics::log_file().display().to_string()));
+        assert!(message.ends_with("Close this window to exit."));
+        let dump = dumped(&message, 20, 200);
+        assert!(dump.contains("Disconnected by host"), "{}", dump);
+        assert!(dump.contains("Close this window to exit."), "{}", dump);
     }
 
     #[test]
