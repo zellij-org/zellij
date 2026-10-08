@@ -771,6 +771,7 @@ impl MockScreen {
             key_passthrough_clients: self.session_metadata.key_passthrough_clients.clone(),
             popup_clients: self.session_metadata.popup_clients.clone(),
             close_dialogue_clients: self.session_metadata.close_dialogue_clients.clone(),
+            terminal_command_submitted: self.session_metadata.terminal_command_submitted.clone(),
         }
     }
 }
@@ -830,6 +831,7 @@ impl MockScreen {
             key_passthrough_clients: Default::default(),
             popup_clients: Default::default(),
             close_dialogue_clients: Default::default(),
+            terminal_command_submitted: Default::default(),
         };
 
         let os_input = FakeInputOutput::default();
@@ -18535,4 +18537,229 @@ fn a_kitty_image_is_sent_again_after_a_pane_resize_wipes_the_client_screen() {
         cleared,
         repaint.graphics
     );
+}
+
+fn screen_with_session_card(plugin_id: u32) -> (Screen, Receiver<(PluginInstruction, ErrorContext)>) {
+    let (mut screen, plugin_receiver) = screen_capturing_plugin_instructions();
+    let client_id = 1;
+    let tab_id = screen.get_active_tab(client_id).unwrap().id;
+    let run_plugin_or_alias =
+        RunPluginOrAlias::from_url("session-manager", &None, None, None).unwrap();
+    screen
+        .add_popup(
+            plugin_id,
+            client_id,
+            tab_id,
+            run_plugin_or_alias,
+            crate::tab::PopupPlacement::Corner(zellij_utils::data::PopupCorner::TopRight),
+            crate::tab::PopupKind::Info,
+            40,
+            6,
+            None,
+        )
+        .unwrap();
+    (screen, plugin_receiver)
+}
+
+#[test]
+fn an_information_popup_can_take_focus_and_give_it_back() {
+    let client_id = 1;
+    let (mut screen, _plugin_receiver) = screen_with_session_card(60);
+    assert!(!screen
+        .get_active_tab(client_id)
+        .unwrap()
+        .has_focused_popup_for_client(client_id));
+    screen.set_popup_focused(60, true);
+    let tab = screen.get_active_tab(client_id).unwrap();
+    assert!(tab.has_focused_popup_for_client(client_id));
+    assert_eq!(tab.popup_plugin_id(client_id), Some(60));
+    assert_eq!(
+        tab.popup_kind_of_plugin(60),
+        Some(crate::tab::PopupKind::Prompt)
+    );
+    screen.set_popup_focused(60, false);
+    let tab = screen.get_active_tab(client_id).unwrap();
+    assert!(!tab.has_focused_popup_for_client(client_id));
+    assert_eq!(tab.popup_kind_of_plugin(60), Some(crate::tab::PopupKind::Info));
+    assert!(tab.has_popup_for_client(client_id));
+}
+
+#[test]
+fn a_popup_moves_into_a_floating_pane_without_reloading_its_plugin() {
+    let client_id = 1;
+    let (mut screen, plugin_receiver) = screen_with_session_card(61);
+    assert!(screen.popup_to_floating_pane(61, None));
+    let tab = screen.get_active_tab(client_id).unwrap();
+    assert!(!tab.has_popup_for_client(client_id));
+    assert!(tab.are_floating_panes_visible());
+    assert!(tab.get_pane_with_id(PaneId::Plugin(61)).is_some());
+    let instructions: Vec<PluginInstruction> = plugin_receiver
+        .try_iter()
+        .map(|(instruction, _)| instruction)
+        .collect();
+    assert!(!instructions
+        .iter()
+        .any(|instruction| matches!(instruction, PluginInstruction::Unload(61))));
+    assert!(instructions.iter().any(|instruction| matches!(
+        instruction,
+        PluginInstruction::PopupBecamePane { plugin_id: 61, .. }
+    )));
+    assert!(!screen.popup_to_floating_pane(61, None));
+}
+
+#[test]
+fn launching_a_plugin_that_is_shown_in_a_popup_moves_the_popup_into_a_floating_pane() {
+    let client_id = 1;
+    let (mut screen, _plugin_receiver) = screen_with_session_card(62);
+    let run_plugin_or_alias =
+        RunPluginOrAlias::from_url("session-manager", &None, None, None).unwrap();
+    let mut completion = None;
+    let found = screen
+        .focus_plugin_pane(&run_plugin_or_alias, true, true, false, client_id, &mut completion)
+        .unwrap();
+    assert!(found);
+    let tab = screen.get_active_tab(client_id).unwrap();
+    assert!(!tab.has_popup_for_client(client_id));
+    assert!(tab.get_pane_with_id(PaneId::Plugin(62)).is_some());
+}
+
+fn role_of(run_plugin_or_alias: &RunPluginOrAlias) -> Option<String> {
+    let configuration = match run_plugin_or_alias {
+        RunPluginOrAlias::RunPlugin(run_plugin) => Some(run_plugin.configuration.clone()),
+        RunPluginOrAlias::Alias(alias) => alias.configuration.clone(),
+    };
+    configuration.and_then(|configuration| configuration.inner().get("role").cloned())
+}
+
+fn keybind_pipes_to(
+    plugin_receiver: &Receiver<(PluginInstruction, ErrorContext)>,
+    plugin_id: u32,
+) -> Vec<String> {
+    plugin_receiver
+        .try_iter()
+        .filter_map(|(instruction, _)| match instruction {
+            PluginInstruction::KeybindPipe {
+                name,
+                plugin_and_client_id: Some((target, _)),
+                ..
+            } if target == plugin_id => Some(name),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn f9_focuses_an_unfocused_session_card() {
+    let client_id = 1;
+    let (mut screen, plugin_receiver) = screen_with_session_card(63);
+    while plugin_receiver.try_recv().is_ok() {}
+    screen.toggle_session_card(client_id);
+    let tab = screen.get_active_tab(client_id).unwrap();
+    assert_eq!(
+        tab.popup_kind_of_plugin(63),
+        Some(crate::tab::PopupKind::Prompt)
+    );
+    assert_eq!(keybind_pipes_to(&plugin_receiver, 63), vec!["focus_card"]);
+}
+
+#[test]
+fn f9_closes_a_focused_session_card() {
+    let client_id = 1;
+    let (mut screen, plugin_receiver) = screen_with_session_card(64);
+    screen.set_popup_focused(64, true);
+    while plugin_receiver.try_recv().is_ok() {}
+    screen.toggle_session_card(client_id);
+    assert_eq!(keybind_pipes_to(&plugin_receiver, 64), vec!["close"]);
+}
+
+#[test]
+fn f9_opens_a_focused_session_card_when_none_is_open() {
+    let client_id = 1;
+    let (mut screen, plugin_receiver) = screen_capturing_plugin_instructions();
+    screen.toggle_session_card(client_id);
+    let loaded: Vec<(crate::tab::PopupKind, Option<String>)> = plugin_receiver
+        .try_iter()
+        .filter_map(|(instruction, _)| match instruction {
+            PluginInstruction::LoadPopup {
+                run_plugin_or_alias,
+                kind,
+                ..
+            } => Some((
+                kind,
+                role_of(&run_plugin_or_alias),
+            )),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        loaded,
+        vec![(crate::tab::PopupKind::Prompt, Some("card_focused".to_owned()))]
+    );
+}
+
+#[test]
+fn the_startup_session_card_is_unfocused_and_says_so() {
+    let client_id = 1;
+    let (mut screen, plugin_receiver) = screen_capturing_plugin_instructions();
+    screen.open_session_card(client_id);
+    let loaded: Vec<(crate::tab::PopupKind, Option<String>)> = plugin_receiver
+        .try_iter()
+        .filter_map(|(instruction, _)| match instruction {
+            PluginInstruction::LoadPopup {
+                run_plugin_or_alias,
+                kind,
+                ..
+            } => Some((
+                kind,
+                role_of(&run_plugin_or_alias),
+            )),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        loaded,
+        vec![(crate::tab::PopupKind::Info, Some("card_startup".to_owned()))]
+    );
+}
+
+#[test]
+fn escape_typed_into_a_terminal_reaches_only_unfocused_popups() {
+    let client_id = 1;
+    let (mut screen, plugin_receiver) = screen_with_session_card(65);
+    while plugin_receiver.try_recv().is_ok() {}
+    screen.terminal_escape_pressed(client_id);
+    assert_eq!(keybind_pipes_to(&plugin_receiver, 65), vec!["escape"]);
+    screen.set_popup_focused(65, true);
+    while plugin_receiver.try_recv().is_ok() {}
+    screen.terminal_escape_pressed(client_id);
+    assert!(keybind_pipes_to(&plugin_receiver, 65).is_empty());
+}
+
+#[test]
+fn a_session_preview_shows_the_requested_pane_or_falls_back_to_the_focused_one() {
+    let client_id = 1;
+    let (mut screen, _plugin_receiver) = screen_capturing_plugin_instructions();
+    new_tab(&mut screen, 2, 1);
+    for tab in screen.tabs.values_mut() {
+        let (pid, text) = if tab.position == 0 {
+            (1, "first pane text")
+        } else {
+            (2, "second pane text")
+        };
+        tab.handle_pty_bytes(pid, text.as_bytes().to_vec()).unwrap();
+    }
+    let preview = screen.session_preview(Some(0), Some((1, false)));
+    assert!(preview.contents.contains("first pane text"));
+    assert_eq!(preview.tab_index, Some(0));
+    let fallback = screen.session_preview(Some(1), Some((1, false)));
+    assert!(fallback.contents.contains("second pane text"));
+    let focused = screen.session_preview(None, None);
+    assert_eq!(focused.tab_names.len(), 2);
+    assert_eq!(focused.tabs.len(), 2);
+    assert_eq!(focused.tabs[0].panes.len(), 1);
+    assert_eq!(focused.tabs[0].panes[0].id, 1);
+    assert!(focused.tabs[1].active);
+    assert!(focused.tabs.iter().all(|tab| tab.panes.iter().all(|pane| pane.contents.is_none())));
+    assert!(focused.contents.contains("second pane text"));
+    assert!(screen.get_active_tab(client_id).is_ok());
 }

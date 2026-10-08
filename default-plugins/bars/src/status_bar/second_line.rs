@@ -159,6 +159,10 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
             &[Action::BreakPaneRight, TO_NORMAL],
         ])),
         (s("Toggle"), s("Toggle"), action_key(&km, &[A::ToggleTab])),
+        (s("Layout"), s("Layout"), action_key_group(&km, &[
+            &[A::NextSwapLayout],
+            &[A::PreviousSwapLayout],
+        ])),
         (s("Select pane"), s("Select"), to_normal_key),
     ]} else if mi.mode == IM::Resize { vec![
         (s("Increase/Decrease size"), s("Increase/Decrease"),

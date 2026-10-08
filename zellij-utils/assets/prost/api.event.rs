@@ -10,7 +10,7 @@ pub struct EventNameList {
 pub struct Event {
     #[prost(enumeration="EventType", tag="1")]
     pub name: i32,
-    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49")]
+    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54")]
     pub payload: ::core::option::Option<event::Payload>,
 }
 /// Nested message and enum types in `Event`.
@@ -112,6 +112,16 @@ pub mod event {
         AvailableKeybindPresetsPayload(super::AvailableKeybindPresetsPayload),
         #[prost(message, tag="49")]
         PromptResultPayload(super::PromptResultPayload),
+        #[prost(message, tag="50")]
+        SessionSuggestionsPayload(super::SessionSuggestionsPayload),
+        #[prost(message, tag="51")]
+        SessionCountsUpdatePayload(super::SessionCountsUpdatePayload),
+        #[prost(message, tag="52")]
+        FolderSessionsUpdatePayload(super::FolderSessionsUpdatePayload),
+        #[prost(message, tag="53")]
+        SessionPreviewPayload(super::SessionPreviewPayload),
+        #[prost(message, tag="54")]
+        SavedSessionPreviewPayload(super::SavedSessionPreviewPayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -1004,6 +1014,164 @@ pub struct InitialKeybindsPayload {
     #[prost(message, repeated, tag="1")]
     pub keybinds: ::prost::alloc::vec::Vec<InputModeKeybinds>,
 }
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SessionSuggestionColumn {
+    #[prost(string, tag="1")]
+    pub fact: ::prost::alloc::string::String,
+    #[prost(string, tag="2")]
+    pub title: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SessionSuggestionItem {
+    #[prost(string, tag="1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(bool, tag="2")]
+    pub is_running: bool,
+    #[prost(uint64, tag="3")]
+    pub last_used_secs_ago: u64,
+    #[prost(string, optional, tag="4")]
+    pub folder: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(enumeration="FolderRelation", tag="5")]
+    pub folder_relation: i32,
+    #[prost(string, optional, tag="6")]
+    pub repo: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="7")]
+    pub branch: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, repeated, tag="8")]
+    pub facts: ::prost::alloc::vec::Vec<ContextItem>,
+    #[prost(uint32, optional, tag="9")]
+    pub tier: ::core::option::Option<u32>,
+    #[prost(string, repeated, tag="10")]
+    pub matching_columns: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="11")]
+    pub script_label: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(uint64, tag="12")]
+    pub created_secs_ago: u64,
+    #[prost(message, repeated, tag="13")]
+    pub tabs: ::prost::alloc::vec::Vec<SessionPreviewTab>,
+    #[prost(uint32, tag="14")]
+    pub connected_clients: u32,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SessionSuggestionsPayload {
+    #[prost(string, optional, tag="1")]
+    pub folder: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="2")]
+    pub branch: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, repeated, tag="3")]
+    pub columns: ::prost::alloc::vec::Vec<SessionSuggestionColumn>,
+    #[prost(message, repeated, tag="4")]
+    pub suggestions: ::prost::alloc::vec::Vec<SessionSuggestionItem>,
+    #[prost(bool, tag="5")]
+    pub command_submitted: bool,
+    #[prost(bool, tag="6")]
+    pub from_script: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SessionCountsUpdatePayload {
+    #[prost(uint32, tag="1")]
+    pub running: u32,
+    #[prost(uint32, tag="2")]
+    pub resumable_matching: u32,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct FolderSessionsUpdatePayload {
+    #[prost(string, tag="1")]
+    pub folder: ::prost::alloc::string::String,
+    #[prost(string, repeated, tag="2")]
+    pub running: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(string, repeated, tag="3")]
+    pub resumable: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(string, repeated, tag="4")]
+    pub full_match_running: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SessionPreviewPayload {
+    #[prost(string, tag="1")]
+    pub session_name: ::prost::alloc::string::String,
+    #[prost(uint32, optional, tag="2")]
+    pub tab_index: ::core::option::Option<u32>,
+    #[prost(string, repeated, tag="3")]
+    pub tab_names: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(string, tag="4")]
+    pub contents: ::prost::alloc::string::String,
+    #[prost(string, optional, tag="5")]
+    pub error: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(uint32, optional, tag="6")]
+    pub active_tab_index: ::core::option::Option<u32>,
+    #[prost(uint32, tag="7")]
+    pub pane_count: u32,
+    #[prost(uint32, tag="8")]
+    pub connected_clients: u32,
+    #[prost(message, repeated, tag="9")]
+    pub tabs: ::prost::alloc::vec::Vec<SessionPreviewTab>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SessionPreviewPane {
+    #[prost(uint32, tag="1")]
+    pub id: u32,
+    #[prost(bool, tag="2")]
+    pub is_plugin: bool,
+    #[prost(string, tag="3")]
+    pub title: ::prost::alloc::string::String,
+    #[prost(bool, tag="4")]
+    pub focused: bool,
+    #[prost(string, optional, tag="5")]
+    pub contents: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SessionPreviewTab {
+    #[prost(string, tag="1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(bool, tag="2")]
+    pub active: bool,
+    #[prost(message, repeated, tag="3")]
+    pub panes: ::prost::alloc::vec::Vec<SessionPreviewPane>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SavedPanePreview {
+    #[prost(string, optional, tag="1")]
+    pub title: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="2")]
+    pub command: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="3")]
+    pub cwd: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="4")]
+    pub contents: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, tag="5")]
+    pub focused: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SavedTabPreview {
+    #[prost(string, tag="1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(bool, tag="2")]
+    pub focused: bool,
+    #[prost(message, repeated, tag="3")]
+    pub panes: ::prost::alloc::vec::Vec<SavedPanePreview>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SavedSessionPreviewPayload {
+    #[prost(string, tag="1")]
+    pub session_name: ::prost::alloc::string::String,
+    #[prost(string, optional, tag="2")]
+    pub folder: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, repeated, tag="3")]
+    pub tabs: ::prost::alloc::vec::Vec<SavedTabPreview>,
+    #[prost(string, optional, tag="4")]
+    pub error: ::core::option::Option<::prost::alloc::string::String>,
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum EventType {
@@ -1077,6 +1245,12 @@ pub enum EventType {
     AvailableKeybindPresets = 54,
     ConfigFileChangedSinceRead = 55,
     PromptResult = 56,
+    SessionSuggestions = 57,
+    SessionCountsUpdate = 58,
+    FolderSessionsUpdate = 59,
+    TerminalCommandSubmitted = 60,
+    SessionPreview = 61,
+    SavedSessionPreview = 62,
 }
 impl EventType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1140,6 +1314,12 @@ impl EventType {
             EventType::AvailableKeybindPresets => "AvailableKeybindPresets",
             EventType::ConfigFileChangedSinceRead => "ConfigFileChangedSinceRead",
             EventType::PromptResult => "PromptResult",
+            EventType::SessionSuggestions => "SessionSuggestions",
+            EventType::SessionCountsUpdate => "SessionCountsUpdate",
+            EventType::FolderSessionsUpdate => "FolderSessionsUpdate",
+            EventType::TerminalCommandSubmitted => "TerminalCommandSubmitted",
+            EventType::SessionPreview => "SessionPreview",
+            EventType::SavedSessionPreview => "SavedSessionPreview",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1200,6 +1380,12 @@ impl EventType {
             "AvailableKeybindPresets" => Some(Self::AvailableKeybindPresets),
             "ConfigFileChangedSinceRead" => Some(Self::ConfigFileChangedSinceRead),
             "PromptResult" => Some(Self::PromptResult),
+            "SessionSuggestions" => Some(Self::SessionSuggestions),
+            "SessionCountsUpdate" => Some(Self::SessionCountsUpdate),
+            "FolderSessionsUpdate" => Some(Self::FolderSessionsUpdate),
+            "TerminalCommandSubmitted" => Some(Self::TerminalCommandSubmitted),
+            "SessionPreview" => Some(Self::SessionPreview),
+            "SavedSessionPreview" => Some(Self::SavedSessionPreview),
             _ => None,
         }
     }
@@ -1611,6 +1797,35 @@ impl PaneFrameStyle {
             "Full" => Some(Self::Full),
             "Titles" => Some(Self::Titles),
             "None" => Some(Self::None),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum FolderRelation {
+    Other = 0,
+    Here = 1,
+    Subfolder = 2,
+}
+impl FolderRelation {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            FolderRelation::Other => "FolderRelationOther",
+            FolderRelation::Here => "FolderRelationHere",
+            FolderRelation::Subfolder => "FolderRelationSubfolder",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "FolderRelationOther" => Some(Self::Other),
+            "FolderRelationHere" => Some(Self::Here),
+            "FolderRelationSubfolder" => Some(Self::Subfolder),
             _ => None,
         }
     }

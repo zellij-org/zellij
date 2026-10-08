@@ -112,6 +112,7 @@ pub struct SingleScreenState {
     pub new_session_folder: Option<PathBuf>,
     pub is_welcome_screen: bool,
     pub render_cache: UnifiedResultsRenderCache,
+    pub ordered_names: Option<Vec<String>>,
     fuzzy_matcher: Option<SkimMatcherV2>,
 }
 
@@ -138,8 +139,21 @@ impl SingleScreenState {
         if self.search_term.is_empty() {
             self.unified_results =
                 Self::collect_all_sessions(active_sessions, resurrectable_sessions);
-            self.unified_results
-                .sort_by(|a, b| a.cmp_by_type_then_recency(b));
+            match self.ordered_names.as_ref() {
+                Some(ordered_names) => {
+                    let position = |name: &str| {
+                        ordered_names
+                            .iter()
+                            .position(|n| n == name)
+                            .unwrap_or(usize::MAX)
+                    };
+                    self.unified_results
+                        .sort_by_key(|result| position(result.session_name()));
+                },
+                None => self
+                    .unified_results
+                    .sort_by(|a, b| a.cmp_by_type_then_recency(b)),
+            }
         } else {
             self.unified_results =
                 self.collect_fuzzy_matched_sessions(active_sessions, resurrectable_sessions);

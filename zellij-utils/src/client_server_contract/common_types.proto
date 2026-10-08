@@ -327,6 +327,7 @@ message Action {
     DismissInfoPopupsAction dismiss_info_popups = 160;
     OpenContextMenuAction open_context_menu = 161;
     ConfirmCloseAction confirm_close = 162;
+    ToggleSessionCardAction toggle_session_card = 163;
   }
 }
 
@@ -897,6 +898,7 @@ message ConnectToSession {
   optional PaneIdWithPlugin pane_id = 3;
   optional LayoutInfo layout = 4;
   optional string cwd = 5;
+  optional bool session_card = 6;
 }
 
 message SwitchSessionAction {
@@ -905,6 +907,7 @@ message SwitchSessionAction {
   optional PaneIdWithPlugin pane_id = 3;
   optional LayoutInfo layout = 4;
   optional string cwd = 5;
+  bool close_current = 6;
 }
 
 message NewPanePlacement {
@@ -1289,6 +1292,9 @@ message Options {
   optional string keybinds_secondary = 73;
   optional string keybinds_unlock = 74;
   optional bool context_menu_enabled = 75;
+  optional bool session_card = 76;
+  optional bool session_indicator = 77;
+  optional bool swap_layout_notification = 78;
 }
 
 enum OnForceClose {
@@ -1371,6 +1377,7 @@ message StartRenamePaneByPaneIdAction { PaneId pane_id = 1; }
 message StartRenameTabByTabIdAction { uint64 id = 1; }
 message DismissInfoPopupsAction {}
 message OpenContextMenuAction {}
+message ToggleSessionCardAction {}
 
 enum HostTerminalThemeIndication {
   HOST_TERMINAL_THEME_INDICATION_DARK = 0;

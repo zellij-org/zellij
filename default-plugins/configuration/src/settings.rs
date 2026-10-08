@@ -519,6 +519,30 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "false",
             Everyone,
         ),
+        SettingKey::SessionCard => info(
+            "Session card",
+            Sessions,
+            "Show other relevant sessions when a new session starts",
+            Toggle,
+            "true",
+            Everyone,
+        ),
+        SettingKey::SessionIndicator => info(
+            "Session indicator",
+            Sessions,
+            "Show other sessions in the tab bar",
+            Toggle,
+            "true",
+            Everyone,
+        ),
+        SettingKey::SwapLayoutNotification => info(
+            "Layout notification",
+            PanesAndLayouts,
+            "Briefly show the layout name when it changes",
+            Toggle,
+            "true",
+            Everyone,
+        ),
         SettingKey::DefaultMode => info(
             "Default mode",
             PanesAndLayouts,
@@ -936,9 +960,10 @@ pub fn section(key: SettingKey) -> &'static str {
             "Clipboard"
         },
         DefaultMode => "New panes",
-        AutoLayout | StackedResize | StackedPaneList => "Layouts",
+        AutoLayout | StackedResize | StackedPaneList | SwapLayoutNotification => "Layouts",
         NestedSessionHandling => "Nested sessions",
-        SessionName | AttachToSession | ShowStartupTips | ShowReleaseNotes => "Startup",
+        SessionName | AttachToSession | ShowStartupTips | ShowReleaseNotes | SessionCard
+        | SessionIndicator => "Startup",
         SessionSerialization
         | SerializePaneViewport
         | ScrollbackLinesToSerialize

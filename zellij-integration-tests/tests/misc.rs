@@ -3,7 +3,8 @@
 use insta::assert_snapshot;
 use zellij_integration_tests::{
     claim_first_terminal_and_wait_for_prompt, col, keys, normalized,
-    split_right_and_wait_for_prompt, start_zellij,
+    split_right_and_wait_for_prompt, start_zellij, GridSnapshot, TestRunner, TestSession,
+    TERMINAL_SIZE,
 };
 
 #[test]
@@ -88,49 +89,49 @@ fn toggle_pane_in_group() {
     zellij.quit();
 }
 
+fn start_zellij_with_layout_notifications() -> TestSession {
+    TestRunner::new(TERMINAL_SIZE)
+        .with_config("swap_layout_notification true")
+        .start()
+}
+
+fn wait_for_layout_notification(zellij: &TestSession, layout_name: &str) {
+    let expected = format!("layout: {}", layout_name);
+    zellij.wait_until(&format!("notification for {}", layout_name), |grid_snapshot| {
+        grid_snapshot.text.to_lowercase().contains(&expected)
+    });
+}
+
+fn wait_for_notifications_to_close(zellij: &TestSession) -> GridSnapshot {
+    zellij.wait_until("layout notifications closed", |grid_snapshot| {
+        grid_snapshot.status_bar_appears() && !grid_snapshot.contains("Layout:")
+    })
+}
+
 #[test]
 fn next_swap_layout() {
-    let mut zellij = start_zellij();
+    let mut zellij = start_zellij_with_layout_notifications();
     claim_first_terminal_and_wait_for_prompt(&zellij);
     split_right_and_wait_for_prompt(&zellij);
-    zellij.wait_until("swap layout at base", |grid_snapshot| {
-        grid_snapshot.contains("BASE")
-    });
 
     zellij.send_stdin(&keys::alt(']'));
-
-    zellij.wait_until("swap layout advanced to vertical", |grid_snapshot| {
-        grid_snapshot.status_bar_appears()
-            && grid_snapshot.contains("VERTICAL")
-            && !grid_snapshot.contains("BASE")
-    });
+    wait_for_layout_notification(&zellij, "vertical");
     zellij.send_stdin(&keys::alt(']'));
-    let grid_snapshot = zellij.wait_until("swap layout advanced to horizontal", |grid_snapshot| {
-        grid_snapshot.status_bar_appears()
-            && !grid_snapshot.contains("VERTICAL")
-            && grid_snapshot.contains("HORIZONTAL")
-    });
+    wait_for_layout_notification(&zellij, "horizontal");
+    let grid_snapshot = wait_for_notifications_to_close(&zellij);
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
 }
 
 #[test]
 fn previous_swap_layout() {
-    let mut zellij = start_zellij();
+    let mut zellij = start_zellij_with_layout_notifications();
     claim_first_terminal_and_wait_for_prompt(&zellij);
     split_right_and_wait_for_prompt(&zellij);
-    zellij.wait_until("swap layout at base", |grid_snapshot| {
-        grid_snapshot.contains("BASE")
-    });
 
     zellij.send_stdin(&keys::alt('['));
-
-    let grid_snapshot = zellij.wait_until("swap layout moved back to stacked", |grid_snapshot| {
-        grid_snapshot.status_bar_appears()
-            && grid_snapshot.contains("STACKED")
-            && !grid_snapshot.contains("HALF-STACKED")
-            && !grid_snapshot.contains("BASE")
-    });
+    wait_for_layout_notification(&zellij, "stacked");
+    let grid_snapshot = wait_for_notifications_to_close(&zellij);
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
 }

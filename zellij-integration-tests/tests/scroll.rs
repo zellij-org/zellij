@@ -53,7 +53,7 @@ fn page_scroll_down() {
         zellij.wait_until("scrolled back down toward the bottom", |grid_snapshot| {
             grid_snapshot.contains("line39")
                 && grid_snapshot.status_bar_appears()
-                && grid_snapshot.contains("SCROLL 0/")
+                && !grid_snapshot.contains("[ SCROLL ")
         });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
@@ -93,7 +93,7 @@ fn half_page_scroll_down() {
         zellij.wait_until("scrolled back down toward the bottom", |grid_snapshot| {
             grid_snapshot.contains("line39")
                 && grid_snapshot.status_bar_appears()
-                && grid_snapshot.contains("SCROLL 0/")
+                && !grid_snapshot.contains("[ SCROLL ")
         });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
@@ -137,7 +137,7 @@ fn scroll_to_bottom() {
         zellij.wait_until("returned to the bottom in normal mode", |grid_snapshot| {
             grid_snapshot.status_bar_appears()
                 && grid_snapshot.contains(LAST_LINE)
-                && grid_snapshot.contains("SCROLL 0/")
+                && !grid_snapshot.contains("[ SCROLL ")
         });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();

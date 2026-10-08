@@ -695,6 +695,10 @@ impl TryFrom<ProtobufAction> for Action {
                 Some(_) => Err("OpenContextMenu should not have a payload"),
                 None => Ok(Action::OpenContextMenu),
             },
+            Some(ProtobufActionName::ToggleSessionCard) => match protobuf_action.optional_payload {
+                Some(_) => Err("ToggleSessionCard should not have a payload"),
+                None => Ok(Action::ToggleSessionCard),
+            },
             Some(ProtobufActionName::LeftClick) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::LeftClickPayload(payload)) => {
                     let position = payload.try_into()?;
@@ -1901,6 +1905,10 @@ impl TryFrom<Action> for ProtobufAction {
             }),
             Action::DismissInfoPopups => Ok(ProtobufAction {
                 name: ProtobufActionName::DismissInfoPopups as i32,
+                optional_payload: None,
+            }),
+            Action::ToggleSessionCard => Ok(ProtobufAction {
+                name: ProtobufActionName::ToggleSessionCard as i32,
                 optional_payload: None,
             }),
             Action::OpenContextMenu => Ok(ProtobufAction {
@@ -3812,6 +3820,15 @@ mod tests {
             let decoded: Action = protobuf.try_into().expect("decode");
             assert_eq!(original, decoded);
         }
+    }
+
+    #[test]
+    fn toggle_session_card_action_protobuf_round_trip() {
+        let protobuf: ProtobufAction = Action::ToggleSessionCard.try_into().unwrap();
+        assert_eq!(
+            Action::try_from(protobuf).unwrap(),
+            Action::ToggleSessionCard
+        );
     }
 
     #[test]

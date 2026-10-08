@@ -249,6 +249,12 @@ enum CommandName {
   DeleteThemeFile = 255;
   SetSelfCollapsed = 256;
   SetCollapsedSlot = 257;
+  GetSessionSuggestions = 258;
+  SetPopupFocused = 259;
+  PopupToFloatingPane = 260;
+  SwitchSessionAndCloseCurrent = 261;
+  GetSessionPreview = 262;
+  GetSavedSessionPreview = 263;
 }
 
 message PluginCommand {
@@ -438,7 +444,28 @@ message PluginCommand {
     string delete_theme_file_payload = 198;
     SetSelfCollapsedPayload set_self_collapsed_payload = 199;
     SetCollapsedSlotPayload set_collapsed_slot_payload = 200;
+    GetSessionSuggestionsPayload get_session_suggestions_payload = 201;
+    bool set_popup_focused_payload = 202;
+    PopupToFloatingPanePayload popup_to_floating_pane_payload = 203;
+    SwitchSessionPayload switch_session_and_close_current_payload = 204;
+    GetSessionPreviewPayload get_session_preview_payload = 205;
+    string get_saved_session_preview_payload = 206;
   }
+}
+
+message GetSessionSuggestionsPayload {
+  uint32 limit = 1;
+}
+
+message PopupToFloatingPanePayload {
+  optional FloatingPaneCoordinates coordinates = 1;
+}
+
+message GetSessionPreviewPayload {
+  string name = 1;
+  optional uint32 tab_index = 2;
+  optional uint32 pane_id = 3;
+  bool pane_is_plugin = 4;
 }
 
 message PromptPayload {
@@ -1005,6 +1032,7 @@ message SwitchSessionPayload {
   optional bool pane_id_is_plugin = 4;
   optional event.LayoutInfo layout = 5;
   optional string cwd = 6;
+  optional bool session_card = 7;
 }
 
 message RequestPluginPermissionPayload {

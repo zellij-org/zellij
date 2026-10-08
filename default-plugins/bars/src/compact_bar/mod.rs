@@ -5,6 +5,7 @@ mod line;
 mod tab;
 mod tooltip;
 
+use crate::session_indicator::SessionIndicator;
 use std::cmp::{max, min};
 use std::collections::{BTreeMap, BTreeSet};
 use std::convert::TryInto;
@@ -37,8 +38,6 @@ pub struct LinePart {
 struct TabRenderData {
     tabs: Vec<LinePart>,
     active_tab_index: usize,
-    active_swap_layout_name: Option<String>,
-    is_swap_layout_dirty: bool,
 }
 
 #[derive(Default)]
@@ -65,6 +64,7 @@ struct ClientState {
 struct SlotClientState {
     tab_line: Vec<LinePart>,
     breadcrumb_range: Option<(usize, usize)>,
+    session_indicator_range: Option<(usize, usize)>,
 }
 
 #[derive(Default)]
@@ -75,6 +75,7 @@ pub struct CompactBar {
     slot_clients: BTreeMap<(SlotId, ClientId), SlotClientState>,
     tooltip_is_active: bool,
     configured_toggle_keys: BTreeSet<(String, ClientId)>,
+    session_indicator: SessionIndicator,
 }
 
 impl CompactBar {
@@ -109,6 +110,8 @@ impl CompactBar {
                 EventType::InputReceived,
                 EventType::SystemClipboardFailure,
                 EventType::InitialKeybinds,
+                EventType::SessionCountsUpdate,
+                EventType::FolderSessionsUpdate,
             ]
         };
         subscribe(&events);
@@ -290,6 +293,13 @@ impl CompactBar {
             _ => {},
         }
         match event {
+            Event::SessionCountsUpdate(_) | Event::FolderSessionsUpdate(_) => {
+                if self.session_indicator.update(event) {
+                    RenderResponse::Slots(self.main_slot_ids())
+                } else {
+                    RenderResponse::Nothing
+                }
+            },
             Event::PaneUpdate(pane_manifest) => {
                 if self.handle_pane_update(pane_manifest) {
                     RenderResponse::Slots(self.main_slot_ids())
@@ -299,7 +309,9 @@ impl CompactBar {
             },
             Event::Mouse(mouse_event) => {
                 if let (Some(slot_id), Some(client_id)) = (context.slot_id, context.client_id) {
-                    self.handle_mouse_event(slot_id, client_id, mouse_event);
+                    if self.handle_mouse_event(slot_id, client_id, mouse_event) {
+                        return RenderResponse::Slots(self.main_slot_ids());
+                    }
                 }
                 RenderResponse::Nothing
             },
@@ -447,17 +459,30 @@ impl CompactBar {
         }
     }
 
-    fn handle_mouse_event(&mut self, slot_id: SlotId, client_id: ClientId, mouse_event: &Mouse) {
+    pub fn session_indicator_pipe(&mut self, pipe_message: &PipeMessage) -> RenderResponse {
+        if self.session_indicator.handle_pipe(pipe_message) {
+            RenderResponse::Slots(self.main_slot_ids())
+        } else {
+            RenderResponse::Nothing
+        }
+    }
+
+    fn handle_mouse_event(
+        &mut self,
+        slot_id: SlotId,
+        client_id: ClientId,
+        mouse_event: &Mouse,
+    ) -> bool {
         if self
             .slots
             .get(&slot_id)
             .map(|s| s.is_tooltip)
             .unwrap_or(true)
         {
-            return;
+            return false;
         }
         let Some(client) = self.clients.get(&client_id) else {
-            return;
+            return false;
         };
         let empty_slot_client = SlotClientState::default();
         let slot_client = self
@@ -465,10 +490,23 @@ impl CompactBar {
             .get(&(slot_id, client_id))
             .unwrap_or(&empty_slot_client);
 
+        let indicator_range = slot_client.session_indicator_range;
         match mouse_event {
-            Mouse::LeftClick(_, col) => {
+            Mouse::Hover(_, col) => {
+                let hovered = indicator_range
+                    .map(|(start, end)| *col >= start && *col < end)
+                    .unwrap_or(false);
+                if hovered != self.session_indicator.hovered {
+                    self.session_indicator.hovered = hovered;
+                    return true;
+                }
+            },
+            Mouse::LeftClick(line, col) => {
                 let col = *col;
-                if matches!(slot_client.breadcrumb_range, Some((start, end)) if col >= start && col < end)
+                if matches!(indicator_range, Some((start, end)) if col >= start && col < end) {
+                    self.session_indicator
+                        .clicked((*line).max(0) as usize, col);
+                } else if matches!(slot_client.breadcrumb_range, Some((start, end)) if col >= start && col < end)
                 {
                     focus_host_session();
                 } else if let Some(tab_idx) =
@@ -496,6 +534,7 @@ impl CompactBar {
             },
             _ => {},
         }
+        false
     }
 
     fn handle_clipboard_copy(
@@ -742,10 +781,12 @@ impl CompactBar {
                 cols,
                 slot.toggle_tooltip_key.clone(),
                 self.tooltip_is_active,
+                &self.session_indicator,
             );
             let slot_client = self.slot_clients.entry((slot_id, client_id)).or_default();
             slot_client.tab_line = tab_line_output.parts;
             slot_client.breadcrumb_range = tab_line_output.breadcrumb_range;
+            slot_client.session_indicator_range = tab_line_output.session_indicator_range;
 
             let output = slot_client
                 .tab_line
@@ -800,8 +841,6 @@ fn render_background_with_text(mode_info: &ModeInfo, text: &str) {
 fn prepare_tab_data(client: &ClientState) -> TabRenderData {
     let mut all_tabs = Vec::new();
     let mut active_tab_index = 0;
-    let mut active_swap_layout_name = None;
-    let mut is_swap_layout_dirty = false;
     let mut is_alternate_tab = false;
     let dimmed = client.mode_info.session_ascended == Some(true)
         || client.mode_info.session_dimmed == Some(true);
@@ -811,10 +850,6 @@ fn prepare_tab_data(client: &ClientState) -> TabRenderData {
 
         if tab.active {
             active_tab_index = tab.position;
-            if client.mode_info.mode != InputMode::RenameTab {
-                is_swap_layout_dirty = tab.is_swap_layout_dirty;
-                active_swap_layout_name = tab.active_swap_layout_name.clone();
-            }
         }
 
         let styled_tab = tab_style(
@@ -833,8 +868,6 @@ fn prepare_tab_data(client: &ClientState) -> TabRenderData {
     TabRenderData {
         tabs: all_tabs,
         active_tab_index,
-        active_swap_layout_name,
-        is_swap_layout_dirty,
     }
 }
 

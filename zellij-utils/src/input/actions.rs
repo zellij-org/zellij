@@ -427,6 +427,7 @@ pub enum Action {
         pane_id: Option<(u32, bool)>, // (id, is_plugin)
         layout: Option<LayoutInfo>,
         cwd: Option<PathBuf>,
+        close_current: bool,
     },
     /// Returns: Plugin pane ID (format: plugin_<id>) when creating or focusing plugin
     LaunchOrFocusPlugin {
@@ -750,6 +751,7 @@ pub enum Action {
     },
     DismissInfoPopups,
     OpenContextMenu,
+    ToggleSessionCard,
 }
 
 impl Default for Action {
@@ -2339,6 +2341,7 @@ impl Action {
                 layout_string,
                 layout_dir,
                 cwd,
+                close_current,
             } => {
                 let pane_id = match pane_id {
                     Some(stringified_pane_id) => match PaneId::from_str(&stringified_pane_id) {
@@ -2452,6 +2455,7 @@ impl Action {
                     pane_id,
                     layout: layout_info,
                     cwd,
+                    close_current,
                 }])
             },
         }
@@ -3962,6 +3966,7 @@ mod tests {
             layout_string: Some("layout {\n    pane\n}\n".into()),
             layout_dir: None,
             cwd: None,
+            close_current: false,
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_ok());
@@ -3988,6 +3993,7 @@ mod tests {
             layout_string: Some("invalid { kdl".into()),
             layout_dir: None,
             cwd: None,
+            close_current: false,
         };
         let result = Action::actions_from_cli(cli_action, Box::new(|| PathBuf::from("/tmp")), None);
         assert!(result.is_err());

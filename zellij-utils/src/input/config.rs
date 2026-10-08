@@ -20,6 +20,7 @@ use super::keybinds::Keybinds;
 use super::layout::RunPluginOrAlias;
 use super::options::Options;
 use super::plugins::{PluginAliases, PluginsConfigError};
+use super::session_suggestions::SessionSuggestionsConfig;
 use super::theme::{Theme, Themes, UiConfig};
 use super::web_client::WebClientConfig;
 use super::window::WindowConfig;
@@ -49,6 +50,8 @@ pub struct Config {
     #[serde(default)]
     pub keybinds_layers: KeybindsLayers,
     pub window: WindowConfig,
+    #[serde(default)]
+    pub session_suggestions: SessionSuggestionsConfig,
 }
 
 mod shared_keybinds {
@@ -355,6 +358,7 @@ impl Config {
         self.env = self.env.merge(other.env);
         self.context_menu = self.context_menu.merge(other.context_menu);
         self.window = self.window.merge(other.window);
+        self.session_suggestions = self.session_suggestions.merge(other.session_suggestions);
         Ok(())
     }
     pub fn config_file_path(opts: &CliArgs) -> Option<PathBuf> {

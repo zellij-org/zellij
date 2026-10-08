@@ -28,6 +28,7 @@ use crate::input::theme::{
     FrameConfig, TerminalColors, Theme, Themes, UiConfig, TERMINAL_COLOR_NAMES,
 };
 use crate::input::web_client::WebClientConfig;
+use crate::input::session_suggestions::SessionSuggestionsConfig;
 use crate::input::window::WindowConfig;
 use kdl_layout_parser::KdlLayoutParser;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -100,6 +101,7 @@ macro_rules! parse_kdl_action_arguments {
                 "ToggleTheme" => Ok(Action::ToggleTheme),
                 "DismissInfoPopups" => Ok(Action::DismissInfoPopups),
                 "OpenContextMenu" => Ok(Action::OpenContextMenu),
+                "ToggleSessionCard" => Ok(Action::ToggleSessionCard),
                 "Copy" => Ok(Action::Copy),
                 "Confirm" => Ok(Action::Confirm),
                 "Deny" => Ok(Action::Deny),
@@ -1148,8 +1150,12 @@ impl Action {
                 pane_id,
                 layout,
                 cwd,
+                close_current,
             } => {
                 let mut node = KdlNode::new("SwitchSession");
+                if *close_current {
+                    node.push(KdlEntry::new_prop("close_current", true));
+                }
                 node.push(KdlEntry::new_prop("name", name.clone()));
                 if let Some(pos) = tab_position {
                     node.push(KdlEntry::new_prop("tab_position", *pos as i64));
@@ -1399,6 +1405,7 @@ impl Action {
             Action::ToggleTheme => Some(KdlNode::new("ToggleTheme")),
             Action::DismissInfoPopups => Some(KdlNode::new("DismissInfoPopups")),
             Action::OpenContextMenu => Some(KdlNode::new("OpenContextMenu")),
+            Action::ToggleSessionCard => Some(KdlNode::new("ToggleSessionCard")),
             Action::FocusHostSession => Some(KdlNode::new("FocusHostSession")),
             Action::FocusGuestSession => Some(KdlNode::new("FocusGuestSession")),
             Action::ToggleHostFullscreen => Some(KdlNode::new("ToggleHostFullscreen")),
@@ -1805,6 +1812,9 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
             "OpenContextMenu" => {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
+            "ToggleSessionCard" => {
+                parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
+            },
             "SwitchSession" => {
                 let name = kdl_get_string_property_or_child_value!(kdl_action, "name")
                     .map(|s| s.to_string())
@@ -1841,12 +1851,16 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 let cwd =
                     kdl_get_string_property_or_child_value!(kdl_action, "cwd").map(PathBuf::from);
 
+                let close_current =
+                    crate::kdl_get_bool_property_or_child_value!(kdl_action, "close_current")
+                        .unwrap_or(false);
                 Ok(Action::SwitchSession {
                     name,
                     tab_position,
                     pane_id: pane_id_tuple,
                     layout,
                     cwd,
+                    close_current,
                 })
             },
             "Copy" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
@@ -3248,6 +3262,14 @@ impl Options {
             "dangerously_enable_paste_buffer_read"
         )
         .map(|(v, _)| v);
+        let session_card =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "session_card").map(|(v, _)| v);
+        let session_indicator =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "session_indicator")
+                .map(|(v, _)| v);
+        let swap_layout_notification =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "swap_layout_notification")
+                .map(|(v, _)| v);
 
         Ok(Options {
             simplified_ui,
@@ -3315,6 +3337,9 @@ impl Options {
             client_async_worker_tasks,
             nested_session_handling,
             dangerously_enable_paste_buffer_read,
+            session_card,
+            session_indicator,
+            swap_layout_notification,
         })
     }
     pub fn from_string(stringified_keybindings: &String) -> Result<Self, ConfigError> {
@@ -5098,6 +5123,73 @@ impl Options {
             None
         }
     }
+    fn bool_option_to_kdl(
+        name: &str,
+        value: Option<bool>,
+        comment_lines: &[&str],
+        default_value: bool,
+        add_comments: bool,
+    ) -> Option<KdlNode> {
+        let mut comment_text = String::from(" ");
+        for line in comment_lines {
+            comment_text.push('\n');
+            comment_text.push_str(line);
+        }
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new(name);
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(value) = value {
+            let mut node = create_node(value);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(default_value);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn session_card_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        Self::bool_option_to_kdl(
+            "session_card",
+            self.session_card,
+            &[
+                "// Whether to show a card listing other relevant sessions when a new session starts",
+                "// default is true",
+            ],
+            false,
+            add_comments,
+        )
+    }
+    fn session_indicator_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        Self::bool_option_to_kdl(
+            "session_indicator",
+            self.session_indicator,
+            &[
+                "// Whether to show the other sessions indicator in the tab bar and compact bar",
+                "// default is true",
+            ],
+            false,
+            add_comments,
+        )
+    }
+    fn swap_layout_notification_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        Self::bool_option_to_kdl(
+            "swap_layout_notification",
+            self.swap_layout_notification,
+            &[
+                "// Whether to briefly show the name of the new swap layout when it is changed",
+                "// default is true",
+            ],
+            false,
+            add_comments,
+        )
+    }
     pub fn to_kdl(&self, add_comments: bool) -> Vec<KdlNode> {
         let mut nodes = vec![];
         if let Some(simplified_ui_node) = self.simplified_ui_to_kdl(add_comments) {
@@ -5297,6 +5389,16 @@ impl Options {
             self.host_notification_protocol_to_kdl(add_comments)
         {
             nodes.push(host_notification_protocol);
+        }
+        if let Some(session_card) = self.session_card_to_kdl(add_comments) {
+            nodes.push(session_card);
+        }
+        if let Some(session_indicator) = self.session_indicator_to_kdl(add_comments) {
+            nodes.push(session_indicator);
+        }
+        if let Some(swap_layout_notification) = self.swap_layout_notification_to_kdl(add_comments)
+        {
+            nodes.push(swap_layout_notification);
         }
         nodes
     }
@@ -5981,6 +6083,10 @@ impl Config {
             let config_window = WindowConfig::from_kdl(&window_config)?;
             config.window = config.window.merge(config_window);
         }
+        if let Some(session_suggestions_config) = kdl_config.get("session_suggestions") {
+            let session_suggestions = SessionSuggestionsConfig::from_kdl(&session_suggestions_config)?;
+            config.session_suggestions = config.session_suggestions.merge(session_suggestions);
+        }
         Ok(config)
     }
     pub fn to_string(&self, add_comments: bool) -> String {
@@ -6016,6 +6122,10 @@ impl Config {
 
         if let Some(window) = self.window.to_kdl() {
             document.nodes_mut().push(window);
+        }
+
+        if let Some(session_suggestions) = self.session_suggestions.to_kdl() {
+            document.nodes_mut().push(session_suggestions);
         }
 
         let mut options = self.options.clone();
@@ -8005,6 +8115,34 @@ fn can_bind_open_context_menu_and_write_it_back() {
 }
 
 #[test]
+fn can_bind_toggle_session_card_and_write_it_back() {
+    let fake_config = r#"
+        keybinds {
+            normal {
+                bind "F9" { ToggleSessionCard; }
+            }
+        }"#;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = Keybinds::from_kdl(
+        document.get("keybinds").unwrap(),
+        Default::default(),
+        &Default::default(),
+    )
+    .unwrap();
+    let f9 = KeyWithModifier::new(BareKey::F(9));
+    assert_eq!(
+        deserialized.get_actions_for_key_in_mode(&InputMode::Normal, &f9),
+        Some(&vec![Action::ToggleSessionCard])
+    );
+    assert_eq!(
+        Action::ToggleSessionCard
+            .to_kdl()
+            .map(|node| node.name().value().to_owned()),
+        Some("ToggleSessionCard".to_owned())
+    );
+}
+
+#[test]
 fn can_bind_dismiss_info_popups_and_write_it_back() {
     let fake_config = r#"
         keybinds {
@@ -8846,6 +8984,45 @@ fn env_vars_to_string() {
         deserialized, deserialized_from_serialized,
         "Deserialized serialized config equals original config"
     );
+    insta::assert_snapshot!(serialized.to_string());
+}
+
+#[test]
+fn session_options_from_kdl() {
+    let fake_config = r##"
+        session_card false
+        session_indicator true
+        swap_layout_notification false
+    "##;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let options = Options::from_kdl(&document).unwrap();
+    assert_eq!(options.session_card, Some(false));
+    assert_eq!(options.session_indicator, Some(true));
+    assert_eq!(options.swap_layout_notification, Some(false));
+    let mut serialized = Options::to_kdl(&options, false);
+    let mut fake_document = KdlDocument::new();
+    fake_document.nodes_mut().append(&mut serialized);
+    let reparsed =
+        Options::from_kdl(&fake_document.to_string().parse::<KdlDocument>().unwrap()).unwrap();
+    assert_eq!(options, reparsed);
+    insta::assert_snapshot!(fake_document.to_string());
+}
+
+#[test]
+fn session_suggestions_to_string() {
+    let fake_config = r##"
+        session_suggestions {
+            fact "project" command="echo $PROJECT" column="project" at="live"
+            match "directory" "git_branch"
+            match "project"
+            then "alphabetical"
+            script "~/.config/zellij/rank.sh" timeout_ms=300 hide_unlisted=false
+            record "~/.config/zellij/record.sh"
+        }"##;
+    let config = Config::from_kdl(fake_config, None).unwrap();
+    let serialized = config.session_suggestions.to_kdl().unwrap();
+    let reparsed = Config::from_kdl(&serialized.to_string(), None).unwrap();
+    assert_eq!(config.session_suggestions, reparsed.session_suggestions);
     insta::assert_snapshot!(serialized.to_string());
 }
 

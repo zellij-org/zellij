@@ -85,6 +85,19 @@ pub enum BackgroundJob {
     StartNestedGuestPing(PaneId),
     StopNestedGuestPing(PaneId),
     TrimAllocator,
+    SessionSuggestions(crate::session_suggestions::SessionSuggestionsJob),
+    SessionPreview {
+        plugin_id: PluginId,
+        client_id: ClientId,
+        session_name: String,
+        tab_index: Option<usize>,
+        pane_id: Option<(u32, bool)>,
+    },
+    SavedSessionPreview {
+        plugin_id: PluginId,
+        client_id: ClientId,
+        session_name: String,
+    },
     Exit,
 }
 
@@ -122,6 +135,9 @@ impl From<&BackgroundJob> for BackgroundJobContext {
             BackgroundJob::StartNestedGuestPing(..) => BackgroundJobContext::StartNestedGuestPing,
             BackgroundJob::StopNestedGuestPing(..) => BackgroundJobContext::StopNestedGuestPing,
             BackgroundJob::TrimAllocator => BackgroundJobContext::TrimAllocator,
+            BackgroundJob::SessionSuggestions(..) => BackgroundJobContext::SessionSuggestions,
+            BackgroundJob::SessionPreview { .. } => BackgroundJobContext::SessionPreview,
+            BackgroundJob::SavedSessionPreview { .. } => BackgroundJobContext::SavedSessionPreview,
             BackgroundJob::Exit => BackgroundJobContext::Exit,
         }
     }
@@ -314,6 +330,8 @@ pub(crate) fn background_jobs_main(
     let serialization_interval = serialization_interval.map(|s| s * 1000); // convert to
                                                                            // milliseconds
     let render_schedule = spawn_render_scheduler(bus.senders.clone());
+    let session_suggestions =
+        crate::session_suggestions::spawn_session_suggestions_service(bus.senders.clone());
     let pending_help_text_clear: Arc<Mutex<HashMap<ClientId, Instant>>> =
         Arc::new(Mutex::new(HashMap::new()));
     let pending_command_output_flash_clear: Arc<Mutex<HashMap<PaneId, Instant>>> =
@@ -472,20 +490,20 @@ pub(crate) fn background_jobs_main(
                 runtime.spawn({
                     let senders = bus.senders.clone();
                     async move {
-                        let output = tokio::process::Command::new(&command)
-                            .args(&args)
-                            .envs(env_variables)
-                            .current_dir(cwd)
-                            .stdin(std::process::Stdio::null())
-                            .stdout(std::process::Stdio::piped())
-                            .stderr(std::process::Stdio::piped())
-                            .output()
-                            .await;
+                        let output = run_background_command(BackgroundCommand {
+                            program: command,
+                            args,
+                            env: env_variables,
+                            cwd: Some(cwd),
+                            input: None,
+                            timeout: None,
+                        })
+                        .await;
                         match output {
                             Ok(output) => {
-                                let stdout = output.stdout.to_vec();
-                                let stderr = output.stderr.to_vec();
-                                let exit_code = output.status.code();
+                                let stdout = output.stdout;
+                                let stderr = output.stderr;
+                                let exit_code = output.exit_code;
                                 let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
                                     Some(plugin_id),
                                     Some(client_id),
@@ -882,7 +900,48 @@ pub(crate) fn background_jobs_main(
                     });
                 }
             },
+            BackgroundJob::SessionSuggestions(job) => {
+                let _ = session_suggestions.send(job);
+            },
+            BackgroundJob::SessionPreview {
+                plugin_id,
+                client_id,
+                session_name,
+                tab_index,
+                pane_id,
+            } => {
+                let senders = bus.senders.clone();
+                thread::spawn(move || {
+                    let preview = crate::session_previews::running_session_preview(
+                        &session_name,
+                        tab_index,
+                        pane_id,
+                    );
+                    let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
+                        Some(plugin_id),
+                        Some(client_id),
+                        Event::SessionPreview(preview),
+                    )]));
+                });
+            },
+            BackgroundJob::SavedSessionPreview {
+                plugin_id,
+                client_id,
+                session_name,
+            } => {
+                let senders = bus.senders.clone();
+                thread::spawn(move || {
+                    let preview = crate::session_previews::saved_session_preview(&session_name);
+                    let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
+                        Some(plugin_id),
+                        Some(client_id),
+                        Event::SavedSessionPreview(preview),
+                    )]));
+                });
+            },
             BackgroundJob::Exit => {
+                let _ = session_suggestions
+                    .send(crate::session_suggestions::SessionSuggestionsJob::Exit);
                 {
                     let (lock, wake) = &*render_schedule;
                     lock.lock().unwrap().exiting = true;
@@ -1301,4 +1360,86 @@ mod render_schedule_tests {
             RenderStep::Render
         );
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BackgroundCommandOutput {
+    pub exit_code: Option<i32>,
+    pub stdout: Vec<u8>,
+    pub stderr: Vec<u8>,
+}
+
+#[derive(Debug)]
+pub enum BackgroundCommandError {
+    Spawn(std::io::Error),
+    Io(std::io::Error),
+    TimedOut,
+}
+
+impl std::fmt::Display for BackgroundCommandError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BackgroundCommandError::Spawn(e) => write!(f, "failed to start command: {}", e),
+            BackgroundCommandError::Io(e) => write!(f, "failed to run command: {}", e),
+            BackgroundCommandError::TimedOut => write!(f, "command timed out"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct BackgroundCommand {
+    pub program: String,
+    pub args: Vec<String>,
+    pub env: BTreeMap<String, String>,
+    pub cwd: Option<PathBuf>,
+    pub input: Option<Vec<u8>>,
+    pub timeout: Option<Duration>,
+}
+
+pub async fn run_background_command(
+    command: BackgroundCommand,
+) -> std::result::Result<BackgroundCommandOutput, BackgroundCommandError> {
+    use tokio::io::AsyncWriteExt;
+    let mut process = tokio::process::Command::new(&command.program);
+    process
+        .args(&command.args)
+        .envs(&command.env)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true);
+    if let Some(cwd) = &command.cwd {
+        process.current_dir(cwd);
+    }
+    if command.input.is_some() {
+        process.stdin(std::process::Stdio::piped());
+    } else {
+        process.stdin(std::process::Stdio::null());
+    }
+    let mut child = process.spawn().map_err(BackgroundCommandError::Spawn)?;
+    if let (Some(input), Some(mut stdin)) = (command.input.clone(), child.stdin.take()) {
+        tokio::spawn(async move {
+            let _ = stdin.write_all(&input).await;
+            let _ = stdin.shutdown().await;
+        });
+    }
+    let output = child.wait_with_output();
+    let output = match command.timeout {
+        Some(timeout) => match tokio::time::timeout(timeout, output).await {
+            Ok(output) => output,
+            Err(_) => return Err(BackgroundCommandError::TimedOut),
+        },
+        None => output.await,
+    }
+    .map_err(BackgroundCommandError::Io)?;
+    Ok(BackgroundCommandOutput {
+        exit_code: output.status.code(),
+        stdout: output.stdout,
+        stderr: output.stderr,
+    })
+}
+
+pub fn run_background_command_blocking(
+    command: BackgroundCommand,
+) -> std::result::Result<BackgroundCommandOutput, BackgroundCommandError> {
+    crate::global_async_runtime::get_tokio_runtime().block_on(run_background_command(command))
 }

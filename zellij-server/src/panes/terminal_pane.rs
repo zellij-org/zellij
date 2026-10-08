@@ -927,6 +927,10 @@ impl Pane for TerminalPane {
         self.grid.pending_osc7_cwd.take()
     }
 
+    fn drain_prompt_return(&mut self) -> bool {
+        std::mem::take(&mut self.grid.pending_prompt_return)
+    }
+
     fn set_selection_options(&mut self, osc133_command_selection: bool, word_separators: &str) {
         self.grid
             .set_selection_options(osc133_command_selection, word_separators);

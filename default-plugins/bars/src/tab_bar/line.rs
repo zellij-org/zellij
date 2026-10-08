@@ -2,8 +2,8 @@ use ansi_term::ANSIStrings;
 use std::collections::BTreeMap;
 use unicode_width::UnicodeWidthStr;
 
+use crate::session_indicator::SessionIndicator;
 use crate::tab_bar::{LinePart, ARROW_SEPARATOR};
-use zellij_tile::prelude::actions::Action;
 use zellij_tile::prelude::*;
 use zellij_tile_utils::style;
 
@@ -284,9 +284,7 @@ pub fn tab_line(
     palette: Styling,
     capabilities: PluginCapabilities,
     hide_session_name: bool,
-    tab_info: Option<&TabInfo>,
-    mode_info: &ModeInfo,
-    hide_swap_layout_indicator: bool,
+    session_indicator: &SessionIndicator,
     background: &PaletteColor,
     active_pane_scroll: Option<(usize, usize)>,
     hint: Option<&BTreeMap<usize, StyledText>>,
@@ -296,6 +294,7 @@ pub fn tab_line(
     breadcrumb_ancestry: &[String],
 ) -> (
     Vec<LinePart>,
+    Option<(usize, usize)>,
     Option<(usize, usize)>,
     Option<(usize, usize)>,
 ) {
@@ -311,32 +310,44 @@ pub fn tab_line(
         false => tab_line_prefix(session_name, palette, cols, dimmed, breadcrumb_ancestry),
     };
 
-    let mut swap_layout_indicator = if hide_swap_layout_indicator {
-        None
-    } else {
-        tab_info.and_then(|tab_info| {
-            swap_layout_status(
-                &tab_info.active_swap_layout_name,
-                tab_info.is_swap_layout_dirty,
-                mode_info,
-                !capabilities.arrow_fonts,
-                dimmed,
-            )
-        })
-    };
-    if swap_layout_indicator.is_none() {
-        swap_layout_indicator =
-            active_pane_scroll.map(|scroll| scroll_status(scroll, palette, dimmed));
-    }
-
     let prefix_len = get_current_title_len(&prefix);
+    let indicator_budget = cols.saturating_sub(prefix_len + active_tab.len);
+    let mut scroll_part = active_pane_scroll
+        .filter(|(position, _)| *position > 0)
+        .map(|scroll| scroll_status(scroll, palette, dimmed));
+    let scroll_len = scroll_part.as_ref().map(|s| s.len + 1).unwrap_or(0);
+    let mut session_indicator_text =
+        match session_indicator.fitting_variant(indicator_budget.saturating_sub(scroll_len)) {
+            Some(text) if scroll_part.is_some() => Some(text),
+            _ => {
+                let text = session_indicator.fitting_variant(indicator_budget);
+                if text.is_some() {
+                    scroll_part = None;
+                }
+                text
+            },
+        };
+    let mut swap_layout_indicator = match session_indicator_text.as_ref() {
+        Some(text) => Some(LinePart {
+            part: String::new(),
+            len: SessionIndicator::width_of(text)
+                + scroll_part.as_ref().map(|s| s.len + 1).unwrap_or(0),
+            tab_index: None,
+        }),
+        None => scroll_part.take(),
+    };
+
     let hint_budget = cols.saturating_sub(prefix_len + active_tab.len);
     if let Some(hint_part) = hint.and_then(|hint| hint_line_part(hint, hint_budget, dimmed)) {
         swap_layout_indicator = Some(hint_part);
+        session_indicator_text = None;
+        scroll_part = None;
     }
     let indicator_len = swap_layout_indicator.as_ref().map(|s| s.len).unwrap_or(0);
     if indicator_len > 0 && prefix_len + active_tab.len + indicator_len > cols {
         swap_layout_indicator = None;
+        session_indicator_text = None;
+        scroll_part = None;
     }
 
     let non_tab_len = prefix_len + swap_layout_indicator.as_ref().map(|s| s.len).unwrap_or(0);
@@ -390,10 +401,36 @@ pub fn tab_line(
         None
     };
 
+    let mut session_indicator_range = None;
     if let Some(mut swap_layout_indicator) = swap_layout_indicator.take() {
         let remaining_space = cols
             .saturating_sub(prefix.iter().fold(0, |len, part| len + part.len))
             .saturating_sub(swap_layout_indicator.len);
+        if let Some(text) = session_indicator_text.as_ref() {
+            let (scroll_text, scroll_width) = match scroll_part.as_ref() {
+                Some(scroll) => (
+                    format!(
+                        "{}{}",
+                        scroll.part,
+                        style!(
+                            palette.text_unselected.background,
+                            palette.text_unselected.background
+                        )
+                        .paint(" ")
+                    ),
+                    scroll.len + 1,
+                ),
+                None => (String::new(), 0),
+            };
+            let start =
+                prefix.iter().fold(0, |len, part| len + part.len) + remaining_space + scroll_width;
+            swap_layout_indicator.part = format!(
+                "{}{}",
+                scroll_text,
+                session_indicator.render(text, start, 0, capabilities.arrow_fonts)
+            );
+            session_indicator_range = Some((start, start + SessionIndicator::width_of(text)));
+        }
         let mut padding = String::new();
         let mut padding_len = 0;
         for _ in 0..remaining_space {
@@ -412,34 +449,12 @@ pub fn tab_line(
         prefix.push(swap_layout_indicator);
     }
 
-    (prefix, new_tab_button_range, breadcrumb_range)
-}
-
-fn swap_layout_status(
-    swap_layout_name: &Option<String>,
-    is_swap_layout_dirty: bool,
-    mode_info: &ModeInfo,
-    supports_arrow_fonts: bool,
-    dimmed: bool,
-) -> Option<LinePart> {
-    match swap_layout_name {
-        Some(swap_layout_name) => {
-            let mode_keybinds = mode_info.get_mode_keybinds();
-            let prev_next_keys = action_key_group(
-                &mode_keybinds,
-                &[&[Action::PreviousSwapLayout], &[Action::NextSwapLayout]],
-            );
-            let mut text = style_key_with_modifier(&prev_next_keys, Some(0), dimmed);
-            text.append(&ribbon_as_line_part(
-                &swap_layout_name.to_uppercase(),
-                !is_swap_layout_dirty,
-                supports_arrow_fonts,
-                dimmed,
-            ));
-            Some(text)
-        },
-        None => None,
-    }
+    (
+        prefix,
+        new_tab_button_range,
+        breadcrumb_range,
+        session_indicator_range,
+    )
 }
 
 fn hint_line_part(
@@ -514,159 +529,4 @@ fn new_tab_button_line_part(
         len,
         tab_index: None,
     }
-}
-
-pub fn ribbon_as_line_part(
-    text: &str,
-    is_selected: bool,
-    supports_arrow_fonts: bool,
-    dimmed: bool,
-) -> LinePart {
-    let ribbon_text = if dimmed {
-        Text::from(text).disabled()
-    } else if is_selected {
-        Text::from(text).selected()
-    } else {
-        Text::from(text)
-    };
-    let part = serialize_ribbon(&ribbon_text);
-    let mut len = text.width() + 2;
-    if supports_arrow_fonts {
-        len += 2;
-    };
-    LinePart {
-        part,
-        len,
-        tab_index: None,
-    }
-}
-
-pub fn style_key_with_modifier(
-    keyvec: &[KeyWithModifier],
-    color_index: Option<usize>,
-    dimmed: bool,
-) -> LinePart {
-    if keyvec.is_empty() {
-        return LinePart::default();
-    }
-
-    let common_modifiers = get_common_modifiers(keyvec.iter().collect());
-
-    let no_common_modifier = common_modifiers.is_empty();
-    let modifier_str = common_modifiers
-        .iter()
-        .map(|m| m.to_string())
-        .collect::<Vec<_>>()
-        .join("-");
-
-    let key = keyvec
-        .iter()
-        .map(|key| {
-            if no_common_modifier || keyvec.len() == 1 {
-                format!("{}", key)
-            } else {
-                format!("{}", key.strip_common_modifiers(&common_modifiers))
-            }
-        })
-        .collect::<Vec<String>>();
-
-    let key_string = key.join("");
-    let key_separator = match &key_string[..] {
-        "HJKL" => "",
-        "hjkl" => "",
-        "←↓↑→" => "",
-        "←→" => "",
-        "↓↑" => "",
-        "[]" => "",
-        _ => "|",
-    };
-
-    if no_common_modifier || key.len() == 1 {
-        let key_string_text = format!(" {} ", key.join(key_separator));
-        let key_string_text_width = key_string_text.width();
-        let text = if dimmed {
-            Text::from(key_string_text).disabled().opaque()
-        } else if let Some(color_index) = color_index {
-            Text::from(key_string_text)
-                .color_range(color_index, ..)
-                .opaque()
-        } else {
-            Text::from(key_string_text).opaque()
-        };
-        LinePart {
-            part: serialize_text(&text),
-            len: key_string_text_width,
-            ..Default::default()
-        }
-    } else {
-        let key_string_without_modifier = format!("{}", key.join(key_separator));
-        let key_string_text = format!(" {} <{}> ", modifier_str, key_string_without_modifier);
-        let key_string_text_width = key_string_text.width();
-        let text = if dimmed {
-            Text::from(key_string_text).disabled().opaque()
-        } else if let Some(color_index) = color_index {
-            Text::from(key_string_text)
-                .color_range(color_index, ..modifier_str.width() + 1)
-                .color_range(
-                    color_index,
-                    modifier_str.width() + 3
-                        ..modifier_str.width() + 3 + key_string_without_modifier.width(),
-                )
-                .opaque()
-        } else {
-            Text::from(key_string_text).opaque()
-        };
-        LinePart {
-            part: serialize_text(&text),
-            len: key_string_text_width,
-            ..Default::default()
-        }
-    }
-}
-
-pub fn get_common_modifiers(mut keyvec: Vec<&KeyWithModifier>) -> Vec<KeyModifier> {
-    if keyvec.is_empty() {
-        return vec![];
-    }
-    let mut common_modifiers = keyvec.pop().unwrap().key_modifiers.clone();
-    for key in keyvec {
-        common_modifiers = common_modifiers
-            .intersection(&key.key_modifiers)
-            .cloned()
-            .collect();
-    }
-    common_modifiers.into_iter().collect()
-}
-
-pub fn action_key_group(
-    keymap: &[(KeyWithModifier, Vec<Action>)],
-    actions: &[&[Action]],
-) -> Vec<KeyWithModifier> {
-    let mut ret = vec![];
-    for action in actions {
-        ret.extend(action_key(keymap, action));
-    }
-    ret
-}
-
-pub fn action_key(
-    keymap: &[(KeyWithModifier, Vec<Action>)],
-    action: &[Action],
-) -> Vec<KeyWithModifier> {
-    keymap
-        .iter()
-        .filter_map(|(key, acvec)| {
-            let matching = acvec
-                .iter()
-                .zip(action)
-                .filter(|(a, b)| a.shallow_eq(b))
-                .count();
-
-            if matching == acvec.len() && matching == action.len() {
-                Some(key.clone())
-            } else {
-                None
-            }
-        })
-        .collect::<Vec<KeyWithModifier>>()
 }

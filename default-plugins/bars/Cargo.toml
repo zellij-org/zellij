@@ -17,3 +17,4 @@ zellij-tile-utils = { path = "../../zellij-tile-utils" }
 
 [dev-dependencies]
 regex = { workspace = true }
+insta = "1.48"

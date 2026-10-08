@@ -24,6 +24,9 @@ mod pty_writer;
 mod route;
 mod screen;
 mod session_layout_metadata;
+mod session_previews;
+pub mod session_suggestions;
+mod socket_folder_watcher;
 mod terminal_bytes;
 mod thread_bus;
 mod ui;
@@ -59,6 +62,7 @@ use crate::{
     thread_bus::{Bus, ThreadSenders},
 };
 use route::{route_thread_main, NotificationEnd};
+use session_suggestions::SessionSuggestionsJob;
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     consts::{
@@ -132,6 +136,9 @@ pub enum ServerInstruction {
     Log(Vec<String>, ClientId, Option<NotificationEnd>),
     LogError(Vec<String>, ClientId, Option<NotificationEnd>),
     SwitchSession(ConnectToSession, ClientId, Option<NotificationEnd>),
+    SwitchSessionAndCloseCurrent(ConnectToSession, ClientId, Option<NotificationEnd>),
+    TerminalCommandSubmitted,
+    SessionRenamed(String),
     UnblockCliPipeInput(String, Option<i32>),
     CliPipeOutput(String, String), // String -> Pipe name, String -> Output
     AssociatePipeWithClient {
@@ -242,6 +249,11 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::Log(..) => ServerContext::Log,
             ServerInstruction::LogError(..) => ServerContext::LogError,
             ServerInstruction::SwitchSession(..) => ServerContext::SwitchSession,
+            ServerInstruction::SwitchSessionAndCloseCurrent(..) => {
+                ServerContext::SwitchSessionAndCloseCurrent
+            },
+            ServerInstruction::TerminalCommandSubmitted => ServerContext::TerminalCommandSubmitted,
+            ServerInstruction::SessionRenamed(..) => ServerContext::SessionRenamed,
             ServerInstruction::UnblockCliPipeInput(..) => ServerContext::UnblockCliPipeInput,
             ServerInstruction::CliPipeOutput(..) => ServerContext::CliPipeOutput,
             ServerInstruction::AssociatePipeWithClient { .. } => {
@@ -1017,6 +1029,7 @@ pub(crate) struct SessionMetaData {
     pub key_passthrough_clients: HashMap<ClientId, PaneId>,
     pub popup_clients: HashSet<ClientId>,
     pub close_dialogue_clients: HashSet<ClientId>,
+    pub terminal_command_submitted: Arc<std::sync::atomic::AtomicBool>,
     pub web_sharing: WebSharing, // this is a special attribute explicitly set on session
     // initialization because we don't want it to be overridden by
     // configuration changes, the only way it can be overwritten is by
@@ -1240,6 +1253,20 @@ impl SessionMetaData {
                         .unwrap_or_default(),
                 })
                 .unwrap();
+            let _ = self
+                .senders
+                .send_to_screen(ScreenInstruction::SetSwapLayoutNotification(
+                    new_config.options.swap_layout_notification.unwrap_or(true),
+                ));
+            let _ = self
+                .senders
+                .send_to_background_jobs(BackgroundJob::SessionSuggestions(
+                    SessionSuggestionsJob::Configure {
+                        config: new_config.session_suggestions.clone(),
+                        session_card: new_config.options.session_card.unwrap_or(true),
+                        session_indicator: new_config.options.session_indicator.unwrap_or(true),
+                    },
+                ));
             if base_mode_changed {
                 self.current_input_modes.insert(client_id, base_mode);
                 self.senders
@@ -1398,6 +1425,19 @@ pub(crate) struct SessionState {
 }
 
 impl SessionState {
+    pub fn attached_client_count(&self) -> usize {
+        let pipe_ids: HashSet<ClientId> = self.pipes.values().copied().collect();
+        self.clients
+            .iter()
+            .filter(|(client_id, data)| data.is_some() && !pipe_ids.contains(client_id))
+            .count()
+    }
+    pub fn other_clients_are_attached(&self, client_id: ClientId) -> bool {
+        let pipe_ids: HashSet<ClientId> = self.pipes.values().copied().collect();
+        self.clients.iter().any(|(id, data)| {
+            *id != client_id && data.is_some() && !pipe_ids.contains(id)
+        }) || !self.watchers.is_empty()
+    }
     pub fn new() -> Self {
         SessionState {
             clients: HashMap::new(),
@@ -2524,6 +2564,7 @@ mod session_state_tests {
             key_passthrough_clients: HashMap::new(),
             popup_clients: HashSet::new(),
             close_dialogue_clients: HashSet::new(),
+            terminal_command_submitted: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             web_sharing: WebSharing::Off,
             screen_thread: None,
             pty_thread: None,
@@ -3089,11 +3130,33 @@ pub fn start_server_impl(
             }
         });
 
+    let mut last_attached_client_count = 0;
+    let mut delete_session_on_exit = false;
+    let mut own_session_name = socket_path
+        .file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .unwrap_or_default();
     loop {
+        let attached_client_count = session_state.read().unwrap().attached_client_count();
+        if attached_client_count != last_attached_client_count {
+            last_attached_client_count = attached_client_count;
+            if let Some(session_data) = session_data.read().unwrap().as_ref() {
+                let _ = session_data
+                    .senders
+                    .send_to_background_jobs(BackgroundJob::SessionSuggestions(
+                        SessionSuggestionsJob::ClientCountChanged(attached_client_count),
+                    ));
+            }
+        }
         let (instruction, mut err_ctx) = server_receiver.recv().unwrap();
         err_ctx.add_call(ContextType::IPCServer((&instruction).into()));
         match instruction {
             ServerInstruction::FirstClientConnected(cli_assets, is_web_client, client_id) => {
+                let is_resumed_session = match &cli_assets.layout {
+                    Some(LayoutInfo::File(path, _)) => Path::new(path)
+                        .starts_with(&*zellij_utils::consts::ZELLIJ_SESSION_INFO_CACHE_DIR),
+                    _ => false,
+                };
                 let host_terminal_env = cli_assets.host_terminal_env.clone();
                 let mut initial_panes = cli_assets.initial_panes.clone();
                 let (config, layout) = cli_assets.load_config_and_layout();
@@ -3293,6 +3356,26 @@ pub fn start_server_impl(
                 {
                     let rlock = session_data.read().unwrap();
                     let session_data = rlock.as_ref().unwrap();
+                    let _ = session_data.senders.send_to_background_jobs(
+                        BackgroundJob::SessionSuggestions(SessionSuggestionsJob::Configure {
+                            config: config.session_suggestions.clone(),
+                            session_card: runtime_config_options.session_card.unwrap_or(true),
+                            session_indicator: runtime_config_options
+                                .session_indicator
+                                .unwrap_or(true),
+                        }),
+                    );
+                    let _ = session_data.senders.send_to_background_jobs(
+                        BackgroundJob::SessionSuggestions(SessionSuggestionsJob::SessionStarted {
+                            name: own_session_name.clone(),
+                            cwd: cwd.clone().or_else(|| std::env::current_dir().ok()),
+                            card_for_client: if !is_resumed_session && !layout_is_welcome_screen {
+                                Some(client_id)
+                            } else {
+                                None
+                            },
+                        }),
+                    );
                     session_data
                         .senders
                         .send_to_plugin(PluginInstruction::AddClient(client_id))
@@ -3764,6 +3847,46 @@ pub fn start_server_impl(
                     session_state,
                     session_data
                 );
+            },
+            ServerInstruction::SessionRenamed(new_name) => {
+                own_session_name = new_name;
+            },
+            ServerInstruction::TerminalCommandSubmitted => {
+                if let Some(session_data) = session_data.read().unwrap().as_ref() {
+                    session_data
+                        .terminal_command_submitted
+                        .store(true, std::sync::atomic::Ordering::SeqCst);
+                }
+            },
+            ServerInstruction::SwitchSessionAndCloseCurrent(
+                connect_to_session,
+                client_id,
+                completion_tx,
+            ) => {
+                let switching_away = connect_to_session.name.is_some()
+                    && connect_to_session.name.as_deref() != Some(own_session_name.as_str());
+                let command_was_run = session_data
+                    .read()
+                    .unwrap()
+                    .as_ref()
+                    .map(|s| {
+                        s.terminal_command_submitted
+                            .load(std::sync::atomic::Ordering::SeqCst)
+                    })
+                    .unwrap_or(true);
+                let other_clients_attached = session_state
+                    .read()
+                    .unwrap()
+                    .other_clients_are_attached(client_id);
+                let _ = to_server.send(ServerInstruction::SwitchSession(
+                    connect_to_session,
+                    client_id,
+                    completion_tx,
+                ));
+                if switching_away && !command_was_run && !other_clients_attached {
+                    delete_session_on_exit = true;
+                    let _ = to_server.send(ServerInstruction::KillSession);
+                }
             },
             ServerInstruction::SwitchSession(mut connect_to_session, client_id, completion_tx) => {
                 let current_session_name = envs::get_session_name();
@@ -4392,6 +4515,21 @@ pub fn start_server_impl(
     *session_data.write().unwrap() = None;
 
     drop(std::fs::remove_file(&socket_path));
+    if delete_session_on_exit {
+        delete_unused_session_after_exit(&own_session_name);
+    }
+}
+
+fn delete_unused_session_after_exit(session_name: &str) {
+    if session_name.is_empty() {
+        return;
+    }
+    let _ = std::fs::remove_dir_all(zellij_utils::consts::session_info_folder_for_session(
+        session_name,
+    ));
+    if let Ok(index) = zellij_utils::session_index::SessionIndex::open_default() {
+        let _ = index.delete(session_name);
+    }
 }
 
 fn init_session(
@@ -4695,6 +4833,7 @@ fn init_session(
         key_passthrough_clients: HashMap::new(),
         popup_clients: HashSet::new(),
         close_dialogue_clients: HashSet::new(),
+        terminal_command_submitted: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         applied_env,
         config_file: ConfigFileState {
             contents_when_read: cli_assets

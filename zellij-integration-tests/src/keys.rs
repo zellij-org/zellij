@@ -16,6 +16,9 @@ pub const ENTER: [u8; 1] = [b'\r'];
 pub const ESC: [u8; 1] = [ESC_BYTE];
 pub const SPACE: [u8; 1] = [b' '];
 pub const TAB: [u8; 1] = [b'\t'];
+pub const F9: [u8; 5] = *b"\x1b[20~";
+pub const DOWN: [u8; 3] = *b"\x1b[B";
+pub const RIGHT: [u8; 3] = *b"\x1b[C";
 
 pub const BRACKETED_PASTE_START: [u8; 6] = *b"\x1b[200~";
 pub const BRACKETED_PASTE_END: [u8; 6] = *b"\x1b[201~";

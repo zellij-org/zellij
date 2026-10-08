@@ -270,6 +270,11 @@ pub enum PluginInstruction {
         initial_events: Vec<Event>,
         pipe: Option<(PopupRequest, BTreeMap<String, String>)>,
     },
+    PopupBecamePane {
+        plugin_id: PluginId,
+        client_id: ClientId,
+        pipe_after: Option<String>,
+    },
     Exit,
 }
 
@@ -352,6 +357,7 @@ impl From<&PluginInstruction> for PluginContext {
                 PluginContext::DetectPluginConfigChanges
             },
             PluginInstruction::HighlightClicked { .. } => PluginContext::HighlightClicked,
+            PluginInstruction::PopupBecamePane { .. } => PluginContext::PopupBecamePane,
         }
     }
 }
@@ -1600,6 +1606,24 @@ pub(crate) fn plugin_thread_main(
                 };
                 let updates = vec![(Some(plugin_id), Some(client_id), event)];
                 wasm_bridge.update_plugins(updates, shutdown_send.clone())?;
+            },
+            PluginInstruction::PopupBecamePane {
+                plugin_id,
+                client_id,
+                pipe_after,
+            } => {
+                wasm_bridge.popup_became_pane(plugin_id);
+                if let Some(pipe_name) = pipe_after {
+                    wasm_bridge.pipe_messages(
+                        vec![(
+                            Some(plugin_id),
+                            Some(client_id),
+                            PipeMessage::new(PipeSource::Keybind, pipe_name, &None, &None, true),
+                        )],
+                        shutdown_send.clone(),
+                        None,
+                    )?;
+                }
             },
             PluginInstruction::Exit => {
                 break;

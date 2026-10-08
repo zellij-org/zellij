@@ -22,7 +22,7 @@ pub(crate) fn wheel_steps(event: &MouseEvent) -> (usize, usize) {
     }
 }
 
-fn clear_hover_for_client(tab: &mut Tab, client_id: ClientId) -> bool {
+pub(super) fn clear_hover_for_client(tab: &mut Tab, client_id: ClientId) -> bool {
     let mut cleared = false;
     if let Some(prev_pid) = tab.mouse_hover_pane_id.remove(&client_id) {
         if let Some(pane) = tab.get_pane_with_id_mut(prev_pid) {

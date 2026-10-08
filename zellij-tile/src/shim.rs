@@ -978,6 +978,51 @@ pub fn set_popup_size(width: usize, height: usize) {
     unsafe { host_run_plugin_command() };
 }
 
+fn run_plugin_command(plugin_command: PluginCommand) {
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn get_session_suggestions(limit: usize) {
+    run_plugin_command(PluginCommand::GetSessionSuggestions { limit });
+}
+
+pub fn set_popup_focused(focused: bool) {
+    run_plugin_command(PluginCommand::SetPopupFocused(focused));
+}
+
+pub fn popup_to_floating_pane(coordinates: Option<FloatingPaneCoordinates>) {
+    run_plugin_command(PluginCommand::PopupToFloatingPane(coordinates));
+}
+
+pub fn switch_session_and_close_current(
+    name: &str,
+    tab_position: Option<usize>,
+    pane_id: Option<(u32, bool)>,
+) {
+    run_plugin_command(PluginCommand::SwitchSessionAndCloseCurrent(
+        ConnectToSession {
+            name: Some(name.to_owned()),
+            tab_position,
+            pane_id,
+            ..Default::default()
+        },
+    ));
+}
+
+pub fn get_session_preview(name: &str, tab_index: Option<usize>, pane_id: Option<(u32, bool)>) {
+    run_plugin_command(PluginCommand::GetSessionPreview {
+        name: name.to_owned(),
+        tab_index,
+        pane_id,
+    });
+}
+
+pub fn get_saved_session_preview(name: &str) {
+    run_plugin_command(PluginCommand::GetSavedSessionPreview(name.to_owned()));
+}
+
 pub fn hide_self() {
     let plugin_command = PluginCommand::HideSelf;
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
@@ -1686,6 +1731,13 @@ pub fn switch_session_with_layout(name: Option<&str>, layout: LayoutInfo, cwd: O
 }
 
 /// Switch to a session with the given name, create one if no name is given
+pub fn switch_session_with_options(connect_to_session: ConnectToSession) {
+    let plugin_command = PluginCommand::SwitchSession(connect_to_session);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 pub fn switch_session_with_cwd(name: Option<&str>, cwd: Option<PathBuf>) {
     let plugin_command = PluginCommand::SwitchSession(ConnectToSession {
         name: name.map(|n| n.to_string()),

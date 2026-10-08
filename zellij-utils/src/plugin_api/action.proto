@@ -550,6 +550,7 @@ enum ActionName {
     StartRenameTabByTabId = 124;
     DismissInfoPopups = 125;
     OpenContextMenu = 126;
+    ToggleSessionCard = 127;
 }
 
 message Position {

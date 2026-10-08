@@ -327,6 +327,7 @@ pub(crate) struct Tab {
     close_dialogues: HashMap<ClientId, CloseDialogue>,
     dimmed_clients: HashSet<ClientId>,
     plugin_hover_pane_id: HashMap<ClientId, PaneId>,
+    popup_hover_plugin_id: HashMap<ClientId, u32>,
     mouse_last_pane_id: HashMap<ClientId, PaneId>,
     mouse_help_text_visible: HashMap<ClientId, bool>,
     last_mouse_activity_time: HashMap<ClientId, Instant>,
@@ -634,6 +635,9 @@ pub trait Pane {
     }
     fn drain_osc7_cwd(&mut self) -> Option<std::path::PathBuf> {
         None
+    }
+    fn drain_prompt_return(&mut self) -> bool {
+        false
     }
     fn render_full_viewport(&mut self) {}
     fn relative_position(&self, position_on_screen: &Position) -> Position {
@@ -1121,6 +1125,7 @@ impl Tab {
             mouse_hover_pane_id: HashMap::new(),
             close_dialogues: HashMap::new(),
             plugin_hover_pane_id: HashMap::new(),
+            popup_hover_plugin_id: HashMap::new(),
             mouse_last_pane_id: HashMap::new(),
             mouse_help_text_visible: HashMap::new(),
             last_mouse_activity_time: HashMap::new(),
@@ -4835,6 +4840,7 @@ impl Tab {
             let clipboard_update = terminal_output.drain_clipboard_update();
             let desktop_notifications = terminal_output.drain_desktop_notifications();
             let osc7_cwd = terminal_output.drain_osc7_cwd();
+            let prompt_returned = terminal_output.drain_prompt_return();
             for message in messages_to_pty {
                 self.write_to_pane_id_without_preprocessing(message, PaneId::Terminal(pid))
                     .with_context(err_context)?;
@@ -4871,6 +4877,11 @@ impl Tab {
                 let _ = self
                     .senders
                     .send_to_pty(PtyInstruction::NotifyCwdFromOsc7(pid, path));
+            }
+            if prompt_returned {
+                let _ = self
+                    .senders
+                    .send_to_pty(PtyInstruction::PromptReturned(pid));
             }
         }
         Ok(())
@@ -5654,6 +5665,23 @@ impl Tab {
     }
     fn get_selectable_floating_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
         self.get_floating_panes().filter(|(_, p)| p.selectable())
+    }
+    pub fn preview_panes(&self) -> Vec<(PaneId, String)> {
+        let mut tiled: Vec<(PaneId, String, usize, usize)> = self
+            .get_selectable_tiled_panes()
+            .map(|(id, pane)| (*id, pane.current_title(), pane.y(), pane.x()))
+            .collect();
+        tiled.sort_by_key(|(_, _, y, x)| (*y, *x));
+        let mut floating: Vec<(PaneId, String, usize, usize)> = self
+            .get_selectable_floating_panes()
+            .map(|(id, pane)| (*id, pane.current_title(), pane.y(), pane.x()))
+            .collect();
+        floating.sort_by_key(|(_, _, y, x)| (*y, *x));
+        tiled
+            .into_iter()
+            .chain(floating)
+            .map(|(id, title, _, _)| (id, title))
+            .collect()
     }
     pub fn get_selectable_tiled_panes_count(&self) -> usize {
         self.get_selectable_tiled_panes().count()
@@ -7741,6 +7769,10 @@ impl Tab {
                         run_plugin_or_alias.is_equivalent_to_run(pane.invoked_with())
                     })
                     .map(|(_, (_, pane))| pane.pid()) // TODO: does this break things????
+            })
+            .or_else(|| {
+                self.find_popup_plugin(run_plugin_or_alias)
+                    .map(|(_, plugin_id)| PaneId::Plugin(plugin_id))
             })
     }
 

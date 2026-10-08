@@ -469,6 +469,30 @@ pub struct Options {
     #[clap(long, value_parser)]
     #[serde(default)]
     pub dangerously_enable_paste_buffer_read: Option<bool>,
+
+    #[clap(
+        long,
+        value_parser,
+        help = "Whether to show a card listing other relevant sessions when a new session starts (true or false), default is true"
+    )]
+    #[serde(default)]
+    pub session_card: Option<bool>,
+
+    #[clap(
+        long,
+        value_parser,
+        help = "Whether to show the other sessions indicator in the tab bar and compact bar (true or false), default is true"
+    )]
+    #[serde(default)]
+    pub session_indicator: Option<bool>,
+
+    #[clap(
+        long,
+        value_parser,
+        help = "Whether to briefly show the new swap layout name when it is changed (true or false), default is true"
+    )]
+    #[serde(default)]
+    pub swap_layout_notification: Option<bool>,
 }
 
 #[derive(ValueEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq)]
@@ -659,6 +683,11 @@ impl Options {
         let dangerously_enable_paste_buffer_read = other
             .dangerously_enable_paste_buffer_read
             .or(self.dangerously_enable_paste_buffer_read);
+        let session_card = other.session_card.or(self.session_card);
+        let session_indicator = other.session_indicator.or(self.session_indicator);
+        let swap_layout_notification = other
+            .swap_layout_notification
+            .or(self.swap_layout_notification);
 
         Options {
             simplified_ui,
@@ -726,6 +755,9 @@ impl Options {
             client_async_worker_tasks,
             nested_session_handling,
             dangerously_enable_paste_buffer_read,
+            session_card,
+            session_indicator,
+            swap_layout_notification,
         }
     }
 
@@ -850,6 +882,10 @@ impl Options {
         let dangerously_enable_paste_buffer_read = other
             .dangerously_enable_paste_buffer_read
             .or(self.dangerously_enable_paste_buffer_read);
+        let session_card = merge_bool(other.session_card, self.session_card);
+        let session_indicator = merge_bool(other.session_indicator, self.session_indicator);
+        let swap_layout_notification =
+            merge_bool(other.swap_layout_notification, self.swap_layout_notification);
 
         Options {
             simplified_ui,
@@ -917,6 +953,9 @@ impl Options {
             client_async_worker_tasks,
             nested_session_handling,
             dangerously_enable_paste_buffer_read,
+            session_card,
+            session_indicator,
+            swap_layout_notification,
         }
     }
 

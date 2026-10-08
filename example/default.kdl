@@ -80,6 +80,8 @@ keybinds preset="default" primary="Ctrl" secondary="Alt" unlock="Ctrl g" {
         bind "8" { GoToTab 8; SwitchToMode "Normal"; }
         bind "9" { GoToTab 9; SwitchToMode "Normal"; }
         bind "Tab" { ToggleTab; }
+        bind "Space" { NextSwapLayout; }
+        bind "Shift Space" { PreviousSwapLayout; }
     }
     scroll {
         bind "Ctrl s" { SwitchToMode "Normal"; }
@@ -201,6 +203,7 @@ keybinds preset="default" primary="Ctrl" secondary="Alt" unlock="Ctrl g" {
         bind "x" { CloseFocus; SwitchToMode "Normal"; }
     }
     shared_except "locked" {
+        bind "F9" { ToggleSessionCard; }
         bind "Ctrl g" { SwitchToMode "Locked"; }
         bind "Ctrl q" { Quit; }
         bind "Alt f" { ToggleFloatingPanes; }
@@ -770,6 +773,37 @@ load_plugins {
 // Default: false
 //
 // mouse_click_through true
+
+// Whether to show a card listing other relevant sessions when a new session starts
+// Default: true
+//
+// session_card false
+
+// Whether to show the other sessions indicator in the tab bar and compact bar
+// Default: true
+//
+// session_indicator false
+
+// Whether to briefly show the name of the new swap layout when it is changed
+// Default: true
+//
+// swap_layout_notification false
+
+// How other sessions are suggested on the session card and in the session manager
+// The first matching rule decides the order; within a rule, running sessions come first,
+// then the most recently used
+// Facts: directory, git_repo, git_branch, git_worktree, hostname, or a custom `fact`
+// fact "project" command="echo $PROJECT" column="project" at="live"
+// script "~/.config/zellij/rank.sh" timeout_ms=300 hide_unlisted=false
+// record "~/.config/zellij/record.sh"
+//
+// session_suggestions {
+//     match "directory" "git_branch"
+//     match "git_repo" "git_branch"
+//     match "directory"
+//     match "git_repo"
+//     then "recent"
+// }
 
 // Whether a right click opens the right-click menu
 // When off, right clicks go to the focused pane only and Alt + right click clears the pane group

@@ -13,6 +13,8 @@ use crate::{
     ClientId, ServerInstruction,
 };
 use std::sync::Arc;
+use crate::session_suggestions::{ContextTrigger, SessionSuggestionsJob};
+use std::collections::HashSet;
 use std::{collections::HashMap, path::PathBuf};
 use tokio::task::JoinHandle;
 use zellij_utils::{
@@ -65,6 +67,7 @@ pub enum PtyInstruction {
         Option<NotificationEnd>,
     ), // Option<usize> is the optional line number
     UpdateActivePane(Option<PaneId>, ClientId),
+    PromptReturned(u32),
     GoToTab(TabIndex, ClientId),
     NewTab(
         Option<PathBuf>,
@@ -195,6 +198,7 @@ impl From<&PtyInstruction> for PtyContext {
             PtyInstruction::GetPaneCwd { .. } => PtyContext::GetPaneCwd,
             PtyInstruction::UpdateAndReportCwds => PtyContext::UpdateAndReportCwds,
             PtyInstruction::NotifyCwdFromOsc7(..) => PtyContext::NotifyCwdFromOsc7,
+            PtyInstruction::PromptReturned(..) => PtyContext::PromptReturned,
             PtyInstruction::Exit => PtyContext::Exit,
         }
     }
@@ -215,6 +219,8 @@ pub(crate) struct Pty {
     pane_activity_flags: HashMap<u32, std::sync::Arc<std::sync::atomic::AtomicBool>>,
     terminal_cmds: HashMap<u32, Vec<String>>,
     terminal_foreground_cmds: HashMap<u32, Vec<String>>,
+    session_context_pane: Option<PaneId>,
+    terminals_with_prompt_markers: HashSet<u32>,
 }
 
 pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
@@ -919,6 +925,12 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
             PtyInstruction::NotifyCwdFromOsc7(terminal_id, path) => {
                 pty.notify_cwd_from_osc7(terminal_id, path);
             },
+            PtyInstruction::PromptReturned(terminal_id) => {
+                pty.terminals_with_prompt_markers.insert(terminal_id);
+                if pty.session_context_pane == Some(PaneId::Terminal(terminal_id)) {
+                    pty.report_session_context(ContextTrigger::PromptReturned);
+                }
+            },
             PtyInstruction::Exit => break,
         }
     }
@@ -948,6 +960,8 @@ impl Pty {
             pane_activity_flags: HashMap::new(),
             terminal_cmds: HashMap::new(),
             terminal_foreground_cmds: HashMap::new(),
+            session_context_pane: None,
+            terminals_with_prompt_markers: HashSet::new(),
         }
     }
     pub fn get_default_terminal(
@@ -1880,8 +1894,31 @@ impl Pty {
     }
     pub fn set_active_pane(&mut self, pane_id: Option<PaneId>, client_id: ClientId) {
         if let Some(pane_id) = pane_id {
-            self.active_panes.insert(client_id, pane_id);
+            let previous = self.active_panes.insert(client_id, pane_id);
+            if previous != Some(pane_id) && matches!(pane_id, PaneId::Terminal(_)) {
+                self.session_context_pane = Some(pane_id);
+                self.report_session_context(ContextTrigger::FocusChanged);
+            }
         }
+    }
+    fn report_session_context(&self, trigger: ContextTrigger) {
+        let Some(PaneId::Terminal(terminal_id)) = self.session_context_pane else {
+            return;
+        };
+        let folder = self.terminal_cwds.get(&terminal_id).cloned().or_else(|| {
+            self.id_to_child_pid.get(&terminal_id).and_then(|pid| {
+                self.bus
+                    .os_input
+                    .as_ref()
+                    .and_then(|os_input| os_input.get_cwd(*pid))
+            })
+        });
+        let _ = self
+            .bus
+            .senders
+            .send_to_background_jobs(BackgroundJob::SessionSuggestions(
+                SessionSuggestionsJob::FocusedPaneContext { folder, trigger },
+            ));
     }
     pub fn rerun_command_in_pane(
         &mut self,
@@ -2164,6 +2201,10 @@ impl Pty {
                             None,
                             Event::CwdChanged(pane_id.into(), cwd.clone(), focused_client_ids),
                         )]));
+                    self.terminal_cwds.insert(*terminal_id, cwd.clone());
+                    if self.session_context_pane == Some(pane_id) {
+                        self.report_session_context(ContextTrigger::FolderChanged);
+                    }
                 }
                 self.terminal_cwds.insert(*terminal_id, cwd.clone());
             }
@@ -2199,6 +2240,12 @@ impl Pty {
                     .filter(|(_, active_pane)| *active_pane == &pane_id)
                     .map(|(client_id, _)| *client_id)
                     .collect();
+                if foreground_cmd.is_empty()
+                    && self.session_context_pane == Some(pane_id)
+                    && !self.terminals_with_prompt_markers.contains(terminal_id)
+                {
+                    self.report_session_context(ContextTrigger::PromptReturned);
+                }
                 let (command, is_foreground) = if foreground_cmd.is_empty() {
                     let shell_cmd = self
                         .terminal_cmds
@@ -2259,6 +2306,9 @@ impl Pty {
                     Event::CwdChanged(pane_id.into(), path.clone(), focused_client_ids),
                 )]));
             self.terminal_cwds.insert(terminal_id, path);
+            if self.session_context_pane == Some(pane_id) {
+                self.report_session_context(ContextTrigger::FolderChanged);
+            }
         }
         if let Some(flag) = self.pane_activity_flags.get(&terminal_id) {
             flag.store(false, Ordering::Relaxed);

@@ -18,7 +18,7 @@ use crate::{
         MobileActivePaneMsg, MobilePaneMsg, MobileRenderPrefsMsg, MobileSessionMsg, MobileSizeMsg,
         MobileStateMsg, MobileTabMsg, NestedSessionFrameFromHostMsg,
         PaneMetadata as ProtoPaneMetadata, PaneRenderUpdateMsg, QueryTerminalSizeMsg,
-        RenamedSessionMsg, RenderFrameAckMsg, RenderFrameMsg, RenderMsg, RequestSessionListMsg,
+        RenamedSessionMsg, RenderFrameAckMsg, RenderFrameMsg, RenderMsg, RequestSessionListMsg, RequestSessionPreviewMsg,
         ServerToClientMsg as ProtoServerToClientMsg, SetMobileRenderPreferencesMsg,
         SetSoftKeyboardMsg, SixelSupportMsg, SoftKeyboardVisibilityChangedMsg, StartWebServerMsg,
         StructuredRenderSupportMsg, SubscribeToPaneRendersMsg, SubscribedPaneClosedMsg,
@@ -181,6 +181,13 @@ impl From<ClientToServerMsg> for ProtoClientToServerMsg {
             },
             ClientToServerMsg::RequestSessionList => {
                 client_to_server_msg::Message::RequestSessionList(RequestSessionListMsg {})
+            },
+            ClientToServerMsg::RequestSessionPreview { tab_index, pane_id } => {
+                client_to_server_msg::Message::RequestSessionPreview(RequestSessionPreviewMsg {
+                    tab_index,
+                    pane_id: pane_id.map(|(id, _)| id),
+                    pane_is_plugin: pane_id.map(|(_, is_plugin)| is_plugin).unwrap_or(false),
+                })
             },
             ClientToServerMsg::SetMobileRenderPreferences { single_pane, fit } => {
                 client_to_server_msg::Message::SetMobileRenderPreferences(
@@ -374,6 +381,12 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
             },
             Some(client_to_server_msg::Message::RequestSessionList(_)) => {
                 Ok(ClientToServerMsg::RequestSessionList)
+            },
+            Some(client_to_server_msg::Message::RequestSessionPreview(msg)) => {
+                Ok(ClientToServerMsg::RequestSessionPreview {
+                    tab_index: msg.tab_index,
+                    pane_id: msg.pane_id.map(|id| (id, msg.pane_is_plugin)),
+                })
             },
             Some(client_to_server_msg::Message::SetMobileRenderPreferences(msg)) => {
                 Ok(ClientToServerMsg::SetMobileRenderPreferences {
@@ -1019,6 +1032,9 @@ impl From<crate::input::options::Options>
             stacked_resize: options.stacked_resize,
             stacked_pane_list: options.stacked_pane_list,
             dangerously_enable_paste_buffer_read: options.dangerously_enable_paste_buffer_read,
+            session_card: options.session_card,
+            session_indicator: options.session_indicator,
+            swap_layout_notification: options.swap_layout_notification,
             show_startup_tips: options.show_startup_tips,
             show_release_notes: options.show_release_notes,
             advanced_mouse_actions: options.advanced_mouse_actions,
@@ -1163,6 +1179,9 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
             stacked_resize: options.stacked_resize,
             stacked_pane_list: options.stacked_pane_list,
             dangerously_enable_paste_buffer_read: options.dangerously_enable_paste_buffer_read,
+            session_card: options.session_card,
+            session_indicator: options.session_indicator,
+            swap_layout_notification: options.swap_layout_notification,
             show_startup_tips: options.show_startup_tips,
             show_release_notes: options.show_release_notes,
             advanced_mouse_actions: options.advanced_mouse_actions,
@@ -1312,6 +1331,7 @@ impl From<crate::input::actions::Action>
             NextSwapLayoutByTabIdAction,
             NoOpAction,
             OpenContextMenuAction,
+            ToggleSessionCardAction,
             OverrideLayoutAction,
             PageScrollDownAction,
             PageScrollDownByPaneIdAction,
@@ -1811,6 +1831,9 @@ impl From<crate::input::actions::Action>
             crate::input::actions::Action::DismissInfoPopups => {
                 ActionType::DismissInfoPopups(DismissInfoPopupsAction {})
             },
+            crate::input::actions::Action::ToggleSessionCard => {
+                ActionType::ToggleSessionCard(ToggleSessionCardAction {})
+            },
             crate::input::actions::Action::OpenContextMenu => {
                 ActionType::OpenContextMenu(OpenContextMenuAction {})
             },
@@ -1820,7 +1843,9 @@ impl From<crate::input::actions::Action>
                 pane_id,
                 layout,
                 cwd,
+                close_current,
             } => ActionType::SwitchSession(SwitchSessionAction {
+                close_current,
                 name: name.clone(),
                 tab_position: tab_position.map(|p| p as u32),
                 pane_id: pane_id.map(|(id, is_plugin)| PaneIdWithPlugin {
@@ -2769,6 +2794,9 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                 Ok(crate::input::actions::Action::DismissInfoPopups)
             },
             ActionType::OpenContextMenu(_) => Ok(crate::input::actions::Action::OpenContextMenu),
+            ActionType::ToggleSessionCard(_) => {
+                Ok(crate::input::actions::Action::ToggleSessionCard)
+            },
             ActionType::SwitchSession(switch_session_action) => {
                 Ok(crate::input::actions::Action::SwitchSession {
                     name: switch_session_action.name.clone(),
@@ -2782,6 +2810,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                         .map(|l| l.try_into())
                         .transpose()?,
                     cwd: switch_session_action.cwd.map(PathBuf::from),
+                    close_current: switch_session_action.close_current,
                 })
             },
             ActionType::LaunchOrFocusPlugin(launch_plugin_action) => {
@@ -3479,6 +3508,7 @@ impl From<crate::data::ConnectToSession>
             }),
             layout: connect.layout.map(|l| l.into()),
             cwd: connect.cwd.map(|p| p.to_string_lossy().to_string()),
+            session_card: connect.session_card,
         }
     }
 }
@@ -3496,6 +3526,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::ConnectToSes
             pane_id: connect.pane_id.map(|p| (p.pane_id, p.is_plugin)),
             layout: connect.layout.map(|l| l.try_into()).transpose()?,
             cwd: connect.cwd.map(PathBuf::from),
+            session_card: connect.session_card,
         })
     }
 }

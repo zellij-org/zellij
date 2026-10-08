@@ -2,12 +2,14 @@ use ansi_term::ANSIStrings;
 use unicode_width::UnicodeWidthStr;
 
 use crate::compact_bar::{LinePart, TabRenderData, ARROW_SEPARATOR};
+use crate::session_indicator::{IndicatorText, SessionIndicator};
 use zellij_tile::prelude::*;
 use zellij_tile_utils::style;
 
 pub struct TabLineOutput {
     pub parts: Vec<LinePart>,
     pub breadcrumb_range: Option<(usize, usize)>,
+    pub session_indicator_range: Option<(usize, usize)>,
 }
 
 pub fn tab_line(
@@ -16,6 +18,7 @@ pub fn tab_line(
     cols: usize,
     toggle_tooltip_key: Option<String>,
     tooltip_is_active: bool,
+    session_indicator: &SessionIndicator,
 ) -> TabLineOutput {
     let dimmed = mode_info.session_ascended == Some(true) || mode_info.session_dimmed == Some(true);
     let breadcrumb_ancestry = if mode_info.host_fullscreen == Some(true) {
@@ -28,8 +31,7 @@ pub fn tab_line(
         session_name: mode_info.session_name.to_owned(),
         hide_session_name: mode_info.style.hide_session_name,
         mode: mode_info.mode,
-        active_swap_layout_name: tab_data.active_swap_layout_name,
-        is_swap_layout_dirty: tab_data.is_swap_layout_dirty,
+        session_indicator: session_indicator.clone(),
         toggle_tooltip_key,
         tooltip_is_active,
         dimmed,
@@ -69,8 +71,7 @@ pub struct TabLineConfig {
     pub session_name: Option<String>,
     pub hide_session_name: bool,
     pub mode: InputMode,
-    pub active_swap_layout_name: Option<String>,
-    pub is_swap_layout_dirty: bool,
+    pub session_indicator: SessionIndicator,
     pub toggle_tooltip_key: Option<String>,
     pub tooltip_is_active: bool,
     pub dimmed: bool,
@@ -511,25 +512,24 @@ impl<'a> TabLinePrefixBuilder<'a> {
 
 struct RightSideElementsBuilder {
     palette: Styling,
-    capabilities: PluginCapabilities,
     dimmed: bool,
 }
 
 impl RightSideElementsBuilder {
-    fn new(palette: Styling, capabilities: PluginCapabilities, dimmed: bool) -> Self {
-        Self {
-            palette,
-            capabilities,
-            dimmed,
-        }
+    fn new(palette: Styling, dimmed: bool) -> Self {
+        Self { palette, dimmed }
     }
 
-    fn build(&self, config: &TabLineConfig, available_space: usize) -> Vec<LinePart> {
+    fn build(
+        &self,
+        config: &TabLineConfig,
+        available_space: usize,
+    ) -> (Vec<LinePart>, Option<IndicatorText>) {
         if config.nested_hint.is_active() {
             if let Some(hint) = self.create_nested_hint(&config.nested_hint, available_space) {
-                return vec![hint];
+                return (vec![hint], None);
             }
-            return Vec::new();
+            return (Vec::new(), None);
         }
 
         let mut elements = Vec::new();
@@ -538,11 +538,21 @@ impl RightSideElementsBuilder {
             elements.push(self.create_tooltip_indicator(tooltip_key, config.tooltip_is_active));
         }
 
-        if let Some(swap_status) = self.create_swap_layout_status(config, available_space) {
-            elements.push(swap_status);
+        let used = calculate_total_length(&elements);
+        let mut indicator_text = None;
+        if let Some(text) = config
+            .session_indicator
+            .fitting_variant(available_space.saturating_sub(used))
+        {
+            elements.push(LinePart {
+                part: String::new(),
+                len: SessionIndicator::width_of(&text),
+                tab_index: None,
+            });
+            indicator_text = Some(text);
         }
 
-        elements
+        (elements, indicator_text)
     }
 
     fn create_nested_hint(&self, hint: &NestedSessionHint, max_len: usize) -> Option<LinePart> {
@@ -626,103 +636,6 @@ impl RightSideElementsBuilder {
         }
     }
 
-    fn create_swap_layout_status(
-        &self,
-        config: &TabLineConfig,
-        max_len: usize,
-    ) -> Option<LinePart> {
-        let swap_layout_name = config.active_swap_layout_name.as_ref()?;
-
-        let mut layout_name = format!(" {} ", swap_layout_name);
-        layout_name.make_ascii_uppercase();
-        let layout_name_len = layout_name.len() + 3;
-
-        let colors = SwapLayoutColors {
-            bg: self.palette.text_unselected.background,
-            fg: self.palette.ribbon_unselected.background,
-            green: self.palette.ribbon_selected.background,
-        };
-
-        let separator = tab_separator(self.capabilities);
-        let styled_parts = self.create_swap_layout_styled_parts(
-            &layout_name,
-            config.mode,
-            config.is_swap_layout_dirty,
-            &colors,
-            separator,
-        );
-
-        let indicator = format!("{}{}{}", styled_parts.0, styled_parts.1, styled_parts.2);
-        let (part, full_len) = (indicator.clone(), layout_name_len);
-        let short_len = layout_name_len + 1;
-
-        if full_len <= max_len {
-            Some(LinePart {
-                part,
-                len: full_len,
-                tab_index: None,
-            })
-        } else if short_len <= max_len && config.mode != InputMode::Locked {
-            Some(LinePart {
-                part: indicator,
-                len: short_len,
-                tab_index: None,
-            })
-        } else {
-            None
-        }
-    }
-
-    fn create_swap_layout_styled_parts(
-        &self,
-        layout_name: &str,
-        mode: InputMode,
-        is_dirty: bool,
-        colors: &SwapLayoutColors,
-        separator: &str,
-    ) -> (String, String, String) {
-        if self.dimmed {
-            let text_style = style!(colors.bg, colors.fg).italic();
-            return (
-                style!(colors.bg, colors.fg).paint(separator).to_string(),
-                text_style.paint(layout_name).to_string(),
-                style!(colors.fg, colors.bg).paint(separator).to_string(),
-            );
-        }
-        match mode {
-            InputMode::Locked => (
-                style!(colors.bg, colors.fg).paint(separator).to_string(),
-                style!(colors.bg, colors.fg)
-                    .italic()
-                    .paint(layout_name)
-                    .to_string(),
-                style!(colors.fg, colors.bg).paint(separator).to_string(),
-            ),
-            _ if is_dirty => (
-                style!(colors.bg, colors.fg).paint(separator).to_string(),
-                style!(colors.bg, colors.fg)
-                    .bold()
-                    .paint(layout_name)
-                    .to_string(),
-                style!(colors.fg, colors.bg).paint(separator).to_string(),
-            ),
-            _ => (
-                style!(colors.bg, colors.green).paint(separator).to_string(),
-                style!(colors.bg, colors.green)
-                    .bold()
-                    .paint(layout_name)
-                    .to_string(),
-                style!(colors.green, colors.bg).paint(separator).to_string(),
-            ),
-        }
-    }
-}
-
-#[derive(Debug)]
-struct SwapLayoutColors {
-    bg: PaletteColor,
-    fg: PaletteColor,
-    green: PaletteColor,
 }
 
 pub struct TabLineBuilder {
@@ -777,6 +690,7 @@ impl TabLineBuilder {
             return TabLineOutput {
                 parts: prefix,
                 breadcrumb_range,
+                session_indicator_range: None,
             };
         }
 
@@ -794,10 +708,11 @@ impl TabLineBuilder {
 
         prefix.append(&mut tabs_to_render);
 
-        self.add_right_side_elements(&mut prefix);
+        let session_indicator_range = self.add_right_side_elements(&mut prefix);
         TabLineOutput {
             parts: prefix,
             breadcrumb_range,
+            session_indicator_range,
         }
     }
 
@@ -818,14 +733,16 @@ impl TabLineBuilder {
         (tabs_before_active, active_tab, tabs_after_active)
     }
 
-    fn add_right_side_elements(&self, prefix: &mut Vec<LinePart>) {
+    fn add_right_side_elements(&self, prefix: &mut Vec<LinePart>) -> Option<(usize, usize)> {
         let current_len = calculate_total_length(prefix);
+        let mut session_indicator_range = None;
 
         if current_len < self.cols {
             let right_builder =
-                RightSideElementsBuilder::new(self.palette, self.capabilities, self.config.dimmed);
+                RightSideElementsBuilder::new(self.palette, self.config.dimmed);
             let available_space = self.cols.saturating_sub(current_len);
-            let mut right_elements = right_builder.build(&self.config, available_space);
+            let (mut right_elements, indicator_text) =
+                right_builder.build(&self.config, available_space);
 
             let right_len = calculate_total_length(&right_elements);
 
@@ -839,9 +756,21 @@ impl TabLineBuilder {
                     prefix.push(self.create_spacer(remaining_space));
                 }
 
+                if let (Some(text), Some(last)) = (indicator_text, right_elements.last_mut()) {
+                    let start = self.cols.saturating_sub(last.len);
+                    last.part = self.config.session_indicator.render(
+                        &text,
+                        start,
+                        0,
+                        self.capabilities.arrow_fonts,
+                    );
+                    session_indicator_range = Some((start, start + last.len));
+                }
+
                 prefix.append(&mut right_elements);
             }
         }
+        session_indicator_range
     }
 
     fn create_spacer(&self, space: usize) -> LinePart {

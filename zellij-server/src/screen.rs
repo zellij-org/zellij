@@ -814,6 +814,7 @@ pub enum ScreenInstruction {
     UpdateSessionInfos(
         BTreeMap<String, SessionInfo>, // String is the session name
         BTreeMap<String, Duration>,    // resurrectable sessions - <name, created>
+        Option<(u32, ClientId)>,
     ),
     ReplacePane(
         PaneId,
@@ -965,6 +966,25 @@ pub enum ScreenInstruction {
         target: ContextMenuTarget,
         line: usize,
         column: usize,
+    },
+    OpenSessionCard(ClientId),
+    TerminalInputSubmitted(ClientId),
+    TerminalEscapePressed(ClientId),
+    ToggleSessionCard(ClientId, Option<NotificationEnd>),
+    SetPopupFocused {
+        plugin_id: u32,
+        focused: bool,
+    },
+    PopupToFloatingPane {
+        plugin_id: u32,
+        coordinates: Option<FloatingPaneCoordinates>,
+    },
+    ShowSwapLayoutNotification(ClientId),
+    SetSwapLayoutNotification(bool),
+    GetSessionPreview {
+        tab_index: Option<usize>,
+        pane_id: Option<(u32, bool)>,
+        response_channel: crossbeam::channel::Sender<zellij_utils::data::SessionPreview>,
     },
     OpenPluginPopup {
         requesting_plugin_id: u32,
@@ -1427,6 +1447,19 @@ impl From<&ScreenInstruction> for ScreenContext {
                 ScreenContext::OpenContextMenuFromPlugin
             },
             ScreenInstruction::OpenPluginPopup { .. } => ScreenContext::OpenPluginPopup,
+            ScreenInstruction::OpenSessionCard(..) => ScreenContext::OpenSessionCard,
+            ScreenInstruction::TerminalInputSubmitted(..) => ScreenContext::TerminalInputSubmitted,
+            ScreenInstruction::TerminalEscapePressed(..) => ScreenContext::TerminalEscapePressed,
+            ScreenInstruction::ToggleSessionCard(..) => ScreenContext::ToggleSessionCard,
+            ScreenInstruction::SetPopupFocused { .. } => ScreenContext::SetPopupFocused,
+            ScreenInstruction::PopupToFloatingPane { .. } => ScreenContext::PopupToFloatingPane,
+            ScreenInstruction::ShowSwapLayoutNotification(..) => {
+                ScreenContext::ShowSwapLayoutNotification
+            },
+            ScreenInstruction::SetSwapLayoutNotification(..) => {
+                ScreenContext::SetSwapLayoutNotification
+            },
+            ScreenInstruction::GetSessionPreview { .. } => ScreenContext::GetSessionPreview,
             ScreenInstruction::AddPopup { .. } => ScreenContext::AddPopup,
             ScreenInstruction::OpenPipePopup { .. } => ScreenContext::OpenPipePopup,
             ScreenInstruction::OpenPromptPopup { .. } => ScreenContext::OpenPromptPopup,
@@ -1810,6 +1843,9 @@ pub(crate) struct Screen {
     pane_render_subscribers: HashMap<ClientId, PaneRenderSubscription>,
     background_plugin_subscriptions: HashMap<(PluginId, ClientId), HashSet<EventType>>,
     last_reported_plugin_tab_indices: HashMap<PluginId, usize>,
+    pub(crate) pending_session_card: Option<ClientId>,
+    pub(crate) terminal_command_submitted: bool,
+    pub(crate) swap_layout_notification: bool,
     last_reported_client_visible_plugins: HashMap<ClientId, HashSet<PluginId>>,
     pending_selectable_panes: HashMap<PaneId, bool>,
     state_report_target: Option<(PluginId, ClientId)>,
@@ -2136,6 +2172,9 @@ impl Screen {
             pane_render_subscribers: HashMap::new(),
             background_plugin_subscriptions: HashMap::new(),
             last_reported_plugin_tab_indices: HashMap::new(),
+            pending_session_card: None,
+            terminal_command_submitted: false,
+            swap_layout_notification: true,
             last_reported_client_visible_plugins: HashMap::new(),
             pending_selectable_panes: HashMap::new(),
             state_report_target: None,
@@ -7049,23 +7088,26 @@ impl Screen {
         &mut self,
         new_session_infos: BTreeMap<String, SessionInfo>,
         resurrectable_sessions: BTreeMap<String, Duration>,
+        requesting_plugin: Option<(u32, ClientId)>,
     ) -> Result<()> {
         self.peer_sessions_cache = new_session_infos;
         self.resurrectable_sessions_cache = resurrectable_sessions;
-        self.bus
-            .senders
-            .send_to_plugin(PluginInstruction::Update(vec![(
-                None,
-                None,
-                Event::SessionUpdate(
-                    self.peer_sessions_cache.values().cloned().collect(),
-                    self.resurrectable_sessions_cache
-                        .iter()
-                        .map(|(n, c)| (n.clone(), c.clone()))
-                        .collect(),
-                ),
-            )]))
-            .context("failed to update session info")?;
+        if let Some((plugin_id, client_id)) = requesting_plugin {
+            self.bus
+                .senders
+                .send_to_plugin(PluginInstruction::Update(vec![(
+                    Some(plugin_id),
+                    Some(client_id),
+                    Event::SessionUpdate(
+                        self.peer_sessions_cache.values().cloned().collect(),
+                        self.resurrectable_sessions_cache
+                            .iter()
+                            .map(|(n, c)| (n.clone(), c.clone()))
+                            .collect(),
+                    ),
+                )]))
+                .context("failed to update session info")?;
+        }
         self.report_mobile_state();
         Ok(())
     }
@@ -7769,13 +7811,23 @@ impl Screen {
     ) -> Result<bool> {
         // true => found and focused, false => not
         let err_context = || format!("failed to focus_plugin_pane");
+        if let Some(plugin_id) = self.focus_popup_plugin_as_floating_pane(run_plugin, client_id) {
+            if let Some(ref mut completion) = completion_tx {
+                completion.set_affected_pane_id(PaneId::Plugin(plugin_id));
+            }
+            return Ok(true);
+        }
         let mut tab_index_and_plugin_pane_id = None;
         let mut plugin_pane_to_move_to_active_tab = None;
         let focused_tab_index = *self.active_tab_ids.get(&client_id).unwrap_or(&0);
         let can_move_to_focused_tab = move_to_focused_tab && self.get_active_tab(client_id).is_ok();
         let all_tabs = self.get_tabs_mut();
         for (tab_index, tab) in all_tabs.iter_mut() {
-            if let Some(plugin_pane_id) = tab.find_plugin(&run_plugin) {
+            let found = tab.find_plugin(&run_plugin).filter(|pane_id| match pane_id {
+                PaneId::Plugin(plugin_id) => !tab.has_popup_plugin(*plugin_id),
+                PaneId::Terminal(_) => true,
+            });
+            if let Some(plugin_pane_id) = found {
                 tab_index_and_plugin_pane_id = Some((*tab_index, plugin_pane_id));
                 if can_move_to_focused_tab && focused_tab_index != *tab_index {
                     plugin_pane_to_move_to_active_tab = tab.extract_pane(plugin_pane_id, true);
@@ -9970,6 +10022,7 @@ pub(crate) fn screen_thread_main(
     screen.host_theme_dark_styling = host_theme_dark_styling;
     screen.host_theme_light_styling = host_theme_light_styling;
     screen.paste_buffer_read_enabled = dangerously_enable_paste_buffer_read;
+    screen.swap_layout_notification = config_options.swap_layout_notification.unwrap_or(true);
     screen.set_host_notification_protocol(host_notification_protocol);
     if explicit_theme_hue.is_some() {
         screen
@@ -9998,6 +10051,12 @@ pub(crate) fn screen_thread_main(
         // here we start caching resizes, so that we'll send them in bulk at the end of each event
         // when this cache is Dropped, for more information, see the comments in PtyWriter
         let _resize_cache = ResizeCache::new(thread_senders.clone());
+        if screen.pending_session_card.is_some()
+            && !matches!(event, ScreenInstruction::OpenSessionCard(..))
+            && !screen.tabs.is_empty()
+        {
+            screen.open_pending_session_card();
+        }
 
         match event {
             ScreenInstruction::PtyBytes(pid, vte_bytes) => {
@@ -12234,6 +12293,9 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
             },
             ScreenInstruction::RemoveClient(client_id) => {
+                if screen.pending_session_card == Some(client_id) {
+                    screen.pending_session_card = None;
+                }
                 screen.remove_client(client_id).non_fatal();
                 screen.log_and_report_session_state().non_fatal();
                 screen.render(None).non_fatal();
@@ -13459,8 +13521,16 @@ pub(crate) fn screen_thread_main(
                 let result = screen.break_pane_to_new_tab(Direction::Left, client_id);
                 screen.handle_break_pane_result(result, &mut completion_tx);
             },
-            ScreenInstruction::UpdateSessionInfos(new_session_infos, resurrectable_sessions) => {
-                screen.update_session_infos(new_session_infos, resurrectable_sessions)?;
+            ScreenInstruction::UpdateSessionInfos(
+                new_session_infos,
+                resurrectable_sessions,
+                requesting_plugin,
+            ) => {
+                screen.update_session_infos(
+                    new_session_infos,
+                    resurrectable_sessions,
+                    requesting_plugin,
+                )?;
             },
             ScreenInstruction::UpdateAvailableLayouts(layouts, errors) => {
                 screen.update_available_layouts(layouts, errors);
@@ -13631,6 +13701,19 @@ pub(crate) fn screen_thread_main(
                     screen
                         .log_and_report_session_state()
                         .with_context(err_context)?;
+
+                    let _ = screen
+                        .bus
+                        .senders
+                        .send_to_server(ServerInstruction::SessionRenamed(name.clone()));
+                    let _ = screen.bus.senders.send_to_background_jobs(
+                        BackgroundJob::SessionSuggestions(
+                            crate::session_suggestions::SessionSuggestionsJob::SessionRenamed {
+                                old_name: old_session_name.clone(),
+                                new_name: name.clone(),
+                            },
+                        ),
+                    );
 
                     // set the env variable
                     set_session_name(name.clone());
@@ -14316,6 +14399,41 @@ pub(crate) fn screen_thread_main(
                 column,
             } => {
                 screen.open_context_menu_from_plugin(plugin_id, client_id, target, line, column);
+            },
+            ScreenInstruction::OpenSessionCard(client_id) => {
+                screen.open_session_card(client_id);
+            },
+            ScreenInstruction::TerminalInputSubmitted(client_id) => {
+                screen.terminal_input_submitted(client_id);
+            },
+            ScreenInstruction::TerminalEscapePressed(client_id) => {
+                screen.terminal_escape_pressed(client_id);
+            },
+            ScreenInstruction::ToggleSessionCard(client_id, _completion_tx) => {
+                screen.toggle_session_card(client_id);
+            },
+            ScreenInstruction::SetPopupFocused { plugin_id, focused } => {
+                screen.set_popup_focused(plugin_id, focused);
+            },
+            ScreenInstruction::PopupToFloatingPane {
+                plugin_id,
+                coordinates,
+            } => {
+                screen.popup_to_floating_pane(plugin_id, coordinates);
+            },
+            ScreenInstruction::ShowSwapLayoutNotification(client_id) => {
+                screen.show_swap_layout_notification(client_id);
+            },
+            ScreenInstruction::SetSwapLayoutNotification(enabled) => {
+                screen.swap_layout_notification = enabled;
+            },
+            ScreenInstruction::GetSessionPreview {
+                tab_index,
+                pane_id,
+                response_channel,
+            } => {
+                let preview = screen.session_preview(tab_index, pane_id);
+                let _ = response_channel.send(preview);
             },
             ScreenInstruction::OpenPluginPopup {
                 requesting_plugin_id,

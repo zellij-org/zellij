@@ -167,6 +167,9 @@ fn option_values(options: &Options, values: &mut BTreeMap<SettingKey, Option<Str
         client_async_worker_tasks,
         nested_session_handling,
         dangerously_enable_paste_buffer_read,
+        session_card,
+        session_indicator,
+        swap_layout_notification,
     } = options;
     let entries = [
         (SettingKey::SimplifiedUi, display_text(simplified_ui)),
@@ -321,6 +324,12 @@ fn option_values(options: &Options, values: &mut BTreeMap<SettingKey, Option<Str
             SettingKey::DangerouslyEnablePasteBufferRead,
             display_text(dangerously_enable_paste_buffer_read),
         ),
+        (SettingKey::SessionCard, display_text(session_card)),
+        (SettingKey::SessionIndicator, display_text(session_indicator)),
+        (
+            SettingKey::SwapLayoutNotification,
+            display_text(swap_layout_notification),
+        ),
     ];
     values.extend(entries);
 }
@@ -435,6 +444,7 @@ pub fn setting_values(config: &Config) -> BTreeMap<SettingKey, Option<String>> {
         context_menu,
         keybinds_layers: _keybinds_layers_are_compared_directly,
         window: _window_is_read_by_the_window_client,
+        session_suggestions: _session_suggestions_are_read_by_the_server,
     } = config;
     let mut values = BTreeMap::new();
     option_values(options, &mut values);
@@ -634,6 +644,11 @@ pub fn copy_setting(target: &mut Config, source: &Config, key: SettingKey) {
         },
         SettingKey::DangerouslyEnablePasteBufferRead => {
             options.dangerously_enable_paste_buffer_read = from.dangerously_enable_paste_buffer_read
+        },
+        SettingKey::SessionCard => options.session_card = from.session_card,
+        SettingKey::SessionIndicator => options.session_indicator = from.session_indicator,
+        SettingKey::SwapLayoutNotification => {
+            options.swap_layout_notification = from.swap_layout_notification
         },
         SettingKey::FrameRoundedCorners => frames.rounded_corners = from_frames.rounded_corners,
         SettingKey::FrameHideSessionName => {

@@ -9,6 +9,7 @@ use tab::{get_clicked_line_part, get_tab_to_focus};
 use zellij_tile::prelude::*;
 
 use crate::keybinds::KeybindStore;
+use crate::session_indicator::SessionIndicator;
 use crate::ClientSeed;
 use line::tab_line;
 use tab::tab_style;
@@ -20,19 +21,11 @@ pub struct LinePart {
     tab_index: Option<usize>,
 }
 
-impl LinePart {
-    pub fn append(&mut self, to_append: &LinePart) {
-        self.part.push_str(&to_append.part);
-        self.len += to_append.len;
-    }
-}
 
 static ARROW_SEPARATOR: &str = "";
 
 #[derive(Debug, Default)]
-struct SlotConfig {
-    hide_swap_layout_indication: bool,
-}
+struct SlotConfig {}
 
 #[derive(Debug, Default)]
 struct ClientState {
@@ -51,6 +44,7 @@ struct SlotClientState {
     tab_line: Vec<LinePart>,
     new_tab_button_range: Option<(usize, usize)>,
     breadcrumb_range: Option<(usize, usize)>,
+    session_indicator_range: Option<(usize, usize)>,
 }
 
 #[derive(Debug, Default)]
@@ -59,6 +53,7 @@ pub struct TabBar {
     clients: BTreeMap<ClientId, ClientState>,
     slot_clients: BTreeMap<(SlotId, ClientId), SlotClientState>,
     hint_timeout_queue: VecDeque<ClientId>,
+    pub session_indicator: SessionIndicator,
 }
 
 impl TabBar {
@@ -67,17 +62,7 @@ impl TabBar {
     }
 
     pub fn slot_added(&mut self, slot: &Slot) {
-        let hide_swap_layout_indication = slot
-            .configuration
-            .get("hide_swap_layout_indication")
-            .map(|s| s == "true")
-            .unwrap_or(false);
-        self.slots.insert(
-            slot.id,
-            SlotConfig {
-                hide_swap_layout_indication,
-            },
-        );
+        self.slots.insert(slot.id, SlotConfig {});
         subscribe(&[
             EventType::TabUpdate,
             EventType::ModeUpdate,
@@ -87,7 +72,17 @@ impl TabBar {
             EventType::HintText,
             EventType::Timer,
             EventType::InputReceived,
+            EventType::SessionCountsUpdate,
+            EventType::FolderSessionsUpdate,
         ]);
+    }
+
+    pub fn pipe(&mut self, pipe_message: &PipeMessage) -> RenderResponse {
+        if self.session_indicator.handle_pipe(pipe_message) {
+            RenderResponse::Slots(self.slots.keys().copied().collect())
+        } else {
+            RenderResponse::Nothing
+        }
     }
 
     pub fn slot_removed(&mut self, slot_id: SlotId) {
@@ -179,6 +174,16 @@ impl TabBar {
                 RenderResponse::Nothing
             };
         }
+        if matches!(
+            event,
+            Event::SessionCountsUpdate(_) | Event::FolderSessionsUpdate(_)
+        ) {
+            return if self.session_indicator.update(event) {
+                RenderResponse::Slots(self.slots.keys().copied().collect())
+            } else {
+                RenderResponse::Nothing
+            };
+        }
         let mut should_render = false;
         for client_id in self.target_clients(&context) {
             if self.update_client(event, client_id, context.slot_id) {
@@ -250,8 +255,14 @@ impl TabBar {
                 }
             },
             Event::Mouse(me) => match me {
-                Mouse::LeftClick(_, col) => {
+                Mouse::LeftClick(line, col) => {
                     let col = *col;
+                    if let Some((start, end)) = slot_client.session_indicator_range {
+                        if col >= start && col < end {
+                            self.session_indicator.clicked((*line).max(0) as usize, col);
+                            return should_render;
+                        }
+                    }
                     if let Some((start, end)) = slot_client.breadcrumb_range {
                         if col >= start && col < end {
                             focus_host_session();
@@ -272,6 +283,14 @@ impl TabBar {
                 },
                 Mouse::Hover(_, col) => {
                     let col = *col;
+                    let indicator_hovered = slot_client
+                        .session_indicator_range
+                        .map(|(start, end)| col >= start && col < end)
+                        .unwrap_or(false);
+                    if indicator_hovered != self.session_indicator.hovered {
+                        self.session_indicator.hovered = indicator_hovered;
+                        should_render = true;
+                    }
                     let simplified_ui = client.mode_info.capabilities.arrow_fonts;
                     let mut new_hovered_new_tab_button = false;
                     let mut new_hovered_tab_idx = None;
@@ -348,11 +367,6 @@ impl TabBar {
         if client.tabs.is_empty() {
             return;
         }
-        let hide_swap_layout_indication = self
-            .slots
-            .get(&slot_id)
-            .map(|s| s.hide_swap_layout_indication)
-            .unwrap_or(false);
         let dimmed = client.mode_info.session_ascended == Some(true)
             || client.mode_info.session_dimmed == Some(true);
         let mut all_tabs: Vec<LinePart> = vec![];
@@ -395,7 +409,7 @@ impl TabBar {
         } else {
             vec![]
         };
-        let (line, new_tab_button_range, breadcrumb_range) = tab_line(
+        let (line, new_tab_button_range, breadcrumb_range, session_indicator_range) = tab_line(
             client.mode_info.session_name.as_deref(),
             all_tabs,
             active_tab_index,
@@ -403,9 +417,7 @@ impl TabBar {
             client.mode_info.style.colors,
             client.mode_info.capabilities,
             client.mode_info.style.hide_session_name,
-            client.tabs.iter().find(|t| t.active),
-            &client.mode_info,
-            hide_swap_layout_indication,
+            &self.session_indicator,
             &background,
             client.active_pane_scroll,
             hint_text,
@@ -418,6 +430,7 @@ impl TabBar {
         slot_client.tab_line = line;
         slot_client.new_tab_button_range = new_tab_button_range;
         slot_client.breadcrumb_range = breadcrumb_range;
+        slot_client.session_indicator_range = session_indicator_range;
 
         let output = slot_client
             .tab_line

@@ -1,6 +1,7 @@
 mod compact_bar;
 mod keybinds;
 mod link;
+mod session_indicator;
 mod status_bar;
 mod tab_bar;
 
@@ -246,6 +247,16 @@ impl ZellijSharedPlugin for State {
 
     fn pipe(&mut self, pipe_message: PipeMessage, context: EventContext) -> RenderResponse {
         self.compact_bar.ensure_toggle_keybinds(context.client_id);
+        if pipe_message.name == session_indicator::PANEL_SIZE_PIPE {
+            let mut render = RenderResponse::Nothing;
+            if self.tab_bar.has_slots() {
+                render = render.merge(self.tab_bar.pipe(&pipe_message));
+            }
+            if self.compact_bar.has_slots() {
+                render = render.merge(self.compact_bar.session_indicator_pipe(&pipe_message));
+            }
+            return render;
+        }
         if self.compact_bar.has_slots() {
             self.compact_bar
                 .pipe(pipe_message, context, &mut self.keybinds)

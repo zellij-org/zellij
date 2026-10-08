@@ -146,6 +146,14 @@ impl Text {
 
         self
     }
+    pub fn italic_range<R: RangeBounds<usize>>(self, indices: R) -> Self {
+        const ITALIC_LEVEL: usize = 8;
+        self.color_range(ITALIC_LEVEL, indices)
+    }
+    pub fn italic_all(self) -> Self {
+        const ITALIC_LEVEL: usize = 8;
+        self.color_range(ITALIC_LEVEL, ..)
+    }
     pub fn unbold_all(self) -> Self {
         const UNBOLD_LEVEL: usize = 5;
         self.color_range(UNBOLD_LEVEL, ..)

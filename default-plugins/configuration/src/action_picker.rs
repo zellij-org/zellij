@@ -335,6 +335,7 @@ pub const ACTION_SPECS: &[ActionSpec] = &[
     plain("SetLightTheme", "Use the light theme"),
     plain("ToggleTheme", "Switch between dark and light themes"),
     plain("DismissInfoPopups", "Close information popups"),
+    plain("ToggleSessionCard", "Show, focus or hide the running sessions card"),
     plain(
         "OpenContextMenu",
         "Open the right-click menu for the focused pane",

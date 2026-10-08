@@ -967,6 +967,7 @@ pub struct Grid {
     pub search_results: SearchResult,
     pub pending_clipboard_update: Option<String>,
     pub pending_osc7_cwd: Option<std::path::PathBuf>,
+    pub pending_prompt_return: bool,
     pub pending_desktop_notifications: Vec<PendingNotification>,
     notification_tracker: NotificationTracker,
     /// Whitelisted host-terminal queries intercepted from the app running
@@ -1357,6 +1358,7 @@ impl Grid {
             sixel_host_support: true,
             pending_clipboard_update: None,
             pending_osc7_cwd: None,
+            pending_prompt_return: false,
             pending_desktop_notifications: Vec::new(),
             notification_tracker: NotificationTracker::default(),
             pending_forwarded_queries: Vec::new(),
@@ -4991,6 +4993,12 @@ impl Perform for Grid {
                     )),
                     _ => None,
                 });
+                if matches!(
+                    marker,
+                    Some(Osc133MarkerKind::Prompt) | Some(Osc133MarkerKind::End(_))
+                ) {
+                    self.pending_prompt_return = true;
+                }
                 if let (Some(marker), Some(row)) = (marker, self.viewport.get_mut(self.cursor.y)) {
                     row.add_osc133_marker(self.cursor.x, marker);
                     self.osc133_markers_seen = true;

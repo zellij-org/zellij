@@ -4,6 +4,7 @@ use tokio::sync::oneshot;
 
 use crate::global_async_runtime::get_tokio_runtime;
 use crate::thread_bus::ThreadSenders;
+use crate::background_jobs::BackgroundJob;
 use crate::{
     os_input_output::ServerOsApi,
     panes::PaneId,
@@ -261,6 +262,38 @@ fn new_pane_routing(
     }
 }
 
+fn action_presses_escape(action: &Action) -> bool {
+    match action {
+        Action::Write {
+            key_with_modifier,
+            bytes,
+            ..
+        } => match key_with_modifier {
+            Some(key) => key.bare_key == BareKey::Esc && key.has_no_modifiers(),
+            None => bytes.as_slice() == [0x1b],
+        },
+        _ => false,
+    }
+}
+
+fn action_submits_input(action: &Action) -> bool {
+    match action {
+        Action::Write {
+            key_with_modifier,
+            bytes,
+            ..
+        } => {
+            key_with_modifier
+                .as_ref()
+                .map(|key| key.bare_key == BareKey::Enter && key.has_no_modifiers())
+                .unwrap_or(false)
+                || bytes.iter().any(|byte| *byte == b'\r' || *byte == b'\n')
+        },
+        Action::WriteChars { chars } => chars.contains('\r') || chars.contains('\n'),
+        _ => false,
+    }
+}
+
 pub(crate) fn route_action(
     action: Action,
     client_id: ClientId,
@@ -287,6 +320,15 @@ pub(crate) fn route_action(
                 Event::InputReceived,
             )]))
             .with_context(err_context)?;
+        if crate::session_suggestions::should_report_activity() {
+            let _ = senders.send_to_background_jobs(BackgroundJob::SessionSuggestions(
+                crate::session_suggestions::SessionSuggestionsJob::Activity,
+            ));
+        }
+    }
+    let submits_terminal_input = cli_client_id.is_none() && action_submits_input(&action);
+    if cli_client_id.is_none() && action_presses_escape(&action) {
+        let _ = senders.send_to_screen(ScreenInstruction::TerminalEscapePressed(client_id));
     }
 
     // we use this oneshot channel to wait for an action to be "logically"
@@ -1303,6 +1345,14 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
+        Action::ToggleSessionCard => {
+            senders
+                .send_to_screen(ScreenInstruction::ToggleSessionCard(
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
         Action::OpenContextMenu => {
             senders
                 .send_to_screen(ScreenInstruction::OpenContextMenu(
@@ -1317,6 +1367,7 @@ pub(crate) fn route_action(
             pane_id,
             layout,
             cwd,
+            close_current,
         } => {
             let current_session_name = envs::get_session_name().unwrap_or_else(|_| String::new());
             if name != current_session_name {
@@ -1326,13 +1377,23 @@ pub(crate) fn route_action(
                     pane_id: pane_id.clone(),
                     layout: layout.clone(),
                     cwd: cwd.clone(),
+                    session_card: None,
                 };
-                senders
-                    .send_to_server(ServerInstruction::SwitchSession(
+                let instruction = if close_current {
+                    ServerInstruction::SwitchSessionAndCloseCurrent(
                         connect_to_session,
                         client_id,
                         Some(NotificationEnd::new(completion_tx)),
-                    ))
+                    )
+                } else {
+                    ServerInstruction::SwitchSession(
+                        connect_to_session,
+                        client_id,
+                        Some(NotificationEnd::new(completion_tx)),
+                    )
+                };
+                senders
+                    .send_to_server(instruction)
                     .with_context(err_context)?;
                 should_break = true;
             } else {
@@ -1424,6 +1485,9 @@ pub(crate) fn route_action(
                     Some(NotificationEnd::new(completion_tx)),
                 ))
                 .with_context(err_context)?;
+            senders
+                .send_to_screen(ScreenInstruction::ShowSwapLayoutNotification(client_id))
+                .with_context(err_context)?;
         },
         Action::NextSwapLayout => {
             senders
@@ -1431,6 +1495,9 @@ pub(crate) fn route_action(
                     client_id,
                     Some(NotificationEnd::new(completion_tx)),
                 ))
+                .with_context(err_context)?;
+            senders
+                .send_to_screen(ScreenInstruction::ShowSwapLayoutNotification(client_id))
                 .with_context(err_context)?;
         },
         Action::ApplyTiledSwapLayout { name } => {
@@ -2344,6 +2411,9 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
         },
     }
+    if submits_terminal_input {
+        let _ = senders.send_to_screen(ScreenInstruction::TerminalInputSubmitted(client_id));
+    }
     let result = if is_cli_client && !wait_forever {
         wait_for_cli_action_completion(completion_rx, &action_name)
     } else {
@@ -3216,6 +3286,30 @@ pub(crate) fn route_thread_main(
                                 },
                             }
                         },
+                        ClientToServerMsg::RequestSessionPreview { tab_index, pane_id } => {
+                            let mut lines = vec![];
+                            if let Some(senders) = senders.as_ref() {
+                                let (response_sender, response_receiver) =
+                                    crossbeam::channel::bounded(1);
+                                if senders
+                                    .send_to_screen(ScreenInstruction::GetSessionPreview {
+                                        tab_index: tab_index.map(|t| t as usize),
+                                        pane_id,
+                                        response_channel: response_sender,
+                                    })
+                                    .is_ok()
+                                {
+                                    if let Ok(preview) = response_receiver
+                                        .recv_timeout(std::time::Duration::from_millis(800))
+                                    {
+                                        if let Ok(json) = serde_json::to_string(&preview) {
+                                            lines.push(json);
+                                        }
+                                    }
+                                }
+                            }
+                            let _ = os_input.send_to_client(client_id, ServerToClientMsg::Log { lines });
+                        },
                         ClientToServerMsg::RequestSessionList => {
                             if let Some(senders) = senders.as_ref() {
                                 if let Some(scan_state) =
@@ -3243,6 +3337,7 @@ pub(crate) fn route_thread_main(
                                         ScreenInstruction::UpdateSessionInfos(
                                             live_sessions_map,
                                             resurrectable_sessions_map,
+                                            None,
                                         ),
                                     );
                                 }
@@ -3793,6 +3888,46 @@ fn send_output_to_client(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn write_key(bare_key: BareKey, modifiers: &[KeyModifier], bytes: Vec<u8>) -> Action {
+        let key = zellij_utils::data::KeyWithModifier::new_with_modifiers(
+            bare_key,
+            modifiers.iter().copied().collect(),
+        );
+        Action::Write {
+            key_with_modifier: Some(key),
+            bytes,
+            is_kitty_keyboard_protocol: false,
+        }
+    }
+
+    #[test]
+    fn a_bare_escape_is_recognised() {
+        assert!(action_presses_escape(&write_key(BareKey::Esc, &[], vec![0x1b])));
+        assert!(action_presses_escape(&Action::Write {
+            key_with_modifier: None,
+            bytes: vec![0x1b],
+            is_kitty_keyboard_protocol: false,
+        }));
+    }
+
+    #[test]
+    fn escape_sequences_and_modified_escapes_are_not_a_bare_escape() {
+        assert!(!action_presses_escape(&write_key(
+            BareKey::Esc,
+            &[KeyModifier::Alt],
+            vec![0x1b, 0x1b]
+        )));
+        assert!(!action_presses_escape(&Action::Write {
+            key_with_modifier: None,
+            bytes: vec![0x1b, b'[', b'A'],
+            is_kitty_keyboard_protocol: false,
+        }));
+        assert!(!action_presses_escape(&write_key(BareKey::Enter, &[], vec![b'\r'])));
+        assert!(!action_presses_escape(&Action::WriteChars {
+            chars: "\u{1b}".to_owned()
+        }));
+    }
 
     #[test]
     fn test_notification_end_sets_affected_tab_id() {

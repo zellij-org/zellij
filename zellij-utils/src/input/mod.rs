@@ -13,6 +13,7 @@ pub mod mouse;
 pub mod options;
 pub mod permission;
 pub mod plugins;
+pub mod session_suggestions;
 pub mod theme;
 pub mod web_client;
 pub mod window;

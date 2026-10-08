@@ -1090,6 +1090,148 @@ pub enum Event {
     AvailableKeybindPresets(Vec<KeybindPresetInfo>, Vec<KeybindPresetWithError>),
     ConfigFileChangedSinceRead,
     PromptResult(u64, crate::prompt::PromptResult),
+    SessionSuggestions(SessionSuggestions),
+    SessionCountsUpdate(SessionCounts),
+    FolderSessionsUpdate(FolderSessions),
+    TerminalCommandSubmitted,
+    SessionPreview(SessionPreview),
+    SavedSessionPreview(SavedSessionPreview),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum FolderRelation {
+    Here,
+    Subfolder,
+    #[default]
+    Other,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct SessionSuggestionColumn {
+    pub fact: String,
+    pub title: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct SessionSuggestion {
+    pub name: String,
+    pub is_running: bool,
+    pub last_used_secs_ago: u64,
+    pub created_secs_ago: u64,
+    pub folder: Option<String>,
+    pub folder_relation: FolderRelation,
+    pub repo: Option<String>,
+    pub branch: Option<String>,
+    pub facts: BTreeMap<String, String>,
+    pub tier: Option<u32>,
+    pub matching_columns: Vec<String>,
+    pub script_label: Option<String>,
+    pub tabs: Vec<SessionPreviewTab>,
+    pub connected_clients: usize,
+}
+
+impl SessionSuggestion {
+    pub fn column_matches(&self, fact: &str) -> bool {
+        self.matching_columns.iter().any(|c| c == fact)
+    }
+    pub fn fact_value(&self, fact: &str) -> Option<String> {
+        match fact {
+            "directory" => self.folder.clone(),
+            "git_repo" => self.repo.clone(),
+            "git_branch" => self.branch.clone(),
+            other => self.facts.get(other).cloned(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct SessionSuggestions {
+    pub folder: Option<String>,
+    pub branch: Option<String>,
+    pub columns: Vec<SessionSuggestionColumn>,
+    pub suggestions: Vec<SessionSuggestion>,
+    pub command_submitted: bool,
+    pub from_script: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct SessionCounts {
+    pub running: u32,
+    pub resumable_matching: u32,
+}
+
+impl SessionCounts {
+    pub fn total(&self) -> u32 {
+        self.running + self.resumable_matching
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct FolderSessions {
+    pub folder: String,
+    pub running: Vec<String>,
+    pub resumable: Vec<String>,
+    pub full_match_running: Vec<String>,
+}
+
+impl FolderSessions {
+    pub fn total(&self) -> usize {
+        self.running.len() + self.resumable.len()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct SessionPreviewPane {
+    pub id: u32,
+    pub is_plugin: bool,
+    pub title: String,
+    pub focused: bool,
+    pub contents: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct SessionPreviewTab {
+    pub name: String,
+    pub active: bool,
+    pub panes: Vec<SessionPreviewPane>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct SessionPreview {
+    pub session_name: String,
+    pub tab_index: Option<usize>,
+    pub active_tab_index: Option<usize>,
+    pub tab_names: Vec<String>,
+    pub contents: String,
+    pub pane_count: usize,
+    pub connected_clients: usize,
+    pub error: Option<String>,
+    #[serde(default)]
+    pub tabs: Vec<SessionPreviewTab>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct SavedPanePreview {
+    pub title: Option<String>,
+    pub command: Option<String>,
+    pub cwd: Option<String>,
+    pub contents: Option<String>,
+    pub focused: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct SavedTabPreview {
+    pub name: String,
+    pub focused: bool,
+    pub panes: Vec<SavedPanePreview>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct SavedSessionPreview {
+    pub session_name: String,
+    pub folder: Option<String>,
+    pub tabs: Vec<SavedTabPreview>,
+    pub error: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -3617,6 +3759,8 @@ pub struct ConnectToSession {
     pub pane_id: Option<(u32, bool)>, // (id, is_plugin)
     pub layout: Option<LayoutInfo>,
     pub cwd: Option<PathBuf>,
+    #[serde(default)]
+    pub session_card: Option<bool>,
 }
 
 impl ConnectToSession {
@@ -3716,7 +3860,7 @@ impl fmt::Display for PopupCorner {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct PopupOptions {
     pub focused: bool,
     pub corner: Option<PopupCorner>,
@@ -4572,6 +4716,18 @@ pub enum PluginCommand {
         request_id: u64,
         result: crate::prompt::PromptResult,
     },
+    GetSessionSuggestions {
+        limit: usize,
+    },
+    SetPopupFocused(bool),
+    PopupToFloatingPane(Option<FloatingPaneCoordinates>),
+    SwitchSessionAndCloseCurrent(ConnectToSession),
+    GetSessionPreview {
+        name: String,
+        tab_index: Option<usize>,
+        pane_id: Option<(u32, bool)>,
+    },
+    GetSavedSessionPreview(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -4685,6 +4841,9 @@ setting_keys! {
     ClientAsyncWorkerTasks => (TopLevel, "client_async_worker_tasks", true, Number),
     NestedSessionHandling => (TopLevel, "nested_session_handling", false, Text),
     DangerouslyEnablePasteBufferRead => (TopLevel, "dangerously_enable_paste_buffer_read", false, Flag),
+    SessionCard => (TopLevel, "session_card", false, Flag),
+    SessionIndicator => (TopLevel, "session_indicator", false, Flag),
+    SwapLayoutNotification => (TopLevel, "swap_layout_notification", false, Flag),
     FrameRoundedCorners => (PaneFrames, "rounded_corners", false, Flag),
     FrameHideSessionName => (PaneFrames, "hide_session_name", false, Flag),
     FrameBorderStyle => (PaneFrames, "border_style", false, Text),
@@ -5232,7 +5391,7 @@ mod popup_placement_tests {
             PopupOptions::default(),
             PopupOptions {
                 focused: true,
-                corner: None
+                corner: None,
             }
         );
     }

@@ -17996,3 +17996,158 @@ fn a_collapsed_bar_gives_its_row_to_the_viewport_across_a_swap_layout() {
         "the viewport should still cover the collapsed bar's row after a swap layout"
     );
 }
+
+fn open_test_session_card(
+    tab: &mut Tab,
+    client_id: ClientId,
+    plugin_id: u32,
+    kind: crate::tab::PopupKind,
+) {
+    let run = RunPluginOrAlias::from_url("session-manager", &None, None, None).unwrap();
+    tab.open_popup(
+        client_id,
+        plugin_id,
+        crate::tab::PopupPlacement::Corner(zellij_utils::data::PopupCorner::TopRight),
+        kind,
+        30,
+        8,
+        Some(zellij_utils::input::layout::Run::Plugin(run)),
+        String::from("session-manager"),
+    )
+    .unwrap();
+}
+
+#[test]
+fn moving_onto_a_popup_clears_the_hover_state_underneath() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let (plugin_sender, _plugin_receiver) = channels::unbounded();
+    tab.senders
+        .replace_to_plugin(SenderWithContext::new(plugin_sender));
+    open_test_info_popup(
+        &mut tab,
+        client_id,
+        50,
+        zellij_utils::data::PopupCorner::TopRight,
+        4,
+    );
+    tab.mouse_hover_pane_id
+        .insert(client_id, PaneId::Terminal(1));
+    tab.plugin_hover_pane_id
+        .insert(client_id, PaneId::Plugin(99));
+    assert!(tab.clear_hover_under_popups(client_id));
+    assert!(tab.mouse_hover_pane_id.get(&client_id).is_none());
+    assert!(tab.plugin_hover_pane_id.get(&client_id).is_none());
+    assert!(!tab.clear_hover_under_popups(client_id));
+}
+
+#[test]
+fn leaving_an_information_popup_tells_it_the_pointer_is_gone() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let (plugin_sender, plugin_receiver) = channels::unbounded();
+    tab.senders
+        .replace_to_plugin(SenderWithContext::new(plugin_sender));
+    open_test_info_popup(
+        &mut tab,
+        client_id,
+        50,
+        zellij_utils::data::PopupCorner::TopRight,
+        4,
+    );
+    let geom = tab.info_popup_geoms(client_id)[0].1;
+    let inside = Position::new(geom.y as i32 + 1, geom.x as u16 + 1);
+    let outside = Position::new(15, 5);
+    assert_eq!(
+        tab.handle_popup_mouse_event(&MouseEvent::new_buttonless_motion(inside), client_id),
+        Some(crate::tab::PopupMouseOutcome::Consumed)
+    );
+    while plugin_receiver.try_recv().is_ok() {}
+    assert_eq!(
+        tab.handle_popup_mouse_event(&MouseEvent::new_buttonless_motion(outside), client_id),
+        None
+    );
+    let mut leave_sent = false;
+    while let Ok((instruction, _)) = plugin_receiver.try_recv() {
+        if let PluginInstruction::Update(updates) = instruction {
+            leave_sent |= updates.iter().any(|(plugin_id, update_client, event)| {
+                *plugin_id == Some(50)
+                    && *update_client == Some(client_id)
+                    && *event == zellij_utils::data::Event::Mouse(zellij_utils::data::Mouse::Hover(-1, 0))
+            });
+        }
+    }
+    assert!(leave_sent);
+    assert_eq!(
+        tab.handle_popup_mouse_event(&MouseEvent::new_buttonless_motion(outside), client_id),
+        None
+    );
+    assert!(plugin_receiver.try_recv().is_err());
+}
+
+#[test]
+fn the_session_card_popup_is_found_by_its_location_and_focus() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let (plugin_sender, _plugin_receiver) = channels::unbounded();
+    tab.senders
+        .replace_to_plugin(SenderWithContext::new(plugin_sender));
+    assert_eq!(tab.popup_for_location(client_id, "session-manager"), None);
+    open_test_info_popup(
+        &mut tab,
+        client_id,
+        50,
+        zellij_utils::data::PopupCorner::TopLeft,
+        4,
+    );
+    open_test_session_card(&mut tab, client_id, 70, crate::tab::PopupKind::Info);
+    assert_eq!(
+        tab.popup_for_location(client_id, "session-manager"),
+        Some((70, false))
+    );
+    let mut unfocused = tab.unfocused_popup_plugin_ids(client_id);
+    unfocused.sort();
+    assert_eq!(unfocused, vec![50, 70]);
+    tab.set_popup_kind(70, crate::tab::PopupKind::Prompt);
+    assert_eq!(
+        tab.popup_for_location(client_id, "session-manager"),
+        Some((70, true))
+    );
+    assert_eq!(tab.unfocused_popup_plugin_ids(client_id), vec![50]);
+    assert_eq!(tab.popup_for_location(2, "session-manager"), None);
+}
+
+#[test]
+fn a_plugin_pane_can_be_dumped_with_its_colours_for_previews() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let (plugin_sender, _plugin_receiver) = channels::unbounded();
+    tab.senders
+        .replace_to_plugin(SenderWithContext::new(plugin_sender));
+    open_test_session_card(&mut tab, client_id, 80, crate::tab::PopupKind::Info);
+    tab.handle_plugin_bytes(80, client_id, "\u{1b}[31mplugin text".as_bytes().to_vec())
+        .unwrap();
+    let popup = &tab.popups.get(&client_id).unwrap()[0];
+    let for_client = popup.pane.dump_screen_with_ansi(false, Some(client_id));
+    let for_anyone = popup.pane.dump_screen_with_ansi(false, None);
+    assert!(for_client.contains("plugin text"));
+    assert!(for_client.contains("\u{1b}["));
+    assert_eq!(for_client, for_anyone);
+    assert!(popup.pane.dump_screen_with_ansi(false, Some(9)).contains("plugin text"));
+}

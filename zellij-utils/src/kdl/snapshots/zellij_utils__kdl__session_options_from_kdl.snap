@@ -1,0 +1,8 @@
+---
+source: zellij-utils/src/kdl/mod.rs
+assertion_line: 8972
+expression: fake_document.to_string()
+---
+session_card false
+session_indicator true
+swap_layout_notification false

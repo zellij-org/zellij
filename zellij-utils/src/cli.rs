@@ -2068,6 +2068,11 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         /// Change the working directory when switching
         #[clap(short, long, value_parser)]
         cwd: Option<PathBuf>,
+        #[clap(
+            long,
+            help = "Close the current session after switching, if no command has been run in it and no other client is attached"
+        )]
+        close_current: bool,
     },
     /// Set the default foreground/background color of a pane
     SetPaneColor {

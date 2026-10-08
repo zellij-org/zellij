@@ -570,6 +570,40 @@ impl TryFrom<ProtobufEvent> for Event {
                 None => Ok(Event::ConfigFileChangedSinceRead),
                 _ => Err("Malformed payload for the ConfigFileChangedSinceRead Event"),
             },
+            Some(ProtobufEventType::SessionSuggestions) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::SessionSuggestionsPayload(payload)) => {
+                    Ok(Event::SessionSuggestions(payload.into()))
+                },
+                _ => Err("Malformed payload for the SessionSuggestions Event"),
+            },
+            Some(ProtobufEventType::SessionCountsUpdate) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::SessionCountsUpdatePayload(payload)) => {
+                    Ok(Event::SessionCountsUpdate(payload.into()))
+                },
+                _ => Err("Malformed payload for the SessionCountsUpdate Event"),
+            },
+            Some(ProtobufEventType::FolderSessionsUpdate) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::FolderSessionsUpdatePayload(payload)) => {
+                    Ok(Event::FolderSessionsUpdate(payload.into()))
+                },
+                _ => Err("Malformed payload for the FolderSessionsUpdate Event"),
+            },
+            Some(ProtobufEventType::TerminalCommandSubmitted) => match protobuf_event.payload {
+                None => Ok(Event::TerminalCommandSubmitted),
+                _ => Err("Malformed payload for the TerminalCommandSubmitted Event"),
+            },
+            Some(ProtobufEventType::SessionPreview) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::SessionPreviewPayload(payload)) => {
+                    Ok(Event::SessionPreview(payload.into()))
+                },
+                _ => Err("Malformed payload for the SessionPreview Event"),
+            },
+            Some(ProtobufEventType::SavedSessionPreview) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::SavedSessionPreviewPayload(payload)) => {
+                    Ok(Event::SavedSessionPreview(payload.into()))
+                },
+                _ => Err("Malformed payload for the SavedSessionPreview Event"),
+            },
             Some(ProtobufEventType::PromptResult) => match protobuf_event.payload {
                 Some(ProtobufEventPayload::PromptResultPayload(payload)) => {
                     let result = payload
@@ -1287,6 +1321,32 @@ impl TryFrom<Event> for ProtobufEvent {
             Event::ConfigFileChangedSinceRead => Ok(ProtobufEvent {
                 name: ProtobufEventType::ConfigFileChangedSinceRead as i32,
                 payload: None,
+            }),
+            Event::SessionSuggestions(suggestions) => Ok(ProtobufEvent {
+                name: ProtobufEventType::SessionSuggestions as i32,
+                payload: Some(event::Payload::SessionSuggestionsPayload(suggestions.into())),
+            }),
+            Event::SessionCountsUpdate(counts) => Ok(ProtobufEvent {
+                name: ProtobufEventType::SessionCountsUpdate as i32,
+                payload: Some(event::Payload::SessionCountsUpdatePayload(counts.into())),
+            }),
+            Event::FolderSessionsUpdate(folder_sessions) => Ok(ProtobufEvent {
+                name: ProtobufEventType::FolderSessionsUpdate as i32,
+                payload: Some(event::Payload::FolderSessionsUpdatePayload(
+                    folder_sessions.into(),
+                )),
+            }),
+            Event::TerminalCommandSubmitted => Ok(ProtobufEvent {
+                name: ProtobufEventType::TerminalCommandSubmitted as i32,
+                payload: None,
+            }),
+            Event::SessionPreview(preview) => Ok(ProtobufEvent {
+                name: ProtobufEventType::SessionPreview as i32,
+                payload: Some(event::Payload::SessionPreviewPayload(preview.into())),
+            }),
+            Event::SavedSessionPreview(preview) => Ok(ProtobufEvent {
+                name: ProtobufEventType::SavedSessionPreview as i32,
+                payload: Some(event::Payload::SavedSessionPreviewPayload(preview.into())),
             }),
             Event::PromptResult(request_id, result) => Ok(ProtobufEvent {
                 name: ProtobufEventType::PromptResult as i32,
@@ -2612,6 +2672,12 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::AvailableKeybindPresets => EventType::AvailableKeybindPresets,
             ProtobufEventType::ConfigFileChangedSinceRead => EventType::ConfigFileChangedSinceRead,
             ProtobufEventType::PromptResult => EventType::PromptResult,
+            ProtobufEventType::SessionSuggestions => EventType::SessionSuggestions,
+            ProtobufEventType::SessionCountsUpdate => EventType::SessionCountsUpdate,
+            ProtobufEventType::FolderSessionsUpdate => EventType::FolderSessionsUpdate,
+            ProtobufEventType::TerminalCommandSubmitted => EventType::TerminalCommandSubmitted,
+            ProtobufEventType::SessionPreview => EventType::SessionPreview,
+            ProtobufEventType::SavedSessionPreview => EventType::SavedSessionPreview,
         })
     }
 }
@@ -2677,6 +2743,12 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::AvailableKeybindPresets => ProtobufEventType::AvailableKeybindPresets,
             EventType::ConfigFileChangedSinceRead => ProtobufEventType::ConfigFileChangedSinceRead,
             EventType::PromptResult => ProtobufEventType::PromptResult,
+            EventType::SessionSuggestions => ProtobufEventType::SessionSuggestions,
+            EventType::SessionCountsUpdate => ProtobufEventType::SessionCountsUpdate,
+            EventType::FolderSessionsUpdate => ProtobufEventType::FolderSessionsUpdate,
+            EventType::TerminalCommandSubmitted => ProtobufEventType::TerminalCommandSubmitted,
+            EventType::SessionPreview => ProtobufEventType::SessionPreview,
+            EventType::SavedSessionPreview => ProtobufEventType::SavedSessionPreview,
         })
     }
 }
@@ -4341,5 +4413,421 @@ mod context_menu_tests {
         let protobuf = ProtobufEvent::try_from(original.clone()).unwrap();
         let decoded = Event::try_from(protobuf).unwrap();
         assert_eq!(original, decoded);
+    }
+}
+
+mod session_suggestion_conversions {
+    use crate::data::{
+        FolderRelation, FolderSessions, SavedPanePreview, SavedSessionPreview, SavedTabPreview,
+        SessionCounts, SessionPreview, SessionSuggestion, SessionSuggestionColumn,
+        SessionSuggestions,
+    };
+    use crate::plugin_api::generated_api::api::event as pb;
+
+    fn folder_relation_to_i32(relation: FolderRelation) -> i32 {
+        match relation {
+            FolderRelation::Other => pb::FolderRelation::Other as i32,
+            FolderRelation::Here => pb::FolderRelation::Here as i32,
+            FolderRelation::Subfolder => pb::FolderRelation::Subfolder as i32,
+        }
+    }
+
+    fn folder_relation_from_i32(value: i32) -> FolderRelation {
+        match pb::FolderRelation::try_from(value) {
+            Ok(pb::FolderRelation::Here) => FolderRelation::Here,
+            Ok(pb::FolderRelation::Subfolder) => FolderRelation::Subfolder,
+            _ => FolderRelation::Other,
+        }
+    }
+
+    impl From<SessionSuggestion> for pb::SessionSuggestionItem {
+        fn from(s: SessionSuggestion) -> Self {
+            pb::SessionSuggestionItem {
+                name: s.name,
+                is_running: s.is_running,
+                last_used_secs_ago: s.last_used_secs_ago,
+                created_secs_ago: s.created_secs_ago,
+                folder: s.folder,
+                folder_relation: folder_relation_to_i32(s.folder_relation),
+                repo: s.repo,
+                branch: s.branch,
+                facts: s
+                    .facts
+                    .into_iter()
+                    .map(|(name, value)| pb::ContextItem { name, value })
+                    .collect(),
+                tier: s.tier,
+                matching_columns: s.matching_columns,
+                script_label: s.script_label,
+                tabs: s.tabs.into_iter().map(preview_tab_to_pb).collect(),
+                connected_clients: s.connected_clients as u32,
+            }
+        }
+    }
+
+    fn preview_tab_to_pb(tab: crate::data::SessionPreviewTab) -> pb::SessionPreviewTab {
+        pb::SessionPreviewTab {
+            name: tab.name,
+            active: tab.active,
+            panes: tab
+                .panes
+                .into_iter()
+                .map(|pane| pb::SessionPreviewPane {
+                    id: pane.id,
+                    is_plugin: pane.is_plugin,
+                    title: pane.title,
+                    focused: pane.focused,
+                    contents: pane.contents,
+                })
+                .collect(),
+        }
+    }
+
+    fn preview_tab_from_pb(tab: pb::SessionPreviewTab) -> crate::data::SessionPreviewTab {
+        crate::data::SessionPreviewTab {
+            name: tab.name,
+            active: tab.active,
+            panes: tab
+                .panes
+                .into_iter()
+                .map(|pane| crate::data::SessionPreviewPane {
+                    id: pane.id,
+                    is_plugin: pane.is_plugin,
+                    title: pane.title,
+                    focused: pane.focused,
+                    contents: pane.contents,
+                })
+                .collect(),
+        }
+    }
+
+    impl From<pb::SessionSuggestionItem> for SessionSuggestion {
+        fn from(s: pb::SessionSuggestionItem) -> Self {
+            SessionSuggestion {
+                name: s.name,
+                is_running: s.is_running,
+                last_used_secs_ago: s.last_used_secs_ago,
+                created_secs_ago: s.created_secs_ago,
+                folder: s.folder,
+                folder_relation: folder_relation_from_i32(s.folder_relation),
+                repo: s.repo,
+                branch: s.branch,
+                facts: s.facts.into_iter().map(|c| (c.name, c.value)).collect(),
+                tier: s.tier,
+                matching_columns: s.matching_columns,
+                script_label: s.script_label,
+                tabs: s.tabs.into_iter().map(preview_tab_from_pb).collect(),
+                connected_clients: s.connected_clients as usize,
+            }
+        }
+    }
+
+    impl From<SessionSuggestions> for pb::SessionSuggestionsPayload {
+        fn from(s: SessionSuggestions) -> Self {
+            pb::SessionSuggestionsPayload {
+                folder: s.folder,
+                branch: s.branch,
+                columns: s
+                    .columns
+                    .into_iter()
+                    .map(|c| pb::SessionSuggestionColumn {
+                        fact: c.fact,
+                        title: c.title,
+                    })
+                    .collect(),
+                suggestions: s.suggestions.into_iter().map(Into::into).collect(),
+                command_submitted: s.command_submitted,
+                from_script: s.from_script,
+            }
+        }
+    }
+
+    impl From<pb::SessionSuggestionsPayload> for SessionSuggestions {
+        fn from(s: pb::SessionSuggestionsPayload) -> Self {
+            SessionSuggestions {
+                folder: s.folder,
+                branch: s.branch,
+                columns: s
+                    .columns
+                    .into_iter()
+                    .map(|c| SessionSuggestionColumn {
+                        fact: c.fact,
+                        title: c.title,
+                    })
+                    .collect(),
+                suggestions: s.suggestions.into_iter().map(Into::into).collect(),
+                command_submitted: s.command_submitted,
+                from_script: s.from_script,
+            }
+        }
+    }
+
+    impl From<SessionCounts> for pb::SessionCountsUpdatePayload {
+        fn from(c: SessionCounts) -> Self {
+            pb::SessionCountsUpdatePayload {
+                running: c.running,
+                resumable_matching: c.resumable_matching,
+            }
+        }
+    }
+
+    impl From<pb::SessionCountsUpdatePayload> for SessionCounts {
+        fn from(c: pb::SessionCountsUpdatePayload) -> Self {
+            SessionCounts {
+                running: c.running,
+                resumable_matching: c.resumable_matching,
+            }
+        }
+    }
+
+    impl From<FolderSessions> for pb::FolderSessionsUpdatePayload {
+        fn from(f: FolderSessions) -> Self {
+            pb::FolderSessionsUpdatePayload {
+                folder: f.folder,
+                running: f.running,
+                resumable: f.resumable,
+                full_match_running: f.full_match_running,
+            }
+        }
+    }
+
+    impl From<pb::FolderSessionsUpdatePayload> for FolderSessions {
+        fn from(f: pb::FolderSessionsUpdatePayload) -> Self {
+            FolderSessions {
+                folder: f.folder,
+                running: f.running,
+                resumable: f.resumable,
+                full_match_running: f.full_match_running,
+            }
+        }
+    }
+
+    impl From<SessionPreview> for pb::SessionPreviewPayload {
+        fn from(p: SessionPreview) -> Self {
+            pb::SessionPreviewPayload {
+                session_name: p.session_name,
+                tab_index: p.tab_index.map(|i| i as u32),
+                tab_names: p.tab_names,
+                contents: p.contents,
+                error: p.error,
+                active_tab_index: p.active_tab_index.map(|i| i as u32),
+                pane_count: p.pane_count as u32,
+                connected_clients: p.connected_clients as u32,
+                tabs: p
+                    .tabs
+                    .into_iter()
+                    .map(|tab| pb::SessionPreviewTab {
+                        name: tab.name,
+                        active: tab.active,
+                        panes: tab
+                            .panes
+                            .into_iter()
+                            .map(|pane| pb::SessionPreviewPane {
+                                id: pane.id,
+                                is_plugin: pane.is_plugin,
+                                title: pane.title,
+                                focused: pane.focused,
+                                contents: pane.contents,
+                            })
+                            .collect(),
+                    })
+                    .collect(),
+            }
+        }
+    }
+
+    impl From<pb::SessionPreviewPayload> for SessionPreview {
+        fn from(p: pb::SessionPreviewPayload) -> Self {
+            SessionPreview {
+                session_name: p.session_name,
+                tab_index: p.tab_index.map(|i| i as usize),
+                active_tab_index: p.active_tab_index.map(|i| i as usize),
+                tab_names: p.tab_names,
+                contents: p.contents,
+                pane_count: p.pane_count as usize,
+                connected_clients: p.connected_clients as usize,
+                error: p.error,
+                tabs: p
+                    .tabs
+                    .into_iter()
+                    .map(|tab| crate::data::SessionPreviewTab {
+                        name: tab.name,
+                        active: tab.active,
+                        panes: tab
+                            .panes
+                            .into_iter()
+                            .map(|pane| crate::data::SessionPreviewPane {
+                                id: pane.id,
+                                is_plugin: pane.is_plugin,
+                                title: pane.title,
+                                focused: pane.focused,
+                                contents: pane.contents,
+                            })
+                            .collect(),
+                    })
+                    .collect(),
+            }
+        }
+    }
+
+    impl From<SavedSessionPreview> for pb::SavedSessionPreviewPayload {
+        fn from(p: SavedSessionPreview) -> Self {
+            pb::SavedSessionPreviewPayload {
+                session_name: p.session_name,
+                folder: p.folder,
+                tabs: p
+                    .tabs
+                    .into_iter()
+                    .map(|t| pb::SavedTabPreview {
+                        name: t.name,
+                        focused: t.focused,
+                        panes: t
+                            .panes
+                            .into_iter()
+                            .map(|pane| pb::SavedPanePreview {
+                                title: pane.title,
+                                command: pane.command,
+                                cwd: pane.cwd,
+                                contents: pane.contents,
+                                focused: pane.focused,
+                            })
+                            .collect(),
+                    })
+                    .collect(),
+                error: p.error,
+            }
+        }
+    }
+
+    impl From<pb::SavedSessionPreviewPayload> for SavedSessionPreview {
+        fn from(p: pb::SavedSessionPreviewPayload) -> Self {
+            SavedSessionPreview {
+                session_name: p.session_name,
+                folder: p.folder,
+                tabs: p
+                    .tabs
+                    .into_iter()
+                    .map(|t| SavedTabPreview {
+                        name: t.name,
+                        focused: t.focused,
+                        panes: t
+                            .panes
+                            .into_iter()
+                            .map(|pane| SavedPanePreview {
+                                title: pane.title,
+                                command: pane.command,
+                                cwd: pane.cwd,
+                                contents: pane.contents,
+                                focused: pane.focused,
+                            })
+                            .collect(),
+                    })
+                    .collect(),
+                error: p.error,
+            }
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use crate::data::Event;
+        use crate::plugin_api::event::ProtobufEvent;
+        use std::convert::TryFrom;
+
+        fn round_trip(event: Event) {
+            let protobuf = ProtobufEvent::try_from(event.clone()).unwrap();
+            assert_eq!(Event::try_from(protobuf).unwrap(), event);
+        }
+
+        #[test]
+        fn session_suggestion_events_round_trip() {
+            let mut facts = std::collections::BTreeMap::new();
+            facts.insert("project".to_owned(), "zellij".to_owned());
+            round_trip(Event::SessionSuggestions(SessionSuggestions {
+                folder: Some("/a/".to_owned()),
+                branch: Some("main".to_owned()),
+                columns: vec![SessionSuggestionColumn {
+                    fact: "directory".to_owned(),
+                    title: "folder".to_owned(),
+                }],
+                suggestions: vec![SessionSuggestion {
+                    name: "s".to_owned(),
+                    is_running: true,
+                    last_used_secs_ago: 3,
+                    created_secs_ago: 9,
+                    folder: Some("/a/b/".to_owned()),
+                    folder_relation: FolderRelation::Subfolder,
+                    repo: None,
+                    branch: Some("main".to_owned()),
+                    facts,
+                    tier: Some(1),
+                    matching_columns: vec!["directory".to_owned()],
+                    script_label: Some("x".to_owned()),
+                    tabs: vec![crate::data::SessionPreviewTab {
+                        name: "editor".to_owned(),
+                        active: true,
+                        panes: vec![crate::data::SessionPreviewPane {
+                            id: 4,
+                            is_plugin: true,
+                            title: "session-manager".to_owned(),
+                            focused: true,
+                            contents: None,
+                        }],
+                    }],
+                    connected_clients: 2,
+                }],
+                command_submitted: true,
+                from_script: false,
+            }));
+            round_trip(Event::SessionCountsUpdate(SessionCounts {
+                running: 2,
+                resumable_matching: 1,
+            }));
+            round_trip(Event::FolderSessionsUpdate(FolderSessions {
+                folder: "/a/".to_owned(),
+                running: vec!["r".to_owned()],
+                resumable: vec!["s".to_owned()],
+                full_match_running: vec!["r".to_owned()],
+            }));
+            round_trip(Event::TerminalCommandSubmitted);
+            round_trip(Event::SessionPreview(SessionPreview {
+                session_name: "s".to_owned(),
+                tab_index: Some(1),
+                active_tab_index: Some(0),
+                tab_names: vec!["a".to_owned(), "b".to_owned()],
+                contents: "\u{1b}[31mred".to_owned(),
+                pane_count: 3,
+                connected_clients: 1,
+                error: None,
+                tabs: vec![crate::data::SessionPreviewTab {
+                    name: "a".to_owned(),
+                    active: false,
+                    panes: vec![crate::data::SessionPreviewPane {
+                        id: 1,
+                        is_plugin: false,
+                        title: "shell".to_owned(),
+                        focused: true,
+                        contents: Some("$ ls".to_owned()),
+                    }],
+                }],
+            }));
+            round_trip(Event::SavedSessionPreview(SavedSessionPreview {
+                session_name: "s".to_owned(),
+                folder: Some("/a".to_owned()),
+                tabs: vec![SavedTabPreview {
+                    name: "Tab #1".to_owned(),
+                    focused: true,
+                    panes: vec![SavedPanePreview {
+                        title: None,
+                        command: Some("htop".to_owned()),
+                        cwd: Some("/a".to_owned()),
+                        contents: Some("hello".to_owned()),
+                        focused: true,
+                    }],
+                }],
+                error: None,
+            }));
+        }
     }
 }

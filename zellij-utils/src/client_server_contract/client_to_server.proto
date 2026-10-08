@@ -35,6 +35,7 @@ message ClientToServerMsg {
     KittyZlibSupportMsg kitty_zlib_support = 28;
     StructuredRenderSupportMsg structured_render_support = 29;
     RenderFrameAckMsg render_frame_ack = 30;
+    RequestSessionPreviewMsg request_session_preview = 31;
   }
 }
 
@@ -155,6 +156,12 @@ message KittyZlibSupportMsg {
 
 message SixelSupportMsg {
   bool supported = 1;
+}
+
+message RequestSessionPreviewMsg {
+  optional uint32 tab_index = 1;
+  optional uint32 pane_id = 2;
+  bool pane_is_plugin = 3;
 }
 
 message RequestSessionListMsg {

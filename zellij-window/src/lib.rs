@@ -69,7 +69,7 @@ use anyhow::{anyhow, bail, Result};
 use zellij_client::session_resolution::{self, ResolutionFailure};
 use zellij_client::{first_message, ClientInfo};
 use zellij_utils::cli::{AttachArgs, CliArgs, WindowArgs};
-use zellij_utils::data::{ConnectToSession, LayoutInfo};
+use zellij_utils::data::ConnectToSession;
 use zellij_utils::input::actions::initial_panes_from_cli;
 use zellij_utils::input::config::Config;
 use zellij_utils::input::options::Options as SessionOptions;
@@ -83,7 +83,6 @@ use crate::options::Options;
 use crate::window_state::{Startup, WindowState};
 use zellij_utils::input::window::StartupMode;
 
-const WELCOME_LAYOUT: &str = "welcome";
 
 pub fn run(args: WindowArgs, opts: CliArgs) -> Result<()> {
     spawn::forget_launching_session();
@@ -223,35 +222,26 @@ fn resolve(
             opening: Opening::Watcher,
         });
     }
+    let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let initial_panes = initial_panes_from_cli(
+        attach.initial_command.clone(),
+        None,
+        Some(current_dir.clone()),
+        current_dir,
+        attach.close_on_exit,
+        attach.start_suspended,
+    );
     let info = if attach.session_name.is_none() && attach.index.is_none() {
-        if !attach.initial_command.is_empty() {
-            return Err(Refusal::new(
-                "A command needs a session to run in: name the session to open it in.",
-            ));
-        }
         let Some(name) = generate_unique_session_name() else {
             return Err(Refusal::new(
                 "Failed to generate a unique session name, giving up",
             ));
         };
-        ClientInfo::New(
-            name,
-            Some(LayoutInfo::BuiltIn(WELCOME_LAYOUT.to_owned())),
-            None,
-            None,
-        )
+        ClientInfo::New(name, None, None, initial_panes)
     } else {
         let mut resolved =
             session_resolution::resolve_attach(attach, config_options.clone(), false, None)?;
-        let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-        if let Some(initial_panes) = initial_panes_from_cli(
-            attach.initial_command.clone(),
-            None,
-            Some(current_dir.clone()),
-            current_dir,
-            attach.close_on_exit,
-            attach.start_suspended,
-        ) {
+        if let Some(initial_panes) = initial_panes {
             resolved.client.set_initial_panes(initial_panes);
         }
         resolved.client
@@ -356,6 +346,9 @@ fn switch_target(
     }
     if let Some(cwd) = &to.cwd {
         resolved.client.set_cwd(cwd.clone());
+    }
+    if let Some(session_card) = to.session_card {
+        resolved.config_options.session_card = Some(session_card);
     }
     Ok((
         Target {
@@ -538,6 +531,7 @@ fn drive(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use zellij_utils::data::LayoutInfo;
 
     fn args() -> WindowArgs {
         WindowArgs {
@@ -822,12 +816,12 @@ mod tests {
     }
 
     #[test]
-    fn no_session_named_at_all_opens_the_welcome_layout_in_a_new_session() {
+    fn no_session_named_at_all_starts_a_new_session_with_the_default_layout() {
         let target = resolved(&args()).unwrap_or_else(|refusal| panic!("{}", refusal.text));
         match target.reach {
             Reach::Local(ClientInfo::New(name, layout, cwd, initial_panes)) => {
                 assert!(!name.is_empty());
-                assert_eq!(layout, Some(LayoutInfo::BuiltIn(WELCOME_LAYOUT.to_owned())));
+                assert_eq!(layout, None);
                 assert_eq!(cwd, None);
                 assert!(initial_panes.is_none());
             },
@@ -844,20 +838,25 @@ mod tests {
     }
 
     #[test]
-    fn a_command_without_a_session_to_run_it_in_is_refused_before_the_welcome_layout() {
-        let refusal = resolved(&WindowArgs {
+    fn a_command_without_a_session_name_runs_in_a_new_session() {
+        let target = resolved(&WindowArgs {
             attach: AttachArgs {
                 initial_command: vec!["htop".to_owned()],
                 ..AttachArgs::default()
             },
             ..args()
         })
-        .err()
-        .expect("a command with no session to be refused");
-        assert_eq!(
-            refusal.text,
-            "A command needs a session to run in: name the session to open it in."
-        );
+        .unwrap_or_else(|refusal| panic!("{}", refusal.text));
+        match target.reach {
+            Reach::Local(ClientInfo::New(name, layout, _cwd, initial_panes)) => {
+                assert!(!name.is_empty());
+                assert_eq!(layout, None);
+                assert!(initial_panes.is_some());
+            },
+            Reach::Local(other) => panic!("a command without a session opened {:?}", other),
+            #[cfg(feature = "web_server_capability")]
+            Reach::Remote(_) => panic!("a command without a session opened a remote session"),
+        }
     }
 
     #[test]

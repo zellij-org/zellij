@@ -80,6 +80,12 @@ enum EventType {
     AvailableKeybindPresets = 54;
     ConfigFileChangedSinceRead = 55;
     PromptResult = 56;
+    SessionSuggestions = 57;
+    SessionCountsUpdate = 58;
+    FolderSessionsUpdate = 59;
+    TerminalCommandSubmitted = 60;
+    SessionPreview = 61;
+    SavedSessionPreview = 62;
 }
 
 message EventNameList {
@@ -137,6 +143,11 @@ message Event {
     ConfigChangesDroppedPayload config_changes_dropped_payload = 47;
     AvailableKeybindPresetsPayload available_keybind_presets_payload = 48;
     PromptResultPayload prompt_result_payload = 49;
+    SessionSuggestionsPayload session_suggestions_payload = 50;
+    SessionCountsUpdatePayload session_counts_update_payload = 51;
+    FolderSessionsUpdatePayload folder_sessions_update_payload = 52;
+    SessionPreviewPayload session_preview_payload = 53;
+    SavedSessionPreviewPayload saved_session_preview_payload = 54;
   }
 }
 
@@ -742,3 +753,99 @@ message InitialKeybindsPayload {
   repeated InputModeKeybinds keybinds = 1;
 }
 
+
+enum FolderRelation {
+  FolderRelationOther = 0;
+  FolderRelationHere = 1;
+  FolderRelationSubfolder = 2;
+}
+
+message SessionSuggestionColumn {
+  string fact = 1;
+  string title = 2;
+}
+
+message SessionSuggestionItem {
+  string name = 1;
+  bool is_running = 2;
+  uint64 last_used_secs_ago = 3;
+  optional string folder = 4;
+  FolderRelation folder_relation = 5;
+  optional string repo = 6;
+  optional string branch = 7;
+  repeated ContextItem facts = 8;
+  optional uint32 tier = 9;
+  repeated string matching_columns = 10;
+  optional string script_label = 11;
+  uint64 created_secs_ago = 12;
+  repeated SessionPreviewTab tabs = 13;
+  uint32 connected_clients = 14;
+}
+
+message SessionSuggestionsPayload {
+  optional string folder = 1;
+  optional string branch = 2;
+  repeated SessionSuggestionColumn columns = 3;
+  repeated SessionSuggestionItem suggestions = 4;
+  bool command_submitted = 5;
+  bool from_script = 6;
+}
+
+message SessionCountsUpdatePayload {
+  uint32 running = 1;
+  uint32 resumable_matching = 2;
+}
+
+message FolderSessionsUpdatePayload {
+  string folder = 1;
+  repeated string running = 2;
+  repeated string resumable = 3;
+  repeated string full_match_running = 4;
+}
+
+message SessionPreviewPayload {
+  string session_name = 1;
+  optional uint32 tab_index = 2;
+  repeated string tab_names = 3;
+  string contents = 4;
+  optional string error = 5;
+  optional uint32 active_tab_index = 6;
+  uint32 pane_count = 7;
+  uint32 connected_clients = 8;
+  repeated SessionPreviewTab tabs = 9;
+}
+
+message SessionPreviewPane {
+  uint32 id = 1;
+  bool is_plugin = 2;
+  string title = 3;
+  bool focused = 4;
+  optional string contents = 5;
+}
+
+message SessionPreviewTab {
+  string name = 1;
+  bool active = 2;
+  repeated SessionPreviewPane panes = 3;
+}
+
+message SavedPanePreview {
+  optional string title = 1;
+  optional string command = 2;
+  optional string cwd = 3;
+  optional string contents = 4;
+  bool focused = 5;
+}
+
+message SavedTabPreview {
+  string name = 1;
+  bool focused = 2;
+  repeated SavedPanePreview panes = 3;
+}
+
+message SavedSessionPreviewPayload {
+  string session_name = 1;
+  optional string folder = 2;
+  repeated SavedTabPreview tabs = 3;
+  optional string error = 4;
+}

@@ -576,6 +576,76 @@ impl Tab {
         }
         true
     }
+    pub fn set_popup_kind(&mut self, plugin_id: u32, kind: PopupKind) -> Option<ClientId> {
+        let client_id = self.popup_client_for_plugin(plugin_id)?;
+        let stack = self.popups.get_mut(&client_id)?;
+        let position = stack
+            .iter()
+            .position(|popup| popup.plugin_id() == Some(plugin_id))?;
+        let mut popup = stack.remove(position);
+        popup.kind = kind;
+        popup.pane.set_should_render(true);
+        popup.pane.render_full_viewport();
+        stack.push(popup);
+        self.reflow_popups_for_client(client_id, None);
+        self.mark_popups_for_full_render();
+        self.set_force_render();
+        let _ = self.update_input_modes();
+        Some(client_id)
+    }
+    pub(crate) fn take_popup_pane(&mut self, plugin_id: u32) -> Option<(ClientId, Box<dyn Pane>)> {
+        let client_id = self.popup_client_for_plugin(plugin_id)?;
+        let stack = self.popups.get_mut(&client_id)?;
+        let position = stack
+            .iter()
+            .position(|popup| popup.plugin_id() == Some(plugin_id))?;
+        let popup = stack.remove(position);
+        if stack.is_empty() {
+            self.popups.remove(&client_id);
+        }
+        self.reflow_popups_for_client(client_id, None);
+        self.mark_popups_for_full_render();
+        self.set_force_render();
+        let _ = self.update_input_modes();
+        Some((client_id, popup.pane))
+    }
+    pub fn popup_to_floating_pane(
+        &mut self,
+        plugin_id: u32,
+        coordinates: Option<zellij_utils::data::FloatingPaneCoordinates>,
+    ) -> Result<Option<ClientId>> {
+        let Some((client_id, mut pane)) = self.take_popup_pane(plugin_id) else {
+            return Ok(None);
+        };
+        pane.set_borderless(false);
+        pane.set_content_offset(Offset::frame(1));
+        pane.set_should_render(true);
+        pane.render_full_viewport();
+        if !self.are_floating_panes_visible() {
+            self.show_floating_panes();
+        }
+        self.add_floating_pane(
+            pane,
+            PaneId::Plugin(plugin_id),
+            coordinates,
+            true,
+            Some(client_id),
+        )?;
+        self.set_force_render();
+        Ok(Some(client_id))
+    }
+    pub fn find_popup_plugin(&self, run_plugin_or_alias: &zellij_utils::input::layout::RunPluginOrAlias) -> Option<(ClientId, u32)> {
+        self.popups.iter().find_map(|(client_id, stack)| {
+            stack.iter().find_map(|popup| {
+                let plugin_id = popup.plugin_id()?;
+                if run_plugin_or_alias.is_equivalent_to_run(popup.pane.invoked_with()) {
+                    Some((*client_id, plugin_id))
+                } else {
+                    None
+                }
+            })
+        })
+    }
     pub fn has_popup_plugin(&self, plugin_id: u32) -> bool {
         self.popup_client_for_plugin(plugin_id).is_some()
     }
@@ -636,6 +706,36 @@ impl Tab {
             None => self.handle_info_popup_mouse_event(event, client_id),
         }
     }
+    pub fn popup_for_location(&self, client_id: ClientId, location: &str) -> Option<(u32, bool)> {
+        self.popups.get(&client_id)?.iter().find_map(|popup| {
+            let matches = match popup.pane.invoked_with() {
+                Some(Run::Plugin(run_plugin_or_alias)) => {
+                    run_plugin_or_alias.location_string().contains(location)
+                },
+                _ => false,
+            };
+            if matches {
+                popup.plugin_id().map(|plugin_id| (plugin_id, popup.takes_focus()))
+            } else {
+                None
+            }
+        })
+    }
+    pub fn unfocused_popup_plugin_ids(&self, client_id: ClientId) -> Vec<u32> {
+        self.popups
+            .get(&client_id)
+            .map(|stack| {
+                stack
+                    .iter()
+                    .filter(|popup| !popup.takes_focus())
+                    .filter_map(|popup| popup.plugin_id())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+    pub fn clear_hover_under_popups(&mut self, client_id: ClientId) -> bool {
+        super::mouse_handler::clear_hover_for_client(self, client_id)
+    }
     fn handle_focused_popup_mouse_event(
         &mut self,
         event: &MouseEvent,
@@ -676,7 +776,7 @@ impl Tab {
         event: &MouseEvent,
         client_id: ClientId,
     ) -> Option<PopupMouseOutcome> {
-        let (plugin_id, relative) = self.popups.get(&client_id).and_then(|stack| {
+        let hit = self.popups.get(&client_id).and_then(|stack| {
             stack.iter().rev().find_map(|popup| {
                 if popup.takes_focus() || !popup.pane.current_geom().contains(&event.position) {
                     return None;
@@ -685,7 +785,19 @@ impl Tab {
                     .plugin_id()
                     .map(|plugin_id| (plugin_id, popup.pane.relative_position(&event.position)))
             })
-        })?;
+        });
+        if event.event_type == MouseEventType::Motion {
+            let current = hit.as_ref().map(|(plugin_id, _)| *plugin_id);
+            let previous = self.popup_hover_plugin_id.get(&client_id).copied();
+            if let Some(previous) = previous.filter(|previous| Some(*previous) != current) {
+                self.send_mouse_to_popup_plugin(previous, client_id, Mouse::Hover(-1, 0));
+                self.popup_hover_plugin_id.remove(&client_id);
+            }
+            if let Some(current) = current {
+                self.popup_hover_plugin_id.insert(client_id, current);
+            }
+        }
+        let (plugin_id, relative) = hit?;
         if let Some(mouse) = mouse_event_for_plugin(event, relative.line.0, relative.column.0) {
             self.send_mouse_to_popup_plugin(plugin_id, client_id, mouse);
         }

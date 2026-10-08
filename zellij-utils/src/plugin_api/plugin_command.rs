@@ -104,7 +104,8 @@ pub use super::generated_api::api::{
         OpenPluginPaneFloatingPayload,
         OpenPluginPaneFloatingResponse as ProtobufOpenPluginPaneFloatingResponse,
         OpenPluginPaneInNewTabPayload as ProtobufOpenPluginPaneInNewTabPayload,
-        OpenPluginPopupPayload, OpenTerminalFloatingNearPluginPayload,
+        GetSessionPreviewPayload, GetSessionSuggestionsPayload, OpenPluginPopupPayload,
+        OpenTerminalFloatingNearPluginPayload, PopupToFloatingPanePayload,
         OpenTerminalFloatingNearPluginResponse as ProtobufOpenTerminalFloatingNearPluginResponse,
         OpenTerminalFloatingResponse as ProtobufOpenTerminalFloatingResponse,
         OpenTerminalInPlaceOfPluginPayload,
@@ -1334,6 +1335,7 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                         pane_id,
                         layout: payload.layout.and_then(|l| l.try_into().ok()),
                         cwd: payload.cwd.map(|c| PathBuf::from(c)),
+                        session_card: payload.session_card,
                     }))
                 },
                 _ => Err("Mismatched payload for SwitchSession"),
@@ -2691,6 +2693,64 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for WriteThemeFile"),
             },
+            Some(CommandName::GetSessionSuggestions) => match protobuf_plugin_command.payload {
+                Some(Payload::GetSessionSuggestionsPayload(payload)) => {
+                    Ok(PluginCommand::GetSessionSuggestions {
+                        limit: payload.limit as usize,
+                    })
+                },
+                _ => Err("Mismatched payload for GetSessionSuggestions"),
+            },
+            Some(CommandName::SetPopupFocused) => match protobuf_plugin_command.payload {
+                Some(Payload::SetPopupFocusedPayload(focused)) => {
+                    Ok(PluginCommand::SetPopupFocused(focused))
+                },
+                _ => Err("Mismatched payload for SetPopupFocused"),
+            },
+            Some(CommandName::PopupToFloatingPane) => match protobuf_plugin_command.payload {
+                Some(Payload::PopupToFloatingPanePayload(payload)) => Ok(
+                    PluginCommand::PopupToFloatingPane(payload.coordinates.map(|c| c.into())),
+                ),
+                _ => Err("Mismatched payload for PopupToFloatingPane"),
+            },
+            Some(CommandName::SwitchSessionAndCloseCurrent) => {
+                match protobuf_plugin_command.payload {
+                    Some(Payload::SwitchSessionAndCloseCurrentPayload(payload)) => {
+                        let pane_id = match (payload.pane_id, payload.pane_id_is_plugin) {
+                            (Some(pane_id), Some(is_plugin)) => Some((pane_id, is_plugin)),
+                            (None, None) => None,
+                            _ => return Err("Malformed payload for SwitchSessionAndCloseCurrent"),
+                        };
+                        Ok(PluginCommand::SwitchSessionAndCloseCurrent(
+                            ConnectToSession {
+                                name: payload.name,
+                                tab_position: payload.tab_position.map(|p| p as usize),
+                                pane_id,
+                                layout: payload.layout.and_then(|l| l.try_into().ok()),
+                                cwd: payload.cwd.map(PathBuf::from),
+                                session_card: payload.session_card,
+                            },
+                        ))
+                    },
+                    _ => Err("Mismatched payload for SwitchSessionAndCloseCurrent"),
+                }
+            },
+            Some(CommandName::GetSessionPreview) => match protobuf_plugin_command.payload {
+                Some(Payload::GetSessionPreviewPayload(payload)) => {
+                    Ok(PluginCommand::GetSessionPreview {
+                        name: payload.name,
+                        tab_index: payload.tab_index.map(|t| t as usize),
+                        pane_id: payload.pane_id.map(|id| (id, payload.pane_is_plugin)),
+                    })
+                },
+                _ => Err("Mismatched payload for GetSessionPreview"),
+            },
+            Some(CommandName::GetSavedSessionPreview) => match protobuf_plugin_command.payload {
+                Some(Payload::GetSavedSessionPreviewPayload(name)) => {
+                    Ok(PluginCommand::GetSavedSessionPreview(name))
+                },
+                _ => Err("Mismatched payload for GetSavedSessionPreview"),
+            },
             Some(CommandName::DeleteThemeFile) => match protobuf_plugin_command.payload {
                 Some(Payload::DeleteThemeFilePayload(name)) => {
                     Ok(PluginCommand::DeleteThemeFile { name })
@@ -3511,6 +3571,7 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     pane_id_is_plugin: switch_to_session.pane_id.map(|p| p.1),
                     layout: switch_to_session.layout.and_then(|l| l.try_into().ok()),
                     cwd: switch_to_session.cwd.map(|c| c.display().to_string()),
+                    session_card: switch_to_session.session_card,
                 })),
             }),
             PluginCommand::OpenTerminalInPlace(cwd) => Ok(ProtobufPluginCommand {
@@ -4709,6 +4770,59 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     colours,
                 })),
             }),
+            PluginCommand::GetSessionSuggestions { limit } => Ok(ProtobufPluginCommand {
+                name: CommandName::GetSessionSuggestions as i32,
+                payload: Some(Payload::GetSessionSuggestionsPayload(
+                    GetSessionSuggestionsPayload {
+                        limit: limit as u32,
+                    },
+                )),
+            }),
+            PluginCommand::SetPopupFocused(focused) => Ok(ProtobufPluginCommand {
+                name: CommandName::SetPopupFocused as i32,
+                payload: Some(Payload::SetPopupFocusedPayload(focused)),
+            }),
+            PluginCommand::PopupToFloatingPane(coordinates) => Ok(ProtobufPluginCommand {
+                name: CommandName::PopupToFloatingPane as i32,
+                payload: Some(Payload::PopupToFloatingPanePayload(
+                    PopupToFloatingPanePayload {
+                        coordinates: coordinates.map(|c| c.into()),
+                    },
+                )),
+            }),
+            PluginCommand::SwitchSessionAndCloseCurrent(switch_to_session) => {
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::SwitchSessionAndCloseCurrent as i32,
+                    payload: Some(Payload::SwitchSessionAndCloseCurrentPayload(
+                        SwitchSessionPayload {
+                            name: switch_to_session.name,
+                            tab_position: switch_to_session.tab_position.map(|t| t as u32),
+                            pane_id: switch_to_session.pane_id.map(|p| p.0),
+                            pane_id_is_plugin: switch_to_session.pane_id.map(|p| p.1),
+                            layout: switch_to_session.layout.and_then(|l| l.try_into().ok()),
+                            cwd: switch_to_session.cwd.map(|c| c.display().to_string()),
+                            session_card: switch_to_session.session_card,
+                        },
+                    )),
+                })
+            },
+            PluginCommand::GetSessionPreview {
+                name,
+                tab_index,
+                pane_id,
+            } => Ok(ProtobufPluginCommand {
+                name: CommandName::GetSessionPreview as i32,
+                payload: Some(Payload::GetSessionPreviewPayload(GetSessionPreviewPayload {
+                    name,
+                    tab_index: tab_index.map(|t| t as u32),
+                    pane_id: pane_id.map(|(id, _)| id),
+                    pane_is_plugin: pane_id.map(|(_, is_plugin)| is_plugin).unwrap_or(false),
+                })),
+            }),
+            PluginCommand::GetSavedSessionPreview(name) => Ok(ProtobufPluginCommand {
+                name: CommandName::GetSavedSessionPreview as i32,
+                payload: Some(Payload::GetSavedSessionPreviewPayload(name)),
+            }),
             PluginCommand::DeleteThemeFile { name } => Ok(ProtobufPluginCommand {
                 name: CommandName::DeleteThemeFile as i32,
                 payload: Some(Payload::DeleteThemeFilePayload(name)),
@@ -5809,6 +5923,47 @@ mod tests {
                 assert_eq!(decoded_result, result);
             },
             other => panic!("expected ReplyToPrompt, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn session_card_commands_protobuf_round_trip() {
+        use crate::data::{ConnectToSession, LayoutInfo};
+        use prost::Message;
+        for (tab_index, pane_id) in [(Some(2), Some((7, true))), (None, None), (Some(0), Some((3, false)))] {
+            let original = PluginCommand::GetSessionPreview {
+                name: "api".to_owned(),
+                tab_index,
+                pane_id,
+            };
+            let protobuf: ProtobufPluginCommand = original.try_into().expect("encode");
+            let decoded_bytes = ProtobufPluginCommand::decode(protobuf.encode_to_vec().as_slice())
+                .expect("decode bytes");
+            match PluginCommand::try_from(decoded_bytes).expect("decode") {
+                PluginCommand::GetSessionPreview {
+                    name,
+                    tab_index: decoded_tab,
+                    pane_id: decoded_pane,
+                } => {
+                    assert_eq!(name, "api");
+                    assert_eq!(decoded_tab, tab_index);
+                    assert_eq!(decoded_pane, pane_id);
+                },
+                other => panic!("expected GetSessionPreview, got {:?}", other),
+            }
+        }
+        let connect = ConnectToSession {
+            name: Some("new".to_owned()),
+            layout: Some(LayoutInfo::BuiltIn("default".to_owned())),
+            session_card: Some(false),
+            ..Default::default()
+        };
+        let protobuf: ProtobufPluginCommand = PluginCommand::SwitchSession(connect.clone())
+            .try_into()
+            .expect("encode");
+        match PluginCommand::try_from(protobuf).expect("decode") {
+            PluginCommand::SwitchSession(decoded) => assert_eq!(decoded, connect),
+            other => panic!("expected SwitchSession, got {:?}", other),
         }
     }
 
