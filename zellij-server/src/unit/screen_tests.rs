@@ -18722,6 +18722,128 @@ fn the_startup_session_card_is_unfocused_and_says_so() {
     );
 }
 
+fn loaded_popups(
+    plugin_receiver: &Receiver<(PluginInstruction, ErrorContext)>,
+) -> Vec<(crate::tab::PopupKind, Option<String>)> {
+    plugin_receiver
+        .try_iter()
+        .filter_map(|(instruction, _)| match instruction {
+            PluginInstruction::LoadPopup {
+                run_plugin_or_alias,
+                kind,
+                ..
+            } => Some((kind, role_of(&run_plugin_or_alias))),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_session_card_requested_before_any_tab_exists_opens_once_a_tab_exists() {
+    let client_id = 1;
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> = channels::unbounded();
+    screen
+        .bus
+        .senders
+        .replace_to_plugin(SenderWithContext::new(to_plugin));
+    screen.open_session_card(client_id);
+    assert_eq!(screen.pending_session_card, Some(client_id));
+    assert!(loaded_popups(&plugin_receiver).is_empty());
+    new_tab(&mut screen, 1, 0);
+    screen.open_pending_session_card();
+    assert_eq!(screen.pending_session_card, None);
+    assert_eq!(
+        loaded_popups(&plugin_receiver),
+        vec![(crate::tab::PopupKind::Info, Some("card_startup".to_owned()))]
+    );
+    screen.open_pending_session_card();
+    assert!(loaded_popups(&plugin_receiver).is_empty());
+}
+
+fn capture_background_jobs(
+    screen: &mut Screen,
+) -> Receiver<(crate::background_jobs::BackgroundJob, ErrorContext)> {
+    let (to_background_jobs, background_jobs_receiver): ChannelWithContext<
+        crate::background_jobs::BackgroundJob,
+    > = channels::unbounded();
+    screen.bus.senders.to_background_jobs = Some(SenderWithContext::new(to_background_jobs));
+    background_jobs_receiver
+}
+
+fn command_submitted_reports(
+    plugin_receiver: &Receiver<(PluginInstruction, ErrorContext)>,
+    background_jobs_receiver: &Receiver<(crate::background_jobs::BackgroundJob, ErrorContext)>,
+) -> (usize, usize) {
+    let to_plugins = plugin_receiver
+        .try_iter()
+        .filter(|(instruction, _)| match instruction {
+            PluginInstruction::Update(updates) => updates.iter().any(|(_, _, event)| {
+                matches!(event, zellij_utils::data::Event::TerminalCommandSubmitted)
+            }),
+            _ => false,
+        })
+        .count();
+    let to_suggestions = background_jobs_receiver
+        .try_iter()
+        .filter(|(job, _)| {
+            matches!(
+                job,
+                crate::background_jobs::BackgroundJob::SessionSuggestions(
+                    crate::session_suggestions::SessionSuggestionsJob::CommandSubmitted
+                )
+            )
+        })
+        .count();
+    (to_plugins, to_suggestions)
+}
+
+#[test]
+fn the_first_command_typed_into_a_terminal_is_reported_once() {
+    let client_id = 1;
+    let (mut screen, plugin_receiver) = screen_capturing_plugin_instructions();
+    let background_jobs_receiver = capture_background_jobs(&mut screen);
+    while plugin_receiver.try_recv().is_ok() {}
+    screen.terminal_input_submitted(client_id);
+    assert!(screen.terminal_command_submitted);
+    assert_eq!(
+        command_submitted_reports(&plugin_receiver, &background_jobs_receiver),
+        (1, 1)
+    );
+    screen.terminal_input_submitted(client_id);
+    assert_eq!(
+        command_submitted_reports(&plugin_receiver, &background_jobs_receiver),
+        (0, 0)
+    );
+}
+
+#[test]
+fn input_submitted_while_a_popup_is_focused_is_not_a_command() {
+    let client_id = 1;
+    let (mut screen, plugin_receiver) = screen_with_session_card(66);
+    let background_jobs_receiver = capture_background_jobs(&mut screen);
+    screen.set_popup_focused(66, true);
+    while plugin_receiver.try_recv().is_ok() {}
+    screen.terminal_input_submitted(client_id);
+    assert!(!screen.terminal_command_submitted);
+    assert_eq!(
+        command_submitted_reports(&plugin_receiver, &background_jobs_receiver),
+        (0, 0)
+    );
+    screen.set_popup_focused(66, false);
+    while plugin_receiver.try_recv().is_ok() {}
+    screen.terminal_input_submitted(client_id);
+    assert!(screen.terminal_command_submitted);
+    assert_eq!(
+        command_submitted_reports(&plugin_receiver, &background_jobs_receiver),
+        (1, 1)
+    );
+}
+
 #[test]
 fn escape_typed_into_a_terminal_reaches_only_unfocused_popups() {
     let client_id = 1;

@@ -6,7 +6,8 @@ use zellij_client::os_input_output::{ClientOsApi, SignalEvent};
 use zellij_utils::data::Palette;
 use zellij_utils::errors::ErrorContext;
 use zellij_utils::ipc::{
-    ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg,
+    ClientToServerMsg, IpcReceiveError, IpcReceiverWithContext, IpcSenderWithContext,
+    ServerToClientMsg,
 };
 use zellij_utils::pane_size::Size;
 use zellij_utils::shared::default_palette;
@@ -19,7 +20,10 @@ fn server_message_name(msg: &ServerToClientMsg) -> String {
     if let ServerToClientMsg::SwitchSession { connect_to_session } = msg {
         return format!(
             "SwitchSession layout={:?} session_card={:?}",
-            connect_to_session.layout.as_ref().map(|layout| layout.name().to_owned()),
+            connect_to_session
+                .layout
+                .as_ref()
+                .map(|layout| layout.name().to_owned()),
             connect_to_session.session_card
         );
     }
@@ -227,14 +231,19 @@ impl ClientOsApi for FakeClientOsApi {
         }
     }
     fn recv_from_server(&self) -> Option<(ServerToClientMsg, ErrorContext)> {
+        self.try_recv_from_server().ok()
+    }
+    fn try_recv_from_server(
+        &self,
+    ) -> std::result::Result<(ServerToClientMsg, ErrorContext), IpcReceiveError> {
         let received = self
             .receive_instructions_from_server
             .lock()
             .unwrap()
             .as_mut()
             .unwrap()
-            .recv_server_msg();
-        if let Some((msg, _)) = received.as_ref() {
+            .try_recv_server_msg();
+        if let Ok((msg, _)) = received.as_ref() {
             self.received_server_messages
                 .lock()
                 .unwrap()

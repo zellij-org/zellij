@@ -127,6 +127,7 @@ struct SessionSuggestionsService {
     command_submitted: bool,
     last_data_version: Option<i64>,
     next_index_poll: Option<Instant>,
+    sock_dir: PathBuf,
 }
 
 impl SessionSuggestionsService {
@@ -155,6 +156,7 @@ impl SessionSuggestionsService {
             command_submitted: false,
             last_data_version: None,
             next_index_poll: None,
+            sock_dir: zellij_utils::consts::ZELLIJ_SOCK_DIR.clone(),
         }
     }
 
@@ -363,7 +365,7 @@ impl SessionSuggestionsService {
             }
         }
         if let (Some(client_id), true) = (card_for_client, self.session_card) {
-            if other_sessions_are_running(&zellij_utils::consts::ZELLIJ_SOCK_DIR, &name) {
+            if other_sessions_are_running(&self.sock_dir, &name) {
                 let _ = self
                     .senders
                     .send_to_screen(ScreenInstruction::OpenSessionCard(client_id));
@@ -1113,6 +1115,100 @@ mod tests {
         std::fs::write(sock_dir.join("other"), b"").unwrap();
         assert!(other_sessions_are_running(&sock_dir, "me"));
         let _ = std::fs::remove_dir_all(&sock_dir);
+    }
+
+    fn service_capturing_screen(
+        sock_dir: &Path,
+    ) -> (
+        SessionSuggestionsService,
+        zellij_utils::channels::Receiver<(ScreenInstruction, zellij_utils::errors::ErrorContext)>,
+    ) {
+        let (to_screen, screen_receiver) = zellij_utils::channels::unbounded();
+        let senders = ThreadSenders {
+            to_screen: Some(zellij_utils::channels::SenderWithContext::new(to_screen)),
+            should_silently_fail: true,
+            ..Default::default()
+        };
+        let (own_sender, _own_receiver) = channel();
+        let mut service = SessionSuggestionsService::new(senders, own_sender);
+        service.sock_dir = sock_dir.to_path_buf();
+        service.index_failed = true;
+        (service, screen_receiver)
+    }
+
+    fn card_openings(
+        screen_receiver: &zellij_utils::channels::Receiver<(
+            ScreenInstruction,
+            zellij_utils::errors::ErrorContext,
+        )>,
+    ) -> Vec<ClientId> {
+        screen_receiver
+            .try_iter()
+            .filter_map(|(instruction, _)| match instruction {
+                ScreenInstruction::OpenSessionCard(client_id) => Some(client_id),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn configure_session_card(service: &mut SessionSuggestionsService, session_card: bool) {
+        service.handle(SessionSuggestionsJob::Configure {
+            config: SessionSuggestionsConfig::default(),
+            session_card,
+            session_indicator: false,
+        });
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_startup_card_opens_only_when_another_session_is_running() {
+        let sock_dir = tempfile::tempdir().unwrap();
+        std::fs::write(sock_dir.path().join("me"), b"").unwrap();
+        let (mut service, screen_receiver) = service_capturing_screen(sock_dir.path());
+        configure_session_card(&mut service, true);
+        service.handle(SessionSuggestionsJob::SessionStarted {
+            name: "me".to_owned(),
+            cwd: None,
+            card_for_client: Some(1),
+        });
+        assert!(card_openings(&screen_receiver).is_empty());
+        std::fs::write(sock_dir.path().join("other"), b"").unwrap();
+        service.handle(SessionSuggestionsJob::SessionStarted {
+            name: "me".to_owned(),
+            cwd: None,
+            card_for_client: Some(1),
+        });
+        assert_eq!(card_openings(&screen_receiver), vec![1]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_startup_card_stays_closed_without_a_client_to_show_it_to() {
+        let sock_dir = tempfile::tempdir().unwrap();
+        std::fs::write(sock_dir.path().join("other"), b"").unwrap();
+        let (mut service, screen_receiver) = service_capturing_screen(sock_dir.path());
+        configure_session_card(&mut service, true);
+        service.handle(SessionSuggestionsJob::SessionStarted {
+            name: "me".to_owned(),
+            cwd: None,
+            card_for_client: None,
+        });
+        assert!(card_openings(&screen_receiver).is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_startup_card_stays_closed_when_turned_off() {
+        let sock_dir = tempfile::tempdir().unwrap();
+        std::fs::write(sock_dir.path().join("other"), b"").unwrap();
+        let (mut service, screen_receiver) = service_capturing_screen(sock_dir.path());
+        configure_session_card(&mut service, false);
+        service.handle(SessionSuggestionsJob::SessionStarted {
+            name: "me".to_owned(),
+            cwd: None,
+            card_for_client: Some(1),
+        });
+        assert!(card_openings(&screen_receiver).is_empty());
     }
 
     #[test]

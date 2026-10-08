@@ -395,12 +395,29 @@ fn spawn_client_thread(
     config_options: Options,
     client_info: ClientInfo,
 ) -> JoinHandle<Option<ConnectToSession>> {
+    spawn_client_thread_with_reconnect(
+        fake_client_os_api,
+        cli_args,
+        config,
+        config_options,
+        client_info,
+        false,
+    )
+}
+
+fn spawn_client_thread_with_reconnect(
+    fake_client_os_api: FakeClientOsApi,
+    cli_args: CliArgs,
+    config: zellij_utils::input::config::Config,
+    config_options: Options,
+    client_info: ClientInfo,
+    is_a_reconnect: bool,
+) -> JoinHandle<Option<ConnectToSession>> {
     std::thread::Builder::new()
         .name("in_process_zellij_client".to_string())
         .spawn(move || {
             let tab_position_to_focus = None;
             let pane_id_to_focus = None;
-            let is_a_reconnect = false;
             let start_detached_and_exit = false;
             zellij_client::start_client(
                 Box::new(fake_client_os_api),
@@ -887,6 +904,54 @@ impl TestSession {
             fake_client_handle,
             thread: Some(client_thread),
         };
+    }
+
+    pub fn follow_switch(&mut self) -> ConnectToSession {
+        let connect_to_session = self
+            .main_client
+            .join()
+            .expect("the client exited without switching sessions");
+        let session_name = connect_to_session
+            .name
+            .clone()
+            .unwrap_or_else(test_env::unique_session_name);
+        assert!(
+            !zellij_utils::consts::ZELLIJ_SOCK_DIR
+                .join(&session_name)
+                .exists(),
+            "following a switch into the running session {} is not supported",
+            session_name
+        );
+        let mut config_options = self.config_options.clone();
+        connect_to_session.apply_to_options(&mut config_options);
+        let fake_server_os_api = FakeServerOsApi::default();
+        let server_thread: Arc<Mutex<Option<JoinHandle<()>>>> = Arc::new(Mutex::new(None));
+        let server_spawner = in_process_server_spawner(fake_server_os_api.clone(), &server_thread);
+        let (fake_client_os_api, fake_client_handle) =
+            FakeClientOsApi::new(self.size, Some(server_spawner));
+        let is_a_reconnect = true;
+        let client_thread = spawn_client_thread_with_reconnect(
+            fake_client_os_api,
+            self.cli_args.clone(),
+            self.config.clone(),
+            config_options.clone(),
+            ClientInfo::New(
+                session_name.clone(),
+                connect_to_session.layout.clone(),
+                connect_to_session.cwd.clone(),
+                None,
+            ),
+            is_a_reconnect,
+        );
+        self.session_name = session_name;
+        self.config_options = config_options;
+        self.fake_server_os_api = fake_server_os_api;
+        self.server_thread = server_thread;
+        self.main_client = TestClient {
+            fake_client_handle,
+            thread: Some(client_thread),
+        };
+        connect_to_session
     }
 
     pub fn override_layout(&self, layout_name: &str) {

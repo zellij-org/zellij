@@ -3771,6 +3771,44 @@ impl ConnectToSession {
                 .to_string();
         }
     }
+    pub fn apply_to_options(&self, options: &mut crate::input::options::Options) {
+        if let Some(session_card) = self.session_card {
+            options.session_card = Some(session_card);
+        }
+    }
+}
+
+#[cfg(test)]
+mod connect_to_session_tests {
+    use super::*;
+    use crate::input::options::Options;
+
+    #[test]
+    fn a_session_card_choice_overrides_the_options_of_the_new_session() {
+        let mut options = Options {
+            session_card: Some(true),
+            ..Default::default()
+        };
+        ConnectToSession {
+            session_card: Some(false),
+            ..Default::default()
+        }
+        .apply_to_options(&mut options);
+        assert_eq!(options.session_card, Some(false));
+    }
+
+    #[test]
+    fn without_a_session_card_choice_the_options_are_kept() {
+        let mut options = Options {
+            session_card: Some(true),
+            ..Default::default()
+        };
+        ConnectToSession::default().apply_to_options(&mut options);
+        assert_eq!(options.session_card, Some(true));
+        let mut unset = Options::default();
+        ConnectToSession::default().apply_to_options(&mut unset);
+        assert_eq!(unset.session_card, None);
+    }
 }
 
 #[derive(Debug, Default, Clone)]

@@ -3930,6 +3930,43 @@ mod tests {
     }
 
     #[test]
+    fn enter_and_newlines_count_as_submitting_input() {
+        assert!(action_submits_input(&write_key(BareKey::Enter, &[], vec![b'\r'])));
+        assert!(action_submits_input(&Action::Write {
+            key_with_modifier: None,
+            bytes: b"ls\r".to_vec(),
+            is_kitty_keyboard_protocol: false,
+        }));
+        assert!(action_submits_input(&Action::Write {
+            key_with_modifier: None,
+            bytes: b"\n".to_vec(),
+            is_kitty_keyboard_protocol: false,
+        }));
+        assert!(action_submits_input(&Action::WriteChars {
+            chars: "ls\n".to_owned()
+        }));
+    }
+
+    #[test]
+    fn other_input_does_not_count_as_submitting_input() {
+        assert!(!action_submits_input(&write_key(
+            BareKey::Char('a'),
+            &[],
+            vec![b'a']
+        )));
+        assert!(!action_submits_input(&write_key(BareKey::Esc, &[], vec![0x1b])));
+        assert!(!action_submits_input(&write_key(
+            BareKey::Enter,
+            &[KeyModifier::Shift],
+            b"\x1b[13;2u".to_vec()
+        )));
+        assert!(!action_submits_input(&Action::WriteChars {
+            chars: "ls".to_owned()
+        }));
+        assert!(!action_submits_input(&Action::Quit));
+    }
+
+    #[test]
     fn test_notification_end_sets_affected_tab_id() {
         let (tx, rx) = oneshot::channel();
         let mut notification_end = NotificationEnd::new(tx);
