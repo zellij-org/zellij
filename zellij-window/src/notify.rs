@@ -281,10 +281,7 @@ mod linux {
                 return;
             }
             *complained = true;
-            eprintln!(
-                "zellij-window: notifications stay with the window manager: {}",
-                reason
-            );
+            report!("notifications stay with the window manager: {}", reason);
         });
     }
 

@@ -7,7 +7,8 @@ use zellij_utils::input::window::{
 
 use crate::color::{Paints, Srgb};
 use crate::font::{
-    CellAdjust, FontFeature, FontOptions, DEFAULT_FONT_SIZE, DEFAULT_FONT_WEIGHT, DEFAULT_LIGATURES,
+    points_to_pixels, CellAdjust, FontFeature, FontOptions, DEFAULT_FONT_POINTS,
+    DEFAULT_FONT_WEIGHT, DEFAULT_LIGATURES,
 };
 use crate::platform::Platform;
 use crate::scene::Transparency;
@@ -93,7 +94,7 @@ pub fn resolve(settings: &Settings, mode: Option<HostTerminalThemeMode>) -> Opti
                 .font
                 .clone()
                 .filter(|family| !family.trim().is_empty()),
-            size: section.font_size.unwrap_or(DEFAULT_FONT_SIZE),
+            size: points_to_pixels(section.font_size.unwrap_or(DEFAULT_FONT_POINTS)),
             system_fonts: section.system_fonts.unwrap_or(true),
             ligatures: section.ligatures.unwrap_or(DEFAULT_LIGATURES),
             weight: section.font_weight.unwrap_or(DEFAULT_FONT_WEIGHT),
@@ -506,8 +507,13 @@ mod tests {
     #[test]
     fn no_configuration_and_no_flags_reproduce_the_shipped_behaviour() {
         let options = resolve(&Settings::default(), None);
-        assert_eq!(options.font, FontOptions::default());
-        assert_eq!(options.font.size, DEFAULT_FONT_SIZE);
+        assert_eq!(
+            options.font,
+            FontOptions {
+                size: points_to_pixels(DEFAULT_FONT_POINTS),
+                ..FontOptions::default()
+            }
+        );
         assert!(options.font.system_fonts);
         assert_eq!(options.font.family, None);
         assert_eq!(options.paste_keys, default_paste_keys());
@@ -542,6 +548,23 @@ mod tests {
     }
 
     #[test]
+    fn the_configured_font_size_is_in_points_as_other_terminals_read_it() {
+        let options = resolve(
+            &settings(WindowConfig {
+                font_size: Some(12.0),
+                ..WindowConfig::default()
+            }),
+            None,
+        );
+        let expected = if cfg!(target_os = "macos") {
+            12.0
+        } else {
+            16.0
+        };
+        assert_eq!(options.font.size, expected);
+    }
+
+    #[test]
     fn the_configuration_supersedes_the_defaults() {
         let options = resolve(
             &settings(WindowConfig {
@@ -556,7 +579,7 @@ mod tests {
         );
         assert_eq!(options.startup_mode, StartupMode::Fullscreen);
         assert_eq!(options.font.family.as_deref(), Some("Configured"));
-        assert_eq!(options.font.size, 20.0);
+        assert_eq!(options.font.size, points_to_pixels(20.0));
         assert!(!options.font.system_fonts);
         assert_eq!(
             options.paste_keys,

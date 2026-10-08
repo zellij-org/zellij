@@ -361,7 +361,7 @@ impl Raster {
     }
 
     fn refuse(&mut self, what: String) {
-        eprintln!("zellij-window: refusing {}", what);
+        report!("refusing {}", what);
         self.refused = true;
         self.rows.clear();
     }
@@ -429,10 +429,7 @@ impl Raster {
             return None;
         }
         if width * height * 4 > MAX_IMAGE_BYTES {
-            eprintln!(
-                "zellij-window: refusing a sixel image of {} bytes",
-                width * height * 4
-            );
+            report!("refusing a sixel image of {} bytes", width * height * 4);
             return None;
         }
 

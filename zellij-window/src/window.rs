@@ -20,11 +20,11 @@ use winit::window::{
 };
 use zellij_utils::data::{ConnectToSession, HostTerminalThemeMode};
 use zellij_utils::input::mouse::MouseEvent;
-use zellij_utils::ipc::{ClientToServerMsg, ExitReason};
+use zellij_utils::ipc::ClientToServerMsg;
 
 use crate::atlas::GlyphCache;
 use crate::bell;
-use crate::client_loop::{self, LoopOptions, LoopOutcome, RenderSink};
+use crate::client_loop::{self, Ending, LoopOptions, LoopOutcome, RenderSink};
 use crate::clipboard::{self, Clipboard, ClipboardHandle};
 use crate::composition::{Composition, Gate, Reaction};
 use crate::connection::{
@@ -66,7 +66,7 @@ enum Wake {
     Frame(Vec<u8>),
     Reconfigured(Settings),
     ThemeMode(HostTerminalThemeMode),
-    Finished(Option<ConnectToSession>),
+    Finished(Ending),
 }
 
 struct ProxySink {
@@ -78,12 +78,8 @@ impl RenderSink for ProxySink {
         self.proxy.send_event(Wake::Frame(frame)).is_ok()
     }
 
-    fn finished(
-        &mut self,
-        _exit_reason: Option<&ExitReason>,
-        switch_to: Option<ConnectToSession>,
-    ) -> bool {
-        self.proxy.send_event(Wake::Finished(switch_to)).is_ok()
+    fn finished(&mut self, ending: Ending) -> bool {
+        self.proxy.send_event(Wake::Finished(ending)).is_ok()
     }
 
     fn acknowledges_frames(&self) -> bool {
@@ -143,6 +139,7 @@ struct App {
     windowed_known: bool,
     surfaces: Option<Surfaces>,
     failure: Option<anyhow::Error>,
+    leaving: bool,
     session: Option<Session>,
     ring: fn(),
     notify: fn(NotificationMode, &crate::kitty::Notification) -> bool,
@@ -203,8 +200,8 @@ impl App {
                 self.zoom = zoom;
             },
             Err(e) => {
-                eprintln!(
-                    "zellij-window: keeping the font already in place; {} px is unusable: {}",
+                report!(
+                    "keeping the font already in place; {} px is unusable: {}",
                     self.options.font.size * (scale * zoom) as f32,
                     e
                 );
@@ -339,7 +336,7 @@ impl App {
         if change.paints {
             for msg in palette::seed_messages(&self.options.paints) {
                 if let Err(e) = self.tell(msg) {
-                    eprintln!("zellij-window: failed to re-declare a color: {}", e);
+                    report!("failed to re-declare a color: {}", e);
                 }
             }
         }
@@ -396,8 +393,8 @@ impl App {
             return;
         }
         self.warned_opaque = true;
-        eprintln!(
-            "zellij-window: opacity {} was asked for, but the display offers no transparent \
+        report!(
+            "opacity {} was asked for, but the display offers no transparent \
              surface (is a compositor running?), so the window stays opaque",
             self.options.transparency.opacity
         );
@@ -490,7 +487,7 @@ impl App {
             .set_cell_size(self.metrics.width, self.metrics.height);
         if let Some(sender) = &self.sender {
             if let Err(e) = resize(sender, &self.geometry, next) {
-                eprintln!("zellij-window: failed to report a resize: {}", e);
+                report!("failed to report a resize: {}", e);
             }
         }
     }
@@ -523,20 +520,22 @@ impl App {
             Err(FrameError::Unapplicable { seq, error }) => {
                 self.scroll.cancel();
                 self.stop_momentum();
-                eprintln!(
-                    "zellij-window: dropping a frame the viewport has moved past: {}",
-                    error
-                );
+                report!("dropping a frame the viewport has moved past: {}", error);
                 self.acknowledge(seq);
                 return;
             },
             Err(FrameError::Undecodable(e)) => {
-                eprintln!("zellij-window: refusing an unreadable frame: {}", e);
                 if let Err(detach_error) = self.detach() {
-                    self.failure = Some(
-                        detach_error.context("failed to detach after an unreadable frame arrived"),
+                    report!(
+                        "failed to detach after an unreadable frame arrived: {}",
+                        detach_error
                     );
                 }
+                self.stranded(anyhow!(
+                    "The session sent a screen update this window cannot read ({}). The session \
+                     may be running a different version of zellij.",
+                    e
+                ));
                 return;
             },
         }
@@ -566,7 +565,9 @@ impl App {
     }
 
     fn closing(&mut self) -> bool {
-        let asked = if self.asks_before_closing() {
+        let confirming = self.asks_before_closing();
+        self.leaving = !confirming;
+        let asked = if confirming {
             self.tell(ClientToServerMsg::Action {
                 action: zellij_utils::input::actions::Action::ConfirmClose,
                 terminal_id: None,
@@ -579,8 +580,8 @@ impl App {
         match asked {
             Ok(()) => self.sender.is_none(),
             Err(e) => {
-                eprintln!(
-                    "zellij-window: the session could not be asked to let the window go, \
+                report!(
+                    "the session could not be asked to let the window go, \
                      so the window closes on its own: {}",
                     e
                 );
@@ -598,7 +599,7 @@ impl App {
 
     fn acknowledge(&mut self, seq: u64) {
         if let Err(e) = self.tell(ClientToServerMsg::RenderFrameAck { seq }) {
-            eprintln!("zellij-window: failed to acknowledge a frame: {}", e);
+            report!("failed to acknowledge a frame: {}", e);
         }
     }
 
@@ -681,10 +682,7 @@ impl App {
                 mouse::MiddleClick::Paste(text) => {
                     self.pointer.swallow_middle();
                     if let Err(e) = self.tell(clipboard::paste_message(text)) {
-                        eprintln!(
-                            "zellij-window: failed to send a primary-selection paste: {}",
-                            e
-                        );
+                        report!("failed to send a primary-selection paste: {}", e);
                     }
                     true
                 },
@@ -717,7 +715,7 @@ impl App {
             return;
         };
         if let Err(e) = links::open(&uri) {
-            eprintln!("zellij-window: {}", e);
+            report!("{}", e);
         }
     }
 
@@ -915,14 +913,35 @@ impl App {
             return;
         }
         if let Key::Dead(accent) = press.logical {
-            let reaction = self.composition.dead_key(accent);
-            self.compose(reaction);
+            match input::dead_key_press(&press) {
+                input::DeadKeyOutcome::Wait => {
+                    let reaction = self.composition.dead_key(accent);
+                    self.compose(reaction);
+                },
+                input::DeadKeyOutcome::Type(text) => {
+                    let reaction = self.composition.resolve();
+                    self.compose(reaction);
+                    self.type_text(text);
+                },
+            }
             return;
         }
         if gate == Gate::Resolving {
             let reaction = self.composition.resolve();
             self.compose(reaction);
-            self.deliver(&press);
+            match input::resolve_pending_accent(&press) {
+                input::Resolution::Key => self.deliver(&press),
+                input::Resolution::Type(text) => self.type_text(text),
+                input::Resolution::TypeThenKey(text) => {
+                    self.type_text(text);
+                    self.deliver(&press);
+                },
+                input::Resolution::Nothing => {},
+            }
+            return;
+        }
+        if let Some(text) = input::unidentified_text(&press) {
+            self.type_text(text);
             return;
         }
         if input::claims(&self.options.zoom_in_keys, &press) {
@@ -965,7 +984,18 @@ impl App {
         self.stop_momentum();
         self.hide_pointer();
         if let Err(e) = self.tell(msg) {
-            eprintln!("zellij-window: failed to send a key: {}", e);
+            report!("failed to send a key: {}", e);
+        }
+    }
+
+    fn type_text(&mut self, text: String) {
+        let Some(msg) = input::typed_text_message(text) else {
+            return;
+        };
+        self.stop_momentum();
+        self.hide_pointer();
+        if let Err(e) = self.tell(msg) {
+            report!("failed to send typed text: {}", e);
         }
     }
 
@@ -986,12 +1016,11 @@ impl App {
             return;
         }
         self.stop_momentum();
-        let committed = input::Press::new(Key::Character(text.into()), ModifiersState::empty());
-        let Some(msg) = input::key_message(&committed) else {
+        let Some(msg) = input::typed_text_message(text) else {
             return;
         };
         if let Err(e) = self.tell(msg) {
-            eprintln!("zellij-window: failed to send composed text: {}", e);
+            report!("failed to send composed text: {}", e);
         }
     }
 
@@ -1017,7 +1046,7 @@ impl App {
             return;
         };
         if let Err(e) = self.tell(clipboard::paste_message(chars)) {
-            eprintln!("zellij-window: failed to send a paste: {}", e);
+            report!("failed to send a paste: {}", e);
         }
     }
 
@@ -1061,7 +1090,7 @@ impl App {
         match self.clipboard.lock() {
             Ok(mut clipboard) => Some(f(&mut clipboard)),
             Err(_) => {
-                eprintln!("zellij-window: the clipboard mutex was poisoned");
+                report!("the clipboard mutex was poisoned");
                 None
             },
         }
@@ -1070,7 +1099,7 @@ impl App {
     fn point<I: IntoIterator<Item = MouseEvent>>(&mut self, events: I) {
         for event in events {
             if let Err(e) = self.tell(mouse::message(event)) {
-                eprintln!("zellij-window: failed to send a mouse event: {}", e);
+                report!("failed to send a mouse event: {}", e);
             }
         }
     }
@@ -1168,7 +1197,7 @@ impl App {
             },
         );
         if let Err(e) = surfaces.surface.swap_buffers(&surfaces.context) {
-            eprintln!("zellij-window: buffer swap failed: {}", e);
+            report!("buffer swap failed: {}", e);
         }
         self.pacer.drawn(Instant::now());
     }
@@ -1243,7 +1272,7 @@ impl App {
                 self.schedule_draw();
                 for msg in palette::seed_messages(&self.options.paints) {
                     if let Err(e) = self.tell(msg) {
-                        eprintln!("zellij-window: failed to re-declare a color: {}", e);
+                        report!("failed to re-declare a color: {}", e);
                     }
                 }
                 true
@@ -1256,6 +1285,29 @@ impl App {
         }
     }
 
+    fn session_ended(&mut self, ending: Ending) -> bool {
+        if let Ending::Switched(to) = ending {
+            return !self.follow(Some(to));
+        }
+        self.stop_momentum();
+        if let Some(session) = self.session.as_mut() {
+            session.collect();
+        }
+        if self.failure.is_some() {
+            return false;
+        }
+        match crate::notice::trouble(&ending) {
+            Some(trouble) if !self.leaving => {
+                self.stranded(anyhow!("{}", crate::notice::ended(&trouble)));
+                false
+            },
+            _ => {
+                self.remember();
+                true
+            },
+        }
+    }
+
     fn close_requested(&mut self) -> bool {
         self.remember();
         self.closing()
@@ -1263,7 +1315,7 @@ impl App {
 
     fn stranded(&mut self, failure: anyhow::Error) {
         let message = format!("{:#}", failure);
-        eprintln!("zellij-window: {}", message);
+        report!("{}", message);
         self.sender = None;
         self.show_notice(&message);
         self.failure = Some(failure);
@@ -1275,7 +1327,7 @@ impl App {
         self.cancel_scroll_animations();
         self.stop_momentum();
         if let Err(e) = self.state.apply_frame(&frame) {
-            eprintln!("zellij-window: the message could not be drawn: {}", e);
+            report!("the message could not be drawn: {}", e);
             return;
         }
         self.retained.mark_everything();
@@ -1358,8 +1410,8 @@ impl App {
             .make_current(&surface)
             .context("failed to make the window context current")?;
         if let Err(e) = surface.set_swap_interval(&context, SwapInterval::DontWait) {
-            eprintln!(
-                "zellij-window: the display refused an unsynchronized buffer swap, so a swap may wait for the next refresh: {}",
+            report!(
+                "the display refused an unsynchronized buffer swap, so a swap may wait for the next refresh: {}",
                 e
             );
         }
@@ -1391,20 +1443,14 @@ impl ApplicationHandler<Wake> for App {
 
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: Wake) {
         match event {
-            Wake::Frame(frame) => {
-                self.on_frame(&frame);
-                if self.failure.is_some() {
-                    event_loop.exit();
-                }
-            },
+            Wake::Frame(frame) => self.on_frame(&frame),
             Wake::Reconfigured(settings) => self.reconfigured(settings),
             Wake::ThemeMode(mode) => {
                 self.theme_mode = Some(mode);
                 self.reapply(false);
             },
-            Wake::Finished(switch_to) => {
-                if !self.follow(switch_to) {
-                    self.remember();
+            Wake::Finished(ending) => {
+                if self.session_ended(ending) {
                     event_loop.exit();
                 }
             },
@@ -1614,7 +1660,7 @@ impl Session {
     fn collect(&mut self) {
         match self.client.take().map(Client::join) {
             Some(Ok(outcome)) => self.outcomes.push(outcome),
-            Some(Err(e)) => eprintln!("zellij-window: {}", e),
+            Some(Err(e)) => report!("{}", e),
             None => {},
         }
     }
@@ -1723,6 +1769,7 @@ impl Rendering {
             windowed_known: self.startup.mode == StartupMode::Windowed,
             surfaces: None,
             failure: None,
+            leaving: false,
             session,
             ring: bell::ring,
             notify: notify::handled,
@@ -1776,8 +1823,14 @@ impl Client {
     }
 
     fn spawn(connection: Connection, options: LoopOptions, mut sink: ProxySink) -> Self {
+        let proxy = sink.proxy.clone();
         Client(Some(std::thread::spawn(move || {
-            client_loop::run_with_sink(connection, options, &mut sink)
+            guarded(
+                || client_loop::run_with_sink(connection, options, &mut sink),
+                |message| {
+                    let _ = proxy.send_event(Wake::Finished(Ending::Failed(message)));
+                },
+            )
         })))
     }
 
@@ -1792,6 +1845,20 @@ impl Client {
                 .map_err(|_| anyhow!("the client thread panicked"))?,
             None => Err(anyhow!("there was no client thread to wait for")),
         }
+    }
+}
+
+fn guarded<T>(work: impl FnOnce() -> Result<T>, on_crash: impl FnOnce(String)) -> Result<T> {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(work)) {
+        Ok(outcome) => outcome,
+        Err(payload) => {
+            let message = format!(
+                "The connection to the session crashed: {}",
+                crate::diagnostics::panic_text(payload.as_ref())
+            );
+            on_crash(message.clone());
+            Err(anyhow!(message))
+        },
     }
 }
 
@@ -1838,14 +1905,14 @@ fn window_icon() -> Option<Icon> {
     let image = match crate::image_io::decode(ICON_PNG) {
         Ok(image) => image,
         Err(e) => {
-            eprintln!("zellij-window: the embedded window icon is unreadable: {e}");
+            report!("the embedded window icon is unreadable: {e}");
             return None;
         },
     };
     match Icon::from_rgba(image.pixels, image.width, image.height) {
         Ok(icon) => Some(icon),
         Err(e) => {
-            eprintln!("zellij-window: the embedded window icon was refused: {e}");
+            report!("the embedded window icon was refused: {e}");
             None
         },
     }
@@ -1945,14 +2012,14 @@ mod tests {
     use winit::keyboard::{Key, NamedKey, SmolStr};
     use zellij_utils::input::actions::Action;
     use zellij_utils::input::mouse::MouseEventType;
-    use zellij_utils::ipc::ClientToServerMsg;
+    use zellij_utils::ipc::{ClientToServerMsg, ExitReason};
 
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use crate::clipboard::Clipboard;
     use crate::color::Paints;
     use crate::connection::{test_attach_at as attach_at, Capabilities, Connection};
-    use crate::font::{FontOptions, DEFAULT_FONT_SIZE, DEFAULT_LIGATURES};
+    use crate::font::{pixels_to_points, FontOptions, DEFAULT_FONT_SIZE, DEFAULT_LIGATURES};
     use crate::test_server::FakeServer;
     use zellij_utils::input::window::{WindowConfig, WindowTheme};
 
@@ -2048,7 +2115,7 @@ mod tests {
                 connection.role,
                 connection.geometry.clone(),
                 "test".to_owned(),
-                Settings::default(),
+                settings(WindowConfig::default()),
                 clipboard.clone(),
                 None,
             );
@@ -2229,6 +2296,147 @@ mod tests {
             "the reason is shown in the window"
         );
         assert!(harness.sent().is_empty());
+    }
+
+    fn shown(harness: &Harness) -> String {
+        harness
+            .app
+            .state
+            .dump()
+            .lines()
+            .map(str::trim)
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    #[test]
+    fn a_session_that_ends_normally_closes_the_window() {
+        for reason in [
+            ExitReason::Normal,
+            ExitReason::NormalDetached,
+            ExitReason::CustomExitStatus(0),
+        ] {
+            let mut harness = Harness::new(0, true, "");
+            assert!(
+                harness.app.session_ended(Ending::Exited(reason.clone())),
+                "{:?} must close the window",
+                reason
+            );
+            assert!(harness.app.failure.is_none(), "{:?}", reason);
+        }
+    }
+
+    #[test]
+    fn a_session_that_lets_the_window_go_for_a_reason_keeps_it_open_with_the_reason() {
+        let mut harness = Harness::new(0, true, "");
+        assert!(
+            !harness
+                .app
+                .session_ended(Ending::Exited(ExitReason::KickedByHost)),
+            "the window stays so the reason can be read"
+        );
+        assert!(shown(&harness).contains("Disconnected by host"));
+        assert!(shown(&harness).contains("Close this window to exit."));
+        assert!(harness.app.sender.is_none());
+        assert!(
+            harness.app.failure.is_some(),
+            "closing it later is a failure"
+        );
+        assert!(harness.app.closing(), "the first close request closes it");
+    }
+
+    #[test]
+    fn a_server_error_is_shown_in_the_window() {
+        let mut harness = Harness::new(0, true, "");
+        harness.app.session_ended(Ending::Exited(ExitReason::Error(
+            "the screen thread failed".to_owned(),
+        )));
+        let shown = shown(&harness);
+        assert!(shown.contains("Error occurred in server:"), "{}", shown);
+        assert!(shown.contains("the screen thread failed"), "{}", shown);
+    }
+
+    #[test]
+    fn a_connection_dropped_without_a_word_is_explained() {
+        let mut harness = Harness::new(0, true, "");
+        assert!(!harness.app.session_ended(Ending::Lost));
+        assert!(
+            shown(&harness).contains("closed without a reason"),
+            "{}",
+            shown(&harness)
+        );
+    }
+
+    #[test]
+    fn a_failure_on_the_window_side_is_shown_in_the_window() {
+        let mut harness = Harness::new(0, true, "");
+        assert!(!harness.app.session_ended(Ending::Failed(
+            "this session's server predates it".to_owned()
+        )));
+        assert!(shown(&harness).contains("this session's server predates it"));
+    }
+
+    #[test]
+    fn a_window_that_asked_to_leave_closes_however_the_session_ends() {
+        let mut harness = Harness::new(1, true, "");
+        assert!(!harness.app.closing());
+        assert!(harness.app.session_ended(Ending::Lost));
+        assert!(harness.app.failure.is_none());
+        assert_eq!(harness.actions(), vec![Action::Detach]);
+    }
+
+    #[test]
+    fn a_window_showing_an_error_stays_open_when_the_session_lets_it_go() {
+        let mut harness = Harness::new(0, true, "");
+        harness.app.session_ended(Ending::Lost);
+        assert!(
+            !harness
+                .app
+                .session_ended(Ending::Exited(ExitReason::NormalDetached)),
+            "a later normal ending must not hide the message"
+        );
+        assert!(shown(&harness).contains("closed without a reason"));
+    }
+
+    #[test]
+    fn an_unreadable_frame_leaves_the_session_and_says_why() {
+        let mut harness = Harness::new(1, true, "");
+        harness.app.on_frame(&[0xde, 0xad, 0xbe, 0xef]);
+        assert!(harness.app.sender.is_none());
+        assert!(harness.app.failure.is_some());
+        assert!(
+            shown(&harness).contains("cannot read"),
+            "{}",
+            shown(&harness)
+        );
+        assert!(
+            !harness
+                .app
+                .session_ended(Ending::Exited(ExitReason::NormalDetached)),
+            "the detach that follows must leave the message up"
+        );
+        assert_eq!(harness.actions(), vec![Action::Detach]);
+    }
+
+    #[test]
+    fn a_crash_in_the_connection_is_reported_and_becomes_an_error() {
+        let mut reported = None;
+        let outcome: Result<()> = guarded(
+            || panic!("the decoder fell over"),
+            |message| reported = Some(message),
+        );
+        let error = outcome.expect_err("a crash must become an error");
+        let reported = reported.expect("the crash must be reported");
+        assert!(reported.contains("the decoder fell over"), "{}", reported);
+        assert_eq!(error.to_string(), reported);
+    }
+
+    #[test]
+    fn work_that_does_not_crash_passes_its_outcome_through() {
+        let mut reported = false;
+        assert_eq!(guarded(|| Ok(7), |_| reported = true).unwrap(), 7);
+        assert!(guarded::<()>(|| Err(anyhow!("plain failure")), |_| reported = true).is_err());
+        assert!(!reported);
     }
 
     #[test]
@@ -2903,7 +3111,12 @@ mod tests {
 
     fn settings(section: WindowConfig) -> Settings {
         Settings {
-            section,
+            section: WindowConfig {
+                font_size: section
+                    .font_size
+                    .or(Some(pixels_to_points(DEFAULT_FONT_SIZE))),
+                ..section
+            },
             ..Settings::default()
         }
     }
@@ -2923,7 +3136,7 @@ mod tests {
         );
 
         harness.reconfigure(WindowConfig {
-            font_size: Some(DEFAULT_FONT_SIZE * 2.0),
+            font_size: Some(pixels_to_points(DEFAULT_FONT_SIZE * 2.0)),
             ..WindowConfig::default()
         });
 
@@ -3026,7 +3239,7 @@ mod tests {
         harness.app.settings = Settings {
             theme_dark: Some(styling([1, 1, 1])),
             theme_light: Some(styling([2, 2, 2])),
-            ..Settings::default()
+            ..settings(WindowConfig::default())
         };
         harness.app.reapply(false);
         assert_eq!(harness.app.options.paints.background, [1, 1, 1]);
@@ -3058,7 +3271,7 @@ mod tests {
         harness.app.settings = Settings {
             theme: Some(styling([3, 3, 3])),
             theme_dark: Some(styling([1, 1, 1])),
-            ..Settings::default()
+            ..settings(WindowConfig::default())
         };
         harness.app.reapply(false);
         let before = harness.app.options.paints;
@@ -3319,7 +3532,7 @@ mod tests {
         harness.press(&character("="));
 
         harness.reconfigure(WindowConfig {
-            font_size: Some(DEFAULT_FONT_SIZE * 2.0),
+            font_size: Some(pixels_to_points(DEFAULT_FONT_SIZE * 2.0)),
             ..WindowConfig::default()
         });
 
@@ -3864,6 +4077,117 @@ mod tests {
                 Some("`".to_owned())
             );
             assert!(harness.sent().is_empty());
+        }
+
+        fn press_with_text(harness: &mut Harness, logical: Key, text: &str) {
+            let modifiers = harness.app.modifiers;
+            harness
+                .app
+                .press(input::Press::new(logical, modifiers).with_text(text));
+        }
+
+        fn typed_key(character: char) -> ClientToServerMsg {
+            ClientToServerMsg::Key {
+                key: KeyWithModifier::new(BareKey::Char(character)),
+                raw_bytes: character.to_string().into_bytes(),
+                is_kitty_keyboard_protocol: false,
+            }
+        }
+
+        fn typed_text(chars: &str) -> ClientToServerMsg {
+            ClientToServerMsg::Action {
+                action: Action::WriteChars {
+                    chars: chars.to_owned(),
+                },
+                terminal_id: None,
+                client_id: None,
+                is_cli_client: false,
+            }
+        }
+
+        #[test]
+        fn space_after_a_dead_key_sends_the_accent_and_clears_it() {
+            let mut harness = Harness::new(1, true, "");
+            harness.press(&dead('^'));
+            press_with_text(&mut harness, Key::Named(NamedKey::Space), "^");
+            assert_eq!(harness.app.composition.shown(), None);
+            assert_eq!(harness.app.composition.gate(), Gate::Open);
+            assert_eq!(harness.sent(), vec![typed_key('^')]);
+        }
+
+        #[test]
+        fn a_dead_key_pressed_twice_sends_what_the_system_produced() {
+            let mut harness = Harness::new(1, true, "");
+            harness.press(&dead('^'));
+            press_with_text(&mut harness, dead('^'), "^^");
+            assert_eq!(harness.app.composition.shown(), None);
+            assert_eq!(harness.sent(), vec![typed_text("^^")]);
+        }
+
+        #[test]
+        fn an_accent_that_cannot_combine_reaches_the_pane_with_the_letter() {
+            let mut harness = Harness::new(1, true, "");
+            harness.press(&dead('^'));
+            press_with_text(&mut harness, character("x"), "^x");
+            assert_eq!(harness.sent(), vec![typed_text("^x")]);
+        }
+
+        #[test]
+        fn enter_after_a_dead_key_sends_the_accent_then_enter() {
+            let mut harness = Harness::new(2, true, "");
+            harness.press(&dead('^'));
+            press_with_text(&mut harness, Key::Named(NamedKey::Enter), "^\r");
+            let sent = harness.sent();
+            assert_eq!(sent[0], typed_key('^'));
+            match &sent[1] {
+                ClientToServerMsg::Key { key, raw_bytes, .. } => {
+                    assert_eq!(*key, KeyWithModifier::new(BareKey::Enter));
+                    assert_eq!(raw_bytes, b"\r");
+                },
+                other => panic!("expected enter, got {:?}", other),
+            }
+        }
+
+        #[test]
+        fn a_cancelled_accent_with_nothing_produced_sends_nothing() {
+            let mut harness = Harness::new(0, true, "");
+            harness.press(&dead('^'));
+            harness.press(&Key::Unidentified(winit::keyboard::NativeKey::Unidentified));
+            assert_eq!(harness.app.composition.shown(), None);
+            assert_eq!(harness.app.composition.gate(), Gate::Open);
+            assert!(harness.sent().is_empty());
+        }
+
+        #[test]
+        fn a_shortcut_after_a_dead_key_still_reaches_the_pane_as_a_shortcut() {
+            let mut harness = Harness::new(1, true, "");
+            harness.press(&dead('^'));
+            harness.app.modifiers = ModifiersState::CONTROL;
+            press_with_text(&mut harness, character("c"), "^c");
+            match &harness.sent()[0] {
+                ClientToServerMsg::Key { raw_bytes, .. } => assert_eq!(raw_bytes, &vec![3]),
+                other => panic!("expected ctrl-c, got {:?}", other),
+            }
+        }
+
+        #[test]
+        fn a_character_picker_entry_reaches_the_pane() {
+            let mut harness = Harness::new(1, true, "");
+            press_with_text(
+                &mut harness,
+                Key::Unidentified(winit::keyboard::NativeKey::Unidentified),
+                "′",
+            );
+            assert_eq!(harness.sent(), vec![typed_key('′')]);
+        }
+
+        #[test]
+        fn typing_resumes_normally_after_an_accent_is_resolved() {
+            let mut harness = Harness::new(2, true, "");
+            harness.press(&dead('^'));
+            press_with_text(&mut harness, Key::Named(NamedKey::Space), "^");
+            harness.press(&character("a"));
+            assert_eq!(harness.sent(), vec![typed_key('^'), typed_key('a')]);
         }
 
         #[test]

@@ -57,13 +57,17 @@ pub struct LoopOutcome {
     pub switch_to: Option<ConnectToSession>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum Ending {
+    Exited(ExitReason),
+    Switched(ConnectToSession),
+    Lost,
+    Failed(String),
+}
+
 pub trait RenderSink {
     fn frame(&mut self, frame: Vec<u8>) -> bool;
-    fn finished(
-        &mut self,
-        exit_reason: Option<&ExitReason>,
-        switch_to: Option<ConnectToSession>,
-    ) -> bool;
+    fn finished(&mut self, ending: Ending) -> bool;
     fn acknowledges_frames(&self) -> bool;
     fn reconfigured(&mut self, _settings: Settings) -> bool {
         true
@@ -79,11 +83,7 @@ impl RenderSink for DiscardingSink {
     fn frame(&mut self, _frame: Vec<u8>) -> bool {
         true
     }
-    fn finished(
-        &mut self,
-        _exit_reason: Option<&ExitReason>,
-        _switch_to: Option<ConnectToSession>,
-    ) -> bool {
+    fn finished(&mut self, _ending: Ending) -> bool {
         true
     }
     fn acknowledges_frames(&self) -> bool {
@@ -109,7 +109,14 @@ pub fn run_with_sink(
     } = connection;
 
     let mut recorder = match &options.record_path {
-        Some(path) => Some(Recorder::create(path, &session_name, geometry.get())?),
+        Some(path) => match Recorder::create(path, &session_name, geometry.get()) {
+            Ok(recorder) => Some(recorder),
+            Err(e) => {
+                sink.finished(Ending::Failed(format!("{:#}", e)));
+                let _ = send(&sender, ClientToServerMsg::ClientExited);
+                return Err(e);
+            },
+        },
         None => None,
     };
 
@@ -120,6 +127,7 @@ pub fn run_with_sink(
     let mut switch_to: Option<ConnectToSession> = None;
     let mut stale_server: Option<anyhow::Error> = None;
     let mut dead_sink: Option<anyhow::Error> = None;
+    let mut failure: Option<anyhow::Error> = None;
     let mut settings = options.settings.clone();
     let mut theme_mode: Option<HostTerminalThemeMode> = None;
     let mut paints = crate::options::resolve(&settings, theme_mode).paints;
@@ -134,10 +142,12 @@ pub fn run_with_sink(
             Err(IpcReceiveError::Undecodable) => {
                 undecodable_count += 1;
                 if undecodable_count >= MAX_CONSECUTIVE_UNDECODABLE {
-                    eprintln!(
-                        "zellij-window: {} consecutive undecodable messages, disconnecting",
+                    failure = Some(anyhow!(
+                        "{} consecutive messages from the session server could not be read, so \
+                         the window disconnected. The server may be running a different version \
+                         of zellij.",
                         undecodable_count
-                    );
+                    ));
                     break;
                 }
                 continue;
@@ -146,7 +156,10 @@ pub fn run_with_sink(
         };
 
         if let Some(recorder) = recorder.as_mut() {
-            recorder.record(&msg)?;
+            if let Err(e) = recorder.record(&msg) {
+                failure = Some(e.context("failed to record a message from the session"));
+                break;
+            }
         }
 
         match msg {
@@ -154,16 +167,18 @@ pub fn run_with_sink(
                 render_count += 1;
                 if !sink.acknowledges_frames() {
                     match zellij_utils::structured_render::decode(&frame) {
-                        Ok(view) => send(
-                            &sender,
-                            ClientToServerMsg::RenderFrameAck {
-                                seq: view.header().seq,
-                            },
-                        )?,
-                        Err(e) => eprintln!(
-                            "zellij-window: an undecodable frame cannot be acknowledged: {}",
-                            e
-                        ),
+                        Ok(view) => {
+                            if let Err(e) = send(
+                                &sender,
+                                ClientToServerMsg::RenderFrameAck {
+                                    seq: view.header().seq,
+                                },
+                            ) {
+                                failure = Some(e);
+                                break;
+                            }
+                        },
+                        Err(e) => report!("an undecodable frame cannot be acknowledged: {}", e),
                     }
                 }
                 if !sink.frame(frame) {
@@ -196,12 +211,15 @@ pub fn run_with_sink(
                 break;
             },
             ServerToClientMsg::QueryTerminalSize => {
-                send(
+                if let Err(e) = send(
                     &sender,
                     ClientToServerMsg::TerminalResize {
                         new_size: geometry.get().size(),
                     },
-                )?;
+                ) {
+                    failure = Some(e);
+                    break;
+                }
             },
             ServerToClientMsg::ForwardQueryToHost {
                 token, query_bytes, ..
@@ -212,10 +230,13 @@ pub fn run_with_sink(
                     &paints,
                     options.clipboard.as_ref(),
                 );
-                send(
+                if let Err(e) = send(
                     &sender,
                     ClientToServerMsg::ForwardedReplyFromHost { token, reply_bytes },
-                )?;
+                ) {
+                    failure = Some(e);
+                    break;
+                }
             },
             ServerToClientMsg::ConfigFileUpdated => {
                 let Some(config_path) = options.config_path.as_deref() else {
@@ -227,10 +248,11 @@ pub fn run_with_sink(
                         paints = crate::options::resolve(&settings, theme_mode).paints;
                         sink.reconfigured(settings.clone());
                     },
-                    Err(e) => eprintln!(
-                        "zellij-window: keeping the options in force; \
+                    Err(e) => report!(
+                        "keeping the options in force; \
                          the changed configuration at {:?} is unusable: {}",
-                        config_path, e
+                        config_path,
+                        e
                     ),
                 }
             },
@@ -243,8 +265,12 @@ pub fn run_with_sink(
         }
     }
 
-    if !sink.finished(exit_reason.as_ref(), switch_to.clone()) {
-        eprintln!("zellij-window: the window could not be told that the session ended");
+    if let Some(stale_server) = stale_server {
+        failure = Some(stale_server);
+    }
+    let ending = ending_of(failure.as_ref(), exit_reason.as_ref(), switch_to.as_ref());
+    if !sink.finished(ending) {
+        report!("the window could not be told that the session ended");
     }
 
     let recorded_messages = match recorder {
@@ -256,9 +282,9 @@ pub fn run_with_sink(
         None => 0,
     };
 
-    if let Some(stale_server) = stale_server {
+    if let Some(failure) = failure {
         let _ = send(&sender, ClientToServerMsg::ClientExited);
-        return Err(stale_server);
+        return Err(failure);
     }
 
     if let Some(dead_sink) = dead_sink {
@@ -275,6 +301,23 @@ pub fn run_with_sink(
     })
 }
 
+fn ending_of(
+    failure: Option<&anyhow::Error>,
+    exit_reason: Option<&ExitReason>,
+    switch_to: Option<&ConnectToSession>,
+) -> Ending {
+    if let Some(failure) = failure {
+        return Ending::Failed(format!("{:#}", failure));
+    }
+    if let Some(switch_to) = switch_to {
+        return Ending::Switched(switch_to.clone());
+    }
+    match exit_reason {
+        Some(reason) => Ending::Exited(reason.clone()),
+        None => Ending::Lost,
+    }
+}
+
 pub fn detach_on_signal(detacher: Detacher) {
     #[cfg(unix)]
     {
@@ -285,14 +328,14 @@ pub fn detach_on_signal(detacher: Detacher) {
             let mut signals = match Signals::new([SIGINT, SIGTERM]) {
                 Ok(signals) => signals,
                 Err(e) => {
-                    eprintln!("zellij-window: failed to install signal handler: {}", e);
+                    report!("failed to install signal handler: {}", e);
                     return;
                 },
             };
             if signals.forever().next().is_some() {
                 if let Err(e) = detacher.detach() {
-                    eprintln!(
-                        "zellij-window: the signal could not be passed on to a session, \
+                    report!(
+                        "the signal could not be passed on to a session, \
                          so the window quits: {}",
                         e
                     );
@@ -349,17 +392,15 @@ mod tests {
     struct RecordingSink {
         reconfigured: Vec<Settings>,
         modes: Vec<HostTerminalThemeMode>,
+        endings: Vec<Ending>,
     }
 
     impl RenderSink for RecordingSink {
         fn frame(&mut self, _frame: Vec<u8>) -> bool {
             true
         }
-        fn finished(
-            &mut self,
-            _exit_reason: Option<&ExitReason>,
-            _switch_to: Option<ConnectToSession>,
-        ) -> bool {
+        fn finished(&mut self, ending: Ending) -> bool {
+            self.endings.push(ending);
             true
         }
         fn acknowledges_frames(&self) -> bool {
@@ -848,6 +889,110 @@ mod tests {
         assert_eq!(outcome.render_count, 1);
         assert_eq!(outcome.exit_reason, None);
         server.finish();
+    }
+
+    fn ending_for(
+        options: LoopOptions,
+        script: impl FnOnce(&mut crate::test_server::ServerSide) + Send + 'static,
+    ) -> Ending {
+        let server = FakeServer::spawn(move |side| {
+            side.expect(HANDSHAKE_MESSAGES);
+            script(side);
+        });
+        let connection = attach_at(
+            &server.path,
+            "window-test",
+            geometry(),
+            Capabilities::default(),
+        )
+        .unwrap();
+        let mut sink = RecordingSink::default();
+        let _ = run_with_sink(connection, options, &mut sink);
+        server.finish();
+        assert_eq!(
+            sink.endings.len(),
+            1,
+            "the window is told exactly once, got {:?}",
+            sink.endings
+        );
+        sink.endings.remove(0)
+    }
+
+    #[test]
+    fn the_window_is_told_the_reason_the_server_gave() {
+        for reason in [
+            ExitReason::NormalDetached,
+            ExitReason::KickedByHost,
+            ExitReason::Error("the screen thread failed".to_owned()),
+        ] {
+            let sent = reason.clone();
+            let ending = ending_for(options(), move |side| {
+                side.send(ServerToClientMsg::Exit { exit_reason: sent });
+                side.expect(1);
+            });
+            assert_eq!(ending, Ending::Exited(reason));
+        }
+    }
+
+    #[test]
+    fn the_window_is_told_when_the_connection_drops_without_a_reason() {
+        let ending = ending_for(options(), |side| side.send(render(0)));
+        assert_eq!(ending, Ending::Lost);
+    }
+
+    #[test]
+    fn the_window_is_told_where_the_session_switches_to() {
+        let target = ConnectToSession {
+            name: Some("elsewhere".to_owned()),
+            ..ConnectToSession::default()
+        };
+        let sent = target.clone();
+        let ending = ending_for(options(), move |side| {
+            side.send(ServerToClientMsg::SwitchSession {
+                connect_to_session: sent,
+            });
+            side.expect(1);
+        });
+        assert_eq!(ending, Ending::Switched(target));
+    }
+
+    #[test]
+    fn the_window_is_told_when_the_server_is_too_old_to_draw_for_it() {
+        let ending = ending_for(
+            LoopOptions {
+                structured_grace: Duration::ZERO,
+                ..options()
+            },
+            |side| {
+                side.send(ServerToClientMsg::Render {
+                    content: "\u{1b}[31mnever parsed".to_owned(),
+                });
+                side.expect(1);
+            },
+        );
+        match ending {
+            Ending::Failed(message) => {
+                assert!(
+                    message.contains("predates structured rendering"),
+                    "{}",
+                    message
+                )
+            },
+            other => panic!("expected a failure, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn the_window_is_told_when_a_recording_cannot_be_made() {
+        let dir = TempDir::new().unwrap();
+        let ending = ending_for(
+            LoopOptions {
+                record_path: Some(dir.path().to_path_buf()),
+                ..options()
+            },
+            |side| side.expect(1),
+        );
+        assert!(matches!(ending, Ending::Failed(_)), "{:?}", ending);
     }
 
     #[test]

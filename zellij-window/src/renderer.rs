@@ -645,7 +645,7 @@ impl Renderer {
                         unsafe { self.gl.delete_texture(previous.texture) };
                     }
                 },
-                Err(e) => eprintln!("zellij-window: image upload failed: {}", e),
+                Err(e) => report!("image upload failed: {}", e),
             }
         }
     }

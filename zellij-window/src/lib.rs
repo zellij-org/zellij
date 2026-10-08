@@ -1,3 +1,5 @@
+#[macro_use]
+mod diagnostics;
 #[cfg(test)]
 mod adversarial;
 mod atlas;
@@ -83,8 +85,8 @@ use crate::options::Options;
 use crate::window_state::{Startup, WindowState};
 use zellij_utils::input::window::StartupMode;
 
-
 pub fn run(args: WindowArgs, opts: CliArgs) -> Result<()> {
+    diagnostics::log_crashes();
     spawn::forget_launching_session();
     open(args, opts)
 }
@@ -399,7 +401,10 @@ fn open(args: WindowArgs, opts: CliArgs) -> Result<()> {
         capabilities,
         fonts,
         startup,
-    } = plan(&args, &options, saved)?;
+    } = match plan(&args, &options, saved) {
+        Ok(plan) => plan,
+        Err(e) => return refuse(Refusal::new(format!("{:#}", e)), &args, None),
+    };
 
     let target = match resolve(&args, &config_options, capabilities) {
         Ok(target) => target,
@@ -452,13 +457,20 @@ fn refuse(
     args: &WindowArgs,
     surface: Option<(FontStack, Options)>,
 ) -> Result<()> {
-    eprintln!("zellij-window: {}", refusal.text);
-    if let Some((fonts, options)) = surface {
-        if !args.headless {
-            notice::show(&refusal.text, fonts, &options)?;
+    report!("{}", refusal.text);
+    if !args.headless {
+        match surface.map(Ok).unwrap_or_else(fallback_surface) {
+            Ok((fonts, options)) => notice::show(&refusal.text, fonts, &options)?,
+            Err(e) => report!("the message could not be shown in a window: {:#}", e),
         }
     }
     bail!("{}", refusal.text)
+}
+
+fn fallback_surface() -> Result<(FontStack, Options)> {
+    let options = options::resolve(&settings::Settings::default(), None);
+    let fonts = options.font.stack(1.0)?;
+    Ok((fonts, options))
 }
 
 fn start_server(session_name: &str) -> Result<PathBuf> {
@@ -518,8 +530,8 @@ fn drive(
         None => {
             let outcome = client_loop::run(connection, loop_options)?;
             if outcome.switch_to.is_some() {
-                eprintln!(
-                    "zellij-window: the session asked to switch to another one, \
+                report!(
+                    "the session asked to switch to another one, \
                      which a window that was never opened cannot follow"
                 );
             }
@@ -555,7 +567,7 @@ mod tests {
     }
 
     fn planned(args: &WindowArgs) -> Result<Plan> {
-        planned_with(args, &sized(16.0))
+        planned_with(args, &sized(crate::font::pixels_to_points(16.0)))
     }
 
     fn planned_with(args: &WindowArgs, settings: &settings::Settings) -> Result<Plan> {

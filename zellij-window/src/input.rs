@@ -15,6 +15,7 @@ pub struct Press {
     pub unmodified: Option<Key>,
     pub modifiers: ModifiersState,
     pub option_as_alt: bool,
+    pub text: Option<String>,
 }
 
 impl Press {
@@ -24,6 +25,7 @@ impl Press {
             unmodified: unmodified_key(event),
             modifiers,
             option_as_alt,
+            text: event.text.as_ref().map(|text| text.to_string()),
         }
     }
 
@@ -33,7 +35,43 @@ impl Press {
             unmodified: None,
             modifiers,
             option_as_alt: false,
+            text: None,
         }
+    }
+
+    #[cfg(test)]
+    pub fn with_text(mut self, text: &str) -> Self {
+        self.text = Some(text.to_owned());
+        self
+    }
+
+    fn is_shortcut(&self) -> bool {
+        self.modifiers.super_key() || (self.modifiers.control_key() && !self.modifiers.alt_key())
+    }
+
+    fn produced_text(&self) -> Option<String> {
+        if self.is_shortcut() {
+            return None;
+        }
+        let printable: String = self
+            .text
+            .as_deref()?
+            .chars()
+            .filter(|character| !character.is_control())
+            .collect();
+        (!printable.is_empty()).then_some(printable)
+    }
+
+    fn spelled(&self) -> Option<String> {
+        match &self.logical {
+            Key::Character(text) => Some(text.to_string()),
+            Key::Named(NamedKey::Space) => Some(" ".to_owned()),
+            _ => None,
+        }
+    }
+
+    fn is_named_key(&self) -> bool {
+        matches!(&self.logical, Key::Named(named) if *named != NamedKey::Space)
     }
 
     fn effective_modifiers(&self) -> ModifiersState {
@@ -44,6 +82,61 @@ impl Press {
         }
         modifiers
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DeadKeyOutcome {
+    Wait,
+    Type(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Resolution {
+    Key,
+    Type(String),
+    TypeThenKey(String),
+    Nothing,
+}
+
+pub fn dead_key_press(press: &Press) -> DeadKeyOutcome {
+    match press.produced_text() {
+        Some(text) => DeadKeyOutcome::Type(text),
+        None => DeadKeyOutcome::Wait,
+    }
+}
+
+pub fn resolve_pending_accent(press: &Press) -> Resolution {
+    if matches!(press.logical, Key::Unidentified(_)) {
+        return match press.produced_text() {
+            Some(text) => Resolution::Type(text),
+            None => Resolution::Nothing,
+        };
+    }
+    let Some(text) = press.produced_text() else {
+        return Resolution::Key;
+    };
+    if press.spelled().as_deref() == Some(text.as_str()) {
+        return Resolution::Key;
+    }
+    if press.is_named_key() {
+        Resolution::TypeThenKey(text)
+    } else {
+        Resolution::Type(text)
+    }
+}
+
+pub fn unidentified_text(press: &Press) -> Option<String> {
+    match press.logical {
+        Key::Unidentified(_) => press.produced_text(),
+        _ => None,
+    }
+}
+
+pub fn typed_text_message(text: String) -> Option<ClientToServerMsg> {
+    key_message(&Press::new(
+        Key::Character(text.as_str().into()),
+        ModifiersState::empty(),
+    ))
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -275,6 +368,7 @@ mod tests {
             unmodified: Some(character(unmodified)),
             modifiers,
             option_as_alt: false,
+            text: None,
         }
     }
 
@@ -436,6 +530,143 @@ mod tests {
         assert!(typed(&press(Key::Dead(Some('`')), none())).is_none());
         assert!(typed(&press(Key::Named(NamedKey::BrightnessUp), none())).is_none());
         assert!(typed(&press(Key::Unidentified(NativeKey::Unidentified), none())).is_none());
+    }
+
+    fn unidentified() -> Key {
+        Key::Unidentified(NativeKey::Unidentified)
+    }
+
+    #[test]
+    fn a_dead_key_without_text_waits_for_the_next_key() {
+        assert_eq!(
+            dead_key_press(&press(Key::Dead(Some('^')), none())),
+            DeadKeyOutcome::Wait
+        );
+    }
+
+    #[test]
+    fn a_dead_key_pressed_twice_types_what_the_system_produced() {
+        assert_eq!(
+            dead_key_press(&press(Key::Dead(Some('^')), none()).with_text("^^")),
+            DeadKeyOutcome::Type("^^".to_owned()),
+            "windows reports the second press as a dead key carrying both accents"
+        );
+        assert_eq!(
+            dead_key_press(&press(Key::Dead(Some('^')), none()).with_text("^")),
+            DeadKeyOutcome::Type("^".to_owned())
+        );
+    }
+
+    #[test]
+    fn a_dead_key_with_a_shortcut_modifier_still_waits() {
+        assert_eq!(
+            dead_key_press(&press(Key::Dead(Some('^')), ModifiersState::CONTROL).with_text("^")),
+            DeadKeyOutcome::Wait
+        );
+    }
+
+    #[test]
+    fn space_after_a_dead_key_types_the_accent_rather_than_a_space() {
+        let pressed = press(Key::Named(NamedKey::Space), none()).with_text("^");
+        assert_eq!(
+            resolve_pending_accent(&pressed),
+            Resolution::Type("^".to_owned())
+        );
+    }
+
+    #[test]
+    fn a_letter_the_accent_cannot_combine_with_types_both() {
+        let pressed = press(character("x"), none()).with_text("^x");
+        assert_eq!(
+            resolve_pending_accent(&pressed),
+            Resolution::Type("^x".to_owned()),
+            "windows reports the plain letter as the key and both characters as the text"
+        );
+    }
+
+    #[test]
+    fn a_combined_letter_is_delivered_as_its_own_key() {
+        let pressed = press(character("ê"), none()).with_text("ê");
+        assert_eq!(resolve_pending_accent(&pressed), Resolution::Key);
+        assert_eq!(
+            resolve_pending_accent(&press(character("ê"), none())),
+            Resolution::Key
+        );
+    }
+
+    #[test]
+    fn a_named_key_after_a_dead_key_types_the_accent_then_acts() {
+        let pressed = press(Key::Named(NamedKey::Enter), none()).with_text("^\r");
+        assert_eq!(
+            resolve_pending_accent(&pressed),
+            Resolution::TypeThenKey("^".to_owned()),
+            "the control character in the text belongs to the key and must not be typed twice"
+        );
+        assert_eq!(
+            resolve_pending_accent(&press(Key::Named(NamedKey::Enter), none())),
+            Resolution::Key
+        );
+    }
+
+    #[test]
+    fn a_shortcut_after_a_dead_key_is_delivered_as_a_shortcut() {
+        let pressed = press(character("c"), ModifiersState::CONTROL).with_text("^c");
+        assert_eq!(resolve_pending_accent(&pressed), Resolution::Key);
+        let pressed = press(character("c"), ModifiersState::SUPER).with_text("^c");
+        assert_eq!(resolve_pending_accent(&pressed), Resolution::Key);
+    }
+
+    #[test]
+    fn altgr_reported_as_control_and_alt_still_types() {
+        let pressed = press(
+            character("x"),
+            ModifiersState::CONTROL | ModifiersState::ALT,
+        )
+        .with_text("^x");
+        assert_eq!(
+            resolve_pending_accent(&pressed),
+            Resolution::Type("^x".to_owned())
+        );
+    }
+
+    #[test]
+    fn a_cancelled_sequence_with_nothing_produced_sends_nothing() {
+        assert_eq!(
+            resolve_pending_accent(&press(unidentified(), none())),
+            Resolution::Nothing,
+            "linux cancels an accent that cannot combine and reports no text"
+        );
+    }
+
+    #[test]
+    fn an_unidentified_key_with_text_is_typed() {
+        assert_eq!(
+            unidentified_text(&press(unidentified(), none()).with_text("′")),
+            Some("′".to_owned()),
+            "a character picker or the emoji panel delivers its character this way"
+        );
+        assert_eq!(unidentified_text(&press(unidentified(), none())), None);
+        assert_eq!(
+            unidentified_text(&press(character("a"), none()).with_text("a")),
+            None
+        );
+        assert_eq!(
+            unidentified_text(&press(unidentified(), none()).with_text("\u{7}")),
+            None,
+            "a lone control character is not text"
+        );
+    }
+
+    #[test]
+    fn typed_text_is_a_key_for_one_character_and_text_for_more() {
+        assert_eq!(
+            typed_text_message("^".to_owned()),
+            key_message(&press(character("^"), none()))
+        );
+        assert_eq!(
+            typed_text_message("^x".to_owned()),
+            Some(text_message("^x".to_owned()))
+        );
     }
 
     #[test]
@@ -645,6 +876,7 @@ mod tests {
             unmodified: None,
             modifiers: ModifiersState::ALT,
             option_as_alt: false,
+            text: None,
         };
         assert_eq!(
             translate(&pressed),

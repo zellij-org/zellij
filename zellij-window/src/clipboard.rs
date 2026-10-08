@@ -23,8 +23,8 @@ impl Clipboard {
                 backend: Backend::System(Box::new(clipboard)),
             },
             Err(e) => {
-                eprintln!(
-                    "zellij-window: no system clipboard ({}); copy and paste stay inside this window",
+                report!(
+                    "no system clipboard ({}); copy and paste stay inside this window",
                     e
                 );
                 Self::in_memory()
@@ -45,7 +45,7 @@ impl Clipboard {
         match &mut self.backend {
             Backend::System(clipboard) => {
                 if let Err(e) = clipboard.set_text(text) {
-                    eprintln!("zellij-window: failed to write the clipboard: {}", e);
+                    report!("failed to write the clipboard: {}", e);
                 }
             },
             Backend::Memory { clipboard, .. } => {
@@ -104,12 +104,12 @@ fn reported(read: Result<String, arboard::Error>, announce_empty: bool) -> Optio
         Ok(_) => None,
         Err(arboard::Error::ContentNotAvailable) => {
             if announce_empty {
-                eprintln!("zellij-window: the clipboard holds no text; nothing to paste");
+                report!("the clipboard holds no text; nothing to paste");
             }
             None
         },
         Err(e) => {
-            eprintln!("zellij-window: failed to read the clipboard: {}", e);
+            report!("failed to read the clipboard: {}", e);
             None
         },
     }
