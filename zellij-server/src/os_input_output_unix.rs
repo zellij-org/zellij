@@ -1,4 +1,4 @@
-use crate::os_input_output::{command_exists, AsyncReader, PaneEnv};
+use crate::os_input_output::{command_exists, pane_env_for_command, AsyncReader, PaneEnv};
 use crate::panes::PaneId;
 
 use nix::{
@@ -202,6 +202,7 @@ fn handle_openpty(
     let pid_primary = open_pty_res.master.into_raw_fd();
     let pid_secondary = open_pty_res.slave.into_raw_fd();
 
+    let pane_env = &pane_env_for_command(&cmd, pane_env);
     if !command_exists(&cmd, pane_env) {
         return Err(ZellijError::CommandNotFound {
             terminal_id,

@@ -82,6 +82,29 @@ pub fn env_value(pane_env: &PaneEnv, name: &str) -> Option<String> {
     }
 }
 
+/// The environment for spawning `cmd`: the pane environment with the command's own variables
+/// layered on top. `ZELLIJ_PANE_ID` is always set by zellij and cannot be overridden.
+pub(crate) fn pane_env_for_command(cmd: &RunCommand, pane_env: &PaneEnv) -> PaneEnv {
+    let mut pane_env = pane_env.clone();
+    for (name, value) in &cmd.env {
+        if same_env_name(name, "ZELLIJ_PANE_ID") {
+            continue;
+        }
+        pane_env.retain(|existing, _| !same_env_name(existing, name));
+        pane_env.insert(name.clone(), Some(value.clone()));
+    }
+    pane_env
+}
+
+/// Environment variable names are case-insensitive on Windows
+fn same_env_name(a: &str, b: &str) -> bool {
+    if cfg!(windows) {
+        a.eq_ignore_ascii_case(b)
+    } else {
+        a == b
+    }
+}
+
 /// Resolve a command to its absolute path, searching the working directory,
 /// then PATH (and PATHEXT on Windows).
 pub(crate) fn resolve_command(cmd: &RunCommand, pane_env: &PaneEnv) -> Option<PathBuf> {

@@ -79,6 +79,7 @@ fn main() {
             borderless,
             border_style,
             tab_id,
+            env,
         })) = opts.command
         {
             let cwd = cwd.or_else(|| std::env::current_dir().ok());
@@ -125,6 +126,7 @@ fn main() {
                 borderless,
                 border_style,
                 tab_id,
+                env,
             };
             commands::send_action_to_session(command_cli_action, opts.session, config);
             std::process::exit(0);
@@ -181,6 +183,7 @@ fn main() {
                 borderless,
                 border_style,
                 tab_id,
+                env: vec![],
             };
             commands::send_action_to_session(command_cli_action, opts.session, config);
             std::process::exit(0);
@@ -314,6 +317,7 @@ fn main() {
                 block_until_exit_failure: false,
                 block_until_exit: false,
                 no_focus: false,
+                env: vec![],
             };
             commands::send_action_to_session(new_layout_cli_action, Some(session_name), config);
         } else {

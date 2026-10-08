@@ -3215,6 +3215,7 @@ pub fn start_server_impl(
                         .senders
                         .send_to_screen(ScreenInstruction::NewTab(
                             cwd.clone(),
+                            BTreeMap::new(),
                             default_shell.clone(),
                             tab_layout,
                             floating_panes_layout,

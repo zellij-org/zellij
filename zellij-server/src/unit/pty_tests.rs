@@ -493,3 +493,99 @@ fn osc7_then_poll_skips_terminal() {
         "poll after osc7 should skip terminal since flag was cleared"
     );
 }
+
+#[test]
+fn new_tab_env_reaches_default_shell_and_command_panes_only() {
+    use std::collections::BTreeMap;
+    use zellij_utils::input::command::TerminalAction;
+    use zellij_utils::input::layout::{Layout, Run};
+
+    let kdl = r#"
+        layout {
+            pane
+            pane cwd="/tmp"
+            pane command="htop"
+            pane edit="notes.txt"
+            pane {
+                plugin location="zellij:status-bar"
+            }
+            floating_panes {
+                pane command="top"
+                pane
+            }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl, None, None, None).expect("layout should parse");
+    let (tiled_layout, floating_panes_layout) = layout.new_tab();
+    let env: BTreeMap<String, String> = [("FOO".to_owned(), "bar".to_owned())].into();
+    let mut default_shell = TerminalAction::RunCommand(RunCommand::new(PathBuf::from("/bin/sh")));
+
+    let (tiled, floating) = new_tab_run_instructions_with_env(
+        &env,
+        &mut default_shell,
+        &tiled_layout,
+        &floating_panes_layout,
+    );
+
+    // bare and cwd-only panes are spawned from the default shell
+    match &default_shell {
+        TerminalAction::RunCommand(run_command) => assert_eq!(run_command.env, env),
+        other => panic!("expected a RunCommand default shell, got {:?}", other),
+    }
+    let command_envs = |runs: &[Option<Run>]| -> Vec<Option<BTreeMap<String, String>>> {
+        runs.iter()
+            .map(|run| match run {
+                Some(Run::Command(run_command)) => Some(run_command.env.clone()),
+                _ => None,
+            })
+            .collect()
+    };
+    assert_eq!(tiled.len(), 5);
+    assert_eq!(
+        command_envs(&tiled),
+        vec![None, None, Some(env.clone()), None, None]
+    );
+    assert!(matches!(tiled[1], Some(Run::Cwd(_))));
+    assert!(matches!(tiled[3], Some(Run::EditFile(..))));
+    assert!(matches!(tiled[4], Some(Run::Plugin(_))));
+    assert_eq!(floating.len(), 2);
+    assert_eq!(command_envs(&floating), vec![Some(env.clone()), None]);
+}
+
+#[test]
+fn empty_command_is_filled_with_the_shell_from_the_pane_env() {
+    use crate::os_input_output::PaneEnv;
+    use zellij_utils::input::command::TerminalAction;
+
+    let mut bus: Bus<PtyInstruction> = Bus::empty().should_silently_fail();
+    bus.os_input = Some(Box::new(MockOsApi::new()));
+    let mut pane_env = PaneEnv::new();
+    pane_env.insert("SHELL".to_owned(), Some("/from/the/config/fish".to_owned()));
+    let pty = Pty::new(bus, false, None, None, pane_env);
+    let env: BTreeMap<String, String> = [("FOO".to_owned(), "bar".to_owned())].into();
+
+    let shell = pty.fill_default_shell(Some(TerminalAction::RunCommand(RunCommand {
+        env: env.clone(),
+        use_terminal_title: true,
+        ..Default::default()
+    })));
+    match shell {
+        Some(TerminalAction::RunCommand(run_command)) => {
+            assert_eq!(run_command.command, PathBuf::from("/from/the/config/fish"));
+            assert_eq!(run_command.env, env);
+            assert!(run_command.use_terminal_title);
+        },
+        other => panic!("expected a RunCommand, got {:?}", other),
+    }
+
+    let command = pty.fill_default_shell(Some(TerminalAction::RunCommand(RunCommand::new(
+        PathBuf::from("htop"),
+    ))));
+    match command {
+        Some(TerminalAction::RunCommand(run_command)) => {
+            assert_eq!(run_command.command, PathBuf::from("htop"))
+        },
+        other => panic!("expected a RunCommand, got {:?}", other),
+    }
+    assert!(pty.fill_default_shell(None).is_none());
+}

@@ -977,6 +977,8 @@ pub struct NewFloatingPaneAction {
     pub tab_id: ::core::option::Option<u32>,
     #[prost(bool, tag="9")]
     pub no_focus: bool,
+    #[prost(map="string, string", tag="10")]
+    pub env: ::std::collections::HashMap<::prost::alloc::string::String, ::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -997,6 +999,8 @@ pub struct NewTiledPaneAction {
     pub no_focus: bool,
     #[prost(message, optional, tag="11")]
     pub border_style: ::core::option::Option<BorderStyleOverride>,
+    #[prost(map="string, string", tag="12")]
+    pub env: ::std::collections::HashMap<::prost::alloc::string::String, ::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1015,6 +1019,8 @@ pub struct NewInPlacePaneAction {
     pub tab_id: ::core::option::Option<u32>,
     #[prost(bool, tag="7")]
     pub no_focus: bool,
+    #[prost(map="string, string", tag="8")]
+    pub env: ::std::collections::HashMap<::prost::alloc::string::String, ::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1029,6 +1035,8 @@ pub struct NewStackedPaneAction {
     pub tab_id: ::core::option::Option<u32>,
     #[prost(bool, tag="5")]
     pub no_focus: bool,
+    #[prost(map="string, string", tag="6")]
+    pub env: ::std::collections::HashMap<::prost::alloc::string::String, ::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1047,6 +1055,8 @@ pub struct NewBlockingPaneAction {
     pub tab_id: ::core::option::Option<u32>,
     #[prost(bool, tag="7")]
     pub no_focus: bool,
+    #[prost(map="string, string", tag="8")]
+    pub env: ::std::collections::HashMap<::prost::alloc::string::String, ::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1075,6 +1085,8 @@ pub struct NewTabAction {
     pub initial_panes: ::prost::alloc::vec::Vec<CommandOrPlugin>,
     #[prost(enumeration="UnblockCondition", optional, tag="9")]
     pub first_pane_unblock_condition: ::core::option::Option<i32>,
+    #[prost(map="string, string", tag="10")]
+    pub env: ::std::collections::HashMap<::prost::alloc::string::String, ::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1694,6 +1706,8 @@ pub struct RunCommandAction {
     /// Added missing use_terminal_title field
     #[prost(bool, tag="8")]
     pub use_terminal_title: bool,
+    #[prost(map="string, string", tag="9")]
+    pub env: ::std::collections::HashMap<::prost::alloc::string::String, ::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
