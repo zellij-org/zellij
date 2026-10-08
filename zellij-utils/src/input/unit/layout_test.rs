@@ -2576,3 +2576,169 @@ fn tiled_pane_still_rejects_zero_percent() {
     let result = SplitSize::from_str("1%");
     assert!(result.is_ok());
 }
+
+#[test]
+fn layout_with_only_plugin_panes_has_no_terminal_panes() {
+    let kdl_layout = r#"
+        layout {
+            tab name="topgrade" {
+                pane size=1 borderless=true {
+                    plugin location="zellij:tab-bar"
+                }
+                pane borderless=true {
+                    plugin location="zellij:status-bar"
+                }
+            }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
+    assert!(!layout.has_terminal_panes());
+}
+
+#[test]
+fn layout_with_a_single_bare_pane_has_terminal_panes() {
+    let kdl_layout = r#"
+        layout {
+            pane
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
+    assert!(layout.has_terminal_panes());
+}
+
+#[test]
+fn layout_with_plugin_and_terminal_panes_has_terminal_panes() {
+    let kdl_layout = r#"
+        layout {
+            tab name="topgrade" {
+                pane size=1 borderless=true {
+                    plugin location="zellij:tab-bar"
+                }
+                pane borderless=true {
+                    plugin location="zellij:status-bar"
+                }
+                pane
+            }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
+    assert!(layout.has_terminal_panes());
+}
+
+#[test]
+fn layout_with_only_plugin_panes_in_floating_layer_has_no_terminal_panes() {
+    let kdl_layout = r#"
+        layout {
+            floating_panes {
+                pane {
+                    plugin location="zellij:status-bar"
+                }
+            }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
+    assert!(!layout.has_terminal_panes());
+}
+
+#[test]
+fn layout_with_a_terminal_floating_pane_has_terminal_panes() {
+    let kdl_layout = r#"
+        layout {
+            floating_panes {
+                pane {
+                    plugin location="zellij:status-bar"
+                }
+                pane
+            }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
+    assert!(layout.has_terminal_panes());
+}
+
+// A layout file with no panes at all is what a session whose terminal panes all went away
+// serializes to. Attaching to it silently exits, so it must be reported as having no
+// terminal panes rather than as a default bare pane.
+#[test]
+fn empty_layout_has_no_terminal_panes() {
+    let kdl_layout = r#"
+        layout {
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
+    assert!(!layout.has_terminal_panes());
+}
+
+#[test]
+fn layout_with_only_a_tab_bar_plugin_has_no_terminal_panes() {
+    let kdl_layout = r#"
+        layout {
+            tab {
+                pane size=1 borderless=true {
+                    plugin location="zellij:tab-bar"
+                }
+            }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
+    assert!(!layout.has_terminal_panes());
+}
+
+#[test]
+fn nested_split_of_plugins_has_no_terminal_panes() {
+    let kdl_layout = r#"
+        layout {
+            tab {
+                pane split_direction="vertical" {
+                    pane {
+                        plugin location="zellij:tab-bar"
+                    }
+                    pane {
+                        plugin location="zellij:status-bar"
+                    }
+                }
+            }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
+    assert!(!layout.has_terminal_panes());
+}
+
+#[test]
+fn nested_split_with_one_terminal_pane_has_terminal_panes() {
+    let kdl_layout = r#"
+        layout {
+            tab {
+                pane split_direction="vertical" {
+                    pane {
+                        plugin location="zellij:tab-bar"
+                    }
+                    pane
+                }
+            }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
+    assert!(layout.has_terminal_panes());
+}
+
+// A real session always serializes its status bar as a floating pane next to the terminal
+// panes, so the default layouts that ship with zellij must not be flagged.
+#[test]
+fn default_layouts_have_terminal_panes() {
+    for (layout_name, raw_layout) in [
+        ("default", crate::setup::DEFAULT_LAYOUT),
+        ("compact-bar", crate::setup::COMPACT_BAR_LAYOUT),
+        ("classic", crate::setup::CLASSIC_LAYOUT),
+        ("no-status", crate::setup::NO_STATUS_LAYOUT),
+    ] {
+        let raw_layout = String::from_utf8(raw_layout.to_vec()).unwrap();
+        let layout = Layout::from_kdl(&raw_layout, Some(layout_name.into()), None, None)
+            .unwrap_or_else(|e| panic!("{} failed to parse: {:?}", layout_name, e));
+        assert!(
+            layout.has_terminal_panes(),
+            "{} unexpectedly has no terminal panes",
+            layout_name
+        );
+    }
+}
