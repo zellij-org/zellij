@@ -13,6 +13,7 @@ use crate::font::{CellMetrics, FaceStyle, FontId, GlyphContent, ShapedGlyph};
 use crate::kitty::Image;
 use crate::links::LinkRun;
 use crate::screen_buffer::{CursorShape, Occupancy, TermSize};
+use crate::selection::Selection;
 use crate::terminal::TerminalState;
 use zellij_utils::input::window::OpacityMode;
 
@@ -478,12 +479,23 @@ pub struct RowContext<'a> {
     contrast: Option<&'a Contrast>,
     held_out: &'a [HeldOut],
     only: Option<&'a HeldOut>,
+    selection: Option<&'a Selection>,
 }
 
 impl<'a> RowContext<'a> {
     pub fn with_held_out(mut self, held_out: &'a [HeldOut]) -> Self {
         self.held_out = held_out;
         self
+    }
+
+    pub fn with_selection(mut self, selection: Option<&'a Selection>) -> Self {
+        self.selection = selection;
+        self
+    }
+
+    fn selects(&self, row: usize, col: usize) -> bool {
+        self.selection
+            .is_some_and(|selection| selection.covers(row, col))
     }
 
     pub fn with_only(mut self, only: &'a HeldOut) -> Self {
@@ -557,6 +569,7 @@ impl<'a> RowContext<'a> {
             contrast: None,
             held_out: &[],
             only: None,
+            selection: None,
         }
     }
 
@@ -630,7 +643,12 @@ pub fn build_row(
                 _ => glyph,
             };
         }
+        let selected = context.selects(row, col);
+        if selected && !inverted_by_cursor {
+            std::mem::swap(&mut paint.foreground, &mut paint.background);
+        }
         let explicit_background = inverted_by_cursor
+            || selected
             || cell.has(ATTR_REVERSE)
             || !matches!(WireColor::unpack(cell.bg), WireColor::Default);
         if context.transparent_background && paint.hidden && !explicit_background {

@@ -169,10 +169,13 @@ const EVERY_WINDOW_SETTING_SET: &str = "window {
     bell \"both\"
     notifications \"attention\"
     open_links false
+    open_links_with_shift false
+    shift_drag_selects false
     middle_click_paste false
     hide_pointer_while_typing true
     macos_option_as_alt \"both\"
     paste_keys \"Ctrl Shift v\" \"Shift Insert\"
+    copy_keys \"Ctrl Shift c\"
     zoom_in_keys \"Ctrl =\"
     zoom_out_keys \"Ctrl -\"
     zoom_reset_keys \"Ctrl 0\"

@@ -24,6 +24,9 @@ pub struct Options {
     pub zoom_reset_keys: Vec<KeyWithModifier>,
     pub middle_click_paste: bool,
     pub open_links: bool,
+    pub open_links_with_shift: bool,
+    pub shift_drag_selects: bool,
+    pub copy_keys: Vec<KeyWithModifier>,
     pub bell: BellMode,
     pub notifications: NotificationMode,
     pub paints: Paints,
@@ -130,6 +133,9 @@ pub fn resolve(settings: &Settings, mode: Option<HostTerminalThemeMode>) -> Opti
             .unwrap_or_else(default_zoom_reset_keys),
         middle_click_paste: section.middle_click_paste.unwrap_or(true),
         open_links: section.open_links.unwrap_or(true),
+        open_links_with_shift: section.open_links_with_shift.unwrap_or(true),
+        shift_drag_selects: section.shift_drag_selects.unwrap_or(true),
+        copy_keys: section.copy_keys.clone().unwrap_or_else(default_copy_keys),
         bell: section.bell.unwrap_or(BellMode::Visual),
         notifications: section.notifications.unwrap_or(NotificationMode::Desktop),
         paints: paints(section.theme.as_ref(), settings.theme(mode).as_ref()),
@@ -182,6 +188,10 @@ pub fn default_paste_keys() -> Vec<KeyWithModifier> {
     paste_keys_for(Platform::current())
 }
 
+pub fn default_copy_keys() -> Vec<KeyWithModifier> {
+    copy_keys_for(Platform::current())
+}
+
 pub fn default_zoom_in_keys() -> Vec<KeyWithModifier> {
     zoom_in_keys_for(Platform::current())
 }
@@ -211,6 +221,14 @@ fn paste_keys_for(platform: Platform) -> Vec<KeyWithModifier> {
         KeyWithModifier::new(BareKey::Insert).with_shift_modifier(),
     ];
     keys.extend(command(platform, &[BareKey::Char('v')]));
+    keys
+}
+
+fn copy_keys_for(platform: Platform) -> Vec<KeyWithModifier> {
+    let mut keys = vec![KeyWithModifier::new(BareKey::Char('c'))
+        .with_ctrl_modifier()
+        .with_shift_modifier()];
+    keys.extend(command(platform, &[BareKey::Char('c')]));
     keys
 }
 
@@ -305,6 +323,8 @@ pub struct Change {
     pub zoom_keys: bool,
     pub middle_click_paste: bool,
     pub open_links: bool,
+    pub selection: bool,
+    pub copy_keys: bool,
     pub bell: bool,
     pub notifications: bool,
     pub transparency: bool,
@@ -333,7 +353,10 @@ impl Change {
                 || current.zoom_out_keys != next.zoom_out_keys
                 || current.zoom_reset_keys != next.zoom_reset_keys,
             middle_click_paste: current.middle_click_paste != next.middle_click_paste,
-            open_links: current.open_links != next.open_links,
+            open_links: current.open_links != next.open_links
+                || current.open_links_with_shift != next.open_links_with_shift,
+            selection: current.shift_drag_selects != next.shift_drag_selects,
+            copy_keys: current.copy_keys != next.copy_keys,
             bell: current.bell != next.bell,
             notifications: current.notifications != next.notifications,
             transparency: current.transparency != next.transparency,
@@ -365,6 +388,8 @@ impl Change {
             || self.zoom_keys
             || self.middle_click_paste
             || self.open_links
+            || self.selection
+            || self.copy_keys
             || self.bell
             || self.notifications
             || self.transparency
@@ -545,6 +570,39 @@ mod tests {
             "with nothing configured the session decides whether the cursor blinks"
         );
         assert_eq!(options.startup_mode, StartupMode::Remember);
+        assert!(options.open_links_with_shift);
+        assert!(options.shift_drag_selects);
+        assert_eq!(options.copy_keys, default_copy_keys());
+    }
+
+    #[test]
+    fn the_copy_keys_follow_the_paste_keys_on_every_platform() {
+        let ctrl_shift_c = KeyWithModifier::new(BareKey::Char('c'))
+            .with_ctrl_modifier()
+            .with_shift_modifier();
+        assert_eq!(copy_keys_for(Platform::Linux), [ctrl_shift_c.clone()]);
+        assert_eq!(copy_keys_for(Platform::Windows), [ctrl_shift_c.clone()]);
+        assert_eq!(copy_keys_for(Platform::MacOs), [ctrl_shift_c, cmd('c')]);
+    }
+
+    #[test]
+    fn the_selection_and_link_options_are_read_and_their_changes_noticed() {
+        let current = resolve(&Settings::default(), None);
+        let next = resolve(
+            &settings(WindowConfig {
+                open_links_with_shift: Some(false),
+                shift_drag_selects: Some(false),
+                copy_keys: Some(vec![KeyWithModifier::new(BareKey::F(5))]),
+                ..WindowConfig::default()
+            }),
+            None,
+        );
+        assert!(!next.open_links_with_shift);
+        assert!(!next.shift_drag_selects);
+        assert_eq!(next.copy_keys, vec![KeyWithModifier::new(BareKey::F(5))]);
+        let change = Change::between(&current, &next);
+        assert!(change.open_links && change.selection && change.copy_keys);
+        assert!(change.is_anything());
     }
 
     #[test]

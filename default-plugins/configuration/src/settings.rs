@@ -1294,7 +1294,23 @@ pub fn describe(key: SettingKey) -> SettingInfo {
         SettingKey::WindowOpenLinks => info(
             "Open links",
             TerminalWindow,
-            "Open links with a click while holding Ctrl (Cmd on macOS)",
+            "Open links with a click (hold Shift when the pane's program uses the mouse)",
+            Toggle,
+            "true",
+            OnlyYou,
+        ),
+        SettingKey::WindowOpenLinksWithShift => info(
+            "Open links with Shift+click",
+            TerminalWindow,
+            "Shift+click opens links in every pane",
+            Toggle,
+            "true",
+            OnlyYou,
+        ),
+        SettingKey::WindowShiftDragSelects => info(
+            "Shift+drag selects",
+            TerminalWindow,
+            "Shift+drag marks any text in the window, including bars and frames, for the copy keys",
             Toggle,
             "true",
             OnlyYou,
@@ -1329,6 +1345,14 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "Keys that paste, separated by commas, eg. Ctrl Shift v, Shift Insert",
             Text(TextCheck::KeyList),
             "Ctrl Shift v, Shift Insert",
+            OnlyYou,
+        ),
+        SettingKey::WindowCopyKeys => info(
+            "Copy keys",
+            TerminalWindow,
+            "Keys that copy the Shift+drag selection, separated by commas",
+            Text(TextCheck::KeyList),
+            "Ctrl Shift c",
             OnlyYou,
         ),
         SettingKey::WindowZoomInKeys => info(
@@ -1627,11 +1651,13 @@ pub fn section(key: SettingKey) -> &'static str {
         WindowBell
         | WindowNotifications
         | WindowOpenLinks
+        | WindowOpenLinksWithShift
+        | WindowShiftDragSelects
         | WindowMiddleClickPaste
         | WindowHidePointerWhileTyping
         | WindowMacosOptionAsAlt => "Window behaviour",
-        WindowPasteKeys | WindowZoomInKeys | WindowZoomOutKeys | WindowZoomResetKeys
-        | WindowFullscreenKeys => "Shortcuts",
+        WindowPasteKeys | WindowCopyKeys | WindowZoomInKeys | WindowZoomOutKeys
+        | WindowZoomResetKeys | WindowFullscreenKeys => "Shortcuts",
         WindowColorForeground | WindowColorBackground | WindowColorCursor => "Text and cursor",
         WindowColorBlack
         | WindowColorRed

@@ -678,6 +678,10 @@ web_client {
 //     // chords to leave them all to the session.
 //     paste_keys "Ctrl Shift v" "Shift Insert"
 //
+//     // The chords that copy text marked with shift+drag (see
+//     // shift_drag_selects).
+//     copy_keys "Ctrl Shift c"
+//
 //     // The chords that switch the window between fullscreen and the size it
 //     // had before. List no chords to leave them all to the session.
 //     fullscreen_keys "F11"
@@ -727,6 +731,16 @@ web_client {
 //     // way. Only http, https, ftp, ftps, mailto and file URLs are ever handed
 //     // to the opener.
 //     open_links true
+//
+//     // Whether shift+click opens a link in every pane, not only in panes
+//     // whose program has asked for mouse reporting. Has no effect when
+//     // open_links is false.
+//     open_links_with_shift true
+//
+//     // Whether dragging with shift held marks text anywhere in the window,
+//     // including the tab bar, status bar and pane frames, and across pane
+//     // borders.
+//     shift_drag_selects true
 //
 //     // What an OSC 9 or OSC 99 notification from a pane does. "desktop" is
 //     // the default: it hands the notification to the desktop notification

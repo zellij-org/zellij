@@ -9,6 +9,7 @@ use crate::scene::{
     self, BlinkPhase, CursorOptions, HeldOut, ImageKey, ImageQuad, PixelRect, RowContext, RowScene,
     RowScratch, Transparency,
 };
+use crate::selection::Selection;
 use crate::terminal::{GraphicsStamp, TerminalState};
 use std::time::Instant;
 
@@ -48,6 +49,7 @@ pub struct RetainedScene {
     replaced_images: bool,
     held: Vec<HeldOut>,
     held_changed: bool,
+    selection: Option<Selection>,
     generation: u64,
     scratch: RowScratch,
     rebuilt_everything: bool,
@@ -79,6 +81,7 @@ impl RetainedScene {
             replaced_images: true,
             held: Vec::new(),
             held_changed: false,
+            selection: None,
             generation: 0,
             scratch: RowScratch::default(),
             rebuilt_everything: true,
@@ -161,6 +164,22 @@ impl RetainedScene {
         self.held_changed = true;
     }
 
+    pub fn set_selection(&mut self, selection: Option<Selection>) {
+        if selection == self.selection {
+            return;
+        }
+        let rows: Vec<usize> = self
+            .selection
+            .iter()
+            .chain(selection.iter())
+            .flat_map(Selection::rows)
+            .collect();
+        for row in rows {
+            self.mark_row(row);
+        }
+        self.selection = selection;
+    }
+
     pub fn resident_images(&self) -> &[ImageKey] {
         &self.resident_images
     }
@@ -235,7 +254,8 @@ impl RetainedScene {
         let context = RowContext::new(state, cache, phase, paints, cursor, hovered_link, preedit)
             .with_transparency(self.transparency)
             .with_contrast(&self.contrast)
-            .with_held_out(&self.held);
+            .with_held_out(&self.held)
+            .with_selection(self.selection.as_ref());
         let (width, height) = (context.width(), context.height());
         if self.generation != cache.generation()
             || self.rows.len() != context.size.rows
@@ -435,6 +455,44 @@ mod tests {
         let mut rebuilt_cache = self::cache();
         refreshed(&mut retained, &state, &mut rebuilt_cache);
         assert!(retained.rebuilt_everything());
+    }
+
+    #[test]
+    fn a_selection_paints_its_cells_in_reversed_colours_and_rebuilds_only_its_rows() {
+        let mut cache = cache();
+        let state = Painter::state(4, 8, |painter| {
+            painter.text(1, 0, "hello");
+            painter.text(2, 0, "world");
+        });
+        let mut retained = RetainedScene::new();
+        refreshed(&mut retained, &state, &mut cache);
+        let width = cache.metrics().width as i32;
+        let height = cache.metrics().height as i32;
+        let foreground = Paints::default().foreground;
+        let filled = |scene: &Scene, row: usize, col: usize| {
+            let y = row as i32 * height;
+            scene
+                .rects
+                .iter()
+                .any(|rect| rect.x == col as i32 * width && rect.y == y && rect.color == foreground)
+        };
+        assert!(!filled(&retained.flatten(), 1, 2));
+
+        retained.set_selection(Some(Selection::at(1, 2).extended_to(2, 1)));
+        refreshed(&mut retained, &state, &mut cache);
+        assert_eq!(retained.rebuilt_rows(), [1, 2]);
+        let selected = retained.flatten();
+        assert!(filled(&selected, 1, 2));
+        assert!(filled(&selected, 1, 7));
+        assert!(filled(&selected, 2, 0));
+        assert!(filled(&selected, 2, 1));
+        assert!(!filled(&selected, 1, 1));
+        assert!(!filled(&selected, 2, 2));
+
+        retained.set_selection(None);
+        refreshed(&mut retained, &state, &mut cache);
+        assert_eq!(retained.rebuilt_rows(), [1, 2]);
+        assert_eq!(retained.flatten(), rebuilt(&state, &mut cache));
     }
 
     #[test]

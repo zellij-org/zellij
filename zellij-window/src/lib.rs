@@ -52,6 +52,7 @@ mod retained;
 mod scene;
 mod screen_buffer;
 mod scroll_animation;
+mod selection;
 mod settings;
 mod sixel;
 mod spawn;

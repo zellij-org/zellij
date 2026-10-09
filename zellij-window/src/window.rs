@@ -46,6 +46,7 @@ use crate::renderer::{Frame, Renderer};
 use crate::retained::{self, Damage, RetainedScene};
 use crate::scene::{self, BlinkPhase, Margins, Transparency};
 use crate::scroll_animation::{ScrollAnimations, ScrollLayer, ScrollSettings};
+use crate::selection::Selection;
 use crate::settings::Settings;
 use crate::terminal::{self, FrameError, TerminalState};
 use crate::window_state::{self, Shown, Startup, WindowState};
@@ -132,6 +133,8 @@ struct App {
     origin: (i32, i32),
     hovered_link: Option<LinkRun>,
     armed_link: Option<links::Armed>,
+    selection: Option<Selection>,
+    selecting: bool,
     clipboard: ClipboardHandle,
     title: String,
     retained: RetainedScene,
@@ -201,6 +204,8 @@ impl App {
             Ok(fonts) => {
                 self.cancel_scroll_animations();
                 self.stop_momentum();
+                self.selecting = false;
+                self.set_selection(None);
                 self.metrics = fonts.metrics();
                 self.cache = GlyphCache::new(fonts);
                 self.scale = scale;
@@ -379,6 +384,10 @@ impl App {
         if change.open_links {
             self.refresh_pointer();
         }
+        if change.selection && !self.options.shift_drag_selects {
+            self.selecting = false;
+            self.set_selection(None);
+        }
         if change.transparency {
             self.warn_if_opaque();
         }
@@ -492,6 +501,8 @@ impl App {
     }
 
     fn reflow(&mut self, width: u32, height: u32) {
+        self.selecting = false;
+        self.set_selection(None);
         let grid = self.grid(width, height);
         if grid.origin != self.origin {
             self.origin = grid.origin;
@@ -660,6 +671,10 @@ impl App {
         self.momentum.pointer_moved(target);
         self.refresh_hover();
         self.refresh_pointer();
+        if self.selecting {
+            self.extend_selection();
+            return;
+        }
         self.point(event);
     }
 
@@ -668,6 +683,12 @@ impl App {
             self.show_pointer();
             self.stop_momentum();
         }
+        if self.selection_gesture(button, state) {
+            return;
+        }
+        if state.is_pressed() {
+            self.set_selection(None);
+        }
         self.note_link_click(button, state);
         if self.middle_click_pasted(button, state) {
             return;
@@ -675,6 +696,95 @@ impl App {
         let (geometry, modifiers) = (self.geometry.get(), self.modifiers);
         let event = self.pointer.button(button, state, geometry, modifiers);
         self.point(event);
+    }
+
+    fn starts_a_selection(&self) -> bool {
+        self.options.shift_drag_selects
+            && self.modifiers.shift_key()
+            && !(self.modifiers.control_key()
+                || self.modifiers.alt_key()
+                || self.modifiers.super_key())
+    }
+
+    fn selection_gesture(
+        &mut self,
+        button: winit::event::MouseButton,
+        state: ElementState,
+    ) -> bool {
+        if button != winit::event::MouseButton::Left {
+            return false;
+        }
+        if state.is_pressed() {
+            if !self.starts_a_selection() {
+                return false;
+            }
+            let Some(cell) = self.selection_cell() else {
+                return false;
+            };
+            self.note_link_click(button, state);
+            self.selecting = true;
+            self.set_selection(Some(Selection::at(cell.0, cell.1)));
+            return true;
+        }
+        if !self.selecting {
+            return false;
+        }
+        self.selecting = false;
+        if self
+            .selection
+            .is_some_and(|selection| !selection.is_empty())
+        {
+            self.armed_link = None;
+        } else {
+            self.set_selection(None);
+            self.note_link_click(button, state);
+        }
+        true
+    }
+
+    fn selection_cell(&self) -> Option<(usize, usize)> {
+        let (x, y) = self.pointer.cell_if_inside(self.geometry.get())?;
+        let size = self.state.size();
+        Some((
+            (y as usize).min(size.rows.saturating_sub(1)),
+            (x as usize).min(size.cols.saturating_sub(1)),
+        ))
+    }
+
+    fn extend_selection(&mut self) {
+        let (Some(selection), Some((row, col))) = (self.selection, self.selection_cell()) else {
+            return;
+        };
+        let extended = selection.extended_to(row, col);
+        if !extended.is_empty() {
+            self.armed_link = None;
+        }
+        self.set_selection(Some(extended));
+    }
+
+    fn set_selection(&mut self, selection: Option<Selection>) {
+        if selection == self.selection {
+            return;
+        }
+        self.selection = selection;
+        self.retained.set_selection(selection);
+        self.schedule_draw();
+    }
+
+    fn copy_selection(&mut self) -> bool {
+        let Some(selection) = self.selection.filter(|selection| !selection.is_empty()) else {
+            return false;
+        };
+        let text = selection.text(self.state.screen());
+        self.selecting = false;
+        self.set_selection(None);
+        if !text.is_empty() {
+            self.with_clipboard(|clipboard| {
+                clipboard.set(&text);
+                clipboard.set_primary(&text);
+            });
+        }
+        true
     }
 
     fn middle_click_pasted(
@@ -720,7 +830,7 @@ impl App {
                 self.refresh_pointer();
             }
             self.armed_link = links::armed_by_press(
-                self.options.open_links,
+                self.link_opening(),
                 self.pane_wants_mouse(),
                 self.modifiers,
                 cell,
@@ -733,6 +843,13 @@ impl App {
         };
         if let Err(e) = links::open(&uri) {
             report!("{}", e);
+        }
+    }
+
+    fn link_opening(&self) -> links::Opening {
+        links::Opening {
+            enabled: self.options.open_links,
+            with_shift: self.options.open_links_with_shift,
         }
     }
 
@@ -762,7 +879,7 @@ impl App {
     fn pointer_shape(&self) -> CursorIcon {
         let cell = self.pointer.cell_if_inside(self.geometry.get());
         let reachable = links::is_reachable(
-            self.options.open_links,
+            self.link_opening(),
             self.pane_wants_mouse(),
             self.modifiers,
             self.hovered_link.as_ref(),
@@ -836,6 +953,8 @@ impl App {
 
     fn on_wheel_at(&mut self, delta: MouseScrollDelta, phase: TouchPhase, now: Instant) {
         self.show_pointer();
+        self.selecting = false;
+        self.set_selection(None);
         let (geometry, modifiers) = (self.geometry.get(), self.modifiers);
         let events = self.pointer.wheel(delta, geometry, modifiers);
         if self.momentum_enabled() {
@@ -910,6 +1029,11 @@ impl App {
     fn on_focus_lost(&mut self) {
         self.stop_momentum();
         self.show_pointer();
+        if std::mem::take(&mut self.selecting)
+            && self.selection.is_some_and(|selection| selection.is_empty())
+        {
+            self.set_selection(None);
+        }
         let (geometry, modifiers) = (self.geometry.get(), self.modifiers);
         let events = self.pointer.focus_lost(geometry, modifiers);
         self.point(events);
@@ -985,6 +1109,11 @@ impl App {
             self.toggle_fullscreen();
             return;
         }
+        if input::claims(&self.options.copy_keys, &press) && self.copy_selection() {
+            self.hide_pointer();
+            self.stop_momentum();
+            return;
+        }
         if input::claims(&self.options.paste_keys, &press) {
             self.hide_pointer();
             self.stop_momentum();
@@ -998,6 +1127,7 @@ impl App {
         let Some(msg) = input::key_message(press) else {
             return;
         };
+        self.set_selection(None);
         self.stop_momentum();
         self.hide_pointer();
         if let Err(e) = self.tell(msg) {
@@ -1009,6 +1139,7 @@ impl App {
         let Some(msg) = input::typed_text_message(text) else {
             return;
         };
+        self.set_selection(None);
         self.stop_momentum();
         self.hide_pointer();
         if let Err(e) = self.tell(msg) {
@@ -1036,6 +1167,7 @@ impl App {
         let Some(msg) = input::typed_text_message(text) else {
             return;
         };
+        self.set_selection(None);
         if let Err(e) = self.tell(msg) {
             report!("failed to send composed text: {}", e);
         }
@@ -1059,6 +1191,7 @@ impl App {
     }
 
     fn paste(&mut self) {
+        self.set_selection(None);
         let Some(chars) = self.with_clipboard(|clipboard| clipboard.get()).flatten() else {
             return;
         };
@@ -1278,15 +1411,8 @@ impl App {
                     .detacher
                     .follow(connection.sender.clone(), connection.role);
                 session.spawn(connection);
-                self.cancel_scroll_animations();
-                self.state = TerminalState::new(geometry.rows, geometry.cols);
-                self.state
-                    .set_cell_size(self.metrics.width, self.metrics.height);
+                self.start_over(geometry);
                 self.set_title(window_title(&session_name));
-                self.composition.cancel();
-                self.composed_row = None;
-                self.retained.mark_everything();
-                self.schedule_draw();
                 for msg in palette::seed_messages(&self.options.paints) {
                     if let Err(e) = self.tell(msg) {
                         report!("failed to re-declare a color: {}", e);
@@ -1300,6 +1426,19 @@ impl App {
                 true
             },
         }
+    }
+
+    fn start_over(&mut self, geometry: Geometry) {
+        self.cancel_scroll_animations();
+        self.state = TerminalState::new(geometry.rows, geometry.cols);
+        self.state
+            .set_cell_size(self.metrics.width, self.metrics.height);
+        self.composition.cancel();
+        self.composed_row = None;
+        self.selecting = false;
+        self.set_selection(None);
+        self.retained.mark_everything();
+        self.schedule_draw();
     }
 
     fn session_ended(&mut self, ending: Ending) -> bool {
@@ -1773,6 +1912,8 @@ impl Rendering {
             origin: (0, 0),
             hovered_link: None,
             armed_link: None,
+            selection: None,
+            selecting: false,
             clipboard,
             title,
             retained: RetainedScene::new(),
@@ -2071,6 +2212,9 @@ mod tests {
             zoom_reset_keys: crate::options::default_zoom_reset_keys(),
             middle_click_paste: true,
             open_links: true,
+            open_links_with_shift: true,
+            shift_drag_selects: true,
+            copy_keys: crate::options::default_copy_keys(),
             bell: zellij_utils::input::window::BellMode::Visual,
             notifications: zellij_utils::input::window::NotificationMode::Attention,
             paints: Paints::default(),
@@ -3836,6 +3980,436 @@ mod tests {
             harness.app.hovered_link.is_none(),
             "leaving the link must drop the hover"
         );
+    }
+
+    fn shift_click(harness: &mut Harness) {
+        harness.app.modifiers = ModifiersState::SHIFT;
+        left_click(harness);
+        harness.app.modifiers = ModifiersState::empty();
+    }
+
+    #[test]
+    fn a_shift_click_on_a_link_opens_it_in_a_pane_that_is_not_watching_the_mouse() {
+        links::forget_opened();
+        let mut harness = Harness::new(1, true, "");
+        with_a_link_under_the_pointer(&mut harness, "https://example.com");
+        shift_click(&mut harness);
+        assert_eq!(opened_urls(), vec!["https://example.com".to_owned()]);
+        assert_eq!(harness.app.selection, None, "a click selects nothing");
+        let actions = harness.actions();
+        assert_eq!(
+            actions.len(),
+            1,
+            "only the pointer motion reaches the session: {:?}",
+            actions
+        );
+    }
+
+    #[test]
+    fn a_shift_click_on_a_link_opens_nothing_once_shift_opening_is_off() {
+        links::forget_opened();
+        let mut harness = Harness::new(1, true, "");
+        harness.reconfigure(WindowConfig {
+            open_links_with_shift: Some(false),
+            ..WindowConfig::default()
+        });
+        with_a_link_under_the_pointer(&mut harness, "https://example.com");
+        harness.app.modifiers = ModifiersState::SHIFT;
+        assert_eq!(
+            harness.app.pointer_shape(),
+            CursorIcon::Text,
+            "no hand while shift cannot open the link"
+        );
+        shift_click(&mut harness);
+        assert!(opened_urls().is_empty());
+    }
+
+    #[test]
+    fn a_shift_click_on_a_link_opens_it_and_reaches_the_session_when_selecting_is_off() {
+        links::forget_opened();
+        let mut harness = Harness::new(3, true, "");
+        harness.reconfigure(WindowConfig {
+            shift_drag_selects: Some(false),
+            ..WindowConfig::default()
+        });
+        with_a_link_under_the_pointer(&mut harness, "https://example.com");
+        shift_click(&mut harness);
+        assert_eq!(opened_urls(), vec!["https://example.com".to_owned()]);
+        let events: Vec<_> = harness
+            .actions()
+            .into_iter()
+            .map(|action| match action {
+                Action::MouseEvent { event } => event,
+                other => panic!("expected a mouse event, got {:?}", other),
+            })
+            .collect();
+        assert_eq!(events[1].event_type, MouseEventType::Press);
+        assert!(events[1].shift);
+        assert_eq!(events[2].event_type, MouseEventType::Release);
+    }
+
+    fn over_cell(harness: &Harness, row: usize, col: usize) -> PhysicalPosition<f64> {
+        let geometry = harness.app.geometry.get();
+        let (width, height) = (geometry.cell_width as f64, geometry.cell_height as f64);
+        PhysicalPosition::new(
+            col as f64 * width + width / 2.0,
+            row as f64 * height + height / 2.0,
+        )
+    }
+
+    fn with_an_interface_on_screen(harness: &mut Harness) {
+        crate::screen_buffer::painter::Painter::apply(&mut harness.app.state, |painter| {
+            painter.text(0, 0, "Tab #1  Tab #2");
+            painter.text(1, 0, "│ hello │ world");
+            painter.text(2, 0, "status bar");
+        });
+    }
+
+    fn shift_drag(harness: &mut Harness, from: (usize, usize), to: (usize, usize)) {
+        let start = over_cell(harness, from.0, from.1);
+        harness.app.on_cursor_moved(start);
+        harness.app.modifiers = ModifiersState::SHIFT;
+        harness
+            .app
+            .on_mouse_input(MouseButton::Left, ElementState::Pressed);
+        let end = over_cell(harness, to.0, to.1);
+        harness.app.on_cursor_moved(end);
+        harness
+            .app
+            .on_mouse_input(MouseButton::Left, ElementState::Released);
+        harness.app.modifiers = ModifiersState::empty();
+    }
+
+    fn copy_key(harness: &mut Harness) {
+        harness.app.modifiers = ModifiersState::CONTROL | ModifiersState::SHIFT;
+        harness.press(&character("C"));
+        harness.app.modifiers = ModifiersState::empty();
+    }
+
+    #[test]
+    fn a_shift_drag_selects_across_the_whole_window_and_the_copy_key_copies_it() {
+        let mut harness = Harness::new(1, true, "");
+        with_an_interface_on_screen(&mut harness);
+        shift_drag(&mut harness, (0, 4), (2, 5));
+        assert_eq!(
+            harness.app.selection,
+            Some(Selection::at(0, 4).extended_to(2, 5))
+        );
+        assert_eq!(
+            harness.clipboard_text(),
+            None,
+            "nothing is copied before the copy key"
+        );
+
+        copy_key(&mut harness);
+        let expected = "#1  Tab #2\n│ hello │ world\nstatus";
+        assert_eq!(harness.clipboard_text().as_deref(), Some(expected));
+        assert_eq!(
+            harness.clipboard.lock().unwrap().get_primary().as_deref(),
+            Some(expected)
+        );
+        assert_eq!(harness.app.selection, None, "copying clears the highlight");
+        assert_eq!(
+            harness.actions().len(),
+            1,
+            "only the first pointer motion reaches the session"
+        );
+    }
+
+    #[test]
+    fn the_copy_key_reaches_the_session_when_nothing_is_selected() {
+        let mut harness = Harness::new(1, true, "");
+        copy_key(&mut harness);
+        assert_eq!(harness.clipboard_text(), None);
+        assert_eq!(harness.sent().len(), 1);
+    }
+
+    #[test]
+    fn a_plain_click_clears_the_selection_and_reaches_the_session() {
+        let mut harness = Harness::new(3, true, "");
+        with_an_interface_on_screen(&mut harness);
+        shift_drag(&mut harness, (0, 0), (1, 3));
+        assert!(harness.app.selection.is_some());
+        left_click(&mut harness);
+        assert_eq!(harness.app.selection, None);
+        assert_eq!(harness.actions().len(), 3);
+    }
+
+    #[test]
+    fn typing_clears_the_selection() {
+        let mut harness = Harness::new(2, true, "");
+        with_an_interface_on_screen(&mut harness);
+        shift_drag(&mut harness, (0, 0), (1, 3));
+        harness.press(&character("a"));
+        assert_eq!(harness.app.selection, None);
+        copy_key(&mut harness);
+        assert_eq!(harness.clipboard_text(), None);
+    }
+
+    #[test]
+    fn a_frame_drawn_under_the_selection_leaves_it_in_place() {
+        let mut harness = Harness::new(1, true, "");
+        with_an_interface_on_screen(&mut harness);
+        shift_drag(&mut harness, (2, 0), (2, 5));
+        crate::screen_buffer::painter::Painter::apply(&mut harness.app.state, |painter| {
+            painter.text(2, 0, "change");
+        });
+        copy_key(&mut harness);
+        assert_eq!(harness.clipboard_text().as_deref(), Some("change"));
+    }
+
+    #[test]
+    fn a_shift_drag_reaches_the_session_when_selecting_is_off() {
+        let mut harness = Harness::new(4, true, "");
+        harness.reconfigure(WindowConfig {
+            shift_drag_selects: Some(false),
+            ..WindowConfig::default()
+        });
+        with_an_interface_on_screen(&mut harness);
+        shift_drag(&mut harness, (0, 0), (1, 3));
+        assert_eq!(harness.app.selection, None);
+        let events: Vec<_> = harness
+            .actions()
+            .into_iter()
+            .map(|action| match action {
+                Action::MouseEvent { event } => event,
+                other => panic!("expected a mouse event, got {:?}", other),
+            })
+            .collect();
+        assert_eq!(events.len(), 4);
+        assert_eq!(events[1].event_type, MouseEventType::Press);
+        assert!(events[1].shift);
+        assert_eq!(events[3].event_type, MouseEventType::Release);
+    }
+
+    #[test]
+    fn switching_selecting_off_drops_the_selection() {
+        let mut harness = Harness::new(1, true, "");
+        with_an_interface_on_screen(&mut harness);
+        shift_drag(&mut harness, (0, 0), (1, 3));
+        harness.reconfigure(WindowConfig {
+            shift_drag_selects: Some(false),
+            ..WindowConfig::default()
+        });
+        assert_eq!(harness.app.selection, None);
+    }
+
+    fn with_a_selection(harness: &mut Harness) {
+        with_an_interface_on_screen(harness);
+        shift_drag(harness, (0, 0), (1, 3));
+        assert!(harness.app.selection.is_some());
+    }
+
+    #[test]
+    fn scrolling_clears_the_selection() {
+        let mut harness = Harness::new(0, true, "");
+        with_a_selection(&mut harness);
+        harness
+            .app
+            .on_wheel(MouseScrollDelta::LineDelta(0.0, 1.0), TouchPhase::Moved);
+        assert_eq!(harness.app.selection, None);
+    }
+
+    #[test]
+    fn resizing_clears_the_selection() {
+        let mut harness = Harness::new(0, true, "");
+        with_a_selection(&mut harness);
+        harness.app.resized(640, 480);
+        assert_eq!(harness.app.selection, None);
+    }
+
+    #[test]
+    fn zooming_clears_the_selection() {
+        let mut harness = Harness::new(0, true, "");
+        with_a_selection(&mut harness);
+        harness.app.modifiers = ModifiersState::CONTROL;
+        harness.press(&character("="));
+        assert_eq!(harness.app.selection, None);
+    }
+
+    #[test]
+    fn a_scale_change_clears_the_selection() {
+        let mut harness = Harness::new(0, true, "");
+        with_a_selection(&mut harness);
+        harness.app.rescale(2.0);
+        assert_eq!(harness.app.selection, None);
+    }
+
+    #[test]
+    fn switching_sessions_clears_the_selection() {
+        let mut harness = Harness::new(0, true, "");
+        with_a_selection(&mut harness);
+        harness.app.start_over(geometry());
+        assert_eq!(harness.app.selection, None);
+        assert!(!harness.app.selecting);
+    }
+
+    #[test]
+    fn pasting_clears_the_selection() {
+        let mut harness = Harness::new(0, true, "pasted");
+        with_a_selection(&mut harness);
+        harness.app.modifiers = ModifiersState::CONTROL | ModifiersState::SHIFT;
+        harness.press(&character("V"));
+        assert_eq!(harness.app.selection, None);
+    }
+
+    #[test]
+    fn text_from_the_input_method_clears_the_selection() {
+        let mut harness = Harness::new(0, true, "");
+        with_a_selection(&mut harness);
+        harness.app.on_ime(Ime::Preedit(String::new(), None));
+        assert!(
+            harness.app.selection.is_some(),
+            "a composition in progress types nothing yet"
+        );
+        harness.app.on_ime(Ime::Commit("x".to_owned()));
+        assert_eq!(harness.app.selection, None);
+    }
+
+    #[test]
+    fn losing_focus_mid_drag_keeps_what_was_marked_and_stops_extending_it() {
+        let mut harness = Harness::new(0, true, "");
+        with_an_interface_on_screen(&mut harness);
+        let start = over_cell(&harness, 0, 0);
+        harness.app.on_cursor_moved(start);
+        harness.app.modifiers = ModifiersState::SHIFT;
+        harness
+            .app
+            .on_mouse_input(MouseButton::Left, ElementState::Pressed);
+        let middle = over_cell(&harness, 1, 3);
+        harness.app.on_cursor_moved(middle);
+        harness.app.on_focus_lost();
+        harness.app.modifiers = ModifiersState::empty();
+        let marked = Some(Selection::at(0, 0).extended_to(1, 3));
+        assert_eq!(harness.app.selection, marked);
+        assert!(!harness.app.selecting);
+
+        let later = over_cell(&harness, 2, 5);
+        harness.app.on_cursor_moved(later);
+        assert_eq!(
+            harness.app.selection, marked,
+            "the drag ended with the focus"
+        );
+        copy_key(&mut harness);
+        assert_eq!(
+            harness.clipboard_text().as_deref(),
+            Some("Tab #1  Tab #2\n│ he")
+        );
+    }
+
+    #[test]
+    fn losing_focus_before_the_drag_moved_leaves_nothing_marked() {
+        let mut harness = Harness::new(0, true, "");
+        with_an_interface_on_screen(&mut harness);
+        let start = over_cell(&harness, 0, 0);
+        harness.app.on_cursor_moved(start);
+        harness.app.modifiers = ModifiersState::SHIFT;
+        harness
+            .app
+            .on_mouse_input(MouseButton::Left, ElementState::Pressed);
+        harness.app.on_focus_lost();
+        assert_eq!(harness.app.selection, None);
+        assert!(!harness.app.selecting);
+    }
+
+    fn with_a_link_in_a_pane_watching_the_mouse(harness: &mut Harness) {
+        use zellij_utils::structured_render::{
+            GeometryRecord, PaneRect, PANE_FOCUSED, PANE_SELECTABLE, PANE_WANTS_MOUSE,
+        };
+        crate::screen_buffer::painter::Painter::apply(&mut harness.app.state, |painter| {
+            painter.geometry(&GeometryRecord {
+                panes: vec![PaneRect {
+                    x: 0,
+                    y: 0,
+                    cols: 120,
+                    rows: 40,
+                    top: 0,
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    flags: PANE_SELECTABLE | PANE_FOCUSED | PANE_WANTS_MOUSE,
+                }],
+            });
+            painter.links(&[(1, "https://example.com")]);
+            painter.linked(0, 0, "link", 1);
+        });
+        harness.app.on_cursor_moved(PhysicalPosition::new(4.0, 4.0));
+        assert!(harness.app.pane_wants_mouse());
+    }
+
+    #[test]
+    fn a_shift_click_on_a_link_opens_it_in_a_pane_that_is_watching_the_mouse() {
+        links::forget_opened();
+        let mut harness = Harness::new(1, true, "");
+        with_a_link_in_a_pane_watching_the_mouse(&mut harness);
+        shift_click(&mut harness);
+        assert_eq!(opened_urls(), vec!["https://example.com".to_owned()]);
+        assert_eq!(harness.app.selection, None);
+        assert_eq!(
+            harness.actions().len(),
+            1,
+            "only the pointer motion reaches the session"
+        );
+    }
+
+    #[test]
+    fn a_plain_click_on_a_link_in_a_pane_watching_the_mouse_goes_to_the_pane_only() {
+        links::forget_opened();
+        let mut harness = Harness::new(3, true, "");
+        with_a_link_in_a_pane_watching_the_mouse(&mut harness);
+        left_click(&mut harness);
+        assert!(opened_urls().is_empty());
+        assert_eq!(harness.actions().len(), 3);
+    }
+
+    #[test]
+    fn a_shift_drag_that_starts_on_a_link_selects_and_opens_nothing() {
+        links::forget_opened();
+        let mut harness = Harness::new(1, true, "");
+        with_a_link_under_the_pointer(&mut harness, "https://example.com");
+        harness.app.modifiers = ModifiersState::SHIFT;
+        harness
+            .app
+            .on_mouse_input(MouseButton::Left, ElementState::Pressed);
+        assert!(
+            harness.app.armed_link.is_some(),
+            "until it moves, the press may still be a click"
+        );
+        let away = over_cell(&harness, 0, 9);
+        harness.app.on_cursor_moved(away);
+        assert!(harness.app.armed_link.is_none());
+        harness
+            .app
+            .on_mouse_input(MouseButton::Left, ElementState::Released);
+        harness.app.modifiers = ModifiersState::empty();
+        assert!(opened_urls().is_empty());
+        assert_eq!(
+            harness.app.selection,
+            Some(Selection::at(0, 0).extended_to(0, 9))
+        );
+        copy_key(&mut harness);
+        assert_eq!(harness.clipboard_text().as_deref(), Some("link"));
+        assert_eq!(harness.actions().len(), 1);
+    }
+
+    #[test]
+    fn a_shift_drag_off_a_link_and_back_onto_it_opens_nothing() {
+        links::forget_opened();
+        let mut harness = Harness::new(0, true, "");
+        with_a_link_under_the_pointer(&mut harness, "https://example.com");
+        harness.app.modifiers = ModifiersState::SHIFT;
+        harness
+            .app
+            .on_mouse_input(MouseButton::Left, ElementState::Pressed);
+        let away = over_cell(&harness, 0, 9);
+        harness.app.on_cursor_moved(away);
+        harness.app.on_cursor_moved(PhysicalPosition::new(4.0, 4.0));
+        harness
+            .app
+            .on_mouse_input(MouseButton::Left, ElementState::Released);
+        harness.app.modifiers = ModifiersState::empty();
+        assert!(opened_urls().is_empty());
+        assert_eq!(harness.app.selection, None);
     }
 
     #[test]

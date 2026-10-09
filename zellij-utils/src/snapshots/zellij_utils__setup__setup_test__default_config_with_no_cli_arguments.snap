@@ -6842,6 +6842,9 @@ Config {
         scroll_animation_duration: None,
         scroll_momentum: None,
         scroll_momentum_friction: None,
+        open_links_with_shift: None,
+        shift_drag_selects: None,
+        copy_keys: None,
     },
     session_suggestions: SessionSuggestionsConfig {
         facts: [],
