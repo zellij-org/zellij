@@ -3,6 +3,7 @@ use crate::background_jobs::BackgroundJob;
 use crate::global_async_runtime::get_tokio_runtime as async_runtime;
 use crate::os_input_output::{env_value, AsyncReader, NullAsyncReader, PaneEnv};
 use crate::route::NotificationEnd;
+use crate::session_suggestions::{ContextTrigger, SessionSuggestionsJob};
 use crate::terminal_bytes::TerminalBytes;
 use crate::{
     panes::PaneId,
@@ -12,9 +13,8 @@ use crate::{
     thread_bus::{Bus, ThreadSenders},
     ClientId, ServerInstruction,
 };
-use std::sync::Arc;
-use crate::session_suggestions::{ContextTrigger, SessionSuggestionsJob};
 use std::collections::HashSet;
+use std::sync::Arc;
 use std::{collections::HashMap, path::PathBuf};
 use tokio::task::JoinHandle;
 use zellij_utils::{

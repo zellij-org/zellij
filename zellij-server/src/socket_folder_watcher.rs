@@ -13,8 +13,8 @@ impl SocketFolderWatcher {
     {
         use notify_debouncer_full::notify::{self, RecursiveMode, Watcher};
         let _ = std::fs::create_dir_all(&folder);
-        let mut watcher = notify::recommended_watcher(
-            move |result: notify::Result<notify::Event>| {
+        let mut watcher =
+            notify::recommended_watcher(move |result: notify::Result<notify::Event>| {
                 if let Ok(event) = result {
                     if matches!(
                         event.kind,
@@ -25,9 +25,8 @@ impl SocketFolderWatcher {
                         on_change();
                     }
                 }
-            },
-        )
-        .map_err(|e| e.to_string())?;
+            })
+            .map_err(|e| e.to_string())?;
         watcher
             .watch(&folder, RecursiveMode::NonRecursive)
             .map_err(|e| e.to_string())?;
@@ -112,18 +111,10 @@ impl SocketFolderWatcher {
                 loop {
                     let mut event = kevent_for(0, 0, 0, 0);
                     let received = unsafe {
-                        libc::kevent(
-                            queue,
-                            std::ptr::null(),
-                            0,
-                            &mut event,
-                            1,
-                            std::ptr::null(),
-                        )
+                        libc::kevent(queue, std::ptr::null(), 0, &mut event, 1, std::ptr::null())
                     };
                     if received < 0 {
-                        if std::io::Error::last_os_error().kind()
-                            == std::io::ErrorKind::Interrupted
+                        if std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted
                         {
                             continue;
                         }

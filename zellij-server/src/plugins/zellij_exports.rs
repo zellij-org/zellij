@@ -1,12 +1,12 @@
 use super::PluginInstruction;
 use crate::background_jobs::BackgroundJob;
-use crate::session_suggestions::SessionSuggestionsJob;
 use crate::global_async_runtime::get_tokio_runtime;
 use crate::plugins::plugin_map::PluginEnv;
 use crate::plugins::wasm_bridge::handle_plugin_crash;
 use crate::plugins::{PluginId, PromptCaller};
 use crate::pty::{ClientTabIndexOrPaneId, PtyInstruction};
 use crate::route::{route_action, wait_for_action_completion, NotificationEnd};
+use crate::session_suggestions::SessionSuggestionsJob;
 use crate::ClientId;
 use crate::ServerInstruction;
 use log::warn;

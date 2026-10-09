@@ -28,7 +28,6 @@ pub struct LinePart {
     tab_index: Option<usize>,
 }
 
-
 static ARROW_SEPARATOR: &str = "";
 
 fn in_range(range: Option<(usize, usize)>, col: usize) -> bool {

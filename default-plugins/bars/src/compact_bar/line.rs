@@ -662,7 +662,6 @@ impl RightSideElementsBuilder {
             tab_index: None,
         }
     }
-
 }
 
 pub struct TabLineBuilder {
@@ -769,8 +768,7 @@ impl TabLineBuilder {
         let mut session_indicator_range = None;
 
         if current_len < self.cols {
-            let right_builder =
-                RightSideElementsBuilder::new(self.palette, self.config.dimmed);
+            let right_builder = RightSideElementsBuilder::new(self.palette, self.config.dimmed);
             let available_space = self.cols.saturating_sub(current_len);
             let (mut right_elements, indicator_text) =
                 right_builder.build(&self.config, available_space);

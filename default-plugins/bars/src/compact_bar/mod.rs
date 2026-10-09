@@ -628,8 +628,7 @@ impl CompactBar {
             Mouse::LeftClick(line, col) => {
                 let col = *col;
                 if matches!(indicator_range, Some((start, end)) if col >= start && col < end) {
-                    self.session_indicator
-                        .clicked((*line).max(0) as usize, col);
+                    self.session_indicator.clicked((*line).max(0) as usize, col);
                     return should_render;
                 }
                 client.hover_at = Some((slot_id, col));

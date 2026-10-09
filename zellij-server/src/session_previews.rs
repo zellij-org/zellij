@@ -3,7 +3,9 @@ use std::time::Duration;
 use zellij_utils::consts::{session_layout_cache_file_name, ZELLIJ_SOCK_DIR};
 use zellij_utils::data::{SavedPanePreview, SavedSessionPreview, SavedTabPreview, SessionPreview};
 use zellij_utils::input::layout::{FloatingPaneLayout, Layout, Run, TiledPaneLayout};
-use zellij_utils::ipc::{ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg};
+use zellij_utils::ipc::{
+    ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg,
+};
 use zellij_utils::session_index::layout_cwd;
 
 pub const REMOTE_PREVIEW_TIMEOUT: Duration = Duration::from_millis(1000);

@@ -2538,7 +2538,12 @@ impl WasmBridge {
             .map(|(_, _, running_plugin)| running_plugin)
             .collect();
         for running_plugin in running_plugins {
-            running_plugin.lock().unwrap().store.data_mut().pending_popup_size = None;
+            running_plugin
+                .lock()
+                .unwrap()
+                .store
+                .data_mut()
+                .pending_popup_size = None;
         }
     }
     fn forget_pipe_popups_of_plugin(&mut self, plugin_id: PluginId) {

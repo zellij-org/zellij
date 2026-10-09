@@ -251,7 +251,11 @@ fn compare_within_tier(a: &Candidate, b: &Candidate) -> std::cmp::Ordering {
         .then(a.row.name.cmp(&b.row.name))
 }
 
-pub fn matching_facts(target: &SessionContext, candidate: &SessionContext, facts: &[String]) -> Vec<String> {
+pub fn matching_facts(
+    target: &SessionContext,
+    candidate: &SessionContext,
+    facts: &[String],
+) -> Vec<String> {
     facts
         .iter()
         .filter(|f| target.fact_matches(candidate, f))
@@ -315,10 +319,7 @@ pub fn apply_script_order(
     let mut remaining = ranked;
     let mut ordered = vec![];
     for (name, label) in script_output {
-        if let Some(position) = remaining
-            .iter()
-            .position(|r| &r.candidate.row.name == name)
-        {
+        if let Some(position) = remaining.iter().position(|r| &r.candidate.row.name == name) {
             let mut item = remaining.remove(position);
             item.script_label = label.clone();
             ordered.push(item);
@@ -641,7 +642,11 @@ impl SessionIndex {
             "branch" => "branch",
             _ => return Ok(vec![]),
         };
-        let sql = format!("SELECT {} FROM sessions WHERE {} = ?1", Self::COLUMNS, column);
+        let sql = format!(
+            "SELECT {} FROM sessions WHERE {} = ?1",
+            Self::COLUMNS,
+            column
+        );
         self.query_rows(&sql, &[&value])
     }
 
@@ -719,7 +724,11 @@ impl SessionIndex {
                 None => vec![],
             }
         } else {
-            let fact = rule.facts.first().cloned().unwrap_or_else(|| FACT_HOSTNAME.to_owned());
+            let fact = rule
+                .facts
+                .first()
+                .cloned()
+                .unwrap_or_else(|| FACT_HOSTNAME.to_owned());
             match target.fact(&fact) {
                 Some(value) => self.rows_with_fact(&fact, &value)?,
                 None => vec![],
@@ -889,12 +898,8 @@ mod tests {
             let cache_dir = root.path().join("cache");
             std::fs::create_dir_all(&sock_dir).unwrap();
             std::fs::create_dir_all(&cache_dir).unwrap();
-            let index = SessionIndex::open(
-                &root.path().join("index.sqlite"),
-                sock_dir,
-                cache_dir,
-            )
-            .unwrap();
+            let index =
+                SessionIndex::open(&root.path().join("index.sqlite"), sock_dir, cache_dir).unwrap();
             TestIndex { index, root }
         }
         fn mark_running(&self, name: &str) {
@@ -996,12 +1001,34 @@ mod tests {
             branch: Some("main".to_owned()),
             ..Default::default()
         };
-        test.add("folder-branch", context("/repo/app", Some("/repo/.git"), Some("main")), 1);
-        test.add("repo-branch", context("/repo/lib", Some("/repo/.git"), Some("main")), 9);
-        test.add("folder-other-branch", context("/repo/app", Some("/repo/.git"), Some("dev")), 8);
-        test.add("repo-only", context("/repo/docs", Some("/repo/.git"), Some("dev")), 7);
+        test.add(
+            "folder-branch",
+            context("/repo/app", Some("/repo/.git"), Some("main")),
+            1,
+        );
+        test.add(
+            "repo-branch",
+            context("/repo/lib", Some("/repo/.git"), Some("main")),
+            9,
+        );
+        test.add(
+            "folder-other-branch",
+            context("/repo/app", Some("/repo/.git"), Some("dev")),
+            8,
+        );
+        test.add(
+            "repo-only",
+            context("/repo/docs", Some("/repo/.git"), Some("dev")),
+            7,
+        );
         test.add("unrelated", context("/elsewhere", None, None), 100);
-        for name in ["folder-branch", "repo-branch", "folder-other-branch", "repo-only", "unrelated"] {
+        for name in [
+            "folder-branch",
+            "repo-branch",
+            "folder-other-branch",
+            "repo-only",
+            "unrelated",
+        ] {
             test.mark_resumable(name);
         }
         let rules = default_rules();
@@ -1211,7 +1238,10 @@ mod tests {
         assert_eq!(info.toplevel, dir.path().display().to_string());
         assert_eq!(
             info.common_dir,
-            std::fs::canonicalize(&git_dir).unwrap().display().to_string()
+            std::fs::canonicalize(&git_dir)
+                .unwrap()
+                .display()
+                .to_string()
         );
         assert_eq!(info.branch, Some("feature/x".to_owned()));
         let detached = format!("{}\n{}\nHEAD\n", dir.path().display(), git_dir.display());

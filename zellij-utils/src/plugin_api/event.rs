@@ -1324,7 +1324,9 @@ impl TryFrom<Event> for ProtobufEvent {
             }),
             Event::SessionSuggestions(suggestions) => Ok(ProtobufEvent {
                 name: ProtobufEventType::SessionSuggestions as i32,
-                payload: Some(event::Payload::SessionSuggestionsPayload(suggestions.into())),
+                payload: Some(event::Payload::SessionSuggestionsPayload(
+                    suggestions.into(),
+                )),
             }),
             Event::SessionCountsUpdate(counts) => Ok(ProtobufEvent {
                 name: ProtobufEventType::SessionCountsUpdate as i32,

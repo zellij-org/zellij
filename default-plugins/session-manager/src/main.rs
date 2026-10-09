@@ -21,8 +21,8 @@ use ui::{
 };
 
 use panel::{
-    card_target_at, render_card, render_preview, render_session_tree, CardTarget, Panel,
-    PanelSize, NO_OTHER_SESSIONS_TEXT,
+    card_target_at, render_card, render_preview, render_session_tree, CardTarget, Panel, PanelSize,
+    NO_OTHER_SESSIONS_TEXT,
 };
 use resurrectable_sessions::ResurrectableSessions;
 use session_list::SessionList;
@@ -453,7 +453,6 @@ impl State {
         let (x, y, width, height) = self.main_menu_size(rows, cols);
 
         let background = self.colors.palette.text_unselected.background;
-
 
         if self.active_screen != ActiveScreen::SingleScreen {
             render_screen_toggle(
@@ -1911,10 +1910,7 @@ impl State {
             })
     }
     fn request_preview_for_selection(&mut self) {
-        if !matches!(
-            self.panel.size,
-            Some(PanelSize::Manager)
-        ) {
+        if !matches!(self.panel.size, Some(PanelSize::Manager)) {
             return;
         }
         match self.selected_session() {
@@ -1959,12 +1955,7 @@ impl State {
         });
     }
     fn refresh_selected_preview(&mut self) -> bool {
-        if !self.is_visible
-            || !matches!(
-                self.panel.size,
-                Some(PanelSize::Manager)
-            )
-        {
+        if !self.is_visible || !matches!(self.panel.size, Some(PanelSize::Manager)) {
             return false;
         }
         match self.selected_session() {
@@ -2124,9 +2115,10 @@ impl State {
             .unwrap_or(false)
     }
     fn tree_cursor(&self) -> Option<usize> {
-        self.panel
-            .tree
-            .cursor_position(&self.panel.tree.rows, self.single_screen_state.selected_index)
+        self.panel.tree.cursor_position(
+            &self.panel.tree.rows,
+            self.single_screen_state.selected_index,
+        )
     }
     fn tree_select(&mut self, index: usize) {
         self.tree_point_at(index);
@@ -2204,7 +2196,10 @@ impl State {
     }
     fn open_tree_child(&mut self) -> bool {
         use session_tree::TreeNode;
-        let Some(row) = self.tree_cursor().and_then(|c| self.panel.tree.rows.get(c).cloned()) else {
+        let Some(row) = self
+            .tree_cursor()
+            .and_then(|c| self.panel.tree.rows.get(c).cloned())
+        else {
             return false;
         };
         let (tab, pane) = match row.node {
@@ -2365,7 +2360,10 @@ mod welcome_text_tests {
             wrap_words("one two three four", 9),
             vec!["one two", "three", "four"]
         );
-        assert_eq!(wrap_words("averyveryverylongword x", 5), vec!["averyveryverylongword", "x"]);
+        assert_eq!(
+            wrap_words("averyveryverylongword x", 5),
+            vec!["averyveryverylongword", "x"]
+        );
         assert!(wrap_words("", 10).is_empty());
     }
 }
