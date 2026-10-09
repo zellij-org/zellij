@@ -2,9 +2,9 @@ mod kdl_layout_parser;
 use crate::data::ClientId;
 use crate::data::{
     BareKey, BorderStyleOverride, Direction, FloatingPaneCoordinates, InputMode, KeyWithModifier,
-    LayoutInfo, LayoutMetadata, LineStyle, MultiplayerColors, Palette, PaletteColor, PaneId,
-    PaneInfo, PaneManifest, PermissionType, Resize, SessionInfo, StyleDeclaration, Styling,
-    TabInfo, ThemeHue, WebSharing, DEFAULT_STYLES,
+    LayoutInfo, LayoutMetadata, LineStyle, MouseTarget, MouseTrigger, MultiplayerColors, Palette,
+    PaletteColor, PaneId, PaneInfo, PaneManifest, PermissionType, Resize, SessionInfo,
+    StyleDeclaration, Styling, TabInfo, ThemeHue, WebSharing, DEFAULT_STYLES,
 };
 use crate::data::{ClickedPaneAction, ClickedTabAction, ContextMenuAction, ContextMenuEntry};
 use crate::envs::EnvironmentVariables;
@@ -14,11 +14,14 @@ use crate::input::context_menu::{
     context_menu_statements_against, merge_context_menu_entries, ContextMenuConfig, MenuPlacement,
     MenuStatement, CONTEXT_MENU_SECTIONS,
 };
-use crate::input::keybind_presets::{KeybindChanges, KeybindsLayer, KeybindsSelection};
+use crate::input::keybind_presets::{
+    BindChanges, KeybindChanges, KeybindsLayer, KeybindsSelection, MousebindChanges,
+};
 use crate::input::keybinds::Keybinds;
 use crate::input::layout::{
     Layout, PercentOrFixed, PluginUserConfiguration, RunPlugin, RunPluginOrAlias, TabLayoutInfo,
 };
+use crate::input::mousebinds::{MouseBehaviour, MouseBinding, MouseBindingKind};
 use crate::input::options::{
     Clipboard, OnForceClose, Options, PaneFrameStyle, DEFAULT_WORD_SEPARATORS,
 };
@@ -5410,6 +5413,86 @@ impl EnvironmentVariables {
     }
 }
 
+fn parse_bind_blocks<K: Ord + Clone + std::hash::Hash + Eq, V: Clone>(
+    kdl_bindings: &KdlNode,
+    bind_in_block: &dyn Fn(&KdlNode, InputMode, &mut BindChanges<K, V>) -> Result<(), ConfigError>,
+    global_unbind_keys: &dyn Fn(&KdlNode) -> Result<Vec<K>, ConfigError>,
+) -> Result<BindChanges<K, V>, ConfigError> {
+    let mut changes = BindChanges::default();
+    if kdl_arg_is_truthy!(kdl_bindings, "clear-defaults") {
+        changes.clear_all();
+    }
+    let Some(children) = kdl_bindings.children() else {
+        return Ok(changes);
+    };
+    for block in children.nodes() {
+        if kdl_name!(block) == "shared_except" || kdl_name!(block) == "shared" {
+            let mut modes_to_exclude = vec![];
+            for mode_name in kdl_string_arguments!(block) {
+                modes_to_exclude.push(InputMode::from_str(mode_name).map_err(|_| {
+                    ConfigError::new_kdl_error(
+                        format!("Invalid mode: '{}'", mode_name),
+                        block.name().span().offset(),
+                        block.name().span().len(),
+                    )
+                })?);
+            }
+            for mode in InputMode::iter() {
+                if modes_to_exclude.contains(&mode) {
+                    continue;
+                }
+                bind_in_block(block, mode, &mut changes)?;
+            }
+        }
+        if kdl_name!(block) == "shared_among" {
+            let mut modes_to_include = vec![];
+            for mode_name in kdl_string_arguments!(block) {
+                modes_to_include.push(InputMode::from_str(mode_name)?);
+            }
+            for mode in InputMode::iter() {
+                if !modes_to_include.contains(&mode) {
+                    continue;
+                }
+                bind_in_block(block, mode, &mut changes)?;
+            }
+        }
+    }
+    for mode in children.nodes() {
+        if kdl_name!(mode) == "unbind"
+            || kdl_name!(mode) == "shared_except"
+            || kdl_name!(mode) == "shared_among"
+            || kdl_name!(mode) == "shared"
+        {
+            continue;
+        }
+        let mode_name = kdl_name!(mode);
+        let input_mode = InputMode::from_str(mode_name).map_err(|_| {
+            ConfigError::new_kdl_error(
+                format!("Invalid mode: '{}'", mode_name),
+                mode.name().span().offset(),
+                mode.name().span().len(),
+            )
+        })?;
+        if kdl_arg_is_truthy!(mode, "clear-defaults") {
+            changes.clear_mode(input_mode);
+        }
+        bind_in_block(mode, input_mode, &mut changes)?;
+    }
+    for global_unbind in children
+        .nodes()
+        .iter()
+        .filter(|node| kdl_name!(node) == "unbind")
+    {
+        let keys = global_unbind_keys(global_unbind)?;
+        for mode in InputMode::iter() {
+            for key in &keys {
+                changes.unbind(mode, key.clone());
+            }
+        }
+    }
+    Ok(changes)
+}
+
 impl KeybindChanges {
     fn keys_with_text(
         key_block: &KdlNode,
@@ -5475,93 +5558,19 @@ impl KeybindChanges {
         config_options: &Options,
         key_text: &dyn Fn(&str) -> Result<String, String>,
     ) -> Result<KeybindChanges, ConfigError> {
-        let mut changes = KeybindChanges::default();
-        if kdl_arg_is_truthy!(kdl_keybinds, "clear-defaults") {
-            changes.clear_all();
-        }
-        let Some(children) = kdl_keybinds.children() else {
-            return Ok(changes);
-        };
-        for block in children.nodes() {
-            if kdl_name!(block) == "shared_except" || kdl_name!(block) == "shared" {
-                let mut modes_to_exclude = vec![];
-                for mode_name in kdl_string_arguments!(block) {
-                    modes_to_exclude.push(InputMode::from_str(mode_name).map_err(|_| {
-                        ConfigError::new_kdl_error(
-                            format!("Invalid mode: '{}'", mode_name),
-                            block.name().span().offset(),
-                            block.name().span().len(),
-                        )
-                    })?);
-                }
-                for mode in InputMode::iter() {
-                    if modes_to_exclude.contains(&mode) {
-                        continue;
-                    }
-                    KeybindChanges::bind_keys_in_block(
-                        block,
-                        mode,
-                        &mut changes,
-                        config_options,
-                        key_text,
-                    )?;
-                }
-            }
-            if kdl_name!(block) == "shared_among" {
-                let mut modes_to_include = vec![];
-                for mode_name in kdl_string_arguments!(block) {
-                    modes_to_include.push(InputMode::from_str(mode_name)?);
-                }
-                for mode in InputMode::iter() {
-                    if !modes_to_include.contains(&mode) {
-                        continue;
-                    }
-                    KeybindChanges::bind_keys_in_block(
-                        block,
-                        mode,
-                        &mut changes,
-                        config_options,
-                        key_text,
-                    )?;
-                }
-            }
-        }
-        for mode in children.nodes() {
-            if kdl_name!(mode) == "unbind"
-                || kdl_name!(mode) == "shared_except"
-                || kdl_name!(mode) == "shared_among"
-                || kdl_name!(mode) == "shared"
-            {
-                continue;
-            }
-            let mode_name = kdl_name!(mode);
-            let input_mode = InputMode::from_str(mode_name).map_err(|_| {
-                ConfigError::new_kdl_error(
-                    format!("Invalid mode: '{}'", mode_name),
-                    mode.name().span().offset(),
-                    mode.name().span().len(),
+        parse_bind_blocks(
+            kdl_keybinds,
+            &|block, input_mode, changes| {
+                KeybindChanges::bind_keys_in_block(
+                    block,
+                    input_mode,
+                    changes,
+                    config_options,
+                    key_text,
                 )
-            })?;
-            if kdl_arg_is_truthy!(mode, "clear-defaults") {
-                changes.clear_mode(input_mode);
-            }
-            KeybindChanges::bind_keys_in_block(
-                mode,
-                input_mode,
-                &mut changes,
-                config_options,
-                key_text,
-            )?;
-        }
-        if let Some(global_unbind) = children.get("unbind") {
-            let keys = KeybindChanges::keys_with_text(global_unbind, key_text)?;
-            for mode in InputMode::iter() {
-                for key in &keys {
-                    changes.unbind(mode, key.clone());
-                }
-            }
-        }
-        Ok(changes)
+            },
+            &|global_unbind| KeybindChanges::keys_with_text(global_unbind, key_text),
+        )
     }
     pub fn to_kdl_children(&self) -> KdlDocument {
         let mut document = KdlDocument::new();
@@ -5640,6 +5649,378 @@ impl KeybindChanges {
             document.nodes_mut().push(unbind_node(&unbound_everywhere));
         }
         document
+    }
+}
+
+fn mouse_trigger_target(key_block: &KdlNode) -> Result<MouseTarget, ConfigError> {
+    match key_block.get("on") {
+        Some(entry) => entry
+            .value()
+            .as_string()
+            .and_then(MouseTarget::from_name)
+            .ok_or_else(|| {
+                ConfigError::new_kdl_error(
+                    "'on' must be \"content\", \"frame\" or \"any\"".to_owned(),
+                    entry.span().offset(),
+                    entry.span().len(),
+                )
+            }),
+        None => Ok(MouseTarget::Any),
+    }
+}
+
+fn mouse_triggers_with_text(
+    key_block: &KdlNode,
+    key_text: &dyn Fn(&str) -> Result<String, String>,
+) -> Result<Vec<MouseTrigger>, ConfigError> {
+    let target = mouse_trigger_target(key_block)?;
+    let error = |message: String| {
+        ConfigError::new_kdl_error(message, key_block.span().offset(), key_block.span().len())
+    };
+    let mut triggers = vec![];
+    for entry in key_block.entries().iter().filter(|e| e.name().is_none()) {
+        let text = entry
+            .value()
+            .as_string()
+            .ok_or_else(|| error("A mouse trigger must be a string".to_owned()))?;
+        let substituted = key_text(text).map_err(error)?;
+        match MouseTrigger::parse(&substituted, target) {
+            Ok(trigger) => triggers.push(trigger),
+            Err(_)
+                if text.contains('{')
+                    && substituted
+                        .split_whitespace()
+                        .any(|word| word.eq_ignore_ascii_case("super")) =>
+            {
+                log::warn!(
+                    "Skipping the mouse binding '{}' ('{}'), because terminals do not report Super for mouse events",
+                    text,
+                    substituted
+                );
+            },
+            Err(e) => return Err(error(e)),
+        }
+    }
+    Ok(triggers)
+}
+
+fn mouse_binding_from_kdl(
+    key_block: &KdlNode,
+    config_options: &Options,
+) -> Result<MouseBinding, ConfigError> {
+    let app_first = match key_block.get("app_first") {
+        Some(entry) => Some(entry.value().as_bool().ok_or_else(|| {
+            ConfigError::new_kdl_error(
+                "app_first must be true or false".to_owned(),
+                entry.span().offset(),
+                entry.span().len(),
+            )
+        })?),
+        None => None,
+    };
+    let nodes = kdl_children_nodes_or_error!(key_block, "no actions found for the mouse binding");
+    let is_behaviour = |node: &KdlNode| {
+        let name = kdl_name!(node);
+        MouseBehaviour::is_behaviour_name(name)
+            && !(name == "MovePane" && node.entries().iter().any(|e| e.name().is_none()))
+    };
+    if let Some(behaviour_node) = nodes.iter().find(|node| is_behaviour(node)) {
+        if nodes.len() != 1 {
+            return Err(ConfigError::new_kdl_error(
+                format!(
+                    "{} must be the only item in a mouse binding",
+                    kdl_name!(behaviour_node)
+                ),
+                behaviour_node.span().offset(),
+                behaviour_node.span().len(),
+            ));
+        }
+        let mut arguments = vec![];
+        for entry in behaviour_node
+            .entries()
+            .iter()
+            .filter(|e| e.name().is_none())
+        {
+            match (entry.value().as_string(), entry.value().as_i64()) {
+                (Some(text), _) => arguments.push(text.to_owned()),
+                (None, Some(number)) => arguments.push(number.to_string()),
+                _ => {
+                    return Err(ConfigError::new_kdl_error(
+                        "Mouse behaviour arguments must be strings or numbers".to_owned(),
+                        entry.span().offset(),
+                        entry.span().len(),
+                    ))
+                },
+            }
+        }
+        let behaviour =
+            MouseBehaviour::from_name_and_arguments(kdl_name!(behaviour_node), &arguments)
+                .map_err(|e| {
+                    ConfigError::new_kdl_error(
+                        e,
+                        behaviour_node.span().offset(),
+                        behaviour_node.span().len(),
+                    )
+                })?;
+        return Ok(MouseBinding::behaviour(behaviour).with_app_first(app_first));
+    }
+    let actions: Vec<Action> = actions_from_kdl!(key_block, config_options);
+    Ok(MouseBinding::actions(actions).with_app_first(app_first))
+}
+
+pub fn mouse_binding_node(trigger: &MouseTrigger, binding: &MouseBinding) -> KdlNode {
+    let mut node = KdlNode::new("bind");
+    node.push(trigger.to_kdl());
+    if trigger.target != MouseTarget::Any {
+        node.insert("on", trigger.target.name());
+    }
+    if let Some(app_first) = binding.app_first {
+        node.insert("app_first", app_first);
+    }
+    let mut children = KdlDocument::new();
+    let mut have_children = false;
+    match &binding.kind {
+        MouseBindingKind::Behaviour(behaviour) => {
+            let mut behaviour_node = KdlNode::new(behaviour.name());
+            for argument in behaviour.arguments() {
+                match argument.parse::<i64>() {
+                    Ok(number) => behaviour_node.push(number),
+                    Err(_) => behaviour_node.push(argument),
+                }
+            }
+            children.nodes_mut().push(behaviour_node);
+        },
+        MouseBindingKind::Actions(actions) => {
+            for action in actions {
+                if let Some(kdl_action) = action.to_kdl() {
+                    if kdl_action.children().is_some() {
+                        have_children = true;
+                    }
+                    children.nodes_mut().push(kdl_action);
+                }
+            }
+        },
+    }
+    if !have_children {
+        for child in children.nodes_mut() {
+            child.set_leading("");
+            child.set_trailing("; ");
+        }
+        children.set_leading(" ");
+        children.set_trailing("");
+    }
+    node.set_children(children);
+    node
+}
+
+fn mouse_unbind_nodes(triggers: &BTreeSet<MouseTrigger>) -> Vec<KdlNode> {
+    let mut by_target: BTreeMap<MouseTarget, Vec<&MouseTrigger>> = BTreeMap::new();
+    for trigger in triggers {
+        by_target.entry(trigger.target).or_default().push(trigger);
+    }
+    by_target
+        .into_iter()
+        .map(|(target, triggers)| {
+            let mut node = KdlNode::new("unbind");
+            for trigger in triggers {
+                node.push(trigger.to_kdl());
+            }
+            if target != MouseTarget::Any {
+                node.insert("on", target.name());
+            }
+            node
+        })
+        .collect()
+}
+
+impl MousebindChanges {
+    fn bind_triggers_in_block(
+        block: &KdlNode,
+        input_mode: InputMode,
+        changes: &mut MousebindChanges,
+        config_options: &Options,
+        key_text: &dyn Fn(&str) -> Result<String, String>,
+    ) -> Result<(), ConfigError> {
+        let all_nodes = kdl_children_nodes_or_error!(block, "no mouse binding block for mode");
+        for key_block in all_nodes.iter().filter(|n| kdl_name!(n) == "bind") {
+            let triggers = mouse_triggers_with_text(key_block, key_text)?;
+            let binding = mouse_binding_from_kdl(key_block, config_options)?;
+            if let Some(behaviour) = binding.as_behaviour() {
+                if let Some(trigger) = triggers
+                    .iter()
+                    .find(|trigger| behaviour.needs_wheel() && !trigger.button.is_wheel())
+                {
+                    return Err(ConfigError::new_kdl_error(
+                        format!(
+                            "{} can only be bound to ScrollUp, ScrollDown, ScrollLeft or ScrollRight, not '{}'",
+                            behaviour.name(),
+                            trigger.to_kdl()
+                        ),
+                        key_block.span().offset(),
+                        key_block.span().len(),
+                    ));
+                }
+            }
+            for trigger in triggers {
+                changes.bind(input_mode, trigger, binding.clone());
+            }
+        }
+        for key_block in all_nodes.iter().filter(|n| kdl_name!(n) == "unbind") {
+            for trigger in mouse_triggers_with_text(key_block, key_text)? {
+                changes.unbind(input_mode, trigger);
+            }
+        }
+        for key_block in all_nodes {
+            if kdl_name!(key_block) != "bind" && kdl_name!(key_block) != "unbind" {
+                return Err(ConfigError::new_kdl_error(
+                    format!(
+                        "Unknown mouse binding instruction: '{}'",
+                        kdl_name!(key_block)
+                    ),
+                    key_block.span().offset(),
+                    key_block.span().len(),
+                ));
+            }
+        }
+        Ok(())
+    }
+    pub fn from_kdl(
+        kdl_mousebinds: &KdlNode,
+        config_options: &Options,
+    ) -> Result<MousebindChanges, ConfigError> {
+        MousebindChanges::from_kdl_with_key_text(kdl_mousebinds, config_options, &|key: &str| {
+            Ok(key.to_owned())
+        })
+    }
+    pub fn from_kdl_with_key_text(
+        kdl_mousebinds: &KdlNode,
+        config_options: &Options,
+        key_text: &dyn Fn(&str) -> Result<String, String>,
+    ) -> Result<MousebindChanges, ConfigError> {
+        parse_bind_blocks(
+            kdl_mousebinds,
+            &|block, input_mode, changes| {
+                MousebindChanges::bind_triggers_in_block(
+                    block,
+                    input_mode,
+                    changes,
+                    config_options,
+                    key_text,
+                )
+            },
+            &|global_unbind| mouse_triggers_with_text(global_unbind, key_text),
+        )
+    }
+    pub fn to_kdl_children(&self) -> KdlDocument {
+        let mut document = KdlDocument::new();
+        let title_maker = Keybinds::default();
+        let mode_name = |mode: &InputMode| format!("{:?}", mode).to_lowercase();
+        for (mode, mode_changes) in &self.modes {
+            if !mode_changes.clear_defaults {
+                continue;
+            }
+            let mut node = KdlNode::new(mode_name(mode));
+            node.insert("clear-defaults", true);
+            let mut children = KdlDocument::new();
+            for (trigger, binding) in &mode_changes.bind {
+                children
+                    .nodes_mut()
+                    .push(mouse_binding_node(trigger, binding));
+            }
+            for unbind in mouse_unbind_nodes(&mode_changes.unbind) {
+                children.nodes_mut().push(unbind);
+            }
+            node.set_children(children);
+            document.nodes_mut().push(node);
+        }
+        let mut grouped: Vec<(BTreeSet<InputMode>, MouseTrigger, MouseBinding)> = vec![];
+        for (mode, mode_changes) in &self.modes {
+            if mode_changes.clear_defaults {
+                continue;
+            }
+            for (trigger, binding) in &mode_changes.bind {
+                match grouped
+                    .iter_mut()
+                    .find(|(_, t, b)| t == trigger && b == binding)
+                {
+                    Some((modes, _, _)) => {
+                        modes.insert(*mode);
+                    },
+                    None => {
+                        grouped.push((BTreeSet::from([*mode]), trigger.clone(), binding.clone()))
+                    },
+                }
+            }
+        }
+        let mut blocks: Vec<(BTreeSet<InputMode>, KdlDocument)> = vec![];
+        for (modes, trigger, binding) in grouped {
+            let node = mouse_binding_node(&trigger, &binding);
+            match blocks
+                .iter_mut()
+                .find(|(block_modes, _)| *block_modes == modes)
+            {
+                Some((_, children)) => children.nodes_mut().push(node),
+                None => {
+                    let mut children = KdlDocument::new();
+                    children.nodes_mut().push(node);
+                    blocks.push((modes, children));
+                },
+            }
+        }
+        for (modes, children) in blocks {
+            let mut title = title_maker.serialize_mode_title_node(&modes);
+            title.set_children(children);
+            document.nodes_mut().push(title);
+        }
+        let mut unbound_everywhere: Option<BTreeSet<MouseTrigger>> = None;
+        for mode in InputMode::iter() {
+            let unbound_in_mode = match self.modes.get(&mode) {
+                Some(mode_changes) if !mode_changes.clear_defaults => mode_changes.unbind.clone(),
+                _ => BTreeSet::new(),
+            };
+            unbound_everywhere = Some(match unbound_everywhere {
+                Some(so_far) => so_far.intersection(&unbound_in_mode).cloned().collect(),
+                None => unbound_in_mode,
+            });
+        }
+        let unbound_everywhere = unbound_everywhere.unwrap_or_default();
+        for (mode, mode_changes) in &self.modes {
+            if mode_changes.clear_defaults {
+                continue;
+            }
+            let remaining: BTreeSet<MouseTrigger> = mode_changes
+                .unbind
+                .difference(&unbound_everywhere)
+                .cloned()
+                .collect();
+            if !remaining.is_empty() {
+                let mut node = KdlNode::new(mode_name(mode));
+                let mut children = KdlDocument::new();
+                for unbind in mouse_unbind_nodes(&remaining) {
+                    children.nodes_mut().push(unbind);
+                }
+                node.set_children(children);
+                document.nodes_mut().push(node);
+            }
+        }
+        for unbind in mouse_unbind_nodes(&unbound_everywhere) {
+            document.nodes_mut().push(unbind);
+        }
+        document
+    }
+    pub fn to_kdl(&self) -> Option<KdlNode> {
+        if self.is_empty() {
+            return None;
+        }
+        let mut node = KdlNode::new("mousebinds");
+        if self.clear_defaults {
+            node.insert("clear-defaults", true);
+        }
+        let children = self.to_kdl_children();
+        if !children.nodes().is_empty() {
+            node.set_children(children);
+        }
+        Some(node)
     }
 }
 
@@ -5938,6 +6319,14 @@ impl Config {
             config.apply_keybinds_selection(keybinds_layer, selection);
             should_resolve_keybinds = true;
         }
+        if let Some(kdl_mousebinds) = kdl_config.get("mousebinds") {
+            let changes = MousebindChanges::from_kdl(&kdl_mousebinds, &config.options)?;
+            config
+                .keybinds_layers
+                .mouse_layer_mut(keybinds_layer)
+                .compose(changes);
+            should_resolve_keybinds = true;
+        }
         if let Some(kdl_themes) = kdl_config.get("themes") {
             let sourced_from_external_file = false;
             let config_themes = Themes::from_kdl(kdl_themes, sourced_from_external_file)?;
@@ -5979,6 +6368,10 @@ impl Config {
 
         if let Some(keybinds) = self.keybinds_layers.user.to_kdl() {
             document.nodes_mut().push(keybinds);
+        }
+
+        if let Some(mousebinds) = self.keybinds_layers.user_mouse.to_kdl() {
+            document.nodes_mut().push(mousebinds);
         }
 
         if let Some(themes) = self.themes.to_kdl() {

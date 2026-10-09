@@ -29,11 +29,12 @@ use zellij_utils::data::{
     DeleteLayoutResponse, EditLayoutResponse, Event, FloatingPaneCoordinates,
     FocusOrCreateTabResponse, GetFocusedPaneInfoResponse, GetPaneCwdResponse, GetPanePidResponse,
     GetPaneRunningCommandResponse, HttpVerb, KeyWithModifier, KillSessionsResponse, LayoutInfo,
-    LayoutMetadata, LayoutParsingError, MessageToPlugin, NewPanePlacement, NewTabResponse,
-    NewTabUnfocusedResponse, NewTiledPaneInTabResponse, OpenCommandPaneBackgroundResponse,
-    OpenCommandPaneFloatingNearPluginResponse, OpenCommandPaneFloatingResponse,
-    OpenCommandPaneInPlaceOfPaneIdResponse, OpenCommandPaneInPlaceOfPluginResponse,
-    OpenCommandPaneInPlaceResponse, OpenCommandPaneNearPluginResponse, OpenCommandPaneResponse,
+    LayoutMetadata, LayoutParsingError, MessageToPlugin, MouseTrigger, NewPanePlacement,
+    NewTabResponse, NewTabUnfocusedResponse, NewTiledPaneInTabResponse,
+    OpenCommandPaneBackgroundResponse, OpenCommandPaneFloatingNearPluginResponse,
+    OpenCommandPaneFloatingResponse, OpenCommandPaneInPlaceOfPaneIdResponse,
+    OpenCommandPaneInPlaceOfPluginResponse, OpenCommandPaneInPlaceResponse,
+    OpenCommandPaneNearPluginResponse, OpenCommandPaneResponse,
     OpenEditPaneInPlaceOfPaneIdResponse, OpenFileFloatingNearPluginResponse,
     OpenFileFloatingResponse, OpenFileInPlaceOfPluginResponse, OpenFileInPlaceResponse,
     OpenFileNearPluginResponse, OpenFileResponse, OpenPaneInNewTabResponse,
@@ -512,6 +513,10 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         keys,
                         write_config_to_disk,
                     } => reset_keys(env, keys, write_config_to_disk),
+                    PluginCommand::ResetMousebinds {
+                        triggers,
+                        write_config_to_disk,
+                    } => reset_mousebinds(env, triggers, write_config_to_disk),
                     PluginCommand::WriteThemeFile {
                         name,
                         copy_from,
@@ -3386,6 +3391,22 @@ fn reset_keys(
             write_config_to_disk,
         })
         .with_context(|| "Failed to reset keys")
+        .non_fatal();
+}
+
+fn reset_mousebinds(
+    env: &PluginEnv,
+    triggers: Vec<(InputMode, MouseTrigger)>,
+    write_config_to_disk: bool,
+) {
+    let client_id = acting_client(env);
+    env.senders
+        .send_to_server(ServerInstruction::ResetMousebinds {
+            client_id,
+            triggers,
+            write_config_to_disk,
+        })
+        .with_context(|| "Failed to reset mouse bindings")
         .non_fatal();
 }
 
@@ -6431,7 +6452,8 @@ fn required_permission(command: &PluginCommand) -> Option<PermissionType> {
         | PluginCommand::OverwriteConfigFile
         | PluginCommand::ReloadConfigFile
         | PluginCommand::ReplaceConfigBlocks(..)
-        | PluginCommand::ResetKeys { .. } => PermissionType::Reconfigure,
+        | PluginCommand::ResetKeys { .. }
+        | PluginCommand::ResetMousebinds { .. } => PermissionType::Reconfigure,
         PluginCommand::ChangeHostFolder(..) | PluginCommand::ListWindowsVolumes => {
             PermissionType::FullHdAccess
         },

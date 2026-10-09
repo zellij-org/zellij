@@ -10,6 +10,7 @@ pub mod keybind_presets;
 pub mod keybinds;
 pub mod layout;
 pub mod mouse;
+pub mod mousebinds;
 pub mod options;
 pub mod permission;
 pub mod plugins;

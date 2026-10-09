@@ -439,6 +439,7 @@ pub fn setting_values(config: &Config) -> BTreeMap<SettingKey, Option<String>> {
         web_client,
         context_menu,
         keybinds_layers: _keybinds_layers_are_compared_directly,
+        mousebinds: _mousebinds_are_compared_directly,
     } = config;
     let mut values = BTreeMap::new();
     option_values(options, &mut values);
@@ -456,6 +457,7 @@ pub fn setting_values(config: &Config) -> BTreeMap<SettingKey, Option<String>> {
     ui_values(ui, &mut values);
     web_client_values(web_client, &mut values);
     values.insert(SettingKey::Keybinds, None);
+    values.insert(SettingKey::Mousebinds, None);
     values.insert(
         SettingKey::PluginAliases,
         Some(plugins.to_kdl(false).to_string()),
@@ -501,9 +503,14 @@ pub fn keybinds_differ(first: &Config, second: &Config) -> bool {
     first.keybinds_layers.user != second.keybinds_layers.user
 }
 
+pub fn mousebinds_differ(first: &Config, second: &Config) -> bool {
+    first.keybinds_layers.user_mouse != second.keybinds_layers.user_mouse
+}
+
 pub fn settings_differ(first: &Config, second: &Config, key: SettingKey) -> bool {
     match key {
         SettingKey::Keybinds => keybinds_differ(first, second),
+        SettingKey::Mousebinds => mousebinds_differ(first, second),
         _ => setting_value(first, key) != setting_value(second, key),
     }
 }
@@ -515,6 +522,7 @@ pub fn differing_settings(first: &Config, second: &Config) -> Vec<SettingKey> {
         .into_iter()
         .filter(|key| match key {
             SettingKey::Keybinds => keybinds_differ(first, second),
+            SettingKey::Mousebinds => mousebinds_differ(first, second),
             _ => first_values.get(key) != second_values.get(key),
         })
         .collect()
@@ -710,6 +718,10 @@ pub fn copy_setting(target: &mut Config, source: &Config, key: SettingKey) {
             target.keybinds_layers.user = source.keybinds_layers.user.clone();
             target.resolve_keybinds();
         },
+        SettingKey::Mousebinds => {
+            target.keybinds_layers.user_mouse = source.keybinds_layers.user_mouse.clone();
+            target.resolve_keybinds();
+        },
         SettingKey::PluginAliases => target.plugins = source.plugins.clone(),
         SettingKey::LoadPlugins => target.background_plugins = source.background_plugins.clone(),
         SettingKey::Env => target.env = source.env.clone(),
@@ -726,6 +738,11 @@ pub fn default_config() -> &'static Config {
 pub fn unset_setting(config: &mut Config, key: SettingKey) {
     if key == SettingKey::Keybinds {
         config.keybinds_layers.user = Default::default();
+        config.resolve_keybinds();
+        return;
+    }
+    if key == SettingKey::Mousebinds {
+        config.keybinds_layers.user_mouse = Default::default();
         config.resolve_keybinds();
         return;
     }
@@ -747,6 +764,9 @@ pub fn setting_kdl_value(config: &Config, key: SettingKey) -> Option<KdlValue> {
 pub fn setting_is_default(config: &Config, key: SettingKey) -> bool {
     if key == SettingKey::Keybinds {
         return config.keybinds_layers.user.is_empty();
+    }
+    if key == SettingKey::Mousebinds {
+        return config.keybinds_layers.user_mouse.is_empty();
     }
     let mut defaults = config.clone();
     unset_setting(&mut defaults, key);
@@ -789,12 +809,15 @@ pub fn setting_states(
     let saved_values = setting_values(saved);
     let current_values = setting_values(current);
     let keybinds_changed = keybinds_differ(saved, current);
+    let mousebinds_changed = mousebinds_differ(saved, current);
     SettingKey::all()
         .into_iter()
         .map(|key| {
             let (saved_value, current_value) = if key.is_block() {
                 let changed = if key == SettingKey::Keybinds {
                     keybinds_changed
+                } else if key == SettingKey::Mousebinds {
+                    mousebinds_changed
                 } else {
                     saved_values.get(&key) != current_values.get(&key)
                 };

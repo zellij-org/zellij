@@ -1,15 +1,17 @@
 use super::actions::Action;
 use super::config::{Config, ConfigError};
 use super::keybinds::Keybinds;
+use super::mousebinds::{MouseBinding, Mousebinds};
 use super::options::Options;
 use crate::data::{
     InputMode, KeyWithModifier, KeybindPresetInfo, KeybindPresetSource, KeybindPresetWithError,
-    KeybindsSelectionSnapshot,
+    KeybindsSelectionSnapshot, MouseTrigger,
 };
 use crate::home::{find_default_config_dir, get_keybinds_dir};
 use kdl::{KdlDocument, KdlEntry, KdlNode};
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::hash::Hash;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::Arc;
@@ -58,37 +60,65 @@ pub fn builtin_keybind_preset_names() -> Vec<&'static str> {
     names
 }
 
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
-pub struct ModeKeybindChanges {
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModeBindChanges<K: Ord, V> {
     pub clear_defaults: bool,
-    pub bind: BTreeMap<KeyWithModifier, Vec<Action>>,
-    pub unbind: BTreeSet<KeyWithModifier>,
+    pub bind: BTreeMap<K, V>,
+    pub unbind: BTreeSet<K>,
 }
 
-impl ModeKeybindChanges {
+impl<K: Ord, V> Default for ModeBindChanges<K, V> {
+    fn default() -> Self {
+        ModeBindChanges {
+            clear_defaults: false,
+            bind: BTreeMap::new(),
+            unbind: BTreeSet::new(),
+        }
+    }
+}
+
+impl<K: Ord, V> ModeBindChanges<K, V> {
     pub fn is_empty(&self) -> bool {
         !self.clear_defaults && self.bind.is_empty() && self.unbind.is_empty()
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
-pub struct KeybindChanges {
+pub type ModeKeybindChanges = ModeBindChanges<KeyWithModifier, Vec<Action>>;
+pub type ModeMousebindChanges = ModeBindChanges<MouseTrigger, MouseBinding>;
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BindChanges<K: Ord, V> {
     pub clear_defaults: bool,
-    pub modes: BTreeMap<InputMode, ModeKeybindChanges>,
+    pub modes: BTreeMap<InputMode, ModeBindChanges<K, V>>,
 }
 
-impl KeybindChanges {
+impl<K: Ord, V> Default for BindChanges<K, V> {
+    fn default() -> Self {
+        BindChanges {
+            clear_defaults: false,
+            modes: BTreeMap::new(),
+        }
+    }
+}
+
+pub type KeybindChanges = BindChanges<KeyWithModifier, Vec<Action>>;
+pub type MousebindChanges = BindChanges<MouseTrigger, MouseBinding>;
+
+impl<K: Ord + Clone + Hash + Eq, V: Clone> BindChanges<K, V> {
     pub fn is_empty(&self) -> bool {
         !self.clear_defaults && self.modes.values().all(|mode| mode.is_empty())
     }
-    pub fn has_keybindings(&self) -> bool {
+    pub fn has_bindings(&self) -> bool {
         self.modes.values().any(|mode| !mode.is_empty())
     }
-    fn mode_mut(&mut self, mode: InputMode) -> &mut ModeKeybindChanges {
+    pub fn has_keybindings(&self) -> bool {
+        self.has_bindings()
+    }
+    fn mode_mut(&mut self, mode: InputMode) -> &mut ModeBindChanges<K, V> {
         self.modes.entry(mode).or_default()
     }
     pub fn clear_all(&mut self) {
-        *self = KeybindChanges {
+        *self = BindChanges {
             clear_defaults: true,
             modes: BTreeMap::new(),
         };
@@ -96,23 +126,23 @@ impl KeybindChanges {
     pub fn clear_mode(&mut self, mode: InputMode) {
         self.modes.insert(
             mode,
-            ModeKeybindChanges {
+            ModeBindChanges {
                 clear_defaults: true,
                 ..Default::default()
             },
         );
     }
-    pub fn bind(&mut self, mode: InputMode, key: KeyWithModifier, actions: Vec<Action>) {
+    pub fn bind(&mut self, mode: InputMode, key: K, actions: V) {
         let mode_changes = self.mode_mut(mode);
         mode_changes.unbind.remove(&key);
         mode_changes.bind.insert(key, actions);
     }
-    pub fn unbind(&mut self, mode: InputMode, key: KeyWithModifier) {
+    pub fn unbind(&mut self, mode: InputMode, key: K) {
         let mode_changes = self.mode_mut(mode);
         mode_changes.bind.remove(&key);
         mode_changes.unbind.insert(key);
     }
-    pub fn compose(&mut self, other: KeybindChanges) {
+    pub fn compose(&mut self, other: BindChanges<K, V>) {
         if other.clear_defaults {
             *self = other;
             return;
@@ -130,13 +160,13 @@ impl KeybindChanges {
             }
         }
     }
-    pub fn apply(&self, keybinds: &mut Keybinds) {
+    pub fn apply_to_map(&self, bindings: &mut HashMap<InputMode, HashMap<K, V>>) {
         if self.clear_defaults {
-            keybinds.0.clear();
+            bindings.clear();
         }
         for (mode, mode_changes) in &self.modes {
             if mode_changes.clear_defaults || !mode_changes.bind.is_empty() {
-                let keys_in_mode = keybinds.get_input_mode_mut(mode);
+                let keys_in_mode = bindings.entry(*mode).or_insert_with(HashMap::new);
                 if mode_changes.clear_defaults {
                     keys_in_mode.clear();
                 }
@@ -146,12 +176,24 @@ impl KeybindChanges {
                 for (key, actions) in &mode_changes.bind {
                     keys_in_mode.insert(key.clone(), actions.clone());
                 }
-            } else if let Some(keys_in_mode) = keybinds.0.get_mut(mode) {
+            } else if let Some(keys_in_mode) = bindings.get_mut(mode) {
                 for key in &mode_changes.unbind {
                     keys_in_mode.remove(key);
                 }
             }
         }
+    }
+}
+
+impl KeybindChanges {
+    pub fn apply(&self, keybinds: &mut Keybinds) {
+        self.apply_to_map(&mut keybinds.0);
+    }
+}
+
+impl MousebindChanges {
+    pub fn apply(&self, mousebinds: &mut Mousebinds) {
+        self.apply_to_map(&mut mousebinds.0);
     }
 }
 
@@ -231,6 +273,10 @@ pub struct KeybindsLayers {
     pub injected_default_mode: Option<InputMode>,
     pub config_default_mode: Option<InputMode>,
     pub active: ActiveKeybindPreset,
+    #[serde(default)]
+    pub user_mouse: MousebindChanges,
+    #[serde(default)]
+    pub layout_mouse: MousebindChanges,
 }
 
 impl KeybindsLayers {
@@ -238,6 +284,12 @@ impl KeybindsLayers {
         match layer {
             KeybindsLayer::User => &mut self.user,
             KeybindsLayer::Layout => &mut self.layout,
+        }
+    }
+    pub fn mouse_layer_mut(&mut self, layer: KeybindsLayer) -> &mut MousebindChanges {
+        match layer {
+            KeybindsLayer::User => &mut self.user_mouse,
+            KeybindsLayer::Layout => &mut self.layout_mouse,
         }
     }
     pub fn effective_preset(&self) -> String {
@@ -285,6 +337,7 @@ pub struct KeybindPreset {
     pub defaults: BTreeMap<String, String>,
     pub placeholders: BTreeSet<String>,
     pub keybinds: KdlNode,
+    pub mousebinds: Option<KdlNode>,
 }
 
 fn first_string_argument(node: &KdlNode) -> Option<String> {
@@ -410,8 +463,12 @@ impl KeybindPreset {
             .get("keybinds")
             .cloned()
             .ok_or_else(|| "The preset has no keybinds block".to_owned())?;
+        let mousebinds = document.get("mousebinds").cloned();
         let mut placeholders = BTreeSet::new();
         collect_placeholders(&keybinds, &mut placeholders)?;
+        if let Some(mousebinds) = &mousebinds {
+            collect_placeholders(mousebinds, &mut placeholders)?;
+        }
         Ok(KeybindPreset {
             display_name,
             description,
@@ -420,6 +477,7 @@ impl KeybindPreset {
             defaults,
             placeholders,
             keybinds,
+            mousebinds,
         })
     }
     pub fn leader_values(
@@ -499,6 +557,55 @@ impl KeybindPreset {
         changes.apply(&mut keybinds);
         Ok(keybinds)
     }
+    pub fn mousebinds(
+        &self,
+        values: &BTreeMap<String, String>,
+        options: &Options,
+    ) -> Result<Mousebinds, String> {
+        match &self.mousebinds {
+            Some(node) => mousebinds_from_node(node, values, options),
+            None => default_preset_mousebinds(values, options),
+        }
+    }
+}
+
+fn substitute_placeholders(key: &str, values: &BTreeMap<String, String>) -> Result<String, String> {
+    let mut substituted = key.to_owned();
+    for placeholder in placeholders_in(key) {
+        let value = values
+            .get(&placeholder)
+            .ok_or_else(|| format!("No value for the placeholder {{{}}}", placeholder))?;
+        substituted = substituted.replace(&format!("{{{}}}", placeholder), value);
+    }
+    Ok(substituted.split_whitespace().collect::<Vec<_>>().join(" "))
+}
+
+fn mousebinds_from_node(
+    node: &KdlNode,
+    values: &BTreeMap<String, String>,
+    options: &Options,
+) -> Result<Mousebinds, String> {
+    let substitute = |key: &str| substitute_placeholders(key, values);
+    let changes = MousebindChanges::from_kdl_with_key_text(node, options, &substitute)
+        .map_err(|e| config_error_text(&e))?;
+    let mut mousebinds = Mousebinds::default();
+    changes.apply(&mut mousebinds);
+    Ok(mousebinds)
+}
+
+fn default_preset_mousebinds(
+    values: &BTreeMap<String, String>,
+    options: &Options,
+) -> Result<Mousebinds, String> {
+    let default_preset = KeybindPreset::from_kdl(DEFAULT_KEYBIND_PRESET_ASSET)?;
+    let Some(node) = default_preset.mousebinds.as_ref() else {
+        return Ok(Mousebinds::default());
+    };
+    let mut merged_values = default_preset.defaults.clone();
+    for (placeholder, value) in values {
+        merged_values.insert(placeholder.clone(), value.clone());
+    }
+    mousebinds_from_node(node, &merged_values, options)
 }
 
 pub fn command_line_preset_relative_to(options: &mut Options, cwd: &Path) {
@@ -561,6 +668,7 @@ pub fn find_keybind_preset(
 #[derive(Debug, Clone)]
 pub struct ResolvedKeybindPreset {
     pub keybinds: Keybinds,
+    pub mousebinds: Mousebinds,
     pub default_mode: Option<InputMode>,
     pub active: ActiveKeybindPreset,
 }
@@ -619,8 +727,10 @@ pub fn resolve_keybind_preset(
     };
     let values = preset.leader_values(requested_values).map_err(failed)?;
     let keybinds = preset.keybinds(&values, options).map_err(failed)?;
+    let mousebinds = preset.mousebinds(&values, options).map_err(failed)?;
     Ok(ResolvedKeybindPreset {
         keybinds,
+        mousebinds,
         default_mode: preset.default_mode,
         active: ActiveKeybindPreset {
             info,
@@ -640,6 +750,7 @@ fn builtin_default_preset(options: &Options) -> ResolvedKeybindPreset {
     )
     .unwrap_or_else(|(active, _)| ResolvedKeybindPreset {
         keybinds: Keybinds::default(),
+        mousebinds: Mousebinds::default(),
         default_mode: None,
         active,
     })
@@ -733,6 +844,20 @@ pub fn is_usable_keybind_preset_name(name: &str) -> bool {
             .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
 }
 
+fn user_mousebinds_node(
+    file_contents: Option<&str>,
+    mouse_changes: &MousebindChanges,
+) -> Option<KdlNode> {
+    let from_file = file_contents
+        .and_then(|text| text.parse::<KdlDocument>().ok())
+        .and_then(|document| document.get("mousebinds").cloned());
+    let mut node = from_file.or_else(|| mouse_changes.to_kdl())?;
+    node.entries_mut().retain(|entry| entry.name().is_none());
+    node.set_leading("");
+    node.set_trailing("\n");
+    Some(node)
+}
+
 fn user_keybinds_node(file_contents: Option<&str>, selection: &KeybindsSelection) -> KdlNode {
     let from_file = file_contents
         .and_then(|text| text.parse::<KdlDocument>().ok())
@@ -752,6 +877,7 @@ fn user_keybinds_node(file_contents: Option<&str>, selection: &KeybindsSelection
 pub fn save_keybinds_as_preset(
     file_contents: Option<&str>,
     selection: &KeybindsSelection,
+    mouse_changes: &MousebindChanges,
     default_mode: Option<InputMode>,
     new_name: &str,
     keybinds_dir: &Path,
@@ -778,7 +904,10 @@ pub fn save_keybinds_as_preset(
         ));
     }
     header.push_str("}\n");
-    let text = format!("{}{}", header, user_keybinds_node(file_contents, selection));
+    let mut text = format!("{}{}", header, user_keybinds_node(file_contents, selection));
+    if let Some(mousebinds) = user_mousebinds_node(file_contents, mouse_changes) {
+        text.push_str(&mousebinds.to_string());
+    }
     KeybindPreset::from_kdl(&text)?;
     std::fs::create_dir_all(keybinds_dir)
         .map_err(|e| format!("Could not create {}: {}", keybinds_dir.display(), e))?;
@@ -878,6 +1007,9 @@ impl Config {
     pub fn preset_keybinds(&self) -> Keybinds {
         self.resolved_keybind_preset().keybinds
     }
+    pub fn preset_mousebinds(&self) -> Mousebinds {
+        self.resolved_keybind_preset().mousebinds
+    }
     fn resolved_keybind_preset(&self) -> ResolvedKeybindPreset {
         let command_line = self.command_line_keybinds();
         let preset_name = command_line
@@ -929,6 +1061,18 @@ impl Config {
         if self.keybinds.as_ref() != &keybinds {
             self.keybinds = Arc::new(keybinds);
         }
+        let mut mousebinds = resolved.mousebinds;
+        for changes in [
+            &self.keybinds_layers.user_mouse,
+            &self.keybinds_layers.layout_mouse,
+        ] {
+            if !(preset_given_on_command_line && changes.clear_defaults) {
+                changes.apply(&mut mousebinds);
+            }
+        }
+        if self.mousebinds.as_ref() != &mousebinds {
+            self.mousebinds = Arc::new(mousebinds);
+        }
         let config_default_mode = self.keybinds_layers.config_default_mode;
         let set_on_command_line = self.options.default_mode
             != self.keybinds_layers.injected_default_mode
@@ -960,6 +1104,7 @@ impl Config {
             unlock: layers.user.unlock.clone(),
             clears_defaults: layers.user.changes.clear_defaults,
             has_own_keybindings: layers.user.changes.has_keybindings(),
+            has_own_mousebindings: !layers.user_mouse.is_empty(),
             active: layers.active.info.clone(),
             active_values: layers.active.values.clone(),
             error: layers.active.error.clone(),

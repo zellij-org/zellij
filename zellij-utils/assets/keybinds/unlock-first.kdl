@@ -229,3 +229,28 @@ keybinds {
         bind "m" { SwitchToMode "Move"; }
     }
 }
+mousebinds {
+    shared {
+        bind "Left" { Click; }
+        bind "Double Left" on="content" { Select; }
+        bind "Triple Left" on="content" { Select; }
+        bind "Double Left" on="frame" { ToggleFullscreen; }
+        bind "{primary} Left" on="frame" { ResizePane; }
+        bind "{secondary} Left" { GroupToggle; }
+        bind "{secondary} Right" { Ungroup; }
+        bind "{secondary} Middle" { Ignore; }
+        bind "Right" { ContextMenu; }
+        bind "{primary} Right" { ContextMenu; }
+        bind "ScrollUp" { Scroll 3; }
+        bind "ScrollDown" { Scroll 3; }
+        bind "ScrollLeft" { ScrollColumns 4; }
+        bind "ScrollRight" { ScrollColumns 4; }
+        bind "{primary} ScrollUp" { ResizeScroll "increase"; }
+        bind "{primary} ScrollDown" { ResizeScroll "decrease"; }
+        bind "{primary} ScrollLeft" { ScrollColumns 4; }
+        bind "{primary} ScrollRight" { ScrollColumns 4; }
+        bind "{secondary} ScrollUp" { ScrollToPrompt "previous"; }
+        bind "{secondary} ScrollDown" { ScrollToPrompt "next"; }
+        bind "{secondary} ScrollLeft" "{secondary} ScrollRight" { Ignore; }
+    }
+}

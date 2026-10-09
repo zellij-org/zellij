@@ -912,6 +912,7 @@ pub enum Mouse {
     Hold(isize, usize),       // line and column
     Release(isize, usize),    // line and column
     Hover(isize, usize),      // line and column
+    DoubleClick(isize, usize),
 }
 
 impl Mouse {
@@ -919,11 +920,195 @@ impl Mouse {
         // (line, column)
         match self {
             Mouse::LeftClick(line, column) => Some((*line as usize, *column as usize)),
+            Mouse::DoubleClick(line, column) => Some((*line as usize, *column as usize)),
             Mouse::RightClick(line, column) => Some((*line as usize, *column as usize)),
             Mouse::Hold(line, column) => Some((*line as usize, *column as usize)),
             Mouse::Release(line, column) => Some((*line as usize, *column as usize)),
             Mouse::Hover(line, column) => Some((*line as usize, *column as usize)),
             _ => None,
+        }
+    }
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, EnumIter,
+)]
+pub enum MouseButton {
+    Left,
+    Right,
+    Middle,
+    ScrollUp,
+    ScrollDown,
+    ScrollLeft,
+    ScrollRight,
+}
+
+impl MouseButton {
+    pub fn is_wheel(&self) -> bool {
+        matches!(
+            self,
+            MouseButton::ScrollUp
+                | MouseButton::ScrollDown
+                | MouseButton::ScrollLeft
+                | MouseButton::ScrollRight
+        )
+    }
+    pub fn name(&self) -> &'static str {
+        match self {
+            MouseButton::Left => "Left",
+            MouseButton::Right => "Right",
+            MouseButton::Middle => "Middle",
+            MouseButton::ScrollUp => "ScrollUp",
+            MouseButton::ScrollDown => "ScrollDown",
+            MouseButton::ScrollLeft => "ScrollLeft",
+            MouseButton::ScrollRight => "ScrollRight",
+        }
+    }
+    pub fn from_name(name: &str) -> Option<MouseButton> {
+        use strum::IntoEnumIterator;
+        MouseButton::iter().find(|button| button.name().eq_ignore_ascii_case(name))
+    }
+}
+
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    PartialOrd,
+    Ord,
+    Default,
+    Serialize,
+    Deserialize,
+    EnumIter,
+)]
+pub enum MouseTarget {
+    #[default]
+    Any,
+    Content,
+    Frame,
+}
+
+impl MouseTarget {
+    pub fn name(&self) -> &'static str {
+        match self {
+            MouseTarget::Any => "any",
+            MouseTarget::Content => "content",
+            MouseTarget::Frame => "frame",
+        }
+    }
+    pub fn from_name(name: &str) -> Option<MouseTarget> {
+        use strum::IntoEnumIterator;
+        MouseTarget::iter().find(|target| target.name().eq_ignore_ascii_case(name))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct MouseTrigger {
+    pub button: MouseButton,
+    pub modifiers: BTreeSet<KeyModifier>,
+    pub click_count: u8,
+    pub target: MouseTarget,
+}
+
+impl MouseTrigger {
+    pub fn new(button: MouseButton) -> Self {
+        MouseTrigger {
+            button,
+            modifiers: BTreeSet::new(),
+            click_count: 1,
+            target: MouseTarget::Any,
+        }
+    }
+    pub fn with_modifiers(mut self, modifiers: BTreeSet<KeyModifier>) -> Self {
+        self.modifiers = modifiers;
+        self
+    }
+    pub fn with_click_count(mut self, click_count: u8) -> Self {
+        self.click_count = click_count;
+        self
+    }
+    pub fn with_target(mut self, target: MouseTarget) -> Self {
+        self.target = target;
+        self
+    }
+    pub fn parse(text: &str, target: MouseTarget) -> Result<MouseTrigger, String> {
+        let mut parts: Vec<&str> = text.split_ascii_whitespace().collect();
+        let button_text = parts
+            .pop()
+            .ok_or_else(|| "A mouse trigger needs a button".to_owned())?;
+        let button = MouseButton::from_name(button_text).ok_or_else(|| {
+            format!(
+                "Unknown mouse button '{}'; use Left, Right, Middle, ScrollUp, ScrollDown, ScrollLeft or ScrollRight",
+                button_text
+            )
+        })?;
+        let mut modifiers = BTreeSet::new();
+        let mut click_count = 1;
+        for part in parts {
+            match part.to_ascii_lowercase().as_str() {
+                "ctrl" => {
+                    modifiers.insert(KeyModifier::Ctrl);
+                },
+                "alt" => {
+                    modifiers.insert(KeyModifier::Alt);
+                },
+                "shift" => {
+                    modifiers.insert(KeyModifier::Shift);
+                },
+                "super" => {
+                    return Err(
+                        "Super cannot be used with the mouse, because terminals do not report it for mouse events"
+                            .to_owned(),
+                    )
+                },
+                "double" => click_count = 2,
+                "triple" => click_count = 3,
+                _ => {
+                    return Err(format!(
+                        "Unknown word '{}' in the mouse trigger '{}'",
+                        part, text
+                    ))
+                },
+            }
+        }
+        if click_count > 1 && button.is_wheel() {
+            return Err(format!(
+                "Double and Triple can only be used with Left, Right and Middle, not {}",
+                button.name()
+            ));
+        }
+        Ok(MouseTrigger {
+            button,
+            modifiers,
+            click_count,
+            target,
+        })
+    }
+    pub fn to_kdl(&self) -> String {
+        let mut parts: Vec<String> = self.modifiers.iter().map(|m| m.to_string()).collect();
+        match self.click_count {
+            2 => parts.push("Double".to_owned()),
+            3 => parts.push("Triple".to_owned()),
+            _ => {},
+        }
+        parts.push(self.button.name().to_owned());
+        parts.join(" ")
+    }
+    pub fn same_trigger_ignoring_target(&self, other: &MouseTrigger) -> bool {
+        self.button == other.button
+            && self.modifiers == other.modifiers
+            && self.click_count == other.click_count
+    }
+}
+
+impl fmt::Display for MouseTrigger {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.target {
+            MouseTarget::Any => write!(f, "{}", self.to_kdl()),
+            target => write!(f, "{} · {}", self.to_kdl(), target.name()),
         }
     }
 }
@@ -2399,6 +2584,7 @@ pub struct KeybindsSelectionSnapshot {
     pub unlock: Option<String>,
     pub clears_defaults: bool,
     pub has_own_keybindings: bool,
+    pub has_own_mousebindings: bool,
     pub active: KeybindPresetInfo,
     pub active_values: BTreeMap<String, String>,
     pub error: Option<String>,
@@ -4555,6 +4741,10 @@ pub enum PluginCommand {
         keys: Vec<(InputMode, KeyWithModifier)>,
         write_config_to_disk: bool,
     },
+    ResetMousebinds {
+        triggers: Vec<(InputMode, MouseTrigger)>,
+        write_config_to_disk: bool,
+    },
     Prompt {
         request_id: u64,
         request: crate::prompt::PromptRequest,
@@ -4699,6 +4889,7 @@ setting_keys! {
     WebClientMacOptionIsMeta => (WebClient, "mac_option_is_meta", true, Flag),
     WebClientBaseUrl => (WebClient, "base_url", true, Text),
     Keybinds => (Keybinds, "keybinds", false, Text),
+    Mousebinds => (Keybinds, "mousebinds", false, Text),
     PluginAliases => (Blocks, "plugins", false, Text),
     LoadPlugins => (Blocks, "load_plugins", true, Text),
     Env => (Blocks, "env", true, Text),
@@ -4900,6 +5091,18 @@ pub struct KeybindingEntry {
     pub unsaved: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MousebindingEntry {
+    pub mode: InputMode,
+    pub trigger: MouseTrigger,
+    pub actions: Vec<String>,
+    pub app_first: bool,
+    pub source: KeybindingSource,
+    pub unbound: bool,
+    pub preset_actions: Option<Vec<String>>,
+    pub unsaved: bool,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ConfigSnapshot {
     pub settings: Vec<ConfigSettingState>,
@@ -4916,6 +5119,7 @@ pub struct ConfigSnapshot {
     pub default_blocks: ConfigBlocks,
     pub keybindings: Vec<KeybindingEntry>,
     pub keybinds: KeybindsSelectionSnapshot,
+    pub mousebindings: Vec<MousebindingEntry>,
 }
 
 impl ConfigSnapshot {

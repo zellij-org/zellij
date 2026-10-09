@@ -390,7 +390,7 @@ pub fn tab_line(
         None
     };
 
-    if let Some(mut swap_layout_indicator) = swap_layout_indicator.take() {
+    if let Some(swap_layout_indicator) = swap_layout_indicator.take() {
         let remaining_space = cols
             .saturating_sub(prefix.iter().fold(0, |len, part| len + part.len))
             .saturating_sub(swap_layout_indicator.len);
@@ -407,8 +407,13 @@ pub fn tab_line(
             );
             padding_len += 1;
         }
-        swap_layout_indicator.part = format!("{}{}", padding, swap_layout_indicator.part);
-        swap_layout_indicator.len += padding_len;
+        if padding_len > 0 {
+            prefix.push(LinePart {
+                part: padding,
+                len: padding_len,
+                tab_index: None,
+            });
+        }
         prefix.push(swap_layout_indicator);
     }
 

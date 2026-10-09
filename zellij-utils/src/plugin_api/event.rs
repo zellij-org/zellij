@@ -2099,6 +2099,14 @@ impl TryFrom<MouseEventPayload> for Mouse {
                 ),
                 _ => Err("Malformed payload for mouse hover"),
             },
+            Some(MouseEventName::MouseDoubleClick) => {
+                match mouse_event_payload.mouse_event_payload {
+                    Some(mouse_event_payload::MouseEventPayload::Position(position)) => Ok(
+                        Mouse::DoubleClick(position.line as isize, position.column as usize),
+                    ),
+                    _ => Err("Malformed payload for mouse double click"),
+                }
+            },
             None => Err("Malformed payload for MouseEventName"),
         }
     }
@@ -2178,6 +2186,16 @@ impl TryFrom<Mouse> for MouseEventPayload {
             }),
             Mouse::Hover(line, column) => Ok(MouseEventPayload {
                 mouse_event_name: MouseEventName::MouseHover as i32,
+                mouse_event_payload: Some(mouse_event_payload::MouseEventPayload::Position(
+                    ProtobufPosition {
+                        line: line as i64,
+                        column: column as i64,
+                    },
+                )),
+                ..Default::default()
+            }),
+            Mouse::DoubleClick(line, column) => Ok(MouseEventPayload {
+                mouse_event_name: MouseEventName::MouseDoubleClick as i32,
                 mouse_event_payload: Some(mouse_event_payload::MouseEventPayload::Position(
                     ProtobufPosition {
                         line: line as i64,
@@ -4255,6 +4273,32 @@ impl TryFrom<ContextMenuAction> for ProtobufContextMenuAction {
         Ok(ProtobufContextMenuAction {
             action: Some(action),
         })
+    }
+}
+
+#[cfg(test)]
+mod mouse_event_tests {
+    use super::*;
+
+    #[test]
+    fn every_mouse_event_survives_the_protobuf_round_trip() {
+        let events = [
+            Mouse::ScrollUp(3),
+            Mouse::ScrollDown(2),
+            Mouse::ScrollLeft(4),
+            Mouse::ScrollRight(5),
+            Mouse::LeftClick(1, 2),
+            Mouse::RightClick(3, 4),
+            Mouse::Hold(5, 6),
+            Mouse::Release(7, 8),
+            Mouse::Hover(9, 10),
+            Mouse::DoubleClick(11, 12),
+        ];
+        for event in events {
+            let payload: MouseEventPayload = event.try_into().expect("encode");
+            let decoded: Mouse = payload.try_into().expect("decode");
+            assert_eq!(decoded, event);
+        }
     }
 }
 

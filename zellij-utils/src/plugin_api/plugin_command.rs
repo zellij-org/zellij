@@ -72,9 +72,10 @@ pub use super::generated_api::api::{
         KillSessionsResponse as ProtobufKillSessionsResponse, LeaderValue as ProtobufLeaderValue,
         ListTokensResponse, LoadNewPluginPayload, MenuItemEntry as ProtobufMenuItemEntry,
         MenuSectionEntries as ProtobufMenuSectionEntries, MessageToPluginPayload,
-        MovePaneWithPaneIdInDirectionPayload, MovePaneWithPaneIdPayload, MovePayload,
-        NewPluginArgs as ProtobufNewPluginArgs, NewTabPayload,
-        NewTabResponse as ProtobufNewTabResponse, NewTabUnfocusedPayload,
+        MouseTriggerInMode as ProtobufMouseTriggerInMode,
+        MousebindingEntry as ProtobufMousebindingEntry, MovePaneWithPaneIdInDirectionPayload,
+        MovePaneWithPaneIdPayload, MovePayload, NewPluginArgs as ProtobufNewPluginArgs,
+        NewTabPayload, NewTabResponse as ProtobufNewTabResponse, NewTabUnfocusedPayload,
         NewTabUnfocusedResponse as ProtobufNewTabUnfocusedResponse,
         NewTabsResponse as ProtobufNewTabsResponse, NewTabsWithLayoutInfoPayload,
         NewTiledPaneInTabPayload, NewTiledPaneInTabResponse as ProtobufNewTiledPaneInTabResponse,
@@ -125,11 +126,11 @@ pub use super::generated_api::api::{
         RenameLayoutResponse as ProtobufRenameLayoutResponse, RenameTabWithIdPayload,
         RenameWebLoginTokenPayload, RenameWebTokenResponse, ReplacePaneWithExistingPanePayload,
         ReplyToPromptPayload, RequestPluginPermissionPayload, RerunCommandPanePayload,
-        ResetKeysPayload, ResizePaneIdWithDirectionPayload, ResizePayload, RevertConfigPayload,
-        RevokeAllWebTokensResponse, RevokeTokenResponse, RevokeWebLoginTokenPayload,
-        RunActionPayload, RunCommandPayload, RunningCommand as ProtobufRunningCommand,
-        SaveConfigPayload, SaveKeybindsAsPresetPayload, SaveLayoutPayload,
-        SaveLayoutResponse as ProtobufSaveLayoutResponse, SaveSessionPayload,
+        ResetKeysPayload, ResetMousebindsPayload, ResizePaneIdWithDirectionPayload, ResizePayload,
+        RevertConfigPayload, RevokeAllWebTokensResponse, RevokeTokenResponse,
+        RevokeWebLoginTokenPayload, RunActionPayload, RunCommandPayload,
+        RunningCommand as ProtobufRunningCommand, SaveConfigPayload, SaveKeybindsAsPresetPayload,
+        SaveLayoutPayload, SaveLayoutResponse as ProtobufSaveLayoutResponse, SaveSessionPayload,
         SaveSessionResponse as ProtobufSaveSessionResponse, ScrollDownInPaneIdPayload,
         ScrollToBottomInPaneIdPayload, ScrollToTopInPaneIdPayload, ScrollUpInPaneIdPayload,
         SessionListSnapshot as ProtobufSessionListSnapshot, SetCliPipeExitCodePayload,
@@ -160,9 +161,10 @@ use crate::data::{
     GetPaneCwdResponse, GetPanePidResponse, GetPaneRunningCommandResponse, GetSessionListResponse,
     HighlightLayer, HighlightStyle, HttpVerb, InputMode, KeyWithModifier, KeybindingEntry,
     KeybindingSource, KeybindsSelectionSnapshot, KillSessionsResponse, MenuItemEntry,
-    MenuSectionEntries, MessageToPlugin, NewPluginArgs, PaneId, PermissionType, PluginAliasEntry,
-    PluginCommand, PluginEntry, RegexHighlight, RenameLayoutResponse, SaveLayoutResponse,
-    SessionInfo, SessionListSnapshot, SettingKey, ThemeEntry, ThemeSource,
+    MenuSectionEntries, MessageToPlugin, MouseTarget, MouseTrigger, MousebindingEntry,
+    NewPluginArgs, PaneId, PermissionType, PluginAliasEntry, PluginCommand, PluginEntry,
+    RegexHighlight, RenameLayoutResponse, SaveLayoutResponse, SessionInfo, SessionListSnapshot,
+    SettingKey, ThemeEntry, ThemeSource,
 };
 use crate::input::actions::Action;
 use crate::input::layout::PercentOrFixed;
@@ -2717,6 +2719,19 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 }),
                 _ => Err("Mismatched payload for ReplyToPrompt"),
             },
+            Some(CommandName::ResetMousebinds) => match protobuf_plugin_command.payload {
+                Some(Payload::ResetMousebindsPayload(payload)) => {
+                    Ok(PluginCommand::ResetMousebinds {
+                        triggers: payload
+                            .triggers
+                            .into_iter()
+                            .filter_map(mouse_trigger_in_mode_from_protobuf)
+                            .collect(),
+                        write_config_to_disk: payload.write_config_to_disk,
+                    })
+                },
+                _ => Err("Mismatched payload for ResetMousebinds"),
+            },
             Some(CommandName::ResetKeys) => match protobuf_plugin_command.payload {
                 Some(Payload::ResetKeysPayload(payload)) => Ok(PluginCommand::ResetKeys {
                     keys: payload
@@ -4713,6 +4728,23 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 name: CommandName::DeleteThemeFile as i32,
                 payload: Some(Payload::DeleteThemeFilePayload(name)),
             }),
+            PluginCommand::ResetMousebinds {
+                triggers,
+                write_config_to_disk,
+            } => Ok(ProtobufPluginCommand {
+                name: CommandName::ResetMousebinds as i32,
+                payload: Some(Payload::ResetMousebindsPayload(ResetMousebindsPayload {
+                    triggers: triggers
+                        .into_iter()
+                        .map(|(mode, trigger)| ProtobufMouseTriggerInMode {
+                            input_mode: mode as i32,
+                            trigger: trigger.to_kdl(),
+                            target: trigger.target.name().to_owned(),
+                        })
+                        .collect(),
+                    write_config_to_disk,
+                })),
+            }),
             PluginCommand::ResetKeys {
                 keys,
                 write_config_to_disk,
@@ -5721,6 +5753,89 @@ mod tests {
     }
 
     #[test]
+    fn reset_mousebinds_protobuf_round_trip() {
+        use crate::data::{InputMode, MouseTarget, MouseTrigger};
+        let triggers = vec![
+            (
+                InputMode::Normal,
+                MouseTrigger::parse("Ctrl Double Left", MouseTarget::Frame).unwrap(),
+            ),
+            (
+                InputMode::Locked,
+                MouseTrigger::parse("Alt ScrollUp", MouseTarget::Any).unwrap(),
+            ),
+        ];
+        let original = PluginCommand::ResetMousebinds {
+            triggers: triggers.clone(),
+            write_config_to_disk: true,
+        };
+        let protobuf: ProtobufPluginCommand = original.try_into().expect("encode");
+        let decoded: PluginCommand = protobuf.try_into().expect("decode");
+        match decoded {
+            PluginCommand::ResetMousebinds {
+                triggers: decoded_triggers,
+                write_config_to_disk,
+            } => {
+                assert_eq!(decoded_triggers, triggers);
+                assert!(write_config_to_disk);
+            },
+            other => panic!("expected ResetMousebinds, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn mouse_binding_entries_survive_the_config_snapshot_round_trip() {
+        use crate::data::{
+            ConfigSnapshot, InputMode, KeybindingSource, KeybindsSelectionSnapshot, MouseTarget,
+            MouseTrigger, MousebindingEntry,
+        };
+        let entries = vec![
+            MousebindingEntry {
+                mode: InputMode::Normal,
+                trigger: MouseTrigger::parse("Double Left", MouseTarget::Frame).unwrap(),
+                actions: vec!["ToggleFullscreen".to_owned()],
+                app_first: false,
+                source: KeybindingSource::Preset,
+                unbound: false,
+                preset_actions: Some(vec!["ToggleFullscreen".to_owned()]),
+                unsaved: false,
+            },
+            MousebindingEntry {
+                mode: InputMode::Pane,
+                trigger: MouseTrigger::parse("Shift Triple Middle", MouseTarget::Content).unwrap(),
+                actions: vec![],
+                app_first: true,
+                source: KeybindingSource::Shared("shared_except \"locked\"".to_owned()),
+                unbound: true,
+                preset_actions: None,
+                unsaved: true,
+            },
+            MousebindingEntry {
+                mode: InputMode::Locked,
+                trigger: MouseTrigger::parse("ScrollRight", MouseTarget::Any).unwrap(),
+                actions: vec!["NewTab".to_owned(), "GoToNextTab".to_owned()],
+                app_first: false,
+                source: KeybindingSource::Layout,
+                unbound: false,
+                preset_actions: Some(vec!["ScrollColumns 4".to_owned()]),
+                unsaved: false,
+            },
+        ];
+        let snapshot = ConfigSnapshot {
+            mousebindings: entries.clone(),
+            keybinds: KeybindsSelectionSnapshot {
+                has_own_mousebindings: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let protobuf: ProtobufReadConfigResponse = snapshot.into();
+        let decoded: ConfigSnapshot = protobuf.into();
+        assert_eq!(decoded.mousebindings, entries);
+        assert!(decoded.keybinds.has_own_mousebindings);
+    }
+
+    #[test]
     fn theme_file_commands_protobuf_round_trip() {
         let commands = vec![
             PluginCommand::WriteThemeFile {
@@ -6019,6 +6134,7 @@ impl From<ConfigSnapshot> for ProtobufReadConfigResponse {
             saved_blocks: Some(snapshot.saved_blocks.into()),
             default_blocks: Some(snapshot.default_blocks.into()),
             keybindings: snapshot.keybindings.into_iter().map(Into::into).collect(),
+            mousebindings: snapshot.mousebindings.into_iter().map(Into::into).collect(),
         }
     }
 }
@@ -6201,6 +6317,90 @@ impl From<KeybindingEntry> for ProtobufKeybindingEntry {
     }
 }
 
+fn mouse_trigger_from_protobuf(trigger: &str, target: &str) -> Option<MouseTrigger> {
+    let target = MouseTarget::from_name(target).unwrap_or_default();
+    MouseTrigger::parse(trigger, target).ok()
+}
+
+fn mouse_trigger_in_mode_from_protobuf(
+    entry: ProtobufMouseTriggerInMode,
+) -> Option<(InputMode, MouseTrigger)> {
+    let mode: InputMode = ProtobufInputMode::try_from(entry.input_mode)
+        .ok()?
+        .try_into()
+        .ok()?;
+    Some((
+        mode,
+        mouse_trigger_from_protobuf(&entry.trigger, &entry.target)?,
+    ))
+}
+
+fn keybinding_source_to_protobuf(
+    source: KeybindingSource,
+) -> (ProtobufKeybindingSourceKind, Option<String>) {
+    match source {
+        KeybindingSource::Preset => (ProtobufKeybindingSourceKind::KeybindingSourcePreset, None),
+        KeybindingSource::User => (ProtobufKeybindingSourceKind::KeybindingSourceUser, None),
+        KeybindingSource::Shared(block) => (
+            ProtobufKeybindingSourceKind::KeybindingSourceShared,
+            Some(block),
+        ),
+        KeybindingSource::Layout => (ProtobufKeybindingSourceKind::KeybindingSourceLayout, None),
+    }
+}
+
+fn keybinding_source_from_protobuf(source: i32, shared_block: Option<String>) -> KeybindingSource {
+    match ProtobufKeybindingSourceKind::try_from(source) {
+        Ok(ProtobufKeybindingSourceKind::KeybindingSourceUser) => KeybindingSource::User,
+        Ok(ProtobufKeybindingSourceKind::KeybindingSourceShared) => {
+            KeybindingSource::Shared(shared_block.unwrap_or_default())
+        },
+        Ok(ProtobufKeybindingSourceKind::KeybindingSourceLayout) => KeybindingSource::Layout,
+        _ => KeybindingSource::Preset,
+    }
+}
+
+impl From<MousebindingEntry> for ProtobufMousebindingEntry {
+    fn from(entry: MousebindingEntry) -> Self {
+        let (source, shared_block) = keybinding_source_to_protobuf(entry.source);
+        ProtobufMousebindingEntry {
+            mode: entry.mode as i32,
+            trigger: entry.trigger.to_kdl(),
+            target: entry.trigger.target.name().to_owned(),
+            actions: entry.actions,
+            app_first: entry.app_first,
+            source: source as i32,
+            shared_block,
+            unbound: entry.unbound,
+            has_preset_binding: entry.preset_actions.is_some(),
+            preset_actions: entry.preset_actions.unwrap_or_default(),
+            unsaved: entry.unsaved,
+        }
+    }
+}
+
+fn mousebinding_entry_from_protobuf(entry: ProtobufMousebindingEntry) -> Option<MousebindingEntry> {
+    let mode: InputMode = ProtobufInputMode::try_from(entry.mode)
+        .ok()?
+        .try_into()
+        .ok()?;
+    let trigger = mouse_trigger_from_protobuf(&entry.trigger, &entry.target)?;
+    Some(MousebindingEntry {
+        mode,
+        trigger,
+        actions: entry.actions,
+        app_first: entry.app_first,
+        source: keybinding_source_from_protobuf(entry.source, entry.shared_block),
+        unbound: entry.unbound,
+        preset_actions: if entry.has_preset_binding {
+            Some(entry.preset_actions)
+        } else {
+            None
+        },
+        unsaved: entry.unsaved,
+    })
+}
+
 fn keybinding_entry_from_protobuf(entry: ProtobufKeybindingEntry) -> Option<KeybindingEntry> {
     let mode: InputMode = ProtobufInputMode::try_from(entry.mode)
         .ok()?
@@ -6242,6 +6442,7 @@ impl From<KeybindsSelectionSnapshot> for ProtobufKeybindsSelectionSnapshot {
             unlock: snapshot.unlock,
             clears_defaults: snapshot.clears_defaults,
             has_own_keybindings: snapshot.has_own_keybindings,
+            has_own_mousebindings: snapshot.has_own_mousebindings,
             active: Some(snapshot.active.into()),
             active_values: snapshot
                 .active_values
@@ -6268,6 +6469,7 @@ impl From<ProtobufKeybindsSelectionSnapshot> for KeybindsSelectionSnapshot {
             unlock: snapshot.unlock,
             clears_defaults: snapshot.clears_defaults,
             has_own_keybindings: snapshot.has_own_keybindings,
+            has_own_mousebindings: snapshot.has_own_mousebindings,
             active: snapshot.active.map(Into::into).unwrap_or_default(),
             active_values: snapshot
                 .active_values
@@ -6321,6 +6523,11 @@ impl From<ProtobufReadConfigResponse> for ConfigSnapshot {
                 .filter_map(keybinding_entry_from_protobuf)
                 .collect(),
             keybinds: response.keybinds.map(Into::into).unwrap_or_default(),
+            mousebindings: response
+                .mousebindings
+                .into_iter()
+                .filter_map(mousebinding_entry_from_protobuf)
+                .collect(),
         }
     }
 }

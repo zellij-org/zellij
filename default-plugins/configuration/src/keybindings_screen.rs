@@ -5,49 +5,17 @@ use zellij_tile::prelude::*;
 use zellij_utils::input::config_blocks::keybind_change_kdl;
 
 use crate::action_picker::{size_button, ActionPicker, PickerResponse, DELETE_WIDTH};
+use crate::bindings_list::{mode_name, BindingsList, ListEntry, ListResponse, ListTexts};
 use crate::page::{
-    action_argument_range, action_display_text, actions_summary, changed_by, confirm_removals,
-    is_click, is_plain, is_shift_tab, markers, note_dropdown, note_overlay, outside_overlays,
-    print_dim, removal_confirmed, removal_prompt, render_frame, truncate, typed, ColumnLayout,
-    ColumnStyle, Effect, Page, PageResponse, RowLook, RowScroll, BESIDE_SHORT_FIELD, DIM,
-    SHORT_FIELD_WIDTH, SHORT_LABEL_WIDTH,
+    actions_summary, changed_by, is_plain, is_shift_tab, note_overlay, render_frame, truncate,
+    typed, Effect, Page, PageResponse,
 };
 
 const FORM_LABEL_WIDTH: usize = 9;
-const MATCH_COLOR: usize = 1;
 const KEY_GETTING_READY: &str = "getting ready…";
 const FORM_DIALOG_MIN_WIDTH: usize = 30;
 const FORM_DIALOG_WIDE_WIDTH: usize = 84;
 const FORM_DIALOG_TALL_HEIGHT: usize = 24;
-const EDITABLE_MODES: [InputMode; 9] = [
-    InputMode::Normal,
-    InputMode::Locked,
-    InputMode::Pane,
-    InputMode::Tab,
-    InputMode::Resize,
-    InputMode::Move,
-    InputMode::Scroll,
-    InputMode::Session,
-    InputMode::Tmux,
-];
-const MORE_MODES: [InputMode; 4] = [
-    InputMode::Search,
-    InputMode::EnterSearch,
-    InputMode::RenameTab,
-    InputMode::RenamePane,
-];
-
-pub fn all_modes() -> Vec<InputMode> {
-    EDITABLE_MODES
-        .iter()
-        .chain(MORE_MODES.iter())
-        .copied()
-        .collect()
-}
-
-pub fn mode_name(mode: InputMode) -> String {
-    format!("{:?}", mode)
-}
 
 pub fn is_save_key(key: &KeyWithModifier) -> bool {
     key.is_key_with_ctrl_modifier(BareKey::Char('a'))
@@ -119,16 +87,6 @@ pub fn leader_warnings(
     warnings
 }
 
-const TITLE: &str = "Keybindings";
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum ListItem {
-    Gap,
-    Heading(String),
-    Entry(usize),
-}
-
-const ALL_CATEGORIES: &str = "All";
 const CATEGORY_ORDER: [&str; 12] = [
     "Switch Modes",
     "Focus",
@@ -224,101 +182,59 @@ fn entry_category(entry: &KeybindingEntry) -> &'static str {
     }
 }
 
-fn group_by_category(in_mode: Vec<KeybindingEntry>) -> (Vec<KeybindingEntry>, Vec<ListItem>) {
-    let mut entries = vec![];
-    let mut items = vec![];
-    for category in CATEGORY_ORDER {
-        let members: Vec<&KeybindingEntry> = in_mode
-            .iter()
-            .filter(|entry| entry_category(entry) == category)
-            .collect();
-        if members.is_empty() {
-            continue;
-        }
-        if !items.is_empty() {
-            items.push(ListItem::Gap);
-        }
-        items.push(ListItem::Heading(category.to_owned()));
-        for entry in members {
-            items.push(ListItem::Entry(entries.len()));
-            entries.push(entry.clone());
+const TEXTS: ListTexts = ListTexts {
+    title: "Keybindings",
+    search_placeholder: "/ to search keys and actions",
+    search_hint: "search keys and actions",
+    items_hint: "keys",
+    plural: "keys",
+    no_matches: "No matching keys",
+    empty: "No keys · a: bind a key",
+    categories: &CATEGORY_ORDER,
+    all_modes_option: false,
+};
+
+impl ListEntry for KeybindingEntry {
+    type Id = (InputMode, KeyWithModifier);
+    fn id(&self) -> Self::Id {
+        (self.mode, self.key.clone())
+    }
+    fn mode(&self) -> Option<InputMode> {
+        Some(self.mode)
+    }
+    fn label(&self) -> String {
+        self.key.to_string()
+    }
+    fn bound_actions(&self) -> Option<&[String]> {
+        if self.unbound {
+            None
+        } else {
+            Some(&self.actions)
         }
     }
-    (entries, items)
-}
-
-fn entry_columns(entry: &KeybindingEntry) -> Vec<String> {
-    let key_text = entry.key.to_string();
-    let actions = if entry.unbound {
-        "(unbound)".to_owned()
-    } else {
-        actions_summary(&entry.actions)
-    };
-    vec![key_text, actions]
-}
-
-pub struct SearchMatch {
-    key: Vec<usize>,
-    actions: Vec<usize>,
-    score: (usize, usize),
-}
-
-pub fn match_entry(query: &str, entry: &KeybindingEntry) -> Option<SearchMatch> {
-    let key_text = entry.key.to_string();
-    let key_length = key_text.chars().count();
-    let columns = entry_columns(entry);
-    let candidate = format!("{} {}", key_text, columns[1]);
-    let indices = fuzzy_match_indices(query, &candidate)?;
-    let first = indices.first().copied().unwrap_or(0);
-    let last = indices.last().copied().unwrap_or(0);
-    Some(SearchMatch {
-        key: indices
-            .iter()
-            .copied()
-            .filter(|index| *index < key_length)
-            .collect(),
-        actions: indices
-            .iter()
-            .copied()
-            .filter(|index| *index > key_length)
-            .map(|index| index - key_length - 1)
-            .collect(),
-        score: (last - first, first),
-    })
-}
-
-fn entry_styles(
-    entry: &KeybindingEntry,
-    key_column_text: &str,
-    key_column: usize,
-    found: Option<&SearchMatch>,
-) -> Vec<ColumnStyle> {
-    let mut styles = vec![];
-    let column_length = key_column_text.chars().count();
-    let key_length = entry.key.to_string().chars().count();
-    let key_start = column_length.saturating_sub(key_length);
-    for index in 0..key_length {
-        let matched = found.map(|m| m.key.contains(&index)).unwrap_or(false);
-        let color = if matched { MATCH_COLOR } else { 3 };
-        styles.push((key_column, color, key_start + index..key_start + index + 1));
+    fn category(&self) -> &'static str {
+        entry_category(self)
     }
-    if !entry.unbound {
-        let mut offset = 0;
-        for action in &entry.actions {
-            let text = action_display_text(action);
-            let length = text.chars().count();
-            if let Some(range) = action_argument_range(&text) {
-                styles.push((key_column + 1, 0, offset + range.start..offset + range.end));
-            }
-            offset += length + 2;
-        }
+    fn source(&self) -> &KeybindingSource {
+        &self.source
     }
-    if let Some(found) = found {
-        for index in &found.actions {
-            styles.push((key_column + 1, MATCH_COLOR, *index..*index + 1));
-        }
+    fn has_preset(&self) -> bool {
+        self.preset_actions.is_some()
     }
-    styles
+    fn is_unsaved(&self) -> bool {
+        self.unsaved
+    }
+    fn removal_effects(&self) -> Result<Vec<Effect>, String> {
+        removal_effects(self)
+    }
+    fn reset_effect(entries: &[Self]) -> Effect {
+        Effect::ResetKeys(
+            entries
+                .iter()
+                .map(|entry| (entry.mode, entry.key.clone()))
+                .collect(),
+        )
+    }
 }
 
 pub fn removal_effects(entry: &KeybindingEntry) -> Result<Vec<Effect>, String> {
@@ -388,178 +304,53 @@ enum FormFocus {
     Actions,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Focus {
-    Search,
-    Mode,
-    Filter,
-    List,
-}
-
 pub struct KeybindingsScreen {
-    entries: Vec<KeybindingEntry>,
+    list: BindingsList<KeybindingEntry>,
     selection: KeybindsSelectionSnapshot,
-    mode_selector: Dropdown,
-    filter: Dropdown,
-    search: TextInput,
-    focus: Focus,
-    focused: bool,
-    selected: usize,
     form: Option<BindingForm>,
     dialog: ConfirmDialog,
     dialog_purpose: Option<DialogPurpose>,
-    pending_deletes: Vec<(u64, Vec<KeybindingEntry>)>,
     effects: Vec<Effect>,
     notice: Option<String>,
     client_mode: InputMode,
     latest_mode: InputMode,
     base_mode: InputMode,
     capture_return_mode: Option<InputMode>,
-    scroll: RowScroll,
-    items: Vec<ListItem>,
-    marked: BTreeSet<(InputMode, KeyWithModifier)>,
-    anchor: Option<usize>,
-    mark_buttons: Vec<(Button, Option<String>)>,
 }
 
 impl Default for KeybindingsScreen {
     fn default() -> Self {
-        let modes: Vec<String> = all_modes().into_iter().map(mode_name).collect();
         KeybindingsScreen {
-            entries: vec![],
+            list: BindingsList::new(TEXTS),
             selection: KeybindsSelectionSnapshot::default(),
-            mode_selector: Dropdown::new(Text::from("Mode").color_all(0), modes)
-                .label_width(SHORT_LABEL_WIDTH)
-                .accent_brackets(),
-            filter: Dropdown::new(
-                Text::from("Filter").color_all(0),
-                std::iter::once(ALL_CATEGORIES)
-                    .chain(CATEGORY_ORDER.iter().copied())
-                    .collect::<Vec<_>>(),
-            )
-            .label_width(SHORT_LABEL_WIDTH)
-            .accent_brackets(),
-            search: TextInput::empty()
-                .placeholder("/ to search keys and actions")
-                .search_mode(),
-            focus: Focus::List,
-            focused: false,
-            selected: 0,
             form: None,
             dialog: ConfirmDialog::new("", ""),
             dialog_purpose: None,
-            pending_deletes: vec![],
             effects: vec![],
             notice: None,
             client_mode: InputMode::Normal,
             latest_mode: InputMode::Normal,
             base_mode: InputMode::Normal,
             capture_return_mode: None,
-            scroll: RowScroll::default(),
-            items: vec![],
-            marked: BTreeSet::new(),
-            anchor: None,
-            mark_buttons: vec![],
         }
     }
 }
 
 impl KeybindingsScreen {
-    pub fn mode(&self) -> InputMode {
-        all_modes()
-            .get(self.mode_selector.selected_index())
-            .copied()
-            .unwrap_or(InputMode::Normal)
-    }
     pub fn is_dragging(&self) -> bool {
-        self.scroll.is_dragging()
+        self.list.is_dragging()
     }
     pub fn set_entries(
         &mut self,
         entries: Vec<KeybindingEntry>,
         selection: KeybindsSelectionSnapshot,
     ) {
-        self.entries = entries;
+        self.list.set_entries(entries);
         self.selection = selection;
-        self.selected = self.selected.min(self.visible().len().saturating_sub(1));
     }
+    #[cfg(test)]
     pub fn visible(&self) -> Vec<KeybindingEntry> {
-        self.view().0
-    }
-    fn category_filter(&self) -> Option<&'static str> {
-        let label = self.filter.selected_value()?;
-        CATEGORY_ORDER
-            .iter()
-            .copied()
-            .find(|category| *category == label)
-    }
-    fn sync_filter(&mut self) {
-        if self.filter.is_open() {
-            return;
-        }
-        let mode = self.mode();
-        let candidates: Vec<KeybindingEntry> = self
-            .entries
-            .iter()
-            .filter(|entry| entry.mode == mode)
-            .cloned()
-            .collect();
-        let options: Vec<String> = std::iter::once(ALL_CATEGORIES)
-            .chain(
-                CATEGORY_ORDER
-                    .iter()
-                    .copied()
-                    .filter(|category| candidates.iter().any(|e| entry_category(e) == *category)),
-            )
-            .map(|label| label.to_owned())
-            .collect();
-        if self.filter.options() != options.as_slice() {
-            let current = self.filter.selected_value().map(|label| label.to_owned());
-            let index = current
-                .and_then(|current| options.iter().position(|option| *option == current))
-                .unwrap_or(0);
-            self.filter.set_options(options);
-            self.filter.set_selected(index);
-        }
-    }
-    fn query(&self) -> String {
-        self.search.get_text().trim().to_lowercase()
-    }
-    fn searching(&self) -> bool {
-        !self.query().is_empty()
-    }
-    fn view(&self) -> (Vec<KeybindingEntry>, Vec<ListItem>) {
-        let query = self.query();
-        if !query.is_empty() {
-            let mut found: Vec<(KeybindingEntry, (usize, usize))> = self
-                .entries
-                .iter()
-                .filter_map(|entry| {
-                    match_entry(&query, entry).map(|found| (entry.clone(), found.score))
-                })
-                .collect();
-            found.sort_by_key(|(_, score)| *score);
-            let entries: Vec<KeybindingEntry> = found.into_iter().map(|(entry, _)| entry).collect();
-            let items = (0..entries.len()).map(ListItem::Entry).collect();
-            return (entries, items);
-        }
-        let filter = self.category_filter();
-        let mode = self.mode();
-        let in_mode: Vec<KeybindingEntry> = self
-            .entries
-            .iter()
-            .filter(|entry| {
-                entry.mode == mode
-                    && filter
-                        .map(|category| entry_category(entry) == category)
-                        .unwrap_or(true)
-            })
-            .cloned()
-            .collect();
-        group_by_category(in_mode)
-    }
-    fn selected_entry(&self) -> Option<KeybindingEntry> {
-        self.visible().get(self.selected).cloned()
+        self.list.visible()
     }
     fn start_capture(&mut self) {
         if let Some(form) = self.form.as_mut() {
@@ -579,7 +370,7 @@ impl KeybindingsScreen {
         }
     }
     pub fn open_add(&mut self) {
-        let mode = self.mode();
+        let mode = self.list.mode();
         self.form = Some(BindingForm {
             mode,
             original: None,
@@ -593,7 +384,7 @@ impl KeybindingsScreen {
         self.start_capture();
     }
     pub fn open_edit(&mut self) {
-        let Some(entry) = self.selected_entry() else {
+        let Some(entry) = self.list.selected_entry() else {
             return;
         };
         if entry.source == KeybindingSource::Layout {
@@ -608,7 +399,8 @@ impl KeybindingsScreen {
         } else {
             entry.actions.clone()
         };
-        let warnings = leader_warnings(&self.entries, &self.selection, entry.mode, &entry.key);
+        let warnings =
+            leader_warnings(self.list.entries(), &self.selection, entry.mode, &entry.key);
         self.form = Some(BindingForm {
             mode: entry.mode,
             key: Some(entry.key.clone()),
@@ -645,7 +437,8 @@ impl KeybindingsScreen {
         };
         let mode = form.mode;
         let ignore = form.original.as_ref().map(|original| original.key.clone());
-        if let Some(existing) = same_mode_binding(&self.entries, mode, &key, ignore.as_ref()) {
+        if let Some(existing) = same_mode_binding(self.list.entries(), mode, &key, ignore.as_ref())
+        {
             let message = format!(
                 "{} is already bound in {} mode to {}. Replace it?",
                 key,
@@ -666,7 +459,7 @@ impl KeybindingsScreen {
         let warnings = self
             .form
             .as_ref()
-            .map(|form| leader_warnings(&self.entries, &self.selection, form.mode, &key))
+            .map(|form| leader_warnings(self.list.entries(), &self.selection, form.mode, &key))
             .unwrap_or_default();
         if let Some(form) = self.form.as_mut() {
             form.key = Some(key);
@@ -719,20 +512,6 @@ impl KeybindingsScreen {
             },
             None => {},
         }
-    }
-    fn answer_delete(&mut self, request_id: u64, result: &PromptResult) -> bool {
-        let Some(index) = self
-            .pending_deletes
-            .iter()
-            .position(|(pending_id, _)| *pending_id == request_id)
-        else {
-            return false;
-        };
-        let (_, entries) = self.pending_deletes.remove(index);
-        if removal_confirmed(result) {
-            self.remove_now(entries);
-        }
-        true
     }
     fn apply_form(&mut self, actions: Vec<String>) {
         let Some(form) = self.form.take() else {
@@ -787,121 +566,6 @@ impl KeybindingsScreen {
             }
             let response = form.picker.handle_mouse(mouse);
             self.handle_picker_response(response);
-        }
-    }
-    fn handle_list_mouse(&mut self, mouse: Mouse) -> PageResponse {
-        let is_hover = matches!(mouse, Mouse::Hover(..));
-        let mut hover_changed = false;
-        if !self.mode_selector.is_open()
-            && (self.filter.is_open() || matches!(mouse, Mouse::LeftClick(..) | Mouse::Hover(..)))
-        {
-            let (response, filter_changed) =
-                changed_by(&mut self.filter, |filter| filter.handle_mouse(mouse));
-            hover_changed |= filter_changed;
-            if let UiResponse::Changed(_) = response {
-                self.select_first();
-                self.scroll.reset();
-            }
-            if response.is_handled() && !is_hover {
-                self.focus = Focus::Filter;
-                return PageResponse::Handled;
-            }
-            if self.filter.is_open() {
-                return if !is_hover || filter_changed {
-                    PageResponse::Handled
-                } else {
-                    PageResponse::NotHandled
-                };
-            }
-        }
-        if !self.mode_selector.is_open() {
-            let mouse = outside_overlays(mouse);
-            let mut activated = None;
-            for (button, category) in self.mark_buttons.iter_mut() {
-                let was_hovered = button.is_hovered();
-                if matches!(button.handle_mouse(mouse), UiResponse::Activated) {
-                    activated = Some(category.clone());
-                }
-                hover_changed |= was_hovered != button.is_hovered();
-            }
-            if let Some(category) = activated {
-                self.toggle_group(category.as_deref());
-                return PageResponse::Handled;
-            }
-        }
-        let rows_hover = self.scroll.hover(&mouse);
-        let search_response = self.search.handle_mouse(mouse);
-        if is_hover && search_response.is_handled() {
-            hover_changed = true;
-        }
-        if self.mode_selector.is_open() || matches!(mouse, Mouse::LeftClick(..) | Mouse::Hover(..))
-        {
-            let (response, selector_changed) = changed_by(&mut self.mode_selector, |selector| {
-                selector.handle_mouse(mouse)
-            });
-            hover_changed |= selector_changed;
-            if let UiResponse::Changed(_) = response {
-                self.select_first();
-                self.scroll.reset();
-            }
-            if response.is_handled() && !is_hover {
-                self.focus = Focus::Mode;
-                return PageResponse::Handled;
-            }
-        }
-        if let Some(rows_changed) = rows_hover {
-            return if rows_changed || hover_changed {
-                PageResponse::Handled
-            } else {
-                PageResponse::NotHandled
-            };
-        }
-        if let Mouse::Hold(line, column) = mouse {
-            if !self.scroll.is_dragging() {
-                let row =
-                    self.scroll
-                        .row_at(line, column)
-                        .and_then(|row| match self.items.get(row) {
-                            Some(ListItem::Entry(index)) => Some(*index),
-                            _ => None,
-                        });
-                if let (Some(row), Some(anchor)) = (row, self.anchor) {
-                    if row != anchor || !self.marked.is_empty() {
-                        self.mark_range(anchor, row);
-                        self.selected = row;
-                        self.focus = Focus::List;
-                    }
-                    return PageResponse::Handled;
-                }
-            }
-        }
-        if let Some(changed) = self.scroll.handle_wheel(&mouse) {
-            return if changed {
-                PageResponse::Handled
-            } else {
-                PageResponse::NotHandled
-            };
-        }
-        let Some((line, column)) = is_click(&mouse) else {
-            return PageResponse::NotHandled;
-        };
-        if self.search.hit_test(line, column) {
-            self.focus = Focus::Search;
-            return PageResponse::Handled;
-        }
-        let entry_row =
-            self.scroll
-                .row_at(line, column)
-                .and_then(|row| match self.items.get(row) {
-                    Some(ListItem::Entry(index)) => Some(*index),
-                    _ => None,
-                });
-        match entry_row {
-            Some(row) => {
-                self.click_entry(row);
-                PageResponse::Handled
-            },
-            None => PageResponse::NotHandled,
         }
     }
     fn handle_form_key(&mut self, key: &KeyWithModifier) {
@@ -973,367 +637,18 @@ impl KeybindingsScreen {
         let response = form.picker.handle_key(key);
         self.handle_picker_response(response);
     }
-    fn reset_selected(&mut self) {
-        let targets = self.targets();
-        if targets.len() > 1 {
-            let keys: Vec<(InputMode, KeyWithModifier)> = targets
-                .iter()
-                .filter(|entry| {
-                    matches!(
-                        entry.source,
-                        KeybindingSource::User | KeybindingSource::Shared(_)
-                    )
-                })
-                .map(|entry| (entry.mode, entry.key.clone()))
-                .collect();
-            let skipped = targets.len() - keys.len();
-            if keys.is_empty() {
-                self.notice = Some("None of the marked keys differ from the preset".to_owned());
-                return;
-            }
-            self.notice = Some(if skipped > 0 {
-                format!(
-                    "Reset {} keys to the preset; {} already use it or come from the layout",
-                    keys.len(),
-                    skipped
-                )
-            } else {
-                format!("Reset {} keys to the preset", keys.len())
-            });
-            self.effects.push(Effect::ResetKeys(keys));
-            self.clear_marks();
-            return;
-        }
-        let Some(entry) = targets.into_iter().next() else {
-            return;
-        };
-        match entry.source {
-            KeybindingSource::User | KeybindingSource::Shared(_) => {
-                self.effects
-                    .push(Effect::ResetKeys(vec![(entry.mode, entry.key.clone())]));
-                self.notice = Some(match entry.preset_actions {
-                    Some(_) => format!("{} is back to the preset's binding", entry.key),
-                    None => format!(
-                        "{} is no longer bound (the preset has no binding)",
-                        entry.key
-                    ),
-                });
-                self.clear_marks();
+    fn handle_list_response(&mut self, response: ListResponse) -> PageResponse {
+        match response {
+            ListResponse::Page(response) => response,
+            ListResponse::Add => {
+                self.open_add();
+                PageResponse::Handled
             },
-            KeybindingSource::Preset => {
-                self.notice = Some(format!("{} already uses the preset's binding", entry.key))
-            },
-            KeybindingSource::Layout => {
-                self.notice = Some(format!(
-                    "{} comes from the layout and cannot be changed here",
-                    entry.key
-                ))
+            ListResponse::Edit => {
+                self.open_edit();
+                PageResponse::Handled
             },
         }
-    }
-    fn remove_now(&mut self, entries: Vec<KeybindingEntry>) {
-        let mut removed = 0;
-        let mut last_error = None;
-        for entry in &entries {
-            match removal_effects(entry) {
-                Ok(effects) => {
-                    self.effects.extend(effects);
-                    removed += 1;
-                },
-                Err(error) => last_error = Some(error),
-            }
-        }
-        self.notice = match (removed, entries.as_slice(), last_error) {
-            (0, _, Some(error)) => Some(error),
-            (1, [entry], _) => Some(format!(
-                "Deleted {} from {} mode",
-                entry.key,
-                mode_name(entry.mode)
-            )),
-            (removed, entries, _) if removed < entries.len() => Some(format!(
-                "Deleted {} keys; {} could not be deleted",
-                removed,
-                entries.len() - removed
-            )),
-            (removed, _, _) => Some(format!("Deleted {} keys", removed)),
-        };
-        self.clear_marks();
-    }
-    fn request_delete(&mut self) {
-        let targets: Vec<KeybindingEntry> = self.targets();
-        let removable: Vec<KeybindingEntry> = targets
-            .iter()
-            .filter(|entry| removal_effects(entry).is_ok())
-            .cloned()
-            .collect();
-        if removable.is_empty() {
-            if let Some(entry) = targets.first() {
-                if let Err(error) = removal_effects(entry) {
-                    self.notice = Some(error);
-                }
-            }
-            return;
-        }
-        if !confirm_removals() {
-            self.remove_now(removable);
-            return;
-        }
-        let question = match removable.as_slice() {
-            [entry] => {
-                let key = entry.key.to_string();
-                let key_start = "Delete ".chars().count();
-                let key_end = key_start + key.chars().count();
-                Text::from(format!(
-                    "Delete {} from {} mode?",
-                    key,
-                    mode_name(entry.mode)
-                ))
-                .color_range(3, key_start..key_end)
-            },
-            entries => {
-                let skipped = targets.len() - entries.len();
-                let mut question = format!("Delete {} keys?", entries.len());
-                if skipped > 0 {
-                    question.push_str(&format!(
-                        " {} marked keys cannot be deleted and stay.",
-                        skipped
-                    ));
-                }
-                Text::from(question)
-            },
-        };
-        let request_id = prompt(removal_prompt(question));
-        self.pending_deletes.push((request_id, removable));
-    }
-    fn handle_list_key(&mut self, key: &KeyWithModifier) -> PageResponse {
-        self.scroll.follow();
-        let count = self.visible().len();
-        let shift = key.has_modifiers(&[KeyModifier::Shift]);
-        if shift && key.bare_key == BareKey::Down {
-            self.extend_selection(true);
-            return PageResponse::Handled;
-        }
-        if shift && key.bare_key == BareKey::Up {
-            self.extend_selection(false);
-            return PageResponse::Handled;
-        }
-        if is_plain(key, BareKey::Char(' ')) {
-            self.toggle_mark(self.selected);
-            self.anchor = Some(self.selected);
-            return PageResponse::Handled;
-        }
-        if typed(key, 'A') && key.bare_key == BareKey::Char('A') {
-            self.toggle_group(None);
-            return PageResponse::Handled;
-        }
-        if typed(key, 'C') && key.bare_key == BareKey::Char('C') {
-            let category = self
-                .visible()
-                .get(self.selected)
-                .map(|entry| entry_category(entry).to_owned());
-            if let Some(category) = category {
-                self.toggle_group(Some(&category));
-            }
-            return PageResponse::Handled;
-        }
-        if is_plain(key, BareKey::Esc) && !self.marked.is_empty() {
-            self.clear_marks();
-            return PageResponse::Handled;
-        }
-        if is_plain(key, BareKey::Down) {
-            if self.selected + 1 < count {
-                self.selected += 1;
-            }
-        } else if is_plain(key, BareKey::Up) {
-            if self.selected == 0 {
-                self.focus = if self.searching() {
-                    Focus::Search
-                } else {
-                    Focus::Filter
-                };
-            } else {
-                self.selected -= 1;
-            }
-        } else if typed(key, '/') {
-            self.focus = Focus::Search;
-        } else if typed(key, 'a') {
-            self.open_add();
-        } else if is_plain(key, BareKey::Enter) {
-            self.open_edit();
-        } else if is_plain(key, BareKey::Delete) {
-            self.request_delete();
-        } else if typed(key, 'r') {
-            self.reset_selected();
-        } else if is_plain(key, BareKey::PageDown) {
-            self.selected = (self.selected + 10).min(count.saturating_sub(1));
-        } else if is_plain(key, BareKey::PageUp) {
-            self.selected = self.selected.saturating_sub(10);
-        } else if is_plain(key, BareKey::Esc) {
-            if self.searching() {
-                self.search.clear();
-                self.select_first();
-                self.scroll.reset();
-            } else {
-                return PageResponse::Close;
-            }
-        } else if is_plain(key, BareKey::Tab) || is_plain(key, BareKey::Left) || is_shift_tab(key) {
-            return PageResponse::LeaveToMenu;
-        } else {
-            return PageResponse::NotHandled;
-        }
-        PageResponse::Handled
-    }
-}
-
-impl KeybindingsScreen {
-    fn select_first(&mut self) {
-        self.selected = 0;
-        self.clear_marks();
-    }
-    fn clear_marks(&mut self) {
-        self.marked.clear();
-        self.anchor = None;
-    }
-    fn is_marked(&self, entry: &KeybindingEntry) -> bool {
-        self.marked.contains(&(entry.mode, entry.key.clone()))
-    }
-    fn toggle_mark(&mut self, index: usize) {
-        if let Some(entry) = self.visible().get(index) {
-            let id = (entry.mode, entry.key.clone());
-            if !self.marked.remove(&id) {
-                self.marked.insert(id);
-            }
-        }
-    }
-    fn mark_range(&mut self, from: usize, to: usize) {
-        let entries = self.visible();
-        self.marked.clear();
-        for entry in entries
-            .iter()
-            .skip(from.min(to))
-            .take(from.max(to) - from.min(to) + 1)
-        {
-            self.marked.insert((entry.mode, entry.key.clone()));
-        }
-    }
-    fn targets(&self) -> Vec<KeybindingEntry> {
-        if self.marked.is_empty() {
-            return self.selected_entry().into_iter().collect();
-        }
-        self.entries
-            .iter()
-            .filter(|entry| self.is_marked(entry))
-            .cloned()
-            .collect()
-    }
-    fn group_indices(&self, category: Option<&str>) -> Vec<usize> {
-        self.visible()
-            .iter()
-            .enumerate()
-            .filter(|(_, entry)| {
-                category
-                    .map(|category| entry_category(entry) == category)
-                    .unwrap_or(true)
-            })
-            .map(|(index, _)| index)
-            .collect()
-    }
-    fn group_is_marked(&self, category: Option<&str>) -> bool {
-        let entries = self.visible();
-        let indices = self.group_indices(category);
-        !indices.is_empty() && indices.iter().all(|index| self.is_marked(&entries[*index]))
-    }
-    fn toggle_group(&mut self, category: Option<&str>) {
-        let entries = self.visible();
-        let indices = self.group_indices(category);
-        let unmark = self.group_is_marked(category);
-        for index in &indices {
-            let entry = &entries[*index];
-            let id = (entry.mode, entry.key.clone());
-            if unmark {
-                self.marked.remove(&id);
-            } else {
-                self.marked.insert(id);
-            }
-        }
-        if let Some(first) = indices.first() {
-            if !unmark {
-                self.selected = *first;
-                self.anchor = Some(*first);
-            }
-        }
-        if self.marked.is_empty() {
-            self.anchor = None;
-        }
-        self.focus = Focus::List;
-    }
-    fn mark_label(&self, category: Option<&str>) -> &'static str {
-        if self.group_is_marked(category) {
-            "Unmark all"
-        } else {
-            "Mark all"
-        }
-    }
-    fn print_mark_button(
-        &mut self,
-        previous: &mut Vec<(Button, Option<String>)>,
-        category: Option<String>,
-        x: usize,
-        y: usize,
-        max_x: usize,
-    ) {
-        let label = self.mark_label(category.as_deref());
-        let mut button = match previous.iter().position(|(_, c)| *c == category) {
-            Some(index) => previous.remove(index).0,
-            None => Button::new(label).accent_brackets(),
-        };
-        button.set_label(label);
-        if x + button.natural_width() > max_x {
-            return;
-        }
-        button.render(x, y);
-        self.mark_buttons.push((button, category));
-    }
-    fn click_entry(&mut self, row: usize) {
-        let modifiers = mouse_modifiers();
-        if modifiers.contains(&KeyModifier::Shift) {
-            let anchor = self.anchor.unwrap_or(self.selected);
-            self.mark_range(anchor, row);
-            self.anchor = Some(anchor);
-            self.selected = row;
-            self.focus = Focus::List;
-            return;
-        }
-        if modifiers.contains(&KeyModifier::Ctrl) {
-            if self.marked.is_empty() && self.focus == Focus::List && self.focused {
-                self.toggle_mark(self.selected);
-            }
-            self.toggle_mark(row);
-            self.anchor = Some(row);
-            self.selected = row;
-            self.focus = Focus::List;
-            return;
-        }
-        let had_marks = !self.marked.is_empty();
-        self.clear_marks();
-        self.anchor = Some(row);
-        if self.focused && self.focus == Focus::List && row == self.selected && !had_marks {
-            self.open_edit();
-        } else {
-            self.selected = row;
-            self.focus = Focus::List;
-        }
-    }
-    fn extend_selection(&mut self, down: bool) {
-        let count = self.visible().len();
-        let anchor = *self.anchor.get_or_insert(self.selected);
-        let target = if down {
-            (self.selected + 1).min(count.saturating_sub(1))
-        } else {
-            self.selected.saturating_sub(1)
-        };
-        self.selected = target;
-        self.mark_range(anchor, target);
     }
     fn render_form(&mut self, rows: usize, cols: usize) {
         let latest_mode = self.latest_mode;
@@ -1459,20 +774,13 @@ impl KeybindingsScreen {
         note_overlay(Rect::new(dialog_x, dialog_y, dialog_width, dialog_height));
     }
     pub fn focus_top(&mut self) {
-        self.focus = Focus::Search;
+        self.list.focus_top();
     }
     pub fn is_busy(&self) -> bool {
-        self.form.is_some()
-            || self.dialog.is_open()
-            || self.mode_selector.is_open()
-            || self.filter.is_open()
+        self.form.is_some() || self.dialog.is_open() || self.list.has_open_dropdown()
     }
     pub fn clear_areas(&mut self) {
-        self.scroll.clear();
-        self.mode_selector.clear_area();
-        self.filter.clear_area();
-        self.search.clear_area();
-        self.mark_buttons.clear();
+        self.list.clear_areas();
         if let Some(form) = self.form.as_mut() {
             form.key_button.clear_area();
         }
@@ -1500,278 +808,11 @@ impl Page for KeybindingsScreen {
             self.handle_form_key(key);
             return PageResponse::Handled;
         }
-        match self.focus {
-            Focus::Mode => {
-                if self.mode_selector.is_open() {
-                    if let UiResponse::Changed(_) = self.mode_selector.handle_key(key) {
-                        self.select_first();
-                    }
-                    return PageResponse::Handled;
-                }
-                if is_plain(key, BareKey::Down) || is_plain(key, BareKey::Tab) {
-                    self.focus = Focus::Filter;
-                    return PageResponse::Handled;
-                }
-                if is_plain(key, BareKey::Up) || is_shift_tab(key) {
-                    self.focus = Focus::Search;
-                    return PageResponse::Handled;
-                }
-                if is_plain(key, BareKey::Left) {
-                    return PageResponse::LeaveToMenu;
-                }
-                if is_plain(key, BareKey::Esc) {
-                    return PageResponse::Close;
-                }
-                if typed(key, '/') {
-                    self.focus = Focus::Search;
-                    return PageResponse::Handled;
-                }
-                match self.mode_selector.handle_key(key) {
-                    UiResponse::Changed(_) => {
-                        self.select_first();
-                        PageResponse::Handled
-                    },
-                    UiResponse::NotHandled => PageResponse::NotHandled,
-                    _ => PageResponse::Handled,
-                }
-            },
-            Focus::Filter => {
-                if self.filter.is_open() {
-                    if let UiResponse::Changed(_) = self.filter.handle_key(key) {
-                        self.select_first();
-                        self.scroll.reset();
-                    }
-                    return PageResponse::Handled;
-                }
-                if is_plain(key, BareKey::Down) || is_plain(key, BareKey::Tab) {
-                    self.focus = Focus::List;
-                    self.scroll.follow();
-                    return PageResponse::Handled;
-                }
-                if is_plain(key, BareKey::Up) || is_shift_tab(key) {
-                    self.focus = Focus::Mode;
-                    return PageResponse::Handled;
-                }
-                if is_plain(key, BareKey::Left) {
-                    return PageResponse::LeaveToMenu;
-                }
-                if is_plain(key, BareKey::Esc) {
-                    return PageResponse::Close;
-                }
-                if typed(key, '/') {
-                    self.focus = Focus::Search;
-                    return PageResponse::Handled;
-                }
-                match self.filter.handle_key(key) {
-                    UiResponse::Changed(_) => {
-                        self.select_first();
-                        self.scroll.reset();
-                        PageResponse::Handled
-                    },
-                    UiResponse::NotHandled => PageResponse::NotHandled,
-                    _ => PageResponse::Handled,
-                }
-            },
-            Focus::Search => {
-                if is_plain(key, BareKey::Enter)
-                    || is_plain(key, BareKey::Down)
-                    || is_plain(key, BareKey::Tab)
-                {
-                    if self.searching() {
-                        self.focus = Focus::List;
-                        self.select_first();
-                        self.scroll.follow();
-                    } else {
-                        self.focus = Focus::Mode;
-                    }
-                    return PageResponse::Handled;
-                }
-                if is_plain(key, BareKey::Up) || is_shift_tab(key) {
-                    return PageResponse::LeaveUp;
-                }
-                if is_plain(key, BareKey::Esc) {
-                    if self.searching() {
-                        self.search.clear();
-                        self.select_first();
-                        self.scroll.reset();
-                        return PageResponse::Handled;
-                    }
-                    return PageResponse::Close;
-                }
-                match self.search.handle_key(key) {
-                    UiResponse::Changed(_) => {
-                        self.select_first();
-                        self.scroll.reset();
-                        PageResponse::Handled
-                    },
-                    UiResponse::NotHandled => PageResponse::NotHandled,
-                    _ => PageResponse::Handled,
-                }
-            },
-            Focus::List => self.handle_list_key(key),
-        }
+        let response = self.list.handle_key(key);
+        self.handle_list_response(response)
     }
     fn render(&mut self, x: usize, y: usize, width: usize, height: usize) {
-        print_text_with_coordinates(
-            Text::from(truncate(TITLE, width)).color_all(2),
-            x,
-            y,
-            None,
-            None,
-        );
-        let search_x = TITLE.chars().count() + 2;
-        let search_end = BESIDE_SHORT_FIELD + Button::new("Unmark all").natural_width();
-        let search_width = search_end.min(width).saturating_sub(search_x);
-        let search_focused = self.focused && self.focus == Focus::Search;
-        self.search.set_focused(search_focused);
-        self.search.set_show_cursor(search_focused);
-        self.search.render(x + search_x, y, search_width);
-        let searching = self.searching();
-        let query = self.query();
-        self.mode_selector
-            .set_focused(self.focused && self.focus == Focus::Mode);
-        self.filter
-            .set_focused(self.focused && self.focus == Focus::Filter);
-        self.sync_filter();
-        let list_offset = if searching {
-            self.mode_selector.clear_area();
-            self.filter.clear_area();
-            2
-        } else {
-            self.mode_selector
-                .render(x, y + 2, SHORT_FIELD_WIDTH.min(width));
-            self.filter.render(x, y + 3, SHORT_FIELD_WIDTH.min(width));
-            5
-        };
-        let mut previous_buttons = std::mem::take(&mut self.mark_buttons);
-        let (entries, items) = self.view();
-        let list_y = y + list_offset;
-        let list_height = height.saturating_sub(list_offset).max(1);
-        let selected_item = items
-            .iter()
-            .position(|item| *item == ListItem::Entry(self.selected));
-        let marking = !self.marked.is_empty();
-        let cursor_shown = self.focused && self.focus == Focus::List;
-        let rows: Vec<(Vec<String>, String, Vec<ColumnStyle>)> = entries
-            .iter()
-            .enumerate()
-            .map(|(index, entry)| {
-                let mut columns = entry_columns(entry);
-                if searching {
-                    columns.insert(0, mode_name(entry.mode));
-                }
-                if marking {
-                    let mark = if self.is_marked(entry) {
-                        "✓"
-                    } else if cursor_shown && index == self.selected {
-                        "›"
-                    } else {
-                        " "
-                    };
-                    columns[0] = format!("{} {}", mark, columns[0]);
-                }
-                let found = if searching {
-                    match_entry(&query, entry)
-                } else {
-                    None
-                };
-                let key_column = if searching { 1 } else { 0 };
-                let mut styles =
-                    entry_styles(entry, &columns[key_column], key_column, found.as_ref());
-                if searching {
-                    styles.insert(0, (0, DIM, 0..columns[0].chars().count()));
-                }
-                (columns, markers(entry.unsaved, false, false), styles)
-            })
-            .collect();
-        let natural = ColumnLayout::new(
-            rows.iter()
-                .map(|(columns, marker, _)| (columns.as_slice(), marker.as_str())),
-            usize::MAX,
-        )
-        .with_indent(0);
-        let button_width = Button::new("Unmark all").natural_width();
-        let headings_width = items
-            .iter()
-            .filter_map(|item| match item {
-                ListItem::Heading(label) => Some(label.chars().count() + 2 + button_width),
-                _ => None,
-            })
-            .max()
-            .unwrap_or(0);
-        let content_width = natural
-            .natural_width("● unsaved".chars().count())
-            .max(headings_width);
-        let list_width = RowScroll::fitted_width(items.len(), list_height, content_width, width);
-        let visible = self.scroll.layout(
-            x,
-            list_y,
-            list_width,
-            list_height,
-            items.len(),
-            selected_item,
-        );
-        self.items = items.clone();
-        if entries.is_empty() {
-            let empty = if searching {
-                "No matching keys"
-            } else {
-                "No keys · a: bind a key"
-            };
-            print_dim(empty, x, list_y, width);
-            return;
-        }
-        let row_width = self.scroll.row_width();
-        if !searching {
-            self.print_mark_button(
-                &mut previous_buttons,
-                None,
-                x + BESIDE_SHORT_FIELD,
-                y + 3,
-                x + width,
-            );
-        }
-        let layout = ColumnLayout::new(
-            rows.iter()
-                .map(|(columns, marker, _)| (columns.as_slice(), marker.as_str())),
-            row_width,
-        )
-        .with_indent(0);
-        for item_index in visible {
-            let Some(screen_y) = self.scroll.screen_row(item_index) else {
-                continue;
-            };
-            match &items[item_index] {
-                ListItem::Gap => {},
-                ListItem::Heading(label) => {
-                    print_text_with_coordinates(
-                        Text::from(truncate(label, row_width)).color_all(0),
-                        x,
-                        screen_y,
-                        None,
-                        None,
-                    );
-                    let label_x = x + label.chars().count() + 2;
-                    self.print_mark_button(
-                        &mut previous_buttons,
-                        Some(label.clone()),
-                        label_x,
-                        screen_y,
-                        x + row_width,
-                    );
-                },
-                ListItem::Entry(index) => {
-                    let (columns, marker, styles) = &rows[*index];
-                    let selected = if marking {
-                        self.is_marked(&entries[*index])
-                    } else {
-                        cursor_shown && *index == self.selected
-                    };
-                    let look = RowLook::new(selected, self.scroll.is_hovered(item_index));
-                    layout.print_styled(columns, marker, x, screen_y, row_width, look, styles);
-                },
-            }
-        }
+        self.list.render(x, y, width, height);
     }
     fn handle_mouse(&mut self, mouse: Mouse) -> PageResponse {
         if self.dialog.is_open() {
@@ -1788,7 +829,8 @@ impl Page for KeybindingsScreen {
             self.handle_form_mouse(mouse);
             return PageResponse::Handled;
         }
-        self.handle_list_mouse(mouse)
+        let response = self.list.handle_mouse(mouse);
+        self.handle_list_response(response)
     }
     fn handle_timer(&mut self) -> bool {
         let picker_changed = self
@@ -1796,30 +838,15 @@ impl Page for KeybindingsScreen {
             .as_mut()
             .map(|form| form.picker.handle_timer() | form.key_button.handle_timer())
             .unwrap_or(false);
-        let mut buttons_changed = false;
-        for (button, _) in self.mark_buttons.iter_mut() {
-            buttons_changed |= button.handle_timer();
-        }
-        picker_changed || buttons_changed
+        picker_changed || self.list.handle_timer()
     }
     fn render_overlays(&mut self, rows: usize, cols: usize) {
-        if self.filter.is_open() {
-            self.filter.render_overlay(rows, cols);
-            note_dropdown(&self.filter);
-        }
-        if self.mode_selector.is_open() {
-            self.mode_selector.render_overlay(rows, cols);
-            note_dropdown(&self.mode_selector);
-        }
+        self.list.render_overlays(rows, cols);
         self.render_form(rows, cols);
         self.dialog.render_centered(rows, cols);
     }
     fn captures_keys(&self) -> bool {
-        self.form.is_some()
-            || self.dialog.is_open()
-            || self.mode_selector.is_open()
-            || self.filter.is_open()
-            || self.focus == Focus::Search
+        self.form.is_some() || self.dialog.is_open() || self.list.captures_keys()
     }
     fn hints(&self) -> Vec<(&'static str, &'static str)> {
         if self.dialog.is_open() {
@@ -1845,45 +872,15 @@ impl Page for KeybindingsScreen {
             }
             return hints;
         }
-        match self.focus {
-            Focus::Search => vec![
-                ("<type>", "search keys and actions"),
-                ("<↓>", "results"),
-                ("<Esc>", "clear"),
-            ],
-            Focus::Mode => vec![
-                ("<Space>", "choose mode"),
-                ("<↓>", "filter"),
-                ("<Esc>", "close"),
-            ],
-            Focus::Filter => vec![
-                ("<Space>", "choose category"),
-                ("<↓>", "keys"),
-                ("<Esc>", "close"),
-            ],
-            Focus::List if !self.marked.is_empty() => vec![
-                ("<Del>", "delete marked"),
-                ("<r>", "reset marked"),
-                ("<Space>", "mark"),
-                ("<Shift ↓↑>", "extend"),
-                ("<A/C>", "all / category"),
-                ("<Esc>", "unmark"),
-            ],
-            Focus::List => vec![
-                ("<a>", "add"),
-                ("<Enter>", "edit"),
-                ("<Del>", "delete"),
-                ("<r>", "reset"),
-                ("<Space/Shift ↓↑/A>", "mark"),
-                ("</>", "search"),
-            ],
-        }
+        self.list.hints()
     }
     fn take_effects(&mut self) -> Vec<Effect> {
-        std::mem::take(&mut self.effects)
+        let mut effects = std::mem::take(&mut self.effects);
+        effects.extend(self.list.take_effects());
+        effects
     }
     fn take_notice(&mut self) -> Option<String> {
-        self.notice.take()
+        self.notice.take().or_else(|| self.list.take_notice())
     }
     fn leave(&mut self) {
         if self.form.is_some() {
@@ -1895,16 +892,21 @@ impl Page for KeybindingsScreen {
         }
     }
     fn set_focused(&mut self, focused: bool) {
-        self.focused = focused;
+        self.list.set_focused(focused);
     }
     fn prompt_result(&mut self, request_id: u64, result: &PromptResult) -> bool {
-        self.answer_delete(request_id, result)
+        self.list.answer_delete(request_id, result)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bindings_list::{match_list_entry, ListFocus, SearchMatch};
+
+    fn match_entry(query: &str, entry: &KeybindingEntry) -> Option<SearchMatch> {
+        match_list_entry(query, entry)
+    }
 
     fn key(text: &str) -> KeyWithModifier {
         KeyWithModifier::from_str(text).unwrap()
@@ -2086,13 +1088,13 @@ mod tests {
             ],
             selection(),
         );
-        screen.focus = Focus::List;
+        screen.list.focus = ListFocus::List;
         screen.handle_key(&KeyWithModifier::new(BareKey::Char('C')));
-        assert_eq!(screen.marked.len(), 2);
+        assert_eq!(screen.list.marked.len(), 2);
         screen.handle_key(&KeyWithModifier::new(BareKey::Esc));
-        assert!(screen.marked.is_empty());
+        assert!(screen.list.marked.is_empty());
         screen.handle_key(&KeyWithModifier::new(BareKey::Char(' ')));
         screen.handle_key(&KeyWithModifier::new(BareKey::Down).with_shift_modifier());
-        assert_eq!(screen.marked.len(), 2);
+        assert_eq!(screen.list.marked.len(), 2);
     }
 }

@@ -12,6 +12,10 @@ use std::convert::TryInto;
 use tab::{get_clicked_line_part, get_tab_to_focus};
 use zellij_tile::prelude::*;
 
+use crate::double_click::{
+    apply_double_click_outcome, classify_click, double_click_outcome, ClickTarget,
+    DoubleClickConfig,
+};
 use crate::keybinds::KeybindStore;
 use crate::ClientSeed;
 use clipboard_utils::{system_clipboard_error, text_copied_hint};
@@ -41,6 +45,14 @@ struct TabRenderData {
     is_swap_layout_dirty: bool,
 }
 
+fn click_target(slot_client: &SlotClientState, col: usize) -> ClickTarget {
+    let in_reserved_range =
+        matches!(slot_client.breadcrumb_range, Some((start, end)) if col >= start && col < end);
+    let clicked_part = get_clicked_line_part(&slot_client.tab_line, col)
+        .map(|line_part| (line_part.tab_index, line_part.part.as_str()));
+    classify_click(clicked_part, in_reserved_range)
+}
+
 #[derive(Default)]
 struct SlotConfig {
     config: BTreeMap<String, String>,
@@ -48,6 +60,7 @@ struct SlotConfig {
     toggle_tooltip_key: Option<String>,
     persist: bool,
     is_first_run: bool,
+    double_click: DoubleClickConfig,
 }
 
 #[derive(Default)]
@@ -59,6 +72,7 @@ struct ClientState {
     display_area_cols: usize,
     text_copy_destination: Option<CopyDestination>,
     display_system_clipboard_failure: bool,
+    last_left_click: Option<(SlotId, ClickTarget)>,
 }
 
 #[derive(Default)]
@@ -112,6 +126,7 @@ impl CompactBar {
             ]
         };
         subscribe(&events);
+        let double_click = DoubleClickConfig::from_configuration(&config);
         self.slots.insert(
             slot.id,
             SlotConfig {
@@ -120,6 +135,7 @@ impl CompactBar {
                 toggle_tooltip_key,
                 persist: false,
                 is_first_run: is_tooltip,
+                double_click,
             },
         );
     }
@@ -448,15 +464,15 @@ impl CompactBar {
     }
 
     fn handle_mouse_event(&mut self, slot_id: SlotId, client_id: ClientId, mouse_event: &Mouse) {
-        if self
+        let Some(double_click_config) = self
             .slots
             .get(&slot_id)
-            .map(|s| s.is_tooltip)
-            .unwrap_or(true)
-        {
+            .filter(|s| !s.is_tooltip)
+            .map(|s| s.double_click)
+        else {
             return;
-        }
-        let Some(client) = self.clients.get(&client_id) else {
+        };
+        let Some(client) = self.clients.get_mut(&client_id) else {
             return;
         };
         let empty_slot_client = SlotClientState::default();
@@ -468,6 +484,7 @@ impl CompactBar {
         match mouse_event {
             Mouse::LeftClick(_, col) => {
                 let col = *col;
+                client.last_left_click = Some((slot_id, click_target(slot_client, col)));
                 if matches!(slot_client.breadcrumb_range, Some((start, end)) if col >= start && col < end)
                 {
                     focus_host_session();
@@ -476,6 +493,16 @@ impl CompactBar {
                 {
                     switch_tab_to(tab_idx.try_into().unwrap());
                 }
+            },
+            Mouse::DoubleClick(_, col) => {
+                let target = click_target(slot_client, *col);
+                let last_left_click = client
+                    .last_left_click
+                    .take()
+                    .filter(|(last_slot_id, _)| *last_slot_id == slot_id)
+                    .map(|(_, last_target)| last_target);
+                let outcome = double_click_outcome(&double_click_config, last_left_click, target);
+                apply_double_click_outcome(outcome, &client.tabs, client.active_tab_idx);
             },
             Mouse::RightClick(line, col) => {
                 let target = match get_clicked_line_part(&slot_client.tab_line, *col)

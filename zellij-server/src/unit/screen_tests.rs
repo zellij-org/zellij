@@ -831,6 +831,9 @@ impl MockScreen {
         let os_input = FakeInputOutput::default();
         let config_options = Options::default();
         let mut config = Config::default();
+        config.mousebinds = zellij_utils::input::config_settings::default_config()
+            .mousebinds
+            .clone();
         config.options.pane_frame_style = Some(PaneFrameStyle::Full);
         config.options.stacked_pane_list = Some(false);
         let main_client_id = 1;

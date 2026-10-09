@@ -1,4 +1,5 @@
 mod compact_bar;
+mod double_click;
 mod keybinds;
 mod link;
 mod status_bar;

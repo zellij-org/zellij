@@ -249,6 +249,7 @@ enum CommandName {
   DeleteThemeFile = 255;
   SetSelfCollapsed = 256;
   SetCollapsedSlot = 257;
+  ResetMousebinds = 258;
 }
 
 message PluginCommand {
@@ -438,6 +439,7 @@ message PluginCommand {
     string delete_theme_file_payload = 198;
     SetSelfCollapsedPayload set_self_collapsed_payload = 199;
     SetCollapsedSlotPayload set_collapsed_slot_payload = 200;
+    ResetMousebindsPayload reset_mousebinds_payload = 201;
   }
 }
 
@@ -499,6 +501,7 @@ message KeybindsSelectionSnapshot {
   bool set_by_layout = 10;
   optional input_mode.InputMode default_mode = 11;
   bool set_on_command_line = 12;
+  bool has_own_mousebindings = 13;
 }
 
 message ReadConfigPayload {}
@@ -531,6 +534,7 @@ message ReadConfigResponse {
   ConfigBlocks saved_blocks = 12;
   ConfigBlocks default_blocks = 13;
   repeated KeybindingEntry keybindings = 14;
+  repeated MousebindingEntry mousebindings = 15;
 }
 
 message ConfigPair {
@@ -604,6 +608,31 @@ message KeybindingEntry {
   repeated string preset_actions = 8;
   bool unsaved = 9;
   bool preset_same_as_actions = 10;
+}
+
+message MousebindingEntry {
+  input_mode.InputMode mode = 1;
+  string trigger = 2;
+  string target = 3;
+  repeated string actions = 4;
+  bool app_first = 5;
+  KeybindingSourceKind source = 6;
+  optional string shared_block = 7;
+  bool unbound = 8;
+  bool has_preset_binding = 9;
+  repeated string preset_actions = 10;
+  bool unsaved = 11;
+}
+
+message MouseTriggerInMode {
+  input_mode.InputMode input_mode = 1;
+  string trigger = 2;
+  string target = 3;
+}
+
+message ResetMousebindsPayload {
+  repeated MouseTriggerInMode triggers = 1;
+  bool write_config_to_disk = 2;
 }
 
 message SaveKeybindsAsPresetPayload {

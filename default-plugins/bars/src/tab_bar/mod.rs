@@ -8,6 +8,10 @@ use std::convert::TryInto;
 use tab::{get_clicked_line_part, get_tab_to_focus};
 use zellij_tile::prelude::*;
 
+use crate::double_click::{
+    apply_double_click_outcome, classify_click, double_click_outcome, ClickTarget,
+    DoubleClickConfig,
+};
 use crate::keybinds::KeybindStore;
 use crate::ClientSeed;
 use line::tab_line;
@@ -29,13 +33,27 @@ impl LinePart {
 
 static ARROW_SEPARATOR: &str = "";
 
+fn in_range(range: Option<(usize, usize)>, col: usize) -> bool {
+    matches!(range, Some((start, end)) if col >= start && col < end)
+}
+
+fn click_target(slot_client: &SlotClientState, col: usize) -> ClickTarget {
+    let in_reserved_range = in_range(slot_client.breadcrumb_range, col)
+        || in_range(slot_client.new_tab_button_range, col);
+    let clicked_part = get_clicked_line_part(&slot_client.tab_line, col)
+        .map(|line_part| (line_part.tab_index, line_part.part.as_str()));
+    classify_click(clicked_part, in_reserved_range)
+}
+
 #[derive(Debug, Default)]
 struct SlotConfig {
     hide_swap_layout_indication: bool,
+    double_click: DoubleClickConfig,
 }
 
 #[derive(Debug, Default)]
 struct ClientState {
+    last_left_click: Option<(Option<SlotId>, ClickTarget)>,
     tabs: Vec<TabInfo>,
     active_tab_idx: usize,
     mode_info: ModeInfo,
@@ -76,6 +94,7 @@ impl TabBar {
             slot.id,
             SlotConfig {
                 hide_swap_layout_indication,
+                double_click: DoubleClickConfig::from_configuration(&slot.configuration),
             },
         );
         subscribe(&[
@@ -194,6 +213,10 @@ impl TabBar {
         client_id: ClientId,
         slot_id: Option<SlotId>,
     ) -> bool {
+        let double_click_config = slot_id
+            .and_then(|slot_id| self.slots.get(&slot_id))
+            .map(|slot| slot.double_click)
+            .unwrap_or_default();
         let client = self.clients.entry(client_id).or_default();
         let empty_slot_client = SlotClientState::default();
         let slot_client = slot_id
@@ -252,6 +275,7 @@ impl TabBar {
             Event::Mouse(me) => match me {
                 Mouse::LeftClick(_, col) => {
                     let col = *col;
+                    client.last_left_click = Some((slot_id, click_target(slot_client, col)));
                     if let Some((start, end)) = slot_client.breadcrumb_range {
                         if col >= start && col < end {
                             focus_host_session();
@@ -269,6 +293,17 @@ impl TabBar {
                     if let Some(idx) = tab_to_focus {
                         switch_tab_to(idx.try_into().unwrap());
                     }
+                },
+                Mouse::DoubleClick(_, col) => {
+                    let target = click_target(slot_client, *col);
+                    let last_left_click = client
+                        .last_left_click
+                        .take()
+                        .filter(|(last_slot_id, _)| *last_slot_id == slot_id)
+                        .map(|(_, last_target)| last_target);
+                    let outcome =
+                        double_click_outcome(&double_click_config, last_left_click, target);
+                    apply_double_click_outcome(outcome, &client.tabs, client.active_tab_idx);
                 },
                 Mouse::Hover(_, col) => {
                     let col = *col;
