@@ -6,7 +6,7 @@ use zellij_utils::input::actions::Action;
 use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
 use zellij_utils::ipc::ClientToServerMsg;
 use zellij_utils::position::Position;
-use zellij_utils::structured_render::GeometryRecord;
+use zellij_utils::structured_render::{GeometryRecord, PointerKind};
 
 use crate::connection::Geometry;
 
@@ -86,82 +86,43 @@ pub fn middle_click(
 }
 
 pub fn pane_takes_the_click(cell: Option<(u16, u16)>, geometry: &GeometryRecord) -> bool {
-    let Some((x, y)) = cell else {
-        return false;
-    };
-    geometry
-        .content_pane_at(x, y)
-        .map(|pane| pane.selectable() && pane.wants_mouse() && pane.focused())
+    cell.map(|(x, y)| geometry.claims_the_click(x, y))
         .unwrap_or(false)
 }
 
 pub fn pointer_shape_over(
     cell: Option<(u16, u16)>,
     geometry: &GeometryRecord,
+    ctrl: bool,
     openable_link: bool,
 ) -> CursorIcon {
     if openable_link && cell.is_some() {
         return CursorIcon::Pointer;
     }
-    pointer_shape(cell, geometry)
+    pointer_shape(cell, geometry, ctrl)
 }
 
-pub fn pointer_shape(cell: Option<(u16, u16)>, geometry: &GeometryRecord) -> CursorIcon {
+pub fn pointer_shape(
+    cell: Option<(u16, u16)>,
+    geometry: &GeometryRecord,
+    ctrl: bool,
+) -> CursorIcon {
     let Some((x, y)) = cell else {
         return CursorIcon::Default;
     };
-    if geometry.panes.is_empty() {
-        return CursorIcon::Text;
-    }
-    if let Some(pane) = geometry.content_pane_at(x, y) {
-        if !pane.selectable() || (pane.wants_mouse() && pane.focused()) {
-            return CursorIcon::Default;
-        }
-        return CursorIcon::Text;
-    }
-    if geometry
-        .pane_at(x, y)
-        .map(|pane| !pane.selectable())
-        .unwrap_or(false)
-    {
-        return CursorIcon::Default;
-    }
-    border_shape(x, y, geometry)
+    icon_of(geometry.pointer_at(x, y, ctrl))
 }
 
-fn border_shape(x: u16, y: u16, geometry: &GeometryRecord) -> CursorIcon {
-    let (x, y) = (x as u32, y as u32);
-    let (mut left, mut right, mut above, mut below) = (false, false, false, false);
-    for pane in geometry.panes.iter().filter(|pane| pane.selectable()) {
-        let content_x = pane.content_x() as u32;
-        let content_y = pane.content_y() as u32;
-        let content_cols = pane.content_cols() as u32;
-        let content_rows = pane.content_rows() as u32;
-        if content_cols == 0 || content_rows == 0 {
-            continue;
-        }
-        if y + 1 >= pane.y as u32 && y <= pane.y as u32 + pane.rows as u32 {
-            right |= x + 1 == content_x;
-            left |= x == content_x + content_cols;
-        }
-        if x + 1 >= pane.x as u32 && x <= pane.x as u32 + pane.cols as u32 {
-            below |= y + 1 == content_y;
-            above |= y == content_y + content_rows;
-        }
-    }
-    match (left || right, above || below) {
-        (true, true) => {
-            if (left && right) || (above && below) {
-                CursorIcon::Move
-            } else if (left && above) || (right && below) {
-                CursorIcon::NwseResize
-            } else {
-                CursorIcon::NeswResize
-            }
-        },
-        (true, false) => CursorIcon::ColResize,
-        (false, true) => CursorIcon::RowResize,
-        (false, false) => CursorIcon::Default,
+fn icon_of(kind: PointerKind) -> CursorIcon {
+    match kind {
+        PointerKind::Arrow => CursorIcon::Default,
+        PointerKind::Text => CursorIcon::Text,
+        PointerKind::Hand => CursorIcon::Pointer,
+        PointerKind::Move => CursorIcon::Move,
+        PointerKind::ColResize => CursorIcon::ColResize,
+        PointerKind::RowResize => CursorIcon::RowResize,
+        PointerKind::NwseResize => CursorIcon::NwseResize,
+        PointerKind::NeswResize => CursorIcon::NeswResize,
     }
 }
 
@@ -454,7 +415,8 @@ mod tests {
     use crate::connection::{send, test_attach_at as attach_at, Capabilities};
     use crate::test_server::FakeServer;
     use zellij_utils::structured_render::{
-        PaneRect, PANE_FOCUSED, PANE_FRAMED, PANE_SELECTABLE, PANE_WANTS_MOUSE,
+        PaneRect, PANE_FLOATING, PANE_FOCUSED, PANE_FRAMED, PANE_PLUGIN_UI, PANE_POPUP,
+        PANE_SELECTABLE, PANE_UNDER_FLOATING, PANE_WANTS_MOUSE,
     };
 
     fn geometry() -> Geometry {
@@ -584,22 +546,31 @@ mod tests {
     #[test]
     fn the_pointer_is_a_beam_over_the_grid_and_an_arrow_outside_it() {
         let geometry = GeometryRecord::default();
-        assert_eq!(pointer_shape(Some((0, 0)), &geometry), CursorIcon::Text);
-        assert_eq!(pointer_shape(None, &geometry), CursorIcon::Default);
+        assert_eq!(
+            pointer_shape(Some((0, 0)), &geometry, false),
+            CursorIcon::Text
+        );
+        assert_eq!(pointer_shape(None, &geometry, false), CursorIcon::Default);
     }
 
     #[test]
     fn the_pointer_is_a_beam_over_pane_content_and_an_arrow_over_the_bars() {
         let geometry = two_framed_columns();
-        assert_eq!(pointer_shape(Some((5, 5)), &geometry), CursorIcon::Text);
-        assert_eq!(pointer_shape(Some((50, 5)), &geometry), CursorIcon::Text);
         assert_eq!(
-            pointer_shape(Some((5, 0)), &geometry),
+            pointer_shape(Some((5, 5)), &geometry, false),
+            CursorIcon::Text
+        );
+        assert_eq!(
+            pointer_shape(Some((50, 5)), &geometry, false),
+            CursorIcon::Text
+        );
+        assert_eq!(
+            pointer_shape(Some((5, 0)), &geometry, false),
             CursorIcon::Default,
             "the tab bar is not a pane the user types into"
         );
         assert_eq!(
-            pointer_shape(Some((5, 20)), &geometry),
+            pointer_shape(Some((5, 20)), &geometry, false),
             CursorIcon::Default,
             "neither is the status bar"
         );
@@ -609,16 +580,16 @@ mod tests {
     fn the_pointer_is_a_hand_over_a_link_it_could_open() {
         let geometry = two_framed_columns();
         assert_eq!(
-            pointer_shape_over(Some((5, 5)), &geometry, true),
+            pointer_shape_over(Some((5, 5)), &geometry, false, true),
             CursorIcon::Pointer
         );
         assert_eq!(
-            pointer_shape_over(Some((5, 5)), &geometry, false),
+            pointer_shape_over(Some((5, 5)), &geometry, false, false),
             CursorIcon::Text,
             "with no link under it the pointer is the beam it always was"
         );
         assert_eq!(
-            pointer_shape_over(None, &geometry, true),
+            pointer_shape_over(None, &geometry, false, true),
             CursorIcon::Default,
             "a pointer outside the window names no cell and so no link"
         );
@@ -630,11 +601,11 @@ mod tests {
             panes: vec![rect(0, 0, 40, 20, PANE_FOCUSED | PANE_WANTS_MOUSE)],
         };
         assert_eq!(
-            pointer_shape_over(Some((5, 5)), &geometry, false),
+            pointer_shape_over(Some((5, 5)), &geometry, false, false),
             CursorIcon::Default
         );
         assert_eq!(
-            pointer_shape_over(Some((5, 5)), &geometry, true),
+            pointer_shape_over(Some((5, 5)), &geometry, false, true),
             CursorIcon::Pointer,
             "the modified click opens the link whatever the program asked for"
         );
@@ -648,9 +619,12 @@ mod tests {
                 rect(40, 0, 40, 20, PANE_WANTS_MOUSE),
             ],
         };
-        assert_eq!(pointer_shape(Some((5, 5)), &watching), CursorIcon::Default);
         assert_eq!(
-            pointer_shape(Some((45, 5)), &watching),
+            pointer_shape(Some((5, 5)), &watching, false),
+            CursorIcon::Default
+        );
+        assert_eq!(
+            pointer_shape(Some((45, 5)), &watching, false),
             CursorIcon::Text,
             "a background program receives no mouse events, so the beam stays"
         );
@@ -660,22 +634,22 @@ mod tests {
     fn the_pointer_is_a_resize_arrow_over_a_framed_pane_border() {
         let geometry = two_framed_columns();
         assert_eq!(
-            pointer_shape(Some((39, 5)), &geometry),
+            pointer_shape(Some((39, 5)), &geometry, false),
             CursorIcon::ColResize,
             "the right border of the left pane is a horizontal drag handle"
         );
         assert_eq!(
-            pointer_shape(Some((40, 5)), &geometry),
+            pointer_shape(Some((40, 5)), &geometry, false),
             CursorIcon::ColResize,
             "so is the left border of the right pane"
         );
         assert_eq!(
-            pointer_shape(Some((5, 1)), &geometry),
+            pointer_shape(Some((5, 1)), &geometry, false),
             CursorIcon::RowResize,
             "the top border of a pane is a vertical drag handle"
         );
         assert_eq!(
-            pointer_shape(Some((5, 19)), &geometry),
+            pointer_shape(Some((5, 19)), &geometry, false),
             CursorIcon::RowResize
         );
     }
@@ -689,12 +663,18 @@ mod tests {
             ],
         };
         assert_eq!(
-            pointer_shape(Some((39, 5)), &geometry),
+            pointer_shape(Some((39, 5)), &geometry, false),
             CursorIcon::ColResize,
             "the gutter between two frameless panes belongs to no pane and is still a handle"
         );
-        assert_eq!(pointer_shape(Some((38, 5)), &geometry), CursorIcon::Text);
-        assert_eq!(pointer_shape(Some((40, 5)), &geometry), CursorIcon::Text);
+        assert_eq!(
+            pointer_shape(Some((38, 5)), &geometry, false),
+            CursorIcon::Text
+        );
+        assert_eq!(
+            pointer_shape(Some((40, 5)), &geometry, false),
+            CursorIcon::Text
+        );
     }
 
     #[test]
@@ -708,22 +688,22 @@ mod tests {
             ],
         };
         assert_eq!(
-            pointer_shape(Some((39, 9)), &geometry),
+            pointer_shape(Some((39, 9)), &geometry, false),
             CursorIcon::NwseResize,
             "the bottom-right corner of the top-left pane"
         );
         assert_eq!(
-            pointer_shape(Some((40, 9)), &geometry),
+            pointer_shape(Some((40, 9)), &geometry, false),
             CursorIcon::NeswResize,
             "the bottom-left corner of the top-right pane"
         );
         assert_eq!(
-            pointer_shape(Some((39, 10)), &geometry),
+            pointer_shape(Some((39, 10)), &geometry, false),
             CursorIcon::NeswResize,
             "the top-right corner of the bottom-left pane"
         );
         assert_eq!(
-            pointer_shape(Some((40, 10)), &geometry),
+            pointer_shape(Some((40, 10)), &geometry, false),
             CursorIcon::NwseResize,
             "the top-left corner of the bottom-right pane"
         );
@@ -739,7 +719,10 @@ mod tests {
                 bare(40, 10, 40, 10, PANE_SELECTABLE),
             ],
         };
-        assert_eq!(pointer_shape(Some((39, 9)), &geometry), CursorIcon::Move);
+        assert_eq!(
+            pointer_shape(Some((39, 9)), &geometry, false),
+            CursorIcon::Move
+        );
     }
 
     #[test]
@@ -748,8 +731,157 @@ mod tests {
             panes: vec![rect(0, 0, 10, 5, PANE_FOCUSED)],
         };
         assert_eq!(
-            pointer_shape(Some((40, 40)), &geometry),
+            pointer_shape(Some((40, 40)), &geometry, false),
             CursorIcon::Default
+        );
+    }
+
+    fn with_flags(mut pane: PaneRect, flags: u8) -> PaneRect {
+        pane.flags |= flags;
+        pane
+    }
+
+    fn popup(x: u16, y: u16, cols: u16, rows: u16, takes_focus: bool) -> PaneRect {
+        let focus = if takes_focus { PANE_FOCUSED } else { 0 };
+        bare(x, y, cols, rows, PANE_POPUP | focus)
+    }
+
+    #[test]
+    fn over_a_popup_the_pointer_is_an_arrow_and_the_click_goes_to_the_session() {
+        let mut geometry = two_framed_columns();
+        geometry.panes.push(popup(10, 5, 20, 6, false));
+        assert_eq!(
+            pointer_shape(Some((15, 7)), &geometry, false),
+            CursorIcon::Default
+        );
+        assert!(pane_takes_the_click(Some((15, 7)), &geometry));
+        assert_eq!(
+            pointer_shape(Some((5, 15)), &geometry, false),
+            CursorIcon::Text,
+            "a popup that does not take focus leaves the rest of the screen alone"
+        );
+        assert!(!pane_takes_the_click(Some((5, 15)), &geometry));
+    }
+
+    #[test]
+    fn a_popup_holding_the_focus_takes_every_click_on_the_screen() {
+        let mut geometry = two_framed_columns();
+        geometry.panes.push(popup(10, 5, 20, 6, true));
+        assert_eq!(
+            pointer_shape(Some((5, 15)), &geometry, false),
+            CursorIcon::Default
+        );
+        assert_eq!(
+            pointer_shape(Some((39, 15)), &geometry, true),
+            CursorIcon::Default,
+            "a border under a menu cannot be dragged"
+        );
+        assert!(pane_takes_the_click(Some((5, 15)), &geometry));
+        assert_eq!(
+            pointer_shape_over(Some((5, 15)), &geometry, false, false),
+            CursorIcon::Default
+        );
+    }
+
+    #[test]
+    fn a_plugin_that_handles_its_own_clicks_shows_an_arrow() {
+        let geometry = GeometryRecord {
+            panes: vec![
+                with_flags(rect(0, 0, 40, 20, PANE_FOCUSED), PANE_PLUGIN_UI),
+                rect(40, 0, 40, 20, 0),
+            ],
+        };
+        assert_eq!(
+            pointer_shape(Some((5, 5)), &geometry, false),
+            CursorIcon::Default
+        );
+        assert_eq!(
+            pointer_shape(Some((45, 5)), &geometry, false),
+            CursorIcon::Text
+        );
+    }
+
+    fn floating_over_two_columns() -> GeometryRecord {
+        let mut geometry = two_framed_columns();
+        for pane in geometry.panes.iter_mut() {
+            if pane.selectable() {
+                pane.flags |= PANE_UNDER_FLOATING;
+            }
+        }
+        geometry
+            .panes
+            .push(with_flags(rect(20, 5, 40, 10, PANE_FOCUSED), PANE_FLOATING));
+        geometry
+    }
+
+    #[test]
+    fn the_frame_of_a_floating_pane_moves_it_and_resizes_it_with_ctrl() {
+        let geometry = floating_over_two_columns();
+        assert_eq!(
+            pointer_shape(Some((20, 8)), &geometry, false),
+            CursorIcon::Move
+        );
+        assert_eq!(
+            pointer_shape(Some((30, 5)), &geometry, false),
+            CursorIcon::Move
+        );
+        assert_eq!(
+            pointer_shape(Some((20, 8)), &geometry, true),
+            CursorIcon::ColResize
+        );
+        assert_eq!(
+            pointer_shape(Some((30, 14)), &geometry, true),
+            CursorIcon::RowResize
+        );
+        assert_eq!(
+            pointer_shape(Some((59, 14)), &geometry, true),
+            CursorIcon::NwseResize
+        );
+        assert_eq!(
+            pointer_shape(Some((59, 5)), &geometry, true),
+            CursorIcon::NeswResize
+        );
+        assert_eq!(
+            pointer_shape(Some((30, 8)), &geometry, false),
+            CursorIcon::Text
+        );
+    }
+
+    #[test]
+    fn the_pin_button_of_a_floating_pane_shows_a_hand() {
+        let geometry = floating_over_two_columns();
+        for x in 55..=57 {
+            assert_eq!(
+                pointer_shape(Some((x, 5)), &geometry, false),
+                CursorIcon::Pointer,
+                "column {}",
+                x
+            );
+        }
+        assert_eq!(
+            pointer_shape(Some((54, 5)), &geometry, false),
+            CursorIcon::Move
+        );
+        assert_eq!(
+            pointer_shape(Some((58, 5)), &geometry, false),
+            CursorIcon::Move
+        );
+    }
+
+    #[test]
+    fn a_tiled_border_under_shown_floating_panes_only_resizes_with_ctrl() {
+        let geometry = floating_over_two_columns();
+        assert_eq!(
+            pointer_shape(Some((39, 17)), &geometry, false),
+            CursorIcon::Default
+        );
+        assert_eq!(
+            pointer_shape(Some((39, 17)), &geometry, true),
+            CursorIcon::ColResize
+        );
+        assert_eq!(
+            pointer_shape(Some((5, 17)), &geometry, false),
+            CursorIcon::Text
         );
     }
 

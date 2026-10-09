@@ -357,7 +357,8 @@ fn apply_pipe_message_to_plugin_inner(
                     client_id,
                     rendered_bytes.as_bytes().to_vec(),
                 )
-                .with_pipes(pipes_to_block_or_unblock);
+                .with_pipes(pipes_to_block_or_unblock)
+                .rendered_at(rows, columns);
                 plugin_render_assets.push(plugin_render_asset);
             } else {
                 let pipes_to_block_or_unblock =

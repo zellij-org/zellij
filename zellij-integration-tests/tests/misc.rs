@@ -95,18 +95,48 @@ fn start_zellij_with_layout_notifications() -> TestSession {
         .start()
 }
 
+fn draws_a_popup_border(grid_snapshot: &GridSnapshot) -> bool {
+    grid_snapshot.contains("╭") || grid_snapshot.contains("╰")
+}
+
 fn wait_for_layout_notification(zellij: &TestSession, layout_name: &str) {
     let expected = format!("layout: {}", layout_name);
+    let broken_frames = std::cell::RefCell::new(Vec::new());
     zellij.wait_until(
         &format!("notification for {}", layout_name),
-        |grid_snapshot| grid_snapshot.text.to_lowercase().contains(&expected),
+        |grid_snapshot| {
+            let shown = grid_snapshot.text.to_lowercase().contains(&expected);
+            if !grid_snapshot.contains("Layout:") && draws_a_popup_border(grid_snapshot) {
+                broken_frames.borrow_mut().push(grid_snapshot.text.clone());
+            }
+            shown
+        },
+    );
+    let broken_frames = broken_frames.into_inner();
+    assert!(
+        broken_frames.is_empty(),
+        "a notification was drawn without its text:\n{}",
+        broken_frames.join("\n---\n")
     );
 }
 
 fn wait_for_notifications_to_close(zellij: &TestSession) -> GridSnapshot {
-    zellij.wait_until("layout notifications closed", |grid_snapshot| {
-        grid_snapshot.status_bar_appears() && !grid_snapshot.contains("Layout:")
-    })
+    let broken_frames = std::cell::RefCell::new(Vec::new());
+    let grid_snapshot = zellij.wait_until("layout notifications closed", |grid_snapshot| {
+        let text_gone = !grid_snapshot.contains("Layout:");
+        let border_left = draws_a_popup_border(grid_snapshot);
+        if text_gone && border_left {
+            broken_frames.borrow_mut().push(grid_snapshot.text.clone());
+        }
+        grid_snapshot.status_bar_appears() && text_gone && !border_left
+    });
+    let broken_frames = broken_frames.into_inner();
+    assert!(
+        broken_frames.is_empty(),
+        "a notification border stayed on screen without its text:\n{}",
+        broken_frames.join("\n---\n")
+    );
+    grid_snapshot
 }
 
 #[test]

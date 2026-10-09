@@ -639,29 +639,24 @@ impl Pane for TerminalPane {
         &mut self,
         cursor_color: PaletteColor,
         text_color: PaletteColor,
-    ) -> Option<String> {
-        let mut vte_output = None;
-        if let Some((cursor_x, cursor_y, true)) = self.cursor_coordinates() {
-            let mut character_under_cursor = self
-                .grid
-                .get_character_under_cursor()
-                .unwrap_or(EMPTY_TERMINAL_CHARACTER);
-            character_under_cursor.styles.update(|styles| {
-                styles.background = Some(cursor_color.into());
-                styles.foreground = Some(text_color.into());
-            });
-            // we keep track of these so that we can clear them up later (see render function)
-            self.fake_cursor_locations.insert((cursor_y, cursor_x));
-            let mut fake_cursor = format!(
-                "\u{1b}[{};{}H\u{1b}[m{}",           // goto row column and clear styles
-                self.get_content_y() + cursor_y + 1, // + 1 because goto is 1 indexed
-                self.get_content_x() + cursor_x + 1,
-                &character_under_cursor.styles,
-            );
-            fake_cursor.push(character_under_cursor.character);
-            vte_output = Some(fake_cursor);
-        }
-        vte_output
+    ) -> Option<crate::output::CharacterChunk> {
+        let Some((cursor_x, cursor_y, true)) = self.cursor_coordinates() else {
+            return None;
+        };
+        let mut character_under_cursor = self
+            .grid
+            .get_character_under_cursor()
+            .unwrap_or(EMPTY_TERMINAL_CHARACTER);
+        character_under_cursor.styles.update(|styles| {
+            styles.background = Some(cursor_color.into());
+            styles.foreground = Some(text_color.into());
+        });
+        self.fake_cursor_locations.insert((cursor_y, cursor_x));
+        Some(CharacterChunk::new(
+            vec![character_under_cursor],
+            self.get_content_x() + cursor_x,
+            self.get_content_y() + cursor_y,
+        ))
     }
     fn render_terminal_title(&mut self, input_mode: InputMode) -> String {
         let pane_title = if self.pane_name.is_empty() && input_mode == InputMode::RenamePane {
