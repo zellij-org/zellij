@@ -1,9 +1,11 @@
 mod action_picker;
+mod bindings_list;
 mod blocks_screen;
 mod contrast;
 mod keybindings_screen;
 mod keys_screen;
 mod list_editor;
+mod mousebindings_screen;
 mod page;
 mod settings;
 mod settings_screen;

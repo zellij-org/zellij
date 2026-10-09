@@ -12434,6 +12434,9 @@ fn alt_click_is_forwarded_to_a_pane_the_client_is_descended_into() {
             &MouseEvent::new_left_press_with_alt_event(Position::new(5, 71)),
             client_id,
             Some(PaneId::Terminal(1)),
+            zellij_utils::input::config_settings::default_config()
+                .mousebinds
+                .clone(),
         )
         .unwrap();
 
@@ -12482,6 +12485,9 @@ fn alt_click_still_groups_a_mouse_tracking_pane_the_client_is_not_descended_into
             &MouseEvent::new_left_press_with_alt_event(Position::new(5, 71)),
             client_id,
             None,
+            zellij_utils::input::config_settings::default_config()
+                .mousebinds
+                .clone(),
         )
         .unwrap();
 
@@ -12521,6 +12527,9 @@ fn alt_wheel_up_is_forwarded_to_a_pane_the_client_is_descended_into() {
         &MouseEvent::new_alt_scroll_up_event(Position::new(5, 71)),
         client_id,
         Some(PaneId::Terminal(1)),
+        zellij_utils::input::config_settings::default_config()
+            .mousebinds
+            .clone(),
     )
     .unwrap();
 
@@ -12564,6 +12573,9 @@ fn alt_wheel_over_a_mouse_tracking_pane_is_forwarded_instead_of_jumping_prompts(
         &MouseEvent::new_alt_scroll_up_event(Position::new(5, 71)),
         client_id,
         None,
+        zellij_utils::input::config_settings::default_config()
+            .mousebinds
+            .clone(),
     )
     .unwrap();
 
@@ -17868,5 +17880,656 @@ fn a_collapsed_bar_gives_its_row_to_the_viewport_across_a_swap_layout() {
         (viewport.y, viewport.rows),
         (0, 20),
         "the viewport should still cover the collapsed bar's row after a swap layout"
+    );
+}
+
+fn mousebinds_from(text: &str) -> Arc<zellij_utils::input::mousebinds::Mousebinds> {
+    let config = zellij_utils::input::config::Config::from_kdl(
+        text,
+        Some(zellij_utils::input::config::Config::from_default_assets().unwrap()),
+    )
+    .unwrap();
+    config.mousebinds.clone()
+}
+
+fn click_with(
+    tab: &mut Tab,
+    event: MouseEvent,
+    client_id: ClientId,
+    mousebinds: &Arc<zellij_utils::input::mousebinds::Mousebinds>,
+) -> super::MouseEffect {
+    tab.handle_mouse_event_with_passthrough(&event, client_id, None, mousebinds.clone())
+        .unwrap()
+}
+
+fn tab_with_two_tiled_panes(size: Size, client_id: ClientId) -> Tab {
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    tab.vertical_split(PaneId::Terminal(2), None, client_id, None, None)
+        .unwrap();
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+    tab
+}
+
+#[test]
+fn double_click_on_a_tiled_pane_frame_toggles_fullscreen() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = tab_with_two_tiled_panes(size, client_id);
+    let frame_position = Position::new(5, 60);
+    for _ in 0..2 {
+        tab.handle_mouse_event(&MouseEvent::new_left_press_event(frame_position), client_id)
+            .unwrap();
+        tab.handle_mouse_event(
+            &MouseEvent::new_left_release_event(frame_position),
+            client_id,
+        )
+        .unwrap();
+    }
+    assert!(tab.is_fullscreen_active());
+    assert_eq!(tab.fullscreen_pane_id(), Some(PaneId::Terminal(1)));
+}
+
+#[test]
+fn double_click_on_a_floating_pane_frame_toggles_its_fullscreen() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = tab_with_floating_pane(size, client_id);
+    let geom_before = tab
+        .get_pane_with_id(PaneId::Terminal(2))
+        .unwrap()
+        .position_and_size();
+    let frame_position = Position::new(geom_before.y as i32, (geom_before.x + 3) as u16);
+    let double_click = |tab: &mut Tab| {
+        for _ in 0..2 {
+            tab.handle_mouse_event(&MouseEvent::new_left_press_event(frame_position), client_id)
+                .unwrap();
+            tab.handle_mouse_event(
+                &MouseEvent::new_left_release_event(frame_position),
+                client_id,
+            )
+            .unwrap();
+        }
+    };
+    double_click(&mut tab);
+    assert!(tab.floating_panes.fullscreen_is_active());
+    assert_eq!(
+        tab.floating_panes.fullscreen_pane_id(),
+        Some(PaneId::Terminal(2))
+    );
+}
+
+#[test]
+fn clicks_far_apart_are_not_counted_as_a_double_click() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = tab_with_two_tiled_panes(size, client_id);
+    for position in [Position::new(5, 60), Position::new(6, 60)] {
+        tab.handle_mouse_event(&MouseEvent::new_left_press_event(position), client_id)
+            .unwrap();
+        tab.handle_mouse_event(&MouseEvent::new_left_release_event(position), client_id)
+            .unwrap();
+    }
+    assert!(!tab.is_fullscreen_active());
+}
+
+#[test]
+fn a_rebound_ctrl_click_runs_its_new_behaviour() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = tab_with_two_tiled_panes(size, client_id);
+    let mousebinds = mousebinds_from(
+        "mousebinds {\n    shared {\n        bind \"Ctrl Left\" on=\"content\" { ToggleFullscreen; }\n    }\n}\n",
+    );
+    click_with(
+        &mut tab,
+        MouseEvent::new_left_press_with_ctrl_event(Position::new(5, 70)),
+        client_id,
+        &mousebinds,
+    );
+    assert_eq!(tab.fullscreen_pane_id(), Some(PaneId::Terminal(2)));
+}
+
+#[test]
+fn an_ignored_scroll_leaves_the_pane_where_it_was() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    for i in 0..60 {
+        tab.handle_pty_bytes(1, format!("line {}\n\r", i).into_bytes())
+            .unwrap();
+    }
+    let mousebinds = mousebinds_from(
+        "mousebinds {\n    shared {\n        bind \"ScrollUp\" { Ignore; }\n    }\n}\n",
+    );
+    click_with(
+        &mut tab,
+        MouseEvent::new_scroll_up_event(Position::new(5, 10)),
+        client_id,
+        &mousebinds,
+    );
+    assert!(!tab.get_active_pane(client_id).unwrap().is_scrolled());
+    tab.handle_mouse_event(
+        &MouseEvent::new_scroll_up_event(Position::new(5, 10)),
+        client_id,
+    )
+    .unwrap();
+    assert!(tab.get_active_pane(client_id).unwrap().is_scrolled());
+}
+
+#[test]
+fn an_action_binding_runs_once_per_press() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let mousebinds = mousebinds_from(
+        "mousebinds {\n    shared {\n        bind \"Middle\" { GoToNextTab; }\n    }\n}\n",
+    );
+    let position = Position::new(5, 10);
+    let press = click_with(
+        &mut tab,
+        MouseEvent::new_middle_press_event(position),
+        client_id,
+        &mousebinds,
+    );
+    assert_eq!(
+        press.run_actions,
+        Some(vec![zellij_utils::input::actions::Action::GoToNextTab])
+    );
+    let motion = click_with(
+        &mut tab,
+        MouseEvent::new_middle_motion_event(position),
+        client_id,
+        &mousebinds,
+    );
+    assert_eq!(motion.run_actions, None);
+    let release = click_with(
+        &mut tab,
+        MouseEvent::new_middle_release_event(position),
+        client_id,
+        &mousebinds,
+    );
+    assert_eq!(release.run_actions, None);
+}
+
+#[test]
+fn cleared_mouse_bindings_pass_everything_to_the_app() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut pty_instruction_bus = MockPtyInstructionBus::new();
+    let mut tab = create_new_tab_with_mock_pty_writer(
+        size,
+        ModeInfo::default(),
+        pty_instruction_bus.pty_write_sender(),
+    );
+    pty_instruction_bus.start();
+    tab.handle_pty_bytes(1, Vec::from("\u{1b}[?1002h\u{1b}[?1006h".as_bytes()))
+        .unwrap();
+    let mousebinds = mousebinds_from("mousebinds clear-defaults=true {\n}\n");
+    let position = Position::new(5, 10);
+    click_with(
+        &mut tab,
+        MouseEvent::new_left_press_with_alt_event(position),
+        client_id,
+        &mousebinds,
+    );
+    click_with(
+        &mut tab,
+        MouseEvent::new_left_release_event(position),
+        client_id,
+        &mousebinds,
+    );
+    click_with(
+        &mut tab,
+        MouseEvent::new_scroll_up_event(position),
+        client_id,
+        &mousebinds,
+    );
+    pty_instruction_bus.exit();
+    assert_eq!(
+        pty_instruction_bus.clone_output(),
+        vec![
+            "\u{1b}[<8;10;5M".to_string(),
+            "\u{1b}[<0;10;5m".to_string(),
+            "\u{1b}[<64;10;5M".to_string(),
+        ]
+    );
+}
+
+#[test]
+fn passed_wheel_events_become_arrow_keys_in_a_full_screen_app_without_mouse_reporting() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut pty_instruction_bus = MockPtyInstructionBus::new();
+    let mut tab = create_new_tab_with_mock_pty_writer(
+        size,
+        ModeInfo::default(),
+        pty_instruction_bus.pty_write_sender(),
+    );
+    pty_instruction_bus.start();
+    tab.handle_pty_bytes(1, Vec::from("\u{1b}[?1049h".as_bytes()))
+        .unwrap();
+    let mousebinds = mousebinds_from(
+        "mousebinds {\n    shared {\n        bind \"ScrollDown\" { PassToApp; }\n    }\n}\n",
+    );
+    click_with(
+        &mut tab,
+        MouseEvent::new_scroll_down_event(Position::new(5, 10)),
+        client_id,
+        &mousebinds,
+    );
+    pty_instruction_bus.exit();
+    assert_eq!(
+        pty_instruction_bus.clone_output(),
+        vec!["\u{1b}[B".to_string(); 3]
+    );
+}
+
+#[test]
+fn a_press_passed_to_the_app_keeps_its_drag_and_release_with_the_app() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut pty_instruction_bus = MockPtyInstructionBus::new();
+    let mut tab = create_new_tab_with_mock_pty_writer(
+        size,
+        ModeInfo::default(),
+        pty_instruction_bus.pty_write_sender(),
+    );
+    pty_instruction_bus.start();
+    tab.handle_pty_bytes(1, Vec::from("\u{1b}[?1002h\u{1b}[?1006h".as_bytes()))
+        .unwrap();
+    let mousebinds = mousebinds_from(
+        "mousebinds {\n    shared {\n        bind \"Ctrl Left\" on=\"content\" { PassToApp; }\n    }\n}\n",
+    );
+    click_with(
+        &mut tab,
+        MouseEvent::new_left_press_with_ctrl_event(Position::new(5, 10)),
+        client_id,
+        &mousebinds,
+    );
+    click_with(
+        &mut tab,
+        MouseEvent::new_left_motion_with_ctrl_event(Position::new(6, 12)),
+        client_id,
+        &mousebinds,
+    );
+    click_with(
+        &mut tab,
+        MouseEvent::new_left_release_with_ctrl_event(Position::new(6, 12)),
+        client_id,
+        &mousebinds,
+    );
+    pty_instruction_bus.exit();
+    assert_eq!(pty_instruction_bus.clone_output().len(), 3);
+}
+
+#[test]
+fn a_program_with_mouse_reporting_gets_both_raw_clicks_of_a_double_click() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut pty_instruction_bus = MockPtyInstructionBus::new();
+    let mut tab = create_new_tab_with_mock_pty_writer(
+        size,
+        ModeInfo::default(),
+        pty_instruction_bus.pty_write_sender(),
+    );
+    pty_instruction_bus.start();
+    tab.handle_pty_bytes(1, Vec::from("\u{1b}[?1000h\u{1b}[?1006h".as_bytes()))
+        .unwrap();
+    let position = Position::new(5, 10);
+    for _ in 0..2 {
+        tab.handle_mouse_event(&MouseEvent::new_left_press_event(position), client_id)
+            .unwrap();
+        tab.handle_mouse_event(&MouseEvent::new_left_release_event(position), client_id)
+            .unwrap();
+    }
+    pty_instruction_bus.exit();
+    assert_eq!(
+        pty_instruction_bus.clone_output(),
+        vec![
+            "\u{1b}[<0;10;5M".to_string(),
+            "\u{1b}[<0;10;5m".to_string(),
+            "\u{1b}[<0;10;5M".to_string(),
+            "\u{1b}[<0;10;5m".to_string(),
+        ]
+    );
+    assert!(!tab.is_fullscreen_active());
+}
+
+#[test]
+fn double_and_triple_clicks_select_a_word_and_a_line_through_the_default_bindings() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    tab.handle_pty_bytes(1, Vec::from("first second third".as_bytes()))
+        .unwrap();
+    let position = Position::new(1, 9);
+    let click = |tab: &mut Tab| {
+        tab.handle_mouse_event(&MouseEvent::new_left_press_event(position), client_id)
+            .unwrap();
+        tab.handle_mouse_event(&MouseEvent::new_left_release_event(position), client_id)
+            .unwrap();
+    };
+    let selected = |tab: &Tab| {
+        tab.get_active_pane(client_id)
+            .unwrap()
+            .get_selected_text(client_id)
+    };
+    click(&mut tab);
+    click(&mut tab);
+    assert_eq!(selected(&tab), Some("second".to_owned()));
+    click(&mut tab);
+    assert_eq!(selected(&tab), Some("first second third".to_owned()));
+}
+
+#[test]
+fn scrolling_with_app_first_off_scrolls_zellij_even_when_the_program_wants_the_mouse() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut pty_instruction_bus = MockPtyInstructionBus::new();
+    let mut tab = create_new_tab_with_mock_pty_writer(
+        size,
+        ModeInfo::default(),
+        pty_instruction_bus.pty_write_sender(),
+    );
+    pty_instruction_bus.start();
+    for i in 0..60 {
+        tab.handle_pty_bytes(1, format!("line {}\n\r", i).into_bytes())
+            .unwrap();
+    }
+    tab.handle_pty_bytes(1, Vec::from("\u{1b}[?1000h\u{1b}[?1006h".as_bytes()))
+        .unwrap();
+    let mousebinds = mousebinds_from(
+        "mousebinds {\n    shared {\n        bind \"ScrollUp\" app_first=false { Scroll 3; }\n    }\n}\n",
+    );
+    click_with(
+        &mut tab,
+        MouseEvent::new_scroll_up_event(Position::new(5, 10)),
+        client_id,
+        &mousebinds,
+    );
+    pty_instruction_bus.exit();
+    assert!(pty_instruction_bus.clone_output().is_empty());
+    assert!(tab.get_active_pane(client_id).unwrap().is_scrolled());
+}
+
+#[test]
+fn dragging_inside_a_floating_pane_with_a_move_pane_binding_moves_it() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = tab_with_floating_pane(size, client_id);
+    let geom_before = tab
+        .get_pane_with_id(PaneId::Terminal(2))
+        .unwrap()
+        .position_and_size();
+    let inside = Position::new((geom_before.y + 2) as i32, (geom_before.x + 3) as u16);
+    let moved_to = Position::new((geom_before.y + 4) as i32, (geom_before.x + 8) as u16);
+    let mousebinds = mousebinds_from(
+        "mousebinds {\n    shared {\n        bind \"Alt Left\" { MovePane; }\n    }\n}\n",
+    );
+    click_with(
+        &mut tab,
+        MouseEvent::new_left_press_with_alt_event(inside),
+        client_id,
+        &mousebinds,
+    );
+    click_with(
+        &mut tab,
+        MouseEvent::new_left_motion_with_alt_event(moved_to),
+        client_id,
+        &mousebinds,
+    );
+    let mut release = MouseEvent::new_left_release_event(moved_to);
+    release.alt = true;
+    click_with(&mut tab, release, client_id, &mousebinds);
+    let geom_after = tab
+        .get_pane_with_id(PaneId::Terminal(2))
+        .unwrap()
+        .position_and_size();
+    assert_eq!(geom_after.x, geom_before.x + 5);
+    assert_eq!(geom_after.y, geom_before.y + 2);
+}
+
+fn mouse_events_sent_to_plugin(
+    plugin_receiver: &Receiver<(PluginInstruction, ErrorContext)>,
+    plugin_id: u32,
+) -> Vec<zellij_utils::data::Mouse> {
+    let mut events = vec![];
+    while let Ok((instruction, _)) = plugin_receiver.try_recv() {
+        if let PluginInstruction::Update(updates) = instruction {
+            for (pid, _, event) in updates {
+                if pid != Some(plugin_id) {
+                    continue;
+                }
+                match event {
+                    zellij_utils::data::Event::Mouse(mouse)
+                    | zellij_utils::data::Event::MouseWithModifiers(mouse, _) => events.push(mouse),
+                    _ => {},
+                }
+            }
+        }
+    }
+    events
+}
+
+fn tab_with_unselectable_plugin_pane(
+    size: Size,
+    client_id: ClientId,
+) -> (Tab, Receiver<(PluginInstruction, ErrorContext)>) {
+    let (mut tab, plugin_receiver) = create_new_tab_with_plugin_receiver(size, ModeInfo::default());
+    tab.new_pane(
+        PaneId::Plugin(7),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+    tab.set_pane_selectable(PaneId::Plugin(7), false);
+    while plugin_receiver.try_recv().is_ok() {}
+    (tab, plugin_receiver)
+}
+
+#[test]
+fn dragging_in_an_unselectable_plugin_pane_sends_hold_and_release_to_the_plugin() {
+    use zellij_utils::data::Mouse;
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let (mut tab, plugin_receiver) = tab_with_unselectable_plugin_pane(size, client_id);
+    assert_eq!(tab.get_active_pane_id(client_id), Some(PaneId::Terminal(1)));
+    let plugin_point = center_of_pane(&tab, PaneId::Plugin(7));
+    let moved_point = Position::new(
+        plugin_point.line() as i32,
+        (plugin_point.column() + 3) as u16,
+    );
+    tab.handle_mouse_event(&MouseEvent::new_left_press_event(plugin_point), client_id)
+        .unwrap();
+    assert_eq!(tab.selecting_with_mouse_in_pane, Some(PaneId::Plugin(7)));
+    assert_eq!(tab.get_active_pane_id(client_id), Some(PaneId::Terminal(1)));
+    tab.handle_mouse_event(&MouseEvent::new_left_motion_event(moved_point), client_id)
+        .unwrap();
+    tab.handle_mouse_event(&MouseEvent::new_left_release_event(moved_point), client_id)
+        .unwrap();
+    assert!(tab.selecting_with_mouse_in_pane.is_none());
+    let events = mouse_events_sent_to_plugin(&plugin_receiver, 7);
+    let kinds: Vec<&'static str> = events
+        .iter()
+        .filter_map(|event| match event {
+            Mouse::LeftClick(..) => Some("click"),
+            Mouse::Hold(..) => Some("hold"),
+            Mouse::Release(..) => Some("release"),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(kinds, vec!["click", "hold", "release"], "{:?}", events);
+    let click_column = events.iter().find_map(|event| match event {
+        Mouse::LeftClick(_, column) => Some(*column),
+        _ => None,
+    });
+    let hold_column = events.iter().find_map(|event| match event {
+        Mouse::Hold(_, column) => Some(*column),
+        _ => None,
+    });
+    assert_eq!(hold_column, click_column.map(|column| column + 3));
+}
+
+#[test]
+fn a_middle_click_on_an_unselectable_plugin_pane_does_not_start_a_drag() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let (mut tab, _plugin_receiver) = tab_with_unselectable_plugin_pane(size, client_id);
+    let plugin_point = center_of_pane(&tab, PaneId::Plugin(7));
+    tab.handle_mouse_event(&MouseEvent::new_middle_press_event(plugin_point), client_id)
+        .unwrap();
+    assert!(tab.selecting_with_mouse_in_pane.is_none());
+    let terminal_point = center_of_pane(&tab, PaneId::Terminal(1));
+    tab.handle_mouse_event(&MouseEvent::new_left_press_event(terminal_point), client_id)
+        .unwrap();
+    assert_eq!(tab.selecting_with_mouse_in_pane, Some(PaneId::Terminal(1)));
+}
+
+#[test]
+fn clicking_a_pinned_unselectable_plugin_pane_sends_it_the_click_without_moving_focus() {
+    use zellij_utils::data::Mouse;
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let (mut tab, plugin_receiver) = create_new_tab_with_plugin_receiver(size, ModeInfo::default());
+    let coordinates = FloatingPaneCoordinates {
+        x: Some(PercentOrFixed::Fixed(30)),
+        y: Some(PercentOrFixed::Fixed(5)),
+        width: Some(PercentOrFixed::Fixed(40)),
+        height: Some(PercentOrFixed::Fixed(8)),
+        pinned: Some(true),
+        borderless: Some(false),
+        border_style: None,
+    };
+    tab.new_floating_pane(
+        PaneId::Plugin(8),
+        None,
+        None,
+        false,
+        false,
+        Some(coordinates),
+        None,
+    )
+    .unwrap();
+    tab.set_pane_selectable(PaneId::Plugin(8), false);
+    assert!(!tab.floating_panes.panes_are_visible());
+    while plugin_receiver.try_recv().is_ok() {}
+    let active_before = tab.get_active_pane_id(client_id);
+    let plugin_point = center_of_pane(&tab, PaneId::Plugin(8));
+    tab.handle_mouse_event(&MouseEvent::new_left_press_event(plugin_point), client_id)
+        .unwrap();
+    tab.handle_mouse_event(&MouseEvent::new_left_release_event(plugin_point), client_id)
+        .unwrap();
+    assert_eq!(tab.get_active_pane_id(client_id), active_before);
+    assert!(!tab.floating_panes.panes_are_visible());
+    let events = mouse_events_sent_to_plugin(&plugin_receiver, 8);
+    assert!(
+        events.iter().any(|e| matches!(e, Mouse::LeftClick(..))),
+        "{:?}",
+        events
+    );
+    assert!(
+        events.iter().any(|e| matches!(e, Mouse::Release(..))),
+        "{:?}",
+        events
+    );
+}
+
+#[test]
+fn clicking_a_hovered_unselectable_plugin_pane_keeps_its_hover() {
+    use zellij_utils::data::Mouse;
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let (mut tab, plugin_receiver) = tab_with_unselectable_plugin_pane(size, client_id);
+    let plugin_point = center_of_pane(&tab, PaneId::Plugin(7));
+    tab.handle_mouse_event(&MouseEvent::new_buttonless_motion(plugin_point), client_id)
+        .unwrap();
+    let events = mouse_events_sent_to_plugin(&plugin_receiver, 7);
+    assert!(
+        events.iter().any(|e| matches!(e, Mouse::Hover(..))),
+        "{:?}",
+        events
+    );
+    tab.handle_mouse_event(&MouseEvent::new_left_press_event(plugin_point), client_id)
+        .unwrap();
+    tab.handle_mouse_event(&MouseEvent::new_left_release_event(plugin_point), client_id)
+        .unwrap();
+    let events = mouse_events_sent_to_plugin(&plugin_receiver, 7);
+    assert!(
+        !events
+            .iter()
+            .any(|e| matches!(e, Mouse::Hover(_, column) if *column >= size.cols)),
+        "{:?}",
+        events
+    );
+    let terminal_point = center_of_pane(&tab, PaneId::Terminal(1));
+    tab.handle_mouse_event(
+        &MouseEvent::new_buttonless_motion(terminal_point),
+        client_id,
+    )
+    .unwrap();
+    let events = mouse_events_sent_to_plugin(&plugin_receiver, 7);
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, Mouse::Hover(_, column) if *column >= size.cols)),
+        "{:?}",
+        events
     );
 }

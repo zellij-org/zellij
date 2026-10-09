@@ -669,6 +669,18 @@ impl Pane for PluginPane {
                 .unwrap();
         }
     }
+    fn mouse_double_click(&mut self, position: &Position, client_id: ClientId) {
+        if self.supports_mouse_selection {
+            return;
+        }
+        self.send_plugin_instructions
+            .send(PluginInstruction::Update(vec![(
+                Some(self.pid),
+                Some(client_id),
+                Event::Mouse(Mouse::DoubleClick(position.line.0, position.column.0)),
+            )]))
+            .unwrap();
+    }
     fn update_selection(&mut self, position: &Position, client_id: ClientId) {
         if self.supports_mouse_selection {
             if let Some(grid) = self.grids.get_mut(&client_id) {

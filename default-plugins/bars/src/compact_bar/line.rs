@@ -8,6 +8,12 @@ use zellij_tile_utils::style;
 pub struct TabLineOutput {
     pub parts: Vec<LinePart>,
     pub breadcrumb_range: Option<(usize, usize)>,
+    pub mode_range: Option<(usize, usize)>,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct CompactHover {
+    pub breadcrumb: bool,
 }
 
 pub fn tab_line(
@@ -16,6 +22,7 @@ pub fn tab_line(
     cols: usize,
     toggle_tooltip_key: Option<String>,
     tooltip_is_active: bool,
+    hover: CompactHover,
 ) -> TabLineOutput {
     let dimmed = mode_info.session_ascended == Some(true) || mode_info.session_dimmed == Some(true);
     let breadcrumb_ancestry = if mode_info.host_fullscreen == Some(true) {
@@ -35,6 +42,7 @@ pub fn tab_line(
         dimmed,
         breadcrumb_ancestry,
         nested_hint,
+        hover,
     };
 
     let builder = TabLineBuilder::new(config, mode_info.style.colors, mode_info.capabilities, cols);
@@ -76,6 +84,7 @@ pub struct TabLineConfig {
     pub dimmed: bool,
     pub breadcrumb_ancestry: Vec<String>,
     pub nested_hint: NestedSessionHint,
+    pub hover: CompactHover,
 }
 
 fn calculate_total_length(parts: &[LinePart]) -> usize {
@@ -327,20 +336,29 @@ struct TabLinePrefixBuilder<'a> {
     cols: usize,
     dimmed: bool,
     breadcrumb_ancestry: &'a [String],
+    hover: CompactHover,
 }
 
 struct TabLinePrefix {
     parts: Vec<LinePart>,
     breadcrumb_range: Option<(usize, usize)>,
+    mode_range: Option<(usize, usize)>,
 }
 
 impl<'a> TabLinePrefixBuilder<'a> {
-    fn new(palette: Styling, cols: usize, dimmed: bool, breadcrumb_ancestry: &'a [String]) -> Self {
+    fn new(
+        palette: Styling,
+        cols: usize,
+        dimmed: bool,
+        breadcrumb_ancestry: &'a [String],
+        hover: CompactHover,
+    ) -> Self {
         Self {
             palette,
             cols,
             dimmed,
             breadcrumb_ancestry,
+            hover,
         }
     }
 
@@ -364,13 +382,16 @@ impl<'a> TabLinePrefixBuilder<'a> {
             }
         }
 
+        let mut mode_range = None;
         if let Some(mode_part) = self.create_mode_part(mode, used_len) {
+            mode_range = Some((used_len, used_len + mode_part.len));
             parts.push(mode_part);
         }
 
         TabLinePrefix {
             parts,
             breadcrumb_range,
+            mode_range,
         }
     }
 
@@ -400,11 +421,17 @@ impl<'a> TabLinePrefixBuilder<'a> {
         };
         let name_style = if self.dimmed {
             dim_style(bg_color)
+        } else if self.hover.breadcrumb {
+            style!(self.palette.text_unselected.emphasis_0, bg_color)
+                .bold()
+                .italic()
         } else {
             style!(self.palette.text_unselected.emphasis_0, bg_color).bold()
         };
         let closing_style = if self.dimmed {
             dim_style(bg_color)
+        } else if self.hover.breadcrumb {
+            style!(text_color, bg_color).bold().italic()
         } else {
             style!(text_color, bg_color).bold()
         };
@@ -766,17 +793,20 @@ impl TabLineBuilder {
             self.cols,
             self.config.dimmed,
             breadcrumb_ancestry,
+            self.config.hover,
         );
 
         let prefix_result = prefix_builder.build(session_name, self.config.mode);
         let mut prefix = prefix_result.parts;
         let breadcrumb_range = prefix_result.breadcrumb_range;
+        let mode_range = prefix_result.mode_range;
         let prefix_len = calculate_total_length(&prefix);
 
         if prefix_len + active_tab.len > self.cols {
             return TabLineOutput {
                 parts: prefix,
                 breadcrumb_range,
+                mode_range,
             };
         }
 
@@ -798,6 +828,7 @@ impl TabLineBuilder {
         TabLineOutput {
             parts: prefix,
             breadcrumb_range,
+            mode_range,
         }
     }
 

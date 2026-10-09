@@ -1718,6 +1718,21 @@ impl FloatingPanes {
         true
     }
     pub fn move_pane_with_mouse(&mut self, position: Position, search_selectable: bool) -> bool {
+        self.move_pane_with_mouse_grabbed(position, search_selectable, true)
+    }
+    pub fn move_pane_with_mouse_from_anywhere(
+        &mut self,
+        position: Position,
+        search_selectable: bool,
+    ) -> bool {
+        self.move_pane_with_mouse_grabbed(position, search_selectable, false)
+    }
+    fn move_pane_with_mouse_grabbed(
+        &mut self,
+        position: Position,
+        search_selectable: bool,
+        require_frame: bool,
+    ) -> bool {
         // true => handled, false => not handled (eg. no pane at this position)
         if *self.fullscreen_covers_ui.borrow() || self.fullscreen_pane_id.is_some() {
             return false;
@@ -1730,8 +1745,8 @@ impl FloatingPanes {
                 return true;
             }
         } else if let Some(pane) = self.get_pane_at_mut(&position, search_selectable) {
-            let clicked_on_frame = pane.position_is_on_frame(&position);
-            if (show_panes || pane.position_and_size().is_pinned) && clicked_on_frame {
+            let grabbed = !require_frame || pane.position_is_on_frame(&position);
+            if (show_panes || pane.position_and_size().is_pinned) && grabbed {
                 let pid = pane.pid();
                 if self.pane_being_moved_with_mouse.is_none() {
                     self.set_pane_being_moved_with_mouse(pid, position);

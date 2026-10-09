@@ -8,6 +8,7 @@ pub enum Category {
     Keys,
     ContextMenu,
     MouseAndClipboard,
+    MouseBindings,
     PanesAndLayouts,
     ScrollbackAndEditor,
     Sessions,
@@ -17,11 +18,12 @@ pub enum Category {
     FoldersAndFiles,
 }
 
-pub const CATEGORIES: [Category; 13] = [
+pub const CATEGORIES: [Category; 14] = [
     Category::Appearance,
     Category::PaneFrames,
     Category::Keys,
     Category::MouseAndClipboard,
+    Category::MouseBindings,
     Category::ContextMenu,
     Category::Themes,
     Category::PanesAndLayouts,
@@ -42,6 +44,7 @@ impl Category {
             Category::Keys => "Keys",
             Category::ContextMenu => "Right-click menu",
             Category::MouseAndClipboard => "Mouse and clipboard",
+            Category::MouseBindings => "Mouse bindings",
             Category::PanesAndLayouts => "Panes and layouts",
             Category::ScrollbackAndEditor => "Scrollback and editor",
             Category::Sessions => "Sessions",
@@ -57,7 +60,10 @@ impl Category {
     pub fn is_page(&self) -> bool {
         matches!(
             self,
-            Category::Themes | Category::ContextMenu | Category::PluginsAndEnvironment
+            Category::Themes
+                | Category::ContextMenu
+                | Category::MouseBindings
+                | Category::PluginsAndEnvironment
         )
     }
     pub fn has_rows(&self) -> bool {
@@ -88,6 +94,7 @@ pub enum SettingKind {
     Text(TextCheck),
     Number { min: i64, max: i64, step: i64 },
     Keybindings,
+    Mousebindings,
     Block,
 }
 
@@ -357,6 +364,14 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "Keybinding preset, leader keys and your own keybindings",
             SettingKind::Keybindings,
             "default preset",
+            OnlyYou,
+        ),
+        SettingKey::Mousebinds => info(
+            "Mouse bindings",
+            MouseBindings,
+            "What clicks, the wheel and drags do in each mode",
+            SettingKind::Mousebindings,
+            "the preset's mouse bindings",
             OnlyYou,
         ),
         SettingKey::PluginAliases => info(
@@ -974,6 +989,7 @@ pub fn section(key: SettingKey) -> &'static str {
         | SupportKittyGraphicsProtocol
         | HostNotificationProtocol
         | Keybinds
+        | Mousebinds
         | PluginAliases
         | LoadPlugins
         | Env
@@ -1001,7 +1017,10 @@ pub fn sort_for_display(keys: &mut Vec<SettingKey>) {
 }
 
 pub fn is_row_kind(kind: SettingKind) -> bool {
-    !matches!(kind, SettingKind::Keybindings | SettingKind::Block)
+    !matches!(
+        kind,
+        SettingKind::Keybindings | SettingKind::Mousebindings | SettingKind::Block
+    )
 }
 
 pub fn settings_in(category: Category) -> Vec<SettingKey> {
@@ -1080,6 +1099,7 @@ mod tests {
                     assert!(!choices.is_empty(), "{} has no choices", key)
                 },
                 SettingKind::Keybindings => assert_eq!(key, SettingKey::Keybinds),
+                SettingKind::Mousebindings => assert_eq!(key, SettingKey::Mousebinds),
                 SettingKind::Block => assert!(key.is_block(), "{} is not a block", key),
                 _ => {},
             }

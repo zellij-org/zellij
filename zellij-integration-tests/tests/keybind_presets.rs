@@ -514,7 +514,7 @@ fn the_preset_folder_set_on_the_files_page_lists_its_presets_on_the_keys_page() 
     zellij.wait_until("configuration plugin opened", |grid_snapshot| {
         grid_snapshot.contains("Configuration")
     });
-    for _ in 0..12 {
+    for _ in 0..13 {
         zellij.send_stdin(ARROW_DOWN);
     }
     zellij.wait_until("files and folders shown", |grid_snapshot| {
@@ -539,7 +539,7 @@ fn the_preset_folder_set_on_the_files_page_lists_its_presets_on_the_keys_page() 
         grid_snapshot.contains("1 unsaved change") && grid_snapshot.contains("● unsaved")
     });
     zellij.send_stdin(b"\x1b[D");
-    for _ in 0..10 {
+    for _ in 0..11 {
         zellij.send_stdin(ARROW_UP);
     }
     zellij.wait_until("keys page shown", |grid_snapshot| {

@@ -60,6 +60,7 @@ use zellij_utils::input::config::Config;
 use zellij_utils::input::context_menu::ContextMenuConfig;
 use zellij_utils::input::keybinds::{shortcut_for_action, Keybinds};
 use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
+use zellij_utils::input::mousebinds::Mousebinds;
 use zellij_utils::input::options::{
     Clipboard, HostNotificationProtocol, NestedSessionHandling, PaneFrameStyle,
     DEFAULT_WORD_SEPARATORS,
@@ -989,6 +990,7 @@ pub enum ScreenInstruction {
         height: usize,
     },
     UpdateContextMenuConfig(ClientId, ContextMenuConfig),
+    UpdateMousebinds(ClientId, Arc<Mousebinds>),
     GetContextMenuItemActions {
         plugin_id: u32,
         client_id: ClientId,
@@ -1055,6 +1057,7 @@ pub enum ScreenInstruction {
     ApplyTiledSwapLayoutWithTabId(usize, String, Option<NotificationEnd>),
     ApplyFloatingSwapLayoutWithTabId(usize, String, Option<NotificationEnd>),
     MoveTabWithTabId(usize, Direction, Option<NotificationEnd>),
+    MoveTabToPosition(usize, usize, Option<NotificationEnd>),
     SetSoftKeyboard {
         client_id: ClientId,
         on: bool,
@@ -1404,6 +1407,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::UpdateContextMenuConfig(..) => {
                 ScreenContext::UpdateContextMenuConfig
             },
+            ScreenInstruction::UpdateMousebinds(..) => ScreenContext::UpdateMousebinds,
             ScreenInstruction::GetContextMenuItemActions { .. } => {
                 ScreenContext::GetContextMenuItemActions
             },
@@ -1499,6 +1503,7 @@ impl From<&ScreenInstruction> for ScreenContext {
                 ScreenContext::ApplyFloatingSwapLayoutWithTabId
             },
             ScreenInstruction::MoveTabWithTabId(..) => ScreenContext::MoveTabWithTabId,
+            ScreenInstruction::MoveTabToPosition(..) => ScreenContext::MoveTabToPosition,
             ScreenInstruction::SetSoftKeyboard { .. } => ScreenContext::SetSoftKeyboard,
             ScreenInstruction::FocusHostSession(..) => ScreenContext::FocusHostSession,
             ScreenInstruction::FocusGuestSession(..) => ScreenContext::FocusGuestSession,
@@ -1713,6 +1718,8 @@ pub(crate) struct Screen {
     client_keybinds: BTreeMap<ClientId, SharedKeybinds>,
     default_context_menu_config: ContextMenuConfig,
     context_menu_configs: HashMap<ClientId, ContextMenuConfig>,
+    default_mousebinds: Arc<Mousebinds>,
+    client_mousebinds: HashMap<ClientId, Arc<Mousebinds>>,
     open_context_menus: HashMap<ClientId, (ContextMenuContext, Vec<ContextMenuEntry>)>,
     last_client_input: HashMap<ClientId, std::time::Instant>,
     last_mouse_positions: HashMap<ClientId, Position>,
@@ -1955,6 +1962,10 @@ impl Screen {
             client_keybinds: BTreeMap::new(),
             default_context_menu_config: ContextMenuConfig::default(),
             context_menu_configs: HashMap::new(),
+            default_mousebinds: zellij_utils::input::config_settings::default_config()
+                .mousebinds
+                .clone(),
+            client_mousebinds: HashMap::new(),
             open_context_menus: HashMap::new(),
             last_client_input: HashMap::new(),
             last_mouse_positions: HashMap::new(),
@@ -5835,6 +5846,7 @@ impl Screen {
         self.rename_pane_targets.remove(&client_id);
         self.rename_tab_targets.remove(&client_id);
         self.context_menu_configs.remove(&client_id);
+        self.client_mousebinds.remove(&client_id);
         self.last_client_input.remove(&client_id);
         self.last_mouse_positions.remove(&client_id);
         let passthrough_panes: Vec<PaneId> = self
@@ -6912,6 +6924,34 @@ impl Screen {
             self.log_and_report_session_state().non_fatal();
         }
         Ok(true)
+    }
+
+    pub fn move_tab_to_position(&mut self, tab_id: usize, position: usize) -> bool {
+        let Some(current_position) = self.tabs.get(&tab_id).map(|t| t.position) else {
+            log::error!("Tab with id {} not found", tab_id);
+            return false;
+        };
+        let target = position.min(self.tabs.len().saturating_sub(1));
+        if target == current_position {
+            return true;
+        }
+        for tab in self.tabs.values_mut() {
+            if tab.id == tab_id {
+                tab.position = target;
+            } else if current_position < target
+                && tab.position > current_position
+                && tab.position <= target
+            {
+                tab.position -= 1;
+            } else if target < current_position
+                && tab.position >= target
+                && tab.position < current_position
+            {
+                tab.position += 1;
+            }
+        }
+        self.log_and_report_session_state().non_fatal();
+        true
     }
 
     pub fn change_mode(
@@ -8539,11 +8579,24 @@ impl Screen {
         let active_pane_was_scrolled = self.active_pane_is_scrolled(client_id);
         let passthrough_pane_id = active_pane_id_before
             .filter(|pane_id| self.should_route_keys_to_pane(client_id, *pane_id));
+        let mousebinds = self
+            .client_mousebinds
+            .get(&client_id)
+            .unwrap_or(&self.default_mousebinds)
+            .clone();
         match self.get_active_tab_mut(client_id).and_then(|tab| {
-            tab.handle_mouse_event_with_passthrough(&event, client_id, passthrough_pane_id)
+            tab.handle_mouse_event_with_passthrough(
+                &event,
+                client_id,
+                passthrough_pane_id,
+                mousebinds,
+            )
         }) {
             Ok(mouse_effect) => {
                 let mut should_render = false;
+                if let Some(actions) = mouse_effect.run_actions.clone() {
+                    self.run_mouse_bound_actions(actions, client_id);
+                }
                 if let Some(pane_id) = mouse_effect.group_toggle {
                     if self.advanced_mouse_actions {
                         self.toggle_pane_id_in_group(pane_id, &client_id);
@@ -8613,6 +8666,28 @@ impl Screen {
                 log::error!("Failed to process MouseEvent: {}", e);
             },
         }
+    }
+    fn run_mouse_bound_actions(&self, actions: Vec<Action>, client_id: ClientId) {
+        let senders = self.bus.senders.clone();
+        let default_mode = self.base_input_mode();
+        std::thread::spawn(move || {
+            for action in actions {
+                if let Err(e) = crate::route::route_action(
+                    action,
+                    client_id,
+                    None,
+                    None,
+                    senders.clone(),
+                    None,
+                    None,
+                    default_mode,
+                    None,
+                    false,
+                ) {
+                    log::error!("Failed to run a mouse-bound action: {:?}", e);
+                }
+            }
+        });
     }
     pub fn toggle_pane_in_group(&mut self, client_id: ClientId) -> Result<()> {
         let err_context = "Can't add pane to group";
@@ -9474,6 +9549,7 @@ pub(crate) fn screen_thread_main(
     );
     screen.default_keybinds = default_keybinds;
     screen.default_context_menu_config = config.context_menu.clone();
+    screen.default_mousebinds = config.mousebinds.clone();
     screen.update_context_menu_enabled(config_options.context_menu_enabled.unwrap_or(true));
     screen.host_theme_dark_styling = host_theme_dark_styling;
     screen.host_theme_light_styling = host_theme_light_styling;
@@ -13894,6 +13970,9 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::UpdateContextMenuConfig(client_id, context_menu_config) => {
                 screen.update_context_menu_config(client_id, context_menu_config);
             },
+            ScreenInstruction::UpdateMousebinds(client_id, mousebinds) => {
+                screen.client_mousebinds.insert(client_id, mousebinds);
+            },
             ScreenInstruction::GetContextMenuItemActions {
                 plugin_id,
                 client_id,
@@ -14583,6 +14662,24 @@ pub(crate) fn screen_thread_main(
                     pending_events_waiting_for_tab.push(ScreenInstruction::MoveTabWithTabId(
                         tab_id,
                         direction,
+                        _completion_tx,
+                    ));
+                }
+            },
+            ScreenInstruction::MoveTabToPosition(tab_id, position, mut _completion_tx) => {
+                if pending_tab_ids.is_empty() {
+                    let tab_found = screen.move_tab_to_position(tab_id, position);
+                    if !tab_found {
+                        mark_action_as_failed(
+                            &mut _completion_tx,
+                            &format!("Tab with id {} not found", tab_id),
+                        );
+                    }
+                    screen.render(None)?;
+                } else {
+                    pending_events_waiting_for_tab.push(ScreenInstruction::MoveTabToPosition(
+                        tab_id,
+                        position,
                         _completion_tx,
                     ));
                 }

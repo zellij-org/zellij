@@ -9,14 +9,16 @@ use super::actions::Action;
 use super::config::Config;
 use super::config_file_edit::{key_state, KeyState};
 use super::context_menu::{context_menu_shortcut, ContextMenuConfig, CONTEXT_MENU_SECTIONS};
+use super::keybind_presets::MousebindChanges;
 use super::layout::{RunPlugin, RunPluginOrAlias};
+use super::mousebinds::MouseBinding;
 use super::plugins::PluginAliases;
 use super::theme::{Theme, Themes};
 use crate::data::{
     ConfigBlocks, ContextMenuAction, ContextMenuEntry, EnvVarEntry, InputMode, KeyWithModifier,
-    KeybindingEntry, KeybindingSource, KeybindsVec, MenuItemEntry, MenuSectionEntries,
-    MultiplayerColors, PaletteColor, PluginAliasEntry, PluginEntry, StyleDeclaration, Styling,
-    ThemeEntry, ThemeSource, DEFAULT_STYLES,
+    KeybindingEntry, KeybindingSource, KeybindsVec, MenuItemEntry, MenuSectionEntries, MouseTarget,
+    MouseTrigger, MousebindingEntry, MultiplayerColors, PaletteColor, PluginAliasEntry,
+    PluginEntry, StyleDeclaration, Styling, ThemeEntry, ThemeSource, DEFAULT_STYLES,
 };
 use crate::envs::EnvironmentVariables;
 use crate::home::get_theme_dir;
@@ -965,6 +967,149 @@ pub fn keybinding_entries(
                             key,
                             actions: vec![],
                             source: user_source,
+                            unbound: true,
+                            preset_actions,
+                            unsaved,
+                        });
+                    }
+                },
+            }
+        }
+    }
+    entries
+}
+
+pub fn mousebind_change_kdl(
+    mode: InputMode,
+    trigger: &MouseTrigger,
+    actions: Option<&[String]>,
+    app_first: Option<bool>,
+) -> Result<String, String> {
+    mousebind_change_kdl_for(Some(mode), trigger, actions, app_first)
+}
+
+pub fn mousebind_change_kdl_for(
+    mode: Option<InputMode>,
+    trigger: &MouseTrigger,
+    actions: Option<&[String]>,
+    app_first: Option<bool>,
+) -> Result<String, String> {
+    let statement = match actions {
+        Some(actions) => {
+            let mut bind = KdlNode::new("bind");
+            bind.push(trigger.to_kdl());
+            if trigger.target != MouseTarget::Any {
+                bind.insert("on", trigger.target.name());
+            }
+            if let Some(app_first) = app_first {
+                bind.insert("app_first", app_first);
+            }
+            let nodes = action_nodes(actions)?;
+            let mut children = KdlDocument::new();
+            let has_children = nodes.iter().any(|node| node.children().is_some());
+            for node in nodes {
+                children.nodes_mut().push(node);
+            }
+            if !has_children {
+                for node in children.nodes_mut() {
+                    node.set_trailing("; ");
+                }
+                children.set_leading(" ");
+                children.set_trailing("");
+            }
+            bind.set_children(children);
+            bind
+        },
+        None => {
+            let mut unbind = KdlNode::new("unbind");
+            unbind.push(trigger.to_kdl());
+            if trigger.target != MouseTarget::Any {
+                unbind.insert("on", trigger.target.name());
+            }
+            unbind
+        },
+    };
+    let text = format!(
+        "mousebinds {{\n    {} {{\n        {}\n    }}\n}}\n",
+        mode.map(|mode| format!("{:?}", mode).to_lowercase())
+            .unwrap_or_else(|| "shared".to_owned()),
+        statement.to_string().trim()
+    );
+    text.parse::<KdlDocument>()
+        .map_err(|e: kdl::KdlError| e.to_string())?;
+    Ok(text)
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum MouseState {
+    Bound(MouseBinding),
+    Unbound,
+    Untouched,
+}
+
+fn mouse_state(changes: &MousebindChanges, mode: InputMode, trigger: &MouseTrigger) -> MouseState {
+    match changes.modes.get(&mode) {
+        Some(mode_changes) => match mode_changes.bind.get(trigger) {
+            Some(binding) => MouseState::Bound(binding.clone()),
+            None if mode_changes.unbind.contains(trigger) => MouseState::Unbound,
+            None => MouseState::Untouched,
+        },
+        None => MouseState::Untouched,
+    }
+}
+
+pub fn mousebinding_entries(saved: &Config, current: &Config) -> Vec<MousebindingEntry> {
+    let preset = current.preset_mousebinds();
+    let user = &current.keybinds_layers.user_mouse;
+    let saved_user = &saved.keybinds_layers.user_mouse;
+    let layout = &current.keybinds_layers.layout_mouse;
+    let mut entries = vec![];
+    for mode in InputMode::iter() {
+        let resolved = current.mousebinds.0.get(&mode);
+        let preset_mode = preset.0.get(&mode);
+        let mut triggers: BTreeSet<MouseTrigger> = resolved
+            .map(|bindings| bindings.keys().cloned().collect())
+            .unwrap_or_default();
+        if let Some(mode_changes) = user.modes.get(&mode) {
+            triggers.extend(mode_changes.unbind.iter().cloned());
+        }
+        for trigger in triggers {
+            let user_state = mouse_state(user, mode, &trigger);
+            let unsaved = mouse_state(saved_user, mode, &trigger) != user_state;
+            let preset_actions = preset_mode
+                .and_then(|bindings| bindings.get(&trigger))
+                .map(|binding| binding.action_texts());
+            match resolved.and_then(|bindings| bindings.get(&trigger)) {
+                Some(binding) => {
+                    let source =
+                        if !matches!(mouse_state(layout, mode, &trigger), MouseState::Untouched) {
+                            KeybindingSource::Layout
+                        } else if matches!(user_state, MouseState::Bound(_))
+                            || preset_actions.is_none()
+                        {
+                            KeybindingSource::User
+                        } else {
+                            KeybindingSource::Preset
+                        };
+                    entries.push(MousebindingEntry {
+                        mode,
+                        trigger,
+                        actions: binding.action_texts(),
+                        app_first: binding.app_first(),
+                        source,
+                        unbound: false,
+                        preset_actions,
+                        unsaved,
+                    });
+                },
+                None => {
+                    if user_state == MouseState::Unbound {
+                        entries.push(MousebindingEntry {
+                            mode,
+                            trigger,
+                            actions: vec![],
+                            app_first: false,
+                            source: KeybindingSource::User,
                             unbound: true,
                             preset_actions,
                             unsaved,

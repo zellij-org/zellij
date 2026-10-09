@@ -7,17 +7,25 @@ mod tooltip;
 
 use std::cmp::{max, min};
 use std::collections::{BTreeMap, BTreeSet};
-use std::convert::TryInto;
 
-use tab::{get_clicked_line_part, get_tab_to_focus};
+use tab::get_clicked_line_part;
 use zellij_tile::prelude::*;
 
+use crate::click_actions::ActionRunner;
+use crate::double_click::{
+    apply_double_click_outcome, classify_click, double_click_outcome, ClickTarget,
+    DoubleClickConfig,
+};
 use crate::keybinds::KeybindStore;
+use crate::tab_drag::{
+    apply_release, is_tab_move_completion, request_tab_move, segments_of, switch_outcome,
+    tab_parts_in_line, TabDrag, TabPart, TabSegment,
+};
 use crate::ClientSeed;
 use clipboard_utils::{system_clipboard_error, text_copied_hint};
-use line::tab_line;
+use line::{tab_line, CompactHover};
 use tab::tab_style;
-use tooltip::TooltipRenderer;
+use tooltip::{tooltip_region_at, TooltipRegion, TooltipRenderer};
 
 static ARROW_SEPARATOR: &str = "";
 
@@ -26,6 +34,7 @@ const CONFIG_TOGGLE_TOOLTIP_KEY: &str = "tooltip";
 const MSG_TOGGLE_TOOLTIP: &str = "toggle_tooltip";
 const MSG_TOGGLE_PERSISTED_TOOLTIP: &str = "toggle_persisted_tooltip";
 const MSG_LAUNCH_TOOLTIP: &str = "launch_tooltip_if_not_launched";
+const RUNNER_OWNER: &str = "compact-bar";
 
 #[derive(Debug, Default)]
 pub struct LinePart {
@@ -41,6 +50,73 @@ struct TabRenderData {
     is_swap_layout_dirty: bool,
 }
 
+fn click_target(slot_client: &SlotClientState, col: usize) -> ClickTarget {
+    let in_reserved_range =
+        matches!(slot_client.breadcrumb_range, Some((start, end)) if col >= start && col < end);
+    let clicked_part = get_clicked_line_part(&slot_client.tab_line, col)
+        .map(|line_part| (line_part.tab_index, line_part.part.as_str()));
+    classify_click(clicked_part, in_reserved_range)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CompactRegion {
+    Tab(usize),
+    Marker { left: bool, position: usize },
+    Breadcrumb,
+    Mode,
+}
+
+fn region_at(regions: &[(usize, usize, CompactRegion)], col: usize) -> Option<CompactRegion> {
+    regions
+        .iter()
+        .find(|(start, end, _)| col >= *start && col < *end)
+        .map(|(_, _, region)| *region)
+}
+
+fn mode_click_target(mode_info: &ModeInfo) -> Option<InputMode> {
+    let base_mode = mode_info.base_mode.unwrap_or(InputMode::Normal);
+    if mode_info.mode != base_mode {
+        Some(base_mode)
+    } else {
+        None
+    }
+}
+
+fn compact_regions(
+    parts: &[LinePart],
+    rendered_tabs: &[String],
+    active_tab_position: usize,
+    breadcrumb_range: Option<(usize, usize)>,
+    mode_range: Option<(usize, usize)>,
+) -> (Vec<(usize, usize, CompactRegion)>, Vec<TabSegment>) {
+    let mut regions = vec![];
+    if let Some((start, end)) = breadcrumb_range {
+        regions.push((start, end, CompactRegion::Breadcrumb));
+    }
+    if let Some((start, end)) = mode_range {
+        regions.push((start, end, CompactRegion::Mode));
+    }
+    let tab_parts = tab_parts_in_line(
+        parts
+            .iter()
+            .map(|part| (part.len, part.tab_index, part.part.as_str())),
+        rendered_tabs,
+        active_tab_position,
+    );
+    let segments = segments_of(&tab_parts);
+    for (start, end, kind) in tab_parts {
+        regions.push((
+            start,
+            end,
+            match kind {
+                TabPart::Tab(position) => CompactRegion::Tab(position),
+                TabPart::Marker { left, position } => CompactRegion::Marker { left, position },
+            },
+        ));
+    }
+    (regions, segments)
+}
+
 #[derive(Default)]
 struct SlotConfig {
     config: BTreeMap<String, String>,
@@ -48,6 +124,7 @@ struct SlotConfig {
     toggle_tooltip_key: Option<String>,
     persist: bool,
     is_first_run: bool,
+    double_click: DoubleClickConfig,
 }
 
 #[derive(Default)]
@@ -59,12 +136,34 @@ struct ClientState {
     display_area_cols: usize,
     text_copy_destination: Option<CopyDestination>,
     display_system_clipboard_failure: bool,
+    last_left_click: Option<(SlotId, ClickTarget)>,
+    hovered: Option<CompactRegion>,
+    hover_at: Option<(SlotId, usize)>,
+    drag: Option<TabDrag>,
+    switch_when_settled: Option<usize>,
+    tooltip_hovered: Option<Vec<zellij_tile::prelude::actions::Action>>,
+    tooltip_hover_at: Option<(SlotId, usize, usize)>,
+}
+
+fn hoverable(client: &ClientState, region: &CompactRegion) -> bool {
+    match region {
+        CompactRegion::Mode => mode_click_target(&client.mode_info).is_some(),
+        CompactRegion::Tab(position) => client
+            .tabs
+            .iter()
+            .any(|t| t.position == *position && !t.active),
+        _ => true,
+    }
 }
 
 #[derive(Default)]
 struct SlotClientState {
     tab_line: Vec<LinePart>,
     breadcrumb_range: Option<(usize, usize)>,
+    regions: Vec<(usize, usize, CompactRegion)>,
+    segments: Vec<TabSegment>,
+    tooltip_regions: Vec<TooltipRegion>,
+    cols: usize,
 }
 
 #[derive(Default)]
@@ -75,6 +174,7 @@ pub struct CompactBar {
     slot_clients: BTreeMap<(SlotId, ClientId), SlotClientState>,
     tooltip_is_active: bool,
     configured_toggle_keys: BTreeSet<(String, ClientId)>,
+    runner: ActionRunner,
 }
 
 impl CompactBar {
@@ -98,6 +198,8 @@ impl CompactBar {
                 EventType::ModeUpdate,
                 EventType::TabUpdate,
                 EventType::InitialKeybinds,
+                EventType::Mouse,
+                EventType::ActionComplete,
             ]
         } else {
             vec![
@@ -109,9 +211,11 @@ impl CompactBar {
                 EventType::InputReceived,
                 EventType::SystemClipboardFailure,
                 EventType::InitialKeybinds,
+                EventType::ActionComplete,
             ]
         };
         subscribe(&events);
+        let double_click = DoubleClickConfig::from_configuration(&config);
         self.slots.insert(
             slot.id,
             SlotConfig {
@@ -120,6 +224,7 @@ impl CompactBar {
                 toggle_tooltip_key,
                 persist: false,
                 is_first_run: is_tooltip,
+                double_click,
             },
         );
     }
@@ -299,7 +404,9 @@ impl CompactBar {
             },
             Event::Mouse(mouse_event) => {
                 if let (Some(slot_id), Some(client_id)) = (context.slot_id, context.client_id) {
-                    self.handle_mouse_event(slot_id, client_id, mouse_event);
+                    if self.handle_mouse_event(slot_id, client_id, mouse_event) {
+                        return RenderResponse::Client(client_id);
+                    }
                 }
                 RenderResponse::Nothing
             },
@@ -345,6 +452,23 @@ impl CompactBar {
             },
             Event::SystemClipboardFailure => self.handle_clipboard_failure(client_id),
             Event::InputReceived => self.handle_input_received(client_id),
+            Event::ActionComplete(..) if !is_tab_move_completion(event) => {
+                self.runner.action_completed(RUNNER_OWNER, client_id, event);
+                false
+            },
+            event if is_tab_move_completion(event) => {
+                let Some(client) = self.clients.get_mut(&client_id) else {
+                    return false;
+                };
+                let mut should_render = false;
+                if let Some(drag) = client.drag.as_mut() {
+                    should_render = drag.move_completed();
+                }
+                if let Some(tab_id) = client.switch_when_settled.take() {
+                    apply_release(switch_outcome(&client.tabs, tab_id));
+                }
+                should_render
+            },
             _ => false,
         }
     }
@@ -416,6 +540,12 @@ impl CompactBar {
 
             client.active_tab_idx = active_tab_idx;
             client.tabs = tabs.to_vec();
+            if let Some(drag) = client.drag.as_mut() {
+                drag.tabs_updated(tabs);
+            }
+            if let Some(tab_id) = client.switch_when_settled.take() {
+                apply_release(switch_outcome(tabs, tab_id));
+            }
 
             if previous_active_tab_idx != 0 && previous_active_tab_idx != active_tab_idx {
                 let tooltips = self.tooltip_slots_in_tab(Some(previous_active_tab_idx - 1));
@@ -447,17 +577,21 @@ impl CompactBar {
         }
     }
 
-    fn handle_mouse_event(&mut self, slot_id: SlotId, client_id: ClientId, mouse_event: &Mouse) {
-        if self
-            .slots
-            .get(&slot_id)
-            .map(|s| s.is_tooltip)
-            .unwrap_or(true)
-        {
-            return;
+    fn handle_mouse_event(
+        &mut self,
+        slot_id: SlotId,
+        client_id: ClientId,
+        mouse_event: &Mouse,
+    ) -> bool {
+        let Some(slot) = self.slots.get(&slot_id) else {
+            return false;
+        };
+        if slot.is_tooltip {
+            return self.handle_tooltip_mouse_event(slot_id, client_id, mouse_event);
         }
-        let Some(client) = self.clients.get(&client_id) else {
-            return;
+        let double_click_config = slot.double_click;
+        let Some(client) = self.clients.get_mut(&client_id) else {
+            return false;
         };
         let empty_slot_client = SlotClientState::default();
         let slot_client = self
@@ -465,17 +599,90 @@ impl CompactBar {
             .get(&(slot_id, client_id))
             .unwrap_or(&empty_slot_client);
 
+        let mut should_render = false;
         match mouse_event {
             Mouse::LeftClick(_, col) => {
                 let col = *col;
-                if matches!(slot_client.breadcrumb_range, Some((start, end)) if col >= start && col < end)
-                {
-                    focus_host_session();
-                } else if let Some(tab_idx) =
-                    get_tab_to_focus(&slot_client.tab_line, client.active_tab_idx, col)
-                {
-                    switch_tab_to(tab_idx.try_into().unwrap());
+                client.hover_at = Some((slot_id, col));
+                client.last_left_click = Some((slot_id, click_target(slot_client, col)));
+                if client.drag.take().is_some() {
+                    should_render = true;
                 }
+                match region_at(&slot_client.regions, col) {
+                    Some(CompactRegion::Breadcrumb) => {
+                        focus_host_session();
+                    },
+                    Some(CompactRegion::Mode) => {
+                        if let Some(base_mode) = mode_click_target(&client.mode_info) {
+                            switch_to_input_mode(&base_mode);
+                        }
+                    },
+                    Some(CompactRegion::Marker { position, .. }) => {
+                        switch_tab_to(position as u32 + 1);
+                    },
+                    Some(CompactRegion::Tab(position)) => {
+                        if let Some(tab) = client.tabs.iter().find(|t| t.position == position) {
+                            client.drag = Some(TabDrag::new(Some(slot_id), tab.tab_id));
+                            should_render = true;
+                        }
+                    },
+                    None => {},
+                }
+            },
+            Mouse::Hold(_, col) => {
+                client.hover_at = Some((slot_id, *col));
+                if let Some(drag) = client
+                    .drag
+                    .as_mut()
+                    .filter(|drag| drag.slot_id == Some(slot_id))
+                {
+                    if let Some((tab_id, target)) =
+                        drag.hold(&client.tabs, &slot_client.segments, *col)
+                    {
+                        request_tab_move(tab_id, target);
+                    }
+                }
+            },
+            Mouse::Release(_, col) => {
+                client.hover_at = Some((slot_id, *col));
+                if let Some(drag) = client.drag.take() {
+                    client.switch_when_settled = apply_release(drag.release(&client.tabs));
+                    should_render = true;
+                }
+            },
+            Mouse::Hover(_, col) => {
+                let col = *col;
+                let on_screen = col < slot_client.cols;
+                let owns_hover = client
+                    .hover_at
+                    .map(|(hover_slot, _)| hover_slot == slot_id)
+                    .unwrap_or(true);
+                if on_screen || owns_hover {
+                    client.hover_at = if on_screen {
+                        Some((slot_id, col))
+                    } else {
+                        None
+                    };
+                    let hovered = region_at(&slot_client.regions, col)
+                        .filter(|region| on_screen && hoverable(client, region));
+                    if client.hovered != hovered {
+                        client.hovered = hovered;
+                        should_render = true;
+                    }
+                }
+            },
+            Mouse::DoubleClick(_, col) => {
+                if client.drag.take().is_some() {
+                    should_render = true;
+                }
+                let target = click_target(slot_client, *col);
+                let last_left_click = client
+                    .last_left_click
+                    .take()
+                    .filter(|(last_slot_id, _)| *last_slot_id == slot_id)
+                    .map(|(_, last_target)| last_target);
+                let outcome = double_click_outcome(&double_click_config, last_left_click, target);
+                apply_double_click_outcome(outcome, &client.tabs, client.active_tab_idx);
             },
             Mouse::RightClick(line, col) => {
                 let target = match get_clicked_line_part(&slot_client.tab_line, *col)
@@ -495,6 +702,54 @@ impl CompactBar {
                 switch_tab_to(prev_tab as u32);
             },
             _ => {},
+        }
+        should_render
+    }
+
+    fn handle_tooltip_mouse_event(
+        &mut self,
+        slot_id: SlotId,
+        client_id: ClientId,
+        mouse_event: &Mouse,
+    ) -> bool {
+        let Some(client) = self.clients.get_mut(&client_id) else {
+            return false;
+        };
+        let empty_slot_client = SlotClientState::default();
+        let slot_client = self
+            .slot_clients
+            .get(&(slot_id, client_id))
+            .unwrap_or(&empty_slot_client);
+        let regions = slot_client.tooltip_regions.as_slice();
+        match mouse_event {
+            Mouse::LeftClick(line, col) => {
+                if let Some(region) = tooltip_region_at(regions, (*line).max(0) as usize, *col) {
+                    self.runner
+                        .run(RUNNER_OWNER, client_id, region.actions.clone());
+                }
+                false
+            },
+            Mouse::Hover(line, col) => {
+                let on_screen = *line >= 0 && *col < slot_client.cols;
+                client.tooltip_hover_at = if on_screen {
+                    Some((slot_id, *line as usize, *col))
+                } else {
+                    None
+                };
+                let hovered = if on_screen {
+                    tooltip_region_at(regions, *line as usize, *col)
+                        .map(|region| region.actions.clone())
+                } else {
+                    None
+                };
+                if client.tooltip_hovered != hovered {
+                    client.tooltip_hovered = hovered;
+                    true
+                } else {
+                    false
+                }
+            },
+            _ => false,
         }
     }
 
@@ -721,7 +976,19 @@ impl CompactBar {
         };
         if slot.is_tooltip {
             let tooltip_renderer = TooltipRenderer::new(&client.mode_info);
-            tooltip_renderer.render(rows, cols);
+            let regions = tooltip_renderer.regions(rows, cols);
+            let hovered = client
+                .tooltip_hover_at
+                .filter(|(hover_slot, _, _)| *hover_slot == slot_id)
+                .and_then(|(_, row, col)| tooltip_region_at(&regions, row, col))
+                .map(|region| region.actions.clone());
+            tooltip_renderer.render(rows, cols, hovered.as_ref());
+            if let Some(client) = self.clients.get_mut(&client_id) {
+                client.tooltip_hovered = hovered;
+            }
+            let slot_client = self.slot_clients.entry((slot_id, client_id)).or_default();
+            slot_client.tooltip_regions = regions;
+            slot_client.cols = cols;
             return;
         }
         if let Some(copy_destination) = client.text_copy_destination {
@@ -735,24 +1002,67 @@ impl CompactBar {
                 return;
             }
 
-            let tab_data = prepare_tab_data(client);
-            let tab_line_output = tab_line(
-                &client.mode_info,
-                tab_data,
-                cols,
-                slot.toggle_tooltip_key.clone(),
-                self.tooltip_is_active,
-            );
+            let compose = |hovered: Option<CompactRegion>| {
+                let tab_data = prepare_tab_data(client, hovered);
+                let rendered_tabs: Vec<String> =
+                    tab_data.tabs.iter().map(|t| t.part.clone()).collect();
+                let active_tab_position = tab_data.active_tab_index;
+                let hover = CompactHover {
+                    breadcrumb: hovered == Some(CompactRegion::Breadcrumb),
+                };
+                let tab_line_output = tab_line(
+                    &client.mode_info,
+                    tab_data,
+                    cols,
+                    slot.toggle_tooltip_key.clone(),
+                    self.tooltip_is_active,
+                    hover,
+                );
+                let (regions, segments) = compact_regions(
+                    &tab_line_output.parts,
+                    &rendered_tabs,
+                    active_tab_position,
+                    tab_line_output.breadcrumb_range,
+                    tab_line_output.mode_range,
+                );
+                (tab_line_output, regions, segments)
+            };
+            let hover_col = client
+                .hover_at
+                .filter(|(hover_slot, _)| *hover_slot == slot_id)
+                .map(|(_, col)| col);
+            let mut hovered = hover_col.and(client.hovered);
+            let (mut tab_line_output, mut regions, mut segments) = compose(hovered);
+            if let Some(col) = hover_col {
+                let under_mouse =
+                    region_at(&regions, col).filter(|region| hoverable(client, region));
+                if under_mouse != hovered {
+                    hovered = under_mouse;
+                    (tab_line_output, regions, segments) = compose(hovered);
+                }
+            }
+            let mode_info = client.mode_info.clone();
+            if let Some(client) = self.clients.get_mut(&client_id) {
+                if hover_col.is_some() {
+                    client.hovered = hovered;
+                }
+                if let Some(drag) = client.drag.as_mut() {
+                    drag.laid_out();
+                }
+            }
             let slot_client = self.slot_clients.entry((slot_id, client_id)).or_default();
+            slot_client.cols = cols;
             slot_client.tab_line = tab_line_output.parts;
             slot_client.breadcrumb_range = tab_line_output.breadcrumb_range;
+            slot_client.regions = regions;
+            slot_client.segments = segments;
 
             let output = slot_client
                 .tab_line
                 .iter()
                 .fold(String::new(), |acc, part| acc + &part.part);
 
-            render_background_with_text(&client.mode_info, &output);
+            render_background_with_text(&mode_info, &output);
         }
     }
 }
@@ -797,7 +1107,7 @@ fn render_background_with_text(mode_info: &ModeInfo, text: &str) {
     }
 }
 
-fn prepare_tab_data(client: &ClientState) -> TabRenderData {
+fn prepare_tab_data(client: &ClientState, hovered: Option<CompactRegion>) -> TabRenderData {
     let mut all_tabs = Vec::new();
     let mut active_tab_index = 0;
     let mut active_swap_layout_name = None;
@@ -817,10 +1127,18 @@ fn prepare_tab_data(client: &ClientState) -> TabRenderData {
             }
         }
 
+        let is_hovered = hovered == Some(CompactRegion::Tab(tab.position));
+        let is_dragged = client
+            .drag
+            .as_ref()
+            .map(|drag| drag.tab_id == tab.tab_id)
+            .unwrap_or(false);
         let styled_tab = tab_style(
             tab_name,
             tab,
             is_alternate_tab,
+            is_hovered,
+            is_dragged,
             client.mode_info.style.colors,
             client.mode_info.capabilities,
             dimmed,
@@ -863,4 +1181,193 @@ fn bind_toggle_key_config(toggle_key: &str, client_id: ClientId) -> String {
     "#,
         toggle_key, toggle_key, client_id
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn part(text: &str, tab_index: Option<usize>) -> LinePart {
+        LinePart {
+            part: text.to_owned(),
+            len: text.chars().count(),
+            tab_index,
+        }
+    }
+
+    fn client_with_tabs(ids: &[usize], active: usize, mode: InputMode) -> ClientState {
+        ClientState {
+            tabs: ids
+                .iter()
+                .enumerate()
+                .map(|(position, id)| TabInfo {
+                    position,
+                    tab_id: *id,
+                    active: position == active,
+                    ..Default::default()
+                })
+                .collect(),
+            active_tab_idx: active + 1,
+            mode_info: ModeInfo {
+                mode,
+                base_mode: Some(InputMode::Normal),
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    }
+
+    fn bar(client: ClientState) -> CompactBar {
+        let mut bar = CompactBar::default();
+        bar.slots.insert(0, SlotConfig::default());
+        bar.clients.insert(1, client);
+        let line = vec![
+            part(" Zellij ", None),
+            part(" PANE ", None),
+            part("<1", Some(0)),
+            part("T1", Some(1)),
+            part("T2", Some(2)),
+        ];
+        let rendered = vec!["T0".to_owned(), "T1".to_owned(), "T2".to_owned()];
+        let (regions, segments) = compact_regions(&line, &rendered, 1, None, Some((8, 14)));
+        bar.slot_clients.insert(
+            (0, 1),
+            SlotClientState {
+                tab_line: line,
+                regions,
+                segments,
+                cols: 100,
+                ..Default::default()
+            },
+        );
+        bar
+    }
+
+    #[test]
+    fn compact_regions_cover_mode_markers_and_tabs() {
+        let bar = bar(client_with_tabs(&[10, 11, 12], 1, InputMode::Pane));
+        let regions = &bar.slot_clients[&(0, 1)].regions;
+        assert_eq!(region_at(regions, 9), Some(CompactRegion::Mode));
+        assert_eq!(
+            region_at(regions, 14),
+            Some(CompactRegion::Marker {
+                left: true,
+                position: 0
+            })
+        );
+        assert_eq!(region_at(regions, 16), Some(CompactRegion::Tab(1)));
+        assert_eq!(region_at(regions, 18), Some(CompactRegion::Tab(2)));
+        assert_eq!(bar.slot_clients[&(0, 1)].segments.len(), 2);
+    }
+
+    #[test]
+    fn the_mode_label_returns_to_the_base_mode_only_outside_it() {
+        let mut mode_info = ModeInfo {
+            mode: InputMode::Pane,
+            base_mode: Some(InputMode::Normal),
+            ..Default::default()
+        };
+        assert_eq!(mode_click_target(&mode_info), Some(InputMode::Normal));
+        mode_info.mode = InputMode::Normal;
+        assert_eq!(mode_click_target(&mode_info), None);
+        mode_info.base_mode = Some(InputMode::Locked);
+        assert_eq!(mode_click_target(&mode_info), Some(InputMode::Locked));
+    }
+
+    #[test]
+    fn hover_ignores_the_active_tab_and_the_mode_label_in_the_base_mode() {
+        let mut bar = bar(client_with_tabs(&[10, 11, 12], 1, InputMode::Normal));
+        assert!(!bar.handle_mouse_event(0, 1, &Mouse::Hover(0, 9)));
+        assert!(!bar.handle_mouse_event(0, 1, &Mouse::Hover(0, 16)));
+        assert!(bar.handle_mouse_event(0, 1, &Mouse::Hover(0, 18)));
+        assert_eq!(bar.clients[&1].hovered, Some(CompactRegion::Tab(2)));
+        assert!(bar.handle_mouse_event(0, 1, &Mouse::Hover(0, 300)));
+        assert_eq!(bar.clients[&1].hovered, None);
+        bar.clients.get_mut(&1).unwrap().mode_info.mode = InputMode::Pane;
+        assert!(bar.handle_mouse_event(0, 1, &Mouse::Hover(0, 9)));
+        assert_eq!(bar.clients[&1].hovered, Some(CompactRegion::Mode));
+    }
+
+    #[test]
+    fn dragging_a_compact_tab_moves_it_once_per_layout() {
+        let mut bar = bar(client_with_tabs(&[10, 11, 12], 1, InputMode::Normal));
+        assert!(bar.handle_mouse_event(0, 1, &Mouse::LeftClick(0, 16)));
+        assert_eq!(bar.clients[&1].drag.as_ref().map(|d| d.tab_id), Some(11));
+        bar.handle_mouse_event(0, 1, &Mouse::Hold(0, 19));
+        assert_eq!(
+            bar.clients[&1].drag.as_ref().and_then(|d| d.pending_target),
+            Some(2)
+        );
+        let moved = client_with_tabs(&[10, 12, 11], 2, InputMode::Normal).tabs;
+        bar.handle_tab_update(1, &moved);
+        assert_eq!(
+            bar.clients[&1].drag.as_ref().and_then(|d| d.pending_target),
+            None
+        );
+        assert!(bar.handle_mouse_event(0, 1, &Mouse::Release(0, 19)));
+        assert!(bar.clients[&1].drag.is_none());
+    }
+
+    #[test]
+    fn a_resting_mouse_over_the_tooltip_keeps_its_hover_after_a_redraw() {
+        let mut bar = bar(client_with_tabs(&[10], 0, InputMode::Resize));
+        bar.slots.insert(
+            5,
+            SlotConfig {
+                is_tooltip: true,
+                ..Default::default()
+            },
+        );
+        let increase = vec![actions::Action::Resize {
+            resize: Resize::Increase,
+            direction: None,
+        }];
+        bar.clients.get_mut(&1).unwrap().mode_info.keybinds = vec![(
+            InputMode::Resize,
+            vec![(KeyWithModifier::new(BareKey::Char('+')), increase.clone())],
+        )];
+        bar.render_client(10, 40, 5, 1);
+        let region = bar.slot_clients[&(5, 1)].tooltip_regions[0].clone();
+        bar.handle_mouse_event(
+            5,
+            1,
+            &Mouse::Hover(region.row as isize, region.region.start),
+        );
+        bar.handle_mouse_event(
+            5,
+            1,
+            &Mouse::LeftClick(region.row as isize, region.region.start),
+        );
+        bar.clients.get_mut(&1).unwrap().tooltip_hovered = None;
+        bar.render_client(10, 40, 5, 1);
+        assert_eq!(bar.clients[&1].tooltip_hovered, Some(increase));
+    }
+
+    #[test]
+    fn tooltip_clicks_and_hover_use_the_stored_tooltip_regions() {
+        let mut bar = bar(client_with_tabs(&[10], 0, InputMode::Resize));
+        bar.slots.insert(
+            5,
+            SlotConfig {
+                is_tooltip: true,
+                ..Default::default()
+            },
+        );
+        let actions = vec![actions::Action::Resize {
+            resize: Resize::Increase,
+            direction: None,
+        }];
+        bar.slot_clients.entry((5, 1)).or_default().cols = 100;
+        bar.slot_clients.entry((5, 1)).or_default().tooltip_regions = vec![TooltipRegion {
+            row: 2,
+            region: crate::click_actions::ClickRegion::new(4, 5, actions.clone()),
+        }];
+        assert!(bar.handle_mouse_event(5, 1, &Mouse::Hover(2, 4)));
+        assert_eq!(bar.clients[&1].tooltip_hovered, Some(actions.clone()));
+        assert!(!bar.handle_mouse_event(5, 1, &Mouse::Hover(2, 4)));
+        assert!(bar.handle_mouse_event(5, 1, &Mouse::Hover(1, 4)));
+        assert_eq!(bar.clients[&1].tooltip_hovered, None);
+        bar.handle_mouse_event(5, 1, &Mouse::LeftClick(2, 4));
+        assert_eq!(bar.runner.pending_for(1), 0);
+    }
 }

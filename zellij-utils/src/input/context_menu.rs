@@ -478,6 +478,11 @@ mod tests {
         );
         assert_eq!(move_tab.into_action(Some(PaneId::Terminal(2)), None), None);
         assert_eq!(
+            ContextMenuAction::ClickedTab(ClickedTabAction::MoveToPosition(0))
+                .into_action(None, Some(5)),
+            Some(Action::MoveTabToPosition { id: 5, position: 0 })
+        );
+        assert_eq!(
             explicit.into_action(Some(PaneId::Terminal(2)), Some(5)),
             Some(Action::CloseFocusByPaneId {
                 pane_id: PaneId::Terminal(9)

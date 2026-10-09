@@ -26,6 +26,7 @@ use zellij_utils::data::{
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::mouse::MouseEvent;
+use zellij_utils::input::mousebinds::Mousebinds;
 use zellij_utils::input::options::DEFAULT_WORD_SEPARATORS;
 use zellij_utils::position::Position;
 use zellij_utils::position::{Column, Line};
@@ -68,6 +69,7 @@ use std::time::Instant;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     str,
+    sync::Arc,
 };
 use zellij_utils::{
     data::{Event, FloatingPaneCoordinates, InputMode, ModeInfo, Palette, PaletteColor, Styling},
@@ -318,6 +320,8 @@ pub(crate) struct Tab {
     web_clients_allowed: bool,
     web_sharing: WebSharing,
     mouse_hover_pane_id: HashMap<ClientId, PaneId>,
+    mouse_press_owner: HashMap<ClientId, mouse_handler::MousePressOwner>,
+    mouse_click_tracker: HashMap<ClientId, mouse_handler::MouseClickRecord>,
     dimmed_clients: HashSet<ClientId>,
     plugin_hover_pane_id: HashMap<ClientId, PaneId>,
     mouse_last_pane_id: HashMap<ClientId, PaneId>,
@@ -462,6 +466,7 @@ pub trait Pane {
         }
     }
     fn start_selection(&mut self, _start: &Position, _client_id: ClientId) {}
+    fn mouse_double_click(&mut self, _position: &Position, _client_id: ClientId) {}
     fn set_mouse_modifiers(&mut self, _modifiers: std::collections::BTreeSet<KeyModifier>) {}
     fn update_selection(&mut self, _position: &Position, _client_id: ClientId) {}
     fn end_selection(&mut self, _end: &Position, _client_id: ClientId) {}
@@ -1108,6 +1113,8 @@ impl Tab {
             web_clients_allowed,
             web_sharing,
             mouse_hover_pane_id: HashMap::new(),
+            mouse_press_owner: HashMap::new(),
+            mouse_click_tracker: HashMap::new(),
             plugin_hover_pane_id: HashMap::new(),
             mouse_last_pane_id: HashMap::new(),
             mouse_help_text_visible: HashMap::new(),
@@ -6978,7 +6985,7 @@ impl Tab {
         lines: usize,
         client_id: ClientId,
     ) -> Result<MouseEffect> {
-        MouseHandler::handle_scrollwheel_up(self, point, lines, client_id)
+        MouseHandler::handle_scrollwheel_up(self, point, lines, true, client_id)
     }
 
     pub fn handle_scrollwheel_down(
@@ -6987,7 +6994,7 @@ impl Tab {
         lines: usize,
         client_id: ClientId,
     ) -> Result<MouseEffect> {
-        MouseHandler::handle_scrollwheel_down(self, point, lines, client_id)
+        MouseHandler::handle_scrollwheel_down(self, point, lines, true, client_id)
     }
 
     fn get_pane_id_at(
@@ -7070,7 +7077,10 @@ impl Tab {
         event: &MouseEvent,
         client_id: ClientId,
     ) -> Result<MouseEffect> {
-        MouseHandler::handle_mouse_event(self, event, client_id, None)
+        let mousebinds = zellij_utils::input::config_settings::default_config()
+            .mousebinds
+            .clone();
+        MouseHandler::handle_mouse_event(self, event, client_id, None, mousebinds)
     }
 
     pub fn handle_mouse_event_with_passthrough(
@@ -7078,8 +7088,9 @@ impl Tab {
         event: &MouseEvent,
         client_id: ClientId,
         passthrough_pane_id: Option<PaneId>,
+        mousebinds: Arc<Mousebinds>,
     ) -> Result<MouseEffect> {
-        MouseHandler::handle_mouse_event(self, event, client_id, passthrough_pane_id)
+        MouseHandler::handle_mouse_event(self, event, client_id, passthrough_pane_id, mousebinds)
     }
 
     pub fn copy_selection(&self, client_id: ClientId) -> Result<()> {

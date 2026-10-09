@@ -831,6 +831,9 @@ impl MockScreen {
         let os_input = FakeInputOutput::default();
         let config_options = Options::default();
         let mut config = Config::default();
+        config.mousebinds = zellij_utils::input::config_settings::default_config()
+            .mousebinds
+            .clone();
         config.options.pane_frame_style = Some(PaneFrameStyle::Full);
         config.options.stacked_pane_list = Some(false);
         let main_client_id = 1;
@@ -15626,6 +15629,61 @@ pub fn moving_an_unknown_tab_reports_failure() {
         result.completion.error_message.as_deref(),
         Some("Tab with id 99 not found")
     );
+}
+
+fn tab_ids_in_position_order(screen: &Screen) -> Vec<usize> {
+    let mut tabs: Vec<(usize, usize)> = screen.tabs.values().map(|t| (t.position, t.id)).collect();
+    tabs.sort();
+    tabs.into_iter().map(|(_, id)| id).collect()
+}
+
+#[test]
+pub fn move_tab_to_position_shifts_the_tabs_in_between() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    for (pid, index) in [(1, 0), (2, 1), (3, 2), (4, 3)] {
+        new_tab(&mut screen, pid, index);
+    }
+    assert_eq!(tab_ids_in_position_order(&screen), vec![0, 1, 2, 3]);
+    assert!(screen.move_tab_to_position(0, 2));
+    assert_eq!(tab_ids_in_position_order(&screen), vec![1, 2, 0, 3]);
+    assert!(screen.move_tab_to_position(3, 0));
+    assert_eq!(tab_ids_in_position_order(&screen), vec![3, 1, 2, 0]);
+    assert!(screen.move_tab_to_position(2, 2));
+    assert_eq!(tab_ids_in_position_order(&screen), vec![3, 1, 2, 0]);
+    assert!(screen.move_tab_to_position(3, usize::MAX));
+    assert_eq!(tab_ids_in_position_order(&screen), vec![1, 2, 0, 3]);
+    assert!(!screen.move_tab_to_position(99, 0));
+    assert_eq!(tab_ids_in_position_order(&screen), vec![1, 2, 0, 3]);
+}
+
+#[test]
+pub fn move_tab_to_position_instruction_moves_the_tab_and_reports_unknown_tabs() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let result = send_instructions_and_collect(
+        size,
+        true,
+        |_| {},
+        |completion| ScreenInstruction::MoveTabToPosition(99, 0, Some(completion)),
+    );
+    assert_eq!(result.completion.exit_status, Some(1));
+    assert_eq!(
+        result.completion.error_message.as_deref(),
+        Some("Tab with id 99 not found")
+    );
+    let result = send_instructions_and_collect(
+        size,
+        true,
+        |_| {},
+        |completion| ScreenInstruction::MoveTabToPosition(0, 0, Some(completion)),
+    );
+    assert_ne!(result.completion.exit_status, Some(1));
 }
 
 #[test]

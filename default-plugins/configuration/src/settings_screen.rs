@@ -5,6 +5,7 @@ use zellij_tile::prelude::*;
 use crate::blocks_screen::BlockPage;
 use crate::keybindings_screen::KeybindingsScreen;
 use crate::keys_screen::KeysScreen;
+use crate::mousebindings_screen::MousebindingsScreen;
 use crate::page::{changed_by, note_group, outside_overlays, run_effects, Page, PageResponse};
 use crate::settings::{
     check_text, describe, is_row_kind, kdl_for, mode_choice_label, option_value, section,
@@ -33,9 +34,10 @@ const DEFAULT_THEME: &str = "default";
 const FILE_PREFIX: &str = "File: ";
 const WINDOW_TITLE: &str = "Configuration";
 const KEYBINDINGS_MIN_ROWS: usize = 8;
-const PAGE_CATEGORIES: [Category; 3] = [
+const PAGE_CATEGORIES: [Category; 4] = [
     Category::Themes,
     Category::ContextMenu,
+    Category::MouseBindings,
     Category::PluginsAndEnvironment,
 ];
 const THEME_NOTE: &str = "  A dark or light terminal theme is set and is used instead of this one";
@@ -116,6 +118,7 @@ pub struct SettingsScreen {
     bindings_hint_y: Option<usize>,
     blocks_screen: BlockPage,
     menu_screen: BlockPage,
+    mousebindings_screen: MousebindingsScreen,
     themes_screen: ThemesScreen,
     latest_mode_info: Option<ModeInfo>,
     follow_focus: bool,
@@ -158,6 +161,7 @@ impl Default for SettingsScreen {
             bindings_hint_y: None,
             blocks_screen: BlockPage::plugins_and_environment(),
             menu_screen: BlockPage::right_click_menu(),
+            mousebindings_screen: MousebindingsScreen::default(),
             themes_screen: ThemesScreen::default(),
             latest_mode_info: None,
             follow_focus: false,
@@ -246,6 +250,7 @@ impl SettingsScreen {
         match category {
             Category::Themes => Some(&mut self.themes_screen),
             Category::ContextMenu => Some(&mut self.menu_screen),
+            Category::MouseBindings => Some(&mut self.mousebindings_screen),
             Category::PluginsAndEnvironment => Some(&mut self.blocks_screen),
             _ => None,
         }
@@ -254,6 +259,7 @@ impl SettingsScreen {
         match category {
             Category::Themes => Some(&self.themes_screen),
             Category::ContextMenu => Some(&self.menu_screen),
+            Category::MouseBindings => Some(&self.mousebindings_screen),
             Category::PluginsAndEnvironment => Some(&self.blocks_screen),
             _ => None,
         }
@@ -349,6 +355,7 @@ impl SettingsScreen {
         self.keybindings_screen.set_snapshot(&self.snapshot);
         self.blocks_screen.set_snapshot(&self.snapshot);
         self.menu_screen.set_snapshot(&self.snapshot);
+        self.mousebindings_screen.set_snapshot(&self.snapshot);
         self.themes_screen.set_snapshot(&self.snapshot);
         if self.theme_note_needed() != self.theme_note_shown
             && !self.elements.has_open_overlay()
@@ -601,7 +608,9 @@ impl SettingsScreen {
                     .label_width(label_width)
                     .into()
             },
-            SettingKind::Keybindings | SettingKind::Block => return None,
+            SettingKind::Keybindings | SettingKind::Mousebindings | SettingKind::Block => {
+                return None
+            },
         };
         Some(element)
     }
@@ -663,7 +672,7 @@ impl SettingsScreen {
                         }
                     }
                 },
-                SettingKind::Keybindings | SettingKind::Block => {},
+                SettingKind::Keybindings | SettingKind::Mousebindings | SettingKind::Block => {},
             }
         }
     }

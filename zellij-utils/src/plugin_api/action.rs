@@ -31,6 +31,7 @@ pub use super::generated_api::api::{
         MovePanePayload,
         MoveTabByTabIdPayload,
         MoveTabDirection as ProtobufMoveTabDirection,
+        MoveTabToPositionPayload,
         NameAndValue as ProtobufNameAndValue,
         NewBlockingPanePayload,
         NewFloatingPanePayload,
@@ -1279,6 +1280,15 @@ impl TryFrom<ProtobufAction> for Action {
                 },
                 _ => Err("Wrong payload for Action::MoveTabByTabId"),
             },
+            Some(ProtobufActionName::MoveTabToPosition) => match protobuf_action.optional_payload {
+                Some(OptionalPayload::MoveTabToPositionPayload(payload)) => {
+                    Ok(Action::MoveTabToPosition {
+                        id: payload.tab_id,
+                        position: payload.position,
+                    })
+                },
+                _ => Err("Wrong payload for Action::MoveTabToPosition"),
+            },
             _ => Err("Unknown Action"),
         }
     }
@@ -1404,6 +1414,15 @@ impl TryFrom<Action> for ProtobufAction {
                     )),
                 })
             },
+            Action::MoveTabToPosition { id, position } => Ok(ProtobufAction {
+                name: ProtobufActionName::MoveTabToPosition as i32,
+                optional_payload: Some(OptionalPayload::MoveTabToPositionPayload(
+                    MoveTabToPositionPayload {
+                        tab_id: id,
+                        position,
+                    },
+                )),
+            }),
             Action::SwitchToMode { input_mode } => {
                 let input_mode: ProtobufInputMode = input_mode.try_into()?;
                 Ok(ProtobufAction {
@@ -3620,6 +3639,14 @@ mod tests {
                 id: 10,
                 direction: Direction::Right,
             },
+            Action::MoveTabToPosition {
+                id: 11,
+                position: 3,
+            },
+            Action::MoveTabToPosition {
+                id: 12,
+                position: crate::data::TAB_POSITION_END,
+            },
         ]
     }
 
@@ -3680,6 +3707,7 @@ mod tests {
             ProtobufActionName::CloseTabById,
             ProtobufActionName::StartRenameTabByTabId,
             ProtobufActionName::MoveTabByTabId,
+            ProtobufActionName::MoveTabToPosition,
         ] {
             let protobuf = ProtobufAction {
                 name: name as i32,

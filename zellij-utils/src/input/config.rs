@@ -18,6 +18,7 @@ use super::context_menu::ContextMenuConfig;
 use super::keybind_presets::KeybindsLayers;
 use super::keybinds::Keybinds;
 use super::layout::RunPluginOrAlias;
+use super::mousebinds::Mousebinds;
 use super::options::Options;
 use super::plugins::{PluginAliases, PluginsConfigError};
 use super::theme::{Themes, UiConfig};
@@ -46,6 +47,27 @@ pub struct Config {
     pub context_menu: ContextMenuConfig,
     #[serde(default)]
     pub keybinds_layers: KeybindsLayers,
+    #[serde(default, with = "shared_mousebinds")]
+    pub mousebinds: Arc<Mousebinds>,
+}
+
+mod shared_mousebinds {
+    use super::Mousebinds;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use std::sync::Arc;
+
+    pub fn serialize<S: Serializer>(
+        mousebinds: &Arc<Mousebinds>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        mousebinds.as_ref().serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Arc<Mousebinds>, D::Error> {
+        Mousebinds::deserialize(deserializer).map(Arc::new)
+    }
 }
 
 mod shared_keybinds {
@@ -323,9 +345,19 @@ impl Config {
     pub fn merge(&mut self, other: Config) -> Result<(), ConfigError> {
         self.options = self.options.merge(other.options);
         let other_layers = other.keybinds_layers;
-        if !other_layers.user.is_empty() || !other_layers.layout.is_empty() {
+        if !other_layers.user.is_empty()
+            || !other_layers.layout.is_empty()
+            || !other_layers.user_mouse.is_empty()
+            || !other_layers.layout_mouse.is_empty()
+        {
             self.keybinds_layers.user.merge(other_layers.user);
             self.keybinds_layers.layout.merge(other_layers.layout);
+            self.keybinds_layers
+                .user_mouse
+                .compose(other_layers.user_mouse);
+            self.keybinds_layers
+                .layout_mouse
+                .compose(other_layers.layout_mouse);
             self.resolve_keybinds();
         } else if !other.keybinds.0.is_empty() && !Arc::ptr_eq(&self.keybinds, &other.keybinds) {
             Arc::make_mut(&mut self.keybinds).merge(Arc::unwrap_or_clone(other.keybinds));

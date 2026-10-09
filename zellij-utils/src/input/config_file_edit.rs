@@ -27,6 +27,7 @@ use crate::data::{
 };
 
 const KEYBINDS: &str = "keybinds";
+const MOUSEBINDS: &str = "mousebinds";
 const CONTEXT_MENU: &str = "context_menu";
 const PLUGINS: &str = "plugins";
 const LOAD_PLUGINS: &str = "load_plugins";
@@ -93,6 +94,7 @@ pub enum ConfigEdit {
         theme: ThemeEntry,
         slots: Vec<(&'static str, &'static str)>,
     },
+    MousebindsBlock(Option<String>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -510,6 +512,19 @@ fn block_edits(key: SettingKey, saved: &Config, runtime: &Config) -> Vec<ConfigE
             keybind_edits(&saved.keybinds_layers.user, &runtime.keybinds_layers.user)
         },
         SettingKey::ContextMenu => context_menu_edits(&saved.context_menu, &runtime.context_menu),
+        SettingKey::Mousebinds => {
+            if saved.keybinds_layers.user_mouse == runtime.keybinds_layers.user_mouse {
+                vec![]
+            } else {
+                vec![ConfigEdit::MousebindsBlock(
+                    runtime
+                        .keybinds_layers
+                        .user_mouse
+                        .to_kdl()
+                        .map(|node| node.to_string()),
+                )]
+            }
+        },
         _ => {
             let saved_blocks = config_blocks(saved, false, None);
             let runtime_blocks = config_blocks(runtime, false, None);
@@ -571,6 +586,7 @@ pub fn edited_settings(edits: &[ConfigEdit]) -> BTreeSet<SettingKey> {
                 SettingKey::ContextMenu
             },
             ConfigEdit::Theme { .. } | ConfigEdit::ThemeColours { .. } => SettingKey::Themes,
+            ConfigEdit::MousebindsBlock(_) => SettingKey::Mousebinds,
         })
         .collect()
 }
@@ -2036,8 +2052,39 @@ fn apply_theme_edit(document: &mut KdlDocument, name: &str, theme: Option<&Theme
     remove_empty_top_level_blocks(document, THEMES);
 }
 
+fn apply_mousebinds_edit(document: &mut KdlDocument, text: Option<&str>) {
+    let new_node = text
+        .and_then(|text| text.parse::<KdlDocument>().ok())
+        .and_then(|parsed| parsed.nodes().first().cloned());
+    let position = document
+        .nodes()
+        .iter()
+        .position(|node| node_name(node) == MOUSEBINDS);
+    match (position, new_node) {
+        (Some(position), Some(mut node)) => {
+            let existing = &document.nodes()[position];
+            node.set_leading(existing.leading().unwrap_or("").to_owned());
+            node.set_trailing(existing.trailing().unwrap_or("\n").to_owned());
+            document.nodes_mut()[position] = node;
+            while let Some(extra) = document
+                .nodes()
+                .iter()
+                .enumerate()
+                .skip(position + 1)
+                .find(|(_, node)| node_name(node) == MOUSEBINDS)
+                .map(|(index, _)| index)
+            {
+                remove_node_at(document, extra);
+            }
+        },
+        (None, Some(node)) => push_node(document, node, "", None),
+        (_, None) => remove_nodes_named(document, MOUSEBINDS),
+    }
+}
+
 fn apply_block_edit(document: &mut KdlDocument, edit: &ConfigEdit) {
     match edit {
+        ConfigEdit::MousebindsBlock(text) => apply_mousebinds_edit(document, text.as_deref()),
         ConfigEdit::PluginAlias { name, alias } => set_named_node(
             document,
             PLUGINS,
@@ -2238,6 +2285,9 @@ fn block_edit_reads_back(
             config_file_theme(parsed, name).map(styling_colours)
                 == config_file_theme(runtime, name).map(styling_colours)
         },
+        ConfigEdit::MousebindsBlock(_) => {
+            parsed.keybinds_layers.user_mouse == runtime.keybinds_layers.user_mouse
+        },
         _ => true,
     };
     if matches {
@@ -2290,6 +2340,10 @@ fn copy_block_edit(new_saved: &mut Config, runtime: &Config, edit: &ConfigEdit) 
                     new_saved.themes.remove(name);
                 },
             }
+        },
+        ConfigEdit::MousebindsBlock(_) => {
+            new_saved.keybinds_layers.user_mouse = runtime.keybinds_layers.user_mouse.clone();
+            new_saved.resolve_keybinds();
         },
         _ => {},
     }

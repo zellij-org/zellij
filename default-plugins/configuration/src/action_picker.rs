@@ -40,6 +40,7 @@ pub struct ActionSpec {
     pub description: &'static str,
     pub args: &'static [ArgSpec],
     pub menu_only: bool,
+    pub mouse_only: bool,
 }
 
 const fn positional(label: &'static str, kind: ArgKind, required: bool) -> ArgSpec {
@@ -78,6 +79,7 @@ const fn plain(name: &'static str, description: &'static str) -> ActionSpec {
         description,
         args: &[],
         menu_only: false,
+        mouse_only: false,
     }
 }
 
@@ -91,6 +93,7 @@ const fn with_args(
         description,
         args,
         menu_only: false,
+        mouse_only: false,
     }
 }
 
@@ -104,6 +107,21 @@ const fn menu_only(
         description,
         args,
         menu_only: true,
+        mouse_only: false,
+    }
+}
+
+const fn mouse_only(
+    name: &'static str,
+    description: &'static str,
+    args: &'static [ArgSpec],
+) -> ActionSpec {
+    ActionSpec {
+        name,
+        description,
+        args,
+        menu_only: false,
+        mouse_only: true,
     }
 }
 
@@ -126,6 +144,7 @@ const DIRECTIONS: &[&str] = &["left", "right", "up", "down"];
 const OPTIONAL_DIRECTIONS: &[&str] = &["", "left", "right", "up", "down"];
 const NEW_PANE_PLACES: &[&str] = &["", "right", "down", "stacked"];
 const LEFT_RIGHT: &[&str] = &["left", "right"];
+const START_END: &[&str] = &["start", "end"];
 const RESIZES: &[&str] = &[
     "Increase",
     "Decrease",
@@ -141,6 +160,8 @@ const RESIZES: &[&str] = &[
 const SEARCH_DIRECTIONS: &[&str] = &["down", "up"];
 const SEARCH_OPTIONS: &[&str] = &["CaseSensitivity", "WholeWord", "Wrap"];
 const FRAME_STYLES: &[&str] = &["full", "titles", "none"];
+const PROMPT_DIRECTIONS: &[&str] = &["previous", "next"];
+const RESIZE_DIRECTIONS: &[&str] = &["increase", "decrease"];
 
 pub const RAW_KDL: ActionSpec = ActionSpec {
     name: "KDL",
@@ -153,6 +174,7 @@ pub const RAW_KDL: ActionSpec = ActionSpec {
         required: true,
     }],
     menu_only: false,
+    mouse_only: false,
 };
 
 pub const ACTION_SPECS: &[ActionSpec] = &[
@@ -436,12 +458,64 @@ pub const ACTION_SPECS: &[ActionSpec] = &[
         "Move the clicked tab",
         &[positional("Direction", ArgKind::Choice(LEFT_RIGHT), true)],
     ),
+    menu_only(
+        "MoveTabToPosition",
+        "Move the clicked tab to the start or the end",
+        &[positional("Position", ArgKind::Choice(START_END), true)],
+    ),
+    mouse_only("Click", "Send the click to the pane and focus it", &[]),
+    mouse_only("Select", "Select text by dragging", &[]),
+    mouse_only("FocusPane", "Focus the clicked pane", &[]),
+    mouse_only("MovePane", "Drag the clicked pane to move it", &[]),
+    mouse_only("ResizePane", "Drag a pane border to resize", &[]),
+    mouse_only(
+        "ToggleFullscreen",
+        "Toggle fullscreen for the clicked pane",
+        &[],
+    ),
+    mouse_only(
+        "GroupToggle",
+        "Add or remove the clicked pane from the group",
+        &[],
+    ),
+    mouse_only("Ungroup", "Clear the pane group", &[]),
+    mouse_only("ContextMenu", "Open the right-click menu", &[]),
+    mouse_only(
+        "Scroll",
+        "Scroll the pane under the mouse (wheel only)",
+        &[positional("Lines", ArgKind::Number, false)],
+    ),
+    mouse_only(
+        "ScrollColumns",
+        "Scroll the pane sideways (wheel only)",
+        &[positional("Columns", ArgKind::Number, false)],
+    ),
+    mouse_only(
+        "ScrollToPrompt",
+        "Scroll to a shell prompt",
+        &[positional(
+            "Direction",
+            ArgKind::Choice(PROMPT_DIRECTIONS),
+            true,
+        )],
+    ),
+    mouse_only(
+        "ResizeScroll",
+        "Resize the pane under the mouse",
+        &[positional(
+            "Direction",
+            ArgKind::Choice(RESIZE_DIRECTIONS),
+            true,
+        )],
+    ),
+    mouse_only("PassToApp", "Send the event to the app in the pane", &[]),
+    mouse_only("Ignore", "Do nothing", &[]),
 ];
 
-pub fn specs_for(for_menu: bool) -> Vec<ActionSpec> {
+pub fn specs_for(for_menu: bool, for_mouse: bool) -> Vec<ActionSpec> {
     let mut specs: Vec<ActionSpec> = ACTION_SPECS
         .iter()
-        .filter(|spec| for_menu || !spec.menu_only)
+        .filter(|spec| (for_menu || !spec.menu_only) && (for_mouse || !spec.mouse_only))
         .copied()
         .collect();
     specs.push(RAW_KDL);
@@ -570,12 +644,26 @@ pub fn size_button(button: &mut Button, width: usize) {
 }
 
 pub fn parse_action(text: &str) -> (ActionSpec, Vec<String>) {
+    parse_action_for(text, false)
+}
+
+pub fn parse_action_for(text: &str, for_mouse: bool) -> (ActionSpec, Vec<String>) {
     let Ok(document) = text.parse::<KdlDocument>() else {
         return raw_values(text);
     };
     let Some(node) = document.nodes().first() else {
         return raw_values(text);
     };
+    if for_mouse {
+        let mouse_spec = ACTION_SPECS
+            .iter()
+            .find(|spec| spec.mouse_only && spec.name == node.name().value());
+        if let Some(spec) = mouse_spec {
+            if let Some(values) = values_for(spec, node) {
+                return (*spec, values);
+            }
+        }
+    }
     let Some(spec) = spec_named(node.name().value()) else {
         return raw_values(text);
     };
@@ -662,9 +750,9 @@ fn values_for(spec: &ActionSpec, node: &KdlNode) -> Option<Vec<String>> {
     Some(values)
 }
 
-pub fn matching_specs(for_menu: bool, query: &str) -> Vec<ActionSpec> {
+pub fn matching_specs(for_menu: bool, for_mouse: bool, query: &str) -> Vec<ActionSpec> {
     let query = query.trim().to_lowercase();
-    specs_for(for_menu)
+    specs_for(for_menu, for_mouse)
         .into_iter()
         .filter(|spec| {
             query.is_empty()
@@ -732,6 +820,7 @@ pub struct ActionPicker {
     pub actions: Vec<String>,
     base_mode: Option<InputMode>,
     for_menu: bool,
+    for_mouse: bool,
     selected: usize,
     stage: Stage,
     title: String,
@@ -765,6 +854,7 @@ impl ActionPicker {
             actions,
             base_mode,
             for_menu,
+            for_mouse: false,
             selected: 0,
             stage: Stage::List,
             title: title.into(),
@@ -783,6 +873,10 @@ impl ActionPicker {
             picker.open_chooser();
         }
         picker
+    }
+    pub fn with_mouse_behaviours(mut self) -> Self {
+        self.for_mouse = true;
+        self
     }
     pub fn set_label_width(&mut self, label_width: usize) {
         self.label_width = Some(label_width);
@@ -1022,7 +1116,7 @@ impl ActionPicker {
     }
     fn activate_row(&mut self, row: usize) -> PickerResponse {
         if row < self.actions.len() {
-            let (spec, values) = parse_action(&self.actions[row]);
+            let (spec, values) = parse_action_for(&self.actions[row], self.for_mouse);
             self.open_args(spec, values, Some(row));
         } else if row == self.actions.len() {
             self.open_chooser();
@@ -1038,6 +1132,7 @@ impl ActionPicker {
     }
     pub fn handle_key(&mut self, key: &KeyWithModifier) -> PickerResponse {
         let for_menu = self.for_menu;
+        let for_mouse = self.for_mouse;
         match &mut self.stage {
             Stage::List => self.handle_list_key(key),
             Stage::Choose {
@@ -1045,7 +1140,7 @@ impl ActionPicker {
                 highlighted,
             } => {
                 let query = search.get_text().to_owned();
-                let matches = matching_specs(for_menu, &query);
+                let matches = matching_specs(for_menu, for_mouse, &query);
                 if is_plain(key, BareKey::Esc) {
                     return self.back_from_stage();
                 } else if is_plain(key, BareKey::Down) {
@@ -1151,6 +1246,7 @@ impl ActionPicker {
     }
     pub fn handle_mouse(&mut self, mouse: Mouse) -> PickerResponse {
         let for_menu = self.for_menu;
+        let for_mouse = self.for_mouse;
         if matches!(self.stage, Stage::Args { .. }) {
             if let Stage::Args { group, .. } = &mut self.stage {
                 let event = group.handle_mouse(mouse);
@@ -1218,7 +1314,7 @@ impl ActionPicker {
                 let Some((line, column)) = is_click(&mouse) else {
                     return PickerResponse::Pending;
                 };
-                let matches = matching_specs(for_menu, search.get_text());
+                let matches = matching_specs(for_menu, for_mouse, search.get_text());
                 if let Some(row) = self.scroll.row_at(line, column) {
                     *highlighted = row;
                     if let Some(spec) = matches.get(row).copied() {
@@ -1298,6 +1394,7 @@ impl ActionPicker {
         }
         let body_y = y + 1;
         let for_menu = self.for_menu;
+        let for_mouse = self.for_mouse;
         let actions = self.actions.clone();
         let selected = if self.active {
             self.selected
@@ -1424,7 +1521,7 @@ impl ActionPicker {
                 search.set_show_cursor(true);
                 search.render(list_x, y, natural_button_width.min(list_width));
                 let query = search.get_text().to_owned();
-                let matches = matching_specs(for_menu, &query);
+                let matches = matching_specs(for_menu, for_mouse, &query);
                 let list_height = height.saturating_sub(2);
                 let visible = self.scroll.layout(
                     list_x,
@@ -1577,7 +1674,7 @@ mod tests {
 
     #[test]
     fn every_action_form_writes_kdl_that_parses_back_to_the_same_action() {
-        for spec in specs_for(true) {
+        for spec in specs_for(true, false) {
             let values = sample_values(&spec);
             let text = build_action(&spec, &values)
                 .unwrap_or_else(|e| panic!("{} did not build: {}", spec.name, e));
@@ -1665,6 +1762,64 @@ mod tests {
             picker.handle_key(&KeyWithModifier::new(BareKey::Enter)),
             PickerResponse::Done(vec!["NewFloatingPane".to_owned()])
         );
+    }
+
+    #[test]
+    fn mouse_behaviours_are_only_offered_for_mouse_bindings() {
+        let names = |specs: Vec<ActionSpec>| -> Vec<&'static str> {
+            specs.iter().map(|spec| spec.name).collect()
+        };
+        let keys = names(specs_for(false, false));
+        let menu = names(specs_for(true, false));
+        let mouse = names(specs_for(false, true));
+        for behaviour in [
+            "Click",
+            "Select",
+            "PassToApp",
+            "Ignore",
+            "Scroll",
+            "ResizeScroll",
+        ] {
+            assert!(
+                !keys.contains(&behaviour),
+                "{} is offered for keys",
+                behaviour
+            );
+            assert!(
+                !menu.contains(&behaviour),
+                "{} is offered for the menu",
+                behaviour
+            );
+            assert!(
+                mouse.contains(&behaviour),
+                "{} is missing for the mouse",
+                behaviour
+            );
+        }
+        assert!(mouse.contains(&"NewPane"));
+        assert!(!mouse.contains(&"CloseFocusByPaneId"));
+        assert_eq!(keys.iter().filter(|name| **name == "MovePane").count(), 1);
+        assert!(matching_specs(false, false, "PassToApp").is_empty());
+        assert!(!matching_specs(false, true, "PassToApp").is_empty());
+    }
+
+    #[test]
+    fn mouse_behaviours_are_written_and_read_back() {
+        let scroll = ACTION_SPECS
+            .iter()
+            .find(|spec| spec.mouse_only && spec.name == "Scroll")
+            .unwrap();
+        assert_eq!(build_action(scroll, &[String::new()]).unwrap(), "Scroll");
+        assert_eq!(build_action(scroll, &["5".to_owned()]).unwrap(), "Scroll 5");
+        let (spec, values) = parse_action_for("ScrollToPrompt \"next\"", true);
+        assert!(spec.mouse_only);
+        assert_eq!(values, vec!["next".to_owned()]);
+        let (spec, _) = parse_action_for("MovePane", true);
+        assert!(spec.mouse_only);
+        let (spec, values) = parse_action_for("MovePane \"left\"", true);
+        assert!(!spec.mouse_only);
+        assert_eq!(values, vec!["left".to_owned()]);
+        assert!(!parse_action("MovePane").0.mouse_only);
     }
 
     #[test]

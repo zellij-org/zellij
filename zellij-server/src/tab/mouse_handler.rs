@@ -1,7 +1,16 @@
+use std::collections::BTreeSet;
+use std::sync::Arc;
 use std::time::Instant;
-use zellij_utils::data::{ContextMenuKind, Direction, Resize, ResizeStrategy};
+use zellij_utils::data::{
+    ContextMenuKind, Direction, InputMode, KeyModifier, MouseButton, Resize, ResizeStrategy,
+};
 use zellij_utils::errors::prelude::*;
+use zellij_utils::input::actions::Action;
 use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
+use zellij_utils::input::mousebinds::{
+    mouse_button_of_event, mouse_modifiers_of_event, MouseBehaviour, MouseBinding,
+    MouseBindingKind, Mousebinds, PromptDirection, ResizeScrollDirection,
+};
 use zellij_utils::pane_size::PaneGeom;
 use zellij_utils::position::Position;
 
@@ -14,12 +23,25 @@ use crate::ClientId;
 use super::{Pane, Tab};
 
 fn clear_hover_for_client(tab: &mut Tab, client_id: ClientId) -> bool {
+    clear_hover_for_client_keeping_plugin(tab, client_id, None)
+}
+
+fn clear_hover_for_client_keeping_plugin(
+    tab: &mut Tab,
+    client_id: ClientId,
+    plugin_to_keep: Option<PaneId>,
+) -> bool {
     let mut cleared = false;
     if let Some(prev_pid) = tab.mouse_hover_pane_id.remove(&client_id) {
         if let Some(pane) = tab.get_pane_with_id_mut(prev_pid) {
             pane.set_hover_position(None);
         }
         cleared = true;
+    }
+    let keeps_plugin_hover = plugin_to_keep.is_some()
+        && tab.plugin_hover_pane_id.get(&client_id).copied() == plugin_to_keep;
+    if keeps_plugin_hover {
+        return cleared;
     }
     if let Some(prev_plugin_pid) = tab.plugin_hover_pane_id.remove(&client_id) {
         if let Some(pane) = tab.get_pane_with_id(prev_plugin_pid) {
@@ -41,7 +63,7 @@ pub struct ContextMenuRequest {
     pub position: Position,
 }
 
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct MouseEffect {
     pub state_changed: bool,
     pub leave_clipboard_message: bool,
@@ -49,6 +71,25 @@ pub struct MouseEffect {
     pub group_add: Option<PaneId>,
     pub ungroup: bool,
     pub open_context_menu: Option<ContextMenuRequest>,
+    pub run_actions: Option<Vec<Action>>,
+}
+
+const CLICK_TIME_THRESHOLD_MS: u128 = 400;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MousePressOwner {
+    App(PaneId),
+    Group,
+    Swallow,
+}
+
+#[derive(Debug, Clone)]
+pub struct MouseClickRecord {
+    button: MouseButton,
+    modifiers: BTreeSet<KeyModifier>,
+    position: Position,
+    time: Instant,
+    count: u8,
 }
 
 impl MouseEffect {
@@ -152,18 +193,33 @@ enum MouseAction {
     ScrollUp {
         pane_id: PaneId,
         lines: usize,
+        app_first: bool,
     },
     ScrollDown {
         pane_id: PaneId,
         lines: usize,
+        app_first: bool,
     },
     ScrollLeft {
         pane_id: PaneId,
         cols: usize,
+        app_first: bool,
     },
     ScrollRight {
         pane_id: PaneId,
         cols: usize,
+        app_first: bool,
+    },
+    PassWheelToApp {
+        pane_id: PaneId,
+        button: MouseButton,
+    },
+    ToggleFullscreen {
+        pane_id: PaneId,
+    },
+    RunActions {
+        pane_id: PaneId,
+        actions: Vec<Action>,
     },
     ResizeScrollUp {
         pane_id: PaneId,
@@ -173,9 +229,11 @@ enum MouseAction {
     },
     ScrollToPreviousPrompt {
         pane_id: PaneId,
+        app_first: bool,
     },
     ScrollToNextPrompt {
         pane_id: PaneId,
+        app_first: bool,
     },
     UpdateHover {
         pane_id: Option<PaneId>,
@@ -237,7 +295,7 @@ struct ClickedPaneDetails {
     is_unselectable_plugin: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 struct MouseEventContext {
     pane_id_at_position: Option<PaneId>,
     active_pane_id: Option<PaneId>,
@@ -254,6 +312,10 @@ struct MouseEventContext {
     mouse_scroll_resize: bool,
     passthrough_pane_id: Option<PaneId>,
     context_menu_enabled: bool,
+    mousebinds: Arc<Mousebinds>,
+    input_mode: InputMode,
+    click_count: u8,
+    press_owner: Option<MousePressOwner>,
 }
 
 fn edge_and_delta_to_strategies(
@@ -364,6 +426,28 @@ fn edge_and_delta_to_strategies(
     }
 }
 
+fn next_click_count(
+    previous: Option<&MouseClickRecord>,
+    button: MouseButton,
+    modifiers: &BTreeSet<KeyModifier>,
+    position: Position,
+    now: Instant,
+) -> u8 {
+    match previous {
+        Some(previous)
+            if previous.button == button
+                && &previous.modifiers == modifiers
+                && previous.position == position
+                && now.saturating_duration_since(previous.time).as_millis()
+                    <= CLICK_TIME_THRESHOLD_MS
+                && previous.count < 3 =>
+        {
+            previous.count + 1
+        },
+        _ => 1,
+    }
+}
+
 pub struct MouseHandler;
 
 impl MouseHandler {
@@ -372,13 +456,131 @@ impl MouseHandler {
         event: &MouseEvent,
         client_id: ClientId,
         passthrough_pane_id: Option<PaneId>,
+        mousebinds: Arc<Mousebinds>,
     ) -> Result<MouseEffect> {
         if let Some(effect) = Self::intercept_guest_modal_mouse_event(tab, event, client_id)? {
             return Ok(effect);
         }
-        let context = Self::gather_mouse_event_context(tab, event, client_id, passthrough_pane_id)?;
+        let click_count = Self::count_click(tab, event, client_id);
+        let mut context =
+            Self::gather_mouse_event_context(tab, event, client_id, passthrough_pane_id)?;
+        context.mousebinds = mousebinds;
+        context.input_mode = tab.get_client_input_mode(client_id).unwrap_or_default();
+        context.click_count = click_count;
+        context.press_owner = tab.mouse_press_owner.get(&client_id).copied();
         let action = Self::determine_mouse_action(event, &context)?;
-        Self::execute_mouse_action(tab, action, event, client_id)
+        Self::record_press_owner(tab, event, &action, client_id);
+        let double_clicked_plugin = Self::double_clicked_plugin(event, &action, &context);
+        let effect = Self::execute_mouse_action(tab, action, event, client_id)?;
+        if let Some(pane_id) = double_clicked_plugin {
+            if let Some(pane) = tab.get_pane_with_id_mut(pane_id) {
+                let relative_position = pane.relative_position(&event.position);
+                pane.mouse_double_click(&relative_position, client_id);
+            }
+        }
+        Ok(effect)
+    }
+
+    fn count_click(tab: &mut Tab, event: &MouseEvent, client_id: ClientId) -> u8 {
+        if event.event_type != MouseEventType::Press {
+            return 1;
+        }
+        let Some(button) = mouse_button_of_event(event) else {
+            return 1;
+        };
+        if button.is_wheel() {
+            return 1;
+        }
+        let modifiers = mouse_modifiers_of_event(event);
+        let now = Instant::now();
+        let count = next_click_count(
+            tab.mouse_click_tracker.get(&client_id),
+            button,
+            &modifiers,
+            event.position,
+            now,
+        );
+        tab.mouse_click_tracker.insert(
+            client_id,
+            MouseClickRecord {
+                button,
+                modifiers,
+                position: event.position,
+                time: now,
+                count,
+            },
+        );
+        count
+    }
+
+    fn record_press_owner(
+        tab: &mut Tab,
+        event: &MouseEvent,
+        action: &MouseAction,
+        client_id: ClientId,
+    ) {
+        let is_button_press = event.event_type == MouseEventType::Press
+            && (event.left || event.right || event.middle)
+            && !(event.wheel_up || event.wheel_down || event.wheel_left || event.wheel_right);
+        if is_button_press {
+            let owner = match action {
+                MouseAction::SendToTerminal { pane_id, .. }
+                | MouseAction::FocusPaneAndClickThrough { pane_id, .. } => {
+                    Some(MousePressOwner::App(*pane_id))
+                },
+                MouseAction::GroupToggle(_) => Some(MousePressOwner::Group),
+                MouseAction::StartSelection { .. }
+                | MouseAction::StartResize { .. }
+                | MouseAction::StartMovingFloatingPane { .. }
+                | MouseAction::FocusPane { .. }
+                | MouseAction::ShowFloatingPanesAndFocus { .. }
+                | MouseAction::ContinueResize { .. }
+                | MouseAction::StopResize { .. }
+                | MouseAction::UpdateSelection { .. }
+                | MouseAction::EndSelection { .. }
+                | MouseAction::ContinueMovingFloatingPane { .. }
+                | MouseAction::StopMovingFloatingPane { .. } => None,
+                _ => Some(MousePressOwner::Swallow),
+            };
+            match owner {
+                Some(owner) => {
+                    tab.mouse_press_owner.insert(client_id, owner);
+                },
+                None => {
+                    tab.mouse_press_owner.remove(&client_id);
+                },
+            }
+        } else if event.event_type == MouseEventType::Release {
+            tab.mouse_press_owner.remove(&client_id);
+        }
+    }
+
+    fn double_clicked_plugin(
+        event: &MouseEvent,
+        action: &MouseAction,
+        ctx: &MouseEventContext,
+    ) -> Option<PaneId> {
+        if ctx.click_count != 2
+            || event.event_type != MouseEventType::Press
+            || !event.left
+            || mouse_button_of_event(event) != Some(MouseButton::Left)
+        {
+            return None;
+        }
+        let pane_id = ctx.pane_id_at_position?;
+        if !matches!(pane_id, PaneId::Plugin(_)) {
+            return None;
+        }
+        match action {
+            MouseAction::StartSelection { pane_id: id, .. } if *id == pane_id => Some(pane_id),
+            MouseAction::FocusPane { pane_id: id, .. }
+            | MouseAction::FocusPaneAndClickThrough { pane_id: id, .. }
+                if *id == pane_id =>
+            {
+                Some(pane_id)
+            },
+            _ => None,
+        }
     }
 
     fn intercept_guest_modal_mouse_event(
@@ -497,6 +699,10 @@ impl MouseHandler {
             mouse_scroll_resize: tab.mouse_scroll_resize,
             passthrough_pane_id,
             context_menu_enabled: tab.context_menu_enabled,
+            mousebinds: Arc::new(Mousebinds::default()),
+            input_mode: InputMode::default(),
+            click_count: 1,
+            press_owner: None,
         })
     }
 
@@ -817,7 +1023,7 @@ impl MouseHandler {
             MouseAction::FocusPane {
                 pane_id: _,
                 position,
-            } => Self::execute_focus_pane(tab, position, client_id),
+            } => Self::execute_focus_pane(tab, position, event.left, client_id),
             MouseAction::FocusPaneAndClickThrough {
                 pane_id: _,
                 position,
@@ -871,7 +1077,7 @@ impl MouseHandler {
                 Self::execute_end_selection(tab, position, client_id)
             },
             MouseAction::StartMovingFloatingPane { position } => {
-                Self::execute_move_floating_pane(tab, position)
+                Self::execute_start_moving_floating_pane(tab, position)
             },
             MouseAction::ContinueMovingFloatingPane { position } => {
                 Self::execute_move_floating_pane(tab, position)
@@ -879,21 +1085,42 @@ impl MouseHandler {
             MouseAction::StopMovingFloatingPane { position } => {
                 Self::execute_stop_moving_floating_pane(tab, position, client_id)
             },
-            MouseAction::ScrollUp { pane_id: _, lines } => {
-                Self::handle_scrollwheel_up(tab, &event.position, lines, client_id)
+            MouseAction::ScrollUp {
+                pane_id: _,
+                lines,
+                app_first,
+            } => Self::handle_scrollwheel_up(tab, &event.position, lines, app_first, client_id)
+                .with_context(err_context),
+            MouseAction::ScrollDown {
+                pane_id: _,
+                lines,
+                app_first,
+            } => Self::handle_scrollwheel_down(tab, &event.position, lines, app_first, client_id)
+                .with_context(err_context),
+            MouseAction::ScrollLeft {
+                pane_id: _,
+                cols,
+                app_first,
+            } => Self::handle_scrollwheel_left(tab, &event.position, cols, app_first, client_id)
+                .with_context(err_context),
+            MouseAction::ScrollRight {
+                pane_id: _,
+                cols,
+                app_first,
+            } => Self::handle_scrollwheel_right(tab, &event.position, cols, app_first, client_id)
+                .with_context(err_context),
+            MouseAction::PassWheelToApp { pane_id, button } => {
+                Self::execute_pass_wheel_to_app(tab, pane_id, button, event, client_id)
                     .with_context(err_context)
             },
-            MouseAction::ScrollDown { pane_id: _, lines } => {
-                Self::handle_scrollwheel_down(tab, &event.position, lines, client_id)
-                    .with_context(err_context)
+            MouseAction::ToggleFullscreen { pane_id } => {
+                clear_hover_for_client(tab, client_id);
+                tab.toggle_pane_fullscreen(pane_id);
+                tab.set_force_render();
+                Ok(MouseEffect::state_changed())
             },
-            MouseAction::ScrollLeft { pane_id: _, cols } => {
-                Self::handle_scrollwheel_left(tab, &event.position, cols, client_id)
-                    .with_context(err_context)
-            },
-            MouseAction::ScrollRight { pane_id: _, cols } => {
-                Self::handle_scrollwheel_right(tab, &event.position, cols, client_id)
-                    .with_context(err_context)
+            MouseAction::RunActions { pane_id, actions } => {
+                Self::execute_run_actions(tab, pane_id, actions, event, client_id)
             },
             MouseAction::ResizeScrollUp { pane_id } => {
                 Self::handle_resize_scroll_up(tab, pane_id, client_id).with_context(err_context)
@@ -901,11 +1128,11 @@ impl MouseHandler {
             MouseAction::ResizeScrollDown { pane_id } => {
                 Self::handle_resize_scroll_down(tab, pane_id, client_id).with_context(err_context)
             },
-            MouseAction::ScrollToPreviousPrompt { pane_id } => {
-                Self::handle_prompt_jump(tab, pane_id, true, event, client_id)
+            MouseAction::ScrollToPreviousPrompt { pane_id, app_first } => {
+                Self::handle_prompt_jump(tab, pane_id, true, app_first, event, client_id)
             },
-            MouseAction::ScrollToNextPrompt { pane_id } => {
-                Self::handle_prompt_jump(tab, pane_id, false, event, client_id)
+            MouseAction::ScrollToNextPrompt { pane_id, app_first } => {
+                Self::handle_prompt_jump(tab, pane_id, false, app_first, event, client_id)
             },
             MouseAction::UpdateHover { pane_id, position } => {
                 Self::execute_update_hover(tab, pane_id, position, client_id)
@@ -945,6 +1172,79 @@ impl MouseHandler {
         }
     }
 
+    fn execute_run_actions(
+        tab: &mut Tab,
+        pane_id: PaneId,
+        actions: Vec<Action>,
+        event: &MouseEvent,
+        client_id: ClientId,
+    ) -> Result<MouseEffect> {
+        let is_selectable = tab
+            .get_pane_with_id(pane_id)
+            .map(|pane| pane.selectable())
+            .unwrap_or(false);
+        let is_active = tab.get_active_pane_id(client_id) == Some(pane_id);
+        let mut state_changed = false;
+        if is_selectable && !is_active {
+            clear_hover_for_client(tab, client_id);
+            Self::focus_pane_at(tab, &event.position, client_id)?;
+            state_changed = true;
+        }
+        Ok(MouseEffect {
+            state_changed,
+            run_actions: Some(actions),
+            ..Default::default()
+        })
+    }
+
+    fn execute_pass_wheel_to_app(
+        tab: &mut Tab,
+        pane_id: PaneId,
+        button: MouseButton,
+        event: &MouseEvent,
+        client_id: ClientId,
+    ) -> Result<MouseEffect> {
+        let point = event.position;
+        let Some(pane) = tab.get_pane_with_id_mut(pane_id) else {
+            return Ok(MouseEffect::default());
+        };
+        if matches!(pane_id, PaneId::Plugin(_)) {
+            match button {
+                MouseButton::ScrollUp => pane.scroll_up(3, client_id),
+                MouseButton::ScrollDown => pane.scroll_down(3, client_id),
+                MouseButton::ScrollLeft => pane.scroll_left(4, client_id),
+                MouseButton::ScrollRight => pane.scroll_right(4, client_id),
+                _ => {},
+            }
+            return Ok(MouseEffect::default());
+        }
+        let relative_position = pane.relative_position(&point);
+        let report = match button {
+            MouseButton::ScrollUp => pane.mouse_scroll_up(&relative_position),
+            MouseButton::ScrollDown => pane.mouse_scroll_down(&relative_position),
+            MouseButton::ScrollLeft => pane.mouse_scroll_left(&relative_position),
+            MouseButton::ScrollRight => pane.mouse_scroll_right(&relative_position),
+            _ => None,
+        };
+        if let Some(report) = report {
+            tab.write_to_terminal_at(report.into_bytes(), &point, client_id)?;
+            return Ok(MouseEffect::default());
+        }
+        let arrow = match button {
+            MouseButton::ScrollUp => Some("\u{1b}[A"),
+            MouseButton::ScrollDown => Some("\u{1b}[B"),
+            _ => None,
+        };
+        if let Some(arrow) = arrow {
+            if pane.is_alternate_mode_active() {
+                for _ in 0..3 {
+                    tab.write_to_terminal_at(arrow.as_bytes().to_owned(), &point, client_id)?;
+                }
+            }
+        }
+        Ok(MouseEffect::default())
+    }
+
     fn execute_stop_resize(
         tab: &mut Tab,
         position: Position,
@@ -972,22 +1272,39 @@ impl MouseHandler {
     fn execute_focus_pane(
         tab: &mut Tab,
         position: Position,
+        left_button: bool,
         client_id: ClientId,
     ) -> Result<MouseEffect> {
         let err_context = || "failed to focus pane";
-        clear_hover_for_client(tab, client_id);
+        let clicked_unselectable_plugin = Self::unselectable_pane_at_position(tab, &position)
+            .map(|pane| pane.pid())
+            .filter(|pane_id| matches!(pane_id, PaneId::Plugin(_)));
+        clear_hover_for_client_keeping_plugin(tab, client_id, clicked_unselectable_plugin);
         let active_pane_id_before = tab
             .get_active_pane_id(client_id)
             .ok_or_else(|| anyhow!("Failed to find active pane"))?;
 
-        Self::focus_pane_at(tab, &position, client_id).with_context(err_context)?;
+        if Self::unselectable_pane_at_position(tab, &position).is_none() {
+            Self::focus_pane_at(tab, &position, client_id).with_context(err_context)?;
+        }
 
         let osc133_command_selection = tab.osc133_command_selection;
         let word_separators = tab.word_separators.clone();
+        let mut dragging_in_plugin = None;
         if let Some(pane_at_position) = Self::unselectable_pane_at_position(tab, &position) {
             let relative_position = pane_at_position.relative_position(&position);
             pane_at_position.set_selection_options(osc133_command_selection, &word_separators);
             pane_at_position.start_selection(&relative_position, client_id);
+            let pane_id = pane_at_position.pid();
+            if left_button
+                && matches!(pane_id, PaneId::Plugin(_))
+                && !pane_at_position.supports_mouse_selection()
+            {
+                dragging_in_plugin = Some(pane_id);
+            }
+        }
+        if dragging_in_plugin.is_some() {
+            tab.selecting_with_mouse_in_pane = dragging_in_plugin;
         }
 
         if tab.floating_panes.panes_are_visible() {
@@ -995,6 +1312,9 @@ impl MouseHandler {
             let moved_pane_with_mouse = tab
                 .floating_panes
                 .move_pane_with_mouse(position, search_selectable);
+            if moved_pane_with_mouse && dragging_in_plugin.is_some() {
+                tab.selecting_with_mouse_in_pane = None;
+            }
             let active_pane_id_after = tab
                 .get_active_pane_id(client_id)
                 .ok_or_else(|| anyhow!("Failed to find active pane"))?;
@@ -1131,6 +1451,23 @@ impl MouseHandler {
 
         if leave_clipboard_message {
             Ok(MouseEffect::leave_clipboard_message())
+        } else {
+            Ok(MouseEffect::default())
+        }
+    }
+
+    fn execute_start_moving_floating_pane(
+        tab: &mut Tab,
+        position: Position,
+    ) -> Result<MouseEffect> {
+        let search_selectable = false;
+        if tab
+            .floating_panes
+            .move_pane_with_mouse_from_anywhere(position, search_selectable)
+        {
+            tab.swap_layouts.set_is_floating_damaged();
+            tab.set_force_render();
+            Ok(MouseEffect::state_changed())
         } else {
             Ok(MouseEffect::default())
         }
@@ -1413,10 +1750,60 @@ impl MouseHandler {
         }
 
         if event.alt {
-            if let (Some(passthrough_pane_id), Some(details)) =
-                (ctx.passthrough_pane_id, ctx.clicked_pane.as_ref())
-            {
-                if details.pane_id == passthrough_pane_id
+            if let Some(action) = Self::passthrough_pane_action(event, ctx) {
+                return Ok(action);
+            }
+        }
+
+        let button = mouse_button_of_event(event);
+        let is_wheel = button.map(|button| button.is_wheel()).unwrap_or(false);
+
+        if event.event_type != MouseEventType::Press && !is_wheel {
+            let has_button = event.left || event.right || event.middle;
+            if !has_button {
+                if event.event_type == MouseEventType::Motion && !event.alt {
+                    return Ok(Self::hover_action(event, ctx));
+                }
+                return Ok(MouseAction::NoAction);
+            }
+            return Ok(Self::follow_up_action(event, ctx));
+        }
+
+        let Some(button) = button else {
+            return Ok(MouseAction::NoAction);
+        };
+
+        if button == MouseButton::Left && !event.alt {
+            if let Some(details) = ctx.clicked_pane.as_ref() {
+                if details.on_frame && details.frame_intercepted {
+                    return Ok(MouseAction::FrameIntercepted {
+                        pane_id: details.pane_id,
+                    });
+                }
+            }
+        }
+
+        let on_frame = ctx
+            .clicked_pane
+            .as_ref()
+            .map(|details| details.on_frame)
+            .unwrap_or(false);
+        let binding = ctx
+            .mousebinds
+            .resolve(
+                ctx.input_mode,
+                button,
+                &mouse_modifiers_of_event(event),
+                ctx.click_count,
+                on_frame,
+            )
+            .map(|(_, binding)| binding.clone())
+            .unwrap_or_else(|| MouseBinding::behaviour(MouseBehaviour::PassToApp));
+        let app_first = binding.app_first();
+
+        if !button.is_wheel() && app_first {
+            if let Some(details) = ctx.clicked_pane.as_ref() {
+                if Some(details.pane_id) == ctx.active_pane_id
                     && !details.on_frame
                     && details.terminal_wants_mouse
                 {
@@ -1426,255 +1813,414 @@ impl MouseHandler {
                     });
                 }
             }
+        }
 
-            if event.wheel_up || event.wheel_down {
-                if !ctx.advanced_mouse_actions {
-                    return Ok(MouseAction::NoAction);
+        match binding.kind {
+            MouseBindingKind::Actions(actions) => Ok(match ctx.pane_id_at_position {
+                Some(pane_id) => MouseAction::RunActions { pane_id, actions },
+                None => MouseAction::NoAction,
+            }),
+            MouseBindingKind::Behaviour(behaviour) => Ok(Self::behaviour_action(
+                behaviour, app_first, button, event, ctx,
+            )),
+        }
+    }
+
+    fn passthrough_pane_action(event: &MouseEvent, ctx: &MouseEventContext) -> Option<MouseAction> {
+        let passthrough_pane_id = ctx.passthrough_pane_id?;
+        let details = ctx.clicked_pane.as_ref()?;
+        if details.pane_id == passthrough_pane_id
+            && !details.on_frame
+            && details.terminal_wants_mouse
+        {
+            Some(MouseAction::SendToTerminal {
+                pane_id: details.pane_id,
+                event: *event,
+            })
+        } else {
+            None
+        }
+    }
+
+    fn follow_up_action(event: &MouseEvent, ctx: &MouseEventContext) -> MouseAction {
+        match ctx.press_owner {
+            Some(MousePressOwner::App(pane_id)) => MouseAction::SendToTerminal {
+                pane_id,
+                event: *event,
+            },
+            Some(MousePressOwner::Group) => {
+                match (event.left, event.event_type, ctx.pane_id_at_position) {
+                    (true, MouseEventType::Motion, Some(pane_id)) => MouseAction::GroupAdd(pane_id),
+                    _ => MouseAction::NoAction,
                 }
-                if let Some(pane_id) = ctx.pane_id_at_position {
-                    if event.wheel_up {
-                        return Ok(MouseAction::ScrollToPreviousPrompt { pane_id });
+            },
+            Some(MousePressOwner::Swallow) => MouseAction::NoAction,
+            None => {
+                if event.alt {
+                    return match (event.left, event.event_type, ctx.pane_id_at_position) {
+                        (true, MouseEventType::Motion, Some(pane_id)) => {
+                            MouseAction::GroupAdd(pane_id)
+                        },
+                        _ => MouseAction::NoAction,
+                    };
+                }
+                let Some(details) = &ctx.clicked_pane else {
+                    return MouseAction::NoAction;
+                };
+                let is_active_pane = Some(details.pane_id) == ctx.active_pane_id;
+                if is_active_pane && details.terminal_wants_mouse {
+                    MouseAction::SendToTerminal {
+                        pane_id: details.pane_id,
+                        event: *event,
                     }
-                    return Ok(MouseAction::ScrollToNextPrompt { pane_id });
+                } else {
+                    MouseAction::NoAction
                 }
-                return Ok(MouseAction::NoAction);
-            }
-
-            let is_left_press = event.left && event.event_type == MouseEventType::Press;
-            let is_left_motion = event.left && event.event_type == MouseEventType::Motion;
-
-            if is_left_press {
-                if let Some(pane_id) = ctx.pane_id_at_position {
-                    return Ok(MouseAction::GroupToggle(pane_id));
-                }
-            }
-            if is_left_motion {
-                if let Some(pane_id) = ctx.pane_id_at_position {
-                    return Ok(MouseAction::GroupAdd(pane_id));
-                }
-            }
-            if event.right {
-                return Ok(MouseAction::Ungroup);
-            }
-            return Ok(MouseAction::NoAction);
+            },
         }
+    }
 
-        if event.right {
-            return Ok(Self::determine_right_button_action(event, ctx));
-        }
-
-        if event.wheel_up || event.wheel_down {
-            if event.ctrl && !ctx.mouse_scroll_resize {
-                return Ok(MouseAction::NoAction);
-            }
-            if let Some(pane_id) = ctx.pane_id_at_position {
-                if event.ctrl {
-                    if event.wheel_up {
-                        return Ok(MouseAction::ResizeScrollUp { pane_id });
-                    }
-                    if event.wheel_down {
-                        return Ok(MouseAction::ResizeScrollDown { pane_id });
-                    }
-                }
-                if event.wheel_up {
-                    return Ok(MouseAction::ScrollUp { pane_id, lines: 3 });
-                }
-                if event.wheel_down {
-                    return Ok(MouseAction::ScrollDown { pane_id, lines: 3 });
-                }
-            }
-            return Ok(MouseAction::NoAction);
-        }
-
-        if event.wheel_left || event.wheel_right {
-            if let Some(pane_id) = ctx.pane_id_at_position {
-                if event.wheel_left {
-                    return Ok(MouseAction::ScrollLeft { pane_id, cols: 4 });
-                }
-                if event.wheel_right {
-                    return Ok(MouseAction::ScrollRight { pane_id, cols: 4 });
-                }
-            }
-            return Ok(MouseAction::NoAction);
-        }
-
-        let is_ctrl_left_press =
-            event.ctrl && event.left && event.event_type == MouseEventType::Press;
-        if is_ctrl_left_press {
-            let Some(details) = &ctx.clicked_pane else {
-                return Ok(MouseAction::NoAction);
+    fn hover_action(event: &MouseEvent, ctx: &MouseEventContext) -> MouseAction {
+        let Some(pane_id) = ctx.pane_id_at_position else {
+            return MouseAction::UpdateHover {
+                pane_id: None,
+                position: None,
             };
-            if details.on_frame {
-                if details.frame_intercepted {
-                    return Ok(MouseAction::FrameIntercepted {
-                        pane_id: details.pane_id,
-                    });
+        };
+        let is_active_pane = Some(pane_id) == ctx.active_pane_id;
+        if is_active_pane {
+            return MouseAction::SendToTerminal {
+                pane_id,
+                event: *event,
+            };
+        }
+        if ctx.focus_follows_mouse {
+            return MouseAction::FocusOnHover {
+                pane_id,
+                position: event.position,
+            };
+        }
+        MouseAction::UpdateHover {
+            pane_id: Some(pane_id),
+            position: Some(event.position),
+        }
+    }
+
+    fn behaviour_action(
+        behaviour: MouseBehaviour,
+        app_first: bool,
+        button: MouseButton,
+        event: &MouseEvent,
+        ctx: &MouseEventContext,
+    ) -> MouseAction {
+        let details = ctx.clicked_pane.as_ref();
+        let is_active = |pane_id: PaneId| Some(pane_id) == ctx.active_pane_id;
+        match behaviour {
+            MouseBehaviour::Click => {
+                if button == MouseButton::Left {
+                    Self::left_click_action(event, ctx)
+                } else {
+                    match details {
+                        Some(details) if is_active(details.pane_id) => {
+                            Self::pass_to_app_action(button, event, ctx)
+                        },
+                        _ => Self::focus_action(event, ctx),
+                    }
                 }
-                if let Some(edge) = details.edge {
-                    return Ok(MouseAction::StartResize {
-                        pane_id: details.pane_id,
-                        edge,
-                        is_floating: details.is_floating,
+            },
+            MouseBehaviour::Select => match details {
+                Some(details) if button == MouseButton::Left && !details.on_frame => {
+                    if is_active(details.pane_id) && !details.is_unselectable_plugin {
+                        MouseAction::StartSelection {
+                            pane_id: details.pane_id,
+                            position: event.position,
+                            modifiers: click_modifiers(event),
+                        }
+                    } else {
+                        Self::left_click_action(event, ctx)
+                    }
+                },
+                _ => MouseAction::NoAction,
+            },
+            MouseBehaviour::FocusPane => Self::focus_action(event, ctx),
+            MouseBehaviour::MovePane => {
+                let Some(details) = details else {
+                    return MouseAction::NoAction;
+                };
+                if button != MouseButton::Left {
+                    return MouseAction::NoAction;
+                }
+                let is_pinned_pane = ctx.pinned_selectable == Some(details.pane_id);
+                if details.on_frame {
+                    if ctx.floating_visible || is_pinned_pane {
+                        return MouseAction::StartMovingFloatingPane {
+                            position: event.position,
+                        };
+                    }
+                    if let Some(edge) = details.edge {
+                        return MouseAction::StartResize {
+                            pane_id: details.pane_id,
+                            edge,
+                            is_floating: false,
+                            position: event.position,
+                        };
+                    }
+                    return MouseAction::NoAction;
+                }
+                if details.is_floating && (ctx.floating_visible || is_pinned_pane) {
+                    return MouseAction::StartMovingFloatingPane {
                         position: event.position,
-                    });
+                    };
                 }
-            }
-            if Some(details.pane_id) == ctx.active_pane_id && details.terminal_wants_mouse {
-                return Ok(MouseAction::SendToTerminal {
+                MouseAction::NoAction
+            },
+            MouseBehaviour::ResizePane => match details {
+                Some(details) if button == MouseButton::Left && details.on_frame => {
+                    match details.edge {
+                        Some(edge) => MouseAction::StartResize {
+                            pane_id: details.pane_id,
+                            edge,
+                            is_floating: details.is_floating,
+                            position: event.position,
+                        },
+                        None => MouseAction::NoAction,
+                    }
+                },
+                _ => MouseAction::NoAction,
+            },
+            MouseBehaviour::ToggleFullscreen => match details {
+                Some(details) if !details.is_unselectable_plugin => MouseAction::ToggleFullscreen {
                     pane_id: details.pane_id,
-                    event: *event,
-                });
+                },
+                _ => MouseAction::NoAction,
+            },
+            MouseBehaviour::GroupToggle => match ctx.pane_id_at_position {
+                Some(pane_id) => MouseAction::GroupToggle(pane_id),
+                None => MouseAction::NoAction,
+            },
+            MouseBehaviour::Ungroup => MouseAction::Ungroup,
+            MouseBehaviour::ContextMenu => Self::determine_right_button_action(event, ctx),
+            MouseBehaviour::Scroll(amount) => match (button, ctx.pane_id_at_position) {
+                (MouseButton::ScrollUp, Some(pane_id)) => MouseAction::ScrollUp {
+                    pane_id,
+                    lines: amount,
+                    app_first,
+                },
+                (MouseButton::ScrollDown, Some(pane_id)) => MouseAction::ScrollDown {
+                    pane_id,
+                    lines: amount,
+                    app_first,
+                },
+                (MouseButton::ScrollLeft, Some(pane_id)) => MouseAction::ScrollLeft {
+                    pane_id,
+                    cols: amount,
+                    app_first,
+                },
+                (MouseButton::ScrollRight, Some(pane_id)) => MouseAction::ScrollRight {
+                    pane_id,
+                    cols: amount,
+                    app_first,
+                },
+                _ => MouseAction::NoAction,
+            },
+            MouseBehaviour::ScrollColumns(amount) => match (button, ctx.pane_id_at_position) {
+                (MouseButton::ScrollUp | MouseButton::ScrollLeft, Some(pane_id)) => {
+                    MouseAction::ScrollLeft {
+                        pane_id,
+                        cols: amount,
+                        app_first,
+                    }
+                },
+                (MouseButton::ScrollDown | MouseButton::ScrollRight, Some(pane_id)) => {
+                    MouseAction::ScrollRight {
+                        pane_id,
+                        cols: amount,
+                        app_first,
+                    }
+                },
+                _ => MouseAction::NoAction,
+            },
+            MouseBehaviour::ScrollToPrompt(direction) => {
+                if !ctx.advanced_mouse_actions {
+                    return MouseAction::NoAction;
+                }
+                match (direction, ctx.pane_id_at_position) {
+                    (PromptDirection::Previous, Some(pane_id)) => {
+                        MouseAction::ScrollToPreviousPrompt { pane_id, app_first }
+                    },
+                    (PromptDirection::Next, Some(pane_id)) => {
+                        MouseAction::ScrollToNextPrompt { pane_id, app_first }
+                    },
+                    _ => MouseAction::NoAction,
+                }
+            },
+            MouseBehaviour::ResizeScroll(direction) => {
+                if !ctx.mouse_scroll_resize {
+                    return MouseAction::NoAction;
+                }
+                match (direction, ctx.pane_id_at_position) {
+                    (ResizeScrollDirection::Increase, Some(pane_id)) => {
+                        MouseAction::ResizeScrollUp { pane_id }
+                    },
+                    (ResizeScrollDirection::Decrease, Some(pane_id)) => {
+                        MouseAction::ResizeScrollDown { pane_id }
+                    },
+                    _ => MouseAction::NoAction,
+                }
+            },
+            MouseBehaviour::PassToApp => Self::pass_to_app_action(button, event, ctx),
+            MouseBehaviour::Ignore => MouseAction::NoAction,
+        }
+    }
+
+    fn clicked_pinned_unselectable_plugin(ctx: &MouseEventContext) -> bool {
+        match (&ctx.clicked_pane, ctx.pinned_unselectable) {
+            (Some(details), Some(pinned_id)) => {
+                details.is_unselectable_plugin && details.pane_id == pinned_id && !details.on_frame
+            },
+            _ => false,
+        }
+    }
+
+    fn focus_action(event: &MouseEvent, ctx: &MouseEventContext) -> MouseAction {
+        let Some(details) = &ctx.clicked_pane else {
+            return MouseAction::NoAction;
+        };
+        if !ctx.floating_visible {
+            if let Some(pinned_id) = ctx.pinned_selectable {
+                return MouseAction::ShowFloatingPanesAndFocus { pane_id: pinned_id };
             }
-            if matches!(details.pane_id, PaneId::Plugin(_))
-                && Some(details.pane_id) == ctx.active_pane_id
-                && !details.terminal_wants_mouse
-            {
-                return Ok(MouseAction::StartSelection {
+            if ctx.pinned_unselectable.is_some() && !Self::clicked_pinned_unselectable_plugin(ctx) {
+                return MouseAction::NoAction;
+            }
+        }
+        if Some(details.pane_id) == ctx.active_pane_id && !details.is_unselectable_plugin {
+            return MouseAction::NoAction;
+        }
+        MouseAction::FocusPane {
+            pane_id: details.pane_id,
+            position: event.position,
+        }
+    }
+
+    fn left_click_action(event: &MouseEvent, ctx: &MouseEventContext) -> MouseAction {
+        let Some(details) = &ctx.clicked_pane else {
+            return MouseAction::NoAction;
+        };
+
+        let is_active_pane = Some(details.pane_id) == ctx.active_pane_id;
+        let is_pinned_pane = ctx
+            .pinned_selectable
+            .map(|id| id == details.pane_id)
+            .unwrap_or(false);
+
+        if details.on_frame {
+            let should_start_moving = ctx.floating_visible || is_pinned_pane;
+            if should_start_moving {
+                return MouseAction::StartMovingFloatingPane {
+                    position: event.position,
+                };
+            }
+
+            if let Some(edge) = details.edge {
+                return MouseAction::StartResize {
+                    pane_id: details.pane_id,
+                    edge,
+                    is_floating: false,
+                    position: event.position,
+                };
+            }
+        }
+
+        if is_active_pane {
+            return MouseAction::StartSelection {
+                pane_id: details.pane_id,
+                position: event.position,
+                modifiers: click_modifiers(event),
+            };
+        }
+
+        if !ctx.floating_visible {
+            if let Some(pinned_id) = ctx.pinned_selectable {
+                return MouseAction::ShowFloatingPanesAndFocus { pane_id: pinned_id };
+            }
+            if Self::clicked_pinned_unselectable_plugin(ctx) {
+                return MouseAction::FocusPane {
+                    pane_id: details.pane_id,
+                    position: event.position,
+                };
+            }
+            if ctx.pinned_unselectable.is_some() {
+                return MouseAction::NoAction;
+            }
+        }
+
+        if ctx.mouse_click_through && !ctx.focus_follows_mouse {
+            MouseAction::FocusPaneAndClickThrough {
+                pane_id: details.pane_id,
+                position: event.position,
+                event: *event,
+            }
+        } else {
+            MouseAction::FocusPane {
+                pane_id: details.pane_id,
+                position: event.position,
+            }
+        }
+    }
+
+    fn pass_to_app_action(
+        button: MouseButton,
+        event: &MouseEvent,
+        ctx: &MouseEventContext,
+    ) -> MouseAction {
+        if button.is_wheel() {
+            let Some(pane_id) = ctx.pane_id_at_position else {
+                return MouseAction::NoAction;
+            };
+            let is_plugin = matches!(pane_id, PaneId::Plugin(_));
+            if is_plugin || Some(pane_id) == ctx.active_pane_id {
+                return MouseAction::PassWheelToApp { pane_id, button };
+            }
+            return MouseAction::NoAction;
+        }
+        let Some(details) = &ctx.clicked_pane else {
+            return MouseAction::NoAction;
+        };
+        if details.is_unselectable_plugin {
+            return match button {
+                MouseButton::Left => MouseAction::FocusPane {
+                    pane_id: details.pane_id,
+                    position: event.position,
+                },
+                MouseButton::Right => MouseAction::ForwardRightClickToPlugin {
+                    pane_id: details.pane_id,
+                    position: event.position,
+                },
+                _ => MouseAction::NoAction,
+            };
+        }
+        if Some(details.pane_id) != ctx.active_pane_id {
+            return MouseAction::NoAction;
+        }
+        if matches!(details.pane_id, PaneId::Plugin(_)) {
+            return match button {
+                MouseButton::Left if !details.on_frame => MouseAction::StartSelection {
                     pane_id: details.pane_id,
                     position: event.position,
                     modifiers: click_modifiers(event),
-                });
-            }
-            return Ok(MouseAction::NoAction);
-        }
-
-        let is_plain_left_press =
-            event.left && event.event_type == MouseEventType::Press && !event.ctrl && !event.alt;
-        if is_plain_left_press {
-            let Some(details) = &ctx.clicked_pane else {
-                return Ok(MouseAction::NoAction);
-            };
-
-            let is_active_pane = Some(details.pane_id) == ctx.active_pane_id;
-            let is_pinned_pane = ctx
-                .pinned_selectable
-                .map(|id| id == details.pane_id)
-                .unwrap_or(false);
-
-            if details.on_frame {
-                if details.frame_intercepted {
-                    return Ok(MouseAction::FrameIntercepted {
-                        pane_id: details.pane_id,
-                    });
-                }
-
-                let should_start_moving = ctx.floating_visible || is_pinned_pane;
-                if should_start_moving {
-                    return Ok(MouseAction::StartMovingFloatingPane {
-                        position: event.position,
-                    });
-                }
-
-                if let Some(edge) = details.edge {
-                    return Ok(MouseAction::StartResize {
-                        pane_id: details.pane_id,
-                        edge,
-                        is_floating: false,
-                        position: event.position,
-                    });
-                }
-            }
-
-            if is_active_pane {
-                if details.terminal_wants_mouse {
-                    return Ok(MouseAction::SendToTerminal {
-                        pane_id: details.pane_id,
-                        event: *event,
-                    });
-                } else {
-                    return Ok(MouseAction::StartSelection {
-                        pane_id: details.pane_id,
-                        position: event.position,
-                        modifiers: click_modifiers(event),
-                    });
-                }
-            }
-
-            if !ctx.floating_visible {
-                if let Some(pinned_id) = ctx.pinned_selectable {
-                    return Ok(MouseAction::ShowFloatingPanesAndFocus { pane_id: pinned_id });
-                }
-                if ctx.pinned_unselectable.is_some() {
-                    return Ok(MouseAction::NoAction);
-                }
-            }
-
-            if ctx.mouse_click_through && !ctx.focus_follows_mouse {
-                return Ok(MouseAction::FocusPaneAndClickThrough {
+                },
+                MouseButton::Right if !details.on_frame => MouseAction::ForwardRightClickToPlugin {
                     pane_id: details.pane_id,
                     position: event.position,
-                    event: *event,
-                });
-            } else {
-                return Ok(MouseAction::FocusPane {
-                    pane_id: details.pane_id,
-                    position: event.position,
-                });
-            }
-        }
-
-        if event.middle {
-            let Some(pane_id) = ctx.pane_id_at_position else {
-                return Ok(MouseAction::NoAction);
+                },
+                _ => MouseAction::NoAction,
             };
-            let is_active_pane = Some(pane_id) == ctx.active_pane_id;
-            if is_active_pane {
-                return Ok(MouseAction::SendToTerminal {
-                    pane_id,
-                    event: *event,
-                });
-            }
-            return Ok(MouseAction::NoAction);
         }
-
-        let is_left_motion_or_release = event.left
-            && (event.event_type == MouseEventType::Motion
-                || event.event_type == MouseEventType::Release);
-        if is_left_motion_or_release {
-            let Some(details) = &ctx.clicked_pane else {
-                return Ok(MouseAction::NoAction);
-            };
-            let is_active_pane = Some(details.pane_id) == ctx.active_pane_id;
-            if is_active_pane && details.terminal_wants_mouse {
-                return Ok(MouseAction::SendToTerminal {
-                    pane_id: details.pane_id,
-                    event: *event,
-                });
-            }
-            return Ok(MouseAction::NoAction);
+        MouseAction::SendToTerminal {
+            pane_id: details.pane_id,
+            event: *event,
         }
-
-        let is_buttonless_motion = event.event_type == MouseEventType::Motion
-            && !event.left
-            && !event.right
-            && !event.middle;
-        if is_buttonless_motion {
-            let Some(pane_id) = ctx.pane_id_at_position else {
-                return Ok(MouseAction::UpdateHover {
-                    pane_id: None,
-                    position: None,
-                });
-            };
-            let is_active_pane = Some(pane_id) == ctx.active_pane_id;
-            if is_active_pane {
-                return Ok(MouseAction::SendToTerminal {
-                    pane_id,
-                    event: *event,
-                });
-            }
-            if ctx.focus_follows_mouse {
-                return Ok(MouseAction::FocusOnHover {
-                    pane_id,
-                    position: event.position,
-                });
-            }
-            return Ok(MouseAction::UpdateHover {
-                pane_id: Some(pane_id),
-                position: Some(event.position),
-            });
-        }
-
-        Ok(MouseAction::NoAction)
     }
 
     fn determine_right_button_action(event: &MouseEvent, ctx: &MouseEventContext) -> MouseAction {
@@ -1692,13 +2238,6 @@ impl MouseHandler {
         let Some(details) = ctx.clicked_pane.as_ref() else {
             return MouseAction::NoAction;
         };
-        let pane_may_receive_mouse = ctx.active_pane_id == Some(details.pane_id);
-        if pane_may_receive_mouse && !details.on_frame && details.terminal_wants_mouse {
-            return MouseAction::SendToTerminal {
-                pane_id: details.pane_id,
-                event: *event,
-            };
-        }
         if event.event_type != MouseEventType::Press {
             return MouseAction::NoAction;
         }
@@ -1725,30 +2264,10 @@ impl MouseHandler {
         tab: &'a mut Tab,
         point: &Position,
     ) -> Option<&'a mut Box<dyn Pane>> {
-        // the repetition in this function is to appease the borrow checker, I don't like it either
-        let floating_panes_are_visible = tab.floating_panes.panes_are_visible();
-        if floating_panes_are_visible {
-            if let Ok(Some(clicked_pane_id)) = tab.floating_panes.get_pane_id_at(point, true) {
-                if let Some(pane) = tab.floating_panes.get_pane_mut(clicked_pane_id) {
-                    if !pane.selectable() {
-                        return Some(pane);
-                    }
-                }
-            } else if let Ok(Some(clicked_pane_id)) = tab.get_pane_id_at(point, false) {
-                if let Some(pane) = tab.tiled_panes.get_pane_mut(clicked_pane_id) {
-                    if !pane.selectable() {
-                        return Some(pane);
-                    }
-                }
-            }
-        } else if let Ok(Some(clicked_pane_id)) = tab.get_pane_id_at(point, false) {
-            if let Some(pane) = tab.tiled_panes.get_pane_mut(clicked_pane_id) {
-                if !pane.selectable() {
-                    return Some(pane);
-                }
-            }
-        }
-        None
+        Self::get_pane_at(tab, point, false)
+            .ok()
+            .flatten()
+            .filter(|pane| !pane.selectable())
     }
 
     fn focus_pane_at(tab: &mut Tab, point: &Position, client_id: ClientId) -> Result<()> {
@@ -1796,6 +2315,7 @@ impl MouseHandler {
         tab: &mut Tab,
         point: &Position,
         lines: usize,
+        app_first: bool,
         client_id: ClientId,
     ) -> Result<MouseEffect> {
         let err_context = || {
@@ -1804,10 +2324,15 @@ impl MouseHandler {
 
         if let Some(pane) = Self::get_pane_at(tab, point, false).with_context(err_context)? {
             let relative_position = pane.relative_position(point);
-            if let Some(mouse_event) = pane.mouse_scroll_up(&relative_position) {
+            let app_report = if app_first {
+                pane.mouse_scroll_up(&relative_position)
+            } else {
+                None
+            };
+            if let Some(mouse_event) = app_report {
                 tab.write_to_terminal_at(mouse_event.into_bytes(), point, client_id)
                     .with_context(err_context)?;
-            } else if pane.is_alternate_mode_active() {
+            } else if app_first && pane.is_alternate_mode_active() {
                 // separate writes so each sequence gets adjusted for cursor keys mode
                 for _ in 0..lines {
                     tab.write_to_terminal_at("\u{1b}[A".as_bytes().to_owned(), point, client_id)
@@ -1824,6 +2349,7 @@ impl MouseHandler {
         tab: &mut Tab,
         point: &Position,
         lines: usize,
+        app_first: bool,
         client_id: ClientId,
     ) -> Result<MouseEffect> {
         let err_context = || {
@@ -1834,10 +2360,15 @@ impl MouseHandler {
 
         if let Some(pane) = Self::get_pane_at(tab, point, false).with_context(err_context)? {
             let relative_position = pane.relative_position(point);
-            if let Some(mouse_event) = pane.mouse_scroll_down(&relative_position) {
+            let app_report = if app_first {
+                pane.mouse_scroll_down(&relative_position)
+            } else {
+                None
+            };
+            if let Some(mouse_event) = app_report {
                 tab.write_to_terminal_at(mouse_event.into_bytes(), point, client_id)
                     .with_context(err_context)?;
-            } else if pane.is_alternate_mode_active() {
+            } else if app_first && pane.is_alternate_mode_active() {
                 // separate writes so each sequence gets adjusted for cursor keys mode
                 for _ in 0..lines {
                     tab.write_to_terminal_at("\u{1b}[B".as_bytes().to_owned(), point, client_id)
@@ -1860,17 +2391,21 @@ impl MouseHandler {
         tab: &mut Tab,
         pane_id: PaneId,
         to_previous_prompt: bool,
+        app_first: bool,
         event: &MouseEvent,
         client_id: ClientId,
     ) -> Result<MouseEffect> {
         let err_context =
             || format!("failed to jump to prompt in pane {pane_id:?} for client {client_id}");
 
-        let report_for_pane = tab.get_pane_with_id(pane_id).and_then(|pane| {
-            let mut event_for_pane = *event;
-            event_for_pane.position = pane.relative_position(&event.position);
-            pane.mouse_event(&event_for_pane, client_id)
-        });
+        let report_for_pane = tab
+            .get_pane_with_id(pane_id)
+            .filter(|_| app_first)
+            .and_then(|pane| {
+                let mut event_for_pane = *event;
+                event_for_pane.position = pane.relative_position(&event.position);
+                pane.mouse_event(&event_for_pane, client_id)
+            });
         if let Some(report_for_pane) = report_for_pane {
             tab.write_to_terminal_at(report_for_pane.into_bytes(), &event.position, client_id)
                 .with_context(err_context)?;
@@ -1891,6 +2426,7 @@ impl MouseHandler {
         tab: &mut Tab,
         point: &Position,
         cols: usize,
+        app_first: bool,
         client_id: ClientId,
     ) -> Result<MouseEffect> {
         let err_context = || {
@@ -1901,7 +2437,12 @@ impl MouseHandler {
 
         if let Some(pane) = Self::get_pane_at(tab, point, false).with_context(err_context)? {
             let relative_position = pane.relative_position(point);
-            if let Some(mouse_event) = pane.mouse_scroll_left(&relative_position) {
+            let app_report = if app_first {
+                pane.mouse_scroll_left(&relative_position)
+            } else {
+                None
+            };
+            if let Some(mouse_event) = app_report {
                 tab.write_to_terminal_at(mouse_event.into_bytes(), point, client_id)
                     .with_context(err_context)?;
             } else {
@@ -1921,6 +2462,7 @@ impl MouseHandler {
         tab: &mut Tab,
         point: &Position,
         cols: usize,
+        app_first: bool,
         client_id: ClientId,
     ) -> Result<MouseEffect> {
         let err_context = || {
@@ -1931,7 +2473,12 @@ impl MouseHandler {
 
         if let Some(pane) = Self::get_pane_at(tab, point, false).with_context(err_context)? {
             let relative_position = pane.relative_position(point);
-            if let Some(mouse_event) = pane.mouse_scroll_right(&relative_position) {
+            let app_report = if app_first {
+                pane.mouse_scroll_right(&relative_position)
+            } else {
+                None
+            };
+            if let Some(mouse_event) = app_report {
                 tab.write_to_terminal_at(mouse_event.into_bytes(), point, client_id)
                     .with_context(err_context)?;
             } else {
@@ -2082,7 +2629,185 @@ mod tests {
             mouse_scroll_resize,
             passthrough_pane_id: None,
             context_menu_enabled: true,
+            mousebinds: zellij_utils::input::config_settings::default_config()
+                .mousebinds
+                .clone(),
+            input_mode: InputMode::Normal,
+            click_count: 1,
+            press_owner: None,
         }
+    }
+
+    fn custom_mousebinds(text: &str) -> Arc<Mousebinds> {
+        zellij_utils::input::config::Config::from_kdl(
+            text,
+            Some(zellij_utils::input::config::Config::from_default_assets().unwrap()),
+        )
+        .unwrap()
+        .mousebinds
+        .clone()
+    }
+
+    fn record(
+        button: MouseButton,
+        modifiers: &[KeyModifier],
+        position: Position,
+        time: Instant,
+        count: u8,
+    ) -> MouseClickRecord {
+        MouseClickRecord {
+            button,
+            modifiers: modifiers.iter().copied().collect(),
+            position,
+            time,
+            count,
+        }
+    }
+
+    #[test]
+    fn a_quick_second_click_on_the_same_cell_counts_up_to_three_then_starts_again() {
+        let now = Instant::now();
+        let position = Position::new(2, 3);
+        let none = BTreeSet::new();
+        assert_eq!(
+            next_click_count(None, MouseButton::Left, &none, position, now),
+            1
+        );
+        for (previous_count, expected) in [(1, 2), (2, 3), (3, 1)] {
+            let previous = record(MouseButton::Left, &[], position, now, previous_count);
+            assert_eq!(
+                next_click_count(Some(&previous), MouseButton::Left, &none, position, now),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn a_different_button_modifier_cell_or_a_late_click_starts_counting_again() {
+        let now = Instant::now();
+        let position = Position::new(2, 3);
+        let none = BTreeSet::new();
+        let previous = record(MouseButton::Left, &[], position, now, 1);
+        assert_eq!(
+            next_click_count(Some(&previous), MouseButton::Right, &none, position, now),
+            1
+        );
+        let ctrl: BTreeSet<KeyModifier> = [KeyModifier::Ctrl].into_iter().collect();
+        assert_eq!(
+            next_click_count(Some(&previous), MouseButton::Left, &ctrl, position, now),
+            1
+        );
+        assert_eq!(
+            next_click_count(
+                Some(&previous),
+                MouseButton::Left,
+                &none,
+                Position::new(2, 4),
+                now
+            ),
+            1
+        );
+        let late = now + std::time::Duration::from_millis(CLICK_TIME_THRESHOLD_MS as u64 + 1);
+        assert_eq!(
+            next_click_count(Some(&previous), MouseButton::Left, &none, position, late),
+            1
+        );
+        let in_time = now + std::time::Duration::from_millis(CLICK_TIME_THRESHOLD_MS as u64);
+        assert_eq!(
+            next_click_count(Some(&previous), MouseButton::Left, &none, position, in_time),
+            2
+        );
+    }
+
+    #[test]
+    fn scroll_columns_on_the_vertical_wheel_scrolls_sideways() {
+        let mut context = context_with(clicked(PaneId::Terminal(1)));
+        context.mousebinds = custom_mousebinds(
+            "mousebinds {\n    shared {\n        bind \"ScrollUp\" { ScrollColumns 5; }\n        bind \"ScrollDown\" { ScrollColumns 6; }\n    }\n}\n",
+        );
+        let position = Position::new(3, 4);
+        assert_eq!(
+            MouseHandler::determine_mouse_action(
+                &MouseEvent::new_scroll_up_event(position),
+                &context
+            )
+            .unwrap(),
+            MouseAction::ScrollLeft {
+                pane_id: PaneId::Terminal(1),
+                cols: 5,
+                app_first: true,
+            }
+        );
+        assert_eq!(
+            MouseHandler::determine_mouse_action(
+                &MouseEvent::new_scroll_down_event(position),
+                &context
+            )
+            .unwrap(),
+            MouseAction::ScrollRight {
+                pane_id: PaneId::Terminal(1),
+                cols: 6,
+                app_first: true,
+            }
+        );
+    }
+
+    #[test]
+    fn app_first_false_on_the_wheel_is_carried_to_the_scroll_action() {
+        let mut details = clicked(PaneId::Terminal(1));
+        details.terminal_wants_mouse = true;
+        let mut context = context_with(details);
+        context.mousebinds = custom_mousebinds(
+            "mousebinds {\n    shared {\n        bind \"ScrollUp\" app_first=false { Scroll 2; }\n    }\n}\n",
+        );
+        assert_eq!(
+            MouseHandler::determine_mouse_action(
+                &MouseEvent::new_scroll_up_event(Position::new(3, 4)),
+                &context
+            )
+            .unwrap(),
+            MouseAction::ScrollUp {
+                pane_id: PaneId::Terminal(1),
+                lines: 2,
+                app_first: false,
+            }
+        );
+    }
+
+    #[test]
+    fn move_pane_dragged_from_inside_a_visible_floating_pane_starts_moving_it() {
+        let mut details = clicked(PaneId::Terminal(2));
+        details.is_floating = true;
+        let mut context = context_with(details);
+        context.floating_visible = true;
+        context.mousebinds = custom_mousebinds(
+            "mousebinds {\n    shared {\n        bind \"Alt Left\" { MovePane; }\n    }\n}\n",
+        );
+        let position = Position::new(3, 4);
+        assert_eq!(
+            MouseHandler::determine_mouse_action(
+                &MouseEvent::new_left_press_with_alt_event(position),
+                &context
+            )
+            .unwrap(),
+            MouseAction::StartMovingFloatingPane { position }
+        );
+    }
+
+    #[test]
+    fn move_pane_inside_a_tiled_pane_does_nothing() {
+        let mut context = context_with(clicked(PaneId::Terminal(1)));
+        context.mousebinds = custom_mousebinds(
+            "mousebinds {\n    shared {\n        bind \"Alt Left\" { MovePane; }\n    }\n}\n",
+        );
+        assert_eq!(
+            MouseHandler::determine_mouse_action(
+                &MouseEvent::new_left_press_with_alt_event(Position::new(3, 4)),
+                &context
+            )
+            .unwrap(),
+            MouseAction::NoAction
+        );
     }
 
     #[test]

@@ -3964,6 +3964,21 @@ fn test_client_messages() {
         is_cli_client: true,
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::MoveTabToPosition { id: 2, position: 0 },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::MoveTabToPosition {
+            id: 2,
+            position: u64::MAX,
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::SetPaneFrameStyle(PaneFrameStyle::Full),
         terminal_id: Some(1),
         client_id: Some(100),

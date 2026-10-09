@@ -313,6 +313,8 @@ load_plugins {
 //         item "Rename tab" { StartRenameTabByTabId; }
 //         item "Move tab left" { MoveTabByTabId "left"; }
 //         item "Move tab right" { MoveTabByTabId "right"; }
+//         item "Move tab to start" { MoveTabToPosition "start"; }
+//         item "Move tab to end" { MoveTabToPosition "end"; }
 //         separator
 //         item "Close tab" { CloseTabById; }
 //     }

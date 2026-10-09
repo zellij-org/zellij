@@ -478,6 +478,7 @@ impl KeysScreen {
     }
     fn switch_from_custom(&mut self, preset: &str, saved: Option<&str>) {
         unset_config_setting(SettingKey::Keybinds);
+        unset_config_setting(SettingKey::Mousebinds);
         if self.configured_default_mode.is_some() {
             unset_config_setting(SettingKey::DefaultMode);
         }
@@ -573,7 +574,11 @@ impl KeysScreen {
         }
     }
     fn open_switch_dialog(&mut self, preset: String) {
-        let mut message = format!("Your keybinds block has clear-defaults=true, so it defines every key itself. Switching removes that block and uses the {} preset instead. Save your keybindings as a preset first to be able to go back to them by choosing it here.", preset);
+        let mut message = if self.selection.has_own_mousebindings {
+            format!("Your keybinds block has clear-defaults=true, so it defines every key itself. Switching removes that block and your own mouse bindings, and uses the {} preset instead. Save your keybindings and mouse bindings as a preset first to be able to go back to them by choosing it here.", preset)
+        } else {
+            format!("Your keybinds block has clear-defaults=true, so it defines every key itself. Switching removes that block and uses the {} preset instead. Save your keybindings as a preset first to be able to go back to them by choosing it here.", preset)
+        };
         if let Some(default_mode) = &self.configured_default_mode {
             message.push_str(&format!(
                 " The default mode (\"{}\") is removed as well, so the preset's own starting mode applies.",

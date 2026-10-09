@@ -2034,6 +2034,16 @@ pub fn reset_keys(keys: Vec<(InputMode, KeyWithModifier)>, write_config_to_disk:
     unsafe { host_run_plugin_command() };
 }
 
+pub fn reset_mousebinds(triggers: Vec<(InputMode, MouseTrigger)>, write_config_to_disk: bool) {
+    let plugin_command = PluginCommand::ResetMousebinds {
+        triggers,
+        write_config_to_disk,
+    };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 pub fn save_keybinds_as_preset(new_name: &str) -> Result<String, String> {
     use zellij_utils::plugin_api::plugin_command::copy_keybind_preset_response::Result as CopyResult;
     let plugin_command = PluginCommand::SaveKeybindsAsPreset {

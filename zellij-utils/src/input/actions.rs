@@ -744,6 +744,10 @@ pub enum Action {
         id: u64,
         direction: Direction,
     },
+    MoveTabToPosition {
+        id: u64,
+        position: u64,
+    },
     StartRenameTabByTabId {
         id: u64,
     },
