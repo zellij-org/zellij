@@ -250,6 +250,8 @@ enum CommandName {
   SetSelfCollapsed = 256;
   SetCollapsedSlot = 257;
   ResetMousebinds = 258;
+  Paste = 259;
+  PasteToPaneId = 260;
 }
 
 message PluginCommand {
@@ -440,6 +442,8 @@ message PluginCommand {
     SetSelfCollapsedPayload set_self_collapsed_payload = 199;
     SetCollapsedSlotPayload set_collapsed_slot_payload = 200;
     ResetMousebindsPayload reset_mousebinds_payload = 201;
+    string paste_payload = 202;
+    PasteToPaneIdPayload paste_to_pane_id_payload = 203;
   }
 }
 
@@ -948,6 +952,11 @@ message CloseTabWithIndexPayload {
 
 message WriteCharsToPaneIdPayload {
   string chars_to_write = 1;
+  PaneId pane_id = 2;
+}
+
+message PasteToPaneIdPayload {
+  string chars_to_paste = 1;
   PaneId pane_id = 2;
 }
 
