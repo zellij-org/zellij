@@ -1153,6 +1153,10 @@ mod hover_tests {
                     InputMode::Pane,
                     vec![(ctrl('p'), to_mode(InputMode::Normal))],
                 ),
+                (
+                    InputMode::Locked,
+                    vec![(ctrl('g'), to_mode(InputMode::Normal))],
+                ),
             ],
             ..Default::default()
         }
@@ -1184,15 +1188,14 @@ mod hover_tests {
     fn a_resting_mouse_keeps_its_hover_when_the_bar_changes_under_it() {
         let mut bar = status_bar(InputMode::Normal);
         bar.render_client(1, 200, 0, 1);
-        let pane_col = region_start(&bar, &to_mode(InputMode::Pane));
-        assert!(bar.update_client(&Event::Mouse(Mouse::Hover(0, pane_col)), 1, Some(0)));
-        assert_eq!(bar.clients[&1].hovered, Some(to_mode(InputMode::Pane)));
+        let lock_col = region_start(&bar, &to_mode(InputMode::Locked));
+        assert!(bar.update_client(&Event::Mouse(Mouse::Hover(0, lock_col)), 1, Some(0)));
+        assert_eq!(bar.clients[&1].hovered, Some(to_mode(InputMode::Locked)));
 
-        bar.update_client(&Event::Mouse(Mouse::LeftClick(0, pane_col)), 1, Some(0));
-        bar.update_client(&Event::ModeUpdate(mode_info(InputMode::Pane)), 1, Some(0));
+        bar.update_client(&Event::Mouse(Mouse::LeftClick(0, lock_col)), 1, Some(0));
+        bar.update_client(&Event::ModeUpdate(mode_info(InputMode::Locked)), 1, Some(0));
         bar.render_client(1, 200, 0, 1);
-        let back_col = region_start(&bar, &to_mode(InputMode::Normal));
-        assert!(back_col <= pane_col);
+        assert_eq!(region_start(&bar, &to_mode(InputMode::Normal)), lock_col);
         assert_eq!(bar.clients[&1].hovered, Some(to_mode(InputMode::Normal)));
     }
 
