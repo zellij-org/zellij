@@ -326,6 +326,7 @@ message Action {
     StartRenameTabByTabIdAction start_rename_tab_by_tab_id = 159;
     DismissInfoPopupsAction dismiss_info_popups = 160;
     OpenContextMenuAction open_context_menu = 161;
+    MoveTabToPositionAction move_tab_to_position = 162;
   }
 }
 
@@ -1286,7 +1287,8 @@ message Options {
   optional string keybinds_secondary = 73;
   optional string keybinds_unlock = 74;
   optional bool context_menu_enabled = 75;
-  optional bool nested_session_ancestor_tab_highlight = 76;
+  optional bool dangerously_allow_web_serving_without_a_certificate = 76;
+  optional bool nested_session_ancestor_tab_highlight = 77;
 }
 
 enum OnForceClose {
@@ -1364,6 +1366,7 @@ message NextSwapLayoutByTabIdAction { uint64 id = 1; }
 message ApplyTiledSwapLayoutByTabIdAction { uint64 id = 1; string name = 2; }
 message ApplyFloatingSwapLayoutByTabIdAction { uint64 id = 1; string name = 2; }
 message MoveTabByTabIdAction { uint64 id = 1; Direction direction = 2; }
+message MoveTabToPositionAction { uint64 id = 1; uint64 position = 2; }
 message TogglePaneInGroupByPaneIdAction { PaneId pane_id = 1; }
 message StartRenamePaneByPaneIdAction { PaneId pane_id = 1; }
 message StartRenameTabByTabIdAction { uint64 id = 1; }

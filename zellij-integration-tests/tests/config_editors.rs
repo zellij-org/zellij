@@ -8,15 +8,17 @@ use zellij_integration_tests::{
 const ARROW_DOWN: &[u8] = b"\x1b[B";
 const ARROW_UP: &[u8] = b"\x1b[A";
 const ARROW_LEFT: &[u8] = b"\x1b[D";
+const ARROW_RIGHT: &[u8] = b"\x1b[C";
 const SHIFT_DOWN: &[u8] = b"\x1b[1;2B";
 const DELETE: &[u8] = b"\x1b[3~";
 const END: &[u8] = b"\x1b[F";
 const BACKSPACE: &[u8] = &[0x7f];
 
 const KEYS_PAGE: usize = 2;
-const MENU_PAGE: usize = 4;
-const THEMES_PAGE: usize = 5;
-const PLUGINS_PAGE: usize = 11;
+const MOUSE_BINDINGS_PAGE: usize = 4;
+const MENU_PAGE: usize = 5;
+const THEMES_PAGE: usize = 6;
+const PLUGINS_PAGE: usize = 12;
 
 fn open_settings(zellij: &TestSession) {
     zellij.send_stdin(&keys::ctrl('o'));
@@ -770,4 +772,286 @@ fn menu_items_move_with_shift_arrows_and_the_menu_search_finds_them() {
             && !grid_snapshot.contains("New floating pane")
     });
     zellij.quit();
+}
+
+fn wait_for_mouse_bindings_page(zellij: &TestSession) {
+    zellij.wait_until("mouse bindings page shown", |grid_snapshot| {
+        grid_snapshot.contains("From preset:") && grid_snapshot.contains("Mouse bindings")
+    });
+}
+
+fn enter_mouse_binding_search(zellij: &TestSession) {
+    zellij.send_stdin(&keys::TAB);
+    zellij.send_stdin(&keys::key('/'));
+    zellij.wait_until("the mouse binding search is focused", |grid_snapshot| {
+        grid_snapshot.contains("- search mouse bindings and actions")
+    });
+}
+
+fn open_mouse_binding_search(zellij: &TestSession) {
+    open_settings(zellij);
+    for _ in 0..MOUSE_BINDINGS_PAGE {
+        zellij.send_stdin(ARROW_DOWN);
+    }
+    wait_for_mouse_bindings_page(zellij);
+    enter_mouse_binding_search(zellij);
+}
+
+fn open_mouse_bindings(zellij: &TestSession) {
+    open_mouse_binding_search(zellij);
+    for _ in 0..3 {
+        zellij.send_stdin(ARROW_DOWN);
+    }
+    zellij.wait_until("mouse binding list focused", |grid_snapshot| {
+        grid_snapshot.contains("<Del> - delete")
+    });
+}
+
+fn start_add_mouse_binding(zellij: &TestSession, button_steps: usize) {
+    zellij.send_stdin(&keys::key('a'));
+    zellij.wait_until("mouse binding form shown", |grid_snapshot| {
+        grid_snapshot.contains("Add Mouse Binding") && grid_snapshot.contains("Button")
+    });
+    for _ in 0..button_steps {
+        zellij.send_stdin(ARROW_RIGHT);
+    }
+    for _ in 0..7 {
+        zellij.send_stdin(ARROW_DOWN);
+    }
+    zellij.send_stdin(&keys::ENTER);
+}
+
+fn press_mouse_form_done(zellij: &TestSession) {
+    zellij.send_stdin(ARROW_DOWN);
+    zellij.send_stdin(ARROW_DOWN);
+    zellij.send_stdin(&keys::ENTER);
+}
+
+fn middle_click(zellij: &TestSession, column: usize, line: usize) {
+    zellij.send_stdin(format!("\u{1b}[<1;{};{}M", column, line).as_bytes());
+    zellij.send_stdin(format!("\u{1b}[<1;{};{}m", column, line).as_bytes());
+}
+
+#[test]
+fn a_mouse_binding_added_in_normal_mode_works_live_and_saves_only_its_bind_line() {
+    let mut zellij = TestRunner::new(TERMINAL_SIZE)
+        .with_config("mouse_mode true")
+        .start();
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+    let config_file_path = zellij.config_file_path().unwrap();
+    let original = std::fs::read_to_string(&config_file_path).unwrap();
+    open_mouse_bindings(&zellij);
+
+    start_add_mouse_binding(&zellij, 2);
+    choose_action(&zellij, "newtab", "NewTab");
+    press_mouse_form_done(&zellij);
+    zellij.wait_until(
+        "the new mouse binding is listed as unsaved",
+        |grid_snapshot| {
+            !grid_snapshot.contains("Add Mouse Binding")
+                && grid_snapshot.contains("1 unsaved change ")
+        },
+    );
+    close_settings(&zellij);
+
+    middle_click(&zellij, 30, 10);
+    zellij.expect_pty_spawn();
+    zellij.wait_until("the middle click opened a tab", |grid_snapshot| {
+        grid_snapshot.contains("Tab #2")
+    });
+
+    open_settings(&zellij);
+    save_and_wait(&zellij);
+    let saved = std::fs::read_to_string(&config_file_path).unwrap();
+    let added = "mousebinds {\n    shared {\n        bind \"Middle\" { NewTab; }\n    }\n}\n";
+    assert!(saved.contains(added), "{}", saved);
+    assert_eq!(saved.replacen(added, "", 1), original);
+    zellij.quit();
+}
+
+#[test]
+fn a_mouse_binding_added_for_one_mode_saves_a_block_for_that_mode_only() {
+    let mut zellij = start_zellij();
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+    let config_file_path = zellij.config_file_path().unwrap();
+    let original = std::fs::read_to_string(&config_file_path).unwrap();
+    open_mouse_binding_search(&zellij);
+    zellij.send_stdin(ARROW_DOWN);
+    zellij.wait_until("the mode dropdown is focused", |grid_snapshot| {
+        grid_snapshot.contains("choose mode") && grid_snapshot.contains("All modes")
+    });
+    zellij.send_stdin(ARROW_RIGHT);
+    zellij.wait_until("normal mode is chosen", |grid_snapshot| {
+        grid_snapshot.contains("Normal") && !grid_snapshot.contains("All modes")
+    });
+    zellij.send_stdin(ARROW_DOWN);
+    zellij.send_stdin(ARROW_DOWN);
+    zellij.wait_until("mouse binding list focused", |grid_snapshot| {
+        grid_snapshot.contains("<Del> - delete")
+    });
+
+    start_add_mouse_binding(&zellij, 2);
+    choose_action(&zellij, "newtab", "NewTab");
+    press_mouse_form_done(&zellij);
+    zellij.wait_until(
+        "the new mouse binding is listed as unsaved",
+        |grid_snapshot| {
+            !grid_snapshot.contains("Add Mouse Binding")
+                && grid_snapshot.contains("1 unsaved change ")
+                && grid_snapshot.contains("Bound Middle in Normal mode")
+        },
+    );
+    save_and_wait(&zellij);
+    let saved = std::fs::read_to_string(&config_file_path).unwrap();
+    let added = "mousebinds {\n    normal {\n        bind \"Middle\" { NewTab; }\n    }\n}\n";
+    assert!(saved.contains(added), "{}", saved);
+    assert_eq!(saved.replacen(added, "", 1), original);
+    zellij.quit();
+}
+
+#[test]
+fn a_removed_preset_mouse_binding_is_written_as_unbind_and_reset_back() {
+    let mut zellij = start_zellij();
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+    let config_file_path = zellij.config_file_path().unwrap();
+    let original = std::fs::read_to_string(&config_file_path).unwrap();
+    open_mouse_binding_search(&zellij);
+
+    type_text(&zellij, "alt right");
+    zellij.send_stdin(&keys::ENTER);
+    zellij.wait_until("the preset mouse binding is found", |grid_snapshot| {
+        grid_snapshot.contains("Alt Right") && grid_snapshot.contains("<Del> - delete")
+    });
+    zellij.send_stdin(DELETE);
+    zellij.wait_until("removal is confirmed first", |grid_snapshot| {
+        grid_snapshot.contains("Delete Alt Right from all modes?")
+            && grid_snapshot.contains("Don't ask again")
+    });
+    zellij.send_stdin(&keys::ENTER);
+    zellij.wait_until("the mouse binding is unbound", |grid_snapshot| {
+        grid_snapshot.contains("(unboun") && grid_snapshot.contains("1 unsaved change ")
+    });
+    save_and_wait(&zellij);
+    let saved = std::fs::read_to_string(&config_file_path).unwrap();
+    let removed = "mousebinds {\n    unbind \"Alt Right\"\n}\n";
+    assert!(saved.contains(removed), "{}", saved);
+    assert_eq!(saved.replacen(removed, "", 1), original);
+
+    zellij.send_stdin(&keys::key('r'));
+    zellij.wait_until("the mouse binding is back to the preset", |grid_snapshot| {
+        grid_snapshot.contains("back to the preset") && grid_snapshot.contains("1 unsaved change ")
+    });
+    save_and_wait(&zellij);
+    let reset = std::fs::read_to_string(&config_file_path).unwrap();
+    assert!(!reset.contains("Alt Right"), "{}", reset);
+    assert!(!reset.contains("mousebinds"), "{}", reset);
+    assert!(reset.starts_with(original.trim_end()), "{}", reset);
+    zellij.quit();
+}
+
+#[test]
+fn adding_a_mouse_binding_for_an_already_bound_trigger_warns_first() {
+    let mut zellij = start_zellij();
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+    open_mouse_bindings(&zellij);
+
+    start_add_mouse_binding(&zellij, 1);
+    choose_action(&zellij, "newtab", "NewTab");
+    press_mouse_form_done(&zellij);
+    zellij.wait_until("the conflict is reported", |grid_snapshot| {
+        grid_snapshot.contains("Trigger already bound")
+            && grid_snapshot.contains("Right is already bound in all modes")
+            && grid_snapshot.contains("Replace")
+    });
+    zellij.send_stdin(&keys::ESC);
+    zellij.wait_until("the warning closed and the form stays", |grid_snapshot| {
+        !grid_snapshot.contains("Trigger already bound")
+            && grid_snapshot.contains("Add Mouse Binding")
+    });
+    zellij.send_stdin(&keys::ESC);
+    zellij.wait_until("the form is left with nothing changed", |grid_snapshot| {
+        !grid_snapshot.contains("Add Mouse Binding") && grid_snapshot.contains("0 unsaved changes")
+    });
+    zellij.quit();
+}
+
+#[test]
+fn switching_the_preset_updates_the_leader_keys_of_the_mouse_bindings() {
+    let keybinds_dir = tempfile::tempdir().unwrap();
+    let default_preset = include_str!("../../zellij-utils/assets/keybinds/default.kdl");
+    let swapped_preset = default_preset
+        .replace(
+            "primary \"Ctrl\"\n        secondary \"Alt\"",
+            "primary \"Alt\"\n        secondary \"Ctrl\"",
+        )
+        .replace("name \"Default\"", "name \"Swapped\"");
+    assert!(swapped_preset.contains("primary \"Alt\""));
+    std::fs::write(keybinds_dir.path().join("swapped.kdl"), swapped_preset).unwrap();
+    let mut zellij = TestRunner::new(TERMINAL_SIZE)
+        .with_config(&format!(
+            "keybinds_dir \"{}\"",
+            keybinds_dir.path().display()
+        ))
+        .start();
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+    open_mouse_binding_search(&zellij);
+    type_text(&zellij, "resizepane");
+    zellij.wait_until(
+        "the frame resize binding uses the default primary key",
+        |grid_snapshot| {
+            grid_snapshot.contains("Ctrl Left · frame")
+                && !grid_snapshot.contains("Alt Left · frame")
+        },
+    );
+    zellij.send_stdin(ARROW_DOWN);
+    zellij.wait_until("search results focused", |grid_snapshot| {
+        grid_snapshot.contains("<Del> - delete")
+    });
+    zellij.send_stdin(ARROW_LEFT);
+    zellij.wait_until("the category menu is focused", |grid_snapshot| {
+        grid_snapshot.contains("<↓↑> - category")
+    });
+    zellij.send_stdin(ARROW_UP);
+    zellij.send_stdin(ARROW_UP);
+    zellij.wait_until("keys page shown", |grid_snapshot| {
+        grid_snapshot.contains("Save as a preset")
+    });
+    zellij.send_stdin(&keys::TAB);
+    zellij.send_stdin(&keys::ENTER);
+    zellij.wait_until("preset list opened", |grid_snapshot| {
+        grid_snapshot.contains("unlock-first") && grid_snapshot.contains("swapped")
+    });
+    zellij.send_stdin(ARROW_DOWN);
+    zellij.send_stdin(ARROW_DOWN);
+    zellij.send_stdin(&keys::ENTER);
+    zellij.wait_until("the swapped preset is applied", |grid_snapshot| {
+        grid_snapshot.contains("Alt +") && grid_snapshot.contains("[ swapped")
+    });
+
+    zellij.send_stdin(&keys::key('/'));
+    zellij.wait_until("the keybinding search is focused", |grid_snapshot| {
+        grid_snapshot.contains("search keys and actions")
+    });
+    for _ in 0..3 {
+        zellij.send_stdin(ARROW_DOWN);
+    }
+    zellij.wait_until("keybinding list focused", |grid_snapshot| {
+        grid_snapshot.contains("<Del> - delete")
+    });
+    zellij.send_stdin(ARROW_LEFT);
+    zellij.wait_until("the category menu is focused", |grid_snapshot| {
+        grid_snapshot.contains("<↓↑> - category")
+    });
+    zellij.send_stdin(ARROW_DOWN);
+    zellij.send_stdin(ARROW_DOWN);
+    wait_for_mouse_bindings_page(&zellij);
+    enter_mouse_binding_search(&zellij);
+    zellij.wait_until(
+        "the frame resize binding follows the new primary key",
+        |grid_snapshot| {
+            grid_snapshot.contains("Alt Left · frame")
+                && !grid_snapshot.contains("Ctrl Left · frame")
+        },
+    );
+    zellij.kill_session();
 }

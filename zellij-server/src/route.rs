@@ -2314,6 +2314,15 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
+        Action::MoveTabToPosition { id, position } => {
+            senders
+                .send_to_screen(ScreenInstruction::MoveTabToPosition(
+                    id as usize,
+                    usize::try_from(position).unwrap_or(usize::MAX),
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
         Action::TogglePaneInGroupByPaneId { pane_id } => {
             senders
                 .send_to_screen(ScreenInstruction::TogglePaneIdInGroup(

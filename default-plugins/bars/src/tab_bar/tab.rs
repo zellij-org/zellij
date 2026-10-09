@@ -24,6 +24,7 @@ pub fn render_tab(
     tab: &TabInfo,
     is_alternate_tab: bool,
     is_hovered: bool,
+    is_dragged: bool,
     palette: Styling,
     separator: &str,
     mode_info: &ModeInfo,
@@ -82,6 +83,11 @@ pub fn render_tab(
     } else {
         style!(foreground_color, background_color).bold()
     };
+    let text_style = if is_dragged {
+        text_style.italic()
+    } else {
+        text_style
+    };
     let left_separator = style!(separator_fill_color, background_color).paint(separator);
     let right_separator_style = style!(background_color, separator_fill_color);
     let mut tab_text_len = text.width() + (separator_width * 2) + 2;
@@ -119,6 +125,7 @@ pub fn tab_style(
     tab: &TabInfo,
     mut is_alternate_tab: bool,
     is_hovered: bool,
+    is_dragged: bool,
     palette: Styling,
     capabilities: PluginCapabilities,
     mode_info: &ModeInfo,
@@ -142,24 +149,11 @@ pub fn tab_style(
         tab,
         is_alternate_tab,
         is_hovered,
+        is_dragged,
         palette,
         separator,
         mode_info,
     )
-}
-
-pub(crate) fn get_tab_to_focus(
-    tab_line: &[LinePart],
-    active_tab_idx: usize,
-    mouse_click_col: usize,
-) -> Option<usize> {
-    let clicked_line_part = get_clicked_line_part(tab_line, mouse_click_col)?;
-    let clicked_tab_idx = clicked_line_part.tab_index?;
-    let clicked_tab_idx = clicked_tab_idx + 1;
-    if clicked_tab_idx != active_tab_idx {
-        return Some(clicked_tab_idx);
-    }
-    None
 }
 
 #[cfg(test)]
@@ -219,8 +213,16 @@ mod tests {
                         position: 2,
                         ..Default::default()
                     };
-                    let rendered =
-                        render_tab("tab".into(), &tab, false, false, palette, "", &mode_info);
+                    let rendered = render_tab(
+                        "tab".into(),
+                        &tab,
+                        false,
+                        false,
+                        false,
+                        palette,
+                        "",
+                        &mode_info,
+                    );
                     assert_eq!(
                         rendered.part, expected,
                         "flag={flag:?}, ascended={ascended:?}, dimmed={dimmed:?}, active={active}"
@@ -230,6 +232,63 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn non_ancestor_tabs_keep_hover_alternate_and_drag_styling() {
+        let mut mode_info = ModeInfo::default();
+        mode_info.style.colors.ribbon_unselected.background = PaletteColor::Rgb((10, 20, 30));
+        mode_info.style.colors.ribbon_unselected.emphasis_1 = PaletteColor::Rgb((40, 50, 60));
+        let palette = mode_info.style.colors;
+        let tab = TabInfo {
+            position: 2,
+            ..Default::default()
+        };
+        let fill = palette.text_unselected.background;
+        let tint = palette.ribbon_unselected.emphasis_1;
+        let expected_tint = ANSIStrings(&[
+            style!(fill, tint).paint(""),
+            style!(palette.ribbon_unselected.base, tint)
+                .bold()
+                .paint(" tab "),
+            style!(tint, fill).paint(""),
+        ])
+        .to_string();
+        for (alternate, hovered) in [(false, true), (true, false)] {
+            let rendered = render_tab(
+                "tab".into(),
+                &tab,
+                alternate,
+                hovered,
+                false,
+                palette,
+                "",
+                &mode_info,
+            );
+            assert_eq!(rendered.part, expected_tint);
+        }
+
+        let background = palette.ribbon_unselected.background;
+        let expected_drag = ANSIStrings(&[
+            style!(fill, background).paint(""),
+            style!(palette.ribbon_unselected.base, background)
+                .bold()
+                .italic()
+                .paint(" tab "),
+            style!(background, fill).paint(""),
+        ])
+        .to_string();
+        let dragged = render_tab(
+            "tab".into(),
+            &tab,
+            false,
+            false,
+            true,
+            palette,
+            "",
+            &mode_info,
+        );
+        assert_eq!(dragged.part, expected_drag);
     }
 }
 

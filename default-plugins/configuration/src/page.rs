@@ -104,6 +104,7 @@ pub enum Effect {
     ReplaceBlocks(String),
     Revert(SettingKey),
     ResetKeys(Vec<(InputMode, KeyWithModifier)>),
+    ResetMousebinds(Vec<(InputMode, MouseTrigger)>),
     SwitchMode(InputMode),
     Refresh,
 }
@@ -126,6 +127,10 @@ pub fn run_effects(effects: Vec<Effect>) -> bool {
             },
             Effect::ResetKeys(keys) => {
                 reset_keys(keys, false);
+                changed_config = true;
+            },
+            Effect::ResetMousebinds(triggers) => {
+                reset_mousebinds(triggers, false);
                 changed_config = true;
             },
             Effect::SwitchMode(mode) => switch_to_input_mode(&mode),

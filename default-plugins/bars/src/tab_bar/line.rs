@@ -7,6 +7,12 @@ use zellij_tile::prelude::actions::Action;
 use zellij_tile::prelude::*;
 use zellij_tile_utils::style;
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct TabLineHover {
+    pub new_tab_button: bool,
+    pub breadcrumb: bool,
+}
+
 fn get_current_title_len(current_title: &[LinePart]) -> usize {
     current_title.iter().map(|p| p.len).sum()
 }
@@ -189,6 +195,7 @@ fn tab_line_prefix(
     cols: usize,
     dimmed: bool,
     breadcrumb_ancestry: &[String],
+    breadcrumb_hovered: bool,
 ) -> (Vec<LinePart>, Option<(usize, usize)>) {
     let prefix_text = " Zellij ".to_string();
 
@@ -222,11 +229,17 @@ fn tab_line_prefix(
             };
             let name_style = if dimmed {
                 dim_style(bg_color)
+            } else if breadcrumb_hovered {
+                style!(palette.text_unselected.emphasis_0, bg_color)
+                    .bold()
+                    .italic()
             } else {
                 style!(palette.text_unselected.emphasis_0, bg_color).bold()
             };
             let closing_style = if dimmed {
                 dim_style(bg_color)
+            } else if breadcrumb_hovered {
+                style!(text_color, bg_color).bold().italic()
             } else {
                 style!(text_color, bg_color).bold()
             };
@@ -291,7 +304,7 @@ pub fn tab_line(
     active_pane_scroll: Option<(usize, usize)>,
     hint: Option<&BTreeMap<usize, StyledText>>,
     is_alternate_tab: bool,
-    new_tab_button_is_hovered: bool,
+    hover: TabLineHover,
     dimmed: bool,
     breadcrumb_ancestry: &[String],
 ) -> (
@@ -307,8 +320,15 @@ pub fn tab_line(
         tabs_before_active.pop().unwrap()
     };
     let (mut prefix, breadcrumb_range) = match hide_session_name {
-        true => tab_line_prefix(None, palette, cols, dimmed, &[]),
-        false => tab_line_prefix(session_name, palette, cols, dimmed, breadcrumb_ancestry),
+        true => tab_line_prefix(None, palette, cols, dimmed, &[], false),
+        false => tab_line_prefix(
+            session_name,
+            palette,
+            cols,
+            dimmed,
+            breadcrumb_ancestry,
+            hover.breadcrumb,
+        ),
     };
 
     let mut swap_layout_indicator = if hide_swap_layout_indicator {
@@ -363,12 +383,10 @@ pub fn tab_line(
     }]);
 
     let supports_arrow_fonts = !capabilities.arrow_fonts;
-    let new_tab_button_background = if supports_arrow_fonts {
-        if new_tab_button_is_hovered {
-            palette.ribbon_unselected.emphasis_1
-        } else {
-            palette.ribbon_unselected.background
-        }
+    let new_tab_button_background = if hover.new_tab_button {
+        palette.ribbon_unselected.emphasis_1
+    } else if supports_arrow_fonts {
+        palette.ribbon_unselected.background
     } else if is_alternate_tab {
         palette.ribbon_unselected.emphasis_1
     } else {
@@ -390,7 +408,7 @@ pub fn tab_line(
         None
     };
 
-    if let Some(mut swap_layout_indicator) = swap_layout_indicator.take() {
+    if let Some(swap_layout_indicator) = swap_layout_indicator.take() {
         let remaining_space = cols
             .saturating_sub(prefix.iter().fold(0, |len, part| len + part.len))
             .saturating_sub(swap_layout_indicator.len);
@@ -407,8 +425,13 @@ pub fn tab_line(
             );
             padding_len += 1;
         }
-        swap_layout_indicator.part = format!("{}{}", padding, swap_layout_indicator.part);
-        swap_layout_indicator.len += padding_len;
+        if padding_len > 0 {
+            prefix.push(LinePart {
+                part: padding,
+                len: padding_len,
+                tab_index: None,
+            });
+        }
         prefix.push(swap_layout_indicator);
     }
 

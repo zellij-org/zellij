@@ -1,4 +1,5 @@
 mod first_line;
+mod hover;
 mod one_line_ui;
 mod second_line;
 mod tip;
@@ -24,8 +25,12 @@ use second_line::{
 };
 use tip::utils::get_cached_tip_name;
 
+use crate::click_actions::{region_at, ActionRunner, ClickRegion};
 use crate::keybinds::KeybindStore;
 use crate::ClientSeed;
+use hover::with_hovered;
+
+const RUNNER_OWNER: &str = "status-bar";
 
 static ARROW_SEPARATOR: &str = "";
 static MORE_MSG: &str = " ... ";
@@ -46,14 +51,14 @@ struct ClientState {
     text_copy_destination: Option<CopyDestination>,
     display_system_clipboard_failure: bool,
     base_mode_is_locked: bool,
-    new_pane_ribbon_hovered: bool,
-    floating_ribbon_hovered: bool,
+    hovered: Option<Vec<Action>>,
+    hover_at: Option<(SlotId, usize)>,
 }
 
 #[derive(Default)]
 struct SlotClientState {
-    new_pane_ribbon_range: Option<(usize, usize)>,
-    floating_ribbon_range: Option<(usize, usize)>,
+    clicks: Vec<ClickRegion>,
+    cols: usize,
 }
 
 #[derive(Default)]
@@ -61,18 +66,30 @@ pub struct StatusBar {
     slots: BTreeMap<SlotId, SlotConfig>,
     clients: BTreeMap<ClientId, ClientState>,
     slot_clients: BTreeMap<(SlotId, ClientId), SlotClientState>,
+    runner: ActionRunner,
 }
 
 #[derive(Default)]
 pub struct LinePart {
     part: String,
     len: usize,
+    clicks: Vec<ClickRegion>,
 }
 
 impl LinePart {
     pub fn append(&mut self, to_append: &LinePart) {
+        let offset = self.len;
+        self.clicks
+            .extend(to_append.clicks.iter().map(|click| click.shifted(offset)));
         self.part.push_str(&to_append.part);
         self.len += to_append.len;
+    }
+    pub fn prepend_padding(&mut self, padding: &str, padding_len: usize) {
+        self.part = format!("{}{}", padding, self.part);
+        self.len += padding_len;
+        for click in self.clicks.iter_mut() {
+            *click = click.shifted(padding_len);
+        }
     }
 }
 
@@ -230,13 +247,6 @@ fn color_elements(
     }
 }
 
-fn col_in_range(range: Option<(usize, usize)>, col: usize) -> bool {
-    match range {
-        Some((start, end)) => col >= start && col < end,
-        None => false,
-    }
-}
-
 impl StatusBar {
     pub fn has_slots(&self) -> bool {
         !self.slots.is_empty()
@@ -265,6 +275,7 @@ impl StatusBar {
             EventType::SystemClipboardFailure,
             EventType::InitialKeybinds,
             EventType::Mouse,
+            EventType::ActionComplete,
         ]);
     }
 
@@ -391,29 +402,41 @@ impl StatusBar {
                 client.text_copy_destination = None;
                 client.display_system_clipboard_failure = false;
             },
+            Event::ActionComplete(..) => {
+                self.runner.action_completed(RUNNER_OWNER, client_id, event);
+            },
             Event::Mouse(mouse_event) => match mouse_event {
                 Mouse::RightClick(line, col) => {
                     open_context_menu(ContextMenuTarget::Bar, (*line).max(0) as usize, *col);
                 },
                 Mouse::LeftClick(_, col) => {
-                    let col = *col;
-                    if col_in_range(slot_client.new_pane_ribbon_range, col) {
-                        new_pane();
-                    } else if col_in_range(slot_client.floating_ribbon_range, col) {
-                        toggle_floating_panes(None);
+                    if let Some(region) = region_at(&slot_client.clicks, *col) {
+                        self.runner
+                            .run(RUNNER_OWNER, client_id, region.actions.clone());
                     }
                 },
                 Mouse::Hover(_, col) => {
-                    let col = *col;
-                    let new_pane_hovered = col_in_range(slot_client.new_pane_ribbon_range, col);
-                    let floating_hovered =
-                        !new_pane_hovered && col_in_range(slot_client.floating_ribbon_range, col);
-                    if client.new_pane_ribbon_hovered != new_pane_hovered
-                        || client.floating_ribbon_hovered != floating_hovered
-                    {
-                        client.new_pane_ribbon_hovered = new_pane_hovered;
-                        client.floating_ribbon_hovered = floating_hovered;
-                        should_render = true;
+                    if let Some(slot_id) = slot_id {
+                        let col = *col;
+                        let on_screen = col < slot_client.cols;
+                        let owns_hover = client
+                            .hover_at
+                            .map(|(hover_slot, _)| hover_slot == slot_id)
+                            .unwrap_or(true);
+                        if on_screen || owns_hover {
+                            client.hover_at = if on_screen {
+                                Some((slot_id, col))
+                            } else {
+                                None
+                            };
+                            let hovered = region_at(&slot_client.clicks, col)
+                                .filter(|_| on_screen)
+                                .map(|region| region.actions.clone());
+                            if client.hovered != hovered {
+                                client.hovered = hovered;
+                                should_render = true;
+                            }
+                        }
                     }
                 },
                 _ => {},
@@ -467,26 +490,46 @@ impl StatusBar {
                 PaletteColor::EightBit(color) => format!("\u{1b}[48;5;{}m\u{1b}[0K", color),
             };
             let active_tab = client.tabs.iter().find(|t| t.active);
-            let (line, new_pane_ribbon_range, floating_ribbon_range) = one_line_ui(
-                &client.mode_info,
-                active_tab,
-                cols,
-                separator,
-                client.base_mode_is_locked,
-                client.text_copy_destination,
-                client.display_system_clipboard_failure,
-                client.new_pane_ribbon_hovered,
-                client.floating_ribbon_hovered,
-            );
+            let render_line = |hovered: Option<Vec<Action>>| {
+                with_hovered(hovered, || {
+                    one_line_ui(
+                        &client.mode_info,
+                        active_tab,
+                        cols,
+                        separator,
+                        client.base_mode_is_locked,
+                        client.text_copy_destination,
+                        client.display_system_clipboard_failure,
+                    )
+                })
+            };
+            let hover_col = client
+                .hover_at
+                .filter(|(hover_slot, _)| *hover_slot == slot_id)
+                .map(|(_, col)| col);
+            let mut hovered = hover_col.and(client.hovered.clone());
+            let mut line = render_line(hovered.clone());
+            if let Some(col) = hover_col {
+                let under_mouse = region_at(&line.clicks, col).map(|region| region.actions.clone());
+                if under_mouse != hovered {
+                    hovered = under_mouse;
+                    line = render_line(hovered.clone());
+                }
+            }
+            if hover_col.is_some() {
+                if let Some(client) = self.clients.get_mut(&client_id) {
+                    client.hovered = hovered;
+                }
+            }
             let slot_client = self.slot_clients.entry((slot_id, client_id)).or_default();
-            slot_client.new_pane_ribbon_range = new_pane_ribbon_range;
-            slot_client.floating_ribbon_range = floating_ribbon_range;
+            slot_client.clicks = std::mem::take(&mut line.clicks);
+            slot_client.cols = cols;
             print!("{}{}", line, fill_bg);
             return;
         }
         let slot_client = self.slot_clients.entry((slot_id, client_id)).or_default();
-        slot_client.new_pane_ribbon_range = None;
-        slot_client.floating_ribbon_range = None;
+        slot_client.clicks.clear();
+        slot_client.cols = cols;
 
         let active_tab = client.tabs.iter().find(|t| t.active);
         let first_line = first_line(&client.mode_info, active_tab, cols, separator);
@@ -1078,5 +1121,96 @@ pub mod tests {
         let ret = unstyle(&ANSIStrings(&ret));
 
         assert_eq!(ret, "Alt + <ENTER|SPACE|TAB>".to_string())
+    }
+}
+
+#[cfg(test)]
+mod hover_tests {
+    use super::*;
+
+    fn ctrl(c: char) -> KeyWithModifier {
+        KeyWithModifier::new(BareKey::Char(c)).with_ctrl_modifier()
+    }
+
+    fn to_mode(input_mode: InputMode) -> Vec<Action> {
+        vec![Action::SwitchToMode { input_mode }]
+    }
+
+    fn mode_info(mode: InputMode) -> ModeInfo {
+        ModeInfo {
+            mode,
+            base_mode: Some(InputMode::Normal),
+            keybinds: vec![
+                (
+                    InputMode::Normal,
+                    vec![
+                        (ctrl('g'), to_mode(InputMode::Locked)),
+                        (ctrl('p'), to_mode(InputMode::Pane)),
+                        (ctrl('q'), vec![Action::Quit]),
+                    ],
+                ),
+                (
+                    InputMode::Pane,
+                    vec![(ctrl('p'), to_mode(InputMode::Normal))],
+                ),
+                (
+                    InputMode::Locked,
+                    vec![(ctrl('g'), to_mode(InputMode::Normal))],
+                ),
+            ],
+            ..Default::default()
+        }
+    }
+
+    fn status_bar(mode: InputMode) -> StatusBar {
+        let mut bar = StatusBar::default();
+        bar.slots.insert(0, SlotConfig::default());
+        bar.clients.insert(
+            1,
+            ClientState {
+                mode_info: mode_info(mode),
+                ..Default::default()
+            },
+        );
+        bar
+    }
+
+    fn region_start(bar: &StatusBar, actions: &[Action]) -> usize {
+        bar.slot_clients[&(0, 1)]
+            .clicks
+            .iter()
+            .find(|region| region.actions.as_slice() == actions)
+            .map(|region| region.start)
+            .unwrap_or_else(|| panic!("{:?} is not clickable", actions))
+    }
+
+    #[test]
+    fn a_resting_mouse_keeps_its_hover_when_the_bar_changes_under_it() {
+        let mut bar = status_bar(InputMode::Normal);
+        bar.render_client(1, 200, 0, 1);
+        let lock_col = region_start(&bar, &to_mode(InputMode::Locked));
+        assert!(bar.update_client(&Event::Mouse(Mouse::Hover(0, lock_col)), 1, Some(0)));
+        assert_eq!(bar.clients[&1].hovered, Some(to_mode(InputMode::Locked)));
+
+        bar.update_client(&Event::Mouse(Mouse::LeftClick(0, lock_col)), 1, Some(0));
+        bar.update_client(&Event::ModeUpdate(mode_info(InputMode::Locked)), 1, Some(0));
+        bar.render_client(1, 200, 0, 1);
+        assert_eq!(region_start(&bar, &to_mode(InputMode::Normal)), lock_col);
+        assert_eq!(bar.clients[&1].hovered, Some(to_mode(InputMode::Normal)));
+    }
+
+    #[test]
+    fn leaving_another_slot_does_not_clear_the_hover() {
+        let mut bar = status_bar(InputMode::Normal);
+        bar.slots.insert(7, SlotConfig::default());
+        bar.render_client(1, 200, 0, 1);
+        bar.render_client(1, 200, 7, 1);
+        let pane_col = region_start(&bar, &to_mode(InputMode::Pane));
+        bar.update_client(&Event::Mouse(Mouse::Hover(0, pane_col)), 1, Some(0));
+        assert!(!bar.update_client(&Event::Mouse(Mouse::Hover(0, 65535)), 1, Some(7)));
+        assert_eq!(bar.clients[&1].hovered, Some(to_mode(InputMode::Pane)));
+        assert!(bar.update_client(&Event::Mouse(Mouse::Hover(0, 65535)), 1, Some(0)));
+        assert_eq!(bar.clients[&1].hovered, None);
+        assert_eq!(bar.clients[&1].hover_at, None);
     }
 }

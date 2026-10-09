@@ -910,6 +910,12 @@ mod tests {
                     Direction::Left,
                 ))],
             ),
+            ContextMenuEntry::item(
+                "Move tab to end",
+                vec![ContextMenuAction::ClickedTab(
+                    ClickedTabAction::MoveToPosition(zellij_utils::data::TAB_POSITION_END),
+                )],
+            ),
             ContextMenuEntry::Separator,
             ContextMenuEntry::item(
                 "Close pane 3",

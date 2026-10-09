@@ -1,5 +1,6 @@
 use super::super::layout::*;
 use insta::assert_snapshot;
+use std::collections::BTreeMap;
 
 #[cfg(not(windows))]
 fn normalize_layout_debug(s: String) -> String {
@@ -2575,4 +2576,69 @@ fn tiled_pane_still_rejects_zero_percent() {
     // But 1% should work
     let result = SplitSize::from_str("1%");
     assert!(result.is_ok());
+}
+
+fn plugin_alias_with_configuration(name: &str, configuration: &[(&str, &str)]) -> RunPluginOrAlias {
+    let configuration: BTreeMap<String, String> = configuration
+        .iter()
+        .map(|(key, value)| (key.to_string(), value.to_string()))
+        .collect();
+    RunPluginOrAlias::Alias(PluginAlias::new(name, &Some(configuration), None))
+}
+
+fn running_plugin_alias(name: &str, configuration: &[(&str, &str)]) -> Option<Run> {
+    Some(Run::Plugin(plugin_alias_with_configuration(
+        name,
+        configuration,
+    )))
+}
+
+#[test]
+fn plugin_alias_with_configuration_is_equivalent_to_running_alias_with_caller_cwd() {
+    let requested = plugin_alias_with_configuration("session-manager", &[("ignore_case", "true")]);
+    let running = running_plugin_alias(
+        "session-manager",
+        &[("ignore_case", "true"), ("caller_cwd", "/some/folder")],
+    );
+    assert!(requested.is_equivalent_to_run(&running));
+}
+
+#[test]
+fn plugin_alias_with_different_configuration_is_not_equivalent_to_running_alias() {
+    let requested = plugin_alias_with_configuration("session-manager", &[("ignore_case", "true")]);
+    let running = running_plugin_alias(
+        "session-manager",
+        &[("ignore_case", "false"), ("caller_cwd", "/some/folder")],
+    );
+    assert!(!requested.is_equivalent_to_run(&running));
+}
+
+#[test]
+fn plugin_alias_without_configuration_is_equivalent_to_running_alias_with_only_caller_cwd() {
+    let requested = RunPluginOrAlias::Alias(PluginAlias::new("session-manager", &None, None));
+    let running = running_plugin_alias("session-manager", &[("caller_cwd", "/some/folder")]);
+    assert!(requested.is_equivalent_to_run(&running));
+}
+
+#[test]
+fn plugin_alias_with_its_own_caller_cwd_is_equivalent_to_running_alias_with_another_caller_cwd() {
+    let requested = plugin_alias_with_configuration(
+        "filepicker",
+        &[("ignore_case", "true"), ("caller_cwd", "/first/folder")],
+    );
+    let running = running_plugin_alias(
+        "filepicker",
+        &[("ignore_case", "true"), ("caller_cwd", "/second/folder")],
+    );
+    assert!(requested.is_equivalent_to_run(&running));
+}
+
+#[test]
+fn plugin_aliases_with_different_names_are_not_equivalent() {
+    let requested = plugin_alias_with_configuration("session-manager", &[("ignore_case", "true")]);
+    let running = running_plugin_alias(
+        "filepicker",
+        &[("ignore_case", "true"), ("caller_cwd", "/some/folder")],
+    );
+    assert!(!requested.is_equivalent_to_run(&running));
 }

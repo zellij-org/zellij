@@ -1,6 +1,5 @@
 ---
 source: zellij-utils/src/kdl/mod.rs
-assertion_line: 8798
 expression: fake_document.to_string()
 ---
  
@@ -261,11 +260,22 @@ web_sharing "disabled"
 /// Whether to enforce https connections to the web server when it is bound to localhost
 /// (127.0.0.0/8)
 ///
-/// Note: https is ALWAYS enforced when bound to non-local interfaces
+/// Note: https is enforced when bound to non-local interfaces, unless
+/// dangerously_allow_web_serving_without_a_certificate is set
 ///
 /// Default: false
 // 
 // enforce_https_for_localhost false
+ 
+// DANGEROUS: allow the web server to serve plain, unencrypted HTTP when bound to a
+// non-local interface without web_server_cert and web_server_key.
+// Anyone on the network can read and tamper with the traffic, including login tokens.
+// Only use behind a trusted TLS-terminating proxy or on a fully trusted network.
+// Does not override enforce_https_for_localhost.
+// Default: false
+// (Requires restart)
+//
+// dangerously_allow_web_serving_without_a_certificate false
  
 // Whether to stack panes when resizing beyond a certain size
 // Default: true

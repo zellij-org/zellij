@@ -65,7 +65,8 @@ use zellij_utils::{
     },
     data::{
         ConfigSnapshot, ConnectToSession, Direction, InputMode, KeyWithModifier,
-        KeybindPresetSource, LayoutInfo, LayoutWithError, SettingKey, Style, WebSharing,
+        KeybindPresetSource, LayoutInfo, LayoutWithError, MouseTrigger, SettingKey, Style,
+        WebSharing,
     },
     errors::{prelude::*, ContextType, ErrorInstruction, FatalError, ServerContext},
     home::{default_layout_dir, get_default_data_dir},
@@ -205,6 +206,11 @@ pub enum ServerInstruction {
         keys: Vec<(InputMode, KeyWithModifier)>,
         write_config_to_disk: bool,
     },
+    ResetMousebinds {
+        client_id: ClientId,
+        triggers: Vec<(InputMode, MouseTrigger)>,
+        write_config_to_disk: bool,
+    },
     StartWebServer(ClientId),
     ShareCurrentSession(ClientId),
     StopSharingCurrentSession(ClientId),
@@ -257,6 +263,7 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::RebindKeys { .. } => ServerContext::RebindKeys,
             ServerInstruction::ReplaceConfigBlocks { .. } => ServerContext::ReplaceConfigBlocks,
             ServerInstruction::ResetKeys { .. } => ServerContext::ResetKeys,
+            ServerInstruction::ResetMousebinds { .. } => ServerContext::ResetMousebinds,
             ServerInstruction::ReadConfig { .. } => ServerContext::ReadConfig,
             ServerInstruction::RevertConfig { .. } => ServerContext::RevertConfig,
             ServerInstruction::UnsetConfigSetting { .. } => ServerContext::UnsetConfigSetting,
@@ -315,7 +322,7 @@ struct LayoutSettings {
 fn settings_without_keybinds(first: &Config, second: &Config) -> BTreeSet<SettingKey> {
     config_settings::differing_settings(first, second)
         .into_iter()
-        .filter(|key| *key != SettingKey::Keybinds)
+        .filter(|key| *key != SettingKey::Keybinds && *key != SettingKey::Mousebinds)
         .collect()
 }
 
@@ -454,6 +461,7 @@ impl SessionConfiguration {
         save_keybinds_as_preset(
             file_contents.as_deref(),
             &saved.keybinds_layers.user,
+            &saved.keybinds_layers.user_mouse,
             saved.keybinds_layers.config_default_mode,
             new_name,
             &keybinds_dir,
@@ -675,6 +683,7 @@ impl SessionConfiguration {
                 file_contents.as_deref(),
             ),
             keybinds: current.keybinds_selection_snapshot(),
+            mousebindings: config_blocks::mousebinding_entries(saved, &current),
         }
     }
     fn replace_runtime_config_if_changed(
@@ -938,6 +947,29 @@ impl SessionConfiguration {
             None => (None, false),
         }
     }
+    pub fn reset_mousebinds(
+        &mut self,
+        client_id: &ClientId,
+        triggers: Vec<(InputMode, MouseTrigger)>,
+    ) -> (Option<Config>, bool) {
+        let current = self.get_client_configuration(client_id);
+        let mut reset = current.clone();
+        for (mode, trigger) in triggers {
+            let user_mouse = &mut reset.keybinds_layers.user_mouse;
+            if let Some(mode_changes) = user_mouse.modes.get_mut(&mode) {
+                mode_changes.bind.remove(&trigger);
+                mode_changes.unbind.remove(&trigger);
+                if mode_changes.is_empty() {
+                    user_mouse.modes.remove(&mode);
+                }
+            }
+        }
+        reset.resolve_keybinds();
+        match self.replace_runtime_config_if_changed(client_id, current, reset) {
+            Some(new_config) => (Some(new_config), true),
+            None => (None, false),
+        }
+    }
 }
 
 fn chooses_keybind_preset_or_leaders(stringified_config: &str) -> bool {
@@ -1154,6 +1186,12 @@ impl SessionMetaData {
                 .send_to_screen(ScreenInstruction::UpdateContextMenuConfig(
                     client_id,
                     new_config.context_menu.clone(),
+                ))
+                .unwrap();
+            self.senders
+                .send_to_screen(ScreenInstruction::UpdateMousebinds(
+                    client_id,
+                    new_config.mousebinds.clone(),
                 ))
                 .unwrap();
             self.senders
@@ -4077,6 +4115,28 @@ pub fn start_server_impl(
                     client_id,
                 );
             },
+            ServerInstruction::ResetMousebinds {
+                client_id,
+                triggers,
+                write_config_to_disk,
+            } => {
+                let config_before = client_configuration(&session_data, client_id);
+                let (new_config, runtime_config_changed) = session_data
+                    .write()
+                    .unwrap()
+                    .as_mut()
+                    .unwrap()
+                    .session_configuration
+                    .reset_mousebinds(&client_id, triggers);
+                apply_runtime_change(
+                    config_before,
+                    new_config,
+                    write_config_to_disk,
+                    runtime_config_changed,
+                    &session_data,
+                    client_id,
+                );
+            },
             ServerInstruction::ResetKeys {
                 client_id,
                 keys,
@@ -4423,6 +4483,9 @@ fn init_session(
     let has_certificate =
         config_options.web_server_cert.is_some() && config_options.web_server_key.is_some();
     let enforce_https_for_localhost = config_options.enforce_https_for_localhost.unwrap_or(false);
+    let dangerously_allow_web_serving_without_a_certificate = config_options
+        .dangerously_allow_web_serving_without_a_certificate
+        .unwrap_or(false);
 
     let default_shell = config_options.default_shell.clone().map(|command| {
         TerminalAction::RunCommand(RunCommand {
@@ -4588,6 +4651,7 @@ fn init_session(
                 web_server_port,
                 has_certificate,
                 enforce_https_for_localhost,
+                dangerously_allow_web_serving_without_a_certificate,
             );
             move || {
                 background_jobs_main(

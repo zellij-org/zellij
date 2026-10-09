@@ -6175,6 +6175,7 @@ Config {
         web_server_cert: None,
         web_server_key: None,
         enforce_https_for_localhost: None,
+        dangerously_allow_web_serving_without_a_certificate: None,
         post_command_discovery_hook: None,
         client_async_worker_tasks: None,
         nested_session_handling: None,
@@ -6514,6 +6515,26 @@ Config {
                     ),
                 ],
             },
+            Item {
+                label: "Move tab to start",
+                actions: [
+                    ClickedTab(
+                        MoveToPosition(
+                            0,
+                        ),
+                    ),
+                ],
+            },
+            Item {
+                label: "Move tab to end",
+                actions: [
+                    ClickedTab(
+                        MoveToPosition(
+                            18446744073709551615,
+                        ),
+                    ),
+                ],
+            },
             Separator,
             Item {
                 label: "Close tab",
@@ -6627,7 +6648,7 @@ Config {
             primary: None,
             secondary: None,
             unlock: None,
-            changes: KeybindChanges {
+            changes: BindChanges {
                 clear_defaults: false,
                 modes: {},
             },
@@ -6637,7 +6658,7 @@ Config {
             primary: None,
             secondary: None,
             unlock: None,
-            changes: KeybindChanges {
+            changes: BindChanges {
                 clear_defaults: false,
                 modes: {},
             },
@@ -6675,6 +6696,4076 @@ Config {
                 "secondary": "Alt",
             },
             error: None,
+        },
+        user_mouse: BindChanges {
+            clear_defaults: false,
+            modes: {},
+        },
+        layout_mouse: BindChanges {
+            clear_defaults: false,
+            modes: {},
+        },
+    },
+    mousebinds: {
+        Normal: {
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Click,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 2,
+                target: Content,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Select,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 2,
+                target: Frame,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ToggleFullscreen,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 3,
+                target: Content,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Select,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Frame,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ResizePane,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    GroupToggle,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Right,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ContextMenu,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Right,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ContextMenu,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Right,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ungroup,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Middle,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ignore,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollUp,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Scroll(
+                        3,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollUp,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ResizeScroll(
+                        Increase,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollUp,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollToPrompt(
+                        Previous,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollDown,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Scroll(
+                        3,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollDown,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ResizeScroll(
+                        Decrease,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollDown,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollToPrompt(
+                        Next,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollLeft,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollLeft,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollLeft,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ignore,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollRight,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollRight,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollRight,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ignore,
+                ),
+                app_first: None,
+            },
+        },
+        Locked: {
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Click,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 2,
+                target: Content,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Select,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 2,
+                target: Frame,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ToggleFullscreen,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 3,
+                target: Content,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Select,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Frame,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ResizePane,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    GroupToggle,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Right,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ContextMenu,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Right,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ContextMenu,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Right,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ungroup,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Middle,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ignore,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollUp,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Scroll(
+                        3,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollUp,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ResizeScroll(
+                        Increase,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollUp,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollToPrompt(
+                        Previous,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollDown,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Scroll(
+                        3,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollDown,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ResizeScroll(
+                        Decrease,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollDown,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollToPrompt(
+                        Next,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollLeft,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollLeft,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollLeft,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ignore,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollRight,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollRight,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollRight,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ignore,
+                ),
+                app_first: None,
+            },
+        },
+        Resize: {
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Click,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 2,
+                target: Content,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Select,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 2,
+                target: Frame,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ToggleFullscreen,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 3,
+                target: Content,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Select,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Frame,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ResizePane,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    GroupToggle,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Right,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ContextMenu,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Right,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ContextMenu,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Right,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ungroup,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Middle,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ignore,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollUp,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Scroll(
+                        3,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollUp,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ResizeScroll(
+                        Increase,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollUp,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollToPrompt(
+                        Previous,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollDown,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Scroll(
+                        3,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollDown,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ResizeScroll(
+                        Decrease,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollDown,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollToPrompt(
+                        Next,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollLeft,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollLeft,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollLeft,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ignore,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollRight,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollRight,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollRight,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ignore,
+                ),
+                app_first: None,
+            },
+        },
+        Pane: {
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Click,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 2,
+                target: Content,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Select,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 2,
+                target: Frame,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ToggleFullscreen,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 3,
+                target: Content,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Select,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Frame,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ResizePane,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    GroupToggle,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Right,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ContextMenu,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Right,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ContextMenu,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Right,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ungroup,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Middle,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ignore,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollUp,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Scroll(
+                        3,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollUp,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ResizeScroll(
+                        Increase,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollUp,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollToPrompt(
+                        Previous,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollDown,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Scroll(
+                        3,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollDown,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ResizeScroll(
+                        Decrease,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollDown,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollToPrompt(
+                        Next,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollLeft,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollLeft,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollLeft,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ignore,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollRight,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollRight,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollRight,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ignore,
+                ),
+                app_first: None,
+            },
+        },
+        Tab: {
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Click,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 2,
+                target: Content,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Select,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 2,
+                target: Frame,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ToggleFullscreen,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 3,
+                target: Content,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Select,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Frame,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ResizePane,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    GroupToggle,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Right,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ContextMenu,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Right,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ContextMenu,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Right,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ungroup,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Middle,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ignore,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollUp,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Scroll(
+                        3,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollUp,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ResizeScroll(
+                        Increase,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollUp,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollToPrompt(
+                        Previous,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollDown,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Scroll(
+                        3,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollDown,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ResizeScroll(
+                        Decrease,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollDown,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollToPrompt(
+                        Next,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollLeft,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollLeft,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollLeft,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ignore,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollRight,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollRight,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollRight,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ignore,
+                ),
+                app_first: None,
+            },
+        },
+        Scroll: {
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Click,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 2,
+                target: Content,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Select,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 2,
+                target: Frame,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ToggleFullscreen,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 3,
+                target: Content,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Select,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Frame,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ResizePane,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    GroupToggle,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Right,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ContextMenu,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Right,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ContextMenu,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Right,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ungroup,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Middle,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ignore,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollUp,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Scroll(
+                        3,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollUp,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ResizeScroll(
+                        Increase,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollUp,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollToPrompt(
+                        Previous,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollDown,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Scroll(
+                        3,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollDown,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ResizeScroll(
+                        Decrease,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollDown,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollToPrompt(
+                        Next,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollLeft,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollLeft,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollLeft,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ignore,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollRight,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollRight,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollRight,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ignore,
+                ),
+                app_first: None,
+            },
+        },
+        EnterSearch: {
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Click,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 2,
+                target: Content,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Select,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 2,
+                target: Frame,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ToggleFullscreen,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 3,
+                target: Content,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Select,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Frame,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ResizePane,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    GroupToggle,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Right,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ContextMenu,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Right,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ContextMenu,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Right,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ungroup,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Middle,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ignore,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollUp,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Scroll(
+                        3,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollUp,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ResizeScroll(
+                        Increase,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollUp,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollToPrompt(
+                        Previous,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollDown,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Scroll(
+                        3,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollDown,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ResizeScroll(
+                        Decrease,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollDown,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollToPrompt(
+                        Next,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollLeft,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollLeft,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollLeft,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ignore,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollRight,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollRight,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollRight,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ignore,
+                ),
+                app_first: None,
+            },
+        },
+        Search: {
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Click,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 2,
+                target: Content,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Select,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 2,
+                target: Frame,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ToggleFullscreen,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 3,
+                target: Content,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Select,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Frame,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ResizePane,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    GroupToggle,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Right,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ContextMenu,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Right,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ContextMenu,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Right,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ungroup,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Middle,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ignore,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollUp,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Scroll(
+                        3,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollUp,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ResizeScroll(
+                        Increase,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollUp,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollToPrompt(
+                        Previous,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollDown,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Scroll(
+                        3,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollDown,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ResizeScroll(
+                        Decrease,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollDown,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollToPrompt(
+                        Next,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollLeft,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollLeft,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollLeft,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ignore,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollRight,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollRight,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollRight,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ignore,
+                ),
+                app_first: None,
+            },
+        },
+        RenameTab: {
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Click,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 2,
+                target: Content,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Select,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 2,
+                target: Frame,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ToggleFullscreen,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 3,
+                target: Content,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Select,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Frame,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ResizePane,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    GroupToggle,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Right,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ContextMenu,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Right,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ContextMenu,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Right,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ungroup,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Middle,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ignore,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollUp,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Scroll(
+                        3,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollUp,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ResizeScroll(
+                        Increase,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollUp,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollToPrompt(
+                        Previous,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollDown,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Scroll(
+                        3,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollDown,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ResizeScroll(
+                        Decrease,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollDown,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollToPrompt(
+                        Next,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollLeft,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollLeft,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollLeft,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ignore,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollRight,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollRight,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollRight,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ignore,
+                ),
+                app_first: None,
+            },
+        },
+        RenamePane: {
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Click,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 2,
+                target: Content,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Select,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 2,
+                target: Frame,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ToggleFullscreen,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 3,
+                target: Content,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Select,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Frame,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ResizePane,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    GroupToggle,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Right,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ContextMenu,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Right,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ContextMenu,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Right,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ungroup,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Middle,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ignore,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollUp,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Scroll(
+                        3,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollUp,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ResizeScroll(
+                        Increase,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollUp,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollToPrompt(
+                        Previous,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollDown,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Scroll(
+                        3,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollDown,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ResizeScroll(
+                        Decrease,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollDown,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollToPrompt(
+                        Next,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollLeft,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollLeft,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollLeft,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ignore,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollRight,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollRight,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollRight,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ignore,
+                ),
+                app_first: None,
+            },
+        },
+        Session: {
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Click,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 2,
+                target: Content,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Select,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 2,
+                target: Frame,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ToggleFullscreen,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 3,
+                target: Content,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Select,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Frame,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ResizePane,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    GroupToggle,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Right,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ContextMenu,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Right,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ContextMenu,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Right,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ungroup,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Middle,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ignore,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollUp,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Scroll(
+                        3,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollUp,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ResizeScroll(
+                        Increase,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollUp,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollToPrompt(
+                        Previous,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollDown,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Scroll(
+                        3,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollDown,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ResizeScroll(
+                        Decrease,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollDown,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollToPrompt(
+                        Next,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollLeft,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollLeft,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollLeft,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ignore,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollRight,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollRight,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollRight,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ignore,
+                ),
+                app_first: None,
+            },
+        },
+        Move: {
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Click,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 2,
+                target: Content,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Select,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 2,
+                target: Frame,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ToggleFullscreen,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 3,
+                target: Content,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Select,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Frame,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ResizePane,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    GroupToggle,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Right,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ContextMenu,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Right,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ContextMenu,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Right,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ungroup,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Middle,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ignore,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollUp,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Scroll(
+                        3,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollUp,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ResizeScroll(
+                        Increase,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollUp,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollToPrompt(
+                        Previous,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollDown,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Scroll(
+                        3,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollDown,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ResizeScroll(
+                        Decrease,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollDown,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollToPrompt(
+                        Next,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollLeft,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollLeft,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollLeft,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ignore,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollRight,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollRight,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollRight,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ignore,
+                ),
+                app_first: None,
+            },
+        },
+        Prompt: {
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Click,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 2,
+                target: Content,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Select,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 2,
+                target: Frame,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ToggleFullscreen,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 3,
+                target: Content,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Select,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Frame,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ResizePane,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    GroupToggle,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Right,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ContextMenu,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Right,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ContextMenu,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Right,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ungroup,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Middle,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ignore,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollUp,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Scroll(
+                        3,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollUp,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ResizeScroll(
+                        Increase,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollUp,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollToPrompt(
+                        Previous,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollDown,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Scroll(
+                        3,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollDown,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ResizeScroll(
+                        Decrease,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollDown,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollToPrompt(
+                        Next,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollLeft,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollLeft,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollLeft,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ignore,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollRight,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollRight,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollRight,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ignore,
+                ),
+                app_first: None,
+            },
+        },
+        Tmux: {
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Click,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 2,
+                target: Content,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Select,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 2,
+                target: Frame,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ToggleFullscreen,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {},
+                click_count: 3,
+                target: Content,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Select,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Frame,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ResizePane,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Left,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    GroupToggle,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Right,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ContextMenu,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Right,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ContextMenu,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Right,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ungroup,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: Middle,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ignore,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollUp,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Scroll(
+                        3,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollUp,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ResizeScroll(
+                        Increase,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollUp,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollToPrompt(
+                        Previous,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollDown,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Scroll(
+                        3,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollDown,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ResizeScroll(
+                        Decrease,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollDown,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollToPrompt(
+                        Next,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollLeft,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollLeft,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollLeft,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ignore,
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollRight,
+                modifiers: {},
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollRight,
+                modifiers: {
+                    Ctrl,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    ScrollColumns(
+                        4,
+                    ),
+                ),
+                app_first: None,
+            },
+            MouseTrigger {
+                button: ScrollRight,
+                modifiers: {
+                    Alt,
+                },
+                click_count: 1,
+                target: Any,
+            }: MouseBinding {
+                kind: Behaviour(
+                    Ignore,
+                ),
+                app_first: None,
+            },
         },
     },
 }

@@ -33,15 +33,25 @@ const ROUNDTRIP_TEST_STACK_SIZE: usize = 32 * 1024 * 1024;
 #[test]
 fn nested_session_ancestor_tab_highlight_ipc_preserves_presence_and_value() {
     use crate::client_server_contract::client_server_contract::Options as ProtoOptions;
+    use prost::Message;
     for value in [None, Some(true), Some(false)] {
-        let options = Options {
-            nested_session_ancestor_tab_highlight: value,
-            ..Default::default()
-        };
-        let wire: ProtoOptions = options.clone().into();
-        assert_eq!(wire.nested_session_ancestor_tab_highlight, value);
-        let decoded: Options = wire.try_into().unwrap();
-        assert_eq!(decoded, options);
+        for allow_uncertified in [None, Some(true), Some(false)] {
+            let options = Options {
+                nested_session_ancestor_tab_highlight: value,
+                dangerously_allow_web_serving_without_a_certificate: allow_uncertified,
+                ..Default::default()
+            };
+            let wire: ProtoOptions = options.clone().into();
+            let bytes = wire.encode_to_vec();
+            let wire = ProtoOptions::decode(bytes.as_slice()).unwrap();
+            assert_eq!(wire.nested_session_ancestor_tab_highlight, value);
+            assert_eq!(
+                wire.dangerously_allow_web_serving_without_a_certificate,
+                allow_uncertified
+            );
+            let decoded: Options = wire.try_into().unwrap();
+            assert_eq!(decoded, options);
+        }
     }
 }
 
@@ -530,6 +540,7 @@ fn test_client_messages() {
                 web_server_cert: Some(PathBuf::from("web_server_cert")),
                 web_server_key: Some(PathBuf::from("web_server_key")),
                 enforce_https_for_localhost: Some(true),
+                dangerously_allow_web_serving_without_a_certificate: Some(true),
                 post_command_discovery_hook: Some("post_command_discovery_hook".to_owned()),
                 client_async_worker_tasks: Some(16),
                 mouse_hover_effects: Some(false),
@@ -3973,6 +3984,21 @@ fn test_client_messages() {
         action: Action::MoveTabByTabId {
             id: 1,
             direction: Direction::Left,
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::MoveTabToPosition { id: 2, position: 0 },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::MoveTabToPosition {
+            id: 2,
+            position: u64::MAX,
         },
         terminal_id: Some(1),
         client_id: Some(100),

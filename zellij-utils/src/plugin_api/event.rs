@@ -2051,6 +2051,22 @@ impl TryFrom<MouseEventPayload> for Mouse {
                     _ => Err("Malformed payload for mouse scroll down"),
                 }
             },
+            Some(MouseEventName::MouseScrollLeft) => {
+                match mouse_event_payload.mouse_event_payload {
+                    Some(mouse_event_payload::MouseEventPayload::LineCount(line_count)) => {
+                        Ok(Mouse::ScrollLeft(line_count as usize))
+                    },
+                    _ => Err("Malformed payload for mouse scroll left"),
+                }
+            },
+            Some(MouseEventName::MouseScrollRight) => {
+                match mouse_event_payload.mouse_event_payload {
+                    Some(mouse_event_payload::MouseEventPayload::LineCount(line_count)) => {
+                        Ok(Mouse::ScrollRight(line_count as usize))
+                    },
+                    _ => Err("Malformed payload for mouse scroll right"),
+                }
+            },
             Some(MouseEventName::MouseLeftClick) => match mouse_event_payload.mouse_event_payload {
                 Some(mouse_event_payload::MouseEventPayload::Position(position)) => Ok(
                     Mouse::LeftClick(position.line as isize, position.column as usize),
@@ -2083,20 +2099,12 @@ impl TryFrom<MouseEventPayload> for Mouse {
                 ),
                 _ => Err("Malformed payload for mouse hover"),
             },
-            Some(MouseEventName::MouseScrollLeft) => {
+            Some(MouseEventName::MouseDoubleClick) => {
                 match mouse_event_payload.mouse_event_payload {
-                    Some(mouse_event_payload::MouseEventPayload::LineCount(line_count)) => {
-                        Ok(Mouse::ScrollLeft(line_count as usize))
-                    },
-                    _ => Err("Malformed payload for mouse scroll left"),
-                }
-            },
-            Some(MouseEventName::MouseScrollRight) => {
-                match mouse_event_payload.mouse_event_payload {
-                    Some(mouse_event_payload::MouseEventPayload::LineCount(line_count)) => {
-                        Ok(Mouse::ScrollRight(line_count as usize))
-                    },
-                    _ => Err("Malformed payload for mouse scroll right"),
+                    Some(mouse_event_payload::MouseEventPayload::Position(position)) => Ok(
+                        Mouse::DoubleClick(position.line as isize, position.column as usize),
+                    ),
+                    _ => Err("Malformed payload for mouse double click"),
                 }
             },
             None => Err("Malformed payload for MouseEventName"),
@@ -2119,6 +2127,20 @@ impl TryFrom<Mouse> for MouseEventPayload {
                 mouse_event_name: MouseEventName::MouseScrollDown as i32,
                 mouse_event_payload: Some(mouse_event_payload::MouseEventPayload::LineCount(
                     number_of_lines as u32,
+                )),
+                ..Default::default()
+            }),
+            Mouse::ScrollLeft(cols) => Ok(MouseEventPayload {
+                mouse_event_name: MouseEventName::MouseScrollLeft as i32,
+                mouse_event_payload: Some(mouse_event_payload::MouseEventPayload::LineCount(
+                    cols as u32,
+                )),
+                ..Default::default()
+            }),
+            Mouse::ScrollRight(cols) => Ok(MouseEventPayload {
+                mouse_event_name: MouseEventName::MouseScrollRight as i32,
+                mouse_event_payload: Some(mouse_event_payload::MouseEventPayload::LineCount(
+                    cols as u32,
                 )),
                 ..Default::default()
             }),
@@ -2172,17 +2194,13 @@ impl TryFrom<Mouse> for MouseEventPayload {
                 )),
                 ..Default::default()
             }),
-            Mouse::ScrollLeft(cols) => Ok(MouseEventPayload {
-                mouse_event_name: MouseEventName::MouseScrollLeft as i32,
-                mouse_event_payload: Some(mouse_event_payload::MouseEventPayload::LineCount(
-                    cols as u32,
-                )),
-                ..Default::default()
-            }),
-            Mouse::ScrollRight(cols) => Ok(MouseEventPayload {
-                mouse_event_name: MouseEventName::MouseScrollRight as i32,
-                mouse_event_payload: Some(mouse_event_payload::MouseEventPayload::LineCount(
-                    cols as u32,
+            Mouse::DoubleClick(line, column) => Ok(MouseEventPayload {
+                mouse_event_name: MouseEventName::MouseDoubleClick as i32,
+                mouse_event_payload: Some(mouse_event_payload::MouseEventPayload::Position(
+                    ProtobufPosition {
+                        line: line as i64,
+                        column: column as i64,
+                    },
                 )),
                 ..Default::default()
             }),
@@ -4221,6 +4239,9 @@ impl TryFrom<ProtobufContextMenuAction> for ContextMenuAction {
                 };
                 Ok(ContextMenuAction::ClickedTab(action))
             },
+            Some(ProtobufContextMenuActionKind::ClickedTabMoveToPosition(position)) => Ok(
+                ContextMenuAction::ClickedTab(ClickedTabAction::MoveToPosition(position)),
+            ),
             None => Err("Empty action in a context menu entry"),
         }
     }
@@ -4248,6 +4269,9 @@ impl TryFrom<ContextMenuAction> for ProtobufContextMenuAction {
                 };
                 ProtobufContextMenuActionKind::ClickedPane(action as i32)
             },
+            ContextMenuAction::ClickedTab(ClickedTabAction::MoveToPosition(position)) => {
+                ProtobufContextMenuActionKind::ClickedTabMoveToPosition(position)
+            },
             ContextMenuAction::ClickedTab(action) => {
                 let action = match action {
                     ClickedTabAction::Close => ProtobufClickedTabAction::Close,
@@ -4257,6 +4281,9 @@ impl TryFrom<ContextMenuAction> for ProtobufContextMenuAction {
                     ClickedTabAction::Move(_) => {
                         return Err("Tabs can only be moved left or right")
                     },
+                    ClickedTabAction::MoveToPosition(_) => {
+                        return Err("Unexpected clicked tab action")
+                    },
                 };
                 ProtobufContextMenuActionKind::ClickedTab(action as i32)
             },
@@ -4264,6 +4291,32 @@ impl TryFrom<ContextMenuAction> for ProtobufContextMenuAction {
         Ok(ProtobufContextMenuAction {
             action: Some(action),
         })
+    }
+}
+
+#[cfg(test)]
+mod mouse_event_tests {
+    use super::*;
+
+    #[test]
+    fn every_mouse_event_survives_the_protobuf_round_trip() {
+        let events = [
+            Mouse::ScrollUp(3),
+            Mouse::ScrollDown(2),
+            Mouse::ScrollLeft(4),
+            Mouse::ScrollRight(5),
+            Mouse::LeftClick(1, 2),
+            Mouse::RightClick(3, 4),
+            Mouse::Hold(5, 6),
+            Mouse::Release(7, 8),
+            Mouse::Hover(9, 10),
+            Mouse::DoubleClick(11, 12),
+        ];
+        for event in events {
+            let payload: MouseEventPayload = event.try_into().expect("encode");
+            let decoded: Mouse = payload.try_into().expect("decode");
+            assert_eq!(decoded, event);
+        }
     }
 }
 
@@ -4281,6 +4334,11 @@ mod context_menu_tests {
             ContextMenuAction::ClickedTab(ClickedTabAction::StartRename),
             ContextMenuAction::ClickedTab(ClickedTabAction::Move(Direction::Left)),
             ContextMenuAction::ClickedTab(ClickedTabAction::Move(Direction::Right)),
+            ContextMenuAction::ClickedTab(ClickedTabAction::MoveToPosition(0)),
+            ContextMenuAction::ClickedTab(ClickedTabAction::MoveToPosition(
+                crate::data::TAB_POSITION_END,
+            )),
+            ContextMenuAction::Action(Action::MoveTabToPosition { id: 4, position: 2 }),
             ContextMenuAction::Action(Action::Detach),
             ContextMenuAction::Action(Action::CloseFocusByPaneId {
                 pane_id: PaneId::Terminal(3),

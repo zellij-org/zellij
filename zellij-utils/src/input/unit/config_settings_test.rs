@@ -76,6 +76,7 @@ fn every_option_set() -> Options {
         web_server_cert: Some(PathBuf::from("/tmp/cert.pem")),
         web_server_key: Some(PathBuf::from("/tmp/key.pem")),
         enforce_https_for_localhost: Some(true),
+        dangerously_allow_web_serving_without_a_certificate: Some(true),
         post_command_discovery_hook: Some("echo hook".to_owned()),
         client_async_worker_tasks: Some(8),
         nested_session_handling: Some(NestedSessionHandling::Never),
@@ -96,6 +97,11 @@ fn every_border_override_set(line_style: LineStyle) -> BorderStyleOverride {
 }
 
 const EVERY_BLOCK_SET: &str = "keybinds preset=\"default\"
+mousebinds {
+    normal {
+        bind \"Alt Middle\" { NewTab; }
+    }
+}
 plugins {
     mine location=\"zellij:strider\" {
         size \"3\"
@@ -138,6 +144,7 @@ pub(crate) fn every_setting_set() -> Config {
     Config {
         keybinds: with_preset.keybinds.clone(),
         keybinds_layers: with_preset.keybinds_layers,
+        mousebinds: with_preset.mousebinds.clone(),
         plugins: with_preset.plugins,
         background_plugins: with_preset.background_plugins,
         env: with_preset.env,
@@ -170,6 +177,7 @@ fn kdl_names_in(config: &Config) -> BTreeSet<(SettingSection, String)> {
     let document: KdlDocument = config.to_string(false).parse().unwrap();
     let blocks = [
         "keybinds",
+        "mousebinds",
         "themes",
         "plugins",
         "load_plugins",
@@ -183,11 +191,12 @@ fn kdl_names_in(config: &Config) -> BTreeSet<(SettingSection, String)> {
         let name = node.name().value();
         if !blocks.contains(&name) {
             names.insert((SettingSection::TopLevel, name.to_owned()));
-        } else if !["keybinds", "ui", "web_client"].contains(&name) {
+        } else if !["keybinds", "mousebinds", "ui", "web_client"].contains(&name) {
             names.insert((SettingSection::Blocks, name.to_owned()));
         }
     }
     names.insert((SettingSection::Keybinds, "keybinds".to_owned()));
+    names.insert((SettingSection::Keybinds, "mousebinds".to_owned()));
     let pane_frames = document
         .get("ui")
         .and_then(|ui| ui.children())
@@ -252,7 +261,7 @@ fn every_setting_has_a_value_when_set_and_reads_back_from_the_file() {
     let values = setting_values(&config);
     for key in SettingKey::all() {
         assert!(values.contains_key(&key), "{} has no value", key);
-        if key != SettingKey::Keybinds {
+        if key != SettingKey::Keybinds && key != SettingKey::Mousebinds {
             assert!(values[&key].is_some(), "{} has no value", key);
         }
     }
@@ -263,6 +272,11 @@ fn every_setting_has_a_value_when_set_and_reads_back_from_the_file() {
     .unwrap();
     assert_eq!(setting_values(&read_back), values);
     assert!(!settings_differ(&read_back, &config, SettingKey::Keybinds));
+    assert!(!settings_differ(
+        &read_back,
+        &config,
+        SettingKey::Mousebinds
+    ));
 }
 
 #[test]
@@ -320,6 +334,12 @@ fn unsetting_a_setting_restores_its_default() {
             assert_eq!(
                 config.keybinds,
                 Config::from_default_assets().unwrap().keybinds
+            );
+        } else if key == SettingKey::Mousebinds {
+            assert!(config.keybinds_layers.user_mouse.is_empty());
+            assert_eq!(
+                config.mousebinds,
+                Config::from_default_assets().unwrap().mousebinds
             );
         } else {
             assert_eq!(setting_value(&config, key), default_values[&key].clone());

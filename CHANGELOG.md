@@ -25,7 +25,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: screen surface stability (https://github.com/zellij-org/zellij/pull/5683)
 * feat: right-click menu, interactive configuration, popups, notifications (https://github.com/zellij-org/zellij/pull/5685)
 * fix: preserve order of command panes when changing swap layouts (https://github.com/zellij-org/zellij/pull/5687)
-* feat: let a plugin give its layout space back while it has nothing to draw, so a bar plugin does not hold an empty row (https://github.com/zellij-org/zellij/pull/5590)
+* feat: let a plugin give its layout space back while it has nothing to draw (https://github.com/zellij-org/zellij/pull/5590)
+* fix: occasional resurrection layout serialization corruption (https://github.com/zellij-org/zellij/pull/5690)
+* fix: support horizontal scroll for programs that request it (https://github.com/zellij-org/zellij/pull/4860)
+* feat: allow config to dangerously disable https certificate enforcement on non-localhost (https://github.com/zellij-org/zellij/pull/5694)
+* feat: reorder tabs with mouse, configurable mouse bindings (https://github.com/zellij-org/zellij/pull/5697)
 
 ## [0.45.1] - 2026-08-28
 * fix: nested-session detection over SSH (https://github.com/zellij-org/zellij/pull/5522)

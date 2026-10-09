@@ -189,7 +189,7 @@ pub struct NestedSessionModeUpdatePayload {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ContextMenuAction {
-    #[prost(oneof="context_menu_action::Action", tags="1, 2, 3")]
+    #[prost(oneof="context_menu_action::Action", tags="1, 2, 3, 4")]
     pub action: ::core::option::Option<context_menu_action::Action>,
 }
 /// Nested message and enum types in `ContextMenuAction`.
@@ -203,6 +203,8 @@ pub mod context_menu_action {
         ClickedPane(i32),
         #[prost(enumeration="super::ClickedTabAction", tag="3")]
         ClickedTab(i32),
+        #[prost(uint64, tag="4")]
+        ClickedTabMoveToPosition(u64),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -1524,6 +1526,7 @@ pub enum MouseEventName {
     MouseHover = 6,
     MouseScrollLeft = 7,
     MouseScrollRight = 8,
+    MouseDoubleClick = 9,
 }
 impl MouseEventName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1541,6 +1544,7 @@ impl MouseEventName {
             MouseEventName::MouseHover => "MouseHover",
             MouseEventName::MouseScrollLeft => "MouseScrollLeft",
             MouseEventName::MouseScrollRight => "MouseScrollRight",
+            MouseEventName::MouseDoubleClick => "MouseDoubleClick",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1555,6 +1559,7 @@ impl MouseEventName {
             "MouseHover" => Some(Self::MouseHover),
             "MouseScrollLeft" => Some(Self::MouseScrollLeft),
             "MouseScrollRight" => Some(Self::MouseScrollRight),
+            "MouseDoubleClick" => Some(Self::MouseDoubleClick),
             _ => None,
         }
     }
