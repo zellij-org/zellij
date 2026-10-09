@@ -1,5 +1,4 @@
 pub mod alacritty_functions;
-pub mod close_dialogue;
 pub mod grid;
 pub mod hyperlink_tracker;
 pub mod kitty_graphics;

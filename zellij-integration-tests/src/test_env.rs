@@ -161,6 +161,7 @@ theme "default"
 session_card false
 session_indicator false
 swap_layout_notification false
+on_quit "quit"
 "#;
 
 pub fn default_test_options() -> zellij_utils::input::options::Options {

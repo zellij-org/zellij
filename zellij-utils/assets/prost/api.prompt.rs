@@ -14,6 +14,8 @@ pub struct PromptRequest {
     pub placement: ::core::option::Option<PromptPlacement>,
     #[prost(bool, tag="6")]
     pub focused: bool,
+    #[prost(bool, tag="16")]
+    pub capture_all_keys: bool,
     #[prost(oneof="prompt_request::Spec", tags="7, 8, 9, 10, 11, 12, 13, 14, 15")]
     pub spec: ::core::option::Option<prompt_request::Spec>,
 }
@@ -61,6 +63,8 @@ pub struct ChoiceItem {
     pub value: ::prost::alloc::string::String,
     #[prost(string, optional, tag="2")]
     pub label: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(uint32, repeated, tag="3")]
+    pub emphasis: ::prost::alloc::vec::Vec<u32>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -125,6 +129,10 @@ pub struct SelectSpec {
 pub struct MenuSpec {
     #[prost(message, repeated, tag="1")]
     pub items: ::prost::alloc::vec::Vec<ChoiceItem>,
+    #[prost(string, optional, tag="2")]
+    pub remember: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, tag="3")]
+    pub padded: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

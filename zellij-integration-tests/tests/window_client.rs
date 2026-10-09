@@ -246,7 +246,7 @@ fn a_window_that_detaches_leaves_the_terminal_client_working() {
 }
 
 #[test]
-fn a_window_keeps_the_session_after_the_terminal_client_quits() {
+fn a_window_keeps_the_session_after_the_terminal_client_detaches() {
     let mut zellij = TestRunner::new(TERMINAL_SIZE).start();
     let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
     terminal.disable_echo();
@@ -255,7 +255,8 @@ fn a_window_keeps_the_session_after_the_terminal_client_quits() {
     terminal.output(b"before the terminal left\r\n");
     window.frame_showing("before the terminal left");
 
-    zellij.send_stdin(&zellij_integration_tests::keys::ctrl('q'));
+    zellij.send_stdin(&zellij_integration_tests::keys::ctrl('o'));
+    zellij.send_stdin(&zellij_integration_tests::keys::key('d'));
     zellij.wait_for_main_client_to_exit();
 
     terminal.output(b"after the terminal left\r\n");

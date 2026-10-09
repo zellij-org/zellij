@@ -153,6 +153,7 @@ struct App {
     surfaces: Option<Surfaces>,
     failure: Option<anyhow::Error>,
     leaving: bool,
+    quit_requested: bool,
     session: Option<Session>,
     ring: fn(),
     notify: fn(NotificationMode, &crate::kitty::Notification) -> bool,
@@ -594,16 +595,14 @@ impl App {
         }
     }
 
-    fn asks_before_closing(&self) -> bool {
-        self.options.confirm_close && self.role == Role::Participant && self.sender.is_some()
-    }
-
     fn closing(&mut self) -> bool {
-        let confirming = self.asks_before_closing();
-        self.leaving = !confirming;
-        let asked = if confirming {
+        let quitting = self.role == Role::Participant;
+        let pressed_again = quitting && self.quit_requested;
+        self.quit_requested = quitting;
+        self.leaving = !quitting || pressed_again;
+        let asked = if quitting {
             self.tell(ClientToServerMsg::Action {
-                action: zellij_utils::input::actions::Action::ConfirmClose,
+                action: zellij_utils::input::actions::Action::Quit,
                 terminal_id: None,
                 client_id: None,
                 is_cli_client: false,
@@ -612,7 +611,7 @@ impl App {
             self.detach()
         };
         match asked {
-            Ok(()) => self.sender.is_none(),
+            Ok(()) => self.sender.is_none() || pressed_again,
             Err(e) => {
                 report!(
                     "the session could not be asked to let the window go, \
@@ -1059,6 +1058,7 @@ impl App {
     }
 
     fn press(&mut self, press: input::Press) {
+        self.quit_requested = false;
         let gate = self.composition.gate();
         if gate == Gate::Composing {
             return;
@@ -1258,6 +1258,7 @@ impl App {
 
     fn point<I: IntoIterator<Item = MouseEvent>>(&mut self, events: I) {
         for event in events {
+            self.quit_requested = false;
             if let Err(e) = self.tell(mouse::message(event)) {
                 report!("failed to send a mouse event: {}", e);
             }
@@ -1992,6 +1993,7 @@ impl Rendering {
             surfaces: None,
             failure: None,
             leaving: false,
+            quit_requested: false,
             session,
             ring: bell::ring,
             notify: notify::handled,
@@ -2292,7 +2294,6 @@ mod tests {
             initial_cols: None,
             initial_rows: None,
             fullscreen_keys: crate::options::default_fullscreen_keys(),
-            confirm_close: false,
             hide_pointer_while_typing: false,
             cursor_unfocused_hollow: true,
             minimum_contrast: 1.0,
@@ -2681,12 +2682,23 @@ mod tests {
     }
 
     #[test]
-    fn a_window_that_asked_to_leave_closes_however_the_session_ends() {
+    fn a_watcher_that_asked_to_leave_closes_however_the_session_ends() {
         let mut harness = Harness::new(1, true, "");
+        harness.app.role = Role::Watcher;
         assert!(!harness.app.closing());
         assert!(harness.app.session_ended(Ending::Lost));
         assert!(harness.app.failure.is_none());
-        assert_eq!(harness.actions(), vec![Action::Detach]);
+    }
+
+    #[test]
+    fn a_window_that_asked_to_quit_closes_when_the_session_lets_it_go() {
+        let mut harness = Harness::new(1, true, "");
+        assert!(!harness.app.closing());
+        assert!(harness
+            .app
+            .session_ended(Ending::Exited(ExitReason::Normal)));
+        assert!(harness.app.failure.is_none());
+        assert_eq!(harness.actions(), vec![Action::Quit]);
     }
 
     #[test]
@@ -2744,31 +2756,35 @@ mod tests {
     }
 
     #[test]
-    fn a_close_request_asks_the_session_to_let_go_and_keeps_the_window() {
+    fn a_close_request_sends_quit_and_keeps_the_window_until_the_server_answers() {
         let mut harness = Harness::new(1, true, "");
         assert!(
             !harness.app.closing(),
             "a window showing a live session waits for the server"
         );
-        assert_eq!(harness.actions(), vec![Action::Detach]);
-    }
-
-    fn confirming(expected: usize) -> Harness {
-        let mut options = test_options(true);
-        options.confirm_close = true;
-        Harness::with(expected, options, "")
+        assert_eq!(harness.actions(), vec![Action::Quit]);
     }
 
     #[test]
-    fn a_close_request_asks_for_confirmation_when_the_setting_is_on() {
-        let mut harness = confirming(1);
+    fn pressing_close_again_closes_the_window_even_if_the_session_does_not_answer() {
+        let mut harness = Harness::new(2, true, "");
         assert!(!harness.app.closing());
-        assert_eq!(harness.actions(), vec![Action::ConfirmClose]);
+        assert!(harness.app.closing(), "the second press closes the window");
+        assert!(harness.app.leaving);
+        assert_eq!(harness.actions(), vec![Action::Quit, Action::Quit]);
     }
 
     #[test]
-    fn a_watcher_detaches_without_confirmation() {
-        let mut harness = confirming(1);
+    fn typing_after_the_first_close_makes_the_next_press_ask_again() {
+        let mut harness = Harness::new(3, true, "");
+        assert!(!harness.app.closing());
+        harness.press(&Key::Named(NamedKey::Escape));
+        assert!(!harness.app.closing());
+    }
+
+    #[test]
+    fn a_watcher_leaves_without_quitting() {
+        let mut harness = Harness::new(1, true, "");
         harness.app.role = Role::Watcher;
         assert!(!harness.app.closing());
         assert!(
@@ -2778,17 +2794,8 @@ mod tests {
     }
 
     #[test]
-    fn a_close_request_with_confirmation_off_detaches_as_before() {
-        let mut options = test_options(true);
-        options.confirm_close = false;
-        let mut harness = Harness::with(1, options, "");
-        harness.app.closing();
-        assert_eq!(harness.actions(), vec![Action::Detach]);
-    }
-
-    #[test]
-    fn with_no_session_a_confirming_window_still_closes_itself() {
-        let mut harness = confirming(0);
+    fn with_no_session_a_window_still_closes_itself() {
+        let mut harness = Harness::new(0, true, "");
         harness.app.sender = None;
         assert!(harness.app.closing());
         assert!(harness.sent().is_empty());
@@ -3139,7 +3146,7 @@ mod tests {
         assert!(matches!(
             sent[2],
             ClientToServerMsg::Action {
-                action: Action::Detach,
+                action: Action::Quit,
                 ..
             }
         ));

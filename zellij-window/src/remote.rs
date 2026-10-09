@@ -52,7 +52,7 @@ pub fn outbound(msg: ClientToServerMsg) -> Outbound {
             Action::Paste { chars, .. } => Outbound::Control(Payload::Paste { chars }),
             Action::WriteChars { chars } => Outbound::Control(Payload::Text { chars }),
             Action::Detach => Outbound::Control(Payload::Detach),
-            Action::ConfirmClose => Outbound::Control(Payload::ConfirmClose),
+            Action::Quit => Outbound::Control(Payload::Quit),
             other => Outbound::Dropped(format!("Action::{}", action_name(&other))),
         },
         ClientToServerMsg::TerminalResize { new_size } => {
@@ -479,8 +479,8 @@ mod tests {
             Outbound::Control(WebClientToWebServerControlMessagePayload::Detach)
         );
         assert_eq!(
-            outbound(action(Action::ConfirmClose)),
-            Outbound::Control(WebClientToWebServerControlMessagePayload::ConfirmClose)
+            outbound(action(Action::Quit)),
+            Outbound::Control(WebClientToWebServerControlMessagePayload::Quit)
         );
     }
 
@@ -500,8 +500,8 @@ mod tests {
     #[test]
     fn any_other_action_is_dropped_by_name() {
         assert_eq!(
-            outbound(action(Action::Quit)),
-            Outbound::Dropped("Action::Quit".to_owned())
+            outbound(action(Action::ClearScreen)),
+            Outbound::Dropped("Action::ClearScreen".to_owned())
         );
     }
 

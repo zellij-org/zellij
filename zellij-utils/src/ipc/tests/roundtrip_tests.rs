@@ -545,6 +545,7 @@ fn test_client_messages() {
                 session_card: Some(false),
                 session_indicator: Some(true),
                 swap_layout_notification: Some(false),
+                on_quit: Some(crate::input::options::OnQuit::AskDetach),
             }),
             layout: None,
             terminal_window_size: Size { rows: 80, cols: 42 },
@@ -2456,12 +2457,6 @@ fn test_client_messages() {
         terminal_id: Some(1),
         client_id: Some(100),
         is_cli_client: true,
-    });
-    test_client_roundtrip!(ClientToServerMsg::Action {
-        action: Action::ConfirmClose,
-        terminal_id: None,
-        client_id: None,
-        is_cli_client: false,
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::SetDarkTheme,

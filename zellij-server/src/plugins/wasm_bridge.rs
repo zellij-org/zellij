@@ -2481,6 +2481,10 @@ impl WasmBridge {
             .attach(caller, plugin_id, client_id, caller_args);
         self.apply_prompt_actions(actions)
     }
+    pub fn withdraw_prompt(&mut self, caller: PromptCaller) {
+        let actions = self.prompt_requests.withdraw(caller);
+        self.apply_prompt_actions(actions);
+    }
     pub fn fail_prompt_popup(&mut self, caller: PromptCaller, error: String) {
         let actions = self.prompt_requests.fail(caller, error);
         self.apply_prompt_actions(actions);
@@ -2503,6 +2507,15 @@ impl WasmBridge {
         let mut pipe_messages = vec![];
         for action in actions {
             match action {
+                PromptAction::Deliver(caller, result) if caller.is_close_dialogue() => {
+                    let _ = self
+                        .senders
+                        .send_to_screen(ScreenInstruction::CloseDialogueAnswer {
+                            client_id: caller.client_id,
+                            request_id: caller.request_id,
+                            result,
+                        });
+                },
                 PromptAction::Deliver(caller, result) => {
                     let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![
                         caller.result_event(result)

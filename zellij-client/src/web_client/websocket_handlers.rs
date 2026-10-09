@@ -557,8 +557,8 @@ fn control_payload_to_server_msg(
             client_id: None,
             is_cli_client: false,
         },
-        WebClientToWebServerControlMessagePayload::ConfirmClose => ClientToServerMsg::Action {
-            action: Action::ConfirmClose,
+        WebClientToWebServerControlMessagePayload::Quit => ClientToServerMsg::Action {
+            action: Action::Quit,
             terminal_id: None,
             client_id: None,
             is_cli_client: false,
@@ -926,21 +926,21 @@ mod tests {
         );
 
         let confirm = control_payload_to_server_msg(
-            WebClientToWebServerControlMessagePayload::ConfirmClose,
+            WebClientToWebServerControlMessagePayload::Quit,
             true,
         )
         .expect("message dropped");
         assert_eq!(
             confirm,
             ClientToServerMsg::Action {
-                action: Action::ConfirmClose,
+                action: Action::Quit,
                 terminal_id: None,
                 client_id: None,
                 is_cli_client: false,
             }
         );
         assert!(control_payload_to_server_msg(
-            WebClientToWebServerControlMessagePayload::ConfirmClose,
+            WebClientToWebServerControlMessagePayload::Quit,
             false
         )
         .is_none());
