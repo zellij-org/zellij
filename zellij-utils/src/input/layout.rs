@@ -198,23 +198,8 @@ impl RunPluginOrAlias {
                 Some(Run::Plugin(RunPluginOrAlias::Alias(run_alias))),
             ) => {
                 self_alias.name == run_alias.name
-                    && self_alias
-                        .configuration
-                        .as_ref()
-                        // we do the is_empty() checks because an empty configuration is the same as no
-                        // configuration (i.e. None)
-                        .and_then(|c| if c.inner().is_empty() { None } else { Some(c) })
-                        == run_alias.configuration.as_ref().and_then(|c| {
-                            let mut to_compare = c.inner().clone();
-                            // caller_cwd is a special attribute given to alias and should not be
-                            // considered when weighing configuration equivalency
-                            to_compare.remove("caller_cwd");
-                            if to_compare.is_empty() {
-                                None
-                            } else {
-                                Some(c)
-                            }
-                        })
+                    && self_alias.configuration_without_caller_cwd()
+                        == run_alias.configuration_without_caller_cwd()
             },
             (
                 RunPluginOrAlias::Alias(self_alias),
@@ -494,6 +479,17 @@ impl PluginAlias {
             initial_cwd,
             ..Default::default()
         }
+    }
+    fn configuration_without_caller_cwd(&self) -> Option<BTreeMap<String, String>> {
+        self.configuration.as_ref().and_then(|configuration| {
+            let mut configuration = configuration.inner().clone();
+            configuration.remove("caller_cwd");
+            if configuration.is_empty() {
+                None
+            } else {
+                Some(configuration)
+            }
+        })
     }
     pub fn set_caller_cwd_if_not_set(&mut self, caller_cwd: Option<PathBuf>) {
         // we do this only for an alias because in all other cases this will be handled by the
