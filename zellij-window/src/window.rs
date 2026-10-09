@@ -13,7 +13,7 @@ use winit::application::ApplicationHandler;
 use winit::event::KeyEvent;
 use winit::event::{ElementState, Ime, MouseScrollDelta, TouchPhase, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
-use winit::keyboard::{Key, ModifiersState};
+use winit::keyboard::{Key, ModifiersState, NamedKey};
 use winit::raw_window_handle::HasWindowHandle;
 use winit::window::{
     CursorIcon, Icon, ImePurpose, UserAttentionType, Window, WindowAttributes, WindowId,
@@ -37,6 +37,7 @@ use crate::input;
 use crate::links::{self, LinkRun};
 use crate::momentum::{self, Momentum, Touch};
 use crate::mouse::{self, PointerState};
+use crate::notice::Notice;
 use crate::notify;
 use crate::options::{Change, Options};
 use crate::pacing::{Decision, Pacer};
@@ -137,6 +138,8 @@ struct App {
     selecting: bool,
     clipboard: ClipboardHandle,
     title: String,
+    session_name: String,
+    notice: Option<Notice>,
     retained: RetainedScene,
     blink: BlinkPhase,
     blink_since: Instant,
@@ -513,6 +516,9 @@ impl App {
         let next = self.fitted(width, height);
         self.state
             .set_cell_size(self.metrics.width, self.metrics.height);
+        if self.notice.is_some() {
+            self.paint_notice(next.rows, next.cols);
+        }
         if let Some(sender) = &self.sender {
             if let Err(e) = resize(sender, &self.geometry, next) {
                 report!("failed to report a resize: {}", e);
@@ -953,6 +959,10 @@ impl App {
 
     fn on_wheel_at(&mut self, delta: MouseScrollDelta, phase: TouchPhase, now: Instant) {
         self.show_pointer();
+        if self.notice.is_some() {
+            self.notice_wheel(delta);
+            return;
+        }
         self.selecting = false;
         self.set_selection(None);
         let (geometry, modifiers) = (self.geometry.get(), self.modifiers);
@@ -1413,6 +1423,7 @@ impl App {
                 session.spawn(connection);
                 self.start_over(geometry);
                 self.set_title(window_title(&session_name));
+                self.session_name = session_name;
                 for msg in palette::seed_messages(&self.options.paints) {
                     if let Err(e) = self.tell(msg) {
                         report!("failed to re-declare a color: {}", e);
@@ -1452,7 +1463,7 @@ impl App {
         if self.failure.is_some() {
             return false;
         }
-        match crate::notice::trouble(&ending) {
+        match crate::notice::trouble(&ending, &self.session_name) {
             Some(trouble) if !self.leaving => {
                 self.stranded(anyhow!("{}", crate::notice::ended(&trouble)));
                 false
@@ -1479,15 +1490,57 @@ impl App {
 
     fn show_notice(&mut self, message: &str) {
         let size = self.state.size();
-        let frame = crate::notice::frame(message, size.rows, size.cols);
+        self.notice = Some(Notice::new(message));
         self.cancel_scroll_animations();
         self.stop_momentum();
+        self.paint_notice(size.rows, size.cols);
+    }
+
+    fn paint_notice(&mut self, rows: usize, cols: usize) {
+        let Some(notice) = self.notice.as_mut() else {
+            return;
+        };
+        let frame = notice.frame(rows, cols);
         if let Err(e) = self.state.apply_frame(&frame) {
             report!("the message could not be drawn: {}", e);
             return;
         }
         self.retained.mark_everything();
         self.schedule_draw();
+    }
+
+    fn scroll_notice(&mut self, scroll: impl FnOnce(&mut Notice, usize, usize) -> bool) {
+        let size = self.state.size();
+        let Some(notice) = self.notice.as_mut() else {
+            return;
+        };
+        if scroll(notice, size.rows, size.cols) {
+            self.paint_notice(size.rows, size.cols);
+        }
+    }
+
+    fn notice_key(&mut self, key: &Key) -> bool {
+        let page = Notice::page(self.state.size().rows);
+        let by = match key {
+            Key::Named(NamedKey::Enter | NamedKey::Escape) => return true,
+            Key::Named(NamedKey::ArrowUp) => -1,
+            Key::Named(NamedKey::ArrowDown) => 1,
+            Key::Named(NamedKey::PageUp) => -page,
+            Key::Named(NamedKey::PageDown) => page,
+            Key::Named(NamedKey::Home) => -isize::MAX,
+            Key::Named(NamedKey::End) => isize::MAX,
+            _ => return false,
+        };
+        self.scroll_notice(|notice, rows, cols| notice.scroll(by, rows, cols));
+        false
+    }
+
+    fn notice_wheel(&mut self, delta: MouseScrollDelta) {
+        let lines = match delta {
+            MouseScrollDelta::LineDelta(_, y) => crate::notice::wheel_lines(y),
+            MouseScrollDelta::PixelDelta(pixels) => -pixels.y / self.metrics.height.max(1) as f64,
+        };
+        self.scroll_notice(|notice, rows, cols| notice.wheel(lines, rows, cols));
     }
 
     fn requested_size(&self) -> winit::dpi::Size {
@@ -1650,7 +1703,9 @@ impl ApplicationHandler<Wake> for App {
             } => {
                 if !is_synthetic && event.state.is_pressed() {
                     if self.sender.is_none() {
-                        event_loop.exit();
+                        if self.notice_key(&event.logical_key) {
+                            event_loop.exit();
+                        }
                     } else {
                         self.on_key(&event);
                     }
@@ -1742,6 +1797,7 @@ pub fn run(
     let role = connection.role;
     let sender = connection.sender.clone();
     let title = window_title(&connection.session_name);
+    let session_name = connection.session_name.clone();
     let clipboard: ClipboardHandle = Arc::new(Mutex::new(Clipboard::open()));
     let state_path = loop_options.record_path.is_none().then(window_state::path);
     loop_options.clipboard = Some(clipboard.clone());
@@ -1766,6 +1822,7 @@ pub fn run(
         Some(session),
     );
     app.state_path = state_path;
+    app.session_name = session_name;
     let outcome = windowing.drive(&mut app);
     let mut session = app.session.take();
     if let Some(session) = session.as_mut() {
@@ -1778,11 +1835,14 @@ pub fn run(
 }
 
 pub fn run_notice(
-    state: TerminalState,
+    message: &str,
     geometry: Geometry,
     fonts: FontStack,
     options: &Options,
 ) -> Result<()> {
+    let metrics = fonts.metrics();
+    let mut state = TerminalState::new(geometry.rows, geometry.cols);
+    state.set_cell_size(metrics.width, metrics.height);
     let windowing = Windowing::bring_up()?;
     let startup = Startup::resolve(
         options.startup_mode,
@@ -1799,6 +1859,7 @@ pub fn run_notice(
         Arc::new(Mutex::new(Clipboard::open())),
         None,
     );
+    app.show_notice(message);
     windowing.drive(&mut app)
 }
 
@@ -1916,6 +1977,8 @@ impl Rendering {
             selecting: false,
             clipboard,
             title,
+            session_name: String::new(),
+            notice: None,
             retained: RetainedScene::new(),
             blink: BlinkPhase::On,
             blink_since: Instant::now(),
@@ -2498,7 +2561,7 @@ mod tests {
             "the window stays so the reason can be read"
         );
         assert!(shown(&harness).contains("Disconnected by host"));
-        assert!(shown(&harness).contains("Close this window to exit."));
+        assert!(shown(&harness).contains(crate::notice::LEAVE));
         assert!(harness.app.sender.is_none());
         assert!(
             harness.app.failure.is_some(),
@@ -2516,6 +2579,85 @@ mod tests {
         let shown = shown(&harness);
         assert!(shown.contains("Error occurred in server:"), "{}", shown);
         assert!(shown.contains("the screen thread failed"), "{}", shown);
+    }
+
+    #[test]
+    fn a_non_zero_exit_status_keeps_the_window_open_and_fails() {
+        let mut harness = Harness::new(0, true, "");
+        assert!(!harness
+            .app
+            .session_ended(Ending::Exited(ExitReason::CustomExitStatus(3))));
+        assert!(
+            shown(&harness).contains("exit status 3"),
+            "{}",
+            shown(&harness)
+        );
+        assert!(harness.app.failure.is_some());
+    }
+
+    #[test]
+    fn a_disconnect_names_the_session_the_window_was_showing() {
+        let mut harness = Harness::new(0, true, "");
+        harness.app.session_name = "work".to_owned();
+        harness
+            .app
+            .session_ended(Ending::Exited(ExitReason::Disconnect));
+        assert!(
+            shown(&harness).contains("`zellij attach work`"),
+            "{}",
+            shown(&harness)
+        );
+    }
+
+    #[test]
+    fn only_enter_or_escape_dismiss_a_message() {
+        let mut harness = Harness::new(0, true, "");
+        harness.app.session_ended(Ending::Lost);
+        for key in [
+            Key::Character(SmolStr::new("q")),
+            Key::Named(NamedKey::Space),
+            Key::Named(NamedKey::ArrowDown),
+            Key::Named(NamedKey::Tab),
+        ] {
+            assert!(!harness.app.notice_key(&key), "{:?}", key);
+        }
+        assert!(harness.app.notice_key(&Key::Named(NamedKey::Enter)));
+        assert!(harness.app.notice_key(&Key::Named(NamedKey::Escape)));
+    }
+
+    #[test]
+    fn a_long_message_scrolls_with_keys_and_the_wheel() {
+        let mut harness = Harness::new(0, true, "");
+        let long = (0..100)
+            .map(|n| format!("detail {}", n))
+            .collect::<Vec<_>>()
+            .join("\n");
+        harness.app.stranded(anyhow!("{}", long));
+        assert!(shown(&harness).contains("detail 0 "));
+        assert!(!shown(&harness).contains("detail 99"));
+        harness.app.notice_key(&Key::Named(NamedKey::End));
+        assert!(shown(&harness).contains("detail 99"), "{}", shown(&harness));
+        assert!(!shown(&harness).contains("detail 0 "));
+        harness.app.notice_key(&Key::Named(NamedKey::Home));
+        assert!(shown(&harness).contains("detail 0 "));
+        harness
+            .app
+            .on_wheel(MouseScrollDelta::LineDelta(0.0, -1.0), TouchPhase::Moved);
+        assert_eq!(harness.app.notice.as_ref().unwrap().top(), 3);
+        harness.app.notice_key(&Key::Named(NamedKey::ArrowUp));
+        assert_eq!(harness.app.notice.as_ref().unwrap().top(), 2);
+    }
+
+    #[test]
+    fn a_message_is_redrawn_to_fit_a_resized_window() {
+        let mut harness = Harness::new(0, true, "");
+        harness.app.session_ended(Ending::Lost);
+        harness.app.reflow(8 * 30, 20 * 12);
+        let size = harness.app.state.size();
+        assert_eq!((size.cols, size.rows), (30, 12));
+        let shown = shown(&harness);
+        assert!(shown.contains("closed without a"), "{}", shown);
+        assert!(shown.contains("server may have crashed."), "{}", shown);
     }
 
     #[test]

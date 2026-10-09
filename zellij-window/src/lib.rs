@@ -76,6 +76,7 @@ use zellij_utils::data::ConnectToSession;
 use zellij_utils::input::actions::initial_panes_from_cli;
 use zellij_utils::input::config::Config;
 use zellij_utils::input::options::Options as SessionOptions;
+use zellij_utils::ipc::ExitReason;
 use zellij_utils::sessions::generate_unique_session_name;
 use zellij_utils::setup::Setup;
 
@@ -384,7 +385,7 @@ fn open(args: WindowArgs, opts: CliArgs) -> Result<()> {
     let windowed = !args.headless;
     let config_options = match Setup::from_cli_args(&opts) {
         Ok((_, _, config_options, _, _)) => config_options,
-        Err(e) => return refuse(Refusal::new(format!("{}", e)), &args, None),
+        Err(e) => return refuse(Refusal::new(notice::described(&e)), &args, None),
     };
     let settings = if windowed {
         match settings::load(Config::config_file_path(&opts).as_deref()) {
@@ -542,6 +543,11 @@ fn drive(
                     "the session asked to switch to another one, \
                      which a window that was never opened cannot follow"
                 );
+            }
+            if let Some(ExitReason::CustomExitStatus(status)) = outcome.exit_reason {
+                if status != 0 {
+                    bail!("{}", notice::exit_status(status));
+                }
             }
         },
     }

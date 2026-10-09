@@ -281,6 +281,16 @@ pub fn run_with_sink(
                 paints = crate::options::resolve(&settings, theme_mode).paints;
                 sink.theme_mode(mode);
             },
+            ServerToClientMsg::Log { lines } => {
+                for line in lines {
+                    log::info!("{}", line);
+                }
+            },
+            ServerToClientMsg::LogError { lines } => {
+                for line in lines {
+                    log::error!("{}", line);
+                }
+            },
             _ => {},
         }
     }
