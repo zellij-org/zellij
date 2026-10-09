@@ -516,6 +516,9 @@ pub struct WindowConfig {
     pub scroll_animation_duration: Option<u16>,
     pub scroll_momentum: Option<bool>,
     pub scroll_momentum_friction: Option<f32>,
+    pub open_links_with_shift: Option<bool>,
+    pub shift_drag_selects: Option<bool>,
+    pub copy_keys: Option<Vec<KeyWithModifier>>,
 }
 
 impl WindowConfig {
@@ -657,6 +660,15 @@ impl WindowConfig {
         }
         if let Some(friction) = kdl_get_child!(kdl, "scroll_momentum_friction") {
             window.scroll_momentum_friction = Some(scroll_momentum_friction_from_kdl(friction)?);
+        }
+        if let Some(with_shift) = kdl_get_child_entry_bool_value!(kdl, "open_links_with_shift") {
+            window.open_links_with_shift = Some(with_shift);
+        }
+        if let Some(selects) = kdl_get_child_entry_bool_value!(kdl, "shift_drag_selects") {
+            window.shift_drag_selects = Some(selects);
+        }
+        if let Some(copy_keys) = kdl_get_child!(kdl, "copy_keys") {
+            window.copy_keys = Some(keys_from_kdl(copy_keys)?);
         }
 
         Ok(window)
@@ -844,6 +856,23 @@ impl WindowConfig {
                 .nodes_mut()
                 .push(number_node("scroll_momentum_friction", friction));
         }
+        for (name, value) in [
+            ("open_links_with_shift", self.open_links_with_shift),
+            ("shift_drag_selects", self.shift_drag_selects),
+        ] {
+            if let Some(value) = value {
+                let mut flag_node = KdlNode::new(name);
+                flag_node.push(KdlValue::Bool(value));
+                children.nodes_mut().push(flag_node);
+            }
+        }
+        if let Some(keys) = &self.copy_keys {
+            let mut keys_node = KdlNode::new("copy_keys");
+            for key in keys {
+                keys_node.push(KdlValue::String(key.to_kdl()));
+            }
+            children.nodes_mut().push(keys_node);
+        }
 
         if children.nodes().is_empty() {
             return None;
@@ -910,6 +939,9 @@ impl WindowConfig {
         merged.scroll_momentum_friction = other
             .scroll_momentum_friction
             .or(merged.scroll_momentum_friction);
+        merged.open_links_with_shift = other.open_links_with_shift.or(merged.open_links_with_shift);
+        merged.shift_drag_selects = other.shift_drag_selects.or(merged.shift_drag_selects);
+        merged.copy_keys = other.copy_keys.or(merged.copy_keys);
         merged
     }
 }
@@ -1956,6 +1988,41 @@ mod tests {
         assert_eq!(empty.hide_pointer_while_typing, None);
         assert_eq!(empty.cursor_unfocused_hollow, None);
         assert_eq!(empty.minimum_contrast, None);
+    }
+
+    #[test]
+    fn the_selection_and_link_options_round_trip_through_kdl() {
+        let parsed = section(
+            "window {\n open_links_with_shift false\n shift_drag_selects false\n \
+             copy_keys \"Ctrl Shift c\" \"Super c\"\n}",
+        )
+        .unwrap();
+        assert_eq!(parsed.open_links_with_shift, Some(false));
+        assert_eq!(parsed.shift_drag_selects, Some(false));
+        assert_eq!(
+            parsed.copy_keys,
+            Some(vec![
+                KeyWithModifier::new(BareKey::Char('c'))
+                    .with_ctrl_modifier()
+                    .with_shift_modifier(),
+                KeyWithModifier::new(BareKey::Char('c')).with_super_modifier(),
+            ])
+        );
+        let emitted = parsed.to_kdl().unwrap().to_string();
+        assert_eq!(section(&emitted).unwrap(), parsed, "{}", emitted);
+
+        let empty = section("window {\n}").unwrap();
+        assert_eq!(empty.open_links_with_shift, None);
+        assert_eq!(empty.shift_drag_selects, None);
+        assert_eq!(empty.copy_keys, None);
+
+        let merged = parsed.merge(WindowConfig {
+            shift_drag_selects: Some(true),
+            ..WindowConfig::default()
+        });
+        assert_eq!(merged.shift_drag_selects, Some(true));
+        assert_eq!(merged.open_links_with_shift, Some(false));
+        assert_eq!(merged.copy_keys, parsed.copy_keys);
     }
 
     #[test]

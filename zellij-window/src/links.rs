@@ -67,14 +67,36 @@ pub struct Armed {
     pub cell: (u16, u16),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Opening {
+    pub enabled: bool,
+    pub with_shift: bool,
+}
+
+#[cfg(test)]
+impl Opening {
+    pub const OFF: Opening = Opening {
+        enabled: false,
+        with_shift: false,
+    };
+    pub const WITHOUT_SHIFT: Opening = Opening {
+        enabled: true,
+        with_shift: false,
+    };
+    pub const WITH_SHIFT: Opening = Opening {
+        enabled: true,
+        with_shift: true,
+    };
+}
+
 pub fn armed_by_press(
-    enabled: bool,
+    opening: Opening,
     pane_wants_mouse: bool,
     modifiers: ModifiersState,
     cell: Option<(u16, u16)>,
     hovered: Option<&LinkRun>,
 ) -> Option<Armed> {
-    if !enabled || !gesture_matches(pane_wants_mouse, modifiers) {
+    if !opening.enabled || !gesture_matches(opening, pane_wants_mouse, modifiers) {
         return None;
     }
     let (x, y) = cell?;
@@ -93,21 +115,29 @@ pub fn released_on(armed: Option<Armed>, cell: Option<(u16, u16)>) -> Option<Str
     (Some(armed.cell) == cell).then_some(armed.uri)
 }
 
-pub fn gesture_matches(pane_wants_mouse: bool, modifiers: ModifiersState) -> bool {
+pub fn gesture_matches(
+    opening: Opening,
+    pane_wants_mouse: bool,
+    modifiers: ModifiersState,
+) -> bool {
     if modifiers.control_key() || modifiers.alt_key() || modifiers.super_key() {
         return false;
     }
-    modifiers.shift_key() == pane_wants_mouse
+    if modifiers.shift_key() {
+        opening.with_shift || pane_wants_mouse
+    } else {
+        !pane_wants_mouse
+    }
 }
 
 pub fn is_reachable(
-    enabled: bool,
+    opening: Opening,
     pane_wants_mouse: bool,
     modifiers: ModifiersState,
     hovered: Option<&LinkRun>,
 ) -> bool {
-    enabled
-        && gesture_matches(pane_wants_mouse, modifiers)
+    opening.enabled
+        && gesture_matches(opening, pane_wants_mouse, modifiers)
         && hovered.is_some_and(|run| is_openable(&run.uri))
 }
 
@@ -424,7 +454,13 @@ mod tests {
     const NONE: ModifiersState = ModifiersState::empty();
 
     fn armed(wants: bool, modifiers: ModifiersState, uri: &str) -> Option<Armed> {
-        armed_by_press(true, wants, modifiers, Some((1, 0)), Some(&run(uri)))
+        armed_by_press(
+            Opening::WITHOUT_SHIFT,
+            wants,
+            modifiers,
+            Some((1, 0)),
+            Some(&run(uri)),
+        )
     }
 
     #[test]
@@ -448,11 +484,47 @@ mod tests {
     }
 
     #[test]
-    fn shift_over_a_pane_that_is_not_watching_the_mouse_is_a_selection_not_an_open() {
+    fn without_shift_opening_shift_over_a_pane_not_watching_the_mouse_opens_nothing() {
         assert_eq!(
             armed(false, ModifiersState::SHIFT, "https://example.com"),
             None
         );
+    }
+
+    fn armed_with_shift(wants: bool, modifiers: ModifiersState) -> Option<Armed> {
+        armed_by_press(
+            Opening::WITH_SHIFT,
+            wants,
+            modifiers,
+            Some((1, 0)),
+            Some(&run("https://example.com")),
+        )
+    }
+
+    #[test]
+    fn with_shift_opening_shift_opens_a_link_in_every_pane() {
+        assert!(armed_with_shift(false, ModifiersState::SHIFT).is_some());
+        assert!(armed_with_shift(true, ModifiersState::SHIFT).is_some());
+    }
+
+    #[test]
+    fn with_shift_opening_a_plain_click_keeps_its_old_meaning() {
+        assert!(armed_with_shift(false, NONE).is_some());
+        assert_eq!(armed_with_shift(true, NONE), None);
+    }
+
+    #[test]
+    fn with_shift_opening_no_other_modifier_opens_a_link() {
+        for modifiers in [
+            ModifiersState::CONTROL,
+            ModifiersState::ALT,
+            ModifiersState::SUPER,
+            ModifiersState::CONTROL | ModifiersState::SHIFT,
+            ModifiersState::ALT | ModifiersState::SHIFT,
+        ] {
+            assert_eq!(armed_with_shift(false, modifiers), None);
+            assert_eq!(armed_with_shift(true, modifiers), None);
+        }
     }
 
     #[test]
@@ -480,7 +552,7 @@ mod tests {
     fn a_press_beside_the_run_or_on_a_refused_scheme_arms_nothing() {
         assert_eq!(
             armed_by_press(
-                true,
+                Opening::WITHOUT_SHIFT,
                 false,
                 NONE,
                 Some((9, 0)),
@@ -490,14 +562,17 @@ mod tests {
             "the pointer must be on the run the hover found"
         );
         assert_eq!(armed(false, NONE, "javascript:alert(1)"), None);
-        assert_eq!(armed_by_press(true, false, NONE, Some((1, 0)), None), None);
+        assert_eq!(
+            armed_by_press(Opening::WITHOUT_SHIFT, false, NONE, Some((1, 0)), None),
+            None
+        );
     }
 
     #[test]
     fn opening_switched_off_arms_nothing() {
         assert_eq!(
             armed_by_press(
-                false,
+                Opening::OFF,
                 false,
                 NONE,
                 Some((1, 0)),
@@ -511,24 +586,39 @@ mod tests {
     fn a_link_is_reachable_only_when_this_click_would_really_open_it() {
         let allowed = run("https://example.com");
         let refused = run("javascript:alert(1)");
-        assert!(is_reachable(true, false, NONE, Some(&allowed)));
+        assert!(is_reachable(
+            Opening::WITHOUT_SHIFT,
+            false,
+            NONE,
+            Some(&allowed)
+        ));
         assert!(
-            !is_reachable(true, true, NONE, Some(&allowed)),
+            !is_reachable(Opening::WITHOUT_SHIFT, true, NONE, Some(&allowed)),
             "a pane watching the mouse needs shift, so a bare pointer promises nothing"
         );
         assert!(is_reachable(
-            true,
+            Opening::WITHOUT_SHIFT,
             true,
             ModifiersState::SHIFT,
             Some(&allowed)
         ));
+        assert!(is_reachable(
+            Opening::WITH_SHIFT,
+            false,
+            ModifiersState::SHIFT,
+            Some(&allowed)
+        ));
         assert!(
-            !is_reachable(true, false, NONE, Some(&refused)),
+            !is_reachable(Opening::OFF, true, ModifiersState::SHIFT, Some(&allowed)),
+            "with opening switched off shift reaches nothing either"
+        );
+        assert!(
+            !is_reachable(Opening::WITHOUT_SHIFT, false, NONE, Some(&refused)),
             "a scheme the allow-list refuses must not be advertised as openable"
         );
-        assert!(!is_reachable(true, false, NONE, None));
+        assert!(!is_reachable(Opening::WITHOUT_SHIFT, false, NONE, None));
         assert!(
-            !is_reachable(false, false, NONE, Some(&allowed)),
+            !is_reachable(Opening::OFF, false, NONE, Some(&allowed)),
             "with opening switched off nothing is reachable"
         );
     }

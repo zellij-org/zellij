@@ -69,10 +69,9 @@ impl Clipboard {
         }
     }
 
-    #[cfg(test)]
     pub fn set_primary(&mut self, text: &str) {
         match &mut self.backend {
-            Backend::System(_) => panic!("a test must not write the host's primary selection"),
+            Backend::System(clipboard) => set_primary_text(clipboard, text),
             Backend::Memory { primary, .. } => {
                 primary.clear();
                 primary.push_str(text);
@@ -92,6 +91,21 @@ fn primary_text(clipboard: &mut arboard::Clipboard) -> Option<String> {
         false,
     )
 }
+
+#[cfg(all(unix, not(target_os = "macos"), not(target_os = "android")))]
+fn set_primary_text(clipboard: &mut arboard::Clipboard, text: &str) {
+    use arboard::{LinuxClipboardKind, SetExtLinux};
+    if let Err(e) = clipboard
+        .set()
+        .clipboard(LinuxClipboardKind::Primary)
+        .text(text.to_owned())
+    {
+        report!("failed to write the primary selection: {}", e);
+    }
+}
+
+#[cfg(not(all(unix, not(target_os = "macos"), not(target_os = "android"))))]
+fn set_primary_text(_clipboard: &mut arboard::Clipboard, _text: &str) {}
 
 #[cfg(not(all(unix, not(target_os = "macos"), not(target_os = "android"))))]
 fn primary_text(_clipboard: &mut arboard::Clipboard) -> Option<String> {
