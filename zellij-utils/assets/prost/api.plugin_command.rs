@@ -591,6 +591,8 @@ pub struct ReadConfigResponse {
     pub keybindings: ::prost::alloc::vec::Vec<KeybindingEntry>,
     #[prost(message, repeated, tag="15")]
     pub mousebindings: ::prost::alloc::vec::Vec<MousebindingEntry>,
+    #[prost(string, repeated, tag="16")]
+    pub font_families: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

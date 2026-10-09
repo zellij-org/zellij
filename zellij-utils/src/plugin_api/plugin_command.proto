@@ -562,6 +562,7 @@ message ReadConfigResponse {
   ConfigBlocks default_blocks = 13;
   repeated KeybindingEntry keybindings = 14;
   repeated MousebindingEntry mousebindings = 15;
+  repeated string font_families = 16;
 }
 
 message ConfigPair {

@@ -36,6 +36,7 @@ message ClientToServerMsg {
     StructuredRenderSupportMsg structured_render_support = 29;
     RenderFrameAckMsg render_frame_ack = 30;
     RequestSessionPreviewMsg request_session_preview = 31;
+    FontFamiliesMsg font_families = 32;
   }
 }
 
@@ -175,6 +176,10 @@ message SetMobileRenderPreferencesMsg {
 
 message StructuredRenderSupportMsg {
   bool supported = 1;
+}
+
+message FontFamiliesMsg {
+  repeated string families = 1;
 }
 
 message RenderFrameAckMsg {

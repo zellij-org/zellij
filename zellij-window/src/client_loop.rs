@@ -34,6 +34,7 @@ pub struct LoopOptions {
     pub structured_grace: Duration,
     pub config_path: Option<PathBuf>,
     pub settings: Settings,
+    pub font_families: Option<Vec<String>>,
 }
 
 impl Default for LoopOptions {
@@ -44,6 +45,7 @@ impl Default for LoopOptions {
             structured_grace: STRUCTURED_GRACE,
             config_path: None,
             settings: Settings::default(),
+            font_families: None,
         }
     }
 }
@@ -71,6 +73,9 @@ pub trait RenderSink {
     fn acknowledges_frames(&self) -> bool;
     fn reconfigured(&mut self, _settings: Settings) -> bool {
         true
+    }
+    fn settings_pushed(&mut self, settings: Settings) -> bool {
+        self.reconfigured(settings)
     }
     fn theme_mode(&mut self, _mode: HostTerminalThemeMode) -> bool {
         true
@@ -132,6 +137,14 @@ pub fn run_with_sink(
     let mut theme_mode: Option<HostTerminalThemeMode> = None;
     let mut paints = crate::options::resolve(&settings, theme_mode).paints;
     let attached_at = Instant::now();
+    if let Some(families) = options.font_families.clone() {
+        if let Err(e) = send(&sender, ClientToServerMsg::FontFamilies { families }) {
+            report!(
+                "the installed fonts could not be listed for the settings: {}",
+                e
+            );
+        }
+    }
 
     loop {
         let msg = match receiver.recv_msg() {
@@ -254,6 +267,13 @@ pub fn run_with_sink(
                         config_path,
                         e
                     ),
+                }
+            },
+            ServerToClientMsg::WindowSettingsChanged { settings: pushed } => {
+                if *pushed != settings {
+                    settings = *pushed;
+                    paints = crate::options::resolve(&settings, theme_mode).paints;
+                    sink.settings_pushed(settings.clone());
                 }
             },
             ServerToClientMsg::HostTerminalThemeChanged { mode } => {
@@ -553,6 +573,47 @@ mod tests {
             answered_background(&replies),
             "\u{1b}]11;rgb:0a0a/0a0a/0a0a\u{1b}\\",
             "the colours a pane is told must move with the configuration"
+        );
+    }
+
+    #[test]
+    fn the_installed_fonts_are_listed_to_the_session_once_attached() {
+        let families = vec!["Iosevka Term".to_owned(), "JetBrains Mono".to_owned()];
+        let mut options = options();
+        options.font_families = Some(families.clone());
+        let (_sink, replies) = driven(options, |_side| {});
+        assert_eq!(
+            replies.first(),
+            Some(&ClientToServerMsg::FontFamilies { families })
+        );
+    }
+
+    #[test]
+    fn settings_pushed_by_the_session_reach_the_window_and_the_colors_a_pane_is_told() {
+        let pushed = Settings {
+            theme: Some(styling(5)),
+            ..Settings::default()
+        };
+        let sent = pushed.clone();
+        let (sink, replies) = driven(options(), move |side| {
+            side.send(ServerToClientMsg::WindowSettingsChanged {
+                settings: Box::new(sent.clone()),
+            });
+            side.send(ServerToClientMsg::WindowSettingsChanged {
+                settings: Box::new(sent),
+            });
+            side.send(background_query());
+        });
+
+        assert_eq!(
+            sink.reconfigured,
+            vec![pushed],
+            "the same settings pushed twice are applied once"
+        );
+        assert_eq!(
+            answered_background(&replies),
+            "\u{1b}]11;rgb:0505/0505/0505\u{1b}\\",
+            "a theme picked in the settings must reach the window colours"
         );
     }
 

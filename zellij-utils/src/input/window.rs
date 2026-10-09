@@ -3,8 +3,9 @@ use std::str::FromStr;
 use kdl::{KdlDocument, KdlNode, KdlValue};
 use serde::{Deserialize, Serialize};
 
-use crate::data::{KeyWithModifier, PaletteColor};
-use crate::input::theme::TERMINAL_COLOR_NAMES;
+use crate::data::{HostTerminalThemeMode, KeyWithModifier, PaletteColor, ThemeHue};
+use crate::input::config::Config;
+use crate::input::theme::{Theme, TERMINAL_COLOR_NAMES};
 use crate::kdl::palette_color_refusing_index;
 use crate::{kdl_get_child, kdl_get_child_entry_bool_value, kdl_get_child_entry_string_value};
 
@@ -419,6 +420,52 @@ impl WindowTheme {
             merged.ansi[slot] = other.ansi[slot].or(merged.ansi[slot]);
         }
         merged
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct WindowSettings {
+    pub section: WindowConfig,
+    pub theme: Option<Theme>,
+    pub theme_dark: Option<Theme>,
+    pub theme_light: Option<Theme>,
+    pub explicit_hue: Option<ThemeHue>,
+}
+
+impl WindowSettings {
+    pub fn from_config(config: &Config) -> Self {
+        WindowSettings {
+            section: config.window.clone(),
+            theme: config.theme(config.options.theme.as_ref()),
+            theme_dark: config.theme_dark(),
+            theme_light: config.theme_light(),
+            explicit_hue: config.options.explicit_theme_hue,
+        }
+    }
+
+    pub fn theme(&self, mode: Option<HostTerminalThemeMode>) -> Option<Theme> {
+        match (self.theme_dark, self.theme_light) {
+            (Some(dark), Some(light)) => match mode.unwrap_or_else(|| self.default_mode()) {
+                HostTerminalThemeMode::Dark => Some(dark),
+                HostTerminalThemeMode::Light => Some(light),
+            },
+            _ => self.theme,
+        }
+    }
+
+    fn default_mode(&self) -> HostTerminalThemeMode {
+        match self.explicit_hue {
+            Some(ThemeHue::Light) => HostTerminalThemeMode::Light,
+            _ => HostTerminalThemeMode::Dark,
+        }
+    }
+
+    pub fn to_json(&self) -> Result<String, String> {
+        serde_json::to_string(self).map_err(|e| e.to_string())
+    }
+
+    pub fn from_json(text: &str) -> Result<Self, String> {
+        serde_json::from_str(text).map_err(|e| e.to_string())
     }
 }
 

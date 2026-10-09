@@ -205,6 +205,7 @@ pub fn zellij_server_listener(
                                 }
                             },
                             Some(ServerToClientMsg::Connected) => {},
+                            Some(ServerToClientMsg::WindowSettingsChanged { .. }) => {},
                             Some(ServerToClientMsg::CliPipeOutput { .. } ) => {},
                             Some(ServerToClientMsg::UnblockCliPipeInput { .. } ) => {},
                             Some(ServerToClientMsg::StartWebServer { .. } ) => {},

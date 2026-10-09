@@ -80,6 +80,22 @@ pub fn fallback_order(faces: &[Face], preferred: &[&str], request: FaceRequest) 
     order
 }
 
+pub fn monospace_families(faces: &[Face]) -> Vec<String> {
+    let mut families: Vec<String> = faces
+        .iter()
+        .filter(|face| face.monospaced)
+        .filter_map(|face| face.families.first().cloned())
+        .collect();
+    sort_families(&mut families);
+    families
+}
+
+pub fn sort_families(families: &mut Vec<String>) {
+    families.retain(|family| !family.trim().is_empty() && !family.starts_with('.'));
+    families.sort_by_key(|family| family.to_lowercase());
+    families.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
+}
+
 pub fn family_choice(faces: &[Face], family: &str, request: FaceRequest) -> Option<usize> {
     (0..faces.len())
         .filter(|index| named(&faces[*index], family))
@@ -96,7 +112,7 @@ mod scanner {
 
     use std::collections::HashMap;
 
-    use super::{fallback_order, family_choice, preferred_fallbacks, Face};
+    use super::{fallback_order, family_choice, monospace_families, preferred_fallbacks, Face};
     use crate::font::FaceRequest;
     use crate::platform::Platform;
 
@@ -202,6 +218,10 @@ mod scanner {
         pub fn match_family(&self, family: &str, request: FaceRequest) -> Option<(PathBuf, u32)> {
             family_choice(&self.faces, family, request).and_then(|index| self.located(index))
         }
+
+        pub fn monospace_families(&self) -> Vec<String> {
+            monospace_families(&self.faces)
+        }
     }
 }
 
@@ -243,6 +263,21 @@ mod tests {
             weighted("Mono", 500),
             weighted("Mono", 700),
         ]
+    }
+
+    #[test]
+    fn only_monospaced_families_are_listed_once_each_in_order() {
+        let faces = vec![
+            face("Zed Mono", true, false, false),
+            face("Arial", false, false, false),
+            face("iosevka term", true, false, false),
+            face("Iosevka Term", true, true, false),
+            face(".Hidden Mono", true, false, false),
+        ];
+        assert_eq!(
+            monospace_families(&faces),
+            vec!["iosevka term".to_owned(), "Zed Mono".to_owned()]
+        );
     }
 
     #[test]

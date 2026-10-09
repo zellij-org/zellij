@@ -26,6 +26,7 @@ message ServerToClientMsg {
     MobileStateMsg mobile_state = 19;
     RenderFrameMsg render_frame = 20;
     HostThemeModeMsg host_theme_mode = 21;
+    WindowSettingsMsg window_settings = 22;
   }
 }
 
@@ -86,6 +87,10 @@ message RenamedSessionMsg {
 
 message ConfigFileUpdatedMsg {
   // Empty message
+}
+
+message WindowSettingsMsg {
+  string settings_json = 1;
 }
 
 message HostThemeModeMsg {

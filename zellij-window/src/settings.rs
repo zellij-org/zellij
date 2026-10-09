@@ -1,40 +1,11 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use zellij_utils::data::{HostTerminalThemeMode, ThemeHue};
 use zellij_utils::home;
 use zellij_utils::input::config::Config;
-use zellij_utils::input::theme::{Theme, Themes};
-use zellij_utils::input::window::WindowConfig;
+use zellij_utils::input::theme::Themes;
+pub use zellij_utils::input::window::WindowSettings as Settings;
 use zellij_utils::setup::get_default_themes;
-
-#[derive(Debug, Clone, Default, PartialEq)]
-pub struct Settings {
-    pub section: WindowConfig,
-    pub theme: Option<Theme>,
-    pub theme_dark: Option<Theme>,
-    pub theme_light: Option<Theme>,
-    pub explicit_hue: Option<ThemeHue>,
-}
-
-impl Settings {
-    pub fn theme(&self, mode: Option<HostTerminalThemeMode>) -> Option<Theme> {
-        match (self.theme_dark, self.theme_light) {
-            (Some(dark), Some(light)) => match mode.unwrap_or_else(|| self.default_mode()) {
-                HostTerminalThemeMode::Dark => Some(dark),
-                HostTerminalThemeMode::Light => Some(light),
-            },
-            _ => self.theme,
-        }
-    }
-
-    fn default_mode(&self) -> HostTerminalThemeMode {
-        match self.explicit_hue {
-            Some(ThemeHue::Light) => HostTerminalThemeMode::Light,
-            _ => HostTerminalThemeMode::Dark,
-        }
-    }
-}
 
 pub fn load(config_file_path: Option<&Path>) -> Result<Settings> {
     let Some(path) = config_file_path else {
@@ -59,13 +30,7 @@ pub fn load(config_file_path: Option<&Path>) -> Result<Settings> {
         config.themes = config.themes.merge(themes);
     }
 
-    Ok(Settings {
-        theme: config.theme(config.options.theme.as_ref()),
-        theme_dark: config.theme_dark(),
-        theme_light: config.theme_light(),
-        explicit_hue: config.options.explicit_theme_hue,
-        section: config.window,
-    })
+    Ok(Settings::from_config(&config))
 }
 
 fn theme_dir(config: &Config, config_file_path: &Path) -> Option<PathBuf> {
@@ -80,7 +45,8 @@ fn theme_dir(config: &Config, config_file_path: &Path) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zellij_utils::data::PaletteColor;
+    use zellij_utils::data::{HostTerminalThemeMode, PaletteColor};
+    use zellij_utils::input::window::WindowConfig;
 
     fn written(config: &str) -> (tempfile::TempDir, PathBuf) {
         let dir = tempfile::TempDir::new().unwrap();

@@ -650,6 +650,32 @@ fn number_stepper_steps_edits_and_clamps() {
 }
 
 #[test]
+fn a_decimal_number_stepper_shows_steps_and_reads_fractions() {
+    let mut stepper = NumberStepper::new("", 9).decimals(1).min(0).max(10);
+    assert!(stepper.serialize(0, 0).contains(&enc("0.9")));
+    assert_eq!(
+        stepper.handle_key(&key(BareKey::Right)),
+        UiResponse::Changed(UiValue::Number(10))
+    );
+    assert_eq!(stepper.display_value(), "1");
+    stepper.handle_key(&key(BareKey::Backspace));
+    stepper.handle_key(&key(BareKey::Backspace));
+    stepper.handle_key(&ch('.'));
+    stepper.handle_key(&ch('4'));
+    assert_eq!(stepper.edit_text(), ".4");
+    assert_eq!(
+        stepper.handle_key(&key(BareKey::Enter)),
+        UiResponse::Changed(UiValue::Number(4))
+    );
+    assert_eq!(stepper.display_value(), "0.4");
+    assert_eq!(format_scaled(135, 1), "13.5");
+    assert_eq!(format_scaled(-5, 1), "-0.5");
+    assert_eq!(parse_scaled("13.5", 1), Some(135));
+    assert_eq!(parse_scaled("12", 1), Some(120));
+    assert_eq!(parse_scaled("x", 1), None);
+}
+
+#[test]
 fn number_stepper_arrow_clicks_step() {
     let mut stepper = NumberStepper::new("N", 1).min(0).max(3);
     stepper.serialize(0, 0);

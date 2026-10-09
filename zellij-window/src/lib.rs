@@ -487,6 +487,12 @@ fn start_server(session_name: &str) -> Result<PathBuf> {
     Ok(cwd)
 }
 
+fn installed_font_families() -> Vec<String> {
+    discovery::Discovery::open()
+        .map(|discovery| discovery.monospace_families())
+        .unwrap_or_default()
+}
+
 fn drive(
     connection: connection::Connection,
     args: WindowArgs,
@@ -508,6 +514,7 @@ fn drive(
         record_path: args.record.clone(),
         config_path: windowed.then(|| Config::config_file_path(&opts)).flatten(),
         settings: settings.clone(),
+        font_families: windowed.then(installed_font_families),
         ..Default::default()
     };
     match fonts {
