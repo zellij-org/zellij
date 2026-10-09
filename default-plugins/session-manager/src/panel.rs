@@ -85,9 +85,7 @@ impl Panel {
     }
 
     fn card_candidates(&self) -> impl Iterator<Item = &SessionSuggestion> {
-        self.suggestions
-            .iter()
-            .flat_map(|s| s.suggestions.iter())
+        self.suggestions.iter().flat_map(|s| s.suggestions.iter())
     }
 
     pub fn card_suggestions(&self) -> Vec<SessionSuggestion> {
@@ -383,7 +381,10 @@ pub fn shorten_path(path: &str, max_width: usize) -> String {
             if index + 1 == parts.len() || part.is_empty() || *part == "~" {
                 part.to_string()
             } else {
-                part.chars().next().map(|c| c.to_string()).unwrap_or_default()
+                part.chars()
+                    .next()
+                    .map(|c| c.to_string())
+                    .unwrap_or_default()
             }
         })
         .collect();
@@ -573,7 +574,12 @@ fn layout_card_grid(
     }
     let column_count = grid[0].len();
     let width = (0..column_count)
-        .map(|i| grid.iter().map(|r| r[i].content().width()).max().unwrap_or(0))
+        .map(|i| {
+            grid.iter()
+                .map(|r| r[i].content().width())
+                .max()
+                .unwrap_or(0)
+        })
         .sum::<usize>()
         + column_count;
     CardTable {
@@ -611,7 +617,10 @@ pub fn render_card(panel: &mut Panel, rows: usize, cols: usize) {
     let shortcut_start = 2 + title_main.chars().count() + 1;
     let top_text = Text::from(top)
         .color_range(2, 2..2 + title_main.chars().count())
-        .color_range(0, shortcut_start..shortcut_start + CARD_SHORTCUT.chars().count());
+        .color_range(
+            0,
+            shortcut_start..shortcut_start + CARD_SHORTCUT.chars().count(),
+        );
     let close_index = top_text.content().chars().count().saturating_sub(4);
     let top_text = top_text.color_range(3, close_index..close_index + 1);
     print_text_with_coordinates(top_text, 0, 0, Some(width), None);
@@ -663,11 +672,23 @@ pub fn render_card(panel: &mut Panel, rows: usize, cols: usize) {
                 let hovered = panel.hovered == Some(CardTarget::Row(index));
                 let cells = grid[index + 1]
                     .iter()
-                    .map(|cell| if hovered { cell.clone().selected() } else { cell.clone() })
+                    .map(|cell| {
+                        if hovered {
+                            cell.clone().selected()
+                        } else {
+                            cell.clone()
+                        }
+                    })
                     .collect();
                 table = table.add_styled_row(cells);
             }
-            print_table_with_coordinates(table, content_x, y, Some(content_width), Some(visible + 1));
+            print_table_with_coordinates(
+                table,
+                content_x,
+                y,
+                Some(content_width),
+                Some(visible + 1),
+            );
             for offset in 0..visible {
                 panel.card_targets.push((
                     y + 1 + offset,
@@ -753,9 +774,11 @@ pub fn render_card(panel: &mut Panel, rows: usize, cols: usize) {
             text = text.italic_all();
         }
         print_text_with_coordinates(text, x, bottom_y, Some(text_width), None);
-        panel
-            .card_targets
-            .push((bottom_y, x + 1..x + text_width - 1, CardTarget::DontShowAgain));
+        panel.card_targets.push((
+            bottom_y,
+            x + 1..x + text_width - 1,
+            CardTarget::DontShowAgain,
+        ));
     }
 }
 
@@ -891,9 +914,15 @@ pub fn render_session_tree(
                 let folder = folder_text(&row.session);
                 let branch = branch_text(&row.session);
                 let (details, ranges) = if abbreviate {
-                    (cached_row.abbr_details.clone(), &cached_row.abbr_details_color_ranges)
+                    (
+                        cached_row.abbr_details.clone(),
+                        &cached_row.abbr_details_color_ranges,
+                    )
                 } else {
-                    (cached_row.full_details.clone(), &cached_row.details_color_ranges)
+                    (
+                        cached_row.full_details.clone(),
+                        &cached_row.details_color_ranges,
+                    )
                 };
                 let line = format!(
                     "{}  {}  {}  {}",
@@ -919,16 +948,25 @@ pub fn render_session_tree(
                 }
                 let folder_start = name_width + 2;
                 let suggestion = suggestions.get(row.session.as_str());
-                if suggestion.map(|s| s.column_matches("directory")).unwrap_or(false) {
+                if suggestion
+                    .map(|s| s.column_matches("directory"))
+                    .unwrap_or(false)
+                {
                     text = text.color_range(1, folder_start..folder_start + folder.chars().count());
                 }
                 let branch_start = folder_start + folder_width + 2;
-                if suggestion.map(|s| s.column_matches("git_branch")).unwrap_or(false) {
+                if suggestion
+                    .map(|s| s.column_matches("git_branch"))
+                    .unwrap_or(false)
+                {
                     text = text.color_range(0, branch_start..branch_start + branch.chars().count());
                 }
                 let details_start = branch_start + branch_width + 2;
                 for (level, range) in &ranges.ranges {
-                    text = text.color_range(*level, details_start + range.start..details_start + range.end);
+                    text = text.color_range(
+                        *level,
+                        details_start + range.start..details_start + range.end,
+                    );
                 }
                 text
             },
@@ -1019,9 +1057,13 @@ pub fn render_preview(panel: &mut Panel, x: usize, y: usize, width: usize, heigh
     }
     let session_name = panel.preview_session.clone().unwrap_or_default();
     let mut title = format!(" {}", session_name);
-    let tab = panel
-        .preview_tab
-        .and_then(|tab| panel.tree.children.get(&session_name).and_then(|tabs| tabs.get(tab)));
+    let tab = panel.preview_tab.and_then(|tab| {
+        panel
+            .tree
+            .children
+            .get(&session_name)
+            .and_then(|tabs| tabs.get(tab))
+    });
     if let Some(tab) = tab {
         title.push_str(&format!(" › {}", tab.name));
         if let Some(pane) = panel.preview_pane.and_then(|pane| tab.panes.get(pane)) {
@@ -1360,7 +1402,10 @@ mod tests {
         let cells = row_text(&table, 1);
         let widths: usize = (0..cells.len())
             .map(|i| {
-                table.grid.as_ref().unwrap()
+                table
+                    .grid
+                    .as_ref()
+                    .unwrap()
                     .iter()
                     .map(|row| row[i].content().width())
                     .max()
@@ -1443,7 +1488,11 @@ mod tests {
             suggestion("b", false, FolderRelation::Here),
             suggestion("c", false, FolderRelation::Here),
         ]);
-        let names: Vec<String> = panel.card_suggestions().into_iter().map(|s| s.name).collect();
+        let names: Vec<String> = panel
+            .card_suggestions()
+            .into_iter()
+            .map(|s| s.name)
+            .collect();
         assert_eq!(names, vec!["a"]);
         assert_eq!(
             panel.resumable_text(),

@@ -326,7 +326,10 @@ fn option_values(options: &Options, values: &mut BTreeMap<SettingKey, Option<Str
             display_text(dangerously_enable_paste_buffer_read),
         ),
         (SettingKey::SessionCard, display_text(session_card)),
-        (SettingKey::SessionIndicator, display_text(session_indicator)),
+        (
+            SettingKey::SessionIndicator,
+            display_text(session_indicator),
+        ),
         (
             SettingKey::SwapLayoutNotification,
             display_text(swap_layout_notification),

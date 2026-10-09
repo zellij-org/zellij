@@ -106,7 +106,9 @@ impl SessionTree {
         let selected = selected?;
         rows.iter()
             .position(|r| {
-                r.original_index == selected && r.node == self.node && r.session == self.node_session
+                r.original_index == selected
+                    && r.node == self.node
+                    && r.session == self.node_session
             })
             .or_else(|| {
                 rows.iter()
@@ -231,7 +233,9 @@ mod tests {
         let tree = SessionTree::default();
         let rows = tree.flatten(&sessions());
         assert_eq!(rows.len(), 2);
-        assert!(rows.iter().all(|r| r.node == TreeNode::Session && r.depth == 0));
+        assert!(rows
+            .iter()
+            .all(|r| r.node == TreeNode::Session && r.depth == 0));
         assert!(rows.iter().all(|r| r.expandable && !r.expanded));
     }
 

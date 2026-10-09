@@ -504,8 +504,7 @@ impl CompactBar {
             Mouse::LeftClick(line, col) => {
                 let col = *col;
                 if matches!(indicator_range, Some((start, end)) if col >= start && col < end) {
-                    self.session_indicator
-                        .clicked((*line).max(0) as usize, col);
+                    self.session_indicator.clicked((*line).max(0) as usize, col);
                 } else if matches!(slot_client.breadcrumb_range, Some((start, end)) if col >= start && col < end)
                 {
                     focus_host_session();

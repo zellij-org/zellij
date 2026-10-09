@@ -24,11 +24,11 @@ use crate::input::options::{
 };
 use crate::input::permission::{GrantedPermission, PermissionCache};
 use crate::input::plugins::PluginAliases;
+use crate::input::session_suggestions::SessionSuggestionsConfig;
 use crate::input::theme::{
     FrameConfig, TerminalColors, Theme, Themes, UiConfig, TERMINAL_COLOR_NAMES,
 };
 use crate::input::web_client::WebClientConfig;
-use crate::input::session_suggestions::SessionSuggestionsConfig;
 use crate::input::window::WindowConfig;
 use kdl_layout_parser::KdlLayoutParser;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -5396,8 +5396,7 @@ impl Options {
         if let Some(session_indicator) = self.session_indicator_to_kdl(add_comments) {
             nodes.push(session_indicator);
         }
-        if let Some(swap_layout_notification) = self.swap_layout_notification_to_kdl(add_comments)
-        {
+        if let Some(swap_layout_notification) = self.swap_layout_notification_to_kdl(add_comments) {
             nodes.push(swap_layout_notification);
         }
         nodes
@@ -6084,7 +6083,8 @@ impl Config {
             config.window = config.window.merge(config_window);
         }
         if let Some(session_suggestions_config) = kdl_config.get("session_suggestions") {
-            let session_suggestions = SessionSuggestionsConfig::from_kdl(&session_suggestions_config)?;
+            let session_suggestions =
+                SessionSuggestionsConfig::from_kdl(&session_suggestions_config)?;
             config.session_suggestions = config.session_suggestions.merge(session_suggestions);
         }
         Ok(config)

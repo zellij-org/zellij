@@ -7823,10 +7823,12 @@ impl Screen {
         let can_move_to_focused_tab = move_to_focused_tab && self.get_active_tab(client_id).is_ok();
         let all_tabs = self.get_tabs_mut();
         for (tab_index, tab) in all_tabs.iter_mut() {
-            let found = tab.find_plugin(&run_plugin).filter(|pane_id| match pane_id {
-                PaneId::Plugin(plugin_id) => !tab.has_popup_plugin(*plugin_id),
-                PaneId::Terminal(_) => true,
-            });
+            let found = tab
+                .find_plugin(&run_plugin)
+                .filter(|pane_id| match pane_id {
+                    PaneId::Plugin(plugin_id) => !tab.has_popup_plugin(*plugin_id),
+                    PaneId::Terminal(_) => true,
+                });
             if let Some(plugin_pane_id) = found {
                 tab_index_and_plugin_pane_id = Some((*tab_index, plugin_pane_id));
                 if can_move_to_focused_tab && focused_tab_index != *tab_index {

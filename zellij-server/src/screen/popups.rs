@@ -931,21 +931,24 @@ impl Screen {
         }
     }
     fn pipe_to_popup_plugin(&self, plugin_id: u32, client_id: ClientId, name: &str) {
-        let _ = self.bus.senders.send_to_plugin(PluginInstruction::KeybindPipe {
-            name: name.to_owned(),
-            payload: None,
-            plugin: None,
-            args: None,
-            configuration: None,
-            floating: None,
-            pane_id_to_replace: None,
-            pane_title: None,
-            cwd: None,
-            skip_cache: false,
-            cli_client_id: client_id,
-            plugin_and_client_id: Some((plugin_id, client_id)),
-            notification_end: None,
-        });
+        let _ = self
+            .bus
+            .senders
+            .send_to_plugin(PluginInstruction::KeybindPipe {
+                name: name.to_owned(),
+                payload: None,
+                plugin: None,
+                args: None,
+                configuration: None,
+                floating: None,
+                pane_id_to_replace: None,
+                pane_title: None,
+                cwd: None,
+                skip_cache: false,
+                cli_client_id: client_id,
+                plugin_and_client_id: Some((plugin_id, client_id)),
+                notification_end: None,
+            });
     }
     pub fn open_session_card(&mut self, client_id: ClientId) {
         if self.get_active_tab(client_id).is_err() {
@@ -956,7 +959,11 @@ impl Screen {
         self.request_session_card(client_id, false);
     }
     fn request_session_card(&mut self, client_id: ClientId, focused: bool) {
-        let role = if focused { "card_focused" } else { "card_startup" };
+        let role = if focused {
+            "card_focused"
+        } else {
+            "card_startup"
+        };
         let configuration = BTreeMap::from([("role".to_owned(), role.to_owned())]);
         let run_plugin_or_alias = match RunPluginOrAlias::from_url(
             SESSION_MANAGER_PLUGIN_ALIAS,
@@ -1116,8 +1123,11 @@ impl Screen {
             .swap_layout_info()
             .0
             .unwrap_or_else(|| "custom".to_owned());
-        let request = zellij_utils::prompt::PromptRequest::notify(format!("Layout: {}", layout_name))
-            .timeout(std::time::Duration::from_millis(SWAP_LAYOUT_NOTIFICATION_MS));
+        let request =
+            zellij_utils::prompt::PromptRequest::notify(format!("Layout: {}", layout_name))
+                .timeout(std::time::Duration::from_millis(
+                    SWAP_LAYOUT_NOTIFICATION_MS,
+                ));
         let _ = self
             .bus
             .senders

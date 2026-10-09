@@ -44,9 +44,10 @@ fn start_session_with_session_features() -> TestSession {
 }
 
 fn wait_for_card_listing(zellij: &TestSession, session_name: &str) {
-    zellij.wait_until("the session card lists the other session", |grid_snapshot| {
-        grid_snapshot.contains(CARD_TITLE) && grid_snapshot.contains(session_name)
-    });
+    zellij.wait_until(
+        "the session card lists the other session",
+        |grid_snapshot| grid_snapshot.contains(CARD_TITLE) && grid_snapshot.contains(session_name),
+    );
 }
 
 fn sgr_left_click(column: usize, line: usize) -> Vec<u8> {
@@ -57,15 +58,17 @@ fn sgr_left_click(column: usize, line: usize) -> Vec<u8> {
     .into_bytes()
 }
 
-fn position_of(grid_snapshot: &zellij_integration_tests::GridSnapshot, needle: &str) -> (usize, usize) {
+fn position_of(
+    grid_snapshot: &zellij_integration_tests::GridSnapshot,
+    needle: &str,
+) -> (usize, usize) {
     grid_snapshot
         .lines()
         .iter()
         .enumerate()
         .find_map(|(line_index, line)| {
-            line.find(needle).map(|byte_offset| {
-                (line[..byte_offset].chars().count() + 1, line_index + 1)
-            })
+            line.find(needle)
+                .map(|byte_offset| (line[..byte_offset].chars().count() + 1, line_index + 1))
         })
         .expect("the text is on screen")
 }
@@ -101,7 +104,10 @@ fn wait_for_path_to_disappear(path: &std::path::Path, what: &str) {
 
 fn leave_a_resurrectable_session() -> String {
     let mut zellij = TestRunner::new(TERMINAL_SIZE)
-        .with_config(&format!("{}\nsession_serialization true", SESSION_FEATURES_ON))
+        .with_config(&format!(
+            "{}\nsession_serialization true",
+            SESSION_FEATURES_ON
+        ))
         .skip_concurrency_slot()
         .start();
     claim_first_terminal_and_wait_for_prompt(&zellij);
@@ -187,12 +193,15 @@ fn card_shows_on_a_new_session_when_another_session_is_running() {
 fn without_other_running_sessions_there_is_no_card_but_the_dropdown_still_opens_it() {
     let mut zellij = start_session_with_session_features();
     claim_first_terminal_and_wait_for_prompt(&zellij);
-    let grid_snapshot = zellij.wait_until("the dropdown says there are no other sessions", |grid_snapshot| {
-        grid_snapshot
-            .lines()
-            .first()
-            .is_some_and(|tab_bar| tab_bar.contains("No Other Sessions"))
-    });
+    let grid_snapshot = zellij.wait_until(
+        "the dropdown says there are no other sessions",
+        |grid_snapshot| {
+            grid_snapshot
+                .lines()
+                .first()
+                .is_some_and(|tab_bar| tab_bar.contains("No Other Sessions"))
+        },
+    );
     assert!(!grid_snapshot.contains(CARD_TITLE));
     let (column, line) = position_of(&grid_snapshot, "No Other Sessions");
     zellij.send_stdin(&sgr_left_click(column + 1, line));
@@ -225,7 +234,10 @@ fn card_is_not_shown_on_attach() {
 fn card_is_not_shown_on_resume() {
     let _other = start_running_session_in_background();
     let mut zellij = TestRunner::new(TERMINAL_SIZE)
-        .with_config(&format!("{}\nsession_serialization true", SESSION_FEATURES_ON))
+        .with_config(&format!(
+            "{}\nsession_serialization true",
+            SESSION_FEATURES_ON
+        ))
         .with_layout(LayoutInfo::Stringified(RESUME_LAYOUT.to_owned()))
         .start();
     let terminal = zellij.expect_pty_spawn();
@@ -407,7 +419,9 @@ fn dont_show_again_turns_the_card_off_in_the_config() {
     zellij.wait_until("the session card closed", |grid_snapshot| {
         !grid_snapshot.contains(CARD_TITLE)
     });
-    let config_file_path = zellij.config_file_path().expect("the session has a config file");
+    let config_file_path = zellij
+        .config_file_path()
+        .expect("the session has a config file");
     let deadline = Instant::now() + default_timeout();
     loop {
         let contents = std::fs::read_to_string(&config_file_path).unwrap_or_default();
@@ -415,7 +429,10 @@ fn dont_show_again_turns_the_card_off_in_the_config() {
             break;
         }
         if Instant::now() >= deadline {
-            panic!("session_card false was not written to the config:\n{}", contents);
+            panic!(
+                "session_card false was not written to the config:\n{}",
+                contents
+            );
         }
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
@@ -474,7 +491,10 @@ fn enter_in_the_welcome_screen_starts_a_default_session_without_the_card() {
             break;
         }
         if Instant::now() >= deadline {
-            panic!("no switch to a default session without the card: {:?}", messages);
+            panic!(
+                "no switch to a default session without the card: {:?}",
+                messages
+            );
         }
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
@@ -482,7 +502,8 @@ fn enter_in_the_welcome_screen_starts_a_default_session_without_the_card() {
 }
 
 #[test]
-fn the_startup_card_lists_live_sessions_but_not_resurrectable_ones_and_closes_on_the_first_command() {
+fn the_startup_card_lists_live_sessions_but_not_resurrectable_ones_and_closes_on_the_first_command()
+{
     let resurrectable = leave_a_resurrectable_session();
     let background = start_running_session_in_background();
     let mut zellij = start_session_with_session_features();
@@ -514,12 +535,15 @@ fn without_other_live_sessions_there_is_no_card_even_with_resurrectable_sessions
     let _resurrectable = leave_a_resurrectable_session();
     let mut zellij = start_session_with_session_features();
     claim_first_terminal_and_wait_for_prompt(&zellij);
-    zellij.wait_until("the bar says there are no other sessions", |grid_snapshot| {
-        grid_snapshot
-            .lines()
-            .first()
-            .is_some_and(|tab_bar| tab_bar.contains("No Other Sessions"))
-    });
+    zellij.wait_until(
+        "the bar says there are no other sessions",
+        |grid_snapshot| {
+            grid_snapshot
+                .lines()
+                .first()
+                .is_some_and(|tab_bar| tab_bar.contains("No Other Sessions"))
+        },
+    );
     assert_no_card_after_the_session_settles(&zellij);
     zellij.send_stdin(&keys::F9);
     zellij.wait_until(
@@ -537,10 +561,13 @@ fn without_other_live_sessions_there_is_no_card_even_with_resurrectable_sessions
 fn a_session_created_from_the_welcome_screen_has_no_card_even_with_other_live_sessions() {
     let background = start_running_session_in_background();
     let mut zellij = start_welcome_screen();
-    zellij.wait_until("the welcome screen lists the live session", |grid_snapshot| {
-        grid_snapshot.contains("New session with a random name")
-            && grid_snapshot.contains(background.session_name())
-    });
+    zellij.wait_until(
+        "the welcome screen lists the live session",
+        |grid_snapshot| {
+            grid_snapshot.contains("New session with a random name")
+                && grid_snapshot.contains(background.session_name())
+        },
+    );
     zellij.send_stdin(&keys::ENTER);
     let switch = zellij.follow_switch();
     assert_eq!(switch.session_card, Some(false));
@@ -559,10 +586,13 @@ fn a_session_created_from_the_welcome_screen_has_no_card_even_with_other_live_se
 fn a_named_session_created_from_the_welcome_screen_has_no_card_even_with_other_live_sessions() {
     let background = start_running_session_in_background();
     let mut zellij = start_welcome_screen();
-    zellij.wait_until("the welcome screen lists the live session", |grid_snapshot| {
-        grid_snapshot.contains("New session with a random name")
-            && grid_snapshot.contains(background.session_name())
-    });
+    zellij.wait_until(
+        "the welcome screen lists the live session",
+        |grid_snapshot| {
+            grid_snapshot.contains("New session with a random name")
+                && grid_snapshot.contains(background.session_name())
+        },
+    );
     zellij.send_stdin(b"brand-new");
     zellij.wait_until("the welcome screen offers to create it", |grid_snapshot| {
         grid_snapshot.contains("brand-new") && grid_snapshot.contains("Create new")

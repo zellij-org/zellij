@@ -97,9 +97,10 @@ fn start_zellij_with_layout_notifications() -> TestSession {
 
 fn wait_for_layout_notification(zellij: &TestSession, layout_name: &str) {
     let expected = format!("layout: {}", layout_name);
-    zellij.wait_until(&format!("notification for {}", layout_name), |grid_snapshot| {
-        grid_snapshot.text.to_lowercase().contains(&expected)
-    });
+    zellij.wait_until(
+        &format!("notification for {}", layout_name),
+        |grid_snapshot| grid_snapshot.text.to_lowercase().contains(&expected),
+    );
 }
 
 fn wait_for_notifications_to_close(zellij: &TestSession) -> GridSnapshot {

@@ -884,8 +884,10 @@ impl Options {
             .or(self.dangerously_enable_paste_buffer_read);
         let session_card = merge_bool(other.session_card, self.session_card);
         let session_indicator = merge_bool(other.session_indicator, self.session_indicator);
-        let swap_layout_notification =
-            merge_bool(other.swap_layout_notification, self.swap_layout_notification);
+        let swap_layout_notification = merge_bool(
+            other.swap_layout_notification,
+            self.swap_layout_notification,
+        );
 
         Options {
             simplified_ui,

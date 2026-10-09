@@ -21,7 +21,6 @@ pub struct LinePart {
     tab_index: Option<usize>,
 }
 
-
 static ARROW_SEPARATOR: &str = "";
 
 #[derive(Debug, Default)]

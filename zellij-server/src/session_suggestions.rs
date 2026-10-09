@@ -77,7 +77,8 @@ pub enum SessionSuggestionsJob {
     Exit,
 }
 
-static LAST_ACTIVITY_REPORT_SECS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static LAST_ACTIVITY_REPORT_SECS: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
 
 pub fn should_report_activity() -> bool {
     use std::sync::atomic::Ordering;
@@ -451,7 +452,11 @@ impl SessionSuggestionsService {
         }
     }
 
-    fn run_custom_facts(&self, folder: Option<&Path>, timing: FactTiming) -> BTreeMap<String, String> {
+    fn run_custom_facts(
+        &self,
+        folder: Option<&Path>,
+        timing: FactTiming,
+    ) -> BTreeMap<String, String> {
         let mut facts = BTreeMap::new();
         for fact in self.config.facts.iter().filter(|f| f.at == timing) {
             let output = run_background_command_blocking(BackgroundCommand {
@@ -551,7 +556,8 @@ impl SessionSuggestionsService {
             for candidate in sorted {
                 match candidate.state {
                     SessionState::Running => {
-                        if context.branch.is_some() && candidate.row.context.branch == context.branch
+                        if context.branch.is_some()
+                            && candidate.row.context.branch == context.branch
                         {
                             full_match_running.push(candidate.row.name.clone());
                         }
@@ -632,7 +638,9 @@ impl SessionSuggestionsService {
                 ));
             }
         }
-        let _ = self.senders.send_to_plugin(PluginInstruction::Update(updates));
+        let _ = self
+            .senders
+            .send_to_plugin(PluginInstruction::Update(updates));
         self.last_counts = Some(counts);
         self.last_folder_sessions = Some(folder_sessions);
     }
@@ -649,7 +657,14 @@ impl SessionSuggestionsService {
         let candidate_limit = limit.max(SCRIPT_CANDIDATE_LIMIT);
         let candidates = match self.index.as_mut() {
             Some(index) => index
-                .suggestion_candidates(&context, &rules, then, &own_name, candidate_limit, now_secs())
+                .suggestion_candidates(
+                    &context,
+                    &rules,
+                    then,
+                    &own_name,
+                    candidate_limit,
+                    now_secs(),
+                )
                 .unwrap_or_default(),
             None => vec![],
         };
@@ -702,7 +717,11 @@ impl SessionSuggestionsService {
             if parsed.is_empty() {
                 None
             } else {
-                Some(apply_script_order(ranked.clone(), &parsed, script.hide_unlisted))
+                Some(apply_script_order(
+                    ranked.clone(),
+                    &parsed,
+                    script.hide_unlisted,
+                ))
             }
         };
         match result_receiver.recv_timeout(Duration::from_millis(script.timeout_ms)) {
@@ -860,7 +879,8 @@ fn to_suggestions(
 }
 
 fn live_session_layout(name: &str) -> Option<(Vec<SessionPreviewTab>, usize)> {
-    let raw = std::fs::read_to_string(zellij_utils::consts::session_info_cache_file_name(name)).ok()?;
+    let raw =
+        std::fs::read_to_string(zellij_utils::consts::session_info_cache_file_name(name)).ok()?;
     let info = zellij_utils::data::SessionInfo::from_string(&raw, "").ok()?;
     Some(session_layout_from_info(&info))
 }
@@ -1101,10 +1121,8 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn only_sessions_other_than_this_one_count_as_running() {
-        let sock_dir = std::env::temp_dir().join(format!(
-            "zellij-other-sessions-test-{}",
-            std::process::id()
-        ));
+        let sock_dir =
+            std::env::temp_dir().join(format!("zellij-other-sessions-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&sock_dir);
         std::fs::create_dir_all(&sock_dir).unwrap();
         assert!(!other_sessions_are_running(&sock_dir, "me"));

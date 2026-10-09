@@ -60,7 +60,8 @@ pub use super::generated_api::api::{
         GetSessionEnvironmentVariablesPayload as ProtobufGetSessionEnvironmentVariablesPayload,
         GetSessionEnvironmentVariablesResponse as ProtobufGetSessionEnvironmentVariablesResponse,
         GetSessionListPayload as ProtobufGetSessionListPayload,
-        GetSessionListResponse as ProtobufGetSessionListResponse, GetTabInfoPayload,
+        GetSessionListResponse as ProtobufGetSessionListResponse, GetSessionPreviewPayload,
+        GetSessionSuggestionsPayload, GetTabInfoPayload,
         GetTabInfoResponse as ProtobufGetTabInfoResponse, GoToTabWithIdPayload,
         GroupAndUngroupPanesPayload, HideFloatingPanesPayload as ProtobufHideFloatingPanesPayload,
         HideFloatingPanesResponse as ProtobufHideFloatingPanesResponse, HidePaneWithIdPayload,
@@ -104,8 +105,7 @@ pub use super::generated_api::api::{
         OpenPluginPaneFloatingPayload,
         OpenPluginPaneFloatingResponse as ProtobufOpenPluginPaneFloatingResponse,
         OpenPluginPaneInNewTabPayload as ProtobufOpenPluginPaneInNewTabPayload,
-        GetSessionPreviewPayload, GetSessionSuggestionsPayload, OpenPluginPopupPayload,
-        OpenTerminalFloatingNearPluginPayload, PopupToFloatingPanePayload,
+        OpenPluginPopupPayload, OpenTerminalFloatingNearPluginPayload,
         OpenTerminalFloatingNearPluginResponse as ProtobufOpenTerminalFloatingNearPluginResponse,
         OpenTerminalFloatingResponse as ProtobufOpenTerminalFloatingResponse,
         OpenTerminalInPlaceOfPluginPayload,
@@ -120,9 +120,10 @@ pub use super::generated_api::api::{
         PaneIdAndFloatingPaneCoordinates, PaneType as ProtobufPaneType, ParseLayoutPayload,
         ParseLayoutResponse as ProtobufParseLayoutResponse,
         PluginAliasEntry as ProtobufPluginAliasEntry, PluginCommand as ProtobufPluginCommand,
-        PluginEntry as ProtobufPluginEntry, PluginMessagePayload, PromptPayload, ReadConfigPayload,
-        ReadConfigResponse as ProtobufReadConfigResponse, RebindKeysPayload, ReconfigurePayload,
-        RegexHighlight as ProtobufRegexHighlight, ReloadPluginPayload, RenameLayoutPayload,
+        PluginEntry as ProtobufPluginEntry, PluginMessagePayload, PopupToFloatingPanePayload,
+        PromptPayload, ReadConfigPayload, ReadConfigResponse as ProtobufReadConfigResponse,
+        RebindKeysPayload, ReconfigurePayload, RegexHighlight as ProtobufRegexHighlight,
+        ReloadPluginPayload, RenameLayoutPayload,
         RenameLayoutResponse as ProtobufRenameLayoutResponse, RenameTabWithIdPayload,
         RenameWebLoginTokenPayload, RenameWebTokenResponse, ReplacePaneWithExistingPanePayload,
         ReplyToPromptPayload, RequestPluginPermissionPayload, RerunCommandPanePayload,
@@ -4812,12 +4813,14 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 pane_id,
             } => Ok(ProtobufPluginCommand {
                 name: CommandName::GetSessionPreview as i32,
-                payload: Some(Payload::GetSessionPreviewPayload(GetSessionPreviewPayload {
-                    name,
-                    tab_index: tab_index.map(|t| t as u32),
-                    pane_id: pane_id.map(|(id, _)| id),
-                    pane_is_plugin: pane_id.map(|(_, is_plugin)| is_plugin).unwrap_or(false),
-                })),
+                payload: Some(Payload::GetSessionPreviewPayload(
+                    GetSessionPreviewPayload {
+                        name,
+                        tab_index: tab_index.map(|t| t as u32),
+                        pane_id: pane_id.map(|(id, _)| id),
+                        pane_is_plugin: pane_id.map(|(_, is_plugin)| is_plugin).unwrap_or(false),
+                    },
+                )),
             }),
             PluginCommand::GetSavedSessionPreview(name) => Ok(ProtobufPluginCommand {
                 name: CommandName::GetSavedSessionPreview as i32,
@@ -5959,7 +5962,11 @@ mod tests {
     fn session_card_commands_protobuf_round_trip() {
         use crate::data::{ConnectToSession, LayoutInfo};
         use prost::Message;
-        for (tab_index, pane_id) in [(Some(2), Some((7, true))), (None, None), (Some(0), Some((3, false)))] {
+        for (tab_index, pane_id) in [
+            (Some(2), Some((7, true))),
+            (None, None),
+            (Some(0), Some((3, false))),
+        ] {
             let original = PluginCommand::GetSessionPreview {
                 name: "api".to_owned(),
                 tab_index,

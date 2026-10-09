@@ -18081,7 +18081,8 @@ fn leaving_an_information_popup_tells_it_the_pointer_is_gone() {
             leave_sent |= updates.iter().any(|(plugin_id, update_client, event)| {
                 *plugin_id == Some(50)
                     && *update_client == Some(client_id)
-                    && *event == zellij_utils::data::Event::Mouse(zellij_utils::data::Mouse::Hover(-1, 0))
+                    && *event
+                        == zellij_utils::data::Event::Mouse(zellij_utils::data::Mouse::Hover(-1, 0))
             });
         }
     }
@@ -18149,5 +18150,8 @@ fn a_plugin_pane_can_be_dumped_with_its_colours_for_previews() {
     assert!(for_client.contains("plugin text"));
     assert!(for_client.contains("\u{1b}["));
     assert_eq!(for_client, for_anyone);
-    assert!(popup.pane.dump_screen_with_ansi(false, Some(9)).contains("plugin text"));
+    assert!(popup
+        .pane
+        .dump_screen_with_ansi(false, Some(9))
+        .contains("plugin text"));
 }

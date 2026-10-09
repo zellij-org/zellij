@@ -634,7 +634,10 @@ impl Tab {
         self.set_force_render();
         Ok(Some(client_id))
     }
-    pub fn find_popup_plugin(&self, run_plugin_or_alias: &zellij_utils::input::layout::RunPluginOrAlias) -> Option<(ClientId, u32)> {
+    pub fn find_popup_plugin(
+        &self,
+        run_plugin_or_alias: &zellij_utils::input::layout::RunPluginOrAlias,
+    ) -> Option<(ClientId, u32)> {
         self.popups.iter().find_map(|(client_id, stack)| {
             stack.iter().find_map(|popup| {
                 let plugin_id = popup.plugin_id()?;
@@ -715,7 +718,9 @@ impl Tab {
                 _ => false,
             };
             if matches {
-                popup.plugin_id().map(|plugin_id| (plugin_id, popup.takes_focus()))
+                popup
+                    .plugin_id()
+                    .map(|plugin_id| (plugin_id, popup.takes_focus()))
             } else {
                 None
             }

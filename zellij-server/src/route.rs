@@ -2,9 +2,9 @@ use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::sync::{Arc, RwLock};
 use tokio::sync::oneshot;
 
+use crate::background_jobs::BackgroundJob;
 use crate::global_async_runtime::get_tokio_runtime;
 use crate::thread_bus::ThreadSenders;
-use crate::background_jobs::BackgroundJob;
 use crate::{
     os_input_output::ServerOsApi,
     panes::PaneId,
@@ -3907,7 +3907,11 @@ mod tests {
 
     #[test]
     fn a_bare_escape_is_recognised() {
-        assert!(action_presses_escape(&write_key(BareKey::Esc, &[], vec![0x1b])));
+        assert!(action_presses_escape(&write_key(
+            BareKey::Esc,
+            &[],
+            vec![0x1b]
+        )));
         assert!(action_presses_escape(&Action::Write {
             key_with_modifier: None,
             bytes: vec![0x1b],
@@ -3927,7 +3931,11 @@ mod tests {
             bytes: vec![0x1b, b'[', b'A'],
             is_kitty_keyboard_protocol: false,
         }));
-        assert!(!action_presses_escape(&write_key(BareKey::Enter, &[], vec![b'\r'])));
+        assert!(!action_presses_escape(&write_key(
+            BareKey::Enter,
+            &[],
+            vec![b'\r']
+        )));
         assert!(!action_presses_escape(&Action::WriteChars {
             chars: "\u{1b}".to_owned()
         }));
@@ -3935,7 +3943,11 @@ mod tests {
 
     #[test]
     fn enter_and_newlines_count_as_submitting_input() {
-        assert!(action_submits_input(&write_key(BareKey::Enter, &[], vec![b'\r'])));
+        assert!(action_submits_input(&write_key(
+            BareKey::Enter,
+            &[],
+            vec![b'\r']
+        )));
         assert!(action_submits_input(&Action::Write {
             key_with_modifier: None,
             bytes: b"ls\r".to_vec(),
@@ -3958,7 +3970,11 @@ mod tests {
             &[],
             vec![b'a']
         )));
-        assert!(!action_submits_input(&write_key(BareKey::Esc, &[], vec![0x1b])));
+        assert!(!action_submits_input(&write_key(
+            BareKey::Esc,
+            &[],
+            vec![0x1b]
+        )));
         assert!(!action_submits_input(&write_key(
             BareKey::Enter,
             &[KeyModifier::Shift],

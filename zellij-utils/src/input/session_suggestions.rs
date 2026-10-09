@@ -158,9 +158,10 @@ impl SessionSuggestionsConfig {
         for node in children.nodes() {
             match node.name().value() {
                 "fact" => {
-                    let name = positional_strings(node).into_iter().next().ok_or_else(|| {
-                        kdl_error("fact must have a name".to_owned(), node)
-                    })?;
+                    let name = positional_strings(node)
+                        .into_iter()
+                        .next()
+                        .ok_or_else(|| kdl_error("fact must have a name".to_owned(), node))?;
                     if BUILT_IN_FACTS.contains(&name.as_str()) {
                         return Err(kdl_error(
                             format!("\"{}\" is a built-in fact and cannot be redefined", name),
@@ -213,9 +214,10 @@ impl SessionSuggestionsConfig {
                     });
                 },
                 "script" => {
-                    let path = positional_strings(node).into_iter().next().ok_or_else(|| {
-                        kdl_error("script must have a path".to_owned(), node)
-                    })?;
+                    let path = positional_strings(node)
+                        .into_iter()
+                        .next()
+                        .ok_or_else(|| kdl_error("script must have a path".to_owned(), node))?;
                     let timeout_ms = match node.get("timeout_ms").map(|e| e.value()) {
                         None => DEFAULT_SCRIPT_TIMEOUT_MS,
                         Some(value) => match value.as_i64() {
@@ -241,9 +243,10 @@ impl SessionSuggestionsConfig {
                     });
                 },
                 "record" => {
-                    let path = positional_strings(node).into_iter().next().ok_or_else(|| {
-                        kdl_error("record must have a path".to_owned(), node)
-                    })?;
+                    let path = positional_strings(node)
+                        .into_iter()
+                        .next()
+                        .ok_or_else(|| kdl_error("record must have a path".to_owned(), node))?;
                     config.record = Some(PathBuf::from(path));
                 },
                 other => {
@@ -415,9 +418,7 @@ mod tests {
     #[test]
     fn bad_values_are_rejected() {
         assert!(parse("session_suggestions {\n then \"random\"\n}").is_err());
-        assert!(
-            parse("session_suggestions {\n fact \"a\" command=\"x\" at=\"never\"\n}").is_err()
-        );
+        assert!(parse("session_suggestions {\n fact \"a\" command=\"x\" at=\"never\"\n}").is_err());
         assert!(parse("session_suggestions {\n script \"x\" timeout_ms=0\n}").is_err());
         assert!(parse("session_suggestions {\n fact \"directory\" command=\"x\"\n}").is_err());
     }

@@ -1486,9 +1486,10 @@ impl SessionState {
     }
     pub fn other_clients_are_attached(&self, client_id: ClientId) -> bool {
         let pipe_ids: HashSet<ClientId> = self.pipes.values().copied().collect();
-        self.clients.iter().any(|(id, data)| {
-            *id != client_id && data.is_some() && !pipe_ids.contains(id)
-        }) || !self.watchers.is_empty()
+        self.clients
+            .iter()
+            .any(|(id, data)| *id != client_id && data.is_some() && !pipe_ids.contains(id))
+            || !self.watchers.is_empty()
     }
     pub fn new() -> Self {
         SessionState {
@@ -2718,7 +2719,13 @@ theme \"first\"
         let pushed = pushed_window_settings(&server_receiver);
         assert_eq!(pushed.len(), 1, "a new theme did not reach the window");
         assert_eq!(
-            pushed[0].1.theme.unwrap().palette.text_unselected.background,
+            pushed[0]
+                .1
+                .theme
+                .unwrap()
+                .palette
+                .text_unselected
+                .background,
             zellij_utils::data::PaletteColor::Rgb((2, 2, 2))
         );
     }
@@ -3346,11 +3353,11 @@ pub fn start_server_impl(
         if attached_client_count != last_attached_client_count {
             last_attached_client_count = attached_client_count;
             if let Some(session_data) = session_data.read().unwrap().as_ref() {
-                let _ = session_data
-                    .senders
-                    .send_to_background_jobs(BackgroundJob::SessionSuggestions(
-                        SessionSuggestionsJob::ClientCountChanged(attached_client_count),
-                    ));
+                let _ = session_data.senders.send_to_background_jobs(
+                    BackgroundJob::SessionSuggestions(SessionSuggestionsJob::ClientCountChanged(
+                        attached_client_count,
+                    )),
+                );
             }
         }
         let (instruction, mut err_ctx) = server_receiver.recv().unwrap();
