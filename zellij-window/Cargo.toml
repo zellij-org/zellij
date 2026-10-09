@@ -19,6 +19,7 @@ glutin = { workspace = true }
 glutin-winit = { workspace = true }
 libloading = { workspace = true }
 log = { workspace = true }
+miette = { workspace = true }
 png = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

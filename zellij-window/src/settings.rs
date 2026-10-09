@@ -16,7 +16,7 @@ pub fn load(config_file_path: Option<&Path>) -> Result<Settings> {
         .context("the built-in default configuration is unreadable")?;
     let mut config = if path.exists() {
         Config::from_path(&path.to_path_buf(), Some(defaults))
-            .map_err(|e| anyhow::anyhow!("{}", e))
+            .map_err(|e| anyhow::anyhow!("{}", crate::notice::described(&e)))
             .with_context(|| format!("failed to read the configuration at {:?}", path))?
     } else {
         defaults

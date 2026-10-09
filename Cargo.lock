@@ -6604,6 +6604,7 @@ dependencies = [
  "khronos-egl",
  "libloading",
  "log",
+ "miette 7.6.0",
  "png",
  "serde",
  "serde_json",
