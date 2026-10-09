@@ -257,6 +257,7 @@ message Action {
     TargetTabIdPayload target_tab_id_payload = 66;
     MoveTabByTabIdPayload move_tab_by_tab_id_payload = 67;
     MoveTabToPositionPayload move_tab_to_position_payload = 68;
+    EditScrollbackPayload edit_scrollback_payload = 69;
   }
 }
 
@@ -429,6 +430,10 @@ message DumpScreenPayload {
   optional PaneId pane_id = 3;
   bool dump_to_stdout = 4;
   bool ansi = 5;
+}
+
+message EditScrollbackPayload {
+  bool ansi = 1;
 }
 
 enum ActionName {
