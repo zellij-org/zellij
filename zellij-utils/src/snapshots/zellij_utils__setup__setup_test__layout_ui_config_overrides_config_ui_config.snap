@@ -6303,6 +6303,7 @@ Config {
         session_card: None,
         session_indicator: None,
         swap_layout_notification: None,
+        on_quit: None,
     },
     themes: {},
     plugins: PluginAliases {
@@ -6834,7 +6835,6 @@ Config {
         font_weight: None,
         font_features: None,
         fullscreen_keys: None,
-        confirm_close: None,
         hide_pointer_while_typing: None,
         cursor_unfocused_hollow: None,
         minimum_contrast: None,

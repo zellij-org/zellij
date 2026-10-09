@@ -60,7 +60,7 @@ pub enum WebClientToWebServerControlMessagePayload {
         chars: String,
     },
     Detach,
-    ConfirmClose,
+    Quit,
     #[serde(other)]
     Unknown,
 }
@@ -74,7 +74,7 @@ impl WebClientToWebServerControlMessagePayload {
                 | WebClientToWebServerControlMessagePayload::Paste { .. }
                 | WebClientToWebServerControlMessagePayload::Text { .. }
                 | WebClientToWebServerControlMessagePayload::Detach
-                | WebClientToWebServerControlMessagePayload::ConfirmClose
+                | WebClientToWebServerControlMessagePayload::Quit
         )
     }
 }

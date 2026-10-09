@@ -84,6 +84,7 @@ fn every_option_set() -> Options {
         session_card: Some(false),
         session_indicator: Some(false),
         swap_layout_notification: Some(false),
+        on_quit: Some(crate::input::options::OnQuit::Detach),
     }
 }
 
@@ -148,7 +149,6 @@ const EVERY_WINDOW_SETTING_SET: &str = "window {
     opacity 0.9
     opacity_mode \"everything\"
     blur true
-    confirm_close false
     padding 4
     padding_top 2.5
     padding_right 3

@@ -1,5 +1,6 @@
 use zellij_tile::prelude::*;
-use zellij_utils::prompt::ChoiceItem;
+use serde_json::Value;
+use zellij_utils::prompt::{ChoiceItem, MENU_CHOICE_FIELD, MENU_REMEMBER_FIELD};
 
 use crate::form::FormScreen;
 use crate::outcome::{Answer, Outcome};
@@ -205,7 +206,16 @@ impl Screen {
                 options.clone(),
                 *default,
             )),
-            Spec::Menu { items } => Screen::Menu(MenuScreen::new(items.clone())),
+            Spec::Menu {
+                items,
+                remember,
+                padded,
+            } => Screen::Menu(
+                MenuScreen::new(items.clone())
+                    .starting_at(request.common.default.as_deref())
+                    .remember(remember.clone())
+                    .padded(*padded),
+            ),
             Spec::Form {
                 spec,
                 patterns,
@@ -340,6 +350,12 @@ impl Screen {
                 ("<Space>", "open"),
                 ("<←→>", "change"),
                 ("<Enter>", "accept"),
+                ("<Esc>", "cancel"),
+            ],
+            Screen::Menu(s) if s.has_remember() => &[
+                ("<↓↑>", "move"),
+                ("<Space>", "toggle"),
+                ("<Enter>", "choose"),
                 ("<Esc>", "cancel"),
             ],
             Screen::Menu(_) => &[("<↓↑>", "move"), ("<Enter>", "choose"), ("<Esc>", "cancel")],
@@ -1136,23 +1152,58 @@ impl SelectScreen {
 pub struct MenuScreen {
     items: Vec<ChoiceItem>,
     list: MenuList,
+    remember: Option<Toggle>,
+    padding: usize,
 }
+
+const REMEMBER_GAP_ROWS: usize = 1;
 
 impl MenuScreen {
     pub fn new(items: Vec<ChoiceItem>) -> Self {
         let menu_items = items
             .iter()
-            .map(|item| MenuItem::new(item.display()))
+            .map(|item| MenuItem::new(item.display()).emphasized_indices(item.emphasis.clone()))
             .collect();
         MenuScreen {
             items,
             list: MenuList::new(menu_items).focused(),
+            remember: None,
+            padding: 0,
+        }
+    }
+    pub fn starting_at(mut self, value: Option<&str>) -> Self {
+        if let Some(index) = value.and_then(|value| self.items.iter().position(|i| i.value == value)) {
+            self.list.set_highlighted(Some(index));
+        }
+        self
+    }
+    pub fn remember(mut self, label: Option<String>) -> Self {
+        if label.is_some() {
+            self.list = self.list.without_mark_column();
+        }
+        self.remember = label.map(|label| Toggle::new(label, false));
+        self
+    }
+    pub fn padded(mut self, padded: bool) -> Self {
+        self.padding = if padded { 1 } else { 0 };
+        self
+    }
+    pub fn has_remember(&self) -> bool {
+        self.remember.is_some()
+    }
+    fn answer(&self, value: String) -> Answer {
+        match &self.remember {
+            Some(toggle) => Answer::Form(vec![
+                (MENU_CHOICE_FIELD.to_owned(), Value::String(value)),
+                (MENU_REMEMBER_FIELD.to_owned(), Value::Bool(toggle.is_on())),
+            ]),
+            None => Answer::Choice(value),
         }
     }
     fn respond(&mut self, response: UiResponse) -> Step {
         match response {
             UiResponse::Submitted(UiValue::Choice { index, .. }) => match self.items.get(index) {
-                Some(item) => Step::Done(Outcome::Answered(Answer::Choice(item.value.clone()))),
+                Some(item) => Step::Done(Outcome::Answered(self.answer(item.value.clone()))),
                 None => Step::Nothing,
             },
             UiResponse::Cancelled => Step::Done(Outcome::Cancelled),
@@ -1161,20 +1212,59 @@ impl MenuScreen {
         }
     }
     pub fn handle_key(&mut self, key: &KeyWithModifier) -> Step {
+        if is_key(key, BareKey::Char(' ')) {
+            if let Some(toggle) = &mut self.remember {
+                let on = toggle.is_on();
+                toggle.set_on(!on);
+                return Step::Redraw;
+            }
+        }
         let response = self.list.handle_key(key);
         self.respond(response)
     }
     fn handle_mouse(&mut self, mouse: Mouse) -> Step {
         let response = self.list.handle_mouse(mouse);
-        self.respond(response)
+        if response.is_handled() {
+            return self.respond(response);
+        }
+        match &mut self.remember {
+            Some(toggle) => Step::redraw_if(toggle.handle_mouse(mouse).is_handled()),
+            None => Step::Nothing,
+        }
+    }
+    fn list_height(&self) -> usize {
+        self.list.height_for(LIST_ROWS)
     }
     fn render(&mut self, x: usize, y: usize, width: usize, height: usize) {
-        self.list.render(x, y, width, height);
+        let padding = self.padding;
+        let inner_width = width.saturating_sub(padding * 2);
+        let reserved = padding * 2
+            + if self.remember.is_some() {
+                REMEMBER_GAP_ROWS + 1
+            } else {
+                0
+            };
+        let list_height = height.saturating_sub(reserved).min(self.list_height());
+        self.list
+            .render(x + padding, y + padding, inner_width, list_height);
+        if let Some(toggle) = &mut self.remember {
+            toggle.render(x + padding + 1, y + padding + list_height + REMEMBER_GAP_ROWS);
+        }
     }
     fn desired_size(&self) -> (usize, usize) {
+        let remember_width = self
+            .remember
+            .as_ref()
+            .map(|toggle| toggle.width() + 1)
+            .unwrap_or(0);
+        let remember_rows = if self.remember.is_some() {
+            REMEMBER_GAP_ROWS + 1
+        } else {
+            0
+        };
         (
-            self.list.natural_width() + 2,
-            self.list.height_for(LIST_ROWS),
+            (self.list.natural_width() + 2).max(remember_width) + self.padding * 2,
+            self.list_height() + remember_rows + self.padding * 2,
         )
     }
 }
@@ -1785,6 +1875,48 @@ mod tests {
         assert_eq!(
             range_error(0, None, Some(-1)),
             Some("Must be at most -1".to_owned())
+        );
+    }
+
+    #[test]
+    fn a_menu_with_a_remember_box_answers_with_the_choice_and_the_box() {
+        let mut menu = MenuScreen::new(vec![
+            ChoiceItem::labeled("detach", "Detach").emphasize_first(6),
+            ChoiceItem::labeled("quit", "Quit"),
+        ])
+        .remember(Some("Always do this".to_owned()));
+        menu.handle_key(&key(BareKey::Down));
+        assert_eq!(menu.handle_key(&key(BareKey::Char(' '))), Step::Redraw);
+        assert_eq!(
+            menu.handle_key(&key(BareKey::Enter)),
+            Step::Done(Outcome::Answered(Answer::Form(vec![
+                ("choice".to_owned(), Value::String("quit".to_owned())),
+                ("remember".to_owned(), Value::Bool(true)),
+            ])))
+        );
+    }
+
+    #[test]
+    fn a_menu_starts_on_the_default_item() {
+        let mut menu = MenuScreen::new(vec![
+            ChoiceItem::plain("detach"),
+            ChoiceItem::plain("quit"),
+            ChoiceItem::plain("cancel"),
+        ])
+        .starting_at(Some("quit"));
+        assert_eq!(
+            menu.handle_key(&key(BareKey::Enter)),
+            Step::Done(Outcome::Answered(Answer::Choice("quit".to_owned())))
+        );
+    }
+
+    #[test]
+    fn padding_adds_a_line_and_a_column_on_every_side() {
+        let items = vec![ChoiceItem::plain("a"), ChoiceItem::plain("bb")];
+        let (cols, rows) = MenuScreen::new(items.clone()).desired_size();
+        assert_eq!(
+            MenuScreen::new(items).padded(true).desired_size(),
+            (cols + 2, rows + 2)
         );
     }
 

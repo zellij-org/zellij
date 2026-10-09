@@ -4,6 +4,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use zellij_utils::prompt::{
     FormFieldKind, PipePrompt, PromptResult, PromptSpec, PromptValue, EXIT_ANSWERED, EXIT_CANCELLED,
+    MENU_CHOICE_FIELD, MENU_REMEMBER_FIELD,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -51,6 +52,12 @@ impl Destination {
                         .iter()
                         .map(|field| (field.id.clone(), field.kind))
                         .collect(),
+                    PromptSpec::Menu {
+                        remember: Some(_), ..
+                    } => BTreeMap::from([
+                        (MENU_CHOICE_FIELD.to_owned(), FormFieldKind::Choose),
+                        (MENU_REMEMBER_FIELD.to_owned(), FormFieldKind::Toggle),
+                    ]),
                     _ => BTreeMap::new(),
                 },
             },

@@ -4140,7 +4140,9 @@ fn undo_rename_tab(env: &PluginEnv) {
 
 fn quit_zellij(env: &PluginEnv) {
     let error_msg = || format!("failed to quit zellij in plugin {}", env.name());
-    let action = Action::Quit;
+    let action = Action::SkipConfirm {
+        action: Box::new(Action::Quit),
+    };
     apply_action!(action, error_msg, env);
 }
 

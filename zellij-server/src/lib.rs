@@ -230,9 +230,8 @@ pub enum ServerInstruction {
     /// loop. The main loop writes `ServerToClientMsg::ForwardQueryToHost`
     ForwardQueryToHost(u32, Vec<u8>, bool),
     KeyPassthroughChanged(ClientId, PaneId, PaneId, bool, Option<Direction>, bool),
-    CloseDialogueChanged(ClientId, bool),
     EmitNestedSessionFrameToClient(ClientId, Vec<u8>),
-    PopupStateChanged(ClientId, bool),
+    PopupStateChanged(ClientId, bool, bool),
 }
 
 impl From<&ServerInstruction> for ServerContext {
@@ -308,7 +307,6 @@ impl From<&ServerInstruction> for ServerContext {
             },
             ServerInstruction::ForwardQueryToHost(..) => ServerContext::ForwardQueryToHost,
             ServerInstruction::KeyPassthroughChanged(..) => ServerContext::KeyPassthroughChanged,
-            ServerInstruction::CloseDialogueChanged(..) => ServerContext::CloseDialogueChanged,
             ServerInstruction::EmitNestedSessionFrameToClient(..) => {
                 ServerContext::EmitNestedSessionFrameToClient
             },
@@ -1034,7 +1032,7 @@ pub(crate) struct SessionMetaData {
     pub session_configuration: SessionConfiguration,
     pub key_passthrough_clients: HashMap<ClientId, PaneId>,
     pub popup_clients: HashSet<ClientId>,
-    pub close_dialogue_clients: HashSet<ClientId>,
+    pub modal_popup_clients: HashSet<ClientId>,
     pub terminal_command_submitted: Arc<std::sync::atomic::AtomicBool>,
     pub web_sharing: WebSharing, // this is a special attribute explicitly set on session
     // initialization because we don't want it to be overridden by
@@ -1113,6 +1111,7 @@ impl SessionMetaData {
     }
     pub fn remove_key_passthrough_client(&mut self, client_id: ClientId) {
         self.popup_clients.remove(&client_id);
+        self.modal_popup_clients.remove(&client_id);
         self.remove_key_passthrough_client_with_notify(client_id, true);
     }
     pub fn remove_key_passthrough_client_with_notify(
@@ -1304,6 +1303,11 @@ impl SessionMetaData {
                 .senders
                 .send_to_screen(ScreenInstruction::SetSwapLayoutNotification(
                     new_config.options.swap_layout_notification.unwrap_or(true),
+                ));
+            let _ = self
+                .senders
+                .send_to_screen(ScreenInstruction::SetOnQuit(
+                    new_config.options.on_quit.unwrap_or_default(),
                 ));
             let _ = self
                 .senders
@@ -2616,7 +2620,7 @@ mod session_state_tests {
             session_configuration,
             key_passthrough_clients: HashMap::new(),
             popup_clients: HashSet::new(),
-            close_dialogue_clients: HashSet::new(),
+            modal_popup_clients: HashSet::new(),
             terminal_command_submitted: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             web_sharing: WebSharing::Off,
             screen_thread: None,
@@ -4644,7 +4648,7 @@ pub fn start_server_impl(
                     }
                 }
             },
-            ServerInstruction::PopupStateChanged(client_id, is_open) => {
+            ServerInstruction::PopupStateChanged(client_id, is_open, takes_all_keys) => {
                 let mut session_data = session_data.write().unwrap();
                 if let Some(session_data) = session_data.as_mut() {
                     if is_open {
@@ -4652,14 +4656,10 @@ pub fn start_server_impl(
                     } else {
                         session_data.popup_clients.remove(&client_id);
                     }
-                }
-            },
-            ServerInstruction::CloseDialogueChanged(client_id, shown) => {
-                if let Some(session_data) = session_data.write().unwrap().as_mut() {
-                    if shown {
-                        session_data.close_dialogue_clients.insert(client_id);
+                    if is_open && takes_all_keys {
+                        session_data.modal_popup_clients.insert(client_id);
                     } else {
-                        session_data.close_dialogue_clients.remove(&client_id);
+                        session_data.modal_popup_clients.remove(&client_id);
                     }
                 }
             },
@@ -5058,7 +5058,7 @@ fn init_session(
         web_sharing: WebSharing::Disabled,
         key_passthrough_clients: HashMap::new(),
         popup_clients: HashSet::new(),
-        close_dialogue_clients: HashSet::new(),
+        modal_popup_clients: HashSet::new(),
         terminal_command_submitted: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         applied_env,
         sent_window_settings: HashMap::new(),

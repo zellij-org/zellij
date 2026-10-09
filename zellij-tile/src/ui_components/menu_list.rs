@@ -13,6 +13,7 @@ pub struct MenuItem {
     separator: bool,
     marked: bool,
     matched: Vec<usize>,
+    emphasized: Vec<usize>,
 }
 
 impl MenuItem {
@@ -24,6 +25,7 @@ impl MenuItem {
             separator: false,
             marked: false,
             matched: vec![],
+            emphasized: vec![],
         }
     }
     pub fn separator() -> Self {
@@ -34,6 +36,7 @@ impl MenuItem {
             separator: true,
             marked: false,
             matched: vec![],
+            emphasized: vec![],
         }
     }
     pub fn shortcut(mut self, shortcut: impl Into<String>) -> Self {
@@ -54,6 +57,13 @@ impl MenuItem {
     }
     pub fn matched(&self) -> &[usize] {
         &self.matched
+    }
+    pub fn emphasized_indices(mut self, indices: Vec<usize>) -> Self {
+        self.emphasized = indices;
+        self
+    }
+    pub fn emphasized(&self) -> &[usize] {
+        &self.emphasized
     }
     pub fn label(&self) -> &str {
         &self.label
@@ -92,22 +102,26 @@ impl MenuItem {
             serialized.push(':');
             serialized.push_str(&encode_text(shortcut));
         }
-        if !self.matched.is_empty() {
+        let join = |indices: &[usize]| {
+            indices
+                .iter()
+                .map(|index| index.to_string())
+                .collect::<Vec<_>>()
+                .join(",")
+        };
+        if !self.matched.is_empty() || !self.emphasized.is_empty() {
             serialized.push('/');
-            serialized.push_str(
-                &self
-                    .matched
-                    .iter()
-                    .map(|index| index.to_string())
-                    .collect::<Vec<_>>()
-                    .join(","),
-            );
+            serialized.push_str(&join(&self.matched));
+        }
+        if !self.emphasized.is_empty() {
+            serialized.push('/');
+            serialized.push_str(&join(&self.emphasized));
         }
         serialized
     }
-    fn natural_width(&self) -> usize {
+    fn natural_width(&self, mark_column: bool) -> usize {
         text_width(&self.label)
-            + 4
+            + if mark_column { 4 } else { 2 }
             + self
                 .shortcut
                 .as_ref()
@@ -129,6 +143,7 @@ pub struct MenuList {
     offset: usize,
     border: bool,
     focused: bool,
+    mark_column: bool,
     visible_rows: usize,
     indicator_rows: bool,
     laid_out: bool,
@@ -146,6 +161,7 @@ impl MenuList {
             offset: 0,
             border: false,
             focused: false,
+            mark_column: true,
             visible_rows: 0,
             indicator_rows: false,
             laid_out: false,
@@ -156,6 +172,10 @@ impl MenuList {
     }
     pub fn with_border(mut self) -> Self {
         self.border = true;
+        self
+    }
+    pub fn without_mark_column(mut self) -> Self {
+        self.mark_column = false;
         self
     }
     pub fn highlighted(mut self, index: usize) -> Self {
@@ -211,7 +231,7 @@ impl MenuList {
         let border = if self.border { 2 } else { 0 };
         self.items
             .iter()
-            .map(|i| i.natural_width())
+            .map(|i| i.natural_width(self.mark_column))
             .max()
             .unwrap_or(0)
             + border
@@ -254,6 +274,7 @@ impl MenuList {
         state_flag(&mut state, "b", self.border);
         state_flag(&mut state, "f", self.focused);
         state_flag(&mut state, "ind", self.indicator_rows);
+        state_flag(&mut state, "nm", !self.mark_column);
         if let Some(highlighted) = self
             .highlighted
             .filter(|h| *h >= self.offset && *h < self.offset + rows)

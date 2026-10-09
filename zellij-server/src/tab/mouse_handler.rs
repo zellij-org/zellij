@@ -392,56 +392,12 @@ impl MouseHandler {
         client_id: ClientId,
         passthrough_pane_id: Option<PaneId>,
     ) -> Result<MouseEffect> {
-        if let Some(effect) = Self::intercept_close_dialogue_mouse_event(tab, event, client_id)? {
-            return Ok(effect);
-        }
         if let Some(effect) = Self::intercept_guest_modal_mouse_event(tab, event, client_id)? {
             return Ok(effect);
         }
         let context = Self::gather_mouse_event_context(tab, event, client_id, passthrough_pane_id)?;
         let action = Self::determine_mouse_action(event, &context)?;
         Self::execute_mouse_action(tab, action, event, client_id)
-    }
-
-    fn intercept_close_dialogue_mouse_event(
-        tab: &mut Tab,
-        event: &MouseEvent,
-        client_id: ClientId,
-    ) -> Result<Option<MouseEffect>> {
-        let Some(dialogue) = tab.close_dialogue(client_id).cloned() else {
-            return Ok(None);
-        };
-        let pane_id_at_position = Self::get_pane_at(tab, &event.position, false)?.map(|p| p.pid());
-        if pane_id_at_position != Some(dialogue.pane_id) {
-            return Ok(None);
-        }
-        if event.event_type == MouseEventType::Release && event.left {
-            let style = tab.style;
-            let option = tab.get_pane_with_id(dialogue.pane_id).and_then(|pane| {
-                let row = pane.relative_position(&event.position).line();
-                (row >= 0).then(|| {
-                    crate::panes::close_dialogue::close_dialogue_option_at_content_row(
-                        pane.get_content_rows(),
-                        pane.get_content_columns(),
-                        row as usize,
-                        &style,
-                        &dialogue.session_name,
-                        dialogue.selected,
-                    )
-                })?
-            });
-            if let Some(option) = option {
-                let _ = tab
-                    .senders
-                    .send_to_screen(ScreenInstruction::CloseDialogueChoice {
-                        client_id,
-                        outcome: crate::panes::close_dialogue::CloseDialogueOutcome::of_option(
-                            option,
-                        ),
-                    });
-            }
-        }
-        Ok(Some(MouseEffect::state_changed()))
     }
 
     fn intercept_guest_modal_mouse_event(

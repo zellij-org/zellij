@@ -17,6 +17,7 @@ pub const ESC: [u8; 1] = [ESC_BYTE];
 pub const SPACE: [u8; 1] = [b' '];
 pub const TAB: [u8; 1] = [b'\t'];
 pub const F9: [u8; 5] = *b"\x1b[20~";
+pub const UP: [u8; 3] = *b"\x1b[A";
 pub const DOWN: [u8; 3] = *b"\x1b[B";
 pub const RIGHT: [u8; 3] = *b"\x1b[C";
 

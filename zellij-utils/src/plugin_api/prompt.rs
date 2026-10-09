@@ -26,6 +26,7 @@ impl From<ChoiceItem> for ProtobufChoiceItem {
         ProtobufChoiceItem {
             value: item.value,
             label: item.label,
+            emphasis: item.emphasis.into_iter().map(|index| index as u32).collect(),
         }
     }
 }
@@ -35,6 +36,11 @@ impl From<ProtobufChoiceItem> for ChoiceItem {
         ChoiceItem {
             value: item.value,
             label: item.label,
+            emphasis: item
+                .emphasis
+                .into_iter()
+                .map(|index| index as usize)
+                .collect(),
         }
     }
 }
@@ -251,8 +257,14 @@ impl From<PromptSpec> for prompt_request::Spec {
                     options,
                 })
             },
-            PromptSpec::Menu { items } => prompt_request::Spec::Menu(ProtobufMenuSpec {
+            PromptSpec::Menu {
+                items,
+                remember,
+                padded,
+            } => prompt_request::Spec::Menu(ProtobufMenuSpec {
                 items: items.into_iter().map(Into::into).collect(),
+                remember,
+                padded,
             }),
             PromptSpec::Form { spec } => prompt_request::Spec::Form(spec.into()),
             PromptSpec::Notify {
@@ -303,6 +315,8 @@ impl TryFrom<prompt_request::Spec> for PromptSpec {
             },
             prompt_request::Spec::Menu(spec) => PromptSpec::Menu {
                 items: spec.items.into_iter().map(Into::into).collect(),
+                remember: spec.remember,
+                padded: spec.padded,
             },
             prompt_request::Spec::Form(spec) => PromptSpec::Form {
                 spec: spec.try_into()?,
@@ -325,6 +339,7 @@ impl From<PromptRequest> for ProtobufPromptRequest {
             default: request.default,
             placement: request.placement.map(Into::into),
             focused: request.focused,
+            capture_all_keys: request.capture_all_keys,
             spec: Some(request.spec.into()),
         }
     }
@@ -344,6 +359,7 @@ impl TryFrom<ProtobufPromptRequest> for PromptRequest {
                 None => None,
             },
             focused: request.focused,
+            capture_all_keys: request.capture_all_keys,
             spec: request
                 .spec
                 .ok_or("Prompt request without a spec")?
@@ -448,6 +464,15 @@ mod tests {
 
     #[test]
     fn every_request_survives_protobuf() {
+        round_trip_request(
+            PromptRequest::menu([
+                ChoiceItem::labeled("d", "Detach").emphasize_first(6),
+                ChoiceItem::plain("c"),
+            ])
+            .remember("Always do this")
+            .padded()
+            .capture_all_keys(true),
+        );
         round_trip_request(
             PromptRequest::confirm("Go?")
                 .yes("Go")

@@ -686,11 +686,6 @@ web_client {
 //     // had before. List no chords to leave them all to the session.
 //     fullscreen_keys "F11"
 //
-//     // Whether closing the window first asks, inside the focused pane, to
-//     // detach from the session or cancel. Closing again while it asks
-//     // detaches straight away.
-//     confirm_close true
-//
 //     // Whether the mouse pointer is hidden while typing, until it moves again
 //     hide_pointer_while_typing false
 //

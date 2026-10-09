@@ -413,7 +413,6 @@ pub enum Action {
     },
     /// Detach session and exit
     Detach,
-    ConfirmClose,
     /// Switch the host-terminal theme mode to dark (uses configured `theme_dark`).
     SetDarkTheme,
     /// Switch the host-terminal theme mode to light (uses configured `theme_light`).
@@ -2536,7 +2535,9 @@ fn suggest_key_fix(key_str: &str) -> String {
 impl From<OnForceClose> for Action {
     fn from(ofc: OnForceClose) -> Action {
         match ofc {
-            OnForceClose::Quit => Action::Quit,
+            OnForceClose::Quit => Action::SkipConfirm {
+                action: Box::new(Action::Quit),
+            },
             OnForceClose::Detach => Action::Detach,
         }
     }

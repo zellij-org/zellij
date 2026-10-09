@@ -162,7 +162,7 @@ enum AnsiCode {
 }
 
 message Action {
-  reserved 140;
+  reserved 140, 162;
   oneof action_type {
     QuitAction quit = 1;
     WriteAction write = 2;
@@ -326,7 +326,6 @@ message Action {
     StartRenameTabByTabIdAction start_rename_tab_by_tab_id = 159;
     DismissInfoPopupsAction dismiss_info_popups = 160;
     OpenContextMenuAction open_context_menu = 161;
-    ConfirmCloseAction confirm_close = 162;
     ToggleSessionCardAction toggle_session_card = 163;
   }
 }
@@ -388,7 +387,6 @@ message CloseTabAction {}
 message ToggleTabAction {}
 message UndoRenameTabAction {}
 message DetachAction {}
-message ConfirmCloseAction {}
 message SetDarkThemeAction {}
 message SetLightThemeAction {}
 message ToggleThemeAction {}
@@ -1295,6 +1293,8 @@ message Options {
   optional bool session_card = 76;
   optional bool session_indicator = 77;
   optional bool swap_layout_notification = 78;
+  reserved 79;
+  optional string on_quit = 80;
 }
 
 enum OnForceClose {

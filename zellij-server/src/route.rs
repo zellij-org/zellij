@@ -1293,6 +1293,12 @@ pub(crate) fn route_action(
                 .send_to_screen(screen_instr)
                 .with_context(err_context)?;
         },
+        Action::Quit if !is_cli_client => {
+            drop(NotificationEnd::new(completion_tx));
+            senders
+                .send_to_screen(ScreenInstruction::ConfirmQuit(client_id))
+                .with_context(err_context)?;
+        },
         Action::Quit => {
             senders
                 .send_to_server(ServerInstruction::ClientExit(
@@ -1310,11 +1316,6 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
             should_break = true;
-        },
-        Action::ConfirmClose => {
-            senders
-                .send_to_screen(ScreenInstruction::ConfirmClose(client_id))
-                .with_context(err_context)?;
         },
         Action::SetDarkTheme => {
             senders
@@ -2650,22 +2651,6 @@ pub(crate) fn route_thread_main(
                                 .unwrap()
                                 .set_last_active_client(client_id);
 
-                            let dialogue_senders =
-                                session_data.read().unwrap().as_ref().and_then(|s| {
-                                    s.close_dialogue_clients
-                                        .contains(&client_id)
-                                        .then(|| s.senders.clone())
-                                });
-                            if let Some(senders) = dialogue_senders {
-                                senders
-                                    .send_to_screen(ScreenInstruction::CloseDialogueInput {
-                                        client_id,
-                                        key: Some(key),
-                                        raw_bytes,
-                                    })
-                                    .with_context(err_context)?;
-                                return Ok(should_break);
-                            }
                             // The read guard ends as a temporary in this expression so
                             // `route_action` runs without holding `session_data.read()` —
                             // see the doc comment on `route_action` for why this matters.
@@ -2674,6 +2659,8 @@ pub(crate) fn route_thread_main(
                                     let in_key_passthrough =
                                         s.key_passthrough_clients.contains_key(&client_id);
                                     let has_focused_popup = s.popup_clients.contains(&client_id);
+                                    let popup_takes_all_keys =
+                                        s.modal_popup_clients.contains(&client_id);
                                     let (kb, im, dim) =
                                         s.get_client_keybinds_and_mode(&client_id)?;
                                     let key_actions = popup_keys::key_dispatch(
@@ -2685,6 +2672,7 @@ pub(crate) fn route_thread_main(
                                         is_kitty_keyboard_protocol,
                                         in_key_passthrough,
                                         has_focused_popup,
+                                        popup_takes_all_keys,
                                     );
                                     Some((
                                         s.senders.clone(),
@@ -2793,34 +2781,6 @@ pub(crate) fn route_thread_main(
                             client_id: maybe_client_id,
                             is_cli_client,
                         } => {
-                            if !is_cli_client {
-                                let dialogue_senders =
-                                    session_data.read().unwrap().as_ref().and_then(|s| {
-                                        s.close_dialogue_clients
-                                            .contains(&client_id)
-                                            .then(|| s.senders.clone())
-                                    });
-                                if let Some(senders) = dialogue_senders {
-                                    match &action {
-                                        Action::WriteChars { chars } => {
-                                            senders
-                                                .send_to_screen(
-                                                    ScreenInstruction::CloseDialogueInput {
-                                                        client_id,
-                                                        key: None,
-                                                        raw_bytes: chars.as_bytes().to_vec(),
-                                                    },
-                                                )
-                                                .with_context(err_context)?;
-                                            return Ok(should_break);
-                                        },
-                                        Action::Paste { .. } | Action::Write { .. } => {
-                                            return Ok(should_break);
-                                        },
-                                        _ => {},
-                                    }
-                                }
-                            }
                             let cli_client_id = client_id;
                             let client_id = if is_cli_client {
                                 // for cli clients, we want to default to the last active client

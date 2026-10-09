@@ -1,6 +1,5 @@
 ---
 source: zellij-utils/src/kdl/mod.rs
-assertion_line: 9248
 expression: fake_document.to_string()
 ---
  
@@ -396,3 +395,12 @@ web_sharing "disabled"
 // Whether to briefly show the name of the new swap layout when it is changed
 // default is true
 // swap_layout_notification false
+ 
+// What the quit action does
+// Options:
+//   - "ask_quit" (Default - ask whether to detach or quit, with quit preselected)
+//   - "ask_detach" (ask whether to detach or quit, with detach preselected)
+//   - "quit" (quit without asking)
+//   - "detach" (detach without asking)
+// 
+// on_quit "ask_quit"

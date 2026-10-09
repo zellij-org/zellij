@@ -1,6 +1,5 @@
 ---
 source: zellij-utils/src/setup.rs
-assertion_line: 856
 expression: "format!(\"{:#?}\", options)"
 ---
 Options {
@@ -74,4 +73,5 @@ Options {
     session_card: None,
     session_indicator: None,
     swap_layout_notification: None,
+    on_quit: None,
 }

@@ -171,6 +171,7 @@ fn option_values(options: &Options, values: &mut BTreeMap<SettingKey, Option<Str
         session_card,
         session_indicator,
         swap_layout_notification,
+        on_quit,
     } = options;
     let entries = [
         (SettingKey::SimplifiedUi, display_text(simplified_ui)),
@@ -333,6 +334,10 @@ fn option_values(options: &Options, values: &mut BTreeMap<SettingKey, Option<Str
         (
             SettingKey::SwapLayoutNotification,
             display_text(swap_layout_notification),
+        ),
+        (
+            SettingKey::OnQuit,
+            on_quit.map(|on_quit| on_quit.as_str().to_owned()),
         ),
     ];
     values.extend(entries);
@@ -758,6 +763,7 @@ pub fn copy_setting(target: &mut Config, source: &Config, key: SettingKey) {
         SettingKey::SwapLayoutNotification => {
             options.swap_layout_notification = from.swap_layout_notification
         },
+        SettingKey::OnQuit => options.on_quit = from.on_quit,
         SettingKey::FrameRoundedCorners => frames.rounded_corners = from_frames.rounded_corners,
         SettingKey::FrameHideSessionName => {
             frames.hide_session_name = from_frames.hide_session_name

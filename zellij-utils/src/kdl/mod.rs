@@ -3270,6 +3270,13 @@ impl Options {
         let swap_layout_notification =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "swap_layout_notification")
                 .map(|(v, _)| v);
+        let on_quit = match kdl_property_first_arg_as_string_or_error!(kdl_options, "on_quit") {
+            Some((value, entry)) => match value.parse::<crate::input::options::OnQuit>() {
+                Ok(v) => Some(v),
+                Err(e) => return Err(kdl_parsing_error!(e, entry)),
+            },
+            None => None,
+        };
 
         Ok(Options {
             simplified_ui,
@@ -3340,6 +3347,7 @@ impl Options {
             session_card,
             session_indicator,
             swap_layout_notification,
+            on_quit,
         })
     }
     pub fn from_string(stringified_keybindings: &String) -> Result<Self, ConfigError> {
@@ -5190,6 +5198,38 @@ impl Options {
             add_comments,
         )
     }
+    fn on_quit_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        use crate::input::options::OnQuit;
+        let comment_text = [
+            " ",
+            "// What the quit action does",
+            "// Options:",
+            "//   - \"ask_quit\" (Default - ask whether to detach or quit, with quit preselected)",
+            "//   - \"ask_detach\" (ask whether to detach or quit, with detach preselected)",
+            "//   - \"quit\" (quit without asking)",
+            "//   - \"detach\" (detach without asking)",
+            "// ",
+        ]
+        .join("\n");
+        let create_node = |value: OnQuit| -> KdlNode {
+            let mut node = KdlNode::new("on_quit");
+            node.push(KdlValue::String(value.as_str().to_owned()));
+            node
+        };
+        if let Some(value) = self.on_quit {
+            let mut node = create_node(value);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(OnQuit::AskQuit);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
     pub fn to_kdl(&self, add_comments: bool) -> Vec<KdlNode> {
         let mut nodes = vec![];
         if let Some(simplified_ui_node) = self.simplified_ui_to_kdl(add_comments) {
@@ -5398,6 +5438,9 @@ impl Options {
         }
         if let Some(swap_layout_notification) = self.swap_layout_notification_to_kdl(add_comments) {
             nodes.push(swap_layout_notification);
+        }
+        if let Some(on_quit) = self.on_quit_to_kdl(add_comments) {
+            nodes.push(on_quit);
         }
         nodes
     }
@@ -8993,12 +9036,17 @@ fn session_options_from_kdl() {
         session_card false
         session_indicator true
         swap_layout_notification false
+        on_quit "ask_detach"
     "##;
     let document: KdlDocument = fake_config.parse().unwrap();
     let options = Options::from_kdl(&document).unwrap();
     assert_eq!(options.session_card, Some(false));
     assert_eq!(options.session_indicator, Some(true));
     assert_eq!(options.swap_layout_notification, Some(false));
+    assert_eq!(
+        options.on_quit,
+        Some(crate::input::options::OnQuit::AskDetach)
+    );
     let mut serialized = Options::to_kdl(&options, false);
     let mut fake_document = KdlDocument::new();
     fake_document.nodes_mut().append(&mut serialized);

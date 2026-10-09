@@ -23,6 +23,7 @@ pub enum PopupPlacement {
 pub enum PopupKind {
     Menu,
     Prompt,
+    Modal,
     Info,
 }
 
@@ -487,6 +488,11 @@ impl Tab {
     pub fn has_focused_popup_for_client(&self, client_id: ClientId) -> bool {
         self.top_focused_popup(client_id).is_some()
     }
+    pub fn focused_popup_takes_all_keys(&self, client_id: ClientId) -> bool {
+        self.top_focused_popup(client_id)
+            .map(|popup| popup.kind == PopupKind::Modal)
+            .unwrap_or(false)
+    }
     #[cfg(test)]
     pub fn info_popup_geoms(&self, client_id: ClientId) -> Vec<(u32, PaneGeom)> {
         self.popups
@@ -758,7 +764,9 @@ impl Tab {
         if !inside && is_press {
             return match popup.kind {
                 PopupKind::Menu => Some(PopupMouseOutcome::CloseRequested),
-                PopupKind::Prompt | PopupKind::Info => Some(PopupMouseOutcome::Consumed),
+                PopupKind::Prompt | PopupKind::Modal | PopupKind::Info => {
+                    Some(PopupMouseOutcome::Consumed)
+                },
             };
         }
         let (line, column) = if inside {

@@ -1057,6 +1057,7 @@ impl From<crate::input::options::Options>
             session_card: options.session_card,
             session_indicator: options.session_indicator,
             swap_layout_notification: options.swap_layout_notification,
+            on_quit: options.on_quit.map(|on_quit| on_quit.as_str().to_owned()),
             show_startup_tips: options.show_startup_tips,
             show_release_notes: options.show_release_notes,
             advanced_mouse_actions: options.advanced_mouse_actions,
@@ -1204,6 +1205,14 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
             session_card: options.session_card,
             session_indicator: options.session_indicator,
             swap_layout_notification: options.swap_layout_notification,
+            on_quit: options
+                .on_quit
+                .map(|on_quit| {
+                    on_quit
+                        .parse::<crate::input::options::OnQuit>()
+                        .map_err(|e| anyhow!(e))
+                })
+                .transpose()?,
             show_startup_tips: options.show_startup_tips,
             show_release_notes: options.show_release_notes,
             advanced_mouse_actions: options.advanced_mouse_actions,
@@ -1294,7 +1303,6 @@ impl From<crate::input::actions::Action>
             CloseTabByIdAction,
             CloseTerminalPaneAction,
             ConfirmAction,
-            ConfirmCloseAction,
             CopyAction,
             CopyLastCommandOutputAction,
             CurrentTabInfoAction,
@@ -1838,9 +1846,6 @@ impl From<crate::input::actions::Action>
                 no_focus,
             }),
             crate::input::actions::Action::Detach => ActionType::Detach(DetachAction {}),
-            crate::input::actions::Action::ConfirmClose => {
-                ActionType::ConfirmClose(ConfirmCloseAction {})
-            },
             crate::input::actions::Action::SetDarkTheme => {
                 ActionType::SetDarkTheme(SetDarkThemeAction {})
             },
@@ -2808,7 +2813,6 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                 no_focus: run_action.no_focus,
             }),
             ActionType::Detach(_) => Ok(crate::input::actions::Action::Detach),
-            ActionType::ConfirmClose(_) => Ok(crate::input::actions::Action::ConfirmClose),
             ActionType::SetDarkTheme(_) => Ok(crate::input::actions::Action::SetDarkTheme),
             ActionType::SetLightTheme(_) => Ok(crate::input::actions::Action::SetLightTheme),
             ActionType::ToggleTheme(_) => Ok(crate::input::actions::Action::ToggleTheme),

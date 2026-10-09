@@ -772,7 +772,7 @@ impl MockScreen {
             font_families: self.session_metadata.font_families.clone(),
             key_passthrough_clients: self.session_metadata.key_passthrough_clients.clone(),
             popup_clients: self.session_metadata.popup_clients.clone(),
-            close_dialogue_clients: self.session_metadata.close_dialogue_clients.clone(),
+            modal_popup_clients: self.session_metadata.modal_popup_clients.clone(),
             terminal_command_submitted: self.session_metadata.terminal_command_submitted.clone(),
         }
     }
@@ -834,7 +834,7 @@ impl MockScreen {
             font_families: Default::default(),
             key_passthrough_clients: Default::default(),
             popup_clients: Default::default(),
-            close_dialogue_clients: Default::default(),
+            modal_popup_clients: Default::default(),
             terminal_command_submitted: Default::default(),
         };
 
@@ -16608,7 +16608,7 @@ impl MockScreenWithPrompt {
             .unwrap()
             .iter()
             .any(|instruction| {
-                matches!(instruction, ServerInstruction::PopupStateChanged(1, true))
+                matches!(instruction, ServerInstruction::PopupStateChanged(1, true, _))
             });
         assert!(popup_was_open, "the prompt popup was opened for the client");
     }
@@ -16768,6 +16768,7 @@ fn a_plugin_prompt_without_a_visible_caller_pane_opens_over_the_focused_pane() {
         RunPluginOrAlias::from_url("zellij:prompt", &None, None, None).unwrap(),
         None,
         true,
+        false,
     );
     let (client_id, kind, anchor_pane, caller_args) = loaded_prompt_popup(&plugin_receiver);
     assert_eq!(client_id, 1);
@@ -16794,6 +16795,7 @@ fn a_plugin_prompt_honours_an_explicit_pane_and_a_notice_takes_no_anchor() {
             focused_pane.into(),
         )),
         true,
+        false,
     );
     let (_, _, anchor_pane, caller_args) = loaded_prompt_popup(&plugin_receiver);
     assert_eq!(anchor_pane, Some(focused_pane));
@@ -16811,6 +16813,7 @@ fn a_plugin_prompt_honours_an_explicit_pane_and_a_notice_takes_no_anchor() {
             zellij_utils::data::PopupCorner::TopRight,
         )),
         false,
+        false,
     );
     let (_, kind, anchor_pane, _) = loaded_prompt_popup(&plugin_receiver);
     assert_eq!(kind, crate::tab::PopupKind::Info);
@@ -16827,6 +16830,7 @@ fn a_plugin_prompt_for_a_user_who_is_not_attached_fails() {
         RunPluginOrAlias::from_url("zellij:prompt", &None, None, None).unwrap(),
         None,
         true,
+        false,
     );
     let failed = plugin_receiver.try_iter().any(|(instruction, _)| {
         matches!(
@@ -17954,179 +17958,325 @@ fn a_watcher_that_declares_nothing_still_receives_ansi() {
 
 mod close_dialogue {
     use super::*;
-    use crate::panes::close_dialogue::CloseDialogueOutcome;
-    use zellij_utils::data::{BareKey, KeyWithModifier};
+    use crate::plugins::PromptCaller;
+    use zellij_utils::input::options::OnQuit;
+    use zellij_utils::prompt::{PromptPlacement, PromptResult, PromptSpec, PromptValue};
 
-    fn screen() -> (Screen, ServerReceiver) {
+    struct Harness {
+        screen: Screen,
+        server_receiver: ServerReceiver,
+        plugin_receiver: Receiver<(PluginInstruction, ErrorContext)>,
+    }
+
+    fn harness() -> Harness {
         let size = Size {
             cols: 121,
             rows: 20,
         };
         let (mut screen, _tty, server_receiver) =
             create_new_screen_with_capture(size, true, true, true, true);
+        let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> =
+            channels::unbounded();
+        screen
+            .bus
+            .senders
+            .replace_to_plugin(SenderWithContext::new(to_plugin));
         new_tab(&mut screen, 1, 0);
         while server_receiver.try_recv().is_ok() {}
-        (screen, server_receiver)
+        while plugin_receiver.try_recv().is_ok() {}
+        Harness {
+            screen,
+            server_receiver,
+            plugin_receiver,
+        }
     }
 
     #[derive(Debug, PartialEq, Eq)]
     enum Seen {
-        Shown(ClientId, bool),
         Detached(Vec<ClientId>),
+        Killed,
+        Exited(ClientId),
     }
 
     fn seen(server_receiver: &ServerReceiver) -> Vec<Seen> {
         let mut seen = Vec::new();
         while let Ok((instruction, _)) = server_receiver.try_recv() {
             match instruction {
-                ServerInstruction::CloseDialogueChanged(client_id, shown) => {
-                    seen.push(Seen::Shown(client_id, shown))
-                },
                 ServerInstruction::DetachSession(client_ids, _) => {
                     seen.push(Seen::Detached(client_ids))
                 },
+                ServerInstruction::KillSession => seen.push(Seen::Killed),
+                ServerInstruction::ClientExit(client_id, _) => seen.push(Seen::Exited(client_id)),
                 _ => {},
             }
         }
         seen
     }
 
-    fn has_dialogue(screen: &Screen, client_id: ClientId) -> bool {
-        screen
-            .tabs
-            .values()
-            .any(|tab| tab.has_close_dialogue(client_id))
+    fn asked(
+        plugin_receiver: &Receiver<(PluginInstruction, ErrorContext)>,
+    ) -> Vec<(PromptCaller, zellij_utils::prompt::PromptRequest)> {
+        plugin_receiver
+            .try_iter()
+            .filter_map(|(instruction, _)| match instruction {
+                PluginInstruction::PromptRequest {
+                    caller, request, ..
+                } => Some((caller, request)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn withdrawn(plugin_receiver: &Receiver<(PluginInstruction, ErrorContext)>) -> Vec<PromptCaller> {
+        plugin_receiver
+            .try_iter()
+            .filter_map(|(instruction, _)| match instruction {
+                PluginInstruction::WithdrawPrompt(caller) => Some(caller),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn open(h: &mut Harness) -> PromptCaller {
+        h.screen.confirm_quit(1);
+        let mut asked = asked(&h.plugin_receiver);
+        assert_eq!(asked.len(), 1);
+        asked.remove(0).0
+    }
+
+    fn choice(value: &str) -> PromptResult {
+        PromptResult::Answered(PromptValue::Choice(value.to_owned()))
     }
 
     #[test]
-    fn a_close_request_shows_the_dialogue_and_tells_the_server() {
-        let (mut screen, server_receiver) = screen();
-        screen.confirm_close(1).unwrap();
-        assert!(has_dialogue(&screen, 1));
-        assert_eq!(seen(&server_receiver), vec![Seen::Shown(1, true)]);
-    }
-
-    #[test]
-    fn a_second_close_request_detaches() {
-        let (mut screen, server_receiver) = screen();
-        screen.confirm_close(1).unwrap();
-        screen.confirm_close(1).unwrap();
-        assert!(!has_dialogue(&screen, 1));
+    fn quit_opens_a_centered_menu_popup_that_takes_all_keys() {
+        let mut h = harness();
+        h.screen.confirm_quit(1);
+        let asked = asked(&h.plugin_receiver);
+        let [(caller, request)] = &asked[..] else {
+            panic!("expected one prompt, got {:?}", asked);
+        };
+        assert!(caller.is_close_dialogue());
+        assert_eq!(caller.client_id, 1);
+        assert_eq!(request.title.as_deref(), Some("Close this window?"));
+        assert_eq!(request.placement, Some(PromptPlacement::Center));
+        assert!(request.focused);
+        assert!(request.capture_all_keys);
+        let PromptSpec::Menu {
+            items,
+            remember,
+            padded,
+        } = &request.spec
+        else {
+            panic!("expected a menu, got {:?}", request.spec);
+        };
+        let values: Vec<&str> = items.iter().map(|item| item.value.as_str()).collect();
+        assert_eq!(values, vec!["detach", "quit", "cancel"]);
+        let emphasized: Vec<Vec<usize>> = items.iter().map(|item| item.emphasis.clone()).collect();
         assert_eq!(
-            seen(&server_receiver),
-            vec![
-                Seen::Shown(1, true),
-                Seen::Shown(1, false),
-                Seen::Detached(vec![1])
-            ]
+            emphasized,
+            vec![(0..6).collect(), (0..4).collect(), (0..6).collect::<Vec<_>>()]
         );
+        assert_eq!(remember.as_deref(), Some("Always do this"));
+        assert!(*padded);
+        assert_eq!(request.default.as_deref(), Some("quit"));
+        assert!(h.screen.has_close_prompt(1));
+        assert!(seen(&h.server_receiver).is_empty());
     }
 
     #[test]
-    fn cancel_removes_the_dialogue_without_detaching() {
-        let (mut screen, server_receiver) = screen();
-        screen.confirm_close(1).unwrap();
-        screen
-            .close_dialogue_key(1, Some(KeyWithModifier::new(BareKey::Char('n'))), vec![])
-            .unwrap();
-        assert!(!has_dialogue(&screen, 1));
-        assert_eq!(
-            seen(&server_receiver),
-            vec![Seen::Shown(1, true), Seen::Shown(1, false)]
-        );
+    fn detach_detaches_only_this_client() {
+        let mut h = harness();
+        let caller = open(&mut h);
+        h.screen
+            .close_dialogue_answer(1, caller.request_id, choice("detach"));
+        assert!(!h.screen.has_close_prompt(1));
+        assert_eq!(seen(&h.server_receiver), vec![Seen::Detached(vec![1])]);
     }
 
     #[test]
-    fn y_detaches_and_swallowed_keys_change_nothing() {
-        let (mut screen, server_receiver) = screen();
-        screen.confirm_close(1).unwrap();
-        screen
-            .close_dialogue_key(1, Some(KeyWithModifier::new(BareKey::Char('x'))), vec![])
-            .unwrap();
-        assert!(has_dialogue(&screen, 1));
-        screen.close_dialogue_key(1, None, b"y".to_vec()).unwrap();
-        assert!(!has_dialogue(&screen, 1));
-        assert_eq!(
-            seen(&server_receiver),
-            vec![
-                Seen::Shown(1, true),
-                Seen::Shown(1, false),
-                Seen::Detached(vec![1])
-            ]
-        );
+    fn quit_ends_the_whole_session() {
+        let mut h = harness();
+        let caller = open(&mut h);
+        h.screen
+            .close_dialogue_answer(1, caller.request_id, choice("quit"));
+        assert_eq!(seen(&h.server_receiver), vec![Seen::Killed]);
     }
 
     #[test]
-    fn quitting_from_the_dialogue_ends_the_whole_session() {
-        let (mut screen, server_receiver) = screen();
-        screen.confirm_close(1).unwrap();
-        screen
-            .close_dialogue_key(1, Some(KeyWithModifier::new(BareKey::Char('q'))), vec![])
-            .unwrap();
-        assert!(!has_dialogue(&screen, 1));
-        let mut killed = false;
-        while let Ok((instruction, _)) = server_receiver.try_recv() {
-            match instruction {
-                ServerInstruction::KillSession => killed = true,
-                ServerInstruction::DetachSession(..) => {
-                    panic!("quitting must end the session, not detach one client")
-                },
-                _ => {},
-            }
+    fn cancel_or_closing_the_popup_does_nothing() {
+        let mut h = harness();
+        let caller = open(&mut h);
+        h.screen
+            .close_dialogue_answer(1, caller.request_id, choice("cancel"));
+        assert!(!h.screen.has_close_prompt(1));
+        let caller = open(&mut h);
+        h.screen
+            .close_dialogue_answer(1, caller.request_id, PromptResult::Cancelled);
+        assert!(!h.screen.has_close_prompt(1));
+        assert!(seen(&h.server_receiver).is_empty());
+    }
+
+    #[test]
+    fn an_answer_to_an_old_popup_is_ignored() {
+        let mut h = harness();
+        let first = open(&mut h);
+        h.screen
+            .close_dialogue_answer(1, first.request_id, PromptResult::Cancelled);
+        let second = open(&mut h);
+        assert_ne!(first.request_id, second.request_id);
+        h.screen
+            .close_dialogue_answer(1, first.request_id, choice("quit"));
+        assert!(h.screen.has_close_prompt(1));
+        assert!(seen(&h.server_receiver).is_empty());
+    }
+
+    #[test]
+    fn a_disconnecting_client_loses_its_popup() {
+        let mut h = harness();
+        let caller = open(&mut h);
+        h.screen.remove_client(1).unwrap();
+        assert!(!h.screen.has_close_prompt(1));
+        assert_eq!(withdrawn(&h.plugin_receiver), vec![caller]);
+        assert!(!seen(&h.server_receiver).contains(&Seen::Detached(vec![1])));
+    }
+
+    fn labels(request: &zellij_utils::prompt::PromptRequest) -> Vec<String> {
+        match &request.spec {
+            PromptSpec::Menu { items, .. } => items
+                .iter()
+                .map(|item| item.display().to_owned())
+                .collect(),
+            other => panic!("expected a menu, got {:?}", other),
         }
-        assert!(killed, "the session was not asked to end");
     }
 
     #[test]
-    fn a_mouse_choice_is_applied_like_a_key() {
-        let (mut screen, server_receiver) = screen();
-        screen.confirm_close(1).unwrap();
-        screen
-            .finish_close_dialogue(1, CloseDialogueOutcome::Cancel)
-            .unwrap();
-        assert!(!has_dialogue(&screen, 1));
-        assert!(!seen(&server_receiver).contains(&Seen::Detached(vec![1])));
-    }
-
-    #[test]
-    fn a_disconnecting_client_loses_its_dialogue() {
-        let (mut screen, server_receiver) = screen();
-        screen.confirm_close(1).unwrap();
-        screen.remove_client(1).unwrap();
-        assert!(!has_dialogue(&screen, 1));
+    fn the_choices_explain_what_they_do() {
+        let mut h = harness();
+        h.screen.confirm_quit(1);
+        let asked = asked(&h.plugin_receiver);
+        let [(caller, request)] = &asked[..] else {
+            panic!("expected one prompt, got {:?}", asked);
+        };
         assert_eq!(
-            seen(&server_receiver),
-            vec![Seen::Shown(1, true), Seen::Shown(1, false)]
+            labels(request),
+            vec![
+                "Detach (the session keeps running)".to_owned(),
+                "Quit (ends session 'zellij-test')".to_owned(),
+                "Cancel".to_owned(),
+            ]
+        );
+        assert!(h.screen.has_close_prompt(1));
+        assert!(seen(&h.server_receiver).is_empty());
+        h.screen
+            .close_dialogue_answer(1, caller.request_id, choice("quit"));
+        assert_eq!(seen(&h.server_receiver), vec![Seen::Killed]);
+    }
+
+    #[test]
+    fn the_quit_choice_says_how_many_other_clients_it_disconnects() {
+        let mut h = harness();
+        h.screen.add_client(2, false).unwrap();
+        h.screen.add_client(3, false).unwrap();
+        h.screen.confirm_quit(1);
+        let asked = asked(&h.plugin_receiver);
+        assert_eq!(
+            labels(&asked[0].1)[1],
+            "Quit (ends session 'zellij-test' and disconnects 2 other clients)"
         );
     }
 
     #[test]
-    fn closing_the_pane_under_the_dialogue_removes_it() {
-        let (mut screen, server_receiver) = screen();
-        screen.confirm_close(1).unwrap();
-        let pane_id = screen
-            .get_active_tab(1)
-            .unwrap()
-            .get_active_pane_id(1)
-            .unwrap();
-        screen
-            .get_active_tab_mut(1)
-            .unwrap()
-            .close_pane(pane_id, false, None);
-        screen.render(None).unwrap();
-        assert!(!has_dialogue(&screen, 1));
+    fn ask_detach_preselects_detach() {
+        let mut h = harness();
+        h.screen.on_quit = OnQuit::AskDetach;
+        h.screen.confirm_quit(1);
+        let asked = asked(&h.plugin_receiver);
+        assert_eq!(asked[0].1.default.as_deref(), Some("detach"));
+    }
+
+    #[test]
+    fn quit_or_detach_without_asking_happens_at_once() {
+        let mut h = harness();
+        h.screen.on_quit = OnQuit::Detach;
+        h.screen.confirm_quit(1);
+        h.screen.on_quit = OnQuit::Quit;
+        h.screen.confirm_quit(1);
+        assert!(asked(&h.plugin_receiver).is_empty());
+        assert!(!h.screen.has_close_prompt(1));
         assert_eq!(
-            seen(&server_receiver),
-            vec![Seen::Shown(1, true), Seen::Shown(1, false)]
+            seen(&h.server_receiver),
+            vec![Seen::Detached(vec![1]), Seen::Killed]
+        );
+    }
+
+    fn always(value: &str) -> PromptResult {
+        PromptResult::Answered(PromptValue::Form(
+            [
+                ("choice".to_owned(), PromptValue::Choice(value.to_owned())),
+                ("remember".to_owned(), PromptValue::Bool(true)),
+            ]
+            .into_iter()
+            .collect(),
+        ))
+    }
+
+    fn saved_settings(server_receiver: &ServerReceiver) -> Vec<String> {
+        server_receiver
+            .try_iter()
+            .filter_map(|(instruction, _)| match instruction {
+                ServerInstruction::Reconfigure {
+                    config,
+                    write_config_to_disk: true,
+                    ..
+                } => Some(config),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn always_do_this_saves_the_choice_and_acts_on_it() {
+        let mut h = harness();
+        let caller = open(&mut h);
+        h.screen
+            .close_dialogue_answer(1, caller.request_id, always("detach"));
+        assert_eq!(h.screen.on_quit, OnQuit::Detach);
+        assert_eq!(
+            saved_settings(&h.server_receiver),
+            vec!["on_quit \"detach\"".to_owned()]
         );
     }
 
     #[test]
-    fn a_client_without_a_tab_is_detached_at_once() {
-        let (mut screen, server_receiver) = screen();
-        screen.confirm_close(7).unwrap();
-        assert!(!has_dialogue(&screen, 7));
-        assert_eq!(seen(&server_receiver), vec![Seen::Detached(vec![7])]);
+    fn always_do_this_with_cancel_saves_nothing() {
+        let mut h = harness();
+        let caller = open(&mut h);
+        h.screen
+            .close_dialogue_answer(1, caller.request_id, always("cancel"));
+        assert_eq!(h.screen.on_quit, OnQuit::AskQuit);
+        assert!(saved_settings(&h.server_receiver).is_empty());
+    }
+
+    #[test]
+    fn a_second_quit_closes_the_popup_and_leaves() {
+        let mut h = harness();
+        h.screen.confirm_quit(1);
+        let caller = asked(&h.plugin_receiver).remove(0).0;
+        h.screen.confirm_quit(1);
+        assert_eq!(withdrawn(&h.plugin_receiver), vec![caller]);
+        assert!(!h.screen.has_close_prompt(1));
+        assert_eq!(seen(&h.server_receiver), vec![Seen::Exited(1)]);
+    }
+
+    #[test]
+    fn a_client_without_a_tab_leaves_at_once() {
+        let mut h = harness();
+        h.screen.confirm_quit(7);
+        assert!(!h.screen.has_close_prompt(7));
+        assert!(asked(&h.plugin_receiver).is_empty());
+        assert_eq!(seen(&h.server_receiver), vec![Seen::Exited(7)]);
     }
 }
 

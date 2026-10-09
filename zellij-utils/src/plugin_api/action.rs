@@ -2262,7 +2262,6 @@ impl TryFrom<Action> for ProtobufAction {
             }),
             Action::NoOp
             | Action::Confirm
-            | Action::ConfirmClose
             | Action::NewInPlacePluginPane {
                 plugin: _,
                 pane_name: _,

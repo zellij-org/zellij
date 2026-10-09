@@ -1,7 +1,7 @@
 use super::Screen;
 use crate::background_jobs::BackgroundJob;
 use crate::panes::PaneId;
-use crate::plugins::{PluginInstruction, PopupRequest, PromptCaller};
+use crate::plugins::{PluginInstruction, PopupRequest, PromptCaller, SERVER_NOTICE_CALLER_ID};
 use crate::route::PopupScroll;
 use crate::tab::{ContextMenuRequest, PopupKind, PopupMouseOutcome, PopupPlacement, Tab};
 use crate::{ClientId, ServerInstruction};
@@ -119,12 +119,17 @@ impl Screen {
             .any(|tab| tab.has_focused_popup_for_client(client_id))
     }
     fn report_popup_state(&self, client_id: ClientId) {
+        let takes_all_keys = self
+            .tabs
+            .values()
+            .any(|tab| tab.focused_popup_takes_all_keys(client_id));
         let _ = self
             .bus
             .senders
             .send_to_server(ServerInstruction::PopupStateChanged(
                 client_id,
                 self.client_has_focused_popup(client_id),
+                takes_all_keys,
             ));
     }
     fn unload_popups(&self, plugin_ids: &[u32]) {
@@ -651,6 +656,7 @@ impl Screen {
             caller_pane_id,
             placement,
             focused,
+            false,
         );
     }
     pub fn open_prompt_popup(
@@ -661,6 +667,7 @@ impl Screen {
         run_plugin_or_alias: RunPluginOrAlias,
         placement: Option<PromptPlacement>,
         focused: bool,
+        capture_all_keys: bool,
     ) {
         let tab_id = match self.active_tab_ids.get(&owner_client_id) {
             Some(tab_id) if self.tabs.contains_key(tab_id) => *tab_id,
@@ -713,6 +720,7 @@ impl Screen {
             caller_pane_id,
             pipe_placement,
             focused,
+            capture_all_keys,
         );
     }
     fn load_answer_popup(
@@ -725,6 +733,7 @@ impl Screen {
         caller_pane_id: Option<PaneId>,
         placement: PipePopupPlacement,
         focused: bool,
+        capture_all_keys: bool,
     ) {
         let Some(tab) = self.tabs.get(&tab_id) else {
             return;
@@ -791,10 +800,10 @@ impl Screen {
                 None => PopupPlacement::CenteredIn(bounds),
             },
         };
-        let kind = if focused {
-            PopupKind::Prompt
-        } else {
-            PopupKind::Info
+        let kind = match (focused, capture_all_keys) {
+            (true, true) => PopupKind::Modal,
+            (true, false) => PopupKind::Prompt,
+            (false, _) => PopupKind::Info,
         };
         let mut caller_args = BTreeMap::new();
         if let Some(pane_id) = caller_pane_id {
@@ -1133,7 +1142,7 @@ impl Screen {
             .senders
             .send_to_plugin(PluginInstruction::PromptRequest {
                 caller: PromptCaller {
-                    plugin_id: u32::MAX,
+                    plugin_id: SERVER_NOTICE_CALLER_ID,
                     client_id,
                     request_id: 0,
                 },

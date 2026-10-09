@@ -736,6 +736,14 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "false",
             Everyone,
         ),
+        SettingKey::OnQuit => info(
+            "On quit",
+            Sessions,
+            "Ask (with quit or detach preselected), or quit or detach without asking",
+            Choice(&["ask_quit", "ask_detach", "quit", "detach"]),
+            "ask_quit",
+            Everyone,
+        ),
         SettingKey::OnForceClose => info(
             "On force close",
             Sessions,
@@ -1072,14 +1080,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "Blur what shows through a see-through window",
             Toggle,
             "false",
-            OnlyYou,
-        ),
-        SettingKey::WindowConfirmClose => info(
-            "Confirm close",
-            TerminalWindow,
-            "Ask before closing a window with a running session",
-            Toggle,
-            "true",
             OnlyYou,
         ),
         SettingKey::WindowPadding => info(
@@ -1615,7 +1615,7 @@ pub fn section(key: SettingKey) -> &'static str {
         | ScrollbackLinesToSerialize
         | SerializationInterval
         | PostCommandDiscoveryHook => "Resurrection",
-        MirrorSession | OnForceClose | DisableSessionMetadata => "Behaviour",
+        MirrorSession | OnForceClose | OnQuit | DisableSessionMetadata => "Behaviour",
         WebServer
         | WebSharing
         | WebServerIp
@@ -1635,7 +1635,7 @@ pub fn section(key: SettingKey) -> &'static str {
         | WindowFontFeatures => "Font",
         WindowCursorStyle | WindowCursorBlink | WindowCursorUnfocusedHollow => "Cursor",
         WindowStartupMode | WindowInitialColumns | WindowInitialRows | WindowOpacity
-        | WindowOpacityMode | WindowBlur | WindowConfirmClose => "Window",
+        | WindowOpacityMode | WindowBlur => "Window",
         WindowPadding | WindowPaddingTop | WindowPaddingRight | WindowPaddingBottom
         | WindowPaddingLeft | WindowPaddingBalance | WindowPaddingColor => "Padding",
         WindowLineHeight

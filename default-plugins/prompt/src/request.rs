@@ -74,6 +74,8 @@ pub enum Spec {
     },
     Menu {
         items: Vec<ChoiceItem>,
+        remember: Option<String>,
+        padded: bool,
     },
     Form {
         spec: FormSpec,
@@ -204,7 +206,15 @@ pub fn request_from_pipe_prompt(pipe_prompt: PipePrompt) -> Result<Request, Stri
                 default,
             }
         },
-        PromptSpec::Menu { items } => Spec::Menu { items },
+        PromptSpec::Menu {
+            items,
+            remember,
+            padded,
+        } => Spec::Menu {
+            items,
+            remember,
+            padded,
+        },
         PromptSpec::Form { spec } => {
             let patterns = spec
                 .fields

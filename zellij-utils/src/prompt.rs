@@ -1,7 +1,7 @@
 use crate::data::{PaneId, PopupCorner, StyledText};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
+use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, HashSet};
 use std::fmt;
 use std::str::FromStr;
@@ -36,6 +36,10 @@ pub const ARG_MAX: &str = "max";
 pub const ARG_STEP: &str = "step";
 pub const ARG_NO_PANE_NAME: &str = "no_pane_name";
 pub const ARG_NO_TAB_NAME: &str = "no_tab_name";
+pub const ARG_REMEMBER: &str = "remember";
+pub const ARG_PADDED: &str = "padded";
+pub const MENU_CHOICE_FIELD: &str = "choice";
+pub const MENU_REMEMBER_FIELD: &str = "remember";
 
 pub const EXIT_ANSWERED: i32 = 0;
 pub const EXIT_CANCELLED: i32 = 1;
@@ -102,6 +106,7 @@ impl FromStr for PromptElement {
 pub struct ChoiceItem {
     pub value: String,
     pub label: Option<String>,
+    pub emphasis: Vec<usize>,
 }
 
 impl ChoiceItem {
@@ -109,13 +114,22 @@ impl ChoiceItem {
         ChoiceItem {
             value: value.into(),
             label: None,
+            emphasis: vec![],
         }
     }
     pub fn labeled(value: impl Into<String>, label: impl Into<String>) -> Self {
         ChoiceItem {
             value: value.into(),
             label: Some(label.into()),
+            emphasis: vec![],
         }
+    }
+    pub fn emphasized(mut self, indices: impl IntoIterator<Item = usize>) -> Self {
+        self.emphasis = indices.into_iter().collect();
+        self
+    }
+    pub fn emphasize_first(self, count: usize) -> Self {
+        self.emphasized(0..count)
     }
     pub fn display(&self) -> &str {
         self.label.as_deref().unwrap_or(&self.value)
@@ -178,12 +192,17 @@ pub fn encode_items(items: &[ChoiceItem]) -> String {
     Value::Array(
         items
             .iter()
-            .map(|item| match &item.label {
-                Some(label) => Value::Array(vec![
+            .map(|item| match (&item.label, item.emphasis.is_empty()) {
+                (Some(label), true) => Value::Array(vec![
                     Value::String(item.value.clone()),
                     Value::String(label.clone()),
                 ]),
-                None => Value::String(item.value.clone()),
+                (_, false) => Value::Array(vec![
+                    Value::String(item.value.clone()),
+                    item.label.clone().map(Value::String).unwrap_or(Value::Null),
+                    Value::Array(item.emphasis.iter().map(|index| json!(index)).collect()),
+                ]),
+                (None, true) => Value::String(item.value.clone()),
             })
             .collect(),
     )
@@ -196,15 +215,26 @@ pub fn decode_items(encoded: &str) -> Vec<ChoiceItem> {
             .into_iter()
             .map(|value| match value {
                 Value::String(s) => ChoiceItem::plain(s),
-                Value::Array(pair) => {
-                    let mut parts = pair.into_iter().map(|part| match part {
-                        Value::String(s) => s,
-                        other => other.to_string(),
-                    });
-                    let value = parts.next().unwrap_or_default();
+                Value::Array(parts) => {
+                    let mut parts = parts.into_iter();
+                    let value = match parts.next() {
+                        Some(Value::String(s)) => s,
+                        Some(other) => other.to_string(),
+                        None => String::new(),
+                    };
+                    let item = match parts.next() {
+                        Some(Value::String(label)) => ChoiceItem::labeled(value, label),
+                        Some(Value::Null) | None => ChoiceItem::plain(value),
+                        Some(other) => ChoiceItem::labeled(value, other.to_string()),
+                    };
                     match parts.next() {
-                        Some(label) => ChoiceItem::labeled(value, label),
-                        None => ChoiceItem::plain(value),
+                        Some(Value::Array(indices)) => item.emphasized(
+                            indices
+                                .iter()
+                                .filter_map(|index| index.as_u64())
+                                .map(|index| index as usize),
+                        ),
+                        _ => item,
                     }
                 },
                 other => ChoiceItem::plain(other.to_string()),
@@ -828,6 +858,8 @@ pub enum PromptSpec {
     },
     Menu {
         items: Vec<ChoiceItem>,
+        remember: Option<String>,
+        padded: bool,
     },
     Form {
         spec: FormSpec,
@@ -863,6 +895,7 @@ pub struct PromptRequest {
     pub default: Option<String>,
     pub placement: Option<PromptPlacement>,
     pub focused: bool,
+    pub capture_all_keys: bool,
     pub spec: PromptSpec,
 }
 
@@ -875,6 +908,7 @@ impl PromptRequest {
             default: None,
             placement: None,
             focused: !matches!(spec, PromptSpec::Notify { .. }),
+            capture_all_keys: false,
             spec,
         }
     }
@@ -932,7 +966,21 @@ impl PromptRequest {
     pub fn menu(items: impl IntoIterator<Item = impl Into<ChoiceItem>>) -> Self {
         PromptRequest::new(PromptSpec::Menu {
             items: items.into_iter().map(Into::into).collect(),
+            remember: None,
+            padded: false,
         })
+    }
+    pub fn remember(mut self, label: impl Into<String>) -> Self {
+        if let PromptSpec::Menu { remember, .. } = &mut self.spec {
+            *remember = Some(label.into());
+        }
+        self
+    }
+    pub fn padded(mut self) -> Self {
+        if let PromptSpec::Menu { padded, .. } = &mut self.spec {
+            *padded = true;
+        }
+        self
     }
     /// Several fields at once. The answer is `PromptValue::Form`, keyed by field id.
     pub fn form(fields: Vec<FormField>) -> Self {
@@ -995,6 +1043,10 @@ impl PromptRequest {
     }
     pub fn focused(mut self, focused: bool) -> Self {
         self.focused = focused;
+        self
+    }
+    pub fn capture_all_keys(mut self, capture_all_keys: bool) -> Self {
+        self.capture_all_keys = capture_all_keys;
         self
     }
     pub fn yes(mut self, label: impl Into<String>) -> Self {
@@ -1175,8 +1227,18 @@ impl PromptRequest {
                 }
                 insert(&mut args, ARG_OPTIONS, encode_list(options));
             },
-            PromptSpec::Menu { items } => {
+            PromptSpec::Menu {
+                items,
+                remember,
+                padded,
+            } => {
                 insert(&mut args, ARG_ITEMS, encode_items(items));
+                if let Some(remember) = remember {
+                    insert(&mut args, ARG_REMEMBER, remember.clone());
+                }
+                if *padded {
+                    insert(&mut args, ARG_PADDED, "true".to_owned());
+                }
             },
             PromptSpec::Form { spec } => {
                 payload = Some(spec.to_json());
@@ -1426,7 +1488,11 @@ pub fn parse_request(
             if items.is_empty() {
                 return Err("menu needs at least one item".to_owned());
             }
-            PromptSpec::Menu { items }
+            PromptSpec::Menu {
+                items,
+                remember: args.get(ARG_REMEMBER).cloned(),
+                padded: flag(args, ARG_PADDED)?,
+            }
         },
         PromptElement::Form => {
             let text = payload.ok_or_else(|| {
@@ -1681,6 +1747,13 @@ mod tests {
             ])
             .default(r#"{"name":"x"}"#),
             PromptRequest::notify("Build finished").hide_tab_name(),
+            PromptRequest::menu([
+                ChoiceItem::labeled("d", "Detach now").emphasize_first(6),
+                ChoiceItem::plain("q").emphasized([0]),
+                ChoiceItem::labeled("c", "Cancel"),
+            ])
+            .remember("Always do this")
+            .padded(),
         ]
     }
 

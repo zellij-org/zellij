@@ -41,7 +41,6 @@ pub struct Options {
     pub initial_cols: Option<usize>,
     pub initial_rows: Option<usize>,
     pub fullscreen_keys: Vec<KeyWithModifier>,
-    pub confirm_close: bool,
     pub hide_pointer_while_typing: bool,
     pub cursor_unfocused_hollow: bool,
     pub minimum_contrast: f32,
@@ -156,7 +155,6 @@ pub fn resolve(settings: &Settings, mode: Option<HostTerminalThemeMode>) -> Opti
             .fullscreen_keys
             .clone()
             .unwrap_or_else(default_fullscreen_keys),
-        confirm_close: section.confirm_close.unwrap_or(true),
         hide_pointer_while_typing: section.hide_pointer_while_typing.unwrap_or(false),
         cursor_unfocused_hollow: section.cursor_unfocused_hollow.unwrap_or(true),
         minimum_contrast: section.minimum_contrast.unwrap_or(1.0),
@@ -332,7 +330,6 @@ pub struct Change {
     pub layout: bool,
     pub padding_color: bool,
     pub fullscreen_keys: bool,
-    pub confirm_close: bool,
     pub hide_pointer_while_typing: bool,
     pub cursor_unfocused_hollow: bool,
     pub minimum_contrast: bool,
@@ -365,7 +362,6 @@ impl Change {
                 || current.padding_balance != next.padding_balance,
             padding_color: current.padding_color != next.padding_color,
             fullscreen_keys: current.fullscreen_keys != next.fullscreen_keys,
-            confirm_close: current.confirm_close != next.confirm_close,
             hide_pointer_while_typing: current.hide_pointer_while_typing
                 != next.hide_pointer_while_typing,
             cursor_unfocused_hollow: current.cursor_unfocused_hollow
@@ -397,7 +393,6 @@ impl Change {
             || self.layout
             || self.padding_color
             || self.fullscreen_keys
-            || self.confirm_close
             || self.hide_pointer_while_typing
             || self.cursor_unfocused_hollow
             || self.minimum_contrast
@@ -1101,7 +1096,6 @@ mod tests {
             options.fullscreen_keys,
             vec![KeyWithModifier::new(BareKey::F(11))]
         );
-        assert!(options.confirm_close);
         assert!(!options.hide_pointer_while_typing);
         assert!(options.cursor_unfocused_hollow);
         assert_eq!(options.minimum_contrast, 1.0);

@@ -508,7 +508,6 @@ pub struct WindowConfig {
     pub font_weight: Option<u16>,
     pub font_features: Option<Vec<String>>,
     pub fullscreen_keys: Option<Vec<KeyWithModifier>>,
-    pub confirm_close: Option<bool>,
     pub hide_pointer_while_typing: Option<bool>,
     pub cursor_unfocused_hollow: Option<bool>,
     pub minimum_contrast: Option<f32>,
@@ -636,9 +635,6 @@ impl WindowConfig {
         }
         if let Some(font_features) = kdl_get_child!(kdl, "font_features") {
             window.font_features = Some(font_features_from_kdl(font_features)?);
-        }
-        if let Some(confirm_close) = kdl_get_child_entry_bool_value!(kdl, "confirm_close") {
-            window.confirm_close = Some(confirm_close);
         }
         if let Some(hide) = kdl_get_child_entry_bool_value!(kdl, "hide_pointer_while_typing") {
             window.hide_pointer_while_typing = Some(hide);
@@ -829,7 +825,6 @@ impl WindowConfig {
             children.nodes_mut().push(font_features_node);
         }
         for (name, value) in [
-            ("confirm_close", self.confirm_close),
             ("hide_pointer_while_typing", self.hide_pointer_while_typing),
             ("cursor_unfocused_hollow", self.cursor_unfocused_hollow),
             ("smooth_scrolling", self.smooth_scrolling),
@@ -923,7 +918,6 @@ impl WindowConfig {
         merged.font_weight = other.font_weight.or(merged.font_weight);
         merged.font_features = other.font_features.or(merged.font_features);
         merged.fullscreen_keys = other.fullscreen_keys.or(merged.fullscreen_keys);
-        merged.confirm_close = other.confirm_close.or(merged.confirm_close);
         merged.hide_pointer_while_typing = other
             .hide_pointer_while_typing
             .or(merged.hide_pointer_while_typing);
@@ -1963,7 +1957,7 @@ mod tests {
     #[test]
     fn every_ui_option_round_trips_through_kdl() {
         let parsed = section(
-            "window {\n fullscreen_keys \"F11\" \"Alt Enter\"\n confirm_close false\n \
+            "window {\n fullscreen_keys \"F11\" \"Alt Enter\"\n \
              hide_pointer_while_typing true\n cursor_unfocused_hollow false\n \
              minimum_contrast 4.5\n}",
         )
@@ -1975,7 +1969,6 @@ mod tests {
                 KeyWithModifier::new(BareKey::Enter).with_alt_modifier(),
             ])
         );
-        assert_eq!(parsed.confirm_close, Some(false));
         assert_eq!(parsed.hide_pointer_while_typing, Some(true));
         assert_eq!(parsed.cursor_unfocused_hollow, Some(false));
         assert_eq!(parsed.minimum_contrast, Some(4.5));
@@ -1984,7 +1977,6 @@ mod tests {
 
         let empty = section("window {\n}").unwrap();
         assert_eq!(empty.fullscreen_keys, None);
-        assert_eq!(empty.confirm_close, None);
         assert_eq!(empty.hide_pointer_while_typing, None);
         assert_eq!(empty.cursor_unfocused_hollow, None);
         assert_eq!(empty.minimum_contrast, None);

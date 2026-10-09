@@ -87,7 +87,6 @@ use crate::notifications::NotificationProtocol;
 use crate::os_input_output::ResizeCache;
 use crate::pane_groups::PaneGroups;
 use crate::panes::alacritty_functions::xparse_color;
-use crate::panes::close_dialogue::{CloseDialogueInput, CloseDialogueOutcome};
 use crate::panes::grid::{namespace_notification_id, Osc99PayloadType, PendingNotification};
 use crate::panes::nested_session_modal::GuestModalShortcuts;
 use crate::panes::terminal_character::AnsiCode;
@@ -102,7 +101,9 @@ use crate::{
     panes::kitty_graphics::{KittyHostCapability, KittyHostSupport, KittyImageStore},
     panes::sixel::SixelImageStore,
     panes::PaneId,
-    plugins::{DumpSessionLayoutResponse, PluginId, PluginInstruction, PluginRenderAsset},
+    plugins::{
+        DumpSessionLayoutResponse, PluginId, PluginInstruction, PluginRenderAsset, PromptCaller,
+    },
     pty::{get_default_shell, ClientTabIndexOrPaneId, PtyInstruction, VteBytes},
     pty_writer::PtyWriteInstruction,
     tab::{GuestChoiceIndicator, Pane, PaneLocation, PaneNotCreatedReason, SuppressedPanes, Tab},
@@ -614,15 +615,12 @@ pub enum ScreenInstruction {
         pane_id: PaneId,
         outcome: GuestModalOutcome,
     },
-    ConfirmClose(ClientId),
-    CloseDialogueInput {
+    ConfirmQuit(ClientId),
+    SetOnQuit(zellij_utils::input::options::OnQuit),
+    CloseDialogueAnswer {
         client_id: ClientId,
-        key: Option<KeyWithModifier>,
-        raw_bytes: Vec<u8>,
-    },
-    CloseDialogueChoice {
-        client_id: ClientId,
-        outcome: CloseDialogueOutcome,
+        request_id: u64,
+        result: zellij_utils::prompt::PromptResult,
     },
     /// The client observed the host's reply to a previously forwarded
     /// query (closed by the Primary-DA barrier or the 500 ms timeout).
@@ -1021,6 +1019,7 @@ pub enum ScreenInstruction {
         run_plugin_or_alias: RunPluginOrAlias,
         placement: Option<zellij_utils::prompt::PromptPlacement>,
         focused: bool,
+        capture_all_keys: bool,
     },
     CloseTopPopup(ClientId),
     ScrollPopup(ClientId, crate::route::PopupScroll),
@@ -1266,9 +1265,9 @@ impl From<&ScreenInstruction> for ScreenContext {
                 ScreenContext::GetNestedSessionKeybinds
             },
             ScreenInstruction::GuestModalChoice { .. } => ScreenContext::GuestModalChoice,
-            ScreenInstruction::ConfirmClose(..) => ScreenContext::ConfirmClose,
-            ScreenInstruction::CloseDialogueInput { .. } => ScreenContext::CloseDialogueInput,
-            ScreenInstruction::CloseDialogueChoice { .. } => ScreenContext::CloseDialogueChoice,
+            ScreenInstruction::ConfirmQuit(..) => ScreenContext::ConfirmQuit,
+            ScreenInstruction::SetOnQuit(..) => ScreenContext::SetOnQuit,
+            ScreenInstruction::CloseDialogueAnswer { .. } => ScreenContext::CloseDialogueAnswer,
             ScreenInstruction::ForwardedReplyFromHost { .. } => {
                 ScreenContext::ForwardedReplyFromHost
             },
@@ -1741,6 +1740,83 @@ pub enum GuestModalOutcome {
     Descend,
 }
 
+const CLOSE_DETACH: &str = "detach";
+const CLOSE_QUIT: &str = "quit";
+const CLOSE_CANCEL: &str = "cancel";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CloseOutcome {
+    Detach,
+    Quit,
+    Cancel,
+}
+
+fn close_prompt_quit_label(session_name: &str, other_clients: usize) -> String {
+    match other_clients {
+        0 => format!("Quit (ends session '{}')", session_name),
+        1 => format!(
+            "Quit (ends session '{}' and disconnects 1 other client)",
+            session_name
+        ),
+        count => format!(
+            "Quit (ends session '{}' and disconnects {} other clients)",
+            session_name, count
+        ),
+    }
+}
+
+fn close_prompt_request(
+    session_name: &str,
+    other_clients: usize,
+) -> zellij_utils::prompt::PromptRequest {
+    use zellij_utils::prompt::{ChoiceItem, PromptPlacement, PromptRequest};
+    PromptRequest::menu([
+        ChoiceItem::labeled(CLOSE_DETACH, "Detach (the session keeps running)").emphasize_first(6),
+        ChoiceItem::labeled(
+            CLOSE_QUIT,
+            close_prompt_quit_label(session_name, other_clients),
+        )
+        .emphasize_first(4),
+        ChoiceItem::labeled(CLOSE_CANCEL, "Cancel").emphasize_first(6),
+    ])
+    .remember(CLOSE_REMEMBER_LABEL)
+    .padded()
+    .title("Close this window?")
+    .placement(PromptPlacement::Center)
+    .capture_all_keys(true)
+}
+
+const CLOSE_REMEMBER_LABEL: &str = "Always do this";
+
+fn close_choice(value: &str) -> CloseOutcome {
+    match value {
+        CLOSE_DETACH => CloseOutcome::Detach,
+        CLOSE_QUIT => CloseOutcome::Quit,
+        _ => CloseOutcome::Cancel,
+    }
+}
+
+fn close_prompt_outcome(result: &zellij_utils::prompt::PromptResult) -> (CloseOutcome, bool) {
+    use zellij_utils::prompt::{PromptResult, PromptValue, MENU_CHOICE_FIELD, MENU_REMEMBER_FIELD};
+    match result {
+        PromptResult::Answered(PromptValue::Choice(value)) => (close_choice(value), false),
+        PromptResult::Answered(PromptValue::Form(fields)) => {
+            let outcome = match fields.get(MENU_CHOICE_FIELD) {
+                Some(PromptValue::Choice(value)) | Some(PromptValue::Text(value)) => {
+                    close_choice(value)
+                },
+                _ => CloseOutcome::Cancel,
+            };
+            let always = matches!(
+                fields.get(MENU_REMEMBER_FIELD),
+                Some(PromptValue::Bool(true))
+            );
+            (outcome, always && outcome != CloseOutcome::Cancel)
+        },
+        _ => (CloseOutcome::Cancel, false),
+    }
+}
+
 fn format_guest_modal_shortcut(keys: &[KeyWithModifier]) -> Vec<String> {
     keys.iter().map(|key| key.to_string()).collect()
 }
@@ -1846,6 +1922,7 @@ pub(crate) struct Screen {
     pub(crate) pending_session_card: Option<ClientId>,
     pub(crate) terminal_command_submitted: bool,
     pub(crate) swap_layout_notification: bool,
+    pub(crate) on_quit: zellij_utils::input::options::OnQuit,
     last_reported_client_visible_plugins: HashMap<ClientId, HashSet<PluginId>>,
     pending_selectable_panes: HashMap<PaneId, bool>,
     state_report_target: Option<(PluginId, ClientId)>,
@@ -1866,7 +1943,8 @@ pub(crate) struct Screen {
     host_fullscreen: bool,
     dimmed_clients: HashSet<ClientId>,
     nested_guest_choices: HashMap<(ClientId, PaneId), NestedGuestChoice>,
-    close_dialogue_clients: HashSet<ClientId>,
+    close_prompts: HashMap<ClientId, u64>,
+    next_close_prompt_id: u64,
     guest_ascend_keys: HashMap<PaneId, Vec<KeyWithModifier>>,
     guest_capabilities: HashMap<PaneId, Vec<NestedSessionCapability>>,
     guest_last_mode: HashMap<PaneId, GuestModeReport>,
@@ -2175,6 +2253,7 @@ impl Screen {
             pending_session_card: None,
             terminal_command_submitted: false,
             swap_layout_notification: true,
+            on_quit: Default::default(),
             last_reported_client_visible_plugins: HashMap::new(),
             pending_selectable_panes: HashMap::new(),
             state_report_target: None,
@@ -2195,7 +2274,8 @@ impl Screen {
             host_fullscreen: false,
             dimmed_clients: HashSet::new(),
             nested_guest_choices: HashMap::new(),
-            close_dialogue_clients: HashSet::new(),
+            close_prompts: HashMap::new(),
+            next_close_prompt_id: 0,
             guest_ascend_keys: HashMap::new(),
             guest_capabilities: HashMap::new(),
             guest_last_mode: HashMap::new(),
@@ -4315,27 +4395,6 @@ impl Screen {
         }
     }
 
-    fn sync_close_dialogues(&mut self) {
-        let mut current = HashSet::new();
-        for tab in self.tabs.values_mut() {
-            tab.prune_close_dialogues();
-            current.extend(tab.close_dialogue_clients());
-        }
-        for client_id in current.difference(&self.close_dialogue_clients) {
-            let _ = self
-                .bus
-                .senders
-                .send_to_server(ServerInstruction::CloseDialogueChanged(*client_id, true));
-        }
-        for client_id in self.close_dialogue_clients.difference(&current) {
-            let _ = self
-                .bus
-                .senders
-                .send_to_server(ServerInstruction::CloseDialogueChanged(*client_id, false));
-        }
-        self.close_dialogue_clients = current;
-    }
-
     fn detach_client(&self, client_id: ClientId) {
         let _ = self
             .bus
@@ -4343,75 +4402,121 @@ impl Screen {
             .send_to_server(ServerInstruction::DetachSession(vec![client_id], None));
     }
 
-    pub fn confirm_close(&mut self, client_id: ClientId) -> Result<()> {
-        if self
-            .tabs
-            .values()
-            .any(|tab| tab.has_close_dialogue(client_id))
+    fn withdraw_close_prompt(&mut self, client_id: ClientId) -> bool {
+        match self.close_prompts.remove(&client_id) {
+            Some(request_id) => {
+                let _ = self
+                    .bus
+                    .senders
+                    .send_to_plugin(PluginInstruction::WithdrawPrompt(
+                        PromptCaller::close_dialogue(client_id, request_id),
+                    ));
+                true
+            },
+            None => false,
+        }
+    }
+
+    #[cfg(test)]
+    pub fn has_close_prompt(&self, client_id: ClientId) -> bool {
+        self.close_prompts.contains_key(&client_id)
+    }
+
+    fn quit_client(&self, client_id: ClientId) {
+        let _ = self
+            .bus
+            .senders
+            .send_to_server(ServerInstruction::ClientExit(client_id, None));
+    }
+
+    fn other_clients(&self, client_id: ClientId) -> usize {
+        let connected = self.connected_clients.borrow();
+        connected
+            .keys()
+            .chain(self.watcher_clients.keys())
+            .filter(|other| **other != client_id)
+            .collect::<HashSet<_>>()
+            .len()
+    }
+
+    fn end_session(&self) {
+        let _ = self
+            .bus
+            .senders
+            .send_to_server(ServerInstruction::KillSession);
+    }
+
+    pub fn confirm_quit(&mut self, client_id: ClientId) {
+        use zellij_utils::input::options::OnQuit;
+        if self.withdraw_close_prompt(client_id)
+            || self.watcher_clients.contains_key(&client_id)
+            || self.get_active_tab(client_id).is_err()
         {
-            return self.finish_close_dialogue(client_id, CloseDialogueOutcome::Detach);
+            self.quit_client(client_id);
+            return;
         }
-        let session_name = self.session_name.clone();
-        let shown = match self.get_active_tab_mut(client_id) {
-            Ok(tab) => match tab.get_active_pane_id(client_id) {
-                Some(pane_id) => {
-                    tab.show_close_dialogue(client_id, pane_id, session_name);
-                    true
-                },
-                None => false,
-            },
-            Err(_) => false,
+        match self.on_quit {
+            OnQuit::AskQuit => self.open_close_prompt(client_id, CLOSE_QUIT),
+            OnQuit::AskDetach => self.open_close_prompt(client_id, CLOSE_DETACH),
+            OnQuit::Quit => self.end_session(),
+            OnQuit::Detach => self.detach_client(client_id),
+        }
+    }
+
+    fn open_close_prompt(&mut self, client_id: ClientId, preselected: &str) {
+        self.next_close_prompt_id += 1;
+        let request_id = self.next_close_prompt_id;
+        self.close_prompts.insert(client_id, request_id);
+        let request = close_prompt_request(&self.session_name, self.other_clients(client_id))
+            .default(preselected);
+        let _ = self
+            .bus
+            .senders
+            .send_to_plugin(PluginInstruction::PromptRequest {
+                caller: PromptCaller::close_dialogue(client_id, request_id),
+                owner_client_id: client_id,
+                caller_pane_id: None,
+                request,
+            });
+    }
+
+    pub fn close_dialogue_answer(
+        &mut self,
+        client_id: ClientId,
+        request_id: u64,
+        result: zellij_utils::prompt::PromptResult,
+    ) {
+        if self.close_prompts.get(&client_id) != Some(&request_id) {
+            return;
+        }
+        self.close_prompts.remove(&client_id);
+        let (outcome, always) = close_prompt_outcome(&result);
+        if always {
+            self.remember_on_quit(client_id, outcome);
+        }
+        match outcome {
+            CloseOutcome::Detach => self.detach_client(client_id),
+            CloseOutcome::Quit => self.end_session(),
+            CloseOutcome::Cancel => {},
+        }
+    }
+
+    fn remember_on_quit(&mut self, client_id: ClientId, outcome: CloseOutcome) {
+        use zellij_utils::input::options::OnQuit;
+        let on_quit = match outcome {
+            CloseOutcome::Detach => OnQuit::Detach,
+            CloseOutcome::Quit => OnQuit::Quit,
+            CloseOutcome::Cancel => return,
         };
-        if !shown {
-            self.detach_client(client_id);
-            return Ok(());
-        }
-        self.render(None)
-    }
-
-    pub fn close_dialogue_key(
-        &mut self,
-        client_id: ClientId,
-        key: Option<KeyWithModifier>,
-        raw_bytes: Vec<u8>,
-    ) -> Result<()> {
-        let input = self
-            .tabs
-            .values_mut()
-            .find(|tab| tab.has_close_dialogue(client_id))
-            .and_then(|tab| tab.close_dialogue_key(client_id, key.as_ref(), &raw_bytes));
-        match input {
-            Some(CloseDialogueInput::Choose(outcome)) => {
-                self.finish_close_dialogue(client_id, outcome)
-            },
-            Some(CloseDialogueInput::Select(_)) => self.render(None),
-            Some(CloseDialogueInput::Swallow) | None => Ok(()),
-        }
-    }
-
-    pub fn finish_close_dialogue(
-        &mut self,
-        client_id: ClientId,
-        outcome: CloseDialogueOutcome,
-    ) -> Result<()> {
-        let mut cleared = false;
-        for tab in self.tabs.values_mut() {
-            cleared |= tab.clear_close_dialogue(client_id);
-        }
-        self.sync_close_dialogues();
-        if cleared {
-            match outcome {
-                CloseDialogueOutcome::Detach => self.detach_client(client_id),
-                CloseDialogueOutcome::Quit => {
-                    let _ = self
-                        .bus
-                        .senders
-                        .send_to_server(ServerInstruction::KillSession);
-                },
-                CloseDialogueOutcome::Cancel => {},
-            }
-        }
-        self.render(None)
+        self.on_quit = on_quit;
+        let _ = self
+            .bus
+            .senders
+            .send_to_server(ServerInstruction::Reconfigure {
+                client_id,
+                config: format!("on_quit \"{}\"", on_quit.as_str()),
+                write_config_to_disk: true,
+            });
     }
 
     fn handle_guest_modal_choice(
@@ -5267,7 +5372,6 @@ impl Screen {
         // message, triggering our render_to_clients method which does the actual rendering
 
         self.sync_nested_guest_fullscreen_state();
-        self.sync_close_dialogues();
 
         let _ = self
             .bus
@@ -6373,9 +6477,8 @@ impl Screen {
         for tab in self.tabs.values_mut() {
             tab.clear_guest_modal_for_client_on_all_panes(client_id);
             tab.clear_guest_choice_indicator_for_client_on_all_panes(client_id);
-            tab.clear_close_dialogue(client_id);
         }
-        self.sync_close_dialogues();
+        self.withdraw_close_prompt(client_id);
 
         // If the followed client disconnected, find the next regular client
         if Some(client_id) == self.followed_client_id {
@@ -10025,6 +10128,7 @@ pub(crate) fn screen_thread_main(
     screen.host_theme_light_styling = host_theme_light_styling;
     screen.paste_buffer_read_enabled = dangerously_enable_paste_buffer_read;
     screen.swap_layout_notification = config_options.swap_layout_notification.unwrap_or(true);
+    screen.on_quit = config_options.on_quit.unwrap_or_default();
     screen.set_host_notification_protocol(host_notification_protocol);
     if explicit_theme_hue.is_some() {
         screen
@@ -12146,18 +12250,15 @@ pub(crate) fn screen_thread_main(
             } => {
                 screen.handle_guest_modal_choice(client_id, pane_id, outcome);
             },
-            ScreenInstruction::ConfirmClose(client_id) => {
-                screen.confirm_close(client_id)?;
+            ScreenInstruction::ConfirmQuit(client_id) => {
+                screen.confirm_quit(client_id);
             },
-            ScreenInstruction::CloseDialogueInput {
+            ScreenInstruction::CloseDialogueAnswer {
                 client_id,
-                key,
-                raw_bytes,
+                request_id,
+                result,
             } => {
-                screen.close_dialogue_key(client_id, key, raw_bytes)?;
-            },
-            ScreenInstruction::CloseDialogueChoice { client_id, outcome } => {
-                screen.finish_close_dialogue(client_id, outcome)?;
+                screen.close_dialogue_answer(client_id, request_id, result);
             },
             ScreenInstruction::ForwardedReplyFromHost { token, reply_bytes } => {
                 screen.handle_forwarded_reply_from_host(token, reply_bytes)?;
@@ -14429,6 +14530,9 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::SetSwapLayoutNotification(enabled) => {
                 screen.swap_layout_notification = enabled;
             },
+            ScreenInstruction::SetOnQuit(on_quit) => {
+                screen.on_quit = on_quit;
+            },
             ScreenInstruction::GetSessionPreview {
                 tab_index,
                 pane_id,
@@ -14507,6 +14611,7 @@ pub(crate) fn screen_thread_main(
                 run_plugin_or_alias,
                 placement,
                 focused,
+                capture_all_keys,
             } => {
                 screen.open_prompt_popup(
                     caller,
@@ -14515,6 +14620,7 @@ pub(crate) fn screen_thread_main(
                     run_plugin_or_alias,
                     placement,
                     focused,
+                    capture_all_keys,
                 );
             },
             ScreenInstruction::CloseTopPopup(client_id) => {

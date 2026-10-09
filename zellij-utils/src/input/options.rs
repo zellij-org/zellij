@@ -49,6 +49,58 @@ impl FromStr for NestedSessionHandling {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Deserialize, Serialize, ValueEnum)]
+pub enum OnQuit {
+    #[serde(alias = "ask_quit")]
+    #[value(name = "ask_quit")]
+    AskQuit,
+    #[serde(alias = "ask_detach")]
+    #[value(name = "ask_detach")]
+    AskDetach,
+    #[serde(alias = "quit")]
+    Quit,
+    #[serde(alias = "detach")]
+    Detach,
+}
+
+impl Default for OnQuit {
+    fn default() -> Self {
+        Self::AskQuit
+    }
+}
+
+impl OnQuit {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            OnQuit::AskQuit => "ask_quit",
+            OnQuit::AskDetach => "ask_detach",
+            OnQuit::Quit => "quit",
+            OnQuit::Detach => "detach",
+        }
+    }
+    pub const ALL: [OnQuit; 4] = [
+        OnQuit::AskQuit,
+        OnQuit::AskDetach,
+        OnQuit::Quit,
+        OnQuit::Detach,
+    ];
+}
+
+impl FromStr for OnQuit {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        OnQuit::ALL
+            .into_iter()
+            .find(|on_quit| on_quit.as_str() == s)
+            .ok_or_else(|| {
+                format!(
+                    "No such on_quit: {} (expected ask_quit, ask_detach, quit or detach)",
+                    s
+                )
+            })
+    }
+}
+
 impl Default for OnForceClose {
     fn default() -> Self {
         Self::Detach
@@ -493,6 +545,14 @@ pub struct Options {
     )]
     #[serde(default)]
     pub swap_layout_notification: Option<bool>,
+
+    #[clap(
+        long,
+        value_enum,
+        help = "What the quit action does: ask_quit (ask, Quit preselected), ask_detach (ask, Detach preselected), quit or detach. Default is ask_quit"
+    )]
+    #[serde(default)]
+    pub on_quit: Option<OnQuit>,
 }
 
 #[derive(ValueEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq)]
@@ -688,6 +748,7 @@ impl Options {
         let swap_layout_notification = other
             .swap_layout_notification
             .or(self.swap_layout_notification);
+        let on_quit = other.on_quit.or(self.on_quit);
 
         Options {
             simplified_ui,
@@ -758,6 +819,7 @@ impl Options {
             session_card,
             session_indicator,
             swap_layout_notification,
+            on_quit,
         }
     }
 
@@ -888,6 +950,7 @@ impl Options {
             other.swap_layout_notification,
             self.swap_layout_notification,
         );
+        let on_quit = other.on_quit.or(self.on_quit);
 
         Options {
             simplified_ui,
@@ -958,6 +1021,7 @@ impl Options {
             session_card,
             session_indicator,
             swap_layout_notification,
+            on_quit,
         }
     }
 
