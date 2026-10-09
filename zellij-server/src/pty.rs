@@ -23,7 +23,7 @@ use zellij_utils::{
     errors::prelude::*,
     errors::{ContextType, PtyContext},
     input::{
-        command::{OpenFilePayload, RunCommand, TerminalAction},
+        command::{OpenFilePayload, RunCommand, RunCommandAction, TerminalAction},
         layout::{
             FloatingPaneLayout, Layout, Run, RunPluginOrAlias, SwapFloatingLayout, SwapTiledLayout,
             TabLayoutInfo, TiledPaneLayout,
@@ -37,6 +37,7 @@ pub type VteBytes = Vec<u8>;
 pub type TabIndex = u32;
 
 const ORIGIN_PANE_ID_ENV_VAR: &str = "ZELLIJ_ORIGIN_PANE_ID";
+const PANE_ID_ENV_VAR: &str = "ZELLIJ_PANE_ID";
 
 fn pane_env_with_origin(pane_env: &PaneEnv, origin_pane_id: Option<PaneId>) -> PaneEnv {
     let mut pane_env = pane_env.clone();
@@ -172,6 +173,12 @@ pub enum PtyInstruction {
     },
     UpdateAndReportCwds,
     NotifyCwdFromOsc7(u32, PathBuf),
+    RunInBackground {
+        command: RunCommandAction,
+        client_id: ClientId,
+        origin_pane_id: Option<PaneId>,
+        completion_tx: Option<NotificationEnd>,
+    },
     Exit,
 }
 
@@ -208,6 +215,7 @@ impl From<&PtyInstruction> for PtyContext {
             PtyInstruction::GetPaneCwd { .. } => PtyContext::GetPaneCwd,
             PtyInstruction::UpdateAndReportCwds => PtyContext::UpdateAndReportCwds,
             PtyInstruction::NotifyCwdFromOsc7(..) => PtyContext::NotifyCwdFromOsc7,
+            PtyInstruction::RunInBackground { .. } => PtyContext::RunInBackground,
             PtyInstruction::Exit => PtyContext::Exit,
         }
     }
@@ -940,6 +948,16 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
             PtyInstruction::NotifyCwdFromOsc7(terminal_id, path) => {
                 pty.notify_cwd_from_osc7(terminal_id, path);
             },
+            PtyInstruction::RunInBackground {
+                command,
+                client_id,
+                origin_pane_id,
+                completion_tx,
+            } => {
+                pty.run_in_background(command, client_id, origin_pane_id)
+                    .non_fatal();
+                drop(completion_tx);
+            },
             PtyInstruction::Exit => break,
         }
     }
@@ -1010,6 +1028,51 @@ impl Pty {
                 })
             },
         }
+    }
+    fn cwd_of_pane(&self, pane_id: &PaneId) -> Option<PathBuf> {
+        match pane_id {
+            PaneId::Terminal(terminal_id) => self
+                .id_to_child_pid
+                .get(terminal_id)
+                .and_then(|&pid| {
+                    self.bus
+                        .os_input
+                        .as_ref()
+                        .and_then(|input| input.get_cwd(pid))
+                })
+                .or_else(|| self.terminal_cwds.get(terminal_id).cloned()),
+            PaneId::Plugin(plugin_id) => self.plugin_cwds.get(plugin_id).cloned(),
+        }
+    }
+    fn run_in_background(
+        &self,
+        command: RunCommandAction,
+        client_id: ClientId,
+        origin_pane_id: Option<PaneId>,
+    ) -> Result<()> {
+        let base_cwd = origin_pane_id
+            .or_else(|| self.active_panes.get(&client_id).copied())
+            .and_then(|pane_id| self.cwd_of_pane(&pane_id));
+        let cwd = match (command.cwd, base_cwd) {
+            (Some(cwd), Some(base_cwd)) if cwd.is_relative() => Some(base_cwd.join(cwd)),
+            (Some(cwd), _) => Some(cwd),
+            (None, base_cwd) => base_cwd,
+        };
+        let mut env = pane_env_with_origin(&self.pane_env, origin_pane_id);
+        let pane_id = match origin_pane_id {
+            Some(PaneId::Terminal(terminal_id)) => Some(terminal_id.to_string()),
+            _ => None,
+        };
+        env.insert(PANE_ID_ENV_VAR.to_owned(), pane_id);
+        self.bus
+            .senders
+            .send_to_background_jobs(BackgroundJob::RunInBackground {
+                command: command.command,
+                args: command.args,
+                cwd,
+                env,
+            })
+            .with_context(|| format!("failed to run command in background for client {client_id}"))
     }
     fn fill_cwd(&self, terminal_action: &mut TerminalAction, client_id: ClientId) {
         let cwd = match terminal_action {

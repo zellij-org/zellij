@@ -545,6 +545,7 @@ pub enum PtyContext {
     GetPaneCwd,
     UpdateAndReportCwds,
     NotifyCwdFromOsc7,
+    RunInBackground,
     Exit,
 }
 
@@ -705,6 +706,7 @@ pub enum BackgroundJobContext {
     ReportSessionInfo,
     ReportLayoutInfo,
     RunCommand,
+    RunInBackground,
     WebRequest,
     ReportPluginList,
     ListWebSessions,

@@ -672,6 +672,14 @@ impl TryFrom<ProtobufAction> for Action {
                 },
                 _ => Err("Wrong payload for Action::Run"),
             },
+            Some(ProtobufActionName::RunInBackground) => match protobuf_action.optional_payload {
+                Some(OptionalPayload::RunPayload(run_command_action)) => {
+                    Ok(Action::RunInBackground {
+                        command: run_command_action.try_into()?,
+                    })
+                },
+                _ => Err("Wrong payload for Action::RunInBackground"),
+            },
             Some(ProtobufActionName::Detach) => match protobuf_action.optional_payload {
                 Some(_) => Err("Detach should not have a payload"),
                 None => Ok(Action::Detach),
@@ -1899,6 +1907,15 @@ impl TryFrom<Action> for ProtobufAction {
                 let run_command_action: ProtobufRunCommandAction = run_command_action.try_into()?;
                 Ok(ProtobufAction {
                     name: ProtobufActionName::Run as i32,
+                    optional_payload: Some(OptionalPayload::RunPayload(run_command_action)),
+                })
+            },
+            Action::RunInBackground {
+                command: run_command_action,
+            } => {
+                let run_command_action: ProtobufRunCommandAction = run_command_action.try_into()?;
+                Ok(ProtobufAction {
+                    name: ProtobufActionName::RunInBackground as i32,
                     optional_payload: Some(OptionalPayload::RunPayload(run_command_action)),
                 })
             },
@@ -3648,6 +3665,22 @@ mod tests {
                 position: crate::data::TAB_POSITION_END,
             },
         ]
+    }
+
+    #[test]
+    fn run_in_background_round_trips_over_protobuf() {
+        let original = Action::RunInBackground {
+            command: RunCommandAction {
+                command: PathBuf::from("send-scroll"),
+                args: vec!["up".to_owned()],
+                cwd: Some(PathBuf::from("/tmp")),
+                ..Default::default()
+            },
+        };
+        let protobuf: ProtobufAction = original.clone().try_into().unwrap();
+        assert_eq!(protobuf.name, ProtobufActionName::RunInBackground as i32);
+        let decoded: Action = protobuf.try_into().unwrap();
+        assert_eq!(original, decoded);
     }
 
     #[test]

@@ -405,6 +405,9 @@ pub enum Action {
         near_current_pane: bool,
         no_focus: bool,
     },
+    RunInBackground {
+        command: RunCommandAction,
+    },
     /// Set pane default foreground/background color
     SetPaneColor {
         pane_id: PaneId,
@@ -2470,7 +2473,7 @@ impl Action {
                     .as_mut()
                     .map(|c| c.populate_originating_plugin(originating_plugin));
             },
-            Action::Run { command, .. } => {
+            Action::Run { command, .. } | Action::RunInBackground { command } => {
                 command.populate_originating_plugin(originating_plugin);
             },
             Action::EditFile { payload, .. } => {

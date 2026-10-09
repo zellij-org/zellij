@@ -1143,6 +1143,26 @@ impl Action {
                     Some(node)
                 },
             },
+            Action::RunInBackground {
+                command: run_command_action,
+            } => {
+                let mut node = KdlNode::new("Run");
+                let mut node_children = KdlDocument::new();
+                node.push(run_command_action.command.display().to_string());
+                for arg in &run_command_action.args {
+                    node.push(arg.clone());
+                }
+                let mut background_node = KdlNode::new("background");
+                background_node.push(KdlValue::Bool(true));
+                node_children.nodes_mut().push(background_node);
+                if let Some(cwd) = &run_command_action.cwd {
+                    let mut cwd_node = KdlNode::new("cwd");
+                    cwd_node.push(cwd.display().to_string());
+                    node_children.nodes_mut().push(cwd_node);
+                }
+                node.set_children(node_children);
+                Some(node)
+            },
             Action::Detach => Some(KdlNode::new("Detach")),
             Action::SwitchSession {
                 name,
@@ -2182,6 +2202,19 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 let stacked = command_metadata
                     .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "stacked"))
                     .unwrap_or(false);
+                let background = command_metadata
+                    .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "background"))
+                    .unwrap_or(false);
+                if background {
+                    return Ok(Action::RunInBackground {
+                        command: RunCommandAction {
+                            command: PathBuf::from(command),
+                            args,
+                            cwd,
+                            ..Default::default()
+                        },
+                    });
+                }
                 let run_command_action = RunCommandAction {
                     command: PathBuf::from(command),
                     args,
@@ -10363,4 +10396,24 @@ fn config_merge_takes_non_empty_context_menu_sections_from_the_other_config() {
             vec![Action::ClearScreen.into()]
         )]
     );
+}
+
+#[test]
+fn run_with_background_parses_and_is_written_back() {
+    let text = r#"Run "send-scroll" "--direction" "up" { background true; cwd "/tmp"; floating true; name "ignored"; }"#;
+    let document: KdlDocument = text.parse().unwrap();
+    let node = document.nodes().first().unwrap();
+    let action = Action::try_from((node, &Options::default())).unwrap();
+    let expected = Action::RunInBackground {
+        command: RunCommandAction {
+            command: PathBuf::from("send-scroll"),
+            args: vec!["--direction".to_owned(), "up".to_owned()],
+            cwd: Some(PathBuf::from("/tmp")),
+            ..Default::default()
+        },
+    };
+    assert_eq!(action, expected);
+    let written = action.to_kdl().unwrap();
+    let reparsed = Action::try_from((&written, &Options::default())).unwrap();
+    assert_eq!(reparsed, expected);
 }

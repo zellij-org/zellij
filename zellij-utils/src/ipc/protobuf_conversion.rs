@@ -1298,6 +1298,7 @@ impl From<crate::input::actions::Action>
             ResizeAction,
             ResizeByPaneIdAction,
             RunAction,
+            RunInBackgroundAction,
             SaveSessionAction,
             ScrollDownAction,
             ScrollDownAtAction,
@@ -1760,6 +1761,11 @@ impl From<crate::input::actions::Action>
                 near_current_pane,
                 no_focus,
             }),
+            crate::input::actions::Action::RunInBackground { command } => {
+                ActionType::RunInBackground(RunInBackgroundAction {
+                    command: Some(command.into()),
+                })
+            },
             crate::input::actions::Action::Detach => ActionType::Detach(DetachAction {}),
             crate::input::actions::Action::SetDarkTheme => {
                 ActionType::SetDarkTheme(SetDarkThemeAction {})
@@ -2725,6 +2731,14 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                 near_current_pane: run_action.near_current_pane,
                 no_focus: run_action.no_focus,
             }),
+            ActionType::RunInBackground(run_action) => {
+                Ok(crate::input::actions::Action::RunInBackground {
+                    command: run_action
+                        .command
+                        .ok_or_else(|| anyhow!("RunInBackground missing command"))?
+                        .try_into()?,
+                })
+            },
             ActionType::Detach(_) => Ok(crate::input::actions::Action::Detach),
             ActionType::SetDarkTheme(_) => Ok(crate::input::actions::Action::SetDarkTheme),
             ActionType::SetLightTheme(_) => Ok(crate::input::actions::Action::SetLightTheme),

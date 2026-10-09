@@ -327,6 +327,7 @@ message Action {
     DismissInfoPopupsAction dismiss_info_popups = 160;
     OpenContextMenuAction open_context_menu = 161;
     MoveTabToPositionAction move_tab_to_position = 162;
+    RunInBackgroundAction run_in_background = 163;
   }
 }
 
@@ -613,6 +614,10 @@ message RunAction {
   RunCommandAction command = 1;
   bool near_current_pane = 2;
   bool no_focus = 3;
+}
+
+message RunInBackgroundAction {
+  RunCommandAction command = 1;
 }
 
 message LaunchOrFocusPluginAction {

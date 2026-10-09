@@ -267,6 +267,7 @@ fn spawns_command_pane(action: &Action) -> bool {
         | Action::NewInPlacePane { command, .. }
         | Action::NewStackedPane { command, .. }
         | Action::NewTiledPane { command, .. } => command.is_some(),
+        Action::RunInBackground { .. } => true,
         _ => false,
     }
 }
@@ -1143,6 +1144,16 @@ fn route_action_with_origin(
                     false, // set_blocking
                     None,
                 ))
+                .with_context(err_context)?;
+        },
+        Action::RunInBackground { command } => {
+            senders
+                .send_to_pty(PtyInstruction::RunInBackground {
+                    command,
+                    client_id,
+                    origin_pane_id: origin_pane_id.or(pane_id),
+                    completion_tx: Some(NotificationEnd::new(completion_tx)),
+                })
                 .with_context(err_context)?;
         },
         Action::CloseFocus => {

@@ -557,6 +557,7 @@ enum ActionName {
     DismissInfoPopups = 125;
     OpenContextMenu = 126;
     MoveTabToPosition = 127;
+    RunInBackground = 128;
 }
 
 message Position {
