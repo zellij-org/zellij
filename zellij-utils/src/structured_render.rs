@@ -39,6 +39,10 @@ pub const PANE_FRAMED: u8 = 1 << 0;
 pub const PANE_FOCUSED: u8 = 1 << 1;
 pub const PANE_WANTS_MOUSE: u8 = 1 << 2;
 pub const PANE_SELECTABLE: u8 = 1 << 3;
+pub const PANE_FLOATING: u8 = 1 << 4;
+pub const PANE_POPUP: u8 = 1 << 5;
+pub const PANE_PLUGIN_UI: u8 = 1 << 6;
+pub const PANE_UNDER_FLOATING: u8 = 1 << 7;
 
 pub const GRAPHICS_FORMAT_RGBA8: u32 = 0;
 
@@ -451,6 +455,49 @@ impl PaneRect {
         self.flags & PANE_SELECTABLE != 0
     }
 
+    pub fn floating(&self) -> bool {
+        self.flags & PANE_FLOATING != 0
+    }
+
+    pub fn popup(&self) -> bool {
+        self.flags & PANE_POPUP != 0
+    }
+
+    pub fn plugin_ui(&self) -> bool {
+        self.flags & PANE_PLUGIN_UI != 0
+    }
+
+    pub fn under_floating(&self) -> bool {
+        self.flags & PANE_UNDER_FLOATING != 0
+    }
+
+    pub fn pin_button_contains(&self, x: u16, y: u16) -> bool {
+        if !self.floating() || !self.framed() || !self.selectable() || self.top == 0 {
+            return false;
+        }
+        if y as u32 + 1 != self.content_y() as u32 || x < self.content_x() {
+            return false;
+        }
+        let column = (x - self.content_x()) as u32;
+        let center = self.cols.saturating_sub(5) as u32;
+        column + 1 >= center && column <= center + 1
+    }
+
+    fn edge_pointer(&self, x: u16, y: u16) -> PointerKind {
+        let (x, y) = (x as u32, y as u32);
+        let left = x < self.content_x() as u32;
+        let right = x >= self.content_x() as u32 + self.content_cols() as u32;
+        let above = y < self.content_y() as u32;
+        let below = y >= self.content_y() as u32 + self.content_rows() as u32;
+        match (left || right, above || below) {
+            (true, true) if (left && above) || (right && below) => PointerKind::NwseResize,
+            (true, true) => PointerKind::NeswResize,
+            (true, false) => PointerKind::ColResize,
+            (false, true) => PointerKind::RowResize,
+            (false, false) => PointerKind::Arrow,
+        }
+    }
+
     pub fn content_x(&self) -> u16 {
         self.x.saturating_add(self.left as u16)
     }
@@ -544,6 +591,18 @@ fn within(value: u16, start: u16, len: u16) -> bool {
     value >= start && (value as u32) < start as u32 + len as u32
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PointerKind {
+    Arrow,
+    Text,
+    Hand,
+    Move,
+    ColResize,
+    RowResize,
+    NwseResize,
+    NeswResize,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct GeometryRecord {
     pub panes: Vec<PaneRect>,
@@ -559,6 +618,107 @@ impl GeometryRecord {
             .iter()
             .rev()
             .find(|pane| pane.content_contains(x, y))
+    }
+
+    pub fn focused_popup(&self) -> Option<&PaneRect> {
+        self.panes
+            .iter()
+            .rev()
+            .find(|pane| pane.popup() && pane.focused())
+    }
+
+    pub fn claims_the_click(&self, x: u16, y: u16) -> bool {
+        if self.focused_popup().is_some() {
+            return true;
+        }
+        match self.pane_at(x, y) {
+            Some(pane) if pane.popup() => true,
+            Some(pane) => {
+                pane.content_contains(x, y)
+                    && pane.selectable()
+                    && pane.wants_mouse()
+                    && pane.focused()
+            },
+            None => false,
+        }
+    }
+
+    pub fn pointer_at(&self, x: u16, y: u16, ctrl: bool) -> PointerKind {
+        if self.panes.is_empty() {
+            return PointerKind::Text;
+        }
+        if self.focused_popup().is_some() {
+            return PointerKind::Arrow;
+        }
+        let top = self.pane_at(x, y);
+        if let Some(pane) = top {
+            if pane.popup() || !pane.selectable() {
+                return PointerKind::Arrow;
+            }
+            if pane.content_contains(x, y) {
+                if pane.plugin_ui() || (pane.wants_mouse() && pane.focused()) {
+                    return PointerKind::Arrow;
+                }
+                return PointerKind::Text;
+            }
+            if pane.floating() {
+                if ctrl {
+                    return pane.edge_pointer(x, y);
+                }
+                if pane.pin_button_contains(x, y) {
+                    return PointerKind::Hand;
+                }
+                return PointerKind::Move;
+            }
+        }
+        let inert = match top {
+            Some(pane) => pane.under_floating(),
+            None => self.panes.iter().any(|pane| pane.under_floating()),
+        };
+        if inert && !ctrl {
+            return PointerKind::Arrow;
+        }
+        self.border_pointer(x, y)
+    }
+
+    fn border_pointer(&self, x: u16, y: u16) -> PointerKind {
+        let (x, y) = (x as u32, y as u32);
+        let (mut left, mut right, mut above, mut below) = (false, false, false, false);
+        let tiled = self
+            .panes
+            .iter()
+            .filter(|pane| pane.selectable() && !pane.floating() && !pane.popup());
+        for pane in tiled {
+            let content_x = pane.content_x() as u32;
+            let content_y = pane.content_y() as u32;
+            let content_cols = pane.content_cols() as u32;
+            let content_rows = pane.content_rows() as u32;
+            if content_cols == 0 || content_rows == 0 {
+                continue;
+            }
+            if y + 1 >= pane.y as u32 && y <= pane.y as u32 + pane.rows as u32 {
+                right |= x + 1 == content_x;
+                left |= x == content_x + content_cols;
+            }
+            if x + 1 >= pane.x as u32 && x <= pane.x as u32 + pane.cols as u32 {
+                below |= y + 1 == content_y;
+                above |= y == content_y + content_rows;
+            }
+        }
+        match (left || right, above || below) {
+            (true, true) => {
+                if (left && right) || (above && below) {
+                    PointerKind::Move
+                } else if (left && above) || (right && below) {
+                    PointerKind::NwseResize
+                } else {
+                    PointerKind::NeswResize
+                }
+            },
+            (true, false) => PointerKind::ColResize,
+            (false, true) => PointerKind::RowResize,
+            (false, false) => PointerKind::Arrow,
+        }
     }
 
     pub fn clip_to(&self, cols: u16, rows: u16) -> GeometryRecord {
@@ -2166,6 +2326,72 @@ mod tests {
         let view = decode(&frame).unwrap();
         assert_eq!(view.geometry(), Some(record));
         assert!(view.graphics().is_empty());
+    }
+
+    #[test]
+    fn the_flags_that_tell_popups_floating_panes_and_plugins_apart_round_trip() {
+        let record = GeometryRecord {
+            panes: vec![
+                pane(0, 0, 40, 20, PANE_UNDER_FLOATING),
+                pane(10, 5, 20, 10, PANE_FLOATING | PANE_PLUGIN_UI),
+                PaneRect {
+                    x: 2,
+                    y: 2,
+                    cols: 10,
+                    rows: 3,
+                    top: 0,
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    flags: PANE_POPUP | PANE_FOCUSED,
+                },
+            ],
+        };
+        let mut builder = FrameBuilder::new(40, 20, 0);
+        builder.push_geometry(&record);
+        let frame = builder.finish();
+        let decoded = decode(&frame).unwrap().geometry().unwrap();
+        assert_eq!(decoded, record);
+        assert!(decoded.panes[0].under_floating() && !decoded.panes[0].floating());
+        assert!(decoded.panes[1].floating() && decoded.panes[1].plugin_ui());
+        assert!(decoded.panes[2].popup() && decoded.panes[2].focused());
+        assert_eq!(decoded.focused_popup(), Some(&decoded.panes[2]));
+    }
+
+    #[test]
+    fn the_pin_button_sits_where_a_click_toggles_it() {
+        let floating = pane(10, 5, 40, 10, PANE_FLOATING);
+        let hits: Vec<u16> = (0..60)
+            .filter(|x| floating.pin_button_contains(*x, 5))
+            .collect();
+        assert_eq!(hits, vec![45, 46, 47]);
+        assert!(!floating.pin_button_contains(46, 6));
+        let tiled = pane(10, 5, 40, 10, 0);
+        assert!(!tiled.pin_button_contains(46, 5));
+    }
+
+    #[test]
+    fn only_an_unfocused_popup_leaves_the_rest_of_the_screen_alone() {
+        let mut record = GeometryRecord {
+            panes: vec![
+                pane(0, 0, 40, 20, PANE_FOCUSED),
+                PaneRect {
+                    x: 2,
+                    y: 2,
+                    cols: 10,
+                    rows: 3,
+                    flags: PANE_POPUP,
+                    ..PaneRect::default()
+                },
+            ],
+        };
+        assert!(record.claims_the_click(3, 3));
+        assert!(!record.claims_the_click(20, 10));
+        assert_eq!(record.pointer_at(3, 3, false), PointerKind::Arrow);
+        assert_eq!(record.pointer_at(20, 10, false), PointerKind::Text);
+        record.panes[1].flags |= PANE_FOCUSED;
+        assert!(record.claims_the_click(20, 10));
+        assert_eq!(record.pointer_at(20, 10, false), PointerKind::Arrow);
     }
 
     #[test]

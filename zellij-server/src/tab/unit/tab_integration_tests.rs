@@ -18155,3 +18155,175 @@ fn a_plugin_pane_can_be_dumped_with_its_colours_for_previews() {
         .dump_screen_with_ansi(false, Some(9))
         .contains("plugin text"));
 }
+
+#[test]
+fn popups_are_described_to_the_client_above_its_panes() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let (plugin_sender, _plugin_receiver) = channels::unbounded();
+    tab.senders
+        .replace_to_plugin(SenderWithContext::new(plugin_sender));
+    open_test_info_popup(
+        &mut tab,
+        client_id,
+        50,
+        zellij_utils::data::PopupCorner::TopRight,
+        4,
+    );
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+    let rects = output.pane_rects_for(client_id);
+    let info = *rects.last().expect("the popup must be described");
+    let info_geom = tab.info_popup_geoms(client_id)[0].1;
+    assert!(info.popup(), "{:?}", rects);
+    assert!(!info.focused(), "an information popup does not take focus");
+    assert_eq!(
+        (
+            info.x as usize,
+            info.y as usize,
+            info.cols as usize,
+            info.rows as usize
+        ),
+        (
+            info_geom.x,
+            info_geom.y,
+            info_geom.cols.as_usize(),
+            info_geom.rows.as_usize()
+        )
+    );
+    assert!(rects[..rects.len() - 1].iter().all(|rect| !rect.popup()));
+    let at = (info.x + 1, info.y + 1);
+    let geometry = zellij_utils::structured_render::GeometryRecord { panes: rects };
+    assert!(geometry.claims_the_click(at.0, at.1));
+
+    open_test_prompt_popup(&mut tab, client_id, 42, 8);
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+    let rects = output.pane_rects_for(client_id);
+    let popups: Vec<_> = rects.iter().filter(|rect| rect.popup()).collect();
+    assert_eq!(popups.len(), 2, "{:?}", rects);
+    assert!(
+        popups.last().unwrap().focused(),
+        "a prompt takes focus and is drawn last"
+    );
+    let geometry = zellij_utils::structured_render::GeometryRecord { panes: rects };
+    assert!(
+        geometry.claims_the_click(0, 19),
+        "while a prompt is open every click belongs to it"
+    );
+    assert_eq!(
+        geometry.pointer_at(0, 19, false),
+        zellij_utils::structured_render::PointerKind::Arrow
+    );
+}
+
+#[test]
+fn floating_panes_and_the_panes_under_them_are_told_apart() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    tab.toggle_floating_panes(Some(client_id), None, None)
+        .unwrap();
+    tab.new_pane(
+        PaneId::Terminal(2),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+    let rects = output.pane_rects_for(client_id);
+    let floating: Vec<_> = rects.iter().filter(|rect| rect.floating()).collect();
+    assert_eq!(floating.len(), 1, "{:?}", rects);
+    assert!(floating[0].focused() && floating[0].framed());
+    assert!(
+        rects
+            .iter()
+            .filter(|rect| !rect.floating())
+            .all(|rect| rect.under_floating()),
+        "{:?}",
+        rects
+    );
+
+    tab.toggle_floating_panes(Some(client_id), None, None)
+        .unwrap();
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+    let rects = output.pane_rects_for(client_id);
+    assert!(
+        rects
+            .iter()
+            .all(|rect| !rect.floating() && !rect.under_floating()),
+        "{:?}",
+        rects
+    );
+}
+
+#[test]
+fn a_plugin_drawn_in_a_popup_is_described_as_handling_its_own_clicks() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let (plugin_sender, _plugin_receiver) = channels::unbounded();
+    tab.senders
+        .replace_to_plugin(SenderWithContext::new(plugin_sender));
+    open_test_prompt_popup(&mut tab, client_id, 42, 3);
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+    let rects = output.pane_rects_for(client_id);
+    let prompt = rects.iter().find(|rect| rect.popup()).unwrap();
+    assert!(prompt.plugin_ui());
+    assert!(rects
+        .iter()
+        .filter(|rect| !rect.popup())
+        .all(|rect| !rect.plugin_ui()));
+}
+
+#[test]
+fn a_popup_render_drawn_for_a_stale_size_is_dropped_and_the_size_is_sent_again() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let (mut tab, plugin_receiver) = create_new_tab_with_plugin_receiver(size, ModeInfo::default());
+    open_test_prompt_popup(&mut tab, client_id, 42, 3);
+    while plugin_receiver.try_recv().is_ok() {}
+    let geom = tab.popup_geom(client_id).unwrap();
+    let (cols, rows) = (geom.cols.as_usize(), geom.rows.as_usize());
+
+    assert!(!tab.drop_popup_render_of_another_size(42, rows, cols));
+    assert!(plugin_receiver.try_recv().is_err());
+
+    assert!(tab.drop_popup_render_of_another_size(42, rows, cols + 30));
+    let resent =
+        std::iter::from_fn(|| plugin_receiver.try_recv().ok()).find_map(|(instruction, _)| {
+            match instruction {
+                PluginInstruction::Resize(plugin_id, new_cols, new_rows) => {
+                    Some((plugin_id, new_cols, new_rows))
+                },
+                _ => None,
+            }
+        });
+    assert_eq!(resent, Some((42, cols, rows)));
+
+    assert!(
+        !tab.drop_popup_render_of_another_size(7, 1, 1),
+        "a plugin that is not in a popup keeps every render"
+    );
+}

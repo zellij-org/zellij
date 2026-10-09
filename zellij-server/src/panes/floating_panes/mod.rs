@@ -675,7 +675,12 @@ impl FloatingPanes {
                 let focused = active_panes.get(client_id) == Some(&pane.pid());
                 output.add_pane_rect(
                     *client_id,
-                    pane_rect_for_pane(pane, should_draw_pane_frames, focused),
+                    pane_rect_for_pane(
+                        pane,
+                        should_draw_pane_frames,
+                        focused,
+                        zellij_utils::structured_render::PANE_FLOATING,
+                    ),
                     crate::output::PaneScroll::of(pane.pid(), pane.viewport_scroll_state()),
                 );
             }
@@ -739,15 +744,6 @@ impl FloatingPanes {
                     client_mode,
                     &mut self.window_title,
                 );
-                // this is done for panes that don't have their own cursor (eg. panes of
-                // another user)
-                log_render_error!(
-                    self.panes_with_logged_render_errors,
-                    panes_that_failed_to_render,
-                    **kind,
-                    err_context,
-                    pane_contents_and_ui.render_fake_cursor_if_needed(*client_id)
-                );
             }
             if let PaneId::Terminal(..) = kind {
                 if pane_has_guest_modal {
@@ -788,6 +784,15 @@ impl FloatingPanes {
                         )
                     );
                 }
+            }
+            for client_id in &connected_clients {
+                log_render_error!(
+                    self.panes_with_logged_render_errors,
+                    panes_that_failed_to_render,
+                    **kind,
+                    err_context,
+                    pane_contents_and_ui.render_fake_cursor_if_needed(*client_id)
+                );
             }
         }
         self.panes_with_logged_render_errors = panes_that_failed_to_render;

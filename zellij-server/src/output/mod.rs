@@ -1687,6 +1687,13 @@ impl Output {
             pane_rects.push((pane_rect, scroll));
         }
     }
+    #[cfg(test)]
+    pub fn pane_rects_for(&self, client_id: ClientId) -> Vec<PaneRect> {
+        self.client_pane_rects
+            .get(&client_id)
+            .map(|panes| panes.iter().map(|(rect, _)| *rect).collect())
+            .unwrap_or_default()
+    }
     pub fn set_popup_cover(&mut self, client_id: ClientId, popup_geoms: Vec<PaneGeom>) {
         if popup_geoms.is_empty() {
             self.popup_covers.remove(&client_id);

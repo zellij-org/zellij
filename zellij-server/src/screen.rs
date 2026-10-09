@@ -10220,6 +10220,11 @@ pub(crate) fn screen_thread_main(
 
                     let all_tabs = screen.get_tabs_mut();
                     for tab in all_tabs.values_mut() {
+                        if let Some((rows, columns)) = plugin_render_asset.rendered_size {
+                            if tab.drop_popup_render_of_another_size(plugin_id, rows, columns) {
+                                break;
+                            }
+                        }
                         if tab.has_plugin(plugin_id) {
                             tab.handle_plugin_bytes(plugin_id, client_id, vte_bytes)
                                 .context("failed to process plugin bytes")?;

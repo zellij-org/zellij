@@ -281,6 +281,29 @@ impl Tab {
         self.set_force_render();
         true
     }
+    pub fn drop_popup_render_of_another_size(
+        &mut self,
+        plugin_id: u32,
+        rows: usize,
+        columns: usize,
+    ) -> bool {
+        let Some(popup) = self.popup_with_plugin_id_mut(plugin_id) else {
+            return false;
+        };
+        let (current_columns, current_rows) = (
+            popup.pane.get_content_columns(),
+            popup.pane.get_content_rows(),
+        );
+        if (current_rows, current_columns) == (rows, columns) {
+            return false;
+        }
+        let _ = self.senders.send_to_plugin(PluginInstruction::Resize(
+            plugin_id,
+            current_columns,
+            current_rows,
+        ));
+        true
+    }
     pub fn set_popup_anchor(&mut self, plugin_id: u32, anchor_pane: Option<PaneId>) {
         if let Some(popup) = self
             .popups
@@ -847,6 +870,19 @@ impl Tab {
                 stack.iter_mut().filter(|popup| !popup.held_back).collect();
             drawing_order.sort_by_key(|popup| popup.takes_focus());
             for (layer, popup) in drawing_order.into_iter().enumerate() {
+                output.add_pane_rect(
+                    *client_id,
+                    super::pane_rect_for_pane(
+                        &popup.pane,
+                        false,
+                        popup.takes_focus(),
+                        zellij_utils::structured_render::PANE_POPUP,
+                    ),
+                    crate::output::PaneScroll::of(
+                        popup.pane.pid(),
+                        popup.pane.viewport_scroll_state(),
+                    ),
+                );
                 if force {
                     popup.pane.set_should_render(true);
                     popup.pane.render_full_viewport();

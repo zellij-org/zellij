@@ -889,7 +889,12 @@ impl App {
             self.modifiers,
             self.hovered_link.as_ref(),
         );
-        mouse::pointer_shape_over(cell, self.state.geometry(), reachable)
+        mouse::pointer_shape_over(
+            cell,
+            self.state.geometry(),
+            self.modifiers.control_key(),
+            reachable,
+        )
     }
 
     fn refresh_pointer(&mut self) {
@@ -4511,6 +4516,64 @@ mod tests {
         assert_eq!(harness.actions().len(), 3);
     }
 
+    fn with_a_link_under_a_popup(harness: &mut Harness) {
+        use zellij_utils::structured_render::{
+            GeometryRecord, PaneRect, PANE_FOCUSED, PANE_POPUP, PANE_SELECTABLE,
+        };
+        crate::screen_buffer::painter::Painter::apply(&mut harness.app.state, |painter| {
+            painter.geometry(&GeometryRecord {
+                panes: vec![
+                    PaneRect {
+                        x: 0,
+                        y: 0,
+                        cols: 120,
+                        rows: 40,
+                        top: 0,
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        flags: PANE_SELECTABLE | PANE_FOCUSED,
+                    },
+                    PaneRect {
+                        x: 0,
+                        y: 0,
+                        cols: 20,
+                        rows: 5,
+                        top: 0,
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        flags: PANE_POPUP,
+                    },
+                ],
+            });
+            painter.links(&[(1, "https://example.com")]);
+            painter.linked(0, 0, "link", 1);
+        });
+        harness.app.on_cursor_moved(PhysicalPosition::new(4.0, 4.0));
+    }
+
+    #[test]
+    fn over_a_popup_the_pointer_is_an_arrow_and_a_plain_click_goes_to_the_popup() {
+        links::forget_opened();
+        let mut harness = Harness::new(3, true, "");
+        with_a_link_under_a_popup(&mut harness);
+        assert!(harness.app.pane_wants_mouse());
+        assert_eq!(harness.app.pointer_shape(), CursorIcon::Default);
+        left_click(&mut harness);
+        assert!(opened_urls().is_empty());
+        assert_eq!(harness.actions().len(), 3);
+    }
+
+    #[test]
+    fn a_shift_click_on_a_link_inside_a_popup_still_opens_it() {
+        links::forget_opened();
+        let mut harness = Harness::new(1, true, "");
+        with_a_link_under_a_popup(&mut harness);
+        shift_click(&mut harness);
+        assert_eq!(opened_urls(), vec!["https://example.com".to_owned()]);
+    }
+
     #[test]
     fn a_shift_drag_that_starts_on_a_link_selects_and_opens_nothing() {
         links::forget_opened();
@@ -4578,6 +4641,27 @@ mod tests {
                 pane_id: None
             }],
             "the release of a swallowed press must be swallowed with it"
+        );
+    }
+
+    #[test]
+    fn a_middle_click_over_a_popup_reaches_the_popup_instead_of_pasting() {
+        let mut harness = Harness::new(3, true, "");
+        harness.set_primary("selected");
+        with_a_link_under_a_popup(&mut harness);
+        harness
+            .app
+            .on_mouse_input(MouseButton::Middle, ElementState::Pressed);
+        harness
+            .app
+            .on_mouse_input(MouseButton::Middle, ElementState::Released);
+        let actions = harness.actions();
+        assert!(
+            actions
+                .iter()
+                .all(|action| matches!(action, Action::MouseEvent { .. })),
+            "nothing is pasted over a popup: {:?}",
+            actions
         );
     }
 

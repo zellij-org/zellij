@@ -111,6 +111,7 @@ pub struct PluginRenderAsset {
     pub plugin_id: PluginId,
     pub bytes: Vec<u8>,
     pub cli_pipes: HashMap<String, PipeStateChange>,
+    pub rendered_size: Option<(usize, usize)>,
 }
 
 impl PluginRenderAsset {
@@ -124,6 +125,10 @@ impl PluginRenderAsset {
     }
     pub fn with_pipes(mut self, cli_pipes: HashMap<String, PipeStateChange>) -> Self {
         self.cli_pipes = cli_pipes;
+        self
+    }
+    pub fn rendered_at(mut self, rows: usize, columns: usize) -> Self {
+        self.rendered_size = Some((rows, columns));
         self
     }
 }
@@ -1059,7 +1064,8 @@ impl WasmBridge {
                                             plugin_id,
                                             client_id,
                                             rendered_bytes.as_bytes().to_vec(),
-                                        );
+                                        )
+                                        .rendered_at(new_rows, new_columns);
                                         senders
                                             .send_to_screen(ScreenInstruction::PluginBytes(vec![
                                                 plugin_render_asset,
@@ -3475,7 +3481,8 @@ pub fn apply_event_to_plugin(
                             client_id,
                             rendered_bytes.as_bytes().to_vec(),
                         )
-                        .with_pipes(pipes_to_block_or_unblock);
+                        .with_pipes(pipes_to_block_or_unblock)
+                        .rendered_at(rows, columns);
                         plugin_render_assets.push(plugin_render_asset);
                     } else {
                         // This is a bit of a hack to get around the fact that plugins are allowed not to

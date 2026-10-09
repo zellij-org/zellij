@@ -3,8 +3,8 @@
 use insta::assert_snapshot;
 use zellij_integration_tests::{
     claim_first_terminal_and_wait_for_prompt, col, keys, normalized,
-    split_down_and_wait_for_prompt, split_right_and_wait_for_prompt, FakePtyHandle, Size,
-    TestRunner, TestSession, PROMPT, TERMINAL_SIZE,
+    split_down_and_wait_for_prompt, split_right_and_wait_for_prompt, FakePtyHandle, GridSnapshot,
+    Size, TestRunner, TestSession, PROMPT, TERMINAL_SIZE,
 };
 
 const FOCUS_KEYS_CONFIG: &str = r#"
@@ -87,6 +87,21 @@ fn focus_last_pane_refills_after_cycling_focus() {
     zellij.quit();
 }
 
+fn cursor_follows_prompt(grid: &GridSnapshot) -> bool {
+    let Some(cursor) = grid.cursor else {
+        return false;
+    };
+    let Some(line) = grid.lines().get(cursor.y).cloned() else {
+        return false;
+    };
+    let before: String = line
+        .chars()
+        .skip(cursor.x.saturating_sub(2))
+        .take(cursor.x.min(2))
+        .collect();
+    before == "$ "
+}
+
 fn open_floating_pane_below(
     zellij: &TestSession,
     previous_cursor_row: usize,
@@ -97,6 +112,7 @@ fn open_floating_pane_below(
     let grid = zellij.wait_until("new floating pane focused below the previous one", |grid| {
         grid.cursor
             .map_or(false, |cursor| cursor.y > previous_cursor_row)
+            && cursor_follows_prompt(grid)
     });
     (terminal, grid.cursor.unwrap().y)
 }
@@ -105,14 +121,15 @@ fn open_floating_pane_below(
 fn focus_last_floating_pane_returns_to_earlier_pane_after_closing_focused_pane() {
     let mut zellij = start_with_focus_keys(TERMINAL_SIZE);
     claim_first_terminal_and_wait_for_prompt(&zellij);
+    let tiled_cursor = zellij.snapshot().cursor;
 
     zellij.send_stdin(&keys::ctrl('p'));
     zellij.send_stdin(&keys::key('w'));
     let first_floating = zellij.expect_pty_spawn();
     first_floating.output(PROMPT);
     let first_floating_cursor = zellij
-        .wait_until("first floating pane focused", |grid| {
-            grid.contains("Pane #2") && grid.cursor.is_some()
+        .wait_until("first floating pane focused after its prompt", |grid| {
+            grid.contains("Pane #2") && grid.cursor != tiled_cursor && cursor_follows_prompt(grid)
         })
         .cursor
         .unwrap();

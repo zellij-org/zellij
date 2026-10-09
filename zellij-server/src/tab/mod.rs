@@ -31,7 +31,7 @@ use zellij_utils::position::Position;
 use zellij_utils::position::{Column, Line};
 use zellij_utils::shared::clean_string_from_control_and_linebreak;
 use zellij_utils::structured_render::{
-    PaneRect, PANE_FOCUSED, PANE_FRAMED, PANE_SELECTABLE, PANE_WANTS_MOUSE,
+    PaneRect, PANE_FOCUSED, PANE_FRAMED, PANE_PLUGIN_UI, PANE_SELECTABLE, PANE_WANTS_MOUSE,
 };
 
 use crate::background_jobs::BackgroundJob;
@@ -418,7 +418,7 @@ pub trait Pane {
         &mut self,
         cursor_color: PaletteColor,
         text_color: PaletteColor,
-    ) -> Option<String>;
+    ) -> Option<crate::output::CharacterChunk>;
     fn render_terminal_title(&mut self, _input_mode: InputMode) -> String;
     fn update_name(&mut self, name: &str);
     fn pid(&self) -> PaneId;
@@ -9009,7 +9009,12 @@ impl Tab {
     }
 }
 
-pub fn pane_rect_for_pane(pane: &Box<dyn Pane>, framed: bool, focused: bool) -> PaneRect {
+pub fn pane_rect_for_pane(
+    pane: &Box<dyn Pane>,
+    framed: bool,
+    focused: bool,
+    extra_flags: u8,
+) -> PaneRect {
     let cell = |value: usize| value.min(u16::MAX as usize) as u16;
     let inset = |value: usize| value.min(u8::MAX as usize) as u8;
     let x = pane.x();
@@ -9018,9 +9023,12 @@ pub fn pane_rect_for_pane(pane: &Box<dyn Pane>, framed: bool, focused: bool) -> 
     let rows = pane.rows();
     let left = pane.get_content_x().saturating_sub(x);
     let top = pane.get_content_y().saturating_sub(y);
-    let mut flags = 0;
+    let mut flags = extra_flags;
     if framed {
         flags |= PANE_FRAMED;
+    }
+    if matches!(pane.pid(), PaneId::Plugin(_)) && !pane.supports_mouse_selection() {
+        flags |= PANE_PLUGIN_UI;
     }
     if focused {
         flags |= PANE_FOCUSED;
