@@ -502,6 +502,7 @@ pub enum ScreenContext {
     ApplyTiledSwapLayoutWithTabId,
     ApplyFloatingSwapLayoutWithTabId,
     MoveTabWithTabId,
+    MoveTabToPosition,
     UpdateBackgroundPluginSubscriptions,
     ClearHintTextCache,
     BroadcastModeUpdate,

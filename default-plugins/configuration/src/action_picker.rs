@@ -144,6 +144,7 @@ const DIRECTIONS: &[&str] = &["left", "right", "up", "down"];
 const OPTIONAL_DIRECTIONS: &[&str] = &["", "left", "right", "up", "down"];
 const NEW_PANE_PLACES: &[&str] = &["", "right", "down", "stacked"];
 const LEFT_RIGHT: &[&str] = &["left", "right"];
+const START_END: &[&str] = &["start", "end"];
 const RESIZES: &[&str] = &[
     "Increase",
     "Decrease",
@@ -456,6 +457,11 @@ pub const ACTION_SPECS: &[ActionSpec] = &[
         "MoveTabByTabId",
         "Move the clicked tab",
         &[positional("Direction", ArgKind::Choice(LEFT_RIGHT), true)],
+    ),
+    menu_only(
+        "MoveTabToPosition",
+        "Move the clicked tab to the start or the end",
+        &[positional("Position", ArgKind::Choice(START_END), true)],
     ),
     mouse_only("Click", "Send the click to the pane and focus it", &[]),
     mouse_only("Select", "Select text by dragging", &[]),

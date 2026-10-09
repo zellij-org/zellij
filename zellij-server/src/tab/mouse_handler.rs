@@ -23,12 +23,25 @@ use crate::ClientId;
 use super::{Pane, Tab};
 
 fn clear_hover_for_client(tab: &mut Tab, client_id: ClientId) -> bool {
+    clear_hover_for_client_keeping_plugin(tab, client_id, None)
+}
+
+fn clear_hover_for_client_keeping_plugin(
+    tab: &mut Tab,
+    client_id: ClientId,
+    plugin_to_keep: Option<PaneId>,
+) -> bool {
     let mut cleared = false;
     if let Some(prev_pid) = tab.mouse_hover_pane_id.remove(&client_id) {
         if let Some(pane) = tab.get_pane_with_id_mut(prev_pid) {
             pane.set_hover_position(None);
         }
         cleared = true;
+    }
+    let keeps_plugin_hover = plugin_to_keep.is_some()
+        && tab.plugin_hover_pane_id.get(&client_id).copied() == plugin_to_keep;
+    if keeps_plugin_hover {
+        return cleared;
     }
     if let Some(prev_plugin_pid) = tab.plugin_hover_pane_id.remove(&client_id) {
         if let Some(pane) = tab.get_pane_with_id(prev_plugin_pid) {
@@ -1010,7 +1023,7 @@ impl MouseHandler {
             MouseAction::FocusPane {
                 pane_id: _,
                 position,
-            } => Self::execute_focus_pane(tab, position, client_id),
+            } => Self::execute_focus_pane(tab, position, event.left, client_id),
             MouseAction::FocusPaneAndClickThrough {
                 pane_id: _,
                 position,
@@ -1259,22 +1272,39 @@ impl MouseHandler {
     fn execute_focus_pane(
         tab: &mut Tab,
         position: Position,
+        left_button: bool,
         client_id: ClientId,
     ) -> Result<MouseEffect> {
         let err_context = || "failed to focus pane";
-        clear_hover_for_client(tab, client_id);
+        let clicked_unselectable_plugin = Self::unselectable_pane_at_position(tab, &position)
+            .map(|pane| pane.pid())
+            .filter(|pane_id| matches!(pane_id, PaneId::Plugin(_)));
+        clear_hover_for_client_keeping_plugin(tab, client_id, clicked_unselectable_plugin);
         let active_pane_id_before = tab
             .get_active_pane_id(client_id)
             .ok_or_else(|| anyhow!("Failed to find active pane"))?;
 
-        Self::focus_pane_at(tab, &position, client_id).with_context(err_context)?;
+        if Self::unselectable_pane_at_position(tab, &position).is_none() {
+            Self::focus_pane_at(tab, &position, client_id).with_context(err_context)?;
+        }
 
         let osc133_command_selection = tab.osc133_command_selection;
         let word_separators = tab.word_separators.clone();
+        let mut dragging_in_plugin = None;
         if let Some(pane_at_position) = Self::unselectable_pane_at_position(tab, &position) {
             let relative_position = pane_at_position.relative_position(&position);
             pane_at_position.set_selection_options(osc133_command_selection, &word_separators);
             pane_at_position.start_selection(&relative_position, client_id);
+            let pane_id = pane_at_position.pid();
+            if left_button
+                && matches!(pane_id, PaneId::Plugin(_))
+                && !pane_at_position.supports_mouse_selection()
+            {
+                dragging_in_plugin = Some(pane_id);
+            }
+        }
+        if dragging_in_plugin.is_some() {
+            tab.selecting_with_mouse_in_pane = dragging_in_plugin;
         }
 
         if tab.floating_panes.panes_are_visible() {
@@ -1282,6 +1312,9 @@ impl MouseHandler {
             let moved_pane_with_mouse = tab
                 .floating_panes
                 .move_pane_with_mouse(position, search_selectable);
+            if moved_pane_with_mouse && dragging_in_plugin.is_some() {
+                tab.selecting_with_mouse_in_pane = None;
+            }
             let active_pane_id_after = tab
                 .get_active_pane_id(client_id)
                 .ok_or_else(|| anyhow!("Failed to find active pane"))?;
@@ -2040,6 +2073,15 @@ impl MouseHandler {
         }
     }
 
+    fn clicked_pinned_unselectable_plugin(ctx: &MouseEventContext) -> bool {
+        match (&ctx.clicked_pane, ctx.pinned_unselectable) {
+            (Some(details), Some(pinned_id)) => {
+                details.is_unselectable_plugin && details.pane_id == pinned_id && !details.on_frame
+            },
+            _ => false,
+        }
+    }
+
     fn focus_action(event: &MouseEvent, ctx: &MouseEventContext) -> MouseAction {
         let Some(details) = &ctx.clicked_pane else {
             return MouseAction::NoAction;
@@ -2048,7 +2090,7 @@ impl MouseHandler {
             if let Some(pinned_id) = ctx.pinned_selectable {
                 return MouseAction::ShowFloatingPanesAndFocus { pane_id: pinned_id };
             }
-            if ctx.pinned_unselectable.is_some() {
+            if ctx.pinned_unselectable.is_some() && !Self::clicked_pinned_unselectable_plugin(ctx) {
                 return MouseAction::NoAction;
             }
         }
@@ -2101,6 +2143,12 @@ impl MouseHandler {
         if !ctx.floating_visible {
             if let Some(pinned_id) = ctx.pinned_selectable {
                 return MouseAction::ShowFloatingPanesAndFocus { pane_id: pinned_id };
+            }
+            if Self::clicked_pinned_unselectable_plugin(ctx) {
+                return MouseAction::FocusPane {
+                    pane_id: details.pane_id,
+                    position: event.position,
+                };
             }
             if ctx.pinned_unselectable.is_some() {
                 return MouseAction::NoAction;
@@ -2216,30 +2264,10 @@ impl MouseHandler {
         tab: &'a mut Tab,
         point: &Position,
     ) -> Option<&'a mut Box<dyn Pane>> {
-        // the repetition in this function is to appease the borrow checker, I don't like it either
-        let floating_panes_are_visible = tab.floating_panes.panes_are_visible();
-        if floating_panes_are_visible {
-            if let Ok(Some(clicked_pane_id)) = tab.floating_panes.get_pane_id_at(point, true) {
-                if let Some(pane) = tab.floating_panes.get_pane_mut(clicked_pane_id) {
-                    if !pane.selectable() {
-                        return Some(pane);
-                    }
-                }
-            } else if let Ok(Some(clicked_pane_id)) = tab.get_pane_id_at(point, false) {
-                if let Some(pane) = tab.tiled_panes.get_pane_mut(clicked_pane_id) {
-                    if !pane.selectable() {
-                        return Some(pane);
-                    }
-                }
-            }
-        } else if let Ok(Some(clicked_pane_id)) = tab.get_pane_id_at(point, false) {
-            if let Some(pane) = tab.tiled_panes.get_pane_mut(clicked_pane_id) {
-                if !pane.selectable() {
-                    return Some(pane);
-                }
-            }
-        }
-        None
+        Self::get_pane_at(tab, point, false)
+            .ok()
+            .flatten()
+            .filter(|pane| !pane.selectable())
     }
 
     fn focus_pane_at(tab: &mut Tab, point: &Position, client_id: ClientId) -> Result<()> {

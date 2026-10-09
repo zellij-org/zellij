@@ -6,7 +6,9 @@ use crate::data::{
     PaletteColor, PaneId, PaneInfo, PaneManifest, PermissionType, Resize, SessionInfo,
     StyleDeclaration, Styling, TabInfo, ThemeHue, WebSharing, DEFAULT_STYLES,
 };
-use crate::data::{ClickedPaneAction, ClickedTabAction, ContextMenuAction, ContextMenuEntry};
+use crate::data::{
+    ClickedPaneAction, ClickedTabAction, ContextMenuAction, ContextMenuEntry, TAB_POSITION_END,
+};
 use crate::envs::EnvironmentVariables;
 use crate::home::{find_default_config_dir, get_layout_dir};
 use crate::input::config::{Config, ConfigError, KdlError};
@@ -1443,8 +1445,42 @@ impl Action {
                 node.push(KdlValue::Base10(*id as i64));
                 Some(node)
             },
+            Action::MoveTabToPosition { id, position } => {
+                let mut node = KdlNode::new("MoveTabToPosition");
+                node.push(tab_position_to_kdl_value(*position));
+                node.push(KdlValue::Base10(*id as i64));
+                Some(node)
+            },
             _ => None,
         }
+    }
+}
+
+fn tab_position_to_kdl_value(position: u64) -> KdlValue {
+    if position == 0 {
+        KdlValue::String("start".into())
+    } else if position > i64::MAX as u64 {
+        KdlValue::String("end".into())
+    } else {
+        KdlValue::Base10(position as i64)
+    }
+}
+
+fn tab_position_from_kdl_entry(entry: &KdlEntry) -> Result<u64, ConfigError> {
+    match entry.value() {
+        KdlValue::String(s) if s == "start" => Ok(0),
+        KdlValue::String(s) if s == "end" => Ok(TAB_POSITION_END),
+        value => value
+            .as_i64()
+            .filter(|p| *p >= 0)
+            .map(|p| p as u64)
+            .ok_or_else(|| {
+                kdl_parsing_error!(
+                    "MoveTabToPosition expects \"start\", \"end\" or a position starting from 0"
+                        .into(),
+                    entry
+                )
+            }),
     }
 }
 
@@ -2541,6 +2577,27 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     kdl_parsing_error!("MoveTabByTabId expects a tab id".into(), id_entry)
                 })? as u64;
                 Ok(Action::MoveTabByTabId { id, direction })
+            },
+            "MoveTabToPosition" => {
+                let position_entry = action_arguments.first().ok_or_else(|| {
+                    ConfigError::new_kdl_error(
+                        "MoveTabToPosition expects a position".into(),
+                        kdl_action.span().offset(),
+                        kdl_action.span().len(),
+                    )
+                })?;
+                let position = tab_position_from_kdl_entry(position_entry)?;
+                let id_entry = action_arguments.get(1).ok_or_else(|| {
+                    ConfigError::new_kdl_error(
+                        "MoveTabToPosition needs a tab id after the position (it can only be left out inside context_menu)".into(),
+                        kdl_action.span().offset(),
+                        kdl_action.span().len(),
+                    )
+                })?;
+                let id = id_entry.value().as_i64().ok_or_else(|| {
+                    kdl_parsing_error!("MoveTabToPosition expects a tab id".into(), id_entry)
+                })? as u64;
+                Ok(Action::MoveTabToPosition { id, position })
             },
             "TogglePaneInGroup" => Ok(Action::TogglePaneInGroup),
             "ToggleGroupMarking" => Ok(Action::ToggleGroupMarking),
@@ -6652,6 +6709,12 @@ impl ContextMenuAction {
                 direction,
             )));
         }
+        if action_name == "MoveTabToPosition" && arguments.len() == 1 {
+            let position = tab_position_from_kdl_entry(arguments[0])?;
+            return Ok(ContextMenuAction::ClickedTab(
+                ClickedTabAction::MoveToPosition(position),
+            ));
+        }
         Action::try_from((kdl_action, config_options)).map(ContextMenuAction::Action)
     }
     pub fn to_kdl(&self) -> Option<KdlNode> {
@@ -6660,13 +6723,19 @@ impl ContextMenuAction {
             ContextMenuAction::ClickedPane(action) => Some(KdlNode::new(action.kdl_name())),
             ContextMenuAction::ClickedTab(action) => {
                 let mut node = KdlNode::new(action.kdl_name());
-                if let ClickedTabAction::Move(direction) = action {
-                    node.push(match direction {
-                        Direction::Left => "left",
-                        Direction::Right => "right",
-                        Direction::Up => "up",
-                        Direction::Down => "down",
-                    });
+                match action {
+                    ClickedTabAction::Move(direction) => {
+                        node.push(match direction {
+                            Direction::Left => "left",
+                            Direction::Right => "right",
+                            Direction::Up => "up",
+                            Direction::Down => "down",
+                        });
+                    },
+                    ClickedTabAction::MoveToPosition(position) => {
+                        node.push(tab_position_to_kdl_value(*position));
+                    },
+                    _ => {},
                 }
                 Some(node)
             },
@@ -9806,6 +9875,11 @@ fn every_clicked_pane_or_tab_form_is_written_back_as_it_was_read() {
         "MoveTabByTabId \"right\"",
         "CloseFocusByPaneId \"terminal_2\"",
         "MoveTabByTabId \"left\" 3",
+        "MoveTabToPosition \"start\"",
+        "MoveTabToPosition \"end\"",
+        "MoveTabToPosition 2",
+        "MoveTabToPosition \"end\" 3",
+        "MoveTabToPosition 1 3",
     ];
     for text in names {
         let document: KdlDocument = text.parse().unwrap();
@@ -9820,6 +9894,59 @@ fn every_clicked_pane_or_tab_form_is_written_back_as_it_was_read() {
         let written = action.to_kdl().unwrap();
         let reparsed = ContextMenuAction::from_kdl(&written, &Options::default()).unwrap();
         assert_eq!(action, reparsed, "{} changed when written back", text);
+    }
+}
+
+#[test]
+fn move_tab_to_position_parses_start_end_and_numbers() {
+    let cases = [
+        (
+            "MoveTabToPosition \"start\"",
+            ContextMenuAction::ClickedTab(ClickedTabAction::MoveToPosition(0)),
+        ),
+        (
+            "MoveTabToPosition \"end\"",
+            ContextMenuAction::ClickedTab(ClickedTabAction::MoveToPosition(TAB_POSITION_END)),
+        ),
+        (
+            "MoveTabToPosition 2",
+            ContextMenuAction::ClickedTab(ClickedTabAction::MoveToPosition(2)),
+        ),
+        (
+            "MoveTabToPosition \"end\" 7",
+            Action::MoveTabToPosition {
+                id: 7,
+                position: TAB_POSITION_END,
+            }
+            .into(),
+        ),
+        (
+            "MoveTabToPosition 1 7",
+            Action::MoveTabToPosition { id: 7, position: 1 }.into(),
+        ),
+    ];
+    for (text, expected) in cases {
+        let document: KdlDocument = text.parse().unwrap();
+        let node = document.nodes().first().unwrap();
+        assert_eq!(
+            ContextMenuAction::from_kdl(node, &Options::default()).unwrap(),
+            expected,
+            "{}",
+            text
+        );
+    }
+    for bad in [
+        "MoveTabToPosition \"middle\"",
+        "MoveTabToPosition -1",
+        "MoveTabToPosition",
+    ] {
+        let document: KdlDocument = bad.parse().unwrap();
+        let node = document.nodes().first().unwrap();
+        assert!(
+            ContextMenuAction::from_kdl(node, &Options::default()).is_err(),
+            "{} should be rejected",
+            bad
+        );
     }
 }
 

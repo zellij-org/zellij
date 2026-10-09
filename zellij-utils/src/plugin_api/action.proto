@@ -256,6 +256,7 @@ message Action {
     TargetPaneIdPayload target_pane_id_payload = 65;
     TargetTabIdPayload target_tab_id_payload = 66;
     MoveTabByTabIdPayload move_tab_by_tab_id_payload = 67;
+    MoveTabToPositionPayload move_tab_to_position_payload = 68;
   }
 }
 
@@ -270,6 +271,11 @@ message TargetTabIdPayload {
 message MoveTabByTabIdPayload {
   uint64 tab_id = 1;
   MoveTabDirection direction = 2;
+}
+
+message MoveTabToPositionPayload {
+  uint64 tab_id = 1;
+  uint64 position = 2;
 }
 
 message SetPaneBorderStylePayload {
@@ -550,6 +556,7 @@ enum ActionName {
     StartRenameTabByTabId = 124;
     DismissInfoPopups = 125;
     OpenContextMenu = 126;
+    MoveTabToPosition = 127;
 }
 
 message Position {

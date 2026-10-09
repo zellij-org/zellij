@@ -1,5 +1,6 @@
 ---
 source: zellij-utils/src/setup.rs
+assertion_line: 836
 expression: "format!(\"{:#?}\", config)"
 ---
 Config {
@@ -6505,6 +6506,26 @@ Config {
                     ClickedTab(
                         Move(
                             Right,
+                        ),
+                    ),
+                ],
+            },
+            Item {
+                label: "Move tab to start",
+                actions: [
+                    ClickedTab(
+                        MoveToPosition(
+                            0,
+                        ),
+                    ),
+                ],
+            },
+            Item {
+                label: "Move tab to end",
+                actions: [
+                    ClickedTab(
+                        MoveToPosition(
+                            18446744073709551615,
                         ),
                     ),
                 ],

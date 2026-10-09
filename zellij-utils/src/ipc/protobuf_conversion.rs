@@ -1262,6 +1262,7 @@ impl From<crate::input::actions::Action>
             MovePaneByPaneIdAction,
             MoveTabAction,
             MoveTabByTabIdAction,
+            MoveTabToPositionAction,
             NewBlockingPaneAction,
             NewFloatingPaneAction,
             NewFloatingPluginPaneAction,
@@ -2318,6 +2319,9 @@ impl From<crate::input::actions::Action>
                     direction: direction_to_proto_i32(direction),
                 })
             },
+            crate::input::actions::Action::MoveTabToPosition { id, position } => {
+                ActionType::MoveTabToPosition(MoveTabToPositionAction { id, position })
+            },
         };
 
         Self {
@@ -3352,6 +3356,12 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                 Ok(crate::input::actions::Action::MoveTabByTabId {
                     id: a.id,
                     direction,
+                })
+            },
+            ActionType::MoveTabToPosition(a) => {
+                Ok(crate::input::actions::Action::MoveTabToPosition {
+                    id: a.id,
+                    position: a.position,
                 })
             },
         }

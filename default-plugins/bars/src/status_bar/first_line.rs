@@ -165,6 +165,7 @@ fn long_mode_shortcut(
             + key_hint.chars().count()
             + 1
             + separator.chars().count(),
+        ..Default::default()
     }
 }
 
@@ -217,6 +218,7 @@ fn shortened_modifier_shortcut(
             + key_hint.chars().count()
             + 1
             + separator.chars().count(),
+        ..Default::default()
     }
 }
 
@@ -255,6 +257,7 @@ fn short_mode_shortcut(
             + key_binding.chars().count()
             + 1
             + separator.chars().count(),
+        ..Default::default()
     }
 }
 
@@ -317,7 +320,11 @@ fn swap_layout_keycode(mode_info: &ModeInfo) -> LinePart {
     let keycode = ANSIStrings(&prev_next_keys_indicator);
     let len = unstyled_len(&keycode);
     let part = keycode.to_string();
-    LinePart { part, len }
+    LinePart {
+        part,
+        len,
+        ..Default::default()
+    }
 }
 
 fn swap_layout_status(
@@ -383,11 +390,13 @@ fn swap_layout_status(
                 Some(LinePart {
                     part,
                     len: full_len,
+                    ..Default::default()
                 })
             } else if short_len <= max_len && mode_info.mode != InputMode::Locked {
                 Some(LinePart {
                     part: swap_layout_indicator,
                     len: short_len,
+                    ..Default::default()
                 })
             } else {
                 None
@@ -478,6 +487,7 @@ pub fn superkey(
         LinePart {
             part: ANSIStrings(&[prefix, suffix_separator]).to_string(),
             len: prefix_text.chars().count() + separator.chars().count(),
+            ..Default::default()
         },
     )
 }

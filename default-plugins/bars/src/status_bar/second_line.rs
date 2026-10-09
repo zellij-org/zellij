@@ -39,6 +39,7 @@ fn full_length_shortcut(
     LinePart {
         part: part.to_string(),
         len: unstyled_len(&part),
+        ..Default::default()
     }
 }
 
@@ -50,6 +51,7 @@ fn locked_interface_indication(palette: Styling) -> LinePart {
     LinePart {
         part: locked_styled_text.to_string(),
         len: locked_text_len,
+        ..Default::default()
     }
 }
 
@@ -371,6 +373,7 @@ fn nested_session_status_hint(
         return LinePart {
             part: part.to_string(),
             len,
+            ..Default::default()
         };
     }
     let part = ANSIStrings(&key_bits);
@@ -379,6 +382,7 @@ fn nested_session_status_hint(
         LinePart {
             part: part.to_string(),
             len,
+            ..Default::default()
         }
     } else {
         LinePart::default()
@@ -397,6 +401,7 @@ pub fn text_copied_hint(copy_destination: CopyDestination) -> LinePart {
     LinePart {
         part: serialize_text(&Text::from(hint).color_range(2, ..).opaque()),
         len: hint.len(),
+        ..Default::default()
     }
 }
 
@@ -406,6 +411,7 @@ pub fn system_clipboard_error(palette: &Styling) -> LinePart {
     LinePart {
         part: Style::new().fg(red_color).bold().paint(hint).to_string(),
         len: hint.len(),
+        ..Default::default()
     }
 }
 
@@ -435,6 +441,7 @@ pub fn fullscreen_panes_to_hide(palette: &Styling, panes_to_hide: usize) -> Line
             Style::new().fg(text_color).bold().paint(hide)
         ),
         len,
+        ..Default::default()
     }
 }
 
@@ -497,6 +504,7 @@ pub fn floating_panes_are_visible(mode_info: &ModeInfo) -> LinePart {
             Style::new().fg(white_color).bold().paint(to_hide),
         ),
         len,
+        ..Default::default()
     }
 }
 
@@ -529,6 +537,7 @@ pub fn locked_fullscreen_panes_to_hide(palette: &Styling, panes_to_hide: usize) 
             Style::new().fg(text_color).bold().paint(hide)
         ),
         len,
+        ..Default::default()
     }
 }
 
@@ -550,6 +559,7 @@ pub fn locked_floating_panes_are_visible(palette: &Styling) -> LinePart {
             shortcut_right_separator,
         ),
         len,
+        ..Default::default()
     }
 }
 

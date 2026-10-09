@@ -189,7 +189,7 @@ pub struct NestedSessionModeUpdatePayload {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ContextMenuAction {
-    #[prost(oneof="context_menu_action::Action", tags="1, 2, 3")]
+    #[prost(oneof="context_menu_action::Action", tags="1, 2, 3, 4")]
     pub action: ::core::option::Option<context_menu_action::Action>,
 }
 /// Nested message and enum types in `ContextMenuAction`.
@@ -203,6 +203,8 @@ pub mod context_menu_action {
         ClickedPane(i32),
         #[prost(enumeration="super::ClickedTabAction", tag="3")]
         ClickedTab(i32),
+        #[prost(uint64, tag="4")]
+        ClickedTabMoveToPosition(u64),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]

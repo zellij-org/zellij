@@ -1,9 +1,11 @@
+mod click_actions;
 mod compact_bar;
 mod double_click;
 mod keybinds;
 mod link;
 mod status_bar;
 mod tab_bar;
+mod tab_drag;
 
 use std::collections::BTreeMap;
 use zellij_tile::prelude::*;

@@ -1363,7 +1363,10 @@ pub enum ClickedTabAction {
     Close,
     StartRename,
     Move(Direction),
+    MoveToPosition(u64),
 }
+
+pub const TAB_POSITION_END: u64 = u64::MAX;
 
 impl ClickedTabAction {
     pub fn kdl_name(&self) -> &'static str {
@@ -1371,6 +1374,7 @@ impl ClickedTabAction {
             ClickedTabAction::Close => "CloseTabById",
             ClickedTabAction::StartRename => "StartRenameTabByTabId",
             ClickedTabAction::Move(_) => "MoveTabByTabId",
+            ClickedTabAction::MoveToPosition(_) => "MoveTabToPosition",
         }
     }
     pub fn with_tab(&self, id: u64) -> Action {
@@ -1380,6 +1384,10 @@ impl ClickedTabAction {
             ClickedTabAction::Move(direction) => Action::MoveTabByTabId {
                 id,
                 direction: *direction,
+            },
+            ClickedTabAction::MoveToPosition(position) => Action::MoveTabToPosition {
+                id,
+                position: *position,
             },
         }
     }

@@ -1057,6 +1057,7 @@ pub enum ScreenInstruction {
     ApplyTiledSwapLayoutWithTabId(usize, String, Option<NotificationEnd>),
     ApplyFloatingSwapLayoutWithTabId(usize, String, Option<NotificationEnd>),
     MoveTabWithTabId(usize, Direction, Option<NotificationEnd>),
+    MoveTabToPosition(usize, usize, Option<NotificationEnd>),
     SetSoftKeyboard {
         client_id: ClientId,
         on: bool,
@@ -1502,6 +1503,7 @@ impl From<&ScreenInstruction> for ScreenContext {
                 ScreenContext::ApplyFloatingSwapLayoutWithTabId
             },
             ScreenInstruction::MoveTabWithTabId(..) => ScreenContext::MoveTabWithTabId,
+            ScreenInstruction::MoveTabToPosition(..) => ScreenContext::MoveTabToPosition,
             ScreenInstruction::SetSoftKeyboard { .. } => ScreenContext::SetSoftKeyboard,
             ScreenInstruction::FocusHostSession(..) => ScreenContext::FocusHostSession,
             ScreenInstruction::FocusGuestSession(..) => ScreenContext::FocusGuestSession,
@@ -6922,6 +6924,34 @@ impl Screen {
             self.log_and_report_session_state().non_fatal();
         }
         Ok(true)
+    }
+
+    pub fn move_tab_to_position(&mut self, tab_id: usize, position: usize) -> bool {
+        let Some(current_position) = self.tabs.get(&tab_id).map(|t| t.position) else {
+            log::error!("Tab with id {} not found", tab_id);
+            return false;
+        };
+        let target = position.min(self.tabs.len().saturating_sub(1));
+        if target == current_position {
+            return true;
+        }
+        for tab in self.tabs.values_mut() {
+            if tab.id == tab_id {
+                tab.position = target;
+            } else if current_position < target
+                && tab.position > current_position
+                && tab.position <= target
+            {
+                tab.position -= 1;
+            } else if target < current_position
+                && tab.position >= target
+                && tab.position < current_position
+            {
+                tab.position += 1;
+            }
+        }
+        self.log_and_report_session_state().non_fatal();
+        true
     }
 
     pub fn change_mode(
@@ -14632,6 +14662,24 @@ pub(crate) fn screen_thread_main(
                     pending_events_waiting_for_tab.push(ScreenInstruction::MoveTabWithTabId(
                         tab_id,
                         direction,
+                        _completion_tx,
+                    ));
+                }
+            },
+            ScreenInstruction::MoveTabToPosition(tab_id, position, mut _completion_tx) => {
+                if pending_tab_ids.is_empty() {
+                    let tab_found = screen.move_tab_to_position(tab_id, position);
+                    if !tab_found {
+                        mark_action_as_failed(
+                            &mut _completion_tx,
+                            &format!("Tab with id {} not found", tab_id),
+                        );
+                    }
+                    screen.render(None)?;
+                } else {
+                    pending_events_waiting_for_tab.push(ScreenInstruction::MoveTabToPosition(
+                        tab_id,
+                        position,
                         _completion_tx,
                     ));
                 }

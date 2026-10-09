@@ -222,6 +222,7 @@ message ContextMenuAction {
     action.Action plain = 1;
     ClickedPaneAction clicked_pane = 2;
     ClickedTabAction clicked_tab = 3;
+    uint64 clicked_tab_move_to_position = 4;
   }
 }
 

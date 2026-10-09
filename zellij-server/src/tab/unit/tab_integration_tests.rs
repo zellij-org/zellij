@@ -18328,3 +18328,208 @@ fn dragging_inside_a_floating_pane_with_a_move_pane_binding_moves_it() {
     assert_eq!(geom_after.x, geom_before.x + 5);
     assert_eq!(geom_after.y, geom_before.y + 2);
 }
+
+fn mouse_events_sent_to_plugin(
+    plugin_receiver: &Receiver<(PluginInstruction, ErrorContext)>,
+    plugin_id: u32,
+) -> Vec<zellij_utils::data::Mouse> {
+    let mut events = vec![];
+    while let Ok((instruction, _)) = plugin_receiver.try_recv() {
+        if let PluginInstruction::Update(updates) = instruction {
+            for (pid, _, event) in updates {
+                if pid != Some(plugin_id) {
+                    continue;
+                }
+                match event {
+                    zellij_utils::data::Event::Mouse(mouse)
+                    | zellij_utils::data::Event::MouseWithModifiers(mouse, _) => events.push(mouse),
+                    _ => {},
+                }
+            }
+        }
+    }
+    events
+}
+
+fn tab_with_unselectable_plugin_pane(
+    size: Size,
+    client_id: ClientId,
+) -> (Tab, Receiver<(PluginInstruction, ErrorContext)>) {
+    let (mut tab, plugin_receiver) = create_new_tab_with_plugin_receiver(size, ModeInfo::default());
+    tab.new_pane(
+        PaneId::Plugin(7),
+        None,
+        None,
+        false,
+        true,
+        NewPanePlacement::default(),
+        Some(client_id),
+        None,
+    )
+    .unwrap();
+    tab.set_pane_selectable(PaneId::Plugin(7), false);
+    while plugin_receiver.try_recv().is_ok() {}
+    (tab, plugin_receiver)
+}
+
+#[test]
+fn dragging_in_an_unselectable_plugin_pane_sends_hold_and_release_to_the_plugin() {
+    use zellij_utils::data::Mouse;
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let (mut tab, plugin_receiver) = tab_with_unselectable_plugin_pane(size, client_id);
+    assert_eq!(tab.get_active_pane_id(client_id), Some(PaneId::Terminal(1)));
+    let plugin_point = center_of_pane(&tab, PaneId::Plugin(7));
+    let moved_point = Position::new(
+        plugin_point.line() as i32,
+        (plugin_point.column() + 3) as u16,
+    );
+    tab.handle_mouse_event(&MouseEvent::new_left_press_event(plugin_point), client_id)
+        .unwrap();
+    assert_eq!(tab.selecting_with_mouse_in_pane, Some(PaneId::Plugin(7)));
+    assert_eq!(tab.get_active_pane_id(client_id), Some(PaneId::Terminal(1)));
+    tab.handle_mouse_event(&MouseEvent::new_left_motion_event(moved_point), client_id)
+        .unwrap();
+    tab.handle_mouse_event(&MouseEvent::new_left_release_event(moved_point), client_id)
+        .unwrap();
+    assert!(tab.selecting_with_mouse_in_pane.is_none());
+    let events = mouse_events_sent_to_plugin(&plugin_receiver, 7);
+    let kinds: Vec<&'static str> = events
+        .iter()
+        .filter_map(|event| match event {
+            Mouse::LeftClick(..) => Some("click"),
+            Mouse::Hold(..) => Some("hold"),
+            Mouse::Release(..) => Some("release"),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(kinds, vec!["click", "hold", "release"], "{:?}", events);
+    let click_column = events.iter().find_map(|event| match event {
+        Mouse::LeftClick(_, column) => Some(*column),
+        _ => None,
+    });
+    let hold_column = events.iter().find_map(|event| match event {
+        Mouse::Hold(_, column) => Some(*column),
+        _ => None,
+    });
+    assert_eq!(hold_column, click_column.map(|column| column + 3));
+}
+
+#[test]
+fn a_middle_click_on_an_unselectable_plugin_pane_does_not_start_a_drag() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let (mut tab, _plugin_receiver) = tab_with_unselectable_plugin_pane(size, client_id);
+    let plugin_point = center_of_pane(&tab, PaneId::Plugin(7));
+    tab.handle_mouse_event(&MouseEvent::new_middle_press_event(plugin_point), client_id)
+        .unwrap();
+    assert!(tab.selecting_with_mouse_in_pane.is_none());
+    let terminal_point = center_of_pane(&tab, PaneId::Terminal(1));
+    tab.handle_mouse_event(&MouseEvent::new_left_press_event(terminal_point), client_id)
+        .unwrap();
+    assert_eq!(tab.selecting_with_mouse_in_pane, Some(PaneId::Terminal(1)));
+}
+
+#[test]
+fn clicking_a_pinned_unselectable_plugin_pane_sends_it_the_click_without_moving_focus() {
+    use zellij_utils::data::Mouse;
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let (mut tab, plugin_receiver) = create_new_tab_with_plugin_receiver(size, ModeInfo::default());
+    let coordinates = FloatingPaneCoordinates {
+        x: Some(PercentOrFixed::Fixed(30)),
+        y: Some(PercentOrFixed::Fixed(5)),
+        width: Some(PercentOrFixed::Fixed(40)),
+        height: Some(PercentOrFixed::Fixed(8)),
+        pinned: Some(true),
+        borderless: Some(false),
+        border_style: None,
+    };
+    tab.new_floating_pane(
+        PaneId::Plugin(8),
+        None,
+        None,
+        false,
+        false,
+        Some(coordinates),
+        None,
+    )
+    .unwrap();
+    tab.set_pane_selectable(PaneId::Plugin(8), false);
+    assert!(!tab.floating_panes.panes_are_visible());
+    while plugin_receiver.try_recv().is_ok() {}
+    let active_before = tab.get_active_pane_id(client_id);
+    let plugin_point = center_of_pane(&tab, PaneId::Plugin(8));
+    tab.handle_mouse_event(&MouseEvent::new_left_press_event(plugin_point), client_id)
+        .unwrap();
+    tab.handle_mouse_event(&MouseEvent::new_left_release_event(plugin_point), client_id)
+        .unwrap();
+    assert_eq!(tab.get_active_pane_id(client_id), active_before);
+    assert!(!tab.floating_panes.panes_are_visible());
+    let events = mouse_events_sent_to_plugin(&plugin_receiver, 8);
+    assert!(
+        events.iter().any(|e| matches!(e, Mouse::LeftClick(..))),
+        "{:?}",
+        events
+    );
+    assert!(
+        events.iter().any(|e| matches!(e, Mouse::Release(..))),
+        "{:?}",
+        events
+    );
+}
+
+#[test]
+fn clicking_a_hovered_unselectable_plugin_pane_keeps_its_hover() {
+    use zellij_utils::data::Mouse;
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let (mut tab, plugin_receiver) = tab_with_unselectable_plugin_pane(size, client_id);
+    let plugin_point = center_of_pane(&tab, PaneId::Plugin(7));
+    tab.handle_mouse_event(&MouseEvent::new_buttonless_motion(plugin_point), client_id)
+        .unwrap();
+    let events = mouse_events_sent_to_plugin(&plugin_receiver, 7);
+    assert!(
+        events.iter().any(|e| matches!(e, Mouse::Hover(..))),
+        "{:?}",
+        events
+    );
+    tab.handle_mouse_event(&MouseEvent::new_left_press_event(plugin_point), client_id)
+        .unwrap();
+    tab.handle_mouse_event(&MouseEvent::new_left_release_event(plugin_point), client_id)
+        .unwrap();
+    let events = mouse_events_sent_to_plugin(&plugin_receiver, 7);
+    assert!(
+        !events
+            .iter()
+            .any(|e| matches!(e, Mouse::Hover(_, column) if *column >= size.cols)),
+        "{:?}",
+        events
+    );
+    let terminal_point = center_of_pane(&tab, PaneId::Terminal(1));
+    tab.handle_mouse_event(
+        &MouseEvent::new_buttonless_motion(terminal_point),
+        client_id,
+    )
+    .unwrap();
+    let events = mouse_events_sent_to_plugin(&plugin_receiver, 7);
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, Mouse::Hover(_, column) if *column >= size.cols)),
+        "{:?}",
+        events
+    );
+}

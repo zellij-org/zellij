@@ -307,7 +307,7 @@ pub struct OverrideLayoutPayload {
 pub struct Action {
     #[prost(enumeration="ActionName", tag="1")]
     pub name: i32,
-    #[prost(oneof="action::OptionalPayload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67")]
+    #[prost(oneof="action::OptionalPayload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68")]
     pub optional_payload: ::core::option::Option<action::OptionalPayload>,
 }
 /// Nested message and enum types in `Action`.
@@ -441,6 +441,8 @@ pub mod action {
         TargetTabIdPayload(super::TargetTabIdPayload),
         #[prost(message, tag="67")]
         MoveTabByTabIdPayload(super::MoveTabByTabIdPayload),
+        #[prost(message, tag="68")]
+        MoveTabToPositionPayload(super::MoveTabToPositionPayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -462,6 +464,14 @@ pub struct MoveTabByTabIdPayload {
     pub tab_id: u64,
     #[prost(enumeration="MoveTabDirection", tag="2")]
     pub direction: i32,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MoveTabToPositionPayload {
+    #[prost(uint64, tag="1")]
+    pub tab_id: u64,
+    #[prost(uint64, tag="2")]
+    pub position: u64,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1212,6 +1222,7 @@ pub enum ActionName {
     StartRenameTabByTabId = 124,
     DismissInfoPopups = 125,
     OpenContextMenu = 126,
+    MoveTabToPosition = 127,
 }
 impl ActionName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1344,6 +1355,7 @@ impl ActionName {
             ActionName::StartRenameTabByTabId => "StartRenameTabByTabId",
             ActionName::DismissInfoPopups => "DismissInfoPopups",
             ActionName::OpenContextMenu => "OpenContextMenu",
+            ActionName::MoveTabToPosition => "MoveTabToPosition",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1473,6 +1485,7 @@ impl ActionName {
             "StartRenameTabByTabId" => Some(Self::StartRenameTabByTabId),
             "DismissInfoPopups" => Some(Self::DismissInfoPopups),
             "OpenContextMenu" => Some(Self::OpenContextMenu),
+            "MoveTabToPosition" => Some(Self::MoveTabToPosition),
             _ => None,
         }
     }
