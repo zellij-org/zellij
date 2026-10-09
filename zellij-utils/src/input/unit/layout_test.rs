@@ -1,6 +1,6 @@
 use super::super::layout::*;
-use std::collections::BTreeMap;
 use insta::assert_snapshot;
+use std::collections::BTreeMap;
 
 #[cfg(not(windows))]
 fn normalize_layout_debug(s: String) -> String {

@@ -9,7 +9,9 @@ fn session_manager_pane_count(grid_snapshot: &GridSnapshot) -> usize {
     grid_snapshot
         .lines()
         .iter()
-        .map(|line| line.matches("Session Manager").count() + line.matches("session-manager").count())
+        .map(|line| {
+            line.matches("Session Manager").count() + line.matches("session-manager").count()
+        })
         .sum()
 }
 
@@ -90,8 +92,10 @@ fn launch_or_focus_plugin_with_the_default_alias_binding_reuses_the_running_inst
 
 #[test]
 fn launch_or_focus_plugin_with_an_alias_and_a_plugin_setting_reuses_the_running_instance() {
-    let mut zellij =
-        start_with_session_manager_binding("LaunchOrFocusPlugin", "floating true; ignore_case true");
+    let mut zellij = start_with_session_manager_binding(
+        "LaunchOrFocusPlugin",
+        "floating true; ignore_case true",
+    );
     focus_the_about_plugin(&zellij);
 
     press_launch_or_focus_three_times(&zellij, &[&keys::ctrl('y')]);
