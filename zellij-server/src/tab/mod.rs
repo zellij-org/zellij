@@ -2722,6 +2722,7 @@ impl Tab {
                         client_id_or_tab_index,
                         completion_tx,
                         false, // set_blocking
+                        None,
                     );
                     self.senders
                         .send_to_pty(instruction)

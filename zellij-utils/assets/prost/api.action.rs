@@ -1223,6 +1223,7 @@ pub enum ActionName {
     DismissInfoPopups = 125,
     OpenContextMenu = 126,
     MoveTabToPosition = 127,
+    RunInBackground = 128,
 }
 impl ActionName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1356,6 +1357,7 @@ impl ActionName {
             ActionName::DismissInfoPopups => "DismissInfoPopups",
             ActionName::OpenContextMenu => "OpenContextMenu",
             ActionName::MoveTabToPosition => "MoveTabToPosition",
+            ActionName::RunInBackground => "RunInBackground",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1486,6 +1488,7 @@ impl ActionName {
             "DismissInfoPopups" => Some(Self::DismissInfoPopups),
             "OpenContextMenu" => Some(Self::OpenContextMenu),
             "MoveTabToPosition" => Some(Self::MoveTabToPosition),
+            "RunInBackground" => Some(Self::RunInBackground),
             _ => None,
         }
     }

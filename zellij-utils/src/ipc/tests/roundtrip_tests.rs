@@ -2419,6 +2419,23 @@ fn test_client_messages() {
         is_cli_client: true,
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::RunInBackground {
+            command: RunCommandAction {
+                command: PathBuf::from("/path/to/command"),
+                args: vec!["up".to_owned()],
+                cwd: Some(PathBuf::from("/tmp")),
+                direction: None,
+                hold_on_close: false,
+                hold_on_start: false,
+                originating_plugin: None,
+                use_terminal_title: false,
+            },
+        },
+        terminal_id: Some(1),
+        client_id: Some(100),
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::Detach,
         terminal_id: Some(1),
         client_id: Some(100),

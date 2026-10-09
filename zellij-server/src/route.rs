@@ -18,9 +18,9 @@ use uuid::Uuid;
 use zellij_utils::{
     channels::SenderWithContext,
     data::{
-        BareKey, ConnectToSession, Direction, Event, InputMode, KeyModifier, ListPanesResponse,
-        ListTabsResponse, NewPanePlacement, PaneListEntry, ResizeStrategy, TabInfo,
-        UnblockCondition,
+        BareKey, ConnectToSession, Direction, Event, GetFocusedPaneInfoResponse, InputMode,
+        KeyModifier, ListPanesResponse, ListTabsResponse, NewPanePlacement, PaneListEntry,
+        ResizeStrategy, TabInfo, UnblockCondition,
     },
     envs,
     errors::{prelude::*, ErrorContext},
@@ -261,7 +261,67 @@ fn new_pane_routing(
     }
 }
 
+fn spawns_command_pane(action: &Action) -> bool {
+    match action {
+        Action::NewFloatingPane { command, .. }
+        | Action::NewInPlacePane { command, .. }
+        | Action::NewStackedPane { command, .. }
+        | Action::NewTiledPane { command, .. } => command.is_some(),
+        Action::RunInBackground { .. } => true,
+        _ => false,
+    }
+}
+
+fn focused_pane_id(senders: &ThreadSenders, client_id: ClientId) -> Option<PaneId> {
+    let (response_sender, response_receiver) = crossbeam::channel::bounded(1);
+    senders
+        .send_to_screen(ScreenInstruction::GetFocusedPaneInfo {
+            client_id,
+            response_channel: response_sender,
+        })
+        .ok()?;
+    match response_receiver.recv_timeout(Duration::from_millis(100)) {
+        Ok(GetFocusedPaneInfoResponse::Ok { pane_id, .. }) => Some(pane_id.into()),
+        Ok(GetFocusedPaneInfoResponse::Err(_)) => None,
+        Err(e) => {
+            log::error!(
+                "Failed to get focused pane for client {}: {:?}",
+                client_id,
+                e
+            );
+            None
+        },
+    }
+}
+
 pub(crate) fn route_action(
+    action: Action,
+    client_id: ClientId,
+    cli_client_id: Option<ClientId>,
+    pane_id: Option<PaneId>,
+    senders: ThreadSenders,
+    default_shell: Option<TerminalAction>,
+    seen_cli_pipes: Option<&mut HashSet<String>>,
+    default_mode: InputMode,
+    os_input: Option<Box<dyn ServerOsApi>>,
+    is_cli_client: bool,
+) -> Result<(bool, Option<ActionCompletionResult>)> {
+    route_action_with_origin(
+        action,
+        client_id,
+        cli_client_id,
+        pane_id,
+        senders,
+        default_shell,
+        seen_cli_pipes,
+        default_mode,
+        os_input,
+        is_cli_client,
+        None,
+    )
+}
+
+fn route_action_with_origin(
     action: Action,
     client_id: ClientId,
     cli_client_id: Option<ClientId>,
@@ -272,6 +332,7 @@ pub(crate) fn route_action(
     default_mode: InputMode,
     os_input: Option<Box<dyn ServerOsApi>>,
     is_cli_client: bool,
+    origin_pane_id: Option<PaneId>,
 ) -> Result<(bool, Option<ActionCompletionResult>)> {
     let mut should_break = false;
     let err_context = || format!("failed to route action for client {client_id}");
@@ -739,6 +800,7 @@ pub(crate) fn route_action(
                     ClientTabIndexOrPaneId::ClientId(client_id),
                     Some(NotificationEnd::new(completion_tx)),
                     false, // set_blocking
+                    None,
                 ))
                 .with_context(err_context)?;
         },
@@ -792,6 +854,7 @@ pub(crate) fn route_action(
                     client_tab_index_or_paneid,
                     notification_end,
                     set_pane_blocking,
+                    None,
                 ))
                 .with_context(err_context)?;
             wait_forever = true;
@@ -819,6 +882,7 @@ pub(crate) fn route_action(
                     close_replaced_pane,
                     client_tab_index_or_paneid,
                     Some(NotificationEnd::new(completion_tx)),
+                    None,
                 )
             } else {
                 let client_tab_index_or_paneid =
@@ -843,6 +907,7 @@ pub(crate) fn route_action(
                     client_tab_index_or_paneid,
                     Some(NotificationEnd::new(completion_tx)),
                     false, // set_blocking
+                    None,
                 )
             };
             senders.send_to_pty(pty_instr).with_context(err_context)?;
@@ -884,6 +949,7 @@ pub(crate) fn route_action(
                     client_tab_index_or_paneid,
                     Some(NotificationEnd::new(completion_tx)),
                     false, // set_blocking
+                    origin_pane_id,
                 ))
                 .with_context(err_context)?;
         },
@@ -924,6 +990,7 @@ pub(crate) fn route_action(
                     close_replaced_pane,
                     client_tab_index_or_paneid,
                     Some(NotificationEnd::new(completion_tx)),
+                    origin_pane_id,
                 ))
                 .with_context(err_context)?;
         },
@@ -984,6 +1051,7 @@ pub(crate) fn route_action(
                     client_tab_index_or_paneid,
                     Some(NotificationEnd::new(completion_tx)),
                     false, // set_blocking
+                    origin_pane_id,
                 ))
                 .with_context(err_context)?;
         },
@@ -1015,6 +1083,7 @@ pub(crate) fn route_action(
                     client_tab_index_or_paneid,
                     Some(NotificationEnd::new(completion_tx)),
                     false, // set_blocking
+                    origin_pane_id,
                 ))
                 .with_context(err_context)?;
         },
@@ -1073,7 +1142,18 @@ pub(crate) fn route_action(
                     client_tab_index_or_paneid,
                     Some(NotificationEnd::new(completion_tx)),
                     false, // set_blocking
+                    None,
                 ))
+                .with_context(err_context)?;
+        },
+        Action::RunInBackground { command } => {
+            senders
+                .send_to_pty(PtyInstruction::RunInBackground {
+                    command,
+                    client_id,
+                    origin_pane_id: origin_pane_id.or(pane_id),
+                    completion_tx: Some(NotificationEnd::new(completion_tx)),
+                })
                 .with_context(err_context)?;
         },
         Action::CloseFocus => {
@@ -2642,7 +2722,12 @@ pub(crate) fn route_thread_main(
                                         cli_client_id: None,
                                     });
 
-                                    match route_action(
+                                    let origin_pane_id = if spawns_command_pane(&action) {
+                                        focused_pane_id(&senders, client_id)
+                                    } else {
+                                        None
+                                    };
+                                    match route_action_with_origin(
                                         action,
                                         client_id,
                                         None,
@@ -2653,6 +2738,7 @@ pub(crate) fn route_thread_main(
                                         client_input_mode,
                                         Some(os_input.clone()),
                                         false,
+                                        origin_pane_id,
                                     ) {
                                         Ok(route_action_should_break) => {
                                             if route_action_should_break.0 {

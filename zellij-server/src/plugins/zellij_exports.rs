@@ -2018,6 +2018,7 @@ fn open_file_near_plugin(
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(self_pane_id(env))),
         Some(NotificationEnd::new(completion_tx)),
         false, // set_blocking
+        None,
     );
     let _ = env.senders.send_to_pty(pty_instr);
 
@@ -2065,6 +2066,7 @@ fn open_file_floating_near_plugin(
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(self_pane_id(env))),
         Some(NotificationEnd::new(completion_tx)),
         false, // set_blocking
+        None,
     );
     let _ = env.senders.send_to_pty(pty_instr);
 
@@ -2105,6 +2107,7 @@ fn open_file_in_place_of_plugin(
         close_plugin_after_replace,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(self_pane_id(env))),
         Some(NotificationEnd::new(completion_tx)),
+        None,
     );
     let _ = env.senders.send_to_pty(pty_instr);
 
@@ -2186,6 +2189,7 @@ fn open_terminal_near_plugin(
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(self_pane_id(env))),
         Some(NotificationEnd::new(completion_tx)),
         false, // set_blocking
+        None,
     ));
 
     // Wait for completion
@@ -2265,6 +2269,7 @@ fn open_terminal_floating_near_plugin(
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(self_pane_id(env))),
         Some(NotificationEnd::new(completion_tx)),
         false, // set_blocking
+        None,
     ));
 
     // Wait for completion
@@ -2342,6 +2347,7 @@ fn open_terminal_in_place_of_plugin(
             close_plugin_after_replace,
             ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(self_pane_id(env))),
             Some(NotificationEnd::new(completion_tx)),
+            None,
         ));
 
     // Wait for completion
@@ -2399,6 +2405,7 @@ fn open_command_pane_in_place_of_plugin(
             close_plugin_after_replace,
             ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(self_pane_id(env))),
             Some(NotificationEnd::new(completion_tx)),
+            None,
         ));
 
     // Wait for completion
@@ -2439,6 +2446,7 @@ fn open_terminal_pane_in_place_of_pane_id(
             close_replaced_pane,
             ClientTabIndexOrPaneId::PaneId(pane_id_to_replace.into()),
             Some(NotificationEnd::new(completion_tx)),
+            None,
         ));
 
     let result = wait_for_action_completion(
@@ -2498,6 +2506,7 @@ fn open_command_pane_in_place_of_pane_id(
             close_replaced_pane,
             ClientTabIndexOrPaneId::PaneId(pane_id_to_replace.into()),
             Some(NotificationEnd::new(completion_tx)),
+            None,
         ));
 
     let result = wait_for_action_completion(
@@ -2539,6 +2548,7 @@ fn open_edit_pane_in_place_of_pane_id(
         close_replaced_pane,
         ClientTabIndexOrPaneId::PaneId(pane_id_to_replace.into()),
         Some(NotificationEnd::new(completion_tx)),
+        None,
     );
     let _ = env.senders.send_to_pty(pty_instr);
 
@@ -2652,6 +2662,7 @@ fn open_command_pane_near_plugin(
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(self_pane_id(env))),
         Some(NotificationEnd::new(completion_tx)),
         false, // set_blocking
+        None,
     ));
 
     // Wait for completion
@@ -2767,6 +2778,7 @@ fn open_command_pane_floating_near_plugin(
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(self_pane_id(env))),
         Some(NotificationEnd::new(completion_tx)),
         false, // set_blocking
+        None,
     ));
 
     // Wait for completion
@@ -2881,6 +2893,7 @@ fn open_command_pane_background(
         ClientTabIndexOrPaneId::ClientId(acting_client(env)),
         Some(NotificationEnd::new(completion_tx)),
         false, // set_blocking
+        None,
     ));
 
     // Wait for completion
