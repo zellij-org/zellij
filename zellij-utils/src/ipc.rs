@@ -2,7 +2,7 @@
 use crate::{
     data::{ClientId, ConnectToSession, HostTerminalThemeMode, KeyWithModifier, PaneId, Style},
     errors::{prelude::*, ErrorContext},
-    input::{actions::Action, cli_assets::CliAssets},
+    input::{actions::Action, cli_assets::CliAssets, window::WindowSettings},
     pane_size::{Size, SizeInPixels},
 };
 use interprocess::local_socket::Stream as LocalSocketStream;
@@ -264,6 +264,9 @@ pub enum ClientToServerMsg {
     RenderFrameAck {
         seq: u64,
     },
+    FontFamilies {
+        families: Vec<String>,
+    },
 }
 
 // Types of messages sent from the server to the client
@@ -306,6 +309,9 @@ pub enum ServerToClientMsg {
         name: String,
     },
     ConfigFileUpdated,
+    WindowSettingsChanged {
+        settings: Box<WindowSettings>,
+    },
     HostTerminalThemeChanged {
         mode: HostTerminalThemeMode,
     },

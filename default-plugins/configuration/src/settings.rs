@@ -4,6 +4,8 @@ use zellij_tile::prelude::*;
 pub enum Category {
     Appearance,
     Themes,
+    TerminalWindow,
+    WindowColours,
     PaneFrames,
     Keys,
     ContextMenu,
@@ -17,13 +19,15 @@ pub enum Category {
     FoldersAndFiles,
 }
 
-pub const CATEGORIES: [Category; 13] = [
+pub const CATEGORIES: [Category; 15] = [
     Category::Appearance,
     Category::PaneFrames,
     Category::Keys,
     Category::MouseAndClipboard,
     Category::ContextMenu,
     Category::Themes,
+    Category::TerminalWindow,
+    Category::WindowColours,
     Category::PanesAndLayouts,
     Category::ScrollbackAndEditor,
     Category::Sessions,
@@ -38,6 +42,8 @@ impl Category {
         match self {
             Category::Appearance => "Appearance",
             Category::Themes => "Themes",
+            Category::TerminalWindow => "Terminal window",
+            Category::WindowColours => "Window colours",
             Category::PaneFrames => "Pane frames and borders",
             Category::Keys => "Keys",
             Category::ContextMenu => "Right-click menu",
@@ -76,6 +82,10 @@ pub enum TextCheck {
     AnyText,
     Path,
     IpAddress,
+    Decimal { min_milli: i64, max_milli: i64 },
+    KeyList,
+    WordList,
+    Colour,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -84,9 +94,27 @@ pub enum SettingKind {
     OptionalToggle,
     Choice(&'static [&'static str]),
     OptionalChoice(&'static [&'static str]),
-    Theme { can_be_unset: bool },
+    Theme {
+        can_be_unset: bool,
+    },
     Text(TextCheck),
-    Number { min: i64, max: i64, step: i64 },
+    Number {
+        min: i64,
+        max: i64,
+        step: i64,
+    },
+    Decimal {
+        min: i64,
+        max: i64,
+        step: i64,
+        decimals: u32,
+    },
+    OptionalNumber {
+        min: i64,
+        max: i64,
+        step: i64,
+    },
+    FontFamily,
     Keybindings,
     Block,
 }
@@ -102,6 +130,7 @@ pub struct SettingInfo {
 }
 
 pub const UNSET_CHOICE: &str = "(not set)";
+pub const BUNDLED_FONT: &str = "(bundled font)";
 pub const MISSING_SUFFIX: &str = " (missing)";
 
 pub fn option_value(label: &str) -> &str {
@@ -903,10 +932,593 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "/",
             Everyone,
         ),
+        SettingKey::WindowFont => info(
+            "Font",
+            TerminalWindow,
+            "Font family, chosen from the monospaced fonts installed on this computer",
+            FontFamily,
+            "bundled font",
+            OnlyYou,
+        ),
+        SettingKey::WindowFontSize => info(
+            "Font size",
+            TerminalWindow,
+            "Font size in points",
+            Decimal {
+                min: 10,
+                max: 2000,
+                step: 10,
+                decimals: 1,
+            },
+            "12",
+            OnlyYou,
+        ),
+        SettingKey::WindowFontWeight => info(
+            "Font weight",
+            TerminalWindow,
+            "Weight of regular text, from 100 (thin) to 900 (black); the bundled font has only regular and bold, so it turns bold above 500",
+            Number {
+                min: 100,
+                max: 900,
+                step: 100,
+            },
+            "400",
+            OnlyYou,
+        ),
+        SettingKey::WindowSystemFonts => info(
+            "System fonts",
+            TerminalWindow,
+            "Use fonts installed on this computer as fallbacks",
+            Toggle,
+            "true",
+            OnlyYou,
+        ),
+        SettingKey::WindowLigatures => info(
+            "Ligatures",
+            TerminalWindow,
+            "Join character sequences into ligatures when the font has them",
+            Toggle,
+            "true",
+            OnlyYou,
+        ),
+        SettingKey::WindowFontFeatures => info(
+            "Font features",
+            TerminalWindow,
+            "OpenType features separated by commas, eg. ss01, -calt",
+            Text(TextCheck::WordList),
+            "none",
+            OnlyYou,
+        ),
+        SettingKey::WindowCursorStyle => info(
+            "Cursor style",
+            TerminalWindow,
+            "Cursor shape; not set lets programs choose",
+            OptionalChoice(&["block", "bar", "underline"]),
+            "not set",
+            OnlyYou,
+        ),
+        SettingKey::WindowCursorBlink => info(
+            "Cursor blink",
+            TerminalWindow,
+            "Blink the cursor; not set lets programs choose",
+            OptionalToggle,
+            "not set",
+            OnlyYou,
+        ),
+        SettingKey::WindowCursorUnfocusedHollow => info(
+            "Hollow cursor when unfocused",
+            TerminalWindow,
+            "Draw the cursor as an outline while the window is not focused",
+            Toggle,
+            "true",
+            OnlyYou,
+        ),
+        SettingKey::WindowStartupMode => info(
+            "Startup mode",
+            TerminalWindow,
+            "How the window opens",
+            Choice(&["remember", "windowed", "maximized", "fullscreen"]),
+            "remember",
+            OnlyYou,
+        ),
+        SettingKey::WindowInitialColumns => info(
+            "Initial columns",
+            TerminalWindow,
+            "Width of a new window in characters; 0 fits the screen",
+            OptionalNumber {
+                min: 2,
+                max: 1000,
+                step: 10,
+            },
+            "0 (fit the screen)",
+            OnlyYou,
+        ),
+        SettingKey::WindowInitialRows => info(
+            "Initial rows",
+            TerminalWindow,
+            "Height of a new window in lines; 0 fits the screen",
+            OptionalNumber {
+                min: 2,
+                max: 1000,
+                step: 5,
+            },
+            "0 (fit the screen)",
+            OnlyYou,
+        ),
+        SettingKey::WindowOpacity => info(
+            "Opacity",
+            TerminalWindow,
+            "Window opacity from 0 (clear) to 1 (solid)",
+            Decimal {
+                min: 0,
+                max: 100,
+                step: 10,
+                decimals: 2,
+            },
+            "1",
+            OnlyYou,
+        ),
+        SettingKey::WindowOpacityMode => info(
+            "Opacity applies to",
+            TerminalWindow,
+            "Make only the background see-through, or everything",
+            Choice(&["background", "everything"]),
+            "background",
+            OnlyYou,
+        ),
+        SettingKey::WindowBlur => info(
+            "Blur behind",
+            TerminalWindow,
+            "Blur what shows through a see-through window",
+            Toggle,
+            "false",
+            OnlyYou,
+        ),
+        SettingKey::WindowConfirmClose => info(
+            "Confirm close",
+            TerminalWindow,
+            "Ask before closing a window with a running session",
+            Toggle,
+            "true",
+            OnlyYou,
+        ),
+        SettingKey::WindowPadding => info(
+            "Padding",
+            TerminalWindow,
+            "Space around the text on all sides, in pixels",
+            Decimal {
+                min: 0,
+                max: 10_000,
+                step: 10,
+                decimals: 1,
+            },
+            "0",
+            OnlyYou,
+        ),
+        SettingKey::WindowPaddingTop => info(
+            "Padding top",
+            TerminalWindow,
+            "Space above the text, in pixels",
+            Decimal {
+                min: 0,
+                max: 10_000,
+                step: 10,
+                decimals: 1,
+            },
+            "same as padding",
+            OnlyYou,
+        ),
+        SettingKey::WindowPaddingRight => info(
+            "Padding right",
+            TerminalWindow,
+            "Space right of the text, in pixels",
+            Decimal {
+                min: 0,
+                max: 10_000,
+                step: 10,
+                decimals: 1,
+            },
+            "same as padding",
+            OnlyYou,
+        ),
+        SettingKey::WindowPaddingBottom => info(
+            "Padding bottom",
+            TerminalWindow,
+            "Space below the text, in pixels",
+            Decimal {
+                min: 0,
+                max: 10_000,
+                step: 10,
+                decimals: 1,
+            },
+            "same as padding",
+            OnlyYou,
+        ),
+        SettingKey::WindowPaddingLeft => info(
+            "Padding left",
+            TerminalWindow,
+            "Space left of the text, in pixels",
+            Decimal {
+                min: 0,
+                max: 10_000,
+                step: 10,
+                decimals: 1,
+            },
+            "same as padding",
+            OnlyYou,
+        ),
+        SettingKey::WindowPaddingBalance => info(
+            "Balance padding",
+            TerminalWindow,
+            "Share leftover space evenly around the text",
+            Toggle,
+            "false",
+            OnlyYou,
+        ),
+        SettingKey::WindowPaddingColor => info(
+            "Padding colour",
+            TerminalWindow,
+            "Fill padding with the background, or extend the edge cells",
+            Choice(&["background", "extend"]),
+            "background",
+            OnlyYou,
+        ),
+        SettingKey::WindowLineHeight => info(
+            "Line height",
+            TerminalWindow,
+            "Line height as a multiple of the font's",
+            Decimal {
+                min: 50,
+                max: 300,
+                step: 5,
+                decimals: 2,
+            },
+            "1",
+            OnlyYou,
+        ),
+        SettingKey::WindowCellWidth => info(
+            "Cell width",
+            TerminalWindow,
+            "Character width as a multiple of the font's",
+            Decimal {
+                min: 50,
+                max: 300,
+                step: 5,
+                decimals: 2,
+            },
+            "1",
+            OnlyYou,
+        ),
+        SettingKey::WindowBaselineOffset => info(
+            "Baseline offset",
+            TerminalWindow,
+            "Move text up or down, in pixels",
+            Number {
+                min: -64,
+                max: 64,
+                step: 1,
+            },
+            "0",
+            OnlyYou,
+        ),
+        SettingKey::WindowUnderlineOffset => info(
+            "Underline offset",
+            TerminalWindow,
+            "Move underlines up or down, in pixels",
+            Number {
+                min: -64,
+                max: 64,
+                step: 1,
+            },
+            "0",
+            OnlyYou,
+        ),
+        SettingKey::WindowUnderlineThickness => info(
+            "Underline thickness",
+            TerminalWindow,
+            "Make underlines thicker or thinner, in pixels",
+            Number {
+                min: -64,
+                max: 64,
+                step: 1,
+            },
+            "0",
+            OnlyYou,
+        ),
+        SettingKey::WindowMinimumContrast => info(
+            "Minimum contrast",
+            TerminalWindow,
+            "Lighten or darken text to reach this contrast, from 1 (off) to 21",
+            Text(TextCheck::Decimal {
+                min_milli: 1_000,
+                max_milli: 21_000,
+            }),
+            "1",
+            OnlyYou,
+        ),
+        SettingKey::WindowSmoothScrolling => info(
+            "Smooth scrolling",
+            TerminalWindow,
+            "Animate scrolling",
+            Toggle,
+            "true",
+            OnlyYou,
+        ),
+        SettingKey::WindowScrollAnimationDuration => info(
+            "Scroll animation (ms)",
+            TerminalWindow,
+            "Length of the scroll animation in milliseconds",
+            Number {
+                min: 1,
+                max: 1000,
+                step: 10,
+            },
+            "100",
+            OnlyYou,
+        ),
+        SettingKey::WindowScrollMomentum => info(
+            "Scroll momentum",
+            TerminalWindow,
+            "Keep scrolling briefly after a touchpad flick",
+            Toggle,
+            "true",
+            OnlyYou,
+        ),
+        SettingKey::WindowScrollMomentumFriction => info(
+            "Momentum friction",
+            TerminalWindow,
+            "How quickly momentum scrolling slows down, from 0.5 to 10",
+            Text(TextCheck::Decimal {
+                min_milli: 500,
+                max_milli: 10_000,
+            }),
+            "2",
+            OnlyYou,
+        ),
+        SettingKey::WindowBell => info(
+            "Bell",
+            TerminalWindow,
+            "What the window does when a program rings the bell",
+            Choice(&["visual", "audible", "both", "none"]),
+            "visual",
+            OnlyYou,
+        ),
+        SettingKey::WindowNotifications => info(
+            "Notifications",
+            TerminalWindow,
+            "How program notifications are shown",
+            Choice(&["desktop", "attention", "none"]),
+            "desktop",
+            OnlyYou,
+        ),
+        SettingKey::WindowOpenLinks => info(
+            "Open links",
+            TerminalWindow,
+            "Open links with a click while holding Ctrl (Cmd on macOS)",
+            Toggle,
+            "true",
+            OnlyYou,
+        ),
+        SettingKey::WindowMiddleClickPaste => info(
+            "Middle-click paste",
+            TerminalWindow,
+            "Paste with the middle mouse button",
+            Toggle,
+            "true",
+            OnlyYou,
+        ),
+        SettingKey::WindowHidePointerWhileTyping => info(
+            "Hide pointer while typing",
+            TerminalWindow,
+            "Hide the mouse pointer until it moves again",
+            Toggle,
+            "false",
+            OnlyYou,
+        ),
+        SettingKey::WindowMacosOptionAsAlt => info(
+            "Option as Alt (macOS)",
+            TerminalWindow,
+            "Which Option keys act as Alt",
+            Choice(&["left", "right", "both", "none"]),
+            "left",
+            OnlyYou,
+        ),
+        SettingKey::WindowPasteKeys => info(
+            "Paste keys",
+            TerminalWindow,
+            "Keys that paste, separated by commas, eg. Ctrl Shift v, Shift Insert",
+            Text(TextCheck::KeyList),
+            "Ctrl Shift v, Shift Insert",
+            OnlyYou,
+        ),
+        SettingKey::WindowZoomInKeys => info(
+            "Zoom in keys",
+            TerminalWindow,
+            "Keys that make text larger, separated by commas",
+            Text(TextCheck::KeyList),
+            "Ctrl =, Ctrl +",
+            OnlyYou,
+        ),
+        SettingKey::WindowZoomOutKeys => info(
+            "Zoom out keys",
+            TerminalWindow,
+            "Keys that make text smaller, separated by commas",
+            Text(TextCheck::KeyList),
+            "Ctrl -",
+            OnlyYou,
+        ),
+        SettingKey::WindowZoomResetKeys => info(
+            "Zoom reset keys",
+            TerminalWindow,
+            "Keys that reset the text size, separated by commas",
+            Text(TextCheck::KeyList),
+            "Ctrl 0",
+            OnlyYou,
+        ),
+        SettingKey::WindowFullscreenKeys => info(
+            "Fullscreen keys",
+            TerminalWindow,
+            "Keys that toggle fullscreen, separated by commas",
+            Text(TextCheck::KeyList),
+            "F11",
+            OnlyYou,
+        ),
+        SettingKey::WindowColorForeground => info(
+            "Foreground",
+            WindowColours,
+            "Text colour; not set uses the theme",
+            Text(TextCheck::Colour),
+            "from theme",
+            OnlyYou,
+        ),
+        SettingKey::WindowColorBackground => info(
+            "Background",
+            WindowColours,
+            "Background colour; not set uses the theme",
+            Text(TextCheck::Colour),
+            "from theme",
+            OnlyYou,
+        ),
+        SettingKey::WindowColorCursor => info(
+            "Cursor",
+            WindowColours,
+            "Cursor colour; not set uses the text colour",
+            Text(TextCheck::Colour),
+            "from theme",
+            OnlyYou,
+        ),
+        SettingKey::WindowColorBlack => info(
+            "Black",
+            WindowColours,
+            "Terminal colour black; not set uses the theme",
+            Text(TextCheck::Colour),
+            "from theme",
+            OnlyYou,
+        ),
+        SettingKey::WindowColorRed => info(
+            "Red",
+            WindowColours,
+            "Terminal colour red; not set uses the theme",
+            Text(TextCheck::Colour),
+            "from theme",
+            OnlyYou,
+        ),
+        SettingKey::WindowColorGreen => info(
+            "Green",
+            WindowColours,
+            "Terminal colour green; not set uses the theme",
+            Text(TextCheck::Colour),
+            "from theme",
+            OnlyYou,
+        ),
+        SettingKey::WindowColorYellow => info(
+            "Yellow",
+            WindowColours,
+            "Terminal colour yellow; not set uses the theme",
+            Text(TextCheck::Colour),
+            "from theme",
+            OnlyYou,
+        ),
+        SettingKey::WindowColorBlue => info(
+            "Blue",
+            WindowColours,
+            "Terminal colour blue; not set uses the theme",
+            Text(TextCheck::Colour),
+            "from theme",
+            OnlyYou,
+        ),
+        SettingKey::WindowColorMagenta => info(
+            "Magenta",
+            WindowColours,
+            "Terminal colour magenta; not set uses the theme",
+            Text(TextCheck::Colour),
+            "from theme",
+            OnlyYou,
+        ),
+        SettingKey::WindowColorCyan => info(
+            "Cyan",
+            WindowColours,
+            "Terminal colour cyan; not set uses the theme",
+            Text(TextCheck::Colour),
+            "from theme",
+            OnlyYou,
+        ),
+        SettingKey::WindowColorWhite => info(
+            "White",
+            WindowColours,
+            "Terminal colour white; not set uses the theme",
+            Text(TextCheck::Colour),
+            "from theme",
+            OnlyYou,
+        ),
+        SettingKey::WindowColorBrightBlack => info(
+            "Bright black",
+            WindowColours,
+            "Terminal colour bright black; not set uses the theme",
+            Text(TextCheck::Colour),
+            "from theme",
+            OnlyYou,
+        ),
+        SettingKey::WindowColorBrightRed => info(
+            "Bright red",
+            WindowColours,
+            "Terminal colour bright red; not set uses the theme",
+            Text(TextCheck::Colour),
+            "from theme",
+            OnlyYou,
+        ),
+        SettingKey::WindowColorBrightGreen => info(
+            "Bright green",
+            WindowColours,
+            "Terminal colour bright green; not set uses the theme",
+            Text(TextCheck::Colour),
+            "from theme",
+            OnlyYou,
+        ),
+        SettingKey::WindowColorBrightYellow => info(
+            "Bright yellow",
+            WindowColours,
+            "Terminal colour bright yellow; not set uses the theme",
+            Text(TextCheck::Colour),
+            "from theme",
+            OnlyYou,
+        ),
+        SettingKey::WindowColorBrightBlue => info(
+            "Bright blue",
+            WindowColours,
+            "Terminal colour bright blue; not set uses the theme",
+            Text(TextCheck::Colour),
+            "from theme",
+            OnlyYou,
+        ),
+        SettingKey::WindowColorBrightMagenta => info(
+            "Bright magenta",
+            WindowColours,
+            "Terminal colour bright magenta; not set uses the theme",
+            Text(TextCheck::Colour),
+            "from theme",
+            OnlyYou,
+        ),
+        SettingKey::WindowColorBrightCyan => info(
+            "Bright cyan",
+            WindowColours,
+            "Terminal colour bright cyan; not set uses the theme",
+            Text(TextCheck::Colour),
+            "from theme",
+            OnlyYou,
+        ),
+        SettingKey::WindowColorBrightWhite => info(
+            "Bright white",
+            WindowColours,
+            "Terminal colour bright white; not set uses the theme",
+            Text(TextCheck::Colour),
+            "from theme",
+            OnlyYou,
+        ),
     }
 }
 
-pub const SECTION_ORDER: [&str; 21] = [
+pub const SECTION_ORDER: [&str; 31] = [
     "Theme",
     "Display",
     "Text",
@@ -927,6 +1539,16 @@ pub const SECTION_ORDER: [&str; 21] = [
     "Folders",
     "Starting points",
     "Programs",
+    "Font",
+    "Cursor",
+    "Window",
+    "Padding",
+    "Spacing",
+    "Scrolling",
+    "Window behaviour",
+    "Shortcuts",
+    "Text and cursor",
+    "Terminal colours",
     "",
 ];
 
@@ -985,6 +1607,48 @@ pub fn section(key: SettingKey) -> &'static str {
         | WebClientCursorInactiveStyle
         | WebClientMacOptionIsMeta
         | WebClientBaseUrl => "Browser client",
+        WindowFont | WindowFontSize | WindowFontWeight | WindowSystemFonts | WindowLigatures
+        | WindowFontFeatures => "Font",
+        WindowCursorStyle | WindowCursorBlink | WindowCursorUnfocusedHollow => "Cursor",
+        WindowStartupMode | WindowInitialColumns | WindowInitialRows | WindowOpacity
+        | WindowOpacityMode | WindowBlur | WindowConfirmClose => "Window",
+        WindowPadding | WindowPaddingTop | WindowPaddingRight | WindowPaddingBottom
+        | WindowPaddingLeft | WindowPaddingBalance | WindowPaddingColor => "Padding",
+        WindowLineHeight
+        | WindowCellWidth
+        | WindowBaselineOffset
+        | WindowUnderlineOffset
+        | WindowUnderlineThickness
+        | WindowMinimumContrast => "Spacing",
+        WindowSmoothScrolling
+        | WindowScrollAnimationDuration
+        | WindowScrollMomentum
+        | WindowScrollMomentumFriction => "Scrolling",
+        WindowBell
+        | WindowNotifications
+        | WindowOpenLinks
+        | WindowMiddleClickPaste
+        | WindowHidePointerWhileTyping
+        | WindowMacosOptionAsAlt => "Window behaviour",
+        WindowPasteKeys | WindowZoomInKeys | WindowZoomOutKeys | WindowZoomResetKeys
+        | WindowFullscreenKeys => "Shortcuts",
+        WindowColorForeground | WindowColorBackground | WindowColorCursor => "Text and cursor",
+        WindowColorBlack
+        | WindowColorRed
+        | WindowColorGreen
+        | WindowColorYellow
+        | WindowColorBlue
+        | WindowColorMagenta
+        | WindowColorCyan
+        | WindowColorWhite
+        | WindowColorBrightBlack
+        | WindowColorBrightRed
+        | WindowColorBrightGreen
+        | WindowColorBrightYellow
+        | WindowColorBrightBlue
+        | WindowColorBrightMagenta
+        | WindowColorBrightCyan
+        | WindowColorBrightWhite => "Terminal colours",
         ScrollBufferSize
         | SupportKittyKeyboardProtocol
         | SupportKittyGraphicsProtocol
@@ -1035,6 +1699,16 @@ pub fn settings_in(category: Category) -> Vec<SettingKey> {
     keys
 }
 
+pub fn inherits_from(key: SettingKey) -> Option<SettingKey> {
+    match key {
+        SettingKey::WindowPaddingTop
+        | SettingKey::WindowPaddingRight
+        | SettingKey::WindowPaddingBottom
+        | SettingKey::WindowPaddingLeft => Some(SettingKey::WindowPadding),
+        _ => None,
+    }
+}
+
 pub fn check_text(check: TextCheck, text: &str) -> Result<(), String> {
     match check {
         TextCheck::AnyText => Ok(()),
@@ -1049,6 +1723,64 @@ pub fn check_text(check: TextCheck, text: &str) -> Result<(), String> {
             .parse::<std::net::IpAddr>()
             .map(|_| ())
             .map_err(|_| "Not an IP address".to_owned()),
+        TextCheck::Decimal {
+            min_milli,
+            max_milli,
+        } => {
+            let min = min_milli as f64 / 1000.0;
+            let max = max_milli as f64 / 1000.0;
+            match text.trim().parse::<f64>() {
+                Ok(number) if number.is_finite() && number >= min && number <= max => Ok(()),
+                _ => Err(format!("Use a number from {} to {}", min, max)),
+            }
+        },
+        TextCheck::KeyList => {
+            let keys = split_setting_list(text);
+            if keys.is_empty() {
+                return Err("List at least one key".to_owned());
+            }
+            match keys
+                .iter()
+                .find(|key| key.parse::<KeyWithModifier>().is_err())
+            {
+                Some(bad) => Err(format!("{} is not a key, eg. Ctrl Shift v", bad)),
+                None => Ok(()),
+            }
+        },
+        TextCheck::WordList => {
+            if split_setting_list(text)
+                .iter()
+                .any(|word| word.chars().any(|c| c.is_whitespace() || c.is_control()))
+            {
+                Err("Separate the entries with a comma and a space".to_owned())
+            } else {
+                Ok(())
+            }
+        },
+        TextCheck::Colour => match parse_hex_colour(text.trim()) {
+            Some(_) => Ok(()),
+            None => Err("Use a hex colour, eg. #1e1e2e".to_owned()),
+        },
+    }
+}
+
+pub fn parse_hex_colour(text: &str) -> Option<(u8, u8, u8)> {
+    let digits = text.strip_prefix('#')?;
+    if !digits.chars().all(|c| c.is_ascii_hexdigit()) {
+        return None;
+    }
+    let channel = |part: &str| u8::from_str_radix(part, 16).ok();
+    match digits.len() {
+        3 => {
+            let mut parts = digits.chars().map(|c| channel(&format!("{}{}", c, c)));
+            Some((parts.next()??, parts.next()??, parts.next()??))
+        },
+        6 => Some((
+            channel(&digits[0..2])?,
+            channel(&digits[2..4])?,
+            channel(&digits[4..6])?,
+        )),
+        _ => None,
     }
 }
 
@@ -1089,7 +1821,9 @@ mod tests {
                 key
             );
             match info.kind {
-                SettingKind::Number { min, max, step } => {
+                SettingKind::Number { min, max, step }
+                | SettingKind::Decimal { min, max, step, .. }
+                | SettingKind::OptionalNumber { min, max, step } => {
                     assert!(min < max && step > 0, "{} has bad limits", key)
                 },
                 SettingKind::Choice(choices) | SettingKind::OptionalChoice(choices) => {
@@ -1108,7 +1842,19 @@ mod tests {
                 SettingKind::Toggle | SettingKind::OptionalToggle => {
                     key.value_shape() == SettingValueShape::Flag
                 },
-                SettingKind::Number { .. } => key.value_shape() == SettingValueShape::Number,
+                SettingKind::Number { .. } | SettingKind::OptionalNumber { .. } => {
+                    key.value_shape() == SettingValueShape::Number
+                },
+                SettingKind::Decimal { .. } => key.value_shape() == SettingValueShape::Decimal,
+                SettingKind::Text(TextCheck::Decimal { .. }) => {
+                    key.value_shape() == SettingValueShape::Decimal
+                },
+                SettingKind::Text(TextCheck::KeyList) | SettingKind::Text(TextCheck::WordList) => {
+                    key.value_shape() == SettingValueShape::List
+                },
+                SettingKind::Text(TextCheck::Colour) => {
+                    key.value_shape() == SettingValueShape::Colour
+                },
                 _ => key.value_shape() == SettingValueShape::Text,
             };
             assert!(
@@ -1156,6 +1902,81 @@ mod tests {
         assert_eq!(
             kdl_for(SettingKey::WebClientFontSize, "14"),
             "web_client {\n    font_size 14\n}"
+        );
+    }
+
+    #[test]
+    fn window_values_are_checked_before_they_are_applied() {
+        let opacity = TextCheck::Decimal {
+            min_milli: 0,
+            max_milli: 1_000,
+        };
+        assert!(check_text(opacity, "0.85").is_ok());
+        assert!(check_text(opacity, "1.5").is_err());
+        assert!(check_text(opacity, "half").is_err());
+        assert!(check_text(TextCheck::KeyList, "Ctrl Shift v, Shift Insert").is_ok());
+        assert!(check_text(TextCheck::KeyList, "Ctrl Shift v, Nope Nope").is_err());
+        assert!(check_text(TextCheck::KeyList, "").is_err());
+        assert!(check_text(TextCheck::Colour, "#1e1e2e").is_ok());
+        assert!(check_text(TextCheck::Colour, "#abc").is_ok());
+        assert!(check_text(TextCheck::Colour, "1e1e2e").is_err());
+        assert_eq!(parse_hex_colour("#abc"), Some((0xaa, 0xbb, 0xcc)));
+    }
+
+    #[test]
+    fn line_height_and_cell_width_step_by_five_hundredths() {
+        for key in [SettingKey::WindowLineHeight, SettingKey::WindowCellWidth] {
+            match describe(key).kind {
+                SettingKind::Decimal {
+                    min,
+                    max,
+                    step,
+                    decimals,
+                } => {
+                    assert_eq!(format_scaled(min, decimals), "0.5");
+                    assert_eq!(format_scaled(max, decimals), "3");
+                    assert_eq!(format_scaled(step, decimals), "0.05");
+                },
+                other => panic!("{} is edited with {:?}", key, other),
+            }
+        }
+        assert_eq!(
+            describe(SettingKey::WindowFont).kind,
+            SettingKind::FontFamily
+        );
+    }
+
+    #[test]
+    fn whole_window_numbers_and_opacity_use_a_stepper() {
+        assert!(matches!(
+            describe(SettingKey::WindowFontSize).kind,
+            SettingKind::Decimal { .. }
+        ));
+        assert!(matches!(
+            describe(SettingKey::WindowInitialColumns).kind,
+            SettingKind::OptionalNumber { .. }
+        ));
+        match describe(SettingKey::WindowOpacity).kind {
+            SettingKind::Decimal { step, decimals, .. } => {
+                assert_eq!(format_scaled(step, decimals), "0.1")
+            },
+            other => panic!("opacity is edited with {:?}", other),
+        }
+    }
+
+    #[test]
+    fn window_values_are_written_inside_the_window_block() {
+        assert_eq!(
+            kdl_for(SettingKey::WindowOpacity, "0.85"),
+            "window {\n    opacity 0.85\n}"
+        );
+        assert_eq!(
+            kdl_for(SettingKey::WindowPasteKeys, "Ctrl Shift v, Shift Insert"),
+            "window {\n    paste_keys \"Ctrl Shift v\" \"Shift Insert\"\n}"
+        );
+        assert_eq!(
+            kdl_for(SettingKey::WindowColorRed, "#ff0000"),
+            "window {\n    theme {\n        red \"#ff0000\"\n    }\n}"
         );
     }
 

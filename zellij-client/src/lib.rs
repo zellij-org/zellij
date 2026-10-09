@@ -249,6 +249,9 @@ impl From<ServerToClientMsg> for ClientInstruction {
             ServerToClientMsg::HostTerminalThemeChanged { .. } => {
                 ClientInstruction::UnblockInputThread
             },
+            ServerToClientMsg::WindowSettingsChanged { .. } => {
+                ClientInstruction::UnblockInputThread
+            },
         }
     }
 }

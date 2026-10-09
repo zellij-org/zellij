@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 use zellij_client::os_input_output::{ClientOsApi, SignalEvent};
 use zellij_utils::data::Palette;
 use zellij_utils::errors::ErrorContext;
+use zellij_utils::input::window::WindowSettings;
 use zellij_utils::ipc::{
     ClientToServerMsg, IpcReceiveError, IpcReceiverWithContext, IpcSenderWithContext,
     ServerToClientMsg,
@@ -43,6 +44,7 @@ fn server_message_name(msg: &ServerToClientMsg) -> String {
         ServerToClientMsg::StartWebServer => "StartWebServer",
         ServerToClientMsg::RenamedSession { .. } => "RenamedSession",
         ServerToClientMsg::ConfigFileUpdated => "ConfigFileUpdated",
+        ServerToClientMsg::WindowSettingsChanged { .. } => "WindowSettingsChanged",
         ServerToClientMsg::PaneRenderUpdate { .. } => "PaneRenderUpdate",
         ServerToClientMsg::SubscribedPaneClosed { .. } => "SubscribedPaneClosed",
         ServerToClientMsg::ForwardQueryToHost { .. } => "ForwardQueryToHost",
@@ -64,6 +66,7 @@ pub struct FakeClientOsApi {
     server_spawner: Arc<Mutex<Option<ServerSpawner>>>,
     env: Arc<Mutex<HashMap<String, String>>>,
     received_server_messages: Arc<Mutex<Vec<String>>>,
+    received_window_settings: Arc<Mutex<Vec<WindowSettings>>>,
     piped_stdin: Arc<Mutex<Option<crossbeam::channel::Receiver<Vec<u8>>>>>,
 }
 
@@ -100,6 +103,7 @@ impl Clone for FakeClientOsApi {
             server_spawner: self.server_spawner.clone(),
             env: self.env.clone(),
             received_server_messages: self.received_server_messages.clone(),
+            received_window_settings: self.received_window_settings.clone(),
             piped_stdin: self.piped_stdin.clone(),
         }
     }
@@ -117,12 +121,17 @@ pub struct FakeClientHandle {
     pub stdin_tx: crossbeam::channel::Sender<Vec<u8>>,
     pub signal_tx: crossbeam::channel::Sender<SignalEvent>,
     pub received_server_messages: Arc<Mutex<Vec<String>>>,
+    pub received_window_settings: Arc<Mutex<Vec<WindowSettings>>>,
     pub server_sender: Arc<Mutex<Option<IpcSenderWithContext<ClientToServerMsg>>>>,
 }
 
 impl FakeClientHandle {
     pub fn received_server_messages(&self) -> Vec<String> {
         self.received_server_messages.lock().unwrap().clone()
+    }
+
+    pub fn received_window_settings(&self) -> Vec<WindowSettings> {
+        self.received_window_settings.lock().unwrap().clone()
     }
 
     pub fn send_action(&self, action: zellij_utils::input::actions::Action) {
@@ -156,6 +165,7 @@ impl FakeClientOsApi {
         let (stdin_tx, stdin_rx) = crossbeam::channel::unbounded();
         let (signal_tx, signal_rx) = crossbeam::channel::unbounded();
         let received_server_messages = Arc::new(Mutex::new(Vec::new()));
+        let received_window_settings = Arc::new(Mutex::new(Vec::new()));
         let server_sender = Arc::new(Mutex::new(None));
         let fake_client_os_api = FakeClientOsApi {
             client_screen: client_screen.clone(),
@@ -168,6 +178,7 @@ impl FakeClientOsApi {
             server_spawner: Arc::new(Mutex::new(server_spawner)),
             env: Arc::new(Mutex::new(env)),
             received_server_messages: received_server_messages.clone(),
+            received_window_settings: received_window_settings.clone(),
             piped_stdin: Arc::new(Mutex::new(None)),
         };
         client_screen.set_host_terminal(HostTerminal::Basic, stdin_tx.clone());
@@ -177,6 +188,7 @@ impl FakeClientOsApi {
             stdin_tx,
             signal_tx,
             received_server_messages,
+            received_window_settings,
             server_sender,
         };
         (fake_client_os_api, fake_client_handle)
@@ -248,6 +260,12 @@ impl ClientOsApi for FakeClientOsApi {
                 .lock()
                 .unwrap()
                 .push(server_message_name(msg));
+            if let ServerToClientMsg::WindowSettingsChanged { settings } = msg {
+                self.received_window_settings
+                    .lock()
+                    .unwrap()
+                    .push((**settings).clone());
+            }
         }
         received
     }

@@ -26,6 +26,7 @@ pub const DEFAULT_LIGATURES: bool = true;
 pub const DEFAULT_FONT_WEIGHT: u16 = 400;
 const BOLD_WEIGHT_STEP: u16 = 300;
 const MAX_FONT_WEIGHT: u16 = 900;
+const EMBEDDED_BOLD_THRESHOLD: u16 = 500;
 const WEIGHT_AXIS: &[u8; 4] = b"wght";
 const LIGATURE_FEATURES: [&[u8; 4]; 3] = [b"liga", b"calt", b"dlig"];
 
@@ -156,6 +157,14 @@ impl FaceRequest {
 impl From<FaceStyle> for FaceRequest {
     fn from(style: FaceStyle) -> Self {
         Self::weighted(style, DEFAULT_FONT_WEIGHT)
+    }
+}
+
+fn embedded_faces_for(weight: u16) -> [FontId; 4] {
+    if weight > EMBEDDED_BOLD_THRESHOLD {
+        [FontId(1), FontId(1), FontId(3), FontId(3)]
+    } else {
+        [FontId(0), FontId(1), FontId(2), FontId(3)]
     }
 }
 
@@ -350,7 +359,7 @@ impl FontStack {
         ];
         let color_capable: Vec<bool> = faces.iter().map(is_color_capable).collect();
         let coords = vec![Vec::new(); faces.len()];
-        let embedded_primary = [FontId(0), FontId(1), FontId(2), FontId(3)];
+        let embedded_primary = embedded_faces_for(options.weight);
         let features = effective_features(&options.features, options.ligatures);
         let (metrics, placement) = derive_metrics(&faces[0], &[], size, &options.cell);
 
@@ -1207,6 +1216,30 @@ mod tests {
         .unwrap();
         assert_eq!(stack.metrics(), fonts().metrics());
         assert!(stack.coords.iter().all(Vec::is_empty));
+    }
+
+    #[test]
+    fn a_heavy_weight_on_the_bundled_font_draws_regular_text_with_the_bold_face() {
+        let stack = |weight| {
+            FontStack::build_with(
+                &FontOptions {
+                    system_fonts: false,
+                    weight,
+                    ..FontOptions::default()
+                },
+                None,
+            )
+            .unwrap()
+        };
+        let regular = stack(400);
+        assert_eq!(regular.primary_of(FaceStyle::Regular), FontId(0));
+        assert_eq!(regular.primary_of(FaceStyle::Italic), FontId(2));
+        let heavy = stack(600);
+        assert_eq!(heavy.primary_of(FaceStyle::Regular), FontId(1));
+        assert_eq!(heavy.primary_of(FaceStyle::Italic), FontId(3));
+        assert_eq!(heavy.primary_of(FaceStyle::Bold), FontId(1));
+        let light = stack(200);
+        assert_eq!(light.primary_of(FaceStyle::Bold), FontId(1));
     }
 
     #[test]

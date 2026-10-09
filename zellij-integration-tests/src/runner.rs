@@ -493,6 +493,10 @@ impl TestClient {
         self.fake_client_handle.received_server_messages()
     }
 
+    pub fn received_window_settings(&self) -> Vec<zellij_utils::input::window::WindowSettings> {
+        self.fake_client_handle.received_window_settings()
+    }
+
     pub fn send_action(&self, action: zellij_utils::input::actions::Action) {
         self.fake_client_handle.send_action(action);
     }
@@ -689,6 +693,29 @@ impl TestSession {
 
     pub fn received_server_messages(&self) -> Vec<String> {
         self.main_client.received_server_messages()
+    }
+
+    pub fn wait_for_window_settings(
+        &self,
+        what: &str,
+        predicate: impl Fn(&zellij_utils::input::window::WindowSettings) -> bool,
+    ) -> zellij_utils::input::window::WindowSettings {
+        let deadline = std::time::Instant::now() + crate::default_timeout();
+        loop {
+            if let Some(found) = self
+                .main_client
+                .received_window_settings()
+                .into_iter()
+                .rev()
+                .find(|settings| predicate(settings))
+            {
+                return found;
+            }
+            if std::time::Instant::now() >= deadline {
+                panic!("timed out waiting for window settings: {}", what);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
     }
 
     pub fn wait_for_app_load(&self) -> GridSnapshot {

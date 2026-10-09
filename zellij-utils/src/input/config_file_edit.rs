@@ -12,7 +12,7 @@ use super::config_blocks::{
     plugin_alias_node, styling_colours, theme_node, theme_slots,
 };
 use super::config_settings::{
-    copy_setting, default_config, differing_settings, setting_is_default, setting_kdl_value,
+    copy_setting, default_config, differing_settings, setting_is_default, setting_kdl_values,
     setting_node_path, setting_value,
 };
 use super::context_menu::{
@@ -49,7 +49,7 @@ pub enum KeyState {
 pub enum ConfigEdit {
     SetSetting {
         key: SettingKey,
-        value: KdlValue,
+        values: Vec<KdlValue>,
     },
     RemoveSetting(SettingKey),
     KeybindsAttribute {
@@ -546,8 +546,8 @@ pub fn edits_between(saved: &Config, runtime: &Config) -> Vec<ConfigEdit> {
         if setting_is_default(runtime, key) {
             edits.push(ConfigEdit::RemoveSetting(key));
         } else {
-            match setting_kdl_value(runtime, key) {
-                Some(value) => edits.push(ConfigEdit::SetSetting { key, value }),
+            match setting_kdl_values(runtime, key) {
+                Some(values) => edits.push(ConfigEdit::SetSetting { key, values }),
                 None => edits.push(ConfigEdit::RemoveSetting(key)),
             }
         }
@@ -791,7 +791,35 @@ fn set_property(node: &mut KdlNode, name: &str, value: Option<KdlValue>) {
     }
 }
 
-fn set_setting(document: &mut KdlDocument, key: SettingKey, value: KdlValue) {
+fn set_arguments(node: &mut KdlNode, values: Vec<KdlValue>) {
+    let positions: Vec<usize> = node
+        .entries()
+        .iter()
+        .enumerate()
+        .filter(|(_, entry)| entry.name().is_none())
+        .map(|(position, _)| position)
+        .collect();
+    for (index, position) in positions.iter().enumerate().rev() {
+        if index >= values.len() {
+            node.entries_mut().remove(*position);
+        }
+    }
+    let mut insert_at = 0;
+    for (index, value) in values.into_iter().enumerate() {
+        match positions.get(index) {
+            Some(&position) => {
+                replace_entry_keeping_format(node, position, KdlEntry::new(value));
+                insert_at = position + 1;
+            },
+            None => {
+                node.entries_mut().insert(insert_at, KdlEntry::new(value));
+                insert_at += 1;
+            },
+        }
+    }
+}
+
+fn set_setting(document: &mut KdlDocument, key: SettingKey, values: Vec<KdlValue>) {
     let (parents, name) = setting_node_path(key);
     let Some((block, owner_indent)) = block_at_path(document, parents, true) else {
         return;
@@ -801,11 +829,13 @@ fn set_setting(document: &mut KdlDocument, key: SettingKey, value: KdlValue) {
         .iter_mut()
         .find(|node| node_name(node) == name)
     {
-        Some(node) => set_first_argument(node, value),
+        Some(node) => set_arguments(node, values),
         None => {
             let indent = child_indent(block, owner_indent.as_deref());
             let mut node = KdlNode::new(name);
-            node.push(KdlEntry::new(value));
+            for value in values {
+                node.push(KdlEntry::new(value));
+            }
             push_node(block, node, &indent, owner_indent.as_deref());
         },
     }
@@ -2093,8 +2123,8 @@ pub fn apply_edits(
     };
     for edit in edits {
         match edit {
-            ConfigEdit::SetSetting { key, value } => {
-                set_setting(&mut document, *key, value.clone())
+            ConfigEdit::SetSetting { key, values } => {
+                set_setting(&mut document, *key, values.clone())
             },
             ConfigEdit::RemoveSetting(key) => remove_setting(&mut document, *key),
             ConfigEdit::KeybindsAttribute { .. }

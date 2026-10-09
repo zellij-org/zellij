@@ -3301,7 +3301,7 @@ impl HostTerminalThemeIndication {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ClientToServerMsg {
-    #[prost(oneof="client_to_server_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31")]
+    #[prost(oneof="client_to_server_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32")]
     pub message: ::core::option::Option<client_to_server_msg::Message>,
 }
 /// Nested message and enum types in `ClientToServerMsg`.
@@ -3371,6 +3371,8 @@ pub mod client_to_server_msg {
         RenderFrameAck(super::RenderFrameAckMsg),
         #[prost(message, tag="31")]
         RequestSessionPreview(super::RequestSessionPreviewMsg),
+        #[prost(message, tag="32")]
+        FontFamilies(super::FontFamiliesMsg),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -3585,6 +3587,12 @@ pub struct StructuredRenderSupportMsg {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct FontFamiliesMsg {
+    #[prost(string, repeated, tag="1")]
+    pub families: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct RenderFrameAckMsg {
     #[prost(uint64, tag="1")]
     pub seq: u64,
@@ -3592,7 +3600,7 @@ pub struct RenderFrameAckMsg {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ServerToClientMsg {
-    #[prost(oneof="server_to_client_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21")]
+    #[prost(oneof="server_to_client_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22")]
     pub message: ::core::option::Option<server_to_client_msg::Message>,
 }
 /// Nested message and enum types in `ServerToClientMsg`.
@@ -3642,6 +3650,8 @@ pub mod server_to_client_msg {
         RenderFrame(super::RenderFrameMsg),
         #[prost(message, tag="21")]
         HostThemeMode(super::HostThemeModeMsg),
+        #[prost(message, tag="22")]
+        WindowSettings(super::WindowSettingsMsg),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -3728,6 +3738,12 @@ pub struct RenamedSessionMsg {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ConfigFileUpdatedMsg {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct WindowSettingsMsg {
+    #[prost(string, tag="1")]
+    pub settings_json: ::prost::alloc::string::String,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

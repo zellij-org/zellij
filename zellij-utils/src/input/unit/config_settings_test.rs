@@ -6,6 +6,7 @@ use super::super::options::{
 };
 use super::super::theme::{FrameConfig, UiConfig};
 use super::super::web_client::{CursorInactiveStyle, CursorStyle, WebClientConfig};
+use super::super::window::WindowConfig;
 use crate::data::{
     BorderStyleOverride, InputMode, LineStyle, SettingKey, SettingSection, ThemeHue, WebSharing,
 };
@@ -131,6 +132,80 @@ context_menu {
 }
 ";
 
+const EVERY_WINDOW_SETTING_SET: &str = "window {
+    font \"Iosevka Term\"
+    font_size 13.5
+    font_weight 500
+    system_fonts false
+    ligatures false
+    font_features \"calt\" \"ss01\"
+    cursor_style \"bar\"
+    cursor_blink false
+    cursor_unfocused_hollow false
+    startup_mode \"maximized\"
+    initial_columns 120
+    initial_rows 40
+    opacity 0.9
+    opacity_mode \"everything\"
+    blur true
+    confirm_close false
+    padding 4
+    padding_top 2.5
+    padding_right 3
+    padding_bottom 5
+    padding_left 6
+    padding_balance true
+    padding_color \"extend\"
+    line_height 1.2
+    cell_width 1.1
+    baseline_offset 1
+    underline_offset -1
+    underline_thickness 2
+    minimum_contrast 3.5
+    smooth_scrolling false
+    scroll_animation_duration 200
+    scroll_momentum false
+    scroll_momentum_friction 4.5
+    bell \"both\"
+    notifications \"attention\"
+    open_links false
+    middle_click_paste false
+    hide_pointer_while_typing true
+    macos_option_as_alt \"both\"
+    paste_keys \"Ctrl Shift v\" \"Shift Insert\"
+    zoom_in_keys \"Ctrl =\"
+    zoom_out_keys \"Ctrl -\"
+    zoom_reset_keys \"Ctrl 0\"
+    fullscreen_keys \"F11\" \"Alt Enter\"
+    theme {
+        foreground 200 201 202
+        background \"#101112\"
+        cursor 7
+        black 0 0 0
+        red \"#ff0000\"
+        green 0 255 0
+        yellow 255 255 0
+        blue 0 0 255
+        magenta 255 0 255
+        cyan 0 255 255
+        white 250 250 250
+        bright_black 80 80 80
+        bright_red 255 80 80
+        bright_green 80 255 80
+        bright_yellow 255 255 80
+        bright_blue 80 80 255
+        bright_magenta 255 80 255
+        bright_cyan 80 255 255
+        bright_white 255 255 255
+    }
+}
+";
+
+pub(crate) fn every_window_setting_set() -> WindowConfig {
+    let document: KdlDocument = EVERY_WINDOW_SETTING_SET.parse().unwrap();
+    WindowConfig::from_kdl(document.get("window").unwrap()).unwrap()
+}
+
 pub(crate) fn every_setting_set() -> Config {
     let with_preset = Config::from_kdl(
         EVERY_BLOCK_SET,
@@ -164,6 +239,7 @@ pub(crate) fn every_setting_set() -> Config {
             base_url: Some("/zellij".to_owned()),
             font_size: Some(14),
         },
+        window: every_window_setting_set(),
         ..Default::default()
     }
 }
@@ -179,13 +255,14 @@ fn kdl_names_in(config: &Config) -> BTreeSet<(SettingSection, String)> {
         "env",
         "web_client",
         "context_menu",
+        "window",
     ];
     let mut names = BTreeSet::new();
     for node in document.nodes() {
         let name = node.name().value();
         if !blocks.contains(&name) {
             names.insert((SettingSection::TopLevel, name.to_owned()));
-        } else if !["keybinds", "ui", "web_client"].contains(&name) {
+        } else if !["keybinds", "ui", "web_client", "window"].contains(&name) {
             names.insert((SettingSection::Blocks, name.to_owned()));
         }
     }
@@ -205,6 +282,23 @@ fn kdl_names_in(config: &Config) -> BTreeSet<(SettingSection, String)> {
         .unwrap();
     for node in web_client.nodes() {
         names.insert((SettingSection::WebClient, node.name().value().to_owned()));
+    }
+    let window = document
+        .get("window")
+        .and_then(|window| window.children())
+        .unwrap();
+    for node in window.nodes() {
+        let name = node.name().value();
+        if name == "theme" {
+            for colour in node.children().unwrap().nodes() {
+                names.insert((
+                    SettingSection::WindowTheme,
+                    colour.name().value().to_owned(),
+                ));
+            }
+        } else {
+            names.insert((SettingSection::Window, name.to_owned()));
+        }
     }
     names
 }
@@ -322,4 +416,52 @@ fn a_partial_ui_or_web_client_block_keeps_the_other_values() {
         differing_settings(&base, &changed),
         vec![SettingKey::FrameBorderTop, SettingKey::WebClientFontSize]
     );
+}
+
+#[test]
+fn window_values_are_shown_as_plain_text() {
+    let config = every_setting_set();
+    assert_eq!(
+        setting_value(&config, SettingKey::WindowFontSize).as_deref(),
+        Some("13.5")
+    );
+    assert_eq!(
+        setting_value(&config, SettingKey::WindowOpacity).as_deref(),
+        Some("0.9")
+    );
+    assert_eq!(
+        setting_value(&config, SettingKey::WindowPadding).as_deref(),
+        Some("4")
+    );
+    assert_eq!(
+        setting_value(&config, SettingKey::WindowPasteKeys).as_deref(),
+        Some("Ctrl Shift v, Shift insert")
+    );
+    assert_eq!(
+        setting_value(&config, SettingKey::WindowColorForeground).as_deref(),
+        Some("#c8c9ca")
+    );
+    assert_eq!(
+        setting_value(&config, SettingKey::WindowColorRed).as_deref(),
+        Some("#ff0000")
+    );
+    assert_eq!(
+        setting_value(&config, SettingKey::WindowColorCursor).as_deref(),
+        Some("7")
+    );
+}
+
+#[test]
+fn a_window_setting_applied_live_changes_only_that_setting() {
+    let base = every_setting_set();
+    for (key, value) in [
+        (SettingKey::WindowOpacity, "0.5"),
+        (SettingKey::WindowFontFeatures, "liga, zero"),
+        (SettingKey::WindowColorBlue, "#123456"),
+        (SettingKey::WindowCursorStyle, "underline"),
+    ] {
+        let changed = Config::from_kdl(&key.kdl_snippet(value), Some(base.clone())).unwrap();
+        assert_eq!(differing_settings(&base, &changed), vec![key]);
+        assert_eq!(setting_value(&changed, key).as_deref(), Some(value));
+    }
 }

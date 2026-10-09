@@ -49,6 +49,7 @@ use zellij_utils::pane_size::Size;
 
 use zellij_utils::input::cli_assets::CliAssets;
 use zellij_utils::input::options::{PaneFrameStyle, DEFAULT_WORD_SEPARATORS};
+use zellij_utils::input::window::WindowSettings;
 
 use wasmi::Engine;
 
@@ -154,6 +155,8 @@ pub enum ServerInstruction {
         write_config_to_disk: bool,
     },
     ConfigWrittenToDisk(Config),
+    WindowSettingsChanged(ClientId, Box<WindowSettings>),
+    FontFamilies(ClientId, Vec<String>),
     HostTerminalThemeModeChanged(Option<ClientId>, HostTerminalThemeMode),
     FailedToWriteConfigToDisk(ClientId, Option<PathBuf>), // Pathbuf - file we failed to write
     ReadConfig {
@@ -291,6 +294,8 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::WebServerStarted(..) => ServerContext::WebServerStarted,
             ServerInstruction::FailedToStartWebServer(..) => ServerContext::FailedToStartWebServer,
             ServerInstruction::ConfigWrittenToDisk(..) => ServerContext::ConfigWrittenToDisk,
+            ServerInstruction::WindowSettingsChanged(..) => ServerContext::WindowSettingsChanged,
+            ServerInstruction::FontFamilies(..) => ServerContext::FontFamilies,
             ServerInstruction::HostTerminalThemeModeChanged(..) => {
                 ServerContext::HostTerminalThemeModeChanged
             },
@@ -705,6 +710,7 @@ impl SessionConfiguration {
                 file_contents.as_deref(),
             ),
             keybinds: current.keybinds_selection_snapshot(),
+            font_families: vec![],
         }
     }
     fn replace_runtime_config_if_changed(
@@ -1042,9 +1048,49 @@ pub(crate) struct SessionMetaData {
     config_file_path: Option<PathBuf>,
     config_file: ConfigFileState,
     applied_env: AppliedEnv,
+    sent_window_settings: HashMap<ClientId, WindowSettings>,
+    font_families: HashMap<ClientId, Vec<String>>,
 }
 
 impl SessionMetaData {
+    fn send_window_settings_if_changed(&mut self, client_id: ClientId, config: &Config) {
+        let settings = WindowSettings::from_config(config);
+        if self.sent_window_settings.get(&client_id) == Some(&settings) {
+            return;
+        }
+        self.sent_window_settings
+            .insert(client_id, settings.clone());
+        let _ = self
+            .senders
+            .send_to_server(ServerInstruction::WindowSettingsChanged(
+                client_id,
+                Box::new(settings),
+            ));
+    }
+    fn forget_window_client(&mut self, client_id: ClientId) {
+        self.sent_window_settings.remove(&client_id);
+        self.font_families.remove(&client_id);
+    }
+    fn config_snapshot_for(&self, client_id: ClientId) -> ConfigSnapshot {
+        let mut snapshot = self
+            .session_configuration
+            .config_snapshot(&client_id, self.config_file_path.as_ref());
+        snapshot.font_families = self.font_families_for(client_id);
+        snapshot
+    }
+    fn font_families_for(&self, client_id: ClientId) -> Vec<String> {
+        self.font_families
+            .get(&client_id)
+            .or_else(|| {
+                self.font_families
+                    .iter()
+                    .filter(|(_, families)| !families.is_empty())
+                    .min_by_key(|(id, _)| **id)
+                    .map(|(_, families)| families)
+            })
+            .cloned()
+            .unwrap_or_default()
+    }
     fn sync_pane_env(&mut self, env: &HashMap<String, String>) {
         self.applied_env.sync(env);
     }
@@ -1128,6 +1174,7 @@ impl SessionMetaData {
         let mut new_plugin_config = None;
         let mut converted_keybinds: Vec<(Arc<Keybinds>, SharedKeybinds)> = vec![];
         for (client_id, new_config) in config_changes {
+            self.send_window_settings_if_changed(client_id, &new_config);
             self.follow_keybinds_dir(&new_config);
             self.sync_pane_env(new_config.env.inner());
             let pane_env = self.applied_env.pane_env();
@@ -1351,6 +1398,11 @@ fn remove_client_and_flush_forwards(
 ) {
     let _ = os_input.remove_client(client_id);
     let stuck_tokens = session_state.write().unwrap().remove_client(client_id);
+    if let Ok(mut session) = session_data.try_write() {
+        if let Some(session) = session.as_mut() {
+            session.forget_window_client(client_id);
+        }
+    }
     if stuck_tokens.is_empty() {
         return;
     }
@@ -2577,12 +2629,165 @@ mod session_state_tests {
                 ..Default::default()
             },
             applied_env: AppliedEnv::default(),
+            sent_window_settings: HashMap::new(),
+            font_families: HashMap::new(),
         };
         (
             Arc::new(RwLock::new(Some(session))),
             screen_receiver,
             plugin_receiver,
         )
+    }
+
+    fn test_session_with_server(
+        session_configuration: SessionConfiguration,
+    ) -> (
+        Arc<RwLock<Option<SessionMetaData>>>,
+        zellij_utils::channels::Receiver<(ServerInstruction, zellij_utils::errors::ErrorContext)>,
+    ) {
+        let (session_data, _screen_receiver, _plugin_receiver) =
+            test_session(session_configuration, None);
+        let (to_server, server_receiver): ChannelWithContext<ServerInstruction> =
+            channels::unbounded();
+        if let Some(session) = session_data.write().unwrap().as_mut() {
+            session.senders.to_server = Some(SenderWithContext::new(to_server));
+        }
+        (session_data, server_receiver)
+    }
+
+    fn pushed_window_settings(
+        server_receiver: &zellij_utils::channels::Receiver<(
+            ServerInstruction,
+            zellij_utils::errors::ErrorContext,
+        )>,
+    ) -> Vec<(ClientId, WindowSettings)> {
+        server_receiver
+            .try_iter()
+            .filter_map(|(instruction, _)| match instruction {
+                ServerInstruction::WindowSettingsChanged(client_id, settings) => {
+                    Some((client_id, *settings))
+                },
+                _ => None,
+            })
+            .collect()
+    }
+
+    const TWO_THEMES: &str = "themes {
+    first {
+        text_unselected {
+            base 1 1 1
+            background 1 1 1
+            emphasis_0 0 0 0
+            emphasis_1 0 0 0
+            emphasis_2 0 0 0
+            emphasis_3 0 0 0
+        }
+    }
+    second {
+        text_unselected {
+            base 2 2 2
+            background 2 2 2
+            emphasis_0 0 0 0
+            emphasis_1 0 0 0
+            emphasis_2 0 0 0
+            emphasis_3 0 0 0
+        }
+    }
+}
+theme \"first\"
+";
+
+    #[test]
+    fn window_settings_are_pushed_only_when_they_or_the_theme_change() {
+        let session_configuration = session_configuration_with_one_client(TWO_THEMES);
+        let (session_data, server_receiver) = test_session_with_server(session_configuration);
+
+        reconfigure_session(&session_data, 1, "window { blur true; }", false);
+        let pushed = pushed_window_settings(&server_receiver);
+        assert_eq!(pushed.len(), 1);
+        assert_eq!(pushed[0].0, 1);
+        assert_eq!(pushed[0].1.section.blur, Some(true));
+
+        reconfigure_session(&session_data, 1, "simplified_ui true", false);
+        assert!(
+            pushed_window_settings(&server_receiver).is_empty(),
+            "a change the window does not read was pushed to it"
+        );
+
+        reconfigure_session(&session_data, 1, "theme \"second\"", false);
+        let pushed = pushed_window_settings(&server_receiver);
+        assert_eq!(pushed.len(), 1, "a new theme did not reach the window");
+        assert_eq!(
+            pushed[0].1.theme.unwrap().palette.text_unselected.background,
+            zellij_utils::data::PaletteColor::Rgb((2, 2, 2))
+        );
+    }
+
+    #[test]
+    fn a_disconnected_window_is_forgotten_so_a_reconnect_is_told_again() {
+        let session_configuration = session_configuration_with_one_client(TWO_THEMES);
+        let (session_data, server_receiver) = test_session_with_server(session_configuration);
+        reconfigure_session(&session_data, 1, "window { blur true; }", false);
+        assert_eq!(pushed_window_settings(&server_receiver).len(), 1);
+        session_data
+            .write()
+            .unwrap()
+            .as_mut()
+            .unwrap()
+            .font_families
+            .insert(1, vec!["Mono".to_owned()]);
+
+        session_data
+            .write()
+            .unwrap()
+            .as_mut()
+            .unwrap()
+            .forget_window_client(1);
+
+        {
+            let session = session_data.read().unwrap();
+            let session = session.as_ref().unwrap();
+            assert!(session.sent_window_settings.is_empty());
+            assert!(session.font_families.is_empty());
+        }
+        reconfigure_session(&session_data, 1, "simplified_ui true", false);
+        assert_eq!(
+            pushed_window_settings(&server_receiver).len(),
+            1,
+            "a window that reconnected was not told its settings"
+        );
+    }
+
+    #[test]
+    fn the_settings_list_the_fonts_of_their_own_window_or_else_of_another() {
+        let mut session_configuration = session_configuration_with_one_client("");
+        session_configuration
+            .set_client_runtime_configuration(2, session_configuration.saved_config.clone());
+        session_configuration
+            .set_client_runtime_configuration(3, session_configuration.saved_config.clone());
+        let (session_data, _screen_receiver, _plugin_receiver) =
+            test_session(session_configuration, None);
+        let mut session = session_data.write().unwrap();
+        let session = session.as_mut().unwrap();
+        assert!(session.config_snapshot_for(1).font_families.is_empty());
+
+        session.font_families.insert(2, vec!["Zed Mono".to_owned()]);
+        session.font_families.insert(3, vec!["Iosevka".to_owned()]);
+        assert_eq!(
+            session.config_snapshot_for(3).font_families,
+            vec!["Iosevka".to_owned()]
+        );
+        assert_eq!(
+            session.config_snapshot_for(1).font_families,
+            vec!["Zed Mono".to_owned()],
+            "a terminal client did not borrow the list of an attached window"
+        );
+        session.font_families.insert(1, vec![]);
+        assert_eq!(
+            session.config_snapshot_for(1).font_families,
+            Vec::<String>::new(),
+            "a client that listed no fonts was given another client's"
+        );
     }
 
     fn reconfigure_session(
@@ -4006,6 +4211,20 @@ pub fn start_server_impl(
                     );
                 }
             },
+            ServerInstruction::FontFamilies(client_id, families) => {
+                if let Some(session_data) = session_data.write().unwrap().as_mut() {
+                    session_data.font_families.insert(client_id, families);
+                }
+            },
+            ServerInstruction::WindowSettingsChanged(client_id, settings) => {
+                send_to_client!(
+                    client_id,
+                    os_input,
+                    ServerToClientMsg::WindowSettingsChanged { settings },
+                    session_state,
+                    session_data
+                );
+            },
             ServerInstruction::HostTerminalThemeModeChanged(client_id, mode) => {
                 let client_ids = match client_id {
                     Some(client_id) => vec![client_id],
@@ -4031,11 +4250,11 @@ pub fn start_server_impl(
                 client_id,
                 response_channel,
             } => {
-                let snapshot = session_data.read().unwrap().as_ref().map(|session_data| {
-                    session_data
-                        .session_configuration
-                        .config_snapshot(&client_id, session_data.config_file_path.as_ref())
-                });
+                let snapshot = session_data
+                    .read()
+                    .unwrap()
+                    .as_ref()
+                    .map(|session_data| session_data.config_snapshot_for(client_id));
                 if let Some(snapshot) = snapshot {
                     let _ = response_channel.send(snapshot);
                 }
@@ -4835,6 +5054,8 @@ fn init_session(
         close_dialogue_clients: HashSet::new(),
         terminal_command_submitted: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         applied_env,
+        sent_window_settings: HashMap::new(),
+        font_families: HashMap::new(),
         config_file: ConfigFileState {
             contents_when_read: cli_assets
                 .config_file_path

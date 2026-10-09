@@ -17,7 +17,7 @@ const PROMPT_MARKER: &str = "<Esc> - cancel";
 const KEYS_PAGE: usize = 2;
 const MENU_PAGE: usize = 4;
 const THEMES_PAGE: usize = 5;
-const PLUGINS_PAGE: usize = 11;
+const PLUGINS_PAGE: usize = 13;
 
 fn open_settings(zellij: &TestSession) {
     zellij.send_stdin(&keys::ctrl('o'));

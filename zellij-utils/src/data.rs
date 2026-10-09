@@ -4773,6 +4773,8 @@ pub enum SettingSection {
     TopLevel,
     PaneFrames,
     WebClient,
+    Window,
+    WindowTheme,
     Keybinds,
     Blocks,
 }
@@ -4781,7 +4783,28 @@ pub enum SettingSection {
 pub enum SettingValueShape {
     Flag,
     Number,
+    Decimal,
     Text,
+    List,
+    Colour,
+}
+
+pub const SETTING_LIST_SEPARATOR: &str = ", ";
+
+pub fn split_setting_list(text: &str) -> Vec<String> {
+    text.split(SETTING_LIST_SEPARATOR)
+        .map(|item| item.trim())
+        .filter(|item| !item.is_empty())
+        .map(|item| item.to_owned())
+        .collect()
+}
+
+pub fn join_setting_list<S: AsRef<str>>(items: &[S]) -> String {
+    items
+        .iter()
+        .map(|item| item.as_ref())
+        .collect::<Vec<_>>()
+        .join(SETTING_LIST_SEPARATOR)
 }
 
 macro_rules! setting_keys {
@@ -4903,6 +4926,69 @@ setting_keys! {
     WebClientCursorInactiveStyle => (WebClient, "cursor_inactive_style", true, Text),
     WebClientMacOptionIsMeta => (WebClient, "mac_option_is_meta", true, Flag),
     WebClientBaseUrl => (WebClient, "base_url", true, Text),
+    WindowFont => (Window, "font", false, Text),
+    WindowFontSize => (Window, "font_size", false, Decimal),
+    WindowFontWeight => (Window, "font_weight", false, Number),
+    WindowSystemFonts => (Window, "system_fonts", false, Flag),
+    WindowLigatures => (Window, "ligatures", false, Flag),
+    WindowFontFeatures => (Window, "font_features", false, List),
+    WindowCursorStyle => (Window, "cursor_style", false, Text),
+    WindowCursorBlink => (Window, "cursor_blink", false, Flag),
+    WindowCursorUnfocusedHollow => (Window, "cursor_unfocused_hollow", false, Flag),
+    WindowStartupMode => (Window, "startup_mode", true, Text),
+    WindowInitialColumns => (Window, "initial_columns", true, Number),
+    WindowInitialRows => (Window, "initial_rows", true, Number),
+    WindowOpacity => (Window, "opacity", false, Decimal),
+    WindowOpacityMode => (Window, "opacity_mode", false, Text),
+    WindowBlur => (Window, "blur", false, Flag),
+    WindowConfirmClose => (Window, "confirm_close", false, Flag),
+    WindowPadding => (Window, "padding", false, Decimal),
+    WindowPaddingTop => (Window, "padding_top", false, Decimal),
+    WindowPaddingRight => (Window, "padding_right", false, Decimal),
+    WindowPaddingBottom => (Window, "padding_bottom", false, Decimal),
+    WindowPaddingLeft => (Window, "padding_left", false, Decimal),
+    WindowPaddingBalance => (Window, "padding_balance", false, Flag),
+    WindowPaddingColor => (Window, "padding_color", false, Text),
+    WindowLineHeight => (Window, "line_height", false, Decimal),
+    WindowCellWidth => (Window, "cell_width", false, Decimal),
+    WindowBaselineOffset => (Window, "baseline_offset", false, Number),
+    WindowUnderlineOffset => (Window, "underline_offset", false, Number),
+    WindowUnderlineThickness => (Window, "underline_thickness", false, Number),
+    WindowMinimumContrast => (Window, "minimum_contrast", false, Decimal),
+    WindowSmoothScrolling => (Window, "smooth_scrolling", false, Flag),
+    WindowScrollAnimationDuration => (Window, "scroll_animation_duration", false, Number),
+    WindowScrollMomentum => (Window, "scroll_momentum", false, Flag),
+    WindowScrollMomentumFriction => (Window, "scroll_momentum_friction", false, Decimal),
+    WindowBell => (Window, "bell", false, Text),
+    WindowNotifications => (Window, "notifications", false, Text),
+    WindowOpenLinks => (Window, "open_links", false, Flag),
+    WindowMiddleClickPaste => (Window, "middle_click_paste", false, Flag),
+    WindowHidePointerWhileTyping => (Window, "hide_pointer_while_typing", false, Flag),
+    WindowMacosOptionAsAlt => (Window, "macos_option_as_alt", false, Text),
+    WindowPasteKeys => (Window, "paste_keys", false, List),
+    WindowZoomInKeys => (Window, "zoom_in_keys", false, List),
+    WindowZoomOutKeys => (Window, "zoom_out_keys", false, List),
+    WindowZoomResetKeys => (Window, "zoom_reset_keys", false, List),
+    WindowFullscreenKeys => (Window, "fullscreen_keys", false, List),
+    WindowColorForeground => (WindowTheme, "foreground", false, Colour),
+    WindowColorBackground => (WindowTheme, "background", false, Colour),
+    WindowColorCursor => (WindowTheme, "cursor", false, Colour),
+    WindowColorBlack => (WindowTheme, "black", false, Colour),
+    WindowColorRed => (WindowTheme, "red", false, Colour),
+    WindowColorGreen => (WindowTheme, "green", false, Colour),
+    WindowColorYellow => (WindowTheme, "yellow", false, Colour),
+    WindowColorBlue => (WindowTheme, "blue", false, Colour),
+    WindowColorMagenta => (WindowTheme, "magenta", false, Colour),
+    WindowColorCyan => (WindowTheme, "cyan", false, Colour),
+    WindowColorWhite => (WindowTheme, "white", false, Colour),
+    WindowColorBrightBlack => (WindowTheme, "bright_black", false, Colour),
+    WindowColorBrightRed => (WindowTheme, "bright_red", false, Colour),
+    WindowColorBrightGreen => (WindowTheme, "bright_green", false, Colour),
+    WindowColorBrightYellow => (WindowTheme, "bright_yellow", false, Colour),
+    WindowColorBrightBlue => (WindowTheme, "bright_blue", false, Colour),
+    WindowColorBrightMagenta => (WindowTheme, "bright_magenta", false, Colour),
+    WindowColorBrightCyan => (WindowTheme, "bright_cyan", false, Colour),
+    WindowColorBrightWhite => (WindowTheme, "bright_white", false, Colour),
     Keybinds => (Keybinds, "keybinds", false, Text),
     PluginAliases => (Blocks, "plugins", false, Text),
     LoadPlugins => (Blocks, "load_plugins", true, Text),
@@ -4923,6 +5009,8 @@ impl SettingKey {
             },
             SettingSection::PaneFrames => format!("ui.pane_frames.{}", self.kdl_name()),
             SettingSection::WebClient => format!("web_client.{}", self.kdl_name()),
+            SettingSection::Window => format!("window.{}", self.kdl_name()),
+            SettingSection::WindowTheme => format!("window.theme.{}", self.kdl_name()),
         }
     }
     pub fn from_id(id: &str) -> Option<SettingKey> {
@@ -4933,7 +5021,15 @@ impl SettingKey {
             SettingSection::TopLevel | SettingSection::Keybinds | SettingSection::Blocks => &[],
             SettingSection::PaneFrames => &["ui", "pane_frames"],
             SettingSection::WebClient => &["web_client"],
+            SettingSection::Window => &["window"],
+            SettingSection::WindowTheme => &["window", "theme"],
         }
+    }
+    pub fn is_window(&self) -> bool {
+        matches!(
+            self.section(),
+            SettingSection::Window | SettingSection::WindowTheme
+        )
     }
     pub fn is_block(&self) -> bool {
         matches!(
@@ -4941,23 +5037,63 @@ impl SettingKey {
             SettingSection::Keybinds | SettingSection::Blocks
         )
     }
-    pub fn kdl_value(&self, value: &str) -> Option<kdl::KdlValue> {
+    pub fn kdl_values(&self, value: &str) -> Option<Vec<kdl::KdlValue>> {
         match self.value_shape() {
             SettingValueShape::Flag => match value {
-                "true" => Some(kdl::KdlValue::Bool(true)),
-                "false" => Some(kdl::KdlValue::Bool(false)),
+                "true" => Some(vec![kdl::KdlValue::Bool(true)]),
+                "false" => Some(vec![kdl::KdlValue::Bool(false)]),
                 _ => None,
             },
-            SettingValueShape::Number => {
-                value.trim().parse::<i64>().ok().map(kdl::KdlValue::Base10)
+            SettingValueShape::Number => value
+                .trim()
+                .parse::<i64>()
+                .ok()
+                .map(|number| vec![kdl::KdlValue::Base10(number)]),
+            SettingValueShape::Decimal => {
+                let number = value.trim().parse::<f64>().ok()?;
+                if !number.is_finite() {
+                    return None;
+                }
+                if number.fract() == 0.0 && number.abs() < i64::MAX as f64 {
+                    Some(vec![kdl::KdlValue::Base10(number as i64)])
+                } else {
+                    Some(vec![kdl::KdlValue::Base10Float(number)])
+                }
             },
-            SettingValueShape::Text => Some(kdl::KdlValue::String(value.to_owned())),
+            SettingValueShape::Text => Some(vec![kdl::KdlValue::String(value.to_owned())]),
+            SettingValueShape::List => {
+                let items: Vec<kdl::KdlValue> = split_setting_list(value)
+                    .into_iter()
+                    .map(kdl::KdlValue::String)
+                    .collect();
+                if items.is_empty() {
+                    None
+                } else {
+                    Some(items)
+                }
+            },
+            SettingValueShape::Colour => {
+                let text = value.trim();
+                if text.starts_with('#') {
+                    Some(vec![kdl::KdlValue::String(text.to_owned())])
+                } else {
+                    text.parse::<u8>()
+                        .ok()
+                        .map(|index| vec![kdl::KdlValue::Base10(index as i64)])
+                }
+            },
         }
     }
     pub fn kdl_snippet(&self, value: &str) -> String {
         let value_text = self
-            .kdl_value(value)
-            .map(|value| value.to_string())
+            .kdl_values(value)
+            .map(|values| {
+                values
+                    .iter()
+                    .map(|value| value.to_string())
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            })
             .unwrap_or_else(|| kdl::KdlValue::String(value.to_owned()).to_string());
         let mut text = format!("{} {}", self.kdl_name(), value_text);
         for parent in self.parent_nodes().iter().rev() {
@@ -5121,6 +5257,7 @@ pub struct ConfigSnapshot {
     pub default_blocks: ConfigBlocks,
     pub keybindings: Vec<KeybindingEntry>,
     pub keybinds: KeybindsSelectionSnapshot,
+    pub font_families: Vec<String>,
 }
 
 impl ConfigSnapshot {

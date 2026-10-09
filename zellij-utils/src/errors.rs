@@ -678,6 +678,8 @@ pub enum ServerContext {
     ChangeModeForAllClients,
     Reconfigure,
     ConfigWrittenToDisk,
+    WindowSettingsChanged,
+    FontFamilies,
     FailedToWriteConfigToDisk,
     RebindKeys,
     ReplaceConfigBlocks,

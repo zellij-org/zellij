@@ -53,6 +53,16 @@ impl Discovery {
         }
     }
 
+    pub fn monospace_families(&self) -> Vec<String> {
+        match self.0.lock() {
+            Ok(backend) => backend.monospace_families(),
+            Err(_) => {
+                report!("the font discovery mutex was poisoned");
+                Vec::new()
+            },
+        }
+    }
+
     #[cfg(test)]
     pub fn synthetic(directory: &std::path::Path) -> Option<Self> {
         Backend::synthetic(directory)
@@ -117,12 +127,22 @@ mod fontconfig {
     const FILE: &[u8] = b"file\0";
     const INDEX: &[u8] = b"index\0";
     const MONOSPACE: &[u8] = b"monospace\0";
+    const SPACING: &[u8] = b"spacing\0";
+    const FC_MONO: c_int = 100;
 
     const MAX_FAMILY_NAMES: c_int = 8;
 
     type Config = c_void;
     type Pattern = c_void;
     type CharSet = c_void;
+    type ObjectSet = c_void;
+
+    #[repr(C)]
+    struct FontSet {
+        nfont: c_int,
+        sfont: c_int,
+        fonts: *mut *mut Pattern,
+    }
 
     struct Api {
         init_load_config_and_fonts: unsafe extern "C" fn() -> *mut Config,
@@ -145,6 +165,11 @@ mod fontconfig {
         config_substitute: unsafe extern "C" fn(*mut Config, *mut Pattern, c_int) -> c_int,
         default_substitute: unsafe extern "C" fn(*mut Pattern),
         font_match: unsafe extern "C" fn(*mut Config, *mut Pattern, *mut c_int) -> *mut Pattern,
+        object_set_create: unsafe extern "C" fn() -> *mut ObjectSet,
+        object_set_add: unsafe extern "C" fn(*mut ObjectSet, *const c_char) -> c_int,
+        object_set_destroy: unsafe extern "C" fn(*mut ObjectSet),
+        font_list: unsafe extern "C" fn(*mut Config, *mut Pattern, *mut ObjectSet) -> *mut FontSet,
+        font_set_destroy: unsafe extern "C" fn(*mut FontSet),
         #[cfg(test)]
         config_create: unsafe extern "C" fn() -> *mut Config,
         #[cfg(test)]
@@ -317,6 +342,50 @@ mod fontconfig {
             }
         }
 
+        pub(super) fn monospace_families(&self) -> Vec<String> {
+            let api = &self.api;
+            let mut families = Vec::new();
+            unsafe {
+                let pattern = (api.pattern_create)();
+                if pattern.is_null() {
+                    return families;
+                }
+                (api.pattern_add_integer)(pattern, SPACING.as_ptr() as *const c_char, FC_MONO);
+                let objects = (api.object_set_create)();
+                if objects.is_null() {
+                    (api.pattern_destroy)(pattern);
+                    return families;
+                }
+                (api.object_set_add)(objects, FAMILY.as_ptr() as *const c_char);
+                let listed = (api.font_list)(self.config, pattern, objects);
+                if !listed.is_null() {
+                    let set = &*listed;
+                    for position in 0..set.nfont.max(0) as usize {
+                        let font = *set.fonts.add(position);
+                        let mut name: *mut u8 = std::ptr::null_mut();
+                        if !font.is_null()
+                            && (api.pattern_get_string)(
+                                font,
+                                FAMILY.as_ptr() as *const c_char,
+                                0,
+                                &mut name,
+                            ) == FC_RESULT_MATCH
+                            && !name.is_null()
+                        {
+                            if let Ok(name) = CStr::from_ptr(name as *const c_char).to_str() {
+                                families.push(name.to_owned());
+                            }
+                        }
+                    }
+                    (api.font_set_destroy)(listed);
+                }
+                (api.object_set_destroy)(objects);
+                (api.pattern_destroy)(pattern);
+            }
+            super::scan::sort_families(&mut families);
+            families
+        }
+
         unsafe fn answers_to(&self, matched: *mut Pattern, requested: &str) -> bool {
             let api = &self.api;
             for index in 0..MAX_FAMILY_NAMES {
@@ -413,6 +482,11 @@ mod fontconfig {
             config_substitute: symbol!(b"FcConfigSubstitute\0"),
             default_substitute: symbol!(b"FcDefaultSubstitute\0"),
             font_match: symbol!(b"FcFontMatch\0"),
+            object_set_create: symbol!(b"FcObjectSetCreate\0"),
+            object_set_add: symbol!(b"FcObjectSetAdd\0"),
+            object_set_destroy: symbol!(b"FcObjectSetDestroy\0"),
+            font_list: symbol!(b"FcFontList\0"),
+            font_set_destroy: symbol!(b"FcFontSetDestroy\0"),
             #[cfg(test)]
             config_create: symbol!(b"FcConfigCreate\0"),
             #[cfg(test)]
@@ -544,6 +618,23 @@ mod tests {
                 .any(|string| string.to_string().eq_ignore_ascii_case("Iosevka Term")),
             "{:?} does not name itself Iosevka Term",
             path
+        );
+    }
+
+    #[test]
+    fn the_installed_monospaced_families_are_listed_once_each() {
+        let Some(discovery) = synthetic() else {
+            return;
+        };
+        let families = discovery.monospace_families();
+        assert_eq!(
+            families
+                .iter()
+                .filter(|family| family.eq_ignore_ascii_case("Iosevka Term"))
+                .count(),
+            1,
+            "{:?}",
+            families
         );
     }
 

@@ -7,9 +7,9 @@ use crate::keybindings_screen::KeybindingsScreen;
 use crate::keys_screen::KeysScreen;
 use crate::page::{changed_by, note_group, outside_overlays, run_effects, Page, PageResponse};
 use crate::settings::{
-    check_text, describe, is_row_kind, kdl_for, mode_choice_label, option_value, section,
-    settings_in, sort_for_display, Category, Scope, SettingInfo, SettingKind, CATEGORIES,
-    INPUT_MODES, MISSING_SUFFIX, UNSET_CHOICE,
+    check_text, describe, inherits_from, is_row_kind, kdl_for, mode_choice_label, option_value,
+    parse_hex_colour, section, settings_in, sort_for_display, Category, Scope, SettingInfo,
+    SettingKind, TextCheck, BUNDLED_FONT, CATEGORIES, INPUT_MODES, MISSING_SUFFIX, UNSET_CHOICE,
 };
 use crate::theme_preview::{PreviewAction, ThemePreview, PREVIEWED_THEME_SETTINGS};
 use crate::themes_screen::ThemesScreen;
@@ -33,6 +33,7 @@ const DEFAULT_THEME: &str = "default";
 const FILE_PREFIX: &str = "File: ";
 const WINDOW_TITLE: &str = "Configuration";
 const KEYBINDINGS_MIN_ROWS: usize = 8;
+const COLOUR_SWATCH_WIDTH: usize = 4;
 const PAGE_CATEGORIES: [Category; 3] = [
     Category::Themes,
     Category::ContextMenu,
@@ -168,6 +169,27 @@ impl Default for SettingsScreen {
             file_link_hovered: false,
             last_mouse: None,
         }
+    }
+}
+
+fn colour_swatch(value: Option<&str>, x: usize, y: usize) -> Option<String> {
+    let (r, g, b) = parse_hex_colour(value?.trim())?;
+    Some(format!(
+        "\u{1b}[{};{}H\u{1b}[0m\u{1b}[38;2;{};{};{}m██\u{1b}[0m",
+        y + 1,
+        x + 1,
+        r,
+        g,
+        b
+    ))
+}
+
+fn stepper_text(kind: SettingKind, number: i64) -> Option<String> {
+    match kind {
+        SettingKind::Decimal { decimals, .. } => Some(format_scaled(number, decimals)),
+        SettingKind::OptionalNumber { .. } if number <= 0 => None,
+        SettingKind::OptionalNumber { min, .. } => Some(number.max(min).to_string()),
+        _ => Some(number.to_string()),
     }
 }
 
@@ -480,9 +502,16 @@ impl SettingsScreen {
             .map(|key| {
                 let info = describe(key);
                 match info.kind {
-                    SettingKind::Number { min, max, .. } => {
+                    SettingKind::Number { min, max, .. }
+                    | SettingKind::OptionalNumber { min, max, .. } => {
                         min.to_string().len().max(max.to_string().len())
                     },
+                    SettingKind::Decimal {
+                        min, max, decimals, ..
+                    } => format_scaled(min, decimals)
+                        .len()
+                        .max(format_scaled(max, decimals).len())
+                        .max(format_scaled(max - 1, decimals).len()),
                     _ => self
                         .choice_options(key, &info)
                         .iter()
@@ -539,8 +568,27 @@ impl SettingsScreen {
                 "false".to_owned(),
             ],
             SettingKind::Theme { can_be_unset } => self.theme_options(can_be_unset, &current),
+            SettingKind::FontFamily => self.font_options(&current),
             _ => vec![],
         }
+    }
+    fn font_options(&self, current: &Option<String>) -> Vec<String> {
+        let mut options = vec![BUNDLED_FONT.to_owned()];
+        options.extend(self.snapshot.font_families.iter().cloned());
+        if let Some(current) = current {
+            let listed = self
+                .snapshot
+                .font_families
+                .iter()
+                .any(|family| family.eq_ignore_ascii_case(current));
+            if !listed {
+                options.insert(1, format!("{}{}", current, MISSING_SUFFIX));
+            }
+        }
+        options
+    }
+    fn font_is_listed(&self) -> bool {
+        !self.snapshot.font_families.is_empty()
     }
     fn selected_choice_index(&self, key: SettingKey, options: &[String]) -> usize {
         let info = describe(key);
@@ -549,6 +597,7 @@ impl SettingsScreen {
             | SettingKind::Theme {
                 can_be_unset: false,
             } => Some(info.default.to_owned()),
+            SettingKind::FontFamily => Some(BUNDLED_FONT.to_owned()),
             _ => Some(UNSET_CHOICE.to_owned()),
         });
         value
@@ -556,6 +605,11 @@ impl SettingsScreen {
                 options
                     .iter()
                     .position(|option| option_value(option) == value)
+                    .or_else(|| {
+                        options
+                            .iter()
+                            .position(|option| option_value(option).eq_ignore_ascii_case(&value))
+                    })
             })
             .unwrap_or(0)
     }
@@ -570,6 +624,24 @@ impl SettingsScreen {
             .or_else(|| describe(key).default.parse().ok())
             .unwrap_or(min)
     }
+    fn decimal_value(&self, key: SettingKey, min: i64, decimals: u32) -> i64 {
+        self.current_value(key)
+            .or_else(|| inherits_from(key).and_then(|from| self.current_value(from)))
+            .and_then(|v| parse_scaled(&v, decimals))
+            .or_else(|| parse_scaled(describe(key).default, decimals))
+            .unwrap_or(min)
+    }
+    fn optional_number_value(&self, key: SettingKey) -> i64 {
+        self.current_value(key)
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0)
+    }
+    fn set_number(&mut self, key: SettingKey, number: i64) {
+        match stepper_text(describe(key).kind, number) {
+            Some(text) => self.set_value(key, &text),
+            None => self.unset_value(key),
+        }
+    }
     fn build_element(&self, key: SettingKey) -> Option<Element> {
         let info = describe(key);
         let label_width = self.label_width();
@@ -577,7 +649,15 @@ impl SettingsScreen {
             SettingKind::Toggle => Toggle::new(info.name, self.toggle_value(key))
                 .label_width(label_width)
                 .into(),
-            SettingKind::OptionalToggle
+            SettingKind::FontFamily if !self.font_is_listed() => {
+                TextInput::new(self.current_value(key).unwrap_or_default())
+                    .label(info.name)
+                    .label_width(label_width)
+                    .placeholder(BUNDLED_FONT)
+                    .into()
+            },
+            SettingKind::FontFamily
+            | SettingKind::OptionalToggle
             | SettingKind::Choice(_)
             | SettingKind::OptionalChoice(_)
             | SettingKind::Theme { .. } => {
@@ -601,6 +681,26 @@ impl SettingsScreen {
                     .label_width(label_width)
                     .into()
             },
+            SettingKind::Decimal {
+                min,
+                max,
+                step,
+                decimals,
+            } => NumberStepper::new(info.name, self.decimal_value(key, min, decimals))
+                .decimals(decimals)
+                .min(min)
+                .max(max)
+                .step(step)
+                .label_width(label_width)
+                .into(),
+            SettingKind::OptionalNumber { max, step, .. } => {
+                NumberStepper::new(info.name, self.optional_number_value(key))
+                    .min(0)
+                    .max(max)
+                    .step(step)
+                    .label_width(label_width)
+                    .into()
+            },
             SettingKind::Keybindings | SettingKind::Block => return None,
         };
         Some(element)
@@ -616,10 +716,13 @@ impl SettingsScreen {
                         toggle.set_on(on);
                     }
                 },
-                SettingKind::OptionalToggle
+                SettingKind::FontFamily
+                | SettingKind::OptionalToggle
                 | SettingKind::Choice(_)
                 | SettingKind::OptionalChoice(_)
-                | SettingKind::Theme { .. } => {
+                | SettingKind::Theme { .. }
+                    if self.elements.dropdown(&key).is_some() =>
+                {
                     let options = self.choice_options(key, &info);
                     let selected = self.selected_choice_index(key, &options);
                     let previewing = self.theme_preview.is_previewing(key);
@@ -646,7 +749,7 @@ impl SettingsScreen {
                         }
                     }
                 },
-                SettingKind::Text(_) => {
+                SettingKind::Text(_) | SettingKind::FontFamily => {
                     let current = self.current_value(key).unwrap_or_default();
                     let editing = self.editing == Some(key);
                     if let Some(input) = self.elements.text_input_mut(&key) {
@@ -655,16 +758,26 @@ impl SettingsScreen {
                         }
                     }
                 },
-                SettingKind::Number { min, .. } => {
-                    let value = self.number_value(key, min);
+                SettingKind::Number { .. }
+                | SettingKind::Decimal { .. }
+                | SettingKind::OptionalNumber { .. } => {
+                    let value = self.stepper_value(key);
                     if let Some(stepper) = self.elements.number_stepper_mut(&key) {
                         if !stepper.is_editing() {
                             stepper.set_value(value);
                         }
                     }
                 },
-                SettingKind::Keybindings | SettingKind::Block => {},
+                _ => {},
             }
+        }
+    }
+    fn stepper_value(&self, key: SettingKey) -> i64 {
+        match describe(key).kind {
+            SettingKind::Decimal { min, decimals, .. } => self.decimal_value(key, min, decimals),
+            SettingKind::OptionalNumber { .. } => self.optional_number_value(key),
+            SettingKind::Number { min, .. } => self.number_value(key, min),
+            _ => 0,
         }
     }
     fn set_value(&mut self, key: SettingKey, value: &str) {
@@ -1339,15 +1452,13 @@ impl SettingsScreen {
             UiResponse::Changed(UiValue::Bool(on)) => self.set_value(key, &on.to_string()),
             UiResponse::Changed(UiValue::Choice { label, .. }) => {
                 self.theme_preview.commit(key);
-                if label == UNSET_CHOICE {
+                if label == UNSET_CHOICE || label == BUNDLED_FONT {
                     self.unset_value(key);
                 } else {
                     self.set_value(key, option_value(&label));
                 }
             },
-            UiResponse::Changed(UiValue::Number(number)) => {
-                self.set_value(key, &number.to_string())
-            },
+            UiResponse::Changed(UiValue::Number(number)) => self.set_number(key, number),
             UiResponse::Submitted(UiValue::Text(text)) => {
                 if let SettingKind::Text(check) = describe(key).kind {
                     if let Err(error) = check_text(check, &text) {
@@ -2244,7 +2355,14 @@ impl SettingsScreen {
             .rows
             .iter()
             .filter_map(|row| match row {
-                Row::Setting(key) => Some(self.marker_for(*key).0.chars().count()),
+                Row::Setting(key) => {
+                    let swatch = if describe(*key).kind == SettingKind::Text(TextCheck::Colour) {
+                        COLOUR_SWATCH_WIDTH
+                    } else {
+                        0
+                    };
+                    Some(self.marker_for(*key).0.chars().count() + swatch)
+                },
                 _ => None,
             })
             .max()
@@ -2274,8 +2392,20 @@ impl SettingsScreen {
                 _ => {},
             }
         }
+        let swatch_width = if describe(key).kind == SettingKind::Text(TextCheck::Colour) {
+            if let Some(swatch) = colour_swatch(
+                self.current_value(key).as_deref(),
+                x + element_width + 2,
+                screen_y,
+            ) {
+                print!("{}", swatch);
+            }
+            COLOUR_SWATCH_WIDTH
+        } else {
+            0
+        };
         if !marker.is_empty() {
-            let marker_column = x + element_width + 2;
+            let marker_column = x + element_width + 2 + swatch_width;
             let marker_x = if marker_column + marker_width <= x + width {
                 marker_column
             } else {
@@ -2317,6 +2447,135 @@ mod tests {
             }
         }
         panic!("the menu was not laid out");
+    }
+
+    fn screen_with(values: &[(SettingKey, &str)], font_families: &[&str]) -> SettingsScreen {
+        let mut screen = SettingsScreen::default();
+        screen.snapshot.settings = values
+            .iter()
+            .map(|(key, value)| ConfigSettingState {
+                key: *key,
+                saved_value: Some(value.to_string()),
+                current_value: Some(value.to_string()),
+                set_in_file: true,
+            })
+            .collect();
+        screen.snapshot.font_families = font_families.iter().map(|f| f.to_string()).collect();
+        screen
+    }
+
+    fn font_choice(screen: &SettingsScreen) -> (Vec<String>, String) {
+        let info = describe(SettingKey::WindowFont);
+        let options = screen.choice_options(SettingKey::WindowFont, &info);
+        let selected = screen.selected_choice_index(SettingKey::WindowFont, &options);
+        let shown = options[selected].clone();
+        (options, shown)
+    }
+
+    #[test]
+    fn the_font_dropdown_starts_with_the_bundled_font_then_the_installed_ones() {
+        let screen = screen_with(&[], &["Iosevka Term", "JetBrains Mono"]);
+        let (options, shown) = font_choice(&screen);
+        assert_eq!(
+            options,
+            vec![
+                BUNDLED_FONT.to_owned(),
+                "Iosevka Term".to_owned(),
+                "JetBrains Mono".to_owned()
+            ]
+        );
+        assert_eq!(shown, BUNDLED_FONT);
+    }
+
+    #[test]
+    fn a_font_set_in_any_case_selects_the_installed_entry() {
+        let screen = screen_with(
+            &[(SettingKey::WindowFont, "iosevka term")],
+            &["Iosevka Term", "JetBrains Mono"],
+        );
+        let (options, shown) = font_choice(&screen);
+        assert_eq!(options.len(), 3, "{:?}", options);
+        assert_eq!(shown, "Iosevka Term");
+    }
+
+    #[test]
+    fn a_font_that_is_not_installed_is_shown_as_missing() {
+        let screen = screen_with(&[(SettingKey::WindowFont, "Gone Mono")], &["Iosevka Term"]);
+        let (options, shown) = font_choice(&screen);
+        assert_eq!(
+            options,
+            vec![
+                BUNDLED_FONT.to_owned(),
+                format!("Gone Mono{}", MISSING_SUFFIX),
+                "Iosevka Term".to_owned()
+            ]
+        );
+        assert_eq!(shown, format!("Gone Mono{}", MISSING_SUFFIX));
+        assert_eq!(option_value(&shown), "Gone Mono");
+    }
+
+    #[test]
+    fn the_font_is_a_dropdown_only_when_installed_fonts_are_known() {
+        let listed = screen_with(&[], &["Iosevka Term"]);
+        assert!(matches!(
+            listed.build_element(SettingKey::WindowFont),
+            Some(Element::Dropdown(_))
+        ));
+        let unlisted = screen_with(&[(SettingKey::WindowFont, "Iosevka Term")], &[]);
+        match unlisted.build_element(SettingKey::WindowFont) {
+            Some(Element::TextInput(input)) => assert_eq!(input.get_text(), "Iosevka Term"),
+            other => panic!("the font was shown as {:?}", other),
+        }
+    }
+
+    #[test]
+    fn a_zero_initial_size_unsets_it_and_a_tiny_one_is_raised_to_the_minimum() {
+        let kind = describe(SettingKey::WindowInitialColumns).kind;
+        assert_eq!(stepper_text(kind, 0), None);
+        assert_eq!(stepper_text(kind, 1), Some("2".to_owned()));
+        assert_eq!(stepper_text(kind, 120), Some("120".to_owned()));
+        let screen = screen_with(&[], &[]);
+        assert_eq!(screen.stepper_value(SettingKey::WindowInitialRows), 0);
+        let screen = screen_with(&[(SettingKey::WindowInitialRows, "40")], &[]);
+        assert_eq!(screen.stepper_value(SettingKey::WindowInitialRows), 40);
+    }
+
+    #[test]
+    fn decimal_steppers_write_plain_numbers() {
+        let opacity = describe(SettingKey::WindowOpacity).kind;
+        assert_eq!(stepper_text(opacity, 90), Some("0.9".to_owned()));
+        assert_eq!(stepper_text(opacity, 100), Some("1".to_owned()));
+        let font_size = describe(SettingKey::WindowFontSize).kind;
+        assert_eq!(stepper_text(font_size, 135), Some("13.5".to_owned()));
+        let screen = screen_with(&[(SettingKey::WindowFontSize, "13.5")], &[]);
+        assert_eq!(screen.stepper_value(SettingKey::WindowFontSize), 135);
+    }
+
+    #[test]
+    fn an_unset_padding_side_shows_the_general_padding() {
+        let screen = screen_with(&[(SettingKey::WindowPadding, "4")], &[]);
+        assert_eq!(screen.stepper_value(SettingKey::WindowPaddingTop), 40);
+        let screen = screen_with(
+            &[
+                (SettingKey::WindowPadding, "4"),
+                (SettingKey::WindowPaddingTop, "7.5"),
+            ],
+            &[],
+        );
+        assert_eq!(screen.stepper_value(SettingKey::WindowPaddingTop), 75);
+        assert_eq!(screen.stepper_value(SettingKey::WindowPaddingLeft), 40);
+        let screen = screen_with(&[], &[]);
+        assert_eq!(screen.stepper_value(SettingKey::WindowPaddingTop), 0);
+    }
+
+    #[test]
+    fn a_colour_setting_draws_a_sample_beside_its_value() {
+        assert_eq!(
+            colour_swatch(Some("#ff8000"), 10, 4).as_deref(),
+            Some("\u{1b}[5;11H\u{1b}[0m\u{1b}[38;2;255;128;0m██\u{1b}[0m")
+        );
+        assert_eq!(colour_swatch(Some("not a colour"), 10, 4), None);
+        assert_eq!(colour_swatch(None, 10, 4), None);
     }
 
     #[test]

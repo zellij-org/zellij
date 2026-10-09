@@ -2993,6 +2993,10 @@ pub(crate) fn route_thread_main(
                             )
                             .with_context(err_context)?;
                         },
+                        ClientToServerMsg::FontFamilies { families } => {
+                            let _ = to_server
+                                .send(ServerInstruction::FontFamilies(client_id, families));
+                        },
                         ClientToServerMsg::BackgroundColor {
                             color: ref background_color_instruction,
                         } => {

@@ -65,6 +65,7 @@ pub(crate) fn application_id() -> &'static str {
 enum Wake {
     Frame(Vec<u8>),
     Reconfigured(Settings),
+    SettingsPushed(Settings),
     ThemeMode(HostTerminalThemeMode),
     Finished(Ending),
 }
@@ -88,6 +89,12 @@ impl RenderSink for ProxySink {
 
     fn reconfigured(&mut self, settings: Settings) -> bool {
         self.proxy.send_event(Wake::Reconfigured(settings)).is_ok()
+    }
+
+    fn settings_pushed(&mut self, settings: Settings) -> bool {
+        self.proxy
+            .send_event(Wake::SettingsPushed(settings))
+            .is_ok()
     }
 
     fn theme_mode(&mut self, mode: HostTerminalThemeMode) -> bool {
@@ -294,6 +301,16 @@ impl App {
         self.settings = settings;
         let zoom_reset = self.zoom != 1.0;
         self.zoom = 1.0;
+        self.reapply(zoom_reset);
+    }
+
+    fn settings_pushed(&mut self, settings: Settings) {
+        let font_size_changed = settings.section.font_size != self.settings.section.font_size;
+        self.settings = settings;
+        let zoom_reset = font_size_changed && self.zoom != 1.0;
+        if zoom_reset {
+            self.zoom = 1.0;
+        }
         self.reapply(zoom_reset);
     }
 
@@ -1445,6 +1462,7 @@ impl ApplicationHandler<Wake> for App {
         match event {
             Wake::Frame(frame) => self.on_frame(&frame),
             Wake::Reconfigured(settings) => self.reconfigured(settings),
+            Wake::SettingsPushed(settings) => self.settings_pushed(settings),
             Wake::ThemeMode(mode) => {
                 self.theme_mode = Some(mode);
                 self.reapply(false);
@@ -3125,6 +3143,10 @@ mod tests {
         fn reconfigure(&mut self, section: WindowConfig) {
             self.app.reconfigured(settings(section));
         }
+
+        fn push(&mut self, section: WindowConfig) {
+            self.app.settings_pushed(settings(section));
+        }
     }
 
     #[test]
@@ -3523,6 +3545,42 @@ mod tests {
             harness.app.metrics, plain,
             "a reload that changed nothing still has to take the zoom back"
         );
+    }
+
+    #[test]
+    fn a_pushed_change_that_leaves_the_font_size_alone_keeps_the_zoom() {
+        let mut harness = Harness::new(0, true, "");
+        harness.app.modifiers = ModifiersState::CONTROL;
+        harness.press(&character("="));
+        let zoomed = harness.app.metrics;
+
+        harness.push(WindowConfig {
+            blur: Some(true),
+            ..WindowConfig::default()
+        });
+
+        assert_eq!(harness.app.zoom, 1.1);
+        assert_eq!(harness.app.metrics, zoomed);
+        assert!(
+            harness.app.options.blur,
+            "the pushed change was not applied"
+        );
+    }
+
+    #[test]
+    fn a_pushed_font_size_resets_the_zoom() {
+        let mut harness = Harness::new(0, true, "");
+        harness.app.modifiers = ModifiersState::CONTROL;
+        harness.press(&character("="));
+
+        harness.push(WindowConfig {
+            font_size: Some(pixels_to_points(DEFAULT_FONT_SIZE * 2.0)),
+            ..WindowConfig::default()
+        });
+
+        assert_eq!(harness.app.zoom, 1.0);
+        assert_eq!(harness.app.metrics.height, 40);
+        assert_eq!(harness.app.options.font.size, DEFAULT_FONT_SIZE * 2.0);
     }
 
     #[test]

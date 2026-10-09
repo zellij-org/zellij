@@ -9,7 +9,7 @@ use crate::{
         ClientToServerMsg as ProtoClientToServerMsg, ColorRegistersMsg, ConfigFileUpdatedMsg,
         ConnStatusMsg, ConnectedMsg, DesktopNotificationResponseMsg, DetachSessionMsg,
         EmitNestedSessionFrameMsg, ExitMsg, ExitReason as ProtoExitReason,
-        FailedToStartWebServerMsg, FirstClientConnectedMsg, ForegroundColorMsg,
+        FailedToStartWebServerMsg, FirstClientConnectedMsg, FontFamiliesMsg, ForegroundColorMsg,
         ForwardQueryToHostMsg, ForwardedReplyFromHostMsg, HostTerminalFocusChangedMsg,
         HostTerminalThemeChangedMsg,
         HostTerminalThemeIndication as ProtoHostTerminalThemeIndication, HostThemeModeMsg,
@@ -18,15 +18,17 @@ use crate::{
         MobileActivePaneMsg, MobilePaneMsg, MobileRenderPrefsMsg, MobileSessionMsg, MobileSizeMsg,
         MobileStateMsg, MobileTabMsg, NestedSessionFrameFromHostMsg,
         PaneMetadata as ProtoPaneMetadata, PaneRenderUpdateMsg, QueryTerminalSizeMsg,
-        RenamedSessionMsg, RenderFrameAckMsg, RenderFrameMsg, RenderMsg, RequestSessionListMsg, RequestSessionPreviewMsg,
-        ServerToClientMsg as ProtoServerToClientMsg, SetMobileRenderPreferencesMsg,
-        SetSoftKeyboardMsg, SixelSupportMsg, SoftKeyboardVisibilityChangedMsg, StartWebServerMsg,
-        StructuredRenderSupportMsg, SubscribeToPaneRendersMsg, SubscribedPaneClosedMsg,
-        SwitchSessionMsg, TabMetadata as ProtoTabMetadata, TerminalPixelDimensionsMsg,
-        TerminalResizeMsg, UnblockCliPipeInputMsg, UnblockInputThreadMsg, WebServerStartedMsg,
+        RenamedSessionMsg, RenderFrameAckMsg, RenderFrameMsg, RenderMsg, RequestSessionListMsg,
+        RequestSessionPreviewMsg, ServerToClientMsg as ProtoServerToClientMsg,
+        SetMobileRenderPreferencesMsg, SetSoftKeyboardMsg, SixelSupportMsg,
+        SoftKeyboardVisibilityChangedMsg, StartWebServerMsg, StructuredRenderSupportMsg,
+        SubscribeToPaneRendersMsg, SubscribedPaneClosedMsg, SwitchSessionMsg,
+        TabMetadata as ProtoTabMetadata, TerminalPixelDimensionsMsg, TerminalResizeMsg,
+        UnblockCliPipeInputMsg, UnblockInputThreadMsg, WebServerStartedMsg, WindowSettingsMsg,
     },
     data::{HostTerminalThemeMode, InputMode, PaneId},
     errors::prelude::*,
+    input::window::WindowSettings,
     ipc::{
         ClientToServerMsg, ColorRegister, ExitReason, MobileActivePanePayload, MobilePanePayload,
         MobileRenderPrefsPayload, MobileSessionPayload, MobileSizePayload, MobileStatePayload,
@@ -206,6 +208,9 @@ impl From<ClientToServerMsg> for ProtoClientToServerMsg {
             },
             ClientToServerMsg::RenderFrameAck { seq } => {
                 client_to_server_msg::Message::RenderFrameAck(RenderFrameAckMsg { seq })
+            },
+            ClientToServerMsg::FontFamilies { families } => {
+                client_to_server_msg::Message::FontFamilies(FontFamiliesMsg { families })
             },
         };
 
@@ -407,6 +412,11 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
             Some(client_to_server_msg::Message::RenderFrameAck(msg)) => {
                 Ok(ClientToServerMsg::RenderFrameAck { seq: msg.seq })
             },
+            Some(client_to_server_msg::Message::FontFamilies(msg)) => {
+                Ok(ClientToServerMsg::FontFamilies {
+                    families: msg.families,
+                })
+            },
             None => Err(anyhow!("Empty ClientToServerMsg message")),
         }
     }
@@ -473,6 +483,11 @@ impl From<ServerToClientMsg> for ProtoServerToClientMsg {
             },
             ServerToClientMsg::ConfigFileUpdated => {
                 server_to_client_msg::Message::ConfigFileUpdated(ConfigFileUpdatedMsg {})
+            },
+            ServerToClientMsg::WindowSettingsChanged { settings } => {
+                server_to_client_msg::Message::WindowSettings(WindowSettingsMsg {
+                    settings_json: settings.to_json().unwrap_or_default(),
+                })
             },
             ServerToClientMsg::HostTerminalThemeChanged { mode } => {
                 let proto_mode: ProtoHostTerminalThemeIndication = mode.into();
@@ -730,6 +745,13 @@ impl TryFrom<ProtoServerToClientMsg> for ServerToClientMsg {
             },
             Some(server_to_client_msg::Message::ConfigFileUpdated(_)) => {
                 Ok(ServerToClientMsg::ConfigFileUpdated)
+            },
+            Some(server_to_client_msg::Message::WindowSettings(msg)) => {
+                let settings = WindowSettings::from_json(&msg.settings_json)
+                    .map_err(|e| anyhow!("Unreadable window settings: {}", e))?;
+                Ok(ServerToClientMsg::WindowSettingsChanged {
+                    settings: Box::new(settings),
+                })
             },
             Some(server_to_client_msg::Message::PaneRenderUpdate(msg)) => {
                 let pane_id: PaneId = msg
@@ -1331,7 +1353,6 @@ impl From<crate::input::actions::Action>
             NextSwapLayoutByTabIdAction,
             NoOpAction,
             OpenContextMenuAction,
-            ToggleSessionCardAction,
             OverrideLayoutAction,
             PageScrollDownAction,
             PageScrollDownByPaneIdAction,
@@ -1407,6 +1428,7 @@ impl From<crate::input::actions::Action>
             TogglePaneInGroupByPaneIdAction,
             TogglePanePinnedAction,
             TogglePanePinnedByPaneIdAction,
+            ToggleSessionCardAction,
             ToggleTabAction,
             ToggleThemeAction,
             UndoRenamePaneAction,

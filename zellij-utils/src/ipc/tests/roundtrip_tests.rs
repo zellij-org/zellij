@@ -336,6 +336,9 @@ fn test_client_messages() {
     demo_modifiers_4.insert(KeyModifier::Super);
 
     test_client_roundtrip!(ClientToServerMsg::DetachSession { client_ids: vec![] });
+    test_client_roundtrip!(ClientToServerMsg::FontFamilies {
+        families: vec!["Iosevka Term".to_owned(), "JetBrains Mono".to_owned()],
+    });
     test_client_roundtrip!(ClientToServerMsg::DetachSession {
         client_ids: vec![1],
     });
@@ -4066,6 +4069,22 @@ fn test_server_messages() {
     test_server_roundtrip!(ServerToClientMsg::QueryTerminalSize);
     test_server_roundtrip!(ServerToClientMsg::StartWebServer);
     test_server_roundtrip!(ServerToClientMsg::ConfigFileUpdated);
+    test_server_roundtrip!(ServerToClientMsg::WindowSettingsChanged {
+        settings: Box::new(crate::input::window::WindowSettings::default()),
+    });
+    let mut window_config = crate::input::config::Config::from_kdl(
+        "theme \"dracula\"\nwindow {\n    font \"Iosevka\"\n    opacity 0.9\n    paste_keys \"Ctrl Shift v\" \"Shift Insert\"\n    theme {\n        red 1 2 3\n    }\n}\n",
+        Some(crate::input::config::Config::from_default_assets().unwrap()),
+    )
+    .unwrap();
+    window_config.themes = window_config
+        .themes
+        .merge(crate::setup::get_default_themes());
+    test_server_roundtrip!(ServerToClientMsg::WindowSettingsChanged {
+        settings: Box::new(crate::input::window::WindowSettings::from_config(
+            &window_config
+        )),
+    });
     test_server_roundtrip!(ServerToClientMsg::RenamedSession {
         name: "my-session".to_string(),
     });

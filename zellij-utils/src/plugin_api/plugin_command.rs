@@ -5812,6 +5812,35 @@ mod tests {
     use crate::data::PluginCommand;
 
     #[test]
+    fn a_config_snapshot_keeps_its_fonts_and_window_settings_through_protobuf() {
+        use crate::data::{ConfigSettingState, ConfigSnapshot, SettingKey};
+        use prost::Message;
+        let original = ConfigSnapshot {
+            settings: vec![
+                ConfigSettingState {
+                    key: SettingKey::WindowOpacity,
+                    saved_value: Some("1".to_owned()),
+                    current_value: Some("0.9".to_owned()),
+                    set_in_file: true,
+                },
+                ConfigSettingState {
+                    key: SettingKey::WindowColorRed,
+                    saved_value: None,
+                    current_value: Some("#ff0000".to_owned()),
+                    set_in_file: false,
+                },
+            ],
+            pending_restart_settings: vec![SettingKey::WindowStartupMode],
+            font_families: vec!["Iosevka Term".to_owned(), "JetBrains Mono".to_owned()],
+            ..Default::default()
+        };
+        let protobuf: ProtobufReadConfigResponse = original.clone().into();
+        let decoded = ProtobufReadConfigResponse::decode(protobuf.encode_to_vec().as_slice())
+            .expect("decode bytes");
+        assert_eq!(ConfigSnapshot::from(decoded), original);
+    }
+
+    #[test]
     fn set_pane_border_style_protobuf_round_trip() {
         use crate::data::{BorderStyleOverride, LineStyle, PaneId};
         let border_style = BorderStyleOverride {
@@ -6174,6 +6203,7 @@ impl From<ConfigSnapshot> for ProtobufReadConfigResponse {
             saved_blocks: Some(snapshot.saved_blocks.into()),
             default_blocks: Some(snapshot.default_blocks.into()),
             keybindings: snapshot.keybindings.into_iter().map(Into::into).collect(),
+            font_families: snapshot.font_families,
         }
     }
 }
@@ -6476,6 +6506,7 @@ impl From<ProtobufReadConfigResponse> for ConfigSnapshot {
                 .filter_map(keybinding_entry_from_protobuf)
                 .collect(),
             keybinds: response.keybinds.map(Into::into).unwrap_or_default(),
+            font_families: response.font_families,
         }
     }
 }
