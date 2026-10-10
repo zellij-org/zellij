@@ -132,6 +132,36 @@ pub fn unidentified_text(press: &Press) -> Option<String> {
     }
 }
 
+pub fn leaves_the_accent_pending(press: &Press) -> bool {
+    matches!(
+        press.logical,
+        Key::Named(
+            NamedKey::Shift
+                | NamedKey::Control
+                | NamedKey::Alt
+                | NamedKey::AltGraph
+                | NamedKey::Super
+                | NamedKey::Meta
+                | NamedKey::Hyper
+                | NamedKey::Fn
+                | NamedKey::FnLock
+                | NamedKey::Symbol
+                | NamedKey::SymbolLock
+                | NamedKey::CapsLock
+                | NamedKey::NumLock
+                | NamedKey::ScrollLock
+        )
+    )
+}
+
+pub fn leftover_accent(press: &Press) -> Option<String> {
+    let Key::Character(character) = &press.logical else {
+        return None;
+    };
+    let text = press.produced_text()?;
+    (text.len() > character.len() && text.ends_with(character.as_str())).then_some(text)
+}
+
 pub fn typed_text_message(text: String) -> Option<ClientToServerMsg> {
     key_message(&Press::new(
         Key::Character(text.as_str().into()),
@@ -655,6 +685,77 @@ mod tests {
             None,
             "a lone control character is not text"
         );
+    }
+
+    #[test]
+    fn modifier_keys_leave_a_pending_accent_alone() {
+        for named in [
+            NamedKey::Shift,
+            NamedKey::Control,
+            NamedKey::Alt,
+            NamedKey::AltGraph,
+            NamedKey::Super,
+            NamedKey::CapsLock,
+        ] {
+            assert!(
+                leaves_the_accent_pending(&press(Key::Named(named), none())),
+                "{:?}",
+                named
+            );
+        }
+        for key in [
+            character("p"),
+            Key::Named(NamedKey::Space),
+            Key::Named(NamedKey::Enter),
+            Key::Named(NamedKey::ArrowLeft),
+            Key::Dead(Some('^')),
+            unidentified(),
+        ] {
+            assert!(
+                !leaves_the_accent_pending(&press(key.clone(), none())),
+                "{:?}",
+                key
+            );
+        }
+    }
+
+    #[test]
+    fn an_accent_the_system_still_held_is_typed_with_its_character() {
+        assert_eq!(
+            leftover_accent(&press(character("/"), ModifiersState::SHIFT).with_text("^/")),
+            Some("^/".to_owned()),
+            "windows keeps a dead key through shift and reports it with the next character"
+        );
+        assert_eq!(
+            leftover_accent(&press(character("\\"), none()).with_text("^\\")),
+            Some("^\\".to_owned())
+        );
+        assert_eq!(
+            leftover_accent(
+                &press(
+                    character("\\"),
+                    ModifiersState::CONTROL | ModifiersState::ALT
+                )
+                .with_text("^\\")
+            ),
+            Some("^\\".to_owned()),
+            "altgr reported as control and alt"
+        );
+    }
+
+    #[test]
+    fn a_character_that_spells_its_text_carries_no_accent() {
+        for pressed in [
+            press(character("p"), none()).with_text("p"),
+            press(character("ê"), none()).with_text("ê"),
+            press(character("ab"), none()).with_text("ab"),
+            press(character("p"), none()),
+            press(character("c"), ModifiersState::CONTROL).with_text("^c"),
+            press(Key::Named(NamedKey::Enter), none()).with_text("^\r"),
+            press(unidentified(), none()).with_text("^p"),
+        ] {
+            assert_eq!(leftover_accent(&pressed), None, "{:?}", pressed);
+        }
     }
 
     #[test]

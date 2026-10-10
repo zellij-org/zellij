@@ -92,6 +92,20 @@ pub fn store(path: &Path, state: WindowState) {
     }
 }
 
+pub fn to_remember(state: WindowState, windowed_known: bool, path: &Path) -> WindowState {
+    if windowed_known {
+        return state;
+    }
+    match load_from(path) {
+        Some(previous) => WindowState {
+            cols: previous.cols,
+            rows: previous.rows,
+            ..state
+        },
+        None => state,
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Startup {
     pub rows: usize,

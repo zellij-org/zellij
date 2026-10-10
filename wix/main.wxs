@@ -24,6 +24,11 @@
     Quick install: ZellijWelcomeDlg → [Install] (per-user, no UAC)
     Maintenance:   MaintenanceWelcomeDlg → MaintenanceTypeDlg → VerifyReadyDlg
 
+  Start menu shortcut:
+    A separate feature (StartMenuShortcut), on by default. The welcome dialog's
+    checkbox adds or removes it on every way out of that dialog. Silent installs
+    can leave it out with REMOVE=StartMenuShortcut.
+
   Build:
     wix build wix\main.wxs wix\Zellij.wxl -d Version=X.Y.Z -arch x64
       -ext WixToolset.UI.wixext -o target\wix\zellij-x86_64-pc-windows-msvc.msi
@@ -42,6 +47,9 @@
     <Property Id="WixAppFolder" Value="WixPerUserFolder" />
     <Property Id="WIXUI_INSTALLDIR" Value="APPLICATIONFOLDER" />
 
+    <!-- Bound to the welcome dialog's Start menu shortcut checkbox, checked by default -->
+    <Property Id="STARTMENUSHORTCUT" Value="1" />
+
     <!-- Icon shown in Add/Remove Programs -->
     <Icon Id="ZellijIcon" SourceFile="assets\logo128.ico" />
     <Property Id="ARPPRODUCTICON" Value="ZellijIcon" />
@@ -56,6 +64,7 @@
     <StandardDirectory Id="ProgramFilesFolder">
       <Directory Id="APPLICATIONFOLDER" Name="Zellij" />
     </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder" />
 
     <!-- ===== Custom actions for folder resolution =====
          The stock WixUI_Advanced CAs (WixSetPerUserFolder / WixSetPerMachineFolder)
@@ -86,7 +95,7 @@
     </InstallUISequence>
 
     <!-- ===== Components =====
-         Three components: binary (always), plus two conditional PATH components.
+         Four components: binary and launcher (always), plus two conditional PATH components.
          ALLUSERS is set by InstallScopeDlg: 1 for per-machine, empty for per-user.
          Default (quick install without scope dialog): ALLUSERS=2, which is <> 1,
          so path_user activates — correct for the per-user default. -->
@@ -97,6 +106,55 @@
       <File Id="zellij_exe"
             Source="target\release\zellij.exe"
             KeyPath="yes" />
+    </Component>
+
+    <!-- zellij-window.exe opens the window without a console; it starts zellij.exe next to it -->
+    <Component Id="launcher"
+               Directory="APPLICATIONFOLDER"
+               Guid="CE50A9CD-B208-4B0A-BFAD-9DC12A0399B5">
+      <File Id="zellij_window_exe"
+            Source="target\release\zellij-window.exe"
+            KeyPath="yes" />
+    </Component>
+
+    <!-- Start menu shortcut to the launcher. Its AppUserModelID matches the one the window
+         declares, so the shortcut, its taskbar pin and the running window share one button.
+         HKMU makes the key path follow the install scope chosen at install time (HKCU per
+         user, HKLM per machine), as ProgramMenuFolder does. ICE57 flags this combination
+         because validation can't know the scope; HKMU is Windows Installer's answer for
+         dual-scope packages, and splitting per scope trips ICE38/43/57 instead. -->
+    <Component Id="start_menu_shortcut"
+               Directory="ProgramMenuFolder"
+               Guid="54AA6BBE-9679-480D-949E-90C6310465A4">
+      <Shortcut Id="zellij_start_menu_shortcut"
+                Name="Zellij"
+                Description="Manage Your Terminal Applications"
+                Target="[APPLICATIONFOLDER]zellij-window.exe">
+        <ShortcutProperty Key="System.AppUserModel.ID" Value="zellij.window" />
+      </Shortcut>
+      <RegistryValue Root="HKMU"
+                     Key="Software\Zellij"
+                     Name="StartMenuShortcut"
+                     Type="integer"
+                     Value="1"
+                     KeyPath="yes" />
+    </Component>
+
+    <!-- The window registers its toast identity at run time, per user
+         (HKCU\Software\Classes\AppUserModelId\zellij.window). Remove it on uninstall for the
+         user who uninstalls. The key path is a per-user marker, as per-user data needs. -->
+    <Component Id="toast_identity_cleanup"
+               Directory="APPLICATIONFOLDER"
+               Guid="1AD461F8-55DD-4A4A-A3E0-8C9D43064871">
+      <RegistryValue Root="HKCU"
+                     Key="Software\Zellij"
+                     Name="ToastIdentityCleanup"
+                     Type="integer"
+                     Value="1"
+                     KeyPath="yes" />
+      <RemoveRegistryKey Root="HKCU"
+                         Key="Software\Classes\AppUserModelId\zellij.window"
+                         Action="removeOnUninstall" />
     </Component>
 
     <Component Id="path_machine"
@@ -140,8 +198,14 @@
     <!-- ===== Feature ===== -->
     <Feature Id="MainFeature" Title="Zellij" Level="1">
       <ComponentRef Id="binary" />
+      <ComponentRef Id="launcher" />
+      <ComponentRef Id="toast_identity_cleanup" />
       <ComponentRef Id="path_machine" />
       <ComponentRef Id="path_user" />
+    </Feature>
+
+    <Feature Id="StartMenuShortcut" Title="Start menu shortcut" Level="1">
+      <ComponentRef Id="start_menu_shortcut" />
     </Feature>
 
     <!-- ===== Custom UI =====
@@ -198,10 +262,13 @@
                  Transparent="yes" NoPrefix="yes" Hidden="yes"
                  Text="!(loc.AdvancedWelcomeEulaDlgDescriptionPerUser)"
                  ShowCondition="NOT ALLUSERS" />
-        <Control Id="LicenseAcceptedCheckBox" Type="CheckBox" X="20" Y="180" Width="226" Height="18"
+        <Control Id="LicenseAcceptedCheckBox" Type="CheckBox" X="20" Y="162" Width="226" Height="18"
                  CheckBoxValue="1" Property="LicenseAccepted"
                  Text="!(loc.WelcomeEulaDlgLicenseAcceptedCheckBox)" />
-        <Control Id="LicenseText" Type="ScrollableText" X="20" Y="55" Width="330" Height="121"
+        <Control Id="StartMenuShortcutCheckBox" Type="CheckBox" X="20" Y="180" Width="226" Height="18"
+                 CheckBoxValue="1" Property="STARTMENUSHORTCUT"
+                 Text="!(loc.ZellijStartMenuShortcutCheckBox)" />
+        <Control Id="LicenseText" Type="ScrollableText" X="20" Y="55" Width="330" Height="103"
                  Sunken="yes" TabSkip="no">
           <Text SourceFile="!(wix.WixUILicenseRtf)" />
         </Control>
@@ -217,6 +284,8 @@
                  ShowCondition="ALLUSERS">
           <Publish Event="SpawnWaitDialog" Value="WaitForCostingDlg"
                    Condition="!(wix.WixUICostingPopupOptOut) OR CostingComplete = 1" />
+          <Publish Event="AddLocal" Value="StartMenuShortcut" Condition="STARTMENUSHORTCUT" />
+          <Publish Event="Remove" Value="StartMenuShortcut" Condition="NOT STARTMENUSHORTCUT" />
           <Publish Event="EndDialog" Value="Return"
                    Condition="OutOfDiskSpace &lt;&gt; 1" />
           <Publish Event="SpawnDialog" Value="OutOfRbDiskDlg"
@@ -236,6 +305,8 @@
                  ShowCondition="NOT ALLUSERS">
           <Publish Event="SpawnWaitDialog" Value="WaitForCostingDlg"
                    Condition="!(wix.WixUICostingPopupOptOut) OR CostingComplete = 1" />
+          <Publish Event="AddLocal" Value="StartMenuShortcut" Condition="STARTMENUSHORTCUT" />
+          <Publish Event="Remove" Value="StartMenuShortcut" Condition="NOT STARTMENUSHORTCUT" />
           <Publish Event="EndDialog" Value="Return"
                    Condition="OutOfDiskSpace &lt;&gt; 1" />
           <Publish Event="SpawnDialog" Value="OutOfRbDiskDlg"
@@ -258,6 +329,10 @@
            Scope dialog sets ALLUSERS, MSIINSTALLPERUSER, and fires our
            folder CAs so InstallDirDlg shows the correct default path.
            ========================================== -->
+      <Publish Dialog="ZellijWelcomeDlg" Control="Advanced"
+               Event="AddLocal" Value="StartMenuShortcut" Condition="STARTMENUSHORTCUT" />
+      <Publish Dialog="ZellijWelcomeDlg" Control="Advanced"
+               Event="Remove" Value="StartMenuShortcut" Condition="NOT STARTMENUSHORTCUT" />
       <Publish Dialog="ZellijWelcomeDlg" Control="Advanced"
                Event="NewDialog" Value="InstallScopeDlg" />
 

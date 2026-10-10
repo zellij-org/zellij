@@ -210,15 +210,252 @@ pub fn auth_line(uid: u32) -> String {
 #[cfg(target_os = "linux")]
 pub use linux::deliver;
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(windows)]
+pub use toast::{deliver, on_activation};
+
+#[cfg(not(any(target_os = "linux", windows)))]
 pub use elsewhere::deliver;
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", windows)))]
 mod elsewhere {
     use super::Notification;
 
     pub fn deliver(_notification: &Notification) -> bool {
         false
+    }
+}
+
+#[cfg(windows)]
+mod toast {
+    use std::cell::RefCell;
+    use std::collections::VecDeque;
+    use std::sync::Mutex;
+
+    use anyhow::{Context, Result};
+    use windows::core::HSTRING;
+    use windows::Data::Xml::Dom::XmlDocument;
+    use windows::Foundation::TypedEventHandler;
+    use windows::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
+    use windows::UI::Notifications::{
+        NotificationSetting, ToastNotification, ToastNotificationManager, ToastNotifier,
+    };
+
+    use super::Notification;
+    use crate::identity::identity;
+
+    const KEPT_TOASTS: usize = 32;
+
+    static ON_ACTIVATION: Mutex<Option<Box<dyn Fn() + Send>>> = Mutex::new(None);
+
+    thread_local! {
+        static NOTIFIER: RefCell<Option<ToastNotifier>> = const { RefCell::new(None) };
+        static KEPT: RefCell<VecDeque<ToastNotification>> = const { RefCell::new(VecDeque::new()) };
+        static COMPLAINED: RefCell<bool> = const { RefCell::new(false) };
+    }
+
+    pub fn on_activation(callback: impl Fn() + Send + 'static) {
+        *ON_ACTIVATION.lock().unwrap_or_else(|e| e.into_inner()) = Some(Box::new(callback));
+    }
+
+    fn activated() {
+        if let Some(callback) = ON_ACTIVATION
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_ref()
+        {
+            callback();
+        }
+    }
+
+    pub fn deliver(notification: &Notification) -> bool {
+        match show(notification) {
+            Ok(shown) => shown,
+            Err(e) => {
+                complain(&format!("{:#}", e));
+                false
+            },
+        }
+    }
+
+    fn show(notification: &Notification) -> Result<bool> {
+        let notifier = NOTIFIER.with(|cell| -> Result<ToastNotifier> {
+            if let Some(notifier) = cell.borrow().as_ref() {
+                return Ok(notifier.clone());
+            }
+            let notifier = open_notifier()?;
+            *cell.borrow_mut() = Some(notifier.clone());
+            Ok(notifier)
+        })?;
+        if !allowed(notifier.Setting()) {
+            return Ok(false);
+        }
+        let document = XmlDocument::new()?;
+        document
+            .LoadXml(&HSTRING::from(toast_xml(
+                notification.title.as_deref(),
+                &notification.body,
+            )))
+            .context("the notification could not be turned into a toast")?;
+        let toast = ToastNotification::CreateToastNotification(&document)?;
+        toast.Activated(&TypedEventHandler::new(|_, _| {
+            activated();
+            Ok(())
+        }))?;
+        notifier.Show(&toast)?;
+        KEPT.with(|kept| keep(&mut kept.borrow_mut(), toast, KEPT_TOASTS));
+        Ok(true)
+    }
+
+    fn keep<T>(kept: &mut VecDeque<T>, item: T, limit: usize) {
+        if kept.len() >= limit {
+            kept.pop_front();
+        }
+        kept.push_back(item);
+    }
+
+    fn open_notifier() -> Result<ToastNotifier> {
+        let _ = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
+        if let Err(e) = crate::app_registration::register() {
+            complain(&format!(
+                "the app could not be registered, so Windows may drop its toasts: {:#}",
+                e
+            ));
+        }
+        ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from(
+            identity().windows_app_id,
+        ))
+        .context("Windows refused a toast notifier")
+    }
+
+    fn complain(reason: &str) {
+        COMPLAINED.with(|complained| {
+            if complained.replace(true) {
+                return;
+            }
+            eprintln!(
+                "zellij-window: notifications fall back to the taskbar: {}",
+                reason
+            );
+        });
+    }
+
+    fn allowed(setting: windows::core::Result<NotificationSetting>) -> bool {
+        match setting {
+            Ok(setting) => setting == NotificationSetting::Enabled,
+            Err(_) => true,
+        }
+    }
+
+    fn toast_xml(title: Option<&str>, body: &str) -> String {
+        let lines = match title {
+            Some(title) => format!(
+                "<text>{}</text><text>{}</text>",
+                escape(title),
+                escape(body)
+            ),
+            None => format!("<text>{}</text>", escape(body)),
+        };
+        format!(
+            "<toast><visual><binding template=\"ToastGeneric\">{}</binding></visual></toast>",
+            lines
+        )
+    }
+
+    fn escape(text: &str) -> String {
+        let mut escaped = String::with_capacity(text.len());
+        for ch in text.chars() {
+            match ch {
+                '&' => escaped.push_str("&amp;"),
+                '<' => escaped.push_str("&lt;"),
+                '>' => escaped.push_str("&gt;"),
+                '"' => escaped.push_str("&quot;"),
+                '\'' => escaped.push_str("&apos;"),
+                '\t' | '\n' | '\r' => escaped.push(ch),
+                ch if ch.is_control() => {},
+                ch => escaped.push(ch),
+            }
+        }
+        escaped
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn only_the_most_recent_toasts_are_kept_for_their_clicks() {
+            let mut kept = VecDeque::new();
+            for toast in 0..5 {
+                keep(&mut kept, toast, 3);
+            }
+            assert_eq!(kept, [2, 3, 4]);
+        }
+
+        #[test]
+        fn clicking_a_toast_reaches_the_window_that_asked_to_hear_about_it() {
+            use std::sync::atomic::{AtomicUsize, Ordering};
+            use std::sync::Arc;
+
+            let clicks = Arc::new(AtomicUsize::new(0));
+            on_activation({
+                let clicks = clicks.clone();
+                move || {
+                    clicks.fetch_add(1, Ordering::SeqCst);
+                }
+            });
+            activated();
+            assert_eq!(clicks.load(Ordering::SeqCst), 1);
+        }
+
+        #[test]
+        fn a_toast_is_tried_unless_windows_says_notifications_are_off() {
+            assert!(allowed(Ok(NotificationSetting::Enabled)));
+            assert!(!allowed(Ok(NotificationSetting::DisabledForApplication)));
+            assert!(!allowed(Ok(NotificationSetting::DisabledForUser)));
+            assert!(!allowed(Ok(NotificationSetting::DisabledByGroupPolicy)));
+            let not_found = windows::core::HRESULT(0x8007_0490_u32 as i32);
+            assert!(
+                allowed(Err(not_found.into())),
+                "Windows answers an app it has not seen a toast from yet with Element not found, \
+                 although its toasts show"
+            );
+        }
+
+        #[test]
+        fn a_titled_notification_becomes_a_two_line_toast() {
+            assert_eq!(
+                toast_xml(Some("Build"), "finished"),
+                "<toast><visual><binding template=\"ToastGeneric\">\
+                 <text>Build</text><text>finished</text>\
+                 </binding></visual></toast>"
+            );
+        }
+
+        #[test]
+        fn an_untitled_notification_becomes_a_one_line_toast() {
+            assert_eq!(
+                toast_xml(None, "finished"),
+                "<toast><visual><binding template=\"ToastGeneric\">\
+                 <text>finished</text>\
+                 </binding></visual></toast>"
+            );
+        }
+
+        #[test]
+        fn text_from_the_pane_cannot_break_out_of_the_toast() {
+            let xml = toast_xml(
+                Some("<b>\"tests\" & 'lint'</b>"),
+                "</text></binding><x>\u{1b}[31m\u{7}",
+            );
+            assert!(xml.contains(
+                "<text>&lt;b&gt;&quot;tests&quot; &amp; &apos;lint&apos;&lt;/b&gt;</text>"
+            ));
+            assert!(
+                xml.contains("<text>&lt;/text&gt;&lt;/binding&gt;&lt;x&gt;[31m</text>"),
+                "control characters are invalid in XML and are dropped: {}",
+                xml
+            );
+        }
     }
 }
 

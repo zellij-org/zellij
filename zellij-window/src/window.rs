@@ -24,6 +24,7 @@ use zellij_utils::ipc::ClientToServerMsg;
 
 use crate::atlas::GlyphCache;
 use crate::bell;
+use crate::blur;
 use crate::client_loop::{self, Ending, LoopOptions, LoopOutcome, RenderSink};
 use crate::clipboard::{self, Clipboard, ClipboardHandle};
 use crate::composition::{Composition, Gate, Reaction};
@@ -51,16 +52,17 @@ use crate::selection::Selection;
 use crate::settings::Settings;
 use crate::terminal::{self, FrameError, TerminalState};
 use crate::window_state::{self, Shown, Startup, WindowState};
-use zellij_utils::input::window::{NotificationMode, OptionAsAlt, PaddingColor, StartupMode};
+use zellij_utils::input::window::{
+    BellMode, NotificationMode, OptionAsAlt, PaddingColor, StartupMode,
+};
 
 const BLINK_INTERVAL: Duration = Duration::from_millis(500);
 const DISPLAY_RECHECK: Duration = Duration::from_secs(1);
 const ZOOM_STEP: f64 = 1.1;
-const APPLICATION_ID: &str = "zellij";
 pub(crate) const ICON_PNG: &[u8] = include_bytes!("../../assets/logo128.png");
 
 pub(crate) fn application_id() -> &'static str {
-    APPLICATION_ID
+    crate::identity::identity().app_id
 }
 
 #[derive(Debug)]
@@ -70,6 +72,8 @@ enum Wake {
     SettingsPushed(Settings),
     ThemeMode(HostTerminalThemeMode),
     Finished(Ending),
+    #[cfg(windows)]
+    Focus,
 }
 
 struct ProxySink {
@@ -105,6 +109,10 @@ impl RenderSink for ProxySink {
 }
 
 struct Surfaces {
+    #[cfg(windows)]
+    _taskbar: Option<crate::taskbar::TaskbarEntry>,
+    #[cfg(windows)]
+    _session_end: Option<crate::session_end::SessionEnd>,
     window: Window,
     surface: Surface<WindowSurface>,
     context: PossiblyCurrentContext,
@@ -147,6 +155,8 @@ struct App {
     display_checked: Instant,
     startup: Startup,
     state_path: Option<PathBuf>,
+    #[cfg(windows)]
+    remembered: crate::session_end::SharedRemembered,
     shown: Shown,
     windowed_cells: (usize, usize),
     windowed_known: bool,
@@ -397,7 +407,7 @@ impl App {
         }
         if change.blur {
             if let Some(surfaces) = &self.surfaces {
-                surfaces.window.set_blur(self.options.blur);
+                blur::set(&surfaces.window, self.options.blur);
             }
         }
         if change.option_as_alt {
@@ -450,6 +460,9 @@ impl App {
     }
 
     fn resized(&mut self, width: u32, height: u32) {
+        if has_no_area(width, height) {
+            return;
+        }
         self.cancel_scroll_animations();
         self.stop_momentum();
         self.observe_window();
@@ -458,6 +471,8 @@ impl App {
             self.windowed_cells = (fitted.cols, fitted.rows);
             self.windowed_known = true;
         }
+        #[cfg(windows)]
+        self.share_window_state();
         self.reflow(width, height);
     }
 
@@ -466,6 +481,9 @@ impl App {
             return;
         };
         let window = &surfaces.window;
+        if window.is_minimized() == Some(true) {
+            return;
+        }
         self.shown = if window.fullscreen().is_some() {
             Shown::Fullscreen
         } else if window.is_maximized() {
@@ -479,6 +497,8 @@ impl App {
             self.windowed_cells = (fitted.cols, fitted.rows);
             self.windowed_known = true;
         }
+        #[cfg(windows)]
+        self.share_window_state();
     }
 
     fn window_state(&self) -> WindowState {
@@ -494,17 +514,29 @@ impl App {
             return;
         };
         self.observe_window();
-        let mut state = self.window_state();
-        if !self.windowed_known {
-            if let Some(previous) = window_state::load_from(&path) {
-                state.cols = previous.cols;
-                state.rows = previous.rows;
-            }
-        }
-        window_state::store(&path, state);
+        window_state::store(
+            &path,
+            window_state::to_remember(self.window_state(), self.windowed_known, &path),
+        );
+    }
+
+    #[cfg(windows)]
+    fn share_window_state(&self) {
+        let remembered = self
+            .state_path
+            .as_ref()
+            .map(|path| crate::session_end::Remembered {
+                path: path.clone(),
+                state: self.window_state(),
+                windowed_known: self.windowed_known,
+            });
+        *self.remembered.lock().unwrap_or_else(|e| e.into_inner()) = remembered;
     }
 
     fn reflow(&mut self, width: u32, height: u32) {
+        if has_no_area(width, height) {
+            return;
+        }
         self.selecting = false;
         self.set_selection(None);
         let grid = self.grid(width, height);
@@ -649,14 +681,16 @@ impl App {
     fn attend(&mut self) {
         let rung = self.state.take_bells() > 0;
         let notifications = self.state.take_notifications();
-        let mut notified = false;
+        let mut unhandled = false;
         for notification in &notifications {
-            notified |= !(self.notify)(self.options.notifications, notification);
+            unhandled |= !(self.notify)(self.options.notifications, notification);
         }
-        if !(rung || notified) {
-            return;
-        }
-        if self.options.bell.attends() {
+        if asks_for_attention(
+            rung,
+            unhandled,
+            self.options.bell,
+            self.options.notifications,
+        ) {
             if let Some(surfaces) = &self.surfaces {
                 surfaces
                     .window
@@ -1083,6 +1117,9 @@ impl App {
             return;
         }
         if gate == Gate::Resolving {
+            if input::leaves_the_accent_pending(&press) {
+                return;
+            }
             let reaction = self.composition.resolve();
             self.compose(reaction);
             match input::resolve_pending_accent(&press) {
@@ -1097,6 +1134,10 @@ impl App {
             return;
         }
         if let Some(text) = input::unidentified_text(&press) {
+            self.type_text(text);
+            return;
+        }
+        if let Some(text) = input::leftover_accent(&press) {
             self.type_text(text);
             return;
         }
@@ -1481,6 +1522,17 @@ impl App {
         }
     }
 
+    #[cfg(windows)]
+    fn come_forward(&mut self) {
+        let Some(surfaces) = &self.surfaces else {
+            return;
+        };
+        if surfaces.window.is_minimized() == Some(true) {
+            surfaces.window.set_minimized(false);
+        }
+        surfaces.window.focus_window();
+    }
+
     fn close_requested(&mut self) -> bool {
         self.remember();
         self.closing()
@@ -1511,6 +1563,7 @@ impl App {
             report!("the message could not be drawn: {}", e);
             return;
         }
+        crate::notice::mark_shown();
         self.retained.mark_everything();
         self.schedule_draw();
     }
@@ -1597,13 +1650,18 @@ impl App {
                 event_loop,
                 ConfigTemplateBuilder::new()
                     .with_alpha_size(8)
-                    .with_transparency(true),
+                    .with_transparency(requires_transparent_configs(Platform::current())),
                 pick_config,
             )
             .map_err(|e| anyhow!("failed to create a window: {}", e))?;
-        self.transparency_available = config.supports_transparency() != Some(false);
+        self.transparency_available = transparency_available(
+            Platform::current(),
+            config.supports_transparency(),
+            config.alpha_size(),
+        );
         self.warn_if_opaque();
         let window = window.ok_or_else(|| anyhow!("the windowing system produced no window"))?;
+        blur::set(&window, self.options.blur);
         window.set_ime_purpose(ImePurpose::Terminal);
         window.set_ime_allowed(true);
 
@@ -1636,6 +1694,16 @@ impl App {
         };
 
         Ok(Surfaces {
+            #[cfg(windows)]
+            _taskbar: crate::taskbar::describe(&window),
+            #[cfg(windows)]
+            _session_end: crate::session_end::watch(
+                &window,
+                self.remembered.clone(),
+                self.session
+                    .as_ref()
+                    .map(|session| session.detacher.clone()),
+            ),
             window,
             surface,
             context,
@@ -1670,6 +1738,8 @@ impl ApplicationHandler<Wake> for App {
                     event_loop.exit();
                 }
             },
+            #[cfg(windows)]
+            Wake::Focus => self.come_forward(),
         }
     }
 
@@ -1799,6 +1869,15 @@ pub fn run(
 ) -> Result<LoopOutcome> {
     let renderer = Rendering::bring_up(&window.options, fonts, window.startup);
     let windowing = Windowing::bring_up()?;
+    #[cfg(windows)]
+    {
+        let proxy = Mutex::new(windowing.proxy());
+        crate::notify::on_activation(move || {
+            if let Ok(proxy) = proxy.lock() {
+                let _ = proxy.send_event(Wake::Focus);
+            }
+        });
+    }
     let geometry = connection.geometry.clone();
     let role = connection.role;
     let sender = connection.sender.clone();
@@ -1992,6 +2071,8 @@ impl Rendering {
             display_checked: Instant::now(),
             startup: self.startup,
             state_path: None,
+            #[cfg(windows)]
+            remembered: Arc::new(Mutex::new(None)),
             shown: Shown::of(self.startup.mode),
             windowed_cells: (self.startup.cols, self.startup.rows),
             windowed_known: self.startup.mode == StartupMode::Windowed,
@@ -2096,6 +2177,19 @@ pub(crate) struct GridFit {
     pub rows: usize,
     pub cols: usize,
     pub origin: (i32, i32),
+}
+
+fn has_no_area(width: u32, height: u32) -> bool {
+    width == 0 || height == 0
+}
+
+fn asks_for_attention(
+    rung: bool,
+    unhandled_notification: bool,
+    bell: BellMode,
+    notifications: NotificationMode,
+) -> bool {
+    (rung && bell.attends()) || (unhandled_notification && notifications.attends())
 }
 
 pub(crate) fn fit_grid(
@@ -2216,6 +2310,21 @@ fn pick_config(configs: Box<dyn Iterator<Item = Config> + '_>) -> Config {
         .into_iter()
         .nth(best)
         .expect("the chosen config is one of those offered")
+}
+
+fn requires_transparent_configs(platform: Platform) -> bool {
+    platform != Platform::Windows
+}
+
+fn transparency_available(
+    platform: Platform,
+    supports_transparency: Option<bool>,
+    alpha_size: u8,
+) -> bool {
+    match platform {
+        Platform::Windows => alpha_size >= 8,
+        Platform::Linux | Platform::MacOs => supports_transparency != Some(false),
+    }
 }
 
 fn best_config(candidates: impl Iterator<Item = (Option<bool>, u8)>) -> Option<usize> {
@@ -3184,6 +3293,78 @@ mod tests {
     }
 
     #[test]
+    fn a_window_without_area_reports_no_size_to_the_session() {
+        let mut harness = Harness::new(3, true, "");
+        harness.app.resized(720, 600);
+        harness.app.resized(0, 0);
+        harness.app.resized(720, 0);
+        harness.app.relayout(0, 0);
+        harness.app.resized(720, 600);
+        assert!(!harness.app.close_requested());
+        let sent = harness.sent();
+        assert_eq!(
+            sent[0],
+            ClientToServerMsg::TerminalResize {
+                new_size: zellij_utils::pane_size::Size { rows: 30, cols: 90 },
+            }
+        );
+        assert!(
+            matches!(
+                sent[2],
+                ClientToServerMsg::Action {
+                    action: Action::Quit,
+                    ..
+                }
+            ),
+            "a window with no area resized the session: {:?}",
+            sent
+        );
+    }
+
+    #[test]
+    fn a_window_without_area_keeps_the_windowed_size_it_remembers() {
+        let mut harness = Harness::new(2, true, "");
+        let dir = remembering(&mut harness);
+        harness.app.resized(720, 600);
+        harness.app.resized(0, 0);
+        harness.app.remember();
+        assert_eq!(
+            remembered(&dir),
+            Some(WindowState {
+                cols: 90,
+                rows: 30,
+                state: Shown::Windowed,
+            }),
+            "the size a minimized window reports was remembered as its windowed size"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_resize_keeps_what_a_windows_session_end_would_save_up_to_date() {
+        let mut harness = Harness::new(2, true, "");
+        let dir = remembering(&mut harness);
+        harness.app.resized(720, 600);
+        let shared = harness
+            .app
+            .remembered
+            .lock()
+            .unwrap()
+            .clone()
+            .expect("a resize shared nothing to save at a session end");
+        assert_eq!(shared.path, dir.path().join("window-state.json"));
+        assert_eq!(
+            shared.state,
+            WindowState {
+                cols: 90,
+                rows: 30,
+                state: Shown::Windowed,
+            }
+        );
+        assert!(shared.windowed_known);
+    }
+
+    #[test]
     fn without_a_state_path_nothing_is_remembered() {
         let mut harness = Harness::new(0, true, "");
         let dir = tempfile::TempDir::new().unwrap();
@@ -3743,6 +3924,42 @@ mod tests {
             Some(1)
         );
         assert_eq!(best_config(std::iter::empty()), None);
+    }
+
+    #[test]
+    fn windows_never_requires_a_wgl_transparent_config() {
+        assert!(
+            !requires_transparent_configs(Platform::Windows),
+            "a driver that honors WGL_TRANSPARENT_ARB would offer no config at all"
+        );
+        assert!(requires_transparent_configs(Platform::Linux));
+        assert!(requires_transparent_configs(Platform::MacOs));
+    }
+
+    #[test]
+    fn windows_sees_through_any_config_with_an_alpha_channel() {
+        for reported in [Some(false), None, Some(true)] {
+            assert!(
+                transparency_available(Platform::Windows, reported, 8),
+                "WGL_TRANSPARENT_ARB reported as {:?} turned off a config with 8 alpha bits",
+                reported
+            );
+            assert!(
+                !transparency_available(Platform::Windows, reported, 0),
+                "a config with no alpha channel cannot be seen through"
+            );
+        }
+    }
+
+    #[test]
+    fn elsewhere_the_config_decides_whether_it_can_be_seen_through() {
+        for platform in [Platform::Linux, Platform::MacOs] {
+            for alpha in [0, 8] {
+                assert!(transparency_available(platform, Some(true), alpha));
+                assert!(transparency_available(platform, None, alpha));
+                assert!(!transparency_available(platform, Some(false), alpha));
+            }
+        }
     }
 
     #[test]
@@ -4777,6 +4994,43 @@ mod tests {
     }
 
     #[test]
+    fn a_notification_asks_for_attention_by_its_own_mode_whatever_the_bell_mode() {
+        for bell in [
+            BellMode::Visual,
+            BellMode::Audible,
+            BellMode::Both,
+            BellMode::None,
+        ] {
+            for (notifications, attends) in [
+                (NotificationMode::Desktop, true),
+                (NotificationMode::Attention, true),
+                (NotificationMode::None, false),
+            ] {
+                assert_eq!(
+                    asks_for_attention(false, true, bell, notifications),
+                    attends,
+                    "an unhandled notification under {:?} with bell {:?}",
+                    notifications,
+                    bell
+                );
+                assert!(
+                    !asks_for_attention(false, false, bell, notifications),
+                    "nothing happened, yet {:?} with bell {:?} asked for attention",
+                    notifications,
+                    bell
+                );
+                assert_eq!(
+                    asks_for_attention(true, false, bell, notifications),
+                    bell.attends(),
+                    "a bell under {:?} with notifications {:?}",
+                    bell,
+                    notifications
+                );
+            }
+        }
+    }
+
+    #[test]
     fn losing_focus_releases_a_held_button() {
         let mut harness = Harness::new(2, true, "");
         harness
@@ -5053,6 +5307,92 @@ mod tests {
             press_with_text(&mut harness, Key::Named(NamedKey::Space), "^");
             harness.press(&character("a"));
             assert_eq!(harness.sent(), vec![typed_key('^'), typed_key('a')]);
+        }
+
+        fn shown_accent(harness: &Harness) -> Option<String> {
+            harness
+                .app
+                .composition
+                .shown()
+                .map(|shown| shown.text().to_owned())
+        }
+
+        #[test]
+        fn shift_held_for_the_next_key_keeps_the_accent() {
+            let mut harness = Harness::new(1, true, "");
+            harness.press(&dead('^'));
+            harness.app.modifiers = ModifiersState::SHIFT;
+            for _ in 0..3 {
+                harness.press(&Key::Named(NamedKey::Shift));
+            }
+            assert_eq!(
+                shown_accent(&harness),
+                Some("^".to_owned()),
+                "the system still holds the accent while shift is down"
+            );
+            press_with_text(&mut harness, character("/"), "^/");
+            assert_eq!(harness.app.composition.shown(), None);
+            assert_eq!(harness.sent(), vec![typed_text("^/")]);
+        }
+
+        #[test]
+        fn altgr_held_for_the_next_key_keeps_the_accent() {
+            let mut harness = Harness::new(1, true, "");
+            harness.press(&dead('^'));
+            for named in [
+                NamedKey::AltGraph,
+                NamedKey::AltGraph,
+                NamedKey::Control,
+                NamedKey::AltGraph,
+            ] {
+                harness.press(&Key::Named(named));
+            }
+            assert_eq!(
+                shown_accent(&harness),
+                Some("^".to_owned()),
+                "windows repeats altgr with the control press it fakes for it"
+            );
+            press_with_text(&mut harness, character("\\"), "^\\");
+            assert_eq!(harness.sent(), vec![typed_text("^\\")]);
+        }
+
+        #[test]
+        fn a_shifted_letter_still_combines_with_the_accent() {
+            let mut harness = Harness::new(1, true, "");
+            harness.press(&dead('^'));
+            harness.app.modifiers = ModifiersState::SHIFT;
+            harness.press(&Key::Named(NamedKey::Shift));
+            press_with_text(&mut harness, character("Ê"), "Ê");
+            assert_eq!(harness.sent(), vec![typed_key('Ê')]);
+        }
+
+        fn is_left(msg: &ClientToServerMsg) -> bool {
+            matches!(
+                msg,
+                ClientToServerMsg::Key { key, .. } if *key == KeyWithModifier::new(BareKey::Left)
+            )
+        }
+
+        #[test]
+        fn an_accent_the_system_kept_through_an_arrow_still_reaches_the_pane() {
+            let mut harness = Harness::new(2, true, "");
+            harness.press(&dead('^'));
+            harness.press(&Key::Named(NamedKey::ArrowLeft));
+            press_with_text(&mut harness, character("p"), "^p");
+            let sent = harness.sent();
+            assert!(is_left(&sent[0]), "{:?}", sent);
+            assert_eq!(sent[1], typed_text("^p"));
+        }
+
+        #[test]
+        fn a_letter_combined_after_an_arrow_arrives_composed() {
+            let mut harness = Harness::new(2, true, "");
+            harness.press(&dead('^'));
+            harness.press(&Key::Named(NamedKey::ArrowLeft));
+            press_with_text(&mut harness, character("ê"), "ê");
+            let sent = harness.sent();
+            assert!(is_left(&sent[0]), "{:?}", sent);
+            assert_eq!(sent[1], typed_key('ê'));
         }
 
         #[test]

@@ -14,6 +14,11 @@ rust-version.workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[[bin]]
+name = "zellij-window"
+path = "src/bin/zellij-window.rs"
+required-features = ["window"]
+
 [dependencies]
 zellij-client = { path = "zellij-client/", version = "0.46.0" }
 zellij-window = { path = "zellij-window/", version = "0.46.0", optional = true }

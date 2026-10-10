@@ -1,3 +1,5 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use anyhow::{Context, Result};
 use miette::{GraphicalReportHandler, GraphicalTheme};
 use zellij_utils::input::config::ConfigError;
@@ -88,6 +90,17 @@ pub fn described(error: &ConfigError) -> String {
         Ok(()) => text.trim_end().to_owned(),
         Err(_) => error.to_string(),
     }
+}
+
+static SHOWN: AtomicBool = AtomicBool::new(false);
+
+pub fn mark_shown() {
+    SHOWN.store(true, Ordering::Relaxed);
+}
+
+#[cfg(windows)]
+pub fn was_shown() -> bool {
+    SHOWN.load(Ordering::Relaxed)
 }
 
 pub struct Notice {

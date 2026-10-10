@@ -123,7 +123,7 @@ jobs:
         id: make-artifact-windows
         run: |
           $asset_name = "zellij-${{ matrix.target }}.zip"
-          Compress-Archive -Path "target/release/zellij.exe" -DestinationPath $asset_name
+          Compress-Archive -Path "target/release/zellij.exe", "target/release/zellij-window.exe" -DestinationPath $asset_name
           echo "asset_name=$asset_name" >> $env:GITHUB_OUTPUT
 
       - name: Create checksum (Unix)
@@ -143,8 +143,11 @@ jobs:
         id: make-checksum-windows
         run: |
           $checksum_name = "zellij-${{ matrix.target }}.sha256sum"
-          $hash = (Get-FileHash "target/release/zellij.exe" -Algorithm SHA256).Hash.ToLower()
-          "$hash  target/release/zellij.exe" | Out-File -Encoding ascii $checksum_name
+          $lines = foreach ($file in "target/release/zellij.exe", "target/release/zellij-window.exe") {
+            $hash = (Get-FileHash $file -Algorithm SHA256).Hash.ToLower()
+            "$hash  $file"
+          }
+          $lines | Out-File -Encoding ascii $checksum_name
           echo "checksum_name=$checksum_name" >> $env:GITHUB_OUTPUT
 
       - name: Upload release archive
@@ -319,7 +322,7 @@ jobs:
         id: make-artifact-windows
         run: |
           $asset_name = "zellij-no-web-${{ matrix.target }}.zip"
-          Compress-Archive -Path "target/release/zellij.exe" -DestinationPath $asset_name
+          Compress-Archive -Path "target/release/zellij.exe", "target/release/zellij-window.exe" -DestinationPath $asset_name
           echo "asset_name=$asset_name" >> $env:GITHUB_OUTPUT
 
       - name: Create checksum (Unix)
@@ -339,8 +342,11 @@ jobs:
         id: make-checksum-windows
         run: |
           $checksum_name = "zellij-no-web-${{ matrix.target }}.sha256sum"
-          $hash = (Get-FileHash "target/release/zellij.exe" -Algorithm SHA256).Hash.ToLower()
-          "$hash  target/release/zellij.exe" | Out-File -Encoding ascii $checksum_name
+          $lines = foreach ($file in "target/release/zellij.exe", "target/release/zellij-window.exe") {
+            $hash = (Get-FileHash $file -Algorithm SHA256).Hash.ToLower()
+            "$hash  $file"
+          }
+          $lines | Out-File -Encoding ascii $checksum_name
           echo "checksum_name=$checksum_name" >> $env:GITHUB_OUTPUT
 
       - name: Upload release archive
