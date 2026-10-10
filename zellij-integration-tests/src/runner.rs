@@ -676,7 +676,18 @@ impl TestSession {
     }
 
     pub fn attach_client(&self, size: Size) -> TestClient {
+        self.attach_client_with_host_terminal(size, HostTerminal::Basic)
+    }
+
+    pub fn attach_client_with_host_terminal(
+        &self,
+        size: Size,
+        host_terminal: HostTerminal,
+    ) -> TestClient {
         let (fake_client_os_api, fake_client_handle) = FakeClientOsApi::new(size, None);
+        fake_client_handle
+            .client_screen
+            .set_host_terminal(host_terminal, fake_client_handle.stdin_tx.clone());
         let thread = spawn_client_thread(
             fake_client_os_api,
             self.cli_args.clone(),
