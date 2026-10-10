@@ -220,7 +220,7 @@ pub struct AppState {
     pub connection_table: Arc<Mutex<ConnectionTable>>,
     pub config: Arc<Mutex<Config>>,
     pub config_options: Options,
-    pub config_file_path: PathBuf,
+    pub config_file_path: Option<PathBuf>,
     pub session_manager: Arc<dyn SessionManager>,
     pub client_os_api_factory: Arc<dyn ClientOsApiFactory>,
     pub is_https: bool,
