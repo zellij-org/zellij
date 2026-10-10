@@ -1265,6 +1265,10 @@ impl SessionMetaData {
                         .options
                         .nested_session_handling
                         .unwrap_or_default(),
+                    nested_session_ancestor_tab_highlight: new_config
+                        .options
+                        .nested_session_ancestor_tab_highlight
+                        .unwrap_or(true),
                 })
                 .unwrap();
             if base_mode_changed {
@@ -3398,6 +3402,9 @@ pub fn start_server_impl(
                         client_attributes.size,
                         tab_position_to_focus,
                         pane_id_to_focus,
+                        runtime_config_options
+                            .nested_session_ancestor_tab_highlight
+                            .unwrap_or(true),
                     ))
                     .unwrap();
                 session_data

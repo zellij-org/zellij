@@ -890,6 +890,8 @@ pub struct ModeUpdatePayload {
     pub session_ascended: ::core::option::Option<bool>,
     #[prost(string, repeated, tag="22")]
     pub nested_descend_keys: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(bool, optional, tag="23")]
+    pub nested_session_ancestor_tab_highlight: ::core::option::Option<bool>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

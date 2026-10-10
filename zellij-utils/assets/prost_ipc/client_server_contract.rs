@@ -2186,6 +2186,8 @@ pub struct Options {
     pub context_menu_enabled: ::core::option::Option<bool>,
     #[prost(bool, optional, tag="76")]
     pub dangerously_allow_web_serving_without_a_certificate: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag="77")]
+    pub nested_session_ancestor_tab_highlight: ::core::option::Option<bool>,
 }
 /// Pane-targeting action messages
 #[allow(clippy::derive_partial_eq_without_eq)]

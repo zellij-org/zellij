@@ -966,6 +966,60 @@ fn new_tab(screen: &mut Screen, pid: u32, tab_index: usize) {
 }
 
 #[test]
+fn attached_clients_keep_their_own_ancestor_tab_highlight_setting_across_mode_changes() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    for (initial, attached) in [
+        (Some(false), None),
+        (Some(false), Some(true)),
+        (Some(true), Some(false)),
+        (None, Some(false)),
+    ] {
+        let mut screen = create_new_screen(size, true, true);
+        screen
+            .default_mode_info
+            .nested_session_ancestor_tab_highlight = initial;
+        new_tab(&mut screen, 1, 0);
+        screen
+            .change_mode(InputMode::Normal, Some(InputMode::Normal), 1)
+            .unwrap();
+
+        screen.default_mode_info.session_ancestry = vec!["parent".to_owned()];
+        screen.set_client_size(2, size);
+        screen.add_client(2, false).unwrap();
+        assert!(!screen.mode_info.contains_key(&2));
+        screen.set_client_ancestor_tab_highlight(2, attached.unwrap_or(true));
+        let expected = Some(attached.unwrap_or(true));
+        assert_eq!(screen.mode_info[&2].session_ancestry, vec!["parent"]);
+        screen
+            .change_mode(InputMode::Normal, Some(InputMode::Normal), 2)
+            .unwrap();
+
+        assert_eq!(
+            screen.mode_info[&2].nested_session_ancestor_tab_highlight,
+            expected
+        );
+        assert_eq!(
+            screen
+                .default_mode_info
+                .nested_session_ancestor_tab_highlight,
+            initial
+        );
+        assert_eq!(
+            screen.mode_info[&1].nested_session_ancestor_tab_highlight,
+            initial
+        );
+        let (_, tab_mode_info) = screen.get_active_tab_mut(2).unwrap().drain_single_client(2);
+        assert_eq!(
+            tab_mode_info.nested_session_ancestor_tab_highlight,
+            expected
+        );
+    }
+}
+
+#[test]
 fn open_new_tab() {
     let size = Size {
         cols: 121,

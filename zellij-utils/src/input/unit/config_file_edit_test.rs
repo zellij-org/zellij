@@ -94,6 +94,31 @@ fn a_changed_value_is_edited_in_place_keeping_comments_and_unrelated_nodes() {
 }
 
 #[test]
+fn nested_session_ancestor_tab_highlight_is_saved_updated_and_removed() {
+    let file = "// keep this comment\nnested_session_handling \"ask\"\n";
+    let added = saved_text_after(file, |saved| {
+        reconfigure(saved, "nested_session_ancestor_tab_highlight false")
+    });
+    assert_eq!(
+        added,
+        format!("{file}nested_session_ancestor_tab_highlight false\n")
+    );
+    let updated = saved_text_after(&added, |saved| {
+        reconfigure(saved, "nested_session_ancestor_tab_highlight true")
+    });
+    assert_eq!(
+        updated,
+        format!("{file}nested_session_ancestor_tab_highlight true\n")
+    );
+    let removed = saved_text_after(&updated, |saved| {
+        let mut runtime = saved.clone();
+        unset_setting(&mut runtime, SettingKey::NestedSessionAncestorTabHighlight);
+        runtime
+    });
+    assert_eq!(removed, file);
+}
+
+#[test]
 fn a_new_value_is_added_at_the_end_of_the_top_level() {
     let text = saved_text_after(COMMENTED_FILE, |saved| {
         reconfigure(saved, "theme \"nord\"\nscroll_buffer_size 2000")

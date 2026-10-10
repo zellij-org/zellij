@@ -614,6 +614,14 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "ask",
             Everyone,
         ),
+        SettingKey::NestedSessionAncestorTabHighlight => info(
+            "Ancestor tab highlight",
+            PanesAndLayouts,
+            "Highlight ancestor tabs while controlling a nested Zellij session",
+            Toggle,
+            "true",
+            Everyone,
+        ),
         SettingKey::ScrollBufferSize => info(
             "Scrollback lines",
             ScrollbackAndEditor,
@@ -960,7 +968,7 @@ pub fn section(key: SettingKey) -> &'static str {
         },
         DefaultMode => "New panes",
         AutoLayout | StackedResize | StackedPaneList => "Layouts",
-        NestedSessionHandling => "Nested sessions",
+        NestedSessionHandling | NestedSessionAncestorTabHighlight => "Nested sessions",
         SessionName | AttachToSession | ShowStartupTips | ShowReleaseNotes => "Startup",
         SessionSerialization
         | SerializePaneViewport

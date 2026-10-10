@@ -31,6 +31,31 @@ use std::path::PathBuf;
 const ROUNDTRIP_TEST_STACK_SIZE: usize = 32 * 1024 * 1024;
 
 #[test]
+fn nested_session_ancestor_tab_highlight_ipc_preserves_presence_and_value() {
+    use crate::client_server_contract::client_server_contract::Options as ProtoOptions;
+    use prost::Message;
+    for value in [None, Some(true), Some(false)] {
+        for allow_uncertified in [None, Some(true), Some(false)] {
+            let options = Options {
+                nested_session_ancestor_tab_highlight: value,
+                dangerously_allow_web_serving_without_a_certificate: allow_uncertified,
+                ..Default::default()
+            };
+            let wire: ProtoOptions = options.clone().into();
+            let bytes = wire.encode_to_vec();
+            let wire = ProtoOptions::decode(bytes.as_slice()).unwrap();
+            assert_eq!(wire.nested_session_ancestor_tab_highlight, value);
+            assert_eq!(
+                wire.dangerously_allow_web_serving_without_a_certificate,
+                allow_uncertified
+            );
+            let decoded: Options = wire.try_into().unwrap();
+            assert_eq!(decoded, options);
+        }
+    }
+}
+
+#[test]
 fn server_client_contract() {
     std::thread::Builder::new()
         .stack_size(ROUNDTRIP_TEST_STACK_SIZE)
@@ -528,6 +553,7 @@ fn test_client_messages() {
                 word_separators: Some("[]{}<>():".to_owned()),
                 host_notification_protocol: Some(HostNotificationProtocol::Osc99),
                 nested_session_handling: Some(NestedSessionHandling::Fullscreen),
+                nested_session_ancestor_tab_highlight: Some(false),
                 dangerously_enable_paste_buffer_read: Some(true),
             }),
             layout: None,

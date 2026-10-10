@@ -1293,6 +1293,7 @@ message Options {
   optional string keybinds_unlock = 74;
   optional bool context_menu_enabled = 75;
   optional bool dangerously_allow_web_serving_without_a_certificate = 76;
+  optional bool nested_session_ancestor_tab_highlight = 77;
 }
 
 enum OnForceClose {

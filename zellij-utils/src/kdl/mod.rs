@@ -3275,6 +3275,11 @@ impl Options {
             },
             None => None,
         };
+        let nested_session_ancestor_tab_highlight = kdl_property_first_arg_as_bool_or_error!(
+            kdl_options,
+            "nested_session_ancestor_tab_highlight"
+        )
+        .map(|(v, _)| v);
         let host_notification_protocol = match kdl_property_first_arg_as_string_or_error!(
             kdl_options,
             "host_notification_protocol"
@@ -3360,6 +3365,7 @@ impl Options {
             post_command_discovery_hook,
             client_async_worker_tasks,
             nested_session_handling,
+            nested_session_ancestor_tab_highlight,
             dangerously_enable_paste_buffer_read,
         })
     }
@@ -5092,6 +5098,27 @@ impl Options {
             None
         }
     }
+    fn nested_session_ancestor_tab_highlight_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = "\n// Highlight ancestor tabs while controlling a nested Zellij session.\n// Default: true";
+        let create_node = |value: bool| -> KdlNode {
+            let mut node = KdlNode::new("nested_session_ancestor_tab_highlight");
+            node.push(KdlValue::Bool(value));
+            node
+        };
+        if let Some(value) = self.nested_session_ancestor_tab_highlight {
+            let mut node = create_node(value);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(true);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
     fn host_notification_protocol_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         use crate::input::options::HostNotificationProtocol;
         let comment_text = format!(
@@ -5380,6 +5407,11 @@ impl Options {
         }
         if let Some(nested_session_handling) = self.nested_session_handling_to_kdl(add_comments) {
             nodes.push(nested_session_handling);
+        }
+        if let Some(nested_session_ancestor_tab_highlight) =
+            self.nested_session_ancestor_tab_highlight_to_kdl(add_comments)
+        {
+            nodes.push(nested_session_ancestor_tab_highlight);
         }
         if let Some(host_notification_protocol) =
             self.host_notification_protocol_to_kdl(add_comments)
@@ -9584,6 +9616,52 @@ fn config_options_to_string_without_options() {
         "Deserialized serialized config equals original config"
     );
     insta::assert_snapshot!(fake_document.to_string());
+}
+
+#[test]
+fn nested_session_ancestor_tab_highlight_kdl_round_trip_and_default() {
+    let empty: KdlDocument = "".parse().unwrap();
+    let unset = Options::from_kdl(&empty).unwrap();
+    assert_eq!(unset.nested_session_ancestor_tab_highlight, None);
+    assert!(!unset
+        .to_kdl(false)
+        .iter()
+        .any(|node| { node.name().value() == "nested_session_ancestor_tab_highlight" }));
+    let commented = unset
+        .to_kdl(true)
+        .iter()
+        .map(ToString::to_string)
+        .collect::<String>();
+    assert!(commented.contains("// nested_session_ancestor_tab_highlight true"));
+
+    for enabled in [true, false] {
+        let source: KdlDocument = format!("nested_session_ancestor_tab_highlight {enabled}")
+            .parse()
+            .unwrap();
+        let options = Options::from_kdl(&source).unwrap();
+        assert_eq!(options.nested_session_ancestor_tab_highlight, Some(enabled));
+        let serialized = options
+            .to_kdl(false)
+            .iter()
+            .map(ToString::to_string)
+            .collect::<String>();
+        assert!(serialized.contains(&format!("nested_session_ancestor_tab_highlight {enabled}")));
+        let reparsed = Options::from_kdl(&serialized.parse().unwrap()).unwrap();
+        assert_eq!(
+            reparsed.nested_session_ancestor_tab_highlight,
+            Some(enabled)
+        );
+    }
+}
+
+#[test]
+fn nested_session_ancestor_tab_highlight_rejects_non_boolean_values() {
+    for value in ["\"false\"", "1"] {
+        let document: KdlDocument = format!("nested_session_ancestor_tab_highlight {value}")
+            .parse()
+            .unwrap();
+        assert!(Options::from_kdl(&document).is_err());
+    }
 }
 
 #[test]
