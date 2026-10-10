@@ -1117,6 +1117,9 @@ impl App {
             return;
         }
         if gate == Gate::Resolving {
+            if input::leaves_the_accent_pending(&press) {
+                return;
+            }
             let reaction = self.composition.resolve();
             self.compose(reaction);
             match input::resolve_pending_accent(&press) {
@@ -1131,6 +1134,10 @@ impl App {
             return;
         }
         if let Some(text) = input::unidentified_text(&press) {
+            self.type_text(text);
+            return;
+        }
+        if let Some(text) = input::leftover_accent(&press) {
             self.type_text(text);
             return;
         }
@@ -5300,6 +5307,92 @@ mod tests {
             press_with_text(&mut harness, Key::Named(NamedKey::Space), "^");
             harness.press(&character("a"));
             assert_eq!(harness.sent(), vec![typed_key('^'), typed_key('a')]);
+        }
+
+        fn shown_accent(harness: &Harness) -> Option<String> {
+            harness
+                .app
+                .composition
+                .shown()
+                .map(|shown| shown.text().to_owned())
+        }
+
+        #[test]
+        fn shift_held_for_the_next_key_keeps_the_accent() {
+            let mut harness = Harness::new(1, true, "");
+            harness.press(&dead('^'));
+            harness.app.modifiers = ModifiersState::SHIFT;
+            for _ in 0..3 {
+                harness.press(&Key::Named(NamedKey::Shift));
+            }
+            assert_eq!(
+                shown_accent(&harness),
+                Some("^".to_owned()),
+                "the system still holds the accent while shift is down"
+            );
+            press_with_text(&mut harness, character("/"), "^/");
+            assert_eq!(harness.app.composition.shown(), None);
+            assert_eq!(harness.sent(), vec![typed_text("^/")]);
+        }
+
+        #[test]
+        fn altgr_held_for_the_next_key_keeps_the_accent() {
+            let mut harness = Harness::new(1, true, "");
+            harness.press(&dead('^'));
+            for named in [
+                NamedKey::AltGraph,
+                NamedKey::AltGraph,
+                NamedKey::Control,
+                NamedKey::AltGraph,
+            ] {
+                harness.press(&Key::Named(named));
+            }
+            assert_eq!(
+                shown_accent(&harness),
+                Some("^".to_owned()),
+                "windows repeats altgr with the control press it fakes for it"
+            );
+            press_with_text(&mut harness, character("\\"), "^\\");
+            assert_eq!(harness.sent(), vec![typed_text("^\\")]);
+        }
+
+        #[test]
+        fn a_shifted_letter_still_combines_with_the_accent() {
+            let mut harness = Harness::new(1, true, "");
+            harness.press(&dead('^'));
+            harness.app.modifiers = ModifiersState::SHIFT;
+            harness.press(&Key::Named(NamedKey::Shift));
+            press_with_text(&mut harness, character("Ê"), "Ê");
+            assert_eq!(harness.sent(), vec![typed_key('Ê')]);
+        }
+
+        fn is_left(msg: &ClientToServerMsg) -> bool {
+            matches!(
+                msg,
+                ClientToServerMsg::Key { key, .. } if *key == KeyWithModifier::new(BareKey::Left)
+            )
+        }
+
+        #[test]
+        fn an_accent_the_system_kept_through_an_arrow_still_reaches_the_pane() {
+            let mut harness = Harness::new(2, true, "");
+            harness.press(&dead('^'));
+            harness.press(&Key::Named(NamedKey::ArrowLeft));
+            press_with_text(&mut harness, character("p"), "^p");
+            let sent = harness.sent();
+            assert!(is_left(&sent[0]), "{:?}", sent);
+            assert_eq!(sent[1], typed_text("^p"));
+        }
+
+        #[test]
+        fn a_letter_combined_after_an_arrow_arrives_composed() {
+            let mut harness = Harness::new(2, true, "");
+            harness.press(&dead('^'));
+            harness.press(&Key::Named(NamedKey::ArrowLeft));
+            press_with_text(&mut harness, character("ê"), "ê");
+            let sent = harness.sent();
+            assert!(is_left(&sent[0]), "{:?}", sent);
+            assert_eq!(sent[1], typed_key('ê'));
         }
 
         #[test]
