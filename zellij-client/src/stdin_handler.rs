@@ -11,6 +11,41 @@ use std::time::{Duration, Instant};
 
 const LONE_ESC_FLUSH_INTERVAL: Duration = Duration::from_millis(50);
 const PARTIAL_REPLY_FLUSH_GUARD: Duration = Duration::from_millis(1000);
+/// Upper bound on how long a partial reply that keeps receiving bytes may
+/// hold the buffer, so a sequence that never terminates still cannot wedge
+/// keyboard input.
+const PARTIAL_REPLY_MAX_HOLD: Duration = Duration::from_secs(5);
+
+/// A partial host reply held by the parser: when it started, and when the
+/// last bytes arrived while it was held.
+///
+/// The flush guard used to measure only `since`. On a slow link that
+/// delivers a reply burst in small chunks, every chunk can end inside a
+/// sequence, so a partial is held for the whole burst. Once the burst
+/// lasted longer than the guard, a reply that was still arriving was
+/// force-drained into the focused pane as keyboard input (for example
+/// `10;rgb:...` or `\x1b[?62;22c` typed into a shell or a TUI prompt).
+/// Measuring from the last progress drains only a reply that has stopped
+/// arriving; `PARTIAL_REPLY_MAX_HOLD` keeps the old wedge protection.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct ReplyHold {
+    since: Instant,
+    last_progress: Instant,
+}
+
+impl ReplyHold {
+    fn new(now: Instant) -> Self {
+        ReplyHold {
+            since: now,
+            last_progress: now,
+        }
+    }
+
+    fn should_force_drain(&self, now: Instant) -> bool {
+        now.saturating_duration_since(self.last_progress) >= PARTIAL_REPLY_FLUSH_GUARD
+            || now.saturating_duration_since(self.since) >= PARTIAL_REPLY_MAX_HOLD
+    }
+}
 use zellij_utils::{
     channels::SenderWithContext,
     vendored::termwiz::input::{InputEvent, InputParser},
@@ -119,7 +154,7 @@ pub(crate) fn stdin_loop(
             }
         });
     let mut needs_finalization = false;
-    let mut reply_in_progress_since: Option<Instant> = None;
+    let mut reply_hold: Option<ReplyHold> = None;
     'stdin: loop {
         match if needs_finalization {
             stdin_rx.recv_timeout(LONE_ESC_FLUSH_INTERVAL)
@@ -178,7 +213,7 @@ pub(crate) fn stdin_loop(
                                 &stdin_ansi_parser,
                                 false,
                                 &mut needs_finalization,
-                                &mut reply_in_progress_since,
+                                &mut reply_hold,
                             );
                             continue;
                         }
@@ -207,7 +242,7 @@ pub(crate) fn stdin_loop(
                                         &stdin_ansi_parser,
                                         false,
                                         &mut needs_finalization,
-                                        &mut reply_in_progress_since,
+                                        &mut reply_hold,
                                     );
                                     continue;
                                 },
@@ -252,7 +287,7 @@ pub(crate) fn stdin_loop(
                             &stdin_ansi_parser,
                             true,
                             &mut needs_finalization,
-                            &mut reply_in_progress_since,
+                            &mut reply_hold,
                         );
                     },
                     Err(e) => {
@@ -269,10 +304,10 @@ pub(crate) fn stdin_loop(
             Err(mpsc::RecvTimeoutError::Timeout) => {
                 let pending = stdin_ansi_parser.lock().unwrap().pending_partial();
                 if pending.uses_reply_flush_guard() {
-                    let elapsed = reply_in_progress_since
-                        .map(|since| since.elapsed())
-                        .unwrap_or_default();
-                    if elapsed >= PARTIAL_REPLY_FLUSH_GUARD {
+                    let expired = reply_hold
+                        .map(|hold| hold.should_force_drain(Instant::now()))
+                        .unwrap_or(false);
+                    if expired {
                         let drained = stdin_ansi_parser.lock().unwrap().finalize_force();
                         drain_partial_to_keyboard(
                             &mut input_parser,
@@ -281,7 +316,7 @@ pub(crate) fn stdin_loop(
                             drained,
                         );
                         needs_finalization = false;
-                        reply_in_progress_since = None;
+                        reply_hold = None;
                     } else {
                         needs_finalization = true;
                     }
@@ -294,7 +329,7 @@ pub(crate) fn stdin_loop(
                         drained,
                     );
                     needs_finalization = false;
-                    reply_in_progress_since = None;
+                    reply_hold = None;
                 }
             },
             Err(mpsc::RecvTimeoutError::Disconnected) => {
@@ -310,18 +345,22 @@ fn schedule_finalization(
     stdin_ansi_parser: &Arc<Mutex<StdinAnsiParser>>,
     fed_termwiz: bool,
     needs_finalization: &mut bool,
-    reply_in_progress_since: &mut Option<Instant>,
+    reply_hold: &mut Option<ReplyHold>,
 ) {
     let pending = stdin_ansi_parser.lock().unwrap().pending_partial();
     if fed_termwiz || pending != PendingPartial::None {
         *needs_finalization = true;
     }
     if pending.uses_reply_flush_guard() {
-        if reply_in_progress_since.is_none() {
-            *reply_in_progress_since = Some(Instant::now());
+        // Called once per chunk read from stdin, so every call while a
+        // partial is held is progress on it.
+        let now = Instant::now();
+        match reply_hold {
+            Some(hold) => hold.last_progress = now,
+            None => *reply_hold = Some(ReplyHold::new(now)),
         }
     } else {
-        *reply_in_progress_since = None;
+        *reply_hold = None;
     }
 }
 
@@ -428,8 +467,48 @@ pub(crate) const PIXEL_SIZE_QUERY: &str = "\u{1b}[14t\u{1b}[16t";
 mod tests {
     use super::{
         build_startup_query_string, extract_focus_reports, realign_current_buffer, InputParser,
-        PIXEL_SIZE_QUERY,
+        ReplyHold, PARTIAL_REPLY_FLUSH_GUARD, PARTIAL_REPLY_MAX_HOLD, PIXEL_SIZE_QUERY,
     };
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn a_reply_that_keeps_arriving_is_not_force_drained_at_the_guard() {
+        // a burst delivered in small chunks, each landing within the guard
+        let start = Instant::now();
+        let mut hold = ReplyHold::new(start);
+        let step = PARTIAL_REPLY_FLUSH_GUARD / 4;
+        let mut now = start;
+        for _ in 0..8 {
+            now += step;
+            assert!(!hold.should_force_drain(now));
+            hold.last_progress = now;
+        }
+        assert!(now.duration_since(start) > PARTIAL_REPLY_FLUSH_GUARD);
+        assert!(!hold.should_force_drain(now + step));
+    }
+
+    #[test]
+    fn a_reply_that_stopped_arriving_is_force_drained_after_the_guard() {
+        let start = Instant::now();
+        let mut hold = ReplyHold::new(start);
+        hold.last_progress = start + Duration::from_millis(300);
+        assert!(!hold.should_force_drain(hold.last_progress + PARTIAL_REPLY_FLUSH_GUARD / 2));
+        assert!(hold.should_force_drain(hold.last_progress + PARTIAL_REPLY_FLUSH_GUARD));
+    }
+
+    #[test]
+    fn a_partial_that_never_terminates_is_drained_after_the_max_hold() {
+        let start = Instant::now();
+        let mut hold = ReplyHold::new(start);
+        let step = PARTIAL_REPLY_FLUSH_GUARD / 2;
+        let mut now = start;
+        while now.duration_since(start) + step < PARTIAL_REPLY_MAX_HOLD {
+            now += step;
+            hold.last_progress = now;
+            assert!(!hold.should_force_drain(now));
+        }
+        assert!(hold.should_force_drain(start + PARTIAL_REPLY_MAX_HOLD));
+    }
 
     #[test]
     fn realign_after_lone_paste_start_empties_the_buffer() {
