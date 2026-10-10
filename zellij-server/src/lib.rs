@@ -3021,6 +3021,67 @@ fn handle_new_connection(
     )
 }
 
+/// The server's socket path. Only a server that bound the socket may remove it on exit: a server
+/// that lost a bind race to another server must leave the winner's socket alone.
+#[derive(Clone)]
+struct ServerSocket {
+    path: PathBuf,
+    bound: Arc<AtomicBool>,
+}
+
+impl ServerSocket {
+    fn new(path: PathBuf) -> Self {
+        ServerSocket {
+            path,
+            bound: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    fn bind(&self) -> std::io::Result<interprocess::local_socket::Listener> {
+        drop(std::fs::remove_file(&self.path));
+        let listener = zellij_utils::consts::ipc_bind(&self.path)?;
+        self.bound.store(true, Ordering::SeqCst);
+        Ok(listener)
+    }
+
+    fn remove_on_exit(&self) {
+        if self.bound.load(Ordering::SeqCst) {
+            drop(std::fs::remove_file(&self.path));
+        }
+    }
+}
+
+#[cfg(test)]
+mod server_socket_tests {
+    use super::*;
+
+    #[test]
+    fn a_server_that_never_bound_the_socket_leaves_the_winners_socket_in_place() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("session");
+        let winner = ServerSocket::new(path.clone());
+        let _winner_listener = winner.bind().unwrap();
+
+        let loser = ServerSocket::new(path.clone());
+        loser.remove_on_exit();
+
+        assert!(path.exists());
+    }
+
+    #[test]
+    fn the_server_that_bound_the_socket_removes_it_on_exit() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("session");
+        let server = ServerSocket::new(path.clone());
+        let _listener = server.bind().unwrap();
+        assert!(path.exists());
+
+        server.remove_on_exit();
+
+        assert!(!path.exists());
+    }
+}
+
 pub fn start_server_impl(
     mut os_input: Box<dyn ServerOsApi>,
     socket_path: PathBuf,
@@ -3043,11 +3104,12 @@ pub fn start_server_impl(
         });
     }
 
+    let server_socket = ServerSocket::new(socket_path.clone());
+
     let _ = thread::Builder::new()
         .name("server_listener".to_string())
         .spawn({
             use interprocess::local_socket::prelude::*;
-            use zellij_utils::consts::ipc_bind;
             #[cfg(unix)]
             use zellij_utils::shared::set_permissions;
 
@@ -3056,9 +3118,9 @@ pub fn start_server_impl(
             let session_state = session_state.clone();
             let to_server = to_server.clone();
             let socket_path = socket_path.clone();
+            let server_socket = server_socket.clone();
             move || {
-                drop(std::fs::remove_file(&socket_path));
-                let listener = ipc_bind(&socket_path).unwrap();
+                let listener = server_socket.bind().unwrap();
                 // set the sticky bit to avoid the socket file being potentially cleaned up
                 // https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html states that for XDG_RUNTIME_DIR:
                 // "To ensure that your files are not removed, they should have their access time timestamp modified at least once every 6 hours of monotonic time or the 'sticky' bit should be set on the file. "
@@ -4419,7 +4481,7 @@ pub fn start_server_impl(
     // Drop cached session data before exit.
     *session_data.write().unwrap() = None;
 
-    drop(std::fs::remove_file(&socket_path));
+    server_socket.remove_on_exit();
 }
 
 fn init_session(
