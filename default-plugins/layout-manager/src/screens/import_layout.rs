@@ -1,6 +1,5 @@
 use super::{KeyResponse, LayoutListScreen, OptimisticUpdate, Screen};
 use crate::errors::{format_kdl_error, ErrorScreen};
-use crate::text_input::{InputAction, TextInput};
 use crate::ui::{truncate_with_ellipsis_start, LayoutDetail, Title};
 use crate::{DisplayLayout, LayoutInfo};
 use zellij_tile::prelude::*;
@@ -63,14 +62,10 @@ impl ImportLayoutScreen {
     }
 
     fn handle_editing_mode_key(&mut self, key: KeyWithModifier) -> KeyResponse {
-        let action = self.name_input.handle_key(key);
-
-        match action {
-            InputAction::Continue => KeyResponse::render(),
-            InputAction::Submit => self.exit_editing_mode(),
-            InputAction::Cancel => self.exit_editing_mode(),
-            InputAction::Complete => KeyResponse::none(),
-            InputAction::NoAction => KeyResponse::none(),
+        match self.name_input.handle_key(&key) {
+            UiResponse::Changed(_) | UiResponse::Consumed => KeyResponse::render(),
+            UiResponse::Submitted(_) | UiResponse::Cancelled => self.exit_editing_mode(),
+            _ => KeyResponse::none(),
         }
     }
 

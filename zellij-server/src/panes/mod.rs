@@ -27,3 +27,5 @@ pub use sixel::*;
 pub(crate) use terminal_character::*;
 pub use terminal_pane::*;
 pub use tiled_panes::*;
+
+pub type ReplacePaneResult = Result<Box<dyn crate::tab::Pane>, Box<dyn crate::tab::Pane>>;

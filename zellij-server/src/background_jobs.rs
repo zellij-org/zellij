@@ -30,6 +30,7 @@ use std::sync::{
 };
 use std::time::{Duration, Instant};
 
+use crate::os_input_output::PaneEnv;
 use crate::panes::PaneId;
 use crate::plugins::{PluginId, PluginInstruction};
 use crate::pty::PtyInstruction;
@@ -54,6 +55,12 @@ pub enum BackgroundJob {
         PathBuf,
         BTreeMap<String, String>,
     ), // command, args, env_variables, cwd, context
+    RunInBackground {
+        command: PathBuf,
+        args: Vec<String>,
+        cwd: Option<PathBuf>,
+        env: PaneEnv,
+    },
     WebRequest(
         PluginId,
         ClientId,
@@ -93,6 +100,7 @@ impl From<&BackgroundJob> for BackgroundJobContext {
             BackgroundJob::ReportSessionInfo(..) => BackgroundJobContext::ReportSessionInfo,
             BackgroundJob::ReportLayoutInfo(..) => BackgroundJobContext::ReportLayoutInfo,
             BackgroundJob::RunCommand(..) => BackgroundJobContext::RunCommand,
+            BackgroundJob::RunInBackground { .. } => BackgroundJobContext::RunInBackground,
             BackgroundJob::WebRequest(..) => BackgroundJobContext::WebRequest,
             BackgroundJob::ReportPluginList(..) => BackgroundJobContext::ReportPluginList,
             BackgroundJob::RenderToClients => BackgroundJobContext::ReportPluginList,
@@ -370,6 +378,14 @@ pub(crate) fn background_jobs_main(
                         }
                     }
                 });
+            },
+            BackgroundJob::RunInBackground {
+                command,
+                args,
+                cwd,
+                env,
+            } => {
+                runtime.spawn(run_in_background(command, args, cwd, env));
             },
             BackgroundJob::WebRequest(plugin_id, client_id, url, verb, headers, body, context) => {
                 runtime.spawn({
@@ -1078,5 +1094,54 @@ mod tests {
         for name in ["live-a", "live-b", "live-c"] {
             assert!(!resurrectable.contains_key(name));
         }
+    }
+}
+
+async fn run_in_background(
+    command: PathBuf,
+    args: Vec<String>,
+    cwd: Option<PathBuf>,
+    env: PaneEnv,
+) {
+    let mut process = tokio::process::Command::new(&command);
+    process
+        .args(&args)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped());
+    for (name, value) in env {
+        match value {
+            Some(value) => process.env(name, value),
+            None => process.env_remove(name),
+        };
+    }
+    if let Some(cwd) = cwd {
+        if cwd.is_dir() {
+            process.current_dir(cwd);
+        } else {
+            log::error!(
+                "Cannot run '{}' in '{}': not a folder",
+                command.display(),
+                cwd.display()
+            );
+        }
+    }
+    match process.output().await {
+        Ok(output) if !output.status.success() => {
+            log::error!(
+                "Background command '{}' exited with {}: {}",
+                command.display(),
+                output.status,
+                String::from_utf8_lossy(&output.stderr).trim_end()
+            );
+        },
+        Ok(_) => {},
+        Err(e) => {
+            log::error!(
+                "Failed to start background command '{}': {}",
+                command.display(),
+                e
+            );
+        },
     }
 }

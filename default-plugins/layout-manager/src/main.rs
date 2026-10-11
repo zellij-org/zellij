@@ -1,6 +1,5 @@
 mod errors;
 mod screens;
-mod text_input;
 mod ui;
 
 use errors::format_kdl_error;

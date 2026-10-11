@@ -36,6 +36,9 @@ pub mod api {
     pub mod plugin_permission {
         include!("api.plugin_permission.rs");
     }
+    pub mod prompt {
+        include!("api.prompt.rs");
+    }
     pub mod resize {
         include!("api.resize.rs");
     }

@@ -75,6 +75,7 @@ impl ServerOsApi for MockServerOsApi {
         _terminal_action: zellij_utils::input::command::TerminalAction,
         _quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         _default_editor: Option<PathBuf>,
+        _pane_env: &crate::os_input_output::PaneEnv,
     ) -> Result<(u32, Box<dyn AsyncReader>, Option<u32>)> {
         unimplemented!()
     }
@@ -160,6 +161,7 @@ impl ServerOsApi for MockServerOsApi {
         _terminal_id: u32,
         _run_command: RunCommand,
         _quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
+        _pane_env: &crate::os_input_output::PaneEnv,
     ) -> Result<(Box<dyn AsyncReader>, Option<u32>)> {
         unimplemented!()
     }
