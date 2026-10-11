@@ -62,6 +62,7 @@ windows-sys = { workspace = true, features = [
 ] }
 
 [dev-dependencies]
+clap = { workspace = true }
 insta = "1.48"
 rcgen = "0.14"
 serde_json = "1.0"

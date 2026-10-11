@@ -75,7 +75,7 @@ impl<'a> LayoutDetail<'a> {
     }
 
     fn render_no_metadata(&self, x: usize, y: usize) {
-        let msg = Text::new("No metadata available").color_all(1);
+        let msg = Text::from("No metadata available").color_all(1);
         print_text_with_coordinates(msg, x, y + 1, None, None);
     }
     fn render_built_in_indication(
@@ -94,11 +94,11 @@ impl<'a> LayoutDetail<'a> {
         let wrapped_lines = wrap_text_to_width(&full_text, max_cols);
 
         let mut current_y = y;
-        for line in wrapped_lines.iter().take(max_rows) {
+        for line in wrapped_lines.iter().take(max_rows).cloned() {
             let text = if line.contains(name) {
-                Text::new(line).color_substring(1, name)
+                Text::from(line).color_substring(1, name)
             } else {
-                Text::new(line)
+                Text::from(line)
             };
             print_text_with_coordinates(text, x, current_y, None, None);
             current_y += 1;
@@ -122,13 +122,13 @@ impl<'a> LayoutDetail<'a> {
 
         let mut current_y = y + 1; // + 1 (and saturating_sub(3) above) to be aligned with the
                                    // table on the left
-        for line in wrapped_lines.iter().take(available_rows) {
-            let text = Text::new(line).error_color_all();
+        for line in wrapped_lines.iter().take(available_rows).cloned() {
+            let text = Text::from(line).error_color_all();
             print_text_with_coordinates(text, x, current_y, None, None);
             current_y += 1;
         }
 
-        let hint = Text::new("<m> - Show detailed error").color_substring(3, "<m>");
+        let hint = Text::from("<m> - Show detailed error").color_substring(3, "<m>");
         print_text_with_coordinates(hint, x, current_y + 1, None, None); // 1 for gap
     }
 
@@ -281,15 +281,15 @@ impl<'a> LayoutDetail<'a> {
         title_color: usize,
     ) {
         let text = if is_title {
-            Text::new(line).color_all(title_color)
+            Text::from(line).color_all(title_color)
         } else {
-            Text::new(line)
+            Text::from(line)
         };
         print_text_with_coordinates(text, x, y, None, None);
     }
 
     fn render_truncation_ellipsis(&self, x: usize, y: usize) {
-        let ellipsis = Text::new("  [...]").color_all(1);
+        let ellipsis = Text::from("  [...]").color_all(1);
         print_text_with_coordinates(ellipsis, x, y, None, None);
     }
 

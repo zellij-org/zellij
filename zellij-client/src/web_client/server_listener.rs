@@ -242,8 +242,11 @@ pub fn zellij_server_listener(
                             },
                             Some(ServerToClientMsg::ConfigFileUpdated) => {
 
-                                if let Some(config_file_path) = &config_file_path {
-                                    if let Ok(new_config) = Config::from_path(&config_file_path, Some(config.clone())) {
+                                if config_file_path.is_some() {
+                                    let mut new_config = config.clone();
+                                    let mut new_config_options = config_options.clone();
+                                    reload_config_from_disk(&mut new_config, &mut new_config_options, &config_file_path);
+                                    {
                                         // Re-seed host-query cache for this client
                                         // so OSC 10/11/4 replies follow the new theme.
                                         for seed in build_host_query_seed_msgs(&new_config, &config_options) {

@@ -397,20 +397,20 @@ impl App {
     fn render_error(&self, rows: usize, cols: usize, error: String) {
         let mut error_page = Page::new()
             .main_screen()
-            .with_title(Text::new(format!("{}", error)).color_range(3, ..))
+            .with_title(Text::from(format!("{}", error)).color_range(3, ..))
             .with_paragraph(vec![
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("Unable to permanently dismiss tips."),
+                    Text::from("Unable to permanently dismiss tips."),
                 ))]),
                 ComponentLine::new(vec![ActiveComponent::new(TextOrCustomRender::Text(
-                    Text::new("You can do so manually by adding the following to your config:"),
+                    Text::from("You can do so manually by adding the following to your config:"),
                 ))]),
             ])
             .with_paragraph(vec![ComponentLine::new(vec![ActiveComponent::new(
-                TextOrCustomRender::Text(Text::new("show_startup_tips false").color_range(0, ..)),
+                TextOrCustomRender::Text(Text::from("show_startup_tips false").color_range(0, ..)),
             )])])
             .with_help(Box::new(|_hovering_over_link, _menu_item_is_selected| {
-                Text::new("<ESC> - dismiss").color_range(1, ..=4)
+                Text::from("<ESC> - dismiss").color_range(1, ..=4)
             }));
         error_page.render(rows, cols, &None)
     }

@@ -1,5 +1,4 @@
 use super::{ErrorScreen, KeyResponse, LayoutListScreen, OptimisticUpdate, Screen};
-use crate::text_input::{InputAction, TextInput};
 use crate::ui::truncate_with_ellipsis_start;
 use zellij_tile::prelude::*;
 
@@ -20,14 +19,11 @@ impl RenameLayoutScreen {
     }
 
     pub fn handle_key(&mut self, key: KeyWithModifier) -> KeyResponse {
-        let action = self.name_input.handle_key(key);
-
-        match action {
-            InputAction::Continue => KeyResponse::render(),
-            InputAction::Submit => self.attempt_rename(),
-            InputAction::Cancel => KeyResponse::new_screen(self.cancel_rename()),
-            InputAction::Complete => KeyResponse::none(),
-            InputAction::NoAction => KeyResponse::none(),
+        match self.name_input.handle_key(&key) {
+            UiResponse::Changed(_) | UiResponse::Consumed => KeyResponse::render(),
+            UiResponse::Submitted(_) => self.attempt_rename(),
+            UiResponse::Cancelled => KeyResponse::new_screen(self.cancel_rename()),
+            _ => KeyResponse::none(),
         }
     }
 
@@ -95,7 +91,7 @@ impl RenameLayoutScreen {
 
     fn render_rename_line(&self, x: usize, y: usize, width: usize) {
         let (text, _) = self.rename_line_text(Some(width));
-        let colored = Text::new(&text);
+        let colored = Text::from(text);
         print_text_with_coordinates(colored, x, y, None, None);
     }
 
@@ -105,7 +101,7 @@ impl RenameLayoutScreen {
 
     fn render_help_text(&self, x: usize, y: usize, _width: usize) {
         let (text, items_to_color) = self.help_text();
-        let mut text_obj = Text::new(text);
+        let mut text_obj = Text::from(text);
         for item in items_to_color {
             text_obj = text_obj.color_substring(3, item);
         }
@@ -113,7 +109,7 @@ impl RenameLayoutScreen {
     }
 
     fn render_title(&self, x: usize, y: usize, width: usize) {
-        let title = Text::new("Rename Layout").color_all(2);
+        let title = Text::from("Rename Layout").color_all(2);
         print_text_with_coordinates(title, x, y, Some(width), None);
     }
 

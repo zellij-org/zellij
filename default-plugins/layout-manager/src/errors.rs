@@ -83,7 +83,7 @@ impl ErrorDetailScreen {
     pub fn render(&self, rows: usize, cols: usize) {
         // Header: show layout name
         let header = format!("Error in layout: {}", self.layout_name);
-        let header_text = Text::new(&header).error_color_all();
+        let header_text = Text::from(header).error_color_all();
         print_text_with_coordinates(header_text, 1, 0, None, None);
 
         // Calculate available space for error content
@@ -128,7 +128,7 @@ impl ErrorDetailScreen {
 
             // Render omission indicator
             let indicator = format!("... {} lines omitted ...", omitted_count);
-            let indicator_text = Text::new(&indicator).color_range(0, ..);
+            let indicator_text = Text::from(indicator.clone()).color_range(0, ..);
             print_text_with_coordinates(
                 indicator_text,
                 (cols.saturating_sub(indicator.chars().count())) / 2,

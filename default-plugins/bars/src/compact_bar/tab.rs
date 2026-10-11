@@ -24,6 +24,8 @@ pub fn render_tab(
     text: String,
     tab: &TabInfo,
     is_alternate_tab: bool,
+    is_hovered: bool,
+    is_dragged: bool,
     palette: Styling,
     separator: &str,
     dimmed: bool,
@@ -37,6 +39,8 @@ pub fn render_tab(
     };
     let background_color = if tab.active {
         palette.ribbon_selected.background
+    } else if is_hovered {
+        palette.ribbon_unselected.emphasis_1
     } else if is_alternate_tab {
         alternate_tab_color
     } else {
@@ -63,6 +67,11 @@ pub fn render_tab(
         style!(palette.ribbon_unselected.base, background_color).italic()
     } else {
         style!(foreground_color, background_color).bold()
+    };
+    let text_style = if is_dragged {
+        text_style.italic()
+    } else {
+        text_style
     };
     let left_separator = style!(separator_fill_color, background_color).paint(separator);
     let mut tab_text_len = text.width() + (separator_width * 2) + 2;
@@ -100,6 +109,8 @@ pub fn tab_style(
     mut tabname: String,
     tab: &TabInfo,
     mut is_alternate_tab: bool,
+    is_hovered: bool,
+    is_dragged: bool,
     palette: Styling,
     capabilities: PluginCapabilities,
     dimmed: bool,
@@ -118,21 +129,16 @@ pub fn tab_style(
         is_alternate_tab = false;
     }
 
-    render_tab(tabname, tab, is_alternate_tab, palette, separator, dimmed)
-}
-
-pub(crate) fn get_tab_to_focus(
-    tab_line: &[LinePart],
-    active_tab_idx: usize,
-    mouse_click_col: usize,
-) -> Option<usize> {
-    let clicked_line_part = get_clicked_line_part(tab_line, mouse_click_col)?;
-    let clicked_tab_idx = clicked_line_part.tab_index?;
-    let clicked_tab_idx = clicked_tab_idx + 1;
-    if clicked_tab_idx != active_tab_idx {
-        return Some(clicked_tab_idx);
-    }
-    None
+    render_tab(
+        tabname,
+        tab,
+        is_alternate_tab,
+        is_hovered,
+        is_dragged,
+        palette,
+        separator,
+        dimmed,
+    )
 }
 
 pub(crate) fn get_clicked_line_part(

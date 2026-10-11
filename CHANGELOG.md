@@ -5,6 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* (BREAKING CHANGE zellij-tile) `NestedListItem::new` now require a `Text` instead of a `&str` (https://github.com/zellij-org/zellij/pull/5611)
+* (BREAKING CHANGE zellij-tile) `Text::new` is replaced by `Text::from` (https://github.com/zellij-org/zellij/pull/5611)
+    * Migration help: to help with the breaking change, this command may help (not for 100% of the cases but a good first pass): `ast-grep run -p 'Text::new($A)' -r 'Text::from($A)' --update-all`
 * fix: forward OSC7 (cwd changes) to host terminal (https://github.com/zellij-org/zellij/pull/4867)
 * performance: reduce server memory usage by not copying the builtin plugins onto the heap (https://github.com/zellij-org/zellij/pull/5622)
 * feat: upstream Yazelix graphics and stacked-pane fixes, named swap-layout selection and configurable pane-border styles (https://github.com/zellij-org/zellij/pull/5630)
@@ -18,6 +21,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: add websocket heartbeat to webserver to prevernt idle disconnect through proxies (https://github.com/zellij-org/zellij/pull/4633)
 * fix: memory-usage optimizations and multiple-pane-single-instance-plugins (https://github.com/zellij-org/zellij/pull/5662)
 * fix: erasing wide CJK character correctness (https://github.com/zellij-org/zellij/pull/5657)
+* fix: plugins hidden with `hide_self` keep receiving mode, tab and pane updates (https://github.com/zellij-org/zellij/pull/5680)
+* fix: screen surface stability (https://github.com/zellij-org/zellij/pull/5683)
+* feat: right-click menu, interactive configuration, popups, notifications (https://github.com/zellij-org/zellij/pull/5685)
+* fix: preserve order of command panes when changing swap layouts (https://github.com/zellij-org/zellij/pull/5687)
+* feat: let a plugin give its layout space back while it has nothing to draw (https://github.com/zellij-org/zellij/pull/5590)
+* fix: occasional resurrection layout serialization corruption (https://github.com/zellij-org/zellij/pull/5690)
+* fix: support horizontal scroll for programs that request it (https://github.com/zellij-org/zellij/pull/4860)
+* feat: allow config to dangerously disable https certificate enforcement on non-localhost (https://github.com/zellij-org/zellij/pull/5694)
+* feat: reorder tabs with mouse, configurable mouse bindings (https://github.com/zellij-org/zellij/pull/5697)
+* feat: pass `ZELLIJ_ORIGIN_PANE_ID` to `Run` keybindings and allow running in background (https://github.com/zellij-org/zellij/pull/5701)
+
 
 ## [0.45.1] - 2026-08-28
 * fix: nested-session detection over SSH (https://github.com/zellij-org/zellij/pull/5522)
