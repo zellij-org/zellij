@@ -3,7 +3,7 @@ use crate::background_jobs::BackgroundJob;
 use crate::global_async_runtime::get_tokio_runtime;
 use crate::plugins::plugin_map::PluginEnv;
 use crate::plugins::wasm_bridge::handle_plugin_crash;
-use crate::plugins::PluginId;
+use crate::plugins::{PluginId, PromptCaller};
 use crate::pty::{ClientTabIndexOrPaneId, PtyInstruction};
 use crate::route::{route_action, wait_for_action_completion, NotificationEnd};
 use crate::ClientId;
@@ -24,16 +24,17 @@ use wasmi::{Caller, Linker};
 use zellij_utils::consts::ipc_connect;
 use zellij_utils::data::{
     BorderStyleOverride, BreakPanesToNewTabResponse, BreakPanesToTabWithIdResponse,
-    BreakPanesToTabWithIndexResponse, CommandType, ConnectToSession, DeleteAllDeadSessionsResponse,
-    DeleteDeadSessionResponse, DeleteLayoutResponse, EditLayoutResponse, Event,
-    FloatingPaneCoordinates, FocusOrCreateTabResponse, GetFocusedPaneInfoResponse,
-    GetPaneCwdResponse, GetPanePidResponse, GetPaneRunningCommandResponse, HttpVerb,
-    KeyWithModifier, KillSessionsResponse, LayoutInfo, LayoutMetadata, LayoutParsingError,
-    MessageToPlugin, NewPanePlacement, NewTabResponse, NewTabUnfocusedResponse,
-    NewTiledPaneInTabResponse, OpenCommandPaneBackgroundResponse,
-    OpenCommandPaneFloatingNearPluginResponse, OpenCommandPaneFloatingResponse,
-    OpenCommandPaneInPlaceOfPaneIdResponse, OpenCommandPaneInPlaceOfPluginResponse,
-    OpenCommandPaneInPlaceResponse, OpenCommandPaneNearPluginResponse, OpenCommandPaneResponse,
+    BreakPanesToTabWithIndexResponse, CommandType, ConfigSnapshot, ConnectToSession,
+    ContextMenuTarget, DeleteAllDeadSessionsResponse, DeleteDeadSessionResponse,
+    DeleteLayoutResponse, EditLayoutResponse, Event, FloatingPaneCoordinates,
+    FocusOrCreateTabResponse, GetFocusedPaneInfoResponse, GetPaneCwdResponse, GetPanePidResponse,
+    GetPaneRunningCommandResponse, HttpVerb, KeyWithModifier, KillSessionsResponse, LayoutInfo,
+    LayoutMetadata, LayoutParsingError, MessageToPlugin, MouseTrigger, NewPanePlacement,
+    NewTabResponse, NewTabUnfocusedResponse, NewTiledPaneInTabResponse,
+    OpenCommandPaneBackgroundResponse, OpenCommandPaneFloatingNearPluginResponse,
+    OpenCommandPaneFloatingResponse, OpenCommandPaneInPlaceOfPaneIdResponse,
+    OpenCommandPaneInPlaceOfPluginResponse, OpenCommandPaneInPlaceResponse,
+    OpenCommandPaneNearPluginResponse, OpenCommandPaneResponse,
     OpenEditPaneInPlaceOfPaneIdResponse, OpenFileFloatingNearPluginResponse,
     OpenFileFloatingResponse, OpenFileInPlaceOfPluginResponse, OpenFileInPlaceResponse,
     OpenFileNearPluginResponse, OpenFileResponse, OpenPaneInNewTabResponse,
@@ -41,7 +42,8 @@ use zellij_utils::data::{
     OpenTerminalFloatingResponse, OpenTerminalInPlaceOfPluginResponse, OpenTerminalInPlaceResponse,
     OpenTerminalNearPluginResponse, OpenTerminalPaneInPlaceOfPaneIdResponse, OpenTerminalResponse,
     OriginatingPlugin, PaneFrameStyle, PaneScrollbackResponse, PermissionStatus, PermissionType,
-    PluginPermission, RegexHighlight, RenameLayoutResponse, SaveLayoutResponse, TabMetadata,
+    PluginPermission, PopupOptions, RegexHighlight, RenameLayoutResponse, SaveLayoutResponse,
+    SettingKey, TabMetadata,
 };
 use zellij_utils::home::default_layout_dir;
 use zellij_utils::input::permission::PermissionCache;
@@ -70,7 +72,7 @@ use zellij_utils::{
         actions::Action,
         command::{OpenFilePayload, RunCommand, RunCommandAction, TerminalAction},
         config::ConfigError,
-        layout::{Layout, RunPluginOrAlias, TabLayoutInfo},
+        layout::{Layout, RunPluginLocation, RunPluginOrAlias, TabLayoutInfo},
     },
     plugin_api::{
         event::{
@@ -82,18 +84,18 @@ use zellij_utils::{
             dump_layout_response, dump_session_layout_response, hide_floating_panes_response,
             parse_layout_response, save_session_response, show_floating_panes_response,
             ProtobufBreakPanesToNewTabResponse, ProtobufBreakPanesToTabWithIdResponse,
-            ProtobufBreakPanesToTabWithIndexResponse, ProtobufDeleteAllDeadSessionsResponse,
-            ProtobufDeleteDeadSessionResponse, ProtobufDeleteLayoutResponse,
-            ProtobufDumpLayoutResponse, ProtobufDumpSessionLayoutResponse,
-            ProtobufEditLayoutResponse, ProtobufFocusOrCreateTabResponse,
-            ProtobufGenerateRandomNameResponse, ProtobufGetFocusedPaneInfoResponse,
-            ProtobufGetLayoutDirResponse, ProtobufGetPaneCwdResponse, ProtobufGetPaneInfoResponse,
-            ProtobufGetPanePidResponse, ProtobufGetPaneRunningCommandResponse,
-            ProtobufGetSessionEnvironmentVariablesResponse, ProtobufGetSessionListResponse,
-            ProtobufGetTabInfoResponse, ProtobufHideFloatingPanesResponse,
-            ProtobufKillSessionsResponse, ProtobufNewTabResponse, ProtobufNewTabUnfocusedResponse,
-            ProtobufNewTabsResponse, ProtobufNewTiledPaneInTabResponse,
-            ProtobufOpenCommandPaneBackgroundResponse,
+            ProtobufBreakPanesToTabWithIndexResponse, ProtobufCopyKeybindPresetResponse,
+            ProtobufDeleteAllDeadSessionsResponse, ProtobufDeleteDeadSessionResponse,
+            ProtobufDeleteLayoutResponse, ProtobufDumpLayoutResponse,
+            ProtobufDumpSessionLayoutResponse, ProtobufEditLayoutResponse,
+            ProtobufFocusOrCreateTabResponse, ProtobufGenerateRandomNameResponse,
+            ProtobufGetFocusedPaneInfoResponse, ProtobufGetLayoutDirResponse,
+            ProtobufGetPaneCwdResponse, ProtobufGetPaneInfoResponse, ProtobufGetPanePidResponse,
+            ProtobufGetPaneRunningCommandResponse, ProtobufGetSessionEnvironmentVariablesResponse,
+            ProtobufGetSessionListResponse, ProtobufGetTabInfoResponse,
+            ProtobufHideFloatingPanesResponse, ProtobufKillSessionsResponse,
+            ProtobufNewTabResponse, ProtobufNewTabUnfocusedResponse, ProtobufNewTabsResponse,
+            ProtobufNewTiledPaneInTabResponse, ProtobufOpenCommandPaneBackgroundResponse,
             ProtobufOpenCommandPaneFloatingNearPluginResponse,
             ProtobufOpenCommandPaneFloatingResponse,
             ProtobufOpenCommandPaneInPlaceOfPaneIdResponse,
@@ -108,12 +110,14 @@ use zellij_utils::{
             ProtobufOpenTerminalInPlaceOfPluginResponse, ProtobufOpenTerminalInPlaceResponse,
             ProtobufOpenTerminalNearPluginResponse,
             ProtobufOpenTerminalPaneInPlaceOfPaneIdResponse, ProtobufOpenTerminalResponse,
-            ProtobufParseLayoutResponse, ProtobufPluginCommand, ProtobufRenameLayoutResponse,
-            ProtobufSaveLayoutResponse, ProtobufSaveSessionResponse,
+            ProtobufParseLayoutResponse, ProtobufPluginCommand, ProtobufReadConfigResponse,
+            ProtobufRenameLayoutResponse, ProtobufSaveLayoutResponse, ProtobufSaveSessionResponse,
             ProtobufShowFloatingPanesResponse, ProtobufSlotCommandResponse,
+            ProtobufWriteThemeFileResponse,
         },
         plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion},
     },
+    prompt::{PromptRequest, PromptResult},
 };
 
 #[cfg(feature = "web_server_capability")]
@@ -134,6 +138,7 @@ macro_rules! apply_action {
             None,
             $env.default_mode.clone(),
             None,
+            false,
         ) {
             Ok((_, result)) => result,
             Err(e) => {
@@ -208,6 +213,7 @@ fn is_self_command(command: &PluginCommand) -> bool {
             | PluginCommand::ShowSelf(..)
             | PluginCommand::CloseSelf
             | PluginCommand::SetSelfMouseSelectionSupport(..)
+            | PluginCommand::SetSelfCollapsed(..)
     ) || self_command_has_response(command)
 }
 
@@ -309,6 +315,126 @@ fn close_slot(env: &PluginEnv, slot_id: PluginId) {
     write_slot_command_response(env, result);
 }
 
+fn set_collapsed_slot(env: &PluginEnv, slot_id: PluginId, collapsed: bool) {
+    let result = slot_command_target(env, slot_id).and_then(|_| {
+        env.senders
+            .send_to_screen(ScreenInstruction::SetPaneCollapsed(
+                PaneId::Plugin(slot_id),
+                collapsed,
+            ))
+            .map_err(|e| e.to_string())
+    });
+    write_slot_command_response(env, result);
+}
+
+fn open_context_menu(env: &PluginEnv, target: ContextMenuTarget, line: usize, column: usize) {
+    env.senders
+        .send_to_screen(ScreenInstruction::OpenContextMenuFromPlugin {
+            plugin_id: self_pane_id(env),
+            client_id: acting_client(env),
+            target,
+            line,
+            column,
+        })
+        .with_context(|| format!("failed to open context menu"))
+        .non_fatal();
+}
+
+fn open_plugin_popup(
+    env: &PluginEnv,
+    plugin_url: String,
+    configuration: BTreeMap<String, String>,
+    line: usize,
+    column: usize,
+    width: usize,
+    height: usize,
+    options: PopupOptions,
+) {
+    let run_plugin_or_alias = match RunPluginOrAlias::from_url(
+        &plugin_url,
+        &Some(configuration),
+        None,
+        Some(env.plugin_cwd.clone()),
+    ) {
+        Ok(run_plugin_or_alias) => run_plugin_or_alias,
+        Err(e) => {
+            log::error!("Failed to open popup: {}", e);
+            return;
+        },
+    };
+    env.senders
+        .send_to_screen(ScreenInstruction::OpenPluginPopup {
+            requesting_plugin_id: self_pane_id(env),
+            client_id: acting_client(env),
+            run_plugin_or_alias,
+            line,
+            column,
+            width,
+            height,
+            options,
+        })
+        .with_context(|| format!("failed to open popup"))
+        .non_fatal();
+}
+
+fn run_context_menu_item(env: &PluginEnv, index: usize) {
+    let client_id = acting_client(env);
+    let plugin_id = env.plugin_id;
+    let (response_sender, response_receiver) = crossbeam::channel::bounded(1);
+    if env
+        .senders
+        .send_to_screen(ScreenInstruction::GetContextMenuItemActions {
+            plugin_id,
+            client_id,
+            index,
+            response_channel: response_sender,
+        })
+        .is_err()
+    {
+        log::error!("Failed to request context menu item {}", index);
+        return;
+    }
+    let actions = match response_receiver.recv_timeout(Duration::from_secs(5)) {
+        Ok(actions) => actions,
+        Err(e) => {
+            log::error!("Failed to get context menu item {}: {:?}", index, e);
+            return;
+        },
+    };
+    let senders = env.senders.clone();
+    let default_shell = env.default_shell.clone();
+    let default_mode = env.default_mode.clone();
+    thread::spawn(move || {
+        for action in actions {
+            if let Err(e) = route_action(
+                action,
+                client_id,
+                None,
+                Some(PaneId::Plugin(plugin_id)),
+                senders.clone(),
+                default_shell.clone(),
+                None,
+                default_mode,
+                None,
+                false,
+            ) {
+                log::error!("Failed to run context menu action: {:?}", e);
+            }
+        }
+    });
+}
+
+fn set_popup_size(env: &PluginEnv, width: usize, height: usize) {
+    env.senders
+        .send_to_screen(ScreenInstruction::SetPopupSize {
+            plugin_id: env.plugin_id,
+            width,
+            height,
+        })
+        .with_context(|| format!("failed to set popup size"))
+        .non_fatal();
+}
+
 pub fn zellij_exports(linker: &mut Linker<PluginEnv>) {
     linker
         .func_wrap("zellij", "host_run_plugin_command", host_run_plugin_command)
@@ -344,6 +470,72 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         show_slot(env, slot_id, should_float_if_hidden)
                     },
                     PluginCommand::CloseSlot(slot_id) => close_slot(env, slot_id),
+                    PluginCommand::SetCollapsedSlot(slot_id, collapsed) => {
+                        set_collapsed_slot(env, slot_id, collapsed)
+                    },
+                    PluginCommand::OpenContextMenu {
+                        target,
+                        line,
+                        column,
+                    } => open_context_menu(env, target, line, column),
+                    PluginCommand::OpenPluginPopup {
+                        plugin_url,
+                        configuration,
+                        line,
+                        column,
+                        width,
+                        height,
+                        options,
+                    } => open_plugin_popup(
+                        env,
+                        plugin_url,
+                        configuration,
+                        line,
+                        column,
+                        width,
+                        height,
+                        options,
+                    ),
+                    PluginCommand::SetPopupSize { width, height } => {
+                        set_popup_size(env, width, height)
+                    },
+                    PluginCommand::RunContextMenuItem(index) => {
+                        run_context_menu_item(env, index)
+                    },
+                    PluginCommand::ReadConfig => read_config(env),
+                    PluginCommand::RevertConfig(key) => revert_config(env, key),
+                    PluginCommand::UnsetConfigSetting(key) => unset_config_setting(env, key),
+                    PluginCommand::SaveConfig => save_config(env),
+                    PluginCommand::OverwriteConfigFile => overwrite_config_file(env),
+                    PluginCommand::ReloadConfigFile => reload_config_file(env),
+                    PluginCommand::ReplaceConfigBlocks(blocks) => replace_config_blocks(env, blocks),
+                    PluginCommand::ResetKeys {
+                        keys,
+                        write_config_to_disk,
+                    } => reset_keys(env, keys, write_config_to_disk),
+                    PluginCommand::ResetMousebinds {
+                        triggers,
+                        write_config_to_disk,
+                    } => reset_mousebinds(env, triggers, write_config_to_disk),
+                    PluginCommand::WriteThemeFile {
+                        name,
+                        copy_from,
+                        colours,
+                    } => write_theme_file(env, name, copy_from, colours),
+                    PluginCommand::DeleteThemeFile { name } => delete_theme_file(env, name),
+                    PluginCommand::SaveKeybindsAsPreset { new_name } => {
+                        save_keybinds_as_preset(env, new_name)
+                    },
+                    PluginCommand::Prompt {
+                        request_id,
+                        request,
+                    } => prompt(env, request_id, request),
+                    PluginCommand::ReplyToPrompt { request_id, result } => {
+                        reply_to_prompt(env, request_id, result)
+                    },
+                    PluginCommand::CopyKeybindPreset { preset, new_name } => {
+                        copy_keybind_preset(env, preset, new_name)
+                    },
                     PluginCommand::Subscribe(event_list) => subscribe(env, event_list)?,
                     PluginCommand::Unsubscribe(event_list) => unsubscribe(env, event_list)?,
                     PluginCommand::SetSelectable(selectable) => set_selectable(env, selectable),
@@ -639,6 +831,9 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::CliPipeOutput(pipe_name, output) => {
                         cli_pipe_output(env, pipe_name, output)?
                     },
+                    PluginCommand::SetCliPipeExitCode(pipe_name, exit_code) => {
+                        set_cli_pipe_exit_code(env, pipe_name, exit_code)?
+                    },
                     PluginCommand::MessageToPlugin(message) => message_to_plugin(env, message)?,
                     PluginCommand::DisconnectOtherClients => disconnect_other_clients(env),
                     PluginCommand::KillSessions(session_list) => kill_sessions(session_list),
@@ -882,6 +1077,9 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::SetSelfMouseSelectionSupport(selection_support) => {
                         set_self_mouse_selection_support(env, selection_support);
                     },
+                    PluginCommand::SetSelfCollapsed(collapsed) => {
+                        set_self_collapsed(env, collapsed);
+                    },
                     PluginCommand::GenerateWebLoginToken(token_label, read_only) => {
                         generate_web_login_token(env, token_label, read_only);
                     },
@@ -1027,6 +1225,16 @@ fn cli_pipe_output(env: &PluginEnv, pipe_name: String, output: String) -> Result
     env.senders
         .send_to_server(ServerInstruction::CliPipeOutput(pipe_name, output))
         .context("failed to send pipe output")
+}
+
+fn set_cli_pipe_exit_code(env: &PluginEnv, pipe_name: String, exit_code: i32) -> Result<()> {
+    env.senders
+        .send_to_plugin(PluginInstruction::SetCliPipeExitCode {
+            pipe_id: pipe_name,
+            exit_code,
+            plugin_id: env.plugin_id,
+        })
+        .context("failed to set pipe exit code")
 }
 
 fn message_to_plugin(env: &PluginEnv, mut message_to_plugin: MessageToPlugin) -> Result<()> {
@@ -1665,6 +1873,7 @@ fn run_action(env: &PluginEnv, mut action: Action, context: BTreeMap<String, Str
             None,
             default_mode,
             None,
+            false,
         ) {
             Ok((_should_break, result)) => {
                 // Extract pane_id from ActionCompletionResult
@@ -1809,6 +2018,7 @@ fn open_file_near_plugin(
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(self_pane_id(env))),
         Some(NotificationEnd::new(completion_tx)),
         false, // set_blocking
+        None,
     );
     let _ = env.senders.send_to_pty(pty_instr);
 
@@ -1856,6 +2066,7 @@ fn open_file_floating_near_plugin(
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(self_pane_id(env))),
         Some(NotificationEnd::new(completion_tx)),
         false, // set_blocking
+        None,
     );
     let _ = env.senders.send_to_pty(pty_instr);
 
@@ -1896,6 +2107,7 @@ fn open_file_in_place_of_plugin(
         close_plugin_after_replace,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(self_pane_id(env))),
         Some(NotificationEnd::new(completion_tx)),
+        None,
     );
     let _ = env.senders.send_to_pty(pty_instr);
 
@@ -1977,6 +2189,7 @@ fn open_terminal_near_plugin(
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(self_pane_id(env))),
         Some(NotificationEnd::new(completion_tx)),
         false, // set_blocking
+        None,
     ));
 
     // Wait for completion
@@ -2056,6 +2269,7 @@ fn open_terminal_floating_near_plugin(
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(self_pane_id(env))),
         Some(NotificationEnd::new(completion_tx)),
         false, // set_blocking
+        None,
     ));
 
     // Wait for completion
@@ -2133,6 +2347,7 @@ fn open_terminal_in_place_of_plugin(
             close_plugin_after_replace,
             ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(self_pane_id(env))),
             Some(NotificationEnd::new(completion_tx)),
+            None,
         ));
 
     // Wait for completion
@@ -2190,6 +2405,7 @@ fn open_command_pane_in_place_of_plugin(
             close_plugin_after_replace,
             ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(self_pane_id(env))),
             Some(NotificationEnd::new(completion_tx)),
+            None,
         ));
 
     // Wait for completion
@@ -2230,6 +2446,7 @@ fn open_terminal_pane_in_place_of_pane_id(
             close_replaced_pane,
             ClientTabIndexOrPaneId::PaneId(pane_id_to_replace.into()),
             Some(NotificationEnd::new(completion_tx)),
+            None,
         ));
 
     let result = wait_for_action_completion(
@@ -2289,6 +2506,7 @@ fn open_command_pane_in_place_of_pane_id(
             close_replaced_pane,
             ClientTabIndexOrPaneId::PaneId(pane_id_to_replace.into()),
             Some(NotificationEnd::new(completion_tx)),
+            None,
         ));
 
     let result = wait_for_action_completion(
@@ -2330,6 +2548,7 @@ fn open_edit_pane_in_place_of_pane_id(
         close_replaced_pane,
         ClientTabIndexOrPaneId::PaneId(pane_id_to_replace.into()),
         Some(NotificationEnd::new(completion_tx)),
+        None,
     );
     let _ = env.senders.send_to_pty(pty_instr);
 
@@ -2443,6 +2662,7 @@ fn open_command_pane_near_plugin(
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(self_pane_id(env))),
         Some(NotificationEnd::new(completion_tx)),
         false, // set_blocking
+        None,
     ));
 
     // Wait for completion
@@ -2558,6 +2778,7 @@ fn open_command_pane_floating_near_plugin(
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(self_pane_id(env))),
         Some(NotificationEnd::new(completion_tx)),
         false, // set_blocking
+        None,
     ));
 
     // Wait for completion
@@ -2672,6 +2893,7 @@ fn open_command_pane_background(
         ClientTabIndexOrPaneId::ClientId(acting_client(env)),
         Some(NotificationEnd::new(completion_tx)),
         false, // set_blocking
+        None,
     ));
 
     // Wait for completion
@@ -2893,6 +3115,60 @@ fn show_pane_with_id(
     }
 }
 
+fn prompt(env: &PluginEnv, request_id: u64, request: PromptRequest) {
+    let caller = PromptCaller {
+        plugin_id: env.plugin_id,
+        client_id: env.client_id,
+        request_id,
+    };
+    let instruction = prompt_instruction(caller, acting_client(env), self_pane_id(env), request);
+    env.senders
+        .send_to_plugin(instruction)
+        .with_context(|| format!("failed to send a prompt request"))
+        .non_fatal();
+}
+
+fn prompt_instruction(
+    caller: PromptCaller,
+    owner_client_id: ClientId,
+    caller_pane_plugin_id: PluginId,
+    request: PromptRequest,
+) -> PluginInstruction {
+    match request.check() {
+        Ok(()) => PluginInstruction::PromptRequest {
+            caller,
+            owner_client_id,
+            caller_pane_id: Some(PaneId::Plugin(caller_pane_plugin_id)),
+            request,
+        },
+        Err(error) => {
+            PluginInstruction::Update(vec![caller.result_event(PromptResult::Error(error))])
+        },
+    }
+}
+
+fn may_reply_to_prompt(location: &RunPluginLocation) -> bool {
+    matches!(location, RunPluginLocation::Zellij(tag) if tag.to_string() == zellij_utils::prompt::PROMPT_PLUGIN_ALIAS)
+}
+
+fn reply_to_prompt(env: &PluginEnv, request_id: u64, result: PromptResult) {
+    if !may_reply_to_prompt(&env.plugin.location) {
+        log::warn!(
+            "Ignoring a prompt reply from {}: only the prompt plugin can answer prompts",
+            env.plugin.location.display()
+        );
+        return;
+    }
+    env.senders
+        .send_to_plugin(PluginInstruction::PromptReplied {
+            prompt_plugin_id: env.plugin_id,
+            request_id,
+            result,
+        })
+        .with_context(|| format!("failed to send a prompt reply"))
+        .non_fatal();
+}
+
 fn close_self(env: &PluginEnv) {
     env.senders
         .send_to_screen(ScreenInstruction::ClosePane(
@@ -2920,6 +3196,231 @@ fn reconfigure(env: &PluginEnv, new_config: String, write_config_to_disk: bool) 
         })
         .with_context(err_context)?;
     Ok(())
+}
+
+fn read_config(env: &PluginEnv) {
+    let client_id = acting_client(env);
+    let (response_sender, response_receiver) = crossbeam::channel::bounded(1);
+    let snapshot = match env.senders.send_to_server(ServerInstruction::ReadConfig {
+        client_id,
+        response_channel: response_sender,
+    }) {
+        Ok(()) => response_receiver
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap_or_else(|e| {
+                log::error!("Failed to read config: {:?}", e);
+                ConfigSnapshot::default()
+            }),
+        Err(e) => {
+            log::error!("Failed to request config: {:?}", e);
+            ConfigSnapshot::default()
+        },
+    };
+    let response: ProtobufReadConfigResponse = snapshot.into();
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to send config to plugin {}", env.name()))
+        .non_fatal();
+}
+
+fn save_keybinds_as_preset(env: &PluginEnv, new_name: String) {
+    use zellij_utils::plugin_api::plugin_command::copy_keybind_preset_response::Result as CopyResult;
+    let client_id = acting_client(env);
+    let (response_sender, response_receiver) = crossbeam::channel::bounded(1);
+    let result = match env
+        .senders
+        .send_to_server(ServerInstruction::SaveKeybindsAsPreset {
+            client_id,
+            new_name,
+            response_channel: response_sender,
+        }) {
+        Ok(()) => response_receiver
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap_or_else(|e| Err(format!("Failed to save the preset: {:?}", e))),
+        Err(e) => Err(format!("Failed to save the preset: {:?}", e)),
+    };
+    let response = ProtobufCopyKeybindPresetResponse {
+        result: Some(match result {
+            Ok(new_name) => CopyResult::NewName(new_name),
+            Err(error) => CopyResult::Error(error),
+        }),
+    };
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to send save result to plugin {}", env.name()))
+        .non_fatal();
+}
+
+fn write_theme_file(
+    env: &PluginEnv,
+    name: String,
+    copy_from: Option<String>,
+    colours: Vec<String>,
+) {
+    use zellij_utils::plugin_api::plugin_command::write_theme_file_response::Result as WriteResult;
+    let client_id = acting_client(env);
+    let (response_sender, response_receiver) = crossbeam::channel::bounded(1);
+    let result = match env
+        .senders
+        .send_to_server(ServerInstruction::WriteThemeFile {
+            client_id,
+            name,
+            copy_from,
+            colours,
+            response_channel: response_sender,
+        }) {
+        Ok(()) => response_receiver
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap_or_else(|e| Err(format!("Failed to write the theme file: {:?}", e))),
+        Err(e) => Err(format!("Failed to write the theme file: {:?}", e)),
+    };
+    let response = ProtobufWriteThemeFileResponse {
+        result: Some(match result {
+            Ok(path) => WriteResult::Path(path),
+            Err(error) => WriteResult::Error(error),
+        }),
+    };
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to send theme file result to plugin {}", env.name()))
+        .non_fatal();
+}
+
+fn delete_theme_file(env: &PluginEnv, name: String) {
+    use zellij_utils::plugin_api::plugin_command::write_theme_file_response::Result as WriteResult;
+    let client_id = acting_client(env);
+    let (response_sender, response_receiver) = crossbeam::channel::bounded(1);
+    let result = match env
+        .senders
+        .send_to_server(ServerInstruction::DeleteThemeFile {
+            client_id,
+            name,
+            response_channel: response_sender,
+        }) {
+        Ok(()) => response_receiver
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap_or_else(|e| Err(format!("Failed to delete the theme: {:?}", e))),
+        Err(e) => Err(format!("Failed to delete the theme: {:?}", e)),
+    };
+    let response = ProtobufWriteThemeFileResponse {
+        result: Some(match result {
+            Ok(path) => WriteResult::Path(path),
+            Err(error) => WriteResult::Error(error),
+        }),
+    };
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| {
+            format!(
+                "failed to send theme deletion result to plugin {}",
+                env.name()
+            )
+        })
+        .non_fatal();
+}
+
+fn copy_keybind_preset(env: &PluginEnv, preset: String, new_name: String) {
+    use zellij_utils::plugin_api::plugin_command::copy_keybind_preset_response::Result as CopyResult;
+    let client_id = acting_client(env);
+    let (response_sender, response_receiver) = crossbeam::channel::bounded(1);
+    let result = match env
+        .senders
+        .send_to_server(ServerInstruction::CopyKeybindPreset {
+            client_id,
+            preset,
+            new_name,
+            response_channel: response_sender,
+        }) {
+        Ok(()) => response_receiver
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap_or_else(|e| Err(format!("Failed to copy the preset: {:?}", e))),
+        Err(e) => Err(format!("Failed to copy the preset: {:?}", e)),
+    };
+    let response = ProtobufCopyKeybindPresetResponse {
+        result: Some(match result {
+            Ok(new_name) => CopyResult::NewName(new_name),
+            Err(error) => CopyResult::Error(error),
+        }),
+    };
+    wasi_write_object(env, &response.encode_to_vec())
+        .with_context(|| format!("failed to send copy result to plugin {}", env.name()))
+        .non_fatal();
+}
+
+fn revert_config(env: &PluginEnv, key: Option<SettingKey>) {
+    let client_id = acting_client(env);
+    env.senders
+        .send_to_server(ServerInstruction::RevertConfig { client_id, key })
+        .with_context(|| "Failed to revert config")
+        .non_fatal();
+}
+
+fn unset_config_setting(env: &PluginEnv, key: SettingKey) {
+    let client_id = acting_client(env);
+    env.senders
+        .send_to_server(ServerInstruction::UnsetConfigSetting { client_id, key })
+        .with_context(|| "Failed to unset config setting")
+        .non_fatal();
+}
+
+fn save_config(env: &PluginEnv) {
+    let client_id = acting_client(env);
+    env.senders
+        .send_to_server(ServerInstruction::SaveConfig { client_id })
+        .with_context(|| "Failed to save config")
+        .non_fatal();
+}
+
+fn overwrite_config_file(env: &PluginEnv) {
+    let client_id = acting_client(env);
+    env.senders
+        .send_to_server(ServerInstruction::OverwriteConfigFile { client_id })
+        .with_context(|| "Failed to overwrite the config file")
+        .non_fatal();
+}
+
+fn reload_config_file(env: &PluginEnv) {
+    let client_id = acting_client(env);
+    env.senders
+        .send_to_server(ServerInstruction::ReloadConfigFile { client_id })
+        .with_context(|| "Failed to reload the config file")
+        .non_fatal();
+}
+
+fn replace_config_blocks(env: &PluginEnv, config: String) {
+    let client_id = acting_client(env);
+    env.senders
+        .send_to_server(ServerInstruction::ReplaceConfigBlocks { client_id, config })
+        .with_context(|| "Failed to replace config blocks")
+        .non_fatal();
+}
+
+fn reset_keys(
+    env: &PluginEnv,
+    keys: Vec<(InputMode, KeyWithModifier)>,
+    write_config_to_disk: bool,
+) {
+    let client_id = acting_client(env);
+    env.senders
+        .send_to_server(ServerInstruction::ResetKeys {
+            client_id,
+            keys,
+            write_config_to_disk,
+        })
+        .with_context(|| "Failed to reset keys")
+        .non_fatal();
+}
+
+fn reset_mousebinds(
+    env: &PluginEnv,
+    triggers: Vec<(InputMode, MouseTrigger)>,
+    write_config_to_disk: bool,
+) {
+    let client_id = acting_client(env);
+    env.senders
+        .send_to_server(ServerInstruction::ResetMousebinds {
+            client_id,
+            triggers,
+            write_config_to_disk,
+        })
+        .with_context(|| "Failed to reset mouse bindings")
+        .non_fatal();
 }
 
 fn rebind_keys(
@@ -4220,6 +4721,7 @@ fn change_floating_panes_coordinates(
         .senders
         .send_to_screen(ScreenInstruction::ChangeFloatingPanesCoordinates(
             pane_ids_and_coordinates,
+            false,
             None,
         ));
 }
@@ -5027,6 +5529,7 @@ fn try_edit_layout(
         None,
         env.default_mode.clone(),
         None,
+        false,
     )
     .map(|_| ())
     .map_err(|e| format!("Failed to route edit action: {:?}", e))
@@ -5591,6 +6094,22 @@ fn set_self_mouse_selection_support(env: &PluginEnv, selection_support: bool) {
         .non_fatal();
 }
 
+fn set_self_collapsed(env: &PluginEnv, collapsed: bool) {
+    env.senders
+        .send_to_screen(ScreenInstruction::SetPaneCollapsed(
+            PaneId::Plugin(self_pane_id(env)),
+            collapsed,
+        ))
+        .with_context(|| {
+            format!(
+                "failed to set collapsed {} from plugin {}",
+                collapsed,
+                env.name()
+            )
+        })
+        .non_fatal();
+}
+
 fn intercept_key_presses(env: &mut PluginEnv) {
     env.intercepting_key_presses = true;
     let _ = env
@@ -5740,6 +6259,21 @@ fn check_command_permission(
         // there's no use to deny them anything
         return (PermissionStatus::Granted, None);
     }
+    let permission = match required_permission(command) {
+        Some(permission) => permission,
+        None => return (PermissionStatus::Granted, None),
+    };
+
+    if let Some(permissions) = plugin_env.permissions.lock().unwrap().as_ref() {
+        if permissions.contains(&permission) {
+            return (PermissionStatus::Granted, None);
+        }
+    }
+
+    (PermissionStatus::Denied, Some(permission))
+}
+
+fn required_permission(command: &PluginCommand) -> Option<PermissionType> {
     let permission = match command {
         PluginCommand::OpenFile(..)
         | PluginCommand::OpenFileFloating(..)
@@ -5889,10 +6423,18 @@ fn check_command_permission(
         | PluginCommand::HideFloatingPanes { .. }
         | PluginCommand::SetPaneRegexHighlights(..)
         | PluginCommand::ClearPaneHighlights(..)
-        | PluginCommand::SetSoftKeyboard(..) => PermissionType::ChangeApplicationState,
+        | PluginCommand::SetSoftKeyboard(..)
+        | PluginCommand::OpenContextMenu { .. }
+        | PluginCommand::OpenPluginPopup { .. }
+        | PluginCommand::SetPopupSize { .. } => PermissionType::ChangeApplicationState,
+        PluginCommand::Prompt { .. } | PluginCommand::ReplyToPrompt { .. } => {
+            PermissionType::OpenTerminalsOrPlugins
+        },
+        PluginCommand::RunContextMenuItem(..) => PermissionType::RunActionsAsUser,
         PluginCommand::UnblockCliPipeInput(..)
         | PluginCommand::BlockCliPipeInput(..)
-        | PluginCommand::CliPipeOutput(..) => PermissionType::ReadCliPipes,
+        | PluginCommand::CliPipeOutput(..)
+        | PluginCommand::SetCliPipeExitCode(..) => PermissionType::ReadCliPipes,
         PluginCommand::MessageToPlugin(..) => PermissionType::MessageAndLaunchOtherPlugins,
         PluginCommand::ListClients
         | PluginCommand::DumpSessionLayout { .. }
@@ -5910,9 +6452,21 @@ fn check_command_permission(
         | PluginCommand::GetTabInfo(..)
         | PluginCommand::GetNestedSessionKeybinds(..)
         | PluginCommand::GetSessionList => PermissionType::ReadApplicationState,
-        PluginCommand::RebindKeys { .. } | PluginCommand::Reconfigure(..) => {
-            PermissionType::Reconfigure
-        },
+        PluginCommand::RebindKeys { .. }
+        | PluginCommand::Reconfigure(..)
+        | PluginCommand::ReadConfig
+        | PluginCommand::RevertConfig(..)
+        | PluginCommand::UnsetConfigSetting(..)
+        | PluginCommand::CopyKeybindPreset { .. }
+        | PluginCommand::SaveKeybindsAsPreset { .. }
+        | PluginCommand::WriteThemeFile { .. }
+        | PluginCommand::DeleteThemeFile { .. }
+        | PluginCommand::SaveConfig
+        | PluginCommand::OverwriteConfigFile
+        | PluginCommand::ReloadConfigFile
+        | PluginCommand::ReplaceConfigBlocks(..)
+        | PluginCommand::ResetKeys { .. }
+        | PluginCommand::ResetMousebinds { .. } => PermissionType::Reconfigure,
         PluginCommand::ChangeHostFolder(..) | PluginCommand::ListWindowsVolumes => {
             PermissionType::FullHdAccess
         },
@@ -5936,14 +6490,88 @@ fn check_command_permission(
         },
         PluginCommand::OpenCommandPaneInNewTab(..) => PermissionType::RunCommands,
         PluginCommand::OpenEditorPaneInNewTab(..) => PermissionType::OpenFiles,
-        _ => return (PermissionStatus::Granted, None),
+        _ => return None,
     };
+    Some(permission)
+}
 
-    if let Some(permissions) = plugin_env.permissions.lock().unwrap().as_ref() {
-        if permissions.contains(&permission) {
-            return (PermissionStatus::Granted, None);
+#[cfg(test)]
+mod prompt_tests {
+    use super::*;
+    use std::path::PathBuf;
+    use zellij_utils::data::Event;
+    use zellij_utils::data::PluginTag;
+
+    fn caller() -> PromptCaller {
+        PromptCaller {
+            plugin_id: 3,
+            client_id: 2,
+            request_id: 9,
         }
     }
 
-    (PermissionStatus::Denied, Some(permission))
+    #[test]
+    fn a_valid_request_opens_a_popup_for_the_acting_user_over_the_caller() {
+        let request = PromptRequest::confirm("Go?");
+        match prompt_instruction(caller(), 5, 4, request.clone()) {
+            PluginInstruction::PromptRequest {
+                caller: instruction_caller,
+                owner_client_id,
+                caller_pane_id,
+                request: instruction_request,
+            } => {
+                assert_eq!(instruction_caller, caller());
+                assert_eq!(owner_client_id, 5);
+                assert_eq!(caller_pane_id, Some(PaneId::Plugin(4)));
+                assert_eq!(instruction_request, request);
+            },
+            other => panic!("unexpected {:?}", other),
+        }
+    }
+
+    #[test]
+    fn an_invalid_request_answers_the_caller_with_an_error_and_opens_nothing() {
+        let request = PromptRequest::number("Port").min(5).max(1);
+        match prompt_instruction(caller(), 5, 4, request) {
+            PluginInstruction::Update(updates) => {
+                assert_eq!(updates.len(), 1);
+                let (plugin_id, client_id, event) = &updates[0];
+                assert_eq!((*plugin_id, *client_id), (Some(3), Some(2)));
+                assert!(matches!(
+                    event,
+                    Event::PromptResult(9, PromptResult::Error(message)) if message.contains("min")
+                ));
+            },
+            other => panic!("unexpected {:?}", other),
+        }
+    }
+
+    #[test]
+    fn prompting_needs_permission_to_open_plugins_and_only_the_prompt_plugin_may_reply() {
+        let request = PluginCommand::Prompt {
+            request_id: 1,
+            request: PromptRequest::confirm("x"),
+        };
+        assert_eq!(
+            required_permission(&request),
+            Some(PermissionType::OpenTerminalsOrPlugins)
+        );
+        let reply = PluginCommand::ReplyToPrompt {
+            request_id: 1,
+            result: PromptResult::Cancelled,
+        };
+        assert_eq!(
+            required_permission(&reply),
+            Some(PermissionType::OpenTerminalsOrPlugins)
+        );
+        assert!(may_reply_to_prompt(&RunPluginLocation::Zellij(
+            PluginTag::new("prompt")
+        )));
+        assert!(!may_reply_to_prompt(&RunPluginLocation::Zellij(
+            PluginTag::new("configuration")
+        )));
+        assert!(!may_reply_to_prompt(&RunPluginLocation::File(
+            PathBuf::from("/tmp/prompt.wasm")
+        )));
+    }
 }

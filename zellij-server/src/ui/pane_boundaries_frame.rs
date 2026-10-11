@@ -1296,7 +1296,7 @@ impl PaneFrame {
         };
         Ok(res)
     }
-    pub fn clicked_on_pinned(&mut self, position: Position) -> bool {
+    pub fn clicked_on_pinned(&self, position: Position) -> bool {
         if self.is_floating {
             // TODO: this is not entirely accurate because our relative position calculation in
             // itself isn't - when that is fixed, we should adjust this as well

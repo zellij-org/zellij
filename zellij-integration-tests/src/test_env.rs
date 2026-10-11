@@ -160,6 +160,20 @@ pane_frame_style "titles"
 theme "default"
 "#;
 
+pub fn default_test_options() -> zellij_utils::input::options::Options {
+    zellij_utils::input::config::Config::from_kdl(DEFAULT_TEST_CONFIG, None)
+        .expect("the default test config is valid")
+        .options
+}
+
+pub fn empty_config_dir(session_name: &str) -> PathBuf {
+    let config_dir = init()
+        .join("config")
+        .join(format!("{}-config-dir", session_name));
+    std::fs::create_dir_all(&config_dir).unwrap();
+    config_dir
+}
+
 pub fn write_config(session_name: &str, extra_config_kdl: &str) -> PathBuf {
     let test_root = init();
     let config_path = test_root

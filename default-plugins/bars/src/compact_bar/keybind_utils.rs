@@ -3,6 +3,60 @@ use std::collections::HashSet;
 use zellij_tile::prelude::actions::Action;
 use zellij_tile::prelude::*;
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct TooltipKeyChunk {
+    pub text: String,
+    pub actions: Option<Vec<Action>>,
+}
+
+impl TooltipKeyChunk {
+    fn plain(text: &str) -> Self {
+        TooltipKeyChunk {
+            text: text.to_owned(),
+            actions: None,
+        }
+    }
+    fn key(text: String, actions: Vec<Action>) -> Self {
+        TooltipKeyChunk {
+            text,
+            actions: Some(actions),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TooltipEntry {
+    pub chunks: Vec<TooltipKeyChunk>,
+    pub description: String,
+}
+
+impl TooltipEntry {
+    pub fn key_text(&self) -> String {
+        self.chunks.iter().map(|c| c.text.as_str()).collect()
+    }
+
+    pub fn description_actions(&self) -> Option<Vec<Action>> {
+        let mut actions = self.chunks.iter().filter_map(|c| c.actions.as_ref());
+        let first = actions.next()?;
+        if actions.all(|other| other == first) {
+            Some(first.clone())
+        } else {
+            None
+        }
+    }
+
+    pub fn chunk_ranges(&self) -> Vec<(usize, usize, &TooltipKeyChunk)> {
+        let mut ranges = vec![];
+        let mut start = 0;
+        for chunk in &self.chunks {
+            let end = start + chunk.text.chars().count();
+            ranges.push((start, end, chunk));
+            start = end;
+        }
+        ranges
+    }
+}
+
 pub struct KeybindProcessor;
 
 impl KeybindProcessor {
@@ -10,7 +64,7 @@ impl KeybindProcessor {
         mode_info: &ModeInfo,
         mode: InputMode,
         predicates: Vec<F>,
-    ) -> Vec<(String, String)>
+    ) -> Vec<TooltipEntry>
     where
         F: Fn(&Action) -> bool,
     {
@@ -19,14 +73,12 @@ impl KeybindProcessor {
         let mut processed_action_types = HashSet::new();
 
         for predicate in predicates {
-            let mut found_match = false;
             for (_key, actions) in &keybinds {
                 if let Some(first_action) = actions.first() {
                     if predicate(first_action) {
                         let action_type = ActionType::from_action(first_action);
 
                         if processed_action_types.contains(&action_type) {
-                            found_match = true;
                             break;
                         }
 
@@ -35,7 +87,8 @@ impl KeybindProcessor {
                         for (inner_key, inner_actions) in &keybinds {
                             if let Some(inner_first_action) = inner_actions.first() {
                                 if ActionType::from_action(inner_first_action) == action_type {
-                                    matching_keys.push(format!("{}", inner_key));
+                                    matching_keys
+                                        .push((format!("{}", inner_key), inner_actions.clone()));
                                 }
                             }
                         }
@@ -51,42 +104,40 @@ impl KeybindProcessor {
                                 }
                             );
 
-                            let grouped_keys = Self::group_key_sets(
+                            let chunks = Self::group_key_chunks(
                                 &matching_keys,
                                 should_add_brackets_to_keys,
                                 is_switching_to_locked,
                             );
-                            result.push((grouped_keys, description));
+                            result.push(TooltipEntry {
+                                chunks,
+                                description,
+                            });
                             processed_action_types.insert(action_type);
                         }
 
-                        found_match = true;
                         break;
                     }
                 }
-            }
-
-            if found_match {
-                continue;
             }
         }
 
         result
     }
 
-    fn group_key_sets(
-        keys: &[String],
+    pub fn group_key_chunks(
+        keys: &[(String, Vec<Action>)],
         should_add_brackets_to_keys: bool,
         is_switching_to_locked: bool,
-    ) -> String {
+    ) -> Vec<TooltipKeyChunk> {
         if keys.is_empty() {
-            return String::new();
+            return Vec::new();
         }
 
-        let filtered_keys: Vec<String> = if is_switching_to_locked {
-            let non_esc_enter_keys: Vec<String> = keys
+        let filtered_keys: Vec<(String, Vec<Action>)> = if is_switching_to_locked {
+            let non_esc_enter_keys: Vec<(String, Vec<Action>)> = keys
                 .iter()
-                .filter(|k| k.as_str() != "ESC" && k.as_str() != "ENTER")
+                .filter(|(k, _)| k.as_str() != "ESC" && k.as_str() != "ENTER")
                 .cloned()
                 .collect();
 
@@ -99,194 +150,122 @@ impl KeybindProcessor {
             keys.to_vec()
         };
 
-        if filtered_keys.len() == 1 {
-            return if should_add_brackets_to_keys {
-                format!("<{}>", filtered_keys[0])
+        let bracketed = |text: &str| -> String {
+            if should_add_brackets_to_keys {
+                format!("<{}>", text)
             } else {
-                filtered_keys[0].clone()
-            };
+                text.to_owned()
+            }
+        };
+
+        if filtered_keys.len() == 1 {
+            let (key, actions) = &filtered_keys[0];
+            return vec![TooltipKeyChunk::key(bracketed(key), actions.clone())];
         }
 
-        let mut arrow_keys = Vec::new();
-        let mut hjkl_lower = Vec::new();
-        let mut hjkl_upper = Vec::new();
-        let mut square_bracket_keys = Vec::new();
-        let mut plus_minus_keys = Vec::new();
-        let mut pgup_pgdown = Vec::new();
-        let mut other_keys = Vec::new();
+        let mut arrow_keys: Vec<(&'static str, Vec<Action>)> = Vec::new();
+        let mut hjkl_lower: Vec<(&'static str, Vec<Action>)> = Vec::new();
+        let mut hjkl_upper: Vec<(&'static str, Vec<Action>)> = Vec::new();
+        let mut square_bracket_keys: Vec<(&'static str, Vec<Action>)> = Vec::new();
+        let mut plus_minus_keys: Vec<(&'static str, Vec<Action>)> = Vec::new();
+        let mut pgup_pgdown: Vec<(&'static str, Vec<Action>)> = Vec::new();
+        let mut other_keys: Vec<TooltipKeyChunk> = Vec::new();
 
-        for key in &filtered_keys {
+        for (key, actions) in &filtered_keys {
+            let actions = actions.clone();
             match key.as_str() {
-                "Left" | "←" => arrow_keys.push("←"),
-                "Down" | "↓" => arrow_keys.push("↓"),
-                "Up" | "↑" => arrow_keys.push("↑"),
-                "Right" | "→" => arrow_keys.push("→"),
-                "h" => hjkl_lower.push("h"),
-                "j" => hjkl_lower.push("j"),
-                "k" => hjkl_lower.push("k"),
-                "l" => hjkl_lower.push("l"),
-                "H" => hjkl_upper.push("H"),
-                "J" => hjkl_upper.push("J"),
-                "K" => hjkl_upper.push("K"),
-                "L" => hjkl_upper.push("L"),
-                "[" => square_bracket_keys.push("["),
-                "]" => square_bracket_keys.push("]"),
-                "+" => plus_minus_keys.push("+"),
-                "-" => plus_minus_keys.push("-"),
-                "=" => plus_minus_keys.push("="),
-                "PgUp" => pgup_pgdown.push("PgUp"),
-                "PgDn" => pgup_pgdown.push("PgDn"),
-                _ => {
-                    if should_add_brackets_to_keys {
-                        other_keys.push(format!("<{}>", key));
-                    } else {
-                        other_keys.push(key.clone());
-                    }
-                },
+                "Left" | "←" => arrow_keys.push(("←", actions)),
+                "Down" | "↓" => arrow_keys.push(("↓", actions)),
+                "Up" | "↑" => arrow_keys.push(("↑", actions)),
+                "Right" | "→" => arrow_keys.push(("→", actions)),
+                "h" => hjkl_lower.push(("h", actions)),
+                "j" => hjkl_lower.push(("j", actions)),
+                "k" => hjkl_lower.push(("k", actions)),
+                "l" => hjkl_lower.push(("l", actions)),
+                "H" => hjkl_upper.push(("H", actions)),
+                "J" => hjkl_upper.push(("J", actions)),
+                "K" => hjkl_upper.push(("K", actions)),
+                "L" => hjkl_upper.push(("L", actions)),
+                "[" => square_bracket_keys.push(("[", actions)),
+                "]" => square_bracket_keys.push(("]", actions)),
+                "+" => plus_minus_keys.push(("+", actions)),
+                "-" => plus_minus_keys.push(("-", actions)),
+                "=" => plus_minus_keys.push(("=", actions)),
+                "PgUp" => pgup_pgdown.push(("PgUp", actions)),
+                "PgDn" => pgup_pgdown.push(("PgDn", actions)),
+                _ => other_keys.push(TooltipKeyChunk::key(bracketed(key), actions)),
             }
         }
 
-        let mut groups = Vec::new();
+        let mut groups: Vec<Vec<TooltipKeyChunk>> = Vec::new();
+        let mut add_group =
+            |mut keys: Vec<(&'static str, Vec<Action>)>, order: &[&str], separator: &str| {
+                if keys.is_empty() {
+                    return;
+                }
+                Self::sort_by_order(&mut keys, order);
+                if order.contains(&"+")
+                    && keys.iter().any(|(k, _)| *k == "+")
+                    && keys.iter().any(|(k, _)| *k == "=")
+                {
+                    keys.retain(|(k, _)| *k != "=");
+                }
+                let mut chunks = Vec::new();
+                if should_add_brackets_to_keys {
+                    chunks.push(TooltipKeyChunk::plain("<"));
+                }
+                for (index, (key, actions)) in keys.into_iter().enumerate() {
+                    if index > 0 && !separator.is_empty() {
+                        chunks.push(TooltipKeyChunk::plain(separator));
+                    }
+                    chunks.push(TooltipKeyChunk::key(key.to_owned(), actions));
+                }
+                if should_add_brackets_to_keys {
+                    chunks.push(TooltipKeyChunk::plain(">"));
+                }
+                groups.push(chunks);
+            };
 
-        if !hjkl_lower.is_empty() {
-            Self::sort_hjkl(&mut hjkl_lower);
-            groups.push(Self::format_key_group(
-                &hjkl_lower,
-                should_add_brackets_to_keys,
-                false,
-            ));
-        }
-
-        if !hjkl_upper.is_empty() {
-            Self::sort_hjkl_upper(&mut hjkl_upper);
-            groups.push(Self::format_key_group(
-                &hjkl_upper,
-                should_add_brackets_to_keys,
-                false,
-            ));
-        }
-
-        if !arrow_keys.is_empty() {
-            Self::sort_arrows(&mut arrow_keys);
-            groups.push(Self::format_key_group(
-                &arrow_keys,
-                should_add_brackets_to_keys,
-                false,
-            ));
-        }
-
-        if !square_bracket_keys.is_empty() {
-            Self::sort_square_brackets(&mut square_bracket_keys);
-            groups.push(Self::format_key_group(
-                &square_bracket_keys,
-                should_add_brackets_to_keys,
-                false,
-            ));
-        }
-
-        if !plus_minus_keys.is_empty() {
-            Self::sort_plus_minus(&mut plus_minus_keys);
-            groups.push(Self::format_key_group(
-                &plus_minus_keys,
-                should_add_brackets_to_keys,
-                false,
-            ));
-        }
-
-        if !pgup_pgdown.is_empty() {
-            Self::sort_pgup_pgdown(&mut pgup_pgdown);
-            groups.push(Self::format_key_group(
-                &pgup_pgdown,
-                should_add_brackets_to_keys,
-                true,
-            ));
-        }
+        add_group(hjkl_lower, &["h", "j", "k", "l"], "");
+        add_group(hjkl_upper, &["H", "J", "K", "L"], "");
+        add_group(arrow_keys, &["←", "↓", "↑", "→"], "");
+        add_group(square_bracket_keys, &["[", "]"], "");
+        add_group(plus_minus_keys, &["+", "-"], "");
+        add_group(pgup_pgdown, &["PgUp", "PgDn"], "|");
 
         if !other_keys.is_empty() {
-            groups.push(other_keys.join("/"));
+            let mut chunks = Vec::new();
+            for (index, chunk) in other_keys.into_iter().enumerate() {
+                if index > 0 {
+                    chunks.push(TooltipKeyChunk::plain("/"));
+                }
+                chunks.push(chunk);
+            }
+            groups.push(chunks);
         }
 
-        groups.join("/")
-    }
-
-    fn sort_hjkl(keys: &mut Vec<&str>) {
-        keys.sort_by(|a, b| {
-            let order = ["h", "j", "k", "l"];
-            let pos_a = order.iter().position(|&x| &x == a).unwrap_or(usize::MAX);
-            let pos_b = order.iter().position(|&x| &x == b).unwrap_or(usize::MAX);
-            pos_a.cmp(&pos_b)
-        });
-    }
-
-    fn sort_hjkl_upper(keys: &mut Vec<&str>) {
-        keys.sort_by(|a, b| {
-            let order = ["H", "J", "K", "L"];
-            let pos_a = order.iter().position(|&x| &x == a).unwrap_or(usize::MAX);
-            let pos_b = order.iter().position(|&x| &x == b).unwrap_or(usize::MAX);
-            pos_a.cmp(&pos_b)
-        });
-    }
-
-    fn sort_arrows(keys: &mut Vec<&str>) {
-        keys.sort();
-        keys.dedup();
-        keys.sort_by(|a, b| {
-            let order = ["←", "↓", "↑", "→"];
-            let pos_a = order.iter().position(|&x| &x == a).unwrap_or(usize::MAX);
-            let pos_b = order.iter().position(|&x| &x == b).unwrap_or(usize::MAX);
-            pos_a.cmp(&pos_b)
-        });
-    }
-
-    fn sort_square_brackets(keys: &mut Vec<&str>) {
-        keys.sort_by(|a, b| {
-            let order = ["[", "]"];
-            let pos_a = order.iter().position(|&x| &x == a).unwrap_or(usize::MAX);
-            let pos_b = order.iter().position(|&x| &x == b).unwrap_or(usize::MAX);
-            pos_a.cmp(&pos_b)
-        });
-    }
-
-    fn sort_plus_minus(keys: &mut Vec<&str>) {
-        keys.sort_by(|a, b| {
-            let order = ["+", "-"];
-            let pos_a = order.iter().position(|&x| &x == a).unwrap_or(usize::MAX);
-            let pos_b = order.iter().position(|&x| &x == b).unwrap_or(usize::MAX);
-            pos_a.cmp(&pos_b)
-        });
-        if keys.contains(&"+") && keys.contains(&"=") {
-            keys.retain(|k| k != &"=");
+        let mut result = Vec::new();
+        for (index, group) in groups.into_iter().enumerate() {
+            if index > 0 {
+                result.push(TooltipKeyChunk::plain("/"));
+            }
+            result.extend(group);
         }
+        result
     }
 
-    fn sort_pgup_pgdown(keys: &mut Vec<&str>) {
-        keys.sort_by(|a, b| {
-            let order = ["PgUp", "PgDn"];
-            let pos_a = order.iter().position(|&x| &x == a).unwrap_or(usize::MAX);
-            let pos_b = order.iter().position(|&x| &x == b).unwrap_or(usize::MAX);
-            pos_a.cmp(&pos_b)
+    fn sort_by_order(keys: &mut Vec<(&'static str, Vec<Action>)>, order: &[&str]) {
+        let mut seen = HashSet::new();
+        keys.retain(|(key, _)| seen.insert(*key));
+        keys.sort_by_key(|(key, _)| {
+            order
+                .iter()
+                .position(|candidate| candidate == key)
+                .unwrap_or(usize::MAX)
         });
     }
 
-    fn format_key_group(
-        keys: &[&str],
-        should_add_brackets: bool,
-        use_pipe_separator: bool,
-    ) -> String {
-        let separator = if use_pipe_separator { "|" } else { "" };
-        let joined = keys.join(separator);
-
-        if should_add_brackets {
-            format!("<{}>", joined)
-        } else {
-            joined
-        }
-    }
-
-    pub fn get_predetermined_actions(
-        mode_info: &ModeInfo,
-        mode: InputMode,
-    ) -> Vec<(String, String)> {
+    pub fn get_tooltip_entries(mode_info: &ModeInfo, mode: InputMode) -> Vec<TooltipEntry> {
         match mode {
             InputMode::Locked => {
                 let ordered_predicates = vec![|action: &Action| {
@@ -717,5 +696,99 @@ impl KeybindProcessor {
             | InputMode::Prompt
             | InputMode::Tmux => Vec::new(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn focus(direction: Direction) -> Vec<Action> {
+        vec![Action::MoveFocus { direction }]
+    }
+
+    fn texts(chunks: &[TooltipKeyChunk]) -> Vec<&str> {
+        chunks.iter().map(|c| c.text.as_str()).collect()
+    }
+
+    #[test]
+    fn arrows_are_grouped_but_each_keeps_its_own_action() {
+        let keys = vec![
+            ("Right".to_owned(), focus(Direction::Right)),
+            ("Left".to_owned(), focus(Direction::Left)),
+            ("Up".to_owned(), focus(Direction::Up)),
+            ("Down".to_owned(), focus(Direction::Down)),
+            ("h".to_owned(), focus(Direction::Left)),
+        ];
+        let chunks = KeybindProcessor::group_key_chunks(&keys, true, false);
+        assert_eq!(
+            texts(&chunks),
+            vec!["<", "h", ">", "/", "<", "←", "↓", "↑", "→", ">"]
+        );
+        assert_eq!(chunks[5].actions, Some(focus(Direction::Left)));
+        assert_eq!(chunks[8].actions, Some(focus(Direction::Right)));
+        assert_eq!(chunks[0].actions, None);
+        let entry = TooltipEntry {
+            chunks,
+            description: "Move focus".to_owned(),
+        };
+        assert_eq!(entry.key_text(), "<h>/<←↓↑→>");
+        assert_eq!(entry.description_actions(), None);
+    }
+
+    #[test]
+    fn plus_minus_drop_equals_and_keep_separate_actions() {
+        let increase = vec![Action::Resize {
+            resize: Resize::Increase,
+            direction: None,
+        }];
+        let decrease = vec![Action::Resize {
+            resize: Resize::Decrease,
+            direction: None,
+        }];
+        let keys = vec![
+            ("=".to_owned(), increase.clone()),
+            ("-".to_owned(), decrease.clone()),
+            ("+".to_owned(), increase.clone()),
+        ];
+        let chunks = KeybindProcessor::group_key_chunks(&keys, true, false);
+        assert_eq!(texts(&chunks), vec!["<", "+", "-", ">"]);
+        assert_eq!(chunks[1].actions, Some(increase));
+        assert_eq!(chunks[2].actions, Some(decrease));
+    }
+
+    #[test]
+    fn a_single_key_is_one_clickable_chunk_and_its_description_is_clickable_too() {
+        let lock = vec![Action::SwitchToMode {
+            input_mode: InputMode::Locked,
+        }];
+        let keys = vec![
+            ("Ctrl g".to_owned(), lock.clone()),
+            ("ESC".to_owned(), lock.clone()),
+        ];
+        let chunks = KeybindProcessor::group_key_chunks(&keys, false, true);
+        assert_eq!(texts(&chunks), vec!["Ctrl g"]);
+        let entry = TooltipEntry {
+            chunks,
+            description: "Lock".to_owned(),
+        };
+        assert_eq!(entry.description_actions(), Some(lock));
+        assert_eq!(entry.chunk_ranges()[0].0, 0);
+        assert_eq!(entry.chunk_ranges()[0].1, 6);
+    }
+
+    #[test]
+    fn page_keys_and_other_keys_use_their_separators() {
+        let keys = vec![
+            ("PgDn".to_owned(), vec![Action::PageScrollDown]),
+            ("PgUp".to_owned(), vec![Action::PageScrollUp]),
+            ("x".to_owned(), vec![Action::PageScrollDown]),
+        ];
+        let chunks = KeybindProcessor::group_key_chunks(&keys, true, false);
+        let entry = TooltipEntry {
+            chunks,
+            description: "Scroll page".to_owned(),
+        };
+        assert_eq!(entry.key_text(), "<PgUp|PgDn>/<x>");
     }
 }

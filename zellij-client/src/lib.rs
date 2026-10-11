@@ -1034,6 +1034,9 @@ pub fn start_client(
     let has_certificate =
         config_options.web_server_cert.is_some() && config_options.web_server_key.is_some();
     let enforce_https_for_localhost = config_options.enforce_https_for_localhost.unwrap_or(false);
+    let dangerously_allow_web_serving_without_a_certificate = config_options
+        .dangerously_allow_web_serving_without_a_certificate
+        .unwrap_or(false);
 
     let terminal_teardown = TerminalTeardown {
         include_kitty_exit: !explicitly_disable_kitty_keyboard_protocol,
@@ -1424,7 +1427,7 @@ pub fn start_client(
 
     let handle_error = |backtrace: String| {
         os_input.disable_mouse().non_fatal();
-        os_input.unset_raw_mode().unwrap();
+        let _ = os_input.unset_raw_mode();
         os_input.restore_console_mode();
         let error = terminal_teardown_message(
             &backtrace,
@@ -1432,8 +1435,8 @@ pub fn start_client(
             !explicitly_disable_kitty_keyboard_protocol,
         );
         let mut stdout = os_input.get_stdout_writer();
-        stdout.write_all(error.as_bytes()).unwrap();
-        stdout.flush().unwrap();
+        let _ = stdout.write_all(error.as_bytes());
+        let _ = stdout.flush();
         std::process::exit(1);
     };
 
@@ -1465,20 +1468,12 @@ pub fn start_client(
             },
             ClientInstruction::Render(output) => {
                 let mut stdout = os_input.get_stdout_writer();
-                if let Some(sync) = synchronised_output {
-                    stdout
-                        .write_all(sync.start_seq())
-                        .expect("cannot write to stdout");
+                if let Err(e) = write_render_output(&mut *stdout, &output, synchronised_output) {
+                    let message = format!("Failed to write to the terminal: {}", e);
+                    log::error!("{}", message);
+                    os_input.send_to_server(ClientToServerMsg::ClientExited);
+                    handle_error(message);
                 }
-                stdout
-                    .write_all(output.as_bytes())
-                    .expect("cannot write to stdout");
-                if let Some(sync) = synchronised_output {
-                    stdout
-                        .write_all(sync.end_seq())
-                        .expect("cannot write to stdout");
-                }
-                stdout.flush().expect("could not flush");
             },
             ClientInstruction::UnblockInputThread => {
                 command_is_executing.unblock_input_thread();
@@ -1512,6 +1507,7 @@ pub fn start_client(
                     web_server_port,
                     has_certificate,
                     enforce_https_for_localhost,
+                    dangerously_allow_web_serving_without_a_certificate,
                 );
                 match spawn_web_server(&cli_args) {
                     Ok(_) => {
@@ -1661,16 +1657,16 @@ pub fn start_client(
 
         os_input.disable_mouse().non_fatal();
         info!("{}", exit_msg);
-        os_input.unset_raw_mode().unwrap();
+        let _ = os_input.unset_raw_mode();
         os_input.restore_console_mode();
         let mut stdout = os_input.get_stdout_writer();
-        stdout.write_all(goodbye_message.as_bytes()).unwrap();
-        stdout.flush().unwrap();
+        let _ = stdout.write_all(goodbye_message.as_bytes());
+        let _ = stdout.flush();
     } else {
         let clear_screen = "\u{1b}[2J";
         let mut stdout = os_input.get_stdout_writer();
-        stdout.write_all(clear_screen.as_bytes()).unwrap();
-        stdout.flush().unwrap();
+        let _ = stdout.write_all(clear_screen.as_bytes());
+        let _ = stdout.flush();
     }
 
     let _ = send_input_instructions.send(InputInstruction::Exit);
@@ -1802,6 +1798,21 @@ pub fn start_server_detached(
 
     os_input.connect_to_server(&*ipc_pipe);
     os_input.send_to_server(first_msg);
+}
+
+fn write_render_output(
+    stdout: &mut dyn Write,
+    output: &str,
+    synchronised_output: Option<SyncOutput>,
+) -> std::io::Result<()> {
+    if let Some(sync) = synchronised_output {
+        stdout.write_all(sync.start_seq())?;
+    }
+    stdout.write_all(output.as_bytes())?;
+    if let Some(sync) = synchronised_output {
+        stdout.write_all(sync.end_seq())?;
+    }
+    stdout.flush()
 }
 
 fn terminal_teardown_message(message: &str, rows: usize, include_kitty_exit: bool) -> String {

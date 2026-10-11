@@ -307,6 +307,8 @@ impl Pane for MockPane {
     fn scroll_down(&mut self, _count: usize, _client_id: ClientId) {
         unimplemented!()
     }
+    fn scroll_left(&mut self, _count: usize, _client_id: ClientId) {}
+    fn scroll_right(&mut self, _count: usize, _client_id: ClientId) {}
     fn clear_scroll(&mut self) {
         unimplemented!()
     }

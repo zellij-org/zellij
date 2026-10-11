@@ -98,3 +98,12 @@ message Styling {
     repeated Color exit_code_error = 14;
     repeated Color multiplayer_user_colors = 15;
 }
+
+message StyledText {
+  string text = 1;
+  repeated StyledTextIndices indices = 2;
+}
+
+message StyledTextIndices {
+  repeated uint32 indices = 1;
+}
