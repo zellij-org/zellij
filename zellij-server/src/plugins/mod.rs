@@ -3,6 +3,7 @@ mod pipes;
 mod plugin_loader;
 mod plugin_map;
 mod plugin_worker;
+mod prompt_requests;
 mod shared;
 mod wasm_bridge;
 mod watch_filesystem;
@@ -26,14 +27,17 @@ use crate::{pty::PtyInstruction, thread_bus::Bus, ClientId, ServerInstruction, S
 use zellij_utils::data::PaneRenderReport;
 use zellij_utils::input::layout::TabLayoutInfo;
 
+pub use prompt_requests::{PopupRequest, PromptCaller};
 pub use wasm_bridge::PluginRenderAsset;
-use wasm_bridge::WasmBridge;
+use wasm_bridge::{PipePopupRoute, WasmBridge};
 
+use crate::tab::{PopupKind, PopupPlacement};
 use zellij_utils::{
     data::{
         ClientInfo, CommandOrPlugin, Event, EventType, FloatingPaneCoordinates, InputMode,
-        LayoutInfo, LayoutWithError, MessageToPlugin, PermissionStatus, PermissionType,
-        PipeMessage, PipeSource, WebServerStatus,
+        KeybindPresetInfo, KeybindPresetWithError, LayoutInfo, LayoutWithError, MessageToPlugin,
+        PermissionStatus, PermissionType, PipeMessage, PipePopupPlacement, PipeSource, SettingKey,
+        WebServerStatus,
     },
     errors::{prelude::*, ContextType, PluginContext},
     input::{
@@ -43,6 +47,7 @@ use zellij_utils::{
         plugins::PluginAliases,
     },
     pane_size::Size,
+    prompt::{PromptRequest, PromptResult},
     session_serialization,
 };
 
@@ -160,6 +165,33 @@ pub enum PluginInstruction {
         cwd: Option<PathBuf>,
         skip_cache: bool,
         cli_client_id: ClientId,
+        caller_pane_id: Option<PaneId>,
+        popup: Option<PipePopupPlacement>,
+        popup_focused: bool,
+    },
+    SetCliPipeExitCode {
+        pipe_id: String,
+        exit_code: i32,
+        plugin_id: PluginId,
+    },
+    PipePopupFailed {
+        pipe_id: String,
+        error: String,
+    },
+    PromptRequest {
+        caller: PromptCaller,
+        owner_client_id: ClientId,
+        caller_pane_id: Option<PaneId>,
+        request: PromptRequest,
+    },
+    PromptReplied {
+        prompt_plugin_id: PluginId,
+        request_id: u64,
+        result: PromptResult,
+    },
+    PromptPopupFailed {
+        caller: PromptCaller,
+        error: String,
     },
     KeybindPipe {
         name: String,
@@ -195,6 +227,9 @@ pub enum PluginInstruction {
     FailedToWriteConfigToDisk {
         file_path: Option<PathBuf>,
     },
+    ConfigWasWrittenToDisk,
+    ConfigChangesDropped(ClientId, Vec<SettingKey>),
+    ConfigFileChangedSinceRead(ClientId),
     WatchFilesystem,
     ListClientsToPlugin(SessionLayoutMetadata, PluginId, ClientId),
     ChangePluginHostDir(PathBuf, PluginId, ClientId),
@@ -208,6 +243,7 @@ pub enum PluginInstruction {
         cli_client_id: Option<ClientId>,
     },
     LayoutListUpdate(Vec<LayoutInfo>, Vec<LayoutWithError>),
+    KeybindPresetListUpdate(Vec<KeybindPresetInfo>, Vec<KeybindPresetWithError>),
     RequestStateUpdateForPlugin(PluginId),
     UpdateSessionSaveTime(u64), // u64 = milliseconds since UNIX epoch
     GetLastSessionSaveTime {
@@ -222,6 +258,18 @@ pub enum PluginInstruction {
         matched_string: String,
         context: BTreeMap<String, String>,
     },
+    LoadPopup {
+        run_plugin_or_alias: RunPluginOrAlias,
+        tab_id: usize,
+        tab_index: usize,
+        client_id: ClientId,
+        placement: PopupPlacement,
+        kind: PopupKind,
+        anchor_pane: Option<PaneId>,
+        size: Size,
+        initial_events: Vec<Event>,
+        pipe: Option<(PopupRequest, BTreeMap<String, String>)>,
+    },
     Exit,
 }
 
@@ -230,6 +278,7 @@ impl From<&PluginInstruction> for PluginContext {
         match *plugin_instruction {
             PluginInstruction::Load(..) => PluginContext::Load,
             PluginInstruction::LoadBackgroundPlugin(..) => PluginContext::LoadBackgroundPlugin,
+            PluginInstruction::LoadPopup { .. } => PluginContext::LoadPopup,
             PluginInstruction::Update(..) => PluginContext::Update,
             PluginInstruction::Unload(..) => PluginContext::Unload,
             PluginInstruction::Reload(..) => PluginContext::Reload,
@@ -262,6 +311,11 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::ListClientsMetadata(..) => PluginContext::ListClientsMetadata,
             PluginInstruction::LogLayoutToHd(..) => PluginContext::LogLayoutToHd,
             PluginInstruction::CliPipe { .. } => PluginContext::CliPipe,
+            PluginInstruction::SetCliPipeExitCode { .. } => PluginContext::SetCliPipeExitCode,
+            PluginInstruction::PipePopupFailed { .. } => PluginContext::PipePopupFailed,
+            PluginInstruction::PromptRequest { .. } => PluginContext::PromptRequest,
+            PluginInstruction::PromptReplied { .. } => PluginContext::PromptReplied,
+            PluginInstruction::PromptPopupFailed { .. } => PluginContext::PromptPopupFailed,
             PluginInstruction::CachePluginEvents { .. } => PluginContext::CachePluginEvents,
             PluginInstruction::MessageFromPlugin { .. } => PluginContext::MessageFromPlugin,
             PluginInstruction::UnblockCliPipes { .. } => PluginContext::UnblockCliPipes,
@@ -272,6 +326,11 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::FailedToWriteConfigToDisk { .. } => {
                 PluginContext::FailedToWriteConfigToDisk
             },
+            PluginInstruction::ConfigWasWrittenToDisk => PluginContext::ConfigWasWrittenToDisk,
+            PluginInstruction::ConfigChangesDropped(..) => PluginContext::ConfigChangesDropped,
+            PluginInstruction::ConfigFileChangedSinceRead(..) => {
+                PluginContext::ConfigFileChangedSinceRead
+            },
             PluginInstruction::ListClientsToPlugin(..) => PluginContext::ListClientsToPlugin,
             PluginInstruction::ChangePluginHostDir(..) => PluginContext::ChangePluginHostDir,
             PluginInstruction::WebServerStarted(..) => PluginContext::WebServerStarted,
@@ -279,6 +338,9 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::PaneRenderReport(..) => PluginContext::PaneRenderReport,
             PluginInstruction::UserInput { .. } => PluginContext::UserInput,
             PluginInstruction::LayoutListUpdate(..) => PluginContext::LayoutListUpdate,
+            PluginInstruction::KeybindPresetListUpdate(..) => {
+                PluginContext::KeybindPresetListUpdate
+            },
             PluginInstruction::RequestStateUpdateForPlugin(..) => {
                 PluginContext::RequestStateUpdateForPlugin
             },
@@ -309,7 +371,7 @@ pub(crate) fn plugin_thread_main(
     plugin_aliases: PluginAliases,
     default_mode: InputMode,
     default_keybinds: SharedKeybinds,
-    background_plugins: HashSet<RunPluginOrAlias>,
+    background_plugins: Vec<RunPluginOrAlias>,
     // the client id that started the session,
     // we need it here because the thread's own list of connected clients might not yet be updated
     // on session start when we need to load the background plugins, and so we must have an
@@ -414,6 +476,93 @@ pub(crate) fn plugin_thread_main(
                     },
                     Err(e) => {
                         log::error!("Failed to load plugin: {e}");
+                    },
+                }
+            },
+            PluginInstruction::LoadPopup {
+                mut run_plugin_or_alias,
+                tab_id,
+                tab_index,
+                client_id,
+                placement,
+                kind,
+                anchor_pane,
+                size,
+                initial_events,
+                pipe,
+            } => {
+                run_plugin_or_alias.populate_run_plugin_if_needed(&plugin_aliases);
+                let run_plugin = run_plugin_or_alias.get_run_plugin().or_else(|| {
+                    RunPlugin::from_url(&format!(
+                        "zellij:{}",
+                        run_plugin_or_alias.location_string()
+                    ))
+                    .ok()
+                });
+                let skip_cache = false;
+                match wasm_bridge.load_plugin(
+                    &run_plugin,
+                    Some(tab_index),
+                    size,
+                    None,
+                    skip_cache,
+                    Some(client_id),
+                ) {
+                    Ok((plugin_id, client_id)) => {
+                        drop(bus.senders.send_to_screen(ScreenInstruction::AddPopup {
+                            plugin_id,
+                            client_id,
+                            tab_id,
+                            run_plugin_or_alias,
+                            placement,
+                            kind,
+                            width: size.cols,
+                            height: size.rows,
+                            anchor_pane,
+                        }));
+                        if !initial_events.is_empty() {
+                            wasm_bridge.update_plugins(
+                                initial_events
+                                    .into_iter()
+                                    .map(|event| (Some(plugin_id), Some(client_id), event))
+                                    .collect(),
+                                shutdown_send.clone(),
+                            )?;
+                        }
+                        if let Some((popup_request, caller_args)) = pipe {
+                            let pipe_messages = match popup_request {
+                                PopupRequest::Cli(pipe_id) => wasm_bridge.attach_pipe_popup(
+                                    &pipe_id,
+                                    plugin_id,
+                                    client_id,
+                                    caller_args,
+                                ),
+                                PopupRequest::Prompt(caller) => wasm_bridge.attach_prompt_popup(
+                                    caller,
+                                    plugin_id,
+                                    client_id,
+                                    caller_args,
+                                ),
+                            };
+                            wasm_bridge.pipe_messages(
+                                pipe_messages,
+                                shutdown_send.clone(),
+                                None,
+                            )?;
+                        }
+                    },
+                    Err(e) => {
+                        log::error!("Failed to load popup plugin: {e}");
+                        let error = format!("Failed to load the prompt plugin: {}", e);
+                        match pipe {
+                            Some((PopupRequest::Cli(pipe_id), _)) => {
+                                wasm_bridge.fail_pipe_popup(&pipe_id, error);
+                            },
+                            Some((PopupRequest::Prompt(caller), _)) => {
+                                wasm_bridge.fail_prompt_popup(caller, error);
+                            },
+                            None => {},
+                        }
                     },
                 }
             },
@@ -953,7 +1102,73 @@ pub(crate) fn plugin_thread_main(
                 cwd,
                 skip_cache,
                 cli_client_id,
+                caller_pane_id,
+                popup,
+                popup_focused,
             } => {
+                if wasm_bridge.cli_pipe_is_finished(&pipe_id) {
+                    continue;
+                }
+                let mut args = args;
+                if let Some(args) = args.as_mut() {
+                    zellij_utils::prompt::strip_caller_args(args);
+                }
+                if let (Some(placement), Some(plugin_url)) = (popup, plugin.as_ref()) {
+                    let pipe_message = PipeMessage::new(
+                        PipeSource::Cli(pipe_id.clone()),
+                        name,
+                        &payload,
+                        &args,
+                        true,
+                    );
+                    match wasm_bridge.route_pipe_popup_message(&pipe_id, pipe_message) {
+                        PipePopupRoute::Queued => {},
+                        PipePopupRoute::Deliver(plugin_id, client_id, pipe_message) => {
+                            wasm_bridge.pipe_messages(
+                                vec![(Some(plugin_id), Some(client_id), pipe_message)],
+                                shutdown_send.clone(),
+                                None,
+                            )?;
+                        },
+                        PipePopupRoute::New(pipe_message) => {
+                            match RunPluginOrAlias::from_url(
+                                plugin_url,
+                                &configuration,
+                                Some(&plugin_aliases),
+                                cwd.clone(),
+                            ) {
+                                Ok(run_plugin_or_alias) => {
+                                    wasm_bridge.start_pipe_popup(
+                                        &pipe_id,
+                                        pipe_message,
+                                        cli_client_id,
+                                    );
+                                    drop(bus.senders.send_to_screen(
+                                        ScreenInstruction::OpenPipePopup {
+                                            pipe_id,
+                                            run_plugin_or_alias,
+                                            caller_pane_id,
+                                            placement,
+                                            focused: popup_focused,
+                                        },
+                                    ));
+                                },
+                                Err(e) => {
+                                    wasm_bridge.start_pipe_popup(
+                                        &pipe_id,
+                                        pipe_message,
+                                        cli_client_id,
+                                    );
+                                    wasm_bridge.fail_pipe_popup(
+                                        &pipe_id,
+                                        format!("Failed to find plugin {}: {}", plugin_url, e),
+                                    );
+                                },
+                            }
+                        },
+                    }
+                    continue;
+                }
                 let should_float = floating.unwrap_or(true);
                 let mut pipe_messages = vec![];
                 let floating_pane_coordinates = None; // TODO: do we want to allow this?
@@ -993,7 +1208,81 @@ pub(crate) fn plugin_thread_main(
                         );
                     },
                 }
+                let has_recipients = !pipe_messages.is_empty();
                 wasm_bridge.pipe_messages(pipe_messages, shutdown_send.clone(), None)?;
+                if !has_recipients && !wasm_bridge.cli_pipe_is_pending(&pipe_id) {
+                    let _ = bus
+                        .senders
+                        .send_to_server(ServerInstruction::UnblockCliPipeInput(pipe_id, None));
+                }
+            },
+            PluginInstruction::SetCliPipeExitCode {
+                pipe_id,
+                exit_code,
+                plugin_id,
+            } => {
+                wasm_bridge.set_cli_pipe_exit_code(&pipe_id, exit_code, plugin_id);
+            },
+            PluginInstruction::PipePopupFailed { pipe_id, error } => {
+                wasm_bridge.fail_pipe_popup(&pipe_id, error);
+            },
+            PluginInstruction::PromptRequest {
+                caller,
+                owner_client_id,
+                caller_pane_id,
+                request,
+            } => {
+                let (name, args, payload) = request.to_pipe_message();
+                let pipe_message = PipeMessage::new(
+                    PipeSource::PromptRequest {
+                        caller_plugin_id: caller.plugin_id,
+                        request_id: caller.request_id,
+                    },
+                    name,
+                    &payload,
+                    &Some(args),
+                    true,
+                );
+                let plugin_url = if plugin_aliases
+                    .aliases
+                    .contains_key(zellij_utils::prompt::PROMPT_PLUGIN_ALIAS)
+                {
+                    zellij_utils::prompt::PROMPT_PLUGIN_ALIAS
+                } else {
+                    zellij_utils::prompt::PROMPT_PLUGIN_URL
+                };
+                wasm_bridge.start_prompt_popup(caller, pipe_message, request.is_notice());
+                match RunPluginOrAlias::from_url(plugin_url, &None, Some(&plugin_aliases), None) {
+                    Ok(run_plugin_or_alias) => {
+                        drop(
+                            bus.senders
+                                .send_to_screen(ScreenInstruction::OpenPromptPopup {
+                                    caller,
+                                    owner_client_id,
+                                    caller_pane_id,
+                                    run_plugin_or_alias,
+                                    placement: request.placement,
+                                    focused: request.focused,
+                                }),
+                        );
+                    },
+                    Err(e) => {
+                        wasm_bridge.fail_prompt_popup(
+                            caller,
+                            format!("Failed to find the prompt plugin: {}", e),
+                        );
+                    },
+                }
+            },
+            PluginInstruction::PromptReplied {
+                prompt_plugin_id,
+                request_id,
+                result,
+            } => {
+                wasm_bridge.prompt_replied(prompt_plugin_id, request_id, result);
+            },
+            PluginInstruction::PromptPopupFailed { caller, error } => {
+                wasm_bridge.fail_prompt_popup(caller, error);
             },
             PluginInstruction::KeybindPipe {
                 name,
@@ -1159,11 +1448,14 @@ pub(crate) fn plugin_thread_main(
                 wasm_bridge.pipe_messages(pipe_messages, shutdown_send.clone(), None)?;
             },
             PluginInstruction::UnblockCliPipes(pipes_to_unblock) => {
-                let pipes_to_unblock = wasm_bridge.update_cli_pipe_state(pipes_to_unblock);
-                for pipe_name in pipes_to_unblock {
+                let pipes_to_release = wasm_bridge.update_cli_pipe_state(pipes_to_unblock);
+                for release in pipes_to_release {
                     let _ = bus
                         .senders
-                        .send_to_server(ServerInstruction::UnblockCliPipeInput(pipe_name))
+                        .send_to_server(ServerInstruction::UnblockCliPipeInput(
+                            release.pipe_id,
+                            release.exit_code,
+                        ))
                         .context("failed to unblock input pipe");
                 }
             },
@@ -1193,6 +1485,28 @@ pub(crate) fn plugin_thread_main(
                     None,
                     Event::FailedToWriteConfigToDisk(file_path.map(|f| f.display().to_string())),
                 )];
+                wasm_bridge
+                    .update_plugins(updates, shutdown_send.clone())
+                    .non_fatal();
+            },
+            PluginInstruction::ConfigWasWrittenToDisk => {
+                let updates = vec![(None, None, Event::ConfigWasWrittenToDisk)];
+                wasm_bridge
+                    .update_plugins(updates, shutdown_send.clone())
+                    .non_fatal();
+            },
+            PluginInstruction::ConfigChangesDropped(client_id, dropped_settings) => {
+                let updates = vec![(
+                    None,
+                    Some(client_id),
+                    Event::ConfigChangesDropped(dropped_settings),
+                )];
+                wasm_bridge
+                    .update_plugins(updates, shutdown_send.clone())
+                    .non_fatal();
+            },
+            PluginInstruction::ConfigFileChangedSinceRead(client_id) => {
+                let updates = vec![(None, Some(client_id), Event::ConfigFileChangedSinceRead)];
                 wasm_bridge
                     .update_plugins(updates, shutdown_send.clone())
                     .non_fatal();
@@ -1251,6 +1565,9 @@ pub(crate) fn plugin_thread_main(
             },
             PluginInstruction::LayoutListUpdate(layouts, errors) => {
                 wasm_bridge.update_available_layouts(layouts, errors);
+            },
+            PluginInstruction::KeybindPresetListUpdate(presets, errors) => {
+                wasm_bridge.update_available_keybind_presets(presets, errors);
             },
             PluginInstruction::RequestStateUpdateForPlugin(plugin_id) => {
                 wasm_bridge.state_update_for_plugin(plugin_id);

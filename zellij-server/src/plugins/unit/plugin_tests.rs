@@ -346,10 +346,8 @@ pub(super) fn create_plugin_thread(
     plugin_aliases.aliases.insert(
         "fixture_plugin_for_tests".to_owned(),
         RunPlugin::from_url(&format!(
-            "file:{}/../target/e2e-data/plugins/fixture-plugin-for-tests.wasm",
-            std::env::var_os("CARGO_MANIFEST_DIR")
-                .unwrap()
-                .to_string_lossy()
+            "file:{}",
+            e2e_plugin_path("fixture-plugin-for-tests").display()
         ))
         .unwrap(),
     );
@@ -671,15 +669,19 @@ fn create_plugin_thread_with_background_jobs_receiver(
     )
 }
 
+pub(crate) fn e2e_plugin_path(name: &str) -> PathBuf {
+    std::env::var_os("CARGO_TARGET_DIR")
+        .filter(|target_dir| !target_dir.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../target"))
+        .join("e2e-data/plugins")
+        .join(format!("{}.wasm", name))
+}
+
 lazy_static! {
-    static ref PLUGIN_FIXTURE: String = format!(
-        // to populate this file, make sure to run the build-e2e CI job
-        // (or compile the fixture plugin and copy the resulting .wasm blob to the below location)
-        "{}/../target/e2e-data/plugins/fixture-plugin-for-tests.wasm",
-        std::env::var_os("CARGO_MANIFEST_DIR")
-            .unwrap()
-            .to_string_lossy()
-    );
+    static ref PLUGIN_FIXTURE: String = e2e_plugin_path("fixture-plugin-for-tests")
+        .display()
+        .to_string();
 }
 
 #[test]
@@ -6684,6 +6686,9 @@ pub fn unblock_input_plugin_command() {
         cwd: None,
         skip_cache: false,
         cli_client_id: client_id,
+        caller_pane_id: None,
+        popup: None,
+        popup_focused: true,
     });
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
@@ -6772,6 +6777,9 @@ pub fn block_input_plugin_command() {
         cwd: None,
         skip_cache: false,
         cli_client_id: client_id,
+        caller_pane_id: None,
+        popup: None,
+        popup_focused: true,
     });
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
@@ -6866,6 +6874,9 @@ pub fn pipe_output_plugin_command() {
         cwd: None,
         skip_cache: false,
         cli_client_id: client_id,
+        caller_pane_id: None,
+        popup: None,
+        popup_focused: true,
     });
     std::thread::sleep(std::time::Duration::from_millis(500));
     teardown();
@@ -6953,6 +6964,9 @@ pub fn pipe_message_to_plugin_plugin_command() {
         cwd: None,
         skip_cache: false,
         cli_client_id: client_id,
+        caller_pane_id: None,
+        popup: None,
+        popup_focused: true,
     });
     std::thread::sleep(std::time::Duration::from_millis(500));
     teardown();
@@ -13286,10 +13300,13 @@ pub fn cli_pipe_is_released_when_plugin_panics_while_handling_it() {
         cwd: None,
         skip_cache: false,
         cli_client_id: client_id,
+        caller_pane_id: None,
+        popup: None,
+        popup_focused: true,
     });
     std::thread::sleep(std::time::Duration::from_millis(1000));
     let unblocked = received_server_instruction.lock().unwrap().iter().any(
-        |i| matches!(i, ServerInstruction::UnblockCliPipeInput(pipe_name) if pipe_name == "input_pipe_id"),
+        |i| matches!(i, ServerInstruction::UnblockCliPipeInput(pipe_name, _) if pipe_name == "input_pipe_id"),
     );
     teardown();
     let _ = server_thread.join();
@@ -13649,5 +13666,82 @@ pub fn nested_session_events_reach_subscribed_plugins() {
             .contains("Nested session ended: pane=Terminal(1), reason=Unresponsive")),
         "expected the ended event to be rendered, rendered: {:?}",
         scenario.rendered
+    );
+}
+
+#[test]
+pub fn plugin_unloaded_while_loading_does_not_run_once_loaded() {
+    let temp_folder = tempdir().unwrap();
+    let cache_path = PathBuf::from(temp_folder.path()).join("permissions_test.kdl");
+    let (plugin_thread_sender, screen_receiver, teardown) = create_plugin_thread(None, None);
+    let run_plugin = RunPluginOrAlias::RunPlugin(RunPlugin {
+        _allow_exec_host_cmd: false,
+        location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
+        ..Default::default()
+    });
+    let client_id = 1;
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
+    let _ = plugin_thread_sender.send(PluginInstruction::Load(
+        Some(false),
+        false,
+        false,
+        Some("test_plugin".to_owned()),
+        run_plugin,
+        Some(1),
+        None,
+        client_id,
+        size,
+        None,
+        None,
+        false,
+        None,
+        None,
+        None,
+    ));
+    let first_plugin_id = 0;
+    let _ = plugin_thread_sender.send(PluginInstruction::Unload(first_plugin_id));
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let mut update_sent = false;
+    let mut rendered_after_unload = false;
+    while std::time::Instant::now() < deadline {
+        if !update_sent && deadline - std::time::Instant::now() < std::time::Duration::from_secs(3)
+        {
+            let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
+                None,
+                Some(client_id),
+                Event::InputReceived,
+            )]));
+            update_sent = true;
+        }
+        match screen_receiver.recv_timeout(std::time::Duration::from_millis(100)) {
+            Ok((ScreenInstruction::RequestPluginPermissions(plugin_id, permissions), _)) => {
+                let _ = plugin_thread_sender.send(PluginInstruction::PermissionRequestResult(
+                    plugin_id,
+                    Some(client_id),
+                    permissions.permissions,
+                    PermissionStatus::Granted,
+                    Some(cache_path.clone()),
+                ));
+            },
+            Ok((ScreenInstruction::PluginBytes(plugin_render_assets), _)) => {
+                if plugin_render_assets.iter().any(|asset| {
+                    asset.plugin_id == first_plugin_id
+                        && String::from_utf8_lossy(&asset.bytes).contains("InputReceived")
+                }) {
+                    rendered_after_unload = true;
+                }
+            },
+            _ => {},
+        }
+    }
+    teardown();
+    assert!(
+        !rendered_after_unload,
+        "the plugin keeps running after being unloaded while it was loading"
     );
 }

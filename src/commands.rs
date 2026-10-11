@@ -508,6 +508,48 @@ pub(crate) fn subscribe_to_session(
     );
 }
 
+pub(crate) fn prompt_in_session(
+    prompt_cli: zellij_utils::cli::PromptCli,
+    requested_session_name: Option<String>,
+    config: Option<Config>,
+) -> ! {
+    let session_name = match requested_session_name.or_else(|| envs::get_session_name().ok()) {
+        Some(session_name) => session_name,
+        None => {
+            eprintln!("zellij prompt must be run inside a Zellij session");
+            process::exit(zellij_utils::prompt::EXIT_ERROR);
+        },
+    };
+    let existing_sessions: Vec<String> = get_sessions()
+        .unwrap_or_default()
+        .iter()
+        .map(|s| s.0.clone())
+        .collect();
+    if !existing_sessions.contains(&session_name) {
+        eprintln!("Session '{}' not found", session_name);
+        process::exit(zellij_utils::prompt::EXIT_ERROR);
+    }
+    let plugin_url = match &config {
+        Some(config)
+            if config
+                .plugins
+                .aliases
+                .contains_key(zellij_utils::prompt::PROMPT_PLUGIN_ALIAS) =>
+        {
+            zellij_utils::prompt::PROMPT_PLUGIN_ALIAS.to_owned()
+        },
+        _ => zellij_utils::prompt::PROMPT_PLUGIN_URL.to_owned(),
+    };
+    let os_input = get_os_input(zellij_client::os_input_output::get_cli_client_os_input);
+    let exit_status = zellij_client::cli_client::start_prompt_client(
+        Box::new(os_input),
+        &session_name,
+        prompt_cli,
+        plugin_url,
+    );
+    process::exit(exit_status);
+}
+
 fn attach_with_cli_client(
     cli_action: zellij_utils::cli::CliAction,
     session_name: &str,
@@ -764,16 +806,16 @@ pub(crate) fn start_client(opts: CliArgs) {
                         .as_ref()
                         .and_then(|s| session_exists(&s).ok())
                         .unwrap_or(false);
-                    let resurrection_layout =
-                        session_name
-                            .as_ref()
-                            .and_then(|s| match resurrection_layout(&s) {
-                                Ok(layout) => layout,
-                                Err(e) => {
-                                    eprintln!("{}", e);
-                                    process::exit(2);
-                                },
-                            });
+                    let resurrection_layout = session_name
+                        .as_ref()
+                        .filter(|_| !session_exists)
+                        .and_then(|s| match resurrection_layout(&s) {
+                            Ok(layout) => layout,
+                            Err(e) => {
+                                eprintln!("{}", e);
+                                process::exit(2);
+                            },
+                        });
                     if (create || should_create_detached)
                         && !session_exists
                         && resurrection_layout.is_none()

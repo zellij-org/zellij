@@ -179,17 +179,20 @@ pub fn web_server_base_url(
     web_server_port: u16,
     has_certificate: bool,
     enforce_https_for_localhost: bool,
+    dangerously_allow_web_serving_without_a_certificate: bool,
 ) -> String {
     let is_loopback = match web_server_ip {
         IpAddr::V4(ipv4) => ipv4.is_loopback(),
         IpAddr::V6(ipv6) => ipv6.is_loopback(),
     };
 
-    let url_prefix = if is_loopback && !enforce_https_for_localhost && !has_certificate {
-        "http"
-    } else {
-        "https"
-    };
+    let serves_plain_http = !has_certificate
+        && if is_loopback {
+            !enforce_https_for_localhost
+        } else {
+            dangerously_allow_web_serving_without_a_certificate
+        };
+    let url_prefix = if serves_plain_http { "http" } else { "https" };
     format!("{}://{}:{}", url_prefix, web_server_ip, web_server_port)
 }
 
@@ -201,11 +204,15 @@ pub fn web_server_base_url_from_config(config_options: Options) -> String {
     let has_certificate =
         config_options.web_server_cert.is_some() && config_options.web_server_key.is_some();
     let enforce_https_for_localhost = config_options.enforce_https_for_localhost.unwrap_or(false);
+    let dangerously_allow_web_serving_without_a_certificate = config_options
+        .dangerously_allow_web_serving_without_a_certificate
+        .unwrap_or(false);
     web_server_base_url(
         web_server_ip,
         web_server_port,
         has_certificate,
         enforce_https_for_localhost,
+        dangerously_allow_web_serving_without_a_certificate,
     )
 }
 
@@ -225,4 +232,78 @@ pub fn parse_base_url(url: &str) -> Result<ServerAddress> {
         .ok_or_else(|| anyhow!("No port in URL"))?;
 
     Ok(ServerAddress { ip, port })
+}
+
+#[cfg(test)]
+mod web_server_base_url_tests {
+    use super::*;
+
+    fn remote() -> IpAddr {
+        IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0))
+    }
+
+    fn localhost() -> IpAddr {
+        IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))
+    }
+
+    #[test]
+    fn non_loopback_without_certificate_uses_https_by_default() {
+        assert_eq!(
+            web_server_base_url(remote(), 8082, false, false, false),
+            "https://0.0.0.0:8082"
+        );
+    }
+
+    #[test]
+    fn non_loopback_without_certificate_uses_http_when_dangerously_allowed() {
+        assert_eq!(
+            web_server_base_url(remote(), 8082, false, false, true),
+            "http://0.0.0.0:8082"
+        );
+    }
+
+    #[test]
+    fn non_loopback_with_certificate_uses_https_when_dangerously_allowed() {
+        assert_eq!(
+            web_server_base_url(remote(), 8082, true, false, true),
+            "https://0.0.0.0:8082"
+        );
+    }
+
+    #[test]
+    fn loopback_urls_are_unchanged_by_dangerous_allowance() {
+        assert_eq!(
+            web_server_base_url(localhost(), 8082, false, false, true),
+            "http://127.0.0.1:8082"
+        );
+        assert_eq!(
+            web_server_base_url(localhost(), 8082, false, true, true),
+            "https://127.0.0.1:8082"
+        );
+        assert_eq!(
+            web_server_base_url(localhost(), 8082, true, false, true),
+            "https://127.0.0.1:8082"
+        );
+    }
+
+    #[test]
+    fn base_url_from_config_reads_dangerous_allowance() {
+        let options = Options {
+            web_server_ip: Some(remote()),
+            dangerously_allow_web_serving_without_a_certificate: Some(true),
+            ..Default::default()
+        };
+        assert_eq!(
+            web_server_base_url_from_config(options),
+            "http://0.0.0.0:8082"
+        );
+        let options = Options {
+            web_server_ip: Some(remote()),
+            ..Default::default()
+        };
+        assert_eq!(
+            web_server_base_url_from_config(options),
+            "https://0.0.0.0:8082"
+        );
+    }
 }

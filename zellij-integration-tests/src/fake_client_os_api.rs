@@ -51,6 +51,27 @@ pub struct FakeClientOsApi {
     server_spawner: Arc<Mutex<Option<ServerSpawner>>>,
     env: Arc<Mutex<HashMap<String, String>>>,
     received_server_messages: Arc<Mutex<Vec<String>>>,
+    piped_stdin: Arc<Mutex<Option<crossbeam::channel::Receiver<Vec<u8>>>>>,
+}
+
+pub struct ChannelReader {
+    receiver: crossbeam::channel::Receiver<Vec<u8>>,
+    pending: Vec<u8>,
+}
+
+impl std::io::Read for ChannelReader {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        if self.pending.is_empty() {
+            match self.receiver.recv() {
+                Ok(bytes) => self.pending = bytes,
+                Err(_) => return Ok(0),
+            }
+        }
+        let count = buf.len().min(self.pending.len());
+        buf[..count].copy_from_slice(&self.pending[..count]);
+        self.pending.drain(..count);
+        Ok(count)
+    }
 }
 
 impl Clone for FakeClientOsApi {
@@ -66,6 +87,7 @@ impl Clone for FakeClientOsApi {
             server_spawner: self.server_spawner.clone(),
             env: self.env.clone(),
             received_server_messages: self.received_server_messages.clone(),
+            piped_stdin: self.piped_stdin.clone(),
         }
     }
 }
@@ -119,6 +141,7 @@ impl FakeClientOsApi {
             server_spawner: Arc::new(Mutex::new(server_spawner)),
             env: Arc::new(Mutex::new(env)),
             received_server_messages: received_server_messages.clone(),
+            piped_stdin: Arc::new(Mutex::new(None)),
         };
         client_screen.set_host_terminal(HostTerminal::Basic, stdin_tx.clone());
         let fake_client_handle = FakeClientHandle {
@@ -129,6 +152,11 @@ impl FakeClientOsApi {
             received_server_messages,
         };
         (fake_client_os_api, fake_client_handle)
+    }
+
+    pub fn with_piped_stdin(self, receiver: crossbeam::channel::Receiver<Vec<u8>>) -> Self {
+        *self.piped_stdin.lock().unwrap() = Some(receiver);
+        self
     }
 }
 
@@ -144,7 +172,16 @@ impl ClientOsApi for FakeClientOsApi {
         self.client_screen.writer()
     }
     fn get_stdin_reader(&self) -> Box<dyn std::io::BufRead> {
-        Box::new(std::io::BufReader::new(std::io::empty()))
+        match self.piped_stdin.lock().unwrap().clone() {
+            Some(receiver) => Box::new(std::io::BufReader::new(ChannelReader {
+                receiver,
+                pending: vec![],
+            })),
+            None => Box::new(std::io::BufReader::new(std::io::empty())),
+        }
+    }
+    fn stdin_is_terminal(&self) -> bool {
+        self.piped_stdin.lock().unwrap().is_none()
     }
     fn update_session_name(&mut self, new_session_name: String) {
         *self.session_name.lock().unwrap() = Some(new_session_name);

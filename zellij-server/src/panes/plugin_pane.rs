@@ -22,7 +22,7 @@ use std::rc::Rc;
 use vte;
 use zellij_utils::data::PaneContents;
 use zellij_utils::data::{
-    BareKey, BorderStyleOverride, KeyWithModifier, PermissionStatus, PermissionType,
+    BareKey, BorderStyleOverride, KeyModifier, KeyWithModifier, PermissionStatus, PermissionType,
     PluginPermission,
 };
 use zellij_utils::pane_size::{Offset, SizeInPixels};
@@ -112,6 +112,7 @@ pub(crate) struct PluginPane {
     should_be_suppressed: bool,
     text_being_pasted: Option<Vec<u8>>,
     supports_mouse_selection: bool,
+    mouse_modifiers: BTreeSet<KeyModifier>,
 }
 
 impl PluginPane {
@@ -172,6 +173,7 @@ impl PluginPane {
             should_be_suppressed: false,
             text_being_pasted: None,
             supports_mouse_selection: false,
+            mouse_modifiers: BTreeSet::new(),
         };
         for client_id in currently_connected_clients {
             plugin.handle_plugin_bytes(client_id, initial_loading_message.as_bytes().to_vec());
@@ -641,21 +643,43 @@ impl Pane for PluginPane {
             grid.set_selection_options(osc133_command_selection, word_separators);
         }
     }
+    fn set_mouse_modifiers(&mut self, modifiers: BTreeSet<KeyModifier>) {
+        self.mouse_modifiers = modifiers;
+    }
     fn start_selection(&mut self, start: &Position, client_id: ClientId) {
+        let modifiers = std::mem::take(&mut self.mouse_modifiers);
         if self.supports_mouse_selection {
             if let Some(grid) = self.grids.get_mut(&client_id) {
                 grid.start_selection(start);
                 self.set_should_render(true);
             }
         } else {
+            let click = Mouse::LeftClick(start.line.0, start.column.0);
+            let event = if modifiers.is_empty() {
+                Event::Mouse(click)
+            } else {
+                Event::MouseWithModifiers(click, modifiers)
+            };
             self.send_plugin_instructions
                 .send(PluginInstruction::Update(vec![(
                     Some(self.pid),
                     Some(client_id),
-                    Event::Mouse(Mouse::LeftClick(start.line.0, start.column.0)),
+                    event,
                 )]))
                 .unwrap();
         }
+    }
+    fn mouse_double_click(&mut self, position: &Position, client_id: ClientId) {
+        if self.supports_mouse_selection {
+            return;
+        }
+        self.send_plugin_instructions
+            .send(PluginInstruction::Update(vec![(
+                Some(self.pid),
+                Some(client_id),
+                Event::Mouse(Mouse::DoubleClick(position.line.0, position.column.0)),
+            )]))
+            .unwrap();
     }
     fn update_selection(&mut self, position: &Position, client_id: ClientId) {
         if self.supports_mouse_selection {
@@ -886,6 +910,15 @@ impl Pane for PluginPane {
         }
         false
     }
+    fn position_is_on_pin_button(&self, position: &Position, client_id: ClientId) -> bool {
+        if self.position_is_on_frame(position) {
+            let relative_position = self.relative_position(position);
+            if let Some(client_frame) = self.frame.get(&client_id) {
+                return client_frame.clicked_on_pinned(relative_position);
+            }
+        }
+        false
+    }
     fn intercept_mouse_event_on_frame(&mut self, event: &MouseEvent, client_id: ClientId) -> bool {
         if self.position_is_on_frame(&event.position) {
             let relative_position = self.relative_position(&event.position);
@@ -910,7 +943,9 @@ impl Pane for PluginPane {
                     && !event.right
                     && !event.middle
                     && !event.wheel_up
-                    && !event.wheel_down =>
+                    && !event.wheel_down
+                    && !event.wheel_left
+                    && !event.wheel_right =>
             {
                 let _ = self
                     .send_plugin_instructions
