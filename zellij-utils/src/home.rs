@@ -80,3 +80,11 @@ pub fn get_theme_dir(config_dir: Option<PathBuf>) -> Option<PathBuf> {
 pub fn default_theme_dir() -> Option<PathBuf> {
     find_default_config_dir().map(|dir| dir.join("themes"))
 }
+
+pub fn get_keybinds_dir(config_dir: Option<PathBuf>) -> Option<PathBuf> {
+    config_dir.map(|dir| dir.join("keybinds"))
+}
+
+pub fn default_keybinds_dir() -> Option<PathBuf> {
+    find_default_config_dir().map(|dir| dir.join("keybinds"))
+}

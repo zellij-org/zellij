@@ -24,8 +24,17 @@ pub fn claim_first_terminal_and_wait_for_prompt(zellij: &TestSession) -> FakePty
     terminal
 }
 
-pub fn split_right_and_wait_for_prompt(zellij: &TestSession) -> FakePtyHandle {
+fn enter_pane_mode_and_wait_for_status_bar(zellij: &TestSession) {
     zellij.send_stdin(&keys::ctrl('p'));
+    zellij.wait_until("status bar shows pane mode", |grid_snapshot| {
+        grid_snapshot.contains("<p> PANE")
+            && grid_snapshot.contains("Fullscreen")
+            && !grid_snapshot.status_bar_appears()
+    });
+}
+
+pub fn split_right_and_wait_for_prompt(zellij: &TestSession) -> FakePtyHandle {
+    enter_pane_mode_and_wait_for_status_bar(zellij);
     zellij.send_stdin(&keys::key('r'));
     let terminal = zellij.expect_pty_spawn();
     terminal.output(PROMPT);
@@ -36,7 +45,7 @@ pub fn split_right_and_wait_for_prompt(zellij: &TestSession) -> FakePtyHandle {
 }
 
 pub fn split_down_and_wait_for_prompt(zellij: &TestSession) -> FakePtyHandle {
-    zellij.send_stdin(&keys::ctrl('p'));
+    enter_pane_mode_and_wait_for_status_bar(zellij);
     zellij.send_stdin(&keys::key('d'));
     let terminal = zellij.expect_pty_spawn();
     terminal.output(PROMPT);

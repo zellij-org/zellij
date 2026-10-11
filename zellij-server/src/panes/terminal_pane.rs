@@ -732,6 +732,8 @@ impl Pane for TerminalPane {
         self.grid.move_viewport_down(count);
         self.set_should_render(true);
     }
+    fn scroll_left(&mut self, _count: usize, _client_id: ClientId) {}
+    fn scroll_right(&mut self, _count: usize, _client_id: ClientId) {}
     fn scroll_to_previous_prompt(&mut self, _client_id: ClientId) {
         if self.grid.scroll_to_previous_prompt() {
             self.set_should_render(true);
@@ -1036,6 +1038,12 @@ impl Pane for TerminalPane {
     fn mouse_scroll_down(&self, position: &Position) -> Option<String> {
         self.grid.mouse_scroll_down_signal(position)
     }
+    fn mouse_scroll_left(&self, position: &Position) -> Option<String> {
+        self.grid.mouse_scroll_left_signal(position)
+    }
+    fn mouse_scroll_right(&self, position: &Position) -> Option<String> {
+        self.grid.mouse_scroll_right_signal(position)
+    }
     fn focus_event(&self) -> Option<String> {
         self.grid.focus_event()
     }
@@ -1155,6 +1163,9 @@ impl Pane for TerminalPane {
     }
     fn invoked_with(&self) -> &Option<Run> {
         &self.invoked_with
+    }
+    fn take_notification_end(&mut self) -> Option<NotificationEnd> {
+        self.notification_end.take()
     }
     fn set_title(&mut self, title: String) {
         self.pane_title = title;
@@ -1280,6 +1291,15 @@ impl Pane for TerminalPane {
                     self.toggle_pinned();
                     return true;
                 }
+            }
+        }
+        false
+    }
+    fn position_is_on_pin_button(&self, position: &Position, client_id: ClientId) -> bool {
+        if self.position_is_on_frame(position) {
+            let relative_position = self.relative_position(position);
+            if let Some(client_frame) = self.frame.get(&client_id) {
+                return client_frame.clicked_on_pinned(relative_position);
             }
         }
         false
