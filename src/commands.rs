@@ -824,6 +824,16 @@ pub(crate) fn start_client(opts: CliArgs) {
                     }
                     match (session_name.as_ref(), resurrection_layout) {
                         (Some(session_name), Some(mut resurrection_layout)) if !session_exists => {
+                            if !resurrection_layout.has_terminal_panes() {
+                                eprintln!(
+                                    "WARNING: the layout serialized for session \"{}\" contains no terminal panes, so there is nothing to attach to.",
+                                    session_name
+                                );
+                                eprintln!(
+                                    "To free up this session name, run: zellij delete-session {}",
+                                    session_name
+                                );
+                            }
                             if force_run_commands {
                                 resurrection_layout.recursively_add_start_suspended(Some(false));
                             }
