@@ -882,6 +882,11 @@ impl WasmBridge {
                 .unwrap()
                 .contains(plugin_id, client_id)
             {
+                self.senders
+                    .send_to_plugin(PluginInstruction::ApplyCachedEvents {
+                        plugin_ids: vec![plugin_id],
+                        done_receiving_permissions: false,
+                    })?;
                 continue;
             }
             let Some(run_plugin) = self.run_plugin_of_plugin_id(plugin_id).map(|r| r.clone())
@@ -1509,6 +1514,10 @@ impl WasmBridge {
             }
             self.plugin_ids_waiting_for_permission_request
                 .remove(&plugin_id);
+            // Startup callbacks must wait for a real client to receive them.
+            if self.connected_clients.lock().unwrap().is_empty() {
+                continue;
+            }
             self.apply_cached_events_and_resizes_for_plugin(plugin_id, shutdown_sender.clone())?;
             if let Some(run_plugin) = self.run_plugin_of_loading_plugin_id(plugin_id) {
                 applied_plugin_paths.insert(run_plugin.clone());
@@ -3530,3 +3539,7 @@ pub(crate) fn is_hover(event: &Event) -> bool {
 #[cfg(test)]
 #[path = "unit/hover_merge_tests.rs"]
 mod hover_merge_tests;
+
+#[cfg(test)]
+#[path = "unit/startup_tests.rs"]
+mod startup_tests;
