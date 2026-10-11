@@ -18,6 +18,44 @@ struct State {
     configuration: BTreeMap<String, String>,
     message_to_plugin_payload: Option<String>,
     explicit_string_to_render: Option<String>,
+    prompt_result: Option<String>,
+}
+
+#[cfg(target_family = "wasm")]
+impl State {
+    fn handle_prompt_message(&mut self, name: &str, args: &BTreeMap<String, String>) {
+        let request = match name {
+            "prompt_confirm" => {
+                PromptRequest::confirm(Text::from("Delete branch?").color_range(3, 7..13))
+                    .yes("Delete")
+                    .no("Keep")
+            },
+            "prompt_choose_multi" => PromptRequest::choose(vec!["alpha", "beta", "gamma"])
+                .multi()
+                .title("Pick branches"),
+            "prompt_form" => PromptRequest::form(vec![
+                FormField::input("name", "Name").default_value("demo"),
+                FormField::toggle("ci", "Use CI").default_value(true),
+                FormField::number("port", "Port").default_value(8080),
+            ]),
+            "prompt_input_timeout" => {
+                let request =
+                    PromptRequest::input("Name").timeout(std::time::Duration::from_secs(1));
+                match args.get("default") {
+                    Some(default) => request.default(default.clone()),
+                    None => request,
+                }
+            },
+            "prompt_invalid" => PromptRequest::number("Port").min(5).max(1),
+            "close_self" => {
+                close_self();
+                return;
+            },
+            _ => return,
+        };
+        let request_id = prompt(request);
+        self.prompt_result = Some(format!("Prompt {} sent", request_id));
+    }
 }
 
 #[allow(dead_code)] // used when compiled as wasm plugin, not in native test target
@@ -91,6 +129,7 @@ impl ZellijPlugin for State {
             EventType::BeforeClose,
             EventType::PluginConfigurationChanged,
             EventType::HighlightClicked,
+            EventType::PromptResult,
         ]);
         if should_subscribe_initial_keybinds {
             subscribe(&[EventType::InitialKeybinds, EventType::ModeUpdate]);
@@ -108,6 +147,10 @@ impl ZellijPlugin for State {
     }
 
     fn update(&mut self, event: Event) -> bool {
+        if let Event::PromptResult(request_id, result) = &event {
+            self.prompt_result = Some(format!("Prompt result {}: {:?}", request_id, result));
+            return true;
+        }
         match &event {
             Event::Key(key) => match key.bare_key {
                 BareKey::Char('a') if key.has_no_modifiers() => {
@@ -1029,13 +1072,28 @@ impl ZellijPlugin for State {
         should_render
     }
     fn pipe(&mut self, pipe_message: PipeMessage) -> bool {
-        let input_pipe_id = match pipe_message.source {
+        let input_pipe_id = match &pipe_message.source {
             PipeSource::Cli(id) => id.clone(),
             PipeSource::Plugin(id) => format!("{}", id),
             PipeSource::Keybind => format!("keybind"),
+            PipeSource::PromptRequest { request_id, .. } => format!("prompt_{}", request_id),
         };
         let name = pipe_message.name;
         let payload = pipe_message.payload;
+        if name.starts_with("prompt_") || name == "close_self" {
+            if let PipeSource::Cli(pipe_id) = &pipe_message.source {
+                unblock_cli_pipe_input(pipe_id);
+            }
+            let is_for_this_user = pipe_message
+                .args
+                .get("only_client")
+                .map(|client_id| *client_id == get_plugin_ids().client_id.to_string())
+                .unwrap_or(true);
+            if is_for_this_user {
+                self.handle_prompt_message(&name, &pipe_message.args);
+            }
+            return true;
+        }
         if name == "message_name" && payload == Some("message_payload".to_owned()) {
             unblock_cli_pipe_input(&input_pipe_id);
         } else if name == "message_name_block" {
@@ -1056,7 +1114,9 @@ impl ZellijPlugin for State {
     }
 
     fn render(&mut self, rows: usize, cols: usize) {
-        if let Some(payload) = self.received_payload.as_ref() {
+        if let Some(prompt_result) = self.prompt_result.as_ref() {
+            println!("{}", prompt_result);
+        } else if let Some(payload) = self.received_payload.as_ref() {
             println!("Payload from worker: {:?}", payload);
         } else if let Some(payload) = self.message_to_plugin_payload.take() {
             println!("Payload from self: {:?}", payload);

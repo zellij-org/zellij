@@ -655,6 +655,7 @@ pub struct Output {
     sixel_host_capabilities: Rc<RefCell<HashMap<ClientId, bool>>>,
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     floating_panes_stack: Option<FloatingPanesStack>,
+    popup_covers: HashMap<ClientId, Vec<PaneGeom>>,
     styled_underlines: bool,
     osc8_hyperlinks: bool,
     pane_render_report: PaneRenderReport,
@@ -698,12 +699,45 @@ impl Output {
             self.client_character_chunks.insert(*client_id, vec![]);
         }
     }
+    pub fn set_popup_cover(&mut self, client_id: ClientId, popup_geoms: Vec<PaneGeom>) {
+        if popup_geoms.is_empty() {
+            self.popup_covers.remove(&client_id);
+        } else {
+            self.popup_covers.insert(client_id, popup_geoms);
+        }
+    }
+    fn popup_cover_for(
+        &self,
+        client_id: ClientId,
+        z_index: Option<usize>,
+    ) -> Option<FloatingPanesStack> {
+        let covers = self.popup_covers.get(&client_id)?;
+        let first_covering_layer = match z_index {
+            Some(z_index) if z_index >= crate::tab::POPUP_Z_INDEX => {
+                z_index - crate::tab::POPUP_Z_INDEX + 1
+            },
+            _ => 0,
+        };
+        let layers: Vec<PaneGeom> = covers.iter().skip(first_covering_layer).copied().collect();
+        if layers.is_empty() {
+            None
+        } else {
+            Some(FloatingPanesStack { layers })
+        }
+    }
     pub fn add_character_chunks_to_client(
         &mut self,
         client_id: ClientId,
         mut character_chunks: Vec<CharacterChunk>,
         z_index: Option<usize>,
     ) -> Result<()> {
+        if let Some(popup_cover) = self.popup_cover_for(client_id, z_index) {
+            character_chunks = popup_cover
+                .visible_character_chunks(character_chunks, None)
+                .with_context(|| {
+                    format!("failed to hide chunks under popup of client {}", client_id)
+                })?;
+        }
         if let Some(client_character_chunks) = self.client_character_chunks.get_mut(&client_id) {
             if let Some(floating_panes_stack) = &self.floating_panes_stack {
                 let mut visible_character_chunks = floating_panes_stack
@@ -793,10 +827,17 @@ impl Output {
     pub fn add_sixel_image_chunks_to_client(
         &mut self,
         client_id: ClientId,
-        sixel_image_chunks: Vec<SixelImageChunk>,
+        mut sixel_image_chunks: Vec<SixelImageChunk>,
         z_index: Option<usize>,
     ) {
         if let Some(character_cell_size) = *self.character_cell_size.borrow() {
+            if let Some(popup_cover) = self.popup_cover_for(client_id, z_index) {
+                sixel_image_chunks = popup_cover.visible_sixel_image_chunks(
+                    sixel_image_chunks,
+                    None,
+                    &character_cell_size,
+                );
+            }
             let mut sixel_chunks = if let Some(floating_panes_stack) = &self.floating_panes_stack {
                 floating_panes_stack.visible_sixel_image_chunks(
                     sixel_image_chunks,
@@ -827,8 +868,16 @@ impl Output {
                 sixel_image_chunks
             };
             for client_id in client_ids {
+                let mut client_sixel_chunks = match self.popup_cover_for(client_id, z_index) {
+                    Some(popup_cover) => popup_cover.visible_sixel_image_chunks(
+                        sixel_chunks.clone(),
+                        None,
+                        &character_cell_size,
+                    ),
+                    None => sixel_chunks.clone(),
+                };
                 let entry = self.sixel_chunks.entry(client_id).or_insert_with(Vec::new);
-                entry.append(&mut sixel_chunks.clone());
+                entry.append(&mut client_sixel_chunks);
             }
         }
     }
@@ -843,13 +892,22 @@ impl Output {
             .entry(client_id)
             .or_insert_with(HashSet::new)
             .insert(pane_id);
-        let mut kitty_chunks = match (
+        let kitty_chunks = match (
             *self.character_cell_size.borrow(),
             &self.floating_panes_stack,
         ) {
             (Some(character_cell_size), Some(floating_panes_stack)) => floating_panes_stack
                 .visible_kitty_image_chunks(kitty_image_chunks, z_index, &character_cell_size),
             _ => kitty_image_chunks,
+        };
+        let mut kitty_chunks = match (
+            *self.character_cell_size.borrow(),
+            self.popup_cover_for(client_id, z_index),
+        ) {
+            (Some(character_cell_size), Some(popup_cover)) => {
+                popup_cover.visible_kitty_image_chunks(kitty_chunks, None, &character_cell_size)
+            },
+            _ => kitty_chunks,
         };
         self.client_kitty_chunks
             .entry(client_id)
@@ -878,12 +936,20 @@ impl Output {
                 .entry(client_id)
                 .or_insert_with(HashSet::new)
                 .insert(pane_id);
+            let mut client_kitty_chunks = match (
+                *self.character_cell_size.borrow(),
+                self.popup_cover_for(client_id, z_index),
+            ) {
+                (Some(character_cell_size), Some(popup_cover)) => popup_cover
+                    .visible_kitty_image_chunks(kitty_chunks.clone(), None, &character_cell_size),
+                _ => kitty_chunks.clone(),
+            };
             self.client_kitty_chunks
                 .entry(client_id)
                 .or_insert_with(HashMap::new)
                 .entry(pane_id)
                 .or_insert_with(Vec::new)
-                .append(&mut kitty_chunks.clone());
+                .append(&mut client_kitty_chunks);
         }
     }
     pub fn set_kitty_visible_panes(&mut self, client_id: ClientId, pane_ids: HashSet<PaneId>) {

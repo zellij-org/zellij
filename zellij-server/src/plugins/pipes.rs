@@ -11,19 +11,113 @@ use zellij_utils::errors::prelude::*;
 
 use crate::{thread_bus::ThreadSenders, ClientId};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum PipeStateChange {
     NoChange,
     Block,
     Unblock,
+    Crashed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct PipeRelease {
+    pub pipe_id: String,
+    pub exit_code: Option<i32>,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct PendingPipes {
     pipes: HashMap<String, PendingPipeInfo>,
+    exit_codes: HashMap<String, (i32, PluginId)>,
+    finished: HashSet<String>,
 }
 
 impl PendingPipes {
+    pub fn set_exit_code(&mut self, pipe_id: &str, exit_code: i32, plugin_id: PluginId) {
+        if self.finished.contains(pipe_id) {
+            return;
+        }
+        self.exit_codes
+            .insert(pipe_id.to_owned(), (exit_code, plugin_id));
+    }
+    pub fn is_finished(&self, pipe_id: &str) -> bool {
+        self.finished.contains(pipe_id)
+    }
+    pub fn is_pending(&self, pipe_id: &str) -> bool {
+        self.pipes.contains_key(pipe_id)
+    }
+    fn release(&mut self, pipe_id: String, is_final: bool) -> PipeRelease {
+        let exit_code = if is_final {
+            self.exit_codes
+                .remove(&pipe_id)
+                .map(|(exit_code, _)| exit_code)
+        } else {
+            None
+        };
+        if exit_code.is_some() {
+            self.pipes.remove(&pipe_id);
+            self.finished.insert(pipe_id.clone());
+        }
+        PipeRelease { pipe_id, exit_code }
+    }
+    pub fn release_with_code(&mut self, pipe_id: &str, exit_code: i32) -> PipeRelease {
+        self.exit_codes.remove(pipe_id);
+        self.pipes.remove(pipe_id);
+        self.finished.insert(pipe_id.to_owned());
+        PipeRelease {
+            pipe_id: pipe_id.to_owned(),
+            exit_code: Some(exit_code),
+        }
+    }
+    pub fn update_pipe_state_change(
+        &mut self,
+        cli_pipe_name: &str,
+        pipe_state_change: PipeStateChange,
+        plugin_id: &PluginId,
+        client_id: &ClientId,
+    ) -> Vec<PipeRelease> {
+        if self.finished.contains(cli_pipe_name) {
+            return vec![];
+        }
+        let is_final = matches!(
+            pipe_state_change,
+            PipeStateChange::Unblock | PipeStateChange::Crashed
+        );
+        let has_exit_code = self.exit_codes.contains_key(cli_pipe_name);
+        if pipe_state_change == PipeStateChange::Crashed && has_exit_code {
+            return vec![self.release(cli_pipe_name.to_owned(), true)];
+        }
+        self.legacy_update_pipe_state_change(cli_pipe_name, pipe_state_change, plugin_id, client_id)
+            .into_iter()
+            .map(|pipe_name| self.release(pipe_name, is_final))
+            .collect()
+    }
+    pub fn unload_plugin(&mut self, plugin_id: &PluginId) -> Vec<PipeRelease> {
+        let owned_pipes: Vec<String> = self
+            .exit_codes
+            .iter()
+            .filter(|(_, (_, owner))| owner == plugin_id)
+            .map(|(pipe_id, _)| pipe_id.clone())
+            .collect();
+        let mut releases: Vec<PipeRelease> = owned_pipes
+            .into_iter()
+            .map(|pipe_id| self.release(pipe_id, true))
+            .collect();
+        for pipe_name in self.legacy_unload_plugin(plugin_id) {
+            releases.push(self.release(pipe_name, false));
+        }
+        releases
+    }
+    pub fn unload_plugin_client(
+        &mut self,
+        plugin_id: &PluginId,
+        client_id: &ClientId,
+    ) -> Vec<PipeRelease> {
+        self.legacy_unload_plugin_client(plugin_id, client_id)
+            .into_iter()
+            .map(|pipe_name| self.release(pipe_name, false))
+            .collect()
+    }
     pub fn mark_being_processed(
         &mut self,
         pipe_id: &str,
@@ -42,7 +136,7 @@ impl PendingPipes {
         }
     }
     // returns a list of pipes that are no longer pending and should be unblocked
-    pub fn update_pipe_state_change(
+    fn legacy_update_pipe_state_change(
         &mut self,
         cli_pipe_name: &str,
         pipe_state_change: PipeStateChange,
@@ -69,7 +163,7 @@ impl PendingPipes {
         pipe_names_to_unblock
     }
     // returns a list of pipes that are no longer pending and should be unblocked
-    pub fn unload_plugin(&mut self, plugin_id: &PluginId) -> Vec<String> {
+    fn legacy_unload_plugin(&mut self, plugin_id: &PluginId) -> Vec<String> {
         let mut pipe_names_to_unblock = vec![];
         for (pipe_name, pending_pipe_info) in self.pipes.iter_mut() {
             let should_unblock_this_pipe = pending_pipe_info.unload_plugin(plugin_id);
@@ -82,7 +176,7 @@ impl PendingPipes {
         }
         pipe_names_to_unblock
     }
-    pub fn unload_plugin_client(
+    fn legacy_unload_plugin_client(
         &mut self,
         plugin_id: &PluginId,
         client_id: &ClientId,
@@ -105,6 +199,7 @@ impl PendingPipes {
 #[derive(Debug, Clone, Default)]
 pub struct PendingPipeInfo {
     is_explicitly_blocked: bool,
+    blocked_by: Option<PluginId>,
     currently_being_processed_by: HashSet<(PluginId, ClientId)>,
 }
 
@@ -131,9 +226,11 @@ impl PendingPipeInfo {
         match pipe_state_change {
             PipeStateChange::Block => {
                 self.is_explicitly_blocked = true;
+                self.blocked_by = Some(*plugin_id);
             },
             PipeStateChange::Unblock => {
                 self.is_explicitly_blocked = false;
+                self.blocked_by = None;
             },
             _ => {},
         };
@@ -147,6 +244,10 @@ impl PendingPipeInfo {
     pub fn unload_plugin(&mut self, plugin_id_to_unload: &PluginId) -> bool {
         self.currently_being_processed_by
             .retain(|(plugin_id, _)| plugin_id != plugin_id_to_unload);
+        if self.blocked_by == Some(*plugin_id_to_unload) {
+            self.is_explicitly_blocked = false;
+            self.blocked_by = None;
+        }
         if self.currently_being_processed_by.is_empty() && !self.is_explicitly_blocked {
             true
         } else {
@@ -196,7 +297,7 @@ fn release_pipe_of_crashed_plugin(
 ) {
     if let PipeSource::Cli(pipe_id) = &pipe_message.source {
         let mut pipe_state_changes = HashMap::new();
-        pipe_state_changes.insert(pipe_id.to_owned(), PipeStateChange::NoChange);
+        pipe_state_changes.insert(pipe_id.to_owned(), PipeStateChange::Crashed);
         let plugin_render_asset =
             PluginRenderAsset::new(plugin_id, client_id, vec![]).with_pipes(pipe_state_changes);
         let _ = senders
@@ -320,4 +421,134 @@ pub fn pipes_to_block_or_unblock(
         pipe_state_changes.insert(pipe, PipeStateChange::Unblock);
     }
     pipe_state_changes
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const PLUGIN: PluginId = 7;
+    const CLIENT: ClientId = 1;
+
+    fn pending_pipe(pipes: &mut PendingPipes, pipe_id: &str) {
+        pipes.mark_being_processed(pipe_id, &PLUGIN, &CLIENT);
+    }
+
+    #[test]
+    fn a_release_without_a_stored_exit_code_carries_none() {
+        let mut pipes = PendingPipes::default();
+        pending_pipe(&mut pipes, "p");
+        let releases =
+            pipes.update_pipe_state_change("p", PipeStateChange::NoChange, &PLUGIN, &CLIENT);
+        assert_eq!(
+            releases,
+            vec![PipeRelease {
+                pipe_id: "p".to_owned(),
+                exit_code: None
+            }]
+        );
+        assert!(!pipes.is_finished("p"));
+    }
+
+    #[test]
+    fn the_stored_exit_code_is_sent_when_the_plugin_unblocks_the_pipe() {
+        let mut pipes = PendingPipes::default();
+        pending_pipe(&mut pipes, "p");
+        pipes.update_pipe_state_change("p", PipeStateChange::Block, &PLUGIN, &CLIENT);
+        pipes.set_exit_code("p", 0, PLUGIN);
+        let releases =
+            pipes.update_pipe_state_change("p", PipeStateChange::Unblock, &PLUGIN, &CLIENT);
+        assert_eq!(
+            releases,
+            vec![PipeRelease {
+                pipe_id: "p".to_owned(),
+                exit_code: Some(0)
+            }]
+        );
+        assert!(pipes.is_finished("p"));
+    }
+
+    #[test]
+    fn an_automatic_release_after_a_message_is_not_final_even_with_an_exit_code() {
+        let mut pipes = PendingPipes::default();
+        pending_pipe(&mut pipes, "p");
+        pipes.set_exit_code("p", 1, PLUGIN);
+        let releases =
+            pipes.update_pipe_state_change("p", PipeStateChange::NoChange, &PLUGIN, &CLIENT);
+        assert_eq!(releases[0].exit_code, None);
+        assert!(!pipes.is_finished("p"));
+    }
+
+    #[test]
+    fn an_explicit_unblock_while_no_message_is_pending_still_releases_with_the_code() {
+        let mut pipes = PendingPipes::default();
+        pipes.set_exit_code("p", 0, PLUGIN);
+        let releases =
+            pipes.update_pipe_state_change("p", PipeStateChange::Unblock, &PLUGIN, &CLIENT);
+        assert_eq!(releases[0].exit_code, Some(0));
+    }
+
+    #[test]
+    fn the_stored_exit_code_is_sent_when_the_plugin_closes() {
+        let mut pipes = PendingPipes::default();
+        pending_pipe(&mut pipes, "p");
+        pipes.update_pipe_state_change("p", PipeStateChange::Block, &PLUGIN, &CLIENT);
+        pipes.set_exit_code("p", 1, PLUGIN);
+        let releases = pipes.unload_plugin(&PLUGIN);
+        assert_eq!(
+            releases,
+            vec![PipeRelease {
+                pipe_id: "p".to_owned(),
+                exit_code: Some(1)
+            }]
+        );
+    }
+
+    #[test]
+    fn the_stored_exit_code_is_sent_when_the_plugin_closes_between_messages() {
+        let mut pipes = PendingPipes::default();
+        pipes.set_exit_code("p", 1, PLUGIN);
+        let releases = pipes.unload_plugin(&PLUGIN);
+        assert_eq!(releases[0].exit_code, Some(1));
+        assert!(pipes.is_finished("p"));
+    }
+
+    #[test]
+    fn the_stored_exit_code_is_sent_when_the_plugin_crashes() {
+        let mut pipes = PendingPipes::default();
+        pending_pipe(&mut pipes, "p");
+        pipes.update_pipe_state_change("p", PipeStateChange::Block, &PLUGIN, &CLIENT);
+        pipes.set_exit_code("p", 1, PLUGIN);
+        pending_pipe(&mut pipes, "p");
+        let releases =
+            pipes.update_pipe_state_change("p", PipeStateChange::Crashed, &PLUGIN, &CLIENT);
+        assert_eq!(releases[0].exit_code, Some(1));
+    }
+
+    #[test]
+    fn a_closing_plugin_releases_a_pipe_it_blocked_without_an_exit_code() {
+        let mut pipes = PendingPipes::default();
+        pending_pipe(&mut pipes, "p");
+        pipes.update_pipe_state_change("p", PipeStateChange::Block, &PLUGIN, &CLIENT);
+        let releases = pipes.unload_plugin(&PLUGIN);
+        assert_eq!(
+            releases,
+            vec![PipeRelease {
+                pipe_id: "p".to_owned(),
+                exit_code: None
+            }]
+        );
+    }
+
+    #[test]
+    fn a_finished_pipe_ignores_later_changes_and_exit_codes() {
+        let mut pipes = PendingPipes::default();
+        pipes.set_exit_code("p", 0, PLUGIN);
+        pipes.update_pipe_state_change("p", PipeStateChange::Unblock, &PLUGIN, &CLIENT);
+        pipes.set_exit_code("p", 1, PLUGIN);
+        assert!(pipes
+            .update_pipe_state_change("p", PipeStateChange::Unblock, &PLUGIN, &CLIENT)
+            .is_empty());
+        assert!(pipes.unload_plugin(&PLUGIN).is_empty());
+    }
 }

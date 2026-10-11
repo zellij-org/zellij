@@ -26,7 +26,7 @@ export function installMouseHandlers(term, terminalElement, sendFunction) {
     });
 
     document.addEventListener("contextmenu", function (event) {
-        if (event.altKey) {
+        if (event.altKey || term.modes.mouseTrackingMode !== "none") {
             event.preventDefault();
         }
     });

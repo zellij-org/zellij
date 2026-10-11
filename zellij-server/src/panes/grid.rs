@@ -4011,6 +4011,10 @@ impl Grid {
             value = 68;
         } else if event.wheel_down {
             value = 69;
+        } else if event.wheel_left {
+            value = 70;
+        } else if event.wheel_right {
+            value = 71;
         }
         if event.event_type == MouseEventType::Motion {
             value += 32;
@@ -4038,6 +4042,10 @@ impl Grid {
             value = 64;
         } else if event.wheel_down {
             value = 65;
+        } else if event.wheel_left {
+            value = 66;
+        } else if event.wheel_right {
+            value = 67;
         }
         if event.event_type == MouseEventType::Motion {
             value += 32;
@@ -4059,7 +4067,13 @@ impl Grid {
             (MouseTracking::AnyEventTracking, _) => true,
             (_, MouseEventType::Press | MouseEventType::Release) => true,
             (MouseTracking::ButtonEventTracking, MouseEventType::Motion) => {
-                event.left | event.right | event.middle | event.wheel_up | event.wheel_down
+                event.left
+                    | event.right
+                    | event.middle
+                    | event.wheel_up
+                    | event.wheel_down
+                    | event.wheel_left
+                    | event.wheel_right
             },
             (_, _) => false,
         };
@@ -4294,6 +4308,49 @@ impl Grid {
             (MouseMode::Sgr, _) => {
                 let mouse_event = format!(
                     "\u{1b}[<65;{:?};{:?}M",
+                    position.column.0 + 1,
+                    position.line.0 + 1
+                );
+                Some(mouse_event)
+            },
+        }
+    }
+    pub fn mouse_scroll_left_signal(&self, position: &Position) -> Option<String> {
+        match (&self.mouse_mode, &self.mouse_tracking) {
+            (_, MouseTracking::Off) => None,
+            (MouseMode::NoEncoding | MouseMode::Utf8, _) => {
+                let mut msg: Vec<u8> = vec![27, b'[', b'M', b'b'];
+                msg.append(&mut utf8_mouse_coordinates(
+                    position.column() + 1,
+                    position.line() + 1,
+                ));
+                Some(String::from_utf8_lossy(&msg).into())
+            },
+            (MouseMode::Sgr, _) => {
+                let mouse_event = format!(
+                    "\u{1b}[<66;{:?};{:?}M",
+                    position.column.0 + 1,
+                    position.line.0 + 1
+                );
+                Some(mouse_event)
+            },
+        }
+    }
+
+    pub fn mouse_scroll_right_signal(&self, position: &Position) -> Option<String> {
+        match (&self.mouse_mode, &self.mouse_tracking) {
+            (_, MouseTracking::Off) => None,
+            (MouseMode::NoEncoding | MouseMode::Utf8, _) => {
+                let mut msg: Vec<u8> = vec![27, b'[', b'M', b'c'];
+                msg.append(&mut utf8_mouse_coordinates(
+                    position.column() + 1,
+                    position.line() + 1,
+                ));
+                Some(String::from_utf8_lossy(&msg).into())
+            },
+            (MouseMode::Sgr, _) => {
+                let mouse_event = format!(
+                    "\u{1b}[<67;{:?};{:?}M",
                     position.column.0 + 1,
                     position.line.0 + 1
                 );
@@ -5795,6 +5852,7 @@ pub struct Row {
     pub columns: VecDeque<TerminalCharacter>,
     pub is_canonical: bool,
     width: Option<usize>,
+    only_single_width: bool,
     pub bg_color: Option<AnsiCode>,
     osc133_markers: Vec<Osc133Marker>,
 }
@@ -5828,6 +5886,7 @@ impl Row {
             columns: VecDeque::new(),
             is_canonical: false,
             width: None,
+            only_single_width: false,
             bg_color: None,
             osc133_markers: vec![],
         }
@@ -5837,6 +5896,7 @@ impl Row {
             columns,
             is_canonical: false,
             width: None,
+            only_single_width: false,
             bg_color: None,
             osc133_markers: vec![],
         }
@@ -5870,10 +5930,14 @@ impl Row {
             self.width.unwrap()
         } else {
             let mut width = 0;
+            let mut only_single_width = true;
             for terminal_character in &self.columns {
-                width += terminal_character.width();
+                let character_width = terminal_character.width();
+                width += character_width;
+                only_single_width &= character_width == 1;
             }
             self.width = Some(width);
+            self.only_single_width = only_single_width;
             width
         }
     }
@@ -5937,6 +6001,7 @@ impl Row {
             Ordering::Equal => {
                 // this is unwrapped because this always happens after self.width_cached()
                 *self.width.as_mut().unwrap() += terminal_character.width();
+                self.only_single_width &= terminal_character.width() == 1;
                 // adding the character at the end of the current line
                 self.columns.push_back(terminal_character);
             },
@@ -5958,8 +6023,11 @@ impl Row {
             Ordering::Greater => {
                 // adding the character in the middle of the line
                 // we replace the character at its position
-                let (absolute_x_index, position_inside_character) =
-                    self.absolute_character_index_and_position_in_char(x);
+                let (absolute_x_index, position_inside_character) = if self.only_single_width {
+                    (x, 0)
+                } else {
+                    self.absolute_character_index_and_position_in_char(x)
+                };
                 let character_width = terminal_character.width();
                 let overwrite_start = x.saturating_sub(position_inside_character);
                 let overwrite_end =
@@ -5986,6 +6054,7 @@ impl Row {
                                     .insert(position_to_remove, EMPTY_TERMINAL_CHARACTER);
                             }
                         }
+                        self.width = None;
                     },
                     Ordering::Less => {
                         // the replaced character is wider than the current character
@@ -6000,10 +6069,12 @@ impl Row {
                             self.columns
                                 .insert(absolute_x_index + 1, EMPTY_TERMINAL_CHARACTER);
                         }
+                        self.width = None;
                     },
-                    _ => {},
+                    Ordering::Equal => {
+                        self.only_single_width &= character_width == 1;
+                    },
                 }
-                self.width = None;
             },
         }
     }

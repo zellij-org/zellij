@@ -51,6 +51,9 @@ fn main() {
             commands::subscribe_to_session(subscribe_cli, opts.session, config);
             std::process::exit(0);
         }
+        if let Some(Command::Prompt(prompt_cli)) = opts.command {
+            commands::prompt_in_session(prompt_cli, opts.session, config);
+        }
         if let Some(Command::Sessions(Sessions::Run {
             command,
             direction,
@@ -252,6 +255,8 @@ fn main() {
                 in_place_plugin: None,
                 plugin_cwd: None,
                 plugin_title: None,
+                popup: None,
+                popup_no_focus: false,
             };
             commands::send_action_to_session(command_cli_action, opts.session, config);
             std::process::exit(0);

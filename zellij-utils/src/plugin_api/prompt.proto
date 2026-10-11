@@ -1,0 +1,161 @@
+syntax = "proto3";
+
+import "style.proto";
+
+package api.prompt;
+
+message PromptRequest {
+  string element = 1;
+  optional string title = 2;
+  optional uint64 timeout_ms = 3;
+  optional string default = 4;
+  optional PromptPlacement placement = 5;
+  bool focused = 6;
+  oneof spec {
+    ConfirmSpec confirm = 7;
+    ChooseSpec choose = 8;
+    InputSpec input = 9;
+    NumberSpec number = 10;
+    ToggleSpec toggle = 11;
+    SelectSpec select = 12;
+    MenuSpec menu = 13;
+    FormSpec form = 14;
+    NotifySpec notify = 15;
+  }
+}
+
+enum PromptPlacementKind {
+  Pane = 0;
+  Center = 1;
+  Mouse = 2;
+  Cursor = 3;
+  Corner = 4;
+}
+
+message PromptPlacement {
+  PromptPlacementKind kind = 1;
+  optional uint32 pane_id = 2;
+  bool pane_is_plugin = 3;
+  optional string corner = 4;
+}
+
+message ChoiceItem {
+  string value = 1;
+  optional string label = 2;
+}
+
+message ConfirmSpec {
+  api.style.StyledText message = 1;
+  string yes = 2;
+  string no = 3;
+}
+
+message ChooseSpec {
+  repeated ChoiceItem items = 1;
+  bool multi = 2;
+  repeated string selected = 3;
+}
+
+message InputSpec {
+  optional api.style.StyledText message = 1;
+  optional string placeholder = 2;
+  optional string validate = 3;
+  bool required = 4;
+}
+
+message NumberSpec {
+  optional api.style.StyledText message = 1;
+  optional int64 min = 2;
+  optional int64 max = 3;
+  int64 step = 4;
+}
+
+message ToggleSpec {
+  optional api.style.StyledText message = 1;
+}
+
+message SelectSpec {
+  api.style.StyledText message = 1;
+  repeated string options = 2;
+}
+
+message MenuSpec {
+  repeated ChoiceItem items = 1;
+}
+
+enum FormFieldKind {
+  Input = 0;
+  Select = 1;
+  Toggle = 2;
+  Number = 3;
+  Choose = 4;
+}
+
+message FormField {
+  string id = 1;
+  FormFieldKind kind = 2;
+  string label = 3;
+  bool required = 4;
+  optional string validate = 5;
+  optional string placeholder = 6;
+  repeated string options = 7;
+  bool multi = 8;
+  optional int64 min = 9;
+  optional int64 max = 10;
+  optional int64 step = 11;
+  optional string default_json = 12;
+}
+
+message FormSpec {
+  optional string title = 1;
+  repeated FormField fields = 2;
+  string submit_label = 3;
+  string cancel_label = 4;
+  optional api.style.StyledText message = 5;
+}
+
+message NotifySpec {
+  api.style.StyledText message = 1;
+  bool show_pane_name = 2;
+  bool show_tab_name = 3;
+}
+
+message PromptValueList {
+  repeated string values = 1;
+}
+
+message PromptFormEntry {
+  string key = 1;
+  PromptValue value = 2;
+}
+
+message PromptFormValue {
+  repeated PromptFormEntry entries = 1;
+}
+
+message PromptValue {
+  oneof value {
+    string text = 1;
+    int64 number = 2;
+    bool bool_value = 3;
+    string choice = 4;
+    PromptValueList choices = 5;
+    PromptFormValue form = 6;
+  }
+}
+
+message PromptTimedOut {
+  optional PromptValue value = 1;
+}
+
+message PromptCancelled {}
+
+message PromptResult {
+  oneof result {
+    PromptValue answered = 1;
+    bool confirmed = 2;
+    PromptCancelled cancelled = 3;
+    PromptTimedOut timed_out = 4;
+    string error = 5;
+  }
+}

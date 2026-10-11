@@ -194,6 +194,26 @@ pub fn dump_specified_layout(layout: &str) -> std::io::Result<()> {
     }
 }
 
+pub fn specified_keybinds_text(name: &str) -> Option<String> {
+    crate::input::keybind_presets::builtin_keybind_preset_text(name)
+        .map(|text| text.to_owned())
+        .or_else(|| {
+            default_keybinds_dir()
+                .map(|dir| dir.join(add_layout_ext(name)))
+                .and_then(|path| fs::read_to_string(path).ok())
+        })
+}
+
+pub fn dump_specified_keybinds(name: &str) -> std::io::Result<()> {
+    match specified_keybinds_text(name) {
+        Some(text) => dump_asset(text.as_bytes()),
+        None => Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("Keybinding preset not found: {}", name),
+        )),
+    }
+}
+
 pub fn dump_specified_swap_layout(swap_layout: &str) -> std::io::Result<()> {
     if let Some(bundled_layout) = crate::distribution::builtin_layout(swap_layout) {
         return match bundled_layout.swap_layout {
@@ -276,6 +296,15 @@ pub struct Setup {
     #[clap(long, value_parser)]
     pub dump_swap_layout: Option<String>,
 
+    #[clap(
+        long,
+        value_name = "PRESET",
+        value_parser,
+        help = "Dump the specified keybinding preset to stdout"
+    )]
+    #[serde(default)]
+    pub dump_keybinds: Option<String>,
+
     /// Dump the builtin plugins to DIR or "DATA DIR" if unspecified
     #[clap(
         long,
@@ -319,16 +348,36 @@ impl Setup {
 
         // the attach CLI command can also have its own Options, we need to merge them if they
         // exist
-        let cli_config_options = merge_attach_command_options(cli_config_options, &cli_args);
+        let mut cli_config_options = merge_attach_command_options(cli_config_options, &cli_args);
+        if let (Some(options), Ok(cwd)) = (cli_config_options.as_mut(), std::env::current_dir()) {
+            crate::input::keybind_presets::command_line_preset_relative_to(options, &cwd);
+        }
 
         let mut config_without_layout = config.clone();
         let (layout_info, mut config) =
             Setup::parse_layout_and_override_config(cli_config_options.as_ref(), config, cli_args)?;
+        if let Some(keybinds_dir) = cli_config_options
+            .as_ref()
+            .and_then(|options| options.keybinds_dir.clone())
+        {
+            for config in [&mut config, &mut config_without_layout] {
+                config.keybinds_layers.keybinds_dir_override = Some(keybinds_dir.clone());
+                config.resolve_keybinds();
+            }
+        }
 
         let config_options =
             apply_themes_to_config(&mut config, cli_config_options.clone(), cli_args)?;
-        let config_options_without_layout =
-            apply_themes_to_config(&mut config_without_layout, cli_config_options, cli_args)?;
+        let config_options_without_layout = apply_themes_to_config(
+            &mut config_without_layout,
+            cli_config_options.clone(),
+            cli_args,
+        )?;
+        if let Some(cli_config_options) = cli_config_options.as_ref() {
+            for config in [&mut config, &mut config_without_layout] {
+                config.apply_command_line_keybinds(cli_config_options);
+            }
+        }
         fn apply_themes_to_config(
             config: &mut Config,
             cli_config_options: Option<Options>,
@@ -399,6 +448,11 @@ impl Setup {
 
         if let Some(swap_layout) = &self.dump_swap_layout {
             dump_specified_swap_layout(swap_layout)?;
+            std::process::exit(0);
+        }
+
+        if let Some(keybinds) = &self.dump_keybinds {
+            dump_specified_keybinds(keybinds)?;
             std::process::exit(0);
         }
 
@@ -499,7 +553,7 @@ impl Setup {
                 .unwrap();
             }
         }
-        if let Some(config_dir) = config_dir {
+        if let Some(config_dir) = config_dir.clone() {
             writeln!(&mut message, "[CONFIG DIR]: \"{}\"", config_dir.display()).unwrap();
         } else {
             message.push_str("[CONFIG DIR]: Not Found\n");
@@ -566,6 +620,20 @@ impl Setup {
                 system_data_dir.join("plugins").display()
             )
             .unwrap();
+        }
+        let keybinds_dir = config_options
+            .keybinds_dir
+            .clone()
+            .or_else(|| get_keybinds_dir(config_dir.clone()));
+        if let Some(keybinds_dir) = keybinds_dir {
+            writeln!(
+                &mut message,
+                "[KEYBINDS DIR]: \"{}\"",
+                keybinds_dir.display()
+            )
+            .unwrap();
+        } else {
+            message.push_str("[KEYBINDS DIR]: Not Found\n");
         }
         if let Some(layout_dir) = layout_dir {
             writeln!(&mut message, "[LAYOUT DIR]: \"{}\"", layout_dir.display()).unwrap();

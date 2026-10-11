@@ -1,5 +1,4 @@
 use super::{ErrorScreen, KeyResponse, LayoutListScreen, OptimisticUpdate, Screen};
-use crate::text_input::{InputAction, TextInput};
 use crate::ui::truncate_with_ellipsis_start;
 use zellij_tile::prelude::*;
 
@@ -20,14 +19,11 @@ impl RenameLayoutScreen {
     }
 
     pub fn handle_key(&mut self, key: KeyWithModifier) -> KeyResponse {
-        let action = self.name_input.handle_key(key);
-
-        match action {
-            InputAction::Continue => KeyResponse::render(),
-            InputAction::Submit => self.attempt_rename(),
-            InputAction::Cancel => KeyResponse::new_screen(self.cancel_rename()),
-            InputAction::Complete => KeyResponse::none(),
-            InputAction::NoAction => KeyResponse::none(),
+        match self.name_input.handle_key(&key) {
+            UiResponse::Changed(_) | UiResponse::Consumed => KeyResponse::render(),
+            UiResponse::Submitted(_) => self.attempt_rename(),
+            UiResponse::Cancelled => KeyResponse::new_screen(self.cancel_rename()),
+            _ => KeyResponse::none(),
         }
     }
 
