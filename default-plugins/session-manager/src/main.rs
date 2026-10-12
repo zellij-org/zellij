@@ -44,6 +44,8 @@ impl Default for ActiveScreen {
 #[derive(Default)]
 pub(crate) struct State {
     session_name: Option<String>,
+    current_session: Option<SessionUiInfo>,
+    delete_armed: bool,
     pub(crate) sessions: SessionList,
     pub(crate) resurrectable_sessions: ResurrectableSessions,
     search_term: String,
@@ -238,15 +240,21 @@ impl ZellijPlugin for State {
                 should_render = true;
             },
             Event::SessionUpdate(session_infos, _) if self.panel.size.is_some() => {
+                let mut current_changed = false;
                 for session_info in &session_infos {
                     if session_info.is_current_session {
                         self.new_session_info
                             .update_layout_list(session_info.available_layouts.clone());
                         self.session_name = Some(session_info.name.clone());
+                        current_changed = self.update_current_session(session_info);
                     }
                 }
                 self.refresh_layout_list();
-                should_render = self.single_screen_state.mode == SingleScreenMode::SelectingLayout;
+                if current_changed && self.panel.suggestions.is_some() {
+                    self.apply_suggestions_to_list();
+                }
+                should_render = current_changed
+                    || self.single_screen_state.mode == SingleScreenMode::SelectingLayout;
             },
             Event::AvailableLayoutInfo(layouts, _) => {
                 self.new_session_info.update_layout_list(layouts);
@@ -708,6 +716,18 @@ impl State {
         self.sessions.reset_selected_index();
     }
     fn handle_key(&mut self, key: KeyWithModifier) -> bool {
+        // Kill/Delete needs two <Del> presses in a row; any other key cancels.
+        let is_delete = key.bare_key == BareKey::Delete && key.has_no_modifiers();
+        let was_armed = std::mem::take(&mut self.delete_armed);
+        if is_delete && self.delete_needs_confirmation() {
+            if !was_armed {
+                self.delete_armed = true;
+                let prompt = self.delete_prompt();
+                self.show_error(&prompt);
+                return true;
+            }
+            self.error = None;
+        }
         if self.error.is_some() {
             self.error = None;
             return true;
@@ -1151,6 +1171,11 @@ impl State {
                     .single_screen_state
                     .get_selected_result()
                     .map(|r| r.as_delete_target());
+                if matches!(&selected, Some(DeleteTarget::Active(name)) if self.is_current_session_name(name))
+                {
+                    self.leave_and_kill_current_session();
+                    return false;
+                }
                 if let Some(target) = selected {
                     let previous_index = self.single_screen_state.selected_index;
                     let outcome: Result<(), String> = match &target {
@@ -1604,6 +1629,33 @@ impl State {
             ActiveScreen::SingleScreen => ActiveScreen::SingleScreen, // no-op
         };
     }
+    fn delete_needs_confirmation(&self) -> bool {
+        if self.renaming_session_name.is_some() || self.show_kill_all_sessions_warning {
+            return false;
+        }
+        match self.active_screen {
+            ActiveScreen::AttachToSession | ActiveScreen::ResurrectSession => true,
+            ActiveScreen::SingleScreen => {
+                self.single_screen_state.mode == SingleScreenMode::SearchAndSelect
+            },
+            ActiveScreen::NewSession => false,
+        }
+    }
+    fn delete_prompt(&self) -> String {
+        match self.selected_session() {
+            Some((name, _, true)) if self.active_screen == ActiveScreen::SingleScreen => format!(
+                "Press <Del> again to leave and kill '{}' (the current session).",
+                name
+            ),
+            Some((name, true, _)) if self.active_screen == ActiveScreen::SingleScreen => {
+                format!("Press <Del> again to kill '{}'.", name)
+            },
+            Some((name, false, _)) if self.active_screen == ActiveScreen::SingleScreen => {
+                format!("Press <Del> again to delete '{}'.", name)
+            },
+            _ => "Press <Del> again to kill/delete the selected session.".to_owned(),
+        }
+    }
     fn show_error(&mut self, error_text: &str) {
         self.error = Some(error_text.to_owned());
     }
@@ -1819,6 +1871,79 @@ impl State {
             _ => None,
         }
     }
+    fn update_current_session(&mut self, session_info: &SessionInfo) -> bool {
+        let mut tab_infos: Vec<&TabInfo> = session_info.tabs.iter().collect();
+        tab_infos.sort_by_key(|tab| tab.position);
+        let tabs: Vec<SessionPreviewTab> = tab_infos
+            .into_iter()
+            .map(|tab| SessionPreviewTab {
+                name: tab.name.clone(),
+                active: tab.active,
+                panes: session_info
+                    .panes
+                    .panes
+                    .get(&tab.position)
+                    .map(|panes| {
+                        panes
+                            .iter()
+                            .filter(|p| p.is_selectable)
+                            .map(|p| SessionPreviewPane {
+                                id: p.id,
+                                is_plugin: p.is_plugin,
+                                title: p.title.clone(),
+                                focused: p.is_focused,
+                                contents: None,
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+            })
+            .collect();
+        let children_changed = self
+            .panel
+            .tree
+            .set_children_from_tabs(&session_info.name, &tabs);
+        let current = SessionUiInfo::from_session_info(session_info);
+        let summary_changed = self
+            .current_session
+            .as_ref()
+            .map(|previous| {
+                previous.name != current.name
+                    || previous.connected_users != current.connected_users
+                    || previous.tabs.len() != current.tabs.len()
+            })
+            .unwrap_or(true);
+        self.current_session = Some(current);
+        children_changed || summary_changed
+    }
+    /// Move this client to another session (the next running one in the list, else the
+    /// next exited one, else a new session) and then kill the session we left. The kill
+    /// is queued on the server after the switch, so this client is gone before it lands.
+    fn leave_and_kill_current_session(&mut self) {
+        let Some(current) = self.session_name.clone() else {
+            return;
+        };
+        let others = || {
+            self.single_screen_state
+                .unified_results
+                .iter()
+                .filter(|r| r.session_name() != current)
+        };
+        let running = others()
+            .find(|r| matches!(r, UnifiedSearchResult::ActiveSession { .. }))
+            .map(|r| r.session_name().to_owned());
+        let exited = others()
+            .find(|r| matches!(r, UnifiedSearchResult::ResurrectableSession { .. }))
+            .map(|r| r.session_name().to_owned());
+        match running.or(exited) {
+            Some(target) => switch_session(Some(&target)),
+            None => switch_session(None),
+        }
+        let _ = kill_sessions(&[current]);
+    }
+    fn is_current_session_name(&self, name: &str) -> bool {
+        self.session_name.as_deref() == Some(name)
+    }
     fn apply_suggestions_to_list(&mut self) {
         let Some(suggestions) = self.panel.suggestions.as_ref() else {
             return;
@@ -1826,7 +1951,15 @@ impl State {
         let mut running = vec![];
         let mut resumable = vec![];
         let mut ordered_names = vec![];
+        // the server never suggests the session we are in, so we add it ourselves
+        if let Some(current) = self.current_session.as_ref() {
+            ordered_names.push(current.name.clone());
+            running.push(current.clone());
+        }
         for suggestion in &suggestions.suggestions {
+            if Some(&suggestion.name) == self.session_name.as_ref() {
+                continue;
+            }
             ordered_names.push(suggestion.name.clone());
             if suggestion.is_running {
                 let tab_count = suggestion.tabs.len();
@@ -2141,7 +2274,13 @@ impl State {
         let next = match self.tree_cursor() {
             Some(cursor) => (cursor as isize + delta).clamp(0, len as isize - 1) as usize,
             None if delta < 0 => len - 1,
-            None => 0,
+            None => self
+                .panel
+                .tree
+                .rows
+                .iter()
+                .position(|r| !self.is_current_session_name(&r.session))
+                .unwrap_or(0),
         };
         self.tree_select(next);
     }
@@ -2210,6 +2349,26 @@ impl State {
         let is_running = matches!(self.selected_session(), Some((_, true, _)));
         if !is_running {
             return false;
+        }
+        if self.is_current_session_name(&row.session) {
+            // switching to our own session would close it, so focus the tab/pane in place
+            go_to_tab(tab as u32);
+            let pane = pane.and_then(|pane| {
+                self.panel
+                    .tree
+                    .children
+                    .get(&row.session)
+                    .and_then(|tabs| tabs.get(tab))
+                    .and_then(|t| t.panes.get(pane))
+                    .map(|p| (p.id, p.is_plugin))
+            });
+            match pane {
+                Some((id, false)) => focus_terminal_pane(id, false, false),
+                Some((id, true)) => focus_plugin_pane(id, false, false),
+                None => {},
+            }
+            hide_self();
+            return true;
         }
         let pane_id = pane.and_then(|pane| {
             self.panel

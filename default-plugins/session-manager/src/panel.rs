@@ -11,6 +11,7 @@ pub const PANEL_SIZE_PIPE: &str = "session_panel_size";
 pub const SHOW_ALL_TEXT: &str = "Show all and previews ›";
 pub const SHOW_ALL_SHORTCUT: &str = "<Ctrl f>";
 pub const CARD_TITLE: &str = "Running Sessions";
+pub const CURRENT_SESSION_TAG: &str = "[CURRENT]";
 pub const CARD_SHORTCUT: &str = "<F9>";
 pub const CARD_MIN_LIST_ROWS: usize = 5;
 pub const CARD_SCROLL_MARGIN: usize = 2;
@@ -857,19 +858,33 @@ pub fn render_session_tree(
     let visible = rows.len().saturating_sub(offset).min(capacity);
     let session_name_text = |row: &crate::ui::components::CachedRowData| match row.kind {
         CachedRowKind::Resurrectable => format!("{} [EXITED]", row.session_name),
+        CachedRowKind::Active if row.is_current => {
+            format!("{} {}", row.session_name, CURRENT_SESSION_TAG)
+        },
         CachedRowKind::Active => row.session_name.clone(),
     };
-    let folder_text = |name: &str| {
-        suggestions
-            .get(name)
-            .map(|s| folder_cell(s, 24))
-            .unwrap_or_else(|| "—".to_owned())
+    // the server leaves our own session out of the suggestions, but its folder and
+    // branch are the context the suggestions were computed for
+    let current_name = cache
+        .rows
+        .iter()
+        .find(|r| r.is_current)
+        .map(|r| r.session_name.clone());
+    let context = panel.suggestions.as_ref();
+    let folder_text = |name: &str| match suggestions.get(name) {
+        Some(s) => folder_cell(s, 24),
+        None if current_name.as_deref() == Some(name) => context
+            .and_then(|c| c.folder.as_deref())
+            .map(folder_name)
+            .unwrap_or_else(|| "—".to_owned()),
+        None => "—".to_owned(),
     };
-    let branch_text = |name: &str| {
-        suggestions
-            .get(name)
-            .and_then(|s| s.branch.clone())
-            .unwrap_or_else(|| "—".to_owned())
+    let branch_text = |name: &str| match suggestions.get(name) {
+        Some(s) => s.branch.clone().unwrap_or_else(|| "—".to_owned()),
+        None if current_name.as_deref() == Some(name) => context
+            .and_then(|c| c.branch.clone())
+            .unwrap_or_else(|| "—".to_owned()),
+        None => "—".to_owned(),
     };
     let name_width = cache
         .rows
@@ -945,6 +960,12 @@ pub fn render_session_tree(
                 if matches!(cached_row.kind, CachedRowKind::Resurrectable) {
                     let start = name_len + 2;
                     text = text.error_color_range(start..start + "EXITED".len());
+                }
+                if cached_row.is_current {
+                    let tag_start = name_len + 1;
+                    text = text.italic_range(..name_len).success_color_range(
+                        tag_start..tag_start + CURRENT_SESSION_TAG.chars().count(),
+                    );
                 }
                 let folder_start = name_width + 2;
                 let suggestion = suggestions.get(row.session.as_str());

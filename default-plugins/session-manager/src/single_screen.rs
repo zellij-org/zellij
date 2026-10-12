@@ -489,6 +489,22 @@ mod tests {
     }
 
     #[test]
+    fn test_1_4b_current_session_rendered_first() {
+        let mut state = SingleScreenState::default();
+        let active = vec![
+            make_active_session("other-a", 1, 1, 1, false, 100),
+            make_active_session("current-sess", 1, 1, 1, true, 300),
+            make_active_session("other-b", 1, 1, 1, false, 200),
+        ];
+        state.update_search_term(&active, &[make_resurrectable("dead", 50)]);
+        let rows = &state.render_cache.rows;
+        assert_eq!(rows.len(), 4);
+        assert_eq!(rows[0].session_name, "current-sess");
+        assert!(rows[0].is_current);
+        assert!(rows[1..].iter().all(|r| !r.is_current));
+    }
+
+    #[test]
     fn test_1_5_pane_counts_reflect_tab_structure() {
         let mut state = SingleScreenState::default();
         state.search_term = String::new();
