@@ -205,6 +205,9 @@ pub fn paint_text(
             } else if text.is_unbold_at(index) {
                 character_styles = character_styles.bold(Some(AnsiCode::Reset));
             }
+            if text.is_italic_at(index) {
+                character_styles = character_styles.italic(Some(AnsiCode::On));
+            }
         }
         if character_styles != run_styles && !run.is_empty() {
             output.push_str(&paint(run_styles, &run));

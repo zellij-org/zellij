@@ -665,27 +665,14 @@ impl Display for CharacterStyles {
                 _ => {},
             }
         }
-        if let Some(ansi_code) = self.fast_blink {
-            match ansi_code {
-                AnsiCode::On => {
-                    write!(f, "\u{1b}[6m")?;
-                },
-                AnsiCode::Reset => {
-                    write!(f, "\u{1b}[25m")?;
-                },
-                _ => {},
-            }
+        if self.fast_blink == Some(AnsiCode::Reset) || self.slow_blink == Some(AnsiCode::Reset) {
+            write!(f, "\u{1b}[25m")?;
         }
-        if let Some(ansi_code) = self.slow_blink {
-            match ansi_code {
-                AnsiCode::On => {
-                    write!(f, "\u{1b}[5m")?;
-                },
-                AnsiCode::Reset => {
-                    write!(f, "\u{1b}[25m")?;
-                },
-                _ => {},
-            }
+        if self.fast_blink == Some(AnsiCode::On) {
+            write!(f, "\u{1b}[6m")?;
+        }
+        if self.slow_blink == Some(AnsiCode::On) {
+            write!(f, "\u{1b}[5m")?;
         }
         if let Some(ansi_code) = self.bold {
             match ansi_code {
@@ -930,6 +917,18 @@ pub struct TerminalCharacter {
 const _: [(); 16] = [(); std::mem::size_of::<TerminalCharacter>()];
 
 impl TerminalCharacter {
+    pub fn shares_styles_with(&self, other: &TerminalCharacter) -> bool {
+        match (&self.styles, &other.styles) {
+            (RcCharacterStyles::Reset, RcCharacterStyles::Reset) => true,
+            (RcCharacterStyles::Rc(own), RcCharacterStyles::Rc(other)) => Rc::ptr_eq(own, other),
+            _ => false,
+        }
+    }
+    pub fn copy_glyph_from(&mut self, other: &TerminalCharacter) {
+        self.character = other.character;
+        self.width = other.width;
+    }
+
     #[inline]
     pub fn new(character: char) -> Self {
         Self::new_styled(character, Default::default())

@@ -872,6 +872,8 @@ pub struct MouseEventPayload {
     pub wheel_left: bool,
     #[prost(bool, tag="13")]
     pub wheel_right: bool,
+    #[prost(uint32, tag="14")]
+    pub wheel_lines: u32,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1223,6 +1225,8 @@ pub enum ActionName {
     DismissInfoPopups = 125,
     OpenContextMenu = 126,
     MoveTabToPosition = 127,
+    RunInBackground = 128,
+    ToggleSessionCard = 129,
 }
 impl ActionName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1356,6 +1360,8 @@ impl ActionName {
             ActionName::DismissInfoPopups => "DismissInfoPopups",
             ActionName::OpenContextMenu => "OpenContextMenu",
             ActionName::MoveTabToPosition => "MoveTabToPosition",
+            ActionName::RunInBackground => "RunInBackground",
+            ActionName::ToggleSessionCard => "ToggleSessionCard",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1486,6 +1492,8 @@ impl ActionName {
             "DismissInfoPopups" => Some(Self::DismissInfoPopups),
             "OpenContextMenu" => Some(Self::OpenContextMenu),
             "MoveTabToPosition" => Some(Self::MoveTabToPosition),
+            "RunInBackground" => Some(Self::RunInBackground),
+            "ToggleSessionCard" => Some(Self::ToggleSessionCard),
             _ => None,
         }
     }

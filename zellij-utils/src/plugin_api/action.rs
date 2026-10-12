@@ -672,6 +672,14 @@ impl TryFrom<ProtobufAction> for Action {
                 },
                 _ => Err("Wrong payload for Action::Run"),
             },
+            Some(ProtobufActionName::RunInBackground) => match protobuf_action.optional_payload {
+                Some(OptionalPayload::RunPayload(run_command_action)) => {
+                    Ok(Action::RunInBackground {
+                        command: run_command_action.try_into()?,
+                    })
+                },
+                _ => Err("Wrong payload for Action::RunInBackground"),
+            },
             Some(ProtobufActionName::Detach) => match protobuf_action.optional_payload {
                 Some(_) => Err("Detach should not have a payload"),
                 None => Ok(Action::Detach),
@@ -695,6 +703,10 @@ impl TryFrom<ProtobufAction> for Action {
             Some(ProtobufActionName::OpenContextMenu) => match protobuf_action.optional_payload {
                 Some(_) => Err("OpenContextMenu should not have a payload"),
                 None => Ok(Action::OpenContextMenu),
+            },
+            Some(ProtobufActionName::ToggleSessionCard) => match protobuf_action.optional_payload {
+                Some(_) => Err("ToggleSessionCard should not have a payload"),
+                None => Ok(Action::ToggleSessionCard),
             },
             Some(ProtobufActionName::LeftClick) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::LeftClickPayload(payload)) => {
@@ -1902,6 +1914,15 @@ impl TryFrom<Action> for ProtobufAction {
                     optional_payload: Some(OptionalPayload::RunPayload(run_command_action)),
                 })
             },
+            Action::RunInBackground {
+                command: run_command_action,
+            } => {
+                let run_command_action: ProtobufRunCommandAction = run_command_action.try_into()?;
+                Ok(ProtobufAction {
+                    name: ProtobufActionName::RunInBackground as i32,
+                    optional_payload: Some(OptionalPayload::RunPayload(run_command_action)),
+                })
+            },
             Action::Detach => Ok(ProtobufAction {
                 name: ProtobufActionName::Detach as i32,
                 optional_payload: None,
@@ -1920,6 +1941,10 @@ impl TryFrom<Action> for ProtobufAction {
             }),
             Action::DismissInfoPopups => Ok(ProtobufAction {
                 name: ProtobufActionName::DismissInfoPopups as i32,
+                optional_payload: None,
+            }),
+            Action::ToggleSessionCard => Ok(ProtobufAction {
+                name: ProtobufActionName::ToggleSessionCard as i32,
                 optional_payload: None,
             }),
             Action::OpenContextMenu => Ok(ProtobufAction {
@@ -2455,6 +2480,7 @@ impl TryFrom<ProtobufMouseEventPayload> for MouseEvent {
             wheel_down: protobuf_event.wheel_down as bool,
             wheel_left: protobuf_event.wheel_left as bool,
             wheel_right: protobuf_event.wheel_right as bool,
+            wheel_lines: u16::try_from(protobuf_event.wheel_lines).unwrap_or(u16::MAX),
             shift: protobuf_event.shift as bool,
             alt: protobuf_event.alt as bool,
             ctrl: protobuf_event.ctrl as bool,
@@ -2479,6 +2505,7 @@ impl TryFrom<MouseEvent> for ProtobufMouseEventPayload {
             wheel_down: event.wheel_down as bool,
             wheel_left: event.wheel_left as bool,
             wheel_right: event.wheel_right as bool,
+            wheel_lines: u32::from(event.wheel_lines),
             shift: event.shift as bool,
             alt: event.alt as bool,
             ctrl: event.ctrl as bool,
@@ -3651,6 +3678,22 @@ mod tests {
     }
 
     #[test]
+    fn run_in_background_round_trips_over_protobuf() {
+        let original = Action::RunInBackground {
+            command: RunCommandAction {
+                command: PathBuf::from("send-scroll"),
+                args: vec!["up".to_owned()],
+                cwd: Some(PathBuf::from("/tmp")),
+                ..Default::default()
+            },
+        };
+        let protobuf: ProtobufAction = original.clone().try_into().unwrap();
+        assert_eq!(protobuf.name, ProtobufActionName::RunInBackground as i32);
+        let decoded: Action = protobuf.try_into().unwrap();
+        assert_eq!(original, decoded);
+    }
+
+    #[test]
     fn by_id_actions_keep_their_target_over_protobuf() {
         for original in by_id_actions() {
             let protobuf: ProtobufAction = original
@@ -3837,6 +3880,15 @@ mod tests {
             let decoded: Action = protobuf.try_into().expect("decode");
             assert_eq!(original, decoded);
         }
+    }
+
+    #[test]
+    fn toggle_session_card_action_protobuf_round_trip() {
+        let protobuf: ProtobufAction = Action::ToggleSessionCard.try_into().unwrap();
+        assert_eq!(
+            Action::try_from(protobuf).unwrap(),
+            Action::ToggleSessionCard
+        );
     }
 
     #[test]

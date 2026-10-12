@@ -1,0 +1,8 @@
+---
+source: zellij-utils/src/kdl/mod.rs
+expression: fake_document.to_string()
+---
+session_card false
+session_indicator true
+swap_layout_notification false
+on_quit "ask_detach"

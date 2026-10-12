@@ -25,11 +25,13 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicUsize, Ordering},
     Arc, Mutex,
 };
+use std::thread;
 use std::time::{Duration, Instant};
 
+use crate::os_input_output::PaneEnv;
 use crate::panes::PaneId;
 use crate::plugins::{PluginId, PluginInstruction};
 use crate::pty::PtyInstruction;
@@ -54,6 +56,12 @@ pub enum BackgroundJob {
         PathBuf,
         BTreeMap<String, String>,
     ), // command, args, env_variables, cwd, context
+    RunInBackground {
+        command: PathBuf,
+        args: Vec<String>,
+        cwd: Option<PathBuf>,
+        env: PaneEnv,
+    },
     WebRequest(
         PluginId,
         ClientId,
@@ -65,9 +73,14 @@ pub enum BackgroundJob {
     ),
     HighlightPanesWithMessage(Vec<PaneId>, String),
     RenderToClients,
+    RenderToClientsNow,
     QueryZellijWebServerStatus,
     ClearHelpText {
         client_id: ClientId,
+    },
+    RevealPopupAfter {
+        plugin_id: u32,
+        delay_ms: u64,
     },
     ClearCommandOutputFlash {
         pane_id: PaneId,
@@ -79,6 +92,19 @@ pub enum BackgroundJob {
     StartNestedGuestPing(PaneId),
     StopNestedGuestPing(PaneId),
     TrimAllocator,
+    SessionSuggestions(crate::session_suggestions::SessionSuggestionsJob),
+    SessionPreview {
+        plugin_id: PluginId,
+        client_id: ClientId,
+        session_name: String,
+        tab_index: Option<usize>,
+        pane_id: Option<(u32, bool)>,
+    },
+    SavedSessionPreview {
+        plugin_id: PluginId,
+        client_id: ClientId,
+        session_name: String,
+    },
     Exit,
 }
 
@@ -93,9 +119,12 @@ impl From<&BackgroundJob> for BackgroundJobContext {
             BackgroundJob::ReportSessionInfo(..) => BackgroundJobContext::ReportSessionInfo,
             BackgroundJob::ReportLayoutInfo(..) => BackgroundJobContext::ReportLayoutInfo,
             BackgroundJob::RunCommand(..) => BackgroundJobContext::RunCommand,
+            BackgroundJob::RunInBackground { .. } => BackgroundJobContext::RunInBackground,
             BackgroundJob::WebRequest(..) => BackgroundJobContext::WebRequest,
             BackgroundJob::ReportPluginList(..) => BackgroundJobContext::ReportPluginList,
-            BackgroundJob::RenderToClients => BackgroundJobContext::ReportPluginList,
+            BackgroundJob::RenderToClients | BackgroundJob::RenderToClientsNow => {
+                BackgroundJobContext::RenderToClients
+            },
             BackgroundJob::HighlightPanesWithMessage(..) => {
                 BackgroundJobContext::HighlightPanesWithMessage
             },
@@ -103,6 +132,7 @@ impl From<&BackgroundJob> for BackgroundJobContext {
                 BackgroundJobContext::QueryZellijWebServerStatus
             },
             BackgroundJob::ClearHelpText { .. } => BackgroundJobContext::ClearHelpText,
+            BackgroundJob::RevealPopupAfter { .. } => BackgroundJobContext::RevealPopup,
             BackgroundJob::ClearCommandOutputFlash { .. } => {
                 BackgroundJobContext::ClearCommandOutputFlash
             },
@@ -113,6 +143,9 @@ impl From<&BackgroundJob> for BackgroundJobContext {
             BackgroundJob::StartNestedGuestPing(..) => BackgroundJobContext::StartNestedGuestPing,
             BackgroundJob::StopNestedGuestPing(..) => BackgroundJobContext::StopNestedGuestPing,
             BackgroundJob::TrimAllocator => BackgroundJobContext::TrimAllocator,
+            BackgroundJob::SessionSuggestions(..) => BackgroundJobContext::SessionSuggestions,
+            BackgroundJob::SessionPreview { .. } => BackgroundJobContext::SessionPreview,
+            BackgroundJob::SavedSessionPreview { .. } => BackgroundJobContext::SavedSessionPreview,
             BackgroundJob::Exit => BackgroundJobContext::Exit,
         }
     }
@@ -136,7 +169,134 @@ static PLUGIN_ANIMATION_OFFSET_DURATION_MD: u64 = 500;
 static SESSION_METADATA_WRITE_INTERVAL_MS: u64 = 1000;
 static UPDATE_AND_REPORT_CWDS_INTERVAL_MS: u64 = 1000;
 static DEFAULT_SERIALIZATION_INTERVAL: u64 = 60000;
-static REPAINT_DELAY_MS: u64 = 10;
+pub const RENDER_QUIET_PERIOD: Duration = Duration::from_millis(1);
+pub const RENDER_MAX_DELAY: Duration = Duration::from_millis(8);
+
+static IMMEDIATE_RENDER_REQUESTS: AtomicUsize = AtomicUsize::new(0);
+
+pub fn immediate_render_requests() -> usize {
+    IMMEDIATE_RENDER_REQUESTS.load(Ordering::Relaxed)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PendingRender {
+    first_request: Instant,
+    last_request: Instant,
+    immediate_at: Option<Instant>,
+}
+
+impl PendingRender {
+    fn due(&self) -> Instant {
+        let due =
+            (self.last_request + RENDER_QUIET_PERIOD).min(self.first_request + RENDER_MAX_DELAY);
+        match self.immediate_at {
+            Some(immediate_at) => due.min(immediate_at),
+            None => due,
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+struct RenderSchedule {
+    pending: Option<PendingRender>,
+    exiting: bool,
+}
+
+impl RenderSchedule {
+    fn request(&mut self, now: Instant) -> bool {
+        match self.pending.as_mut() {
+            Some(pending) => {
+                pending.last_request = now;
+                false
+            },
+            None => {
+                self.pending = Some(PendingRender {
+                    first_request: now,
+                    last_request: now,
+                    immediate_at: None,
+                });
+                true
+            },
+        }
+    }
+
+    fn request_now(&mut self, now: Instant) {
+        match self.pending.as_mut() {
+            Some(pending) => {
+                pending.last_request = now;
+                pending.immediate_at = Some(now);
+            },
+            None => {
+                self.pending = Some(PendingRender {
+                    first_request: now,
+                    last_request: now,
+                    immediate_at: Some(now),
+                });
+            },
+        }
+    }
+
+    fn step(&mut self, now: Instant) -> RenderStep {
+        if self.exiting {
+            return RenderStep::Exit;
+        }
+        match self.pending {
+            None => RenderStep::Idle,
+            Some(pending) if now >= pending.due() => {
+                self.pending = None;
+                RenderStep::Render
+            },
+            Some(pending) => RenderStep::WaitFor(pending.due() - now),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum RenderStep {
+    Render,
+    WaitFor(Duration),
+    Idle,
+    Exit,
+}
+
+type SharedRenderSchedule = Arc<(Mutex<RenderSchedule>, std::sync::Condvar)>;
+
+fn spawn_render_scheduler(senders: crate::thread_bus::ThreadSenders) -> SharedRenderSchedule {
+    let schedule: SharedRenderSchedule = Arc::new((
+        Mutex::new(RenderSchedule::default()),
+        std::sync::Condvar::new(),
+    ));
+    let _ = thread::Builder::new().name("repaint".to_string()).spawn({
+        let schedule = schedule.clone();
+        move || {
+            let (lock, wake) = &*schedule;
+            let mut state = lock.lock().unwrap();
+            loop {
+                match state.step(Instant::now()) {
+                    RenderStep::Exit => break,
+                    RenderStep::Idle => {
+                        state = wake.wait(state).unwrap();
+                    },
+                    RenderStep::WaitFor(duration) => {
+                        state = wake.wait_timeout(state, duration).unwrap().0;
+                    },
+                    RenderStep::Render => {
+                        drop(state);
+                        if senders
+                            .send_to_screen(ScreenInstruction::RenderToClients)
+                            .is_err()
+                        {
+                            break;
+                        }
+                        state = lock.lock().unwrap();
+                    },
+                }
+            }
+        }
+    });
+    schedule
+}
+
 static HELP_TEXT_DEBOUNCE_DURATION: u64 = 5000;
 static COMMAND_OUTPUT_FLASH_DURATION_MS: u64 = 400;
 
@@ -177,7 +337,9 @@ pub(crate) fn background_jobs_main(
     let last_serialization_time = Arc::new(Mutex::new(Instant::now()));
     let serialization_interval = serialization_interval.map(|s| s * 1000); // convert to
                                                                            // milliseconds
-    let last_render_request: Arc<Mutex<Option<Instant>>> = Arc::new(Mutex::new(None));
+    let render_schedule = spawn_render_scheduler(bus.senders.clone());
+    let session_suggestions =
+        crate::session_suggestions::spawn_session_suggestions_service(bus.senders.clone());
     let pending_help_text_clear: Arc<Mutex<HashMap<ClientId, Instant>>> =
         Arc::new(Mutex::new(HashMap::new()));
     let pending_command_output_flash_clear: Arc<Mutex<HashMap<PaneId, Instant>>> =
@@ -336,20 +498,20 @@ pub(crate) fn background_jobs_main(
                 runtime.spawn({
                     let senders = bus.senders.clone();
                     async move {
-                        let output = tokio::process::Command::new(&command)
-                            .args(&args)
-                            .envs(env_variables)
-                            .current_dir(cwd)
-                            .stdin(std::process::Stdio::null())
-                            .stdout(std::process::Stdio::piped())
-                            .stderr(std::process::Stdio::piped())
-                            .output()
-                            .await;
+                        let output = run_background_command(BackgroundCommand {
+                            program: command,
+                            args,
+                            env: env_variables,
+                            cwd: Some(cwd),
+                            input: None,
+                            timeout: None,
+                        })
+                        .await;
                         match output {
                             Ok(output) => {
-                                let stdout = output.stdout.to_vec();
-                                let stderr = output.stderr.to_vec();
-                                let exit_code = output.status.code();
+                                let stdout = output.stdout;
+                                let stderr = output.stderr;
+                                let exit_code = output.exit_code;
                                 let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
                                     Some(plugin_id),
                                     Some(client_id),
@@ -370,6 +532,14 @@ pub(crate) fn background_jobs_main(
                         }
                     }
                 });
+            },
+            BackgroundJob::RunInBackground {
+                command,
+                args,
+                cwd,
+                env,
+            } => {
+                runtime.spawn(run_in_background(command, args, cwd, env));
             },
             BackgroundJob::WebRequest(plugin_id, client_id, url, verb, headers, body, context) => {
                 runtime.spawn({
@@ -472,52 +642,16 @@ pub(crate) fn background_jobs_main(
                 }
             },
             BackgroundJob::RenderToClients => {
-                // last_render_request being Some() represents a render request that is pending
-                // last_render_request is only ever set to Some() if an async task is spawned to
-                // send the actual render instruction
-                //
-                // given this:
-                // - if last_render_request is None and we received this job, we should spawn an
-                // async task to send the render instruction and log the current task time
-                // - if last_render_request is Some(), it means we're currently waiting to render,
-                // so we should log the render request and do nothing, once the async task has
-                // finished running, it will check to see if the render time was updated while it
-                // was running, and if so send this instruction again so the process can start anew
-                let (should_run_task, current_time) = {
-                    let mut last_render_request = last_render_request.lock().unwrap();
-                    let should_run_task = last_render_request.is_none();
-                    let current_time = Instant::now();
-                    *last_render_request = Some(current_time);
-                    (should_run_task, current_time)
-                };
-                if should_run_task {
-                    runtime.spawn({
-                        let senders = bus.senders.clone();
-                        let last_render_request = last_render_request.clone();
-                        let task_start_time = current_time;
-                        async move {
-                            tokio::time::sleep(std::time::Duration::from_millis(REPAINT_DELAY_MS))
-                                .await;
-                            let _ = senders.send_to_screen(ScreenInstruction::RenderToClients);
-                            {
-                                let mut last_render_request = last_render_request.lock().unwrap();
-                                if let Some(last_render_request) = *last_render_request {
-                                    if last_render_request > task_start_time {
-                                        // another render request was received while we were
-                                        // sleeping, schedule this job again so that we can also
-                                        // render that request
-                                        let _ = senders.send_to_background_jobs(
-                                            BackgroundJob::RenderToClients,
-                                        );
-                                    }
-                                }
-                                // reset the last_render_request so that the task will be spawned
-                                // again once a new request is received
-                                *last_render_request = None;
-                            }
-                        }
-                    });
+                let (lock, wake) = &*render_schedule;
+                if lock.lock().unwrap().request(Instant::now()) {
+                    wake.notify_one();
                 }
+            },
+            BackgroundJob::RenderToClientsNow => {
+                IMMEDIATE_RENDER_REQUESTS.fetch_add(1, Ordering::Relaxed);
+                let (lock, wake) = &*render_schedule;
+                lock.lock().unwrap().request_now(Instant::now());
+                wake.notify_one();
             },
             BackgroundJob::HighlightPanesWithMessage(pane_ids, text) => {
                 if job_already_running(job, &mut running_jobs) {
@@ -537,6 +671,18 @@ pub(crate) fn background_jobs_main(
                         let _ = senders.send_to_screen(
                             ScreenInstruction::ClearPaneFrameColorOverride(pane_ids),
                         );
+                    }
+                });
+            },
+            BackgroundJob::RevealPopupAfter {
+                plugin_id,
+                delay_ms,
+            } => {
+                runtime.spawn({
+                    let senders = bus.senders.clone();
+                    async move {
+                        tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+                        let _ = senders.send_to_screen(ScreenInstruction::RevealPopup(plugin_id));
                     }
                 });
             },
@@ -770,7 +916,53 @@ pub(crate) fn background_jobs_main(
                     });
                 }
             },
+            BackgroundJob::SessionSuggestions(job) => {
+                let _ = session_suggestions.send(job);
+            },
+            BackgroundJob::SessionPreview {
+                plugin_id,
+                client_id,
+                session_name,
+                tab_index,
+                pane_id,
+            } => {
+                let senders = bus.senders.clone();
+                thread::spawn(move || {
+                    let preview = crate::session_previews::running_session_preview(
+                        &session_name,
+                        tab_index,
+                        pane_id,
+                    );
+                    let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
+                        Some(plugin_id),
+                        Some(client_id),
+                        Event::SessionPreview(preview),
+                    )]));
+                });
+            },
+            BackgroundJob::SavedSessionPreview {
+                plugin_id,
+                client_id,
+                session_name,
+            } => {
+                let senders = bus.senders.clone();
+                thread::spawn(move || {
+                    let preview = crate::session_previews::saved_session_preview(&session_name);
+                    let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
+                        Some(plugin_id),
+                        Some(client_id),
+                        Event::SavedSessionPreview(preview),
+                    )]));
+                });
+            },
             BackgroundJob::Exit => {
+                let _ = session_suggestions
+                    .send(crate::session_suggestions::SessionSuggestionsJob::Exit);
+                {
+                    let (lock, wake) = &*render_schedule;
+                    lock.lock().unwrap().exiting = true;
+                    wake.notify_one();
+                }
                 for loading_plugin in loading_plugins.values() {
                     loading_plugin.store(false, Ordering::SeqCst);
                 }
@@ -1079,4 +1271,240 @@ mod tests {
             assert!(!resurrectable.contains_key(name));
         }
     }
+}
+
+async fn run_in_background(
+    command: PathBuf,
+    args: Vec<String>,
+    cwd: Option<PathBuf>,
+    env: PaneEnv,
+) {
+    let mut process = tokio::process::Command::new(&command);
+    process
+        .args(&args)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped());
+    for (name, value) in env {
+        match value {
+            Some(value) => process.env(name, value),
+            None => process.env_remove(name),
+        };
+    }
+    if let Some(cwd) = cwd {
+        if cwd.is_dir() {
+            process.current_dir(cwd);
+        } else {
+            log::error!(
+                "Cannot run '{}' in '{}': not a folder",
+                command.display(),
+                cwd.display()
+            );
+        }
+    }
+    match process.output().await {
+        Ok(output) if !output.status.success() => {
+            log::error!(
+                "Background command '{}' exited with {}: {}",
+                command.display(),
+                output.status,
+                String::from_utf8_lossy(&output.stderr).trim_end()
+            );
+        },
+        Ok(_) => {},
+        Err(e) => {
+            log::error!(
+                "Failed to start background command '{}': {}",
+                command.display(),
+                e
+            );
+        },
+    }
+}
+
+#[cfg(test)]
+mod render_schedule_tests {
+    use super::*;
+
+    #[test]
+    fn a_lone_request_renders_after_the_quiet_period() {
+        let start = Instant::now();
+        let mut schedule = RenderSchedule::default();
+        assert!(schedule.request(start));
+        assert_eq!(
+            schedule.step(start),
+            RenderStep::WaitFor(RENDER_QUIET_PERIOD)
+        );
+        assert_eq!(
+            schedule.step(start + RENDER_QUIET_PERIOD),
+            RenderStep::Render
+        );
+        assert_eq!(schedule.step(start + RENDER_QUIET_PERIOD), RenderStep::Idle);
+    }
+
+    #[test]
+    fn requests_arriving_within_the_quiet_period_postpone_the_render() {
+        let start = Instant::now();
+        let mut schedule = RenderSchedule::default();
+        assert!(schedule.request(start));
+        let later = start + RENDER_QUIET_PERIOD / 2;
+        assert!(!schedule.request(later));
+        assert_eq!(
+            schedule.step(start + RENDER_QUIET_PERIOD),
+            RenderStep::WaitFor(RENDER_QUIET_PERIOD / 2)
+        );
+        assert_eq!(
+            schedule.step(later + RENDER_QUIET_PERIOD),
+            RenderStep::Render
+        );
+    }
+
+    #[test]
+    fn continuous_requests_still_render_once_the_maximum_delay_passes() {
+        let start = Instant::now();
+        let mut schedule = RenderSchedule::default();
+        let step = RENDER_QUIET_PERIOD / 2;
+        let mut now = start;
+        schedule.request(now);
+        while now < start + RENDER_MAX_DELAY {
+            assert_ne!(schedule.step(now), RenderStep::Render);
+            now += step;
+            schedule.request(now);
+        }
+        assert_eq!(schedule.step(start + RENDER_MAX_DELAY), RenderStep::Render);
+        assert!(schedule.request(now));
+    }
+
+    #[test]
+    fn exiting_stops_the_scheduler_even_with_a_pending_render() {
+        let start = Instant::now();
+        let mut schedule = RenderSchedule::default();
+        schedule.request(start);
+        schedule.exiting = true;
+        assert_eq!(schedule.step(start + RENDER_MAX_DELAY), RenderStep::Exit);
+    }
+
+    #[test]
+    fn an_immediate_request_on_an_idle_schedule_renders_at_once() {
+        let start = Instant::now();
+        let mut schedule = RenderSchedule::default();
+        schedule.request_now(start);
+        assert_eq!(schedule.step(start), RenderStep::Render);
+        assert_eq!(schedule.step(start), RenderStep::Idle);
+    }
+
+    #[test]
+    fn an_immediate_request_makes_a_pending_render_due_at_once() {
+        let start = Instant::now();
+        let mut schedule = RenderSchedule::default();
+        assert!(schedule.request(start));
+        let later = start + RENDER_QUIET_PERIOD / 4;
+        assert_eq!(
+            schedule.step(later),
+            RenderStep::WaitFor(RENDER_QUIET_PERIOD * 3 / 4)
+        );
+        schedule.request_now(later);
+        assert_eq!(schedule.step(later), RenderStep::Render);
+        assert_eq!(schedule.step(later), RenderStep::Idle);
+    }
+
+    #[test]
+    fn a_normal_request_after_an_immediate_render_waits_for_the_quiet_period_again() {
+        let start = Instant::now();
+        let mut schedule = RenderSchedule::default();
+        schedule.request_now(start);
+        assert_eq!(schedule.step(start), RenderStep::Render);
+        let later = start + RENDER_QUIET_PERIOD;
+        assert!(schedule.request(later));
+        assert_eq!(
+            schedule.step(later),
+            RenderStep::WaitFor(RENDER_QUIET_PERIOD)
+        );
+        assert_eq!(
+            schedule.step(later + RENDER_QUIET_PERIOD),
+            RenderStep::Render
+        );
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BackgroundCommandOutput {
+    pub exit_code: Option<i32>,
+    pub stdout: Vec<u8>,
+    pub stderr: Vec<u8>,
+}
+
+#[derive(Debug)]
+pub enum BackgroundCommandError {
+    Spawn(std::io::Error),
+    Io(std::io::Error),
+    TimedOut,
+}
+
+impl std::fmt::Display for BackgroundCommandError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BackgroundCommandError::Spawn(e) => write!(f, "failed to start command: {}", e),
+            BackgroundCommandError::Io(e) => write!(f, "failed to run command: {}", e),
+            BackgroundCommandError::TimedOut => write!(f, "command timed out"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct BackgroundCommand {
+    pub program: String,
+    pub args: Vec<String>,
+    pub env: BTreeMap<String, String>,
+    pub cwd: Option<PathBuf>,
+    pub input: Option<Vec<u8>>,
+    pub timeout: Option<Duration>,
+}
+
+pub async fn run_background_command(
+    command: BackgroundCommand,
+) -> std::result::Result<BackgroundCommandOutput, BackgroundCommandError> {
+    use tokio::io::AsyncWriteExt;
+    let mut process = tokio::process::Command::new(&command.program);
+    process
+        .args(&command.args)
+        .envs(&command.env)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true);
+    if let Some(cwd) = &command.cwd {
+        process.current_dir(cwd);
+    }
+    if command.input.is_some() {
+        process.stdin(std::process::Stdio::piped());
+    } else {
+        process.stdin(std::process::Stdio::null());
+    }
+    let mut child = process.spawn().map_err(BackgroundCommandError::Spawn)?;
+    if let (Some(input), Some(mut stdin)) = (command.input.clone(), child.stdin.take()) {
+        tokio::spawn(async move {
+            let _ = stdin.write_all(&input).await;
+            let _ = stdin.shutdown().await;
+        });
+    }
+    let output = child.wait_with_output();
+    let output = match command.timeout {
+        Some(timeout) => match tokio::time::timeout(timeout, output).await {
+            Ok(output) => output,
+            Err(_) => return Err(BackgroundCommandError::TimedOut),
+        },
+        None => output.await,
+    }
+    .map_err(BackgroundCommandError::Io)?;
+    Ok(BackgroundCommandOutput {
+        exit_code: output.status.code(),
+        stdout: output.stdout,
+        stderr: output.stderr,
+    })
+}
+
+pub fn run_background_command_blocking(
+    command: BackgroundCommand,
+) -> std::result::Result<BackgroundCommandOutput, BackgroundCommandError> {
+    crate::global_async_runtime::get_tokio_runtime().block_on(run_background_command(command))
 }

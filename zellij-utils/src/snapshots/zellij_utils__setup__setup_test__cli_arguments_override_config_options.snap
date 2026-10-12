@@ -72,4 +72,8 @@ Options {
     nested_session_handling: None,
     nested_session_ancestor_tab_highlight: None,
     dangerously_enable_paste_buffer_read: None,
+    session_card: None,
+    session_indicator: None,
+    swap_layout_notification: None,
+    on_quit: None,
 }

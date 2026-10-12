@@ -1,0 +1,474 @@
+size: 40x120
+cursor: row=3 col=119 hidden shape=Default
+grid:
+|AR14狐 夢 想  feat. 山 本 椛                   2:1ur 22    デ ィ ッ シ ュ ウ ォ ッ シ ャ ー ◎彡 お い わ ち ゃ ん                              1|
+|Gram    BALLERS ORIGINAL SOUNDTRACKn'    2:124 23    GuNGNiR                 TENDED MIX)xtended)                       2|
+|maras k(marasy+kors k)  +"OUNDTRACK      1:501001    Piano Samurai                                                     2|
+|P*Light      Team "dj TAKA""     feat. Nana Ta 02    HAPPY★RUSH                                                        2|
+|猫 叉 Masternd Team "S-C-U vs L.E.D."      1:574 03    月 雪 に 舞 う 華 の よ う に                                               2|
+|DJ TOTTO                                       24    DORNWALD ～ Junge～                                                 5|
+|USAO                       UNDTRACK            25    BroGamers      ft. Luschel                                        5|
+|SOUND HOLIC feat. Nana Takahashi & 709sec.     26    FUZIN RIZIN                                                       5|
+|青 龍   N BALLERS ORIGINAL SOUNDTRACK Takahashi  27    AO-∞                                                              5|
+|Manabu NamikiRS ORIGINAL SOUNDTRACK            28    Shoot'Em All                                                      5|
+|Eagle            RIGINAL SOUNDTRACK      1:5   29    Caterpillar   (Full Version)                                      5|
+|Dirty AndroidsS ORIGINAL SOUNDTRACKn'          30    Egret and Willowilling Machinen                                   5|
+| CACHUCKY feat. JonjoNAL SOUNDTRACK feat.PON"  31    WarriorIT your cure -long version-                                5|
+|DJ Noriken                    TRACKSE feat.TRA 32    Summerlights(IIDX Edition)                                        5|
+|TOMOSUKEBALLERS ORIGINAL SOUNDTRACKfeat. 柊 木   33    Macuilxochitl                   версия)                           5|
+|dj Hellix                                      34    Quakes   hu KissMe!                                               5|
+|神 楽                                            35    Mare Nectaris の 残 像 。  ft. Kanae Asaba                            5|
+|beatnation Records                             01    crew                 Ex                nded Mix)                  5|
+|kors k vs L.E.D.-G                             02    Venom                                                             5|
+|kors k vs Sota FujimoriL SOUNDTRACK            03    Cyber True Color                                                  5|
+|あ べ に ゅ う ぷ ろ じ ぇ く と  feat. 佐 倉 紗 織  produced 04    恋 は ど う ？ モ ロ ◎波 動 OK☆方 程 式 !!                                    5|
+|Remo-con                 SOUNDTRACKnd Team "L. 05    Vermilion      り の 高 速 爆 走 野 郎 ~                                  5|
+|猫 叉 Master+LERS ORIGINAL SOUNDTRACK            06    Lost wing at.0                                                    5|
+|DJ TOTTO                         CK            07    童 話 回 廊                                                           5|
+|Morrigan feat. リ リ ィ NAL SOUNDTRACK            08    Apocalypse                                                        5|
+|kors k      ERS ORIGINAL SOUNDTRACK            09    Rave Cannon      w                                                5|
+|か め り あ                    UNDTRACK            10    yamabiko (SINOBUZ Edition) Ver)                                   5|
+|HuΣeR                           ACKNI Sound Te 11    ECHIDNA                                                           5|
+|Hommarju         RIGINAL SOUNDTRACK            12    Beat Juggling Mix                                                 5|
+|dj TAKA         ORIGINAL SOUNDTRACK            13    RAIN                                                              5|
+|L.E.D.          ORIGINAL SOUNDTRACK            14    INVISIBLE STRIX                                                   5|
+| CANNON BALLERS ORIGINAL SOUNDTRACK                                                                                    2|
+|金 獅 子  vs 麒 麟  feat. 獏                         15    Snakey Kung-fu                                                    5|
+| CANNON BALLERS ORIGINAL SOUNDTRACK                                                                                    1|
+|猫 叉 Master vs HuΣeR                            16    刃 図 羅                                                             5|
+| CANNON BALLERS ORIGINAL SOUNDTRACK                                                                                    1|
+|DJ TOTTO                                       17    DORNWALD ～ Der Junge im Käfig～                                    5|
+| CANNON BALLERS ORIGINAL SOUNDTRACK                                                                                    5|
+|=================>──────────────────────────────────────────────────────────────────────────────────────────────────────|
+|─────────────────==========>────────────────────────────────────────────────────────────────────────────────────────    |
+styles:
+row 0: cols 0-1 fg=Yellow bg=Background
+row 0: cols 2-3 fg=Foreground bg=Background flags=BOLD
+row 0: cols 4-4 fg=Yellow bg=Background flags=WIDE_CHAR
+row 0: cols 5-5 fg=Yellow bg=Background flags=WIDE_CHAR_SPACER
+row 0: cols 6-6 fg=Yellow bg=Background flags=WIDE_CHAR
+row 0: cols 7-7 fg=Yellow bg=Background flags=WIDE_CHAR_SPACER
+row 0: cols 8-8 fg=Yellow bg=Background flags=WIDE_CHAR
+row 0: cols 9-9 fg=Yellow bg=Background flags=WIDE_CHAR_SPACER
+row 0: cols 10-16 fg=Yellow bg=Background
+row 0: cols 17-17 fg=Yellow bg=Background flags=WIDE_CHAR
+row 0: cols 18-18 fg=Yellow bg=Background flags=WIDE_CHAR_SPACER
+row 0: cols 19-19 fg=Yellow bg=Background flags=WIDE_CHAR
+row 0: cols 20-20 fg=Yellow bg=Background flags=WIDE_CHAR_SPACER
+row 0: cols 21-21 fg=Yellow bg=Background flags=WIDE_CHAR
+row 0: cols 22-22 fg=Yellow bg=Background flags=WIDE_CHAR_SPACER
+row 0: cols 23-38 fg=Yellow bg=Background
+row 0: cols 39-40 fg=Cyan bg=Background
+row 0: cols 41-43 fg=Magenta bg=Background
+row 0: cols 44-46 fg=Yellow bg=Background
+row 0: cols 47-52 fg=Green bg=Background
+row 0: cols 53-53 fg=White bg=Background flags=WIDE_CHAR
+row 0: cols 54-54 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 0: cols 55-55 fg=White bg=Background flags=WIDE_CHAR
+row 0: cols 56-56 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 0: cols 57-57 fg=White bg=Background flags=WIDE_CHAR
+row 0: cols 58-58 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 0: cols 59-59 fg=White bg=Background flags=WIDE_CHAR
+row 0: cols 60-60 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 0: cols 61-61 fg=White bg=Background flags=WIDE_CHAR
+row 0: cols 62-62 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 0: cols 63-63 fg=White bg=Background flags=WIDE_CHAR
+row 0: cols 64-64 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 0: cols 65-65 fg=White bg=Background flags=WIDE_CHAR
+row 0: cols 66-66 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 0: cols 67-67 fg=White bg=Background flags=WIDE_CHAR
+row 0: cols 68-68 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 0: cols 69-69 fg=White bg=Background flags=WIDE_CHAR
+row 0: cols 70-70 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 0: cols 71-71 fg=White bg=Background flags=WIDE_CHAR
+row 0: cols 72-72 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 0: cols 73-73 fg=White bg=Background flags=WIDE_CHAR
+row 0: cols 74-74 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 0: cols 75-75 fg=White bg=Background
+row 0: cols 76-76 fg=White bg=Background flags=WIDE_CHAR
+row 0: cols 77-77 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 0: cols 78-78 fg=White bg=Background flags=WIDE_CHAR
+row 0: cols 79-79 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 0: cols 80-80 fg=White bg=Background flags=WIDE_CHAR
+row 0: cols 81-81 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 0: cols 82-82 fg=White bg=Background flags=WIDE_CHAR
+row 0: cols 83-83 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 0: cols 84-84 fg=White bg=Background flags=WIDE_CHAR
+row 0: cols 85-85 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 0: cols 86-86 fg=White bg=Background flags=WIDE_CHAR
+row 0: cols 87-87 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 0: cols 88-88 fg=White bg=Background flags=WIDE_CHAR
+row 0: cols 89-89 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 0: cols 90-99 fg=White bg=Background
+row 0: cols 119-119 fg=Magenta bg=Background
+row 1: cols 0-7 fg=Yellow bg=Background
+row 1: cols 8-34 fg=Cyan bg=Background
+row 1: cols 35-36 fg=Yellow bg=Background
+row 1: cols 37-40 fg=Cyan bg=Background
+row 1: cols 41-45 fg=Magenta bg=Background
+row 1: cols 47-52 fg=Green bg=Background
+row 1: cols 53-95 fg=White bg=Background
+row 1: cols 119-119 fg=Magenta bg=Background
+row 2: cols 0-25 fg=Yellow bg=Background
+row 2: cols 26-40 fg=Cyan bg=Background
+row 2: cols 41-45 fg=Magenta bg=Background
+row 2: cols 46-46 fg=Magenta bg=Background flags=INVERSE
+row 2: cols 47-52 fg=Green bg=Background
+row 2: cols 53-89 fg=White bg=Background
+row 2: cols 119-119 fg=Magenta bg=Background
+row 3: cols 0-27 fg=Yellow bg=Background
+row 3: cols 28-32 fg=Cyan bg=Background
+row 3: cols 33-46 fg=Yellow bg=Background
+row 3: cols 47-52 fg=Green bg=Background
+row 3: cols 53-83 fg=White bg=Background
+row 3: cols 119-119 fg=Magenta bg=Background
+row 4: cols 0-0 fg=Yellow bg=Background flags=WIDE_CHAR
+row 4: cols 1-1 fg=Yellow bg=Background flags=WIDE_CHAR_SPACER
+row 4: cols 2-2 fg=Yellow bg=Background flags=WIDE_CHAR
+row 4: cols 3-3 fg=Yellow bg=Background flags=WIDE_CHAR_SPACER
+row 4: cols 4-36 fg=Yellow bg=Background
+row 4: cols 37-40 fg=Cyan bg=Background
+row 4: cols 41-45 fg=Magenta bg=Background
+row 4: cols 47-52 fg=Green bg=Background
+row 4: cols 53-53 fg=White bg=Background flags=WIDE_CHAR
+row 4: cols 54-54 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 4: cols 55-55 fg=White bg=Background flags=WIDE_CHAR
+row 4: cols 56-56 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 4: cols 57-57 fg=White bg=Background flags=WIDE_CHAR
+row 4: cols 58-58 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 4: cols 59-59 fg=White bg=Background flags=WIDE_CHAR
+row 4: cols 60-60 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 4: cols 61-61 fg=White bg=Background flags=WIDE_CHAR
+row 4: cols 62-62 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 4: cols 63-63 fg=White bg=Background flags=WIDE_CHAR
+row 4: cols 64-64 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 4: cols 65-65 fg=White bg=Background flags=WIDE_CHAR
+row 4: cols 66-66 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 4: cols 67-67 fg=White bg=Background flags=WIDE_CHAR
+row 4: cols 68-68 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 4: cols 69-69 fg=White bg=Background flags=WIDE_CHAR
+row 4: cols 70-70 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 4: cols 71-71 fg=White bg=Background flags=WIDE_CHAR
+row 4: cols 72-72 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 4: cols 73-95 fg=White bg=Background
+row 4: cols 119-119 fg=Magenta bg=Background
+row 5: cols 0-46 fg=Yellow bg=Background
+row 5: cols 47-52 fg=Green bg=Background
+row 5: cols 53-61 fg=White bg=Background
+row 5: cols 62-62 fg=White bg=Background flags=WIDE_CHAR
+row 5: cols 63-63 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 5: cols 64-68 fg=White bg=Background
+row 5: cols 69-69 fg=White bg=Background flags=WIDE_CHAR
+row 5: cols 70-70 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 5: cols 71-80 fg=White bg=Background
+row 5: cols 119-119 fg=Cyan bg=Background
+row 6: cols 0-26 fg=Yellow bg=Background
+row 6: cols 27-37 fg=Cyan bg=Background
+row 6: cols 47-52 fg=Green bg=Background
+row 6: cols 53-85 fg=White bg=Background
+row 6: cols 119-119 fg=Cyan bg=Background
+row 7: cols 0-46 fg=Yellow bg=Background
+row 7: cols 47-52 fg=Green bg=Background
+row 7: cols 53-74 fg=White bg=Background
+row 7: cols 75-81 fg=White bg=Background flags=INVERSE
+row 7: cols 119-119 fg=Cyan bg=Background
+row 8: cols 0-0 fg=Yellow bg=Background flags=WIDE_CHAR
+row 8: cols 1-1 fg=Yellow bg=Background flags=WIDE_CHAR_SPACER
+row 8: cols 2-2 fg=Yellow bg=Background flags=WIDE_CHAR
+row 8: cols 3-3 fg=Yellow bg=Background flags=WIDE_CHAR_SPACER
+row 8: cols 4-5 fg=Yellow bg=Background
+row 8: cols 6-34 fg=Cyan bg=Background
+row 8: cols 35-46 fg=Yellow bg=Background
+row 8: cols 47-52 fg=Green bg=Background
+row 8: cols 53-73 fg=White bg=Background
+row 8: cols 119-119 fg=Cyan bg=Background
+row 9: cols 0-12 fg=Yellow bg=Background
+row 9: cols 13-37 fg=Cyan bg=Background
+row 9: cols 47-52 fg=Green bg=Background
+row 9: cols 53-78 fg=White bg=Background
+row 9: cols 119-119 fg=Cyan bg=Background
+row 10: cols 0-16 fg=Yellow bg=Background
+row 10: cols 17-40 fg=Cyan bg=Background
+row 10: cols 41-43 fg=Magenta bg=Background
+row 10: cols 47-52 fg=Green bg=Background
+row 10: cols 53-80 fg=White bg=Background
+row 10: cols 119-119 fg=Cyan bg=Background
+row 11: cols 0-13 fg=Yellow bg=Background
+row 11: cols 14-34 fg=Cyan bg=Background
+row 11: cols 35-46 fg=Yellow bg=Background
+row 11: cols 47-52 fg=Green bg=Background
+row 11: cols 53-85 fg=White bg=Background
+row 11: cols 119-119 fg=Cyan bg=Background
+row 12: cols 0-2 fg=Cyan bg=Background
+row 12: cols 3-20 fg=Yellow bg=Background
+row 12: cols 21-34 fg=Cyan bg=Background
+row 12: cols 35-46 fg=Yellow bg=Background
+row 12: cols 47-52 fg=Green bg=Background
+row 12: cols 53-86 fg=White bg=Background
+row 12: cols 119-119 fg=Cyan bg=Background
+row 13: cols 0-29 fg=Yellow bg=Background
+row 13: cols 30-34 fg=Cyan bg=Background
+row 13: cols 35-46 fg=Yellow bg=Background
+row 13: cols 47-52 fg=Green bg=Background
+row 13: cols 53-80 fg=White bg=Background
+row 13: cols 119-119 fg=Cyan bg=Background
+row 14: cols 0-7 fg=Yellow bg=Background
+row 14: cols 8-34 fg=Cyan bg=Background
+row 14: cols 35-40 fg=Yellow bg=Background
+row 14: cols 41-41 fg=Yellow bg=Background flags=WIDE_CHAR
+row 14: cols 42-42 fg=Yellow bg=Background flags=WIDE_CHAR_SPACER
+row 14: cols 43-43 fg=Yellow bg=Background flags=WIDE_CHAR
+row 14: cols 44-44 fg=Yellow bg=Background flags=WIDE_CHAR_SPACER
+row 14: cols 45-46 fg=Yellow bg=Background
+row 14: cols 47-52 fg=Green bg=Background
+row 14: cols 53-91 fg=White bg=Background
+row 14: cols 119-119 fg=Cyan bg=Background
+row 15: cols 0-46 fg=Yellow bg=Background
+row 15: cols 47-52 fg=Green bg=Background
+row 15: cols 53-86 fg=White bg=Background
+row 15: cols 119-119 fg=Cyan bg=Background
+row 16: cols 0-0 fg=Yellow bg=Background flags=WIDE_CHAR
+row 16: cols 1-1 fg=Yellow bg=Background flags=WIDE_CHAR_SPACER
+row 16: cols 2-2 fg=Yellow bg=Background flags=WIDE_CHAR
+row 16: cols 3-3 fg=Yellow bg=Background flags=WIDE_CHAR_SPACER
+row 16: cols 4-46 fg=Yellow bg=Background
+row 16: cols 47-52 fg=Green bg=Background
+row 16: cols 53-65 fg=White bg=Background
+row 16: cols 67-67 fg=White bg=Background flags=WIDE_CHAR
+row 16: cols 68-68 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 16: cols 69-69 fg=White bg=Background flags=WIDE_CHAR
+row 16: cols 70-70 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 16: cols 71-71 fg=White bg=Background flags=WIDE_CHAR
+row 16: cols 72-72 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 16: cols 73-73 fg=White bg=Background flags=WIDE_CHAR
+row 16: cols 74-74 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 16: cols 75-90 fg=White bg=Background
+row 16: cols 119-119 fg=Cyan bg=Background
+row 17: cols 0-46 fg=Yellow bg=Background
+row 17: cols 47-52 fg=Green bg=Background
+row 17: cols 53-100 fg=White bg=Background
+row 17: cols 119-119 fg=Cyan bg=Background
+row 18: cols 0-46 fg=Yellow bg=Background
+row 18: cols 47-52 fg=Green bg=Background
+row 18: cols 53-78 fg=White bg=Background
+row 18: cols 119-119 fg=Cyan bg=Background
+row 19: cols 0-22 fg=Yellow bg=Background
+row 19: cols 23-34 fg=Cyan bg=Background
+row 19: cols 35-37 fg=Yellow bg=Background
+row 19: cols 47-52 fg=Green bg=Background
+row 19: cols 53-90 fg=White bg=Background
+row 19: cols 119-119 fg=Cyan bg=Background
+row 20: cols 0-0 fg=Yellow bg=Background flags=WIDE_CHAR
+row 20: cols 1-1 fg=Yellow bg=Background flags=WIDE_CHAR_SPACER
+row 20: cols 2-2 fg=Yellow bg=Background flags=WIDE_CHAR
+row 20: cols 3-3 fg=Yellow bg=Background flags=WIDE_CHAR_SPACER
+row 20: cols 4-4 fg=Yellow bg=Background flags=WIDE_CHAR
+row 20: cols 5-5 fg=Yellow bg=Background flags=WIDE_CHAR_SPACER
+row 20: cols 6-6 fg=Yellow bg=Background flags=WIDE_CHAR
+row 20: cols 7-7 fg=Yellow bg=Background flags=WIDE_CHAR_SPACER
+row 20: cols 8-8 fg=Yellow bg=Background flags=WIDE_CHAR
+row 20: cols 9-9 fg=Yellow bg=Background flags=WIDE_CHAR_SPACER
+row 20: cols 10-10 fg=Yellow bg=Background flags=WIDE_CHAR
+row 20: cols 11-11 fg=Yellow bg=Background flags=WIDE_CHAR_SPACER
+row 20: cols 12-12 fg=Yellow bg=Background flags=WIDE_CHAR
+row 20: cols 13-13 fg=Yellow bg=Background flags=WIDE_CHAR_SPACER
+row 20: cols 14-14 fg=Yellow bg=Background flags=WIDE_CHAR
+row 20: cols 15-15 fg=Yellow bg=Background flags=WIDE_CHAR_SPACER
+row 20: cols 16-16 fg=Yellow bg=Background flags=WIDE_CHAR
+row 20: cols 17-17 fg=Yellow bg=Background flags=WIDE_CHAR_SPACER
+row 20: cols 18-18 fg=Yellow bg=Background flags=WIDE_CHAR
+row 20: cols 19-19 fg=Yellow bg=Background flags=WIDE_CHAR_SPACER
+row 20: cols 20-20 fg=Yellow bg=Background flags=WIDE_CHAR
+row 20: cols 21-21 fg=Yellow bg=Background flags=WIDE_CHAR_SPACER
+row 20: cols 22-28 fg=Yellow bg=Background
+row 20: cols 29-29 fg=Yellow bg=Background flags=WIDE_CHAR
+row 20: cols 30-30 fg=Yellow bg=Background flags=WIDE_CHAR_SPACER
+row 20: cols 31-31 fg=Yellow bg=Background flags=WIDE_CHAR
+row 20: cols 32-32 fg=Yellow bg=Background flags=WIDE_CHAR_SPACER
+row 20: cols 33-33 fg=Yellow bg=Background flags=WIDE_CHAR
+row 20: cols 34-34 fg=Yellow bg=Background flags=WIDE_CHAR_SPACER
+row 20: cols 35-35 fg=Yellow bg=Background flags=WIDE_CHAR
+row 20: cols 36-36 fg=Yellow bg=Background flags=WIDE_CHAR_SPACER
+row 20: cols 37-46 fg=Yellow bg=Background
+row 20: cols 47-52 fg=Green bg=Background
+row 20: cols 53-53 fg=White bg=Background flags=WIDE_CHAR
+row 20: cols 54-54 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 20: cols 55-55 fg=White bg=Background flags=WIDE_CHAR
+row 20: cols 56-56 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 20: cols 57-57 fg=White bg=Background flags=WIDE_CHAR
+row 20: cols 58-58 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 20: cols 59-59 fg=White bg=Background flags=WIDE_CHAR
+row 20: cols 60-60 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 20: cols 61-61 fg=White bg=Background flags=WIDE_CHAR
+row 20: cols 62-62 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 20: cols 63-63 fg=White bg=Background flags=WIDE_CHAR
+row 20: cols 64-64 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 20: cols 65-65 fg=White bg=Background flags=WIDE_CHAR
+row 20: cols 66-66 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 20: cols 67-67 fg=White bg=Background
+row 20: cols 68-68 fg=White bg=Background flags=WIDE_CHAR
+row 20: cols 69-69 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 20: cols 70-70 fg=White bg=Background flags=WIDE_CHAR
+row 20: cols 71-71 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 20: cols 72-74 fg=White bg=Background
+row 20: cols 75-75 fg=White bg=Background flags=WIDE_CHAR
+row 20: cols 76-76 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 20: cols 77-77 fg=White bg=Background flags=WIDE_CHAR
+row 20: cols 78-78 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 20: cols 79-79 fg=White bg=Background flags=WIDE_CHAR
+row 20: cols 80-80 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 20: cols 81-90 fg=White bg=Background
+row 20: cols 119-119 fg=Cyan bg=Background
+row 21: cols 0-23 fg=Yellow bg=Background
+row 21: cols 24-34 fg=Cyan bg=Background
+row 21: cols 35-46 fg=Yellow bg=Background
+row 21: cols 47-52 fg=Green bg=Background
+row 21: cols 53-66 fg=White bg=Background
+row 21: cols 68-68 fg=White bg=Background flags=WIDE_CHAR
+row 21: cols 69-69 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 21: cols 70-70 fg=White bg=Background flags=WIDE_CHAR
+row 21: cols 71-71 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 21: cols 72-72 fg=White bg=Background flags=WIDE_CHAR
+row 21: cols 73-73 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 21: cols 74-74 fg=White bg=Background flags=WIDE_CHAR
+row 21: cols 75-75 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 21: cols 76-76 fg=White bg=Background flags=WIDE_CHAR
+row 21: cols 77-77 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 21: cols 78-78 fg=White bg=Background flags=WIDE_CHAR
+row 21: cols 79-79 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 21: cols 80-80 fg=White bg=Background flags=WIDE_CHAR
+row 21: cols 81-81 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 21: cols 82-82 fg=White bg=Background flags=WIDE_CHAR
+row 21: cols 83-83 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 21: cols 84-84 fg=White bg=Background
+row 21: cols 119-119 fg=Cyan bg=Background
+row 22: cols 0-0 fg=Yellow bg=Background flags=WIDE_CHAR
+row 22: cols 1-1 fg=Yellow bg=Background flags=WIDE_CHAR_SPACER
+row 22: cols 2-2 fg=Yellow bg=Background flags=WIDE_CHAR
+row 22: cols 3-3 fg=Yellow bg=Background flags=WIDE_CHAR_SPACER
+row 22: cols 4-10 fg=Yellow bg=Background
+row 22: cols 11-34 fg=Cyan bg=Background
+row 22: cols 47-52 fg=Green bg=Background
+row 22: cols 53-78 fg=White bg=Background
+row 22: cols 119-119 fg=Cyan bg=Background
+row 23: cols 0-32 fg=Yellow bg=Background
+row 23: cols 33-34 fg=Cyan bg=Background
+row 23: cols 35-46 fg=Yellow bg=Background
+row 23: cols 47-52 fg=Green bg=Background
+row 23: cols 53-53 fg=White bg=Background flags=WIDE_CHAR
+row 23: cols 54-54 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 23: cols 55-55 fg=White bg=Background flags=WIDE_CHAR
+row 23: cols 56-56 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 23: cols 57-57 fg=White bg=Background flags=WIDE_CHAR
+row 23: cols 58-58 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 23: cols 59-59 fg=White bg=Background flags=WIDE_CHAR
+row 23: cols 60-60 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 23: cols 61-75 fg=White bg=Background
+row 23: cols 119-119 fg=Cyan bg=Background
+row 24: cols 0-14 fg=Yellow bg=Background
+row 24: cols 15-15 fg=Yellow bg=Background flags=WIDE_CHAR
+row 24: cols 16-16 fg=Yellow bg=Background flags=WIDE_CHAR_SPACER
+row 24: cols 17-17 fg=Yellow bg=Background flags=WIDE_CHAR
+row 24: cols 18-18 fg=Yellow bg=Background flags=WIDE_CHAR_SPACER
+row 24: cols 19-19 fg=Yellow bg=Background flags=WIDE_CHAR
+row 24: cols 20-20 fg=Yellow bg=Background flags=WIDE_CHAR_SPACER
+row 24: cols 21-34 fg=Cyan bg=Background
+row 24: cols 35-46 fg=Yellow bg=Background
+row 24: cols 47-52 fg=Green bg=Background
+row 24: cols 53-100 fg=White bg=Background
+row 24: cols 119-119 fg=Cyan bg=Background
+row 25: cols 0-11 fg=Yellow bg=Background
+row 25: cols 12-34 fg=Cyan bg=Background
+row 25: cols 47-52 fg=Green bg=Background
+row 25: cols 53-77 fg=White bg=Background
+row 25: cols 119-119 fg=Cyan bg=Background
+row 26: cols 0-0 fg=Yellow bg=Background flags=WIDE_CHAR
+row 26: cols 1-1 fg=Yellow bg=Background flags=WIDE_CHAR_SPACER
+row 26: cols 2-2 fg=Yellow bg=Background flags=WIDE_CHAR
+row 26: cols 3-3 fg=Yellow bg=Background flags=WIDE_CHAR_SPACER
+row 26: cols 4-4 fg=Yellow bg=Background flags=WIDE_CHAR
+row 26: cols 5-5 fg=Yellow bg=Background flags=WIDE_CHAR_SPACER
+row 26: cols 6-6 fg=Yellow bg=Background flags=WIDE_CHAR
+row 26: cols 7-7 fg=Yellow bg=Background flags=WIDE_CHAR_SPACER
+row 26: cols 8-26 fg=Yellow bg=Background
+row 26: cols 27-34 fg=Cyan bg=Background
+row 26: cols 47-52 fg=Green bg=Background
+row 26: cols 53-83 fg=White bg=Background
+row 26: cols 119-119 fg=Cyan bg=Background
+row 27: cols 0-31 fg=Yellow bg=Background
+row 27: cols 32-34 fg=Cyan bg=Background
+row 27: cols 35-46 fg=Yellow bg=Background flags=INVERSE
+row 27: cols 47-52 fg=Green bg=Background
+row 27: cols 53-64 fg=White bg=Background
+row 27: cols 65-74 fg=White bg=Background flags=INVERSE
+row 27: cols 119-119 fg=Cyan bg=Background
+row 28: cols 0-16 fg=Yellow bg=Background
+row 28: cols 17-34 fg=Cyan bg=Background
+row 28: cols 47-52 fg=Green bg=Background
+row 28: cols 53-70 fg=White bg=Background
+row 28: cols 119-119 fg=Cyan bg=Background
+row 29: cols 0-15 fg=Yellow bg=Background
+row 29: cols 16-34 fg=Cyan bg=Background
+row 29: cols 47-52 fg=Green bg=Background
+row 29: cols 53-83 fg=White bg=Background
+row 29: cols 119-119 fg=Cyan bg=Background
+row 30: cols 0-15 fg=Yellow bg=Background
+row 30: cols 16-34 fg=Cyan bg=Background
+row 30: cols 35-46 fg=Yellow bg=Background flags=INVERSE
+row 30: cols 47-52 fg=Green bg=Background
+row 30: cols 53-67 fg=White bg=Background
+row 30: cols 119-119 fg=Cyan bg=Background
+row 31: cols 0-34 fg=Cyan bg=Background
+row 31: cols 119-119 fg=Magenta bg=Background
+row 32: cols 0-0 fg=Yellow bg=Background flags=WIDE_CHAR
+row 32: cols 1-1 fg=Yellow bg=Background flags=WIDE_CHAR_SPACER
+row 32: cols 2-2 fg=Yellow bg=Background flags=WIDE_CHAR
+row 32: cols 3-3 fg=Yellow bg=Background flags=WIDE_CHAR_SPACER
+row 32: cols 4-4 fg=Yellow bg=Background flags=WIDE_CHAR
+row 32: cols 5-5 fg=Yellow bg=Background flags=WIDE_CHAR_SPACER
+row 32: cols 6-9 fg=Yellow bg=Background
+row 32: cols 10-10 fg=Yellow bg=Background flags=WIDE_CHAR
+row 32: cols 11-11 fg=Yellow bg=Background flags=WIDE_CHAR_SPACER
+row 32: cols 12-12 fg=Yellow bg=Background flags=WIDE_CHAR
+row 32: cols 13-13 fg=Yellow bg=Background flags=WIDE_CHAR_SPACER
+row 32: cols 14-20 fg=Yellow bg=Background
+row 32: cols 21-21 fg=Yellow bg=Background flags=WIDE_CHAR
+row 32: cols 22-22 fg=Yellow bg=Background flags=WIDE_CHAR_SPACER
+row 32: cols 47-52 fg=Green bg=Background
+row 32: cols 53-66 fg=White bg=Background
+row 32: cols 119-119 fg=Cyan bg=Background
+row 33: cols 0-34 fg=Cyan bg=Background
+row 33: cols 119-119 fg=Magenta bg=Background
+row 34: cols 0-0 fg=Yellow bg=Background flags=WIDE_CHAR
+row 34: cols 1-1 fg=Yellow bg=Background flags=WIDE_CHAR_SPACER
+row 34: cols 2-2 fg=Yellow bg=Background flags=WIDE_CHAR
+row 34: cols 3-3 fg=Yellow bg=Background flags=WIDE_CHAR_SPACER
+row 34: cols 4-18 fg=Yellow bg=Background
+row 34: cols 47-52 fg=Green bg=Background
+row 34: cols 53-53 fg=White bg=Background flags=WIDE_CHAR
+row 34: cols 54-54 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 34: cols 55-55 fg=White bg=Background flags=WIDE_CHAR
+row 34: cols 56-56 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 34: cols 57-57 fg=White bg=Background flags=WIDE_CHAR
+row 34: cols 58-58 fg=White bg=Background flags=WIDE_CHAR_SPACER
+row 34: cols 59-72 fg=White bg=Background
+row 34: cols 119-119 fg=Cyan bg=Background
+row 35: cols 0-34 fg=Cyan bg=Background
+row 35: cols 119-119 fg=Magenta bg=Background
+row 36: cols 0-7 fg=Yellow bg=Background flags=INVERSE
+row 36: cols 47-52 fg=Green bg=Background flags=INVERSE
+row 36: cols 53-61 fg=White bg=Background flags=INVERSE
+row 36: cols 62-62 fg=White bg=Background flags=INVERSE|WIDE_CHAR
+row 36: cols 63-63 fg=White bg=Background flags=INVERSE|WIDE_CHAR_SPACER
+row 36: cols 64-81 fg=White bg=Background flags=INVERSE
+row 36: cols 82-82 fg=White bg=Background flags=INVERSE|WIDE_CHAR
+row 36: cols 83-83 fg=White bg=Background flags=INVERSE|WIDE_CHAR_SPACER
+row 36: cols 119-119 fg=Cyan bg=Background flags=INVERSE
+row 37: cols 0-34 fg=Cyan bg=Background flags=INVERSE
+row 37: cols 119-119 fg=Magenta bg=Background flags=INVERSE
+row 38: cols 0-17 fg=Green bg=Background flags=BOLD
+row 38: cols 18-119 fg=Black bg=Background flags=BOLD
+row 39: cols 0-16 fg=Black bg=Background flags=BOLD
+row 39: cols 17-27 fg=Green bg=Background flags=BOLD
+row 39: cols 28-115 fg=Black bg=Background flags=BOLD
+images:

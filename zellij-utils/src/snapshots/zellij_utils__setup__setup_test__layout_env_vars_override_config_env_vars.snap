@@ -1,6 +1,5 @@
 ---
 source: zellij-utils/src/setup.rs
-assertion_line: 906
 expression: "format!(\"{:#?}\", config)"
 ---
 Config {
@@ -45,6 +44,14 @@ Config {
                 MoveFocusOrTab {
                     direction: Right,
                 },
+            ],
+            KeyWithModifier {
+                bare_key: F(
+                    9,
+                ),
+                key_modifiers: {},
+            }: [
+                ToggleSessionCard,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -427,6 +434,14 @@ Config {
                 MoveFocusOrTab {
                     direction: Right,
                 },
+            ],
+            KeyWithModifier {
+                bare_key: F(
+                    9,
+                ),
+                key_modifiers: {},
+            }: [
+                ToggleSessionCard,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -936,6 +951,14 @@ Config {
                 MoveFocusOrTab {
                     direction: Right,
                 },
+            ],
+            KeyWithModifier {
+                bare_key: F(
+                    9,
+                ),
+                key_modifiers: {},
+            }: [
+                ToggleSessionCard,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -1534,6 +1557,32 @@ Config {
                 MoveFocusOrTab {
                     direction: Right,
                 },
+            ],
+            KeyWithModifier {
+                bare_key: F(
+                    9,
+                ),
+                key_modifiers: {},
+            }: [
+                ToggleSessionCard,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    ' ',
+                ),
+                key_modifiers: {},
+            }: [
+                NextSwapLayout,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    ' ',
+                ),
+                key_modifiers: {
+                    Shift,
+                },
+            }: [
+                PreviousSwapLayout,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -2158,6 +2207,14 @@ Config {
                 },
             ],
             KeyWithModifier {
+                bare_key: F(
+                    9,
+                ),
+                key_modifiers: {},
+            }: [
+                ToggleSessionCard,
+            ],
+            KeyWithModifier {
                 bare_key: Char(
                     '+',
                 ),
@@ -2630,6 +2687,14 @@ Config {
                 },
             ],
             KeyWithModifier {
+                bare_key: F(
+                    9,
+                ),
+                key_modifiers: {},
+            }: [
+                ToggleSessionCard,
+            ],
+            KeyWithModifier {
                 bare_key: Char(
                     '+',
                 ),
@@ -3016,6 +3081,14 @@ Config {
                 MoveFocusOrTab {
                     direction: Right,
                 },
+            ],
+            KeyWithModifier {
+                bare_key: F(
+                    9,
+                ),
+                key_modifiers: {},
+            }: [
+                ToggleSessionCard,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -3501,6 +3574,14 @@ Config {
                 },
             ],
             KeyWithModifier {
+                bare_key: F(
+                    9,
+                ),
+                key_modifiers: {},
+            }: [
+                ToggleSessionCard,
+            ],
+            KeyWithModifier {
                 bare_key: Char(
                     '+',
                 ),
@@ -3854,6 +3935,14 @@ Config {
                 },
             ],
             KeyWithModifier {
+                bare_key: F(
+                    9,
+                ),
+                key_modifiers: {},
+            }: [
+                ToggleSessionCard,
+            ],
+            KeyWithModifier {
                 bare_key: Char(
                     '+',
                 ),
@@ -4205,6 +4294,14 @@ Config {
                 MoveFocusOrTab {
                     direction: Right,
                 },
+            ],
+            KeyWithModifier {
+                bare_key: F(
+                    9,
+                ),
+                key_modifiers: {},
+            }: [
+                ToggleSessionCard,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -4814,6 +4911,14 @@ Config {
                 },
             ],
             KeyWithModifier {
+                bare_key: F(
+                    9,
+                ),
+                key_modifiers: {},
+            }: [
+                ToggleSessionCard,
+            ],
+            KeyWithModifier {
                 bare_key: Char(
                     '+',
                 ),
@@ -5228,6 +5333,14 @@ Config {
                 },
             ],
             KeyWithModifier {
+                bare_key: F(
+                    9,
+                ),
+                key_modifiers: {},
+            }: [
+                ToggleSessionCard,
+            ],
+            KeyWithModifier {
                 bare_key: Char(
                     '+',
                 ),
@@ -5610,6 +5723,14 @@ Config {
                 MoveFocusOrTab {
                     direction: Right,
                 },
+            ],
+            KeyWithModifier {
+                bare_key: F(
+                    9,
+                ),
+                key_modifiers: {},
+            }: [
+                ToggleSessionCard,
             ],
             KeyWithModifier {
                 bare_key: Char(
@@ -6181,6 +6302,10 @@ Config {
         nested_session_handling: None,
         nested_session_ancestor_tab_highlight: None,
         dangerously_enable_paste_buffer_read: None,
+        session_card: None,
+        session_indicator: None,
+        swap_layout_notification: None,
+        on_quit: None,
     },
     themes: {},
     plugins: PluginAliases {
@@ -10767,5 +10892,61 @@ Config {
                 app_first: None,
             },
         },
+    },
+    window: WindowConfig {
+        font: None,
+        font_size: None,
+        system_fonts: None,
+        ligatures: None,
+        cursor_style: None,
+        cursor_blink: None,
+        paste_keys: None,
+        zoom_in_keys: None,
+        zoom_out_keys: None,
+        zoom_reset_keys: None,
+        middle_click_paste: None,
+        open_links: None,
+        bell: None,
+        notifications: None,
+        startup_mode: None,
+        opacity: None,
+        opacity_mode: None,
+        blur: None,
+        macos_option_as_alt: None,
+        theme: None,
+        padding: None,
+        padding_top: None,
+        padding_right: None,
+        padding_bottom: None,
+        padding_left: None,
+        padding_balance: None,
+        padding_color: None,
+        line_height: None,
+        cell_width: None,
+        baseline_offset: None,
+        underline_offset: None,
+        underline_thickness: None,
+        initial_columns: None,
+        initial_rows: None,
+        font_weight: None,
+        font_features: None,
+        fullscreen_keys: None,
+        hide_pointer_while_typing: None,
+        cursor_unfocused_hollow: None,
+        minimum_contrast: None,
+        smooth_scrolling: None,
+        scroll_animation_duration: None,
+        scroll_momentum: None,
+        scroll_momentum_friction: None,
+        open_links_with_shift: None,
+        shift_drag_selects: None,
+        copy_keys: None,
+    },
+    session_suggestions: SessionSuggestionsConfig {
+        facts: [],
+        rules: None,
+        then: None,
+        script: None,
+        record: None,
     },
 }

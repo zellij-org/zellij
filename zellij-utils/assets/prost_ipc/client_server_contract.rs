@@ -154,7 +154,7 @@ pub struct RgbColor {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Action {
-    #[prost(oneof="action::ActionType", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 156, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 157, 158, 159, 160, 161, 162")]
+    #[prost(oneof="action::ActionType", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 156, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 157, 158, 159, 160, 161, 162, 163, 165")]
     pub action_type: ::core::option::Option<action::ActionType>,
 }
 /// Nested message and enum types in `Action`.
@@ -486,6 +486,10 @@ pub mod action {
         OpenContextMenu(super::OpenContextMenuAction),
         #[prost(message, tag="162")]
         MoveTabToPosition(super::MoveTabToPositionAction),
+        #[prost(message, tag="163")]
+        RunInBackground(super::RunInBackgroundAction),
+        #[prost(message, tag="165")]
+        ToggleSessionCard(super::ToggleSessionCardAction),
     }
 }
 // Action message definitions (all 92 variants)
@@ -1116,6 +1120,12 @@ pub struct RunAction {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RunInBackgroundAction {
+    #[prost(message, optional, tag="1")]
+    pub command: ::core::option::Option<RunCommandAction>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct LaunchOrFocusPluginAction {
     #[prost(message, optional, tag="1")]
     pub plugin: ::core::option::Option<RunPluginOrAlias>,
@@ -1530,6 +1540,8 @@ pub struct ConnectToSession {
     pub layout: ::core::option::Option<LayoutInfo>,
     #[prost(string, optional, tag="5")]
     pub cwd: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, optional, tag="6")]
+    pub session_card: ::core::option::Option<bool>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1544,6 +1556,8 @@ pub struct SwitchSessionAction {
     pub layout: ::core::option::Option<LayoutInfo>,
     #[prost(string, optional, tag="5")]
     pub cwd: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, tag="6")]
+    pub close_current: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1897,6 +1911,8 @@ pub struct MouseEvent {
     pub wheel_left: bool,
     #[prost(bool, tag="12")]
     pub wheel_right: bool,
+    #[prost(uint32, tag="13")]
+    pub wheel_lines: u32,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -2179,6 +2195,14 @@ pub struct Options {
     #[prost(bool, optional, tag="76")]
     pub dangerously_allow_web_serving_without_a_certificate: ::core::option::Option<bool>,
     #[prost(bool, optional, tag="77")]
+    pub session_card: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag="78")]
+    pub session_indicator: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag="79")]
+    pub swap_layout_notification: ::core::option::Option<bool>,
+    #[prost(string, optional, tag="81")]
+    pub on_quit: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, optional, tag="82")]
     pub nested_session_ancestor_tab_highlight: ::core::option::Option<bool>,
 }
 /// Pane-targeting action messages
@@ -2404,6 +2428,10 @@ pub struct DismissInfoPopupsAction {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct OpenContextMenuAction {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ToggleSessionCardAction {
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
@@ -3262,10 +3290,36 @@ impl ThemeHue {
         }
     }
 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum HostTerminalThemeIndication {
+    Dark = 0,
+    Light = 1,
+}
+impl HostTerminalThemeIndication {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            HostTerminalThemeIndication::Dark => "HOST_TERMINAL_THEME_INDICATION_DARK",
+            HostTerminalThemeIndication::Light => "HOST_TERMINAL_THEME_INDICATION_LIGHT",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "HOST_TERMINAL_THEME_INDICATION_DARK" => Some(Self::Dark),
+            "HOST_TERMINAL_THEME_INDICATION_LIGHT" => Some(Self::Light),
+            _ => None,
+        }
+    }
+}
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ClientToServerMsg {
-    #[prost(oneof="client_to_server_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28")]
+    #[prost(oneof="client_to_server_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32")]
     pub message: ::core::option::Option<client_to_server_msg::Message>,
 }
 /// Nested message and enum types in `ClientToServerMsg`.
@@ -3329,6 +3383,14 @@ pub mod client_to_server_msg {
         HostTerminalFocusChanged(super::HostTerminalFocusChangedMsg),
         #[prost(message, tag="28")]
         KittyZlibSupport(super::KittyZlibSupportMsg),
+        #[prost(message, tag="29")]
+        StructuredRenderSupport(super::StructuredRenderSupportMsg),
+        #[prost(message, tag="30")]
+        RenderFrameAck(super::RenderFrameAckMsg),
+        #[prost(message, tag="31")]
+        RequestSessionPreview(super::RequestSessionPreviewMsg),
+        #[prost(message, tag="32")]
+        FontFamilies(super::FontFamiliesMsg),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -3497,6 +3559,8 @@ pub struct NestedSessionFrameFromHostMsg {
 pub struct KittyGraphicsSupportMsg {
     #[prost(bool, tag="1")]
     pub supported: bool,
+    #[prost(bool, tag="2")]
+    pub local_media: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -3509,6 +3573,16 @@ pub struct KittyZlibSupportMsg {
 pub struct SixelSupportMsg {
     #[prost(bool, tag="1")]
     pub supported: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RequestSessionPreviewMsg {
+    #[prost(uint32, optional, tag="1")]
+    pub tab_index: ::core::option::Option<u32>,
+    #[prost(uint32, optional, tag="2")]
+    pub pane_id: ::core::option::Option<u32>,
+    #[prost(bool, tag="3")]
+    pub pane_is_plugin: bool,
 }
 /// Empty message
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -3523,36 +3597,28 @@ pub struct SetMobileRenderPreferencesMsg {
     #[prost(bool, tag="2")]
     pub fit: bool,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
-#[repr(i32)]
-pub enum HostTerminalThemeIndication {
-    Dark = 0,
-    Light = 1,
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct StructuredRenderSupportMsg {
+    #[prost(bool, tag="1")]
+    pub supported: bool,
 }
-impl HostTerminalThemeIndication {
-    /// String value of the enum field names used in the ProtoBuf definition.
-    ///
-    /// The values are not transformed in any way and thus are considered stable
-    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
-    pub fn as_str_name(&self) -> &'static str {
-        match self {
-            HostTerminalThemeIndication::Dark => "HOST_TERMINAL_THEME_INDICATION_DARK",
-            HostTerminalThemeIndication::Light => "HOST_TERMINAL_THEME_INDICATION_LIGHT",
-        }
-    }
-    /// Creates an enum from field names used in the ProtoBuf definition.
-    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
-        match value {
-            "HOST_TERMINAL_THEME_INDICATION_DARK" => Some(Self::Dark),
-            "HOST_TERMINAL_THEME_INDICATION_LIGHT" => Some(Self::Light),
-            _ => None,
-        }
-    }
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct FontFamiliesMsg {
+    #[prost(string, repeated, tag="1")]
+    pub families: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RenderFrameAckMsg {
+    #[prost(uint64, tag="1")]
+    pub seq: u64,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ServerToClientMsg {
-    #[prost(oneof="server_to_client_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19")]
+    #[prost(oneof="server_to_client_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22")]
     pub message: ::core::option::Option<server_to_client_msg::Message>,
 }
 /// Nested message and enum types in `ServerToClientMsg`.
@@ -3598,6 +3664,12 @@ pub mod server_to_client_msg {
         EmitNestedSessionFrame(super::EmitNestedSessionFrameMsg),
         #[prost(message, tag="19")]
         MobileState(super::MobileStateMsg),
+        #[prost(message, tag="20")]
+        RenderFrame(super::RenderFrameMsg),
+        #[prost(message, tag="21")]
+        HostThemeMode(super::HostThemeModeMsg),
+        #[prost(message, tag="22")]
+        WindowSettings(super::WindowSettingsMsg),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -3605,6 +3677,12 @@ pub mod server_to_client_msg {
 pub struct RenderMsg {
     #[prost(string, tag="1")]
     pub content: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RenderFrameMsg {
+    #[prost(bytes="vec", tag="1")]
+    pub frame: ::prost::alloc::vec::Vec<u8>,
 }
 /// Empty message
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -3678,6 +3756,18 @@ pub struct RenamedSessionMsg {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ConfigFileUpdatedMsg {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct WindowSettingsMsg {
+    #[prost(string, tag="1")]
+    pub settings_json: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct HostThemeModeMsg {
+    #[prost(enumeration="HostTerminalThemeIndication", tag="1")]
+    pub mode: i32,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

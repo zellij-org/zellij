@@ -2,7 +2,7 @@
 use crate::{
     data::{ClientId, ConnectToSession, HostTerminalThemeMode, KeyWithModifier, PaneId, Style},
     errors::{prelude::*, ErrorContext},
-    input::{actions::Action, cli_assets::CliAssets},
+    input::{actions::Action, cli_assets::CliAssets, window::WindowSettings},
     pane_size::{Size, SizeInPixels},
 };
 use interprocess::local_socket::Stream as LocalSocketStream;
@@ -138,14 +138,14 @@ pub struct MobileSessionPayload {
     pub creation_secs_ago: u64,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
 pub struct MobileRenderPrefsPayload {
     pub single_pane: bool,
     pub fit: bool,
     pub active_pane_is_fullscreen: bool,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
 pub struct MobileStatePayload {
     pub session_name: String,
     pub now_secs: u64,
@@ -238,6 +238,7 @@ pub enum ClientToServerMsg {
     },
     KittyGraphicsSupport {
         supported: bool,
+        local_media: bool,
     },
     KittyZlibSupport {
         supported: bool,
@@ -246,12 +247,25 @@ pub enum ClientToServerMsg {
         supported: bool,
     },
     RequestSessionList,
+    RequestSessionPreview {
+        tab_index: Option<u32>,
+        pane_id: Option<(u32, bool)>,
+    },
     SetMobileRenderPreferences {
         single_pane: bool,
         fit: bool,
     },
     HostTerminalFocusChanged {
         focused: bool,
+    },
+    StructuredRenderSupport {
+        supported: bool,
+    },
+    RenderFrameAck {
+        seq: u64,
+    },
+    FontFamilies {
+        families: Vec<String>,
     },
 }
 
@@ -260,6 +274,9 @@ pub enum ClientToServerMsg {
 pub enum ServerToClientMsg {
     Render {
         content: String,
+    },
+    RenderFrame {
+        frame: Vec<u8>,
     },
     UnblockInputThread,
     Exit {
@@ -292,6 +309,12 @@ pub enum ServerToClientMsg {
         name: String,
     },
     ConfigFileUpdated,
+    WindowSettingsChanged {
+        settings: Box<WindowSettings>,
+    },
+    HostTerminalThemeChanged {
+        mode: HostTerminalThemeMode,
+    },
     PaneRenderUpdate {
         pane_id: PaneId,
         viewport: Vec<String>,

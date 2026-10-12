@@ -1,6 +1,6 @@
 ---
 source: zellij-server/src/plugins/./unit/plugin_tests.rs
-assertion_line: 5730
+assertion_line: 6708
 expression: "format!(\"{:#?}\", plugin_bytes_events)"
 ---
 Some(
@@ -56,6 +56,12 @@ Some(
                 cli_pipes: {
                     "input_pipe_id": Unblock,
                 },
+                rendered_size: Some(
+                    (
+                        20,
+                        121,
+                    ),
+                ),
             },
         ],
     ),

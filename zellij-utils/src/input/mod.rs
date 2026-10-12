@@ -14,8 +14,10 @@ pub mod mousebinds;
 pub mod options;
 pub mod permission;
 pub mod plugins;
+pub mod session_suggestions;
 pub mod theme;
 pub mod web_client;
+pub mod window;
 
 #[cfg(not(target_family = "wasm"))]
 pub use not_wasm::*;
@@ -330,6 +332,7 @@ mod not_wasm {
             wheel_down,
             wheel_left,
             wheel_right,
+            wheel_lines: 0,
             shift,
             alt,
             ctrl,

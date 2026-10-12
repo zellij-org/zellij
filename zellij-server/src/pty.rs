@@ -3,6 +3,7 @@ use crate::background_jobs::BackgroundJob;
 use crate::global_async_runtime::get_tokio_runtime as async_runtime;
 use crate::os_input_output::{env_value, AsyncReader, NullAsyncReader, PaneEnv};
 use crate::route::NotificationEnd;
+use crate::session_suggestions::{ContextTrigger, SessionSuggestionsJob};
 use crate::terminal_bytes::TerminalBytes;
 use crate::{
     panes::PaneId,
@@ -12,6 +13,7 @@ use crate::{
     thread_bus::{Bus, ThreadSenders},
     ClientId, ServerInstruction,
 };
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::{collections::HashMap, path::PathBuf};
 use tokio::task::JoinHandle;
@@ -23,7 +25,7 @@ use zellij_utils::{
     errors::prelude::*,
     errors::{ContextType, PtyContext},
     input::{
-        command::{OpenFilePayload, RunCommand, TerminalAction},
+        command::{OpenFilePayload, RunCommand, RunCommandAction, TerminalAction},
         layout::{
             FloatingPaneLayout, Layout, Run, RunPluginOrAlias, SwapFloatingLayout, SwapTiledLayout,
             TabLayoutInfo, TiledPaneLayout,
@@ -35,6 +37,18 @@ use zellij_utils::{
 
 pub type VteBytes = Vec<u8>;
 pub type TabIndex = u32;
+
+const ORIGIN_PANE_ID_ENV_VAR: &str = "ZELLIJ_ORIGIN_PANE_ID";
+const PANE_ID_ENV_VAR: &str = "ZELLIJ_PANE_ID";
+
+fn pane_env_with_origin(pane_env: &PaneEnv, origin_pane_id: Option<PaneId>) -> PaneEnv {
+    let mut pane_env = pane_env.clone();
+    pane_env.insert(
+        ORIGIN_PANE_ID_ENV_VAR.to_owned(),
+        origin_pane_id.map(|id| id.to_string()),
+    );
+    pane_env
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ClientTabIndexOrPaneId {
@@ -56,6 +70,7 @@ pub enum PtyInstruction {
         ClientTabIndexOrPaneId,
         Option<NotificationEnd>, // completion signal
         bool,                    // set_blocking
+        Option<PaneId>,
     ), // bool (if Some) is
     // should_float, String is an optional pane name
     OpenInPlaceEditor(
@@ -65,6 +80,7 @@ pub enum PtyInstruction {
         Option<NotificationEnd>,
     ), // Option<usize> is the optional line number
     UpdateActivePane(Option<PaneId>, ClientId),
+    PromptReturned(u32),
     GoToTab(TabIndex, ClientId),
     NewTab(
         Option<PathBuf>,
@@ -104,6 +120,7 @@ pub enum PtyInstruction {
         bool, // close replaced pane
         ClientTabIndexOrPaneId,
         Option<NotificationEnd>, // completion signal
+        Option<PaneId>,
     ), // String is an optional pane name
     DumpLayout(SessionLayoutMetadata, ClientId, Option<NotificationEnd>),
     DumpLayoutToPlugin {
@@ -159,6 +176,12 @@ pub enum PtyInstruction {
     },
     UpdateAndReportCwds,
     NotifyCwdFromOsc7(u32, PathBuf),
+    RunInBackground {
+        command: RunCommandAction,
+        client_id: ClientId,
+        origin_pane_id: Option<PaneId>,
+        completion_tx: Option<NotificationEnd>,
+    },
     Exit,
 }
 
@@ -195,6 +218,8 @@ impl From<&PtyInstruction> for PtyContext {
             PtyInstruction::GetPaneCwd { .. } => PtyContext::GetPaneCwd,
             PtyInstruction::UpdateAndReportCwds => PtyContext::UpdateAndReportCwds,
             PtyInstruction::NotifyCwdFromOsc7(..) => PtyContext::NotifyCwdFromOsc7,
+            PtyInstruction::RunInBackground { .. } => PtyContext::RunInBackground,
+            PtyInstruction::PromptReturned(..) => PtyContext::PromptReturned,
             PtyInstruction::Exit => PtyContext::Exit,
         }
     }
@@ -205,6 +230,7 @@ pub(crate) struct Pty {
     pub bus: Bus<PtyInstruction>,
     pub id_to_child_pid: HashMap<u32, u32>, // terminal_id => child pid
     originating_plugins: HashMap<u32, OriginatingPlugin>,
+    origin_pane_ids: HashMap<u32, PaneId>,
     debug_to_file: bool,
     task_handles: HashMap<u32, JoinHandle<()>>, // terminal_id to join-handle
     default_editor: Option<PathBuf>,
@@ -215,6 +241,8 @@ pub(crate) struct Pty {
     pane_activity_flags: HashMap<u32, std::sync::Arc<std::sync::atomic::AtomicBool>>,
     terminal_cmds: HashMap<u32, Vec<String>>,
     terminal_foreground_cmds: HashMap<u32, Vec<String>>,
+    session_context_pane: Option<PaneId>,
+    terminals_with_prompt_markers: HashSet<u32>,
 }
 
 pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
@@ -230,6 +258,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 client_or_tab_index,
                 completion_tx,
                 set_blocking,
+                origin_pane_id,
             ) => {
                 let err_context =
                     || format!("failed to spawn terminal for {:?}", client_or_tab_index);
@@ -267,7 +296,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     _ => None,
                 };
                 match pty
-                    .spawn_terminal(terminal_action, client_or_tab_index)
+                    .spawn_terminal(terminal_action, client_or_tab_index, origin_pane_id)
                     .with_context(err_context)
                 {
                     Ok((pid, starts_held)) => {
@@ -367,6 +396,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 close_replaced_pane,
                 client_id_tab_index_or_pane_id,
                 completion_tx,
+                origin_pane_id,
             ) => {
                 let err_context = || {
                     format!(
@@ -398,7 +428,11 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     _ => None,
                 };
                 match pty
-                    .spawn_terminal(terminal_action, client_id_tab_index_or_pane_id)
+                    .spawn_terminal(
+                        terminal_action,
+                        client_id_tab_index_or_pane_id,
+                        origin_pane_id,
+                    )
                     .with_context(err_context)
                 {
                     Ok((pid, starts_held)) => {
@@ -465,6 +499,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                         None,
                     ))),
                     client_tab_index_or_pane_id,
+                    None,
                 ) {
                     Ok((pid, _starts_held)) => {
                         pty.bus
@@ -919,6 +954,22 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
             PtyInstruction::NotifyCwdFromOsc7(terminal_id, path) => {
                 pty.notify_cwd_from_osc7(terminal_id, path);
             },
+            PtyInstruction::RunInBackground {
+                command,
+                client_id,
+                origin_pane_id,
+                completion_tx,
+            } => {
+                pty.run_in_background(command, client_id, origin_pane_id)
+                    .non_fatal();
+                drop(completion_tx);
+            },
+            PtyInstruction::PromptReturned(terminal_id) => {
+                pty.terminals_with_prompt_markers.insert(terminal_id);
+                if pty.session_context_pane == Some(PaneId::Terminal(terminal_id)) {
+                    pty.report_session_context(ContextTrigger::PromptReturned);
+                }
+            },
             PtyInstruction::Exit => break,
         }
     }
@@ -941,6 +992,7 @@ impl Pty {
             task_handles: HashMap::new(),
             default_editor,
             originating_plugins: HashMap::new(),
+            origin_pane_ids: HashMap::new(),
             post_command_discovery_hook,
             pane_env,
             plugin_cwds: HashMap::new(),
@@ -948,6 +1000,8 @@ impl Pty {
             pane_activity_flags: HashMap::new(),
             terminal_cmds: HashMap::new(),
             terminal_foreground_cmds: HashMap::new(),
+            session_context_pane: None,
+            terminals_with_prompt_markers: HashSet::new(),
         }
     }
     pub fn get_default_terminal(
@@ -988,6 +1042,51 @@ impl Pty {
                 })
             },
         }
+    }
+    fn cwd_of_pane(&self, pane_id: &PaneId) -> Option<PathBuf> {
+        match pane_id {
+            PaneId::Terminal(terminal_id) => self
+                .id_to_child_pid
+                .get(terminal_id)
+                .and_then(|&pid| {
+                    self.bus
+                        .os_input
+                        .as_ref()
+                        .and_then(|input| input.get_cwd(pid))
+                })
+                .or_else(|| self.terminal_cwds.get(terminal_id).cloned()),
+            PaneId::Plugin(plugin_id) => self.plugin_cwds.get(plugin_id).cloned(),
+        }
+    }
+    fn run_in_background(
+        &self,
+        command: RunCommandAction,
+        client_id: ClientId,
+        origin_pane_id: Option<PaneId>,
+    ) -> Result<()> {
+        let base_cwd = origin_pane_id
+            .or_else(|| self.active_panes.get(&client_id).copied())
+            .and_then(|pane_id| self.cwd_of_pane(&pane_id));
+        let cwd = match (command.cwd, base_cwd) {
+            (Some(cwd), Some(base_cwd)) if cwd.is_relative() => Some(base_cwd.join(cwd)),
+            (Some(cwd), _) => Some(cwd),
+            (None, base_cwd) => base_cwd,
+        };
+        let mut env = pane_env_with_origin(&self.pane_env, origin_pane_id);
+        let pane_id = match origin_pane_id {
+            Some(PaneId::Terminal(terminal_id)) => Some(terminal_id.to_string()),
+            _ => None,
+        };
+        env.insert(PANE_ID_ENV_VAR.to_owned(), pane_id);
+        self.bus
+            .senders
+            .send_to_background_jobs(BackgroundJob::RunInBackground {
+                command: command.command,
+                args: command.args,
+                cwd,
+                env,
+            })
+            .with_context(|| format!("failed to run command in background for client {client_id}"))
     }
     fn fill_cwd(&self, terminal_action: &mut TerminalAction, client_id: ClientId) {
         let cwd = match terminal_action {
@@ -1042,6 +1141,7 @@ impl Pty {
         &mut self,
         terminal_action: Option<TerminalAction>,
         client_or_tab_index: ClientTabIndexOrPaneId,
+        origin_pane_id: Option<PaneId>,
     ) -> Result<(u32, bool)> {
         // bool is starts_held
         let err_context = || format!("failed to spawn terminal for {:?}", client_or_tab_index);
@@ -1091,6 +1191,9 @@ impl Pty {
                 .context("couldn't get mutable reference to OS interface")
                 .and_then(|os_input| os_input.reserve_terminal_id())
                 .with_context(err_context)?;
+            if let Some(origin_pane_id) = origin_pane_id {
+                self.origin_pane_ids.insert(terminal_id, origin_pane_id);
+            }
             return Ok((terminal_id, starts_held));
         }
 
@@ -1144,7 +1247,8 @@ impl Pty {
                 }
             }
         });
-        let (terminal_id, reader, child_pid): (u32, Box<dyn AsyncReader>, Option<u32>) = self
+        let pane_env = pane_env_with_origin(&self.pane_env, origin_pane_id);
+        let spawn_result = self
             .bus
             .os_input
             .as_mut()
@@ -1154,10 +1258,24 @@ impl Pty {
                     terminal_action,
                     quit_cb,
                     self.default_editor.clone(),
-                    &self.pane_env,
+                    &pane_env,
                 )
-            })
-            .with_context(err_context)?;
+            });
+        if let Some(origin_pane_id) = origin_pane_id {
+            let spawned_terminal_id = match &spawn_result {
+                Ok((terminal_id, ..)) => Some(*terminal_id),
+                Err(err) => match err.downcast_ref::<ZellijError>() {
+                    Some(ZellijError::CommandNotFound { terminal_id, .. }) => Some(*terminal_id),
+                    _ => None,
+                },
+            };
+            if let Some(spawned_terminal_id) = spawned_terminal_id {
+                self.origin_pane_ids
+                    .insert(spawned_terminal_id, origin_pane_id);
+            }
+        }
+        let (terminal_id, reader, child_pid): (u32, Box<dyn AsyncReader>, Option<u32>) =
+            spawn_result.with_context(err_context)?;
         let activity_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let terminal_bytes = async_runtime().spawn({
             let err_context =
@@ -1707,7 +1825,12 @@ impl Pty {
                         .as_mut()
                         .context("no OS I/O interface found")
                         .with_context(err_context)?
-                        .spawn_terminal(cmd, quit_cb, self.default_editor.clone(), &self.pane_env)
+                        .spawn_terminal(
+                            cmd,
+                            quit_cb,
+                            self.default_editor.clone(),
+                            &pane_env_with_origin(&self.pane_env, None),
+                        )
                         .with_context(err_context)
                     {
                         Ok((terminal_id, reader, child_pid)) => {
@@ -1742,7 +1865,12 @@ impl Pty {
                     .as_mut()
                     .context("no OS I/O interface found")
                     .with_context(err_context)?
-                    .spawn_terminal(shell, quit_cb, self.default_editor.clone(), &self.pane_env)
+                    .spawn_terminal(
+                        shell,
+                        quit_cb,
+                        self.default_editor.clone(),
+                        &pane_env_with_origin(&self.pane_env, None),
+                    )
                     .with_context(err_context)
                 {
                     Ok((terminal_id, reader, child_pid)) => {
@@ -1776,7 +1904,7 @@ impl Pty {
                         )),
                         quit_cb,
                         self.default_editor.clone(),
-                        &self.pane_env,
+                        &pane_env_with_origin(&self.pane_env, None),
                     )
                     .with_context(err_context)
                 {
@@ -1807,7 +1935,7 @@ impl Pty {
                         default_shell.clone(),
                         quit_cb,
                         self.default_editor.clone(),
-                        &self.pane_env,
+                        &pane_env_with_origin(&self.pane_env, None),
                     )
                     .with_context(err_context)
                 {
@@ -1852,6 +1980,7 @@ impl Pty {
                 self.terminal_cwds.remove(&id);
                 self.terminal_cmds.remove(&id);
                 self.terminal_foreground_cmds.remove(&id);
+                self.origin_pane_ids.remove(&id);
                 self.bus
                     .os_input
                     .as_ref()
@@ -1880,8 +2009,31 @@ impl Pty {
     }
     pub fn set_active_pane(&mut self, pane_id: Option<PaneId>, client_id: ClientId) {
         if let Some(pane_id) = pane_id {
-            self.active_panes.insert(client_id, pane_id);
+            let previous = self.active_panes.insert(client_id, pane_id);
+            if previous != Some(pane_id) && matches!(pane_id, PaneId::Terminal(_)) {
+                self.session_context_pane = Some(pane_id);
+                self.report_session_context(ContextTrigger::FocusChanged);
+            }
         }
+    }
+    fn report_session_context(&self, trigger: ContextTrigger) {
+        let Some(PaneId::Terminal(terminal_id)) = self.session_context_pane else {
+            return;
+        };
+        let folder = self.terminal_cwds.get(&terminal_id).cloned().or_else(|| {
+            self.id_to_child_pid.get(&terminal_id).and_then(|pid| {
+                self.bus
+                    .os_input
+                    .as_ref()
+                    .and_then(|os_input| os_input.get_cwd(*pid))
+            })
+        });
+        let _ = self
+            .bus
+            .senders
+            .send_to_background_jobs(BackgroundJob::SessionSuggestions(
+                SessionSuggestionsJob::FocusedPaneContext { folder, trigger },
+            ));
     }
     pub fn rerun_command_in_pane(
         &mut self,
@@ -1933,18 +2085,15 @@ impl Pty {
                         }
                     }
                 });
+                let pane_env =
+                    pane_env_with_origin(&self.pane_env, self.origin_pane_ids.get(&id).copied());
                 let (reader, child_pid): (Box<dyn AsyncReader>, Option<u32>) = self
                     .bus
                     .os_input
                     .as_mut()
                     .context("no OS I/O interface found")
                     .and_then(|os_input| {
-                        os_input.re_run_command_in_terminal(
-                            id,
-                            run_command,
-                            quit_cb,
-                            &self.pane_env,
-                        )
+                        os_input.re_run_command_in_terminal(id, run_command, quit_cb, &pane_env)
                     })
                     .with_context(err_context)?;
                 let activity_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -2164,6 +2313,10 @@ impl Pty {
                             None,
                             Event::CwdChanged(pane_id.into(), cwd.clone(), focused_client_ids),
                         )]));
+                    self.terminal_cwds.insert(*terminal_id, cwd.clone());
+                    if self.session_context_pane == Some(pane_id) {
+                        self.report_session_context(ContextTrigger::FolderChanged);
+                    }
                 }
                 self.terminal_cwds.insert(*terminal_id, cwd.clone());
             }
@@ -2199,6 +2352,12 @@ impl Pty {
                     .filter(|(_, active_pane)| *active_pane == &pane_id)
                     .map(|(client_id, _)| *client_id)
                     .collect();
+                if foreground_cmd.is_empty()
+                    && self.session_context_pane == Some(pane_id)
+                    && !self.terminals_with_prompt_markers.contains(terminal_id)
+                {
+                    self.report_session_context(ContextTrigger::PromptReturned);
+                }
                 let (command, is_foreground) = if foreground_cmd.is_empty() {
                     let shell_cmd = self
                         .terminal_cmds
@@ -2259,6 +2418,9 @@ impl Pty {
                     Event::CwdChanged(pane_id.into(), path.clone(), focused_client_ids),
                 )]));
             self.terminal_cwds.insert(terminal_id, path);
+            if self.session_context_pane == Some(pane_id) {
+                self.report_session_context(ContextTrigger::FolderChanged);
+            }
         }
         if let Some(flag) = self.pane_activity_flags.get(&terminal_id) {
             flag.store(false, Ordering::Relaxed);

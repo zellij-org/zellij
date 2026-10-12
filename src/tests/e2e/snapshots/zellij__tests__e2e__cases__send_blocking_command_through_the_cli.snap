@@ -2,7 +2,7 @@
 source: src/tests/e2e/cases.rs
 expression: last_snapshot
 ---
- Zellij (e2e-test)  Tab #1  + 
+ Zellij (e2e-test)  Tab #1  +                                                                                             [ No Other Sessions ▾ ] 
 $ /usr/src/zellij/zellij run --blocking --floating --close-on-exit -- bash -c 'sleep 2 && exit 42'                                                    
 $ echo $?                                                                                                                                             
 42                                                                                                                                                    
@@ -25,4 +25,4 @@ $ █
                                                                                                                                                       
                                                                                                                                                       
                                                                                                                                                       
- Ctrl + <g> LOCK  <p> PANE  <t> TAB  <n> RESIZE  <h> MOVE  <s> SEARCH  <o> SESSION  <q> QUIT  Alt +  <n> New Pane  <f> Floating  
+ Ctrl + <g> LOCK  <p> PANE  <t> TAB  <n> RESIZE  <h> MOVE  <s> SEARCH  <o> SESSION  <q> QUIT  Alt +  <n> New Pane  <f> Floating 

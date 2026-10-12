@@ -12,6 +12,7 @@ use crate::double_click::{
     DoubleClickConfig,
 };
 use crate::keybinds::KeybindStore;
+use crate::session_indicator::SessionIndicator;
 use crate::tab_drag::{
     apply_release, is_tab_move_completion, request_tab_move, segments_of, switch_outcome,
     tab_parts_in_line, TabDrag, TabPart, TabSegment,
@@ -25,13 +26,6 @@ pub struct LinePart {
     part: String,
     len: usize,
     tab_index: Option<usize>,
-}
-
-impl LinePart {
-    pub fn append(&mut self, to_append: &LinePart) {
-        self.part.push_str(&to_append.part);
-        self.len += to_append.len;
-    }
 }
 
 static ARROW_SEPARATOR: &str = "";
@@ -99,7 +93,6 @@ pub(crate) fn line_regions(
 
 #[derive(Debug, Default)]
 struct SlotConfig {
-    hide_swap_layout_indication: bool,
     double_click: DoubleClickConfig,
 }
 
@@ -126,6 +119,7 @@ struct SlotClientState {
     regions: Vec<(usize, usize, TabBarRegion)>,
     segments: Vec<TabSegment>,
     cols: usize,
+    session_indicator_range: Option<(usize, usize)>,
 }
 
 struct ComposedLine {
@@ -135,6 +129,7 @@ struct ComposedLine {
     regions: Vec<(usize, usize, TabBarRegion)>,
     segments: Vec<TabSegment>,
     background: PaletteColor,
+    session_indicator_range: Option<(usize, usize)>,
 }
 
 #[derive(Debug, Default)]
@@ -143,6 +138,7 @@ pub struct TabBar {
     clients: BTreeMap<ClientId, ClientState>,
     slot_clients: BTreeMap<(SlotId, ClientId), SlotClientState>,
     hint_timeout_queue: VecDeque<ClientId>,
+    pub session_indicator: SessionIndicator,
 }
 
 impl TabBar {
@@ -151,15 +147,9 @@ impl TabBar {
     }
 
     pub fn slot_added(&mut self, slot: &Slot) {
-        let hide_swap_layout_indication = slot
-            .configuration
-            .get("hide_swap_layout_indication")
-            .map(|s| s == "true")
-            .unwrap_or(false);
         self.slots.insert(
             slot.id,
             SlotConfig {
-                hide_swap_layout_indication,
                 double_click: DoubleClickConfig::from_configuration(&slot.configuration),
             },
         );
@@ -173,7 +163,17 @@ impl TabBar {
             EventType::Timer,
             EventType::InputReceived,
             EventType::ActionComplete,
+            EventType::SessionCountsUpdate,
+            EventType::FolderSessionsUpdate,
         ]);
+    }
+
+    pub fn pipe(&mut self, pipe_message: &PipeMessage) -> RenderResponse {
+        if self.session_indicator.handle_pipe(pipe_message) {
+            RenderResponse::Slots(self.slots.keys().copied().collect())
+        } else {
+            RenderResponse::Nothing
+        }
     }
 
     pub fn slot_removed(&mut self, slot_id: SlotId) {
@@ -261,6 +261,16 @@ impl TabBar {
             }
             return if should_render {
                 RenderResponse::Client(client_id)
+            } else {
+                RenderResponse::Nothing
+            };
+        }
+        if matches!(
+            event,
+            Event::SessionCountsUpdate(_) | Event::FolderSessionsUpdate(_)
+        ) {
+            return if self.session_indicator.update(event) {
+                RenderResponse::Slots(self.slots.keys().copied().collect())
             } else {
                 RenderResponse::Nothing
             };
@@ -356,8 +366,14 @@ impl TabBar {
                 }
             },
             Event::Mouse(me) => match me {
-                Mouse::LeftClick(_, col) => {
+                Mouse::LeftClick(line, col) => {
                     let col = *col;
+                    if let Some((start, end)) = slot_client.session_indicator_range {
+                        if col >= start && col < end {
+                            self.session_indicator.clicked((*line).max(0) as usize, col);
+                            return should_render;
+                        }
+                    }
                     if let Some(slot_id) = slot_id {
                         client.hover_at = Some((slot_id, col));
                     }
@@ -419,6 +435,14 @@ impl TabBar {
                     apply_double_click_outcome(outcome, &client.tabs, client.active_tab_idx);
                 },
                 Mouse::Hover(_, col) => {
+                    let indicator_hovered = slot_client
+                        .session_indicator_range
+                        .map(|(start, end)| *col >= start && *col < end)
+                        .unwrap_or(false);
+                    if indicator_hovered != self.session_indicator.hovered {
+                        self.session_indicator.hovered = indicator_hovered;
+                        should_render = true;
+                    }
                     if let Some(slot_id) = slot_id {
                         let col = *col;
                         let on_screen = col < slot_client.cols;
@@ -491,7 +515,6 @@ impl TabBar {
     fn compose_line(
         &self,
         cols: usize,
-        slot_id: SlotId,
         client_id: ClientId,
         hovered: Option<TabBarRegion>,
     ) -> Option<ComposedLine> {
@@ -499,11 +522,6 @@ impl TabBar {
         if client.tabs.is_empty() {
             return None;
         }
-        let hide_swap_layout_indication = self
-            .slots
-            .get(&slot_id)
-            .map(|s| s.hide_swap_layout_indication)
-            .unwrap_or(false);
         let dimmed = client.mode_info.session_ascended == Some(true)
             || client.mode_info.session_dimmed == Some(true);
         let mut all_tabs: Vec<LinePart> = vec![];
@@ -553,7 +571,7 @@ impl TabBar {
         } else {
             vec![]
         };
-        let (line, new_tab_button_range, breadcrumb_range) = tab_line(
+        let (line, new_tab_button_range, breadcrumb_range, session_indicator_range) = tab_line(
             client.mode_info.session_name.as_deref(),
             all_tabs,
             active_tab_index,
@@ -561,9 +579,7 @@ impl TabBar {
             client.mode_info.style.colors,
             client.mode_info.capabilities,
             client.mode_info.style.hide_session_name,
-            client.tabs.iter().find(|t| t.active),
-            &client.mode_info,
-            hide_swap_layout_indication,
+            &self.session_indicator,
             &background,
             client.active_pane_scroll,
             hint_text,
@@ -589,6 +605,7 @@ impl TabBar {
             regions,
             segments,
             background,
+            session_indicator_range,
         })
     }
 
@@ -601,14 +618,14 @@ impl TabBar {
             .filter(|(hover_slot, _)| *hover_slot == slot_id)
             .map(|(_, col)| col);
         let mut hovered = hover_col.and(client.hovered);
-        let Some(mut composed) = self.compose_line(cols, slot_id, client_id, hovered) else {
+        let Some(mut composed) = self.compose_line(cols, client_id, hovered) else {
             return;
         };
         if let Some(col) = hover_col {
             let under_mouse = region_at(&composed.regions, col);
             if under_mouse != hovered {
                 hovered = under_mouse;
-                if let Some(recomposed) = self.compose_line(cols, slot_id, client_id, hovered) {
+                if let Some(recomposed) = self.compose_line(cols, client_id, hovered) {
                     composed = recomposed;
                 }
             }
@@ -629,6 +646,7 @@ impl TabBar {
         slot_client.regions = composed.regions;
         slot_client.segments = composed.segments;
         slot_client.cols = cols;
+        slot_client.session_indicator_range = composed.session_indicator_range;
 
         let output = slot_client
             .tab_line

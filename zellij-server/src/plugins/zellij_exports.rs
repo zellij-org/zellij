@@ -6,6 +6,7 @@ use crate::plugins::wasm_bridge::handle_plugin_crash;
 use crate::plugins::{PluginId, PromptCaller};
 use crate::pty::{ClientTabIndexOrPaneId, PtyInstruction};
 use crate::route::{route_action, wait_for_action_completion, NotificationEnd};
+use crate::session_suggestions::SessionSuggestionsJob;
 use crate::ClientId;
 use crate::ServerInstruction;
 use log::warn;
@@ -424,7 +425,103 @@ fn run_context_menu_item(env: &PluginEnv, index: usize) {
     });
 }
 
-fn set_popup_size(env: &PluginEnv, width: usize, height: usize) {
+fn get_session_suggestions(env: &PluginEnv, limit: usize) {
+    let _ = env
+        .senders
+        .send_to_background_jobs(BackgroundJob::SessionSuggestions(
+            SessionSuggestionsJob::GetSuggestions {
+                plugin_id: env.plugin_id,
+                client_id: env.client_id,
+                limit,
+            },
+        ));
+}
+
+fn set_popup_focused(env: &PluginEnv, focused: bool) {
+    env.senders
+        .send_to_screen(ScreenInstruction::SetPopupFocused {
+            plugin_id: env.plugin_id,
+            focused,
+        })
+        .with_context(|| format!("failed to change popup focus"))
+        .non_fatal();
+}
+
+fn popup_to_floating_pane(env: &mut PluginEnv, coordinates: Option<FloatingPaneCoordinates>) {
+    env.pending_popup_size = None;
+    env.senders
+        .send_to_screen(ScreenInstruction::PopupToFloatingPane {
+            plugin_id: env.plugin_id,
+            coordinates,
+        })
+        .with_context(|| format!("failed to move popup to a floating pane"))
+        .non_fatal();
+}
+
+fn switch_session_and_close_current(
+    env: &PluginEnv,
+    connect_to_session: ConnectToSession,
+) -> Result<()> {
+    let err_context = || format!("Failed to switch session");
+    let (completion_tx, completion_rx) = oneshot::channel();
+    if connect_to_session
+        .name
+        .as_ref()
+        .map(|s| s.contains('/'))
+        .unwrap_or(false)
+    {
+        log::error!("Session names cannot contain \'/\'");
+        return Ok(());
+    }
+    let client_id = acting_client(env);
+    let connect_to_session = ConnectToSession {
+        tab_position: connect_to_session.tab_position.map(|p| p + 1),
+        cwd: connect_to_session
+            .cwd
+            .map(|c| translate_plugin_path(env, c))
+            .or_else(|| Some(env.plugin_cwd.clone())),
+        ..connect_to_session
+    };
+    env.senders
+        .send_to_server(ServerInstruction::SwitchSessionAndCloseCurrent(
+            connect_to_session,
+            client_id,
+            Some(NotificationEnd::new(completion_tx)),
+        ))
+        .with_context(err_context)?;
+    let _ = wait_for_action_completion(completion_rx, "switch_session_and_close_current", false);
+    Ok(())
+}
+
+fn get_session_preview(
+    env: &PluginEnv,
+    name: String,
+    tab_index: Option<usize>,
+    pane_id: Option<(u32, bool)>,
+) {
+    let _ = env
+        .senders
+        .send_to_background_jobs(BackgroundJob::SessionPreview {
+            plugin_id: env.plugin_id,
+            client_id: env.client_id,
+            session_name: name,
+            tab_index,
+            pane_id,
+        });
+}
+
+fn get_saved_session_preview(env: &PluginEnv, name: String) {
+    let _ = env
+        .senders
+        .send_to_background_jobs(BackgroundJob::SavedSessionPreview {
+            plugin_id: env.plugin_id,
+            client_id: env.client_id,
+            session_name: name,
+        });
+}
+
+fn set_popup_size(env: &mut PluginEnv, width: usize, height: usize) {
+    env.pending_popup_size = Some((width, height));
     env.senders
         .send_to_screen(ScreenInstruction::SetPopupSize {
             plugin_id: env.plugin_id,
@@ -498,6 +595,26 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     ),
                     PluginCommand::SetPopupSize { width, height } => {
                         set_popup_size(env, width, height)
+                    },
+                    PluginCommand::GetSessionSuggestions { limit } => {
+                        get_session_suggestions(env, limit)
+                    },
+                    PluginCommand::SetPopupFocused(focused) => set_popup_focused(env, focused),
+                    PluginCommand::PopupToFloatingPane(coordinates) => {
+                        popup_to_floating_pane(env, coordinates)
+                    },
+                    PluginCommand::SwitchSessionAndCloseCurrent(connect_to_session) => {
+                        switch_session_and_close_current(env, connect_to_session)?
+                    },
+                    PluginCommand::GetSessionPreview {
+                        name,
+                        tab_index,
+                        pane_id,
+                    } => {
+                        get_session_preview(env, name, tab_index, pane_id)
+                    },
+                    PluginCommand::GetSavedSessionPreview(name) => {
+                        get_saved_session_preview(env, name)
                     },
                     PluginCommand::RunContextMenuItem(index) => {
                         run_context_menu_item(env, index)
@@ -788,11 +905,16 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         connect_to_session.pane_id,
                         connect_to_session.layout,
                         connect_to_session.cwd,
+                        connect_to_session.session_card,
                     )?,
                     PluginCommand::DeleteDeadSession(session_name) => {
-                        delete_dead_session(session_name)?
+                        delete_dead_session(session_name)?;
+                        notify_session_index_changed(env);
                     },
-                    PluginCommand::DeleteAllDeadSessions => delete_all_dead_sessions()?,
+                    PluginCommand::DeleteAllDeadSessions => {
+                        delete_all_dead_sessions()?;
+                        notify_session_index_changed(env);
+                    },
                     PluginCommand::OpenFileInPlace(file_to_open, context) => {
                         open_file_in_place(env, file_to_open, context)
                     },
@@ -844,7 +966,8 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         delete_dead_session_and_reply(env, session_name)
                     },
                     PluginCommand::DeleteAllDeadSessionsAndReply => {
-                        delete_all_dead_sessions_and_reply(env)
+                        delete_all_dead_sessions_and_reply(env);
+                        notify_session_index_changed(env);
                     },
                     PluginCommand::ScanHostFolder(folder_to_scan) => {
                         scan_host_folder(env, folder_to_scan)
@@ -1205,6 +1328,18 @@ fn subscribe(env: &PluginEnv, event_list: HashSet<EventType>) -> Result<()> {
         .lock()
         .to_anyhow()?
         .extend(event_list.clone());
+    if event_list.contains(&EventType::SessionCountsUpdate)
+        || event_list.contains(&EventType::FolderSessionsUpdate)
+    {
+        let _ = env
+            .senders
+            .send_to_background_jobs(BackgroundJob::SessionSuggestions(
+                SessionSuggestionsJob::Subscribe {
+                    plugin_id: env.plugin_id,
+                    client_id: env.client_id,
+                },
+            ));
+    }
     env.senders
         .send_to_plugin(PluginInstruction::PluginSubscribedToEvents(
             env.plugin_id,
@@ -1260,10 +1395,24 @@ fn message_to_plugin(env: &PluginEnv, mut message_to_plugin: MessageToPlugin) ->
 }
 
 fn unsubscribe(env: &PluginEnv, event_list: HashSet<EventType>) -> Result<()> {
-    env.subscriptions
-        .lock()
-        .to_anyhow()?
-        .retain(|k| !event_list.contains(k));
+    let still_subscribed_to_sessions = {
+        let mut subscriptions = env.subscriptions.lock().to_anyhow()?;
+        subscriptions.retain(|k| !event_list.contains(k));
+        subscriptions.contains(&EventType::SessionCountsUpdate)
+            || subscriptions.contains(&EventType::FolderSessionsUpdate)
+    };
+    if !still_subscribed_to_sessions
+        && (event_list.contains(&EventType::SessionCountsUpdate)
+            || event_list.contains(&EventType::FolderSessionsUpdate))
+    {
+        let _ = env
+            .senders
+            .send_to_background_jobs(BackgroundJob::SessionSuggestions(
+                SessionSuggestionsJob::Unsubscribe {
+                    plugin_id: env.plugin_id,
+                },
+            ));
+    }
     Ok(())
 }
 
@@ -2018,6 +2167,7 @@ fn open_file_near_plugin(
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(self_pane_id(env))),
         Some(NotificationEnd::new(completion_tx)),
         false, // set_blocking
+        None,
     );
     let _ = env.senders.send_to_pty(pty_instr);
 
@@ -2065,6 +2215,7 @@ fn open_file_floating_near_plugin(
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(self_pane_id(env))),
         Some(NotificationEnd::new(completion_tx)),
         false, // set_blocking
+        None,
     );
     let _ = env.senders.send_to_pty(pty_instr);
 
@@ -2105,6 +2256,7 @@ fn open_file_in_place_of_plugin(
         close_plugin_after_replace,
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(self_pane_id(env))),
         Some(NotificationEnd::new(completion_tx)),
+        None,
     );
     let _ = env.senders.send_to_pty(pty_instr);
 
@@ -2186,6 +2338,7 @@ fn open_terminal_near_plugin(
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(self_pane_id(env))),
         Some(NotificationEnd::new(completion_tx)),
         false, // set_blocking
+        None,
     ));
 
     // Wait for completion
@@ -2265,6 +2418,7 @@ fn open_terminal_floating_near_plugin(
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(self_pane_id(env))),
         Some(NotificationEnd::new(completion_tx)),
         false, // set_blocking
+        None,
     ));
 
     // Wait for completion
@@ -2342,6 +2496,7 @@ fn open_terminal_in_place_of_plugin(
             close_plugin_after_replace,
             ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(self_pane_id(env))),
             Some(NotificationEnd::new(completion_tx)),
+            None,
         ));
 
     // Wait for completion
@@ -2399,6 +2554,7 @@ fn open_command_pane_in_place_of_plugin(
             close_plugin_after_replace,
             ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(self_pane_id(env))),
             Some(NotificationEnd::new(completion_tx)),
+            None,
         ));
 
     // Wait for completion
@@ -2439,6 +2595,7 @@ fn open_terminal_pane_in_place_of_pane_id(
             close_replaced_pane,
             ClientTabIndexOrPaneId::PaneId(pane_id_to_replace.into()),
             Some(NotificationEnd::new(completion_tx)),
+            None,
         ));
 
     let result = wait_for_action_completion(
@@ -2498,6 +2655,7 @@ fn open_command_pane_in_place_of_pane_id(
             close_replaced_pane,
             ClientTabIndexOrPaneId::PaneId(pane_id_to_replace.into()),
             Some(NotificationEnd::new(completion_tx)),
+            None,
         ));
 
     let result = wait_for_action_completion(
@@ -2539,6 +2697,7 @@ fn open_edit_pane_in_place_of_pane_id(
         close_replaced_pane,
         ClientTabIndexOrPaneId::PaneId(pane_id_to_replace.into()),
         Some(NotificationEnd::new(completion_tx)),
+        None,
     );
     let _ = env.senders.send_to_pty(pty_instr);
 
@@ -2652,6 +2811,7 @@ fn open_command_pane_near_plugin(
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(self_pane_id(env))),
         Some(NotificationEnd::new(completion_tx)),
         false, // set_blocking
+        None,
     ));
 
     // Wait for completion
@@ -2767,6 +2927,7 @@ fn open_command_pane_floating_near_plugin(
         ClientTabIndexOrPaneId::PaneId(PaneId::Plugin(self_pane_id(env))),
         Some(NotificationEnd::new(completion_tx)),
         false, // set_blocking
+        None,
     ));
 
     // Wait for completion
@@ -2881,6 +3042,7 @@ fn open_command_pane_background(
         ClientTabIndexOrPaneId::ClientId(acting_client(env)),
         Some(NotificationEnd::new(completion_tx)),
         false, // set_blocking
+        None,
     ));
 
     // Wait for completion
@@ -3673,6 +3835,7 @@ fn switch_session(
     pane_id: Option<(u32, bool)>,
     layout: Option<LayoutInfo>,
     cwd: Option<PathBuf>,
+    session_card: Option<bool>,
 ) -> Result<()> {
     // pane_id is (id, is_plugin)
     let err_context = || format!("Failed to switch session");
@@ -3704,6 +3867,7 @@ fn switch_session(
             pane_id,
             layout,
             cwd,
+            session_card,
         };
         env.senders
             .send_to_server(ServerInstruction::SwitchSession(
@@ -3718,7 +3882,22 @@ fn switch_session(
     Ok(())
 }
 
+fn notify_session_index_changed(env: &PluginEnv) {
+    let _ = env
+        .senders
+        .send_to_background_jobs(BackgroundJob::SessionSuggestions(
+            SessionSuggestionsJob::IndexChanged,
+        ));
+}
+
+fn delete_session_index_row(session_name: &str) {
+    if let Ok(index) = zellij_utils::session_index::SessionIndex::open_default() {
+        let _ = index.delete(session_name);
+    }
+}
+
 fn delete_dead_session(session_name: String) -> Result<()> {
+    delete_session_index_row(&session_name);
     std::fs::remove_dir_all(&*ZELLIJ_SESSION_INFO_CACHE_DIR.join(&session_name))
         .with_context(|| format!("Failed to delete dead session: {:?}", &session_name))
 }
@@ -3995,7 +4174,9 @@ fn undo_rename_tab(env: &PluginEnv) {
 
 fn quit_zellij(env: &PluginEnv) {
     let error_msg = || format!("failed to quit zellij in plugin {}", env.name());
-    let action = Action::Quit;
+    let action = Action::SkipConfirm {
+        action: Box::new(Action::Quit),
+    };
     apply_action!(action, error_msg, env);
 }
 
@@ -4268,6 +4449,8 @@ fn kill_sessions_and_reply(env: &PluginEnv, session_names: Vec<String>) {
 }
 
 fn delete_dead_session_and_reply(env: &PluginEnv, session_name: String) {
+    delete_session_index_row(&session_name);
+    notify_session_index_changed(env);
     let response =
         match std::fs::remove_dir_all(&*ZELLIJ_SESSION_INFO_CACHE_DIR.join(&session_name)) {
             Ok(()) => DeleteDeadSessionResponse::Ok,
@@ -5130,6 +5313,7 @@ fn get_session_list(env: &PluginEnv) {
                 .send_to_screen(ScreenInstruction::UpdateSessionInfos(
                     live_sessions_map.clone(),
                     resurrectable_sessions_map.clone(),
+                    Some((env.plugin_id, env.client_id)),
                 ));
 
             let snapshot = SessionListSnapshot {
@@ -6413,7 +6597,10 @@ fn required_permission(command: &PluginCommand) -> Option<PermissionType> {
         | PluginCommand::SetSoftKeyboard(..)
         | PluginCommand::OpenContextMenu { .. }
         | PluginCommand::OpenPluginPopup { .. }
-        | PluginCommand::SetPopupSize { .. } => PermissionType::ChangeApplicationState,
+        | PluginCommand::SetPopupSize { .. }
+        | PluginCommand::SetPopupFocused(..)
+        | PluginCommand::PopupToFloatingPane(..)
+        | PluginCommand::SwitchSessionAndCloseCurrent(..) => PermissionType::ChangeApplicationState,
         PluginCommand::Prompt { .. } | PluginCommand::ReplyToPrompt { .. } => {
             PermissionType::OpenTerminalsOrPlugins
         },
@@ -6438,7 +6625,10 @@ fn required_permission(command: &PluginCommand) -> Option<PermissionType> {
         | PluginCommand::GetPaneInfo(..)
         | PluginCommand::GetTabInfo(..)
         | PluginCommand::GetNestedSessionKeybinds(..)
-        | PluginCommand::GetSessionList => PermissionType::ReadApplicationState,
+        | PluginCommand::GetSessionList
+        | PluginCommand::GetSessionSuggestions { .. }
+        | PluginCommand::GetSessionPreview { .. }
+        | PluginCommand::GetSavedSessionPreview(..) => PermissionType::ReadApplicationState,
         PluginCommand::RebindKeys { .. }
         | PluginCommand::Reconfigure(..)
         | PluginCommand::ReadConfig

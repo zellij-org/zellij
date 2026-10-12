@@ -34,11 +34,11 @@ fn press_launch_or_focus_three_times(zellij: &TestSession, launch_keys: &[&[u8]]
     }
 }
 
-fn session_managers_once_all_launches_are_handled(zellij: &TestSession) -> GridSnapshot {
+fn wait_for_every_earlier_key(zellij: &TestSession) -> GridSnapshot {
     zellij.send_stdin(&keys::ctrl('o'));
     zellij.send_stdin(&keys::key('l'));
     zellij.wait_until(
-        "layout manager opened after every earlier launch",
+        "layout manager opened after every earlier key",
         |grid_snapshot| grid_snapshot.contains("Layout Manager"),
     );
     zellij.send_stdin(&keys::ctrl('p'));
@@ -46,6 +46,13 @@ fn session_managers_once_all_launches_are_handled(zellij: &TestSession) -> GridS
     zellij.wait_until("layout manager closed", |grid_snapshot| {
         !grid_snapshot.contains("Layout Manager") && grid_snapshot.status_bar_appears()
     })
+}
+
+fn session_managers_once_all_launches_are_handled(zellij: &TestSession) -> GridSnapshot {
+    wait_for_every_earlier_key(zellij);
+    zellij.send_stdin(&keys::alt(']'));
+    zellij.send_stdin(&keys::alt(']'));
+    wait_for_every_earlier_key(zellij)
 }
 
 fn assert_one_session_manager(zellij: &TestSession) {

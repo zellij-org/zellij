@@ -246,29 +246,18 @@ fn resize_hint_shortens_when_the_tab_bar_narrows() {
 }
 
 #[test]
-fn hint_replaces_the_swap_layout_indicator_until_dismissed() {
+fn hint_is_shown_in_the_tab_bar_until_dismissed() {
     let mut zellij = two_pane_session();
-    zellij.wait_until("swap layout indicator shown", |grid_snapshot| {
-        tab_bar_line(grid_snapshot).contains("BASE")
-    });
 
     zellij.send_stdin(&sgr_motion(FOCUSED_PANE_COLUMN, HOVER_LINE));
-    zellij.wait_until(
-        "hint takes over the swap layout indicator slot",
-        |grid_snapshot| {
-            let tab_bar = tab_bar_line(grid_snapshot);
-            tab_bar.contains("resize") && !tab_bar.contains("BASE")
-        },
-    );
+    zellij.wait_until("hint shown in the tab bar", |grid_snapshot| {
+        tab_bar_line(grid_snapshot).contains("resize")
+    });
 
     zellij.send_stdin(b"x");
-    zellij.wait_until(
-        "swap layout indicator returns after the hint is dismissed",
-        |grid_snapshot| {
-            let tab_bar = tab_bar_line(grid_snapshot);
-            tab_bar.contains("BASE") && !tab_bar.contains("resize")
-        },
-    );
+    zellij.wait_until("hint dismissed after input", |grid_snapshot| {
+        !tab_bar_line(grid_snapshot).contains("resize")
+    });
 
     zellij.quit();
 }
