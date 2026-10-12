@@ -1,5 +1,5 @@
-use crate::background_jobs::write_session_state_to_disk;
 use crate::background_jobs::BackgroundJob;
+use crate::background_jobs::{write_session_state_to_disk, SessionStateWrites};
 use crate::global_async_runtime::get_tokio_runtime as async_runtime;
 use crate::os_input_output::{env_value, AsyncReader, NullAsyncReader, PaneEnv};
 use crate::route::NotificationEnd;
@@ -252,6 +252,7 @@ pub(crate) struct Pty {
     terminals_with_prompt_markers: HashSet<u32>,
     terminals_with_shell_cwd: HashSet<u32>,
     resurrect_commands: HashMap<u32, ResurrectCommand>,
+    session_state_writes: SessionStateWrites,
 }
 
 pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: String) -> Result<()> {
@@ -869,6 +870,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: Str
                     Ok(kdl_and_files) => {
                         // Cache is keyed by the stable session id, not the name.
                         write_session_state_to_disk(
+                            &pty.session_state_writes,
                             session_id.clone(),
                             session_info,
                             kdl_and_files.clone(),
@@ -1006,6 +1008,7 @@ impl Pty {
         default_editor: Option<PathBuf>,
         post_command_discovery_hook: Option<String>,
         pane_env: PaneEnv,
+        session_state_writes: SessionStateWrites,
     ) -> Self {
         Pty {
             active_panes: HashMap::new(),
@@ -1027,6 +1030,7 @@ impl Pty {
             terminals_with_prompt_markers: HashSet::new(),
             terminals_with_shell_cwd: HashSet::new(),
             resurrect_commands: HashMap::new(),
+            session_state_writes,
         }
     }
     pub fn get_default_terminal(
