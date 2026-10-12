@@ -132,9 +132,9 @@ jobs:
         run: |
           checksum_name="zellij-${{ matrix.target }}.sha256sum"
           if [[ "$RUNNER_OS" != "macOS" ]]; then
-            sha256sum "target/${{ matrix.target }}/release/zellij" > "${checksum_name}"
+            (cd "target/${{ matrix.target }}/release" && sha256sum zellij) > "${checksum_name}"
           else
-            shasum -a 256 "target/${{ matrix.target }}/release/zellij" > "${checksum_name}"
+            (cd "target/${{ matrix.target }}/release" && shasum -a 256 zellij) > "${checksum_name}"
           fi
           echo "checksum_name=${checksum_name}" >> "$GITHUB_OUTPUT"
 
@@ -144,7 +144,7 @@ jobs:
         run: |
           $checksum_name = "zellij-${{ matrix.target }}.sha256sum"
           $hash = (Get-FileHash "target/release/zellij.exe" -Algorithm SHA256).Hash.ToLower()
-          "$hash  target/release/zellij.exe" | Out-File -Encoding ascii $checksum_name
+          "$hash  zellij.exe" | Out-File -Encoding ascii $checksum_name
           echo "checksum_name=$checksum_name" >> $env:GITHUB_OUTPUT
 
       - name: Upload release archive
@@ -328,9 +328,9 @@ jobs:
         run: |
           checksum_name="zellij-no-web-${{ matrix.target }}.sha256sum"
           if [[ "$RUNNER_OS" != "macOS" ]]; then
-            sha256sum "target/${{ matrix.target }}/release/zellij" > "${checksum_name}"
+            (cd "target/${{ matrix.target }}/release" && sha256sum zellij) > "${checksum_name}"
           else
-            shasum -a 256 "target/${{ matrix.target }}/release/zellij" > "${checksum_name}"
+            (cd "target/${{ matrix.target }}/release" && shasum -a 256 zellij) > "${checksum_name}"
           fi
           echo "checksum_name=${checksum_name}" >> "$GITHUB_OUTPUT"
 
@@ -340,7 +340,7 @@ jobs:
         run: |
           $checksum_name = "zellij-no-web-${{ matrix.target }}.sha256sum"
           $hash = (Get-FileHash "target/release/zellij.exe" -Algorithm SHA256).Hash.ToLower()
-          "$hash  target/release/zellij.exe" | Out-File -Encoding ascii $checksum_name
+          "$hash  zellij.exe" | Out-File -Encoding ascii $checksum_name
           echo "checksum_name=$checksum_name" >> $env:GITHUB_OUTPUT
 
       - name: Upload release archive
