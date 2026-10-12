@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* feat: show the current session in the session manager and allow killing it (https://github.com/zellij-org/zellij/pull/5711)
 * (BREAKING CHANGE zellij-tile) `NestedListItem::new` now require a `Text` instead of a `&str` (https://github.com/zellij-org/zellij/pull/5611)
 * (BREAKING CHANGE zellij-tile) `Text::new` is replaced by `Text::from` (https://github.com/zellij-org/zellij/pull/5611)
     * Migration help: to help with the breaking change, this command may help (not for 100% of the cases but a good first pass): `ast-grep run -p 'Text::new($A)' -r 'Text::from($A)' --update-all`
