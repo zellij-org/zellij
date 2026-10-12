@@ -271,7 +271,7 @@ async fn handle_ws_terminal(
         session_name.map(|p| p.0),
         state.config.lock().unwrap().clone(),
         state.config_options.clone(),
-        Some(state.config_file_path.clone()),
+        state.config_file_path.clone(),
         web_client_id.clone(),
         state.session_manager.clone(),
         Some(attachment_complete_tx),

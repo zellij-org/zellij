@@ -241,22 +241,19 @@ pub fn zellij_server_listener(
                                 );
                             },
                             Some(ServerToClientMsg::ConfigFileUpdated) => {
-
-                                if config_file_path.is_some() {
-                                    let mut new_config = config.clone();
-                                    let mut new_config_options = config_options.clone();
-                                    reload_config_from_disk(&mut new_config, &mut new_config_options, &config_file_path);
-                                    {
-                                        // Re-seed host-query cache for this client
-                                        // so OSC 10/11/4 replies follow the new theme.
-                                        for seed in build_host_query_seed_msgs(&new_config, &config_options) {
-                                            os_input.send_to_server(seed);
-                                        }
-                                        let set_config_payload = SetConfigPayload::from(&new_config);
-                                        client_connection_bus.send_control(
-                                            WebServerToWebClientControlMessage::SetConfig(set_config_payload),
-                                        );
+                                let mut new_config = config.clone();
+                                let mut new_config_options = config_options.clone();
+                                reload_config_from_disk(&mut new_config, &mut new_config_options, &config_file_path);
+                                {
+                                    // Re-seed host-query cache for this client
+                                    // so OSC 10/11/4 replies follow the new theme.
+                                    for seed in build_host_query_seed_msgs(&new_config, &config_options) {
+                                        os_input.send_to_server(seed);
                                     }
+                                    let set_config_payload = SetConfigPayload::from(&new_config);
+                                    client_connection_bus.send_control(
+                                        WebServerToWebClientControlMessage::SetConfig(set_config_payload),
+                                    );
                                 }
                             },
                             // Subscribe-only messages — not relevant for web clients
