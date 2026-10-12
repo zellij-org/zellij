@@ -26,7 +26,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{
     atomic::{AtomicBool, AtomicUsize, Ordering},
-    Arc, Mutex,
+    Arc, Mutex, MutexGuard, PoisonError,
 };
 use std::thread;
 use std::time::{Duration, Instant};
@@ -319,6 +319,7 @@ pub(crate) fn background_jobs_main(
     serialization_interval: Option<u64>,
     disable_session_metadata: bool,
     web_server_base_url: String,
+    session_state_writes: SessionStateWrites,
 ) -> Result<()> {
     let err_context = || "failed to write to pty".to_string();
     let mut running_jobs: HashMap<BackgroundJob, Instant> = HashMap::new();
@@ -407,7 +408,7 @@ pub(crate) fn background_jobs_main(
                 }
                 let info = current_session_info.lock().unwrap().clone();
                 let layout = current_session_layout.lock().unwrap().clone();
-                write_session_state_to_disk(name, info, layout);
+                write_session_state_to_disk(&session_state_writes, name, info, layout);
             }
         });
     }
@@ -1008,11 +1009,31 @@ fn file_content_changed(path: &std::path::Path, new_content: &[u8]) -> bool {
     }
 }
 
+#[derive(Clone, Default)]
+pub struct SessionStateWrites {
+    stopped: Arc<Mutex<bool>>,
+}
+
+impl SessionStateWrites {
+    pub fn stop(&self) {
+        *self.lock() = true;
+    }
+
+    fn lock(&self) -> MutexGuard<'_, bool> {
+        self.stopped.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+}
+
 pub fn write_session_state_to_disk(
+    session_state_writes: &SessionStateWrites,
     current_session_name: String,
     current_session_info: SessionInfo,
     current_session_layout: (String, BTreeMap<String, String>),
 ) {
+    let writes_stopped = session_state_writes.lock();
+    if *writes_stopped {
+        return;
+    }
     let metadata_cache_file_name = session_info_cache_file_name(&current_session_name);
     let (current_session_layout, layout_files_to_write) = current_session_layout;
     let new_metadata = current_session_info.to_string();
