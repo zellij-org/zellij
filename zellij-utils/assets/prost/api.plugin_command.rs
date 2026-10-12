@@ -1377,6 +1377,8 @@ pub struct SwitchSessionPayload {
     pub cwd: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(bool, optional, tag="7")]
     pub session_card: ::core::option::Option<bool>,
+    #[prost(string, optional, tag="8")]
+    pub killed_session: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

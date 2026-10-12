@@ -382,6 +382,7 @@ pub fn test_attach_at(
         crate::spawn::advertised_host_terminal_env(),
         None,
         None,
+        None,
     )
     .message;
     open_at(
@@ -420,6 +421,7 @@ mod tests {
             &Options::default(),
             geometry.size(),
             crate::spawn::advertised_host_terminal_env(),
+            None,
             None,
             None,
         )

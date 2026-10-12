@@ -505,6 +505,26 @@ mod tests {
     }
 
     #[test]
+    fn test_1_4c_killed_session_rendered_above_current() {
+        let mut state = SingleScreenState::default();
+        state.render_cache.killed_session = Some("killed".to_owned());
+        let active = vec![
+            make_active_session("other", 1, 1, 1, false, 100),
+            make_active_session("current-sess", 1, 1, 1, true, 300),
+        ];
+        let exited = vec![
+            make_resurrectable("dead", 50),
+            make_resurrectable("killed", 0),
+        ];
+        state.update_search_term(&active, &exited);
+        let rows = &state.render_cache.rows;
+        assert_eq!(rows[0].session_name, "killed");
+        assert!(rows[0].is_killed);
+        assert_eq!(rows[1].session_name, "current-sess");
+        assert!(rows[1..].iter().all(|r| !r.is_killed));
+    }
+
+    #[test]
     fn test_1_5_pane_counts_reflect_tab_structure() {
         let mut state = SingleScreenState::default();
         state.search_term = String::new();

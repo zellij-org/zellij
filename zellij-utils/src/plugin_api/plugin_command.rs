@@ -1339,6 +1339,7 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                         layout: payload.layout.and_then(|l| l.try_into().ok()),
                         cwd: payload.cwd.map(|c| PathBuf::from(c)),
                         session_card: payload.session_card,
+                        killed_session: payload.killed_session,
                     }))
                 },
                 _ => Err("Mismatched payload for SwitchSession"),
@@ -2732,6 +2733,7 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                                 layout: payload.layout.and_then(|l| l.try_into().ok()),
                                 cwd: payload.cwd.map(PathBuf::from),
                                 session_card: payload.session_card,
+                                killed_session: payload.killed_session,
                             },
                         ))
                     },
@@ -3588,6 +3590,7 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     layout: switch_to_session.layout.and_then(|l| l.try_into().ok()),
                     cwd: switch_to_session.cwd.map(|c| c.display().to_string()),
                     session_card: switch_to_session.session_card,
+                    killed_session: switch_to_session.killed_session,
                 })),
             }),
             PluginCommand::OpenTerminalInPlace(cwd) => Ok(ProtobufPluginCommand {
@@ -4818,6 +4821,7 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                             layout: switch_to_session.layout.and_then(|l| l.try_into().ok()),
                             cwd: switch_to_session.cwd.map(|c| c.display().to_string()),
                             session_card: switch_to_session.session_card,
+                            killed_session: switch_to_session.killed_session,
                         },
                     )),
                 })
@@ -6107,6 +6111,7 @@ mod tests {
             name: Some("new".to_owned()),
             layout: Some(LayoutInfo::BuiltIn("default".to_owned())),
             session_card: Some(false),
+            killed_session: Some("old".to_owned()),
             ..Default::default()
         };
         let protobuf: ProtobufPluginCommand = PluginCommand::SwitchSession(connect.clone())

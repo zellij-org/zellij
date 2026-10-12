@@ -953,6 +953,7 @@ pub fn first_message(
     host_terminal_env: std::collections::BTreeMap<String, String>,
     tab_position_to_focus: Option<usize>,
     pane_id_to_focus: Option<(u32, bool)>,
+    killed_session: Option<String>,
 ) -> Handshake {
     let is_web_client = false;
     let layout_from_cli_args = |config_options: &Options| {
@@ -996,6 +997,7 @@ pub fn first_message(
             cwd,
             host_terminal_env: host_terminal_env.clone(),
             initial_panes,
+            killed_session: killed_session.clone(),
         }
     };
 
@@ -1066,6 +1068,7 @@ pub fn start_client(
     info: ClientInfo,
     tab_position_to_focus: Option<usize>,
     pane_id_to_focus: Option<(u32, bool)>, // (pane_id, is_plugin)
+    killed_session: Option<String>,
     is_a_reconnect: bool,
     start_detached_and_exit: bool,
 ) -> Option<ConnectToSession> {
@@ -1145,6 +1148,7 @@ pub fn start_client(
         host_terminal_env(),
         tab_position_to_focus,
         pane_id_to_focus,
+        killed_session,
     );
 
     envs::set_session_name(own_session_name.clone());
@@ -1657,6 +1661,7 @@ pub fn start_server_detached(
                 cwd,
                 host_terminal_env: host_terminal_env(),
                 initial_panes: None,
+                killed_session: None,
             };
 
             os_input.update_session_name(name);
@@ -1716,6 +1721,7 @@ pub fn start_server_detached(
                 cwd: layout_cwd,
                 host_terminal_env: host_terminal_env(),
                 initial_panes,
+                killed_session: None,
             };
 
             os_input.update_session_name(name);

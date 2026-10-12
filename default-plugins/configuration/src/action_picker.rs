@@ -362,6 +362,10 @@ pub const ACTION_SPECS: &[ActionSpec] = &[
         "Show, focus or hide the running sessions card",
     ),
     plain(
+        "KillSessionAndSwitch",
+        "Kill this session and move to the next one (press twice)",
+    ),
+    plain(
         "OpenContextMenu",
         "Open the right-click menu for the focused pane",
     ),

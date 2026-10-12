@@ -447,6 +447,7 @@ fn test_client_messages() {
                 .into_iter()
                 .collect(),
             initial_panes: None,
+            killed_session: None,
         },
         is_web_client: true,
     });
@@ -467,6 +468,7 @@ fn test_client_messages() {
                 .into_iter()
                 .collect(),
             initial_panes: None,
+            killed_session: None,
         },
         is_web_client: true,
     });
@@ -567,6 +569,7 @@ fn test_client_messages() {
                 }),
                 CommandOrPlugin::Plugin(RunPluginOrAlias::RunPlugin(RunPlugin::default())),
             ]),
+            killed_session: None,
         },
         is_web_client: true,
     });
@@ -4187,6 +4190,7 @@ fn test_server_messages() {
             layout: Some(LayoutInfo::BuiltIn("compact".to_owned())),
             cwd: Some(PathBuf::from("/path/to/cwd")),
             session_card: None,
+            killed_session: None,
         }
     });
     test_server_roundtrip!(ServerToClientMsg::SwitchSession {
@@ -4204,6 +4208,7 @@ fn test_server_messages() {
             )),
             cwd: Some(PathBuf::from("/path/to/cwd")),
             session_card: None,
+            killed_session: None,
         }
     });
     test_server_roundtrip!(ServerToClientMsg::SwitchSession {
@@ -4214,6 +4219,7 @@ fn test_server_messages() {
             layout: Some(LayoutInfo::Url("https://example.com/layout.kdl".to_owned())),
             cwd: Some(PathBuf::from("/path/to/cwd")),
             session_card: None,
+            killed_session: None,
         }
     });
     test_server_roundtrip!(ServerToClientMsg::SwitchSession {
@@ -4226,6 +4232,7 @@ fn test_server_messages() {
             )),
             cwd: Some(PathBuf::from("/path/to/cwd")),
             session_card: None,
+            killed_session: Some("killed_session_name".to_owned()),
         }
     });
     test_server_roundtrip!(ServerToClientMsg::PaneRenderUpdate {

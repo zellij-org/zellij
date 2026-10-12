@@ -1426,6 +1426,15 @@ fn route_action_with_origin(
                 ))
                 .with_context(err_context)?;
         },
+        Action::KillSessionAndSwitch => {
+            senders
+                .send_to_server(ServerInstruction::KillSessionAndSwitch(
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+            should_break = true;
+        },
         Action::ToggleSessionCard => {
             senders
                 .send_to_screen(ScreenInstruction::ToggleSessionCard(
@@ -1459,6 +1468,7 @@ fn route_action_with_origin(
                     layout: layout.clone(),
                     cwd: cwd.clone(),
                     session_card: None,
+                    killed_session: None,
                 };
                 let instruction = if close_current {
                     ServerInstruction::SwitchSessionAndCloseCurrent(
@@ -2635,6 +2645,8 @@ pub(crate) fn route_thread_main(
     let mut retry_queue = VecDeque::new();
     let err_context = || format!("failed to handle instruction for client {client_id}");
     let mut seen_cli_pipes = HashSet::new();
+    // KillSessionAndSwitch from a key needs the same key twice in a row; any other key disarms
+    let mut kill_session_armed = false;
     let mut consecutive_unknown_messages_received = 0;
     let mut first_instruction =
         first_instruction.map(|instruction| (instruction, ErrorContext::default()));
@@ -2771,9 +2783,17 @@ pub(crate) fn route_thread_main(
                                         key_actions,
                                     ))
                                 });
-                            if let Some((senders, default_shell, client_input_mode, key_actions)) =
+                            if let Some((senders, default_shell, client_input_mode, mut key_actions)) =
                                 dispatch_inputs
                             {
+                                let is_kill = |a: &PopupKeyAction| {
+                                    matches!(a, PopupKeyAction::Route(Action::KillSessionAndSwitch))
+                                };
+                                let was_armed = std::mem::take(&mut kill_session_armed);
+                                if key_actions.iter().any(is_kill) && !was_armed {
+                                    kill_session_armed = true;
+                                    key_actions.retain(|a| !is_kill(a));
+                                }
                                 for key_action in key_actions {
                                     let action = match key_action {
                                         PopupKeyAction::Route(action) => action,

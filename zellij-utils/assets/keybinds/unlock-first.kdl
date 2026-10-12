@@ -140,6 +140,7 @@ keybinds {
     session {
         bind "o" { SwitchToMode "Normal"; }
         bind "d" { Detach; }
+        bind "k" { KillSessionAndSwitch; }
         bind "]" { FocusHostSession; SwitchToMode "Locked"; }
         bind "[" { FocusGuestSession; SwitchToMode "Locked"; }
         bind "f" { ToggleHostFullscreen; SwitchToMode "Locked"; }

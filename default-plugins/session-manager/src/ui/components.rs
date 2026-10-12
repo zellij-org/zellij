@@ -21,6 +21,9 @@ pub struct CachedRowData {
     pub original_index: usize,
     pub kind: CachedRowKind,
     pub is_current: bool,
+    /// The session this client just killed from the manager, kept in the list so it can be
+    /// resurrected; drawn grayed out.
+    pub is_killed: bool,
     // Pre-formatted strings (computed once, reused across renders)
     pub full_details: String,
     pub abbr_details: String,
@@ -52,8 +55,11 @@ pub struct DetailsColorRanges {
 /// and timer re-renders reuse the cached data.
 #[derive(Default)]
 pub struct UnifiedResultsRenderCache {
-    /// Rows with pre-formatted strings; the current session, if present, comes first.
+    /// Rows with pre-formatted strings. The session just killed (if any) comes first, then the
+    /// current session, then the rest.
     pub rows: Vec<CachedRowData>,
+    /// The session this client just killed, see `CachedRowData::is_killed`.
+    pub killed_session: Option<String>,
     /// Max column widths across all cached rows.
     pub full_name_width: usize,
     pub full_details_width: usize,
@@ -143,6 +149,7 @@ impl UnifiedResultsRenderCache {
                         original_index: orig_i,
                         kind: CachedRowKind::Active,
                         is_current,
+                        is_killed: false,
                         full_details,
                         abbr_details,
                         name_width,
@@ -199,6 +206,7 @@ impl UnifiedResultsRenderCache {
                         original_index: orig_i,
                         kind: CachedRowKind::Resurrectable,
                         is_current: false,
+                        is_killed: self.killed_session.as_ref() == Some(session_name),
                         full_details,
                         abbr_details,
                         name_width,
@@ -221,12 +229,10 @@ impl UnifiedResultsRenderCache {
                 self.abbr_details_width = row.abbr_details_width;
             }
 
-            if row.is_current {
-                self.rows.insert(0, row);
-            } else {
-                self.rows.push(row);
-            }
+            self.rows.push(row);
         }
+        self.rows
+            .sort_by_key(|row| (!row.is_killed, !row.is_current));
     }
 }
 

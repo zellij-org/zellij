@@ -748,6 +748,9 @@ pub(crate) fn start_client(opts: CliArgs) {
                 let pane_id_to_focus = reconnect_to_session
                     .as_ref()
                     .and_then(|r| r.pane_id.clone());
+                let killed_session = reconnect_to_session
+                    .as_ref()
+                    .and_then(|r| r.killed_session.clone());
                 reconnect_to_session = start_client_impl(
                     Box::new(os_input),
                     opts,
@@ -756,6 +759,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                     client,
                     tab_position_to_focus,
                     pane_id_to_focus,
+                    killed_session,
                     is_a_reconnect,
                     should_create_detached,
                 );
@@ -769,6 +773,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                     config,
                     config_options,
                     ClientInfo::New(session_name, layout_info, new_session_cwd, None),
+                    None,
                     None,
                     None,
                     is_a_reconnect,
@@ -807,6 +812,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                                 client,
                                 None,
                                 None,
+                                None,
                                 is_a_reconnect,
                                 should_create_detached,
                             );
@@ -824,6 +830,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                                     new_session_cwd,
                                     None,
                                 ),
+                                None,
                                 None,
                                 None,
                                 is_a_reconnect,
@@ -847,6 +854,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                     config,
                     config_options,
                     ClientInfo::New(session_name, layout_info, new_session_cwd, None),
+                    None,
                     None,
                     None,
                     is_a_reconnect,
@@ -922,6 +930,7 @@ pub(crate) fn watch_session(session_name: Option<String>, opts: CliArgs) {
         client_info,
         None,  // tab_position_to_focus
         None,  // pane_id_to_focus
+        None,  // killed_session
         false, // is_a_reconnect
         false, // should_create_detached
     );

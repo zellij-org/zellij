@@ -708,6 +708,12 @@ impl TryFrom<ProtobufAction> for Action {
                 Some(_) => Err("ToggleSessionCard should not have a payload"),
                 None => Ok(Action::ToggleSessionCard),
             },
+            Some(ProtobufActionName::KillSessionAndSwitch) => {
+                match protobuf_action.optional_payload {
+                    Some(_) => Err("KillSessionAndSwitch should not have a payload"),
+                    None => Ok(Action::KillSessionAndSwitch),
+                }
+            },
             Some(ProtobufActionName::LeftClick) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::LeftClickPayload(payload)) => {
                     let position = payload.try_into()?;
@@ -1945,6 +1951,10 @@ impl TryFrom<Action> for ProtobufAction {
             }),
             Action::ToggleSessionCard => Ok(ProtobufAction {
                 name: ProtobufActionName::ToggleSessionCard as i32,
+                optional_payload: None,
+            }),
+            Action::KillSessionAndSwitch => Ok(ProtobufAction {
+                name: ProtobufActionName::KillSessionAndSwitch as i32,
                 optional_payload: None,
             }),
             Action::OpenContextMenu => Ok(ProtobufAction {

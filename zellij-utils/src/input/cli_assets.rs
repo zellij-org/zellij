@@ -48,6 +48,10 @@ pub struct CliAssets {
     pub cwd: Option<PathBuf>,
     pub host_terminal_env: BTreeMap<String, String>,
     pub initial_panes: Option<Vec<CommandOrPlugin>>,
+    /// Set when this client arrives from a session it just killed: the server opens the session
+    /// manager for it, with that session listed so it can be resurrected.
+    #[serde(default)]
+    pub killed_session: Option<String>,
 }
 
 impl CliAssets {

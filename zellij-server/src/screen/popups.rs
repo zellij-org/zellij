@@ -1,4 +1,4 @@
-use super::Screen;
+use super::{Screen, ScreenInstruction};
 use crate::background_jobs::BackgroundJob;
 use crate::panes::PaneId;
 use crate::plugins::{PluginInstruction, PopupRequest, PromptCaller, SERVER_NOTICE_CALLER_ID};
@@ -1040,6 +1040,53 @@ impl Screen {
         };
         for plugin_id in tab.unfocused_popup_plugin_ids(client_id) {
             self.pipe_to_popup_plugin(plugin_id, client_id, "escape");
+        }
+    }
+    /// Open the session manager for a client that just arrived from a session it killed, so it
+    /// stays in the manager across the switch. Waits for the first tab of a new session.
+    pub fn open_session_manager_after_kill(&mut self, client_id: ClientId, killed_session: String) {
+        if self.get_active_tab(client_id).is_err() {
+            self.pending_session_manager = Some((client_id, killed_session));
+            return;
+        }
+        self.pending_session_manager = None;
+        let configuration = BTreeMap::from([("killed_session".to_owned(), killed_session)]);
+        let run_plugin_or_alias = match RunPluginOrAlias::from_url(
+            SESSION_MANAGER_PLUGIN_ALIAS,
+            &Some(configuration),
+            None,
+            None,
+        ) {
+            Ok(run_plugin_or_alias) => run_plugin_or_alias,
+            Err(e) => {
+                log::error!("Failed to open the session manager: {}", e);
+                return;
+            },
+        };
+        let should_float = true;
+        let move_to_focused_tab = true;
+        let should_open_in_place = false;
+        let close_replaced_pane = false;
+        let skip_cache = false;
+        let _ = self
+            .bus
+            .senders
+            .send_to_screen(ScreenInstruction::LaunchOrFocusPlugin(
+                run_plugin_or_alias,
+                should_float,
+                move_to_focused_tab,
+                should_open_in_place,
+                close_replaced_pane,
+                None,
+                skip_cache,
+                client_id,
+                None,
+                None,
+            ));
+    }
+    pub fn open_pending_session_manager(&mut self) {
+        if let Some((client_id, killed_session)) = self.pending_session_manager.take() {
+            self.open_session_manager_after_kill(client_id, killed_session);
         }
     }
     pub fn open_pending_session_card(&mut self) {

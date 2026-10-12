@@ -46,6 +46,13 @@ pub(crate) struct State {
     session_name: Option<String>,
     current_session: Option<SessionUiInfo>,
     delete_armed: bool,
+    /// Set when this manager was opened on arrival from a session this client killed: that
+    /// session stays listed (grayed out) so it can be resurrected.
+    killed_session: Option<String>,
+    /// The killed session has been seen exited, so if it runs again it was resurrected.
+    killed_session_gone: bool,
+    /// Put the cursor on the current session once it shows up in the list.
+    select_current_on_load: bool,
     pub(crate) sessions: SessionList,
     pub(crate) resurrectable_sessions: ResurrectableSessions,
     search_term: String,
@@ -114,6 +121,9 @@ impl ZellijPlugin for State {
             self.active_screen = ActiveScreen::SingleScreen;
         }
         self.single_screen_state.is_welcome_screen = self.is_welcome_screen;
+        self.killed_session = configuration.get("killed_session").cloned();
+        self.single_screen_state.render_cache.killed_session = self.killed_session.clone();
+        self.select_current_on_load = self.killed_session.is_some();
         self.is_visible = true;
         subscribe(&[
             EventType::ModeUpdate,
@@ -403,7 +413,7 @@ impl ZellijPlugin for State {
                     render_card(&mut self.panel, rows, cols);
                 }
             },
-            Some(PanelSize::Manager) if self.no_other_sessions() => {
+            Some(PanelSize::Manager) if self.nothing_to_list() => {
                 self.render_welcome_text(cols);
                 self.render_classic(rows, cols);
             },
@@ -568,7 +578,7 @@ impl State {
                                 x_centered,
                                 y_offset,
                             );
-                            if self.no_other_sessions() {
+                            if self.nothing_to_list() {
                                 print_text_with_coordinates(
                                     Text::from(NO_OTHER_SESSIONS_TEXT),
                                     x_centered,
@@ -1644,7 +1654,7 @@ impl State {
     fn delete_prompt(&self) -> String {
         match self.selected_session() {
             Some((name, _, true)) if self.active_screen == ActiveScreen::SingleScreen => format!(
-                "Press <Del> again to leave and kill '{}' (the current session).",
+                "Press <Del> again to kill '{}' (the current session) and move to the next one.",
                 name
             ),
             Some((name, true, _)) if self.active_screen == ActiveScreen::SingleScreen => {
@@ -1919,6 +1929,7 @@ impl State {
     /// Move this client to another session (the next running one in the list, else the
     /// next exited one, else a new session) and then kill the session we left. The kill
     /// is queued on the server after the switch, so this client is gone before it lands.
+    /// The session we land in opens the manager again, so the user never leaves it.
     fn leave_and_kill_current_session(&mut self) {
         let Some(current) = self.session_name.clone() else {
             return;
@@ -1935,10 +1946,12 @@ impl State {
         let exited = others()
             .find(|r| matches!(r, UnifiedSearchResult::ResurrectableSession { .. }))
             .map(|r| r.session_name().to_owned());
-        match running.or(exited) {
-            Some(target) => switch_session(Some(&target)),
-            None => switch_session(None),
-        }
+        // the session we land in reopens the manager, with this one grayed out below
+        switch_session_with_options(ConnectToSession {
+            name: running.or(exited),
+            killed_session: Some(current.clone()),
+            ..Default::default()
+        });
         let _ = kill_sessions(&[current]);
     }
     fn is_current_session_name(&self, name: &str) -> bool {
@@ -1951,13 +1964,33 @@ impl State {
         let mut running = vec![];
         let mut resumable = vec![];
         let mut ordered_names = vec![];
+        if let Some(killed) = self.killed_session.clone() {
+            let killed_is_running = suggestions
+                .suggestions
+                .iter()
+                .any(|s| s.name == killed && s.is_running);
+            if !killed_is_running {
+                self.killed_session_gone = true;
+            }
+            if killed_is_running && self.killed_session_gone {
+                // it was resurrected, so it is an ordinary session again
+                self.killed_session = None;
+                self.single_screen_state.render_cache.killed_session = None;
+            } else {
+                // listed first, as exited, even while the kill is still landing
+                ordered_names.push(killed.clone());
+                resumable.push((killed, std::time::Duration::default()));
+            }
+        }
         // the server never suggests the session we are in, so we add it ourselves
         if let Some(current) = self.current_session.as_ref() {
             ordered_names.push(current.name.clone());
             running.push(current.clone());
         }
         for suggestion in &suggestions.suggestions {
-            if Some(&suggestion.name) == self.session_name.as_ref() {
+            if Some(&suggestion.name) == self.session_name.as_ref()
+                || Some(&suggestion.name) == self.killed_session.as_ref()
+            {
                 continue;
             }
             ordered_names.push(suggestion.name.clone());
@@ -2016,6 +2049,31 @@ impl State {
             &self.sessions.session_ui_infos,
             &self.resurrectable_sessions.all_resurrectable_sessions,
         );
+        self.select_current_session_once();
+    }
+    /// After arriving from a killed session, the cursor sits on the session we moved to: the
+    /// row just below the killed one.
+    fn select_current_session_once(&mut self) {
+        if !self.select_current_on_load {
+            return;
+        }
+        let Some(current) = self.session_name.clone() else {
+            return;
+        };
+        let Some(index) = self
+            .single_screen_state
+            .unified_results
+            .iter()
+            .position(|r| r.session_name() == current)
+        else {
+            return;
+        };
+        self.select_current_on_load = false;
+        self.single_screen_state.selected_index = Some(index);
+        self.panel.tree.node = session_tree::TreeNode::Session;
+        self.panel.tree.node_session = current;
+        self.panel.tree.follow = true;
+        self.request_preview_for_selection();
     }
     fn apply_session_preview(&mut self, preview: SessionPreview) -> bool {
         let mut should_render = false;
@@ -2240,12 +2298,18 @@ impl State {
             },
         }
     }
-    fn no_other_sessions(&self) -> bool {
-        self.panel
+    fn nothing_to_list(&self) -> bool {
+        let nothing_suggested = self
+            .panel
             .suggestions
             .as_ref()
             .map(|s| s.suggestions.is_empty())
-            .unwrap_or(false)
+            .unwrap_or(false);
+        // outside the welcome screen the list also holds the current session, and the one
+        // just killed
+        nothing_suggested
+            && (self.is_welcome_screen
+                || (self.current_session.is_none() && self.killed_session.is_none()))
     }
     fn tree_cursor(&self) -> Option<usize> {
         self.panel.tree.cursor_position(

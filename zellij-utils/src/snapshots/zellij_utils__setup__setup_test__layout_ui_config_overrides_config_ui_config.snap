@@ -4551,6 +4551,14 @@ Config {
                 bare_key: Char(
                     'k',
                 ),
+                key_modifiers: {},
+            }: [
+                KillSessionAndSwitch,
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'k',
+                ),
                 key_modifiers: {
                     Alt,
                 },

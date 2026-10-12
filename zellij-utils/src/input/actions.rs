@@ -758,6 +758,9 @@ pub enum Action {
     DismissInfoPopups,
     OpenContextMenu,
     ToggleSessionCard,
+    /// Kill the current session and move this client to the next one, without opening the
+    /// session manager. Bound to a key pressed twice: the first press only arms it.
+    KillSessionAndSwitch,
 }
 
 impl Default for Action {

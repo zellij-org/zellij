@@ -12,6 +12,8 @@ pub const SHOW_ALL_TEXT: &str = "Show all and previews ›";
 pub const SHOW_ALL_SHORTCUT: &str = "<Ctrl f>";
 pub const CARD_TITLE: &str = "Running Sessions";
 pub const CURRENT_SESSION_TAG: &str = "[CURRENT]";
+pub const KILLED_SESSION_TAG: &str = "[KILLED]";
+pub const KILLED_SESSION_HINT: &str = "<Enter> to resurrect";
 pub const CARD_SHORTCUT: &str = "<F9>";
 pub const CARD_MIN_LIST_ROWS: usize = 5;
 pub const CARD_SCROLL_MARGIN: usize = 2;
@@ -857,6 +859,9 @@ pub fn render_session_tree(
     panel.tree.offset = offset;
     let visible = rows.len().saturating_sub(offset).min(capacity);
     let session_name_text = |row: &crate::ui::components::CachedRowData| match row.kind {
+        CachedRowKind::Resurrectable if row.is_killed => {
+            format!("{} {}", row.session_name, KILLED_SESSION_TAG)
+        },
         CachedRowKind::Resurrectable => format!("{} [EXITED]", row.session_name),
         CachedRowKind::Active if row.is_current => {
             format!("{} {}", row.session_name, CURRENT_SESSION_TAG)
@@ -928,7 +933,12 @@ pub fn render_session_tree(
                 let name = session_name_text(cached_row);
                 let folder = folder_text(&row.session);
                 let branch = branch_text(&row.session);
-                let (details, ranges) = if abbreviate {
+                let (details, ranges) = if cached_row.is_killed {
+                    (
+                        KILLED_SESSION_HINT.to_owned(),
+                        &cached_row.details_color_ranges,
+                    )
+                } else if abbreviate {
                     (
                         cached_row.abbr_details.clone(),
                         &cached_row.abbr_details_color_ranges,
@@ -947,49 +957,56 @@ pub fn render_session_tree(
                     details
                 );
                 let name_len = cached_row.session_name.chars().count();
-                let mut text = Text::from(line).color_range(1, ..name_len);
-                let indices: Vec<usize> = cached_row
-                    .indices
-                    .iter()
-                    .filter(|&&i| i < name_len)
-                    .cloned()
-                    .collect();
-                if !indices.is_empty() {
-                    text = text.color_indices(3, indices);
+                if cached_row.is_killed {
+                    // grayed out: it is gone, but <Enter> brings it back
+                    Text::from(line).dim_all()
+                } else {
+                    let mut text = Text::from(line).color_range(1, ..name_len);
+                    let indices: Vec<usize> = cached_row
+                        .indices
+                        .iter()
+                        .filter(|&&i| i < name_len)
+                        .cloned()
+                        .collect();
+                    if !indices.is_empty() {
+                        text = text.color_indices(3, indices);
+                    }
+                    if matches!(cached_row.kind, CachedRowKind::Resurrectable) {
+                        let start = name_len + 2;
+                        text = text.error_color_range(start..start + "EXITED".len());
+                    }
+                    if cached_row.is_current {
+                        let tag_start = name_len + 1;
+                        text = text.italic_range(..name_len).success_color_range(
+                            tag_start..tag_start + CURRENT_SESSION_TAG.chars().count(),
+                        );
+                    }
+                    let folder_start = name_width + 2;
+                    let suggestion = suggestions.get(row.session.as_str());
+                    if suggestion
+                        .map(|s| s.column_matches("directory"))
+                        .unwrap_or(false)
+                    {
+                        text = text
+                            .color_range(1, folder_start..folder_start + folder.chars().count());
+                    }
+                    let branch_start = folder_start + folder_width + 2;
+                    if suggestion
+                        .map(|s| s.column_matches("git_branch"))
+                        .unwrap_or(false)
+                    {
+                        text = text
+                            .color_range(0, branch_start..branch_start + branch.chars().count());
+                    }
+                    let details_start = branch_start + branch_width + 2;
+                    for (level, range) in &ranges.ranges {
+                        text = text.color_range(
+                            *level,
+                            details_start + range.start..details_start + range.end,
+                        );
+                    }
+                    text
                 }
-                if matches!(cached_row.kind, CachedRowKind::Resurrectable) {
-                    let start = name_len + 2;
-                    text = text.error_color_range(start..start + "EXITED".len());
-                }
-                if cached_row.is_current {
-                    let tag_start = name_len + 1;
-                    text = text.italic_range(..name_len).success_color_range(
-                        tag_start..tag_start + CURRENT_SESSION_TAG.chars().count(),
-                    );
-                }
-                let folder_start = name_width + 2;
-                let suggestion = suggestions.get(row.session.as_str());
-                if suggestion
-                    .map(|s| s.column_matches("directory"))
-                    .unwrap_or(false)
-                {
-                    text = text.color_range(1, folder_start..folder_start + folder.chars().count());
-                }
-                let branch_start = folder_start + folder_width + 2;
-                if suggestion
-                    .map(|s| s.column_matches("git_branch"))
-                    .unwrap_or(false)
-                {
-                    text = text.color_range(0, branch_start..branch_start + branch.chars().count());
-                }
-                let details_start = branch_start + branch_width + 2;
-                for (level, range) in &ranges.ranges {
-                    text = text.color_range(
-                        *level,
-                        details_start + range.start..details_start + range.end,
-                    );
-                }
-                text
             },
             TreeNode::Tab(tab_index) => {
                 let tab = panel

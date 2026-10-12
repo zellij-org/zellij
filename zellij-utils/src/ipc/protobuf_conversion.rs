@@ -940,6 +940,7 @@ impl From<crate::input::cli_assets::CliAssets>
                 .initial_panes
                 .map(|panes| panes.into_iter().map(|p| p.into()).collect())
                 .unwrap_or_default(),
+            killed_session: cli_assets.killed_session,
         }
     }
 }
@@ -981,6 +982,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::CliAssets>
                         .collect::<Result<Vec<_>>>()?,
                 )
             },
+            killed_session: cli_assets.killed_session,
         })
     }
 }
@@ -1337,6 +1339,7 @@ impl From<crate::input::actions::Action>
             HalfPageScrollUpByPaneIdAction,
             HideFloatingPanesAction,
             KeybindPipeAction,
+            KillSessionAndSwitchAction,
             LaunchOrFocusPluginAction,
             LaunchPluginAction,
             ListClientsAction,
@@ -1871,6 +1874,9 @@ impl From<crate::input::actions::Action>
             },
             crate::input::actions::Action::ToggleSessionCard => {
                 ActionType::ToggleSessionCard(ToggleSessionCardAction {})
+            },
+            crate::input::actions::Action::KillSessionAndSwitch => {
+                ActionType::KillSessionAndSwitch(KillSessionAndSwitchAction {})
             },
             crate::input::actions::Action::OpenContextMenu => {
                 ActionType::OpenContextMenu(OpenContextMenuAction {})
@@ -2845,6 +2851,9 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             ActionType::ToggleSessionCard(_) => {
                 Ok(crate::input::actions::Action::ToggleSessionCard)
             },
+            ActionType::KillSessionAndSwitch(_) => {
+                Ok(crate::input::actions::Action::KillSessionAndSwitch)
+            },
             ActionType::SwitchSession(switch_session_action) => {
                 Ok(crate::input::actions::Action::SwitchSession {
                     name: switch_session_action.name.clone(),
@@ -3563,6 +3572,7 @@ impl From<crate::data::ConnectToSession>
             layout: connect.layout.map(|l| l.into()),
             cwd: connect.cwd.map(|p| p.to_string_lossy().to_string()),
             session_card: connect.session_card,
+            killed_session: connect.killed_session,
         }
     }
 }
@@ -3581,6 +3591,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::ConnectToSes
             layout: connect.layout.map(|l| l.try_into()).transpose()?,
             cwd: connect.cwd.map(PathBuf::from),
             session_card: connect.session_card,
+            killed_session: connect.killed_session,
         })
     }
 }

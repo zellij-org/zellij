@@ -300,6 +300,7 @@ fn connect(
         spawn::advertised_host_terminal_env(),
         focus.0,
         focus.1,
+        None,
     );
     let session_name = info.get_session_name().to_owned();
     if handshake.starts_server {
