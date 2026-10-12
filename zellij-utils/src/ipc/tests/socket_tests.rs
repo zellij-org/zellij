@@ -480,3 +480,58 @@ fn socket_directory_enumeration_finds_sockets() {
     assert_eq!(entries.len(), 1, "should find exactly one socket");
     assert_eq!(entries[0], "test-session");
 }
+
+#[cfg(unix)]
+#[test]
+fn async_send_kill_and_await_waits_for_exit() {
+    use crate::ipc::{async_send_kill_and_await, ExitReason};
+    use std::time::Duration;
+
+    let (_guard, name) = new_ipc();
+    let listener = bind_listener(&name);
+    let (send_exit_tx, send_exit_rx) = std::sync::mpsc::channel::<()>();
+
+    let server = std::thread::spawn(move || {
+        let stream = listener.incoming().next().unwrap().expect("accept failed");
+        let mut receiver: IpcReceiverWithContext<ClientToServerMsg> =
+            IpcReceiverWithContext::new(stream);
+        let (msg, _ctx) = receiver.recv_client_msg().expect("no message received");
+        assert!(
+            matches!(msg, ClientToServerMsg::KillSession),
+            "should be KillSession, got: {:?}",
+            msg
+        );
+        let mut sender: IpcSenderWithContext<ServerToClientMsg> = receiver.get_sender();
+        sender
+            .send_server_msg(ServerToClientMsg::UnblockInputThread)
+            .expect("send failed");
+        send_exit_rx.recv().expect("test dropped the exit signal");
+        sender
+            .send_server_msg(ServerToClientMsg::Exit {
+                exit_reason: ExitReason::Normal,
+            })
+            .expect("send failed");
+        receiver
+    });
+
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    runtime.block_on(async {
+        let mut kill = std::pin::pin!(async_send_kill_and_await(&name));
+        assert!(
+            tokio::time::timeout(Duration::from_millis(200), &mut kill)
+                .await
+                .is_err(),
+            "returned before the server sent Exit"
+        );
+        send_exit_tx.send(()).unwrap();
+        tokio::time::timeout(Duration::from_secs(5), kill)
+            .await
+            .expect("did not return after the server sent Exit")
+            .expect("kill failed");
+    });
+
+    drop(server.join().expect("server thread panicked"));
+}
