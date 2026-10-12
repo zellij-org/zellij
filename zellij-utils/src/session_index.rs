@@ -863,7 +863,9 @@ pub fn running_session_names_in(sock_dir: &Path) -> Vec<String> {
                 .unwrap_or(false)
         })
         .filter_map(|entry| entry.file_name().into_string().ok())
-        .filter(|name| name != "web_server_bus" && !name.ends_with("-reply"))
+        .filter(|name| {
+            name != "web_server_bus" && !name.ends_with("-reply") && !name.starts_with('.')
+        })
         .collect()
 }
 
