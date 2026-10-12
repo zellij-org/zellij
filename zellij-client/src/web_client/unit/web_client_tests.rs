@@ -117,6 +117,41 @@ mod web_client_tests {
 
     #[tokio::test]
     #[serial]
+    async fn test_server_starts_without_config_file_path() {
+        // with no explicit config path and no default config directory on disk
+        // (`Config::default_config_file_path()` returns `None`), the server must still serve
+        let _ = delete_db();
+
+        let session_manager = Arc::new(MockSessionManager::new());
+        let client_os_api_factory = Arc::new(MockClientOsApiFactory::new());
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let port = addr.port();
+
+        let server_handle = tokio::spawn(serve_web_client(
+            Config::default(),
+            Options::default(),
+            None,
+            listener,
+            None,
+            Some(session_manager),
+            Some(client_os_api_factory),
+            addr.ip(),
+            port,
+        ));
+
+        wait_for_server(port, Duration::from_secs(5))
+            .await
+            .expect("Server failed to start");
+
+        server_handle.abort();
+
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    #[tokio::test]
+    #[serial]
     async fn test_login_endpoint() {
         let _ = delete_db();
 
