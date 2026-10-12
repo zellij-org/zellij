@@ -39,6 +39,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: replay cached startup events to background plugins (https://github.com/zellij-org/zellij/pull/5706)
 * fix: busy-loop and log spam on dangling symlinks in layout/config folders (https://github.com/zellij-org/zellij/pull/5731)
 * feat: inbox, cross-session activity notifications, OSC7501 support, desktop integrations (https://github.com/zellij-org/zellij/pull/5734)
+* fix: `delete-session --force` no longer brings the killed session back as EXITED (https://github.com/zellij-org/zellij/pull/5709)
 
 
 ## [0.45.1] - 2026-08-28
