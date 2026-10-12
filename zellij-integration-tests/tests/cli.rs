@@ -2,8 +2,8 @@
 
 use insta::assert_snapshot;
 use zellij_integration_tests::{
-    claim_first_terminal_and_wait_for_prompt, col, keys, normalized, start_zellij, Size, PROMPT,
-    TERMINAL_SIZE,
+    claim_first_terminal_and_wait_for_prompt, col, keys, normalized, start_zellij, GridSnapshot,
+    Size, PROMPT, TERMINAL_SIZE,
 };
 
 #[test]
@@ -24,6 +24,14 @@ fn override_layout_from_default_to_compact() {
     zellij.quit();
 }
 
+fn hint_row_contains(grid_snapshot: &GridSnapshot, text: &str) -> bool {
+    grid_snapshot
+        .lines()
+        .first()
+        .map(|row| row.contains(text))
+        .unwrap_or(false)
+}
+
 #[test]
 fn send_command_through_the_cli() {
     let mut zellij = start_zellij();
@@ -31,9 +39,12 @@ fn send_command_through_the_cli() {
 
     zellij.run_suspended_command(&["suspended-command"]);
     let command_terminal = zellij.expect_pty_spawn();
-    zellij.wait_until("suspended command pane waiting to run", |grid_snapshot| {
-        grid_snapshot.contains("<Ctrl-c>")
-    });
+    zellij.wait_until(
+        "suspended command pane waiting to run and its hint shown",
+        |grid_snapshot| {
+            grid_snapshot.contains("<Ctrl-c>") && hint_row_contains(grid_snapshot, "<ENTER> run")
+        },
+    );
 
     zellij.send_stdin(&keys::ENTER);
     zellij.wait_until("command running", |grid_snapshot| {
@@ -44,9 +55,13 @@ fn send_command_through_the_cli() {
         grid_snapshot.contains("foo")
     });
     command_terminal.exit(Some(0));
-    zellij.wait_until("command pane held again after exit", |grid_snapshot| {
-        grid_snapshot.contains("EXIT CODE")
-    });
+    zellij.wait_until(
+        "command pane held again after exit and its hint shown",
+        |grid_snapshot| {
+            grid_snapshot.contains("EXIT CODE")
+                && hint_row_contains(grid_snapshot, "<ENTER> re-run")
+        },
+    );
 
     zellij.send_stdin(&keys::ENTER);
     zellij.wait_until("command re-running", |grid_snapshot| {
