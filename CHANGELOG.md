@@ -31,6 +31,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: allow config to dangerously disable https certificate enforcement on non-localhost (https://github.com/zellij-org/zellij/pull/5694)
 * feat: reorder tabs with mouse, configurable mouse bindings (https://github.com/zellij-org/zellij/pull/5697)
 * feat: pass `ZELLIJ_ORIGIN_PANE_ID` to `Run` keybindings and allow running in background (https://github.com/zellij-org/zellij/pull/5701)
+* fix: race when starting two servers with the same name (https://github.com/zellij-org/zellij/pull/5708)
 
 
 ## [0.45.1] - 2026-08-28

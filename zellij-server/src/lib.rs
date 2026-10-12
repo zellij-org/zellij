@@ -3021,6 +3021,199 @@ fn handle_new_connection(
     )
 }
 
+/// Proof that this server owns the session socket. Only the owner may delete the socket file.
+#[cfg(unix)]
+struct SocketOwnership {
+    lock: nix::fcntl::Flock<std::fs::File>,
+    lock_path: PathBuf,
+}
+
+#[cfg(unix)]
+impl SocketOwnership {
+    // Binding a Unix socket requires deleting any leftover socket file first, so without a lock a
+    // second server could delete the socket of a live one. The OS releases the lock if we crash.
+    fn acquire(socket_path: &Path) -> std::io::Result<Self> {
+        use nix::fcntl::{Flock, FlockArg};
+        use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+        let lock_path = Self::lock_path(socket_path)?;
+        loop {
+            let file = std::fs::OpenOptions::new()
+                .create(true)
+                .write(true)
+                .mode(0o600)
+                .open(&lock_path)?;
+            let lock = Flock::lock(file, FlockArg::LockExclusiveNonblock).map_err(
+                |(_, errno)| match errno {
+                    nix::errno::Errno::EWOULDBLOCK => std::io::Error::new(
+                        std::io::ErrorKind::AddrInUse,
+                        format!(
+                            "another server is already running on {}",
+                            socket_path.display()
+                        ),
+                    ),
+                    errno => std::io::Error::from(errno),
+                },
+            )?;
+            // An exiting owner may have deleted the lock file between our open and lock. Retry,
+            // otherwise two servers could each hold a lock on a different file.
+            let held = lock.metadata()?;
+            match std::fs::metadata(&lock_path) {
+                Ok(current) if current.dev() == held.dev() && current.ino() == held.ino() => {
+                    return Ok(SocketOwnership { lock, lock_path });
+                },
+                _ => continue,
+            }
+        }
+    }
+
+    // The lock file is deleted while the lock is still held, so no new server can lock it in
+    // between.
+    fn release(self) {
+        drop(std::fs::remove_file(&self.lock_path));
+        drop(self.lock);
+    }
+
+    fn lock_path(socket_path: &Path) -> std::io::Result<PathBuf> {
+        let file_name = socket_path.file_name().ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!(
+                    "session socket path {} has no file name",
+                    socket_path.display()
+                ),
+            )
+        })?;
+        let mut lock_name = std::ffi::OsString::from(".");
+        lock_name.push(file_name);
+        lock_name.push(".lock");
+        Ok(socket_path.with_file_name(lock_name))
+    }
+}
+
+#[cfg(not(unix))]
+struct SocketOwnership;
+
+#[cfg(not(unix))]
+impl SocketOwnership {
+    // Windows refuses to create a second pipe with the same name and writes the marker file only
+    // after a successful bind, so no lock is needed.
+    fn acquire(_socket_path: &Path) -> std::io::Result<Self> {
+        Ok(SocketOwnership)
+    }
+
+    fn release(self) {}
+}
+
+/// The server's socket path. Only a server that bound the socket may remove it on exit: a server
+/// that lost a bind race to another server must leave the winner's socket alone.
+#[derive(Clone)]
+struct ServerSocket {
+    path: PathBuf,
+    ownership: Arc<std::sync::Mutex<Option<SocketOwnership>>>,
+}
+
+impl ServerSocket {
+    fn new(path: PathBuf) -> Self {
+        ServerSocket {
+            path,
+            ownership: Arc::new(std::sync::Mutex::new(None)),
+        }
+    }
+
+    fn bind(&self) -> std::io::Result<interprocess::local_socket::Listener> {
+        let ownership = SocketOwnership::acquire(&self.path)?;
+        drop(std::fs::remove_file(&self.path));
+        let listener = zellij_utils::consts::ipc_bind(&self.path)?;
+        *self.ownership.lock().unwrap() = Some(ownership);
+        Ok(listener)
+    }
+
+    fn remove_on_exit(&self) {
+        if let Some(ownership) = self.ownership.lock().unwrap().take() {
+            drop(std::fs::remove_file(&self.path));
+            ownership.release();
+        }
+    }
+}
+
+#[cfg(test)]
+mod server_socket_tests {
+    use super::*;
+
+    #[test]
+    fn a_server_that_never_bound_the_socket_leaves_the_winners_socket_in_place() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("session");
+        let winner = ServerSocket::new(path.clone());
+        let _winner_listener = winner.bind().unwrap();
+
+        let loser = ServerSocket::new(path.clone());
+        loser.remove_on_exit();
+
+        assert!(path.exists());
+    }
+
+    #[test]
+    fn the_server_that_bound_the_socket_removes_it_on_exit() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("session");
+        let server = ServerSocket::new(path.clone());
+        let _listener = server.bind().unwrap();
+        assert!(path.exists());
+
+        server.remove_on_exit();
+
+        assert!(!path.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_second_server_cannot_take_over_the_socket_of_a_running_server() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("session");
+        let winner = ServerSocket::new(path.clone());
+        let _winner_listener = winner.bind().unwrap();
+
+        let loser = ServerSocket::new(path.clone());
+        let error = loser.bind().unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::AddrInUse);
+        loser.remove_on_exit();
+
+        assert!(path.exists());
+        assert!(zellij_utils::consts::ipc_connect(&path).is_ok());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_leftover_socket_file_without_a_running_server_is_replaced() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("session");
+        std::fs::write(&path, "").unwrap();
+
+        let server = ServerSocket::new(path.clone());
+        let _listener = server.bind().unwrap();
+
+        assert!(zellij_utils::consts::ipc_connect(&path).is_ok());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_new_server_can_bind_after_the_previous_one_exits() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("session");
+        let first = ServerSocket::new(path.clone());
+        let first_listener = first.bind().unwrap();
+        drop(first_listener);
+        first.remove_on_exit();
+        assert!(!SocketOwnership::lock_path(&path).unwrap().exists());
+
+        let second = ServerSocket::new(path.clone());
+        let _second_listener = second.bind().unwrap();
+
+        assert!(zellij_utils::consts::ipc_connect(&path).is_ok());
+    }
+}
+
 pub fn start_server_impl(
     mut os_input: Box<dyn ServerOsApi>,
     socket_path: PathBuf,
@@ -3043,11 +3236,12 @@ pub fn start_server_impl(
         });
     }
 
+    let server_socket = ServerSocket::new(socket_path.clone());
+
     let _ = thread::Builder::new()
         .name("server_listener".to_string())
         .spawn({
             use interprocess::local_socket::prelude::*;
-            use zellij_utils::consts::ipc_bind;
             #[cfg(unix)]
             use zellij_utils::shared::set_permissions;
 
@@ -3056,9 +3250,21 @@ pub fn start_server_impl(
             let session_state = session_state.clone();
             let to_server = to_server.clone();
             let socket_path = socket_path.clone();
+            let server_socket = server_socket.clone();
             move || {
-                drop(std::fs::remove_file(&socket_path));
-                let listener = ipc_bind(&socket_path).unwrap();
+                let listener = match server_socket.bind() {
+                    Ok(listener) => listener,
+                    Err(err) => {
+                        let message = format!(
+                            "Failed to bind the session socket {}: {}",
+                            socket_path.display(),
+                            err
+                        );
+                        log::error!("{}", message);
+                        let _ = to_server.send(ServerInstruction::Error(message));
+                        return;
+                    },
+                };
                 // set the sticky bit to avoid the socket file being potentially cleaned up
                 // https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html states that for XDG_RUNTIME_DIR:
                 // "To ensure that your files are not removed, they should have their access time timestamp modified at least once every 6 hours of monotonic time or the 'sticky' bit should be set on the file. "
@@ -4419,7 +4625,7 @@ pub fn start_server_impl(
     // Drop cached session data before exit.
     *session_data.write().unwrap() = None;
 
-    drop(std::fs::remove_file(&socket_path));
+    server_socket.remove_on_exit();
 }
 
 fn init_session(
