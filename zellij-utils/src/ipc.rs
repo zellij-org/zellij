@@ -595,10 +595,10 @@ pub fn recv_protobuf_server_to_client(
 }
 
 /// Asynchronously send `ClientToServerMsg::KillSession` to the peer at `path`
-/// and wait until the peer's existing shutdown path replies (or its socket
-/// closes). Either of those outcomes confirms the kill landed; the caller
-/// wraps this in `tokio::time::timeout` to bound the wait against a wedged
-/// peer.
+/// and wait until the peer's existing shutdown path replies with
+/// `ServerToClientMsg::Exit` (or its socket closes). Either of those outcomes
+/// confirms the kill landed; the caller wraps this in `tokio::time::timeout`
+/// to bound the wait against a wedged peer.
 ///
 /// On Unix the local socket is bidirectional, so the same async stream is
 /// used for both send and receive. On Windows the named pipe is half-duplex
@@ -626,11 +626,24 @@ pub async fn async_send_kill_and_await(path: &std::path::Path) -> io::Result<()>
     // The peer's shutdown path sends `ServerToClientMsg::Exit { Normal }`
     // (zellij-server/src/lib.rs ServerInstruction::KillSession) over this
     // same socket before exiting; if it dies without ACKing, the stream
-    // closes. Either outcome -- a successful 4-byte length-prefix read or a
-    // read error/EOF -- confirms the kill is no longer in flight.
-    let mut len_buf = [0u8; 4];
-    let _ = stream.read_exact(&mut len_buf).await;
-    Ok(())
+    // closes. Either outcome -- an `Exit` message or a read error/EOF --
+    // confirms the kill is no longer in flight.
+    loop {
+        let mut len_buf = [0u8; 4];
+        if stream.read_exact(&mut len_buf).await.is_err() {
+            return Ok(());
+        }
+        let mut buf = vec![0u8; u32::from_le_bytes(len_buf) as usize];
+        if stream.read_exact(&mut buf).await.is_err() {
+            return Ok(());
+        }
+        let msg = ProtoServerToClientMsg::decode(&buf[..])
+            .ok()
+            .and_then(|proto_msg| ServerToClientMsg::try_from(proto_msg).ok());
+        if let Some(ServerToClientMsg::Exit { .. }) = msg {
+            return Ok(());
+        }
+    }
 }
 
 #[cfg(windows)]
@@ -647,7 +660,13 @@ pub async fn async_send_kill_and_await(path: &std::path::Path) -> io::Result<()>
         if let Ok(reply_stream) = reply {
             let mut receiver: IpcReceiverWithContext<ServerToClientMsg> =
                 IpcReceiverWithContext::new(reply_stream);
-            let _ = receiver.recv_server_msg();
+            loop {
+                match receiver.try_recv_server_msg() {
+                    Ok((ServerToClientMsg::Exit { .. }, _))
+                    | Err(IpcReceiveError::Disconnected) => break,
+                    Ok(_) | Err(IpcReceiveError::Undecodable) => {},
+                }
+            }
         }
         Ok::<(), io::Error>(())
     })
