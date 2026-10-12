@@ -125,7 +125,7 @@ fn mouse_click_floating_ribbon_in_status_bar_opens_a_floating_pane() {
     floating_terminal.output(PROMPT);
 
     let grid_snapshot = zellij.wait_until("a floating pane appeared", |grid_snapshot| {
-        grid_snapshot.contains("STAGGERED") && grid_snapshot.contains("┌")
+        grid_snapshot.contains("┌") && grid_snapshot.cursor.is_some()
     });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();

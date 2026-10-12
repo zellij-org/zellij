@@ -159,6 +159,10 @@ pub fn color_index_character(
                                          // from previous indices
     }
 
+    if text.is_italic_at(index) {
+        character_style = character_style.italic(Some(AnsiCode::On));
+    }
+
     format!("{}{}{}", character_style, character, base_text_style)
 }
 
@@ -241,6 +245,14 @@ impl Text {
         const DIM_LEVEL: usize = 4;
         self.indices
             .get(DIM_LEVEL)
+            .map(|indices| indices.contains(&index))
+            .unwrap_or(false)
+    }
+
+    pub fn is_italic_at(&self, index: usize) -> bool {
+        const ITALIC_LEVEL: usize = 8;
+        self.indices
+            .get(ITALIC_LEVEL)
             .map(|indices| indices.contains(&index))
             .unwrap_or(false)
     }

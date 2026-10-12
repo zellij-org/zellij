@@ -1,0 +1,50 @@
+size: 40x120
+cursor: row=24 col=0 visible shape=Default
+grid:
+|         Selected as G0 (with SI)              Selected as G1 (with SO)                                                 |
+|                                                                                                                        |
+|Character set B (US ASCII)                                                                                              |
+|          !"#$%&'()*+,-./0123456789:;<=>?       !"#$%&'()*+,-./0123456789:;<=>?                                         |
+|         @ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_      @ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_                                         |
+|         `abcdefghijklmnopqrstuvwxyz{|}~       `abcdefghijklmnopqrstuvwxyz{|}~                                          |
+|Character set A (British)                                                                                               |
+|          !"£$%&'()*+,-./0123456789:;<=>?       !"£$%&'()*+,-./0123456789:;<=>?                                         |
+|         @ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_      @ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_                                         |
+|         `abcdefghijklmnopqrstuvwxyz{|}~       `abcdefghijklmnopqrstuvwxyz{|}~                                          |
+|Character set 0 (DEC Special graphics and line drawing)                                                                 |
+|          !"#$%&'()*+,-./0123456789:;<=>?       !"#$%&'()*+,-./0123456789:;<=>?                                         |
+|         @ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_      @ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_                                         |
+|         ◆▒␉␌␍␊°±␤␋┘┐┌└┼⎺⎻─⎼⎽├┤┴┬│≤≥π≠£·       ◆▒␉␌␍␊°±␤␋┘┐┌└┼⎺⎻─⎼⎽├┤┴┬│≤≥π≠£·                                          |
+|Character set 1 (DEC Alternate character ROM standard characters)                                                       |
+|          !"#$%&'()*+,-./0123456789:;<=>?       !"#$%&'()*+,-./0123456789:;<=>?                                         |
+|         @ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_      @ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_                                         |
+|         `abcdefghijklmnopqrstuvwxyz{|}~       `abcdefghijklmnopqrstuvwxyz{|}~                                          |
+|Character set 2 (DEC Alternate character ROM special graphics)                                                          |
+|          !"#$%&'()*+,-./0123456789:;<=>?       !"#$%&'()*+,-./0123456789:;<=>?                                         |
+|         @ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_      @ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_                                         |
+|         `abcdefghijklmnopqrstuvwxyz{|}~       `abcdefghijklmnopqrstuvwxyz{|}~                                          |
+|                                                                                                                        |
+|These are the installed character sets. Push <RETURN>                                                                   |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+styles:
+row 2: cols 0-25 fg=Foreground bg=Background flags=BOLD
+row 6: cols 0-24 fg=Foreground bg=Background flags=BOLD
+row 10: cols 0-54 fg=Foreground bg=Background flags=BOLD
+row 14: cols 0-64 fg=Foreground bg=Background flags=BOLD
+row 18: cols 0-61 fg=Foreground bg=Background flags=BOLD
+images:

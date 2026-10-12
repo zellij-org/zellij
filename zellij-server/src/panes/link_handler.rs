@@ -62,6 +62,13 @@ impl LinkHandler {
         anchor
     }
 
+    pub fn uri(&self, link_anchor: Option<LinkAnchor>) -> Option<&str> {
+        match link_anchor {
+            Some(LinkAnchor::Start(index)) => self.links.get(&index).map(|link| link.uri.as_str()),
+            _ => None,
+        }
+    }
+
     pub fn output_osc8(&self, link_anchor: Option<LinkAnchor>) -> Option<String> {
         link_anchor.and_then(|link| match link {
             LinkAnchor::Start(index) => {

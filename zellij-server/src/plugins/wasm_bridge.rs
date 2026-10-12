@@ -111,6 +111,7 @@ pub struct PluginRenderAsset {
     pub plugin_id: PluginId,
     pub bytes: Vec<u8>,
     pub cli_pipes: HashMap<String, PipeStateChange>,
+    pub rendered_size: Option<(usize, usize)>,
 }
 
 impl PluginRenderAsset {
@@ -124,6 +125,10 @@ impl PluginRenderAsset {
     }
     pub fn with_pipes(mut self, cli_pipes: HashMap<String, PipeStateChange>) -> Self {
         self.cli_pipes = cli_pipes;
+        self
+    }
+    pub fn rendered_at(mut self, rows: usize, columns: usize) -> Self {
+        self.rendered_size = Some((rows, columns));
         self
     }
 }
@@ -732,6 +737,11 @@ impl WasmBridge {
         let pipes_to_release = self.pending_pipes.unload_plugin(&pid);
         self.send_pipe_releases(pipes_to_release);
         self.forget_pipe_popups_of_plugin(pid);
+        let _ = self
+            .senders
+            .send_to_background_jobs(BackgroundJob::SessionSuggestions(
+                crate::session_suggestions::SessionSuggestionsJob::Unsubscribe { plugin_id: pid },
+            ));
         let prompt_actions = self.prompt_requests.plugin_unloaded(pid);
         self.apply_prompt_actions(prompt_actions);
         let plugin_list = self.plugin_map.lock().unwrap().list_plugins();
@@ -1054,7 +1064,8 @@ impl WasmBridge {
                                             plugin_id,
                                             client_id,
                                             rendered_bytes.as_bytes().to_vec(),
-                                        );
+                                        )
+                                        .rendered_at(new_rows, new_columns);
                                         senders
                                             .send_to_screen(ScreenInstruction::PluginBytes(vec![
                                                 plugin_render_asset,
@@ -2476,6 +2487,10 @@ impl WasmBridge {
             .attach(caller, plugin_id, client_id, caller_args);
         self.apply_prompt_actions(actions)
     }
+    pub fn withdraw_prompt(&mut self, caller: PromptCaller) {
+        let actions = self.prompt_requests.withdraw(caller);
+        self.apply_prompt_actions(actions);
+    }
     pub fn fail_prompt_popup(&mut self, caller: PromptCaller, error: String) {
         let actions = self.prompt_requests.fail(caller, error);
         self.apply_prompt_actions(actions);
@@ -2498,6 +2513,15 @@ impl WasmBridge {
         let mut pipe_messages = vec![];
         for action in actions {
             match action {
+                PromptAction::Deliver(caller, result) if caller.is_close_dialogue() => {
+                    let _ = self
+                        .senders
+                        .send_to_screen(ScreenInstruction::CloseDialogueAnswer {
+                            client_id: caller.client_id,
+                            request_id: caller.request_id,
+                            result,
+                        });
+                },
                 PromptAction::Deliver(caller, result) => {
                     let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![
                         caller.result_event(result)
@@ -2520,6 +2544,26 @@ impl WasmBridge {
             }
         }
         pipe_messages
+    }
+    pub fn popup_became_pane(&mut self, plugin_id: PluginId) {
+        self.forget_pipe_popups_of_plugin(plugin_id);
+        let running_plugins: Vec<Arc<Mutex<RunningPlugin>>> = self
+            .plugin_map
+            .lock()
+            .unwrap()
+            .running_plugins()
+            .into_iter()
+            .filter(|(id, _, _)| *id == plugin_id)
+            .map(|(_, _, running_plugin)| running_plugin)
+            .collect();
+        for running_plugin in running_plugins {
+            running_plugin
+                .lock()
+                .unwrap()
+                .store
+                .data_mut()
+                .pending_popup_size = None;
+        }
     }
     fn forget_pipe_popups_of_plugin(&mut self, plugin_id: PluginId) {
         self.pipe_popups.retain(|_, pipe_popup| match pipe_popup {
@@ -3334,7 +3378,13 @@ pub fn check_event_permission(
         | Event::NestedSessionModeUpdate { .. }
         | Event::NestedSessionEnded { .. }
         | Event::ContextMenu(..)
+        | Event::SessionSuggestions(..)
+        | Event::SessionCountsUpdate(..)
+        | Event::FolderSessionsUpdate(..)
+        | Event::TerminalCommandSubmitted
+        | Event::SavedSessionPreview(..)
         | Event::InputReceived => PermissionType::ReadApplicationState,
+        Event::SessionPreview(..) => PermissionType::ReadPaneContents,
         Event::ConfigChangesDropped(..) | Event::ConfigFileChangedSinceRead => {
             PermissionType::Reconfigure
         },
@@ -3353,6 +3403,16 @@ pub fn check_event_permission(
     (PermissionStatus::Denied, Some(permission))
 }
 
+pub(crate) fn apply_pending_popup_size(running_plugin: &mut RunningPlugin) -> bool {
+    let Some((columns, rows)) = running_plugin.store.data_mut().pending_popup_size.take() else {
+        return false;
+    };
+    let changed = running_plugin.rows != rows || running_plugin.columns != columns;
+    running_plugin.rows = rows;
+    running_plugin.columns = columns;
+    changed
+}
+
 pub fn apply_event_to_plugin(
     plugin_id: PluginId,
     client_id: ClientId,
@@ -3362,9 +3422,7 @@ pub fn apply_event_to_plugin(
     senders: ThreadSenders,
     plugin_subscriptions: &HashSet<EventType>,
 ) -> Result<()> {
-    let instance = &running_plugin.instance;
-    let rows = running_plugin.rows;
-    let columns = running_plugin.columns;
+    let instance = running_plugin.instance.clone();
 
     let err_context = || format!("Failed to apply event to plugin {plugin_id}");
     match check_event_permission(running_plugin.store.data(), event) {
@@ -3398,6 +3456,11 @@ pub fn apply_event_to_plugin(
                         // screen
                         should_render = true;
                     }
+                    if apply_pending_popup_size(running_plugin) {
+                        should_render = true;
+                    }
+                    let rows = running_plugin.rows;
+                    let columns = running_plugin.columns;
                     if rows > 0 && columns > 0 && should_render {
                         let rendered_bytes = instance
                             .get_typed_func::<(i32, i32), ()>(&mut running_plugin.store, "render")
@@ -3418,7 +3481,8 @@ pub fn apply_event_to_plugin(
                             client_id,
                             rendered_bytes.as_bytes().to_vec(),
                         )
-                        .with_pipes(pipes_to_block_or_unblock);
+                        .with_pipes(pipes_to_block_or_unblock)
+                        .rendered_at(rows, columns);
                         plugin_render_assets.push(plugin_render_asset);
                     } else {
                         // This is a bit of a hack to get around the fact that plugins are allowed not to

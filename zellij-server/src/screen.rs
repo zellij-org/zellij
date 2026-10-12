@@ -71,6 +71,7 @@ use zellij_utils::ipc::{
 };
 use zellij_utils::pane_size::{PaneGeom, Size, SizeInPixels};
 use zellij_utils::shared::{clean_string_from_control_and_linebreak, detect_theme_hue};
+use zellij_utils::structured_render;
 use zellij_utils::{
     consts::{session_info_folder_for_session, ZELLIJ_SOCK_DIR},
     envs::set_session_name,
@@ -95,12 +96,15 @@ use crate::session_layout_metadata::{PaneLayoutMetadata, SessionLayoutMetadata};
 
 use crate::{
     nested_guest::NestedGuestTracker,
-    output::{HostKittyState, Output},
+    output::{
+        HostKittyState, Output, RenderPayload, StructuredClientState, STRUCTURED_RENDER_DEADLINE,
+    },
     panes::kitty_graphics::{KittyHostCapability, KittyHostSupport, KittyImageStore},
     panes::sixel::SixelImageStore,
-    panes::LinkHandler,
     panes::PaneId,
-    plugins::{DumpSessionLayoutResponse, PluginId, PluginInstruction, PluginRenderAsset},
+    plugins::{
+        DumpSessionLayoutResponse, PluginId, PluginInstruction, PluginRenderAsset, PromptCaller,
+    },
     pty::{get_default_shell, ClientTabIndexOrPaneId, PtyInstruction, VteBytes},
     pty_writer::PtyWriteInstruction,
     tab::{GuestChoiceIndicator, Pane, PaneLocation, PaneNotCreatedReason, SuppressedPanes, Tab},
@@ -365,6 +369,7 @@ pub enum ScreenInstruction {
     PluginBytes(Vec<PluginRenderAsset>),
     Render,
     RenderToClients,
+    SendVteInstructionToClients(Vec<ClientId>, String),
     NewPane(
         PaneId,
         Option<InitialTitle>,
@@ -565,6 +570,7 @@ pub enum ScreenInstruction {
     SetKittyGraphicsSupport {
         client_id: ClientId,
         supported: bool,
+        local_media: bool,
     },
     SetKittyZlibSupport {
         client_id: ClientId,
@@ -573,6 +579,14 @@ pub enum ScreenInstruction {
     SetSixelSupport {
         client_id: ClientId,
         supported: bool,
+    },
+    SetStructuredRenderSupport {
+        client_id: ClientId,
+        supported: bool,
+    },
+    RenderFrameAck {
+        client_id: ClientId,
+        seq: u64,
     },
     /// A pane's Grid intercepted an app-in-pane whitelisted query; Screen
     /// assigns a token, queues the forward, and dispatches to the client.
@@ -601,6 +615,13 @@ pub enum ScreenInstruction {
         client_id: ClientId,
         pane_id: PaneId,
         outcome: GuestModalOutcome,
+    },
+    ConfirmQuit(ClientId),
+    SetOnQuit(zellij_utils::input::options::OnQuit),
+    CloseDialogueAnswer {
+        client_id: ClientId,
+        request_id: u64,
+        result: zellij_utils::prompt::PromptResult,
     },
     /// The client observed the host's reply to a previously forwarded
     /// query (closed by the Primary-DA barrier or the 500 ms timeout).
@@ -792,6 +813,7 @@ pub enum ScreenInstruction {
     UpdateSessionInfos(
         BTreeMap<String, SessionInfo>, // String is the session name
         BTreeMap<String, Duration>,    // resurrectable sessions - <name, created>
+        Option<(u32, ClientId)>,
     ),
     ReplacePane(
         PaneId,
@@ -944,6 +966,25 @@ pub enum ScreenInstruction {
         line: usize,
         column: usize,
     },
+    OpenSessionCard(ClientId),
+    TerminalInputSubmitted(ClientId),
+    TerminalEscapePressed(ClientId),
+    ToggleSessionCard(ClientId, Option<NotificationEnd>),
+    SetPopupFocused {
+        plugin_id: u32,
+        focused: bool,
+    },
+    PopupToFloatingPane {
+        plugin_id: u32,
+        coordinates: Option<FloatingPaneCoordinates>,
+    },
+    ShowSwapLayoutNotification(ClientId),
+    SetSwapLayoutNotification(bool),
+    GetSessionPreview {
+        tab_index: Option<usize>,
+        pane_id: Option<(u32, bool)>,
+        response_channel: crossbeam::channel::Sender<zellij_utils::data::SessionPreview>,
+    },
     OpenPluginPopup {
         requesting_plugin_id: u32,
         client_id: ClientId,
@@ -979,6 +1020,7 @@ pub enum ScreenInstruction {
         run_plugin_or_alias: RunPluginOrAlias,
         placement: Option<zellij_utils::prompt::PromptPlacement>,
         focused: bool,
+        capture_all_keys: bool,
     },
     CloseTopPopup(ClientId),
     ScrollPopup(ClientId, crate::route::PopupScroll),
@@ -989,6 +1031,7 @@ pub enum ScreenInstruction {
         width: usize,
         height: usize,
     },
+    RevealPopup(u32),
     UpdateContextMenuConfig(ClientId, ContextMenuConfig),
     UpdateMousebinds(ClientId, Arc<Mousebinds>),
     GetContextMenuItemActions {
@@ -1074,6 +1117,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::PluginBytes(..) => ScreenContext::PluginBytes,
             ScreenInstruction::Render => ScreenContext::Render,
             ScreenInstruction::RenderToClients => ScreenContext::RenderToClients,
+            ScreenInstruction::SendVteInstructionToClients(..) => {
+                ScreenContext::SendVteInstructionToClients
+            },
             ScreenInstruction::NewPane(..) => ScreenContext::NewPane,
             ScreenInstruction::OpenInPlaceEditor(..) => ScreenContext::OpenInPlaceEditor,
             ScreenInstruction::TogglePaneEmbedOrFloating(..) => {
@@ -1206,6 +1252,10 @@ impl From<&ScreenInstruction> for ScreenContext {
             },
             ScreenInstruction::SetKittyZlibSupport { .. } => ScreenContext::SetKittyZlibSupport,
             ScreenInstruction::SetSixelSupport { .. } => ScreenContext::SetSixelSupport,
+            ScreenInstruction::SetStructuredRenderSupport { .. } => {
+                ScreenContext::SetStructuredRenderSupport
+            },
+            ScreenInstruction::RenderFrameAck { .. } => ScreenContext::RenderFrameAck,
             ScreenInstruction::ForwardHostQuery { .. } => ScreenContext::ForwardHostQuery,
             ScreenInstruction::NestedSessionMessageFromPane { .. } => {
                 ScreenContext::NestedSessionMessageFromPane
@@ -1218,6 +1268,9 @@ impl From<&ScreenInstruction> for ScreenContext {
                 ScreenContext::GetNestedSessionKeybinds
             },
             ScreenInstruction::GuestModalChoice { .. } => ScreenContext::GuestModalChoice,
+            ScreenInstruction::ConfirmQuit(..) => ScreenContext::ConfirmQuit,
+            ScreenInstruction::SetOnQuit(..) => ScreenContext::SetOnQuit,
+            ScreenInstruction::CloseDialogueAnswer { .. } => ScreenContext::CloseDialogueAnswer,
             ScreenInstruction::ForwardedReplyFromHost { .. } => {
                 ScreenContext::ForwardedReplyFromHost
             },
@@ -1396,10 +1449,24 @@ impl From<&ScreenInstruction> for ScreenContext {
                 ScreenContext::OpenContextMenuFromPlugin
             },
             ScreenInstruction::OpenPluginPopup { .. } => ScreenContext::OpenPluginPopup,
+            ScreenInstruction::OpenSessionCard(..) => ScreenContext::OpenSessionCard,
+            ScreenInstruction::TerminalInputSubmitted(..) => ScreenContext::TerminalInputSubmitted,
+            ScreenInstruction::TerminalEscapePressed(..) => ScreenContext::TerminalEscapePressed,
+            ScreenInstruction::ToggleSessionCard(..) => ScreenContext::ToggleSessionCard,
+            ScreenInstruction::SetPopupFocused { .. } => ScreenContext::SetPopupFocused,
+            ScreenInstruction::PopupToFloatingPane { .. } => ScreenContext::PopupToFloatingPane,
+            ScreenInstruction::ShowSwapLayoutNotification(..) => {
+                ScreenContext::ShowSwapLayoutNotification
+            },
+            ScreenInstruction::SetSwapLayoutNotification(..) => {
+                ScreenContext::SetSwapLayoutNotification
+            },
+            ScreenInstruction::GetSessionPreview { .. } => ScreenContext::GetSessionPreview,
             ScreenInstruction::AddPopup { .. } => ScreenContext::AddPopup,
             ScreenInstruction::OpenPipePopup { .. } => ScreenContext::OpenPipePopup,
             ScreenInstruction::OpenPromptPopup { .. } => ScreenContext::OpenPromptPopup,
             ScreenInstruction::SetPopupSize { .. } => ScreenContext::SetPopupSize,
+            ScreenInstruction::RevealPopup(..) => ScreenContext::RevealPopup,
             ScreenInstruction::CloseTopPopup(..) => ScreenContext::CloseTopPopup,
             ScreenInstruction::ScrollPopup(..) => ScreenContext::ScrollPopup,
             ScreenInstruction::DismissInfoPopups(..) => ScreenContext::DismissInfoPopups,
@@ -1678,6 +1745,83 @@ pub enum GuestModalOutcome {
     Descend,
 }
 
+const CLOSE_DETACH: &str = "detach";
+const CLOSE_QUIT: &str = "quit";
+const CLOSE_CANCEL: &str = "cancel";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CloseOutcome {
+    Detach,
+    Quit,
+    Cancel,
+}
+
+fn close_prompt_quit_label(session_name: &str, other_clients: usize) -> String {
+    match other_clients {
+        0 => format!("Quit (ends session '{}')", session_name),
+        1 => format!(
+            "Quit (ends session '{}' and disconnects 1 other client)",
+            session_name
+        ),
+        count => format!(
+            "Quit (ends session '{}' and disconnects {} other clients)",
+            session_name, count
+        ),
+    }
+}
+
+fn close_prompt_request(
+    session_name: &str,
+    other_clients: usize,
+) -> zellij_utils::prompt::PromptRequest {
+    use zellij_utils::prompt::{ChoiceItem, PromptPlacement, PromptRequest};
+    PromptRequest::menu([
+        ChoiceItem::labeled(CLOSE_DETACH, "Detach (the session keeps running)").emphasize_first(6),
+        ChoiceItem::labeled(
+            CLOSE_QUIT,
+            close_prompt_quit_label(session_name, other_clients),
+        )
+        .emphasize_first(4),
+        ChoiceItem::labeled(CLOSE_CANCEL, "Cancel").emphasize_first(6),
+    ])
+    .remember(CLOSE_REMEMBER_LABEL)
+    .padded()
+    .title("Close this window?")
+    .placement(PromptPlacement::Center)
+    .capture_all_keys(true)
+}
+
+const CLOSE_REMEMBER_LABEL: &str = "Always do this";
+
+fn close_choice(value: &str) -> CloseOutcome {
+    match value {
+        CLOSE_DETACH => CloseOutcome::Detach,
+        CLOSE_QUIT => CloseOutcome::Quit,
+        _ => CloseOutcome::Cancel,
+    }
+}
+
+fn close_prompt_outcome(result: &zellij_utils::prompt::PromptResult) -> (CloseOutcome, bool) {
+    use zellij_utils::prompt::{PromptResult, PromptValue, MENU_CHOICE_FIELD, MENU_REMEMBER_FIELD};
+    match result {
+        PromptResult::Answered(PromptValue::Choice(value)) => (close_choice(value), false),
+        PromptResult::Answered(PromptValue::Form(fields)) => {
+            let outcome = match fields.get(MENU_CHOICE_FIELD) {
+                Some(PromptValue::Choice(value)) | Some(PromptValue::Text(value)) => {
+                    close_choice(value)
+                },
+                _ => CloseOutcome::Cancel,
+            };
+            let always = matches!(
+                fields.get(MENU_REMEMBER_FIELD),
+                Some(PromptValue::Bool(true))
+            );
+            (outcome, always && outcome != CloseOutcome::Cancel)
+        },
+        _ => (CloseOutcome::Cancel, false),
+    }
+}
+
 fn format_guest_modal_shortcut(keys: &[KeyWithModifier]) -> Vec<String> {
     keys.iter().map(|key| key.to_string()).collect()
 }
@@ -1699,8 +1843,11 @@ pub(crate) struct Screen {
     sixel_image_store: Rc<RefCell<SixelImageStore>>,
     kitty_image_store: Rc<RefCell<KittyImageStore>>,
     kitty_host_capabilities: Rc<RefCell<HashMap<ClientId, KittyHostCapability>>>,
+    kitty_local_media: Rc<RefCell<HashMap<ClientId, bool>>>,
     sixel_host_capabilities: Rc<RefCell<HashMap<ClientId, bool>>>,
     client_kitty_host_state: Rc<RefCell<HashMap<ClientId, HostKittyState>>>,
+    structured_render_clients: Rc<RefCell<HashMap<ClientId, StructuredClientState>>>,
+    pending_client_vte_instructions: HashMap<ClientId, Vec<String>>,
     terminal_emulator_colors: Rc<RefCell<Palette>>,
     terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
     connected_clients: Rc<RefCell<HashMap<ClientId, bool>>>, // bool -> is_web_client
@@ -1773,11 +1920,16 @@ pub(crate) struct Screen {
     render_blocker: RenderBlocker,
     watcher_clients: HashMap<ClientId, WatcherState>,
     followed_client_id: Option<ClientId>,
+    watcher_followed_content: Option<(ClientId, Option<Size>)>,
     cached_layouts: Vec<LayoutInfo>,
     cached_layout_errors: Vec<LayoutWithError>,
     pane_render_subscribers: HashMap<ClientId, PaneRenderSubscription>,
     background_plugin_subscriptions: HashMap<(PluginId, ClientId), HashSet<EventType>>,
     last_reported_plugin_tab_indices: HashMap<PluginId, usize>,
+    pub(crate) pending_session_card: Option<ClientId>,
+    pub(crate) terminal_command_submitted: bool,
+    pub(crate) swap_layout_notification: bool,
+    pub(crate) on_quit: zellij_utils::input::options::OnQuit,
     last_reported_client_visible_plugins: HashMap<ClientId, HashSet<PluginId>>,
     pending_selectable_panes: HashMap<PaneId, bool>,
     state_report_target: Option<(PluginId, ClientId)>,
@@ -1798,6 +1950,8 @@ pub(crate) struct Screen {
     host_fullscreen: bool,
     dimmed_clients: HashSet<ClientId>,
     nested_guest_choices: HashMap<(ClientId, PaneId), NestedGuestChoice>,
+    close_prompts: HashMap<ClientId, u64>,
+    next_close_prompt_id: u64,
     guest_ascend_keys: HashMap<PaneId, Vec<KeyWithModifier>>,
     guest_capabilities: HashMap<PaneId, Vec<NestedSessionCapability>>,
     guest_last_mode: HashMap<PaneId, GuestModeReport>,
@@ -1883,6 +2037,91 @@ const SERVER_FORWARD_TIMEOUT_MS: u64 = 1000;
 
 const SERVER_CLIPBOARD_FORWARD_TIMEOUT_MS: u64 = 35_000;
 
+pub(crate) const ECHO_WINDOW: Duration = Duration::from_millis(50);
+
+pub(crate) fn answers_typed_input(last_input: Option<Instant>, now: Instant) -> bool {
+    match last_input {
+        Some(last_input) => now.saturating_duration_since(last_input) <= ECHO_WINDOW,
+        None => false,
+    }
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct TypedInput {
+    last_input: HashMap<u32, Instant>,
+}
+
+impl TypedInput {
+    pub fn record(&mut self, terminal_id: u32, now: Instant) {
+        self.last_input.insert(terminal_id, now);
+    }
+
+    pub fn forget(&mut self, terminal_id: u32) {
+        self.last_input.remove(&terminal_id);
+    }
+
+    pub fn output_answers_input(&mut self, terminal_id: u32, now: Instant) -> bool {
+        answers_typed_input(self.last_input.remove(&terminal_id), now)
+    }
+}
+
+#[cfg(test)]
+mod typed_input_tests {
+    use super::*;
+
+    #[test]
+    fn output_within_the_echo_window_answers_typed_input() {
+        let typed_at = Instant::now();
+        assert!(answers_typed_input(
+            Some(typed_at),
+            typed_at + ECHO_WINDOW - Duration::from_millis(1)
+        ));
+    }
+
+    #[test]
+    fn output_after_the_echo_window_does_not_answer_typed_input() {
+        let typed_at = Instant::now();
+        assert!(!answers_typed_input(
+            Some(typed_at),
+            typed_at + ECHO_WINDOW + Duration::from_millis(1)
+        ));
+    }
+
+    #[test]
+    fn output_without_typed_input_does_not_answer_it() {
+        assert!(!answers_typed_input(None, Instant::now()));
+    }
+
+    #[test]
+    fn only_the_first_output_after_a_keystroke_answers_it() {
+        let typed_at = Instant::now();
+        let mut typed_input = TypedInput::default();
+        typed_input.record(7, typed_at);
+        let now = typed_at + Duration::from_millis(1);
+        assert!(typed_input.output_answers_input(7, now));
+        assert!(!typed_input.output_answers_input(7, now));
+    }
+
+    #[test]
+    fn a_keystroke_only_counts_for_the_terminal_it_was_written_to() {
+        let typed_at = Instant::now();
+        let mut typed_input = TypedInput::default();
+        typed_input.record(7, typed_at);
+        let now = typed_at + Duration::from_millis(1);
+        assert!(!typed_input.output_answers_input(8, now));
+        assert!(typed_input.output_answers_input(7, now));
+    }
+
+    #[test]
+    fn a_forgotten_terminal_no_longer_answers_typed_input() {
+        let typed_at = Instant::now();
+        let mut typed_input = TypedInput::default();
+        typed_input.record(7, typed_at);
+        typed_input.forget(7);
+        assert!(!typed_input.output_answers_input(7, typed_at));
+    }
+}
+
 impl Screen {
     /// Creates and returns a new [`Screen`].
     pub fn new(
@@ -1942,8 +2181,11 @@ impl Screen {
             sixel_image_store: Rc::new(RefCell::new(SixelImageStore::default())),
             kitty_image_store: Rc::new(RefCell::new(KittyImageStore::default())),
             kitty_host_capabilities: Rc::new(RefCell::new(HashMap::new())),
+            kitty_local_media: Rc::new(RefCell::new(HashMap::new())),
             sixel_host_capabilities: Rc::new(RefCell::new(HashMap::new())),
             client_kitty_host_state: Rc::new(RefCell::new(HashMap::new())),
+            structured_render_clients: Rc::new(RefCell::new(HashMap::new())),
+            pending_client_vte_instructions: HashMap::new(),
             style: client_attributes.style,
             connected_clients: Rc::new(RefCell::new(HashMap::new())),
             client_display_slots: Rc::new(RefCell::new(HashMap::new())),
@@ -2013,11 +2255,16 @@ impl Screen {
             render_blocker: RenderBlocker::new(100),
             watcher_clients: HashMap::new(),
             followed_client_id: None,
+            watcher_followed_content: None,
             cached_layouts: vec![],
             cached_layout_errors: vec![],
             pane_render_subscribers: HashMap::new(),
             background_plugin_subscriptions: HashMap::new(),
             last_reported_plugin_tab_indices: HashMap::new(),
+            pending_session_card: None,
+            terminal_command_submitted: false,
+            swap_layout_notification: true,
+            on_quit: Default::default(),
             last_reported_client_visible_plugins: HashMap::new(),
             pending_selectable_panes: HashMap::new(),
             state_report_target: None,
@@ -2038,6 +2285,8 @@ impl Screen {
             host_fullscreen: false,
             dimmed_clients: HashSet::new(),
             nested_guest_choices: HashMap::new(),
+            close_prompts: HashMap::new(),
+            next_close_prompt_id: 0,
             guest_ascend_keys: HashMap::new(),
             guest_capabilities: HashMap::new(),
             guest_last_mode: HashMap::new(),
@@ -2959,13 +3208,21 @@ impl Screen {
         Ok(())
     }
 
-    pub fn update_kitty_graphics_support(&mut self, client_id: ClientId, supported: bool) {
+    pub fn update_kitty_graphics_support(
+        &mut self,
+        client_id: ClientId,
+        supported: bool,
+        local_media: bool,
+    ) {
         let supported = supported && self.support_kitty_graphics_protocol;
         self.kitty_host_capabilities
             .borrow_mut()
             .entry(client_id)
             .or_default()
             .graphics = supported;
+        self.kitty_local_media
+            .borrow_mut()
+            .insert(client_id, supported && local_media);
         self.push_kitty_host_support_to_tabs();
     }
 
@@ -2976,6 +3233,12 @@ impl Screen {
             .get_mut(&client_id)
         {
             capability.zlib = supported;
+        }
+    }
+
+    fn release_kitty_host_state(&mut self, client_id: ClientId) {
+        if let Some(mut state) = self.client_kitty_host_state.borrow_mut().remove(&client_id) {
+            state.release_media();
         }
     }
 
@@ -2999,6 +3262,191 @@ impl Screen {
                 tab.update_kitty_host_support(aggregate);
             }
         }
+    }
+
+    pub fn queue_vte_instruction_for_clients(
+        &mut self,
+        client_ids: Vec<ClientId>,
+        vte_instruction: String,
+    ) {
+        for client_id in client_ids {
+            self.pending_client_vte_instructions
+                .entry(client_id)
+                .or_default()
+                .push(vte_instruction.clone());
+        }
+    }
+    pub fn update_structured_render_support(&mut self, client_id: ClientId, supported: bool) {
+        if !supported {
+            self.release_structured_render_state(client_id);
+            return;
+        }
+        let size = self
+            .structured_client_viewport(client_id)
+            .unwrap_or_default();
+        {
+            let mut clients = self.structured_render_clients.borrow_mut();
+            let state = clients.entry(client_id).or_default();
+            state.enabled = true;
+            state.reset_viewport(size);
+        }
+        if let Some(watcher_state) = self.watcher_clients.get_mut(&client_id) {
+            watcher_state.set_force_render();
+        }
+        for tab in self.tabs.values_mut() {
+            tab.set_force_render();
+        }
+    }
+
+    fn structured_client_viewport(&self, client_id: ClientId) -> Option<Size> {
+        self.watcher_clients
+            .get(&client_id)
+            .map(|watcher_state| watcher_state.size())
+            .or_else(|| self.client_sizes.get(&client_id).copied())
+    }
+
+    fn sync_structured_client_viewports(&mut self) {
+        let clients = self.structured_render_clients.clone();
+        let mut clients = clients.borrow_mut();
+        for (client_id, state) in clients.iter_mut() {
+            if let Some(size) = self.structured_client_viewport(*client_id) {
+                if state.size != size {
+                    state.reset_viewport(size);
+                }
+            }
+        }
+    }
+
+    fn release_structured_delivery_for_tab(&mut self, tab_id: usize) {
+        if self.structured_render_clients.borrow().is_empty() {
+            return;
+        }
+        let followed_shows_tab = self
+            .followed_client_id
+            .and_then(|followed| self.active_tab_ids.get(&followed))
+            .map(|active| *active == tab_id)
+            .unwrap_or(false);
+        let mut released_watchers = vec![];
+        {
+            let clients = self.structured_render_clients.clone();
+            let mut clients = clients.borrow_mut();
+            for (client_id, state) in clients.iter_mut() {
+                let is_watcher = self.watcher_clients.contains_key(client_id);
+                let shows_tab = if is_watcher {
+                    followed_shows_tab
+                } else {
+                    self.active_tab_ids.get(client_id) == Some(&tab_id)
+                };
+                if !shows_tab {
+                    continue;
+                }
+                let size = state.size;
+                state.reset_viewport(size);
+                if is_watcher {
+                    released_watchers.push(*client_id);
+                }
+            }
+        }
+        if let Some(tab) = self.get_tab_by_id_mut(tab_id) {
+            tab.set_force_render();
+        }
+        for client_id in released_watchers {
+            if let Some(watcher_state) = self.watcher_clients.get_mut(&client_id) {
+                watcher_state.set_force_render();
+            }
+        }
+    }
+
+    fn pace_structured_payloads(
+        &mut self,
+        payloads: &mut HashMap<ClientId, RenderPayload>,
+    ) -> Result<()> {
+        let err_context = "failed to pace a structured render frame";
+        let structured: Vec<ClientId> = payloads
+            .iter()
+            .filter(|(_, payload)| matches!(payload, RenderPayload::Frame(_)))
+            .map(|(client_id, _)| *client_id)
+            .collect();
+        let mut abandoned = vec![];
+        {
+            let clients = self.structured_render_clients.clone();
+            let mut clients = clients.borrow_mut();
+            for client_id in structured {
+                let Some(state) = clients.get_mut(&client_id) else {
+                    continue;
+                };
+                let Some(RenderPayload::Frame(frame)) = payloads.get(&client_id) else {
+                    continue;
+                };
+                if state.in_flight.is_none() {
+                    let seq = structured_render::decode(frame)
+                        .map_err(|e| anyhow!("{}: {}", err_context, e))?
+                        .header()
+                        .seq;
+                    state.arm(seq);
+                    continue;
+                }
+                if state.delivery_deadline_expired() {
+                    let size = state.size;
+                    state.reset_viewport(size);
+                    payloads.remove(&client_id);
+                    abandoned.push(client_id);
+                    continue;
+                }
+                let view = structured_render::decode(frame)
+                    .map_err(|e| anyhow!("{}: {}", err_context, e))?;
+                state.overlay.merge_frame(&view);
+                payloads.remove(&client_id);
+            }
+        }
+        if abandoned.is_empty() {
+            return Ok(());
+        }
+        for client_id in abandoned {
+            log::warn!(
+                "client {} did not acknowledge a render frame within {:?}, repainting it in full",
+                client_id,
+                STRUCTURED_RENDER_DEADLINE
+            );
+            if let Some(watcher_state) = self.watcher_clients.get_mut(&client_id) {
+                watcher_state.set_force_render();
+            }
+        }
+        for tab in self.tabs.values_mut() {
+            tab.set_force_render();
+        }
+        self.render(None)
+    }
+
+    fn handle_render_frame_ack(&mut self, client_id: ClientId, seq: u64) -> Result<()> {
+        let clients = self.structured_render_clients.clone();
+        let mut clients = clients.borrow_mut();
+        let Some(state) = clients.get_mut(&client_id) else {
+            return Ok(());
+        };
+        if state.in_flight != Some(seq) {
+            return Ok(());
+        }
+        state.disarm();
+        if !state.overlay.is_dirty() {
+            return Ok(());
+        }
+        let next_seq = state.allocate_seq();
+        let frame = state.overlay.drain(next_seq);
+        state.arm(next_seq);
+        drop(clients);
+        let mut payloads = HashMap::new();
+        payloads.insert(client_id, RenderPayload::Frame(frame));
+        self.bus
+            .senders
+            .send_to_server(ServerInstruction::Render(Some(payloads)))
+            .context("failed to emit a paced render frame")
+    }
+
+    fn release_structured_render_state(&mut self, client_id: ClientId) {
+        self.structured_render_clients
+            .borrow_mut()
+            .remove(&client_id);
     }
 
     pub fn update_sixel_support(&mut self, client_id: ClientId, supported: bool) {
@@ -3958,6 +4406,130 @@ impl Screen {
         }
     }
 
+    fn detach_client(&self, client_id: ClientId) {
+        let _ = self
+            .bus
+            .senders
+            .send_to_server(ServerInstruction::DetachSession(vec![client_id], None));
+    }
+
+    fn withdraw_close_prompt(&mut self, client_id: ClientId) -> bool {
+        match self.close_prompts.remove(&client_id) {
+            Some(request_id) => {
+                let _ = self
+                    .bus
+                    .senders
+                    .send_to_plugin(PluginInstruction::WithdrawPrompt(
+                        PromptCaller::close_dialogue(client_id, request_id),
+                    ));
+                true
+            },
+            None => false,
+        }
+    }
+
+    #[cfg(test)]
+    pub fn has_close_prompt(&self, client_id: ClientId) -> bool {
+        self.close_prompts.contains_key(&client_id)
+    }
+
+    fn quit_client(&self, client_id: ClientId) {
+        let _ = self
+            .bus
+            .senders
+            .send_to_server(ServerInstruction::ClientExit(client_id, None));
+    }
+
+    fn other_clients(&self, client_id: ClientId) -> usize {
+        let connected = self.connected_clients.borrow();
+        connected
+            .keys()
+            .chain(self.watcher_clients.keys())
+            .filter(|other| **other != client_id)
+            .collect::<HashSet<_>>()
+            .len()
+    }
+
+    fn end_session(&self) {
+        let _ = self
+            .bus
+            .senders
+            .send_to_server(ServerInstruction::KillSession);
+    }
+
+    pub fn confirm_quit(&mut self, client_id: ClientId) {
+        use zellij_utils::input::options::OnQuit;
+        if self.withdraw_close_prompt(client_id)
+            || self.watcher_clients.contains_key(&client_id)
+            || self.get_active_tab(client_id).is_err()
+        {
+            self.quit_client(client_id);
+            return;
+        }
+        match self.on_quit {
+            OnQuit::AskQuit => self.open_close_prompt(client_id, CLOSE_QUIT),
+            OnQuit::AskDetach => self.open_close_prompt(client_id, CLOSE_DETACH),
+            OnQuit::Quit => self.end_session(),
+            OnQuit::Detach => self.detach_client(client_id),
+        }
+    }
+
+    fn open_close_prompt(&mut self, client_id: ClientId, preselected: &str) {
+        self.next_close_prompt_id += 1;
+        let request_id = self.next_close_prompt_id;
+        self.close_prompts.insert(client_id, request_id);
+        let request = close_prompt_request(&self.session_name, self.other_clients(client_id))
+            .default(preselected);
+        let _ = self
+            .bus
+            .senders
+            .send_to_plugin(PluginInstruction::PromptRequest {
+                caller: PromptCaller::close_dialogue(client_id, request_id),
+                owner_client_id: client_id,
+                caller_pane_id: None,
+                request,
+            });
+    }
+
+    pub fn close_dialogue_answer(
+        &mut self,
+        client_id: ClientId,
+        request_id: u64,
+        result: zellij_utils::prompt::PromptResult,
+    ) {
+        if self.close_prompts.get(&client_id) != Some(&request_id) {
+            return;
+        }
+        self.close_prompts.remove(&client_id);
+        let (outcome, always) = close_prompt_outcome(&result);
+        if always {
+            self.remember_on_quit(client_id, outcome);
+        }
+        match outcome {
+            CloseOutcome::Detach => self.detach_client(client_id),
+            CloseOutcome::Quit => self.end_session(),
+            CloseOutcome::Cancel => {},
+        }
+    }
+
+    fn remember_on_quit(&mut self, client_id: ClientId, outcome: CloseOutcome) {
+        use zellij_utils::input::options::OnQuit;
+        let on_quit = match outcome {
+            CloseOutcome::Detach => OnQuit::Detach,
+            CloseOutcome::Quit => OnQuit::Quit,
+            CloseOutcome::Cancel => return,
+        };
+        self.on_quit = on_quit;
+        let _ = self
+            .bus
+            .senders
+            .send_to_server(ServerInstruction::Reconfigure {
+                client_id,
+                config: format!("on_quit \"{}\"", on_quit.as_str()),
+                write_config_to_disk: true,
+            });
+    }
+
     fn handle_guest_modal_choice(
         &mut self,
         client_id: ClientId,
@@ -4839,6 +5411,8 @@ impl Screen {
             .any(|id| !self.watcher_clients.contains_key(id));
         let has_watchers = !self.watcher_clients.is_empty(); // No change needed
 
+        self.sync_structured_client_viewports();
+
         // Track whether non-watcher output was dirty for conditional watcher rendering
         let non_watcher_output_was_dirty;
 
@@ -4853,8 +5427,10 @@ impl Screen {
                 self.osc8_hyperlinks,
                 self.kitty_image_store.clone(),
                 self.kitty_host_capabilities.clone(),
+                self.kitty_local_media.clone(),
                 self.client_kitty_host_state.clone(),
                 self.sixel_host_capabilities.clone(),
+                self.structured_render_clients.clone(),
             );
 
             output.collect_ansi_pane_contents =
@@ -4868,6 +5444,15 @@ impl Screen {
                         .non_fatal();
                 } else if !tab.is_pending() {
                     tabs_to_close.push(*tab_index);
+                }
+            }
+
+            for (client_id, vte_instructions) in self.pending_client_vte_instructions.drain() {
+                for vte_instruction in vte_instructions {
+                    output.add_post_vte_instruction_to_multiple_clients(
+                        std::iter::once(client_id),
+                        &vte_instruction,
+                    );
                 }
             }
 
@@ -4977,7 +5562,9 @@ impl Screen {
             }
 
             if non_watcher_output_was_dirty || has_bell || has_osc7_update {
-                let serialized_output = output.serialize().context(err_context)?;
+                let mut serialized_output = output.serialize().context(err_context)?;
+                self.pace_structured_payloads(&mut serialized_output)
+                    .context(err_context)?;
                 if !serialized_output.is_empty() {
                     let _ = self
                         .bus
@@ -4994,6 +5581,7 @@ impl Screen {
         } else {
             // No regular clients, output is not dirty
             non_watcher_output_was_dirty = false;
+            self.pending_client_vte_instructions.clear();
 
             // No regular clients but subscribers exist — query panes directly
             if !self.pane_render_subscribers.is_empty() {
@@ -5012,8 +5600,10 @@ impl Screen {
                     self.osc8_hyperlinks,
                     self.kitty_image_store.clone(),
                     self.kitty_host_capabilities.clone(),
+                    self.kitty_local_media.clone(),
                     self.client_kitty_host_state.clone(),
                     self.sixel_host_capabilities.clone(),
+                    self.structured_render_clients.clone(),
                 );
 
                 let focused_tab_index_of_followed_client_id =
@@ -5022,6 +5612,18 @@ impl Screen {
                     .tabs
                     .get(&focused_tab_index_of_followed_client_id)
                     .map(|tab| tab.size);
+
+                let followed_content = (followed_client_id, followed_content_size);
+                if self.watcher_followed_content != Some(followed_content) {
+                    self.watcher_followed_content = Some(followed_content);
+                    let mut structured = self.structured_render_clients.borrow_mut();
+                    for (watcher_id, watcher_state) in self.watcher_clients.iter_mut() {
+                        watcher_state.set_force_render();
+                        if let Some(state) = structured.get_mut(watcher_id) {
+                            state.force_full_repaint = true;
+                        }
+                    }
+                }
 
                 if let Some(tab) = self
                     .tabs
@@ -5050,11 +5652,26 @@ impl Screen {
 
                 // Send the rendered output to all watcher clients
                 if watcher_output.is_dirty() {
-                    let mut watcher_render_output: HashMap<ClientId, String> = HashMap::new();
+                    let mut watcher_render_output: HashMap<ClientId, RenderPayload> =
+                        HashMap::new();
 
                     // For each watcher, clone the output and serialize with size constraints
                     for (watcher_id, watcher_state) in &self.watcher_clients {
                         let mut watcher_specific_output = watcher_output.clone();
+                        let structured = self
+                            .structured_render_clients
+                            .borrow()
+                            .get(watcher_id)
+                            .map(|state| state.enabled)
+                            .unwrap_or(false);
+
+                        if structured {
+                            let frame = watcher_specific_output
+                                .serialize_watcher_frame(followed_client_id, *watcher_id)
+                                .context(err_context)?;
+                            watcher_render_output.insert(*watcher_id, RenderPayload::Frame(frame));
+                            continue;
+                        }
 
                         // Serialize this watcher's output with size constraints (cropping and padding handled inside)
                         let mut serialized_output = watcher_specific_output
@@ -5064,9 +5681,18 @@ impl Screen {
                         // Get the output for the followed client and map it to this watcher
                         if let Some(followed_output) = serialized_output.remove(&followed_client_id)
                         {
-                            watcher_render_output.insert(*watcher_id, followed_output);
+                            watcher_render_output
+                                .insert(*watcher_id, RenderPayload::Ansi(followed_output));
                         }
                     }
+
+                    // Clear force render flag for all watchers after successful render
+                    for watcher_state in self.watcher_clients.values_mut() {
+                        watcher_state.clear_force_render();
+                    }
+
+                    self.pace_structured_payloads(&mut watcher_render_output)
+                        .context(err_context)?;
 
                     // Send to server for delivery to watcher clients
                     if !watcher_render_output.is_empty() {
@@ -5075,11 +5701,6 @@ impl Screen {
                             .senders
                             .send_to_server(ServerInstruction::Render(Some(watcher_render_output)))
                             .context(err_context);
-                    }
-
-                    // Clear force render flag for all watchers after successful render
-                    for watcher_state in self.watcher_clients.values_mut() {
-                        watcher_state.clear_force_render();
                     }
                 }
             }
@@ -5265,9 +5886,6 @@ impl Screen {
         if all_clients.is_empty() || notifications.is_empty() {
             return;
         }
-        let mut output = Output::default();
-        let client_set: HashSet<ClientId> = all_clients.iter().copied().collect();
-        output.add_clients(&client_set, Rc::new(RefCell::new(LinkHandler::new())), None);
         let mut emitted_anything = false;
         for client_id in &all_clients {
             let protocol = self.notification_protocol_for_client(client_id);
@@ -5306,28 +5924,14 @@ impl Screen {
                 };
                 if let Some(raw) = raw {
                     emitted_anything = true;
-                    output.add_post_vte_instruction_to_multiple_clients(
-                        std::iter::once(*client_id),
-                        &raw,
-                    );
+                    self.queue_vte_instruction_for_clients(vec![*client_id], raw);
                 }
             }
         }
         if !emitted_anything {
             return;
         }
-        match output.serialize() {
-            Ok(serialized_output) if !serialized_output.is_empty() => {
-                let _ = self
-                    .bus
-                    .senders
-                    .send_to_server(ServerInstruction::Render(Some(serialized_output)));
-            },
-            Ok(_) => {},
-            Err(e) => {
-                log::error!("Failed to forward desktop notifications: {}", e);
-            },
-        }
+        let _ = self.render(None);
     }
 
     /// Clear bell notification for the currently focused pane of the given client.
@@ -5800,7 +6404,7 @@ impl Screen {
 
         self.highest_client_id_seen = self.highest_client_id_seen.max(client_id);
         self.active_tab_ids.insert(client_id, tab_index);
-        self.client_kitty_host_state.borrow_mut().remove(&client_id);
+        self.release_kitty_host_state(client_id);
         self.connected_clients
             .borrow_mut()
             .insert(client_id, is_web_client);
@@ -5808,11 +6412,17 @@ impl Screen {
         if is_web_client {
             self.kitty_host_capabilities
                 .borrow_mut()
-                .insert(client_id, KittyHostCapability::default());
+                .entry(client_id)
+                .or_default();
+            self.kitty_local_media
+                .borrow_mut()
+                .entry(client_id)
+                .or_insert(false);
             self.push_kitty_host_support_to_tabs();
             self.sixel_host_capabilities
                 .borrow_mut()
-                .insert(client_id, false);
+                .entry(client_id)
+                .or_insert(false);
             self.push_sixel_host_support_to_tabs();
         }
         self.tab_history.insert(client_id, tab_history);
@@ -5833,6 +6443,15 @@ impl Screen {
             .with_context(|| err_context(tab_index))?;
         if !self.nested_ancestry.is_empty() || !self.host_descend_keys.is_empty() {
             self.update_all_clients_nesting_mode_info();
+        }
+        if let Some(mode) = self.host_terminal_theme_mode {
+            let _ =
+                self.bus
+                    .senders
+                    .send_to_server(ServerInstruction::HostTerminalThemeModeChanged(
+                        Some(client_id),
+                        mode,
+                    ));
         }
         Ok(())
     }
@@ -5871,6 +6490,7 @@ impl Screen {
             tab.clear_guest_modal_for_client_on_all_panes(client_id);
             tab.clear_guest_choice_indicator_for_client_on_all_panes(client_id);
         }
+        self.withdraw_close_prompt(client_id);
 
         // If the followed client disconnected, find the next regular client
         if Some(client_id) == self.followed_client_id {
@@ -5911,7 +6531,8 @@ impl Screen {
             self.tab_history.remove(&client_id);
         }
         self.connected_clients.borrow_mut().remove(&client_id);
-        self.client_kitty_host_state.borrow_mut().remove(&client_id);
+        self.release_kitty_host_state(client_id);
+        self.kitty_local_media.borrow_mut().remove(&client_id);
         let removed_kitty_capability = self
             .kitty_host_capabilities
             .borrow_mut()
@@ -5930,6 +6551,7 @@ impl Screen {
         }
         self.client_sizes.remove(&client_id);
         self.client_display_slots.borrow_mut().remove(&client_id);
+        self.release_structured_render_state(client_id);
         self.pane_render_subscribers.remove(&client_id);
         self.background_plugin_subscriptions
             .retain(|(_plugin_id, c_id), _subscriptions| c_id != &client_id);
@@ -5978,6 +6600,7 @@ impl Screen {
 
     pub fn remove_watcher_client(&mut self, client_id: ClientId) {
         self.watcher_clients.remove(&client_id);
+        self.release_structured_render_state(client_id);
     }
 
     pub fn set_followed_client(&mut self, client_id: ClientId) -> Result<()> {
@@ -6390,13 +7013,21 @@ impl Screen {
         Ok(())
     }
     fn report_mobile_state(&mut self) {
+        let structured_clients = self.structured_render_clients.borrow();
         let web_client_ids: Vec<ClientId> = self
             .connected_clients
             .borrow()
             .iter()
-            .filter(|(_client_id, is_web_client)| **is_web_client)
+            .filter(|(client_id, is_web_client)| {
+                **is_web_client
+                    && !structured_clients
+                        .get(*client_id)
+                        .map(|state| state.enabled)
+                        .unwrap_or(false)
+            })
             .map(|(client_id, _)| *client_id)
             .collect();
+        drop(structured_clients);
         if web_client_ids.is_empty() {
             self.last_mobile_state_sent
                 .retain(|client_id, _| self.connected_clients.borrow().contains_key(client_id));
@@ -6572,23 +7203,26 @@ impl Screen {
         &mut self,
         new_session_infos: BTreeMap<String, SessionInfo>,
         resurrectable_sessions: BTreeMap<String, Duration>,
+        requesting_plugin: Option<(u32, ClientId)>,
     ) -> Result<()> {
         self.peer_sessions_cache = new_session_infos;
         self.resurrectable_sessions_cache = resurrectable_sessions;
-        self.bus
-            .senders
-            .send_to_plugin(PluginInstruction::Update(vec![(
-                None,
-                None,
-                Event::SessionUpdate(
-                    self.peer_sessions_cache.values().cloned().collect(),
-                    self.resurrectable_sessions_cache
-                        .iter()
-                        .map(|(n, c)| (n.clone(), c.clone()))
-                        .collect(),
-                ),
-            )]))
-            .context("failed to update session info")?;
+        if let Some((plugin_id, client_id)) = requesting_plugin {
+            self.bus
+                .senders
+                .send_to_plugin(PluginInstruction::Update(vec![(
+                    Some(plugin_id),
+                    Some(client_id),
+                    Event::SessionUpdate(
+                        self.peer_sessions_cache.values().cloned().collect(),
+                        self.resurrectable_sessions_cache
+                            .iter()
+                            .map(|(n, c)| (n.clone(), c.clone()))
+                            .collect(),
+                    ),
+                )]))
+                .context("failed to update session info")?;
+        }
         self.report_mobile_state();
         Ok(())
     }
@@ -7320,13 +7954,25 @@ impl Screen {
     ) -> Result<bool> {
         // true => found and focused, false => not
         let err_context = || format!("failed to focus_plugin_pane");
+        if let Some(plugin_id) = self.focus_popup_plugin_as_floating_pane(run_plugin, client_id) {
+            if let Some(ref mut completion) = completion_tx {
+                completion.set_affected_pane_id(PaneId::Plugin(plugin_id));
+            }
+            return Ok(true);
+        }
         let mut tab_index_and_plugin_pane_id = None;
         let mut plugin_pane_to_move_to_active_tab = None;
         let focused_tab_index = *self.active_tab_ids.get(&client_id).unwrap_or(&0);
         let can_move_to_focused_tab = move_to_focused_tab && self.get_active_tab(client_id).is_ok();
         let all_tabs = self.get_tabs_mut();
         for (tab_index, tab) in all_tabs.iter_mut() {
-            if let Some(plugin_pane_id) = tab.find_plugin(&run_plugin) {
+            let found = tab
+                .find_plugin(&run_plugin)
+                .filter(|pane_id| match pane_id {
+                    PaneId::Plugin(plugin_id) => !tab.has_popup_plugin(*plugin_id),
+                    PaneId::Terminal(_) => true,
+                });
+            if let Some(plugin_pane_id) = found {
                 tab_index_and_plugin_pane_id = Some((*tab_index, plugin_pane_id));
                 if can_move_to_focused_tab && focused_tab_index != *tab_index {
                     plugin_pane_to_move_to_active_tab = tab.extract_pane(plugin_pane_id, true);
@@ -7441,16 +8087,17 @@ impl Screen {
         }
     }
     pub fn resize_pane_with_id(&mut self, resize: ResizeStrategy, pane_id: PaneId) {
-        let mut found = false;
+        let mut resized_tab_id = None;
         for tab in self.tabs.values_mut() {
             if tab.has_pane_with_pid(&pane_id) {
                 tab.resize_pane_with_id(resize, pane_id).non_fatal();
-                found = true;
+                resized_tab_id = Some(tab.id);
                 break;
             }
         }
-        if !found {
-            log::error!("Failed to find pane with id: {:?} to resize", pane_id);
+        match resized_tab_id {
+            Some(tab_id) => self.release_structured_delivery_for_tab(tab_id),
+            None => log::error!("Failed to find pane with id: {:?} to resize", pane_id),
         }
     }
     pub fn break_pane(
@@ -8310,6 +8957,11 @@ impl Screen {
             )]))
             .with_context(err_context)?;
 
+        let _ = self
+            .bus
+            .senders
+            .send_to_server(ServerInstruction::HostTerminalThemeModeChanged(None, mode));
+
         // forward DSR to opted-in terminal panes
         let mut pty_writes: Vec<(Vec<u8>, u32)> = vec![];
         for tab in self.tabs.values_mut() {
@@ -8640,6 +9292,11 @@ impl Screen {
                         let _ = self.sync_scroll_mode_on_focus(client_id);
                     }
                     should_render = true;
+                }
+                if mouse_effect.pane_resized {
+                    if let Some(tab_id) = self.active_tab_ids.get(&client_id).copied() {
+                        self.release_structured_delivery_for_tab(tab_id);
+                    }
                 }
                 if !mouse_effect.leave_clipboard_message && !is_bare_motion {
                     let target_plugin_ids =
@@ -9396,16 +10053,8 @@ pub(crate) fn screen_thread_main(
     // bundled themes BEFORE `config.options` is moved out below. These
     // populate Screen's auto-switch state at startup; runtime updates
     // continue to flow through `propagate_configuration_changes`.
-    let host_theme_dark_styling = config
-        .options
-        .theme_dark
-        .as_ref()
-        .and_then(|name| config.themes.get_theme(name).map(|t| t.palette));
-    let host_theme_light_styling = config
-        .options
-        .theme_light
-        .as_ref()
-        .and_then(|name| config.themes.get_theme(name).map(|t| t.palette));
+    let host_theme_dark_styling = config.theme_dark().map(|theme| theme.palette);
+    let host_theme_light_styling = config.theme_light().map(|theme| theme.palette);
     if config.options.theme_dark.is_some() && host_theme_dark_styling.is_none() {
         log::warn!(
             "theme_dark='{}' not found in themes; auto-theme switch disabled for dark.",
@@ -9554,6 +10203,8 @@ pub(crate) fn screen_thread_main(
     screen.host_theme_dark_styling = host_theme_dark_styling;
     screen.host_theme_light_styling = host_theme_light_styling;
     screen.paste_buffer_read_enabled = dangerously_enable_paste_buffer_read;
+    screen.swap_layout_notification = config_options.swap_layout_notification.unwrap_or(true);
+    screen.on_quit = config_options.on_quit.unwrap_or_default();
     screen.set_host_notification_protocol(host_notification_protocol);
     if explicit_theme_hue.is_some() {
         screen
@@ -9577,10 +10228,17 @@ pub(crate) fn screen_thread_main(
             .bus
             .recv()
             .context("failed to receive event on channel")?;
-        err_ctx.add_call(ContextType::Screen((&event).into()));
+        let screen_context: ScreenContext = (&event).into();
+        err_ctx.add_call(ContextType::Screen(screen_context));
         // here we start caching resizes, so that we'll send them in bulk at the end of each event
         // when this cache is Dropped, for more information, see the comments in PtyWriter
         let _resize_cache = ResizeCache::new(thread_senders.clone());
+        if screen.pending_session_card.is_some()
+            && !matches!(event, ScreenInstruction::OpenSessionCard(..))
+            && !screen.tabs.is_empty()
+        {
+            screen.open_pending_session_card();
+        }
 
         match event {
             ScreenInstruction::PtyBytes(pid, vte_bytes) => {
@@ -9590,6 +10248,7 @@ pub(crate) fn screen_thread_main(
                 let all_tabs = screen.get_tabs_mut();
                 let mut vte_bytes = Some(vte_bytes);
                 let mut title_changed = false;
+                let mut answers_typed_input = false;
                 for tab in all_tabs.values_mut() {
                     if tab.has_terminal_pid(pid) {
                         if let Some(bytes) = vte_bytes.take() {
@@ -9602,6 +10261,8 @@ pub(crate) fn screen_thread_main(
                                 .get_pane_with_id(PaneId::Terminal(pid))
                                 .map(|pane| pane.current_title());
                             title_changed = title_before != title_after;
+                            answers_typed_input =
+                                tab.output_answers_typed_input(pid, Instant::now());
                         }
                         break;
                     }
@@ -9620,10 +10281,12 @@ pub(crate) fn screen_thread_main(
                             .push(ScreenInstruction::PtyBytes(pid, vte_bytes));
                     }
                 }
-                let _ = screen
-                    .bus
-                    .senders
-                    .send_to_background_jobs(BackgroundJob::RenderToClients);
+                let render_request = if answers_typed_input {
+                    BackgroundJob::RenderToClientsNow
+                } else {
+                    BackgroundJob::RenderToClients
+                };
+                let _ = screen.bus.senders.send_to_background_jobs(render_request);
             },
             ScreenInstruction::PluginBytes(mut plugin_render_assets) => {
                 for plugin_render_asset in plugin_render_assets.iter_mut() {
@@ -9633,6 +10296,11 @@ pub(crate) fn screen_thread_main(
 
                     let all_tabs = screen.get_tabs_mut();
                     for tab in all_tabs.values_mut() {
+                        if let Some((rows, columns)) = plugin_render_asset.rendered_size {
+                            if tab.drop_popup_render_of_another_size(plugin_id, rows, columns) {
+                                break;
+                            }
+                        }
                         if tab.has_plugin(plugin_id) {
                             tab.handle_plugin_bytes(plugin_id, client_id, vte_bytes)
                                 .context("failed to process plugin bytes")?;
@@ -9644,6 +10312,10 @@ pub(crate) fn screen_thread_main(
                 screen.render(Some(plugin_render_assets))?;
             },
             ScreenInstruction::Render => {
+                screen.render(None)?;
+            },
+            ScreenInstruction::SendVteInstructionToClients(client_ids, vte_instruction) => {
+                screen.queue_vte_instruction_for_clients(client_ids, vte_instruction);
                 screen.render(None)?;
             },
             ScreenInstruction::RenderToClients => {
@@ -10102,6 +10774,9 @@ pub(crate) fn screen_thread_main(
                     }
                 }
                 drop(completion_tx);
+                if let Some(tab_id) = screen.active_tab_ids.get(&client_id).copied() {
+                    screen.release_structured_delivery_for_tab(tab_id);
+                }
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
             },
@@ -11602,8 +12277,9 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::SetKittyGraphicsSupport {
                 client_id,
                 supported,
+                local_media,
             } => {
-                screen.update_kitty_graphics_support(client_id, supported);
+                screen.update_kitty_graphics_support(client_id, supported, local_media);
             },
             ScreenInstruction::SetKittyZlibSupport {
                 client_id,
@@ -11616,6 +12292,16 @@ pub(crate) fn screen_thread_main(
                 supported,
             } => {
                 screen.update_sixel_support(client_id, supported);
+            },
+            ScreenInstruction::SetStructuredRenderSupport {
+                client_id,
+                supported,
+            } => {
+                screen.update_structured_render_support(client_id, supported);
+                screen.render(None)?;
+            },
+            ScreenInstruction::RenderFrameAck { client_id, seq } => {
+                screen.handle_render_frame_ack(client_id, seq)?;
             },
             ScreenInstruction::ForwardHostQuery { pane_id, query } => {
                 screen.forward_host_query(pane_id, query);
@@ -11644,6 +12330,16 @@ pub(crate) fn screen_thread_main(
                 outcome,
             } => {
                 screen.handle_guest_modal_choice(client_id, pane_id, outcome);
+            },
+            ScreenInstruction::ConfirmQuit(client_id) => {
+                screen.confirm_quit(client_id);
+            },
+            ScreenInstruction::CloseDialogueAnswer {
+                client_id,
+                request_id,
+                result,
+            } => {
+                screen.close_dialogue_answer(client_id, request_id, result);
             },
             ScreenInstruction::ForwardedReplyFromHost { token, reply_bytes } => {
                 screen.handle_forwarded_reply_from_host(token, reply_bytes)?;
@@ -11781,6 +12477,9 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
             },
             ScreenInstruction::RemoveClient(client_id) => {
+                if screen.pending_session_card == Some(client_id) {
+                    screen.pending_session_card = None;
+                }
                 screen.remove_client(client_id).non_fatal();
                 screen.log_and_report_session_state().non_fatal();
                 screen.render(None).non_fatal();
@@ -13006,8 +13705,16 @@ pub(crate) fn screen_thread_main(
                 let result = screen.break_pane_to_new_tab(Direction::Left, client_id);
                 screen.handle_break_pane_result(result, &mut completion_tx);
             },
-            ScreenInstruction::UpdateSessionInfos(new_session_infos, resurrectable_sessions) => {
-                screen.update_session_infos(new_session_infos, resurrectable_sessions)?;
+            ScreenInstruction::UpdateSessionInfos(
+                new_session_infos,
+                resurrectable_sessions,
+                requesting_plugin,
+            ) => {
+                screen.update_session_infos(
+                    new_session_infos,
+                    resurrectable_sessions,
+                    requesting_plugin,
+                )?;
             },
             ScreenInstruction::UpdateAvailableLayouts(layouts, errors) => {
                 screen.update_available_layouts(layouts, errors);
@@ -13178,6 +13885,19 @@ pub(crate) fn screen_thread_main(
                     screen
                         .log_and_report_session_state()
                         .with_context(err_context)?;
+
+                    let _ = screen
+                        .bus
+                        .senders
+                        .send_to_server(ServerInstruction::SessionRenamed(name.clone()));
+                    let _ = screen.bus.senders.send_to_background_jobs(
+                        BackgroundJob::SessionSuggestions(
+                            crate::session_suggestions::SessionSuggestionsJob::SessionRenamed {
+                                old_name: old_session_name.clone(),
+                                new_name: name.clone(),
+                            },
+                        ),
+                    );
 
                     // set the env variable
                     set_session_name(name.clone());
@@ -13864,6 +14584,44 @@ pub(crate) fn screen_thread_main(
             } => {
                 screen.open_context_menu_from_plugin(plugin_id, client_id, target, line, column);
             },
+            ScreenInstruction::OpenSessionCard(client_id) => {
+                screen.open_session_card(client_id);
+            },
+            ScreenInstruction::TerminalInputSubmitted(client_id) => {
+                screen.terminal_input_submitted(client_id);
+            },
+            ScreenInstruction::TerminalEscapePressed(client_id) => {
+                screen.terminal_escape_pressed(client_id);
+            },
+            ScreenInstruction::ToggleSessionCard(client_id, _completion_tx) => {
+                screen.toggle_session_card(client_id);
+            },
+            ScreenInstruction::SetPopupFocused { plugin_id, focused } => {
+                screen.set_popup_focused(plugin_id, focused);
+            },
+            ScreenInstruction::PopupToFloatingPane {
+                plugin_id,
+                coordinates,
+            } => {
+                screen.popup_to_floating_pane(plugin_id, coordinates);
+            },
+            ScreenInstruction::ShowSwapLayoutNotification(client_id) => {
+                screen.show_swap_layout_notification(client_id);
+            },
+            ScreenInstruction::SetSwapLayoutNotification(enabled) => {
+                screen.swap_layout_notification = enabled;
+            },
+            ScreenInstruction::SetOnQuit(on_quit) => {
+                screen.on_quit = on_quit;
+            },
+            ScreenInstruction::GetSessionPreview {
+                tab_index,
+                pane_id,
+                response_channel,
+            } => {
+                let preview = screen.session_preview(tab_index, pane_id);
+                let _ = response_channel.send(preview);
+            },
             ScreenInstruction::OpenPluginPopup {
                 requesting_plugin_id,
                 client_id,
@@ -13934,6 +14692,7 @@ pub(crate) fn screen_thread_main(
                 run_plugin_or_alias,
                 placement,
                 focused,
+                capture_all_keys,
             } => {
                 screen.open_prompt_popup(
                     caller,
@@ -13942,6 +14701,7 @@ pub(crate) fn screen_thread_main(
                     run_plugin_or_alias,
                     placement,
                     focused,
+                    capture_all_keys,
                 );
             },
             ScreenInstruction::CloseTopPopup(client_id) => {
@@ -13966,6 +14726,9 @@ pub(crate) fn screen_thread_main(
                 height,
             } => {
                 screen.set_popup_size(plugin_id, width, height)?;
+            },
+            ScreenInstruction::RevealPopup(plugin_id) => {
+                screen.reveal_popup(plugin_id)?;
             },
             ScreenInstruction::UpdateContextMenuConfig(client_id, context_menu_config) => {
                 screen.update_context_menu_config(client_id, context_menu_config);

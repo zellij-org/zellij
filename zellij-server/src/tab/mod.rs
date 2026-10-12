@@ -31,11 +31,14 @@ use zellij_utils::input::options::DEFAULT_WORD_SEPARATORS;
 use zellij_utils::position::Position;
 use zellij_utils::position::{Column, Line};
 use zellij_utils::shared::clean_string_from_control_and_linebreak;
+use zellij_utils::structured_render::{
+    PaneRect, PANE_FOCUSED, PANE_FRAMED, PANE_PLUGIN_UI, PANE_SELECTABLE, PANE_WANTS_MOUSE,
+};
 
 use crate::background_jobs::BackgroundJob;
 use crate::pane_groups::PaneGroups;
 use crate::pty_writer::PtyWriteInstruction;
-use crate::screen::{CopyOptions, GuestModalOutcome, ScreenInstruction};
+use crate::screen::{CopyOptions, GuestModalOutcome, ScreenInstruction, TypedInput};
 use crate::ui::hint_text::{
     held_hint_variants, hover_hint_variants, resize_hint_variants, HintExitStatus,
 };
@@ -61,7 +64,7 @@ use crate::{
     plugins::PluginInstruction,
     pty::{ClientTabIndexOrPaneId, PtyInstruction, VteBytes},
     thread_bus::ThreadSenders,
-    ClientId, ServerInstruction,
+    ClientId,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -324,9 +327,11 @@ pub(crate) struct Tab {
     mouse_click_tracker: HashMap<ClientId, mouse_handler::MouseClickRecord>,
     dimmed_clients: HashSet<ClientId>,
     plugin_hover_pane_id: HashMap<ClientId, PaneId>,
+    popup_hover_plugin_id: HashMap<ClientId, u32>,
     mouse_last_pane_id: HashMap<ClientId, PaneId>,
     mouse_help_text_visible: HashMap<ClientId, bool>,
     last_mouse_activity_time: HashMap<ClientId, Instant>,
+    typed_input: TypedInput,
     last_hint_text: HashMap<ClientId, BTreeMap<usize, StyledText>>,
     last_active_pane_scroll: HashMap<ClientId, Option<(usize, usize)>>,
     current_pane_group: Rc<RefCell<PaneGroups>>,
@@ -417,7 +422,7 @@ pub trait Pane {
         &mut self,
         cursor_color: PaletteColor,
         text_color: PaletteColor,
-    ) -> Option<String>;
+    ) -> Option<crate::output::CharacterChunk>;
     fn render_terminal_title(&mut self, _input_mode: InputMode) -> String;
     fn update_name(&mut self, name: &str);
     fn pid(&self) -> PaneId;
@@ -632,6 +637,9 @@ pub trait Pane {
     fn drain_osc7_cwd(&mut self) -> Option<std::path::PathBuf> {
         None
     }
+    fn drain_prompt_return(&mut self) -> bool {
+        false
+    }
     fn render_full_viewport(&mut self) {}
     fn relative_position(&self, position_on_screen: &Position) -> Position {
         position_on_screen.relative_to(self.get_content_y(), self.get_content_x())
@@ -822,6 +830,9 @@ pub trait Pane {
     }
     fn scroll_position(&self) -> (usize, usize) {
         (0, 0)
+    }
+    fn viewport_scroll_state(&self) -> Option<(usize, u64)> {
+        None
     }
     fn is_held(&self) -> bool {
         false
@@ -1116,9 +1127,11 @@ impl Tab {
             mouse_press_owner: HashMap::new(),
             mouse_click_tracker: HashMap::new(),
             plugin_hover_pane_id: HashMap::new(),
+            popup_hover_plugin_id: HashMap::new(),
             mouse_last_pane_id: HashMap::new(),
             mouse_help_text_visible: HashMap::new(),
             last_mouse_activity_time: HashMap::new(),
+            typed_input: TypedInput::default(),
             last_hint_text: HashMap::new(),
             last_active_pane_scroll: HashMap::new(),
             current_pane_group,
@@ -3758,6 +3771,7 @@ impl Tab {
             Ok(replaced_pane) => {
                 self.track_stack_list_member_id_swap(pane_id_to_replace, replacement_pane_id);
                 let pane_id = replaced_pane.pid();
+                self.forget_typed_input(pane_id);
                 let _ = self
                     .senders
                     .send_to_pty(PtyInstruction::ClosePane(pane_id, completion_tx));
@@ -4619,7 +4633,11 @@ impl Tab {
         bytes: VteBytes,
     ) -> Result<()> {
         if let Some(popup_pane) = self.popup_pane_mut(pid) {
+            let has_content = !bytes.is_empty();
             popup_pane.handle_plugin_bytes(client_id, bytes);
+            if has_content {
+                self.reveal_popup(pid);
+            }
             return Ok(());
         }
         if let Some(plugin_pane) = self
@@ -4732,6 +4750,7 @@ impl Tab {
             let clipboard_update = terminal_output.drain_clipboard_update();
             let desktop_notifications = terminal_output.drain_desktop_notifications();
             let osc7_cwd = terminal_output.drain_osc7_cwd();
+            let prompt_returned = terminal_output.drain_prompt_return();
             for message in messages_to_pty {
                 self.write_to_pane_id_without_preprocessing(message, PaneId::Terminal(pid))
                     .with_context(err_context)?;
@@ -4768,6 +4787,11 @@ impl Tab {
                 let _ = self
                     .senders
                     .send_to_pty(PtyInstruction::NotifyCwdFromOsc7(pid, path));
+            }
+            if prompt_returned {
+                let _ = self
+                    .senders
+                    .send_to_pty(PtyInstruction::PromptReturned(pid));
             }
         }
         Ok(())
@@ -4954,6 +4978,9 @@ impl Tab {
                     client_id,
                 ) {
                     Some(AdjustedInput::WriteBytesToTerminal(adjusted_input)) => {
+                        if client_id.is_some() {
+                            self.typed_input.record(active_terminal_id, Instant::now());
+                        }
                         self.senders
                             .send_to_pty_writer(PtyWriteInstruction::Write(
                                 adjusted_input,
@@ -5064,6 +5091,14 @@ impl Tab {
             },
         }
         Ok(should_update_ui)
+    }
+    pub fn output_answers_typed_input(&mut self, terminal_id: u32, now: Instant) -> bool {
+        self.typed_input.output_answers_input(terminal_id, now)
+    }
+    fn forget_typed_input(&mut self, pane_id: PaneId) {
+        if let PaneId::Terminal(terminal_id) = pane_id {
+            self.typed_input.forget(terminal_id);
+        }
     }
     pub fn write_to_pane_id_without_preprocessing(
         &mut self,
@@ -5417,6 +5452,7 @@ impl Tab {
             { self.connected_clients.borrow().iter().copied().collect() };
         for client_id in connected_clients {
             if self.has_focused_popup_for_client(client_id) {
+                output.set_client_cursor(client_id, 0, 0, false, "");
                 output.add_post_vte_instruction_to_client(client_id, "\u{1b}[?25l");
                 continue;
             }
@@ -5452,6 +5488,13 @@ impl Tab {
                                     || previous_shape != &desired_cursor_shape
                             })
                             .unwrap_or(true);
+                        output.set_client_cursor(
+                            client_id,
+                            cursor_position_x,
+                            cursor_position_y,
+                            true,
+                            &desired_cursor_shape,
+                        );
                         if output.is_dirty() || cursor_changed_position_or_shape {
                             let show_cursor = "\u{1b}[?25h";
                             let goto_cursor_position = &format!(
@@ -5481,15 +5524,30 @@ impl Tab {
                             cursor_position_y + 1,
                             cursor_position_x + 1,
                         );
+                        output.set_client_cursor(
+                            client_id,
+                            cursor_position_x,
+                            cursor_position_y,
+                            false,
+                            "",
+                        );
                         output.add_post_vte_instruction_to_client(client_id, hide_cursor);
                         output.add_post_vte_instruction_to_client(client_id, goto_cursor_position);
                     } else {
                         let hide_cursor = "\u{1b}[?25l";
+                        output.set_client_cursor(
+                            client_id,
+                            cursor_position_x,
+                            cursor_position_y,
+                            false,
+                            "",
+                        );
                         output.add_post_vte_instruction_to_client(client_id, hide_cursor);
                     }
                 },
                 None => {
                     let hide_cursor = "\u{1b}[?25l";
+                    output.set_client_cursor(client_id, 0, 0, false, "");
                     output.add_post_vte_instruction_to_client(client_id, hide_cursor);
                 },
             }
@@ -5512,6 +5570,23 @@ impl Tab {
     }
     fn get_selectable_floating_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
         self.get_floating_panes().filter(|(_, p)| p.selectable())
+    }
+    pub fn preview_panes(&self) -> Vec<(PaneId, String)> {
+        let mut tiled: Vec<(PaneId, String, usize, usize)> = self
+            .get_selectable_tiled_panes()
+            .map(|(id, pane)| (*id, pane.current_title(), pane.y(), pane.x()))
+            .collect();
+        tiled.sort_by_key(|(_, _, y, x)| (*y, *x));
+        let mut floating: Vec<(PaneId, String, usize, usize)> = self
+            .get_selectable_floating_panes()
+            .map(|(id, pane)| (*id, pane.current_title(), pane.y(), pane.x()))
+            .collect();
+        floating.sort_by_key(|(_, _, y, x)| (*y, *x));
+        tiled
+            .into_iter()
+            .chain(floating)
+            .map(|(id, title, _, _)| (id, title))
+            .collect()
     }
     pub fn get_selectable_tiled_panes_count(&self) -> usize {
         self.get_selectable_tiled_panes().count()
@@ -6199,6 +6274,7 @@ impl Tab {
         if self.selecting_with_mouse_in_pane == Some(id) {
             self.selecting_with_mouse_in_pane = None;
         }
+        self.forget_typed_input(id);
         let id_parks_a_different_pane = self.pane_parked_by(&id).is_some();
         if !ignore_suppressed_panes
             && !id_parks_a_different_pane
@@ -6306,6 +6382,7 @@ impl Tab {
         id: PaneId,
         dont_swap_if_suppressed: bool,
     ) -> Option<Box<dyn Pane>> {
+        self.forget_typed_input(id);
         let id_parks_a_different_pane = self.pane_parked_by(&id).is_some();
         if self.pane_is_stack_list_member(&id)
             && (dont_swap_if_suppressed || !id_parks_a_different_pane)
@@ -7133,33 +7210,27 @@ impl Tab {
     fn write_selection_to_clipboard(&self, selection: &str) -> Result<()> {
         let err_context = || format!("failed to write selection to clipboard: '{}'", selection);
 
-        let mut output = Output::default();
-        let connected_clients: HashSet<ClientId> =
+        let connected_clients: Vec<ClientId> =
             { self.connected_clients.borrow().iter().copied().collect() };
-        output.add_clients(&connected_clients, self.link_handler.clone(), None);
-        let client_ids = connected_clients.iter().copied();
-        let clipboard_event =
-            match self
-                .clipboard_provider
-                .set_content(selection, &mut output, client_ids)
-            {
-                Ok(_) => output
-                    .serialize()
-                    .and_then(|serialized_output| {
-                        self.senders
-                            .send_to_server(ServerInstruction::Render(Some(serialized_output)))
-                    })
-                    .and_then(|_| {
-                        Ok(Event::CopyToClipboard(
-                            self.clipboard_provider.as_copy_destination(),
-                        ))
-                    })
-                    .with_context(err_context)?,
-                Err(err) => {
-                    Err::<(), _>(err).with_context(err_context).non_fatal();
-                    Event::SystemClipboardFailure
-                },
-            };
+        let clipboard_event = match self.clipboard_provider.set_content(selection) {
+            Ok(None) => Event::CopyToClipboard(self.clipboard_provider.as_copy_destination()),
+            Ok(Some(vte_instruction)) => self
+                .senders
+                .send_to_screen(ScreenInstruction::SendVteInstructionToClients(
+                    connected_clients,
+                    vte_instruction,
+                ))
+                .and_then(|_| {
+                    Ok(Event::CopyToClipboard(
+                        self.clipboard_provider.as_copy_destination(),
+                    ))
+                })
+                .with_context(err_context)?,
+            Err(err) => {
+                Err::<(), _>(err).with_context(err_context).non_fatal();
+                Event::SystemClipboardFailure
+            },
+        };
         self.senders
             .send_to_plugin(PluginInstruction::Update(vec![(
                 None,
@@ -7607,6 +7678,10 @@ impl Tab {
                         run_plugin_or_alias.is_equivalent_to_run(pane.invoked_with())
                     })
                     .map(|(_, (_, pane))| pane.pid()) // TODO: does this break things????
+            })
+            .or_else(|| {
+                self.find_popup_plugin(run_plugin_or_alias)
+                    .map(|(_, plugin_id)| PaneId::Plugin(plugin_id))
             })
     }
 
@@ -8210,7 +8285,11 @@ impl Tab {
     }
     pub fn request_plugin_permissions(&mut self, pid: u32, permissions: Option<PluginPermission>) {
         if let Some(popup_pane) = self.popup_pane_mut(pid) {
+            let asks_for_permissions = permissions.is_some();
             popup_pane.request_permissions_from_user(permissions);
+            if asks_for_permissions {
+                self.reveal_popup(pid);
+            }
             self.set_force_render();
             return;
         }
@@ -8939,6 +9018,49 @@ impl Tab {
             pane.toggle_pinned();
             self.set_force_render();
         }
+    }
+}
+
+pub fn pane_rect_for_pane(
+    pane: &Box<dyn Pane>,
+    framed: bool,
+    focused: bool,
+    extra_flags: u8,
+) -> PaneRect {
+    let cell = |value: usize| value.min(u16::MAX as usize) as u16;
+    let inset = |value: usize| value.min(u8::MAX as usize) as u8;
+    let x = pane.x();
+    let y = pane.y();
+    let cols = pane.cols();
+    let rows = pane.rows();
+    let left = pane.get_content_x().saturating_sub(x);
+    let top = pane.get_content_y().saturating_sub(y);
+    let mut flags = extra_flags;
+    if framed {
+        flags |= PANE_FRAMED;
+    }
+    if matches!(pane.pid(), PaneId::Plugin(_)) && !pane.supports_mouse_selection() {
+        flags |= PANE_PLUGIN_UI;
+    }
+    if focused {
+        flags |= PANE_FOCUSED;
+    }
+    if pane.selectable() {
+        flags |= PANE_SELECTABLE;
+    }
+    if pane.terminal_emulator_wants_mouse() {
+        flags |= PANE_WANTS_MOUSE;
+    }
+    PaneRect {
+        x: cell(x),
+        y: cell(y),
+        cols: cell(cols),
+        rows: cell(rows),
+        top: inset(top),
+        bottom: inset(rows.saturating_sub(top + pane.get_content_rows())),
+        left: inset(left),
+        right: inset(cols.saturating_sub(left + pane.get_content_columns())),
+        flags,
     }
 }
 

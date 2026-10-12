@@ -1,0 +1,49 @@
+size: 40x120
+cursor: row=1 col=3 visible shape=Default
+grid:
+|👨 y  x🔭                                                                                                                 |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+styles:
+row 0: cols 0-0 fg=Foreground bg=Background flags=WIDE_CHAR
+row 0: cols 1-1 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 0: cols 6-6 fg=Foreground bg=Background flags=WIDE_CHAR
+row 0: cols 7-7 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+images:

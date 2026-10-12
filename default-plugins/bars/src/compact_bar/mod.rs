@@ -5,6 +5,7 @@ mod line;
 mod tab;
 mod tooltip;
 
+use crate::session_indicator::SessionIndicator;
 use std::cmp::{max, min};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -46,8 +47,6 @@ pub struct LinePart {
 struct TabRenderData {
     tabs: Vec<LinePart>,
     active_tab_index: usize,
-    active_swap_layout_name: Option<String>,
-    is_swap_layout_dirty: bool,
 }
 
 fn click_target(slot_client: &SlotClientState, col: usize) -> ClickTarget {
@@ -164,6 +163,7 @@ struct SlotClientState {
     segments: Vec<TabSegment>,
     tooltip_regions: Vec<TooltipRegion>,
     cols: usize,
+    session_indicator_range: Option<(usize, usize)>,
 }
 
 #[derive(Default)]
@@ -175,6 +175,7 @@ pub struct CompactBar {
     tooltip_is_active: bool,
     configured_toggle_keys: BTreeSet<(String, ClientId)>,
     runner: ActionRunner,
+    session_indicator: SessionIndicator,
 }
 
 impl CompactBar {
@@ -212,6 +213,8 @@ impl CompactBar {
                 EventType::SystemClipboardFailure,
                 EventType::InitialKeybinds,
                 EventType::ActionComplete,
+                EventType::SessionCountsUpdate,
+                EventType::FolderSessionsUpdate,
             ]
         };
         subscribe(&events);
@@ -395,6 +398,13 @@ impl CompactBar {
             _ => {},
         }
         match event {
+            Event::SessionCountsUpdate(_) | Event::FolderSessionsUpdate(_) => {
+                if self.session_indicator.update(event) {
+                    RenderResponse::Slots(self.main_slot_ids())
+                } else {
+                    RenderResponse::Nothing
+                }
+            },
             Event::PaneUpdate(pane_manifest) => {
                 if self.handle_pane_update(pane_manifest) {
                     RenderResponse::Slots(self.main_slot_ids())
@@ -404,7 +414,12 @@ impl CompactBar {
             },
             Event::Mouse(mouse_event) => {
                 if let (Some(slot_id), Some(client_id)) = (context.slot_id, context.client_id) {
-                    if self.handle_mouse_event(slot_id, client_id, mouse_event) {
+                    let indicator_was_hovered = self.session_indicator.hovered;
+                    let should_render = self.handle_mouse_event(slot_id, client_id, mouse_event);
+                    if self.session_indicator.hovered != indicator_was_hovered {
+                        return RenderResponse::Slots(self.main_slot_ids());
+                    }
+                    if should_render {
                         return RenderResponse::Client(client_id);
                     }
                 }
@@ -577,6 +592,14 @@ impl CompactBar {
         }
     }
 
+    pub fn session_indicator_pipe(&mut self, pipe_message: &PipeMessage) -> RenderResponse {
+        if self.session_indicator.handle_pipe(pipe_message) {
+            RenderResponse::Slots(self.main_slot_ids())
+        } else {
+            RenderResponse::Nothing
+        }
+    }
+
     fn handle_mouse_event(
         &mut self,
         slot_id: SlotId,
@@ -600,9 +623,14 @@ impl CompactBar {
             .unwrap_or(&empty_slot_client);
 
         let mut should_render = false;
+        let indicator_range = slot_client.session_indicator_range;
         match mouse_event {
-            Mouse::LeftClick(_, col) => {
+            Mouse::LeftClick(line, col) => {
                 let col = *col;
+                if matches!(indicator_range, Some((start, end)) if col >= start && col < end) {
+                    self.session_indicator.clicked((*line).max(0) as usize, col);
+                    return should_render;
+                }
                 client.hover_at = Some((slot_id, col));
                 client.last_left_click = Some((slot_id, click_target(slot_client, col)));
                 if client.drag.take().is_some() {
@@ -652,6 +680,8 @@ impl CompactBar {
             },
             Mouse::Hover(_, col) => {
                 let col = *col;
+                self.session_indicator.hovered =
+                    matches!(indicator_range, Some((start, end)) if col >= start && col < end);
                 let on_screen = col < slot_client.cols;
                 let owns_hover = client
                     .hover_at
@@ -1017,6 +1047,7 @@ impl CompactBar {
                     slot.toggle_tooltip_key.clone(),
                     self.tooltip_is_active,
                     hover,
+                    &self.session_indicator,
                 );
                 let (regions, segments) = compact_regions(
                     &tab_line_output.parts,
@@ -1056,6 +1087,7 @@ impl CompactBar {
             slot_client.breadcrumb_range = tab_line_output.breadcrumb_range;
             slot_client.regions = regions;
             slot_client.segments = segments;
+            slot_client.session_indicator_range = tab_line_output.session_indicator_range;
 
             let output = slot_client
                 .tab_line
@@ -1110,8 +1142,6 @@ fn render_background_with_text(mode_info: &ModeInfo, text: &str) {
 fn prepare_tab_data(client: &ClientState, hovered: Option<CompactRegion>) -> TabRenderData {
     let mut all_tabs = Vec::new();
     let mut active_tab_index = 0;
-    let mut active_swap_layout_name = None;
-    let mut is_swap_layout_dirty = false;
     let mut is_alternate_tab = false;
     let dimmed = client.mode_info.session_ascended == Some(true)
         || client.mode_info.session_dimmed == Some(true);
@@ -1121,10 +1151,6 @@ fn prepare_tab_data(client: &ClientState, hovered: Option<CompactRegion>) -> Tab
 
         if tab.active {
             active_tab_index = tab.position;
-            if client.mode_info.mode != InputMode::RenameTab {
-                is_swap_layout_dirty = tab.is_swap_layout_dirty;
-                active_swap_layout_name = tab.active_swap_layout_name.clone();
-            }
         }
 
         let is_hovered = hovered == Some(CompactRegion::Tab(tab.position));
@@ -1151,8 +1177,6 @@ fn prepare_tab_data(client: &ClientState, hovered: Option<CompactRegion>) -> Tab
     TabRenderData {
         tabs: all_tabs,
         active_tab_index,
-        active_swap_layout_name,
-        is_swap_layout_dirty,
     }
 }
 

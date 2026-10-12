@@ -24,6 +24,9 @@ mod pty_writer;
 mod route;
 mod screen;
 mod session_layout_metadata;
+mod session_previews;
+pub mod session_suggestions;
+mod socket_folder_watcher;
 mod terminal_bytes;
 mod thread_bus;
 mod ui;
@@ -46,11 +49,13 @@ use zellij_utils::pane_size::Size;
 
 use zellij_utils::input::cli_assets::CliAssets;
 use zellij_utils::input::options::{PaneFrameStyle, DEFAULT_WORD_SEPARATORS};
+use zellij_utils::input::window::WindowSettings;
 
 use wasmi::Engine;
 
 use crate::{
     os_input_output::{env_value, PaneEnv, ServerOsApi},
+    output::RenderPayload,
     panes::PaneId,
     plugins::{plugin_thread_main, PluginInstruction},
     pty::{get_default_shell, pty_thread_main, Pty, PtyInstruction},
@@ -58,15 +63,16 @@ use crate::{
     thread_bus::{Bus, ThreadSenders},
 };
 use route::{route_thread_main, NotificationEnd};
+use session_suggestions::SessionSuggestionsJob;
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     consts::{
         DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE, ZELLIJ_SEEN_RELEASE_NOTES_CACHE_FILE,
     },
     data::{
-        ConfigSnapshot, ConnectToSession, Direction, InputMode, KeyWithModifier,
-        KeybindPresetSource, LayoutInfo, LayoutWithError, MouseTrigger, SettingKey, Style,
-        WebSharing,
+        ConfigSnapshot, ConnectToSession, Direction, HostTerminalThemeMode, InputMode,
+        KeyWithModifier, KeybindPresetSource, LayoutInfo, LayoutWithError, MouseTrigger,
+        SettingKey, Style, Styling, WebSharing,
     },
     errors::{prelude::*, ContextType, ErrorInstruction, FatalError, ServerContext},
     home::{default_layout_dir, get_default_data_dir},
@@ -93,7 +99,7 @@ use zellij_utils::{
     ipc::{
         ClientAttributes, ClientToServerMsg, ExitReason, IpcReceiverWithContext, ServerToClientMsg,
     },
-    shared::{default_palette, web_server_base_url},
+    shared::web_server_base_url,
 };
 
 pub use zellij_utils::data::ClientId;
@@ -112,7 +118,7 @@ pub enum ServerInstruction {
         bool, // is_web_client
         ClientId,
     ),
-    Render(Option<HashMap<ClientId, String>>),
+    Render(Option<HashMap<ClientId, RenderPayload>>),
     UnblockInputThread,
     ClientExit(ClientId, Option<NotificationEnd>),
     RemoveClient(ClientId),
@@ -131,6 +137,9 @@ pub enum ServerInstruction {
     Log(Vec<String>, ClientId, Option<NotificationEnd>),
     LogError(Vec<String>, ClientId, Option<NotificationEnd>),
     SwitchSession(ConnectToSession, ClientId, Option<NotificationEnd>),
+    SwitchSessionAndCloseCurrent(ConnectToSession, ClientId, Option<NotificationEnd>),
+    TerminalCommandSubmitted,
+    SessionRenamed(String),
     UnblockCliPipeInput(String, Option<i32>),
     CliPipeOutput(String, String), // String -> Pipe name, String -> Output
     AssociatePipeWithClient {
@@ -146,6 +155,9 @@ pub enum ServerInstruction {
         write_config_to_disk: bool,
     },
     ConfigWrittenToDisk(Config),
+    WindowSettingsChanged(ClientId, Box<WindowSettings>),
+    FontFamilies(ClientId, Vec<String>),
+    HostTerminalThemeModeChanged(Option<ClientId>, HostTerminalThemeMode),
     FailedToWriteConfigToDisk(ClientId, Option<PathBuf>), // Pathbuf - file we failed to write
     ReadConfig {
         client_id: ClientId,
@@ -224,7 +236,7 @@ pub enum ServerInstruction {
     ForwardQueryToHost(u32, Vec<u8>, bool),
     KeyPassthroughChanged(ClientId, PaneId, PaneId, bool, Option<Direction>, bool),
     EmitNestedSessionFrameToClient(ClientId, Vec<u8>),
-    PopupStateChanged(ClientId, bool),
+    PopupStateChanged(ClientId, bool, bool),
 }
 
 impl From<&ServerInstruction> for ServerContext {
@@ -244,6 +256,11 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::Log(..) => ServerContext::Log,
             ServerInstruction::LogError(..) => ServerContext::LogError,
             ServerInstruction::SwitchSession(..) => ServerContext::SwitchSession,
+            ServerInstruction::SwitchSessionAndCloseCurrent(..) => {
+                ServerContext::SwitchSessionAndCloseCurrent
+            },
+            ServerInstruction::TerminalCommandSubmitted => ServerContext::TerminalCommandSubmitted,
+            ServerInstruction::SessionRenamed(..) => ServerContext::SessionRenamed,
             ServerInstruction::UnblockCliPipeInput(..) => ServerContext::UnblockCliPipeInput,
             ServerInstruction::CliPipeOutput(..) => ServerContext::CliPipeOutput,
             ServerInstruction::AssociatePipeWithClient { .. } => {
@@ -282,6 +299,11 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::WebServerStarted(..) => ServerContext::WebServerStarted,
             ServerInstruction::FailedToStartWebServer(..) => ServerContext::FailedToStartWebServer,
             ServerInstruction::ConfigWrittenToDisk(..) => ServerContext::ConfigWrittenToDisk,
+            ServerInstruction::WindowSettingsChanged(..) => ServerContext::WindowSettingsChanged,
+            ServerInstruction::FontFamilies(..) => ServerContext::FontFamilies,
+            ServerInstruction::HostTerminalThemeModeChanged(..) => {
+                ServerContext::HostTerminalThemeModeChanged
+            },
             ServerInstruction::SendWebClientsForbidden(..) => {
                 ServerContext::SendWebClientsForbidden
             },
@@ -505,12 +527,18 @@ impl SessionConfiguration {
                     .themes
                     .get_theme(from)
                     .ok_or_else(|| format!("There is no theme called {}", from))?;
-                let path = config_blocks::create_theme_file(&theme_dir, name, &source.palette)?;
+                let path = config_blocks::create_theme_file(
+                    &theme_dir,
+                    name,
+                    &source.palette,
+                    source.terminal_colors.as_ref(),
+                )?;
                 Ok((
                     path,
                     Theme {
                         sourced_from_external_file: true,
                         palette: source.palette.clone(),
+                        terminal_colors: source.terminal_colors,
                     },
                 ))
             },
@@ -531,6 +559,10 @@ impl SessionConfiguration {
                     Theme {
                         sourced_from_external_file: true,
                         palette,
+                        terminal_colors: config
+                            .themes
+                            .get_theme(name)
+                            .and_then(|theme| theme.terminal_colors),
                     },
                 ))
             },
@@ -684,6 +716,7 @@ impl SessionConfiguration {
             ),
             keybinds: current.keybinds_selection_snapshot(),
             mousebindings: config_blocks::mousebinding_entries(saved, &current),
+            font_families: vec![],
         }
     }
     fn replace_runtime_config_if_changed(
@@ -1030,6 +1063,8 @@ pub(crate) struct SessionMetaData {
     pub session_configuration: SessionConfiguration,
     pub key_passthrough_clients: HashMap<ClientId, PaneId>,
     pub popup_clients: HashSet<ClientId>,
+    pub modal_popup_clients: HashSet<ClientId>,
+    pub terminal_command_submitted: Arc<std::sync::atomic::AtomicBool>,
     pub web_sharing: WebSharing, // this is a special attribute explicitly set on session
     // initialization because we don't want it to be overridden by
     // configuration changes, the only way it can be overwritten is by
@@ -1042,9 +1077,49 @@ pub(crate) struct SessionMetaData {
     config_file_path: Option<PathBuf>,
     config_file: ConfigFileState,
     applied_env: AppliedEnv,
+    sent_window_settings: HashMap<ClientId, WindowSettings>,
+    font_families: HashMap<ClientId, Vec<String>>,
 }
 
 impl SessionMetaData {
+    fn send_window_settings_if_changed(&mut self, client_id: ClientId, config: &Config) {
+        let settings = WindowSettings::from_config(config);
+        if self.sent_window_settings.get(&client_id) == Some(&settings) {
+            return;
+        }
+        self.sent_window_settings
+            .insert(client_id, settings.clone());
+        let _ = self
+            .senders
+            .send_to_server(ServerInstruction::WindowSettingsChanged(
+                client_id,
+                Box::new(settings),
+            ));
+    }
+    fn forget_window_client(&mut self, client_id: ClientId) {
+        self.sent_window_settings.remove(&client_id);
+        self.font_families.remove(&client_id);
+    }
+    fn config_snapshot_for(&self, client_id: ClientId) -> ConfigSnapshot {
+        let mut snapshot = self
+            .session_configuration
+            .config_snapshot(&client_id, self.config_file_path.as_ref());
+        snapshot.font_families = self.font_families_for(client_id);
+        snapshot
+    }
+    fn font_families_for(&self, client_id: ClientId) -> Vec<String> {
+        self.font_families
+            .get(&client_id)
+            .or_else(|| {
+                self.font_families
+                    .iter()
+                    .filter(|(_, families)| !families.is_empty())
+                    .min_by_key(|(id, _)| **id)
+                    .map(|(_, families)| families)
+            })
+            .cloned()
+            .unwrap_or_default()
+    }
     fn sync_pane_env(&mut self, env: &HashMap<String, String>) {
         self.applied_env.sync(env);
     }
@@ -1067,6 +1142,7 @@ impl SessionMetaData {
     }
     pub fn remove_key_passthrough_client(&mut self, client_id: ClientId) {
         self.popup_clients.remove(&client_id);
+        self.modal_popup_clients.remove(&client_id);
         self.remove_key_passthrough_client_with_notify(client_id, true);
     }
     pub fn remove_key_passthrough_client_with_notify(
@@ -1128,6 +1204,7 @@ impl SessionMetaData {
         let mut new_plugin_config = None;
         let mut converted_keybinds: Vec<(Arc<Keybinds>, SharedKeybinds)> = vec![];
         for (client_id, new_config) in config_changes {
+            self.send_window_settings_if_changed(client_id, &new_config);
             self.follow_keybinds_dir(&new_config);
             self.sync_pane_env(new_config.env.inner());
             let pane_env = self.applied_env.pane_env();
@@ -1147,16 +1224,8 @@ impl SessionMetaData {
                     ..Default::default()
                 })
             });
-            let host_theme_dark = new_config
-                .options
-                .theme_dark
-                .as_ref()
-                .and_then(|name| new_config.theme_config(Some(name)));
-            let host_theme_light = new_config
-                .options
-                .theme_light
-                .as_ref()
-                .and_then(|name| new_config.theme_config(Some(name)));
+            let host_theme_dark = new_config.theme_dark().map(|theme| theme.palette);
+            let host_theme_light = new_config.theme_light().map(|theme| theme.palette);
             if new_config.options.theme_dark.is_some() && host_theme_dark.is_none() {
                 log::warn!(
                     "theme_dark='{}' not found in themes; auto-theme switch disabled for dark.",
@@ -1204,7 +1273,7 @@ impl SessionMetaData {
                         .unwrap_or_else(Default::default),
                     theme: new_config
                         .theme_config(new_config.options.theme.as_ref())
-                        .unwrap_or_else(|| default_palette().into()),
+                        .unwrap_or_else(Styling::default),
                     host_theme_dark,
                     host_theme_light,
                     explicit_theme_hue: new_config.options.explicit_theme_hue,
@@ -1267,6 +1336,23 @@ impl SessionMetaData {
                         .unwrap_or_default(),
                 })
                 .unwrap();
+            let _ = self
+                .senders
+                .send_to_screen(ScreenInstruction::SetSwapLayoutNotification(
+                    new_config.options.swap_layout_notification.unwrap_or(true),
+                ));
+            let _ = self.senders.send_to_screen(ScreenInstruction::SetOnQuit(
+                new_config.options.on_quit.unwrap_or_default(),
+            ));
+            let _ = self
+                .senders
+                .send_to_background_jobs(BackgroundJob::SessionSuggestions(
+                    SessionSuggestionsJob::Configure {
+                        config: new_config.session_suggestions.clone(),
+                        session_card: new_config.options.session_card.unwrap_or(true),
+                        session_indicator: new_config.options.session_indicator.unwrap_or(true),
+                    },
+                ));
             if base_mode_changed {
                 self.current_input_modes.insert(client_id, base_mode);
                 self.senders
@@ -1351,6 +1437,11 @@ fn remove_client_and_flush_forwards(
 ) {
     let _ = os_input.remove_client(client_id);
     let stuck_tokens = session_state.write().unwrap().remove_client(client_id);
+    if let Ok(mut session) = session_data.try_write() {
+        if let Some(session) = session.as_mut() {
+            session.forget_window_client(client_id);
+        }
+    }
     if stuck_tokens.is_empty() {
         return;
     }
@@ -1425,6 +1516,20 @@ pub(crate) struct SessionState {
 }
 
 impl SessionState {
+    pub fn attached_client_count(&self) -> usize {
+        let pipe_ids: HashSet<ClientId> = self.pipes.values().copied().collect();
+        self.clients
+            .iter()
+            .filter(|(client_id, data)| data.is_some() && !pipe_ids.contains(client_id))
+            .count()
+    }
+    pub fn other_clients_are_attached(&self, client_id: ClientId) -> bool {
+        let pipe_ids: HashSet<ClientId> = self.pipes.values().copied().collect();
+        self.clients
+            .iter()
+            .any(|(id, data)| *id != client_id && data.is_some() && !pipe_ids.contains(id))
+            || !self.watchers.is_empty()
+    }
     pub fn new() -> Self {
         SessionState {
             clients: HashMap::new(),
@@ -2550,6 +2655,8 @@ mod session_state_tests {
             session_configuration,
             key_passthrough_clients: HashMap::new(),
             popup_clients: HashSet::new(),
+            modal_popup_clients: HashSet::new(),
+            terminal_command_submitted: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             web_sharing: WebSharing::Off,
             screen_thread: None,
             pty_thread: None,
@@ -2562,12 +2669,171 @@ mod session_state_tests {
                 ..Default::default()
             },
             applied_env: AppliedEnv::default(),
+            sent_window_settings: HashMap::new(),
+            font_families: HashMap::new(),
         };
         (
             Arc::new(RwLock::new(Some(session))),
             screen_receiver,
             plugin_receiver,
         )
+    }
+
+    fn test_session_with_server(
+        session_configuration: SessionConfiguration,
+    ) -> (
+        Arc<RwLock<Option<SessionMetaData>>>,
+        zellij_utils::channels::Receiver<(ServerInstruction, zellij_utils::errors::ErrorContext)>,
+    ) {
+        let (session_data, _screen_receiver, _plugin_receiver) =
+            test_session(session_configuration, None);
+        let (to_server, server_receiver): ChannelWithContext<ServerInstruction> =
+            channels::unbounded();
+        if let Some(session) = session_data.write().unwrap().as_mut() {
+            session.senders.to_server = Some(SenderWithContext::new(to_server));
+        }
+        (session_data, server_receiver)
+    }
+
+    fn pushed_window_settings(
+        server_receiver: &zellij_utils::channels::Receiver<(
+            ServerInstruction,
+            zellij_utils::errors::ErrorContext,
+        )>,
+    ) -> Vec<(ClientId, WindowSettings)> {
+        server_receiver
+            .try_iter()
+            .filter_map(|(instruction, _)| match instruction {
+                ServerInstruction::WindowSettingsChanged(client_id, settings) => {
+                    Some((client_id, *settings))
+                },
+                _ => None,
+            })
+            .collect()
+    }
+
+    const TWO_THEMES: &str = "themes {
+    first {
+        text_unselected {
+            base 1 1 1
+            background 1 1 1
+            emphasis_0 0 0 0
+            emphasis_1 0 0 0
+            emphasis_2 0 0 0
+            emphasis_3 0 0 0
+        }
+    }
+    second {
+        text_unselected {
+            base 2 2 2
+            background 2 2 2
+            emphasis_0 0 0 0
+            emphasis_1 0 0 0
+            emphasis_2 0 0 0
+            emphasis_3 0 0 0
+        }
+    }
+}
+theme \"first\"
+";
+
+    #[test]
+    fn window_settings_are_pushed_only_when_they_or_the_theme_change() {
+        let session_configuration = session_configuration_with_one_client(TWO_THEMES);
+        let (session_data, server_receiver) = test_session_with_server(session_configuration);
+
+        reconfigure_session(&session_data, 1, "window { blur true; }", false);
+        let pushed = pushed_window_settings(&server_receiver);
+        assert_eq!(pushed.len(), 1);
+        assert_eq!(pushed[0].0, 1);
+        assert_eq!(pushed[0].1.section.blur, Some(true));
+
+        reconfigure_session(&session_data, 1, "simplified_ui true", false);
+        assert!(
+            pushed_window_settings(&server_receiver).is_empty(),
+            "a change the window does not read was pushed to it"
+        );
+
+        reconfigure_session(&session_data, 1, "theme \"second\"", false);
+        let pushed = pushed_window_settings(&server_receiver);
+        assert_eq!(pushed.len(), 1, "a new theme did not reach the window");
+        assert_eq!(
+            pushed[0]
+                .1
+                .theme
+                .unwrap()
+                .palette
+                .text_unselected
+                .background,
+            zellij_utils::data::PaletteColor::Rgb((2, 2, 2))
+        );
+    }
+
+    #[test]
+    fn a_disconnected_window_is_forgotten_so_a_reconnect_is_told_again() {
+        let session_configuration = session_configuration_with_one_client(TWO_THEMES);
+        let (session_data, server_receiver) = test_session_with_server(session_configuration);
+        reconfigure_session(&session_data, 1, "window { blur true; }", false);
+        assert_eq!(pushed_window_settings(&server_receiver).len(), 1);
+        session_data
+            .write()
+            .unwrap()
+            .as_mut()
+            .unwrap()
+            .font_families
+            .insert(1, vec!["Mono".to_owned()]);
+
+        session_data
+            .write()
+            .unwrap()
+            .as_mut()
+            .unwrap()
+            .forget_window_client(1);
+
+        {
+            let session = session_data.read().unwrap();
+            let session = session.as_ref().unwrap();
+            assert!(session.sent_window_settings.is_empty());
+            assert!(session.font_families.is_empty());
+        }
+        reconfigure_session(&session_data, 1, "simplified_ui true", false);
+        assert_eq!(
+            pushed_window_settings(&server_receiver).len(),
+            1,
+            "a window that reconnected was not told its settings"
+        );
+    }
+
+    #[test]
+    fn the_settings_list_the_fonts_of_their_own_window_or_else_of_another() {
+        let mut session_configuration = session_configuration_with_one_client("");
+        session_configuration
+            .set_client_runtime_configuration(2, session_configuration.saved_config.clone());
+        session_configuration
+            .set_client_runtime_configuration(3, session_configuration.saved_config.clone());
+        let (session_data, _screen_receiver, _plugin_receiver) =
+            test_session(session_configuration, None);
+        let mut session = session_data.write().unwrap();
+        let session = session.as_mut().unwrap();
+        assert!(session.config_snapshot_for(1).font_families.is_empty());
+
+        session.font_families.insert(2, vec!["Zed Mono".to_owned()]);
+        session.font_families.insert(3, vec!["Iosevka".to_owned()]);
+        assert_eq!(
+            session.config_snapshot_for(3).font_families,
+            vec!["Iosevka".to_owned()]
+        );
+        assert_eq!(
+            session.config_snapshot_for(1).font_families,
+            vec!["Zed Mono".to_owned()],
+            "a terminal client did not borrow the list of an attached window"
+        );
+        session.font_families.insert(1, vec![]);
+        assert_eq!(
+            session.config_snapshot_for(1).font_families,
+            Vec::<String>::new(),
+            "a client that listed no fonts was given another client's"
+        );
     }
 
     fn reconfigure_session(
@@ -3321,11 +3587,33 @@ pub fn start_server_impl(
             }
         });
 
+    let mut last_attached_client_count = 0;
+    let mut delete_session_on_exit = false;
+    let mut own_session_name = socket_path
+        .file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .unwrap_or_default();
     loop {
+        let attached_client_count = session_state.read().unwrap().attached_client_count();
+        if attached_client_count != last_attached_client_count {
+            last_attached_client_count = attached_client_count;
+            if let Some(session_data) = session_data.read().unwrap().as_ref() {
+                let _ = session_data.senders.send_to_background_jobs(
+                    BackgroundJob::SessionSuggestions(SessionSuggestionsJob::ClientCountChanged(
+                        attached_client_count,
+                    )),
+                );
+            }
+        }
         let (instruction, mut err_ctx) = server_receiver.recv().unwrap();
         err_ctx.add_call(ContextType::IPCServer((&instruction).into()));
         match instruction {
             ServerInstruction::FirstClientConnected(cli_assets, is_web_client, client_id) => {
+                let is_resumed_session = match &cli_assets.layout {
+                    Some(LayoutInfo::File(path, _)) => Path::new(path)
+                        .starts_with(&*zellij_utils::consts::ZELLIJ_SESSION_INFO_CACHE_DIR),
+                    _ => false,
+                };
                 let host_terminal_env = cli_assets.host_terminal_env.clone();
                 let mut initial_panes = cli_assets.initial_panes.clone();
                 let (config, layout) = cli_assets.load_config_and_layout();
@@ -3362,7 +3650,7 @@ pub fn start_server_impl(
                     style: Style {
                         colors: config
                             .theme_config(runtime_config_options.theme.as_ref())
-                            .unwrap_or_else(|| default_palette().into()),
+                            .unwrap_or_else(Styling::default),
                         rounded_corners: config.ui.pane_frames.rounded_corners,
                         hide_session_name: config.ui.pane_frames.hide_session_name,
                         border_style: config.ui.pane_frames.resolved_border_style(),
@@ -3525,6 +3813,26 @@ pub fn start_server_impl(
                 {
                     let rlock = session_data.read().unwrap();
                     let session_data = rlock.as_ref().unwrap();
+                    let _ = session_data.senders.send_to_background_jobs(
+                        BackgroundJob::SessionSuggestions(SessionSuggestionsJob::Configure {
+                            config: config.session_suggestions.clone(),
+                            session_card: runtime_config_options.session_card.unwrap_or(true),
+                            session_indicator: runtime_config_options
+                                .session_indicator
+                                .unwrap_or(true),
+                        }),
+                    );
+                    let _ = session_data.senders.send_to_background_jobs(
+                        BackgroundJob::SessionSuggestions(SessionSuggestionsJob::SessionStarted {
+                            name: own_session_name.clone(),
+                            cwd: cwd.clone().or_else(|| std::env::current_dir().ok()),
+                            card_for_client: if !is_resumed_session && !layout_is_welcome_screen {
+                                Some(client_id)
+                            } else {
+                                None
+                            },
+                        }),
+                    );
                     session_data
                         .senders
                         .send_to_plugin(PluginInstruction::AddClient(client_id))
@@ -3559,7 +3867,7 @@ pub fn start_server_impl(
                     style: Style {
                         colors: config
                             .theme_config(runtime_config_options.theme.as_ref())
-                            .unwrap_or_else(|| default_palette().into()),
+                            .unwrap_or_else(Styling::default),
                         rounded_corners: config.ui.pane_frames.rounded_corners,
                         hide_session_name: config.ui.pane_frames.hide_session_name,
                         border_style: config.ui.pane_frames.resolved_border_style(),
@@ -3909,17 +4217,13 @@ pub fn start_server_impl(
                 let client_ids = session_state.read().unwrap().client_ids();
                 // If `Some(_)`- unwrap it and forward it to the clients to render.
                 // If `None`- Send an exit instruction. This is the case when a user closes the last Tab/Pane.
-                if let Some(output) = &serialized_output {
-                    for (client_id, client_render_instruction) in output.iter() {
-                        send_to_client!(
-                            *client_id,
-                            os_input,
-                            ServerToClientMsg::Render {
-                                content: client_render_instruction.clone()
-                            },
-                            session_state,
-                            session_data
-                        );
+                if let Some(output) = serialized_output {
+                    for (client_id, client_render_instruction) in output {
+                        let msg = match client_render_instruction {
+                            RenderPayload::Ansi(content) => ServerToClientMsg::Render { content },
+                            RenderPayload::Frame(frame) => ServerToClientMsg::RenderFrame { frame },
+                        };
+                        send_to_client!(client_id, os_input, msg, session_state, session_data);
                     }
                 } else {
                     // Session is exiting - disconnect all regular clients
@@ -4000,6 +4304,46 @@ pub fn start_server_impl(
                     session_state,
                     session_data
                 );
+            },
+            ServerInstruction::SessionRenamed(new_name) => {
+                own_session_name = new_name;
+            },
+            ServerInstruction::TerminalCommandSubmitted => {
+                if let Some(session_data) = session_data.read().unwrap().as_ref() {
+                    session_data
+                        .terminal_command_submitted
+                        .store(true, std::sync::atomic::Ordering::SeqCst);
+                }
+            },
+            ServerInstruction::SwitchSessionAndCloseCurrent(
+                connect_to_session,
+                client_id,
+                completion_tx,
+            ) => {
+                let switching_away = connect_to_session.name.is_some()
+                    && connect_to_session.name.as_deref() != Some(own_session_name.as_str());
+                let command_was_run = session_data
+                    .read()
+                    .unwrap()
+                    .as_ref()
+                    .map(|s| {
+                        s.terminal_command_submitted
+                            .load(std::sync::atomic::Ordering::SeqCst)
+                    })
+                    .unwrap_or(true);
+                let other_clients_attached = session_state
+                    .read()
+                    .unwrap()
+                    .other_clients_are_attached(client_id);
+                let _ = to_server.send(ServerInstruction::SwitchSession(
+                    connect_to_session,
+                    client_id,
+                    completion_tx,
+                ));
+                if switching_away && !command_was_run && !other_clients_attached {
+                    delete_session_on_exit = true;
+                    let _ = to_server.send(ServerInstruction::KillSession);
+                }
             },
             ServerInstruction::SwitchSession(mut connect_to_session, client_id, completion_tx) => {
                 let current_session_name = envs::get_session_name();
@@ -4119,6 +4463,35 @@ pub fn start_server_impl(
                     );
                 }
             },
+            ServerInstruction::FontFamilies(client_id, families) => {
+                if let Some(session_data) = session_data.write().unwrap().as_mut() {
+                    session_data.font_families.insert(client_id, families);
+                }
+            },
+            ServerInstruction::WindowSettingsChanged(client_id, settings) => {
+                send_to_client!(
+                    client_id,
+                    os_input,
+                    ServerToClientMsg::WindowSettingsChanged { settings },
+                    session_state,
+                    session_data
+                );
+            },
+            ServerInstruction::HostTerminalThemeModeChanged(client_id, mode) => {
+                let client_ids = match client_id {
+                    Some(client_id) => vec![client_id],
+                    None => session_state.read().unwrap().client_ids(),
+                };
+                for client_id in client_ids {
+                    send_to_client!(
+                        client_id,
+                        os_input,
+                        ServerToClientMsg::HostTerminalThemeChanged { mode },
+                        session_state,
+                        session_data
+                    );
+                }
+            },
             ServerInstruction::FailedToWriteConfigToDisk(_client_id, file_path) => {
                 send_to_plugin_thread(
                     &session_data,
@@ -4129,11 +4502,11 @@ pub fn start_server_impl(
                 client_id,
                 response_channel,
             } => {
-                let snapshot = session_data.read().unwrap().as_ref().map(|session_data| {
-                    session_data
-                        .session_configuration
-                        .config_snapshot(&client_id, session_data.config_file_path.as_ref())
-                });
+                let snapshot = session_data
+                    .read()
+                    .unwrap()
+                    .as_ref()
+                    .map(|session_data| session_data.config_snapshot_for(client_id));
                 if let Some(snapshot) = snapshot {
                     let _ = response_channel.send(snapshot);
                 }
@@ -4538,13 +4911,18 @@ pub fn start_server_impl(
                     }
                 }
             },
-            ServerInstruction::PopupStateChanged(client_id, is_open) => {
+            ServerInstruction::PopupStateChanged(client_id, is_open, takes_all_keys) => {
                 let mut session_data = session_data.write().unwrap();
                 if let Some(session_data) = session_data.as_mut() {
                     if is_open {
                         session_data.popup_clients.insert(client_id);
                     } else {
                         session_data.popup_clients.remove(&client_id);
+                    }
+                    if is_open && takes_all_keys {
+                        session_data.modal_popup_clients.insert(client_id);
+                    } else {
+                        session_data.modal_popup_clients.remove(&client_id);
                     }
                 }
             },
@@ -4626,6 +5004,21 @@ pub fn start_server_impl(
     *session_data.write().unwrap() = None;
 
     server_socket.remove_on_exit();
+    if delete_session_on_exit {
+        delete_unused_session_after_exit(&own_session_name);
+    }
+}
+
+fn delete_unused_session_after_exit(session_name: &str) {
+    if session_name.is_empty() {
+        return;
+    }
+    let _ = std::fs::remove_dir_all(zellij_utils::consts::session_info_folder_for_session(
+        session_name,
+    ));
+    if let Ok(index) = zellij_utils::session_index::SessionIndex::open_default() {
+        let _ = index.delete(session_name);
+    }
 }
 
 fn init_session(
@@ -4651,6 +5044,9 @@ fn init_session(
     );
 
     let (to_screen, screen_receiver): ChannelWithContext<ScreenInstruction> = channels::unbounded();
+    let (to_screen_priority, screen_priority_receiver): ChannelWithContext<ScreenInstruction> =
+        channels::unbounded();
+    let to_screen_priority = SenderWithContext::new(to_screen_priority);
     let to_screen = SenderWithContext::new(to_screen);
 
     let (to_screen_bounded, bounded_screen_receiver): ChannelWithContext<ScreenInstruction> =
@@ -4740,7 +5136,8 @@ fn init_session(
                 Some(&to_pty_writer),
                 Some(&to_background_jobs),
                 Some(os_input.clone()),
-            );
+            )
+            .with_priority(screen_priority_receiver, &to_screen_priority);
             let max_panes = cli_assets.max_panes;
 
             let client_attributes_clone = client_attributes.clone();
@@ -4906,6 +5303,7 @@ fn init_session(
     SessionMetaData {
         senders: ThreadSenders {
             to_screen: Some(to_screen),
+            to_screen_priority: Some(to_screen_priority),
             to_pty: Some(to_pty),
             to_plugin: Some(to_plugin),
             to_pty_writer: Some(to_pty_writer),
@@ -4927,7 +5325,11 @@ fn init_session(
         web_sharing: WebSharing::Disabled,
         key_passthrough_clients: HashMap::new(),
         popup_clients: HashSet::new(),
+        modal_popup_clients: HashSet::new(),
+        terminal_command_submitted: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         applied_env,
+        sent_window_settings: HashMap::new(),
+        font_families: HashMap::new(),
         config_file: ConfigFileState {
             contents_when_read: cli_assets
                 .config_file_path
@@ -5434,7 +5836,7 @@ mod theme_file_tests {
         let session_configuration = session_with_theme_dir(&theme_dir);
         let mut palette = zellij_utils::data::DEFAULT_STYLES;
         palette.text_unselected.base = zellij_utils::data::PaletteColor::Rgb((1, 2, 3));
-        let path = config_blocks::create_theme_file(&theme_dir, "dracula", &palette).unwrap();
+        let path = config_blocks::create_theme_file(&theme_dir, "dracula", &palette, None).unwrap();
         let (deleted_path, replacement) = session_configuration
             .delete_theme_file(&1, "dracula")
             .unwrap();

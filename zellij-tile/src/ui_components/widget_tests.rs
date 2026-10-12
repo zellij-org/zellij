@@ -200,6 +200,42 @@ fn menu_list_serializes_matched_characters_and_marks() {
 }
 
 #[test]
+fn menu_list_without_a_mark_column_says_so_and_is_two_columns_narrower() {
+    let marked = MenuList::new(vec![MenuItem::new("main")]);
+    let mut unmarked = MenuList::new(vec![MenuItem::new("main")]).without_mark_column();
+    assert_eq!(unmarked.natural_width() + 2, marked.natural_width());
+    let serialized = unmarked.serialize(0, 0, 10, 5);
+    assert_eq!(
+        serialized,
+        dcs(
+            "menu",
+            "0/0/10/1",
+            "nm,hl=0,above=0,below=0",
+            &[enc("main")]
+        )
+    );
+}
+
+#[test]
+fn menu_list_serializes_emphasized_characters_after_the_matched_ones() {
+    let mut menu = MenuList::new(vec![
+        MenuItem::new("main").emphasized_indices(vec![0, 1]),
+        MenuItem::new("dev")
+            .matched_indices(vec![2])
+            .emphasized_indices(vec![0]),
+    ]);
+    let serialized = menu.serialize(0, 0, 10, 5);
+    let fields = vec![
+        format!("{}//0,1", enc("main")),
+        format!("{}/2/0", enc("dev")),
+    ];
+    assert_eq!(
+        serialized,
+        dcs("menu", "0/0/10/2", "hl=0,above=0,below=0", &fields)
+    );
+}
+
+#[test]
 fn menu_list_arrows_skip_separators_and_disabled_rows() {
     let mut menu = sample_menu();
     menu.serialize(0, 0, 20, 10);
@@ -647,6 +683,32 @@ fn number_stepper_steps_edits_and_clamps() {
         stepper.handle_key(&key(BareKey::Up)),
         UiResponse::NotHandled
     );
+}
+
+#[test]
+fn a_decimal_number_stepper_shows_steps_and_reads_fractions() {
+    let mut stepper = NumberStepper::new("", 9).decimals(1).min(0).max(10);
+    assert!(stepper.serialize(0, 0).contains(&enc("0.9")));
+    assert_eq!(
+        stepper.handle_key(&key(BareKey::Right)),
+        UiResponse::Changed(UiValue::Number(10))
+    );
+    assert_eq!(stepper.display_value(), "1");
+    stepper.handle_key(&key(BareKey::Backspace));
+    stepper.handle_key(&key(BareKey::Backspace));
+    stepper.handle_key(&ch('.'));
+    stepper.handle_key(&ch('4'));
+    assert_eq!(stepper.edit_text(), ".4");
+    assert_eq!(
+        stepper.handle_key(&key(BareKey::Enter)),
+        UiResponse::Changed(UiValue::Number(4))
+    );
+    assert_eq!(stepper.display_value(), "0.4");
+    assert_eq!(format_scaled(135, 1), "13.5");
+    assert_eq!(format_scaled(-5, 1), "-0.5");
+    assert_eq!(parse_scaled("13.5", 1), Some(135));
+    assert_eq!(parse_scaled("12", 1), Some(120));
+    assert_eq!(parse_scaled("x", 1), None);
 }
 
 #[test]

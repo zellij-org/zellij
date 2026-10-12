@@ -162,7 +162,7 @@ enum AnsiCode {
 }
 
 message Action {
-  reserved 140;
+  reserved 140, 164;
   oneof action_type {
     QuitAction quit = 1;
     WriteAction write = 2;
@@ -328,6 +328,7 @@ message Action {
     OpenContextMenuAction open_context_menu = 161;
     MoveTabToPositionAction move_tab_to_position = 162;
     RunInBackgroundAction run_in_background = 163;
+    ToggleSessionCardAction toggle_session_card = 165;
   }
 }
 
@@ -901,6 +902,7 @@ message ConnectToSession {
   optional PaneIdWithPlugin pane_id = 3;
   optional LayoutInfo layout = 4;
   optional string cwd = 5;
+  optional bool session_card = 6;
 }
 
 message SwitchSessionAction {
@@ -909,6 +911,7 @@ message SwitchSessionAction {
   optional PaneIdWithPlugin pane_id = 3;
   optional LayoutInfo layout = 4;
   optional string cwd = 5;
+  bool close_current = 6;
 }
 
 message NewPanePlacement {
@@ -1111,6 +1114,7 @@ message MouseEvent {
   Position position = 10;
   bool wheel_left = 11;
   bool wheel_right = 12;
+  uint32 wheel_lines = 13;
 }
 
 enum MouseEventType {
@@ -1293,6 +1297,11 @@ message Options {
   optional string keybinds_unlock = 74;
   optional bool context_menu_enabled = 75;
   optional bool dangerously_allow_web_serving_without_a_certificate = 76;
+  optional bool session_card = 77;
+  optional bool session_indicator = 78;
+  optional bool swap_layout_notification = 79;
+  reserved 80;
+  optional string on_quit = 81;
 }
 
 enum OnForceClose {
@@ -1376,3 +1385,9 @@ message StartRenamePaneByPaneIdAction { PaneId pane_id = 1; }
 message StartRenameTabByTabIdAction { uint64 id = 1; }
 message DismissInfoPopupsAction {}
 message OpenContextMenuAction {}
+message ToggleSessionCardAction {}
+
+enum HostTerminalThemeIndication {
+  HOST_TERMINAL_THEME_INDICATION_DARK = 0;
+  HOST_TERMINAL_THEME_INDICATION_LIGHT = 1;
+}

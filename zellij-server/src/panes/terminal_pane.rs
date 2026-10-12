@@ -238,6 +238,19 @@ impl Pane for TerminalPane {
         let mut index = 0;
         let mut capture_started = false;
         while index < bytes.len() {
+            if self.kitty_interceptor.is_ground() {
+                let rest = &bytes[index..];
+                let run = rest
+                    .iter()
+                    .position(|byte| *byte == 0x1b)
+                    .unwrap_or(rest.len());
+                if run > 0 {
+                    capture_started = false;
+                    forwarded.extend_from_slice(&rest[..run]);
+                    index += run;
+                    continue;
+                }
+            }
             let byte = bytes[index];
             index += 1;
             match self.kitty_interceptor.advance(byte) {
@@ -507,7 +520,9 @@ impl Pane for TerminalPane {
             }
             match self.grid.render(content_x, content_y, &self.style) {
                 Ok(rendered_assets) => {
-                    self.set_should_render(false);
+                    if rendered_assets.is_some() {
+                        self.set_should_render(false);
+                    }
                     return Ok(rendered_assets);
                 },
                 e => return e,
@@ -624,29 +639,24 @@ impl Pane for TerminalPane {
         &mut self,
         cursor_color: PaletteColor,
         text_color: PaletteColor,
-    ) -> Option<String> {
-        let mut vte_output = None;
-        if let Some((cursor_x, cursor_y, true)) = self.cursor_coordinates() {
-            let mut character_under_cursor = self
-                .grid
-                .get_character_under_cursor()
-                .unwrap_or(EMPTY_TERMINAL_CHARACTER);
-            character_under_cursor.styles.update(|styles| {
-                styles.background = Some(cursor_color.into());
-                styles.foreground = Some(text_color.into());
-            });
-            // we keep track of these so that we can clear them up later (see render function)
-            self.fake_cursor_locations.insert((cursor_y, cursor_x));
-            let mut fake_cursor = format!(
-                "\u{1b}[{};{}H\u{1b}[m{}",           // goto row column and clear styles
-                self.get_content_y() + cursor_y + 1, // + 1 because goto is 1 indexed
-                self.get_content_x() + cursor_x + 1,
-                &character_under_cursor.styles,
-            );
-            fake_cursor.push(character_under_cursor.character);
-            vte_output = Some(fake_cursor);
-        }
-        vte_output
+    ) -> Option<crate::output::CharacterChunk> {
+        let Some((cursor_x, cursor_y, true)) = self.cursor_coordinates() else {
+            return None;
+        };
+        let mut character_under_cursor = self
+            .grid
+            .get_character_under_cursor()
+            .unwrap_or(EMPTY_TERMINAL_CHARACTER);
+        character_under_cursor.styles.update(|styles| {
+            styles.background = Some(cursor_color.into());
+            styles.foreground = Some(text_color.into());
+        });
+        self.fake_cursor_locations.insert((cursor_y, cursor_x));
+        Some(CharacterChunk::new(
+            vec![character_under_cursor],
+            self.get_content_x() + cursor_x,
+            self.get_content_y() + cursor_y,
+        ))
     }
     fn render_terminal_title(&mut self, input_mode: InputMode) -> String {
         let pane_title = if self.pane_name.is_empty() && input_mode == InputMode::RenamePane {
@@ -910,6 +920,10 @@ impl Pane for TerminalPane {
 
     fn drain_osc7_cwd(&mut self) -> Option<std::path::PathBuf> {
         self.grid.pending_osc7_cwd.take()
+    }
+
+    fn drain_prompt_return(&mut self) -> bool {
+        std::mem::take(&mut self.grid.pending_prompt_return)
     }
 
     fn set_selection_options(&mut self, osc133_command_selection: bool, word_separators: &str) {
@@ -1196,6 +1210,9 @@ impl Pane for TerminalPane {
     }
     fn scroll_position(&self) -> (usize, usize) {
         self.grid.scrollback_position_and_length()
+    }
+    fn viewport_scroll_state(&self) -> Option<(usize, u64)> {
+        self.grid.viewport_scroll_state()
     }
     fn exit_status(&self) -> Option<i32> {
         self.is_held

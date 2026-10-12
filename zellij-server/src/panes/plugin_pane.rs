@@ -512,7 +512,7 @@ impl Pane for PluginPane {
         &mut self,
         _cursor_color: PaletteColor,
         _text_color: PaletteColor,
-    ) -> Option<String> {
+    ) -> Option<crate::output::CharacterChunk> {
         None
     }
     fn render_terminal_title(&mut self, input_mode: InputMode) -> String {
@@ -595,6 +595,13 @@ impl Pane for PluginPane {
             .and_then(|c| self.grids.get(&c))
             .map(|g| g.dump_screen(full))
             .unwrap_or_else(|| "".to_owned())
+    }
+    fn dump_screen_with_ansi(&self, full: bool, client_id: Option<ClientId>) -> String {
+        client_id
+            .and_then(|c| self.grids.get(&c))
+            .or_else(|| self.grids.keys().min().and_then(|c| self.grids.get(c)))
+            .map(|g| g.dump_screen_with_ansi(full))
+            .unwrap_or_default()
     }
     fn scroll_up(&mut self, count: usize, client_id: ClientId) {
         self.send_plugin_instructions

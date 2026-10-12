@@ -101,6 +101,30 @@ pub mod colors {
     pub const BROWN: u8 = 215;
 }
 
+pub mod default_theme_colors {
+    pub const BACKGROUND: (u8, u8, u8) = (11, 11, 11);
+    pub const SURFACE: (u8, u8, u8) = (56, 56, 56);
+    pub const SHADOW: (u8, u8, u8) = (32, 32, 32);
+    pub const RIBBON: (u8, u8, u8) = (152, 152, 152);
+    pub const RIBBON_HOVER: (u8, u8, u8) = (220, 220, 220);
+    pub const FOREGROUND: (u8, u8, u8) = (215, 215, 215);
+    pub const MUTED: (u8, u8, u8) = (137, 137, 137);
+    pub const DIM: (u8, u8, u8) = (105, 105, 105);
+    pub const GREEN: (u8, u8, u8) = (150, 220, 90);
+    pub const GOLD: (u8, u8, u8) = (255, 205, 80);
+    pub const BLUE: (u8, u8, u8) = (70, 175, 255);
+    pub const ROSE: (u8, u8, u8) = (255, 95, 110);
+    pub const VIOLET: (u8, u8, u8) = (217, 140, 255);
+    pub const TEAL: (u8, u8, u8) = (60, 215, 200);
+    pub const PINK: (u8, u8, u8) = (255, 130, 200);
+    pub const PURPLE: (u8, u8, u8) = (160, 150, 255);
+    pub const ORANGE: (u8, u8, u8) = (255, 145, 70);
+    pub const SAND: (u8, u8, u8) = (240, 190, 140);
+    pub const WINE: (u8, u8, u8) = (79, 26, 34);
+    pub const NAVY: (u8, u8, u8) = (20, 49, 79);
+    pub const BELL: (u8, u8, u8) = (99, 11, 20);
+}
+
 pub fn _hex_to_rgb(hex: &str) -> (u8, u8, u8) {
     Rgb::from_hex_str(hex)
         .expect("The passed argument must be a valid hex color")
@@ -115,23 +139,23 @@ pub fn default_palette() -> Palette {
     Palette {
         source: PaletteSource::Default,
         theme_hue: ThemeHue::Dark,
-        fg: PaletteColor::EightBit(colors::BRIGHT_GRAY),
-        bg: PaletteColor::EightBit(colors::GRAY),
-        black: PaletteColor::EightBit(colors::BLACK),
-        red: PaletteColor::EightBit(colors::RED),
-        green: PaletteColor::EightBit(colors::GREEN),
-        yellow: PaletteColor::EightBit(colors::YELLOW),
-        blue: PaletteColor::EightBit(colors::BLUE),
-        magenta: PaletteColor::EightBit(colors::MAGENTA),
-        cyan: PaletteColor::EightBit(colors::CYAN),
-        white: PaletteColor::EightBit(colors::WHITE),
-        orange: PaletteColor::EightBit(colors::ORANGE),
-        gray: PaletteColor::EightBit(colors::GRAY),
-        purple: PaletteColor::EightBit(colors::PURPLE),
-        gold: PaletteColor::EightBit(colors::GOLD),
-        silver: PaletteColor::EightBit(colors::SILVER),
-        pink: PaletteColor::EightBit(colors::PINK),
-        brown: PaletteColor::EightBit(colors::BROWN),
+        fg: PaletteColor::Rgb(default_theme_colors::FOREGROUND),
+        bg: PaletteColor::Rgb(default_theme_colors::BACKGROUND),
+        black: PaletteColor::Rgb(default_theme_colors::BACKGROUND),
+        red: PaletteColor::Rgb(default_theme_colors::ROSE),
+        green: PaletteColor::Rgb(default_theme_colors::GREEN),
+        yellow: PaletteColor::Rgb(default_theme_colors::GOLD),
+        blue: PaletteColor::Rgb(default_theme_colors::BLUE),
+        magenta: PaletteColor::Rgb(default_theme_colors::PINK),
+        cyan: PaletteColor::Rgb(default_theme_colors::TEAL),
+        white: PaletteColor::Rgb(default_theme_colors::FOREGROUND),
+        orange: PaletteColor::Rgb(default_theme_colors::ORANGE),
+        gray: PaletteColor::Rgb(default_theme_colors::SURFACE),
+        purple: PaletteColor::Rgb(default_theme_colors::PURPLE),
+        gold: PaletteColor::Rgb(default_theme_colors::GOLD),
+        silver: PaletteColor::Rgb(default_theme_colors::MUTED),
+        pink: PaletteColor::Rgb(default_theme_colors::PINK),
+        brown: PaletteColor::Rgb(default_theme_colors::SAND),
     }
 }
 

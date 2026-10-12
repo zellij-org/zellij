@@ -11,9 +11,10 @@ use super::options::{
 };
 use super::theme::{FrameConfig, UiConfig};
 use super::web_client::{CursorInactiveStyle, CursorStyle, WebClientConfig};
+use super::window::WindowConfig;
 use crate::data::{
-    BorderStyleOverride, ConfigSettingState, ContextMenuEntry, InputMode, LineStyle, SettingKey,
-    ThemeHue, WebSharing,
+    join_setting_list, BorderStyleOverride, ConfigSettingState, ContextMenuEntry, InputMode,
+    LineStyle, SettingKey, SettingValueShape, ThemeHue, WebSharing,
 };
 use crate::kdl::load_plugins_to_kdl;
 
@@ -168,6 +169,10 @@ fn option_values(options: &Options, values: &mut BTreeMap<SettingKey, Option<Str
         client_async_worker_tasks,
         nested_session_handling,
         dangerously_enable_paste_buffer_read,
+        session_card,
+        session_indicator,
+        swap_layout_notification,
+        on_quit,
     } = options;
     let entries = [
         (SettingKey::SimplifiedUi, display_text(simplified_ui)),
@@ -326,6 +331,19 @@ fn option_values(options: &Options, values: &mut BTreeMap<SettingKey, Option<Str
             SettingKey::DangerouslyEnablePasteBufferRead,
             display_text(dangerously_enable_paste_buffer_read),
         ),
+        (SettingKey::SessionCard, display_text(session_card)),
+        (
+            SettingKey::SessionIndicator,
+            display_text(session_indicator),
+        ),
+        (
+            SettingKey::SwapLayoutNotification,
+            display_text(swap_layout_notification),
+        ),
+        (
+            SettingKey::OnQuit,
+            on_quit.map(|on_quit| on_quit.as_str().to_owned()),
+        ),
     ];
     values.extend(entries);
 }
@@ -427,6 +445,109 @@ fn web_client_values(
     values.insert(SettingKey::WebClientBaseUrl, base_url.clone());
 }
 
+fn window_document(window: &WindowConfig) -> KdlDocument {
+    let mut document = KdlDocument::new();
+    let node = window.to_kdl().unwrap_or_else(|| {
+        let mut node = KdlNode::new("window");
+        node.set_children(KdlDocument::new());
+        node
+    });
+    document.nodes_mut().push(node);
+    document
+}
+
+fn float_text(number: f64) -> String {
+    (number as f32).to_string()
+}
+
+fn kdl_value_text(value: &KdlValue) -> Option<String> {
+    match value {
+        KdlValue::Bool(flag) => Some(flag.to_string()),
+        KdlValue::Base10Float(number) => Some(float_text(*number)),
+        KdlValue::String(text) | KdlValue::RawString(text) => Some(text.clone()),
+        other => other.as_i64().map(|number| number.to_string()),
+    }
+}
+
+fn window_node_text(key: SettingKey, node: &KdlNode) -> Option<String> {
+    let arguments: Vec<&KdlValue> = node
+        .entries()
+        .iter()
+        .filter(|entry| entry.name().is_none())
+        .map(|entry| entry.value())
+        .collect();
+    match key.value_shape() {
+        SettingValueShape::List => {
+            let items: Vec<String> = arguments.iter().filter_map(|v| kdl_value_text(v)).collect();
+            Some(join_setting_list(&items))
+        },
+        SettingValueShape::Colour => {
+            let channels: Vec<i64> = arguments.iter().filter_map(|v| v.as_i64()).collect();
+            if arguments.len() == 3 && channels.len() == 3 {
+                Some(format!(
+                    "#{:02x}{:02x}{:02x}",
+                    channels[0], channels[1], channels[2]
+                ))
+            } else {
+                arguments.first().and_then(|value| kdl_value_text(value))
+            }
+        },
+        _ => arguments.first().and_then(|value| kdl_value_text(value)),
+    }
+}
+
+fn window_values(window: &WindowConfig, values: &mut BTreeMap<SettingKey, Option<String>>) {
+    let document = window_document(window);
+    for key in SettingKey::all().into_iter().filter(|key| key.is_window()) {
+        let text =
+            setting_node_in_document(&document, key).and_then(|node| window_node_text(key, node));
+        values.insert(key, text);
+    }
+}
+
+fn copy_window_setting(target: &mut WindowConfig, source: &WindowConfig, key: SettingKey) {
+    let source_document = window_document(source);
+    let mut document = window_document(target);
+    let (parents, name) = setting_node_path(key);
+    let mut block = &mut document;
+    for parent in parents {
+        let position = match block
+            .nodes()
+            .iter()
+            .position(|n| n.name().value() == *parent)
+        {
+            Some(position) => position,
+            None => {
+                let mut node = KdlNode::new(*parent);
+                node.set_children(KdlDocument::new());
+                block.nodes_mut().push(node);
+                block.nodes().len() - 1
+            },
+        };
+        let node = &mut block.nodes_mut()[position];
+        if node.children().is_none() {
+            node.set_children(KdlDocument::new());
+        }
+        block = match node.children_mut().as_mut() {
+            Some(children) => children,
+            None => return,
+        };
+    }
+    block.nodes_mut().retain(|node| node.name().value() != name);
+    if let Some(node) = setting_node_in_document(&source_document, key) {
+        block.nodes_mut().push(node.clone());
+    }
+    match document
+        .get("window")
+        .map(WindowConfig::from_kdl)
+        .transpose()
+    {
+        Ok(Some(window)) => *target = window,
+        Ok(None) => {},
+        Err(e) => log::error!("Failed to copy the {} setting: {}", key, e),
+    }
+}
+
 pub fn setting_values(config: &Config) -> BTreeMap<SettingKey, Option<String>> {
     let Config {
         keybinds: _keybinds_are_compared_directly,
@@ -440,9 +561,12 @@ pub fn setting_values(config: &Config) -> BTreeMap<SettingKey, Option<String>> {
         context_menu,
         keybinds_layers: _keybinds_layers_are_compared_directly,
         mousebinds: _mousebinds_are_compared_directly,
+        window,
+        session_suggestions: _session_suggestions_are_read_by_the_server,
     } = config;
     let mut values = BTreeMap::new();
     option_values(options, &mut values);
+    window_values(window, &mut values);
     let injected_default_mode = config.keybinds_layers.injected_default_mode;
     if injected_default_mode.is_some() && options.default_mode == injected_default_mode {
         values.insert(
@@ -651,6 +775,12 @@ pub fn copy_setting(target: &mut Config, source: &Config, key: SettingKey) {
         SettingKey::DangerouslyEnablePasteBufferRead => {
             options.dangerously_enable_paste_buffer_read = from.dangerously_enable_paste_buffer_read
         },
+        SettingKey::SessionCard => options.session_card = from.session_card,
+        SettingKey::SessionIndicator => options.session_indicator = from.session_indicator,
+        SettingKey::SwapLayoutNotification => {
+            options.swap_layout_notification = from.swap_layout_notification
+        },
+        SettingKey::OnQuit => options.on_quit = from.on_quit,
         SettingKey::FrameRoundedCorners => frames.rounded_corners = from_frames.rounded_corners,
         SettingKey::FrameHideSessionName => {
             frames.hide_session_name = from_frames.hide_session_name
@@ -727,6 +857,10 @@ pub fn copy_setting(target: &mut Config, source: &Config, key: SettingKey) {
         SettingKey::Env => target.env = source.env.clone(),
         SettingKey::Themes => copy_config_file_themes(&mut target.themes, &source.themes),
         SettingKey::ContextMenu => target.context_menu = source.context_menu.clone(),
+        window_key => {
+            debug_assert!(window_key.is_window());
+            copy_window_setting(&mut target.window, &source.window, window_key)
+        },
     }
 }
 
@@ -757,8 +891,8 @@ pub fn setting_node_path(key: SettingKey) -> (&'static [&'static str], &'static 
     (key.parent_nodes(), key.kdl_name())
 }
 
-pub fn setting_kdl_value(config: &Config, key: SettingKey) -> Option<KdlValue> {
-    setting_value(config, key).and_then(|value| key.kdl_value(&value))
+pub fn setting_kdl_values(config: &Config, key: SettingKey) -> Option<Vec<KdlValue>> {
+    setting_value(config, key).and_then(|value| key.kdl_values(&value))
 }
 
 pub fn setting_is_default(config: &Config, key: SettingKey) -> bool {

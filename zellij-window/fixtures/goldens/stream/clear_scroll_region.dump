@@ -1,0 +1,55 @@
+size: 40x120
+cursor: row=2 col=24 visible shape=Default
+grid:
+|Welcome to fish, the friendly interactive shell                                                                         |
+|⋊> ~/c/mosaic on main ⨯ vim some-file                                                                       15:07:22    |
+|⋊> ~/c/mosaic on main ⨯                                                                                     15:07:29    |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+styles:
+row 1: cols 0-1 fg=idx15 bg=idx6
+row 1: cols 3-12 fg=idx3 bg=Background
+row 1: cols 17-20 fg=idx2 bg=Background
+row 1: cols 24-26 fg=Foreground bg=Background flags=BOLD
+row 1: cols 28-36 fg=idx6 bg=Background flags=UNDERLINE
+row 1: cols 108-115 fg=idx240 bg=Background
+row 2: cols 0-1 fg=idx15 bg=idx6
+row 2: cols 3-12 fg=idx3 bg=Background
+row 2: cols 17-20 fg=idx2 bg=Background
+row 2: cols 108-115 fg=idx240 bg=Background
+images:
