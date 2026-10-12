@@ -16666,7 +16666,10 @@ impl MockScreenWithPrompt {
             .unwrap()
             .iter()
             .any(|instruction| {
-                matches!(instruction, ServerInstruction::PopupStateChanged(1, true, _))
+                matches!(
+                    instruction,
+                    ServerInstruction::PopupStateChanged(1, true, _)
+                )
             });
         assert!(popup_was_open, "the prompt popup was opened for the client");
     }
@@ -18085,7 +18088,9 @@ mod close_dialogue {
             .collect()
     }
 
-    fn withdrawn(plugin_receiver: &Receiver<(PluginInstruction, ErrorContext)>) -> Vec<PromptCaller> {
+    fn withdrawn(
+        plugin_receiver: &Receiver<(PluginInstruction, ErrorContext)>,
+    ) -> Vec<PromptCaller> {
         plugin_receiver
             .try_iter()
             .filter_map(|(instruction, _)| match instruction {
@@ -18133,7 +18138,11 @@ mod close_dialogue {
         let emphasized: Vec<Vec<usize>> = items.iter().map(|item| item.emphasis.clone()).collect();
         assert_eq!(
             emphasized,
-            vec![(0..6).collect(), (0..4).collect(), (0..6).collect::<Vec<_>>()]
+            vec![
+                (0..6).collect(),
+                (0..4).collect(),
+                (0..6).collect::<Vec<_>>()
+            ]
         );
         assert_eq!(remember.as_deref(), Some("Always do this"));
         assert!(*padded);
@@ -18201,10 +18210,9 @@ mod close_dialogue {
 
     fn labels(request: &zellij_utils::prompt::PromptRequest) -> Vec<String> {
         match &request.spec {
-            PromptSpec::Menu { items, .. } => items
-                .iter()
-                .map(|item| item.display().to_owned())
-                .collect(),
+            PromptSpec::Menu { items, .. } => {
+                items.iter().map(|item| item.display().to_owned()).collect()
+            },
             other => panic!("expected a menu, got {:?}", other),
         }
     }

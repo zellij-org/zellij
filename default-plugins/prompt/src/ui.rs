@@ -1,5 +1,5 @@
-use zellij_tile::prelude::*;
 use serde_json::Value;
+use zellij_tile::prelude::*;
 use zellij_utils::prompt::{ChoiceItem, MENU_CHOICE_FIELD, MENU_REMEMBER_FIELD};
 
 use crate::form::FormScreen;
@@ -1172,7 +1172,9 @@ impl MenuScreen {
         }
     }
     pub fn starting_at(mut self, value: Option<&str>) -> Self {
-        if let Some(index) = value.and_then(|value| self.items.iter().position(|i| i.value == value)) {
+        if let Some(index) =
+            value.and_then(|value| self.items.iter().position(|i| i.value == value))
+        {
             self.list.set_highlighted(Some(index));
         }
         self
@@ -1248,7 +1250,10 @@ impl MenuScreen {
         self.list
             .render(x + padding, y + padding, inner_width, list_height);
         if let Some(toggle) = &mut self.remember {
-            toggle.render(x + padding + 1, y + padding + list_height + REMEMBER_GAP_ROWS);
+            toggle.render(
+                x + padding + 1,
+                y + padding + list_height + REMEMBER_GAP_ROWS,
+            );
         }
     }
     fn desired_size(&self) -> (usize, usize) {

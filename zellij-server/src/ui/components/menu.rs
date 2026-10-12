@@ -397,7 +397,12 @@ mod tests {
         };
         assert_eq!(
             render_item("ab", None, None, &label_paint, 6, row, row),
-            format!("{}{}{}", paint(row, " "), paint(row, "ab  "), paint(row, " "))
+            format!(
+                "{}{}{}",
+                paint(row, " "),
+                paint(row, "ab  "),
+                paint(row, " ")
+            )
         );
         assert_eq!(
             render_item("ab", None, Some(false), &label_paint, 6, row, row),
@@ -433,7 +438,10 @@ mod tests {
             emphasis_styles: emphasis,
         }
         .paint("abc");
-        assert_eq!(painted, format!("{}{}", paint(emphasis, "ab"), paint(row, "c")));
+        assert_eq!(
+            painted,
+            format!("{}{}", paint(emphasis, "ab"), paint(row, "c"))
+        );
     }
 
     #[test]

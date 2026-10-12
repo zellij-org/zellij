@@ -207,7 +207,12 @@ fn menu_list_without_a_mark_column_says_so_and_is_two_columns_narrower() {
     let serialized = unmarked.serialize(0, 0, 10, 5);
     assert_eq!(
         serialized,
-        dcs("menu", "0/0/10/1", "nm,hl=0,above=0,below=0", &[enc("main")])
+        dcs(
+            "menu",
+            "0/0/10/1",
+            "nm,hl=0,above=0,below=0",
+            &[enc("main")]
+        )
     );
 }
 
@@ -220,7 +225,10 @@ fn menu_list_serializes_emphasized_characters_after_the_matched_ones() {
             .emphasized_indices(vec![0]),
     ]);
     let serialized = menu.serialize(0, 0, 10, 5);
-    let fields = vec![format!("{}//0,1", enc("main")), format!("{}/2/0", enc("dev"))];
+    let fields = vec![
+        format!("{}//0,1", enc("main")),
+        format!("{}/2/0", enc("dev")),
+    ];
     assert_eq!(
         serialized,
         dcs("menu", "0/0/10/2", "hl=0,above=0,below=0", &fields)

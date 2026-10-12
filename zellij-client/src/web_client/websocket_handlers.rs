@@ -925,11 +925,9 @@ mod tests {
             }
         );
 
-        let confirm = control_payload_to_server_msg(
-            WebClientToWebServerControlMessagePayload::Quit,
-            true,
-        )
-        .expect("message dropped");
+        let confirm =
+            control_payload_to_server_msg(WebClientToWebServerControlMessagePayload::Quit, true)
+                .expect("message dropped");
         assert_eq!(
             confirm,
             ClientToServerMsg::Action {

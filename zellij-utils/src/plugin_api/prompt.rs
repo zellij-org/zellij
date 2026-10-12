@@ -26,7 +26,11 @@ impl From<ChoiceItem> for ProtobufChoiceItem {
         ProtobufChoiceItem {
             value: item.value,
             label: item.label,
-            emphasis: item.emphasis.into_iter().map(|index| index as u32).collect(),
+            emphasis: item
+                .emphasis
+                .into_iter()
+                .map(|index| index as u32)
+                .collect(),
         }
     }
 }

@@ -12,11 +12,11 @@ use crate::double_click::{
     DoubleClickConfig,
 };
 use crate::keybinds::KeybindStore;
+use crate::session_indicator::SessionIndicator;
 use crate::tab_drag::{
     apply_release, is_tab_move_completion, request_tab_move, segments_of, switch_outcome,
     tab_parts_in_line, TabDrag, TabPart, TabSegment,
 };
-use crate::session_indicator::SessionIndicator;
 use crate::ClientSeed;
 use line::{tab_line, TabLineHover};
 use tab::tab_style;
