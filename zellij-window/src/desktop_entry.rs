@@ -18,22 +18,8 @@ const MACOS: &str = "installing a desktop entry is not supported on this platfor
                      Contents/Resources/zellij.icns) rather than from the binary, and writing that \
                      bundle is part of the macOS bring-up";
 
-#[cfg(target_os = "windows")]
-pub fn install() -> anyhow::Result<()> {
-    anyhow::bail!(WINDOWS)
-}
-
-#[cfg(target_os = "windows")]
-pub fn uninstall() -> anyhow::Result<()> {
-    anyhow::bail!(WINDOWS)
-}
-
-#[cfg(target_os = "windows")]
-const WINDOWS: &str = "installing a desktop entry is not supported on this platform yet. On \
-                       Windows the launcher entry is a Start-menu shortcut, and it waits on the \
-                       console-versus-GUI subsystem decision rather than on the shortcut itself: a \
-                       console-subsystem binary flashes a console window on every launcher click. \
-                       Both are part of the Windows bring-up";
+#[cfg(windows)]
+pub use start_menu::{install, uninstall};
 
 #[cfg(not(any(
     all(unix, not(target_os = "macos"), not(target_os = "android")),
@@ -176,11 +162,12 @@ mod xdg {
 
     pub fn render(exec: &str) -> String {
         let id = application_id();
+        let name = crate::identity::identity().display_name;
         format!(
             "[Desktop Entry]\n\
              Version=1.0\n\
              Type=Application\n\
-             Name=Zellij\n\
+             Name={name}\n\
              GenericName=Terminal Workspace\n\
              Comment=Manage Your Terminal Applications\n\
              Exec={exec} window\n\
@@ -407,6 +394,201 @@ mod xdg {
         #[test]
         fn the_shipped_asset_is_the_same_entry_with_a_path_relative_exec() {
             assert_eq!(SHIPPED_ASSET, render("zellij"));
+        }
+    }
+}
+
+#[cfg(windows)]
+mod start_menu {
+    use std::path::{Path, PathBuf};
+
+    use anyhow::{Context, Result};
+    use windows::core::{Interface, HSTRING};
+    use windows::Win32::Storage::EnhancedStorage::PKEY_AppUserModel_ID;
+    use windows::Win32::System::Com::{CoCreateInstance, IPersistFile, CLSCTX_INPROC_SERVER};
+    use windows::Win32::UI::Shell::PropertiesSystem::IPropertyStore;
+    use windows::Win32::UI::Shell::{FOLDERID_Profile, FOLDERID_Programs, IShellLinkW, ShellLink};
+
+    use crate::com::{known_folder, set_string, Com};
+    use crate::identity::identity;
+    use crate::launcher::{window_command, WindowCommand};
+
+    const DESCRIPTION: &str = "Manage Your Terminal Applications";
+
+    pub fn install() -> Result<()> {
+        let _com = Com::initialize()?;
+        let exe = std::env::current_exe().context("failed to locate the running binary")?;
+        let command = window_command(&exe);
+        let start_in = known_folder(&FOLDERID_Profile)?;
+        let path = install_into(&known_folder(&FOLDERID_Programs)?, &command, &start_in)?;
+        println!("Wrote {}", path.display());
+        if !command.uses_launcher() {
+            println!(
+                "No launcher was found next to {}, so the shortcut runs it with `window` and a \
+                 console window opens alongside the zellij window.",
+                exe.display()
+            );
+        }
+        println!(
+            "The shortcut runs {} — re-run this command if that binary moves.",
+            command.program.display()
+        );
+        Ok(())
+    }
+
+    pub fn uninstall() -> Result<()> {
+        let _com = Com::initialize()?;
+        let dir = known_folder(&FOLDERID_Programs)?;
+        let mut removed: Vec<String> = uninstall_from(&dir)?
+            .map(|path| path.display().to_string())
+            .into_iter()
+            .collect();
+        removed.extend(crate::app_registration::unregister()?);
+        if removed.is_empty() {
+            println!("Nothing to remove");
+        }
+        for item in removed {
+            println!("Removed {}", item);
+        }
+        Ok(())
+    }
+
+    fn shortcut_path(dir: &Path) -> PathBuf {
+        dir.join(format!("{}.lnk", identity().display_name))
+    }
+
+    fn install_into(dir: &Path, command: &WindowCommand, start_in: &Path) -> Result<PathBuf> {
+        std::fs::create_dir_all(dir).with_context(|| format!("failed to create {:?}", dir))?;
+        let path = shortcut_path(dir);
+        unsafe {
+            let link: IShellLinkW = CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER)
+                .context("failed to create a shell link")?;
+            link.SetPath(&HSTRING::from(command.program.as_path()))?;
+            link.SetArguments(&HSTRING::from(command.arguments))?;
+            link.SetWorkingDirectory(&HSTRING::from(start_in))?;
+            link.SetDescription(&HSTRING::from(DESCRIPTION))?;
+            let store: IPropertyStore = link.cast()?;
+            set_string(&store, &PKEY_AppUserModel_ID, &identity().windows_app_id)?;
+            store.Commit()?;
+            link.cast::<IPersistFile>()?
+                .Save(&HSTRING::from(path.as_path()), true)
+                .with_context(|| format!("failed to write {:?}", path))?;
+        }
+        Ok(path)
+    }
+
+    fn uninstall_from(dir: &Path) -> Result<Option<PathBuf>> {
+        let path = shortcut_path(dir);
+        match std::fs::remove_file(&path) {
+            Ok(()) => Ok(Some(path)),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(e).with_context(|| format!("failed to remove {:?}", path)),
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use crate::com::get_string;
+        use windows::Win32::System::Com::STGM_READ;
+
+        struct Read {
+            target: String,
+            arguments: String,
+            start_in: String,
+            app_id: String,
+        }
+
+        fn read(path: &Path) -> Read {
+            let text = |buffer: &[u16]| {
+                let end = buffer.iter().position(|&c| c == 0).unwrap_or(buffer.len());
+                String::from_utf16_lossy(&buffer[..end])
+            };
+            unsafe {
+                let link: IShellLinkW =
+                    CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER).unwrap();
+                link.cast::<IPersistFile>()
+                    .unwrap()
+                    .Load(&HSTRING::from(path), STGM_READ)
+                    .unwrap();
+                let (mut target, mut arguments, mut start_in) =
+                    ([0u16; 512], [0u16; 512], [0u16; 512]);
+                link.GetPath(&mut target, std::ptr::null_mut(), 0).unwrap();
+                link.GetArguments(&mut arguments).unwrap();
+                link.GetWorkingDirectory(&mut start_in).unwrap();
+                let store: IPropertyStore = link.cast().unwrap();
+                Read {
+                    target: text(&target),
+                    arguments: text(&arguments),
+                    start_in: text(&start_in),
+                    app_id: get_string(&store, &PKEY_AppUserModel_ID).unwrap(),
+                }
+            }
+        }
+
+        fn launcher_in(dir: &Path) -> WindowCommand {
+            WindowCommand {
+                program: dir.join("zellij-window.exe"),
+                arguments: "",
+            }
+        }
+
+        #[test]
+        fn install_writes_a_shortcut_that_starts_the_window_under_the_app_id() {
+            let _com = Com::initialize().unwrap();
+            let dir = tempfile::TempDir::new().unwrap();
+            let home = dir.path().join("home");
+            let command = launcher_in(dir.path());
+
+            let path = install_into(&dir.path().join("Programs"), &command, &home).unwrap();
+
+            assert_eq!(path, dir.path().join("Programs").join("Zellij.lnk"));
+            let shortcut = read(&path);
+            assert_eq!(shortcut.target, command.program.to_string_lossy());
+            assert_eq!(shortcut.arguments, "");
+            assert_eq!(shortcut.start_in, home.to_string_lossy());
+            assert_eq!(
+                shortcut.app_id, "zellij.window",
+                "the shortcut and the window it opens must share one taskbar button"
+            );
+        }
+
+        #[test]
+        fn without_a_launcher_the_shortcut_runs_the_window_verb() {
+            let _com = Com::initialize().unwrap();
+            let dir = tempfile::TempDir::new().unwrap();
+            let command = WindowCommand {
+                program: dir.path().join("zellij.exe"),
+                arguments: "window",
+            };
+            let path = install_into(dir.path(), &command, dir.path()).unwrap();
+            let shortcut = read(&path);
+            assert_eq!(shortcut.target, command.program.to_string_lossy());
+            assert_eq!(shortcut.arguments, "window");
+        }
+
+        #[test]
+        fn a_second_install_overwrites_and_uninstall_removes_only_the_shortcut() {
+            let _com = Com::initialize().unwrap();
+            let dir = tempfile::TempDir::new().unwrap();
+            let decoy = dir.path().join("Other.lnk");
+            std::fs::write(&decoy, b"not ours").unwrap();
+
+            let (first, second) = (dir.path().join("first"), dir.path().join("second"));
+            install_into(dir.path(), &launcher_in(&first), dir.path()).unwrap();
+            let path = install_into(dir.path(), &launcher_in(&second), dir.path()).unwrap();
+            assert_eq!(
+                read(&path).target,
+                second.join("zellij-window.exe").to_string_lossy()
+            );
+
+            assert_eq!(uninstall_from(dir.path()).unwrap(), Some(path.clone()));
+            assert!(!path.exists());
+            assert!(
+                decoy.exists(),
+                "uninstall removed a shortcut it did not write"
+            );
+            assert_eq!(uninstall_from(dir.path()).unwrap(), None);
         }
     }
 }
