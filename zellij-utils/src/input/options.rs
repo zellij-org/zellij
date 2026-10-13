@@ -101,6 +101,34 @@ impl FromStr for OnQuit {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Deserialize, Serialize, ValueEnum)]
+pub enum ResizeSessionTo {
+    #[serde(alias = "smallest")]
+    Smallest,
+    #[serde(alias = "largest")]
+    Largest,
+    #[serde(alias = "focused")]
+    Focused,
+}
+
+impl Default for ResizeSessionTo {
+    fn default() -> Self {
+        Self::Smallest
+    }
+}
+
+impl FromStr for ResizeSessionTo {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Smallest" | "smallest" => Ok(Self::Smallest),
+            "Largest" | "largest" => Ok(Self::Largest),
+            "Focused" | "focused" => Ok(Self::Focused),
+            _ => Err(format!("No such resize_session_to: {}", s)),
+        }
+    }
+}
+
 impl Default for OnForceClose {
     fn default() -> Self {
         Self::Detach
@@ -554,6 +582,12 @@ pub struct Options {
     )]
     #[serde(default)]
     pub on_quit: Option<OnQuit>,
+
+    /// How to size a session viewed by multiple clients at once
+    /// (smallest, largest, focused)
+    #[clap(long, value_enum, hide_possible_values = true, value_parser)]
+    #[serde(default)]
+    pub resize_session_to: Option<ResizeSessionTo>,
 }
 
 #[derive(ValueEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq)]
@@ -753,6 +787,7 @@ impl Options {
             .swap_layout_notification
             .or(self.swap_layout_notification);
         let on_quit = other.on_quit.or(self.on_quit);
+        let resize_session_to = other.resize_session_to.or(self.resize_session_to);
 
         Options {
             simplified_ui,
@@ -825,6 +860,7 @@ impl Options {
             session_indicator,
             swap_layout_notification,
             on_quit,
+            resize_session_to,
         }
     }
 
@@ -959,6 +995,7 @@ impl Options {
             self.swap_layout_notification,
         );
         let on_quit = other.on_quit.or(self.on_quit);
+        let resize_session_to = other.resize_session_to.or(self.resize_session_to);
 
         Options {
             simplified_ui,
@@ -1031,6 +1068,7 @@ impl Options {
             session_indicator,
             swap_layout_notification,
             on_quit,
+            resize_session_to,
         }
     }
 

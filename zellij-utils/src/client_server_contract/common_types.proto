@@ -1302,6 +1302,7 @@ message Options {
   optional bool swap_layout_notification = 79;
   reserved 80;
   optional string on_quit = 81;
+  optional string resize_session_to = 82;
 }
 
 enum OnForceClose {
