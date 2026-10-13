@@ -42,8 +42,8 @@ pub fn describe(window: &Window) -> Option<TaskbarEntry> {
     match described {
         Ok(entry) => Some(entry),
         Err(e) => {
-            eprintln!(
-                "zellij-window: a pinned taskbar button will not reopen the window: {:#}",
+            report!(
+                "a pinned taskbar button will not reopen the window: {:#}",
                 e
             );
             None

@@ -418,8 +418,8 @@ mod console_events {
             return;
         }
         if unsafe { SetConsoleCtrlHandler(Some(on_event), 1) } == 0 {
-            eprintln!(
-                "zellij-window: failed to watch the console, so Ctrl+C or closing it will end \
+            report!(
+                "failed to watch the console, so Ctrl+C or closing it will end \
                  the window abruptly"
             );
         }
@@ -432,8 +432,8 @@ mod console_events {
         }
         if let Some(detacher) = DETACHER.get() {
             if let Err(e) = detacher.detach() {
-                eprintln!(
-                    "zellij-window: the console event could not be passed on to a session: {}",
+                report!(
+                    "the console event could not be passed on to a session: {}",
                     e
                 );
             }

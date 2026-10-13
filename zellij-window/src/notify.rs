@@ -332,10 +332,7 @@ mod toast {
             if complained.replace(true) {
                 return;
             }
-            eprintln!(
-                "zellij-window: notifications fall back to the taskbar: {}",
-                reason
-            );
+            report!("notifications fall back to the taskbar: {}", reason);
         });
     }
 

@@ -45,10 +45,11 @@ mod platform {
             .collect();
         let result = unsafe { SetCurrentProcessExplicitAppUserModelID(app_id.as_ptr()) };
         if result < 0 {
-            eprintln!(
-                "zellij-window: Windows refused the app identity {:?} ({:#010x}), so the taskbar \
+            report!(
+                "Windows refused the app identity {:?} ({:#010x}), so the taskbar \
                  will group the window by its executable instead",
-                identity.windows_app_id, result
+                identity.windows_app_id,
+                result
             );
         }
     }

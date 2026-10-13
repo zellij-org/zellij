@@ -71,8 +71,8 @@ pub fn watch(
         },
     );
     if watching.is_none() {
-        eprintln!(
-            "zellij-window: signing out or shutting down will not save the window size, as the \
+        report!(
+            "signing out or shutting down will not save the window size, as the \
              window could not watch for it"
         );
     }

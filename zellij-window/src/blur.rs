@@ -11,8 +11,8 @@ fn announce_once() {
     use std::sync::Once;
     static ANNOUNCED: Once = Once::new();
     ANNOUNCED.call_once(|| {
-        eprintln!(
-            "zellij-window: blur needs the Acrylic backdrop of Windows 11 22H2 or later, so the \
+        report!(
+            "blur needs the Acrylic backdrop of Windows 11 22H2 or later, so the \
              window stays unblurred"
         );
     });
