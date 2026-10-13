@@ -1,4 +1,5 @@
 use super::*;
+use unicode_width::UnicodeWidthStr;
 use zellij_utils::data::{PaletteColor, Style};
 
 fn style_with_distinct_selected_background() -> Style {
@@ -175,7 +176,7 @@ fn every_rendered_row_spans_the_full_width() {
         let width: usize = chunk
             .terminal_characters
             .iter()
-            .map(|c| c.character.width().unwrap_or(0).max(1))
+            .map(|c| c.width())
             .sum();
         assert_eq!(width, columns);
     }

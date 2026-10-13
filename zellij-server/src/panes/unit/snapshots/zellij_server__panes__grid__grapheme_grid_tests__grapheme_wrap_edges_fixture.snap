@@ -1,0 +1,50 @@
+---
+source: zellij-server/src/panes/./unit/grapheme_grid_tests.rs
+assertion_line: 678
+expression: "fixture_snapshot(\"grapheme_wrap_edges\")"
+---
+00 (C): xxxxxxxxxxxxxxxxxx👨‍
+01 (W): 👩‍👧
+02 (C): yyyyyyyyyyyyyyyyyyy
+03 (W): 你
+04 (C): zzzzzzzzzzzzzzzzzzzé̂
+05 (C): wwwwwwwwwwwwwwwwwww
+06 (W): 👍🏽
+07 (C): vvvvvvvvvvvvvvvvvvv
+08 (C): uuuuuuuuuuuuuuuuuuu 
+09 (W): ⚠️X
+10 (C): ttttttttttttttttttt⚠️
+11 (C): ssssssssssssssssss
+12 (W): ៘q
+13 (C): 
+14 (C): 
+15 (C): 
+16 (C): 
+17 (C): 
+18 (C): 
+19 (C): 
+20 (C): 
+21 (C): 
+22 (C): 
+23 (C): 
+24 (C): 
+25 (C): 
+26 (C): 
+27 (C): 
+28 (C): 
+29 (C): 
+cursor: (0, 13)
+00 groups=true widths=[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2]
+01 groups=true widths=[2, 2]
+02 groups=false widths=[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+03 groups=false widths=[2]
+04 groups=false widths=[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+05 groups=false widths=[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+06 groups=true widths=[2, 2]
+07 groups=false widths=[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+08 groups=false widths=[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+09 groups=true widths=[2, 1]
+10 groups=false widths=[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+11 groups=false widths=[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+12 groups=false widths=[3, 1]
+13 groups=false widths=[]

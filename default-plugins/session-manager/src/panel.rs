@@ -1,5 +1,5 @@
 use std::collections::BTreeMap;
-use unicode_width::UnicodeWidthStr;
+use zellij_tile::graphemes;
 use zellij_tile::prelude::*;
 
 pub const CARD_MAX_WIDTH: usize = 72;
@@ -258,14 +258,23 @@ impl Panel {
             self.context_branch(),
         );
         let footer_width = match self.resumable_text() {
-            Some(text) => text.width() + 2 + self.show_all_text().width(),
-            None => self.show_all_text().width(),
+            Some(text) => {
+                graphemes::display_width(&text)
+                    + 2
+                    + graphemes::display_width(&self.show_all_text())
+            },
+            None => graphemes::display_width(&self.show_all_text()),
         };
         let content_width = table
             .width
-            .max(self.card_empty_text().width())
+            .max(graphemes::display_width(&self.card_empty_text()))
             .max(footer_width + 2)
-            .max(CARD_TITLE.width() + CARD_SHORTCUT.width() + 3 + " × ".width());
+            .max(
+                graphemes::display_width(&CARD_TITLE)
+                    + graphemes::display_width(&CARD_SHORTCUT)
+                    + 3
+                    + graphemes::display_width(&" × "),
+            );
         let width = (content_width + 2 + 2 * CARD_PADDING).min(CARD_MAX_WIDTH);
         let header_rows = if table.grid.is_some() { 1 } else { 0 };
         let list_rows = rows.len().min(self.card_list_row_limit()).max(1);
@@ -370,7 +379,7 @@ pub fn shorten_path(path: &str, max_width: usize) -> String {
         },
         _ => trimmed.to_owned(),
     };
-    if display.width() <= max_width {
+    if graphemes::display_width(&display) <= max_width {
         return display;
     }
     let parts: Vec<&str> = display.split('/').collect();
@@ -389,21 +398,12 @@ pub fn shorten_path(path: &str, max_width: usize) -> String {
         })
         .collect();
     let mut candidate = shortened.join("/");
-    while candidate.width() > max_width && shortened.len() > 1 {
+    while graphemes::display_width(&candidate) > max_width && shortened.len() > 1 {
         shortened.remove(0);
         candidate = format!("…/{}", shortened.join("/"));
     }
-    if candidate.width() > max_width {
-        let keep = max_width.saturating_sub(1);
-        let tail: String = candidate
-            .chars()
-            .rev()
-            .take(keep)
-            .collect::<Vec<char>>()
-            .into_iter()
-            .rev()
-            .collect();
-        candidate = format!("…{}", tail);
+    if graphemes::display_width(&candidate) > max_width {
+        candidate = graphemes::truncate_start(&candidate, max_width, "…").into_owned();
     }
     candidate
 }
@@ -466,7 +466,7 @@ fn card_columns(columns: &[SessionSuggestionColumn]) -> Vec<CardColumn> {
 }
 
 fn pad(text: &str, width: usize) -> String {
-    let current = text.width();
+    let current = graphemes::display_width(&text);
     if current >= width {
         text.to_owned()
     } else {
@@ -576,7 +576,7 @@ fn layout_card_grid(
     let width = (0..column_count)
         .map(|i| {
             grid.iter()
-                .map(|r| r[i].content().width())
+                .map(|r| graphemes::display_width(&r[i].content()))
                 .max()
                 .unwrap_or(0)
         })
@@ -607,7 +607,7 @@ pub fn render_card(panel: &mut Panel, rows: usize, cols: usize) {
     panel.card_targets.clear();
     let title_main = CARD_TITLE;
     let title = format!(" {} {} ", title_main, CARD_SHORTCUT);
-    let title_width = title.width();
+    let title_width = graphemes::display_width(&title);
     let close_x = width.saturating_sub(4);
     let top = format!(
         "┌{}{} × ─┐",
@@ -705,7 +705,7 @@ pub fn render_card(panel: &mut Panel, rows: usize, cols: usize) {
         let text = format!("↑ [+{}]", more_above);
         print_text_with_coordinates(
             Text::from(text.as_str()).color_range(1, ..),
-            (content_x + content_width).saturating_sub(text.width()),
+            (content_x + content_width).saturating_sub(graphemes::display_width(&text)),
             header_y,
             None,
             None,
@@ -715,7 +715,7 @@ pub fn render_card(panel: &mut Panel, rows: usize, cols: usize) {
         let text = format!("↓ [+{}]", more_below);
         print_text_with_coordinates(
             Text::from(text.as_str()).color_range(1, ..),
-            (content_x + content_width).saturating_sub(text.width()),
+            (content_x + content_width).saturating_sub(graphemes::display_width(&text)),
             y,
             None,
             None,
@@ -723,7 +723,7 @@ pub fn render_card(panel: &mut Panel, rows: usize, cols: usize) {
     }
     let show_all_y = y + 1;
     if let Some(resumable) = panel.resumable_text() {
-        let resumable_width = resumable.width().min(content_width);
+        let resumable_width = graphemes::display_width(&resumable).min(content_width);
         print_text_with_coordinates(
             Text::from(resumable.as_str()).dim_all(),
             content_x,
@@ -733,7 +733,7 @@ pub fn render_card(panel: &mut Panel, rows: usize, cols: usize) {
         );
     }
     let show_all_text = panel.show_all_text();
-    let show_all_width = show_all_text.width().min(content_width);
+    let show_all_width = graphemes::display_width(&show_all_text).min(content_width);
     let show_all_x = (content_x + content_width).saturating_sub(show_all_width);
     let shortcut_len = if panel.popup_focused {
         SHOW_ALL_SHORTCUT.chars().count() + 1
@@ -766,8 +766,8 @@ pub fn render_card(panel: &mut Panel, rows: usize, cols: usize) {
     }
     let bottom = format!("└{}┘", "─".repeat(inner));
     print_text_with_coordinates(Text::from(bottom), 0, bottom_y, Some(width), None);
-    if panel.opened_at_startup && inner > DONT_SHOW_AGAIN_TEXT.width() + 2 {
-        let text_width = DONT_SHOW_AGAIN_TEXT.width();
+    if panel.opened_at_startup && inner > graphemes::display_width(&DONT_SHOW_AGAIN_TEXT) + 2 {
+        let text_width = graphemes::display_width(&DONT_SHOW_AGAIN_TEXT);
         let x = width.saturating_sub(text_width + 2);
         let mut text = Text::from(DONT_SHOW_AGAIN_TEXT).dim_all();
         if panel.hovered == Some(CardTarget::DontShowAgain) {
@@ -874,23 +874,23 @@ pub fn render_session_tree(
     let name_width = cache
         .rows
         .iter()
-        .map(|r| session_name_text(r).width())
+        .map(|r| graphemes::display_width(&session_name_text(r)))
         .max()
         .unwrap_or(0);
     let folder_width = cache
         .rows
         .iter()
-        .map(|r| folder_text(&r.session_name).width())
+        .map(|r| graphemes::display_width(&folder_text(&r.session_name)))
         .max()
         .unwrap_or(0)
-        .max("Folder".width());
+        .max(graphemes::display_width(&"Folder"));
     let branch_width = cache
         .rows
         .iter()
-        .map(|r| branch_text(&r.session_name).width())
+        .map(|r| graphemes::display_width(&branch_text(&r.session_name)))
         .max()
         .unwrap_or(0)
-        .max("Branch".width());
+        .max(graphemes::display_width(&"Branch"));
     let total_session_width = name_width + 2 + folder_width + 2 + branch_width;
     let abbreviate = total_session_width + 2 + 24 + 3 > max_cols;
     let header_x = x + 3 + name_width + 2;
@@ -1026,7 +1026,7 @@ pub fn render_session_tree(
         let text = format!("↑ [+{}]", offset);
         print_text_with_coordinates(
             Text::from(text.as_str()).color_range(1, ..),
-            (x + max_cols).saturating_sub(text.width()),
+            (x + max_cols).saturating_sub(graphemes::display_width(&text)),
             y,
             None,
             None,
@@ -1037,7 +1037,7 @@ pub fn render_session_tree(
         let text = format!("↓ [+{}]", below);
         print_text_with_coordinates(
             Text::from(text.as_str()).color_range(1, ..),
-            (x + max_cols).saturating_sub(text.width()),
+            (x + max_cols).saturating_sub(graphemes::display_width(&text)),
             y + 1 + visible,
             None,
             None,
@@ -1073,7 +1073,7 @@ pub fn render_preview(panel: &mut Panel, x: usize, y: usize, width: usize, heigh
     title.push(' ');
     let inner_width = width.saturating_sub(2);
     let title = truncate_plain(&title, inner_width.saturating_sub(1));
-    let filler = inner_width.saturating_sub(title.width());
+    let filler = inner_width.saturating_sub(graphemes::display_width(&title));
     let top = format!("┌{}{}┐", title, "─".repeat(filler));
     let top_text = Text::from(top).color_range(2, 1..1 + title.chars().count());
     print_text_with_coordinates(top_text, x, y, Some(width), None);
@@ -1161,7 +1161,7 @@ pub fn render_preview(panel: &mut Panel, x: usize, y: usize, width: usize, heigh
     let bottom = match summary {
         Some(summary) if inner_width > 4 => {
             let summary = truncate_plain(&format!(" {} ", summary), inner_width.saturating_sub(1));
-            let filler = inner_width.saturating_sub(1 + summary.width());
+            let filler = inner_width.saturating_sub(1 + graphemes::display_width(&summary));
             let summary_len = summary.chars().count();
             Text::from(format!("└─{}{}┘", summary, "─".repeat(filler)))
                 .dim_range(2..2 + summary_len)
@@ -1196,7 +1196,7 @@ fn render_empty_preview(x: usize, y: usize, width: usize, height: usize) {
         None,
     );
     let message = EMPTY_PREVIEW_TEXT;
-    let message_width = message.width().min(inner_width);
+    let message_width = graphemes::display_width(&message).min(inner_width);
     let message_x = x + 1 + inner_width.saturating_sub(message_width) / 2;
     let message_y = y + height.saturating_sub(1) / 2;
     print_text_with_coordinates(
@@ -1207,7 +1207,7 @@ fn render_empty_preview(x: usize, y: usize, width: usize, height: usize) {
         None,
     );
     let hint = format!("{}{}", EMPTY_PREVIEW_HINT, NAVIGATE_KEYS);
-    let hint_width = hint.width().min(inner_width);
+    let hint_width = graphemes::display_width(&hint).min(inner_width);
     let hint_x = x + 1 + inner_width.saturating_sub(hint_width) / 2;
     let keys_start = EMPTY_PREVIEW_HINT.chars().count();
     print_text_with_coordinates(
@@ -1219,11 +1219,40 @@ fn render_empty_preview(x: usize, y: usize, width: usize, height: usize) {
     );
 }
 
+fn push_fitting_clusters(
+    pending: &mut String,
+    result: &mut String,
+    visible: &mut usize,
+    width: usize,
+) -> bool {
+    let mut overflowed = false;
+    for (cluster, cluster_width) in graphemes::clusters(pending) {
+        if *visible + cluster_width > width {
+            overflowed = true;
+            break;
+        }
+        *visible += cluster_width;
+        result.push_str(cluster);
+    }
+    pending.clear();
+    overflowed
+}
+
 fn fit_ansi(line: &str, width: usize) -> String {
     let mut result = String::new();
     let mut visible = 0;
+    let mut pending = String::new();
+    let mut overflowed = false;
     let mut chars = line.chars().peekable();
     while let Some(c) = chars.next() {
+        if !c.is_control() {
+            pending.push(c);
+            continue;
+        }
+        if push_fitting_clusters(&mut pending, &mut result, &mut visible, width) {
+            overflowed = true;
+            break;
+        }
         if c == '\u{1b}' {
             match chars.next() {
                 Some('[') => {
@@ -1258,19 +1287,13 @@ fn fit_ansi(line: &str, width: usize) -> String {
             result.push_str(&" ".repeat(spaces));
             visible += spaces;
             if visible >= width {
+                overflowed = true;
                 break;
             }
-            continue;
         }
-        if c.is_control() {
-            continue;
-        }
-        let char_width = unicode_width::UnicodeWidthChar::width(c).unwrap_or(0);
-        if visible + char_width > width {
-            break;
-        }
-        visible += char_width;
-        result.push(c);
+    }
+    if !overflowed {
+        push_fitting_clusters(&mut pending, &mut result, &mut visible, width);
     }
     result.push_str("\u{1b}[m");
     result.push_str(&" ".repeat(width.saturating_sub(visible)));
@@ -1312,17 +1335,11 @@ pub fn strip_ansi(line: &str) -> String {
 }
 
 fn truncate_plain(text: &str, max_width: usize) -> String {
-    if text.width() <= max_width {
+    if graphemes::display_width(text) <= max_width {
         return text.to_owned();
     }
-    let mut result = String::new();
-    for c in text.chars() {
-        let width = unicode_width::UnicodeWidthChar::width(c).unwrap_or(0);
-        if result.width() + width + 1 > max_width {
-            break;
-        }
-        result.push(c);
-    }
+    let room = max_width.saturating_sub(1);
+    let mut result = graphemes::truncate_end(text, room, "").into_owned();
     result.push('…');
     result
 }
@@ -1374,7 +1391,7 @@ mod tests {
     #[test]
     fn long_paths_are_shortened() {
         let short = shorten_path("/very/long/path/to/some/project/folder", 20);
-        assert!(short.width() <= 20, "{}", short);
+        assert!(graphemes::display_width(&short) <= 20, "{}", short);
         assert!(short.ends_with("folder"));
         assert_eq!(shorten_path("/a/b", 20), "/a/b");
     }
@@ -1407,7 +1424,7 @@ mod tests {
                     .as_ref()
                     .unwrap()
                     .iter()
-                    .map(|row| row[i].content().width())
+                    .map(|row| graphemes::display_width(&row[i].content()))
                     .max()
                     .unwrap_or(0)
             })
@@ -1618,5 +1635,30 @@ mod tests {
         assert_eq!(strip_ansi(&fitted), "abcd    z   ");
         let wide = fit_ansi("ab漢字", 5);
         assert_eq!(strip_ansi(&wide), "ab漢 ");
+    }
+
+    #[test]
+    fn ansi_lines_are_cut_between_clusters() {
+        let family = "\u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467}";
+        let fitted = fit_ansi(&format!("\u{1b}[31ma{}b\u{1b}[0m", family), 3);
+        assert_eq!(strip_ansi(&fitted), format!("a{}", family));
+        let fitted = fit_ansi(&format!("ab{}", family), 3);
+        assert_eq!(strip_ansi(&fitted), "ab ");
+        let fitted = fit_ansi("ae\u{301}b", 2);
+        assert_eq!(strip_ansi(&fitted), "ae\u{301}");
+    }
+
+    #[test]
+    fn plain_text_is_truncated_by_width_on_cluster_boundaries() {
+        assert_eq!(truncate_plain("e\u{301}e\u{301}e\u{301}", 2), "e\u{301}…");
+        assert_eq!(truncate_plain("日本語", 5), "日本…");
+        assert_eq!(truncate_plain("日本", 4), "日本");
+    }
+
+    #[test]
+    fn long_paths_with_wide_names_are_shortened_by_width() {
+        let short = shorten_path("/プロジェクト/フォルダ名前", 9);
+        assert!(graphemes::display_width(&short) <= 9, "{}", short);
+        assert!(short.starts_with('…'));
     }
 }

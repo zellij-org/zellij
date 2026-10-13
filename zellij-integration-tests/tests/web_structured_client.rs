@@ -435,6 +435,9 @@ struct ClientScreenCells {
     cols: usize,
     rows: usize,
     cells: Vec<structured_render::WireCell>,
+    texts: Vec<String>,
+    saw_cluster_record: bool,
+    saw_group_continuation: bool,
 }
 
 impl ClientScreenCells {
@@ -446,14 +449,53 @@ impl ClientScreenCells {
                 structured_render::WireCell::BLANK;
                 TERMINAL_SIZE.cols * TERMINAL_SIZE.rows
             ],
+            texts: vec![String::from(" "); TERMINAL_SIZE.cols * TERMINAL_SIZE.rows],
+            saw_cluster_record: false,
+            saw_group_continuation: false,
+        }
+    }
+
+    fn apply(&mut self, view: &structured_render::FrameView<'_>) {
+        let header = view.header();
+        if header.cols as usize != self.cols || header.rows as usize != self.rows {
+            return;
+        }
+        if header.full_repaint() || header.clear() {
+            self.cells
+                .iter_mut()
+                .for_each(|cell| *cell = structured_render::WireCell::BLANK);
+            self.texts
+                .iter_mut()
+                .for_each(|text| *text = String::from(" "));
+        }
+        view.apply(&mut self.cells, self.cols, self.rows);
+        let clusters = view.clusters();
+        if !clusters.is_empty() {
+            self.saw_cluster_record = true;
+        }
+        for (record, cells) in view.rows() {
+            let start = record.y as usize * self.cols + record.x0 as usize;
+            if start + cells.len() > self.texts.len() {
+                continue;
+            }
+            for (offset, cell) in cells.iter().enumerate() {
+                self.texts[start + offset] = cell.text(&clusters).into_owned();
+                if cell.is_group_continuation() {
+                    self.saw_group_continuation = true;
+                }
+            }
         }
     }
 
     fn row_text(&self, row: usize) -> String {
-        self.cells[row * self.cols..(row + 1) * self.cols]
-            .iter()
-            .map(|cell| cell.character())
-            .collect()
+        let start = row * self.cols;
+        let mut text = String::new();
+        let mut column = 0;
+        while column < self.cols {
+            text.push_str(&self.texts[start + column]);
+            column += (self.cells[start + column].width as usize).max(1);
+        }
+        text
     }
 
     fn row_containing(&self, needle: &str) -> Option<usize> {
@@ -468,7 +510,7 @@ fn next_applied_frame(
 ) -> structured_render::ScrollRecord {
     let frame = runtime.block_on(client.next_frame());
     let view = structured_render::decode(&frame).expect("a frame must decode");
-    view.apply(&mut screen.cells, screen.cols, screen.rows);
+    screen.apply(&view);
     let scroll = view.scroll();
     runtime.block_on(client.acknowledge(view.header().seq));
     scroll
@@ -533,6 +575,66 @@ fn a_touchpad_scroll_moves_the_pane_by_its_line_count_and_the_frame_says_so() {
         screen.row_text(bottom).contains("scroll 195"),
         "the row that showed the last line must show the line four above it, got {:?}",
         screen.row_text(bottom)
+    );
+
+    shut_down(runtime, server, zellij);
+}
+
+const FAMILY: &str = "\u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467}";
+const FLAG: &str = "\u{1f1e9}\u{1f1ea}";
+const THUMBS: &str = "\u{1f44d}\u{1f3fd}";
+const KSSA: &str = "\u{915}\u{94d}\u{937}";
+
+#[test]
+fn a_structured_client_through_the_web_server_reads_clusters_like_a_terminal() {
+    let zellij = start_shared_session();
+    let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
+    terminal.disable_echo();
+
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let server = start_web_server(&runtime, "integration_structured_clusters");
+    let mut client = attach_structured_client(&runtime, &server, zellij.session_name());
+    let mut screen = ClientScreenCells::new();
+
+    let line = format!(
+        "R:{}|e\u{301}|{}|\u{4e16}|{}|{}|END",
+        FAMILY, FLAG, KSSA, THUMBS
+    );
+    terminal.output(format!("\r\n{}\r\n", line).as_bytes());
+
+    let mut row = None;
+    for _ in 0..40 {
+        next_applied_frame(&runtime, &mut client, &mut screen);
+        row = screen.row_containing(&line);
+        if row.is_some() {
+            break;
+        }
+    }
+    let row = row.expect("the cluster line must reach the structured client");
+    assert!(
+        screen.saw_cluster_record,
+        "a frame showing cells with attached code points must carry a cluster record"
+    );
+    assert!(
+        screen.saw_group_continuation,
+        "a frame showing default-mode groups must mark their continuation cells"
+    );
+
+    let grid_snapshot = zellij.wait_until("the terminal client to show the clusters", |grid| {
+        grid.contains(&line)
+    });
+    let terminal_line = grid_snapshot
+        .lines()
+        .into_iter()
+        .find(|text| text.contains(&line))
+        .expect("the terminal client shows the cluster line");
+    assert_eq!(
+        screen.row_text(row).trim_end(),
+        terminal_line.trim_end(),
+        "the structured client and the terminal client must read the same text"
     );
 
     shut_down(runtime, server, zellij);

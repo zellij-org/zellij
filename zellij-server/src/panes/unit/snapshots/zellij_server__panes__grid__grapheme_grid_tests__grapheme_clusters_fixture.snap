@@ -1,0 +1,61 @@
+---
+source: zellij-server/src/panes/./unit/grapheme_grid_tests.rs
+assertion_line: 658
+expression: "fixture_snapshot(\"grapheme_clusters\")"
+---
+00 (C): ascii       |Hello, 
+01 (W): world|
+02 (C): cjk         |你好世
+03 (W): 界|
+04 (C): e+acute     |école|
+05 (C): stacked     |á̂̃̄̅|
+06 (C): warn+vs16   |⚠️|
+07 (C): watch+vs15  |⌚︎|
+08 (C): grin+vs15   |😀︎|
+09 (C): keycap      |1️⃣|
+10 (C): thumbs+tone |👍🏽|
+11 (C): lone tone   |🏽|
+12 (C): flag DE     |🇩🇪|
+13 (C): three RI    |🇩🇪🇫|
+14 (C): family      |👨‍👩‍👧|
+15 (C): rainbow     |🏳️‍🌈|
+16 (C): england     |🏴󠁧󠁢󠁥󠁮󠁧󠁿|
+17 (C): kssa        |क्ष|
+18 (C): kaa         |का|
+19 (C): thai        |ก้ำ|
+20 (C): jamo LVT    |각|
+21 (C): halfwidth   |ｶﾞ|
+22 (C): soft hyphen |a­b|
+23 (C): a zwj b     |a‍b|
+24 (C): 
+25 (C): 
+26 (C): 
+27 (C): 
+28 (C): 
+29 (C): 
+cursor: (0, 24)
+00 groups=false widths=[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+01 groups=false widths=[1, 1, 1, 1, 1, 1]
+02 groups=false widths=[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2]
+03 groups=false widths=[2, 1]
+04 groups=false widths=[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+05 groups=false widths=[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+06 groups=false widths=[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+07 groups=false widths=[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1]
+08 groups=false widths=[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1]
+09 groups=false widths=[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+10 groups=true widths=[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 1]
+11 groups=true widths=[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1]
+12 groups=true widths=[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+13 groups=true widths=[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+14 groups=true widths=[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 1]
+15 groups=true widths=[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1]
+16 groups=false widths=[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1]
+17 groups=true widths=[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+18 groups=true widths=[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+19 groups=true widths=[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+20 groups=true widths=[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1]
+21 groups=false widths=[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+22 groups=false widths=[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+23 groups=true widths=[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+24 groups=false widths=[]

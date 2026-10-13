@@ -2,8 +2,8 @@ use super::text::Text;
 use super::Coordinates;
 use crate::panes::terminal_character::{AnsiCode, CharacterStyles, RESET_STYLES};
 use std::collections::{HashMap, HashSet};
-use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 use zellij_utils::data::{PaletteColor, Style};
+use zellij_utils::graphemes;
 
 #[derive(Debug, Default, Clone)]
 pub struct WidgetState {
@@ -51,7 +51,26 @@ pub fn decode_text(raw: &str) -> String {
 }
 
 pub fn text_width(text: &str) -> usize {
-    UnicodeWidthStr::width(text)
+    graphemes::display_width(text)
+}
+
+pub fn text_clusters(text: &str) -> Vec<(&str, usize, usize)> {
+    if text.is_ascii() {
+        return (0..text.len())
+            .map(move |index| {
+                let cluster = &text[index..index + 1];
+                (cluster, graphemes::cluster_width(cluster), index)
+            })
+            .collect();
+    }
+    let mut char_index = 0;
+    graphemes::clusters(text)
+        .map(|(cluster, width)| {
+            let first_char_index = char_index;
+            char_index += cluster.chars().count();
+            (cluster, width, first_char_index)
+        })
+        .collect()
 }
 
 pub fn truncate(text: &str, max_width: usize) -> String {
@@ -61,18 +80,7 @@ pub fn truncate(text: &str, max_width: usize) -> String {
     if max_width == 0 {
         return String::new();
     }
-    let mut result = String::new();
-    let mut width = 0;
-    for character in text.chars() {
-        let character_width = character.width().unwrap_or(0);
-        if width + character_width > max_width.saturating_sub(1) {
-            break;
-        }
-        width += character_width;
-        result.push(character);
-    }
-    result.push('…');
-    result
+    graphemes::truncate_end(text, max_width, "…").into_owned()
 }
 
 pub fn fit(text: &str, width: usize) -> String {
@@ -189,12 +197,11 @@ pub fn paint_text(
     let mut run = String::new();
     let mut run_styles = base;
     let mut used = 0;
-    for (index, character) in text.text.chars().enumerate() {
-        let character_width = character.width().unwrap_or(0);
-        if used + character_width > room {
+    for (cluster, cluster_width, index) in text_clusters(&text.text) {
+        if used + cluster_width > room {
             break;
         }
-        used += character_width;
+        used += cluster_width;
         let mut character_styles = base;
         if colorable && text.is_styled_at(index) {
             if let Some(color) = text.style_of_index(index, &declaration, &style.colors) {
@@ -214,7 +221,7 @@ pub fn paint_text(
             run.clear();
         }
         run_styles = character_styles;
-        run.push(character);
+        run.push_str(cluster);
     }
     output.push_str(&paint(run_styles, &run));
     if truncated && width > 0 {
@@ -561,6 +568,117 @@ mod tests {
             plain_styles(&style).foreground(Some(style.colors.text_unselected.emphasis_0.into())),
         );
         assert!(cells.contains(&paint(emphasis, "on")));
+    }
+
+    const FAMILY: &str = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}";
+    const DECOMPOSED_E: &str = "e\u{301}";
+    const FLAG: &str = "\u{1F1E9}\u{1F1EA}";
+
+    #[test]
+    fn text_width_measures_clusters() {
+        assert_eq!(text_width(FAMILY), 2);
+        assert_eq!(text_width(DECOMPOSED_E), 1);
+        assert_eq!(text_width(FLAG), 2);
+        assert_eq!(text_width("你好"), 4);
+        assert_eq!(text_width(&format!("a{}b{}{}", FAMILY, DECOMPOSED_E, FLAG)), 7);
+    }
+
+    #[test]
+    fn text_clusters_report_widths_and_first_character_indexes() {
+        let text = format!("a{}{}{}你", FAMILY, DECOMPOSED_E, FLAG);
+        let clusters = text_clusters(&text);
+        assert_eq!(
+            clusters,
+            vec![
+                ("a", 1, 0),
+                (FAMILY, 2, 1),
+                (DECOMPOSED_E, 1, 6),
+                (FLAG, 2, 8),
+                ("你", 2, 10),
+            ]
+        );
+        assert_eq!(text_clusters("ab"), vec![("a", 1, 0), ("b", 1, 1)]);
+    }
+
+    #[test]
+    fn truncate_never_splits_a_cluster() {
+        let text = format!("ab{}cd", FAMILY);
+        assert_eq!(truncate(&text, 6), text);
+        assert_eq!(truncate(&text, 5), format!("ab{}…", FAMILY));
+        assert_eq!(truncate(&text, 4), "ab…");
+        assert_eq!(truncate(&text, 0), "");
+        let decomposed = DECOMPOSED_E.repeat(3);
+        assert_eq!(truncate(&decomposed, 2), format!("{}…", DECOMPOSED_E));
+        let flags = FLAG.repeat(3);
+        assert_eq!(truncate(&flags, 5), format!("{}{}…", FLAG, FLAG));
+        assert_eq!(truncate(&flags, 4), format!("{}…", FLAG));
+        assert_eq!(truncate("你好世界", 4), "你…");
+    }
+
+    #[test]
+    fn fit_pads_to_the_exact_width_with_clusters() {
+        let text = format!("ab{}cd", FAMILY);
+        assert_eq!(fit(&text, 4), "ab… ");
+        assert_eq!(text_width(&fit(&text, 4)), 4);
+        assert_eq!(fit(&text, 8), format!("ab{}cd  ", FAMILY));
+        assert_eq!(fit(DECOMPOSED_E, 3), format!("{}  ", DECOMPOSED_E));
+        assert_eq!(fit("你好世界", 5), "你好…");
+    }
+
+    #[test]
+    fn fit_right_and_center_measure_clusters() {
+        assert_eq!(fit_right(FLAG, 4), format!("  {}", FLAG));
+        assert_eq!(fit_right(DECOMPOSED_E, 3), format!("  {}", DECOMPOSED_E));
+        assert_eq!(center(FAMILY, 6), format!("  {}  ", FAMILY));
+        assert_eq!(center("你", 5), " 你  ");
+        let centered = center(&format!("{}{}{}", FAMILY, FAMILY, FAMILY), 5);
+        assert_eq!(centered, format!("{}{}…", FAMILY, FAMILY));
+        assert_eq!(text_width(&centered), 5);
+    }
+
+    #[test]
+    fn paint_text_styles_a_cluster_by_its_first_character() {
+        let style = Style::default();
+        let base = plain_styles(&style);
+        let emphasis = bold(base.foreground(Some(style.colors.text_unselected.emphasis_0.into())));
+        let text = format!("a{}b", FAMILY);
+        let first = styled(&text, 0, 1..2);
+        let painted = paint_text(&first, base, 4, true, &style);
+        assert_eq!(strip_styles(&painted), text);
+        assert!(painted.contains(&paint(emphasis, FAMILY)));
+        let middle = styled(&text, 0, 3..4);
+        let painted = paint_text(&middle, base, 4, true, &style);
+        assert_eq!(painted, paint(base, &text));
+    }
+
+    #[test]
+    fn paint_text_cuts_before_a_cluster_that_does_not_fit() {
+        let style = Style::default();
+        let base = plain_styles(&style);
+        let text = Text::plain(format!("a{}b", FAMILY));
+        assert_eq!(strip_styles(&paint_text(&text, base, 3, true, &style)), "a… ");
+        let text = Text::plain(format!("{}{}{}", DECOMPOSED_E, DECOMPOSED_E, FLAG));
+        assert_eq!(
+            strip_styles(&paint_text(&text, base, 3, true, &style)),
+            format!("{}{}…", DECOMPOSED_E, DECOMPOSED_E)
+        );
+        assert_eq!(
+            strip_styles(&paint_text(&text, base, 6, true, &style)),
+            format!("{}{}{}  ", DECOMPOSED_E, DECOMPOSED_E, FLAG)
+        );
+    }
+
+    #[test]
+    fn a_button_label_with_clusters_keeps_the_button_width() {
+        let style = Style::default();
+        let label = format!("{}{}", FAMILY, FLAG);
+        assert_eq!(button_width(&label), 8);
+        let cells = button_cells(&label, 8, ButtonLook::Normal, &style);
+        assert_eq!(strip_styles(&cells), format!("[ {} ]", label));
+        let cells = button_cells(&label, 6, ButtonLook::Normal, &style);
+        assert_eq!(strip_styles(&cells), format!("[{}]", label));
+        let cells = button_cells(&label, 5, ButtonLook::Normal, &style);
+        assert_eq!(strip_styles(&cells), format!("[{}…]", FAMILY));
     }
 
     #[test]

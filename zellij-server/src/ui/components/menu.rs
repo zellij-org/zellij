@@ -1,7 +1,7 @@
 use super::widget_common::{
     bold, colored, decode_text, dimmed, disabled_look, fit, frame_color, indicator_label,
-    indicator_row, indicator_styles, move_to, paint, plain_styles, selected_row_styles, text_width,
-    truncate, WidgetState,
+    indicator_row, indicator_styles, move_to, paint, plain_styles, selected_row_styles,
+    text_clusters, text_width, truncate, WidgetState,
 };
 use super::Coordinates;
 use crate::panes::terminal_character::{AnsiCode, CharacterStyles};
@@ -258,14 +258,14 @@ impl LabelPaint<'_> {
         let mut output = String::new();
         let mut run = String::new();
         let mut run_styles = self.row_styles;
-        for (index, character) in text.chars().enumerate() {
+        for (cluster, _, index) in text_clusters(text) {
             let styles = self.styles_at(index);
             if styles != run_styles && !run.is_empty() {
                 output.push_str(&paint(run_styles, &run));
                 run.clear();
             }
             run_styles = styles;
-            run.push(character);
+            run.push_str(cluster);
         }
         output.push_str(&paint(run_styles, &run));
         output
@@ -452,6 +452,133 @@ mod tests {
             match_styles(&style, row),
             bold(row.foreground(Some(style.colors.text_unselected.emphasis_0.into())))
         );
+    }
+
+    const FAMILY: &str = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}";
+    const DECOMPOSED_E: &str = "e\u{301}";
+    const FLAG: &str = "\u{1F1E9}\u{1F1EA}";
+
+    fn encoded(text: &str) -> String {
+        text.bytes()
+            .map(|byte| byte.to_string())
+            .collect::<Vec<_>>()
+            .join(",")
+    }
+
+    #[test]
+    fn menu_rows_decode_clusters_and_keep_character_positions() {
+        let label = format!("{}{}", FAMILY, DECOMPOSED_E);
+        let row = parse_menu_row(&format!("{}:{}/5", encoded(&label), encoded(FLAG)));
+        assert_eq!(
+            row,
+            MenuRow::Item {
+                label,
+                shortcut: Some(FLAG.to_owned()),
+                disabled: false,
+                marked: false,
+                matched: vec![5],
+                emphasized: vec![],
+            }
+        );
+    }
+
+    #[test]
+    fn a_matched_cluster_takes_the_style_of_its_first_character() {
+        let plain = crate::panes::terminal_character::RESET_STYLES;
+        let emphasis = bold(plain);
+        let text = format!("a{}b", FAMILY);
+        assert_eq!(
+            paint_with_matches(&text, &[1], plain, emphasis),
+            format!(
+                "{}{}{}",
+                paint(plain, "a"),
+                paint(emphasis, FAMILY),
+                paint(plain, "b")
+            )
+        );
+        assert_eq!(
+            paint_with_matches(&text, &[3], plain, emphasis),
+            paint(plain, &text)
+        );
+        let text = format!("{}{}", DECOMPOSED_E, FLAG);
+        assert_eq!(
+            paint_with_matches(&text, &[2], plain, emphasis),
+            format!("{}{}", paint(plain, DECOMPOSED_E), paint(emphasis, FLAG))
+        );
+    }
+
+    #[test]
+    fn a_label_with_clusters_is_cut_on_a_cluster_boundary() {
+        let row = crate::panes::terminal_character::RESET_STYLES;
+        let label_paint = LabelPaint {
+            matched: &[],
+            emphasized: &[],
+            row_styles: row,
+            match_styles: row,
+            emphasis_styles: row,
+        };
+        assert_eq!(
+            render_item(
+                &format!("ab{}cd", FAMILY),
+                None,
+                Some(false),
+                &label_paint,
+                8,
+                row,
+                row
+            ),
+            format!(
+                "{}{}{}{}{}",
+                paint(row, " "),
+                paint(row, " "),
+                paint(row, " "),
+                paint(row, "ab… "),
+                paint(row, " ")
+            )
+        );
+        assert_eq!(
+            render_item(
+                "a",
+                Some(FAMILY.repeat(3).as_str()),
+                None,
+                &label_paint,
+                9,
+                row,
+                row
+            ),
+            format!(
+                "{}{}{}{}{}",
+                paint(row, " "),
+                paint(row, "a    "),
+                paint(row, " "),
+                paint(row, "…"),
+                paint(row, " ")
+            )
+        );
+    }
+
+    #[test]
+    fn natural_width_measures_clusters() {
+        let rows = vec![
+            MenuRow::Item {
+                label: format!("{}x", FAMILY),
+                shortcut: Some(FLAG.to_owned()),
+                disabled: false,
+                marked: false,
+                matched: vec![],
+                emphasized: vec![],
+            },
+            MenuRow::Item {
+                label: DECOMPOSED_E.repeat(4),
+                shortcut: None,
+                disabled: false,
+                marked: false,
+                matched: vec![],
+                emphasized: vec![],
+            },
+        ];
+        assert_eq!(natural_width(&rows, true), 10);
+        assert_eq!(natural_width(&rows, false), 8);
     }
 
     #[test]

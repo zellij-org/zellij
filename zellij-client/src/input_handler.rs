@@ -367,6 +367,11 @@ impl InputHandler {
                 self.os_input
                     .send_to_server(ClientToServerMsg::SixelSupport { supported });
             },
+            AnsiStdinInstruction::GraphemeClusterMode(value) => {
+                let _ = self
+                    .send_client_instructions
+                    .send(ClientInstruction::OuterGraphemeClusterMode(value));
+            },
         }
     }
     fn handle_nested_session_frame_from_host(&mut self, payload_bytes: Vec<u8>) {

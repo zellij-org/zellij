@@ -1,8 +1,9 @@
 use std::fmt::{self, Display, Formatter};
 
-const WIRE_VERSION: u8 = 3;
+const WIRE_VERSION: u8 = 4;
 const OLDEST_WIRE_VERSION: u8 = 2;
 const FIRST_VERSION_WITH_SCROLL: u8 = 3;
+const FIRST_VERSION_WITH_CLUSTERS: u8 = 4;
 
 const HEADER_LEN: usize = 48;
 const ROW_RECORD_LEN: usize = 8;
@@ -18,6 +19,7 @@ const GRAPHICS_KIND_SIXEL: u8 = 5;
 const RECORD_KIND_GEOMETRY: u8 = 6;
 const RECORD_KIND_LINKS: u8 = 7;
 const RECORD_KIND_SCROLL: u8 = 8;
+const RECORD_KIND_CLUSTERS: u8 = 9;
 
 const GEOMETRY_HEADER_LEN: usize = 8;
 const GEOMETRY_ENTRY_LEN: usize = 16;
@@ -26,6 +28,12 @@ const LINKS_HEADER_LEN: usize = 8;
 const LINK_ENTRY_HEADER_LEN: usize = 4;
 
 const SCROLL_HEADER_LEN: usize = 8;
+
+const CLUSTERS_HEADER_LEN: usize = 8;
+const CLUSTER_ENTRY_HEADER_LEN: usize = 6;
+pub const MAX_CLUSTER_ENTRY_LEN: usize = 4 * 1024;
+pub const MAX_CLUSTER_RECORD_LEN: usize = 1024 * 1024;
+pub const CLUSTER_CH_BASE: u32 = 0x110000;
 const SCROLL_ENTRY_LEN: usize = 4;
 
 pub const LINK_NONE: u8 = 0;
@@ -63,6 +71,7 @@ pub const ATTR_HIDDEN: u16 = 1 << 4;
 pub const ATTR_STRIKE: u16 = 1 << 5;
 pub const ATTR_SLOW_BLINK: u16 = 1 << 6;
 pub const ATTR_FAST_BLINK: u16 = 1 << 7;
+pub const ATTR_GROUP_CONTINUE: u16 = 1 << 11;
 pub const UNDERLINE_SHIFT: u32 = 8;
 const UNDERLINE_MASK: u16 = 0b111 << UNDERLINE_SHIFT;
 
@@ -114,6 +123,28 @@ impl WireCell {
 
     pub fn character(&self) -> char {
         char::from_u32(self.ch).unwrap_or(' ')
+    }
+
+    pub fn cluster_id(&self) -> Option<u16> {
+        if self.ch >= CLUSTER_CH_BASE {
+            u16::try_from(self.ch - CLUSTER_CH_BASE).ok()
+        } else {
+            None
+        }
+    }
+
+    pub fn is_group_continuation(&self) -> bool {
+        self.has(ATTR_GROUP_CONTINUE)
+    }
+
+    pub fn text<'a>(&self, clusters: &'a ClusterRecord) -> std::borrow::Cow<'a, str> {
+        match self.cluster_id() {
+            Some(id) => match clusters.get(id) {
+                Some(text) => std::borrow::Cow::Borrowed(text),
+                None => std::borrow::Cow::Borrowed(" "),
+            },
+            None => std::borrow::Cow::Owned(self.character().to_string()),
+        }
     }
 
     pub fn is_wide_head(&self) -> bool {
@@ -892,8 +923,124 @@ impl ScrollRecord {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ClusterEntry {
+    pub id: u16,
+    pub text: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct ClusterRecord {
+    pub entries: Vec<ClusterEntry>,
+}
+
+impl ClusterRecord {
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    pub fn get(&self, id: u16) -> Option<&str> {
+        match self.entries.binary_search_by_key(&id, |entry| entry.id) {
+            Ok(index) => Some(self.entries[index].text.as_str()),
+            Err(_) => self
+                .entries
+                .iter()
+                .find(|entry| entry.id == id)
+                .map(|entry| entry.text.as_str()),
+        }
+    }
+
+    fn encode_payload(&self, out: &mut Vec<u8>) {
+        out.extend_from_slice(&(self.entries.len() as u16).to_le_bytes());
+        out.extend_from_slice(&(CLUSTER_ENTRY_HEADER_LEN as u16).to_le_bytes());
+        put_u32(out, 0);
+        for entry in &self.entries {
+            let text = entry.text.as_bytes();
+            out.extend_from_slice(&entry.id.to_le_bytes());
+            out.extend_from_slice(&0u16.to_le_bytes());
+            out.extend_from_slice(&(text.len() as u16).to_le_bytes());
+            out.extend_from_slice(text);
+        }
+    }
+
+    fn decode(payload: &[u8]) -> Option<Self> {
+        if payload.len() > MAX_CLUSTER_RECORD_LEN {
+            return None;
+        }
+        let header = payload.get(..CLUSTERS_HEADER_LEN)?;
+        let entry_count = u16::from_le_bytes([header[0], header[1]]) as usize;
+        let entry_header_len = u16::from_le_bytes([header[2], header[3]]) as usize;
+        if entry_header_len < CLUSTER_ENTRY_HEADER_LEN {
+            return None;
+        }
+        let mut at = CLUSTERS_HEADER_LEN;
+        let mut entries: Vec<ClusterEntry> = Vec::with_capacity(entry_count.min(4096));
+        for _ in 0..entry_count {
+            let entry_header = payload.get(at..at.checked_add(entry_header_len)?)?;
+            let id = u16::from_le_bytes([entry_header[0], entry_header[1]]);
+            let text_len = u16::from_le_bytes([entry_header[4], entry_header[5]]) as usize;
+            at += entry_header_len;
+            if text_len == 0 || text_len > MAX_CLUSTER_ENTRY_LEN {
+                return None;
+            }
+            let text = payload.get(at..at.checked_add(text_len)?)?;
+            at += text_len;
+            let text = std::str::from_utf8(text).ok()?.to_owned();
+            entries.push(ClusterEntry { id, text });
+        }
+        entries.sort_by_key(|entry| entry.id);
+        if entries.windows(2).any(|pair| pair[0].id == pair[1].id) {
+            return None;
+        }
+        Some(ClusterRecord { entries })
+    }
+}
+
+#[derive(Default)]
+pub struct ClusterInterner {
+    by_text: std::collections::HashMap<String, u16>,
+    record: ClusterRecord,
+    bytes: usize,
+}
+
+impl ClusterInterner {
+    pub fn intern(&mut self, text: &str) -> Option<u32> {
+        if let Some(id) = self.by_text.get(text) {
+            return Some(CLUSTER_CH_BASE + *id as u32);
+        }
+        if text.is_empty() || text.len() > MAX_CLUSTER_ENTRY_LEN {
+            return None;
+        }
+        let cost = CLUSTER_ENTRY_HEADER_LEN + text.len();
+        if self.bytes + cost + CLUSTERS_HEADER_LEN > MAX_CLUSTER_RECORD_LEN {
+            return None;
+        }
+        let id = u16::try_from(self.record.entries.len()).ok()?;
+        self.by_text.insert(text.to_owned(), id);
+        self.record.entries.push(ClusterEntry {
+            id,
+            text: text.to_owned(),
+        });
+        self.bytes += cost;
+        Some(CLUSTER_CH_BASE + id as u32)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.record.is_empty()
+    }
+
+    pub fn take(&mut self) -> ClusterRecord {
+        self.by_text.clear();
+        self.bytes = 0;
+        std::mem::take(&mut self.record)
+    }
+}
+
 fn record_is_decodable(version: u8, kind: u8, medium: u8, payload: &[u8]) -> bool {
     match kind {
+        RECORD_KIND_CLUSTERS => {
+            version >= FIRST_VERSION_WITH_CLUSTERS && ClusterRecord::decode(payload).is_some()
+        },
         RECORD_KIND_GEOMETRY => GeometryRecord::decode(payload).is_some(),
         RECORD_KIND_LINKS => LinkRecord::decode(payload).is_some(),
         RECORD_KIND_SCROLL => {
@@ -1011,6 +1158,7 @@ pub struct FrameBuilder {
     cells: Vec<u8>,
     graphics: Vec<u8>,
     sideband: Vec<u8>,
+    clusters: ClusterInterner,
 }
 
 impl FrameBuilder {
@@ -1025,7 +1173,21 @@ impl FrameBuilder {
             cells: Vec::new(),
             graphics: Vec::new(),
             sideband: Vec::new(),
+            clusters: ClusterInterner::default(),
         }
+    }
+
+    pub fn cluster(&mut self, text: &str) -> Option<u32> {
+        self.clusters.intern(text)
+    }
+
+    pub fn push_clusters(&mut self, record: &ClusterRecord) {
+        if record.is_empty() {
+            return;
+        }
+        self.push_record(RECORD_KIND_CLUSTERS, GRAPHICS_MEDIUM_INLINE, |out| {
+            record.encode_payload(out)
+        });
     }
 
     pub fn set_full_repaint(&mut self, full_repaint: bool) {
@@ -1137,7 +1299,11 @@ impl FrameBuilder {
         }
     }
 
-    pub fn finish(self) -> Vec<u8> {
+    pub fn finish(mut self) -> Vec<u8> {
+        if !self.clusters.is_empty() {
+            let record = self.clusters.take();
+            self.push_clusters(&record);
+        }
         let records_offset = HEADER_LEN;
         let records_len = self.records.len() * ROW_RECORD_LEN;
         let cells_offset = align_up(records_offset + records_len, 4);
@@ -1315,7 +1481,24 @@ pub fn decode(buffer: &[u8]) -> Result<FrameView<'_>, DecodeError> {
         return Err(DecodeError::CellCountMismatch);
     }
 
-    Ok(FrameView { header, buffer })
+    let view = FrameView { header, buffer };
+    let mut clusters: Option<ClusterRecord> = None;
+    let mut at = cells_offset;
+    while at < cells_end {
+        let ch = u32::from_le_bytes([buffer[at], buffer[at + 1], buffer[at + 2], buffer[at + 3]]);
+        if ch >= CLUSTER_CH_BASE {
+            let record = clusters.get_or_insert_with(|| view.clusters());
+            let referenced = u16::try_from(ch - CLUSTER_CH_BASE)
+                .ok()
+                .and_then(|id| record.get(id));
+            if referenced.is_none() {
+                return Err(DecodeError::BadGraphicsRecord);
+            }
+        }
+        at += CELL_LEN;
+    }
+
+    Ok(view)
 }
 
 impl<'a> FrameView<'a> {
@@ -1407,6 +1590,32 @@ impl<'a> FrameView<'a> {
             at = align_up(payload_end, 4);
         }
         links
+    }
+
+    pub fn clusters(&self) -> ClusterRecord {
+        let start = self.header.graphics_offset as usize;
+        let end = start + self.header.graphics_len as usize;
+        let mut clusters = ClusterRecord::default();
+        let mut at = start;
+        while at < end {
+            let header_end = at + GRAPHICS_RECORD_HEADER_LEN;
+            let payload_len = u32::from_le_bytes([
+                self.buffer[at + 4],
+                self.buffer[at + 5],
+                self.buffer[at + 6],
+                self.buffer[at + 7],
+            ]) as usize;
+            let payload_end = header_end + payload_len;
+            if self.buffer[at] == RECORD_KIND_CLUSTERS {
+                if let Some(record) = ClusterRecord::decode(&self.buffer[header_end..payload_end])
+                {
+                    clusters.entries.extend(record.entries);
+                }
+            }
+            at = align_up(payload_end, 4);
+        }
+        clusters.entries.sort_by_key(|entry| entry.id);
+        clusters
     }
 
     pub fn scroll(&self) -> ScrollRecord {
@@ -1538,6 +1747,8 @@ pub struct PendingOverlay {
     scroll: ScrollRecord,
     graphics: Vec<GraphicsRecord>,
     sideband: Vec<u8>,
+    cluster_texts: Vec<String>,
+    cluster_ids: std::collections::HashMap<String, u32>,
 }
 
 impl PendingOverlay {
@@ -1556,7 +1767,19 @@ impl PendingOverlay {
             scroll: ScrollRecord::default(),
             graphics: Vec::new(),
             sideband: Vec::new(),
+            cluster_texts: Vec::new(),
+            cluster_ids: std::collections::HashMap::new(),
         }
+    }
+
+    fn overlay_cluster(&mut self, text: &str) -> u32 {
+        if let Some(id) = self.cluster_ids.get(text) {
+            return *id;
+        }
+        let id = self.cluster_texts.len() as u32;
+        self.cluster_texts.push(text.to_owned());
+        self.cluster_ids.insert(text.to_owned(), id);
+        id
     }
 
     pub fn dimensions(&self) -> (usize, usize) {
@@ -1613,7 +1836,16 @@ impl PendingOverlay {
                 .for_each(|cell| *cell = WireCell::BLANK);
             self.spans.iter_mut().for_each(Vec::clear);
         }
-        for (record, cells) in frame.rows() {
+        let clusters = frame.clusters();
+        for (record, mut cells) in frame.rows() {
+            if !clusters.is_empty() {
+                for cell in cells.iter_mut() {
+                    if let Some(id) = cell.cluster_id() {
+                        let text = clusters.get(id).unwrap_or(" ").to_owned();
+                        cell.ch = CLUSTER_CH_BASE + self.overlay_cluster(&text);
+                    }
+                }
+            }
             self.merge_row(record.y, record.x0, &cells);
         }
         self.cursor = frame.cursor();
@@ -1642,14 +1874,33 @@ impl PendingOverlay {
         if self.cursor_seen {
             builder.set_cursor(self.cursor);
         }
+        let cluster_texts = std::mem::take(&mut self.cluster_texts);
+        self.cluster_ids.clear();
         for row in 0..self.rows {
             for (start, end) in std::mem::take(&mut self.spans[row]) {
                 let base = row * self.cols;
-                builder.push_row(
-                    row as u16,
-                    start,
-                    &self.cells[base + start as usize..base + end as usize],
-                );
+                let span = &self.cells[base + start as usize..base + end as usize];
+                if span.iter().any(|cell| cell.ch >= CLUSTER_CH_BASE) {
+                    let remapped: Vec<WireCell> = span
+                        .iter()
+                        .map(|cell| {
+                            let mut cell = *cell;
+                            if cell.ch >= CLUSTER_CH_BASE {
+                                let text = cluster_texts
+                                    .get((cell.ch - CLUSTER_CH_BASE) as usize)
+                                    .map(|text| text.as_str())
+                                    .unwrap_or(" ");
+                                cell.ch = builder
+                                    .cluster(text)
+                                    .unwrap_or_else(|| text.chars().next().unwrap_or(' ') as u32);
+                            }
+                            cell
+                        })
+                        .collect();
+                    builder.push_row(row as u16, start, &remapped);
+                } else {
+                    builder.push_row(row as u16, start, span);
+                }
             }
         }
         let scroll = std::mem::take(&mut self.scroll);
@@ -2945,5 +3196,197 @@ mod tests {
         overlay.merge_frame(&decode(&repaint.finish()).unwrap());
         let drained = overlay.drain(3);
         assert!(decode(&drained).unwrap().scroll().is_empty());
+    }
+
+    fn cluster_cell(builder: &mut FrameBuilder, text: &str, width: u8, attrs: u16) -> WireCell {
+        WireCell {
+            ch: builder.cluster(text).unwrap(),
+            width,
+            attrs,
+            ..WireCell::BLANK
+        }
+    }
+
+    fn texts(view: &FrameView<'_>, cells: &[WireCell]) -> Vec<String> {
+        let clusters = view.clusters();
+        cells.iter().map(|c| c.text(&clusters).into_owned()).collect()
+    }
+
+    fn graphics_payload_with_clusters(entries: &[(u16, &[u8])]) -> Vec<u8> {
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&(entries.len() as u16).to_le_bytes());
+        payload.extend_from_slice(&(CLUSTER_ENTRY_HEADER_LEN as u16).to_le_bytes());
+        put_u32(&mut payload, 0);
+        for (id, text) in entries {
+            payload.extend_from_slice(&id.to_le_bytes());
+            payload.extend_from_slice(&0u16.to_le_bytes());
+            payload.extend_from_slice(&(text.len() as u16).to_le_bytes());
+            payload.extend_from_slice(text);
+        }
+        payload
+    }
+
+    #[test]
+    fn cluster_cells_groups_and_wide_cells_round_trip() {
+        let mut builder = FrameBuilder::new(10, 2, 1);
+        let family_head = cluster_cell(&mut builder, "\u{1F468}\u{200D}", 2, 0);
+        let family_middle =
+            cluster_cell(&mut builder, "\u{1F469}\u{200D}", 2, ATTR_GROUP_CONTINUE);
+        let family_tail = WireCell {
+            ch: '\u{1F467}' as u32,
+            width: 2,
+            attrs: ATTR_GROUP_CONTINUE,
+            ..WireCell::BLANK
+        };
+        let filler = WireCell::BLANK;
+        let wide = WireCell {
+            ch: '\u{17D8}' as u32,
+            width: 3,
+            ..WireCell::BLANK
+        };
+        let row = vec![
+            family_head,
+            filler,
+            family_middle,
+            filler,
+            family_tail,
+            filler,
+            wide,
+            filler,
+            filler,
+        ];
+        builder.push_row(0, 0, &row);
+        let frame = builder.finish();
+        let view = decode(&frame).unwrap();
+        assert_eq!(view.header().version, WIRE_VERSION);
+        let (_, cells) = view.rows().next().unwrap();
+        assert_eq!(
+            texts(&view, &cells),
+            vec![
+                "\u{1F468}\u{200D}",
+                " ",
+                "\u{1F469}\u{200D}",
+                " ",
+                "\u{1F467}",
+                " ",
+                "\u{17D8}",
+                " ",
+                " "
+            ]
+        );
+        let continuations: Vec<bool> = cells.iter().map(|c| c.is_group_continuation()).collect();
+        assert_eq!(
+            continuations,
+            vec![false, false, true, false, true, false, false, false, false]
+        );
+        assert_eq!(cells[6].width, 3);
+        assert_eq!(cells[0].character(), ' ');
+    }
+
+    #[test]
+    fn a_frame_without_clusters_carries_no_cluster_record() {
+        let mut builder = FrameBuilder::new(4, 1, 1);
+        builder.push_row(0, 0, &run("abcd"));
+        let frame = builder.finish();
+        let view = decode(&frame).unwrap();
+        assert!(view.clusters().is_empty());
+        assert_eq!(view.header().graphics_len, 0);
+    }
+
+    #[test]
+    fn identical_cluster_texts_share_one_id_within_a_frame() {
+        let mut builder = FrameBuilder::new(4, 1, 1);
+        let first = builder.cluster("e\u{0301}").unwrap();
+        let second = builder.cluster("e\u{0301}").unwrap();
+        let third = builder.cluster("a\u{0301}").unwrap();
+        assert_eq!(first, second);
+        assert_ne!(first, third);
+        let cells: Vec<WireCell> = [first, second, third]
+            .iter()
+            .map(|ch| WireCell {
+                ch: *ch,
+                ..WireCell::BLANK
+            })
+            .collect();
+        builder.push_row(0, 0, &cells);
+        let frame = builder.finish();
+        assert_eq!(decode(&frame).unwrap().clusters().entries.len(), 2);
+    }
+
+    #[test]
+    fn version_three_frames_decode_but_may_not_carry_clusters() {
+        let mut builder = FrameBuilder::new(4, 1, 1);
+        builder.push_row(0, 0, &run("abcd"));
+        let mut frame = builder.finish();
+        frame[0] = 3;
+        assert!(decode(&frame).is_ok());
+
+        let mut builder = FrameBuilder::new(4, 1, 1);
+        let cell = cluster_cell(&mut builder, "e\u{0301}", 1, 0);
+        builder.push_row(0, 0, &[cell, cell, cell, cell]);
+        let mut frame = builder.finish();
+        frame[0] = 3;
+        assert!(decode(&frame).is_err());
+    }
+
+    #[test]
+    fn malformed_cluster_records_are_rejected() {
+        assert!(ClusterRecord::decode(&graphics_payload_with_clusters(&[(0, b"\xff\xfe")])).is_none());
+        assert!(ClusterRecord::decode(&graphics_payload_with_clusters(&[(0, b"")])).is_none());
+        assert!(ClusterRecord::decode(&graphics_payload_with_clusters(&[
+            (0, b"ab"),
+            (0, b"cd")
+        ]))
+        .is_none());
+        let oversize = vec![b'a'; MAX_CLUSTER_ENTRY_LEN + 1];
+        assert!(ClusterRecord::decode(&graphics_payload_with_clusters(&[(0, &oversize)])).is_none());
+        let entry = vec![b'a'; MAX_CLUSTER_ENTRY_LEN];
+        let many: Vec<(u16, &[u8])> = (0..300u16).map(|id| (id, entry.as_slice())).collect();
+        assert!(ClusterRecord::decode(&graphics_payload_with_clusters(&many)).is_none());
+        assert_eq!(
+            ClusterRecord::decode(&graphics_payload_with_clusters(&[(3, b"ok")]))
+                .unwrap()
+                .get(3),
+            Some("ok")
+        );
+    }
+
+    #[test]
+    fn a_cell_referring_to_a_missing_cluster_is_rejected() {
+        let mut builder = FrameBuilder::new(2, 1, 1);
+        let real = cluster_cell(&mut builder, "e\u{0301}", 1, 0);
+        let missing = WireCell {
+            ch: CLUSTER_CH_BASE + 7,
+            ..WireCell::BLANK
+        };
+        builder.push_row(0, 0, &[real, missing]);
+        assert!(decode(&builder.finish()).is_err());
+    }
+
+    #[test]
+    fn the_overlay_remaps_cluster_ids_from_several_frames() {
+        let mut first = FrameBuilder::new(4, 2, 1);
+        let a = cluster_cell(&mut first, "a\u{0301}", 1, 0);
+        let b = cluster_cell(&mut first, "b\u{0301}", 1, 0);
+        first.push_row(0, 0, &[a, b]);
+        let first = first.finish();
+
+        let mut second = FrameBuilder::new(4, 2, 2);
+        let c = cluster_cell(&mut second, "c\u{0301}", 1, 0);
+        let b_again = cluster_cell(&mut second, "b\u{0301}", 1, 0);
+        second.push_row(1, 0, &[c, b_again]);
+        let second = second.finish();
+
+        let mut overlay = PendingOverlay::new(4, 2);
+        overlay.merge_frame(&decode(&first).unwrap());
+        overlay.merge_frame(&decode(&second).unwrap());
+        let drained = overlay.drain(3);
+        let view = decode(&drained).unwrap();
+        let rows: Vec<(RowRecord, Vec<WireCell>)> = view.rows().collect();
+        let row0 = rows.iter().find(|(r, _)| r.y == 0).unwrap();
+        let row1 = rows.iter().find(|(r, _)| r.y == 1).unwrap();
+        assert_eq!(texts(&view, &row0.1), vec!["a\u{0301}", "b\u{0301}"]);
+        assert_eq!(texts(&view, &row1.1), vec!["c\u{0301}", "b\u{0301}"]);
+        assert_eq!(view.clusters().entries.len(), 3);
     }
 }

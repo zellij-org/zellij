@@ -1,4 +1,5 @@
 use std::collections::VecDeque;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use zellij_utils::structured_render::{FrameBuilder, FrameView, WireCell};
@@ -57,7 +58,25 @@ struct PaneAnimation {
     duration: Duration,
     above: VecDeque<Vec<WireCell>>,
     below: VecDeque<Vec<WireCell>>,
+    above_clusters: VecDeque<Vec<(usize, Arc<str>)>>,
+    below_clusters: VecDeque<Vec<(usize, Arc<str>)>>,
     strip: Option<Strip>,
+}
+
+fn with_clusters(
+    builder: &mut FrameBuilder,
+    cells: &[WireCell],
+    clusters: Option<&Vec<(usize, Arc<str>)>>,
+) -> Vec<WireCell> {
+    let mut cells = cells.to_vec();
+    for (col, text) in clusters.into_iter().flatten() {
+        if let Some(cell) = cells.get_mut(*col) {
+            if let Some(ch) = builder.cluster(text) {
+                cell.ch = ch;
+            }
+        }
+    }
+    cells
 }
 
 fn ease_out(progress: f64) -> f64 {
@@ -93,6 +112,25 @@ impl PaneAnimation {
             .collect()
     }
 
+    fn clusters_before(&self, before: &TerminalState, row: usize) -> Vec<(usize, Arc<str>)> {
+        let y = self.content.y + row;
+        if before.screen().cluster_count() == 0 {
+            return Vec::new();
+        }
+        (0..self.content.cols)
+            .filter_map(|col| {
+                let x = self.content.x + col;
+                if self.covers.iter().any(|cover| cover.contains(y, x)) {
+                    return None;
+                }
+                before
+                    .screen()
+                    .cluster_at(y, x)
+                    .map(|text| (col, Arc::clone(text)))
+            })
+            .collect()
+    }
+
     fn shift(&mut self, before: &TerminalState, lines: i64) {
         let rows = self.content.rows;
         let moved = (lines.unsigned_abs() as usize).min(rows);
@@ -100,20 +138,28 @@ impl PaneAnimation {
             for row in (rows - moved..rows).rev() {
                 let cells = self.row_before(before, row);
                 self.below.push_front(cells);
+                let clusters = self.clusters_before(before, row);
+                self.below_clusters.push_front(clusters);
             }
             for _ in 0..moved {
                 self.above.pop_front();
+                self.above_clusters.pop_front();
             }
             self.below.truncate(rows);
+            self.below_clusters.truncate(rows);
         } else {
             for row in 0..moved {
                 let cells = self.row_before(before, row);
                 self.above.push_front(cells);
+                let clusters = self.clusters_before(before, row);
+                self.above_clusters.push_front(clusters);
             }
             for _ in 0..moved {
                 self.below.pop_front();
+                self.below_clusters.pop_front();
             }
             self.above.truncate(rows);
+            self.above_clusters.truncate(rows);
         }
         self.strip = None;
     }
@@ -135,12 +181,14 @@ impl PaneAnimation {
         let mut positions = Vec::with_capacity(total);
         let mut index = 0u16;
         for (distance, cells) in self.above.iter().enumerate().rev() {
-            builder.push_row(index, self.content.x as u16, cells);
+            let cells = with_clusters(&mut builder, cells, self.above_clusters.get(distance));
+            builder.push_row(index, self.content.x as u16, &cells);
             positions.push(-(distance as isize) - 1);
             index += 1;
         }
         for (distance, cells) in self.below.iter().enumerate() {
-            builder.push_row(index, self.content.x as u16, cells);
+            let cells = with_clusters(&mut builder, cells, self.below_clusters.get(distance));
+            builder.push_row(index, self.content.x as u16, &cells);
             positions.push((self.content.rows + distance) as isize);
             index += 1;
         }
@@ -267,6 +315,8 @@ impl ScrollAnimations {
             duration,
             above: VecDeque::new(),
             below: VecDeque::new(),
+            above_clusters: VecDeque::new(),
+            below_clusters: VecDeque::new(),
             strip: None,
         });
         self.panes.len() - 1

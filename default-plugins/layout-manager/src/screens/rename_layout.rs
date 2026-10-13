@@ -68,20 +68,20 @@ impl RenameLayoutScreen {
     fn rename_line_text(&self, max_width: Option<usize>) -> (String, usize) {
         // Returns (text, cursor_position_in_line)
         let prompt = "Rename Layout: ";
-        let prompt_len = prompt.chars().count();
+        let prompt_len = zellij_tile::graphemes::display_width(prompt);
 
         let input_text = self.name_input.get_text();
-        let cursor_pos = self.name_input.get_cursor_position();
+        let cursor_pos = self.name_input.cursor_column();
 
         let mut text = format!("{}{}", prompt, input_text);
         let mut cursor_position_in_line = prompt_len + cursor_pos;
 
         if let Some(max_width) = max_width {
-            if text.chars().count() > max_width {
+            if zellij_tile::graphemes::display_width(&text) > max_width {
                 let truncated_name =
                     truncate_with_ellipsis_start(input_text, max_width.saturating_sub(prompt_len));
                 text = format!("{}{}", prompt, truncated_name);
-                let truncated_len = truncated_name.chars().count();
+                let truncated_len = zellij_tile::graphemes::display_width(&truncated_name);
                 cursor_position_in_line = prompt_len + cursor_pos.min(truncated_len);
             }
         }

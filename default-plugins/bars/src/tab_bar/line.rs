@@ -1,11 +1,13 @@
 use ansi_term::ANSIStrings;
 use std::collections::BTreeMap;
-use unicode_width::UnicodeWidthStr;
 
 use crate::session_indicator::SessionIndicator;
 use crate::tab_bar::{LinePart, ARROW_SEPARATOR};
+use zellij_tile::graphemes::display_width;
 use zellij_tile::prelude::*;
 use zellij_tile_utils::style;
+
+pub(crate) const PREFIX_TEXT: &str = " Zellij ";
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct TabLineHover {
@@ -130,7 +132,7 @@ fn left_more_message(
     } else {
         " ← +many ".to_string()
     };
-    let more_text_len = more_text.width() + 2 * separator.width();
+    let more_text_len = display_width(&more_text) + 2 * display_width(separator);
     let (text_color, sep_color) = (
         palette.ribbon_unselected.base,
         palette.text_unselected.background,
@@ -167,7 +169,7 @@ fn right_more_message(
     } else {
         " +many → ".to_string()
     };
-    let more_text_len = more_text.width() + 2 * separator.width();
+    let more_text_len = display_width(&more_text) + 2 * display_width(separator);
     let (text_color, sep_color) = (
         palette.ribbon_unselected.base,
         palette.text_unselected.background,
@@ -197,9 +199,9 @@ fn tab_line_prefix(
     breadcrumb_ancestry: &[String],
     breadcrumb_hovered: bool,
 ) -> (Vec<LinePart>, Option<(usize, usize)>) {
-    let prefix_text = " Zellij ".to_string();
+    let prefix_text = PREFIX_TEXT.to_string();
 
-    let running_text_len = prefix_text.chars().count();
+    let running_text_len = display_width(&prefix_text);
     let text_color = palette.text_unselected.base;
     let bg_color = palette.text_unselected.background;
     let prefix_style = if dimmed {
@@ -217,11 +219,11 @@ fn tab_line_prefix(
     if !breadcrumb_ancestry.is_empty() {
         if let Some(name) = session_name {
             let ancestor_text = format!("({} ▸ ", breadcrumb_ancestry.join(" ▸ "));
-            let ancestor_len = ancestor_text.width();
+            let ancestor_len = display_width(&ancestor_text);
             let name_text = name.to_string();
-            let name_len = name_text.width();
+            let name_len = display_width(&name_text);
             let closing_text = ") ".to_string();
-            let closing_len = closing_text.width();
+            let closing_len = display_width(&closing_text);
             let ancestor_style = if dimmed {
                 dim_style(bg_color)
             } else {
@@ -268,7 +270,7 @@ fn tab_line_prefix(
     }
     if let Some(name) = session_name {
         let name_part = format!("({}) ", name);
-        let name_part_len = name_part.width();
+        let name_part_len = display_width(&name_part);
         let name_part_styled_text = prefix_style.paint(name_part);
         if cols.saturating_sub(running_text_len) >= name_part_len {
             parts.push(LinePart {
@@ -318,7 +320,7 @@ pub fn tab_line(
     } else {
         tabs_before_active.pop().unwrap()
     };
-    let (mut prefix, breadcrumb_range) = match hide_session_name {
+    let (mut prefix, mut breadcrumb_range) = match hide_session_name {
         true => tab_line_prefix(None, palette, cols, dimmed, &[], false),
         false => tab_line_prefix(
             session_name,
@@ -329,6 +331,12 @@ pub fn tab_line(
             hover.breadcrumb,
         ),
     };
+    if get_current_title_len(&prefix) + active_tab.len > cols {
+        let (short_prefix, short_breadcrumb_range) =
+            tab_line_prefix(None, palette, cols, dimmed, &[], false);
+        prefix = short_prefix;
+        breadcrumb_range = short_breadcrumb_range;
+    }
 
     let prefix_len = get_current_title_len(&prefix);
     let indicator_budget = cols.saturating_sub(prefix_len + active_tab.len);
@@ -489,7 +497,7 @@ fn hint_line_part(
         .range(..=max_len)
         .next_back()
         .map(|(_width, styled_text)| styled_text)?;
-    let len = fitting_variant.text.width();
+    let len = display_width(&fitting_variant.text);
     let text = if dimmed {
         Text::from(fitting_variant.clone()).disabled()
     } else {
@@ -516,7 +524,7 @@ fn scroll_status(scroll: (usize, usize), palette: Styling, dimmed: bool) -> Line
     let styled_text = text_style.paint(&text);
     LinePart {
         part: styled_text.to_string(),
-        len: text.width(),
+        len: display_width(&text),
         tab_index: None,
     }
 }
@@ -528,7 +536,7 @@ fn new_tab_button_line_part(
     dimmed: bool,
 ) -> LinePart {
     let separator = tab_separator(capabilities);
-    let separator_width = separator.width();
+    let separator_width = display_width(separator);
     let foreground_color = palette.ribbon_unselected.base;
     let separator_fill_color = palette.text_unselected.background;
     let background_color = if dimmed {
@@ -546,7 +554,7 @@ fn new_tab_button_line_part(
     let text = "+";
     let styled_text = text_style.paint(format!(" {} ", text));
     let part = ANSIStrings(&[left_separator, styled_text, right_separator]).to_string();
-    let len = text.width() + (separator_width * 2) + 2;
+    let len = display_width(text) + (separator_width * 2) + 2;
     LinePart {
         part,
         len,

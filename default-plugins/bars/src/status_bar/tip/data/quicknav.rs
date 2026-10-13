@@ -1,4 +1,5 @@
-use ansi_term::{unstyled_len, ANSIString, ANSIStrings, Style};
+use crate::status_bar::unstyled_len;
+use ansi_term::{ANSIString, ANSIStrings, Style};
 
 use crate::status_bar::{action_key, action_key_group, style_key_with_modifier, LinePart};
 use zellij_tile::prelude::{actions::Action, *};

@@ -435,12 +435,13 @@ impl App {
             Some(title) if inner >= 6 => {
                 let title = truncate(title, inner - 4);
                 let title_width = text_width(&title);
+                let title_length = title.chars().count();
                 let line = format!(
                     "╭─ {} {}╮",
                     title,
                     "─".repeat(inner.saturating_sub(title_width + 3))
                 );
-                Text::from(line).color_range(2, 3..3 + title_width)
+                Text::from(line).color_range(2, 3..3 + title_length)
             },
             _ => Text::from(format!("╭{}╮", "─".repeat(inner))),
         };

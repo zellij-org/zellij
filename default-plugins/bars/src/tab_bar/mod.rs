@@ -18,7 +18,7 @@ use crate::tab_drag::{
     tab_parts_in_line, TabDrag, TabPart, TabSegment,
 };
 use crate::ClientSeed;
-use line::{tab_line, TabLineHover};
+use line::{tab_line, TabLineHover, PREFIX_TEXT};
 use tab::tab_style;
 
 #[derive(Debug, Default)]
@@ -527,6 +527,9 @@ impl TabBar {
         let mut all_tabs: Vec<LinePart> = vec![];
         let mut active_tab_index = 0;
         let mut is_alternate_tab = false;
+        let max_tab_width = cols
+            .saturating_sub(1)
+            .saturating_sub(zellij_tile::graphemes::display_width(PREFIX_TEXT));
         for t in &client.tabs {
             let mut tabname = t.name.clone();
             if t.active && client.mode_info.mode == InputMode::RenameTab {
@@ -552,6 +555,7 @@ impl TabBar {
                 client.mode_info.style.colors,
                 client.mode_info.capabilities,
                 dimmed,
+                max_tab_width,
             );
             is_alternate_tab = !is_alternate_tab;
             all_tabs.push(tab);
@@ -840,6 +844,150 @@ mod tests {
         bar.clients.get_mut(&1).unwrap().hovered = None;
         bar.render_client(1, 100, 0, 1);
         assert_eq!(bar.clients[&1].hovered, Some(TabBarRegion::Tab(1)));
+    }
+
+    const FAMILY: &str = "\u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467}";
+
+    fn strip_ansi(text: &str) -> String {
+        let mut stripped = String::new();
+        let mut characters = text.chars().peekable();
+        while let Some(character) = characters.next() {
+            if character == '\u{1b}' {
+                if characters.peek() == Some(&'[') {
+                    characters.next();
+                    while let Some(next) = characters.next() {
+                        if next.is_ascii_alphabetic() {
+                            break;
+                        }
+                    }
+                }
+                continue;
+            }
+            stripped.push(character);
+        }
+        stripped
+    }
+
+    fn named_tab(position: usize, name: &str, active: bool) -> TabInfo {
+        TabInfo {
+            position,
+            tab_id: position,
+            active,
+            name: name.to_owned(),
+            ..Default::default()
+        }
+    }
+
+    fn styled(name: &str, active: bool, max_width: usize) -> LinePart {
+        let tab = named_tab(0, name, active);
+        tab_style(
+            name.to_owned(),
+            &tab,
+            false,
+            false,
+            false,
+            Styling::default(),
+            PluginCapabilities::default(),
+            false,
+            max_width,
+        )
+    }
+
+    fn rendered_width(parts: &[LinePart]) -> usize {
+        let joined: String = parts.iter().map(|part| part.part.as_str()).collect();
+        zellij_tile::graphemes::display_width(&strip_ansi(&joined))
+    }
+
+    fn client_with_named_tabs(names: &[&str], active: usize) -> ClientState {
+        ClientState {
+            tabs: names
+                .iter()
+                .enumerate()
+                .map(|(position, name)| named_tab(position, name, position == active))
+                .collect(),
+            active_tab_idx: active + 1,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn a_tab_named_with_clusters_has_its_rendered_width_as_its_length() {
+        let name = format!("e\u{301}{}日本", FAMILY);
+        let part = styled(&name, true, 100);
+        assert_eq!(part.len, rendered_width(std::slice::from_ref(&part)));
+        assert!(strip_ansi(&part.part).contains(&name));
+    }
+
+    #[test]
+    fn a_long_active_tab_is_cut_with_an_ellipsis_on_a_cluster_boundary() {
+        let part = styled("abcdefghijklmnopqrstuvwxyz", true, 12);
+        assert_eq!(part.len, 12);
+        assert_eq!(rendered_width(std::slice::from_ref(&part)), 12);
+        assert!(strip_ansi(&part.part).contains("abcdefghi…"));
+        let part = styled(&"e\u{301}".repeat(10), true, 8);
+        assert_eq!(part.len, 8);
+        assert!(strip_ansi(&part.part).contains("e\u{301}e\u{301}e\u{301}…"));
+        let part = styled(&FAMILY.repeat(10), true, 9);
+        assert!(part.len <= 9);
+        assert_eq!(part.len, rendered_width(std::slice::from_ref(&part)));
+        assert!(strip_ansi(&part.part).contains(&format!("{}{}…", FAMILY, FAMILY)));
+    }
+
+    #[test]
+    fn a_too_wide_active_tab_still_renders_within_the_bar() {
+        let long_name = format!("{}{}", "日本語".repeat(20), FAMILY);
+        let mut bar = TabBar::default();
+        bar.clients.insert(
+            1,
+            client_with_named_tabs(&["one", long_name.as_str(), "three"], 1),
+        );
+        let composed = bar.compose_line(40, 1, None).unwrap();
+        let total: usize = composed.line.iter().map(|part| part.len).sum();
+        assert!(total <= 39);
+        assert_eq!(total, rendered_width(&composed.line));
+        assert!(composed
+            .line
+            .iter()
+            .any(|part| part.tab_index == Some(1) && strip_ansi(&part.part).contains('…')));
+        assert!(composed
+            .regions
+            .iter()
+            .any(|(_, _, region)| *region == TabBarRegion::Tab(1)));
+    }
+
+    #[test]
+    fn more_tabs_indicators_and_click_regions_use_display_widths() {
+        let names = ["日本語"; 6];
+        let mut bar = TabBar::default();
+        bar.clients.insert(1, client_with_named_tabs(&names, 0));
+        let composed = bar.compose_line(40, 1, None).unwrap();
+        let total: usize = composed.line.iter().map(|part| part.len).sum();
+        assert_eq!(total, rendered_width(&composed.line));
+        let joined: String = composed
+            .line
+            .iter()
+            .map(|part| strip_ansi(&part.part))
+            .collect();
+        assert!(joined.contains("+3"));
+        let prefix_width = zellij_tile::graphemes::display_width(PREFIX_TEXT);
+        let tab_width = 8;
+        assert!(composed.regions.contains(&(
+            prefix_width,
+            prefix_width + tab_width,
+            TabBarRegion::Tab(0)
+        )));
+        assert!(composed.regions.contains(&(
+            prefix_width + tab_width,
+            prefix_width + 2 * tab_width,
+            TabBarRegion::Tab(1)
+        )));
+        assert!(composed.regions.iter().any(|(start, _, region)| *start
+            == prefix_width + 3 * tab_width
+            && *region
+                == TabBarRegion::Marker {
+                    left: false,
+                    position: 3
+                }));
     }
 
     #[test]

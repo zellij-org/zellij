@@ -69,6 +69,7 @@ mod tests {
         ("blink", &["..."]),
         ("cursor-shapes", &["..."]),
         ("glyph-torture", &["..."]),
+        ("grapheme-clusters", &["..."]),
         ("kitty-graphics", &["..."]),
         ("kitty-pane-open", &["..."]),
         ("osc-signals", &["..."]),

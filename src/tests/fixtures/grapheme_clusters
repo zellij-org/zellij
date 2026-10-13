@@ -1,0 +1,22 @@
+ascii       |Hello, world|
+cjk         |你好世界|
+e+acute     |école|
+stacked     |á̂̃̄̅|
+warn+vs16   |⚠️|
+watch+vs15  |⌚︎|
+grin+vs15   |😀︎|
+keycap      |1️⃣|
+thumbs+tone |👍🏽|
+lone tone   |🏽|
+flag DE     |🇩🇪|
+three RI    |🇩🇪🇫|
+family      |👨‍👩‍👧|
+rainbow     |🏳️‍🌈|
+england     |🏴󠁧󠁢󠁥󠁮󠁧󠁿|
+kssa        |क्ष|
+kaa         |का|
+thai        |ก้ำ|
+jamo LVT    |각|
+halfwidth   |ｶﾞ|
+soft hyphen |a­b|
+a zwj b     |a‍b|

@@ -1,12 +1,13 @@
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Result};
 
 use crate::font::{
-    CellMetrics, FaceStyle, FontId, FontStack, Glyph, GlyphBitmap, GlyphContent, GlyphId,
-    ShapedGlyph,
+    CellMetrics, ClusterRaster, FaceStyle, FontId, FontStack, Glyph, GlyphBitmap, GlyphContent,
+    GlyphId, ShapedGlyph,
 };
 use crate::sprites;
 
@@ -21,11 +22,49 @@ const OVERFLOW_RETRY: Duration = Duration::from_secs(1);
 const MAX_ENTRIES: usize = 32_768;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct GlyphKey {
+pub struct RasterKey {
     pub font: FontId,
     pub glyph: GlyphId,
     pub budget: u32,
     pub spill: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum GlyphKey {
+    Char(char),
+    Text(Arc<str>),
+}
+
+impl GlyphKey {
+    pub fn of(text: &str) -> Self {
+        let mut characters = text.chars();
+        match (characters.next(), characters.next()) {
+            (Some(only), None) => GlyphKey::Char(only),
+            _ => GlyphKey::Text(Arc::from(text)),
+        }
+    }
+
+    pub fn shared(text: &Arc<str>) -> Self {
+        let mut characters = text.chars();
+        match (characters.next(), characters.next()) {
+            (Some(only), None) => GlyphKey::Char(only),
+            _ => GlyphKey::Text(Arc::clone(text)),
+        }
+    }
+
+    fn text(&self) -> std::borrow::Cow<'_, str> {
+        match self {
+            GlyphKey::Char(character) => std::borrow::Cow::Owned(character.to_string()),
+            GlyphKey::Text(text) => std::borrow::Cow::Borrowed(text),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClusterLookup {
+    Sprite(RenderedGlyph),
+    Blank,
+    PerCell,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -239,7 +278,8 @@ pub struct GlyphCache {
     fonts: FontStack,
     mask: GlyphAtlas,
     color: GlyphAtlas,
-    entries: HashMap<GlyphKey, Option<RenderedGlyph>>,
+    entries: HashMap<RasterKey, Option<RenderedGlyph>>,
+    clusters: HashMap<(FaceStyle, GlyphKey, u32), ClusterLookup>,
     generation: u64,
     exhausted: bool,
     overflowed_at: Option<Instant>,
@@ -273,6 +313,7 @@ impl GlyphCache {
             mask,
             color,
             entries: HashMap::new(),
+            clusters: HashMap::new(),
             generation: next_revision(),
             exhausted: false,
             overflowed_at: None,
@@ -295,7 +336,12 @@ impl GlyphCache {
 
     #[cfg(test)]
     pub fn entries(&self) -> usize {
-        self.entries.len()
+        self.entries.len() + self.clusters.len()
+    }
+
+    #[cfg(test)]
+    pub fn cluster_entries(&self) -> usize {
+        self.clusters.len()
     }
 
     #[cfg(test)]
@@ -328,6 +374,7 @@ impl GlyphCache {
         self.mask = self.mask.renewed();
         self.color = self.color.renewed();
         self.entries.clear();
+        self.clusters.clear();
         self.generation = next_revision();
         self.exhausted = false;
         self.flushes += 1;
@@ -374,6 +421,39 @@ impl GlyphCache {
         self.fonts.shaped_runs()
     }
 
+    #[cfg(test)]
+    pub fn cluster_font(&mut self, style: FaceStyle, text: &str) -> Option<FontId> {
+        self.fonts.cluster_font(style, text)
+    }
+
+    pub fn cluster_glyph(&mut self, style: FaceStyle, key: &GlyphKey, budget: u32) -> ClusterLookup {
+        let cache_key = (style, key.clone(), budget);
+        if let Some(cached) = self.clusters.get(&cache_key) {
+            return *cached;
+        }
+        if self.exhausted {
+            return ClusterLookup::Blank;
+        }
+        let raster = self.fonts.rasterize_cluster(style, &key.text(), budget);
+        let lookup = match raster {
+            ClusterRaster::Sprite(bitmap) => match self.insert(&bitmap) {
+                Insertion::Placed(rendered) => ClusterLookup::Sprite(rendered),
+                Insertion::OutOfRoom => {
+                    self.exhausted = true;
+                    return ClusterLookup::Blank;
+                },
+                Insertion::Impossible => ClusterLookup::PerCell,
+            },
+            ClusterRaster::Blank => ClusterLookup::Blank,
+            ClusterRaster::Uncovered => ClusterLookup::PerCell,
+        };
+        self.clusters.insert(cache_key, lookup);
+        if self.entries.len() + self.clusters.len() >= MAX_ENTRIES {
+            self.exhausted = true;
+        }
+        lookup
+    }
+
     pub fn shaped_glyph(&mut self, font: FontId, glyph: GlyphId, budget: u32) -> Lookup {
         self.rendered(Glyph { font, glyph }, budget)
     }
@@ -407,7 +487,7 @@ impl GlyphCache {
         let Ok(glyph) = GlyphId::try_from(character as u32) else {
             return Lookup::Missing;
         };
-        let key = GlyphKey {
+        let key = RasterKey {
             font: FontId::SPRITES,
             glyph,
             budget,
@@ -433,7 +513,7 @@ impl GlyphCache {
     }
 
     fn rendered_with_room(&mut self, glyph: Glyph, budget: u32, spill: u32) -> Lookup {
-        let key = GlyphKey {
+        let key = RasterKey {
             font: glyph.font,
             glyph: glyph.glyph,
             budget,
@@ -456,7 +536,7 @@ impl GlyphCache {
         self.place(key, &bitmap)
     }
 
-    fn place(&mut self, key: GlyphKey, bitmap: &GlyphBitmap) -> Lookup {
+    fn place(&mut self, key: RasterKey, bitmap: &GlyphBitmap) -> Lookup {
         match self.insert(bitmap) {
             Insertion::Placed(rendered) => {
                 self.remember(key, Some(rendered));
@@ -473,9 +553,9 @@ impl GlyphCache {
         }
     }
 
-    fn remember(&mut self, key: GlyphKey, rendered: Option<RenderedGlyph>) {
+    fn remember(&mut self, key: RasterKey, rendered: Option<RenderedGlyph>) {
         self.entries.insert(key, rendered);
-        if self.entries.len() >= MAX_ENTRIES {
+        if self.entries.len() + self.clusters.len() >= MAX_ENTRIES {
             self.exhausted = true;
         }
     }
@@ -917,7 +997,7 @@ mod tests {
         let font = cache.primary_of(FaceStyle::Regular);
         for glyph in 0..MAX_ENTRIES as GlyphId {
             cache.remember(
-                GlyphKey {
+                RasterKey {
                     font,
                     glyph,
                     budget: 1,
@@ -926,6 +1006,124 @@ mod tests {
                 None,
             );
         }
+        assert!(cache.exhausted());
+        cache.flush();
+        assert_eq!(cache.entries(), 0);
+    }
+
+    #[test]
+    fn a_single_code_point_is_a_char_key_and_anything_longer_a_text_key() {
+        assert_eq!(GlyphKey::of("a"), GlyphKey::Char('a'));
+        assert_eq!(
+            GlyphKey::of("e\u{301}"),
+            GlyphKey::Text(Arc::from("e\u{301}"))
+        );
+        let shared: Arc<str> = Arc::from("\u{1f44d}\u{1f3fd}");
+        match GlyphKey::shared(&shared) {
+            GlyphKey::Text(text) => assert!(Arc::ptr_eq(&text, &shared)),
+            other => panic!("{:?}", other),
+        }
+    }
+
+    #[test]
+    fn a_text_keyed_glyph_is_rasterized_once_per_style_and_budget() {
+        let mut cache = cache();
+        let key = GlyphKey::of("e\u{301}");
+        let first = cache.cluster_glyph(FaceStyle::Regular, &key, 1);
+        assert!(matches!(first, ClusterLookup::Sprite(_)), "{:?}", first);
+        let revision = cache.atlases().mask.revision();
+        let entries = cache.cluster_entries();
+        assert_eq!(cache.cluster_glyph(FaceStyle::Regular, &key, 1), first);
+        assert_eq!(cache.atlases().mask.revision(), revision);
+        assert_eq!(cache.cluster_entries(), entries);
+
+        let bold = cache.cluster_glyph(FaceStyle::Bold, &key, 1);
+        assert_ne!(bold, first);
+        assert_eq!(cache.cluster_entries(), entries + 1);
+    }
+
+    #[test]
+    fn text_and_char_keys_never_share_an_entry() {
+        let mut cache = cache();
+        cache.cluster_glyph(FaceStyle::Regular, &GlyphKey::of("e\u{301}"), 1);
+        cache.cluster_glyph(FaceStyle::Regular, &GlyphKey::Char('e'), 1);
+        assert_eq!(cache.cluster_entries(), 2);
+    }
+
+    #[test]
+    fn an_emoji_sequence_lands_in_the_color_atlas_as_one_entry() {
+        let mut cache = cache();
+        let warning = GlyphKey::of("\u{26a0}\u{fe0f}");
+        let before = cache.atlases().mask.revision();
+        match cache.cluster_glyph(FaceStyle::Regular, &warning, 2) {
+            ClusterLookup::Sprite(rendered) => {
+                assert_eq!(rendered.content, GlyphContent::Color);
+                assert!(rendered.entry.width <= cache.metrics().width * 2);
+            },
+            other => panic!("the emoji-style warning sign was not one sprite: {:?}", other),
+        }
+        assert_eq!(cache.atlases().mask.revision(), before);
+        let family = GlyphKey::of("\u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467}");
+        assert_eq!(
+            cache.cluster_glyph(FaceStyle::Regular, &family, 2),
+            ClusterLookup::PerCell,
+            "the bundled emoji subset has no family glyph, so the family is drawn cell by cell"
+        );
+    }
+
+    #[test]
+    fn a_cluster_nothing_covers_is_remembered_as_drawn_cell_by_cell() {
+        let mut cache = cache();
+        let key = GlyphKey::of("\u{10fffd}\u{301}");
+        assert_eq!(
+            cache.cluster_glyph(FaceStyle::Regular, &key, 1),
+            ClusterLookup::PerCell
+        );
+        assert_eq!(cache.cluster_entries(), 1);
+    }
+
+    #[test]
+    fn text_keyed_glyphs_are_evicted_by_a_flush_and_come_back_afterwards() {
+        let mut cache = tiny();
+        let mut lost = None;
+        for letter in letters() {
+            let key = GlyphKey::of(&format!("{}\u{301}\u{323}", letter));
+            cache.cluster_glyph(FaceStyle::Regular, &key, 1);
+            if cache.exhausted() {
+                lost = Some(key);
+                break;
+            }
+        }
+        let lost = lost.expect("a 64 px atlas swallowed every accented letter");
+        assert!(cache.cluster_entries() > 0);
+        assert_eq!(
+            cache.cluster_glyph(FaceStyle::Regular, &lost, 1),
+            ClusterLookup::Blank,
+            "an exhausted cache must not rasterize more text keys"
+        );
+        cache.flush();
+        assert_eq!(cache.cluster_entries(), 0);
+        assert_eq!(cache.entries(), 0);
+        assert!(matches!(
+            cache.cluster_glyph(FaceStyle::Regular, &lost, 1),
+            ClusterLookup::Sprite(_)
+        ));
+    }
+
+    #[test]
+    fn text_keys_count_against_the_entry_ceiling() {
+        let mut cache = cache();
+        for index in 0..MAX_ENTRIES {
+            cache.clusters.insert(
+                (
+                    FaceStyle::Regular,
+                    GlyphKey::Text(Arc::from(format!("{}\u{301}", index))),
+                    1,
+                ),
+                ClusterLookup::Blank,
+            );
+        }
+        cache.cluster_glyph(FaceStyle::Regular, &GlyphKey::of("e\u{301}"), 1);
         assert!(cache.exhausted());
         cache.flush();
         assert_eq!(cache.entries(), 0);

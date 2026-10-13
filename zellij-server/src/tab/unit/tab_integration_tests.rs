@@ -3867,6 +3867,27 @@ fn wide_characters_in_left_title_side() {
 }
 
 #[test]
+fn grapheme_clusters_in_left_title_side() {
+    let size = Size {
+        cols: 121,
+        rows: 10,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let mut output = Output::default();
+    let pane_content = read_fixture("title-graphemes");
+    tab.handle_pty_bytes(1, pane_content).unwrap();
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap().ansi(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
 fn save_cursor_position_across_resizes() {
     // the save cursor position ANSI instruction (CSI s) needs to point to the same character after we
     // resize the pane

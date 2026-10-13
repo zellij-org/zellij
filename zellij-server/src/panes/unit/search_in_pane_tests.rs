@@ -426,3 +426,138 @@ pub fn searching_whole_word_case_insensitive() {
         format!("{:?}", terminal_pane.grid)
     );
 }
+
+fn create_pane_with_content(content: &str, cols: usize) -> TerminalPane {
+    let mut fake_win_size = PaneGeom::default();
+    fake_win_size.cols.set_inner(cols);
+    fake_win_size.rows.set_inner(10);
+    let mut terminal_pane = TerminalPane::new(
+        1,
+        fake_win_size,
+        Style::default(),
+        0,
+        String::new(),
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        Rc::new(RefCell::new(SixelImageStore::default())),
+        Rc::new(RefCell::new(KittyImageStore::default())),
+        Rc::new(RefCell::new(Palette::default())),
+        Rc::new(RefCell::new(HashMap::new())),
+        None,
+        None,
+        false,
+        true,
+        true,
+        true,
+        false,
+        None,
+    );
+    terminal_pane.handle_pty_bytes(content.as_bytes().to_vec());
+    terminal_pane
+}
+
+fn found_ranges(terminal_pane: &TerminalPane) -> Vec<((isize, usize), (isize, usize))> {
+    terminal_pane
+        .grid
+        .search_results
+        .selections
+        .iter()
+        .map(|selection| {
+            (
+                (selection.start.line(), selection.start.column()),
+                (selection.end.line(), selection.end.column()),
+            )
+        })
+        .collect()
+}
+
+const FAMILY: &str = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}";
+
+#[test]
+pub fn searching_for_a_decomposed_accent_matches_the_whole_cluster() {
+    let mut terminal_pane = create_pane_with_content("cafe\u{0301} au lait", 40);
+    terminal_pane.update_search_term("e\u{0301}");
+    assert_eq!(found_ranges(&terminal_pane), vec![((0, 3), (0, 4))]);
+}
+
+#[test]
+pub fn searching_for_a_base_letter_does_not_match_inside_a_decomposed_cluster() {
+    let mut terminal_pane = create_pane_with_content("cafe\u{0301} e", 40);
+    terminal_pane.update_search_term("e");
+    assert_eq!(found_ranges(&terminal_pane), vec![((0, 5), (0, 6))]);
+}
+
+#[test]
+pub fn searching_for_a_family_emoji_in_default_mode_highlights_its_group() {
+    let mut terminal_pane = create_pane_with_content(&format!("ab{}cd", FAMILY), 40);
+    terminal_pane.update_search_term(FAMILY);
+    assert_eq!(found_ranges(&terminal_pane), vec![((0, 2), (0, 8))]);
+}
+
+#[test]
+pub fn searching_for_a_family_emoji_in_grapheme_mode_highlights_one_cell() {
+    let mut terminal_pane =
+        create_pane_with_content(&format!("\u{1b}[?2027hab{}cd", FAMILY), 40);
+    terminal_pane.update_search_term(FAMILY);
+    assert_eq!(found_ranges(&terminal_pane), vec![((0, 2), (0, 4))]);
+}
+
+#[test]
+pub fn searching_for_part_of_a_family_emoji_does_not_match() {
+    let mut terminal_pane = create_pane_with_content(&format!("ab{}cd", FAMILY), 40);
+    terminal_pane.update_search_term("\u{1F469}");
+    assert_eq!(found_ranges(&terminal_pane), vec![]);
+}
+
+#[test]
+pub fn searching_non_ascii_text_does_not_panic_and_finds_it() {
+    let mut terminal_pane = create_pane_with_content("grüße und grüße", 40);
+    terminal_pane.update_search_term("grüße");
+    assert_eq!(
+        found_ranges(&terminal_pane),
+        vec![((0, 0), (0, 5)), ((0, 10), (0, 15))]
+    );
+}
+
+#[test]
+pub fn a_match_after_wide_characters_highlights_screen_columns() {
+    let mut terminal_pane = create_pane_with_content("你好 world", 40);
+    terminal_pane.update_search_term("world");
+    assert_eq!(found_ranges(&terminal_pane), vec![((0, 5), (0, 10))]);
+    assert_snapshot!(format!("{:?}", terminal_pane.grid));
+}
+
+#[test]
+pub fn a_non_ascii_match_across_a_wrapped_line_is_found() {
+    let mut terminal_pane = create_pane_with_content("xxxxxxxgrüße", 10);
+    terminal_pane.update_search_term("grüße");
+    assert_eq!(found_ranges(&terminal_pane), vec![((0, 7), (1, 2))]);
+}
+
+#[test]
+pub fn case_insensitive_search_folds_greek_cyrillic_and_turkish() {
+    let mut terminal_pane =
+        create_pane_with_content("ΣΟΦΙΑ МОСКВА \u{0130}stanbul", 60);
+    terminal_pane.update_search_term("σοφια");
+    terminal_pane.toggle_search_case_sensitivity();
+    assert_eq!(found_ranges(&terminal_pane), vec![((0, 0), (0, 5))]);
+    terminal_pane.update_search_term("\0");
+    terminal_pane.update_search_term("москва");
+    terminal_pane.toggle_search_case_sensitivity();
+    assert_eq!(found_ranges(&terminal_pane), vec![((0, 6), (0, 12))]);
+    terminal_pane.update_search_term("\0");
+    terminal_pane.update_search_term("i\u{0307}stanbul");
+    terminal_pane.toggle_search_case_sensitivity();
+    assert_eq!(found_ranges(&terminal_pane), vec![((0, 13), (0, 21))]);
+}
+
+#[test]
+pub fn whole_word_search_respects_non_ascii_neighbours() {
+    let mut terminal_pane = create_pane_with_content("überall all állé all", 40);
+    terminal_pane.update_search_term("all");
+    terminal_pane.toggle_search_whole_words();
+    assert_eq!(
+        found_ranges(&terminal_pane),
+        vec![((0, 8), (0, 11)), ((0, 17), (0, 20))]
+    );
+}

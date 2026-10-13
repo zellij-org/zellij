@@ -1,5 +1,4 @@
 use std::fmt;
-use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 use zellij_utils::data::{BareKey, KeyModifier, KeyWithModifier, Mouse};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -157,11 +156,7 @@ pub(crate) fn state_value(state: &mut Vec<String>, name: &str, value: impl fmt::
 }
 
 pub(crate) fn text_width(text: &str) -> usize {
-    UnicodeWidthStr::width(text)
-}
-
-pub(crate) fn char_width(character: char) -> usize {
-    character.width().unwrap_or(0)
+    zellij_utils::graphemes::display_width(text)
 }
 
 pub(crate) fn default_label_width(label: &str) -> usize {

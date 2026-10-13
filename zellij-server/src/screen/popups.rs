@@ -42,9 +42,9 @@ pub fn estimated_context_menu_size(
         .filter_map(|entry| match entry {
             ContextMenuEntry::Item { label, actions } => {
                 let shortcut = context_menu_shortcut(keybinds, base_mode, actions)
-                    .map(|shortcut| shortcut.chars().count() + 1)
+                    .map(|shortcut| zellij_utils::graphemes::display_width(&shortcut) + 1)
                     .unwrap_or(0);
-                Some(label.chars().count() + 4 + shortcut)
+                Some(zellij_utils::graphemes::display_width(label) + 4 + shortcut)
             },
             ContextMenuEntry::Separator => None,
         })

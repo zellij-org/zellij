@@ -1,4 +1,6 @@
-use ansi_term::{unstyled_len, ANSIStrings};
+use crate::status_bar::unstyled_len;
+use ansi_term::ANSIStrings;
+use zellij_tile::graphemes::display_width;
 use zellij_tile::prelude::actions::Action;
 use zellij_tile::prelude::*;
 
@@ -158,13 +160,13 @@ fn long_mode_shortcut(
             suffix_separator,
         ])
         .to_string(),
-        len: start_separator.chars().count()
+        len: display_width(&start_separator)
             + 2
-            + key_binding.chars().count()
+            + display_width(&key_binding)
             + 2
-            + key_hint.chars().count()
+            + display_width(&key_hint)
             + 1
-            + separator.chars().count(),
+            + display_width(&separator),
         ..Default::default()
     }
 }
@@ -211,13 +213,13 @@ fn shortened_modifier_shortcut(
             suffix_separator,
         ])
         .to_string(),
-        len: start_separator.chars().count()
+        len: display_width(&start_separator)
             + 2
-            + key_binding.chars().count()
+            + display_width(&key_binding)
             + 2
-            + key_hint.chars().count()
+            + display_width(&key_hint)
             + 1
-            + separator.chars().count(),
+            + display_width(&separator),
         ..Default::default()
     }
 }
@@ -252,11 +254,11 @@ fn short_mode_shortcut(
     let suffix_separator = colors.suffix_separator.paint(separator);
     LinePart {
         part: ANSIStrings(&[prefix_separator, char_shortcut, suffix_separator]).to_string(),
-        len: separator.chars().count()
+        len: display_width(&separator)
             + 1
-            + key_binding.chars().count()
+            + display_width(&key_binding)
             + 1
-            + separator.chars().count(),
+            + display_width(&separator),
         ..Default::default()
     }
 }
@@ -340,7 +342,7 @@ fn swap_layout_status(
             let mut swap_layout_name = format!(" {} ", swap_layout_name);
             swap_layout_name.make_ascii_uppercase();
             let keycode = swap_layout_keycode(mode_info);
-            let swap_layout_name_len = swap_layout_name.len() + 3;
+            let swap_layout_name_len = display_width(&swap_layout_name) + 3;
             macro_rules! style_swap_layout_indicator {
                 ($style_name:ident) => {{
                     (
@@ -486,7 +488,7 @@ pub fn superkey(
         common_modifiers,
         LinePart {
             part: ANSIStrings(&[prefix, suffix_separator]).to_string(),
-            len: prefix_text.chars().count() + separator.chars().count(),
+            len: display_width(&prefix_text) + display_width(&separator),
             ..Default::default()
         },
     )

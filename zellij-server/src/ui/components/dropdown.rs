@@ -1,6 +1,7 @@
 use super::widget_common::{
     accented_field_bracket_styles, bold, colored, decode_styled, decode_text, field_styles, fit,
-    label_width, move_to, paint, paint_text, render_label, selected_row_styles, WidgetState,
+    label_width, move_to, paint, paint_text, render_label, selected_row_styles, text_width,
+    WidgetState,
 };
 use super::Coordinates;
 use zellij_utils::data::Style;
@@ -32,7 +33,7 @@ pub fn dropdown(
     let field_width = coordinates
         .width
         .map(|w| w.saturating_sub(label_width))
-        .unwrap_or(value.chars().count() + MIN_FIELD_WIDTH)
+        .unwrap_or(text_width(&value) + MIN_FIELD_WIDTH)
         .max(MIN_FIELD_WIDTH);
     let active = focused || open;
     let bracket_styles =

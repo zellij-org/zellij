@@ -864,12 +864,12 @@ impl KeysScreen {
                 Some(path) => {
                     let prefix_lines = wrap_words(prefix, width);
                     let last = prefix_lines.last().cloned().unwrap_or_default();
-                    let last_width = last.chars().count();
+                    let last_width = zellij_tile::graphemes::display_width(&last);
                     for (index, line) in prefix_lines.iter().enumerate() {
                         lines.push((row + index, Text::from(line).unbold_all().dim_all()));
                     }
                     row += prefix_lines.len().saturating_sub(1);
-                    if last_width + 1 + path.chars().count() <= width {
+                    if last_width + 1 + zellij_tile::graphemes::display_width(&path) <= width {
                         link_row = Some((row, last_width + 1, path));
                     } else {
                         row += 1;
@@ -1033,7 +1033,7 @@ impl KeysScreen {
             self.file_link_area = Some(Rect::new(
                 x + column,
                 y + link_line,
-                link.chars().count(),
+                zellij_tile::graphemes::display_width(&link),
                 1,
             ));
             print_link(
@@ -1119,15 +1119,7 @@ impl KeysScreen {
 }
 
 fn truncate(text: &str, width: usize) -> String {
-    if text.chars().count() <= width {
-        text.to_owned()
-    } else if width == 0 {
-        String::new()
-    } else {
-        let mut truncated: String = text.chars().take(width.saturating_sub(1)).collect();
-        truncated.push('…');
-        truncated
-    }
+    crate::page::truncate(text, width)
 }
 
 fn is_usable_preset_name(name: &str) -> bool {
@@ -1143,12 +1135,21 @@ fn wrap_words(text: &str, width: usize) -> Vec<String> {
     let mut line = String::new();
     for word in text.split_whitespace() {
         let mut word = word.to_owned();
-        if !line.is_empty() && line.chars().count() + 1 + word.chars().count() > width {
+        let display_width = zellij_tile::graphemes::display_width;
+        if !line.is_empty() && display_width(&line) + 1 + display_width(&word) > width {
             lines.push(std::mem::take(&mut line));
         }
-        while word.chars().count() > width {
-            let head: String = word.chars().take(width).collect();
-            word = word.chars().skip(width).collect();
+        while display_width(&word) > width {
+            let mut head = String::new();
+            let mut head_width = 0;
+            for (cluster, cluster_width) in zellij_tile::graphemes::clusters(&word) {
+                if head_width + cluster_width > width && !head.is_empty() {
+                    break;
+                }
+                head.push_str(cluster);
+                head_width += cluster_width;
+            }
+            word = word[head.len()..].to_owned();
             if !line.is_empty() {
                 lines.push(std::mem::take(&mut line));
             }

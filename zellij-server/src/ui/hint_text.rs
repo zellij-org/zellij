@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
-use unicode_width::UnicodeWidthStr;
 use zellij_utils::data::StyledText;
+use zellij_utils::graphemes::display_width;
 
 pub enum HintLevel {
     Plain,
@@ -195,7 +195,7 @@ pub fn hover_hint_variants() -> BTreeMap<usize, StyledText> {
     let mut variants = BTreeMap::new();
     for tier in ALL_TIERS {
         let styled_text = segments_to_styled_text(&hover_segments(tier));
-        variants.insert(styled_text.text.width(), styled_text);
+        variants.insert(display_width(&styled_text.text), styled_text);
     }
     variants
 }
@@ -329,7 +329,7 @@ pub fn resize_hint_variants(
     for tier in ALL_TIERS {
         let styled_text =
             segments_to_styled_text(&resize_segments(is_floating, mouse_scroll_resize, tier));
-        variants.insert(styled_text.text.width(), styled_text);
+        variants.insert(display_width(&styled_text.text), styled_text);
     }
     variants
 }
@@ -346,7 +346,7 @@ pub fn held_hint_variants(
         }
         segments.extend(rerun_segments(is_first_run, tier));
         let styled_text = segments_to_styled_text(&segments);
-        variants.insert(styled_text.text.width(), styled_text);
+        variants.insert(display_width(&styled_text.text), styled_text);
     }
     variants
 }

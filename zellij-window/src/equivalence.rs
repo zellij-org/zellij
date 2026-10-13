@@ -85,7 +85,7 @@ pub fn project_screen_buffer(buffer: &ScreenBuffer) -> Projection {
                 _ => Some(wire_color(cell.underline_color)),
             };
             projected.push(Cell {
-                text: cell.character().to_string(),
+                text: buffer.text_at(row, col),
                 occupancy,
                 fg: wire_color(cell.fg),
                 bg: wire_color(cell.bg),
@@ -140,6 +140,43 @@ pub fn dialects_of(bytes: &[u8], rows: usize, cols: usize, chunk: usize) -> Dial
     dialects
 }
 
+pub fn grid_and_wire(
+    bytes: &[u8],
+    rows: usize,
+    cols: usize,
+    chunk: usize,
+) -> (Projection, Projection) {
+    let (grid, buffer) = grid_and_buffer(bytes, rows, cols, chunk);
+    (grid, project_screen_buffer(&buffer))
+}
+
+pub fn grid_and_buffer(
+    bytes: &[u8],
+    rows: usize,
+    cols: usize,
+    chunk: usize,
+) -> (Projection, ScreenBuffer) {
+    let mut emitter = Emitter::new(rows, cols);
+    let mut buffer = ScreenBuffer::new(rows, cols);
+    let drain = |emitter: &mut Emitter, buffer: &mut ScreenBuffer| {
+        while let Some((_, frame)) = emitter.dialects() {
+            if let RenderPayload::Frame(frame) = frame {
+                let view =
+                    decode(&frame).expect("the server emitted a frame its own decoder rejects");
+                buffer
+                    .apply(&view)
+                    .expect("the server emitted a frame the screen buffer rejects");
+            }
+        }
+    };
+    for piece in bytes.chunks(chunk.max(1)) {
+        emitter.advance(piece);
+        drain(&mut emitter, &mut buffer);
+    }
+    drain(&mut emitter, &mut buffer);
+    (emitter.project(), buffer)
+}
+
 pub fn buffer_of(frames: &[Vec<u8>], rows: usize, cols: usize) -> ScreenBuffer {
     let mut buffer = ScreenBuffer::new(rows, cols);
     for frame in frames {
@@ -175,6 +212,13 @@ mod tests {
     const EMIT_CHUNK: usize = 4096;
 
     fn divergences_for(bytes: &[u8]) -> Vec<String> {
+        if crate::differential::uses_grapheme_mode(bytes) {
+            let (grid, wire) = grid_and_wire(bytes, STREAM_ROWS, STREAM_COLS, EMIT_CHUNK);
+            return compare(&grid, &wire)
+                .into_iter()
+                .map(|divergence| divergence.describe())
+                .collect();
+        }
         let dialects = dialects_of(bytes, STREAM_ROWS, STREAM_COLS, EMIT_CHUNK);
         let through_ansi = reference_of(&dialects.ansi, STREAM_ROWS, STREAM_COLS).project();
         let through_the_wire =
@@ -245,6 +289,56 @@ mod tests {
         assert_agrees(
             "\u{1b}]8;id=1;https://example.com/wide\u{1b}\\\u{4f60}\u{1b}]8;;\u{1b}\\x".as_bytes(),
         );
+    }
+
+    #[test]
+    fn combining_marks_agree_across_the_dialects() {
+        assert_agrees("e\u{301} a\u{308}\u{30a} x\u{ad}y \u{ff76}\u{ff9e}".as_bytes());
+    }
+
+    #[test]
+    fn emoji_sequences_agree_across_the_dialects_in_default_mode() {
+        assert_agrees(
+            "\u{26a0}\u{fe0f}|\u{1f44d}\u{1f3fd}|\u{1f1e9}\u{1f1ea}|\
+             \u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467}|\u{1f3f3}\u{fe0f}\u{200d}\u{1f308}|\
+             1\u{fe0f}\u{20e3}|"
+                .as_bytes(),
+        );
+    }
+
+    #[test]
+    fn indic_thai_and_hangul_clusters_agree_across_the_dialects() {
+        assert_agrees(
+            "\u{915}\u{94d}\u{937}|\u{915}\u{93e}|\u{e01}\u{e49}\u{e33}|\u{1100}\u{1161}\u{11a8}|"
+                .as_bytes(),
+        );
+    }
+
+    #[test]
+    fn a_styled_group_agrees_across_the_dialects() {
+        assert_agrees(
+            "\u{1b}[31m\u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467}\u{1b}[m \u{1b}[32m\u{1f44d}\u{1b}[33m\u{1f3fd}\u{1b}[m"
+                .as_bytes(),
+        );
+    }
+
+    #[test]
+    fn mode_2027_clusters_reach_the_wire_as_the_grid_holds_them() {
+        let stream = "\u{1b}[?2027h\u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467}|\u{26a0}\u{fe0f}|\
+                      \u{915}\u{94d}\u{937}|\u{231a}\u{fe0e}|\u{1f1e9}\u{1f1ea}\u{1f1eb}|";
+        let (grid, wire) = grid_and_wire(stream.as_bytes(), STREAM_ROWS, STREAM_COLS, EMIT_CHUNK);
+        let divergences: Vec<String> = compare(&grid, &wire)
+            .into_iter()
+            .map(|divergence| divergence.describe())
+            .collect();
+        assert!(divergences.is_empty(), "{}", divergences.join("\n"));
+        assert_eq!(
+            wire.cells[0][0].text,
+            "\u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467}"
+        );
+        assert_eq!(wire.cells[0][0].occupancy, Occupancy::WideHead);
+        assert_eq!(wire.cells[0][1].occupancy, Occupancy::WideTail);
+        assert_eq!(wire.cells[0][2].text, "|");
     }
 
     #[test]

@@ -788,9 +788,9 @@ fn feature_link(label: &'static str, target_page: ClickAction) -> ActiveComponen
                 x + 1,
                 hover_label
             );
-            hover_label.chars().count()
+            zellij_tile::graphemes::display_width(&hover_label)
         }),
-        Box::new(move || label.chars().count()),
+        Box::new(move || zellij_tile::graphemes::display_width(&label)),
     ))
     .with_left_click_action(target_page)
     .keyboard_selectable()
@@ -1140,12 +1140,12 @@ fn changelog_link_selected(version: String) -> Box<dyn Fn(usize, usize) -> usize
             x + 1,
             version
         );
-        51 + version.chars().count()
+        51 + zellij_tile::graphemes::display_width(&version)
     })
 }
 
 fn changelog_link_selected_len(version: String) -> Box<dyn Fn() -> usize> {
-    Box::new(move || 51 + version.chars().count())
+    Box::new(move || 51 + zellij_tile::graphemes::display_width(&version))
 }
 
 fn sponsors_link_text_unselected() -> Text {

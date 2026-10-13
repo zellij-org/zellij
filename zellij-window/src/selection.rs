@@ -1,4 +1,4 @@
-use crate::screen_buffer::{Occupancy, ScreenBuffer};
+use crate::screen_buffer::ScreenBuffer;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Selection {
@@ -63,14 +63,13 @@ impl Selection {
             };
             let mut line = String::new();
             let mut col = first;
-            if col < size.cols && col > 0 && buffer.occupancy(row, col) == Occupancy::WideTail {
-                col -= 1;
+            if col < size.cols {
+                col = buffer.unit_span(row, col).start;
             }
             while col <= last && col < size.cols {
-                if buffer.occupancy(row, col) != Occupancy::WideTail {
-                    line.push(buffer.cell(row, col).character());
-                }
-                col += 1;
+                let span = buffer.unit_span(row, col);
+                line.push_str(&buffer.unit_text(row, span));
+                col = span.end.max(col + 1);
             }
             lines.push(line.trim_end().to_owned());
         }
@@ -158,6 +157,81 @@ mod tests {
         assert_eq!(
             Selection::at(2, 0).extended_to(9, 40).text(state.screen()),
             "end"
+        );
+    }
+
+    const FAMILY: [(&str, usize); 3] = [
+        ("\u{1f468}\u{200d}", 2),
+        ("\u{1f469}\u{200d}", 2),
+        ("\u{1f467}", 2),
+    ];
+    const FAMILY_TEXT: &str = "\u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467}";
+
+    #[test]
+    fn a_copied_cluster_keeps_every_code_point() {
+        let state = screen(|p| {
+            p.text(0, 0, "a");
+            p.cluster(0, 1, "e\u{301}", 1);
+            p.cluster(0, 2, "\u{26a0}\u{fe0f}", 1);
+            p.text(0, 3, "b");
+        });
+        assert_eq!(
+            Selection::at(0, 0).extended_to(0, 3).text(state.screen()),
+            "ae\u{301}\u{26a0}\u{fe0f}b"
+        );
+    }
+
+    #[test]
+    fn a_copied_group_is_its_whole_text_once() {
+        let state = screen(|p| {
+            p.text(0, 0, "a");
+            p.group(0, 1, &FAMILY);
+            p.text(0, 7, "b");
+        });
+        assert_eq!(
+            Selection::at(0, 0).extended_to(0, 7).text(state.screen()),
+            format!("a{}b", FAMILY_TEXT)
+        );
+    }
+
+    #[test]
+    fn a_selection_edge_inside_a_group_takes_the_whole_group() {
+        let state = screen(|p| {
+            p.text(0, 0, "a");
+            p.group(0, 1, &FAMILY);
+            p.text(0, 7, "b");
+        });
+        assert_eq!(
+            Selection::at(0, 4).extended_to(0, 7).text(state.screen()),
+            format!("{}b", FAMILY_TEXT)
+        );
+        assert_eq!(
+            Selection::at(0, 0).extended_to(0, 3).text(state.screen()),
+            format!("a{}", FAMILY_TEXT)
+        );
+    }
+
+    #[test]
+    fn a_mode_2027_cluster_cell_is_copied_once_with_its_tail_skipped() {
+        let state = screen(|p| {
+            p.cluster(0, 0, FAMILY_TEXT, 2);
+            p.text(0, 2, "x");
+        });
+        assert_eq!(
+            Selection::at(0, 0).extended_to(0, 2).text(state.screen()),
+            format!("{}x", FAMILY_TEXT)
+        );
+    }
+
+    #[test]
+    fn a_width_three_cell_is_copied_once() {
+        let state = screen(|p| {
+            p.cluster(0, 0, "\u{17d8}", 3);
+            p.text(0, 3, "y");
+        });
+        assert_eq!(
+            Selection::at(0, 2).extended_to(0, 3).text(state.screen()),
+            "\u{17d8}y"
         );
     }
 }

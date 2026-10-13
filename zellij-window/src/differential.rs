@@ -45,6 +45,20 @@ pub fn stream_corpus() -> Result<Vec<PathBuf>> {
     Ok(streams)
 }
 
+pub const GRAPHEME_MODE_ON: &[u8] = b"\x1b[?2027h";
+
+pub fn uses_grapheme_mode(bytes: &[u8]) -> bool {
+    bytes
+        .windows(GRAPHEME_MODE_ON.len())
+        .any(|window| window == GRAPHEME_MODE_ON)
+}
+
+pub fn path_uses_grapheme_mode(path: &Path) -> bool {
+    fs::read(path)
+        .map(|bytes| uses_grapheme_mode(&bytes))
+        .unwrap_or(false)
+}
+
 pub fn frames_for(path: &Path) -> Arc<Vec<String>> {
     static CACHE: OnceLock<Mutex<HashMap<PathBuf, Arc<Vec<String>>>>> = OnceLock::new();
     let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
@@ -202,6 +216,9 @@ mod tests {
     fn every_application_stream_agrees_with_the_reference() {
         let mut failures = Vec::new();
         for path in stream_corpus().expect("a readable stream corpus") {
+            if path_uses_grapheme_mode(&path) {
+                continue;
+            }
             let divergences = compare(
                 &reference_projection_for(&path),
                 &window_projection_for(&path),
@@ -221,6 +238,9 @@ mod tests {
         let mut failures = Vec::new();
         for path in stream_corpus().expect("a readable stream corpus") {
             let bytes = fs::read(&path).expect("a readable stream");
+            if uses_grapheme_mode(&bytes) {
+                continue;
+            }
             let mut emitter = Emitter::new(STREAM_ROWS, STREAM_COLS);
             let mut frames = Vec::new();
             for piece in bytes.chunks(EMIT_CHUNK) {
@@ -308,10 +328,87 @@ mod tests {
         }
     }
 
+    const CLUSTER_SAMPLES: &str = "e\u{301} a\u{308}\u{30a} \u{26a0}\u{fe0f} \u{231a}\u{fe0e} \
+         \u{1f44d}\u{1f3fd} \u{1f1e9}\u{1f1ea} \u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467} \
+         \u{1f3f3}\u{fe0f}\u{200d}\u{1f308} 1\u{fe0f}\u{20e3} \u{915}\u{94d}\u{937} \u{915}\u{93e} \
+         \u{e01}\u{e49}\u{e33} \u{1100}\u{1161}\u{11a8} \u{ff76}\u{ff9e} x\u{ad}y \u{17d8}|";
+
+    fn cluster_streams() -> Vec<(&'static str, String)> {
+        vec![
+            ("default mode", format!("{}\r\n", CLUSTER_SAMPLES)),
+            (
+                "mode 2027",
+                format!("\u{1b}[?2027h{}\r\n", CLUSTER_SAMPLES),
+            ),
+        ]
+    }
+
+    #[test]
+    fn a_cluster_stream_split_between_every_code_point_reaches_the_grid_and_the_wire_unchanged() {
+        const ROWS: usize = 4;
+        const COLS: usize = 80;
+        for (name, stream) in cluster_streams() {
+            let bytes = stream.as_bytes();
+            let mut whole = Emitter::new(ROWS, COLS);
+            whole.advance(bytes);
+            let expected = whole.project();
+            for split in (1..bytes.len()).filter(|split| stream.is_char_boundary(*split)) {
+                let mut emitter = Emitter::new(ROWS, COLS);
+                let mut buffer = crate::screen_buffer::ScreenBuffer::new(ROWS, COLS);
+                emitter.advance(&bytes[..split]);
+                apply_frames(&mut emitter, &mut buffer);
+                emitter.advance(&bytes[split..]);
+                apply_frames(&mut emitter, &mut buffer);
+                let grid = compare(&expected, &emitter.project());
+                assert!(
+                    grid.is_empty(),
+                    "{}",
+                    report(&format!("{} split at byte {} (grid)", name, split), &grid)
+                );
+                let wire = compare(
+                    &expected,
+                    &crate::equivalence::project_screen_buffer(&buffer),
+                );
+                assert!(
+                    wire.is_empty(),
+                    "{}",
+                    report(&format!("{} split at byte {} (wire)", name, split), &wire)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_default_mode_cluster_payload_split_between_every_code_point_agrees_with_alacritty() {
+        const ROWS: usize = 4;
+        const COLS: usize = 80;
+        let (_, stream) = &cluster_streams()[0];
+        let stream = stream.replace('\u{17d8}', "");
+        let frames = frames_of(stream.as_bytes(), ROWS, COLS, EMIT_CHUNK);
+        let expected = reference_of(&frames, ROWS, COLS).project();
+        assert!(disagreement(&expected, &window_of(&frames, ROWS, COLS)).is_empty());
+        let joined = frames.concat();
+        let bytes = joined.as_bytes();
+        for split in (1..bytes.len()).filter(|split| joined.is_char_boundary(*split)) {
+            let mut state = VteTerminal::new(ROWS, COLS);
+            state.apply_bytes(&bytes[..split]);
+            state.apply_bytes(&bytes[split..]);
+            let divergences = disagreement(&expected, &state);
+            assert!(
+                divergences.is_empty(),
+                "{}",
+                report(&format!("split at byte {}", split), &divergences)
+            );
+        }
+    }
+
     #[test]
     fn an_unreportable_reference_cursor_leaves_the_window_at_the_last_column() {
         let mut checked = 0;
         for path in stream_corpus().expect("a readable stream corpus") {
+            if path_uses_grapheme_mode(&path) {
+                continue;
+            }
             let frames = frames_for(&path);
             if reference_projection_for(&path).cursor.position.is_some() {
                 continue;
@@ -399,7 +496,33 @@ mod tests {
                 }),
             &mut seen,
         );
+        for path in stream_corpus().unwrap() {
+            let bytes = fs::read(&path).expect("a readable stream");
+            let dialects =
+                crate::equivalence::dialects_of(&bytes, STREAM_ROWS, STREAM_COLS, EMIT_CHUNK);
+            wire_census(
+                &crate::equivalence::buffer_of(&dialects.frames, STREAM_ROWS, STREAM_COLS),
+                &mut seen,
+            );
+        }
+        for path in goldens::corpus().unwrap() {
+            wire_census(recorded_state(&path).screen(), &mut seen);
+        }
         seen
+    }
+
+    fn wire_census(buffer: &crate::screen_buffer::ScreenBuffer, seen: &mut BTreeSet<String>) {
+        if buffer.cluster_count() > 0 {
+            seen.insert("cluster record".to_owned());
+        }
+        let size = buffer.size();
+        for row in 0..size.rows {
+            for col in 0..size.cols {
+                if buffer.is_group_continuation(row, col) {
+                    seen.insert("group continuation".to_owned());
+                }
+            }
+        }
     }
 
     const NARROWER_GEOMETRIES: [(usize, usize); 3] = [(24, 80), (30, 60), (12, 40)];
@@ -417,6 +540,15 @@ mod tests {
                     rows,
                     cols
                 );
+                if uses_grapheme_mode(&bytes) {
+                    let (grid, wire) =
+                        crate::equivalence::grid_and_wire(&bytes, rows, cols, EMIT_CHUNK);
+                    let against_the_wire = compare(&grid, &wire);
+                    if !against_the_wire.is_empty() {
+                        failures.push(report(&format!("{} (wire)", name), &against_the_wire));
+                    }
+                    continue;
+                }
                 let dialects = crate::equivalence::dialects_of(&bytes, rows, cols, EMIT_CHUNK);
                 let grid = reference_of(&dialects.ansi, rows, cols).project();
                 let wire = crate::equivalence::project_screen_buffer(
@@ -442,6 +574,9 @@ mod tests {
         for (rows, cols) in NARROWER_GEOMETRIES {
             for path in stream_corpus().expect("a readable stream corpus") {
                 let bytes = fs::read(&path).expect("a readable stream");
+                if uses_grapheme_mode(&bytes) {
+                    continue;
+                }
                 let dialects = crate::equivalence::dialects_of(&bytes, rows, cols, EMIT_CHUNK);
                 let wrapped = of_window(&window_of(&dialects.ansi, rows, cols)).wrapped_rows;
                 assert!(
@@ -462,15 +597,17 @@ mod tests {
         ansi: Reference,
         alacritty: VteTerminal,
         buffer: crate::screen_buffer::ScreenBuffer,
+        grapheme_mode: bool,
     }
 
     impl Reflow {
-        fn new() -> Self {
+        fn new(grapheme_mode: bool) -> Self {
             Reflow {
                 emitter: Emitter::new(STREAM_ROWS, STREAM_COLS),
                 ansi: Reference::new(STREAM_ROWS, STREAM_COLS),
                 alacritty: VteTerminal::new(STREAM_ROWS, STREAM_COLS),
                 buffer: crate::screen_buffer::ScreenBuffer::new(STREAM_ROWS, STREAM_COLS),
+                grapheme_mode,
             }
         }
 
@@ -511,8 +648,11 @@ mod tests {
         }
 
         fn divergences(&self) -> Vec<(&'static str, Vec<Divergence>)> {
-            let ansi = self.ansi.project();
             let wire = crate::equivalence::project_screen_buffer(&self.buffer);
+            if self.grapheme_mode {
+                return vec![("wire", compare(&self.emitter.project(), &wire))];
+            }
+            let ansi = self.ansi.project();
             let alacritty = of_window(&self.alacritty);
             vec![
                 ("wire", compare(&ansi, &wire)),
@@ -536,7 +676,7 @@ mod tests {
                 };
                 for (when, split) in arms.iter().copied() {
                     let resize_after = if split == 0 { bytes.len() / 2 } else { split };
-                    let mut reflow = Reflow::new();
+                    let mut reflow = Reflow::new(uses_grapheme_mode(&bytes));
                     let (before, after) = bytes.split_at(resize_after.min(bytes.len()));
                     reflow.feed(before);
                     reflow.resize(rows, cols);
@@ -594,7 +734,7 @@ mod tests {
         let mut compared = 0;
         for path in stream_corpus().expect("a readable stream corpus") {
             let bytes = fs::read(&path).expect("a readable stream");
-            if clears_the_screen(&bytes) {
+            if clears_the_screen(&bytes) || uses_grapheme_mode(&bytes) {
                 continue;
             }
             let name = path.file_name().unwrap().to_str().unwrap().to_owned();
@@ -648,6 +788,9 @@ mod tests {
         let mut unexplained = Vec::new();
         for path in stream_corpus().expect("a readable stream corpus") {
             let bytes = fs::read(&path).expect("a readable stream");
+            if uses_grapheme_mode(&bytes) {
+                continue;
+            }
             let mut emitter = Emitter::new(STREAM_ROWS, STREAM_COLS);
             emitter.advance(&bytes);
             let mut alacritty = VteTerminal::new(STREAM_ROWS, STREAM_COLS);
@@ -900,6 +1043,76 @@ mod tests {
         }
     }
 
+    fn labels_at(projection: &Projection, label: &str) -> Vec<(usize, usize)> {
+        let wanted: Vec<String> = label.chars().map(|c| c.to_string()).collect();
+        let mut found = Vec::new();
+        for (row, cells) in projection.cells.iter().enumerate() {
+            for col in 0..cells.len().saturating_sub(wanted.len()) {
+                if cells[col..col + wanted.len()]
+                    .iter()
+                    .zip(&wanted)
+                    .all(|(cell, expected)| &cell.text == expected)
+                {
+                    found.push((row, col));
+                }
+            }
+        }
+        found
+    }
+
+    #[test]
+    fn the_recorded_grapheme_capture_reaches_the_window_with_clusters_and_groups() {
+        let state = recorded_state(&fixtures_dir().join("grapheme-clusters.jsonl"));
+        let screen = state.screen();
+        let projection = crate::equivalence::project_screen_buffer(screen);
+        let family = "\u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467}";
+        const VALUE: usize = 10;
+
+        let accents = labels_at(&projection, "ACCENT:");
+        assert_eq!(accents.len(), 2, "both modes print the accent line");
+        for (row, col) in accents {
+            assert_eq!(projection.cells[row][col + VALUE].text, "e\u{301}");
+        }
+
+        let families = labels_at(&projection, "FAMILY:");
+        assert_eq!(families.len(), 2, "both modes print the family line");
+        let (row, col) = families[0];
+        assert_eq!(projection.cells[row][col + VALUE].text, "\u{1f468}\u{200d}");
+        assert!(screen.is_group_continuation(row, col + VALUE + 2));
+        assert!(screen.is_group_continuation(row, col + VALUE + 4));
+        assert_eq!(projection.cells[row][col + VALUE + 6].text, "|");
+        let (row, col) = families[1];
+        assert_eq!(projection.cells[row][col + VALUE].text, family);
+        assert_eq!(
+            projection.cells[row][col + VALUE].occupancy,
+            crate::projection::Occupancy::WideHead
+        );
+        assert_eq!(projection.cells[row][col + VALUE + 2].text, "|");
+
+        let warnings = labels_at(&projection, "VS16:");
+        assert_eq!(warnings.len(), 2);
+        let (row, col) = warnings[0];
+        assert_eq!(
+            projection.cells[row][col + VALUE].text, "\u{26a0}",
+            "a one-column warning sign arrives in its text style"
+        );
+        assert_eq!(projection.cells[row][col + VALUE + 1].text, "|");
+        let (row, col) = warnings[1];
+        assert_eq!(projection.cells[row][col + VALUE].text, "\u{26a0}\u{fe0f}");
+        assert_eq!(projection.cells[row][col + VALUE + 2].text, "|");
+
+        let overwritten = labels_at(&projection, "OVERWRITE:");
+        assert_eq!(overwritten.len(), 1);
+        let (row, col) = overwritten[0];
+        let start = col + 11;
+        assert_eq!(projection.cells[row][start].text, "\u{1f468}\u{200d}");
+        assert_eq!(projection.cells[row][start + 2].text, "X");
+        assert!(
+            !screen.is_group_continuation(row, start + 2),
+            "the overwritten member must not join the group"
+        );
+    }
+
     fn cells_of<'a>(projection: &'a Projection, label: &str) -> Vec<&'a crate::projection::Cell> {
         for row in &projection.cells {
             let text: String = row.iter().map(|cell| cell.text.as_str()).collect();
@@ -1051,6 +1264,9 @@ mod tests {
             "attr undercurl",
             "attr underline",
             "bg indexed",
+            "cluster record",
+            "combining mark",
+            "group continuation",
             "bg named",
             "bg rgb",
             "cursor hidden",
@@ -1071,7 +1287,7 @@ mod tests {
             );
         }
 
-        for unreachable in ["combining mark", "occupancy LeadingSpacer"] {
+        for unreachable in ["occupancy LeadingSpacer"] {
             assert!(
                 !exercised.contains(unreachable),
                 "{} is now reachable on this wire; it was recorded as impossible and its pinning \
@@ -1084,6 +1300,9 @@ mod tests {
     #[test]
     fn no_stream_ever_wraps_a_line_in_the_window() {
         for path in stream_corpus().expect("a readable stream corpus") {
+            if path_uses_grapheme_mode(&path) {
+                continue;
+            }
             let wrapped = window_projection_for(&path).wrapped_rows.clone();
             assert!(
                 wrapped.is_empty(),

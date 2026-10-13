@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use zellij_utils::structured_render::{
     CursorState, FrameView, WireCell, ATTR_FAST_BLINK, ATTR_SLOW_BLINK, CURSOR_SHAPE_BEAM,
@@ -96,6 +97,17 @@ pub struct ScreenBuffer {
     blinking: usize,
     blinking_rows: Vec<usize>,
     links: HashMap<u8, String>,
+    clusters: HashMap<usize, Arc<str>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UnitSpan {
+    pub start: usize,
+    pub end: usize,
+}
+
+pub fn cell_width(cell: &WireCell) -> usize {
+    (cell.width as usize).max(1)
 }
 
 impl ScreenBuffer {
@@ -110,6 +122,7 @@ impl ScreenBuffer {
             blinking: 0,
             blinking_rows: vec![0; rows],
             links: HashMap::new(),
+            clusters: HashMap::new(),
         }
     }
 
@@ -155,7 +168,78 @@ impl ScreenBuffer {
         if col > 0 && self.cell(row, col - 1).is_wide_head() {
             return Occupancy::WideTail;
         }
+        if col > 1 && self.cell(row, col - 2).width >= 3 {
+            return Occupancy::WideTail;
+        }
         Occupancy::Single
+    }
+
+    pub fn cluster_at(&self, row: usize, col: usize) -> Option<&Arc<str>> {
+        if row >= self.rows || col >= self.cols || self.clusters.is_empty() {
+            return None;
+        }
+        self.clusters.get(&(row * self.cols + col))
+    }
+
+    pub fn push_text_to(&self, row: usize, col: usize, out: &mut String) {
+        match self.cluster_at(row, col) {
+            Some(text) => out.push_str(text),
+            None => out.push(self.cell(row, col).character()),
+        }
+    }
+
+    #[cfg(test)]
+    pub fn text_at(&self, row: usize, col: usize) -> String {
+        let mut text = String::new();
+        self.push_text_to(row, col, &mut text);
+        text
+    }
+
+    pub fn cluster_count(&self) -> usize {
+        self.clusters.len()
+    }
+
+    pub fn is_group_continuation(&self, row: usize, col: usize) -> bool {
+        self.cell(row, col).is_group_continuation() && self.occupancy(row, col) != Occupancy::WideTail
+    }
+
+    pub fn unit_span(&self, row: usize, col: usize) -> UnitSpan {
+        if row >= self.rows || col >= self.cols {
+            return UnitSpan {
+                start: col,
+                end: col + 1,
+            };
+        }
+        let mut start = col;
+        while start > 0 {
+            if self.occupancy(row, start) == Occupancy::WideTail
+                || self.cell(row, start).is_group_continuation()
+            {
+                start -= 1;
+            } else {
+                break;
+            }
+        }
+        let mut end = start + cell_width(&self.cell(row, start));
+        while end < self.cols && self.is_group_continuation(row, end) {
+            end += cell_width(&self.cell(row, end));
+        }
+        UnitSpan {
+            start,
+            end: end.min(self.cols).max(col + 1),
+        }
+    }
+
+    pub fn unit_text(&self, row: usize, span: UnitSpan) -> String {
+        let mut text = String::new();
+        let mut col = span.start;
+        while col < span.end && col < self.cols {
+            if self.occupancy(row, col) != Occupancy::WideTail {
+                self.push_text_to(row, col, &mut text);
+            }
+            col += 1;
+        }
+        text
     }
 
     pub fn blink_at(&self, row: usize, col: usize) -> Blink {
@@ -211,12 +295,14 @@ impl ScreenBuffer {
             self.cells = vec![WireCell::BLANK; cols * rows];
             self.blinking_rows = vec![0; rows];
             self.blinking = 0;
+            self.clusters.clear();
         } else if header.full_repaint() || header.clear() {
             self.cells
                 .iter_mut()
                 .for_each(|cell| *cell = WireCell::BLANK);
             self.blinking_rows.iter_mut().for_each(|count| *count = 0);
             self.blinking = 0;
+            self.clusters.clear();
         }
         if header.full_repaint() {
             self.links.clear();
@@ -237,6 +323,7 @@ impl ScreenBuffer {
             }
         }
         frame.apply(&mut self.cells, self.cols, self.rows);
+        self.resolve_clusters(frame);
         let before = self.cursor;
         self.cursor = frame.cursor();
         let cursor_rows = (before != self.cursor).then(|| {
@@ -256,6 +343,48 @@ impl ScreenBuffer {
             written,
             cursor_rows,
         })
+    }
+
+    fn resolve_clusters(&mut self, frame: &FrameView<'_>) {
+        let header = frame.header();
+        let record = frame.clusters();
+        let mut resolved: HashMap<u16, Option<Arc<str>>> = HashMap::new();
+        for index in 0..header.row_record_count as usize {
+            let Some(row) = frame.record(index) else {
+                continue;
+            };
+            let start = row.y as usize * self.cols + row.x0 as usize;
+            let end = start + row.len as usize;
+            if end > self.cells.len() {
+                continue;
+            }
+            for at in start..end {
+                if !self.clusters.is_empty() {
+                    self.clusters.remove(&at);
+                }
+                let cell = &mut self.cells[at];
+                if char::from_u32(cell.ch).is_some() {
+                    continue;
+                }
+                let text = match cell.cluster_id() {
+                    Some(id) => resolved
+                        .entry(id)
+                        .or_insert_with(|| record.get(id).map(Arc::from))
+                        .clone(),
+                    None => None,
+                };
+                match text {
+                    Some(text) => {
+                        let mut characters = text.chars();
+                        cell.ch = characters.next().unwrap_or(' ') as u32;
+                        if characters.next().is_some() {
+                            self.clusters.insert(at, text);
+                        }
+                    },
+                    None => cell.ch = ' ' as u32,
+                }
+            }
+        }
     }
 
     fn recount_blinking(&mut self, row: usize) {
@@ -278,7 +407,8 @@ pub mod painter {
     use crate::terminal::TerminalState;
     use zellij_utils::structured_render::{
         CursorState, FrameBuilder, GraphicsMedium, GraphicsRecord, LinkEntry, LinkRecord, WireCell,
-        CURSOR_SHAPE_BEAM, CURSOR_SHAPE_DEFAULT, CURSOR_SHAPE_UNDERLINE, GRAPHICS_FORMAT_RGBA8,
+        ATTR_GROUP_CONTINUE, CURSOR_SHAPE_BEAM, CURSOR_SHAPE_DEFAULT, CURSOR_SHAPE_UNDERLINE,
+        GRAPHICS_FORMAT_RGBA8,
     };
 
     pub fn link_record(links: &[(u8, &str)]) -> LinkRecord {
@@ -535,6 +665,74 @@ pub mod painter {
             };
             self.builder
                 .push_row(row as u16, col as u16, &[head, spacer]);
+        }
+
+        pub fn cluster(&mut self, row: usize, col: usize, text: &str, width: usize) {
+            self.cluster_styled(row, col, text, width, |_| {});
+        }
+
+        pub fn cluster_styled(
+            &mut self,
+            row: usize,
+            col: usize,
+            text: &str,
+            width: usize,
+            style: impl Fn(&mut WireCell),
+        ) {
+            let cells = self.unit_cells(&[(text, width)], &style);
+            self.builder.push_row(row as u16, col as u16, &cells);
+        }
+
+        pub fn group(&mut self, row: usize, col: usize, members: &[(&str, usize)]) {
+            self.group_styled(row, col, members, |_| {});
+        }
+
+        pub fn group_styled(
+            &mut self,
+            row: usize,
+            col: usize,
+            members: &[(&str, usize)],
+            style: impl Fn(&mut WireCell),
+        ) {
+            let cells = self.unit_cells(members, &style);
+            self.builder.push_row(row as u16, col as u16, &cells);
+        }
+
+        fn unit_cells(
+            &mut self,
+            members: &[(&str, usize)],
+            style: &impl Fn(&mut WireCell),
+        ) -> Vec<WireCell> {
+            let mut cells = Vec::new();
+            for (index, (text, width)) in members.iter().enumerate() {
+                let mut characters = text.chars();
+                let ch = match (characters.next(), characters.next()) {
+                    (Some(only), None) => only as u32,
+                    (Some(first), Some(_)) => {
+                        self.builder.cluster(text).unwrap_or(first as u32)
+                    },
+                    _ => ' ' as u32,
+                };
+                let mut head = WireCell {
+                    ch,
+                    width: (*width).max(1) as u8,
+                    ..WireCell::BLANK
+                };
+                style(&mut head);
+                if index > 0 {
+                    head.attrs |= ATTR_GROUP_CONTINUE;
+                }
+                cells.push(head);
+                for _ in 1..(*width).max(1) {
+                    cells.push(WireCell {
+                        ch: ' ' as u32,
+                        width: 1,
+                        attrs: head.attrs & !ATTR_GROUP_CONTINUE,
+                        ..head
+                    });
+                }
+            }
+            cells
         }
 
         pub fn cursor(&mut self, row: usize, col: usize, shape: CursorShape) {
@@ -907,6 +1105,145 @@ mod tests {
         assert_eq!(buffer.link_at(0, 0), Some("https://example.com/after"));
         assert_eq!(buffer.link_id_at(0, 2), 6);
         assert_eq!(buffer.link_at(0, 2), None);
+    }
+
+    fn painted(buffer: &mut ScreenBuffer, paint: impl FnOnce(&mut painter::Painter)) {
+        let size = buffer.size();
+        let frame = painter::Painter::frame(size.rows, size.cols, paint);
+        apply(buffer, &frame).unwrap();
+    }
+
+    const FAMILY_MAN: &str = "\u{1f468}\u{200d}";
+    const FAMILY_WOMAN: &str = "\u{1f469}\u{200d}";
+    const FAMILY_GIRL: &str = "\u{1f467}";
+
+    #[test]
+    fn a_cluster_cell_carries_its_whole_text_and_its_first_code_point() {
+        let mut buffer = ScreenBuffer::new(1, 6);
+        painted(&mut buffer, |p| {
+            p.cluster(0, 0, "e\u{301}", 1);
+            p.text(0, 1, "x");
+        });
+        assert_eq!(buffer.cell(0, 0).character(), 'e');
+        assert_eq!(buffer.text_at(0, 0), "e\u{301}");
+        assert_eq!(
+            buffer.cluster_at(0, 0).map(|text| text.as_ref()),
+            Some("e\u{301}")
+        );
+        assert_eq!(buffer.text_at(0, 1), "x");
+        assert!(buffer.cluster_at(0, 1).is_none());
+        assert_eq!(buffer.cluster_count(), 1);
+    }
+
+    #[test]
+    fn a_group_keeps_each_member_text_and_marks_the_members_after_the_first() {
+        let mut buffer = ScreenBuffer::new(1, 8);
+        painted(&mut buffer, |p| {
+            p.group(0, 0, &[(FAMILY_MAN, 2), (FAMILY_WOMAN, 2), (FAMILY_GIRL, 2)]);
+            p.text(0, 6, "z");
+        });
+        assert_eq!(buffer.text_at(0, 0), FAMILY_MAN);
+        assert_eq!(buffer.text_at(0, 2), FAMILY_WOMAN);
+        assert_eq!(buffer.text_at(0, 4), FAMILY_GIRL);
+        assert!(!buffer.is_group_continuation(0, 0));
+        assert!(!buffer.is_group_continuation(0, 1));
+        assert!(buffer.is_group_continuation(0, 2));
+        assert!(!buffer.is_group_continuation(0, 3));
+        assert!(buffer.is_group_continuation(0, 4));
+        for col in 0..6 {
+            assert_eq!(
+                buffer.unit_span(0, col),
+                UnitSpan { start: 0, end: 6 },
+                "column {}",
+                col
+            );
+        }
+        assert_eq!(buffer.unit_span(0, 6), UnitSpan { start: 6, end: 7 });
+        assert_eq!(
+            buffer.unit_text(0, buffer.unit_span(0, 3)),
+            format!("{}{}{}", FAMILY_MAN, FAMILY_WOMAN, FAMILY_GIRL)
+        );
+    }
+
+    #[test]
+    fn occupancy_covers_widths_one_to_three_and_continuation_cells() {
+        let mut buffer = ScreenBuffer::new(1, 10);
+        painted(&mut buffer, |p| {
+            p.text(0, 0, "a");
+            p.wide(0, 1, '\u{4f60}');
+            p.cluster(0, 3, "\u{17d8}", 3);
+            p.group(0, 6, &[("\u{1f1e9}", 1), ("\u{1f1ea}", 1)]);
+        });
+        let occupancy: Vec<Occupancy> = (0..9).map(|col| buffer.occupancy(0, col)).collect();
+        assert_eq!(
+            occupancy,
+            vec![
+                Occupancy::Single,
+                Occupancy::WideHead,
+                Occupancy::WideTail,
+                Occupancy::WideHead,
+                Occupancy::WideTail,
+                Occupancy::WideTail,
+                Occupancy::Single,
+                Occupancy::Single,
+                Occupancy::Single,
+            ]
+        );
+        assert_eq!(buffer.unit_span(0, 5), UnitSpan { start: 3, end: 6 });
+        assert_eq!(buffer.unit_span(0, 7), UnitSpan { start: 6, end: 8 });
+        assert_eq!(buffer.unit_span(0, 8), UnitSpan { start: 8, end: 9 });
+        assert!(buffer.is_group_continuation(0, 7));
+    }
+
+    #[test]
+    fn a_cluster_overwritten_by_a_later_frame_leaves_no_text_behind() {
+        let mut buffer = ScreenBuffer::new(1, 6);
+        painted(&mut buffer, |p| p.cluster(0, 0, "a\u{301}\u{302}", 1));
+        assert_eq!(buffer.cluster_count(), 1);
+        painted(&mut buffer, |p| p.text(0, 0, "b"));
+        assert_eq!(buffer.text_at(0, 0), "b");
+        assert_eq!(buffer.cluster_count(), 0);
+    }
+
+    #[test]
+    fn cluster_ids_are_read_against_the_frame_that_carried_them() {
+        let mut buffer = ScreenBuffer::new(2, 6);
+        painted(&mut buffer, |p| p.cluster(0, 0, "e\u{301}", 1));
+        painted(&mut buffer, |p| p.cluster(1, 0, "o\u{308}", 1));
+        assert_eq!(buffer.text_at(0, 0), "e\u{301}");
+        assert_eq!(buffer.text_at(1, 0), "o\u{308}");
+        assert_eq!(buffer.cluster_count(), 2);
+    }
+
+    #[test]
+    fn a_full_repaint_drops_every_cluster_text() {
+        let mut buffer = ScreenBuffer::new(1, 6);
+        painted(&mut buffer, |p| p.cluster(0, 2, "e\u{301}", 1));
+        painted(&mut buffer, |p| {
+            p.full_repaint();
+            p.text(0, 0, "ab");
+        });
+        assert_eq!(buffer.cluster_count(), 0);
+        assert_eq!(buffer.text_at(0, 2), " ");
+    }
+
+    #[test]
+    fn a_cluster_reference_missing_from_the_record_reads_as_a_blank() {
+        let mut buffer = ScreenBuffer::new(1, 4);
+        let mut builder = FrameBuilder::new(4, 1, 0);
+        builder.push_row(
+            0,
+            0,
+            &[WireCell {
+                ch: zellij_utils::structured_render::CLUSTER_CH_BASE + 7,
+                ..WireCell::BLANK
+            }],
+        );
+        if let Ok(view) = decode(&builder.finish()) {
+            buffer.apply(&view).unwrap();
+            assert_eq!(buffer.text_at(0, 0), " ");
+            assert_eq!(buffer.cluster_count(), 0);
+        }
     }
 
     #[test]

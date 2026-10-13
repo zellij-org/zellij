@@ -504,4 +504,104 @@ mod tests {
         assert!(emitted.contains("\u{1b}[1m"), "{:?}", emitted);
         assert_eq!(sgr(&base()), "\u{1b}[m");
     }
+
+    fn assert_grid_reaches_the_wire(name: &str, rows: usize, cols: usize, stream: &str) -> crate::screen_buffer::ScreenBuffer {
+        let (grid, buffer) =
+            crate::equivalence::grid_and_buffer(stream.as_bytes(), rows, cols, 4096);
+        let divergences = compare(&grid, &crate::equivalence::project_screen_buffer(&buffer));
+        assert!(
+            divergences.is_empty(),
+            "{}: {}",
+            name,
+            divergences
+                .iter()
+                .map(|divergence| divergence.describe())
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+        buffer
+    }
+
+    #[test]
+    fn thirty_three_marks_on_one_letter_keep_thirty_two_code_points() {
+        let stream = format!("a{}b", "\u{301}".repeat(33));
+        for mode in ["", "\u{1b}[?2027h"] {
+            let buffer =
+                assert_grid_reaches_the_wire("33 marks", 4, 20, &format!("{}{}", mode, stream));
+            assert_eq!(buffer.text_at(0, 0).chars().count(), 32, "{:?}", mode);
+            assert_eq!(buffer.text_at(0, 1), "b", "{:?}", mode);
+        }
+    }
+
+    #[test]
+    fn a_zwj_chain_longer_than_a_group_is_split_and_still_reaches_the_wire() {
+        let chain = vec!["\u{1f468}"; 40].join("\u{200d}");
+        let buffer = assert_grid_reaches_the_wire("zwj chain", 4, 100, &chain);
+        let mut longest = 0;
+        let mut run = 0;
+        for col in 0..100 {
+            if buffer.occupancy(0, col) == crate::screen_buffer::Occupancy::WideTail {
+                continue;
+            }
+            if buffer.is_group_continuation(0, col) {
+                run += 1;
+                longest = longest.max(run);
+            } else {
+                run = 0;
+            }
+        }
+        assert!(longest > 0, "the chain was never grouped");
+        assert!(longest < 32, "a group ran to {} continuation cells", longest + 1);
+    }
+
+    #[test]
+    fn a_width_three_cell_at_the_last_columns_reaches_the_wire() {
+        for at in [COLS - 3, COLS - 2, COLS - 1] {
+            let stream = format!("{}\u{17d8}z", goto(0, at));
+            assert_grid_reaches_the_wire(&format!("width three at {}", at), ROWS, COLS, &stream);
+        }
+        let stream = format!("\u{1b}[?7l{}\u{17d8}\u{17d8}", goto(0, COLS - 2));
+        assert_grid_reaches_the_wire("width three without autowrap", ROWS, COLS, &stream);
+    }
+
+    #[test]
+    fn random_marks_on_every_cell_reach_the_wire() {
+        const MARKS: [char; 8] = [
+            '\u{300}', '\u{301}', '\u{302}', '\u{308}', '\u{316}', '\u{323}', '\u{35c}', '\u{20dd}',
+        ];
+        let (rows, cols) = (8, 40);
+        let mut seed = 0x9e37_79b9_7f4a_7c15u64;
+        let mut next = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        let mut stream = String::new();
+        for row in 0..rows {
+            stream.push_str(&goto(row, 0));
+            for col in 0..cols {
+                stream.push(char::from(b'a' + (col % 26) as u8));
+                for _ in 0..(next() % 6) {
+                    stream.push(MARKS[(next() % MARKS.len() as u64) as usize]);
+                }
+            }
+        }
+        for mode in ["", "\u{1b}[?2027h"] {
+            assert_grid_reaches_the_wire(
+                "random marks",
+                rows,
+                cols,
+                &format!("{}{}", mode, stream),
+            );
+        }
+    }
+
+    #[test]
+    fn marks_with_nothing_to_their_left_are_dropped_on_both_sides_of_the_wire() {
+        let stream = format!("{}\u{301}\u{200d}x{}\u{fe0f}", goto(0, 0), goto(1, 0));
+        let buffer = assert_grid_reaches_the_wire("leading marks", 4, 10, &stream);
+        assert_eq!(buffer.text_at(0, 0), "x");
+        assert_eq!(buffer.cluster_count(), 0);
+    }
 }

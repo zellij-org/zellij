@@ -259,6 +259,7 @@ use zellij_utils::{consts::VERSION, shared::version_number};
 
 use crate::output::{CharacterChunk, HighlightSelection, OutputBuffer, SixelImageChunk};
 use crate::panes::alacritty_functions::{parse_number, xparse_color};
+use crate::panes::grapheme_join;
 use crate::panes::hyperlink_tracker::HyperlinkTracker;
 use crate::panes::link_handler::LinkHandler;
 use crate::panes::search::SearchResult;
@@ -648,7 +649,10 @@ macro_rules! dump_screen {
                 .get(index + 1)
                 .map(|next_line| next_line.is_canonical)
                 .unwrap_or(true);
-            let s: String = (&line.columns).into_iter().map(|x| x.character).collect();
+            let mut s = String::with_capacity(line.columns.len());
+            for x in &line.columns {
+                x.push_text_to(&mut s);
+            }
             if ends_a_logical_line {
                 buf.push_str(&s.trim_end_matches(' '));
             } else {
@@ -681,7 +685,7 @@ macro_rules! dump_screen_with_ansi {
                 line.columns
                     .iter()
                     .rposition(|tc| {
-                        let space = tc.character == ' ';
+                        let space = tc.is_plain_blank();
                         let styled = !matches!(tc.styles.background, Some(AnsiCode::Reset) | None);
                         !space || styled
                     })
@@ -697,7 +701,7 @@ macro_rules! dump_screen_with_ansi {
                     write!(buf, "{}", tc.styles).unwrap();
                     last_styles = Some(tc.styles.clone());
                 }
-                buf.push(tc.character);
+                tc.push_text_to(&mut buf);
             }
             is_first = false;
         }
@@ -766,14 +770,14 @@ fn collect_and_build_logical_line(
     let mut boundaries: Vec<(usize, usize)> = Vec::with_capacity(group_len);
     boundaries.push((canonical, 0));
     for ch in &canonical_row.columns {
-        text.push(ch.character);
+        ch.push_text_to(&mut text);
     }
     for i in 0..tail_count {
         let idx = canonical + 1 + i;
         boundaries.push((idx, text.len()));
         if let Some(row) = viewport.get(idx) {
             for ch in &row.columns {
-                text.push(ch.character);
+                ch.push_text_to(&mut text);
             }
         }
     }
@@ -812,8 +816,8 @@ fn byte_offset_to_display_col(
         if bytes_seen >= intra_byte_offset {
             break;
         }
-        bytes_seen += ch.character.len_utf8();
-        display_col += ch.character.width().unwrap_or(1);
+        bytes_seen += ch.utf8_len();
+        display_col += ch.width();
     }
     Some((row_idx, display_col))
 }
@@ -943,6 +947,7 @@ pub struct Grid {
     pub sixel_scrolling: bool,      // DECSDM
     pub insert_mode: bool,
     pub disable_linewrap: bool,
+    pub grapheme_mode: bool,
     pub new_line_mode: bool, // Automatic newline LNM
     pub clear_viewport_before_rendering: bool,
     pub width: usize,
@@ -1329,6 +1334,7 @@ impl Grid {
             sixel_scrolling: false,
             insert_mode: false,
             disable_linewrap: false,
+            grapheme_mode: false,
             new_line_mode: false,
             alternate_screen_state: None,
             clear_viewport_before_rendering: false,
@@ -1822,8 +1828,7 @@ impl Grid {
             for line in &mut viewport_canonical_lines {
                 let mut trim_at = None;
                 for (index, character) in line.columns.iter().enumerate() {
-                    let is_trimmable_space = character.character
-                        == EMPTY_TERMINAL_CHARACTER.character
+                    let is_trimmable_space = character.is_plain_blank()
                         && matches!(character.styles.background, Some(AnsiCode::Reset) | None);
 
                     if !is_trimmable_space {
@@ -2617,11 +2622,10 @@ impl Grid {
     }
     pub fn add_character(&mut self, terminal_character: TerminalCharacter) {
         let character_width = terminal_character.width();
-        // Drop zero-width Unicode/UTF-8 codepoints, like for example Variation Selectors.
-        // This breaks unicode grapheme segmentation, and is the reason why some characters
-        // aren't displayed correctly. Refer to this issue for more information:
-        //     https://github.com/zellij-org/zellij/issues/1538
         if character_width == 0 {
+            return;
+        }
+        if character_width > self.width {
             return;
         }
         if self.cursor.x + character_width > self.width {
@@ -2630,8 +2634,124 @@ impl Grid {
             }
             self.line_wrap();
         }
+        let may_group = terminal_character.has_attached()
+            || grapheme_join::new_cell_may_join_a_neighbour(terminal_character.character);
         self.add_character_at_cursor_position(terminal_character, false);
+        if may_group {
+            if let Some(row) = self.viewport.get_mut(self.cursor.y) {
+                row.may_have_groups = true;
+            }
+        }
         self.move_cursor_forward_until_edge(character_width);
+    }
+    fn attach_target_column(&self) -> Option<usize> {
+        if self.cursor.x >= self.width {
+            self.width.checked_sub(1)
+        } else if self.cursor.x > 0 {
+            Some(self.cursor.x - 1)
+        } else {
+            None
+        }
+    }
+    fn grapheme_mode_joins(&self, c: char) -> bool {
+        let Some(column) = self.attach_target_column() else {
+            return false;
+        };
+        let Some(row) = self.viewport.get(self.cursor.y) else {
+            return false;
+        };
+        if !row.may_have_groups && !grapheme_join::new_cell_may_join_a_neighbour(c) {
+            return false;
+        }
+        let Some((index, _)) = row.cell_at_column(column) else {
+            return false;
+        };
+        let target = &row.columns[index];
+        if !grapheme_join::may_join(target.last_char(), c) {
+            return false;
+        }
+        let mut text = String::new();
+        target.push_text_to(&mut text);
+        let offset = text.len();
+        text.push(c);
+        !grapheme_join::is_boundary_at(&text, offset)
+    }
+    fn attach_code_point(&mut self, c: char) {
+        let Some(column) = self.attach_target_column() else {
+            return;
+        };
+        let pane_width = self.width;
+        let grapheme_mode = self.grapheme_mode;
+        let insert_mode = self.insert_mode;
+        let auto_wrap = !self.disable_linewrap;
+        let Some(row) = self.viewport.get_mut(self.cursor.y) else {
+            return;
+        };
+        let Some((index, start)) = row.cell_at_column(column) else {
+            return;
+        };
+        let before = row.columns[index].clone();
+        if !row.columns[index].attach(c) {
+            return;
+        }
+        if grapheme_join::attached_may_join_right(c) {
+            row.may_have_groups = true;
+        }
+        let mut wrapped_cell = None;
+        if grapheme_mode {
+            let old_width = before.width();
+            let new_width = row.columns[index].natural_width().max(1);
+            if new_width > pane_width {
+                row.columns[index] = before;
+                return;
+            }
+            if new_width > old_width {
+                if start + new_width <= pane_width {
+                    row.resize_cell(index, start, new_width, insert_mode);
+                    if insert_mode && row.width() > pane_width {
+                        row.truncate(pane_width);
+                    }
+                    self.cursor.x = start + new_width;
+                } else if auto_wrap {
+                    let mut moved = row.columns[index].clone();
+                    moved.set_width(new_width as u8);
+                    let mut blank = EMPTY_TERMINAL_CHARACTER;
+                    blank.styles = moved.styles.clone();
+                    row.columns.splice(
+                        index..=index,
+                        std::iter::repeat(blank).take(old_width),
+                    );
+                    row.mark_widths_changed();
+                    wrapped_cell = Some(moved);
+                }
+            } else if new_width < old_width {
+                row.resize_cell(index, start, new_width, insert_mode);
+                self.cursor.x = start + new_width;
+            }
+        }
+        self.output_buffer.update_line(self.cursor.y);
+        match wrapped_cell {
+            Some(moved) => {
+                let new_width = moved.width();
+                self.line_wrap();
+                self.add_character_at_cursor_position(moved.clone(), false);
+                if let Some(row) = self.viewport.get_mut(self.cursor.y) {
+                    row.may_have_groups = true;
+                }
+                self.move_cursor_forward_until_edge(new_width);
+                self.set_preceding_character(moved);
+            },
+            None => {
+                if let Some(cell) = self
+                    .viewport
+                    .get(self.cursor.y)
+                    .and_then(|row| row.columns.get(index))
+                    .cloned()
+                {
+                    self.set_preceding_character(cell);
+                }
+            },
+        }
     }
     pub fn get_character_under_cursor(&self) -> Option<TerminalCharacter> {
         let absolute_x_in_line = self.get_absolute_character_index(self.cursor.x, self.cursor.y)?;
@@ -3444,13 +3564,30 @@ impl Grid {
                 continue;
             };
 
+            let (start_column, end_column) = if row.may_have_groups {
+                let spans = grapheme_join::unit_column_spans(&row.columns, true);
+                let widened_start = spans
+                    .iter()
+                    .find(|(unit_start, unit_end)| *unit_start <= start_column && start_column < *unit_end)
+                    .map(|(unit_start, _)| *unit_start)
+                    .unwrap_or(start_column);
+                let widened_end = spans
+                    .iter()
+                    .find(|(unit_start, unit_end)| *unit_start < end_column && end_column < *unit_end)
+                    .map(|(_, unit_end)| *unit_end)
+                    .unwrap_or(end_column);
+                (widened_start, widened_end)
+            } else {
+                (start_column, end_column)
+            };
             let mut terminal_col = 0;
             for terminal_character in &row.columns {
-                if (start_column..end_column).contains(&terminal_col) {
-                    line_selection.push(terminal_character.character);
+                let character_end = terminal_col + terminal_character.width();
+                if terminal_col < end_column && character_end > start_column {
+                    terminal_character.push_text_to(&mut line_selection);
                 }
 
-                terminal_col += terminal_character.width();
+                terminal_col = character_end;
             }
 
             if row.is_canonical {
@@ -4574,15 +4711,20 @@ impl Grid {
         max_scrollback_lines: Option<usize>,
     ) -> PaneContents {
         let mut viewport: Vec<String> = Vec::with_capacity(self.viewport.len());
+        let row_text = |row: &Row| -> String {
+            let mut s = String::with_capacity(row.columns.len());
+            for x in &row.columns {
+                x.push_text_to(&mut s);
+            }
+            s
+        };
         for row in &self.viewport {
-            let s: String = (&row.columns).into_iter().map(|x| x.character).collect();
-            viewport.push(s);
+            viewport.push(row_text(row));
         }
         let mut contents = if get_full_scrollback {
             let mut lines_above_viewport: Vec<String> = Vec::with_capacity(self.lines_above.len());
             for row in &self.lines_above {
-                let s: String = (&row.columns).into_iter().map(|x| x.character).collect();
-                lines_above_viewport.push(s);
+                lines_above_viewport.push(row_text(row));
             }
             // Truncate to last N lines if max specified (Some(0) means "all" — no truncation)
             if let Some(max) = max_scrollback_lines {
@@ -4593,8 +4735,7 @@ impl Grid {
             }
             let mut lines_below_viewport: Vec<String> = Vec::with_capacity(self.lines_below.len());
             for row in &self.lines_below {
-                let s: String = (&row.columns).into_iter().map(|x| x.character).collect();
-                lines_below_viewport.push(s);
+                lines_below_viewport.push(row_text(row));
             }
             PaneContents::new_with_scrollback(
                 viewport,
@@ -4624,7 +4765,7 @@ impl Grid {
                 .columns
                 .iter()
                 .rposition(|tc| {
-                    let space = tc.character == ' ';
+                    let space = tc.is_plain_blank();
                     let styled = !matches!(tc.styles.background, Some(AnsiCode::Reset) | None);
                     !space || styled
                 })
@@ -4636,7 +4777,7 @@ impl Grid {
                     write!(buf, "{}", tc.styles).unwrap();
                     last_styles = Some(tc.styles.clone());
                 }
-                buf.push(tc.character);
+                tc.push_text_to(&mut buf);
             }
             if last_styles.is_some() {
                 buf.push_str("\u{1b}[m");
@@ -4696,9 +4837,21 @@ impl Drop for Grid {
 impl Perform for Grid {
     fn print(&mut self, c: char) {
         let c = self.cursor.charsets[self.active_charset].map(c);
+        let width = c.width().unwrap_or(0);
+        if width == 0 && ((c as u32) >= 0x300 || c == '\u{AD}') {
+            self.attach_code_point(c);
+            return;
+        }
+        if self.grapheme_mode && self.grapheme_mode_joins(c) {
+            self.attach_code_point(c);
+            return;
+        }
 
-        let terminal_character =
-            TerminalCharacter::new_styled(c, self.cursor.pending_styles.clone());
+        let terminal_character = TerminalCharacter::new_with_width(
+            c,
+            width.min(u8::MAX as usize) as u8,
+            self.cursor.pending_styles.clone(),
+        );
         match &mut self.preceding_char {
             Some(preceding) if preceding.shares_styles_with(&terminal_character) => {
                 preceding.copy_glyph_from(&terminal_character)
@@ -5288,6 +5441,9 @@ impl Perform for Grid {
                         2026 => {
                             self.unlock_renders();
                         },
+                        2027 => {
+                            self.grapheme_mode = false;
+                        },
                         2004 => {
                             self.bracketed_paste_mode = false;
                         },
@@ -5392,6 +5548,9 @@ impl Perform for Grid {
                         },
                         2026 => {
                             self.lock_renders();
+                        },
+                        2027 => {
+                            self.grapheme_mode = true;
                         },
                         2004 => {
                             self.bracketed_paste_mode = true;
@@ -5504,6 +5663,11 @@ impl Perform for Grid {
                             let response = "\u{1b}[?2026;2$y";
                             self.pending_messages_to_pty
                                 .push(response.as_bytes().to_vec());
+                        },
+                        2027 => {
+                            let value = if self.grapheme_mode { 1 } else { 2 };
+                            let response = format!("\u{1b}[?2027;{}$y", value);
+                            self.pending_messages_to_pty.push(response.into_bytes());
                         },
                         2031 => {
                             let value = if self.color_palette_notification_enabled {
@@ -5915,6 +6079,7 @@ impl Perform for Grid {
             },
             (b'c', None) => {
                 self.reset_terminal_state();
+                self.grapheme_mode = false;
             },
             (b'H', None) => {
                 self.set_horizontal_tabstop();
@@ -6000,6 +6165,7 @@ impl AlternateScreenState {
 pub struct Row {
     pub columns: Vec<TerminalCharacter>,
     pub is_canonical: bool,
+    pub may_have_groups: bool,
     width: Option<usize>,
     only_single_width: bool,
     pub bg_color: Option<AnsiCode>,
@@ -6034,6 +6200,7 @@ impl Row {
         Row {
             columns: Vec::new(),
             is_canonical: false,
+            may_have_groups: false,
             width: None,
             only_single_width: false,
             bg_color: None,
@@ -6044,6 +6211,7 @@ impl Row {
         Row {
             columns: Vec::with_capacity(capacity),
             is_canonical: false,
+            may_have_groups: false,
             width: None,
             only_single_width: false,
             bg_color: None,
@@ -6054,6 +6222,7 @@ impl Row {
         Row {
             columns,
             is_canonical: false,
+            may_have_groups: false,
             width: None,
             only_single_width: false,
             bg_color: None,
@@ -6128,17 +6297,55 @@ impl Row {
         acc
     }
     pub fn absolute_character_index(&self, x: usize) -> usize {
-        // return x's width aware index
-        let mut absolute_index = x;
-        for (i, terminal_character) in self.columns.iter().enumerate().take(x) {
-            if i == absolute_index {
-                break;
+        if self.width.is_some() && self.only_single_width {
+            return x;
+        }
+        self.character_index_and_start_column(x).0
+    }
+    pub fn cell_at_column(&self, x: usize) -> Option<(usize, usize)> {
+        if self.width.is_some() && self.only_single_width {
+            return if x < self.columns.len() {
+                Some((x, x))
+            } else {
+                None
+            };
+        }
+        let (index, start) = self.character_index_and_start_column(x);
+        if index < self.columns.len() {
+            Some((index, start))
+        } else {
+            None
+        }
+    }
+    pub fn mark_widths_changed(&mut self) {
+        self.width = None;
+        self.only_single_width = false;
+    }
+    pub fn resize_cell(&mut self, index: usize, start: usize, new_width: usize, insert: bool) {
+        let Some(cell) = self.columns.get_mut(index) else {
+            return;
+        };
+        let old_width = cell.width();
+        cell.set_width(new_width.min(u8::MAX as usize) as u8);
+        let blank_style = cell.styles.clone();
+        if new_width < old_width {
+            for _ in 0..(old_width - new_width) {
+                let mut blank = EMPTY_TERMINAL_CHARACTER;
+                blank.styles = blank_style.clone();
+                self.columns.insert(index + 1, blank);
             }
-            if terminal_character.width() > 1 {
-                absolute_index = absolute_index.saturating_sub(1);
+        } else if new_width > old_width && !insert {
+            let target_end = start + new_width;
+            let mut covered_end = start + old_width;
+            while covered_end < target_end && index + 1 < self.columns.len() {
+                let removed = self.columns.remove(index + 1);
+                covered_end += removed.width();
+            }
+            for _ in target_end..covered_end {
+                self.columns.insert(index + 1, EMPTY_TERMINAL_CHARACTER);
             }
         }
-        absolute_index
+        self.mark_widths_changed();
     }
     pub fn absolute_character_index_and_position_in_char(&self, x: usize) -> (usize, usize) {
         // returns x's width aware index as well as its position inside the wide char (eg. 1 if
@@ -6182,63 +6389,78 @@ impl Row {
                 self.width = None;
             },
             Ordering::Greater => {
-                // adding the character in the middle of the line
-                // we replace the character at its position
-                let (absolute_x_index, position_inside_character) = if self.only_single_width {
-                    (x, 0)
-                } else {
-                    self.absolute_character_index_and_position_in_char(x)
-                };
-                let character_width = terminal_character.width();
-                let overwrite_start = x.saturating_sub(position_inside_character);
-                let overwrite_end =
-                    overwrite_start + character_width.max(self.columns[absolute_x_index].width());
-                let replacing_blank = self.columns[absolute_x_index].character == ' ';
-                self.osc133_markers.retain(|marker| {
-                    marker.column < overwrite_start
-                        || marker.column >= overwrite_end
-                        || (replacing_blank && marker.column == overwrite_start)
-                });
-                let replaced_character =
-                    std::mem::replace(&mut self.columns[absolute_x_index], terminal_character);
-                match character_width.cmp(&replaced_character.width()) {
-                    Ordering::Greater => {
-                        // the replaced character is narrower than the current character
-                        // (eg. we added a wide emoji in place of an English character)
-                        // we remove the character after it to make room
-                        let position_to_remove = absolute_x_index + 1;
-                        if position_to_remove < self.columns.len() {
-                            let removed = self.columns.remove(position_to_remove);
-                            if removed.width() > 1 {
-                                // the character we removed is a wide character itself, so we add
-                                // padding
-                                self.columns
-                                    .insert(position_to_remove, EMPTY_TERMINAL_CHARACTER);
-                            }
-                        }
-                        self.width = None;
-                    },
-                    Ordering::Less => {
-                        // the replaced character is wider than the current character
-                        // (eg. we added an English character in place of a wide emoji)
-                        // we must make sure to add padding either before the character we added
-                        // or after it, depending on our position inside said removed wide character
-                        // TODO: support characters wider than 2
-                        if position_inside_character > 0 {
-                            self.columns
-                                .insert(absolute_x_index, EMPTY_TERMINAL_CHARACTER);
-                        } else {
-                            self.columns
-                                .insert(absolute_x_index + 1, EMPTY_TERMINAL_CHARACTER);
-                        }
-                        self.width = None;
-                    },
-                    Ordering::Equal => {
-                        self.only_single_width &= character_width == 1;
-                    },
-                }
+                self.overwrite_at(terminal_character, x, true);
             },
         }
+    }
+    fn overwrite_at(
+        &mut self,
+        terminal_character: TerminalCharacter,
+        x: usize,
+        keep_marker_on_replaced_blank: bool,
+    ) {
+        let character_width = terminal_character.width();
+        if self.width.is_some() && self.only_single_width && character_width == 1 {
+            if let Some(existing) = self.columns.get(x) {
+                let replacing_blank = existing.character == ' ';
+                if !self.osc133_markers.is_empty() {
+                    self.osc133_markers.retain(|marker| {
+                        marker.column != x
+                            || (keep_marker_on_replaced_blank && replacing_blank)
+                    });
+                }
+                self.columns[x] = terminal_character;
+                return;
+            }
+        }
+        let (index, start) = self.character_index_and_start_column(x);
+        if index >= self.columns.len() {
+            self.columns.push(terminal_character);
+            self.width = None;
+            return;
+        }
+        let new_end = x + character_width.max(1);
+        let mut end_index = index;
+        let mut covered_end = start + self.columns[index].width();
+        while covered_end < new_end && end_index + 1 < self.columns.len() {
+            end_index += 1;
+            covered_end += self.columns[end_index].width();
+        }
+        let replacing_blank = self.columns[index].character == ' ';
+        let overwrite_start = start;
+        let overwrite_end = covered_end.max(new_end);
+        if !self.osc133_markers.is_empty() {
+            self.osc133_markers.retain(|marker| {
+                marker.column < overwrite_start
+                    || marker.column >= overwrite_end
+                    || (keep_marker_on_replaced_blank
+                        && replacing_blank
+                        && marker.column == overwrite_start)
+            });
+        }
+        let leading_blanks = x - start;
+        let trailing_blanks = covered_end.saturating_sub(new_end);
+        let replaced_whole_single_cell =
+            leading_blanks == 0 && trailing_blanks == 0 && end_index == index;
+        if replaced_whole_single_cell && self.columns[index].width() == character_width {
+            self.only_single_width &= character_width == 1;
+            self.columns[index] = terminal_character;
+            return;
+        }
+        let mut pad = EMPTY_TERMINAL_CHARACTER;
+        if !keep_marker_on_replaced_blank {
+            pad.styles = terminal_character.styles.clone();
+        }
+        let mut replacement = Vec::with_capacity(leading_blanks + 1 + trailing_blanks);
+        for _ in 0..leading_blanks {
+            replacement.push(pad.clone());
+        }
+        replacement.push(terminal_character);
+        for _ in 0..trailing_blanks {
+            replacement.push(pad.clone());
+        }
+        self.columns.splice(index..=end_index, replacement);
+        self.width = None;
     }
     pub fn insert_character_at(&mut self, terminal_character: TerminalCharacter, x: usize) {
         let character_width = terminal_character.width();
@@ -6262,21 +6484,8 @@ impl Row {
         self.width = None;
     }
     pub fn replace_character_at(&mut self, terminal_character: TerminalCharacter, x: usize) {
-        let absolute_x_index = self.absolute_character_index(x);
-        if let Some(character) = self.columns.get_mut(absolute_x_index) {
-            let terminal_character_width = terminal_character.width();
-            let overwrite_end = x + character.width().max(terminal_character_width);
-            self.osc133_markers
-                .retain(|marker| marker.column < x || marker.column >= overwrite_end);
-
-            let mut padding_character = EMPTY_TERMINAL_CHARACTER;
-            padding_character.styles = terminal_character.styles.clone();
-            let character = std::mem::replace(character, terminal_character);
-            let excess_width = character.width().saturating_sub(terminal_character_width);
-            for _ in 0..excess_width {
-                self.columns
-                    .insert(absolute_x_index, padding_character.clone());
-            }
+        if self.cell_at_column(x).is_some() {
+            self.overwrite_at(terminal_character, x, false);
         }
         self.width = None;
     }
@@ -6290,8 +6499,7 @@ impl Row {
         self.width = None;
     }
     pub fn truncate(&mut self, x: usize) {
-        let width_offset = self.excess_width_until(x);
-        let truncate_position = x.saturating_sub(width_offset);
+        let truncate_position = self.character_index_and_start_column(x).0;
         if truncate_position < self.columns.len() {
             self.columns.truncate(truncate_position);
         }
@@ -6352,6 +6560,8 @@ impl Row {
         };
         self.columns.append(&mut to_append.columns);
         self.width = combined_width;
+        self.only_single_width = self.only_single_width && to_append.only_single_width;
+        self.may_have_groups |= to_append.may_have_groups;
     }
     pub fn drain_until(&mut self, x: usize) -> Vec<TerminalCharacter> {
         let mut drained_part_len = 0;
@@ -6427,6 +6637,7 @@ impl Row {
         let drained = Row {
             columns: Vec::new(),
             is_canonical: self.is_canonical,
+            may_have_groups: false,
             width: None,
             only_single_width: false,
             bg_color: self.bg_color,
@@ -6440,6 +6651,7 @@ impl Row {
         }
         let is_canonical = rows[0].is_canonical;
         let bg_color = rows[0].bg_color;
+        let may_have_groups = rows.iter().any(|row| row.may_have_groups);
         let mut markers: Vec<Osc133Marker> = Vec::new();
         let mut column_offset = 0;
         let mut part_lengths: Vec<usize> = Vec::new();
@@ -6470,7 +6682,9 @@ impl Row {
         for part_length in part_lengths {
             let mut columns: Vec<TerminalCharacter> = Vec::with_capacity(part_length);
             columns.extend(characters.by_ref().take(part_length));
-            parts.push(Row::from_columns(columns).with_bg_color(bg_color));
+            let mut part = Row::from_columns(columns).with_bg_color(bg_color);
+            part.may_have_groups = may_have_groups;
+            parts.push(part);
         }
         if parts.is_empty() {
             parts.push(Row::new().with_bg_color(bg_color));
@@ -6580,6 +6794,18 @@ fn is_selection_boundary_character(character: char, word_separators: &str) -> bo
 #[cfg(test)]
 #[path = "./unit/grid_tests.rs"]
 mod grid_tests;
+
+#[cfg(test)]
+#[path = "./unit/grapheme_perf_tests.rs"]
+mod grapheme_perf_tests;
+
+#[cfg(test)]
+#[path = "./unit/grapheme_ui_component_tests.rs"]
+mod grapheme_ui_component_tests;
+
+#[cfg(test)]
+#[path = "./unit/grapheme_grid_tests.rs"]
+mod grapheme_grid_tests;
 
 #[cfg(test)]
 mod osc7_parser_tests {

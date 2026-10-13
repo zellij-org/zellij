@@ -76,9 +76,11 @@ fn wrap_words(text: &str, width: usize) -> Vec<String> {
     let mut current = String::new();
     for word in text.split_whitespace() {
         let needed = if current.is_empty() {
-            word.chars().count()
+            zellij_tile::graphemes::display_width(word)
         } else {
-            current.chars().count() + 1 + word.chars().count()
+            zellij_tile::graphemes::display_width(&current)
+                + 1
+                + zellij_tile::graphemes::display_width(word)
         };
         if needed > width && !current.is_empty() {
             lines.push(std::mem::take(&mut current));
@@ -870,10 +872,10 @@ impl State {
                         if new_session_name.is_empty() {
                             self.renaming_session_name = None;
                         } else {
-                            new_session_name.pop();
+                            zellij_tile::graphemes::pop_cluster(new_session_name);
                         }
                     } else {
-                        self.search_term.pop();
+                        zellij_tile::graphemes::pop_cluster(&mut self.search_term);
                         self.sessions
                             .update_search_term(&self.search_term, &self.colors);
                     }
@@ -1083,7 +1085,7 @@ impl State {
                         if name.is_empty() {
                             self.renaming_session_name = None;
                         } else {
-                            name.pop();
+                            zellij_tile::graphemes::pop_cluster(name);
                         }
                     }
                     should_render = true;
@@ -1111,7 +1113,7 @@ impl State {
                 should_render = true;
             },
             BareKey::Backspace if key.has_no_modifiers() => {
-                self.single_screen_state.search_term.pop();
+                zellij_tile::graphemes::pop_cluster(&mut self.single_screen_state.search_term);
                 self.single_screen_state.update_search_term(
                     &self.sessions.session_ui_infos,
                     &self.resurrectable_sessions.all_resurrectable_sessions,
@@ -1250,10 +1252,9 @@ impl State {
                 should_render = true;
             },
             BareKey::Backspace if key.has_no_modifiers() => {
-                self.single_screen_state
-                    .layout_list
-                    .layout_search_term
-                    .pop();
+                zellij_tile::graphemes::pop_cluster(
+                    &mut self.single_screen_state.layout_list.layout_search_term,
+                );
                 self.single_screen_state.layout_list.update_search_term();
                 should_render = true;
             },

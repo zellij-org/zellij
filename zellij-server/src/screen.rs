@@ -7311,7 +7311,7 @@ impl Screen {
                         tab.name = String::new();
                     },
                     "\u{007F}" | "\u{0008}" => {
-                        tab.name.pop();
+                        zellij_utils::graphemes::pop_cluster(&mut tab.name);
                     },
                     c => {
                         tab.name
@@ -7343,7 +7343,7 @@ impl Screen {
                             },
                             "\u{007F}" | "\u{0008}" => {
                                 // delete and backspace keys
-                                active_tab.name.pop();
+                                zellij_utils::graphemes::pop_cluster(&mut active_tab.name);
                             },
                             c => {
                                 active_tab
@@ -13587,7 +13587,9 @@ pub(crate) fn screen_thread_main(
 
                 match screen.get_tab_by_position_mut(tab_position) {
                     Some(tab) => {
-                        tab.name = String::from_utf8_lossy(&new_name).to_string();
+                        tab.name = clean_string_from_control_and_linebreak(
+                            &String::from_utf8_lossy(&new_name),
+                        );
                     },
                     None => {
                         log::error!("Failed to find tab at position: {}", tab_position);
@@ -13626,7 +13628,8 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::RenameTabWithId(tab_id, new_name, _completion_tx) => {
                 // Use get_tab_by_id_mut() helper method
                 if let Some(tab) = screen.get_tab_by_id_mut(tab_id) {
-                    tab.name = String::from_utf8_lossy(&new_name).to_string();
+                    tab.name =
+                        clean_string_from_control_and_linebreak(&String::from_utf8_lossy(&new_name));
                     screen.log_and_report_session_state()?;
                 } else {
                     log::error!("Failed to find tab with ID: {}", tab_id);

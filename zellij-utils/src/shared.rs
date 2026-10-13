@@ -54,11 +54,9 @@ pub fn adjust_to_size(s: &str, rows: usize, columns: usize) -> String {
         .map(|l| {
             let actual_len = ansi_len(l);
             if actual_len > columns {
-                let mut line = String::from(l);
-                line.truncate(columns);
-                line
+                truncate_ansi_line_to_width(l, columns)
             } else {
-                [l, &str::repeat(" ", columns - ansi_len(l))].concat()
+                [l, &str::repeat(" ", columns - actual_len)].concat()
             }
         })
         .chain(iter::repeat(str::repeat(" ", columns)))
@@ -67,14 +65,86 @@ pub fn adjust_to_size(s: &str, rows: usize, columns: usize) -> String {
         .join("\n\r")
 }
 
+fn escape_sequence_len(s: &str) -> usize {
+    let bytes = s.as_bytes();
+    if bytes.len() < 2 {
+        return bytes.len();
+    }
+    match bytes[1] {
+        b'[' => {
+            let mut i = 2;
+            while i < bytes.len() {
+                if (0x40..=0x7e).contains(&bytes[i]) {
+                    return i + 1;
+                }
+                i += 1;
+            }
+            bytes.len()
+        },
+        b']' | b'P' | b'_' | b'^' | b'X' => {
+            let mut i = 2;
+            while i < bytes.len() {
+                if bytes[i] == 0x07 {
+                    return i + 1;
+                }
+                if bytes[i] == 0x1b && bytes.get(i + 1) == Some(&b'\\') {
+                    return i + 2;
+                }
+                i += 1;
+            }
+            bytes.len()
+        },
+        _ => 1 + s[1..].chars().next().map(|c| c.len_utf8()).unwrap_or(0),
+    }
+}
+
+pub fn truncate_ansi_line_to_width(line: &str, columns: usize) -> String {
+    let mut out = String::with_capacity(line.len());
+    let mut used = 0;
+    let mut rest = line;
+    while !rest.is_empty() {
+        if rest.starts_with('\u{1b}') {
+            let len = escape_sequence_len(rest);
+            out.push_str(&rest[..len]);
+            rest = &rest[len..];
+            continue;
+        }
+        let text_end = rest.find('\u{1b}').unwrap_or(rest.len());
+        let text = &rest[..text_end];
+        for (cluster, width) in crate::graphemes::clusters(text) {
+            if used + width > columns {
+                used = columns + 1;
+                break;
+            }
+            used += width;
+            out.push_str(cluster);
+        }
+        rest = &rest[text_end..];
+        if used > columns {
+            while let Some(escape_start) = rest.find('\u{1b}') {
+                rest = &rest[escape_start..];
+                let len = escape_sequence_len(rest);
+                out.push_str(&rest[..len]);
+                rest = &rest[len..];
+            }
+            break;
+        }
+    }
+    out
+}
+
 pub fn make_terminal_title(pane_title: &str) -> String {
+    let pane_title = crate::graphemes::strip_control_characters(pane_title);
     format!(
         "\u{1b}]0;{}{}\u{07}",
         get_session_name()
-            .map(|n| if pane_title.is_empty() {
-                format!("{}", n)
-            } else {
-                format!("{} | ", n)
+            .map(|n| {
+                let n = crate::graphemes::strip_control_characters(&n).into_owned();
+                if pane_title.is_empty() {
+                    format!("{}", n)
+                } else {
+                    format!("{} | ", n)
+                }
             })
             .unwrap_or_default(),
         pane_title
@@ -329,5 +399,34 @@ mod web_server_base_url_tests {
             web_server_base_url_from_config(options),
             "https://0.0.0.0:8082"
         );
+    }
+}
+
+#[cfg(test)]
+mod adjust_to_size_tests {
+    use super::*;
+
+    #[test]
+    fn adjust_to_size_cuts_non_ascii_lines_by_width_on_character_boundaries() {
+        let adjusted = adjust_to_size("héllo wörld", 1, 4);
+        assert_eq!(adjusted, "héll");
+        let adjusted = adjust_to_size("你好世界", 1, 5);
+        assert_eq!(adjusted, "你好");
+        let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}";
+        let adjusted = adjust_to_size(&format!("ab{}cd", family), 1, 3);
+        assert_eq!(adjusted, "ab");
+    }
+
+    #[test]
+    fn adjust_to_size_keeps_styles_when_cutting() {
+        let adjusted = adjust_to_size("\u{1b}[31mrédé\u{1b}[0m", 1, 2);
+        assert_eq!(adjusted, "\u{1b}[31mré\u{1b}[0m");
+    }
+
+    #[test]
+    fn terminal_title_has_no_control_characters() {
+        let title = make_terminal_title("a\u{7}b\u{1b}c");
+        assert!(title.ends_with("abc\u{7}"));
+        assert_eq!(title.matches('\u{1b}').count(), 1);
     }
 }

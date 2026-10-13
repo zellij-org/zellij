@@ -15,7 +15,6 @@ pub use popup::{place_popup, PopupKind, PopupMouseOutcome, PopupPlacement, POPUP
 use std::env::temp_dir;
 use std::net::IpAddr;
 use std::path::PathBuf;
-use unicode_width::UnicodeWidthStr;
 use uuid::Uuid;
 use zellij_utils::data::PaneContents;
 use zellij_utils::data::{
@@ -1827,7 +1826,7 @@ impl Tab {
                         self.suppressed_panes.get(member).map(|(_, p)| &**p)
                     }
                 })
-                .map(|pane| pane.stack_list_entry_label().width())
+                .map(|pane| zellij_utils::graphemes::display_width(&pane.stack_list_entry_label()))
                 .max()
                 .unwrap_or(0);
             let stack_is_focused = active_panes.values().any(|p_id| *p_id == list.visible);
@@ -7370,18 +7369,12 @@ impl Tab {
 
     pub fn update_search_term(&mut self, buf: Vec<u8>, client_id: ClientId) -> Result<()> {
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
-            // It only allows terminating char(\0), printable unicode, delete and backspace keys.
-            // TODO: we should really remove this limitation to allow searching for emojis and
-            // other wide chars - currently the search mechanism itself ignores wide chars, so we
-            // should first fix that before removing this condition
-            let is_updatable = buf
-                .iter()
-                .all(|u| matches!(u, 0x00 | 0x20..=0x7E | 0x08 | 0x7F));
-            if is_updatable {
-                let s = str::from_utf8(&buf).with_context(|| {
-                    format!("failed to update search term to '{buf:?}' for client {client_id}")
-                })?;
-                active_pane.update_search_term(s);
+            if let Ok(s) = str::from_utf8(&buf) {
+                let is_updatable = matches!(s, "\0" | "\u{8}" | "\u{7f}")
+                    || !s.chars().any(|c| c.is_control());
+                if is_updatable {
+                    active_pane.update_search_term(s);
+                }
             }
         }
         Ok(())

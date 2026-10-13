@@ -5,6 +5,7 @@ pub mod data;
 pub mod distribution;
 pub mod envs;
 pub mod errors;
+pub mod graphemes;
 pub mod home;
 #[cfg(not(windows))]
 mod home_unix;

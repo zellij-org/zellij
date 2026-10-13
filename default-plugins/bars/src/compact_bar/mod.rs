@@ -1033,7 +1033,7 @@ impl CompactBar {
             }
 
             let compose = |hovered: Option<CompactRegion>| {
-                let tab_data = prepare_tab_data(client, hovered);
+                let tab_data = prepare_tab_data(client, hovered, cols);
                 let rendered_tabs: Vec<String> =
                     tab_data.tabs.iter().map(|t| t.part.clone()).collect();
                 let active_tab_position = tab_data.active_tab_index;
@@ -1139,7 +1139,13 @@ fn render_background_with_text(mode_info: &ModeInfo, text: &str) {
     }
 }
 
-fn prepare_tab_data(client: &ClientState, hovered: Option<CompactRegion>) -> TabRenderData {
+fn prepare_tab_data(
+    client: &ClientState,
+    hovered: Option<CompactRegion>,
+    cols: usize,
+) -> TabRenderData {
+    let max_tab_width =
+        cols.saturating_sub(zellij_tile::graphemes::display_width(line::PREFIX_TEXT));
     let mut all_tabs = Vec::new();
     let mut active_tab_index = 0;
     let mut is_alternate_tab = false;
@@ -1168,6 +1174,7 @@ fn prepare_tab_data(client: &ClientState, hovered: Option<CompactRegion>) -> Tab
             client.mode_info.style.colors,
             client.mode_info.capabilities,
             dimmed,
+            max_tab_width,
         );
 
         is_alternate_tab = !is_alternate_tab;
@@ -1393,5 +1400,125 @@ mod tests {
         assert_eq!(bar.clients[&1].tooltip_hovered, None);
         bar.handle_mouse_event(5, 1, &Mouse::LeftClick(2, 4));
         assert_eq!(bar.runner.pending_for(1), 0);
+    }
+
+    const FAMILY: &str = "\u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467}";
+
+    fn strip_ansi(text: &str) -> String {
+        let mut stripped = String::new();
+        let mut characters = text.chars().peekable();
+        while let Some(character) = characters.next() {
+            if character == '\u{1b}' {
+                if characters.peek() == Some(&'[') {
+                    characters.next();
+                    while let Some(next) = characters.next() {
+                        if next.is_ascii_alphabetic() {
+                            break;
+                        }
+                    }
+                }
+                continue;
+            }
+            stripped.push(character);
+        }
+        stripped
+    }
+
+    fn named_client(names: &[&str], active: usize, session_name: Option<&str>) -> ClientState {
+        ClientState {
+            tabs: names
+                .iter()
+                .enumerate()
+                .map(|(position, name)| TabInfo {
+                    position,
+                    tab_id: position,
+                    active: position == active,
+                    name: name.to_string(),
+                    ..Default::default()
+                })
+                .collect(),
+            active_tab_idx: active + 1,
+            mode_info: ModeInfo {
+                mode: InputMode::Normal,
+                base_mode: Some(InputMode::Normal),
+                session_name: session_name.map(|name| name.to_owned()),
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    }
+
+    fn compose(client: &ClientState, cols: usize) -> (Vec<LinePart>, Vec<String>, usize) {
+        let tab_data = prepare_tab_data(client, None, cols);
+        let rendered: Vec<String> = tab_data.tabs.iter().map(|t| t.part.clone()).collect();
+        let active = tab_data.active_tab_index;
+        let output = tab_line(
+            &client.mode_info,
+            tab_data,
+            cols,
+            None,
+            false,
+            CompactHover::default(),
+            &SessionIndicator::default(),
+        );
+        (output.parts, rendered, active)
+    }
+
+    fn rendered_width(parts: &[LinePart]) -> usize {
+        let joined: String = parts.iter().map(|part| strip_ansi(&part.part)).collect();
+        zellij_tile::graphemes::display_width(&joined)
+    }
+
+    #[test]
+    fn a_compact_tab_named_with_clusters_has_its_rendered_width_as_its_length() {
+        let name = format!("e\u{301}{}日本", FAMILY);
+        let client = named_client(&[name.as_str()], 0, None);
+        let tab_data = prepare_tab_data(&client, None, 100);
+        let tab = &tab_data.tabs[0];
+        assert_eq!(tab.len, rendered_width(std::slice::from_ref(tab)));
+        assert!(strip_ansi(&tab.part).contains(&name));
+    }
+
+    #[test]
+    fn the_compact_bar_still_shows_a_too_wide_active_tab() {
+        let long_name = format!("{}{}", "日本語".repeat(20), FAMILY);
+        let client = named_client(
+            &["one", long_name.as_str(), "three"],
+            1,
+            Some("a-very-long-session-name"),
+        );
+        let (parts, rendered, active) = compose(&client, 40);
+        let total: usize = parts.iter().map(|part| part.len).sum();
+        assert!(total <= 40);
+        assert_eq!(total, rendered_width(&parts));
+        assert!(parts
+            .iter()
+            .any(|part| part.tab_index == Some(1) && strip_ansi(&part.part).contains('…')));
+        let (regions, _) = compact_regions(&parts, &rendered, active, None, None);
+        assert!(regions
+            .iter()
+            .any(|(_, _, region)| *region == CompactRegion::Tab(1)));
+    }
+
+    #[test]
+    fn compact_more_tabs_indicators_and_regions_use_display_widths() {
+        let client = named_client(&["日本語"; 6], 0, None);
+        let (parts, rendered, active) = compose(&client, 40);
+        let total: usize = parts.iter().map(|part| part.len).sum();
+        assert_eq!(total, 40);
+        assert_eq!(total, rendered_width(&parts));
+        let joined: String = parts.iter().map(|part| strip_ansi(&part.part)).collect();
+        assert!(joined.contains("+4"));
+        let (regions, _) = compact_regions(&parts, &rendered, active, None, None);
+        assert!(regions.contains(&(16, 24, CompactRegion::Tab(0))));
+        assert!(regions.contains(&(24, 32, CompactRegion::Tab(1))));
+        assert!(regions.contains(&(
+            32,
+            38,
+            CompactRegion::Marker {
+                left: false,
+                position: 2
+            }
+        )));
     }
 }

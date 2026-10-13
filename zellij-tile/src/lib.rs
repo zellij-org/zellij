@@ -19,6 +19,8 @@ pub mod prelude;
 pub mod shim;
 pub mod ui_components;
 
+pub use zellij_utils::graphemes;
+
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use zellij_utils::data::{
