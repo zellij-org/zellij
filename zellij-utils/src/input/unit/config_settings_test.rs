@@ -87,6 +87,7 @@ fn every_option_set() -> Options {
         session_indicator: Some(false),
         swap_layout_notification: Some(false),
         on_quit: Some(crate::input::options::OnQuit::Detach),
+        resize_session_to: Some(crate::input::options::ResizeSessionTo::Largest),
     }
 }
 

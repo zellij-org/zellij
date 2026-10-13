@@ -1303,6 +1303,7 @@ message Options {
   reserved 80;
   optional string on_quit = 81;
   optional bool grapheme_clusters = 82;
+  optional string resize_session_to = 83;
 }
 
 enum OnForceClose {

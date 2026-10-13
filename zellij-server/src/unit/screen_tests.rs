@@ -22,7 +22,7 @@ use zellij_utils::input::layout::{
 };
 use zellij_utils::input::mouse::MouseEvent;
 use zellij_utils::input::options::{
-    HostNotificationProtocol, NestedSessionHandling, Options, PaneFrameStyle,
+    HostNotificationProtocol, NestedSessionHandling, Options, PaneFrameStyle, ResizeSessionTo,
     DEFAULT_WORD_SEPARATORS,
 };
 use zellij_utils::ipc::IpcReceiverWithContext;
@@ -401,6 +401,7 @@ fn create_new_screen_with_capture(
         web_server_port,
         NestedSessionHandling::default(),
         "test-session-id".to_string(),
+        ResizeSessionTo::default(),
     );
     (
         seed_first_client_size(screen, size),
@@ -5985,6 +5986,7 @@ fn create_new_screen_with_message_capture(
         web_server_port,
         NestedSessionHandling::default(),
         "test-session-id".to_string(),
+        ResizeSessionTo::default(),
     );
     (seed_first_client_size(screen, size), messages)
 }
@@ -9227,6 +9229,7 @@ fn create_new_screen_with_forward_capture(size: Size) -> (Screen, ForwardCapture
         web_server_port,
         NestedSessionHandling::default(),
         "test-session-id".to_string(),
+        ResizeSessionTo::default(),
     );
     (
         seed_first_client_size(screen, size),
@@ -10128,6 +10131,7 @@ fn create_new_screen_with_theme_capture(size: Size) -> (Screen, ThemeCapture) {
         web_server_port,
         NestedSessionHandling::default(),
         "test-session-id".to_string(),
+        ResizeSessionTo::default(),
     );
     (
         seed_first_client_size(screen, size),
@@ -10953,6 +10957,7 @@ fn create_non_mirrored_screen(size: Size) -> Screen {
         8080,
         NestedSessionHandling::default(),
         "test-session-id".to_string(),
+        ResizeSessionTo::default(),
     );
     seed_first_client_size(screen, size)
 }
@@ -11053,6 +11058,109 @@ fn recompute_tab_size_takes_independent_min_across_axes() {
         screen.tabs.get(&0).unwrap().size,
         Size { cols: 80, rows: 24 },
         "Tab size = (min cols across viewers, min rows across viewers)"
+    );
+}
+
+#[test]
+fn recompute_tab_size_takes_independent_max_across_axes_when_largest() {
+    let initial_size = Size {
+        cols: 200,
+        rows: 60,
+    };
+    let mut screen = create_new_screen(initial_size, true, true);
+    screen.resize_session_to = ResizeSessionTo::Largest;
+    new_tab(&mut screen, 1, 0);
+    screen.add_client(2, false).expect("TEST");
+
+    screen.set_client_size(
+        1,
+        Size {
+            cols: 200,
+            rows: 24,
+        },
+    );
+    screen.set_client_size(2, Size { cols: 80, rows: 60 });
+    screen.recompute_tab_size(0).expect("TEST");
+
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size {
+            cols: 200,
+            rows: 60,
+        },
+        "With resize_session_to=largest, tab size = (max cols, max rows) across viewers"
+    );
+}
+
+#[test]
+fn recompute_tab_size_follows_focused_client_when_focused() {
+    let initial_size = Size {
+        cols: 200,
+        rows: 60,
+    };
+    let mut screen = create_new_screen(initial_size, true, true);
+    screen.resize_session_to = ResizeSessionTo::Focused;
+    new_tab(&mut screen, 1, 0);
+    screen.add_client(2, false).expect("TEST");
+
+    let small = Size { cols: 80, rows: 24 };
+    let large = Size {
+        cols: 160,
+        rows: 50,
+    };
+    screen.set_client_size(1, small);
+    screen.set_client_size(2, large);
+
+    // Client 1 is the active one: the tab follows its (smaller) size even though a larger
+    // viewer is attached.
+    screen.last_active_client = Some(1);
+    screen.recompute_tab_size(0).expect("TEST");
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        small,
+        "With resize_session_to=focused, the tab follows the focused client (client 1)"
+    );
+
+    // Focus moves to client 2: the tab grows to follow it.
+    screen.last_active_client = Some(2);
+    screen.recompute_tab_size(0).expect("TEST");
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        large,
+        "When focus moves to client 2, the tab follows client 2"
+    );
+}
+
+#[test]
+fn recompute_tab_size_focused_falls_back_to_largest_without_a_focused_viewer() {
+    let initial_size = Size {
+        cols: 200,
+        rows: 60,
+    };
+    let mut screen = create_new_screen(initial_size, true, true);
+    screen.resize_session_to = ResizeSessionTo::Focused;
+    new_tab(&mut screen, 1, 0);
+    screen.add_client(2, false).expect("TEST");
+
+    screen.set_client_size(1, Size { cols: 80, rows: 24 });
+    screen.set_client_size(
+        2,
+        Size {
+            cols: 160,
+            rows: 50,
+        },
+    );
+    // No client marked active (e.g. the focused client just detached): fall back to largest so
+    // the tab does not shrink to an arbitrary viewer.
+    screen.last_active_client = None;
+    screen.recompute_tab_size(0).expect("TEST");
+    assert_eq!(
+        screen.tabs.get(&0).unwrap().size,
+        Size {
+            cols: 160,
+            rows: 50,
+        },
+        "focused mode falls back to the largest viewer when no client is focused"
     );
 }
 

@@ -5066,6 +5066,7 @@ setting_keys! {
     SessionIndicator => (TopLevel, "session_indicator", false, Flag),
     SwapLayoutNotification => (TopLevel, "swap_layout_notification", false, Flag),
     OnQuit => (TopLevel, "on_quit", false, Text),
+    ResizeSessionTo => (TopLevel, "resize_session_to", false, Text),
     FrameRoundedCorners => (PaneFrames, "rounded_corners", false, Flag),
     FrameHideSessionName => (PaneFrames, "hide_session_name", false, Flag),
     FrameBorderStyle => (PaneFrames, "border_style", false, Text),

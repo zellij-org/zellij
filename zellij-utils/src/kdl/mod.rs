@@ -3379,6 +3379,17 @@ impl Options {
             },
             None => None,
         };
+        let resize_session_to =
+            match kdl_property_first_arg_as_string_or_error!(kdl_options, "resize_session_to") {
+                Some((value, entry)) => {
+                    use crate::input::options::ResizeSessionTo;
+                    match value.parse::<ResizeSessionTo>() {
+                        Ok(v) => Some(v),
+                        Err(e) => return Err(kdl_parsing_error!(e, entry)),
+                    }
+                },
+                None => None,
+            };
 
         Ok(Options {
             simplified_ui,
@@ -3452,6 +3463,7 @@ impl Options {
             session_indicator,
             swap_layout_notification,
             on_quit,
+            resize_session_to,
         })
     }
     pub fn from_string(stringified_keybindings: &String) -> Result<Self, ConfigError> {
@@ -5212,6 +5224,42 @@ impl Options {
             None
         }
     }
+    fn resize_session_to_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        use crate::input::options::ResizeSessionTo;
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}\n{}\n{}\n{}",
+            " ",
+            "// How to size a session that is attached from multiple clients at once.",
+            "// Options:",
+            "//   - \"smallest\" (Default — fit the smallest client so everyone sees the whole session)",
+            "//   - \"largest\" (fit the largest client; smaller clients see a part of the session)",
+            "//   - \"focused\" (follow the most recently active client)",
+            "// ",
+        );
+        let create_node = |value: ResizeSessionTo| -> KdlNode {
+            let mut node = KdlNode::new("resize_session_to");
+            let s = match value {
+                ResizeSessionTo::Smallest => "smallest",
+                ResizeSessionTo::Largest => "largest",
+                ResizeSessionTo::Focused => "focused",
+            };
+            node.push(KdlValue::String(s.to_string()));
+            node
+        };
+        if let Some(value) = self.resize_session_to {
+            let mut node = create_node(value);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(ResizeSessionTo::Smallest);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
     fn host_notification_protocol_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         use crate::input::options::HostNotificationProtocol;
         let comment_text = format!(
@@ -5619,6 +5667,9 @@ impl Options {
         }
         if let Some(on_quit) = self.on_quit_to_kdl(add_comments) {
             nodes.push(on_quit);
+        }
+        if let Some(resize_session_to) = self.resize_session_to_to_kdl(add_comments) {
+            nodes.push(resize_session_to);
         }
         nodes
     }
@@ -9994,6 +10045,33 @@ fn nested_session_handling_kdl_round_trip_for_every_variant() {
             Some(expected),
             "case: {value}"
         );
+
+        let mut serialized = Options::to_kdl(&parsed, false);
+        let mut fake_document = KdlDocument::new();
+        fake_document.nodes_mut().append(&mut serialized);
+        let reparsed =
+            Options::from_kdl(&fake_document.to_string().parse::<KdlDocument>().unwrap()).unwrap();
+        assert_eq!(parsed, reparsed, "round-trip mismatch for {value}");
+    }
+}
+
+#[test]
+fn resize_session_to_kdl_round_trip_for_every_variant() {
+    use crate::input::options::ResizeSessionTo;
+    let cases = [
+        ("smallest", ResizeSessionTo::Smallest),
+        ("largest", ResizeSessionTo::Largest),
+        ("focused", ResizeSessionTo::Focused),
+    ];
+    for (value, expected) in cases {
+        let fake_config = format!(
+            r##"
+                resize_session_to "{value}"
+            "##
+        );
+        let document: KdlDocument = fake_config.parse().unwrap();
+        let parsed = Options::from_kdl(&document).unwrap();
+        assert_eq!(parsed.resize_session_to, Some(expected), "case: {value}");
 
         let mut serialized = Options::to_kdl(&parsed, false);
         let mut fake_document = KdlDocument::new();
