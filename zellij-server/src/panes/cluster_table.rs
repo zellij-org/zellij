@@ -1,3 +1,19 @@
+// Shared storage for the code points a `TerminalCharacter` carries after its first one, when
+// there are two or more of them (one extra code point is stored inline in the cell; see the
+// comment on `TerminalCharacter::packed`).
+//
+// - The cell stores only an id (23 bits, so at most MAX_ID entries). The entry holds the extra
+//   code points as text, without the cell's first `character`.
+// - Identical texts share one entry (`by_text`), so a screen full of the same emoji costs one
+//   entry, not one per cell.
+// - Entries are reference counted: a cell `retain`s its id when cloned and `release`s it when
+//   dropped or overwritten. At zero the entry is freed and its id reused (`free`). A count that
+//   reaches u32::MAX saturates and the entry is never freed.
+// - Memory is capped at DEFAULT_BYTE_LIMIT, charging each entry its text length plus
+//   ENTRY_OVERHEAD. When full, `intern` returns None, the caller drops the code point, and one
+//   warning is logged until usage falls below 3/4 of the limit.
+// - There is one table per thread (`thread_local!`). Cells and their ids must stay on the
+//   thread that created them; an id is meaningless in another thread's table.
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;

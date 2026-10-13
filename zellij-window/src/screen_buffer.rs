@@ -200,7 +200,8 @@ impl ScreenBuffer {
     }
 
     pub fn is_group_continuation(&self, row: usize, col: usize) -> bool {
-        self.cell(row, col).is_group_continuation() && self.occupancy(row, col) != Occupancy::WideTail
+        self.cell(row, col).is_group_continuation()
+            && self.occupancy(row, col) != Occupancy::WideTail
     }
 
     pub fn unit_span(&self, row: usize, col: usize) -> UnitSpan {
@@ -708,9 +709,7 @@ pub mod painter {
                 let mut characters = text.chars();
                 let ch = match (characters.next(), characters.next()) {
                     (Some(only), None) => only as u32,
-                    (Some(first), Some(_)) => {
-                        self.builder.cluster(text).unwrap_or(first as u32)
-                    },
+                    (Some(first), Some(_)) => self.builder.cluster(text).unwrap_or(first as u32),
                     _ => ' ' as u32,
                 };
                 let mut head = WireCell {
@@ -1139,7 +1138,11 @@ mod tests {
     fn a_group_keeps_each_member_text_and_marks_the_members_after_the_first() {
         let mut buffer = ScreenBuffer::new(1, 8);
         painted(&mut buffer, |p| {
-            p.group(0, 0, &[(FAMILY_MAN, 2), (FAMILY_WOMAN, 2), (FAMILY_GIRL, 2)]);
+            p.group(
+                0,
+                0,
+                &[(FAMILY_MAN, 2), (FAMILY_WOMAN, 2), (FAMILY_GIRL, 2)],
+            );
             p.text(0, 6, "z");
         });
         assert_eq!(buffer.text_at(0, 0), FAMILY_MAN);

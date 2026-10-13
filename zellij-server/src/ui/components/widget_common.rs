@@ -580,7 +580,10 @@ mod tests {
         assert_eq!(text_width(DECOMPOSED_E), 1);
         assert_eq!(text_width(FLAG), 2);
         assert_eq!(text_width("你好"), 4);
-        assert_eq!(text_width(&format!("a{}b{}{}", FAMILY, DECOMPOSED_E, FLAG)), 7);
+        assert_eq!(
+            text_width(&format!("a{}b{}{}", FAMILY, DECOMPOSED_E, FLAG)),
+            7
+        );
     }
 
     #[test]
@@ -656,7 +659,10 @@ mod tests {
         let style = Style::default();
         let base = plain_styles(&style);
         let text = Text::plain(format!("a{}b", FAMILY));
-        assert_eq!(strip_styles(&paint_text(&text, base, 3, true, &style)), "a… ");
+        assert_eq!(
+            strip_styles(&paint_text(&text, base, 3, true, &style)),
+            "a… "
+        );
         let text = Text::plain(format!("{}{}{}", DECOMPOSED_E, DECOMPOSED_E, FLAG));
         assert_eq!(
             strip_styles(&paint_text(&text, base, 3, true, &style)),

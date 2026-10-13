@@ -3,7 +3,8 @@ use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
 pub fn clusters(s: &str) -> impl Iterator<Item = (&str, usize)> {
-    s.graphemes(true).map(|cluster| (cluster, cluster_width(cluster)))
+    s.graphemes(true)
+        .map(|cluster| (cluster, cluster_width(cluster)))
 }
 
 pub fn cluster_width(cluster: &str) -> usize {

@@ -514,6 +514,7 @@ fn test_client_messages() {
                 disable_session_metadata: Some(true),
                 support_kitty_keyboard_protocol: Some(true),
                 support_kitty_graphics_protocol: Some(false),
+                grapheme_clusters: Some(false),
                 web_server: Some(true),
                 web_sharing: Some(WebSharing::On),
                 stacked_resize: Some(true),

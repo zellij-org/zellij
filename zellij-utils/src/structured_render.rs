@@ -1607,8 +1607,7 @@ impl<'a> FrameView<'a> {
             ]) as usize;
             let payload_end = header_end + payload_len;
             if self.buffer[at] == RECORD_KIND_CLUSTERS {
-                if let Some(record) = ClusterRecord::decode(&self.buffer[header_end..payload_end])
-                {
+                if let Some(record) = ClusterRecord::decode(&self.buffer[header_end..payload_end]) {
                     clusters.entries.extend(record.entries);
                 }
             }
@@ -3209,7 +3208,10 @@ mod tests {
 
     fn texts(view: &FrameView<'_>, cells: &[WireCell]) -> Vec<String> {
         let clusters = view.clusters();
-        cells.iter().map(|c| c.text(&clusters).into_owned()).collect()
+        cells
+            .iter()
+            .map(|c| c.text(&clusters).into_owned())
+            .collect()
     }
 
     fn graphics_payload_with_clusters(entries: &[(u16, &[u8])]) -> Vec<u8> {
@@ -3230,8 +3232,7 @@ mod tests {
     fn cluster_cells_groups_and_wide_cells_round_trip() {
         let mut builder = FrameBuilder::new(10, 2, 1);
         let family_head = cluster_cell(&mut builder, "\u{1F468}\u{200D}", 2, 0);
-        let family_middle =
-            cluster_cell(&mut builder, "\u{1F469}\u{200D}", 2, ATTR_GROUP_CONTINUE);
+        let family_middle = cluster_cell(&mut builder, "\u{1F469}\u{200D}", 2, ATTR_GROUP_CONTINUE);
         let family_tail = WireCell {
             ch: '\u{1F467}' as u32,
             width: 2,
@@ -3331,15 +3332,18 @@ mod tests {
 
     #[test]
     fn malformed_cluster_records_are_rejected() {
-        assert!(ClusterRecord::decode(&graphics_payload_with_clusters(&[(0, b"\xff\xfe")])).is_none());
+        assert!(
+            ClusterRecord::decode(&graphics_payload_with_clusters(&[(0, b"\xff\xfe")])).is_none()
+        );
         assert!(ClusterRecord::decode(&graphics_payload_with_clusters(&[(0, b"")])).is_none());
-        assert!(ClusterRecord::decode(&graphics_payload_with_clusters(&[
-            (0, b"ab"),
-            (0, b"cd")
-        ]))
-        .is_none());
+        assert!(
+            ClusterRecord::decode(&graphics_payload_with_clusters(&[(0, b"ab"), (0, b"cd")]))
+                .is_none()
+        );
         let oversize = vec![b'a'; MAX_CLUSTER_ENTRY_LEN + 1];
-        assert!(ClusterRecord::decode(&graphics_payload_with_clusters(&[(0, &oversize)])).is_none());
+        assert!(
+            ClusterRecord::decode(&graphics_payload_with_clusters(&[(0, &oversize)])).is_none()
+        );
         let entry = vec![b'a'; MAX_CLUSTER_ENTRY_LEN];
         let many: Vec<(u16, &[u8])> = (0..300u16).map(|id| (id, entry.as_slice())).collect();
         assert!(ClusterRecord::decode(&graphics_payload_with_clusters(&many)).is_none());

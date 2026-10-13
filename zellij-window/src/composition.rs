@@ -362,7 +362,10 @@ mod tests {
     fn the_cursor_column_after_a_cluster_counts_each_code_point() {
         let family = "\u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467}";
         let end = family.len();
-        assert_eq!(Preedit::new(family, Some((end, end))).cursor_column(), Some(6));
+        assert_eq!(
+            Preedit::new(family, Some((end, end))).cursor_column(),
+            Some(6)
+        );
         let accented = "e\u{301}";
         let end = accented.len();
         assert_eq!(

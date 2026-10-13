@@ -2953,7 +2953,11 @@ fn skin_tone_flag_and_conjunct_groups_are_complex_units() {
             "\u{1F44D}\u{1F3FD}",
             4,
         ),
-        (vec![("\u{1F1E9}", 1), ("\u{1F1EA}", 1)], "\u{1F1E9}\u{1F1EA}", 2),
+        (
+            vec![("\u{1F1E9}", 1), ("\u{1F1EA}", 1)],
+            "\u{1F1E9}\u{1F1EA}",
+            2,
+        ),
         (
             vec![("\u{0915}\u{094D}", 1), ("\u{0937}", 1)],
             "\u{0915}\u{094D}\u{0937}",
@@ -2991,11 +2995,7 @@ fn cells_with_different_styles_are_not_grouped() {
 
 #[test]
 fn a_group_with_its_middle_overwritten_is_drawn_as_separate_units() {
-    let cells = cells_of(&[
-        ("\u{1F468}\u{200D}", 2),
-        ("x", 1),
-        ("\u{1F467}", 2),
-    ]);
+    let cells = cells_of(&[("\u{1F468}\u{200D}", 2), ("x", 1), ("\u{1F467}", 2)]);
     let output = ansi_for(grouped_chunk(cells, 0, 0), None);
     assert!(!output.contains('X'), "output={:?}", output);
     assert!(output.ends_with("\u{1F468}\u{200D}x\u{1F467}"));
@@ -3021,17 +3021,18 @@ fn a_selection_covering_a_group_keeps_it_grouped() {
         0,
     );
     let output = ansi_for(chunk, None);
-    assert!(output.contains(&format!("\u{1b}[6X{}\u{1b}[7G", FAMILY)), "output={:?}", output);
+    assert!(
+        output.contains(&format!("\u{1b}[6X{}\u{1b}[7G", FAMILY)),
+        "output={:?}",
+        output
+    );
 }
 
 #[test]
 fn the_size_cut_off_never_cuts_a_unit() {
     let mut cells = cells_of(&[("a", 1)]);
     cells.extend(family_cells());
-    let output = ansi_for(
-        grouped_chunk(cells, 0, 0),
-        Some(Size { rows: 5, cols: 4 }),
-    );
+    let output = ansi_for(grouped_chunk(cells, 0, 0), Some(Size { rows: 5, cols: 4 }));
     assert_eq!(output, "\u{1b}[1;1H\u{1b}[ma");
 }
 

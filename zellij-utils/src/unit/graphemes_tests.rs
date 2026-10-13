@@ -5,8 +5,7 @@ const THUMBS_TONE: &str = "\u{1F44D}\u{1F3FD}";
 const FLAG_DE: &str = "\u{1F1E9}\u{1F1EA}";
 const E_ACUTE: &str = "e\u{0301}";
 const HANGUL_LVT: &str = "\u{1100}\u{1161}\u{11A8}";
-const ENGLAND: &str =
-    "\u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}";
+const ENGLAND: &str = "\u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}";
 const KEYCAP: &str = "1\u{FE0F}\u{20E3}";
 const KSSA: &str = "\u{0915}\u{094D}\u{0937}";
 const WARNING_VS16: &str = "\u{26A0}\u{FE0F}";
@@ -54,7 +53,11 @@ fn assert_no_split(original: &str, truncated: &str) {
             );
         }
         if let Some((first, _)) = clusters(piece).next() {
-            assert_ne!(cluster_width(first), 0, "piece starts with a zero-width cluster");
+            assert_ne!(
+                cluster_width(first),
+                0,
+                "piece starts with a zero-width cluster"
+            );
         }
     }
 }
@@ -104,8 +107,14 @@ fn truncate_middle_never_splits_a_cluster() {
 #[test]
 fn truncation_keeps_short_text_borrowed() {
     assert!(matches!(truncate_end("abc", 3, "…"), Cow::Borrowed("abc")));
-    assert!(matches!(truncate_start("abc", 5, "…"), Cow::Borrowed("abc")));
-    assert!(matches!(truncate_middle("abc", 3, "…"), Cow::Borrowed("abc")));
+    assert!(matches!(
+        truncate_start("abc", 5, "…"),
+        Cow::Borrowed("abc")
+    ));
+    assert!(matches!(
+        truncate_middle("abc", 3, "…"),
+        Cow::Borrowed("abc")
+    ));
 }
 
 #[test]

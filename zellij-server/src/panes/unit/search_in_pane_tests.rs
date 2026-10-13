@@ -496,8 +496,7 @@ pub fn searching_for_a_family_emoji_in_default_mode_highlights_its_group() {
 
 #[test]
 pub fn searching_for_a_family_emoji_in_grapheme_mode_highlights_one_cell() {
-    let mut terminal_pane =
-        create_pane_with_content(&format!("\u{1b}[?2027hab{}cd", FAMILY), 40);
+    let mut terminal_pane = create_pane_with_content(&format!("\u{1b}[?2027hab{}cd", FAMILY), 40);
     terminal_pane.update_search_term(FAMILY);
     assert_eq!(found_ranges(&terminal_pane), vec![((0, 2), (0, 4))]);
 }
@@ -536,8 +535,7 @@ pub fn a_non_ascii_match_across_a_wrapped_line_is_found() {
 
 #[test]
 pub fn case_insensitive_search_folds_greek_cyrillic_and_turkish() {
-    let mut terminal_pane =
-        create_pane_with_content("ΣΟΦΙΑ МОСКВА \u{0130}stanbul", 60);
+    let mut terminal_pane = create_pane_with_content("ΣΟΦΙΑ МОСКВА \u{0130}stanbul", 60);
     terminal_pane.update_search_term("σοφια");
     terminal_pane.toggle_search_case_sensitivity();
     assert_eq!(found_ranges(&terminal_pane), vec![((0, 0), (0, 5))]);

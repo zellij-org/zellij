@@ -33,10 +33,10 @@ use zellij_utils::errors::prelude::*;
 use zellij_utils::pane_size::SizeInPixels;
 use zellij_utils::pane_size::{PaneGeom, Size};
 use zellij_utils::structured_render::{
-    CursorState, FrameBuilder, GeometryRecord, GraphicsMedium, GraphicsRecord, LinkEntry, ATTR_GROUP_CONTINUE,
+    CursorState, FrameBuilder, GeometryRecord, GraphicsMedium, GraphicsRecord, LinkEntry,
     LinkRecord, PaneRect, PendingOverlay, ScrollRecord, WireCell, WireColor, ATTR_BOLD, ATTR_DIM,
-    ATTR_FAST_BLINK, ATTR_HIDDEN, ATTR_ITALIC, ATTR_REVERSE, ATTR_SLOW_BLINK, ATTR_STRIKE,
-    CURSOR_BLINKING, CURSOR_SHAPE_BEAM, CURSOR_SHAPE_BLOCK, CURSOR_SHAPE_DEFAULT,
+    ATTR_FAST_BLINK, ATTR_GROUP_CONTINUE, ATTR_HIDDEN, ATTR_ITALIC, ATTR_REVERSE, ATTR_SLOW_BLINK,
+    ATTR_STRIKE, CURSOR_BLINKING, CURSOR_SHAPE_BEAM, CURSOR_SHAPE_BLOCK, CURSOR_SHAPE_DEFAULT,
     CURSOR_SHAPE_UNDERLINE, GRAPHICS_FORMAT_RGBA8, LINK_NONE, MAX_LINK_ID, MAX_LINK_URI_LEN,
     UNDERLINE_CURLY, UNDERLINE_DASHED, UNDERLINE_DOTTED, UNDERLINE_DOUBLE, UNDERLINE_NONE,
     UNDERLINE_SHIFT, UNDERLINE_STRAIGHT,
@@ -789,6 +789,23 @@ fn push_decimal(out: &mut String, value: usize) {
     }
 }
 
+// Writes one unit (a cell, or a group of cells forming one cluster) to a host terminal.
+//
+// We know how many columns the unit occupies in our grid (`unit_columns`), but not how many
+// the host terminal will use to draw its text: hosts disagree on emoji sequences, flags,
+// skin tones, VS16 and combining marks, and a host without mode 2027 may draw a family emoji
+// six columns wide where our grid has two. If the host's idea of the width differs from ours,
+// its cursor ends up somewhere else and everything after the unit on that row is shifted.
+//
+// So for units where that can happen (`prepared.complex`, decided in `prepare_unit`):
+//   ESC[nX        erase our n columns first, so nothing old is left showing in them even if
+//                 the host draws the text narrower than we think
+//   <text>        draw the cluster, at whatever width the host chooses
+//   ESC[<col>G    move the cursor to the column right after the unit by absolute position,
+//                 so the rest of the row lands where our grid says regardless of how far
+//                 the host's cursor actually moved
+// Plain text, where every width agrees, is written as is so ordinary output costs nothing
+// extra.
 fn write_unit_text(
     vte_output: &mut String,
     unit: &[TerminalCharacter],
@@ -843,6 +860,11 @@ fn serialize_chunks(
         let mut character_styles = DEFAULT_STYLES.enable_styled_underlines(styled_underlines);
         vte_goto_instruction(character_chunk.x, character_chunk.y, &mut vte_output)
             .with_context(err_context)?;
+        // A chunk marked `erase_first` starts in the middle of a row where a floating pane cut
+        // off its left part (see `remove_covered_parts`). The host may still show part of a
+        // wide character or cluster that straddled the cut, and writing into the middle of
+        // a wide glyph is handled differently by different terminals. Erasing the chunk's
+        // columns before drawing makes sure no half glyph is left behind.
         if character_chunk.erase_first {
             let mut erase_width = character_chunk.width();
             if let Some(size) = max_size {
@@ -2866,6 +2888,8 @@ impl FloatingPanesStack {
                 let covered_part = c_chunk.drain_by_width(pane_right_edge + 1 - c_chunk_left_side);
                 drop(covered_part);
                 c_chunk.x = pane_right_edge + 1;
+                // The chunk now starts right after the floating pane; a wide cell or cluster
+                // may have straddled that edge, so erase before drawing (see `serialize_chunks`).
                 c_chunk.erase_first = true;
                 return Ok(None);
             } else if pane_left_edge >= c_chunk_left_side
@@ -2891,6 +2915,8 @@ impl FloatingPanesStack {
                 left_chunk.pane_default_bg = c_chunk.pane_default_bg;
                 left_chunk.changed_colors = c_chunk.changed_colors;
                 left_chunk.may_have_groups = c_chunk.may_have_groups;
+                // The left part starts where the original chunk started, so it needs erasing
+                // only if the original did.
                 left_chunk.erase_first = c_chunk.erase_first;
                 if !c_chunk.selection_and_colors.is_empty() {
                     left_chunk.selection_and_colors = c_chunk.selection_and_colors.clone();
@@ -2898,6 +2924,8 @@ impl FloatingPanesStack {
 
                 c_chunk.x = right_chunk_x;
                 c_chunk.terminal_characters = right_chunk_characters;
+                // The right part starts right after the floating pane, where a wide cell or
+                // cluster may have straddled the edge, so erase before drawing.
                 c_chunk.erase_first = true;
                 return Ok(Some(left_chunk));
             }
@@ -3094,6 +3122,8 @@ pub struct CharacterChunk {
     pub x: usize,
     pub y: usize,
     pub may_have_groups: bool,
+    // Erase the chunk's columns on the host before drawing it; set when a floating pane cut
+    // the chunk so that it starts mid-row (see `serialize_chunks`).
     pub erase_first: bool,
     pub changed_colors: Option<[Option<AnsiCode>; 256]>,
     pub pane_default_fg: Option<AnsiCode>,

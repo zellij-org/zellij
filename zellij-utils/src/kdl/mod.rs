@@ -3229,6 +3229,9 @@ impl Options {
             "support_kitty_graphics_protocol"
         )
         .map(|(v, _)| v);
+        let grapheme_clusters =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "grapheme_clusters")
+                .map(|(v, _)| v);
         let web_server =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "web_server").map(|(v, _)| v);
         let web_sharing =
@@ -3416,6 +3419,7 @@ impl Options {
             disable_session_metadata,
             support_kitty_keyboard_protocol,
             support_kitty_graphics_protocol,
+            grapheme_clusters,
             web_server,
             web_sharing,
             stacked_resize,
@@ -4413,6 +4417,35 @@ impl Options {
         };
         if let Some(support_kitty_keyboard_protocol) = self.support_kitty_keyboard_protocol {
             let mut node = create_node(support_kitty_keyboard_protocol);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(false);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn grapheme_clusters_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!("{}\n{}\n{}\n{}\n{}\n{}",
+            " ",
+            "// Count each grapheme cluster (an emoji sequence such as a flag or a skin tone, a letter with its accents) as one unit of width, as the Unicode standard does",
+            "// When false, widths are counted per code point, the way older programs expect; programs can still ask for clusters with mode 2027",
+            "// (Applies to new panes)",
+            "// Default: true",
+            "// ",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("grapheme_clusters");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(grapheme_clusters) = self.grapheme_clusters {
+            let mut node = create_node(grapheme_clusters);
             if add_comments {
                 node.set_leading(format!("{}\n", comment_text));
             }
@@ -5476,6 +5509,9 @@ impl Options {
             self.support_kitty_graphics_protocol_to_kdl(add_comments)
         {
             nodes.push(support_kitty_graphics_protocol);
+        }
+        if let Some(grapheme_clusters) = self.grapheme_clusters_to_kdl(add_comments) {
+            nodes.push(grapheme_clusters);
         }
         if let Some(web_server) = self.web_server_to_kdl(add_comments) {
             nodes.push(web_server);
@@ -10090,6 +10126,20 @@ fn osc8_hyperlinks_config_parsing() {
     let serialized = config.to_string(false);
     let deserialized = Config::from_kdl(&serialized, None).unwrap();
     assert_eq!(deserialized.options.osc8_hyperlinks, Some(true));
+}
+
+#[test]
+fn grapheme_clusters_config_parsing() {
+    let config = Config::from_kdl("", None).unwrap();
+    assert_eq!(config.options.grapheme_clusters, None);
+
+    let config = Config::from_kdl("grapheme_clusters false", None).unwrap();
+    assert_eq!(config.options.grapheme_clusters, Some(false));
+    let deserialized = Config::from_kdl(&config.to_string(false), None).unwrap();
+    assert_eq!(deserialized.options.grapheme_clusters, Some(false));
+
+    let config = Config::from_kdl("grapheme_clusters true", None).unwrap();
+    assert_eq!(config.options.grapheme_clusters, Some(true));
 }
 
 #[cfg(test)]

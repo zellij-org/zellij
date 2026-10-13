@@ -336,10 +336,7 @@ mod tests {
     fn cluster_streams() -> Vec<(&'static str, String)> {
         vec![
             ("default mode", format!("{}\r\n", CLUSTER_SAMPLES)),
-            (
-                "mode 2027",
-                format!("\u{1b}[?2027h{}\r\n", CLUSTER_SAMPLES),
-            ),
+            ("mode 2027", format!("\u{1b}[?2027h{}\r\n", CLUSTER_SAMPLES)),
         ]
     }
 
@@ -1093,7 +1090,8 @@ mod tests {
         assert_eq!(warnings.len(), 2);
         let (row, col) = warnings[0];
         assert_eq!(
-            projection.cells[row][col + VALUE].text, "\u{26a0}",
+            projection.cells[row][col + VALUE].text,
+            "\u{26a0}",
             "a one-column warning sign arrives in its text style"
         );
         assert_eq!(projection.cells[row][col + VALUE + 1].text, "|");

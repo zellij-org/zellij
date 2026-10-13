@@ -1561,15 +1561,16 @@ mod tests {
             let frame = title_frame(CLUSTER_TITLE, cols, true);
             let cells = first_row(&frame);
             let width: usize = cells.iter().map(|c| c.width()).sum();
-            assert_eq!(width, cols, "cols={} row={:?}", cols, characters_to_string(&cells));
+            assert_eq!(
+                width,
+                cols,
+                "cols={} row={:?}",
+                cols,
+                characters_to_string(&cells)
+            );
             assert_cells_are_whole_clusters(&cells, CLUSTER_TITLE);
             let last = cells.last().unwrap().text().into_owned();
-            assert!(
-                last == "┐" || last == "╮",
-                "cols={} last={:?}",
-                cols,
-                last
-            );
+            assert!(last == "┐" || last == "╮", "cols={} last={:?}", cols, last);
         }
     }
 
@@ -1579,7 +1580,12 @@ mod tests {
             let frame = title_frame(CLUSTER_TITLE, cols, false);
             let cells = first_row(&frame);
             let width: usize = cells.iter().map(|c| c.width()).sum();
-            assert!(width <= cols, "cols={} row={:?}", cols, characters_to_string(&cells));
+            assert!(
+                width <= cols,
+                "cols={} row={:?}",
+                cols,
+                characters_to_string(&cells)
+            );
             assert_cells_are_whole_clusters(&cells, CLUSTER_TITLE);
         }
     }
@@ -1597,7 +1603,13 @@ mod tests {
             });
             let cells = frame.render_stack_list_entry(frame.stack_list_entry.as_ref().unwrap());
             let width: usize = cells.iter().map(|c| c.width()).sum();
-            assert_eq!(width, cols, "cols={} row={:?}", cols, characters_to_string(&cells));
+            assert_eq!(
+                width,
+                cols,
+                "cols={} row={:?}",
+                cols,
+                characters_to_string(&cells)
+            );
             assert_cells_are_whole_clusters(&cells, CLUSTER_TITLE);
         }
     }
@@ -1610,7 +1622,13 @@ mod tests {
             frame.is_pinned = true;
             let cells = first_row(&frame);
             let width: usize = cells.iter().map(|c| c.width()).sum();
-            assert_eq!(width, cols, "cols={} row={:?}", cols, characters_to_string(&cells));
+            assert_eq!(
+                width,
+                cols,
+                "cols={} row={:?}",
+                cols,
+                characters_to_string(&cells)
+            );
             assert_cells_are_whole_clusters(&cells, CLUSTER_TITLE);
         }
     }

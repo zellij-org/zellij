@@ -52,6 +52,9 @@ const CJK: &[u8] = include_bytes!("../assets/fonts/NotoSansMonoCJK-Regular.otf")
 const EMOJI: &[u8] = include_bytes!("../assets/fonts/NotoColorEmoji.ttf");
 const SYMBOLS: &[u8] = include_bytes!("../assets/fonts/SymbolsNerdFontMono-Regular.ttf");
 const SYMBOLS_FONT: FontId = FontId(6);
+const EMOJI_FONT: FontId = FontId(5);
+const EMOJI_PROBE: char = '\u{1f600}';
+const TEXT_PRESENTATION: char = '\u{fe0e}';
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FaceStyle {
@@ -344,7 +347,7 @@ pub struct FontStack {
     coords: Vec<Vec<i16>>,
     color_capable: Vec<bool>,
     primary: [FontId; 4],
-    embedded_fallbacks: [FontId; 3],
+    fallbacks: Vec<FontId>,
     size: f32,
     weight: u16,
     features: Vec<FontFeature>,
@@ -418,7 +421,7 @@ impl FontStack {
             coords,
             color_capable,
             primary: embedded_primary,
-            embedded_fallbacks: [FontId(4), FontId(5), SYMBOLS_FONT],
+            fallbacks: vec![FontId(4), EMOJI_FONT, SYMBOLS_FONT],
             size,
             weight: options.weight,
             shapes: options.ligatures || !features.is_empty(),
@@ -447,6 +450,8 @@ impl FontStack {
                 ),
             }
         }
+
+        stack.adopt_system_emoji();
 
         let regular = stack.primary[0].0;
         let (metrics, placement) = derive_metrics(
@@ -585,17 +590,16 @@ impl FontStack {
             .chars()
             .filter(|character| !is_joining_control(*character))
             .peekable();
-        significant.peek().is_some() && significant.all(|character| self.map(font, character).is_some())
+        significant.peek().is_some()
+            && significant.all(|character| self.map(font, character).is_some())
     }
 
     fn search_cluster(&mut self, style: FaceStyle, text: &str) -> Option<FontId> {
-        let fallbacks = self.embedded_fallbacks;
-        if wants_color(text) {
-            if let Some(font) = fallbacks
-                .iter()
-                .copied()
-                .find(|font| self.has_color(*font) && self.covers(*font, text))
-            {
+        let drawn = drawn_text(text);
+        let text: &str = &drawn;
+        let text_style = text.contains(TEXT_PRESENTATION);
+        if wants_color(text) && !text_style {
+            if let Some(font) = self.colour_font_for(text) {
                 return Some(font);
             }
         }
@@ -606,30 +610,78 @@ impl FontStack {
         if text.chars().any(is_private_use) && self.covers(SYMBOLS_FONT, text) {
             return Some(SYMBOLS_FONT);
         }
-        if let Some(font) = fallbacks
-            .iter()
-            .copied()
-            .find(|font| self.covers(*font, text))
-        {
+        let fallbacks = self.fallbacks.clone();
+        let suits = |stack: &Self, font: FontId| {
+            stack.covers(font, text) && !(text_style && stack.has_color(font))
+        };
+        if let Some(font) = fallbacks.iter().copied().find(|font| suits(self, *font)) {
             return Some(font);
         }
         let first = text
             .chars()
             .find(|character| !is_joining_control(*character))?;
-        let discovered = self.discovered(style, first)?;
-        self.covers(discovered.font, text)
-            .then_some(discovered.font)
+        if let Some(discovered) = self.discovered(style, first) {
+            if suits(self, discovered.font) {
+                return Some(discovered.font);
+            }
+        }
+        if text_style {
+            return fallbacks
+                .iter()
+                .copied()
+                .find(|font| self.covers(*font, text));
+        }
+        None
     }
 
-    pub fn rasterize_cluster(&mut self, style: FaceStyle, text: &str, budget: u32) -> ClusterRaster {
-        let budget = budget.max(1);
-        let Some(font) = self.cluster_font(style, text) else {
-            return ClusterRaster::Uncovered;
+    fn colour_font_for(&mut self, text: &str) -> Option<FontId> {
+        let candidates: Vec<FontId> = self
+            .fallbacks
+            .clone()
+            .into_iter()
+            .filter(|font| self.has_color(*font) && self.covers(*font, text))
+            .collect();
+        candidates
+            .iter()
+            .copied()
+            .find(|font| self.joins(*font, text))
+            .or_else(|| candidates.first().copied())
+    }
+
+    fn joins(&mut self, font: FontId, text: &str) -> bool {
+        let shaped_text = self.shaping_text(font, text).into_owned();
+        let glyphs = self.shape_cluster(font, &shaped_text);
+        glyphs.len() == 1 && glyphs[0].glyph != 0
+    }
+
+    fn adopt_system_emoji(&mut self) {
+        let Some(discovery) = self.discovery else {
+            return;
         };
-        let unmapped_control = |character: char| {
-            is_joining_control(character) && self.map(font, character).is_none()
+        let Some((path, index)) = discovery.match_emoji(EMOJI_PROBE) else {
+            return;
         };
-        let shaped_text: std::borrow::Cow<'_, str> = if text.chars().any(unmapped_control) {
+        let Some(font) = self.adopt(path, index, self.weight) else {
+            return;
+        };
+        if !self.has_color(font) || self.map(font, EMOJI_PROBE).is_none() {
+            return;
+        }
+        if self.fallbacks.contains(&font) {
+            return;
+        }
+        let bundled = self
+            .fallbacks
+            .iter()
+            .position(|fallback| *fallback == EMOJI_FONT)
+            .unwrap_or(self.fallbacks.len());
+        self.fallbacks.insert(bundled, font);
+    }
+
+    fn shaping_text<'a>(&self, font: FontId, text: &'a str) -> std::borrow::Cow<'a, str> {
+        let unmapped_control =
+            |character: char| is_joining_control(character) && self.map(font, character).is_none();
+        if text.chars().any(unmapped_control) {
             std::borrow::Cow::Owned(
                 text.chars()
                     .filter(|character| !unmapped_control(*character))
@@ -637,7 +689,23 @@ impl FontStack {
             )
         } else {
             std::borrow::Cow::Borrowed(text)
+        }
+    }
+
+    pub fn rasterize_cluster(
+        &mut self,
+        style: FaceStyle,
+        text: &str,
+        budget: u32,
+    ) -> ClusterRaster {
+        let budget = budget.max(1);
+        let drawn = drawn_text(text);
+        let text: &str = &drawn;
+        let Some(font) = self.cluster_font(style, text) else {
+            return ClusterRaster::Uncovered;
         };
+        let silhouette = text.contains(TEXT_PRESENTATION) && self.has_color(font);
+        let shaped_text = self.shaping_text(font, text);
         if shaped_text.is_empty() {
             return ClusterRaster::Uncovered;
         }
@@ -647,7 +715,8 @@ impl FontStack {
         }
         let advance = glyphs.iter().map(|glyph| glyph.advance).sum::<i32>() as f32;
         let box_width = (self.metrics.width * budget) as f32;
-        if advance <= 0.0 || advance > box_width * CLUSTER_ADVANCE_TOLERANCE {
+        let squeezable = silhouette && glyphs.len() == 1;
+        if advance <= 0.0 || (advance > box_width * CLUSTER_ADVANCE_TOLERANCE && !squeezable) {
             return ClusterRaster::Uncovered;
         }
         let primary = self.is_primary(font);
@@ -674,7 +743,7 @@ impl FontStack {
         let mut bitmap = match self.composite(font, &glyphs, size, sources) {
             Err(()) => return ClusterRaster::Uncovered,
             Ok(None) => return ClusterRaster::Blank,
-            Ok(Some(bitmap)) => bitmap,
+            Ok(Some(bitmap)) => as_drawn(bitmap, silhouette),
         };
         let shrink = fit.ink_scale(&bitmap);
         if shrink < 1.0 {
@@ -682,7 +751,7 @@ impl FontStack {
             bitmap = match self.composite(font, &glyphs, size, sources) {
                 Err(()) => return ClusterRaster::Uncovered,
                 Ok(None) => return ClusterRaster::Blank,
-                Ok(Some(bitmap)) => bitmap,
+                Ok(Some(bitmap)) => as_drawn(bitmap, silhouette),
             };
         }
         let placed = fit.place(bitmap, advance * size / self.size);
@@ -714,7 +783,10 @@ impl FontStack {
         let Some(content) = pieces.first().map(|(_, _, bitmap)| bitmap.content) else {
             return Ok(None);
         };
-        if pieces.iter().any(|(_, _, bitmap)| bitmap.content != content) {
+        if pieces
+            .iter()
+            .any(|(_, _, bitmap)| bitmap.content != content)
+        {
             return Err(());
         }
         if pieces.len() == 1 {
@@ -952,7 +1024,7 @@ impl FontStack {
             .discovered(style, character)
             .map(|glyph| (glyph, self.has_color(glyph.font)));
         let fallbacks: Vec<(Glyph, bool)> = self
-            .embedded_fallbacks
+            .fallbacks
             .iter()
             .filter_map(|fallback| self.map(*fallback, character))
             .map(|glyph| (glyph, self.has_color(glyph.font)))
@@ -1208,6 +1280,62 @@ fn crop_to_cell(bitmap: GlyphBitmap, metrics: CellMetrics) -> Option<GlyphBitmap
         coverage,
         ..bitmap
     })
+}
+
+fn drawn_text(text: &str) -> std::borrow::Cow<'_, str> {
+    match compose_hangul(text) {
+        Some(syllable) => std::borrow::Cow::Owned(syllable.to_string()),
+        None => std::borrow::Cow::Borrowed(text),
+    }
+}
+
+pub fn compose_hangul(text: &str) -> Option<char> {
+    let mut pieces = text
+        .chars()
+        .filter(|character| !is_joining_control(*character));
+    let leading = pieces.next()?;
+    let vowel = pieces.next()?;
+    let trailing = pieces.next();
+    if pieces.next().is_some()
+        || !('\u{1100}'..='\u{1112}').contains(&leading)
+        || !('\u{1161}'..='\u{1175}').contains(&vowel)
+    {
+        return None;
+    }
+    let trailing_index = match trailing {
+        None => 0,
+        Some(trailing) if ('\u{11a8}'..='\u{11c2}').contains(&trailing) => trailing as u32 - 0x11a7,
+        Some(_) => return None,
+    };
+    char::from_u32(
+        0xac00 + ((leading as u32 - 0x1100) * 21 + (vowel as u32 - 0x1161)) * 28 + trailing_index,
+    )
+}
+
+fn as_drawn(bitmap: GlyphBitmap, silhouette: bool) -> GlyphBitmap {
+    if !silhouette || bitmap.content != GlyphContent::Color {
+        return bitmap;
+    }
+    let luminance = |pixel: &[u8]| {
+        (2126 * pixel[0] as u32 + 7152 * pixel[1] as u32 + 722 * pixel[2] as u32) / 10000
+    };
+    let brightest = bitmap
+        .coverage
+        .chunks_exact(4)
+        .filter(|pixel| pixel[3] > 0)
+        .map(luminance)
+        .max()
+        .unwrap_or(0)
+        .max(1);
+    GlyphBitmap {
+        coverage: bitmap
+            .coverage
+            .chunks_exact(4)
+            .map(|pixel| (pixel[3] as u32 * luminance(pixel).min(brightest) / brightest) as u8)
+            .collect(),
+        content: GlyphContent::Mask,
+        ..bitmap
+    }
 }
 
 fn is_private_use(character: char) -> bool {
@@ -2258,8 +2386,7 @@ mod tests {
     const SKIN_TONE: &str = "\u{1f44d}\u{1f3fd}";
     const FLAG: &str = "\u{1f1e9}\u{1f1ea}";
     const RAINBOW_FLAG: &str = "\u{1f3f3}\u{fe0f}\u{200d}\u{1f308}";
-    const ENGLAND_FLAG: &str =
-        "\u{1f3f4}\u{e0067}\u{e0062}\u{e0065}\u{e006e}\u{e0067}\u{e007f}";
+    const ENGLAND_FLAG: &str = "\u{1f3f4}\u{e0067}\u{e0062}\u{e0065}\u{e006e}\u{e0067}\u{e007f}";
     const KEYCAP: &str = "1\u{fe0f}\u{20e3}";
 
     #[test]
@@ -2274,7 +2401,14 @@ mod tests {
 
     #[test]
     fn joining_controls_do_not_decide_coverage() {
-        for control in ['\u{200d}', '\u{fe0f}', '\u{fe0e}', '\u{e0067}', '\u{e0100}', '\u{ad}'] {
+        for control in [
+            '\u{200d}',
+            '\u{fe0f}',
+            '\u{fe0e}',
+            '\u{e0067}',
+            '\u{e0100}',
+            '\u{ad}',
+        ] {
             assert!(is_joining_control(control), "{:?}", control);
         }
         for visible in ['a', '\u{301}', '\u{1f468}', '\u{94d}'] {
@@ -2305,15 +2439,19 @@ mod tests {
             SKIN_TONE,
         ] {
             if let Some(font) = fonts.cluster_font(FaceStyle::Regular, text) {
-                assert!(fonts.covers(font, text), "{:?} chose {:?}", text, font);
+                assert!(
+                    fonts.covers(font, &drawn_text(text)),
+                    "{:?} chose {:?}",
+                    text,
+                    font
+                );
             }
         }
         assert!(fonts.cluster_font(FaceStyle::Regular, "e\u{301}").is_some());
-        assert!(
-            fonts
-                .cluster_font(FaceStyle::Regular, "\u{1100}\u{1161}\u{11a8}")
-                .is_none(),
-            "the bundled CJK subset carries no conjoining jamo; a system font has to supply them"
+        assert_eq!(
+            fonts.cluster_font(FaceStyle::Regular, "\u{1100}\u{1161}\u{11a8}"),
+            Some(FontId(4)),
+            "conjoining jamo are drawn from the bundled CJK font's composed syllable"
         );
         assert!(fonts
             .cluster_font(FaceStyle::Regular, "\u{10fffd}\u{301}")
@@ -2359,21 +2497,52 @@ mod tests {
     }
 
     #[test]
-    fn the_bundled_emoji_subset_cannot_join_sequences_so_they_fall_back_to_cells() {
+    fn the_bundled_emoji_font_joins_each_sequence_into_one_colour_glyph() {
         let mut fonts = fonts();
+        let metrics = fonts.metrics();
         for sequence in [FAMILY, SKIN_TONE, FLAG, RAINBOW_FLAG, ENGLAND_FLAG, KEYCAP] {
-            assert!(
-                fonts.cluster_font(FaceStyle::Regular, sequence).is_none(),
-                "{:?} found a face; the bundled emoji subset gained coverage and \
-                 this test should assert one joined sprite instead",
-                sequence
-            );
-            assert!(
-                matches!(
-                    fonts.rasterize_cluster(FaceStyle::Regular, sequence, 2),
-                    ClusterRaster::Uncovered
-                ),
-                "{:?}",
+            let font = fonts
+                .cluster_font(FaceStyle::Regular, sequence)
+                .unwrap_or_else(|| panic!("{:?} found no face", sequence));
+            assert!(fonts.has_color(font), "{:?} went to {:?}", sequence, font);
+            let shaped_text = fonts.shaping_text(font, sequence).into_owned();
+            let glyphs = fonts.shape_cluster(font, &shaped_text);
+            assert_eq!(glyphs.len(), 1, "{:?} shaped into {:?}", sequence, glyphs);
+            assert_ne!(glyphs[0].glyph, 0, "{:?}", sequence);
+            match fonts.rasterize_cluster(FaceStyle::Regular, sequence, 2) {
+                ClusterRaster::Sprite(bitmap) => {
+                    assert_eq!(bitmap.content, GlyphContent::Color, "{:?}", sequence);
+                    assert!(bitmap.left >= 0, "{:?}", sequence);
+                    assert!(
+                        bitmap.left as u32 + bitmap.width <= metrics.width * 2,
+                        "{:?} is wider than its two columns",
+                        sequence
+                    );
+                    assert!(bitmap.height <= metrics.height, "{:?}", sequence);
+                },
+                _ => panic!("{:?} did not rasterize as one sprite", sequence),
+            }
+        }
+    }
+
+    #[test]
+    fn a_joined_sequence_differs_from_its_first_piece() {
+        let mut fonts = fonts();
+        for (sequence, first) in [
+            (SKIN_TONE, "\u{1f44d}"),
+            (FLAG, "\u{1f1e9}"),
+            (FAMILY, "\u{1f468}"),
+            (RAINBOW_FLAG, "\u{1f3f3}"),
+            (ENGLAND_FLAG, "\u{1f3f4}"),
+            (KEYCAP, "1"),
+        ] {
+            let font = fonts.cluster_font(FaceStyle::Regular, sequence).unwrap();
+            let shaped_text = fonts.shaping_text(font, sequence).into_owned();
+            let joined = fonts.shape_cluster(font, &shaped_text);
+            let alone = fonts.shape_cluster(font, first);
+            assert_ne!(
+                joined[0].glyph, alone[0].glyph,
+                "{:?} did not join",
                 sequence
             );
         }
@@ -2383,7 +2552,8 @@ mod tests {
     fn a_letter_with_a_mark_is_one_sprite_inside_its_cell() {
         let mut fonts = fonts();
         let metrics = fonts.metrics();
-        let ClusterRaster::Sprite(bitmap) = fonts.rasterize_cluster(FaceStyle::Regular, "e\u{301}", 1)
+        let ClusterRaster::Sprite(bitmap) =
+            fonts.rasterize_cluster(FaceStyle::Regular, "e\u{301}", 1)
         else {
             panic!("e with an acute accent did not rasterize");
         };
@@ -2407,7 +2577,10 @@ mod tests {
             ClusterRaster::Sprite(bitmap) => {
                 assert!(bitmap.height <= metrics.height, "{}", bitmap.height);
                 assert!(bitmap.top <= metrics.baseline as i32);
-                assert!(bitmap.top - bitmap.height as i32 >= metrics.baseline as i32 - metrics.height as i32);
+                assert!(
+                    bitmap.top - bitmap.height as i32
+                        >= metrics.baseline as i32 - metrics.height as i32
+                );
             },
             ClusterRaster::Blank => panic!("the stack drew nothing"),
             ClusterRaster::Uncovered => {},
@@ -2431,6 +2604,194 @@ mod tests {
             fonts.rasterize_cluster(FaceStyle::Regular, three, 1),
             ClusterRaster::Uncovered
         ));
+    }
+
+    #[test]
+    fn conjoining_jamo_compose_into_their_syllable() {
+        assert_eq!(compose_hangul("\u{1100}\u{1161}\u{11a8}"), Some('\u{ac01}'));
+        assert_eq!(compose_hangul("\u{1100}\u{1161}"), Some('\u{ac00}'));
+        assert_eq!(compose_hangul("\u{1112}\u{1175}\u{11c2}"), Some('\u{d7a3}'));
+        assert_eq!(compose_hangul("\u{1100}"), None);
+        assert_eq!(compose_hangul("\u{1100}\u{1161}\u{11a8}\u{11a8}"), None);
+        assert_eq!(compose_hangul("e\u{301}"), None);
+        assert_eq!(compose_hangul("\u{ac01}"), None);
+    }
+
+    #[test]
+    fn a_hangul_syllable_spelled_in_pieces_is_drawn_like_the_composed_syllable() {
+        let mut fonts = fonts();
+        let ClusterRaster::Sprite(pieces) =
+            fonts.rasterize_cluster(FaceStyle::Regular, "\u{1100}\u{1161}\u{11a8}", 2)
+        else {
+            panic!("the jamo did not draw");
+        };
+        let ClusterRaster::Sprite(composed) =
+            fonts.rasterize_cluster(FaceStyle::Regular, "\u{ac01}", 2)
+        else {
+            panic!("the composed syllable did not draw");
+        };
+        assert_eq!(
+            (pieces.left, pieces.top, pieces.width, pieces.height),
+            (composed.left, composed.top, composed.width, composed.height)
+        );
+        assert!(pieces.coverage == composed.coverage);
+        assert!(pieces.width <= fonts.metrics().width * 2);
+    }
+
+    #[test]
+    fn a_text_presentation_selector_keeps_an_emoji_out_of_colour() {
+        let mut fonts = fonts();
+        match fonts.rasterize_cluster(FaceStyle::Regular, "\u{2614}\u{fe0e}", 1) {
+            ClusterRaster::Sprite(bitmap) => {
+                assert_eq!(bitmap.content, GlyphContent::Mask);
+                assert_eq!(
+                    bitmap.coverage.len(),
+                    (bitmap.width * bitmap.height) as usize
+                );
+            },
+            _ => panic!("the umbrella with VS15 did not draw"),
+        }
+        match fonts.rasterize_cluster(FaceStyle::Regular, "\u{2614}\u{fe0f}", 2) {
+            ClusterRaster::Sprite(bitmap) => assert_eq!(bitmap.content, GlyphContent::Color),
+            _ => panic!("the umbrella with VS16 did not draw"),
+        }
+        let primary = fonts.primary_of(FaceStyle::Regular);
+        assert_eq!(
+            fonts.cluster_font(FaceStyle::Regular, "\u{231a}\u{fe0e}"),
+            Some(primary),
+            "a text-style watch comes from the text font"
+        );
+    }
+
+    #[test]
+    fn a_text_presentation_selector_prefers_a_monochrome_system_font() {
+        let installed = std::path::Path::new("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf");
+        if !installed.exists() {
+            return;
+        }
+        let directory =
+            std::env::temp_dir().join(format!("zellij-window-vs15-{}", std::process::id()));
+        std::fs::create_dir_all(&directory).unwrap();
+        std::fs::copy(installed, directory.join("DejaVuSansMono.ttf")).unwrap();
+        let Some(discovery) = Discovery::synthetic(&directory) else {
+            return;
+        };
+        let mut fonts = FontStack::build_with(
+            &FontOptions {
+                system_fonts: true,
+                ..FontOptions::default()
+            },
+            Some(discovery),
+        )
+        .unwrap();
+        let font = fonts
+            .cluster_font(FaceStyle::Regular, "\u{2614}\u{fe0e}")
+            .expect("the umbrella found no face");
+        assert!(
+            !fonts.has_color(font),
+            "a colour face won the text-style umbrella"
+        );
+        assert!(
+            font.0 > SYMBOLS_FONT.0,
+            "the umbrella came from a bundled face"
+        );
+        let _ = std::fs::remove_dir_all(&directory);
+    }
+
+    #[test]
+    fn a_text_presentation_selector_draws_a_silhouette_when_only_colour_faces_have_it() {
+        let Some(discovery) = synthetic_discovery() else {
+            return;
+        };
+        let mut fonts = FontStack::build_with(
+            &FontOptions {
+                system_fonts: true,
+                ..FontOptions::default()
+            },
+            Some(discovery),
+        )
+        .unwrap();
+        let font = fonts
+            .cluster_font(FaceStyle::Regular, "\u{2614}\u{fe0e}")
+            .expect("the umbrella found no face");
+        assert!(
+            fonts.has_color(font),
+            "only colour faces carry the umbrella in the bundled set, so it is drawn as a silhouette"
+        );
+        assert!(matches!(
+            fonts.rasterize_cluster(FaceStyle::Regular, "\u{2614}\u{fe0e}", 1),
+            ClusterRaster::Sprite(GlyphBitmap {
+                content: GlyphContent::Mask,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn stacked_marks_are_placed_one_above_the_other() {
+        let mut fonts = fonts();
+        let font = fonts.primary_of(FaceStyle::Regular);
+        let one = fonts.shape_cluster(font, "x\u{301}");
+        let two = fonts.shape_cluster(font, "x\u{301}\u{302}");
+        assert_eq!(two.len(), 3);
+        assert!(
+            two[2].dy > one[1].dy,
+            "the second mark sits on the first: {:?}",
+            two
+        );
+        let ClusterRaster::Sprite(single) =
+            fonts.rasterize_cluster(FaceStyle::Regular, "x\u{301}", 1)
+        else {
+            panic!("a with one mark did not draw");
+        };
+        let ClusterRaster::Sprite(stacked) =
+            fonts.rasterize_cluster(FaceStyle::Regular, "x\u{301}\u{302}", 1)
+        else {
+            panic!("a with two marks did not draw");
+        };
+        assert!(stacked.height > single.height);
+    }
+
+    #[test]
+    fn an_installed_colour_emoji_font_is_preferred_over_the_bundled_one() {
+        let Some(discovery) = synthetic_discovery() else {
+            return;
+        };
+        let mut fonts = FontStack::build_with(
+            &FontOptions {
+                system_fonts: true,
+                ..FontOptions::default()
+            },
+            Some(discovery),
+        )
+        .unwrap();
+        let glyph = glyph_of(&mut fonts, FaceStyle::Regular, '\u{1f600}');
+        assert_ne!(glyph.font, EMOJI_FONT, "the bundled emoji font won");
+        assert!(fonts.has_color(glyph.font));
+        let family = fonts
+            .cluster_font(FaceStyle::Regular, FAMILY)
+            .expect("the family found no face");
+        assert_eq!(family, glyph.font);
+        assert!(matches!(
+            fonts.rasterize_cluster(FaceStyle::Regular, FAMILY, 2),
+            ClusterRaster::Sprite(GlyphBitmap {
+                content: GlyphContent::Color,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn without_system_fonts_the_bundled_emoji_font_draws_emoji() {
+        let mut fonts = fonts();
+        assert_eq!(
+            glyph_of(&mut fonts, FaceStyle::Regular, '\u{1f600}').font,
+            EMOJI_FONT
+        );
+        assert_eq!(
+            fonts.cluster_font(FaceStyle::Regular, FAMILY),
+            Some(EMOJI_FONT)
+        );
     }
 
     #[test]

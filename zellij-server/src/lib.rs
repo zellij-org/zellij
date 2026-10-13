@@ -1341,6 +1341,11 @@ impl SessionMetaData {
                 .send_to_screen(ScreenInstruction::SetSwapLayoutNotification(
                     new_config.options.swap_layout_notification.unwrap_or(true),
                 ));
+            let _ = self
+                .senders
+                .send_to_screen(ScreenInstruction::SetGraphemeClusters(
+                    new_config.options.grapheme_clusters.unwrap_or(true),
+                ));
             let _ = self.senders.send_to_screen(ScreenInstruction::SetOnQuit(
                 new_config.options.on_quit.unwrap_or_default(),
             ));

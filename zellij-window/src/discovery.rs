@@ -53,6 +53,16 @@ impl Discovery {
         }
     }
 
+    pub fn match_emoji(&self, character: char) -> Option<(PathBuf, u32)> {
+        match self.0.lock() {
+            Ok(backend) => backend.match_emoji(character),
+            Err(_) => {
+                report!("the font discovery mutex was poisoned");
+                None
+            },
+        }
+    }
+
     pub fn monospace_families(&self) -> Vec<String> {
         match self.0.lock() {
             Ok(backend) => backend.monospace_families(),
@@ -127,6 +137,9 @@ mod fontconfig {
     const FILE: &[u8] = b"file\0";
     const INDEX: &[u8] = b"index\0";
     const MONOSPACE: &[u8] = b"monospace\0";
+    const EMOJI: &[u8] = b"emoji\0";
+    const COLOR: &[u8] = b"color\0";
+    const FC_TRUE: c_int = 1;
     const SPACING: &[u8] = b"spacing\0";
     const FC_MONO: c_int = 100;
 
@@ -150,6 +163,7 @@ mod fontconfig {
         pattern_destroy: unsafe extern "C" fn(*mut Pattern),
         pattern_add_string: unsafe extern "C" fn(*mut Pattern, *const c_char, *const u8) -> c_int,
         pattern_add_integer: unsafe extern "C" fn(*mut Pattern, *const c_char, c_int) -> c_int,
+        pattern_add_bool: unsafe extern "C" fn(*mut Pattern, *const c_char, c_int) -> c_int,
         pattern_add_charset:
             unsafe extern "C" fn(*mut Pattern, *const c_char, *const CharSet) -> c_int,
         pattern_get_string:
@@ -268,6 +282,43 @@ mod fontconfig {
                         FC_SLANT_ROMAN
                     },
                 );
+                (api.pattern_add_charset)(pattern, CHARSET.as_ptr() as *const c_char, charset);
+                (api.config_substitute)(self.config, pattern, FC_MATCH_PATTERN);
+                (api.default_substitute)(pattern);
+
+                let mut result: c_int = 0;
+                let matched = (api.font_match)(self.config, pattern, &mut result);
+                let found = if matched.is_null() || result != FC_RESULT_MATCH {
+                    None
+                } else {
+                    self.describe(matched, character)
+                };
+
+                if !matched.is_null() {
+                    (api.pattern_destroy)(matched);
+                }
+                (api.pattern_destroy)(pattern);
+                (api.charset_destroy)(charset);
+                found
+            }
+        }
+
+        pub(super) fn match_emoji(&self, character: char) -> Option<(PathBuf, u32)> {
+            let api = &self.api;
+            unsafe {
+                let charset = (api.charset_create)();
+                if charset.is_null() {
+                    return None;
+                }
+                (api.charset_add_char)(charset, character as u32);
+
+                let pattern = (api.pattern_create)();
+                if pattern.is_null() {
+                    (api.charset_destroy)(charset);
+                    return None;
+                }
+                (api.pattern_add_string)(pattern, FAMILY.as_ptr() as *const c_char, EMOJI.as_ptr());
+                (api.pattern_add_bool)(pattern, COLOR.as_ptr() as *const c_char, FC_TRUE);
                 (api.pattern_add_charset)(pattern, CHARSET.as_ptr() as *const c_char, charset);
                 (api.config_substitute)(self.config, pattern, FC_MATCH_PATTERN);
                 (api.default_substitute)(pattern);
@@ -471,6 +522,7 @@ mod fontconfig {
             pattern_destroy: symbol!(b"FcPatternDestroy\0"),
             pattern_add_string: symbol!(b"FcPatternAddString\0"),
             pattern_add_integer: symbol!(b"FcPatternAddInteger\0"),
+            pattern_add_bool: symbol!(b"FcPatternAddBool\0"),
             pattern_add_charset: symbol!(b"FcPatternAddCharSet\0"),
             pattern_get_string: symbol!(b"FcPatternGetString\0"),
             pattern_get_integer: symbol!(b"FcPatternGetInteger\0"),
@@ -635,6 +687,20 @@ mod tests {
             1,
             "{:?}",
             families
+        );
+    }
+
+    #[test]
+    fn the_colour_emoji_font_is_found_for_an_emoji() {
+        let Some(discovery) = synthetic() else {
+            return;
+        };
+        let (path, _) = discovery
+            .match_emoji('\u{1f600}')
+            .expect("the colour emoji font was not found in a config holding it");
+        assert_eq!(
+            path.file_name().and_then(|name| name.to_str()),
+            Some("NotoColorEmoji.ttf")
         );
     }
 

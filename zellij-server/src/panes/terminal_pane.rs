@@ -1525,6 +1525,10 @@ impl TerminalPane {
         }
         self.set_should_render(true);
     }
+    pub fn with_grapheme_clusters(mut self, grapheme_clusters: bool) -> Self {
+        self.grid.set_grapheme_mode_by_default(grapheme_clusters);
+        self
+    }
     pub fn read_buffer_as_lines(&self) -> Vec<Vec<TerminalCharacter>> {
         self.grid.as_character_lines()
     }

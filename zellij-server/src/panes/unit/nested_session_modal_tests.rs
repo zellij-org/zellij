@@ -173,11 +173,7 @@ fn every_rendered_row_spans_the_full_width() {
     let columns = 80;
     let chunks = guest_modal_chunks(columns, 30, 0, 0, &style, "s", 0, &shortcuts);
     for chunk in &chunks {
-        let width: usize = chunk
-            .terminal_characters
-            .iter()
-            .map(|c| c.width())
-            .sum();
+        let width: usize = chunk.terminal_characters.iter().map(|c| c.width()).sum();
         assert_eq!(width, columns);
     }
 }

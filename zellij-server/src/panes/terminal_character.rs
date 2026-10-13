@@ -914,6 +914,20 @@ impl Cursor {
 pub struct TerminalCharacter {
     pub character: char,
     pub styles: RcCharacterStyles,
+    // Width and any code points attached after `character`, packed into one u32 so the cell
+    // stays 16 bytes:
+    //
+    //   bits 0..8   width in columns (0-255), see `width()`
+    //   bits 8..32  the "extra" value, see `extra_value()` and `attached()`:
+    //     0                        nothing attached; the cell is just `character`
+    //     bit 31 (EXTRA_TAG) clear one attached code point, stored as its scalar value
+    //                              (fits, since code points need at most 21 bits)
+    //     bit 31 (EXTRA_TAG) set   two or more attached code points; bits 8..31 are an id
+    //                              into `cluster_table`, which holds their text and a
+    //                              reference count (bumped on clone, released on drop)
+    //
+    // So `packed > 0xff` means "has attached code points", and the cell's full text is
+    // `character` followed by the inline code point or the table entry.
     packed: u32,
 }
 
@@ -1248,8 +1262,9 @@ pub fn render_first_run_banner(
                 .bold(Some(AnsiCode::On));
             let waiting_to_run_text = "Waiting to run: ";
             let command_text = run_command.to_string();
-            let waiting_to_run_text_width = zellij_utils::graphemes::display_width(waiting_to_run_text)
-                + zellij_utils::graphemes::display_width(&command_text);
+            let waiting_to_run_text_width =
+                zellij_utils::graphemes::display_width(waiting_to_run_text)
+                    + zellij_utils::graphemes::display_width(&command_text);
             let column_start_postion = middle_column.saturating_sub(waiting_to_run_text_width / 2);
             let waiting_to_run_line = format!(
                 "\u{1b}[{};{}H{}{}{}{}{}",

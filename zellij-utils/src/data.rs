@@ -5033,6 +5033,7 @@ setting_keys! {
     DisableSessionMetadata => (TopLevel, "disable_session_metadata", true, Flag),
     SupportKittyKeyboardProtocol => (TopLevel, "support_kitty_keyboard_protocol", true, Flag),
     SupportKittyGraphicsProtocol => (TopLevel, "support_kitty_graphics_protocol", true, Flag),
+    GraphemeClusters => (TopLevel, "grapheme_clusters", false, Flag),
     WebServer => (TopLevel, "web_server", true, Flag),
     WebSharing => (TopLevel, "web_sharing", true, Text),
     StackedResize => (TopLevel, "stacked_resize", false, Flag),
@@ -5756,7 +5757,10 @@ mod extract_text_cluster_tests {
     fn column_extraction_keeps_combining_marks_with_their_base() {
         let line = "ae\u{0301}b\u{1F468}\u{200D}\u{1F469}c";
         assert_eq!(extract_text_by_columns(line, 1, 2), "e\u{0301}");
-        assert_eq!(extract_text_from_column(line, 2), "b\u{1F468}\u{200D}\u{1F469}c");
+        assert_eq!(
+            extract_text_from_column(line, 2),
+            "b\u{1F468}\u{200D}\u{1F469}c"
+        );
         assert_eq!(extract_text_to_column(line, 2), "ae\u{0301}");
         assert_eq!(extract_text_by_columns(line, 3, 5), "\u{1F468}\u{200D}");
     }

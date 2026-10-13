@@ -108,7 +108,9 @@ fn render_text_area(
         }
         used_width += cluster_width;
         let char_count = cluster.chars().count();
-        if cursor.map_or(false, |cursor| cursor >= index && cursor < index + char_count) {
+        if cursor.map_or(false, |cursor| {
+            cursor >= index && cursor < index + char_count
+        }) {
             output.push_str(&paint(reversed(value_styles), cluster));
             cursor_drawn = true;
         } else {

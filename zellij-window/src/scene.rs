@@ -1242,8 +1242,7 @@ pub fn ligating_sequences(state: &TerminalState, cache: &mut GlyphCache) -> Vec<
                     composing: false,
                     held: false,
                     cluster: state.screen().cluster_at(row, col).is_some(),
-                    continuation: occupancy != Occupancy::WideTail
-                        && cell.is_group_continuation(),
+                    continuation: occupancy != Occupancy::WideTail && cell.is_group_continuation(),
                     complex: false,
                     unit_end: 0,
                 }
@@ -2484,7 +2483,11 @@ mod tests {
         );
     }
 
-    pub(super) fn entry_of(cache: &mut GlyphCache, style: FaceStyle, character: char) -> AtlasEntry {
+    pub(super) fn entry_of(
+        cache: &mut GlyphCache,
+        style: FaceStyle,
+        character: char,
+    ) -> AtlasEntry {
         match cache.glyph(style, character, 1) {
             Lookup::Rendered(rendered) => rendered.entry,
             other => panic!("expected a rendered glyph, got {:?}", other),
@@ -4232,7 +4235,7 @@ mod ligature_tests {
         assert!(within_columns(&quad, 0, 0, metrics));
     }
 
-    fn assert_drawn_cell_by_cell(members: &[(&str, usize)]) {
+    fn assert_drawn_joined(members: &[(&str, usize)]) {
         let mut cache = cache();
         let metrics = cache.metrics();
         let columns: usize = members.iter().map(|(_, width)| width).sum();
@@ -4240,53 +4243,70 @@ mod ligature_tests {
             painter.group(0, 0, members);
         });
         let joined: String = members.iter().map(|(text, _)| *text).collect();
+        let parts: Vec<&str> = members.iter().map(|(text, _)| *text).collect();
         assert_eq!(
-            cache.cluster_glyph(FaceStyle::Regular, &GlyphKey::of(&joined), 2),
-            ClusterLookup::PerCell,
-            "{:?} found a joined glyph in the bundled fonts; assert one sprite instead",
-            joined
+            scene.color_glyphs.len(),
+            1,
+            "{:?} was not drawn as one colour glyph: {:?}",
+            parts,
+            scene.color_glyphs
         );
-        let mut first = 0;
-        for (text, width) in members {
-            let last = first + width - 1;
-            let left = (first as u32 * metrics.width) as i32;
-            let right = ((last + 1) as u32 * metrics.width) as i32;
-            let inked = scene
-                .glyphs
-                .iter()
-                .chain(scene.color_glyphs.iter())
-                .any(|quad| within_columns(quad, first, last, metrics))
-                || scene
-                    .rects
-                    .iter()
-                    .any(|rect| rect.x >= left && rect.x < right);
-            assert!(inked, "{:?} drew nothing in its own columns", text);
-            first = last + 1;
-        }
-        for quad in scene.glyphs.iter().chain(scene.color_glyphs.iter()) {
-            let mut start = 0;
-            let contained = members.iter().any(|(_, width)| {
-                let inside = within_columns(quad, start, start + width - 1, metrics);
-                start += width;
-                inside
-            });
-            assert!(contained, "{:?} crosses a member boundary", quad);
-        }
+        assert!(
+            scene.glyphs.is_empty(),
+            "{:?} drew pieces: {:?}",
+            parts,
+            scene.glyphs
+        );
+        assert!(
+            scene.rects.is_empty(),
+            "{:?} drew boxes: {:?}",
+            parts,
+            scene.rects
+        );
+        assert!(
+            within_columns(&scene.color_glyphs[0], 0, columns - 1, metrics),
+            "{:?} spilled out of its {} columns: {:?}",
+            parts,
+            columns,
+            scene.color_glyphs[0]
+        );
+        assert!(matches!(
+            cache.cluster_glyph(FaceStyle::Regular, &GlyphKey::of(&joined), 2),
+            ClusterLookup::Sprite(_)
+        ));
     }
 
     #[test]
-    fn a_family_group_the_bundled_fonts_cannot_join_is_drawn_cell_by_cell() {
-        assert_drawn_cell_by_cell(&[(MAN, 2), (WOMAN, 2), (GIRL, 2)]);
+    fn a_family_group_is_drawn_as_one_joined_glyph() {
+        assert_drawn_joined(&[(MAN, 2), (WOMAN, 2), (GIRL, 2)]);
     }
 
     #[test]
-    fn a_skin_tone_group_the_bundled_fonts_cannot_join_is_drawn_cell_by_cell() {
-        assert_drawn_cell_by_cell(&[("\u{1f44d}", 2), ("\u{1f3fd}", 2)]);
+    fn a_skin_tone_group_is_drawn_as_one_joined_glyph() {
+        assert_drawn_joined(&[("\u{1f44d}", 2), ("\u{1f3fd}", 2)]);
     }
 
     #[test]
-    fn a_flag_group_the_bundled_fonts_cannot_join_is_drawn_cell_by_cell() {
-        assert_drawn_cell_by_cell(&[("\u{1f1e9}", 1), ("\u{1f1ea}", 1)]);
+    fn a_flag_group_is_drawn_as_one_joined_glyph() {
+        assert_drawn_joined(&[("\u{1f1e9}", 1), ("\u{1f1ea}", 1)]);
+    }
+
+    #[test]
+    fn a_rainbow_flag_group_is_drawn_as_one_joined_glyph() {
+        assert_drawn_joined(&[("\u{1f3f3}\u{fe0f}\u{200d}", 1), ("\u{1f308}", 2)]);
+    }
+
+    #[test]
+    fn an_england_tag_flag_is_drawn_as_one_joined_glyph() {
+        assert_drawn_joined(&[(
+            "\u{1f3f4}\u{e0067}\u{e0062}\u{e0065}\u{e006e}\u{e0067}\u{e007f}",
+            2,
+        )]);
+    }
+
+    #[test]
+    fn a_mode_2027_keycap_is_drawn_as_one_joined_glyph() {
+        assert_drawn_joined(&[("1\u{fe0f}\u{20e3}", 2)]);
     }
 
     #[test]
@@ -4301,18 +4321,13 @@ mod ligature_tests {
         assert!(within_columns(&scene.color_glyphs[0], 0, 1, metrics));
 
         let family = format!("{}{}{}", MAN, WOMAN, GIRL);
-        let fallback = scene_through(&mut cache, 1, 4, |painter| {
+        let joined = scene_through(&mut cache, 1, 4, |painter| {
             painter.cluster(0, 0, &family, 2);
         });
-        assert!(
-            fallback
-                .glyphs
-                .iter()
-                .chain(fallback.color_glyphs.iter())
-                .all(|quad| within_columns(quad, 0, 1, metrics)),
-            "a family the bundled fonts cannot draw stayed inside its two columns"
-        );
-        assert!(fallback.rects.iter().all(|rect| rect.x < 2 * metrics.width as i32));
+        assert_eq!(joined.color_glyphs.len(), 1, "{:?}", joined.color_glyphs);
+        assert!(joined.glyphs.is_empty(), "{:?}", joined.glyphs);
+        assert!(joined.rects.is_empty(), "{:?}", joined.rects);
+        assert!(within_columns(&joined.color_glyphs[0], 0, 1, metrics));
     }
 
     #[test]
@@ -4349,7 +4364,10 @@ mod ligature_tests {
             painter.cluster(0, 3, "e\u{301}", 1);
         });
         let dash = nominal_in(&mut cache, '-');
-        assert!(!draws(&scene, dash), "the run beside the cluster stopped ligating");
+        assert!(
+            !draws(&scene, dash),
+            "the run beside the cluster stopped ligating"
+        );
         assert_eq!(cache.shaped_runs(), 1);
     }
 
@@ -4387,7 +4405,11 @@ mod ligature_tests {
         });
         let fresh = build(&fresh_state, &mut cache);
         assert_eq!(overwritten, fresh);
-        for quad in overwritten.glyphs.iter().chain(overwritten.color_glyphs.iter()) {
+        for quad in overwritten
+            .glyphs
+            .iter()
+            .chain(overwritten.color_glyphs.iter())
+        {
             assert!(
                 within_columns(quad, 0, 1, metrics)
                     || within_columns(quad, 2, 2, metrics)
@@ -4455,7 +4477,9 @@ mod ligature_tests {
             painter.text(0, 3, "z");
         });
         let z = entry_of(&mut cache, FaceStyle::Regular, 'z');
-        assert!(scene.glyphs.iter().any(|quad| quad.entry == z
-            && quad.x >= 3 * cache.metrics().width as i32));
+        assert!(scene
+            .glyphs
+            .iter()
+            .any(|quad| quad.entry == z && quad.x >= 3 * cache.metrics().width as i32));
     }
 }

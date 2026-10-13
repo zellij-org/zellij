@@ -140,7 +140,9 @@ fn dropping_cells_during_thread_teardown_does_not_panic() {
             static HOLDER: RefCell<Vec<TerminalCharacter>> = RefCell::new(Vec::new());
         }
         HOLDER.with(|holder| {
-            holder.borrow_mut().push(cell_with("a\u{0301}\u{0302}\u{0303}"));
+            holder
+                .borrow_mut()
+                .push(cell_with("a\u{0301}\u{0302}\u{0303}"));
             holder.borrow_mut().push(cell_with("b\u{0301}"));
         });
     });

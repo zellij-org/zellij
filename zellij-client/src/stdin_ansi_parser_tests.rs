@@ -2169,7 +2169,10 @@ fn grapheme_cluster_mode_replies_are_split_between_zellij_and_a_forwarding_pane(
     assert!(own.completed_forward.is_none());
     let pane = parser.feed(b"\x1b[?2027;1$y\x1b[?62;22c");
     assert!(grapheme_cluster_replies(&pane.replies).is_empty());
-    assert_eq!(pane.completed_forward, Some((4, b"\x1b[?2027;1$y".to_vec())));
+    assert_eq!(
+        pane.completed_forward,
+        Some((4, b"\x1b[?2027;1$y".to_vec()))
+    );
 }
 
 #[test]

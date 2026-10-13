@@ -1045,6 +1045,7 @@ impl From<crate::input::options::Options>
             disable_session_metadata: options.disable_session_metadata,
             support_kitty_keyboard_protocol: options.support_kitty_keyboard_protocol,
             support_kitty_graphics_protocol: options.support_kitty_graphics_protocol,
+            grapheme_clusters: options.grapheme_clusters,
             web_server: options.web_server,
             web_sharing: options.web_sharing.map(|w| match w {
                 crate::data::WebSharing::On => ProtoWebSharing::On as i32,
@@ -1191,6 +1192,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
             disable_session_metadata: options.disable_session_metadata,
             support_kitty_keyboard_protocol: options.support_kitty_keyboard_protocol,
             support_kitty_graphics_protocol: options.support_kitty_graphics_protocol,
+            grapheme_clusters: options.grapheme_clusters,
             web_server: options.web_server,
             web_sharing: options
                 .web_sharing

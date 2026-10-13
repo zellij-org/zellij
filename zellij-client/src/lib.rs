@@ -1435,10 +1435,7 @@ pub fn start_client(
                 os_input.send_to_server(ClientToServerMsg::ClientExited);
 
                 if let ExitReason::Error(_) = reason {
-                    handle_error(
-                        reason.to_string(),
-                        outer_grapheme_cluster_mode.is_enabled(),
-                    );
+                    handle_error(reason.to_string(), outer_grapheme_cluster_mode.is_enabled());
                 }
                 exit_msg = reason.to_string();
                 break;

@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 use miette::{GraphicalReportHandler, GraphicalTheme};
+use zellij_utils::graphemes::{clusters, display_width};
 use zellij_utils::input::config::ConfigError;
 use zellij_utils::ipc::ExitReason;
-use zellij_utils::graphemes::{clusters, display_width};
 use zellij_utils::structured_render::{FrameBuilder, WireCell};
 
 use crate::client_loop::Ending;
@@ -516,7 +516,12 @@ mod tests {
         let word = format!("e\u{301}{}\u{4f60}e\u{301}{}", family, family);
         let lines = wrapped(&word, 4);
         for line in &lines {
-            assert!(display_width(line) <= 4, "{:?} is wider than 4: {:?}", line, lines);
+            assert!(
+                display_width(line) <= 4,
+                "{:?} is wider than 4: {:?}",
+                line,
+                lines
+            );
             assert!(!line.starts_with('\u{301}'), "{:?}", lines);
             assert!(!line.starts_with('\u{200d}'), "{:?}", lines);
         }
@@ -536,14 +541,17 @@ mod tests {
     fn a_notice_with_clusters_reaches_the_screen_whole() {
         let mut state = TerminalState::new(6, 20);
         state
-            .apply_frame(&frame_from("ok e\u{301} \u{1f44d}\u{1f3fd} \u{4f60}", 6, 20, 0))
+            .apply_frame(&frame_from(
+                "ok e\u{301} \u{1f44d}\u{1f3fd} \u{4f60}",
+                6,
+                20,
+                0,
+            ))
             .unwrap();
         let screen = state.screen();
         let row = top_margin(6);
         let text: String = (0..20)
-            .filter(|col| {
-                screen.occupancy(row, *col) != crate::screen_buffer::Occupancy::WideTail
-            })
+            .filter(|col| screen.occupancy(row, *col) != crate::screen_buffer::Occupancy::WideTail)
             .map(|col| screen.text_at(row, col))
             .collect();
         assert!(

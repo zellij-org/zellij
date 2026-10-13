@@ -259,6 +259,14 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "true",
             Everyone,
         ),
+        SettingKey::GraphemeClusters => info(
+            "Grapheme clusters",
+            Appearance,
+            "Count emoji and accented letters as one character",
+            Toggle,
+            "true",
+            Everyone,
+        ),
         SettingKey::Osc8Hyperlinks => info(
             "OSC 8 hyperlinks",
             Appearance,
@@ -1607,7 +1615,7 @@ pub fn section(key: SettingKey) -> &'static str {
         DefaultLayout | DefaultCwd => "Starting points",
         DefaultShell | ScrollbackEditor => "Programs",
         SimplifiedUi | PaneFrames | PaneFrameStyle | VisualBell => "Display",
-        StyledUnderlines | Osc8Hyperlinks => "Text",
+        StyledUnderlines | Osc8Hyperlinks | GraphemeClusters => "Text",
         FrameRoundedCorners | FrameHideSessionName => "Frames",
         FrameBorderStyle
         | FrameBorderTop
@@ -1926,6 +1934,16 @@ mod tests {
             let has_rows = !settings_in(category).is_empty();
             assert_eq!(has_rows, category.has_rows(), "{}", category.title());
         }
+    }
+
+    #[test]
+    fn the_grapheme_cluster_toggle_is_listed_with_the_text_settings() {
+        assert!(settings_in(Category::Appearance).contains(&SettingKey::GraphemeClusters));
+        assert_eq!(section(SettingKey::GraphemeClusters), "Text");
+        assert_eq!(
+            describe(SettingKey::GraphemeClusters).kind,
+            SettingKind::Toggle
+        );
     }
 
     #[test]

@@ -80,7 +80,14 @@ impl Rng {
 
 fn ascii_block(rng: &mut Rng) -> String {
     let words = [
-        "lorem", "ipsum", "dolor", "sit", "amet", "consectetur", "adipiscing", "elit",
+        "lorem",
+        "ipsum",
+        "dolor",
+        "sit",
+        "amet",
+        "consectetur",
+        "adipiscing",
+        "elit",
     ];
     let mut out = String::new();
     for line in 0..40 {

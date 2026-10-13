@@ -349,7 +349,9 @@ fn cluster_line(prefix: &str) -> String {
 
 #[test]
 fn a_window_receives_clusters_and_groups_and_reads_the_same_text_as_a_terminal() {
-    let zellij = TestRunner::new(TERMINAL_SIZE).start();
+    let zellij = TestRunner::new(TERMINAL_SIZE)
+        .with_config("grapheme_clusters false")
+        .start();
     let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
     terminal.disable_echo();
 
@@ -385,6 +387,29 @@ fn a_window_receives_clusters_and_groups_and_reads_the_same_text_as_a_terminal()
         window_line.trim_end(),
         terminal_line.trim_end(),
         "the window and the terminal client must read the same text"
+    );
+
+    leave(window, zellij);
+}
+
+#[test]
+fn a_window_receives_emoji_sequences_as_single_clusters_by_default() {
+    let zellij = TestRunner::new(TERMINAL_SIZE).start();
+    let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
+    terminal.disable_echo();
+
+    let mut window = WindowClient::attach(&zellij, TERMINAL_SIZE);
+    let line = cluster_line("D:");
+    terminal.output(format!("\r\n{}\r\n", line).as_bytes());
+
+    window.frame_showing(&line);
+    assert!(
+        window.saw_cluster_record,
+        "a frame showing emoji sequences must carry a cluster record"
+    );
+    assert!(
+        !window.saw_group_continuation,
+        "with clusters counted as one unit, no cell continues a group"
     );
 
     leave(window, zellij);

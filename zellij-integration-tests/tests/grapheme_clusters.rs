@@ -30,6 +30,7 @@ const DISABLE_GRAPHEME_CLUSTER_MODE: &[u8] = b"\x1b[?2027l";
 const EXIT_ALTERNATE_SCREEN: &[u8] = b"\x1b[?1049l";
 const BACKSPACE: [u8; 1] = [0x7f];
 const MOUSE_CONFIG: &str = "mouse_mode true\ncopy_clipboard \"system\"";
+const PER_CODE_POINT: &str = "grapheme_clusters false";
 
 const FLOATING_LEFT_BORDER: usize = 30;
 const FLOATING_RIGHT_BORDER: usize = 89;
@@ -196,6 +197,12 @@ const DEFAULT_MODE_SAMPLES: [Sample; 24] = [
     },
 ];
 
+fn start_zellij_per_code_point() -> TestSession {
+    TestRunner::new(TERMINAL_SIZE)
+        .with_config(PER_CODE_POINT)
+        .start()
+}
+
 fn start_zellij_with_grapheme_aware_host(config: &str) -> TestSession {
     let zellij = TestRunner::new(TERMINAL_SIZE)
         .with_config(config)
@@ -219,10 +226,7 @@ fn claim_terminal_and_wait_for_bars(zellij: &TestSession) -> FakePtyHandle {
     terminal
 }
 
-fn open_right_pane(
-    zellij: &TestSession,
-    opened: impl Fn(&GridSnapshot) -> bool,
-) -> FakePtyHandle {
+fn open_right_pane(zellij: &TestSession, opened: impl Fn(&GridSnapshot) -> bool) -> FakePtyHandle {
     zellij.send_stdin(&keys::ctrl('p'));
     zellij.send_stdin(&keys::key('r'));
     let terminal = zellij.expect_pty_spawn();
@@ -237,7 +241,9 @@ fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     if needle.is_empty() || haystack.len() < needle.len() {
         return None;
     }
-    haystack.windows(needle.len()).position(|window| window == needle)
+    haystack
+        .windows(needle.len())
+        .position(|window| window == needle)
 }
 
 fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
@@ -420,9 +426,9 @@ fn line_containing(grid_snapshot: &GridSnapshot, needle: &str) -> String {
 
 fn line_followed_by(grid_snapshot: &GridSnapshot, exact: &str, next_prefix: &str) -> bool {
     let lines = grid_snapshot.lines();
-    lines.windows(2).any(|pair| {
-        pair[0].trim_end() == exact && pair[1].starts_with(next_prefix)
-    })
+    lines
+        .windows(2)
+        .any(|pair| pair[0].trim_end() == exact && pair[1].starts_with(next_prefix))
 }
 
 fn highlighted_cells(grid_snapshot: &GridSnapshot, row: usize) -> Vec<usize> {
@@ -539,14 +545,24 @@ fn wait_for_renamed_pane(zellij: &TestSession, name_visible: bool) -> GridSnapsh
 }
 
 fn click_on(zellij: &TestSession, grid_snapshot: &GridSnapshot, row: usize, needle: &str) {
+    click_on_offset(zellij, grid_snapshot, row, needle, 2);
+}
+
+fn click_on_offset(
+    zellij: &TestSession,
+    grid_snapshot: &GridSnapshot,
+    row: usize,
+    needle: &str,
+    offset: usize,
+) {
     let lines = grid_snapshot.lines();
     let column = grapheme_mode_column_of(&lines[row], needle)
         .unwrap_or_else(|| panic!("{:?} is not on row {}:\n{}", needle, row, grid_snapshot));
-    click(zellij, column + 2, row + 1);
+    click(zellij, column + offset, row + 1);
 }
 
 fn highlighted_cells_after_searching(content: &str, term: &str, marker: &str) -> Vec<usize> {
-    let mut zellij = start_zellij();
+    let mut zellij = start_zellij_per_code_point();
     let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
     terminal.disable_echo();
     let mut output = format!("\r\n{}\r\n", content);
@@ -566,9 +582,9 @@ fn highlighted_cells_after_searching(content: &str, term: &str, marker: &str) ->
     zellij.send_stdin(&keys::ENTER);
     let grid_snapshot = zellij.wait_until("the match highlighted", |grid_snapshot| {
         grid_snapshot.contains("PgDn|PgUp")
-            && grid_snapshot
-                .row_of_line(marker)
-                .map_or(false, |row| !highlighted_cells(grid_snapshot, row).is_empty())
+            && grid_snapshot.row_of_line(marker).map_or(false, |row| {
+                !highlighted_cells(grid_snapshot, row).is_empty()
+            })
     });
     let row = grid_snapshot
         .row_of_line(marker)
@@ -580,7 +596,7 @@ fn highlighted_cells_after_searching(content: &str, term: &str, marker: &str) ->
 
 #[test]
 fn default_mode_keeps_every_cluster_category_at_per_code_point_widths() {
-    let mut zellij = start_zellij();
+    let mut zellij = start_zellij_per_code_point();
     let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
     terminal.disable_echo();
     for (batch_index, batch) in DEFAULT_MODE_SAMPLES.chunks(12).enumerate() {
@@ -628,6 +644,7 @@ fn default_mode_keeps_every_cluster_category_at_per_code_point_widths() {
 fn a_warning_sign_with_vs16_shows_in_one_column_and_copies_with_its_selector() {
     let mut zellij = TestRunner::new(TERMINAL_SIZE)
         .with_config(MOUSE_CONFIG)
+        .with_config(PER_CODE_POINT)
         .start();
     let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
     terminal.disable_echo();
@@ -654,7 +671,7 @@ fn a_warning_sign_with_vs16_shows_in_one_column_and_copies_with_its_selector() {
 
 #[test]
 fn a_default_mode_family_emoji_is_erased_written_and_repositioned() {
-    let mut zellij = start_zellij();
+    let mut zellij = start_zellij_per_code_point();
     let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
     terminal.disable_echo();
     terminal.output(format!("\x1b[3;5H{}|", FAMILY).as_bytes());
@@ -709,10 +726,7 @@ fn a_family_emoji_in_grapheme_cluster_mode_takes_two_columns() {
     });
     let raw_output = zellij.raw_bytes();
     assert!(
-        contains_bytes(
-            &raw_output,
-            format!("\x1b[2X{}\x1b[3G", FAMILY).as_bytes()
-        ),
+        contains_bytes(&raw_output, format!("\x1b[2X{}\x1b[3G", FAMILY).as_bytes()),
         "the two-column family cell is written as erase two, text, column move"
     );
     assert!(
@@ -724,7 +738,7 @@ fn a_family_emoji_in_grapheme_cluster_mode_takes_two_columns() {
 
 #[test]
 fn a_program_can_query_grapheme_cluster_mode() {
-    let mut zellij = start_zellij();
+    let mut zellij = start_zellij_per_code_point();
     let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
     terminal.disable_echo();
 
@@ -746,6 +760,63 @@ fn a_program_can_query_grapheme_cluster_mode() {
         occurrences(&stdin, b"\x1b[?2027;1$y"),
         1,
         "the mode is reported as set only while it is set"
+    );
+    zellij.quit();
+}
+
+#[test]
+fn clusters_are_counted_as_one_unit_by_default_without_the_program_asking() {
+    let mut zellij = start_zellij_with_grapheme_aware_host("");
+    let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
+    terminal.disable_echo();
+    terminal.output(format!("\x1b[3;1H{}", FAMILY).as_bytes());
+    assert_eq!(
+        report_cursor(&terminal),
+        (3, 3),
+        "a family emoji advances the cursor by two columns by default"
+    );
+    terminal.output(b"|");
+    let expected_line = format!("{}|", FAMILY);
+    zellij.wait_until(
+        "the family emoji rendered in two columns",
+        |grid_snapshot| {
+            grid_snapshot.cursor_is_at(col(3).row(3))
+                && grid_snapshot
+                    .lines()
+                    .get(3)
+                    .map_or(false, |line| line.starts_with(&expected_line))
+        },
+    );
+    zellij.quit();
+}
+
+#[test]
+fn a_program_cannot_turn_the_default_cluster_mode_off() {
+    let mut zellij = start_zellij();
+    let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
+    terminal.disable_echo();
+
+    terminal.output(b"\x1b[?2027$p");
+    terminal.wait_for_stdin("the mode reported as set by default", |stdin| {
+        occurrences(stdin, b"\x1b[?2027;1$y") == 1
+    });
+
+    terminal.output(b"\x1b[?2027l\x1b[?2027$p");
+    terminal.wait_for_stdin("the mode still reported as set", |stdin| {
+        occurrences(stdin, b"\x1b[?2027;1$y") == 2
+    });
+
+    terminal.output(format!("\x1b[3;1H{}", THUMBS).as_bytes());
+    assert_eq!(
+        report_cursor(&terminal),
+        (3, 3),
+        "a skin tone emoji still takes two columns after the program asked to turn the mode off"
+    );
+    let stdin = terminal.wait_for_stdin("the replies so far", |_| true);
+    assert_eq!(
+        occurrences(&stdin, b"\x1b[?2027;2$y"),
+        0,
+        "the mode is never reported as reset"
     );
     zellij.quit();
 }
@@ -811,7 +882,7 @@ fn vs15_narrows_the_cluster_and_moves_the_cursor_back() {
 
 #[test]
 fn complex_units_up_to_the_right_edge_keep_the_border_and_the_neighbour_intact() {
-    let mut zellij = start_zellij();
+    let mut zellij = start_zellij_per_code_point();
     let left = claim_first_terminal_and_wait_for_prompt(&zellij);
     left.disable_echo();
     let right = split_right_and_wait_for_prompt(&zellij);
@@ -873,7 +944,7 @@ fn complex_units_up_to_the_right_edge_keep_the_border_and_the_neighbour_intact()
 
 #[test]
 fn overwriting_part_of_a_cluster_leaves_the_client_screen_equal_to_the_pane_screen() {
-    let mut zellij = start_zellij();
+    let mut zellij = start_zellij_per_code_point();
     let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
     terminal.disable_echo();
     let (cols, rows) = terminal.wait_for_size("the pane reported its size", |cols, _| cols > 4);
@@ -909,7 +980,7 @@ fn overwriting_part_of_a_cluster_leaves_the_client_screen_equal_to_the_pane_scre
 
 #[test]
 fn a_floating_pane_over_groups_and_wide_clusters_leaves_no_half_glyphs() {
-    let mut zellij = start_zellij();
+    let mut zellij = start_zellij_per_code_point();
     let tiled = claim_first_terminal_and_wait_for_prompt(&zellij);
     tiled.disable_echo();
     let row_a = format!(
@@ -951,7 +1022,10 @@ fn a_floating_pane_over_groups_and_wide_clusters_leaves_no_half_glyphs() {
     tiled.output(format!("\x1b[13;1H{}\x1b[14;1H{}", row_a, row_b).as_bytes());
     let grid_snapshot = zellij.wait_until(
         "clusters written under the floating pane",
-        |grid_snapshot| rows_show_both_borders(grid_snapshot, &[11, 12, 13, 14]),
+        |grid_snapshot| {
+            rows_show_both_borders(grid_snapshot, &[11, 12, 13, 14])
+                && grid_snapshot.status_bar_appears()
+        },
     );
     assert_no_half_glyphs(&grid_snapshot.lines()[13], '\u{1f469}', '\u{1f600}');
     assert_no_half_glyphs(&grid_snapshot.lines()[14], '\u{1f600}', '\u{1f469}');
@@ -961,7 +1035,7 @@ fn a_floating_pane_over_groups_and_wide_clusters_leaves_no_half_glyphs() {
 
 #[test]
 fn only_a_client_whose_host_answers_turns_on_grapheme_cluster_mode() {
-    let mut zellij = start_zellij_with_grapheme_aware_host("");
+    let mut zellij = start_zellij_with_grapheme_aware_host(PER_CODE_POINT);
     let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
     terminal.disable_echo();
     let second_client = zellij.attach_client(TERMINAL_SIZE);
@@ -970,12 +1044,14 @@ fn only_a_client_whose_host_answers_turns_on_grapheme_cluster_mode() {
     });
 
     terminal.output(format!("\r\nTWO:{}|{}|END\r\n", FAMILY, KSSA).as_bytes());
-    let answering_grid = zellij.wait_until("the answering client shows the clusters", |grid_snapshot| {
-        grid_snapshot.contains("|END")
-    });
-    let silent_grid = second_client.wait_until("the silent client shows the clusters", |grid_snapshot| {
-        grid_snapshot.contains("|END")
-    });
+    let answering_grid = zellij
+        .wait_until("the answering client shows the clusters", |grid_snapshot| {
+            grid_snapshot.contains("|END")
+        });
+    let silent_grid = second_client
+        .wait_until("the silent client shows the clusters", |grid_snapshot| {
+            grid_snapshot.contains("|END")
+        });
     assert_eq!(
         line_containing(&answering_grid, "TWO:"),
         format!("TWO:{}    |{}|END", FAMILY, KSSA),
@@ -1037,6 +1113,7 @@ fn only_a_client_whose_host_answers_turns_on_grapheme_cluster_mode() {
 fn a_mouse_selection_copies_whole_clusters() {
     let mut zellij = TestRunner::new(TERMINAL_SIZE)
         .with_config(MOUSE_CONFIG)
+        .with_config(PER_CODE_POINT)
         .start();
     let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
     terminal.disable_echo();
@@ -1090,7 +1167,7 @@ fn search_highlights_the_columns_of_cluster_matches() {
 
 #[test]
 fn clusters_and_groups_rewrap_whole_on_resize() {
-    let mut zellij = start_zellij();
+    let mut zellij = start_zellij_per_code_point();
     let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
     terminal.disable_echo();
     let group_line = format!(
@@ -1114,7 +1191,11 @@ fn clusters_and_groups_rewrap_whole_on_resize() {
     });
     terminal.wait_for_size("the pane narrowed", |cols, _| cols == 60);
     let group_head = format!("{}\u{1f468}\u{200d}", "x".repeat(57));
-    let group_tail = format!("\u{1f469}\u{200d}\u{1f467}{}{}", DECOMPOSED_E, "y".repeat(9));
+    let group_tail = format!(
+        "\u{1f469}\u{200d}\u{1f467}{}{}",
+        DECOMPOSED_E,
+        "y".repeat(9)
+    );
     let cluster_head = "z".repeat(59);
     let cluster_tail = format!("{}w", JAMO);
     zellij.wait_until("the clusters rewrapped whole", |grid_snapshot| {
@@ -1136,6 +1217,7 @@ fn clusters_and_groups_rewrap_whole_on_resize() {
 fn clusters_survive_session_resurrection() {
     let mut zellij = TestRunner::new(TERMINAL_SIZE)
         .with_config("session_serialization true\nserialize_pane_viewport true")
+        .with_config(PER_CODE_POINT)
         .start();
     let terminal = zellij.expect_pty_spawn();
     let line = format!(
@@ -1320,12 +1402,9 @@ fn tab_names_with_clusters_keep_tab_widths_and_click_regions() {
         tab_id: Some(0),
     });
     let grid_snapshot = zellij.wait_until("tab renamed through the cli", |grid_snapshot| {
-        grid_snapshot
-            .lines()
-            .first()
-            .map_or(false, |tab_bar| {
-                tab_bar.contains(&cli_name_shown) && tab_bar.contains("Tab #2")
-            })
+        grid_snapshot.lines().first().map_or(false, |tab_bar| {
+            tab_bar.contains(&cli_name_shown) && tab_bar.contains("Tab #2")
+        })
     });
 
     click_on(&zellij, &grid_snapshot, 0, &cli_name_shown);
@@ -1344,7 +1423,7 @@ fn tab_names_with_clusters_keep_tab_widths_and_click_regions() {
                 && !grid_snapshot.contains("first-tab-content")
         },
     );
-    click_on(&zellij, &grid_snapshot, 0, &cli_name_shown);
+    click_on_offset(&zellij, &grid_snapshot, 0, &cli_name_shown, 3);
     zellij.wait_until("back on the renamed tab", |grid_snapshot| {
         grid_snapshot.contains("first-tab-content") && grid_snapshot.status_bar_appears()
     });
@@ -1366,7 +1445,7 @@ fn tab_names_with_clusters_keep_tab_widths_and_click_regions() {
                 .map_or(false, |tab_bar| tab_bar.contains(RENAMED))
     });
     assert_name_kept_whole(&grid_snapshot.lines()[0]);
-    click_on(&zellij, &grid_snapshot, 0, "Tab #2");
+    click_on_offset(&zellij, &grid_snapshot, 0, "Tab #2", 4);
     let grid_snapshot = zellij.wait_until(
         "the tab to the right of the typed name selected",
         |grid_snapshot| {
@@ -1374,6 +1453,10 @@ fn tab_names_with_clusters_keep_tab_widths_and_click_regions() {
                 && !grid_snapshot.contains("first-tab-content")
                 && grid_snapshot.status_bar_appears()
                 && !grid_snapshot.contains("RENAMING TAB")
+                && grid_snapshot
+                    .lines()
+                    .first()
+                    .map_or(false, |tab_bar| tab_bar.contains(RENAMED))
         },
     );
     assert!(
@@ -1441,10 +1524,9 @@ fn terminal_titles_with_clusters_show_in_frames_and_are_cut_on_cluster_boundarie
     let right_title = format!("T2{}{}", FLAG, KSSA);
     right.output(format!("\x1b]2;{}\x07", right_title).as_bytes());
     let grid_snapshot = zellij.wait_until("titles shown in the frames", |grid_snapshot| {
-        grid_snapshot
-            .lines()
-            .get(1)
-            .map_or(false, |row| row.contains(&left_title) && row.contains(&right_title))
+        grid_snapshot.lines().get(1).map_or(false, |row| {
+            row.contains(&left_title) && row.contains(&right_title)
+        })
     });
     assert_frame_row_lines_up(&grid_snapshot, 1, &['│'], 2);
 
@@ -1478,7 +1560,7 @@ fn terminal_titles_with_clusters_show_in_frames_and_are_cut_on_cluster_boundarie
 
 #[test]
 fn a_watcher_renders_clusters() {
-    let mut zellij = start_zellij();
+    let mut zellij = start_zellij_per_code_point();
     let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
     terminal.disable_echo();
     let watcher = zellij.attach_watcher(TERMINAL_SIZE);

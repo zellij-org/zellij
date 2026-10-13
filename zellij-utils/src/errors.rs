@@ -459,6 +459,7 @@ pub enum ScreenContext {
     PopupToFloatingPane,
     ShowSwapLayoutNotification,
     SetSwapLayoutNotification,
+    SetGraphemeClusters,
     GetSessionPreview,
     OpenPipePopup,
     OpenPromptPopup,

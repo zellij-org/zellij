@@ -1509,11 +1509,15 @@ mod tests {
         );
         assert!(coloured_pixels(&image, metrics, 2) > 20);
         let inked = inked_columns(&image, metrics, 0, 6);
-        assert!(!inked.is_empty() && inked.iter().all(|col| *col < 2), "{:?}", inked);
+        assert!(
+            !inked.is_empty() && inked.iter().all(|col| *col < 2),
+            "{:?}",
+            inked
+        );
     }
 
     #[test]
-    fn a_family_emoji_the_bundled_fonts_cannot_join_stays_inside_its_member_columns() {
+    fn a_joined_family_emoji_is_one_grey_glyph_inside_its_member_columns() {
         let Some(mut gpu) = Headless::exclusive() else {
             return;
         };
@@ -1531,11 +1535,21 @@ mod tests {
                 )
             }),
         );
-        assert_eq!(inked_columns(&image, metrics, 0, 8), vec![0, 1, 2, 3, 4, 5]);
+        assert_eq!(
+            coloured_pixels(&image, metrics, 6),
+            0,
+            "the bundled family glyph is grey, so colour means the yellow pieces were drawn apart"
+        );
+        let inked = inked_columns(&image, metrics, 0, 8);
+        assert!(
+            !inked.is_empty() && inked.iter().all(|col| *col < 6),
+            "{:?}",
+            inked
+        );
     }
 
     #[test]
-    fn a_flag_the_bundled_fonts_cannot_join_stays_inside_its_two_columns() {
+    fn a_joined_flag_is_coloured_and_stays_inside_its_two_columns() {
         let Some(mut gpu) = Headless::exclusive() else {
             return;
         };
@@ -1545,7 +1559,13 @@ mod tests {
                 painter.group(0, 0, &[("\u{1f1e9}", 1), ("\u{1f1ea}", 1)])
             }),
         );
-        assert_eq!(inked_columns(&image, metrics, 0, 4), vec![0, 1]);
+        assert!(coloured_pixels(&image, metrics, 2) > 20);
+        let inked = inked_columns(&image, metrics, 0, 4);
+        assert!(
+            !inked.is_empty() && inked.iter().all(|col| *col < 2),
+            "{:?}",
+            inked
+        );
     }
 
     #[test]
@@ -1558,7 +1578,9 @@ mod tests {
             .cluster_font(crate::font::FaceStyle::Regular, "\u{915}\u{94d}\u{937}")
             .is_none()
         {
-            eprintln!("zellij-window: no Devanagari font is installed, skipping the conjunct check");
+            eprintln!(
+                "zellij-window: no Devanagari font is installed, skipping the conjunct check"
+            );
             return;
         }
         let state = painted(1, 4, |painter| {
@@ -1610,8 +1632,16 @@ mod tests {
         assert_eq!(state.screen().text_at(0, 0), "\u{26a0}");
         assert_eq!(state.screen().text_at(0, 1), "x");
         let (image, metrics) = draw(&mut gpu, &state);
-        assert_eq!(coloured_pixels(&image, metrics, 1), 0, "the sign was drawn as an emoji");
+        assert_eq!(
+            coloured_pixels(&image, metrics, 1),
+            0,
+            "the sign was drawn as an emoji"
+        );
         let inked = inked_columns(&image, metrics, 0, 4);
-        assert_eq!(inked, vec![0, 1], "the sign overflowed into the next column");
+        assert_eq!(
+            inked,
+            vec![0, 1],
+            "the sign overflowed into the next column"
+        );
     }
 }

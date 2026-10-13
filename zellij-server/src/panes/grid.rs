@@ -947,6 +947,7 @@ pub struct Grid {
     pub insert_mode: bool,
     pub disable_linewrap: bool,
     pub grapheme_mode: bool,
+    grapheme_mode_by_default: bool,
     pub new_line_mode: bool, // Automatic newline LNM
     pub clear_viewport_before_rendering: bool,
     pub width: usize,
@@ -1334,6 +1335,7 @@ impl Grid {
             insert_mode: false,
             disable_linewrap: false,
             grapheme_mode: false,
+            grapheme_mode_by_default: false,
             new_line_mode: false,
             alternate_screen_state: None,
             clear_viewport_before_rendering: false,
@@ -2720,10 +2722,8 @@ impl Grid {
                     moved.set_width(new_width as u8);
                     let mut blank = EMPTY_TERMINAL_CHARACTER;
                     blank.styles = moved.styles.clone();
-                    row.columns.splice(
-                        index..=index,
-                        std::iter::repeat(blank).take(old_width),
-                    );
+                    row.columns
+                        .splice(index..=index, std::iter::repeat(blank).take(old_width));
                     row.mark_widths_changed();
                     wrapped_cell = Some(moved);
                 }
@@ -3571,12 +3571,16 @@ impl Grid {
                 let spans = grapheme_join::unit_column_spans(&row.columns, true);
                 let widened_start = spans
                     .iter()
-                    .find(|(unit_start, unit_end)| *unit_start <= start_column && start_column < *unit_end)
+                    .find(|(unit_start, unit_end)| {
+                        *unit_start <= start_column && start_column < *unit_end
+                    })
                     .map(|(unit_start, _)| *unit_start)
                     .unwrap_or(start_column);
                 let widened_end = spans
                     .iter()
-                    .find(|(unit_start, unit_end)| *unit_start < end_column && end_column < *unit_end)
+                    .find(|(unit_start, unit_end)| {
+                        *unit_start < end_column && end_column < *unit_end
+                    })
                     .map(|(_, unit_end)| *unit_end)
                     .unwrap_or(end_column);
                 (widened_start, widened_end)
@@ -4696,6 +4700,10 @@ impl Grid {
     pub fn update_theme(&mut self, theme: Styling) {
         self.style.colors = theme.clone();
     }
+    pub fn set_grapheme_mode_by_default(&mut self, grapheme_mode_by_default: bool) {
+        self.grapheme_mode_by_default = grapheme_mode_by_default;
+        self.grapheme_mode = grapheme_mode_by_default;
+    }
     pub fn update_arrow_fonts(&mut self, should_support_arrow_fonts: bool) {
         self.arrow_fonts = should_support_arrow_fonts;
     }
@@ -5445,7 +5453,7 @@ impl Perform for Grid {
                             self.unlock_renders();
                         },
                         2027 => {
-                            self.grapheme_mode = false;
+                            self.grapheme_mode = self.grapheme_mode_by_default;
                         },
                         2004 => {
                             self.bracketed_paste_mode = false;
@@ -6082,7 +6090,7 @@ impl Perform for Grid {
             },
             (b'c', None) => {
                 self.reset_terminal_state();
-                self.grapheme_mode = false;
+                self.grapheme_mode = self.grapheme_mode_by_default;
             },
             (b'H', None) => {
                 self.set_horizontal_tabstop();
@@ -6408,8 +6416,7 @@ impl Row {
                 let replacing_blank = existing.character == ' ';
                 if !self.osc133_markers.is_empty() {
                     self.osc133_markers.retain(|marker| {
-                        marker.column != x
-                            || (keep_marker_on_replaced_blank && replacing_blank)
+                        marker.column != x || (keep_marker_on_replaced_blank && replacing_blank)
                     });
                 }
                 self.columns[x] = terminal_character;

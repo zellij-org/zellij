@@ -980,6 +980,7 @@ pub enum ScreenInstruction {
     },
     ShowSwapLayoutNotification(ClientId),
     SetSwapLayoutNotification(bool),
+    SetGraphemeClusters(bool),
     GetSessionPreview {
         tab_index: Option<usize>,
         pane_id: Option<(u32, bool)>,
@@ -1461,6 +1462,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::SetSwapLayoutNotification(..) => {
                 ScreenContext::SetSwapLayoutNotification
             },
+            ScreenInstruction::SetGraphemeClusters(..) => ScreenContext::SetGraphemeClusters,
             ScreenInstruction::GetSessionPreview { .. } => ScreenContext::GetSessionPreview,
             ScreenInstruction::AddPopup { .. } => ScreenContext::AddPopup,
             ScreenInstruction::OpenPipePopup { .. } => ScreenContext::OpenPipePopup,
@@ -1929,6 +1931,7 @@ pub(crate) struct Screen {
     pub(crate) pending_session_card: Option<ClientId>,
     pub(crate) terminal_command_submitted: bool,
     pub(crate) swap_layout_notification: bool,
+    grapheme_clusters: bool,
     pub(crate) on_quit: zellij_utils::input::options::OnQuit,
     last_reported_client_visible_plugins: HashMap<ClientId, HashSet<PluginId>>,
     pending_selectable_panes: HashMap<PaneId, bool>,
@@ -2264,6 +2267,7 @@ impl Screen {
             pending_session_card: None,
             terminal_command_submitted: false,
             swap_layout_notification: true,
+            grapheme_clusters: false,
             on_quit: Default::default(),
             last_reported_client_visible_plugins: HashMap::new(),
             pending_selectable_panes: HashMap::new(),
@@ -3206,6 +3210,13 @@ impl Screen {
                 .context("failed to re-apply pty sizes")?;
         }
         Ok(())
+    }
+
+    pub fn update_grapheme_clusters(&mut self, grapheme_clusters: bool) {
+        self.grapheme_clusters = grapheme_clusters;
+        for tab in self.tabs.values_mut() {
+            tab.update_grapheme_clusters(grapheme_clusters);
+        }
     }
 
     pub fn update_kitty_graphics_support(
@@ -6157,6 +6168,7 @@ impl Screen {
         }
         tab.update_selection_options(self.osc133_command_selection, self.word_separators.clone());
         tab.update_context_menu_enabled(self.context_menu_enabled);
+        tab.update_grapheme_clusters(self.grapheme_clusters);
         self.tabs.insert(tab_id, tab);
         Ok(())
     }
@@ -10204,6 +10216,7 @@ pub(crate) fn screen_thread_main(
     screen.host_theme_light_styling = host_theme_light_styling;
     screen.paste_buffer_read_enabled = dangerously_enable_paste_buffer_read;
     screen.swap_layout_notification = config_options.swap_layout_notification.unwrap_or(true);
+    screen.update_grapheme_clusters(config_options.grapheme_clusters.unwrap_or(true));
     screen.on_quit = config_options.on_quit.unwrap_or_default();
     screen.set_host_notification_protocol(host_notification_protocol);
     if explicit_theme_hue.is_some() {
@@ -13628,8 +13641,9 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::RenameTabWithId(tab_id, new_name, _completion_tx) => {
                 // Use get_tab_by_id_mut() helper method
                 if let Some(tab) = screen.get_tab_by_id_mut(tab_id) {
-                    tab.name =
-                        clean_string_from_control_and_linebreak(&String::from_utf8_lossy(&new_name));
+                    tab.name = clean_string_from_control_and_linebreak(&String::from_utf8_lossy(
+                        &new_name,
+                    ));
                     screen.log_and_report_session_state()?;
                 } else {
                     log::error!("Failed to find tab with ID: {}", tab_id);
@@ -14613,6 +14627,9 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::SetSwapLayoutNotification(enabled) => {
                 screen.swap_layout_notification = enabled;
+            },
+            ScreenInstruction::SetGraphemeClusters(enabled) => {
+                screen.update_grapheme_clusters(enabled);
             },
             ScreenInstruction::SetOnQuit(on_quit) => {
                 screen.on_quit = on_quit;

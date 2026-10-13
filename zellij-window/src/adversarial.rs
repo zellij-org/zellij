@@ -505,7 +505,12 @@ mod tests {
         assert_eq!(sgr(&base()), "\u{1b}[m");
     }
 
-    fn assert_grid_reaches_the_wire(name: &str, rows: usize, cols: usize, stream: &str) -> crate::screen_buffer::ScreenBuffer {
+    fn assert_grid_reaches_the_wire(
+        name: &str,
+        rows: usize,
+        cols: usize,
+        stream: &str,
+    ) -> crate::screen_buffer::ScreenBuffer {
         let (grid, buffer) =
             crate::equivalence::grid_and_buffer(stream.as_bytes(), rows, cols, 4096);
         let divergences = compare(&grid, &crate::equivalence::project_screen_buffer(&buffer));
@@ -551,7 +556,11 @@ mod tests {
             }
         }
         assert!(longest > 0, "the chain was never grouped");
-        assert!(longest < 32, "a group ran to {} continuation cells", longest + 1);
+        assert!(
+            longest < 32,
+            "a group ran to {} continuation cells",
+            longest + 1
+        );
     }
 
     #[test]

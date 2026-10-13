@@ -2,7 +2,8 @@
 
 use insta::assert_snapshot;
 use zellij_integration_tests::{
-    claim_first_terminal_and_wait_for_prompt, normalized, start_zellij, FakePtyHandle, TestSession,
+    claim_first_terminal_and_wait_for_prompt, normalized, start_zellij, FakePtyHandle,
+    HostTerminal, TestRunner, TestSession, TERMINAL_SIZE,
 };
 
 const SENTINEL: &str = "FIXTURE-END";
@@ -29,15 +30,26 @@ fn cjk_text_renders_at_double_width() {
     zellij.quit();
 }
 
+const EMOJI_SEQUENCES: &str = "\u{1f600}|\u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467}\u{200d}\u{1f466}|\u{1f44b}\u{1f3fd}|\u{1f9d1}\u{1f3ff}\u{200d}\u{1f680}|\u{26a0}\u{fe0f}|\u{1f1fa}\u{1f1f8}|";
+
 #[test]
 fn emoji_zwj_and_skin_tone_sequences_render() {
-    let mut zellij = start_zellij();
+    let mut zellij = TestRunner::new(TERMINAL_SIZE)
+        .with_config("grapheme_clusters false")
+        .start();
     let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
-    let rendered = render_fixture(
-        &zellij,
-        &terminal,
-        "\u{1f600}|\u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467}\u{200d}\u{1f466}|\u{1f44b}\u{1f3fd}|\u{1f9d1}\u{1f3ff}\u{200d}\u{1f680}|\u{26a0}\u{fe0f}|\u{1f1fa}\u{1f1f8}|",
-    );
+    let rendered = render_fixture(&zellij, &terminal, EMOJI_SEQUENCES);
+    assert_snapshot!(rendered);
+    zellij.quit();
+}
+
+#[test]
+fn emoji_sequences_render_as_one_unit_each_by_default_on_a_cluster_aware_host() {
+    let mut zellij = TestRunner::new(TERMINAL_SIZE)
+        .with_host_terminal(HostTerminal::GraphemeClusterAware(2))
+        .start();
+    let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
+    let rendered = render_fixture(&zellij, &terminal, EMOJI_SEQUENCES);
     assert_snapshot!(rendered);
     zellij.quit();
 }

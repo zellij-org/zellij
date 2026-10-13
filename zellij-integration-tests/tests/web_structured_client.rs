@@ -587,7 +587,10 @@ const KSSA: &str = "\u{915}\u{94d}\u{937}";
 
 #[test]
 fn a_structured_client_through_the_web_server_reads_clusters_like_a_terminal() {
-    let zellij = start_shared_session();
+    let zellij = TestRunner::new(TERMINAL_SIZE)
+        .with_config("web_sharing \"on\"")
+        .with_config("grapheme_clusters false")
+        .start();
     let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
     terminal.disable_echo();
 

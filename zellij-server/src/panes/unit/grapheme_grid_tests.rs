@@ -97,7 +97,11 @@ fn check(content: &str, grapheme_mode: bool, expected: &[(&str, usize)]) {
 #[test]
 fn every_category_in_default_mode() {
     check("abc", false, &[("a", 1), ("b", 1), ("c", 1)]);
-    check("\u{4F60}\u{597D}", false, &[("\u{4F60}", 2), ("\u{597D}", 2)]);
+    check(
+        "\u{4F60}\u{597D}",
+        false,
+        &[("\u{4F60}", 2), ("\u{597D}", 2)],
+    );
     check("e\u{0301}", false, &[("e\u{0301}", 1)]);
     check("\u{26A0}\u{FE0F}", false, &[("\u{26A0}\u{FE0F}", 1)]);
     check("\u{231A}\u{FE0E}", false, &[("\u{231A}\u{FE0E}", 2)]);
@@ -139,7 +143,11 @@ fn every_category_in_default_mode() {
 #[test]
 fn every_category_in_grapheme_mode() {
     check("abc", true, &[("a", 1), ("b", 1), ("c", 1)]);
-    check("\u{4F60}\u{597D}", true, &[("\u{4F60}", 2), ("\u{597D}", 2)]);
+    check(
+        "\u{4F60}\u{597D}",
+        true,
+        &[("\u{4F60}", 2), ("\u{597D}", 2)],
+    );
     check("e\u{0301}", true, &[("e\u{0301}", 1)]);
     check("\u{26A0}\u{FE0F}", true, &[("\u{26A0}\u{FE0F}", 2)]);
     check("\u{1F600}\u{FE0E}", true, &[("\u{1F600}\u{FE0E}", 2)]);
@@ -212,7 +220,10 @@ fn a_mark_in_the_pending_wrap_state_attaches_to_the_last_cell_of_the_line() {
 #[test]
 fn a_mark_after_a_wide_cell_attaches_to_the_wide_cell() {
     let grid = grid_with("\u{4F60}\u{0301}x", false);
-    assert_eq!(cells(&grid, 0), vec![cell("\u{4F60}\u{0301}", 2), cell("x", 1)]);
+    assert_eq!(
+        cells(&grid, 0),
+        vec![cell("\u{4F60}\u{0301}", 2), cell("x", 1)]
+    );
 }
 
 #[test]
@@ -269,7 +280,10 @@ fn grapheme_mode_drops_a_code_point_that_makes_a_cluster_wider_than_the_pane() {
 #[test]
 fn vs15_narrows_a_cell_in_grapheme_mode() {
     let mut grid = grid_with("\u{231A}\u{FE0E}Y", true);
-    assert_eq!(cells(&grid, 0), vec![cell("\u{231A}\u{FE0E}", 1), cell("Y", 1)]);
+    assert_eq!(
+        cells(&grid, 0),
+        vec![cell("\u{231A}\u{FE0E}", 1), cell("Y", 1)]
+    );
     assert_eq!(cursor(&grid), (2, 0));
     assert_cached_width_is_fresh(&mut grid.viewport[0]);
     let grid = grid_with("\u{1F600}\u{FE0E}", true);
@@ -288,7 +302,10 @@ fn grapheme_mode_can_be_queried_and_switched() {
         .collect();
     assert_eq!(
         replies,
-        vec!["\u{1b}[?2027;2$y".to_string(), "\u{1b}[?2027;1$y".to_string()]
+        vec![
+            "\u{1b}[?2027;2$y".to_string(),
+            "\u{1b}[?2027;1$y".to_string()
+        ]
     );
     feed(&mut grid, "\u{1b}[?1049h");
     assert!(grid.grapheme_mode);
@@ -297,6 +314,57 @@ fn grapheme_mode_can_be_queried_and_switched() {
     feed(&mut grid, "\u{1b}[?2027l");
     assert!(!grid.grapheme_mode);
     feed(&mut grid, "\u{1b}[?2027h\u{1b}c");
+    assert!(!grid.grapheme_mode);
+}
+
+fn grid_with_clusters_by_default(rows: usize, cols: usize) -> Grid {
+    let mut grid = new_grid(rows, cols);
+    grid.set_grapheme_mode_by_default(true);
+    grid
+}
+
+#[test]
+fn clusters_by_default_join_without_the_program_asking() {
+    let mut grid = grid_with_clusters_by_default(10, 20);
+    feed(&mut grid, FAMILY);
+    feed(&mut grid, "x");
+    assert_eq!(cells(&grid, 0), vec![cell(FAMILY, 2), cell("x", 1)]);
+    assert_eq!(cursor(&grid), (3, 0));
+}
+
+#[test]
+fn clusters_by_default_are_reported_as_on() {
+    let mut grid = grid_with_clusters_by_default(5, 20);
+    feed(&mut grid, "\u{1b}[?2027$p");
+    let replies: Vec<String> = grid
+        .pending_messages_to_pty
+        .iter()
+        .map(|m| String::from_utf8_lossy(m).to_string())
+        .collect();
+    assert_eq!(replies, vec!["\u{1b}[?2027;1$y".to_string()]);
+}
+
+#[test]
+fn turning_the_mode_off_or_resetting_returns_to_clusters_by_default() {
+    let mut grid = grid_with_clusters_by_default(5, 20);
+    feed(&mut grid, "\u{1b}[?2027l");
+    assert!(grid.grapheme_mode);
+    feed(&mut grid, "\u{1b}[?2027h\u{1b}[?2027l");
+    assert!(grid.grapheme_mode);
+    feed(&mut grid, "\u{1b}c");
+    assert!(grid.grapheme_mode);
+    feed(&mut grid, THUMBS_TONE);
+    assert_eq!(cells(&grid, 0), vec![cell(THUMBS_TONE, 2)]);
+}
+
+#[test]
+fn per_code_point_by_default_still_lets_a_program_ask_for_clusters() {
+    let mut grid = new_grid(5, 20);
+    grid.set_grapheme_mode_by_default(false);
+    assert!(!grid.grapheme_mode);
+    feed(&mut grid, "\u{1b}[?2027h");
+    assert!(grid.grapheme_mode);
+    feed(&mut grid, "\u{1b}[?2027l");
     assert!(!grid.grapheme_mode);
 }
 
@@ -331,7 +399,12 @@ fn insert_mode_keeps_attached_code_points_and_widening_pushes_the_rest_right() {
     let grid = grid_with("abc\u{1b}[1G\u{1b}[4hX\u{0301}", false);
     assert_eq!(
         cells(&grid, 0),
-        vec![cell("X\u{0301}", 1), cell("a", 1), cell("b", 1), cell("c", 1)]
+        vec![
+            cell("X\u{0301}", 1),
+            cell("a", 1),
+            cell("b", 1),
+            cell("c", 1)
+        ]
     );
     let mut grid = grid_with("ab\u{1b}[1G\u{1b}[4h\u{26A0}\u{FE0F}", true);
     assert_eq!(
@@ -351,7 +424,10 @@ fn deleting_inserting_and_erasing_work_on_whole_cells() {
     drop(grid);
     assert_eq!(cluster_table::live_entries(), 0);
     let grid = grid_with("a\u{0301}\u{0302}b\u{1b}[1G\u{1b}[X", false);
-    assert_eq!(cells(&grid, 0)[..2].to_vec(), vec![cell(" ", 1), cell("b", 1)]);
+    assert_eq!(
+        cells(&grid, 0)[..2].to_vec(),
+        vec![cell(" ", 1), cell("b", 1)]
+    );
     drop(grid);
     assert_eq!(cluster_table::live_entries(), 0);
     let grid = grid_with("a\u{0301}b\u{1b}[1G\u{1b}[@", false);
@@ -360,11 +436,10 @@ fn deleting_inserting_and_erasing_work_on_whole_cells() {
         vec![cell(" ", 1), cell("a\u{0301}", 1), cell("b", 1)]
     );
     let grid = grid_with(&format!("x{}y\u{1b}[3G\u{1b}[K", FAMILY), false);
-    assert_eq!(
-        cells(&grid, 0)[..1].to_vec(),
-        vec![cell("x", 1)]
-    );
-    assert!(grid.viewport[0].columns[1..].iter().all(|c| c.is_plain_blank()));
+    assert_eq!(cells(&grid, 0)[..1].to_vec(), vec![cell("x", 1)]);
+    assert!(grid.viewport[0].columns[1..]
+        .iter()
+        .all(|c| c.is_plain_blank()));
 }
 
 #[test]
@@ -466,7 +541,10 @@ fn width_three_cells_are_replaced_deleted_erased_and_inserted_around() {
     );
     assert_cached_width_is_fresh(&mut grid.viewport[0]);
     let grid = grid_with("a\u{17D8}b\u{1b}[3G\u{1b}[P", false);
-    assert_eq!(cells(&grid, 0)[..2].to_vec(), vec![cell("a", 1), cell("b", 1)]);
+    assert_eq!(
+        cells(&grid, 0)[..2].to_vec(),
+        vec![cell("a", 1), cell("b", 1)]
+    );
     let mut grid = grid_with("a\u{17D8}b\u{1b}[3G\u{1b}[X", false);
     assert_eq!(
         cells(&grid, 0)[..5].to_vec(),
@@ -540,14 +618,24 @@ fn a_selection_edge_inside_a_group_is_widened() {
 #[test]
 fn dump_screen_and_pane_contents_hold_full_clusters() {
     let mut grid = new_grid(5, 20);
-    feed(&mut grid, &format!("a{}e\u{0301}\r\n\u{1b}[31m{}\u{1b}[0m", FAMILY, KSSA));
+    feed(
+        &mut grid,
+        &format!("a{}e\u{0301}\r\n\u{1b}[31m{}\u{1b}[0m", FAMILY, KSSA),
+    );
     let dump = grid.dump_screen(true);
-    assert!(dump.contains(&format!("a{}e\u{0301}", FAMILY)), "dump={:?}", dump);
+    assert!(
+        dump.contains(&format!("a{}e\u{0301}", FAMILY)),
+        "dump={:?}",
+        dump
+    );
     assert!(dump.contains(KSSA));
     let dump_with_ansi = grid.dump_screen_with_ansi(true);
     assert!(dump_with_ansi.contains(KSSA));
     let contents = grid.pane_contents(false, None);
-    assert_eq!(contents.viewport[0].trim_end(), format!("a{}e\u{0301}", FAMILY));
+    assert_eq!(
+        contents.viewport[0].trim_end(),
+        format!("a{}e\u{0301}", FAMILY)
+    );
     let contents_with_ansi = grid.pane_contents_with_ansi(false, None);
     assert!(contents_with_ansi.viewport[1].contains(KSSA));
 }
@@ -596,10 +684,32 @@ fn the_join_pre_check_never_misses_a_pair_without_a_boundary() {
     sample.sort_unstable();
     sample.dedup();
     let partners: Vec<char> = [
-        'a', '1', ' ', '\u{4F60}', '\u{1F468}', '\u{1F3FD}', '\u{200D}', '\u{FE0F}', '\u{0301}',
-        '\u{1F1E9}', '\u{1100}', '\u{1161}', '\u{11A8}', '\u{AC00}', '\u{AC01}', '\u{093E}',
-        '\u{0600}', '\u{0915}', '\u{094D}', '\u{0E33}', '\u{E0067}', '\u{20E3}', '\u{00AD}',
-        '\u{1F3F3}', '\u{231A}', '\u{0E49}',
+        'a',
+        '1',
+        ' ',
+        '\u{4F60}',
+        '\u{1F468}',
+        '\u{1F3FD}',
+        '\u{200D}',
+        '\u{FE0F}',
+        '\u{0301}',
+        '\u{1F1E9}',
+        '\u{1100}',
+        '\u{1161}',
+        '\u{11A8}',
+        '\u{AC00}',
+        '\u{AC01}',
+        '\u{093E}',
+        '\u{0600}',
+        '\u{0915}',
+        '\u{094D}',
+        '\u{0E33}',
+        '\u{E0067}',
+        '\u{20E3}',
+        '\u{00AD}',
+        '\u{1F3F3}',
+        '\u{231A}',
+        '\u{0E49}',
     ]
     .to_vec();
     for &c in &sample {
@@ -647,7 +757,10 @@ fn fixture_snapshot(name: &str) -> String {
         let widths: Vec<usize> = row.columns.iter().map(|c| c.width()).collect();
         let _ = std::fmt::Write::write_fmt(
             &mut out,
-            format_args!("{:02} groups={} widths={:?}\n", index, row.may_have_groups, widths),
+            format_args!(
+                "{:02} groups={} widths={:?}\n",
+                index, row.may_have_groups, widths
+            ),
         );
     }
     out
@@ -702,7 +815,10 @@ fn session_serialization_round_trips_clusters() {
         row
     };
     assert_eq!(trimmed(cells(&restored, offset)), trimmed(cells(&grid, 0)));
-    assert_eq!(trimmed(cells(&restored, offset + 1)), trimmed(cells(&grid, 1)));
+    assert_eq!(
+        trimmed(cells(&restored, offset + 1)),
+        trimmed(cells(&grid, 1))
+    );
 }
 
 #[test]
@@ -726,8 +842,24 @@ fn the_print_shortcuts_agree_with_the_general_width_and_join_rules() {
 
 #[test]
 fn plain_wide_characters_are_two_columns_and_never_join_a_neighbour() {
-    let left_partners = ['a', ' ', '\u{4F60}', '\u{3042}', '\u{200D}', '\u{1F1E9}', '\u{1F468}'];
-    let right_partners = ['a', ' ', '\u{4F60}', '\u{3042}', '\u{1F1E9}', '\u{1100}', '\u{AC00}'];
+    let left_partners = [
+        'a',
+        ' ',
+        '\u{4F60}',
+        '\u{3042}',
+        '\u{200D}',
+        '\u{1F1E9}',
+        '\u{1F468}',
+    ];
+    let right_partners = [
+        'a',
+        ' ',
+        '\u{4F60}',
+        '\u{3042}',
+        '\u{1F1E9}',
+        '\u{1100}',
+        '\u{AC00}',
+    ];
     for (lo, hi) in grapheme_join::PLAIN_WIDE_RANGES {
         for value in lo..=hi {
             let c = char::from_u32(value).unwrap();
@@ -735,10 +867,20 @@ fn plain_wide_characters_are_two_columns_and_never_join_a_neighbour() {
             assert_eq!(c.width(), Some(2), "U+{:04X}", value);
             assert_eq!(grapheme_join::join_class(c), 0, "U+{:04X}", value);
             for left in left_partners {
-                assert!(has_boundary(left, c), "U+{:04X} after U+{:04X}", value, left as u32);
+                assert!(
+                    has_boundary(left, c),
+                    "U+{:04X} after U+{:04X}",
+                    value,
+                    left as u32
+                );
             }
             for right in right_partners {
-                assert!(has_boundary(c, right), "U+{:04X} before U+{:04X}", value, right as u32);
+                assert!(
+                    has_boundary(c, right),
+                    "U+{:04X} before U+{:04X}",
+                    value,
+                    right as u32
+                );
             }
         }
         if let Some(below) = char::from_u32(lo - 1) {

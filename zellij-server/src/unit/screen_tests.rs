@@ -19216,7 +19216,9 @@ fn cli_pane_renames_drop_control_characters() {
     if let Ok(tab) = screen.get_active_tab_mut(client_id) {
         let _ = tab.rename_pane_by_pane_id(
             pane_id,
-            "a\u{1b}]0;evil\u{7}b\nc\u{1F1E9}\u{1F1EA}".as_bytes().to_vec(),
+            "a\u{1b}]0;evil\u{7}b\nc\u{1F1E9}\u{1F1EA}"
+                .as_bytes()
+                .to_vec(),
         );
     }
     let tab = screen.get_active_tab(client_id).unwrap();

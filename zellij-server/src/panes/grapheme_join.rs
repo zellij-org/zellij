@@ -1,10 +1,50 @@
+// Rules for deciding which neighbouring code points belong to one user-visible character
+// (a grapheme cluster: a letter with its accents, an emoji sequence, an Indic conjunct).
+//
+// The grid calls into this for every printed character, so the answer has to be cheap in the
+// common case. It is computed in two steps:
+//
+// 1. A fast pre-check, `may_join`, built on `join_class` and the JOIN_CLASS_BLOCKS /
+//    JOIN_CLASS_TABLE tables. It looks at a single pair of code points and answers "these
+//    can't be one character" or "these might be". Plain text (ASCII, Latin, CJK) is
+//    rejected in a few instructions.
+// 2. The real answer, `is_boundary_at`, which asks unicode-segmentation whether the Unicode
+//    rules put a boundary at that position. It is comparatively expensive, so it only runs
+//    for pairs the pre-check lets through.
+//
+// The pre-check must never say "no" for a pair that Unicode joins, because then the real
+// check is never asked and the pair is split. Saying "maybe" too often only costs time. The
+// test `the_join_pre_check_never_misses_a_pair_without_a_boundary` compares the two on a
+// sample of code points; the tables have to be extended when a newer Unicode version
+// (through a newer unicode-segmentation) adds joining code points.
+//
+// Users:
+// - `Grid::print` (grid.rs): `width_and_may_group` for every character; in grapheme mode
+//   `may_join` + `is_boundary_at` decide whether to attach a code point to the previous cell.
+// - output/mod.rs: `group_end` finds multi-cell groups when serializing rows to clients,
+//   `prepare_unit` decides how to write each unit to a host terminal.
+// - selection (grid.rs): `unit_column_spans` widens a selection to whole units.
+// - search.rs: `is_boundary_at` keeps matches on cluster boundaries.
+// - zellij-window's reference.rs: `group_end` and `prepare_unit` to mirror the server output.
 use unicode_segmentation::GraphemeCursor;
 use unicode_width::UnicodeWidthChar;
 
+// Bit flags stored per code point range in JOIN_CLASS_TABLE and returned by `join_class`.
+// JOINS_RIGHT: may join whatever follows it (ZWJ, regional indicators, Indic viramas).
 pub const JOINS_RIGHT: u8 = 1;
+// JOINS_LEFT: may join whatever precedes it even though it has its own width (spacing marks
+// such as Devanagari vowel signs, regional indicators).
 pub const JOINS_LEFT: u8 = 2;
+// EXTEND: a Unicode "Extend" code point that joins the code point before it (combining
+// marks, variation selectors, emoji skin tone modifiers, the keycap combiner, tag
+// characters).
 pub const EXTEND: u8 = 4;
+// CONSONANT: an Indic consonant that can join a preceding virama or mark into a conjunct.
 pub const CONSONANT: u8 = 8;
+
+// Returns the JOIN_* flags of a code point, or 0 if it never takes part in joining.
+// Everything below U+0300 returns 0 immediately; the block bitmap rejects most other code
+// points with one bit test before the table is searched.
 
 #[inline(always)]
 pub fn join_class(c: char) -> u8 {
@@ -35,6 +75,8 @@ fn is_wide_extend(c: char, class: u8) -> bool {
     class & EXTEND != 0 && c.width().unwrap_or(0) != 0
 }
 
+// The fast pre-check: can `right_first` belong to the same cluster as a cell ending in
+// `left_last`? `false` is definite; `true` means "ask `is_boundary_at`".
 #[inline]
 pub fn may_join(left_last: char, right_first: char) -> bool {
     if (left_last as u32) < 0x300 && (right_first as u32) < 0x300 {
@@ -51,6 +93,10 @@ pub fn may_join(left_last: char, right_first: char) -> bool {
     right & CONSONANT != 0 && (left & EXTEND != 0 || left_last.width() == Some(0))
 }
 
+// Ranges of two-column characters (hiragana, katakana, CJK ideographs) that never join a
+// neighbour, so the printing fast path can give them width 2 without any lookup. Kept as data
+// so tests can check every code point in them; `is_plain_wide` is the hard-coded copy used at
+// runtime.
 pub const PLAIN_WIDE_RANGES: [(u32, u32); 4] = [
     (0x3041, 0x3096),
     (0x30A1, 0x30FA),
@@ -58,11 +104,15 @@ pub const PLAIN_WIDE_RANGES: [(u32, u32); 4] = [
     (0x4E00, 0x9FFF),
 ];
 
+// True for the PLAIN_WIDE_RANGES above.
 #[inline(always)]
 pub fn is_plain_wide(c: char) -> bool {
     matches!(c as u32, 0x3041..=0x3096 | 0x30A1..=0x30FA | 0x3400..=0x4DBF | 0x4E00..=0x9FFF)
 }
 
+// Whether a freshly printed cell starting with `first` might form a group with a
+// neighbouring cell. The grid uses it to set `Row::may_have_groups`, so rows without such
+// characters skip group detection when they are serialized.
 #[inline(always)]
 pub fn new_cell_may_join_a_neighbour(first: char) -> bool {
     if (first as u32) < 0x300 {
@@ -72,6 +122,9 @@ pub fn new_cell_may_join_a_neighbour(first: char) -> bool {
     class & (JOINS_LEFT | JOINS_RIGHT) != 0 || is_wide_extend(first, class)
 }
 
+// Width of a printed character plus whether it might group with a neighbour, in one call.
+// Printable ASCII and plain CJK return without any table lookup; this is the hot path of
+// `Grid::print`.
 #[inline(always)]
 pub fn width_and_may_group(c: char) -> (usize, bool) {
     if (' '..='~').contains(&c) {
@@ -86,11 +139,15 @@ pub fn width_and_may_group(c: char) -> (usize, bool) {
     }
 }
 
+// Whether a code point attached to a cell (e.g. a ZWJ at the end of "👨‍") means the cell may
+// join the next cell, so the row has to be marked as possibly holding groups.
 #[inline]
 pub fn attached_may_join_right(c: char) -> bool {
     join_class(c) & JOINS_RIGHT != 0
 }
 
+// The real answer: is there a grapheme cluster boundary at byte `offset` of `text`, per
+// unicode-segmentation (extended grapheme clusters)? Offsets at either end are boundaries.
 pub fn is_boundary_at(text: &str, offset: usize) -> bool {
     if offset == 0 || offset >= text.len() {
         return true;
@@ -99,43 +156,152 @@ pub fn is_boundary_at(text: &str, offset: usize) -> bool {
     cursor.is_boundary(text, 0).unwrap_or(true)
 }
 
+// One bit per block of 128 code points (136 * 64 blocks cover all of Unicode): set when
+// some code point in the block has a JOIN_CLASS_TABLE entry. Lets `join_class` reject most
+// code points without searching the table.
 pub const JOIN_CLASS_BLOCKS: [u64; 136] = [
-    0x0BF7C04FFFFFFA40, 0x000000030E000003, 0x0000000000000000, 0x0000000000000000,
-    0x0000000000000000, 0xFFFFFFFFFFBF3000, 0x0000FFFFFFFFFFFF, 0x9040000000000000,
-    0x6F7D7BFFE4300068, 0x0000010000000000, 0x0000000000000000, 0x00000000C4600004,
-    0x0000000000000000, 0x0200000000000000, 0x0030001C40000000, 0x0000008800062A27,
-    0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
-    0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
-    0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
-    0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
-    0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
-    0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
-    0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
-    0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
-    0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
-    0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
-    0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
-    0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
-    0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
-    0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
-    0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
-    0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
-    0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
-    0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
-    0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
-    0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
-    0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
-    0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
-    0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
-    0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
-    0x000000000000000D, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
-    0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
-    0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
-    0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
-    0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
-    0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
+    0x0BF7C04FFFFFFA40,
+    0x000000030E000003,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0xFFFFFFFFFFBF3000,
+    0x0000FFFFFFFFFFFF,
+    0x9040000000000000,
+    0x6F7D7BFFE4300068,
+    0x0000010000000000,
+    0x0000000000000000,
+    0x00000000C4600004,
+    0x0000000000000000,
+    0x0200000000000000,
+    0x0030001C40000000,
+    0x0000008800062A27,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x000000000000000D,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
 ];
 
+// Sorted, non-overlapping (first, last, flags) code point ranges with their JOIN_* flags,
+// searched by `join_class`. Every code point that can join a neighbour under the Unicode
+// grapheme rules must be covered, with flags at least as permissive as the real rules (see
+// the comment at the top of this file).
 pub const JOIN_CLASS_TABLE: &[(u32, u32, u8)] = &[
     (0x0300, 0x036F, 4),
     (0x0483, 0x0489, 4),
@@ -1593,8 +1759,16 @@ pub const JOIN_CLASS_TABLE: &[(u32, u32, u8)] = &[
     (0xE0100, 0xE01EF, 4),
 ];
 
+// Caps on one group, so a hostile stream (e.g. an endless ZWJ chain) can't make a single
+// unit unbounded. 255 columns is also the largest width a cell can carry on the wire.
 pub const MAX_GROUP_CELLS: usize = 32;
 pub const MAX_GROUP_COLUMNS: usize = 255;
+
+// Given a row of cells and the index of a cell, returns the index one past the last cell of
+// the group starting there (start + 1 if the cell stands alone). A group is a run of cells
+// that Unicode treats as one cluster but that the grid stores as separate cells, which is how
+// emoji sequences look in per-code-point mode. `same_style(a, b)` lets the caller refuse to
+// group cells whose styles differ, since a unit is drawn with one style.
 
 pub fn group_end<F>(
     cells: &[crate::panes::terminal_character::TerminalCharacter],
@@ -1637,12 +1811,19 @@ where
     end
 }
 
+// How to write one unit to a host terminal; produced by `prepare_unit`.
 pub struct UnitText {
+    // The unit's full text, VS16 removed if `strip_vs16`; a space if the unit is empty.
     pub text: String,
+    // VS16 was removed because the host would otherwise draw the unit wider than its columns.
     pub strip_vs16: bool,
+    // The host might draw the text at a different width than the unit's columns, so it must
+    // be written with erase + absolute cursor move.
     pub complex: bool,
 }
 
+// Builds the text to send to a host terminal for one unit and decides whether it must be
+// written with erase + absolute cursor move (see `write_unit_text` in output/mod.rs).
 pub fn prepare_unit(
     cells: &[crate::panes::terminal_character::TerminalCharacter],
     columns: usize,
@@ -1653,11 +1834,22 @@ pub fn prepare_unit(
     }
     let mut draw_width = unicode_width::UnicodeWidthStr::width(text.as_str());
     let mut strip_vs16 = false;
+    // VS16 asks for emoji presentation, which most hosts draw two columns wide. If our grid
+    // gave the unit fewer columns (e.g. a warning sign + VS16 in per-code-point mode, where
+    // it is one column), sending VS16 would make the host draw it wider than the space we
+    // reserved and overlap the next cell, so drop it and let the host draw the text form.
     if columns < draw_width && text.contains('\u{FE0F}') {
         text.retain(|c| c != '\u{FE0F}');
         draw_width = unicode_width::UnicodeWidthStr::width(text.as_str());
         strip_vs16 = true;
     }
+    // A unit is "complex" when the host could disagree with us about its width:
+    // - a group of several cells always is: hosts that join the sequence draw it narrower
+    //   than our per-code-point columns, hosts that don't join it draw each piece;
+    // - a single cell is when the widths don't all agree: the sum of each code point's own
+    //   width (what a host that doesn't join clusters draws), the width of the whole string
+    //   (what a host that does join draws), and the columns our grid gave it.
+    // Only when all three are equal is it safe to write the text plainly.
     let complex = if cells.len() > 1 {
         true
     } else {
@@ -1674,6 +1866,8 @@ pub fn prepare_unit(
     }
 }
 
+// The (start, end) column range of every unit in a row, in order: one entry per cell, or per
+// group when `may_have_groups` is set. Used to widen a selection to whole units.
 pub fn unit_column_spans(
     cells: &[crate::panes::terminal_character::TerminalCharacter],
     may_have_groups: bool,

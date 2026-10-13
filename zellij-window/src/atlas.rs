@@ -426,7 +426,12 @@ impl GlyphCache {
         self.fonts.cluster_font(style, text)
     }
 
-    pub fn cluster_glyph(&mut self, style: FaceStyle, key: &GlyphKey, budget: u32) -> ClusterLookup {
+    pub fn cluster_glyph(
+        &mut self,
+        style: FaceStyle,
+        key: &GlyphKey,
+        budget: u32,
+    ) -> ClusterLookup {
         let cache_key = (style, key.clone(), budget);
         if let Some(cached) = self.clusters.get(&cache_key) {
             return *cached;
@@ -1060,15 +1065,23 @@ mod tests {
                 assert_eq!(rendered.content, GlyphContent::Color);
                 assert!(rendered.entry.width <= cache.metrics().width * 2);
             },
-            other => panic!("the emoji-style warning sign was not one sprite: {:?}", other),
+            other => panic!(
+                "the emoji-style warning sign was not one sprite: {:?}",
+                other
+            ),
         }
         assert_eq!(cache.atlases().mask.revision(), before);
+        let entries = cache.cluster_entries();
         let family = GlyphKey::of("\u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467}");
-        assert_eq!(
-            cache.cluster_glyph(FaceStyle::Regular, &family, 2),
-            ClusterLookup::PerCell,
-            "the bundled emoji subset has no family glyph, so the family is drawn cell by cell"
-        );
+        match cache.cluster_glyph(FaceStyle::Regular, &family, 2) {
+            ClusterLookup::Sprite(rendered) => {
+                assert_eq!(rendered.content, GlyphContent::Color);
+                assert!(rendered.entry.width <= cache.metrics().width * 2);
+            },
+            other => panic!("the family was not one sprite: {:?}", other),
+        }
+        assert_eq!(cache.cluster_entries(), entries + 1);
+        assert_eq!(cache.atlases().mask.revision(), before);
     }
 
     #[test]
