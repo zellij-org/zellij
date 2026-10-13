@@ -882,11 +882,6 @@ impl WasmBridge {
                 .unwrap()
                 .contains(plugin_id, client_id)
             {
-                self.senders
-                    .send_to_plugin(PluginInstruction::ApplyCachedEvents {
-                        plugin_ids: vec![plugin_id],
-                        done_receiving_permissions: false,
-                    })?;
                 continue;
             }
             let Some(run_plugin) = self.run_plugin_of_plugin_id(plugin_id).map(|r| r.clone())
@@ -1514,10 +1509,6 @@ impl WasmBridge {
             }
             self.plugin_ids_waiting_for_permission_request
                 .remove(&plugin_id);
-            // Startup callbacks must wait for a real client to receive them.
-            if self.connected_clients.lock().unwrap().is_empty() {
-                continue;
-            }
             self.apply_cached_events_and_resizes_for_plugin(plugin_id, shutdown_sender.clone())?;
             if let Some(run_plugin) = self.run_plugin_of_loading_plugin_id(plugin_id) {
                 applied_plugin_paths.insert(run_plugin.clone());
@@ -1898,24 +1889,20 @@ impl WasmBridge {
         if let Some(events_or_pipe_messages) =
             self.cached_events_for_pending_plugins.remove(&plugin_id)
         {
-            let all_connected_clients: Vec<ClientId> = self
-                .connected_clients
-                .lock()
-                .unwrap()
-                .iter()
-                .copied()
-                .collect();
-            for client_id in &all_connected_clients {
+            let plugin_instances = self.plugin_map.lock().unwrap().all_plugin_ids();
+            for (instance_plugin_id, client_id) in plugin_instances {
+                if instance_plugin_id != plugin_id {
+                    continue;
+                }
                 if let Some((running_plugin, subscriptions)) = self
                     .plugin_map
                     .lock()
                     .unwrap()
-                    .get_running_plugin_and_subscriptions(plugin_id, *client_id)
+                    .get_running_plugin_and_subscriptions(plugin_id, client_id)
                 {
                     let subs = subscriptions.lock().unwrap().clone();
                     self.plugin_executor.execute_for_plugin(plugin_id, {
                         let running_plugin = running_plugin.clone();
-                        let client_id = *client_id;
                         let _s = shutdown_sender.clone();
                         let events_or_pipe_messages = events_or_pipe_messages.clone();
                         move |senders, _plugin_map, _connected_clients, _plugin_cache, _engine| {
