@@ -2614,6 +2614,8 @@ pub struct ModeInfo {
     pub nested_ascend_keys: Vec<KeyWithModifier>,
     pub session_ascended: Option<bool>,
     pub nested_descend_keys: Vec<KeyWithModifier>,
+    #[serde(default)]
+    pub nested_session_ancestor_tab_highlight: Option<bool>,
 }
 
 impl ModeInfo {
@@ -5100,6 +5102,7 @@ setting_keys! {
     PostCommandDiscoveryHook => (TopLevel, "post_command_discovery_hook", false, Text),
     ClientAsyncWorkerTasks => (TopLevel, "client_async_worker_tasks", true, Number),
     NestedSessionHandling => (TopLevel, "nested_session_handling", false, Text),
+    NestedSessionAncestorTabHighlight => (TopLevel, "nested_session_ancestor_tab_highlight", false, Flag),
     DangerouslyEnablePasteBufferRead => (TopLevel, "dangerously_enable_paste_buffer_read", false, Flag),
     SessionCard => (TopLevel, "session_card", false, Flag),
     SessionIndicator => (TopLevel, "session_indicator", false, Flag),

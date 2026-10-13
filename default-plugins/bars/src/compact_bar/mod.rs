@@ -1143,9 +1143,6 @@ fn prepare_tab_data(client: &ClientState, hovered: Option<CompactRegion>) -> Tab
     let mut all_tabs = Vec::new();
     let mut active_tab_index = 0;
     let mut is_alternate_tab = false;
-    let dimmed = client.mode_info.session_ascended == Some(true)
-        || client.mode_info.session_dimmed == Some(true);
-
     for tab in &client.tabs {
         let tab_name = get_tab_display_name(client, tab);
 
@@ -1167,7 +1164,7 @@ fn prepare_tab_data(client: &ClientState, hovered: Option<CompactRegion>) -> Tab
             is_dragged,
             client.mode_info.style.colors,
             client.mode_info.capabilities,
-            dimmed,
+            &client.mode_info,
         );
 
         is_alternate_tab = !is_alternate_tab;

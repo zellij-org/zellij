@@ -81,6 +81,7 @@ fn every_option_set() -> Options {
         post_command_discovery_hook: Some("echo hook".to_owned()),
         client_async_worker_tasks: Some(8),
         nested_session_handling: Some(NestedSessionHandling::Never),
+        nested_session_ancestor_tab_highlight: Some(false),
         dangerously_enable_paste_buffer_read: Some(true),
         session_card: Some(false),
         session_indicator: Some(false),
@@ -313,6 +314,25 @@ fn kdl_names_in(config: &Config) -> BTreeSet<(SettingSection, String)> {
         }
     }
     names
+}
+
+#[test]
+fn nested_session_ancestor_tab_highlight_is_an_editable_top_level_setting() {
+    let key = SettingKey::NestedSessionAncestorTabHighlight;
+    let source = Config::from_kdl("nested_session_ancestor_tab_highlight false", None).unwrap();
+    assert_eq!(key.section(), SettingSection::TopLevel);
+    assert_eq!(setting_value(&source, key).as_deref(), Some("false"));
+    assert!(settings_set_in_file("nested_session_ancestor_tab_highlight false").contains(&key));
+
+    let mut target = Config::default();
+    copy_setting(&mut target, &source, key);
+    assert_eq!(
+        target.options.nested_session_ancestor_tab_highlight,
+        Some(false)
+    );
+    assert_eq!(differing_settings(&target, &Config::default()), vec![key]);
+    unset_setting(&mut target, key);
+    assert_eq!(target.options.nested_session_ancestor_tab_highlight, None);
 }
 
 #[test]

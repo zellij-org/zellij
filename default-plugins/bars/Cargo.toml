@@ -12,6 +12,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 unicode-width = { workspace = true }
+zellij-utils = { workspace = true }
 zellij-tile = { path = "../../zellij-tile" }
 zellij-tile-utils = { path = "../../zellij-tile-utils" }
 
