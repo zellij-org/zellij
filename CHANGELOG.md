@@ -33,6 +33,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: pass `ZELLIJ_ORIGIN_PANE_ID` to `Run` keybindings and allow running in background (https://github.com/zellij-org/zellij/pull/5701)
 * fix: race when starting two servers with the same name (https://github.com/zellij-org/zellij/pull/5708)
 * feat: terminal window (desktop client) (https://github.com/zellij-org/zellij/pull/5652)
+* fix: grapheme cluster support (https://github.com/zellij-org/zellij/pull/5714)
 
 
 ## [0.45.1] - 2026-08-28
