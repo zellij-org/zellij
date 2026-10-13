@@ -772,6 +772,23 @@ fn flatten_chunks(
     Ok(())
 }
 
+fn push_decimal(out: &mut String, value: usize) {
+    let mut digits = [0u8; 20];
+    let mut at = digits.len();
+    let mut rest = value;
+    loop {
+        at -= 1;
+        digits[at] = b'0' + (rest % 10) as u8;
+        rest /= 10;
+        if rest == 0 {
+            break;
+        }
+    }
+    for digit in &digits[at..] {
+        out.push(*digit as char);
+    }
+}
+
 fn write_unit_text(
     vte_output: &mut String,
     unit: &[TerminalCharacter],
@@ -780,13 +797,14 @@ fn write_unit_text(
 ) -> std::fmt::Result {
     let prepared = grapheme_join::prepare_unit(unit, unit_columns);
     if prepared.complex {
-        write!(
-            vte_output,
-            "\u{1b}[{}X{}\u{1b}[{}G",
-            unit_columns,
-            prepared.text,
-            column + unit_columns + 1
-        )
+        vte_output.push_str("\u{1b}[");
+        push_decimal(vte_output, unit_columns);
+        vte_output.push('X');
+        vte_output.push_str(&prepared.text);
+        vte_output.push_str("\u{1b}[");
+        push_decimal(vte_output, column + unit_columns + 1);
+        vte_output.push('G');
+        Ok(())
     } else {
         vte_output.push_str(&prepared.text);
         Ok(())

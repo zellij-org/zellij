@@ -704,3 +704,48 @@ fn session_serialization_round_trips_clusters() {
     assert_eq!(trimmed(cells(&restored, offset)), trimmed(cells(&grid, 0)));
     assert_eq!(trimmed(cells(&restored, offset + 1)), trimmed(cells(&grid, 1)));
 }
+
+#[test]
+fn the_print_shortcuts_agree_with_the_general_width_and_join_rules() {
+    for value in 0..=0x10FFFFu32 {
+        let Some(c) = char::from_u32(value) else {
+            continue;
+        };
+        let width = c.width().unwrap_or(0);
+        assert_eq!(
+            grapheme_join::width_and_may_group(c),
+            (
+                width,
+                width != 0 && grapheme_join::new_cell_may_join_a_neighbour(c)
+            ),
+            "U+{:04X}",
+            value
+        );
+    }
+}
+
+#[test]
+fn plain_wide_characters_are_two_columns_and_never_join_a_neighbour() {
+    let left_partners = ['a', ' ', '\u{4F60}', '\u{3042}', '\u{200D}', '\u{1F1E9}', '\u{1F468}'];
+    let right_partners = ['a', ' ', '\u{4F60}', '\u{3042}', '\u{1F1E9}', '\u{1100}', '\u{AC00}'];
+    for (lo, hi) in grapheme_join::PLAIN_WIDE_RANGES {
+        for value in lo..=hi {
+            let c = char::from_u32(value).unwrap();
+            assert!(grapheme_join::is_plain_wide(c), "U+{:04X}", value);
+            assert_eq!(c.width(), Some(2), "U+{:04X}", value);
+            assert_eq!(grapheme_join::join_class(c), 0, "U+{:04X}", value);
+            for left in left_partners {
+                assert!(has_boundary(left, c), "U+{:04X} after U+{:04X}", value, left as u32);
+            }
+            for right in right_partners {
+                assert!(has_boundary(c, right), "U+{:04X} before U+{:04X}", value, right as u32);
+            }
+        }
+        if let Some(below) = char::from_u32(lo - 1) {
+            assert!(!grapheme_join::is_plain_wide(below));
+        }
+        if let Some(above) = char::from_u32(hi + 1) {
+            assert!(!grapheme_join::is_plain_wide(above));
+        }
+    }
+}

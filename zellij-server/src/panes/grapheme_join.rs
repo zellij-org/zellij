@@ -6,7 +6,7 @@ pub const JOINS_LEFT: u8 = 2;
 pub const EXTEND: u8 = 4;
 pub const CONSONANT: u8 = 8;
 
-#[inline]
+#[inline(always)]
 pub fn join_class(c: char) -> u8 {
     let c = c as u32;
     if c < 0x300 {
@@ -51,13 +51,39 @@ pub fn may_join(left_last: char, right_first: char) -> bool {
     right & CONSONANT != 0 && (left & EXTEND != 0 || left_last.width() == Some(0))
 }
 
-#[inline]
+pub const PLAIN_WIDE_RANGES: [(u32, u32); 4] = [
+    (0x3041, 0x3096),
+    (0x30A1, 0x30FA),
+    (0x3400, 0x4DBF),
+    (0x4E00, 0x9FFF),
+];
+
+#[inline(always)]
+pub fn is_plain_wide(c: char) -> bool {
+    matches!(c as u32, 0x3041..=0x3096 | 0x30A1..=0x30FA | 0x3400..=0x4DBF | 0x4E00..=0x9FFF)
+}
+
+#[inline(always)]
 pub fn new_cell_may_join_a_neighbour(first: char) -> bool {
     if (first as u32) < 0x300 {
         return false;
     }
     let class = join_class(first);
     class & (JOINS_LEFT | JOINS_RIGHT) != 0 || is_wide_extend(first, class)
+}
+
+#[inline(always)]
+pub fn width_and_may_group(c: char) -> (usize, bool) {
+    if (' '..='~').contains(&c) {
+        (1, false)
+    } else if is_plain_wide(c) {
+        (2, false)
+    } else {
+        match c.width().unwrap_or(0) {
+            0 => (0, false),
+            width => (width, new_cell_may_join_a_neighbour(c)),
+        }
+    }
 }
 
 #[inline]

@@ -1,3 +1,4 @@
+use arrayvec::ArrayString;
 use std::borrow::Cow;
 use std::convert::From;
 use std::fmt::{self, Debug, Display, Formatter};
@@ -16,8 +17,7 @@ use crate::panes::cluster_table;
 
 pub const EMPTY_TERMINAL_CHARACTER: TerminalCharacter = TerminalCharacter {
     character: ' ',
-    width: 1,
-    extra: [0; 3],
+    packed: 1,
     styles: RcCharacterStyles::Reset,
 };
 
@@ -914,8 +914,7 @@ impl Cursor {
 pub struct TerminalCharacter {
     pub character: char,
     pub styles: RcCharacterStyles,
-    width: u8,
-    extra: [u8; 3],
+    packed: u32,
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -936,8 +935,7 @@ impl Clone for TerminalCharacter {
         TerminalCharacter {
             character: self.character,
             styles: self.styles.clone(),
-            width: self.width,
-            extra: self.extra,
+            packed: self.packed,
         }
     }
 }
@@ -954,8 +952,7 @@ impl Drop for TerminalCharacter {
 impl PartialEq for TerminalCharacter {
     fn eq(&self, other: &Self) -> bool {
         self.character == other.character
-            && self.width == other.width
-            && self.extra == other.extra
+            && self.packed == other.packed
             && self.styles == other.styles
     }
 }
@@ -976,8 +973,16 @@ impl TerminalCharacter {
             cluster_table::release(self.extra_value() & EXTRA_VALUE_MASK);
         }
         self.character = other.character;
-        self.width = other.width;
-        self.extra = other.extra;
+        self.packed = other.packed;
+    }
+
+    #[inline]
+    pub fn copy_plain_glyph(&mut self, character: char, width: u8) {
+        if self.is_tagged() {
+            cluster_table::release(self.extra_value() & EXTRA_VALUE_MASK);
+        }
+        self.character = character;
+        self.packed = width as u32;
     }
 
     #[inline]
@@ -990,8 +995,7 @@ impl TerminalCharacter {
         TerminalCharacter {
             character,
             styles,
-            width: character.width().unwrap_or(0) as u8,
-            extra: [0; 3],
+            packed: character.width().unwrap_or(0) as u32 & 0xff,
         }
     }
 
@@ -1000,8 +1004,7 @@ impl TerminalCharacter {
         TerminalCharacter {
             character,
             styles,
-            width,
-            extra: [0; 3],
+            packed: width as u32,
         }
     }
 
@@ -1011,8 +1014,7 @@ impl TerminalCharacter {
         let mut cell = TerminalCharacter {
             character: first,
             styles,
-            width: width.min(u8::MAX as usize) as u8,
-            extra: [0; 3],
+            packed: width.min(u8::MAX as usize) as u32,
         };
         for c in chars {
             if !cell.attach(c) {
@@ -1032,33 +1034,32 @@ impl TerminalCharacter {
         TerminalCharacter {
             character,
             styles,
-            width: 1,
-            extra: [0; 3],
+            packed: 1,
         }
     }
 
     #[inline]
     pub fn width(&self) -> usize {
-        self.width as usize
+        (self.packed & 0xff) as usize
     }
 
     pub(crate) fn set_width(&mut self, width: u8) {
-        self.width = width;
+        self.packed = (self.packed & !0xff) | width as u32;
     }
 
     #[inline]
     fn is_tagged(&self) -> bool {
-        self.extra[2] & 0x80 != 0
+        self.packed & 0x8000_0000 != 0
     }
 
     #[inline]
     fn extra_value(&self) -> u32 {
-        self.extra[0] as u32 | (self.extra[1] as u32) << 8 | (self.extra[2] as u32) << 16
+        self.packed >> 8
     }
 
     #[inline]
     fn set_extra_value(&mut self, value: u32) {
-        self.extra = [value as u8, (value >> 8) as u8, (value >> 16) as u8];
+        self.packed = (self.packed & 0xff) | (value << 8);
     }
 
     #[inline]
@@ -1078,7 +1079,7 @@ impl TerminalCharacter {
 
     #[inline]
     pub fn has_attached(&self) -> bool {
-        self.extra != [0; 3]
+        self.packed > 0xff
     }
 
     pub fn is_plain_blank(&self) -> bool {
@@ -1095,7 +1096,7 @@ impl TerminalCharacter {
                 true
             },
             Attached::Inline(previous) => {
-                let mut text = String::with_capacity(8);
+                let mut text = ArrayString::<8>::new();
                 text.push(previous);
                 text.push(c);
                 match cluster_table::intern(&text) {
@@ -1113,9 +1114,10 @@ impl TerminalCharacter {
                 if existing.chars().count() + 1 >= MAX_CODE_POINTS_PER_CELL {
                     return false;
                 }
-                let mut text = String::with_capacity(existing.len() + c.len_utf8());
-                text.push_str(&existing);
-                text.push(c);
+                let mut text = ArrayString::<{ MAX_CODE_POINTS_PER_CELL * 4 }>::new();
+                if text.try_push_str(&existing).is_err() || text.try_push(c).is_err() {
+                    return false;
+                }
                 match cluster_table::intern(&text) {
                     Some(new_id) => {
                         cluster_table::release(id);
@@ -1132,7 +1134,7 @@ impl TerminalCharacter {
         if let Attached::Table(id) = self.attached() {
             cluster_table::release(id);
         }
-        self.extra = [0; 3];
+        self.packed &= 0xff;
     }
 
     pub fn last_char(&self) -> char {

@@ -12,7 +12,6 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::rc::Rc;
-use unicode_width::UnicodeWidthChar;
 use zellij_utils::data::{
     HighlightLayer, HighlightStyle, HostTerminalThemeMode, RegexHighlight, Style,
 };
@@ -2621,6 +2620,12 @@ impl Grid {
         }
     }
     pub fn add_character(&mut self, terminal_character: TerminalCharacter) {
+        let may_group = terminal_character.has_attached()
+            || grapheme_join::new_cell_may_join_a_neighbour(terminal_character.character);
+        self.add_fresh_character(terminal_character, may_group);
+    }
+    #[inline]
+    fn add_fresh_character(&mut self, terminal_character: TerminalCharacter, may_group: bool) {
         let character_width = terminal_character.width();
         if character_width == 0 {
             return;
@@ -2634,8 +2639,6 @@ impl Grid {
             }
             self.line_wrap();
         }
-        let may_group = terminal_character.has_attached()
-            || grapheme_join::new_cell_may_join_a_neighbour(terminal_character.character);
         self.add_character_at_cursor_position(terminal_character, false);
         if may_group {
             if let Some(row) = self.viewport.get_mut(self.cursor.y) {
@@ -2690,7 +2693,8 @@ impl Grid {
         let Some((index, start)) = row.cell_at_column(column) else {
             return;
         };
-        let before = row.columns[index].clone();
+        let old_width = row.columns[index].width();
+        let before = grapheme_mode.then(|| row.columns[index].clone());
         if !row.columns[index].attach(c) {
             return;
         }
@@ -2698,8 +2702,7 @@ impl Grid {
             row.may_have_groups = true;
         }
         let mut wrapped_cell = None;
-        if grapheme_mode {
-            let old_width = before.width();
+        if let Some(before) = before {
             let new_width = row.columns[index].natural_width().max(1);
             if new_width > pane_width {
                 row.columns[index] = before;
@@ -4837,7 +4840,7 @@ impl Drop for Grid {
 impl Perform for Grid {
     fn print(&mut self, c: char) {
         let c = self.cursor.charsets[self.active_charset].map(c);
-        let width = c.width().unwrap_or(0);
+        let (width, may_group) = grapheme_join::width_and_may_group(c);
         if width == 0 && ((c as u32) >= 0x300 || c == '\u{AD}') {
             self.attach_code_point(c);
             return;
@@ -4854,11 +4857,11 @@ impl Perform for Grid {
         );
         match &mut self.preceding_char {
             Some(preceding) if preceding.shares_styles_with(&terminal_character) => {
-                preceding.copy_glyph_from(&terminal_character)
+                preceding.copy_plain_glyph(c, terminal_character.width() as u8)
             },
             _ => self.set_preceding_character(terminal_character.clone()),
         }
-        self.add_character(terminal_character);
+        self.add_fresh_character(terminal_character, may_group);
     }
 
     fn execute(&mut self, byte: u8) {
