@@ -1111,6 +1111,14 @@ impl From<crate::input::options::Options>
                     crate::data::ThemeHue::Light => ProtoThemeHue::Light as i32,
                 }
             }),
+            resize_session_to: options.resize_session_to.map(|r| {
+                use crate::input::options::ResizeSessionTo;
+                match r {
+                    ResizeSessionTo::Smallest => "smallest".to_owned(),
+                    ResizeSessionTo::Largest => "largest".to_owned(),
+                    ResizeSessionTo::Focused => "focused".to_owned(),
+                }
+            }),
         }
     }
 }
@@ -1275,6 +1283,13 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
                         Some(ProtoThemeHue::Light) => Ok(crate::data::ThemeHue::Light),
                         _ => Err(anyhow!("Invalid ThemeHue value: {}", hue)),
                     }
+                })
+                .transpose()?,
+            resize_session_to: options
+                .resize_session_to
+                .map(|r| {
+                    r.parse::<crate::input::options::ResizeSessionTo>()
+                        .map_err(|e| anyhow!(e))
                 })
                 .transpose()?,
         })

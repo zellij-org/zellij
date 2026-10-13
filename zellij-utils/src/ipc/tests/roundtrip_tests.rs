@@ -546,6 +546,7 @@ fn test_client_messages() {
                 session_indicator: Some(true),
                 swap_layout_notification: Some(false),
                 on_quit: Some(crate::input::options::OnQuit::AskDetach),
+                resize_session_to: Some(crate::input::options::ResizeSessionTo::Focused),
             }),
             layout: None,
             terminal_window_size: Size { rows: 80, cols: 42 },

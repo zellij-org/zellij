@@ -62,7 +62,7 @@ use zellij_utils::input::keybinds::{shortcut_for_action, Keybinds};
 use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
 use zellij_utils::input::mousebinds::Mousebinds;
 use zellij_utils::input::options::{
-    Clipboard, HostNotificationProtocol, NestedSessionHandling, PaneFrameStyle,
+    Clipboard, HostNotificationProtocol, NestedSessionHandling, PaneFrameStyle, ResizeSessionTo,
     DEFAULT_WORD_SEPARATORS,
 };
 use zellij_utils::ipc::{
@@ -879,6 +879,7 @@ pub enum ScreenInstruction {
         host_notification_protocol: HostNotificationProtocol,
         nested_session_handling: NestedSessionHandling,
         dangerously_enable_paste_buffer_read: bool,
+        resize_session_to: ResizeSessionTo,
     },
     RerunCommandPane(u32, Option<NotificationEnd>), // u32 - terminal pane id
     ResizePaneWithId(ResizeStrategy, PaneId),
@@ -1856,6 +1857,10 @@ pub(crate) struct Screen {
     /// The indices of this [`Screen`]'s active [`Tab`]s.
     active_tab_ids: BTreeMap<ClientId, usize>,
     client_sizes: HashMap<ClientId, Size>,
+    // How to size a tab viewed by multiple clients at once (see `ResizeSessionTo`).
+    resize_session_to: ResizeSessionTo,
+    // The client that most recently attached or resized, used by `ResizeSessionTo::Focused`.
+    last_active_client: Option<ClientId>,
     global_last_active_tab_id: usize,
     tab_history: BTreeMap<ClientId, Vec<usize>>,
     pane_history: BTreeMap<ClientId, Vec<PaneId>>,
@@ -2164,6 +2169,7 @@ impl Screen {
         web_server_ip: IpAddr,
         web_server_port: u16,
         nested_session_handling: NestedSessionHandling,
+        resize_session_to: ResizeSessionTo,
     ) -> Self {
         let session_name = mode_info.session_name.clone().unwrap_or_default();
         let session_info = SessionInfo::new(session_name.clone());
@@ -2192,6 +2198,8 @@ impl Screen {
             highest_client_id_seen: 0,
             active_tab_ids: BTreeMap::new(),
             client_sizes: HashMap::new(),
+            resize_session_to,
+            last_active_client: None,
             global_last_active_tab_id: 0,
             tabs: BTreeMap::new(),
             last_single_pane_tab_names: HashMap::new(),
@@ -2841,6 +2849,12 @@ impl Screen {
         self.client_sizes.insert(client_id, size);
     }
 
+    // Remember the client currently driving the session; used as the size reference when
+    // `resize_session_to` is `Focused`. A no-op for the other strategies.
+    fn mark_client_active(&mut self, client_id: ClientId) {
+        self.last_active_client = Some(client_id);
+    }
+
     fn size_for_client(&self, client_id: Option<ClientId>) -> Size {
         client_id
             .and_then(|client_id| self.client_sizes.get(&client_id).copied())
@@ -2877,8 +2891,10 @@ impl Screen {
     pub fn recompute_tab_size(&mut self, tab_id: usize) -> Result<()> {
         let err_context = || format!("failed to recompute size for tab {tab_id}");
 
-        let mut rows: Vec<usize> = Vec::new();
-        let mut cols: Vec<usize> = Vec::new();
+        // Collect the effective size contributed by every client viewing this tab.
+        // A "fit disabled" client (mobile web) does not impose its own size; it uses the
+        // largest reference among the clients it shares the tab with instead.
+        let mut contributions: Vec<(ClientId, Size)> = Vec::new();
         let mut fit_disabled_clients: Vec<ClientId> = Vec::new();
         for (client_id, active_tab) in self.active_tab_ids.iter() {
             if *active_tab == tab_id {
@@ -2892,26 +2908,19 @@ impl Screen {
                     continue;
                 }
                 if let Some(size) = self.client_sizes.get(client_id) {
-                    rows.push(size.rows);
-                    cols.push(size.cols);
+                    contributions.push((*client_id, *size));
                 }
             }
         }
         for client_id in fit_disabled_clients {
             if let Some(reference) = self.reference_size_for_client(client_id) {
-                rows.push(reference.rows);
-                cols.push(reference.cols);
+                contributions.push((client_id, reference));
             }
         }
-        if rows.is_empty() || cols.is_empty() {
+        if contributions.is_empty() {
             return Ok(());
         }
-        rows.sort_unstable();
-        cols.sort_unstable();
-        let new_size = Size {
-            rows: rows[0],
-            cols: cols[0],
-        };
+        let new_size = self.aggregate_client_sizes(&contributions);
         if let Some(tab) = self.tabs.get_mut(&tab_id) {
             if tab.size != new_size {
                 tab.resize_whole_tab(new_size).with_context(err_context)?;
@@ -2919,6 +2928,50 @@ impl Screen {
             }
         }
         Ok(())
+    }
+
+    // Combine the sizes of the clients viewing a tab into the size the tab should take, according
+    // to the configured `resize_session_to` strategy. `contributions` is guaranteed non-empty.
+    fn aggregate_client_sizes(&self, contributions: &[(ClientId, Size)]) -> Size {
+        let largest = || Size {
+            rows: contributions
+                .iter()
+                .map(|(_, s)| s.rows)
+                .max()
+                .unwrap_or_default(),
+            cols: contributions
+                .iter()
+                .map(|(_, s)| s.cols)
+                .max()
+                .unwrap_or_default(),
+        };
+        match self.resize_session_to {
+            ResizeSessionTo::Smallest => Size {
+                rows: contributions
+                    .iter()
+                    .map(|(_, s)| s.rows)
+                    .min()
+                    .unwrap_or_default(),
+                cols: contributions
+                    .iter()
+                    .map(|(_, s)| s.cols)
+                    .min()
+                    .unwrap_or_default(),
+            },
+            ResizeSessionTo::Largest => largest(),
+            // Follow the most recently active client if it is among the clients viewing this tab.
+            // Otherwise fall back to the largest contribution so the tab doesn't shrink to a
+            // client that isn't actively driving it (e.g. right after the focused client left).
+            ResizeSessionTo::Focused => self
+                .last_active_client
+                .and_then(|focused| {
+                    contributions
+                        .iter()
+                        .find(|(client_id, _)| *client_id == focused)
+                        .map(|(_, size)| *size)
+                })
+                .unwrap_or_else(largest),
+        }
     }
 
     fn recompute_fit_disabled_tabs(&mut self) -> Result<()> {
@@ -6550,6 +6603,9 @@ impl Screen {
             self.push_sixel_host_support_to_tabs();
         }
         self.client_sizes.remove(&client_id);
+        if self.last_active_client == Some(client_id) {
+            self.last_active_client = None;
+        }
         self.client_display_slots.borrow_mut().remove(&client_id);
         self.release_structured_render_state(client_id);
         self.pane_render_subscribers.remove(&client_id);
@@ -8771,6 +8827,7 @@ impl Screen {
         host_notification_protocol: HostNotificationProtocol,
         nested_session_handling: NestedSessionHandling,
         dangerously_enable_paste_buffer_read: bool,
+        resize_session_to: ResizeSessionTo,
         client_id: ClientId,
     ) -> Result<()> {
         let should_support_arrow_fonts = !simplified_ui;
@@ -8809,6 +8866,13 @@ impl Screen {
         self.set_host_notification_protocol(host_notification_protocol);
         self.nested_session_handling = nested_session_handling;
         self.paste_buffer_read_enabled = dangerously_enable_paste_buffer_read;
+        if self.resize_session_to != resize_session_to {
+            self.resize_session_to = resize_session_to;
+            let tab_ids: Vec<usize> = self.tabs.keys().copied().collect();
+            for tab_id in tab_ids {
+                self.recompute_tab_size(tab_id)?;
+            }
+        }
         self.default_mode_info
             .update_arrow_fonts(should_support_arrow_fonts);
         self.default_mode_info
@@ -10141,6 +10205,7 @@ pub(crate) fn screen_thread_main(
     let focus_follows_mouse = config_options.focus_follows_mouse.unwrap_or(false);
     let mouse_click_through = config_options.mouse_click_through.unwrap_or(false);
     let nested_session_handling = config_options.nested_session_handling.unwrap_or_default();
+    let resize_session_to = config_options.resize_session_to.unwrap_or_default();
     let dangerously_enable_paste_buffer_read = config_options
         .dangerously_enable_paste_buffer_read
         .unwrap_or(false);
@@ -10195,6 +10260,7 @@ pub(crate) fn screen_thread_main(
         web_server_ip,
         web_server_port,
         nested_session_handling,
+        resize_session_to,
     );
     screen.default_keybinds = default_keybinds;
     screen.default_context_menu_config = config.context_menu.clone();
@@ -12243,6 +12309,9 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::RecomputeTabSize(client_id, new_size) => {
                 screen.set_client_size(client_id, new_size);
+                // A client announcing a new size is actively driving the session, so it
+                // becomes the reference for `ResizeSessionTo::Focused`.
+                screen.mark_client_active(client_id);
                 if screen.tabs.is_empty() {
                     continue;
                 }
@@ -12450,6 +12519,9 @@ pub(crate) fn screen_thread_main(
                 pane_id_to_focus,
             ) => {
                 screen.set_client_size(client_id, client_size);
+                // A freshly attached client becomes the reference for
+                // `ResizeSessionTo::Focused` (set before `add_client`, which recomputes sizes).
+                screen.mark_client_active(client_id);
                 screen.add_client(client_id, is_web_client)?;
                 let pane_id = pane_id_to_focus.map(|(pane_id, is_plugin)| {
                     if is_plugin {
@@ -13949,6 +14021,7 @@ pub(crate) fn screen_thread_main(
                 host_notification_protocol,
                 nested_session_handling,
                 dangerously_enable_paste_buffer_read,
+                resize_session_to,
             } => {
                 screen.update_context_menu_enabled(context_menu_enabled);
                 screen.host_theme_dark_styling = host_theme_dark;
@@ -13985,6 +14058,7 @@ pub(crate) fn screen_thread_main(
                         host_notification_protocol,
                         nested_session_handling,
                         dangerously_enable_paste_buffer_read,
+                        resize_session_to,
                         client_id,
                     )
                     .non_fatal();
