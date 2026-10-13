@@ -40,7 +40,7 @@ pub fn estimated_context_menu_size(
     let widest_item = entries
         .iter()
         .filter_map(|entry| match entry {
-            ContextMenuEntry::Item { label, actions } => {
+            ContextMenuEntry::Item { label, actions, .. } => {
                 let shortcut = context_menu_shortcut(keybinds, base_mode, actions)
                     .map(|shortcut| zellij_utils::graphemes::display_width(&shortcut) + 1)
                     .unwrap_or(0);
@@ -478,6 +478,7 @@ impl Screen {
             self.context_menu_config_for_client(client_id)
                 .entries_for(context.kind),
         );
+        let entries = self.resolve_toggled_context_menu_labels(entries, &context);
         if entries.is_empty() {
             return;
         }
@@ -1316,11 +1317,13 @@ mod tests {
                 actions: vec![ContextMenuAction::ClickedPane(
                     ClickedPaneAction::CloseFocus,
                 )],
+                toggled_label: None,
             },
             ContextMenuEntry::Separator,
             ContextMenuEntry::Item {
                 label: "Detach".to_owned(),
                 actions: vec![Action::Detach.into()],
+                toggled_label: None,
             },
         ];
         let keybinds: KeybindsVec = vec![

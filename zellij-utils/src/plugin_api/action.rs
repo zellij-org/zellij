@@ -704,6 +704,59 @@ impl TryFrom<ProtobufAction> for Action {
                 Some(_) => Err("OpenContextMenu should not have a payload"),
                 None => Ok(Action::OpenContextMenu),
             },
+            Some(ProtobufActionName::MutePane) => match protobuf_action.optional_payload {
+                Some(_) => Err("MutePane should not have a payload"),
+                None => Ok(Action::MutePane),
+            },
+            Some(ProtobufActionName::IgnorePaneOutput) => match protobuf_action.optional_payload {
+                Some(_) => Err("IgnorePaneOutput should not have a payload"),
+                None => Ok(Action::IgnorePaneOutput),
+            },
+            Some(ProtobufActionName::WatchPane) => match protobuf_action.optional_payload {
+                Some(_) => Err("WatchPane should not have a payload"),
+                None => Ok(Action::WatchPane),
+            },
+            Some(ProtobufActionName::MuteTab) => match protobuf_action.optional_payload {
+                Some(_) => Err("MuteTab should not have a payload"),
+                None => Ok(Action::MuteTab),
+            },
+            Some(ProtobufActionName::MuteSession) => match protobuf_action.optional_payload {
+                Some(_) => Err("MuteSession should not have a payload"),
+                None => Ok(Action::MuteSession),
+            },
+            Some(ProtobufActionName::MutePaneByPaneId) => match protobuf_action.optional_payload {
+                Some(OptionalPayload::TargetPaneIdPayload(payload)) => Ok(Action::MutePaneByPaneId {
+                    pane_id: payload
+                        .pane_id
+                        .ok_or("Missing pane id for Action::MutePaneByPaneId")?
+                        .try_into()?,
+                }),
+                _ => Err("Wrong payload for Action::MutePaneByPaneId"),
+            },
+            Some(ProtobufActionName::IgnorePaneOutputByPaneId) => match protobuf_action.optional_payload {
+                Some(OptionalPayload::TargetPaneIdPayload(payload)) => Ok(Action::IgnorePaneOutputByPaneId {
+                    pane_id: payload
+                        .pane_id
+                        .ok_or("Missing pane id for Action::IgnorePaneOutputByPaneId")?
+                        .try_into()?,
+                }),
+                _ => Err("Wrong payload for Action::IgnorePaneOutputByPaneId"),
+            },
+            Some(ProtobufActionName::WatchPaneByPaneId) => match protobuf_action.optional_payload {
+                Some(OptionalPayload::TargetPaneIdPayload(payload)) => Ok(Action::WatchPaneByPaneId {
+                    pane_id: payload
+                        .pane_id
+                        .ok_or("Missing pane id for Action::WatchPaneByPaneId")?
+                        .try_into()?,
+                }),
+                _ => Err("Wrong payload for Action::WatchPaneByPaneId"),
+            },
+            Some(ProtobufActionName::MuteTabByTabId) => match protobuf_action.optional_payload {
+                Some(OptionalPayload::TargetTabIdPayload(payload)) => {
+                    Ok(Action::MuteTabByTabId { id: payload.tab_id })
+                },
+                _ => Err("Wrong payload for Action::MuteTabByTabId"),
+            },
             Some(ProtobufActionName::ToggleSessionCard) => match protobuf_action.optional_payload {
                 Some(_) => Err("ToggleSessionCard should not have a payload"),
                 None => Ok(Action::ToggleSessionCard),
@@ -1942,6 +1995,50 @@ impl TryFrom<Action> for ProtobufAction {
             Action::DismissInfoPopups => Ok(ProtobufAction {
                 name: ProtobufActionName::DismissInfoPopups as i32,
                 optional_payload: None,
+            }),
+            Action::MutePane => Ok(ProtobufAction {
+                name: ProtobufActionName::MutePane as i32,
+                optional_payload: None,
+            }),
+            Action::IgnorePaneOutput => Ok(ProtobufAction {
+                name: ProtobufActionName::IgnorePaneOutput as i32,
+                optional_payload: None,
+            }),
+            Action::WatchPane => Ok(ProtobufAction {
+                name: ProtobufActionName::WatchPane as i32,
+                optional_payload: None,
+            }),
+            Action::MuteTab => Ok(ProtobufAction {
+                name: ProtobufActionName::MuteTab as i32,
+                optional_payload: None,
+            }),
+            Action::MuteSession => Ok(ProtobufAction {
+                name: ProtobufActionName::MuteSession as i32,
+                optional_payload: None,
+            }),
+            Action::MutePaneByPaneId { pane_id } => Ok(ProtobufAction {
+                name: ProtobufActionName::MutePaneByPaneId as i32,
+                optional_payload: Some(OptionalPayload::TargetPaneIdPayload(TargetPaneIdPayload {
+                    pane_id: Some(pane_id.try_into()?),
+                })),
+            }),
+            Action::IgnorePaneOutputByPaneId { pane_id } => Ok(ProtobufAction {
+                name: ProtobufActionName::IgnorePaneOutputByPaneId as i32,
+                optional_payload: Some(OptionalPayload::TargetPaneIdPayload(TargetPaneIdPayload {
+                    pane_id: Some(pane_id.try_into()?),
+                })),
+            }),
+            Action::WatchPaneByPaneId { pane_id } => Ok(ProtobufAction {
+                name: ProtobufActionName::WatchPaneByPaneId as i32,
+                optional_payload: Some(OptionalPayload::TargetPaneIdPayload(TargetPaneIdPayload {
+                    pane_id: Some(pane_id.try_into()?),
+                })),
+            }),
+            Action::MuteTabByTabId { id } => Ok(ProtobufAction {
+                name: ProtobufActionName::MuteTabByTabId as i32,
+                optional_payload: Some(OptionalPayload::TargetTabIdPayload(TargetTabIdPayload {
+                    tab_id: id,
+                })),
             }),
             Action::ToggleSessionCard => Ok(ProtobufAction {
                 name: ProtobufActionName::ToggleSessionCard as i32,
@@ -3430,6 +3527,8 @@ impl TryFrom<ProtobufTiledPaneLayout> for TiledPaneLayout {
             default_fg: None,
             default_bg: None,
             border_style: protobuf.border_style.map(BorderStyleOverride::from),
+            attention_muted: None,
+            ignore_output: None,
         })
     }
 }
@@ -3490,6 +3589,8 @@ impl TryFrom<ProtobufFloatingPaneLayout> for FloatingPaneLayout {
             default_fg: None,
             default_bg: None,
             border_style: protobuf.border_style.map(BorderStyleOverride::from),
+            attention_muted: None,
+            ignore_output: None,
         })
     }
 }

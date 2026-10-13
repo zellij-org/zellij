@@ -279,6 +279,7 @@ pub fn zellij_server_listener(
                             Some(ServerToClientMsg::PaneRenderUpdate { .. }) => {},
                             Some(ServerToClientMsg::SubscribedPaneClosed { .. }) => {},
                             Some(ServerToClientMsg::EmitNestedSessionFrame { .. }) => {},
+                            Some(ServerToClientMsg::HostProgramStatus { .. }) => {},
                             Some(ServerToClientMsg::ForwardQueryToHost {
                                 token,
                                 query_bytes,

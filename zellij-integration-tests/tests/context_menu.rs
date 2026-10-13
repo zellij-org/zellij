@@ -281,7 +281,7 @@ fn opening_the_menu_keeps_floating_panes_hidden_or_visible() {
         grid_snapshot.contains("FLOAT-MARKER")
     });
 
-    right_click(&zellij, 5, 20);
+    right_click(&zellij, 100, 20);
     let grid_snapshot = wait_for_pane_menu(&zellij);
     assert!(grid_snapshot.contains("Pane #2"));
     zellij.send_stdin(&keys::ESC);

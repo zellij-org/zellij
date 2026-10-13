@@ -251,6 +251,66 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "true",
             Everyone,
         ),
+        SettingKey::AttentionFrameMarkers => info(
+            "Status on pane frames",
+            Appearance,
+            "Show what a pane needs (approval, failure, done) in its frame title",
+            Toggle,
+            "true",
+            Everyone,
+        ),
+        SettingKey::AttentionHostStatus => info(
+            "Status to outer terminal",
+            Sessions,
+            "Tell the terminal Zellij runs in what the session needs (when it supports it)",
+            Toggle,
+            "true",
+            Everyone,
+        ),
+        SettingKey::AttentionIdleRule => info(
+            "Quiet detection",
+            Sessions,
+            "Notice when busy output goes quiet in all panes or only in watched panes",
+            Choice(&["all", "watched"]),
+            "all",
+            Everyone,
+        ),
+        SettingKey::AttentionDoneThresholdSecs => info(
+            "Report finished commands after",
+            Sessions,
+            "Seconds a successful command must run before it is reported as done",
+            Number {
+                min: 0,
+                max: 86400,
+                step: 1,
+            },
+            "10",
+            Everyone,
+        ),
+        SettingKey::AttentionIdleActivitySecs => info(
+            "Busy output for",
+            Sessions,
+            "Seconds of steady output before quiet detection applies",
+            Number {
+                min: 1,
+                max: 3600,
+                step: 1,
+            },
+            "10",
+            Everyone,
+        ),
+        SettingKey::AttentionIdleSilenceSecs => info(
+            "Quiet after",
+            Sessions,
+            "Seconds without output after which busy output counts as quiet",
+            Number {
+                min: 1,
+                max: 3600,
+                step: 1,
+            },
+            "3",
+            Everyone,
+        ),
         SettingKey::StyledUnderlines => info(
             "Styled underlines",
             Appearance,
@@ -1573,9 +1633,10 @@ pub fn describe(key: SettingKey) -> SettingInfo {
     }
 }
 
-pub const SECTION_ORDER: [&str; 31] = [
+pub const SECTION_ORDER: [&str; 32] = [
     "Theme",
     "Display",
+    "Attention",
     "Text",
     "Frames",
     "Tiled pane borders",
@@ -1615,6 +1676,12 @@ pub fn section(key: SettingKey) -> &'static str {
         DefaultLayout | DefaultCwd => "Starting points",
         DefaultShell | ScrollbackEditor => "Programs",
         SimplifiedUi | PaneFrames | PaneFrameStyle | VisualBell => "Display",
+        AttentionFrameMarkers
+        | AttentionHostStatus
+        | AttentionIdleRule
+        | AttentionDoneThresholdSecs
+        | AttentionIdleActivitySecs
+        | AttentionIdleSilenceSecs => "Attention",
         StyledUnderlines | Osc8Hyperlinks | GraphemeClusters => "Text",
         FrameRoundedCorners | FrameHideSessionName => "Frames",
         FrameBorderStyle

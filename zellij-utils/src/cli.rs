@@ -880,6 +880,12 @@ pub enum Sessions {
         #[clap(short, long)]
         start_suspended: bool,
 
+        #[clap(
+            long,
+            help = "Notify once when the command finishes (or its output goes quiet)"
+        )]
+        notify: bool,
+
         /// The x coordinates if the pane is floating as a bare integer (eg. 1) or percent (eg. 10%)
         #[clap(short, long, requires("floating"))]
         x: Option<String>,
@@ -1358,6 +1364,12 @@ pub enum CliAction {
         /// Start the command suspended, only running it after the you first press ENTER
         #[clap(short, long, requires("command"))]
         start_suspended: bool,
+        #[clap(
+            long,
+            requires("command"),
+            help = "Notify once when the command finishes (or its output goes quiet)"
+        )]
+        notify: bool,
         #[clap(long, value_parser)]
         configuration: Option<PluginUserConfiguration>,
         #[clap(long, value_parser)]
@@ -1956,6 +1968,45 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         #[clap(short, long, value_parser)]
         pane_id: Option<String>,
     },
+    #[clap(about = "Mute or unmute the attention status of a pane (the focused pane by default)")]
+    MutePane {
+        #[clap(
+            short,
+            long,
+            value_parser,
+            help = "Target a specific pane by ID (eg. terminal_1 or 3)"
+        )]
+        pane_id: Option<String>,
+    },
+    #[clap(about = "Stop or start reporting new output of a pane (the focused pane by default)")]
+    IgnorePaneOutput {
+        #[clap(
+            short,
+            long,
+            value_parser,
+            help = "Target a specific pane by ID (eg. terminal_1 or 3)"
+        )]
+        pane_id: Option<String>,
+    },
+    #[clap(
+        about = "Notify once when the command in a pane finishes or its output goes quiet (toggles; the focused pane by default)"
+    )]
+    WatchPane {
+        #[clap(
+            short,
+            long,
+            value_parser,
+            help = "Target a specific pane by ID (eg. terminal_1 or 3)"
+        )]
+        pane_id: Option<String>,
+    },
+    #[clap(about = "Mute or unmute the attention status of all panes in a tab (the active tab by default)")]
+    MuteTab {
+        #[clap(short, long, value_parser, help = "Target a specific tab by its ID")]
+        tab_id: Option<u64>,
+    },
+    #[clap(about = "Mute or unmute the attention status of the whole session")]
+    MuteSession,
     /// Stack pane ids
     /// Ids are a space separated list of pane ids.
     /// They should either be in the form of `terminal_<int>` (eg. terminal_1), `plugin_<int>` (eg.

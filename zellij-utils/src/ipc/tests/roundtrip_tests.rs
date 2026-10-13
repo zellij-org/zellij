@@ -1456,6 +1456,7 @@ fn test_client_messages() {
                 hold_on_start: false,
                 originating_plugin: None,
                 use_terminal_title: false,
+                notify: Default::default(),
             }),
             pane_name: Some("my_pane_name".to_owned()),
             coordinates: FloatingPaneCoordinates::new(
@@ -1489,6 +1490,7 @@ fn test_client_messages() {
                     context: demo_context.clone(),
                 }),
                 use_terminal_title: false,
+                notify: Default::default(),
             }),
             pane_name: Some("my_pane_name".to_owned()),
             coordinates: FloatingPaneCoordinates::new(
@@ -1537,6 +1539,7 @@ fn test_client_messages() {
                     context: demo_context.clone(),
                 }),
                 use_terminal_title: false,
+                notify: Default::default(),
             }),
             direction: Some(Direction::Right),
             pane_name: Some("my_pane_name".to_owned()),
@@ -1565,6 +1568,7 @@ fn test_client_messages() {
                     context: demo_context.clone(),
                 }),
                 use_terminal_title: false,
+                notify: Default::default(),
             }),
             pane_name: Some("my_pane_name".to_owned()),
             near_current_pane: false,
@@ -1606,6 +1610,7 @@ fn test_client_messages() {
                     context: demo_context.clone(),
                 }),
                 use_terminal_title: false,
+                notify: Default::default(),
             }),
             pane_name: Some("my_pane_name".to_owned()),
             near_current_pane: false,
@@ -2090,6 +2095,7 @@ fn test_client_messages() {
                     hold_on_start: false,
                     originating_plugin: None,
                     use_terminal_title: true,
+                    notify: Default::default(),
                 })),
                 ..Default::default()
             }),
@@ -2121,6 +2127,7 @@ fn test_client_messages() {
                         context: empty_context.clone(),
                     }),
                     use_terminal_title: true,
+                    notify: Default::default(),
                 })),
                 ..Default::default()
             }),
@@ -2222,6 +2229,8 @@ fn test_client_messages() {
                     default_fg: None,
                     default_bg: None,
                     border_style: None,
+                    attention_muted: Default::default(),
+                    ignore_output: Default::default(),
                 },
                 FloatingPaneLayout {
                     name: Some("third floating layout".to_owned()),
@@ -2321,6 +2330,7 @@ fn test_client_messages() {
                     hold_on_start: false,
                     originating_plugin: None,
                     use_terminal_title: false,
+                    notify: Default::default(),
                 }),
                 CommandOrPlugin::Plugin(RunPluginOrAlias::RunPlugin(RunPlugin::default())),
             ]),
@@ -2428,6 +2438,7 @@ fn test_client_messages() {
                 hold_on_start: false,
                 originating_plugin: None,
                 use_terminal_title: false,
+                notify: Default::default(),
             },
             near_current_pane: false,
             no_focus: false,
@@ -2447,6 +2458,7 @@ fn test_client_messages() {
                 hold_on_start: false,
                 originating_plugin: None,
                 use_terminal_title: false,
+                notify: Default::default(),
             },
         },
         terminal_id: Some(1),
@@ -4278,6 +4290,15 @@ fn test_server_messages() {
     });
     test_server_roundtrip!(ServerToClientMsg::EmitNestedSessionFrame {
         payload_bytes: (0u8..=255u8).collect(),
+    });
+    test_server_roundtrip!(ServerToClientMsg::HostProgramStatus { status: None });
+    test_server_roundtrip!(ServerToClientMsg::HostProgramStatus {
+        status: Some(crate::attention::HostProgramStatus {
+            state: "blocked".to_owned(),
+            kind: Some("permission".to_owned()),
+            progress: Some(40),
+            msg: "api › claude: needs approval".to_owned(),
+        }),
     });
     test_server_roundtrip!(ServerToClientMsg::SetSoftKeyboard { on: true });
     test_server_roundtrip!(ServerToClientMsg::SetSoftKeyboard { on: false });

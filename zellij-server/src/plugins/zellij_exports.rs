@@ -1620,6 +1620,7 @@ fn open_command_pane_in_new_tab(
             context,
         )),
         use_terminal_title: false,
+        notify: false,
     };
     let initial_panes = Some(vec![CommandOrPlugin::Command(run_command_action)]);
     let action = Action::NewTab {
@@ -2542,6 +2543,7 @@ fn open_command_pane_in_place_of_plugin(
             context,
         )),
         use_terminal_title,
+        notify: false,
     };
     let run_cmd = TerminalAction::RunCommand(run_command_action.into());
 
@@ -2644,6 +2646,7 @@ fn open_command_pane_in_place_of_pane_id(
             context,
         )),
         use_terminal_title,
+        notify: false,
     };
     let run_cmd = TerminalAction::RunCommand(run_command_action.into());
 
@@ -2742,6 +2745,7 @@ fn open_command_pane(
             context,
         )),
         use_terminal_title,
+        notify: false,
     };
     let action = Action::NewTiledPane {
         direction,
@@ -2795,6 +2799,7 @@ fn open_command_pane_near_plugin(
             context,
         )),
         use_terminal_title,
+        notify: false,
     };
     let run_cmd = TerminalAction::RunCommand(run_command_action.into());
 
@@ -2857,6 +2862,7 @@ fn open_command_pane_floating(
             context,
         )),
         use_terminal_title,
+        notify: false,
     };
     let action = Action::NewFloatingPane {
         command: Some(run_command_action),
@@ -2912,6 +2918,7 @@ fn open_command_pane_floating_near_plugin(
             context,
         )),
         use_terminal_title,
+        notify: false,
     };
     let run_cmd = TerminalAction::RunCommand(run_command_action.into());
 
@@ -2977,6 +2984,7 @@ fn open_command_pane_in_place(
             context,
         )),
         use_terminal_title,
+        notify: false,
     };
     let action = Action::NewInPlacePane {
         command: Some(run_command_action),
@@ -3030,6 +3038,7 @@ fn open_command_pane_background(
             context,
         )),
         use_terminal_title,
+        notify: false,
     };
     let run_cmd = TerminalAction::RunCommand(run_command_action.into());
 
@@ -4769,6 +4778,20 @@ fn get_pane_info(env: &PluginEnv, pane_id: zellij_utils::data::PaneId) {
     // Block waiting for response with 100ms timeout
     let pane_info = match response_receiver.recv_timeout(Duration::from_millis(100)) {
         Ok(Some(pane_info)) => {
+            let mut redacted = zellij_utils::data::Event::PaneUpdate(
+                zellij_utils::data::PaneManifest {
+                    panes: [(0, vec![pane_info])].into_iter().collect(),
+                },
+            );
+            crate::plugins::wasm_bridge::redact_event_for_plugin(env, &mut redacted);
+            let pane_info = match redacted {
+                zellij_utils::data::Event::PaneUpdate(mut manifest) => manifest
+                    .panes
+                    .remove(&0)
+                    .and_then(|mut infos| infos.pop())
+                    .unwrap_or_default(),
+                _ => Default::default(),
+            };
             // Convert PaneInfo to ProtobufPaneInfo
             match pane_info.try_into() {
                 Ok(protobuf_pane_info) => Some(protobuf_pane_info),

@@ -27,7 +27,19 @@ message ServerToClientMsg {
     RenderFrameMsg render_frame = 20;
     HostThemeModeMsg host_theme_mode = 21;
     WindowSettingsMsg window_settings = 22;
+    HostProgramStatusMsg host_program_status = 23;
   }
+}
+
+message HostProgramStatusMsg {
+  optional HostProgramStatus status = 1;
+}
+
+message HostProgramStatus {
+  string state = 1;
+  optional string kind = 2;
+  optional uint32 progress = 3;
+  string msg = 4;
 }
 
 message RenderMsg {

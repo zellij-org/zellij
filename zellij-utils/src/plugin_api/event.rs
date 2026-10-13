@@ -684,6 +684,59 @@ impl TryFrom<ProtobufEvent> for Event {
                 },
                 _ => Err("Malformed payload for the ActionComplete Event"),
             },
+            Some(ProtobufEventType::PaneAttentionChanged) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::PaneAttentionChangedPayload(payload)) => {
+                    let pane_id: PaneId = payload
+                        .pane_id
+                        .ok_or("Missing pane_id in PaneAttentionChanged payload")?
+                        .try_into()
+                        .map_err(|_| "Failed to convert PaneId in PaneAttentionChanged payload")?;
+                    Ok(Event::PaneAttentionChanged(
+                        pane_id,
+                        payload.attention.map(|a| a.into()).unwrap_or_default(),
+                    ))
+                },
+                _ => Err("Malformed payload for the PaneAttentionChanged Event"),
+            },
+            Some(ProtobufEventType::PromptShown) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::PromptShownPayload(payload)) => {
+                    let pane_id: PaneId = payload
+                        .pane_id
+                        .ok_or("Missing pane_id in PromptShown payload")?
+                        .try_into()
+                        .map_err(|_| "Failed to convert PaneId in PromptShown payload")?;
+                    Ok(Event::PromptShown(pane_id))
+                },
+                _ => Err("Malformed payload for the PromptShown Event"),
+            },
+            Some(ProtobufEventType::CommandStarted) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::CommandStartedPayload(payload)) => {
+                    let pane_id: PaneId = payload
+                        .pane_id
+                        .ok_or("Missing pane_id in CommandStarted payload")?
+                        .try_into()
+                        .map_err(|_| "Failed to convert PaneId in CommandStarted payload")?;
+                    Ok(Event::CommandStarted(
+                        pane_id,
+                        payload.command.map(|c| c.into()),
+                    ))
+                },
+                _ => Err("Malformed payload for the CommandStarted Event"),
+            },
+            Some(ProtobufEventType::CommandFinished) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::CommandFinishedPayload(payload)) => {
+                    let pane_id: PaneId = payload
+                        .pane_id
+                        .ok_or("Missing pane_id in CommandFinished payload")?
+                        .try_into()
+                        .map_err(|_| "Failed to convert PaneId in CommandFinished payload")?;
+                    let outcome = payload
+                        .outcome
+                        .ok_or("Missing outcome in CommandFinished payload")?;
+                    Ok(Event::CommandFinished(pane_id, outcome.into()))
+                },
+                _ => Err("Malformed payload for the CommandFinished Event"),
+            },
             Some(ProtobufEventType::CwdChanged) => match protobuf_event.payload {
                 Some(ProtobufEventPayload::CwdChangedPayload(protobuf_payload)) => {
                     let pane_id: PaneId = protobuf_payload
@@ -823,6 +876,7 @@ impl TryFrom<ProtobufEvent> for Event {
                             entries.push(ContextMenuEntry::Item {
                                 label: entry.label,
                                 actions,
+                                toggled_label: None,
                             });
                         }
                     }
@@ -1419,6 +1473,51 @@ impl TryFrom<Event> for ProtobufEvent {
                     )),
                 })
             },
+            Event::PaneAttentionChanged(pane_id, attention) => {
+                let protobuf_pane_id: ProtobufPaneId = pane_id.try_into()?;
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::PaneAttentionChanged as i32,
+                    payload: Some(event::Payload::PaneAttentionChangedPayload(
+                        PaneAttentionChangedPayload {
+                            pane_id: Some(protobuf_pane_id),
+                            attention: Some(attention.into()),
+                        },
+                    )),
+                })
+            },
+            Event::PromptShown(pane_id) => {
+                let protobuf_pane_id: ProtobufPaneId = pane_id.try_into()?;
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::PromptShown as i32,
+                    payload: Some(event::Payload::PromptShownPayload(PromptShownPayload {
+                        pane_id: Some(protobuf_pane_id),
+                    })),
+                })
+            },
+            Event::CommandStarted(pane_id, command) => {
+                let protobuf_pane_id: ProtobufPaneId = pane_id.try_into()?;
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::CommandStarted as i32,
+                    payload: Some(event::Payload::CommandStartedPayload(
+                        CommandStartedPayload {
+                            pane_id: Some(protobuf_pane_id),
+                            command: command.map(|c| c.into()),
+                        },
+                    )),
+                })
+            },
+            Event::CommandFinished(pane_id, outcome) => {
+                let protobuf_pane_id: ProtobufPaneId = pane_id.try_into()?;
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::CommandFinished as i32,
+                    payload: Some(event::Payload::CommandFinishedPayload(
+                        CommandFinishedPayload {
+                            pane_id: Some(protobuf_pane_id),
+                            outcome: Some(outcome.into()),
+                        },
+                    )),
+                })
+            },
             Event::CwdChanged(pane_id, new_cwd, focused_client_ids) => {
                 let protobuf_pane_id: ProtobufPaneId = pane_id.try_into()?;
                 let new_cwd_string = new_cwd
@@ -1623,7 +1722,7 @@ impl TryFrom<Event> for ProtobufEvent {
                                 actions: vec![],
                             });
                         },
-                        ContextMenuEntry::Item { label, actions } => {
+                        ContextMenuEntry::Item { label, actions, .. } => {
                             let mut protobuf_actions = vec![];
                             for action in actions {
                                 protobuf_actions.push(ProtobufContextMenuAction::try_from(action)?);
@@ -1844,6 +1943,7 @@ impl TryFrom<ProtobufSessionManifest> for SessionInfo {
             tab_history,
             pane_history,
             creation_time: Duration::from_secs(protobuf_session_manifest.creation_time),
+            attention_muted: false,
         })
     }
 }
@@ -2312,6 +2412,19 @@ impl TryFrom<ProtobufPaneInfo> for PaneInfo {
             default_fg: protobuf_pane_info.default_fg,
             default_bg: protobuf_pane_info.default_bg,
             nested_session_name: protobuf_pane_info.nested_session_name,
+            attention: protobuf_pane_info
+                .attention
+                .map(|a| a.into())
+                .unwrap_or_default(),
+            command_state: protobuf_pane_info
+                .command_state
+                .map(|c| c.into())
+                .unwrap_or_default(),
+            program_status: protobuf_pane_info
+                .program_status
+                .into_iter()
+                .map(|r| r.into())
+                .collect(),
         })
     }
 }
@@ -2359,6 +2472,13 @@ impl TryFrom<PaneInfo> for ProtobufPaneInfo {
             default_fg: pane_info.default_fg,
             default_bg: pane_info.default_bg,
             nested_session_name: pane_info.nested_session_name,
+            attention: Some(pane_info.attention.into()),
+            command_state: Some(pane_info.command_state.into()),
+            program_status: pane_info
+                .program_status
+                .into_iter()
+                .map(|r| r.into())
+                .collect(),
         })
     }
 }
@@ -2396,6 +2516,10 @@ impl TryFrom<ProtobufTabInfo> for TabInfo {
             tab_id: protobuf_tab_info.tab_id as usize,
             has_bell_notification: protobuf_tab_info.has_bell_notification,
             is_flashing_bell: protobuf_tab_info.is_flashing_bell,
+            attention: protobuf_tab_info
+                .attention
+                .map(|a| a.into())
+                .unwrap_or_default(),
         })
     }
 }
@@ -2432,6 +2556,7 @@ impl TryFrom<TabInfo> for ProtobufTabInfo {
             tab_id: tab_info.tab_id as u32,
             has_bell_notification: tab_info.has_bell_notification,
             is_flashing_bell: tab_info.is_flashing_bell,
+            attention: Some(tab_info.attention.into()),
         })
     }
 }
@@ -2674,6 +2799,10 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::UserAction => EventType::UserAction,
             ProtobufEventType::ActionComplete => EventType::ActionComplete,
             ProtobufEventType::CwdChanged => EventType::CwdChanged,
+            ProtobufEventType::PaneAttentionChanged => EventType::PaneAttentionChanged,
+            ProtobufEventType::PromptShown => EventType::PromptShown,
+            ProtobufEventType::CommandStarted => EventType::CommandStarted,
+            ProtobufEventType::CommandFinished => EventType::CommandFinished,
             ProtobufEventType::CommandChanged => EventType::CommandChanged,
             ProtobufEventType::AvailableLayoutInfo => EventType::AvailableLayoutInfo,
             ProtobufEventType::PluginConfigurationChanged => EventType::PluginConfigurationChanged,
@@ -2745,6 +2874,10 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::UserAction => ProtobufEventType::UserAction,
             EventType::ActionComplete => ProtobufEventType::ActionComplete,
             EventType::CwdChanged => ProtobufEventType::CwdChanged,
+            EventType::PaneAttentionChanged => ProtobufEventType::PaneAttentionChanged,
+            EventType::PromptShown => ProtobufEventType::PromptShown,
+            EventType::CommandStarted => ProtobufEventType::CommandStarted,
+            EventType::CommandFinished => ProtobufEventType::CommandFinished,
             EventType::CommandChanged => ProtobufEventType::CommandChanged,
             EventType::AvailableLayoutInfo => ProtobufEventType::AvailableLayoutInfo,
             EventType::PluginConfigurationChanged => ProtobufEventType::PluginConfigurationChanged,
@@ -3041,6 +3174,7 @@ fn serialize_tab_update_event_with_non_default_values() {
             tab_id: 0,
             has_bell_notification: false,
             is_flashing_bell: false,
+            attention: Default::default(),
         },
         TabInfo {
             position: 1,
@@ -3063,6 +3197,7 @@ fn serialize_tab_update_event_with_non_default_values() {
             tab_id: 1,
             has_bell_notification: false,
             is_flashing_bell: false,
+            attention: Default::default(),
         },
         TabInfo::default(),
     ]);
@@ -3389,6 +3524,7 @@ fn serialize_session_update_event_with_non_default_values() {
             tab_id: 0,
             has_bell_notification: false,
             is_flashing_bell: false,
+            attention: Default::default(),
         },
         TabInfo {
             position: 1,
@@ -3411,6 +3547,7 @@ fn serialize_session_update_event_with_non_default_values() {
             tab_id: 1,
             has_bell_notification: false,
             is_flashing_bell: false,
+            attention: Default::default(),
         },
         TabInfo::default(),
     ];
@@ -3452,6 +3589,9 @@ fn serialize_session_update_event_with_non_default_values() {
             default_fg: None,
             default_bg: None,
             nested_session_name: None,
+            attention: Default::default(),
+            command_state: Default::default(),
+            program_status: Default::default(),
         },
         PaneInfo {
             id: 1,
@@ -3481,6 +3621,9 @@ fn serialize_session_update_event_with_non_default_values() {
             default_fg: None,
             default_bg: None,
             nested_session_name: None,
+            attention: Default::default(),
+            command_state: Default::default(),
+            program_status: Default::default(),
         },
     ];
     panes.insert(0, panes_list);
@@ -3528,6 +3671,7 @@ fn serialize_session_update_event_with_non_default_values() {
         tab_history,
         pane_history: Default::default(),
         creation_time: Duration::from_secs(100),
+        attention_muted: Default::default(),
     };
     let session_info_2 = SessionInfo {
         name: "session 2".to_owned(),
@@ -3562,6 +3706,7 @@ fn serialize_session_update_event_with_non_default_values() {
         tab_history: Default::default(),
         pane_history: Default::default(),
         creation_time: Duration::from_secs(200),
+        attention_muted: Default::default(),
     };
     let session_infos = vec![session_info_1, session_info_2];
     let resurrectable_sessions = vec![];
@@ -4286,6 +4431,11 @@ impl TryFrom<ProtobufContextMenuAction> for ContextMenuAction {
                         ClickedPaneAction::ToggleInGroup
                     },
                     Ok(ProtobufClickedPaneAction::StartRename) => ClickedPaneAction::StartRename,
+                    Ok(ProtobufClickedPaneAction::ToggleMute) => ClickedPaneAction::ToggleMute,
+                    Ok(ProtobufClickedPaneAction::ToggleIgnoreOutput) => {
+                        ClickedPaneAction::ToggleIgnoreOutput
+                    },
+                    Ok(ProtobufClickedPaneAction::ToggleWatch) => ClickedPaneAction::ToggleWatch,
                     Err(_) => return Err("Unknown clicked pane action in a context menu entry"),
                 };
                 Ok(ContextMenuAction::ClickedPane(action))
@@ -4300,6 +4450,7 @@ impl TryFrom<ProtobufContextMenuAction> for ContextMenuAction {
                     Ok(ProtobufClickedTabAction::MoveRight) => {
                         ClickedTabAction::Move(Direction::Right)
                     },
+                    Ok(ProtobufClickedTabAction::Mute) => ClickedTabAction::Mute,
                     Err(_) => return Err("Unknown clicked tab action in a context menu entry"),
                 };
                 Ok(ContextMenuAction::ClickedTab(action))
@@ -4331,6 +4482,11 @@ impl TryFrom<ContextMenuAction> for ProtobufContextMenuAction {
                     ClickedPaneAction::TogglePinned => ProtobufClickedPaneAction::TogglePinned,
                     ClickedPaneAction::ToggleInGroup => ProtobufClickedPaneAction::ToggleInGroup,
                     ClickedPaneAction::StartRename => ProtobufClickedPaneAction::StartRename,
+                    ClickedPaneAction::ToggleMute => ProtobufClickedPaneAction::ToggleMute,
+                    ClickedPaneAction::ToggleIgnoreOutput => {
+                        ProtobufClickedPaneAction::ToggleIgnoreOutput
+                    },
+                    ClickedPaneAction::ToggleWatch => ProtobufClickedPaneAction::ToggleWatch,
                 };
                 ProtobufContextMenuActionKind::ClickedPane(action as i32)
             },
@@ -4343,6 +4499,7 @@ impl TryFrom<ContextMenuAction> for ProtobufContextMenuAction {
                     ClickedTabAction::StartRename => ProtobufClickedTabAction::StartRename,
                     ClickedTabAction::Move(Direction::Left) => ProtobufClickedTabAction::MoveLeft,
                     ClickedTabAction::Move(Direction::Right) => ProtobufClickedTabAction::MoveRight,
+                    ClickedTabAction::Mute => ProtobufClickedTabAction::Mute,
                     ClickedTabAction::Move(_) => {
                         return Err("Tabs can only be moved left or right")
                     },

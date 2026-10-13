@@ -1281,6 +1281,10 @@ pub enum Event {
     TerminalCommandSubmitted,
     SessionPreview(SessionPreview),
     SavedSessionPreview(SavedSessionPreview),
+    PaneAttentionChanged(PaneId, crate::attention::PaneAttention),
+    PromptShown(PaneId),
+    CommandStarted(PaneId, Option<crate::attention::CommandText>),
+    CommandFinished(PaneId, crate::attention::CommandOutcome),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -1460,16 +1464,22 @@ pub enum ClickedPaneAction {
     TogglePinned,
     ToggleInGroup,
     StartRename,
+    ToggleMute,
+    ToggleIgnoreOutput,
+    ToggleWatch,
 }
 
 impl ClickedPaneAction {
-    pub const ALL: [ClickedPaneAction; 6] = [
+    pub const ALL: [ClickedPaneAction; 9] = [
         ClickedPaneAction::CloseFocus,
         ClickedPaneAction::ToggleFocusFullscreen,
         ClickedPaneAction::ToggleEmbedOrFloating,
         ClickedPaneAction::TogglePinned,
         ClickedPaneAction::ToggleInGroup,
         ClickedPaneAction::StartRename,
+        ClickedPaneAction::ToggleMute,
+        ClickedPaneAction::ToggleIgnoreOutput,
+        ClickedPaneAction::ToggleWatch,
     ];
     pub fn kdl_name(&self) -> &'static str {
         match self {
@@ -1479,6 +1489,9 @@ impl ClickedPaneAction {
             ClickedPaneAction::TogglePinned => "TogglePanePinnedByPaneId",
             ClickedPaneAction::ToggleInGroup => "TogglePaneInGroupByPaneId",
             ClickedPaneAction::StartRename => "StartRenamePaneByPaneId",
+            ClickedPaneAction::ToggleMute => "MutePaneByPaneId",
+            ClickedPaneAction::ToggleIgnoreOutput => "IgnorePaneOutputByPaneId",
+            ClickedPaneAction::ToggleWatch => "WatchPaneByPaneId",
         }
     }
     pub fn from_kdl_name(name: &str) -> Option<Self> {
@@ -1498,6 +1511,9 @@ impl ClickedPaneAction {
             ClickedPaneAction::TogglePinned => Action::TogglePanePinnedByPaneId { pane_id },
             ClickedPaneAction::ToggleInGroup => Action::TogglePaneInGroupByPaneId { pane_id },
             ClickedPaneAction::StartRename => Action::StartRenamePaneByPaneId { pane_id },
+            ClickedPaneAction::ToggleMute => Action::MutePaneByPaneId { pane_id },
+            ClickedPaneAction::ToggleIgnoreOutput => Action::IgnorePaneOutputByPaneId { pane_id },
+            ClickedPaneAction::ToggleWatch => Action::WatchPaneByPaneId { pane_id },
         }
     }
 }
@@ -1508,6 +1524,7 @@ pub enum ClickedTabAction {
     StartRename,
     Move(Direction),
     MoveToPosition(u64),
+    Mute,
 }
 
 pub const TAB_POSITION_END: u64 = u64::MAX;
@@ -1519,6 +1536,7 @@ impl ClickedTabAction {
             ClickedTabAction::StartRename => "StartRenameTabByTabId",
             ClickedTabAction::Move(_) => "MoveTabByTabId",
             ClickedTabAction::MoveToPosition(_) => "MoveTabToPosition",
+            ClickedTabAction::Mute => "MuteTabByTabId",
         }
     }
     pub fn with_tab(&self, id: u64) -> Action {
@@ -1533,6 +1551,7 @@ impl ClickedTabAction {
                 id,
                 position: *position,
             },
+            ClickedTabAction::Mute => Action::MuteTabByTabId { id },
         }
     }
 }
@@ -1580,6 +1599,8 @@ pub enum ContextMenuEntry {
     Item {
         label: String,
         actions: Vec<ContextMenuAction>,
+        #[serde(default)]
+        toggled_label: Option<String>,
     },
     Separator,
 }
@@ -1589,6 +1610,7 @@ impl ContextMenuEntry {
         ContextMenuEntry::Item {
             label: label.into(),
             actions,
+            toggled_label: None,
         }
     }
     pub fn label(&self) -> Option<&str> {
@@ -2678,6 +2700,8 @@ pub struct SessionInfo {
     pub tab_history: BTreeMap<ClientId, Vec<usize>>,
     pub pane_history: BTreeMap<ClientId, Vec<PaneId>>,
     pub creation_time: Duration,
+    #[serde(default)]
+    pub attention_muted: bool,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -3206,6 +3230,7 @@ pub struct TabInfo {
     pub has_bell_notification: bool,
     /// Whether this tab is currently flashing its bell (transient 400ms state)
     pub is_flashing_bell: bool,
+    pub attention: crate::attention::TabAttention,
 }
 
 /// The `PaneManifest` contains a dictionary of panes, indexed by the tab position (0 indexed).
@@ -3280,6 +3305,9 @@ pub struct PaneInfo {
     /// The default background color of this pane, if set (e.g. "#001a3a")
     pub default_bg: Option<String>,
     pub nested_session_name: Option<String>,
+    pub attention: crate::attention::PaneAttention,
+    pub command_state: crate::attention::CommandState,
+    pub program_status: Vec<crate::attention::ProgramStatusRecord>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
@@ -4935,6 +4963,7 @@ pub enum SettingSection {
     WindowTheme,
     Keybinds,
     Blocks,
+    Attention,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -5159,6 +5188,12 @@ setting_keys! {
     Env => (Blocks, "env", true, Text),
     Themes => (Blocks, "themes", false, Text),
     ContextMenu => (Blocks, "context_menu", false, Text),
+    AttentionFrameMarkers => (Attention, "frame_markers", false, Flag),
+    AttentionHostStatus => (Attention, "host_status", false, Flag),
+    AttentionIdleRule => (Attention, "idle_rule", false, Text),
+    AttentionDoneThresholdSecs => (Attention, "done_threshold_secs", false, Number),
+    AttentionIdleActivitySecs => (Attention, "idle_activity_secs", false, Number),
+    AttentionIdleSilenceSecs => (Attention, "idle_silence_secs", false, Number),
 }
 
 impl SettingKey {
@@ -5175,6 +5210,7 @@ impl SettingKey {
             SettingSection::WebClient => format!("web_client.{}", self.kdl_name()),
             SettingSection::Window => format!("window.{}", self.kdl_name()),
             SettingSection::WindowTheme => format!("window.theme.{}", self.kdl_name()),
+            SettingSection::Attention => format!("attention.{}", self.kdl_name()),
         }
     }
     pub fn from_id(id: &str) -> Option<SettingKey> {
@@ -5187,6 +5223,7 @@ impl SettingKey {
             SettingSection::WebClient => &["web_client"],
             SettingSection::Window => &["window"],
             SettingSection::WindowTheme => &["window", "theme"],
+            SettingSection::Attention => &["attention"],
         }
     }
     pub fn is_window(&self) -> bool {

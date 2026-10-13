@@ -509,7 +509,7 @@ pub fn menu_entries(
         .iter()
         .map(|entry| match entry {
             ContextMenuEntry::Separator => MenuItemEntry::separator(),
-            ContextMenuEntry::Item { label, actions } => MenuItemEntry {
+            ContextMenuEntry::Item { label, actions, .. } => MenuItemEntry {
                 label: Some(label.clone()),
                 actions: menu_action_texts(actions),
                 shortcut: shortcuts.and_then(|(keybinds, base_mode)| {

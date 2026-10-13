@@ -1,4 +1,5 @@
 pub mod actions;
+pub mod attention;
 pub mod cli_assets;
 pub mod command;
 pub mod config;

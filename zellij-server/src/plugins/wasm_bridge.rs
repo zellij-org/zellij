@@ -3379,6 +3379,10 @@ pub fn check_event_permission(
         | Event::FolderSessionsUpdate(..)
         | Event::TerminalCommandSubmitted
         | Event::SavedSessionPreview(..)
+        | Event::PaneAttentionChanged(..)
+        | Event::PromptShown(..)
+        | Event::CommandStarted(..)
+        | Event::CommandFinished(..)
         | Event::InputReceived => PermissionType::ReadApplicationState,
         Event::SessionPreview(..) => PermissionType::ReadPaneContents,
         Event::ConfigChangesDropped(..) | Event::ConfigFileChangedSinceRead => {
@@ -3397,6 +3401,49 @@ pub fn check_event_permission(
     }
 
     (PermissionStatus::Denied, Some(permission))
+}
+
+fn can_read_command_text(plugin_env: &PluginEnv) -> bool {
+    if plugin_env.plugin.is_builtin() {
+        return true;
+    }
+    plugin_env
+        .permissions
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|permissions| permissions.contains(&PermissionType::ReadPaneContents))
+        .unwrap_or(false)
+}
+
+fn redact_pane_info(pane_info: &mut zellij_utils::data::PaneInfo) {
+    pane_info.attention = std::mem::take(&mut pane_info.attention).without_command_text();
+    pane_info.command_state = std::mem::take(&mut pane_info.command_state).without_command_text();
+}
+
+pub fn redact_event_for_plugin(plugin_env: &PluginEnv, event: &mut Event) {
+    if can_read_command_text(plugin_env) {
+        return;
+    }
+    match event {
+        Event::PaneUpdate(manifest) => {
+            for pane_infos in manifest.panes.values_mut() {
+                for pane_info in pane_infos.iter_mut() {
+                    redact_pane_info(pane_info);
+                }
+            }
+        },
+        Event::PaneAttentionChanged(_, attention) => {
+            *attention = std::mem::take(attention).without_command_text();
+        },
+        Event::CommandStarted(_, command) => {
+            *command = None;
+        },
+        Event::CommandFinished(_, outcome) => {
+            outcome.command = None;
+        },
+        _ => {},
+    }
 }
 
 pub(crate) fn apply_pending_popup_size(running_plugin: &mut RunningPlugin) -> bool {
@@ -3424,6 +3471,7 @@ pub fn apply_event_to_plugin(
     match check_event_permission(running_plugin.store.data(), event) {
         (PermissionStatus::Granted, _) => {
             let mut event = event.clone();
+            redact_event_for_plugin(running_plugin.store.data(), &mut event);
             let mut keybinds = None;
             if let Event::ModeUpdate(mode_info) = &mut event {
                 mode_info.keybinds = vec![];

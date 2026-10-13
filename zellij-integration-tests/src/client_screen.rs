@@ -30,6 +30,7 @@ pub enum HostTerminal {
     Basic,
     Kitty,
     KittyZlib,
+    ProgramStatus,
     Manual,
     GraphemeClusterAware(u8),
 }
@@ -43,6 +44,8 @@ const KITTY_ZLIB_PROBE_REPLY: &[u8] = b"\x1b_Gi=32;OK\x1b\\";
 const CELL_SIZE_QUERY: &[u8] = b"\x1b[16t";
 const CELL_SIZE_REPLY: &[u8] = b"\x1b[6;21;8t";
 const GRAPHEME_CLUSTER_MODE_QUERY: &[u8] = b"\x1b[?2027$p";
+const PROGRAM_STATUS_QUERY: &[u8] = b"\x1b]7501;?\x1b\\";
+const PROGRAM_STATUS_REPLY: &[u8] = b"\x1b]7501;?\x1b\\";
 
 struct HostResponder {
     host_terminal: HostTerminal,
@@ -66,6 +69,10 @@ impl HostResponder {
                 (KITTY_GRAPHICS_PROBE_PREFIX, KITTY_GRAPHICS_PROBE_REPLY),
                 (KITTY_ZLIB_PROBE_PREFIX, KITTY_ZLIB_PROBE_REPLY),
                 (CELL_SIZE_QUERY, CELL_SIZE_REPLY),
+            ],
+            HostTerminal::ProgramStatus => &[
+                (PROGRAM_STATUS_QUERY, PROGRAM_STATUS_REPLY),
+                (PRIMARY_DA_QUERY, PRIMARY_DA_REPLY),
             ],
             HostTerminal::Manual => &[],
         };

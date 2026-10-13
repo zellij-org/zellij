@@ -9,6 +9,7 @@ mod os_input_output_windows;
 
 pub mod cli_client;
 mod command_is_executing;
+mod host_status;
 mod input_handler;
 mod keyboard_parser;
 mod nested_reannounce;
@@ -229,6 +230,8 @@ pub(crate) enum ClientInstruction {
     },
     EmitNestedSessionFrame(Vec<u8>),
     OuterGraphemeClusterMode(u8),
+    HostProgramStatus(Option<zellij_utils::attention::HostProgramStatus>),
+    HostProgramStatusSupported,
 }
 
 impl From<ServerToClientMsg> for ClientInstruction {
@@ -275,6 +278,9 @@ impl From<ServerToClientMsg> for ClientInstruction {
             ServerToClientMsg::WindowSettingsChanged { .. } => {
                 ClientInstruction::UnblockInputThread
             },
+            ServerToClientMsg::HostProgramStatus { status } => {
+                ClientInstruction::HostProgramStatus(status)
+            },
         }
     }
 }
@@ -301,6 +307,10 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::EmitNestedSessionFrame(..) => ClientContext::EmitNestedSessionFrame,
             ClientInstruction::OuterGraphemeClusterMode(..) => {
                 ClientContext::OuterGraphemeClusterMode
+            },
+            ClientInstruction::HostProgramStatus(..) => ClientContext::HostProgramStatus,
+            ClientInstruction::HostProgramStatusSupported => {
+                ClientContext::HostProgramStatusSupported
             },
         }
     }
@@ -1445,6 +1455,7 @@ pub fn start_client(
     };
 
     let mut exit_msg = String::new();
+    let mut host_status_writer = host_status::HostStatusWriter::default();
     let mut synchronised_output = match os_input.env_variable("TERM").as_deref() {
         Some("alacritty") => Some(SyncOutput::DCS),
         _ => None,
@@ -1641,8 +1652,28 @@ pub fn start_client(
                     let _ = out.flush();
                 }
             },
+            ClientInstruction::HostProgramStatus(status) => {
+                if let Some(sequence) = host_status_writer.update(status) {
+                    let mut out = os_input.get_stdout_writer();
+                    let _ = out.write_all(sequence.as_bytes());
+                    let _ = out.flush();
+                }
+            },
+            ClientInstruction::HostProgramStatusSupported => {
+                if let Some(sequence) = host_status_writer.set_supported() {
+                    let mut out = os_input.get_stdout_writer();
+                    let _ = out.write_all(sequence.as_bytes());
+                    let _ = out.flush();
+                }
+            },
             _ => {},
         }
+    }
+
+    if let Some(sequence) = host_status_writer.teardown() {
+        let mut out = os_input.get_stdout_writer();
+        let _ = out.write_all(sequence.as_bytes());
+        let _ = out.flush();
     }
 
     nested_reannounce.stop();

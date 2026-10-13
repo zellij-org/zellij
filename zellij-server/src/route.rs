@@ -1434,6 +1434,86 @@ fn route_action_with_origin(
                 ))
                 .with_context(err_context)?;
         },
+        Action::MutePane => {
+            senders
+                .send_to_screen(ScreenInstruction::MutePane(
+                    None,
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::MutePaneByPaneId { pane_id } => {
+            senders
+                .send_to_screen(ScreenInstruction::MutePane(
+                    Some(pane_id),
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::IgnorePaneOutput => {
+            senders
+                .send_to_screen(ScreenInstruction::IgnorePaneOutput(
+                    None,
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::IgnorePaneOutputByPaneId { pane_id } => {
+            senders
+                .send_to_screen(ScreenInstruction::IgnorePaneOutput(
+                    Some(pane_id),
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::WatchPane => {
+            senders
+                .send_to_screen(ScreenInstruction::WatchPane(
+                    None,
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::WatchPaneByPaneId { pane_id } => {
+            senders
+                .send_to_screen(ScreenInstruction::WatchPane(
+                    Some(pane_id),
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::MuteTab => {
+            senders
+                .send_to_screen(ScreenInstruction::MuteTab(
+                    None,
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::MuteTabByTabId { id } => {
+            senders
+                .send_to_screen(ScreenInstruction::MuteTab(
+                    Some(id as usize),
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::MuteSession => {
+            senders
+                .send_to_screen(ScreenInstruction::MuteSession(
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
         Action::OpenContextMenu => {
             senders
                 .send_to_screen(ScreenInstruction::OpenContextMenu(

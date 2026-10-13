@@ -568,6 +568,7 @@ pub fn setting_values(config: &Config) -> BTreeMap<SettingKey, Option<String>> {
         mousebinds: _mousebinds_are_compared_directly,
         window,
         session_suggestions: _session_suggestions_are_read_by_the_server,
+        attention,
     } = config;
     let mut values = BTreeMap::new();
     option_values(options, &mut values);
@@ -585,6 +586,7 @@ pub fn setting_values(config: &Config) -> BTreeMap<SettingKey, Option<String>> {
     }
     ui_values(ui, &mut values);
     web_client_values(web_client, &mut values);
+    attention_values(attention, &mut values);
     values.insert(SettingKey::Keybinds, None);
     values.insert(SettingKey::Mousebinds, None);
     values.insert(
@@ -672,6 +674,36 @@ fn copy_border_override(
     }
 }
 
+fn attention_values(
+    attention: &crate::input::attention::AttentionConfig,
+    values: &mut BTreeMap<SettingKey, Option<String>>,
+) {
+    values.insert(
+        SettingKey::AttentionFrameMarkers,
+        attention.frame_markers.map(|v| v.to_string()),
+    );
+    values.insert(
+        SettingKey::AttentionHostStatus,
+        attention.host_status.map(|v| v.to_string()),
+    );
+    values.insert(
+        SettingKey::AttentionIdleRule,
+        attention.idle_rule.map(|v| v.as_str().to_owned()),
+    );
+    values.insert(
+        SettingKey::AttentionDoneThresholdSecs,
+        attention.done_threshold_secs.map(|v| v.to_string()),
+    );
+    values.insert(
+        SettingKey::AttentionIdleActivitySecs,
+        attention.idle_activity_secs.map(|v| v.to_string()),
+    );
+    values.insert(
+        SettingKey::AttentionIdleSilenceSecs,
+        attention.idle_silence_secs.map(|v| v.to_string()),
+    );
+}
+
 pub fn copy_setting(target: &mut Config, source: &Config, key: SettingKey) {
     let options = &mut target.options;
     let from = &source.options;
@@ -679,6 +711,33 @@ pub fn copy_setting(target: &mut Config, source: &Config, key: SettingKey) {
     let from_frames = &source.ui.pane_frames;
     let web = &mut target.web_client;
     let from_web = &source.web_client;
+    match key {
+        SettingKey::AttentionFrameMarkers => {
+            target.attention.frame_markers = source.attention.frame_markers;
+            return;
+        },
+        SettingKey::AttentionHostStatus => {
+            target.attention.host_status = source.attention.host_status;
+            return;
+        },
+        SettingKey::AttentionIdleRule => {
+            target.attention.idle_rule = source.attention.idle_rule;
+            return;
+        },
+        SettingKey::AttentionDoneThresholdSecs => {
+            target.attention.done_threshold_secs = source.attention.done_threshold_secs;
+            return;
+        },
+        SettingKey::AttentionIdleActivitySecs => {
+            target.attention.idle_activity_secs = source.attention.idle_activity_secs;
+            return;
+        },
+        SettingKey::AttentionIdleSilenceSecs => {
+            target.attention.idle_silence_secs = source.attention.idle_silence_secs;
+            return;
+        },
+        _ => {},
+    }
     match key {
         SettingKey::SimplifiedUi => options.simplified_ui = from.simplified_ui,
         SettingKey::Theme => options.theme = from.theme.clone(),

@@ -559,6 +559,15 @@ enum ActionName {
     MoveTabToPosition = 127;
     RunInBackground = 128;
     ToggleSessionCard = 129;
+    MutePane = 130;
+    MutePaneByPaneId = 131;
+    IgnorePaneOutput = 132;
+    IgnorePaneOutputByPaneId = 133;
+    WatchPane = 134;
+    WatchPaneByPaneId = 135;
+    MuteTab = 136;
+    MuteTabByTabId = 137;
+    MuteSession = 138;
 }
 
 message Position {

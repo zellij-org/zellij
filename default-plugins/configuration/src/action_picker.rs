@@ -361,6 +361,17 @@ pub const ACTION_SPECS: &[ActionSpec] = &[
         "ToggleSessionCard",
         "Show, focus or hide the running sessions card",
     ),
+    plain("MutePane", "Mute or unmute what the focused pane reports"),
+    plain(
+        "IgnorePaneOutput",
+        "Stop or start reporting new output of the focused pane",
+    ),
+    plain(
+        "WatchPane",
+        "Notify once when the focused pane finishes or goes quiet",
+    ),
+    plain("MuteTab", "Mute or unmute what the panes of the tab report"),
+    plain("MuteSession", "Mute or unmute what the whole session reports"),
     plain(
         "OpenContextMenu",
         "Open the right-click menu for the focused pane",
@@ -455,7 +466,19 @@ pub const ACTION_SPECS: &[ActionSpec] = &[
         &[],
     ),
     menu_only("StartRenamePaneByPaneId", "Rename the clicked pane", &[]),
+    menu_only("MutePaneByPaneId", "Mute or unmute the clicked pane", &[]),
+    menu_only(
+        "IgnorePaneOutputByPaneId",
+        "Ignore new output of the clicked pane",
+        &[],
+    ),
+    menu_only(
+        "WatchPaneByPaneId",
+        "Notify once when the clicked pane finishes",
+        &[],
+    ),
     menu_only("CloseTabById", "Close the clicked tab", &[]),
+    menu_only("MuteTabByTabId", "Mute or unmute the clicked tab", &[]),
     menu_only("StartRenameTabByTabId", "Rename the clicked tab", &[]),
     menu_only(
         "MoveTabByTabId",

@@ -1,3 +1,4 @@
+pub mod attention;
 pub mod cli;
 pub mod client_server_contract;
 pub mod consts;

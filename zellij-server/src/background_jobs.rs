@@ -105,6 +105,8 @@ pub enum BackgroundJob {
         client_id: ClientId,
         session_name: String,
     },
+    AttentionIdleCheck(PaneId, u64),
+    ReportHostProgramStatus(Option<zellij_utils::attention::HostProgramStatus>),
     Exit,
 }
 
@@ -146,6 +148,10 @@ impl From<&BackgroundJob> for BackgroundJobContext {
             BackgroundJob::SessionSuggestions(..) => BackgroundJobContext::SessionSuggestions,
             BackgroundJob::SessionPreview { .. } => BackgroundJobContext::SessionPreview,
             BackgroundJob::SavedSessionPreview { .. } => BackgroundJobContext::SavedSessionPreview,
+            BackgroundJob::AttentionIdleCheck(..) => BackgroundJobContext::AttentionIdleCheck,
+            BackgroundJob::ReportHostProgramStatus(..) => {
+                BackgroundJobContext::ReportHostProgramStatus
+            },
             BackgroundJob::Exit => BackgroundJobContext::Exit,
         }
     }
@@ -299,6 +305,7 @@ fn spawn_render_scheduler(senders: crate::thread_bus::ThreadSenders) -> SharedRe
 
 static HELP_TEXT_DEBOUNCE_DURATION: u64 = 5000;
 static COMMAND_OUTPUT_FLASH_DURATION_MS: u64 = 400;
+static HOST_PROGRAM_STATUS_INTERVAL_MS: u64 = 500;
 
 #[derive(Clone)]
 pub struct SessionScanState {
@@ -349,6 +356,14 @@ pub(crate) fn background_jobs_main(
     let mut flashing_tab_bells: HashMap<usize, Arc<AtomicBool>> = HashMap::new();
     let mut nested_guest_pings: HashMap<PaneId, Arc<AtomicBool>> = HashMap::new();
     let pending_allocator_trim: Arc<Mutex<Option<Instant>>> = Arc::new(Mutex::new(None));
+    let pending_attention_idle_checks: Arc<Mutex<HashMap<PaneId, Instant>>> =
+        Arc::new(Mutex::new(HashMap::new()));
+    let host_program_status: Arc<
+        Mutex<(
+            Option<Instant>,
+            Option<Option<zellij_utils::attention::HostProgramStatus>>,
+        )>,
+    > = Arc::new(Mutex::new((None, None)));
 
     let http_client = HttpClient::builder()
         // TODO: timeout?
@@ -740,6 +755,100 @@ pub(crate) fn background_jobs_main(
                             }
                         }
                     });
+                }
+            },
+            BackgroundJob::AttentionIdleCheck(pane_id, delay_ms) => {
+                let should_spawn = {
+                    let mut pending = pending_attention_idle_checks.lock().unwrap();
+                    let deadline = Instant::now() + Duration::from_millis(delay_ms);
+                    let should_spawn = !pending.contains_key(&pane_id);
+                    pending.insert(pane_id, deadline);
+                    should_spawn
+                };
+                if should_spawn {
+                    runtime.spawn({
+                        let senders = bus.senders.clone();
+                        let pending = pending_attention_idle_checks.clone();
+                        async move {
+                            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+                            loop {
+                                let next_sleep_duration = {
+                                    let mut pending = pending.lock().unwrap();
+                                    match pending.get(&pane_id) {
+                                        Some(&deadline) => {
+                                            let now = Instant::now();
+                                            if now >= deadline {
+                                                pending.remove(&pane_id);
+                                                None
+                                            } else {
+                                                Some(deadline.saturating_duration_since(now))
+                                            }
+                                        },
+                                        None => break,
+                                    }
+                                };
+                                match next_sleep_duration {
+                                    Some(duration) => {
+                                        tokio::time::sleep(duration).await;
+                                    },
+                                    None => {
+                                        let _ = senders.send_to_screen(
+                                            ScreenInstruction::AttentionIdleCheck(pane_id),
+                                        );
+                                        break;
+                                    },
+                                }
+                            }
+                        }
+                    });
+                }
+            },
+            BackgroundJob::ReportHostProgramStatus(status) => {
+                let interval = Duration::from_millis(HOST_PROGRAM_STATUS_INTERVAL_MS);
+                let send_now = {
+                    let mut state = host_program_status.lock().unwrap();
+                    let now = Instant::now();
+                    let can_send = state
+                        .0
+                        .map(|last| now.duration_since(last) >= interval)
+                        .unwrap_or(true);
+                    let task_pending = state.1.is_some();
+                    if can_send && !task_pending {
+                        state.0 = Some(now);
+                        Some(status)
+                    } else {
+                        let should_spawn = !task_pending;
+                        state.1 = Some(status);
+                        if should_spawn {
+                            let wait = state
+                                .0
+                                .map(|last| interval.saturating_sub(now.duration_since(last)))
+                                .unwrap_or_default();
+                            runtime.spawn({
+                                let senders = bus.senders.clone();
+                                let state = host_program_status.clone();
+                                async move {
+                                    tokio::time::sleep(wait).await;
+                                    let status = {
+                                        let mut state = state.lock().unwrap();
+                                        state.0 = Some(Instant::now());
+                                        state.1.take()
+                                    };
+                                    if let Some(status) = status {
+                                        let _ = senders.send_to_server(
+                                            ServerInstruction::HostProgramStatus(status),
+                                        );
+                                    }
+                                }
+                            });
+                        }
+                        None
+                    }
+                };
+                if let Some(status) = send_now {
+                    let _ = bus
+                        .senders
+                        .send_to_server(ServerInstruction::HostProgramStatus(status));
                 }
             },
             BackgroundJob::ClearCommandOutputFlash { pane_id } => {

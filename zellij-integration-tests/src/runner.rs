@@ -137,6 +137,12 @@ impl TestRunner {
             })
             .unwrap();
         join_detaching_client_thread_with_timeout(detaching_client_thread);
+        session_context
+            .fake_server_os_api
+            .shared_ptys
+            .wait_for("the background session to start its first terminal", |fake_pty_registry| {
+                (!fake_pty_registry.fake_pty_states.is_empty()).then_some(())
+            });
         BackgroundTestSession { session_context }
     }
 
@@ -365,6 +371,7 @@ fn new_pane_cli_action(
         borderless: None,
         tab_id: None,
         border_style: None,
+        notify: Default::default(),
     }
 }
 

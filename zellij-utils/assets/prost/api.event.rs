@@ -10,7 +10,7 @@ pub struct EventNameList {
 pub struct Event {
     #[prost(enumeration="EventType", tag="1")]
     pub name: i32,
-    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54")]
+    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58")]
     pub payload: ::core::option::Option<event::Payload>,
 }
 /// Nested message and enum types in `Event`.
@@ -122,7 +122,197 @@ pub mod event {
         SessionPreviewPayload(super::SessionPreviewPayload),
         #[prost(message, tag="54")]
         SavedSessionPreviewPayload(super::SavedSessionPreviewPayload),
+        #[prost(message, tag="55")]
+        PaneAttentionChangedPayload(super::PaneAttentionChangedPayload),
+        #[prost(message, tag="56")]
+        PromptShownPayload(super::PromptShownPayload),
+        #[prost(message, tag="57")]
+        CommandStartedPayload(super::CommandStartedPayload),
+        #[prost(message, tag="58")]
+        CommandFinishedPayload(super::CommandFinishedPayload),
     }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PaneAttentionChangedPayload {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+    #[prost(message, optional, tag="2")]
+    pub attention: ::core::option::Option<PaneAttention>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PromptShownPayload {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CommandStartedPayload {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+    #[prost(message, optional, tag="2")]
+    pub command: ::core::option::Option<CommandText>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CommandFinishedPayload {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+    #[prost(message, optional, tag="2")]
+    pub outcome: ::core::option::Option<CommandOutcome>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CommandText {
+    #[prost(string, tag="1")]
+    pub text: ::prost::alloc::string::String,
+    #[prost(string, tag="2")]
+    pub source: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AttentionDetail {
+    #[prost(string, optional, tag="1")]
+    pub kind: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(uint32, optional, tag="2")]
+    pub progress: ::core::option::Option<u32>,
+    #[prost(string, optional, tag="3")]
+    pub app: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="4")]
+    pub title: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="5")]
+    pub body: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(int32, optional, tag="6")]
+    pub exit_code: ::core::option::Option<i32>,
+    #[prost(uint64, optional, tag="7")]
+    pub duration_ms: ::core::option::Option<u64>,
+    #[prost(message, optional, tag="8")]
+    pub command: ::core::option::Option<CommandText>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PaneAttention {
+    #[prost(string, tag="1")]
+    pub status: ::prost::alloc::string::String,
+    #[prost(string, optional, tag="2")]
+    pub source: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, tag="3")]
+    pub text: ::prost::alloc::string::String,
+    #[prost(message, optional, tag="4")]
+    pub detail: ::core::option::Option<AttentionDetail>,
+    #[prost(uint64, tag="5")]
+    pub since_ms: u64,
+    #[prost(uint64, tag="6")]
+    pub changed_ms: u64,
+    #[prost(bool, tag="7")]
+    pub seen: bool,
+    #[prost(string, optional, tag="8")]
+    pub muted: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, tag="9")]
+    pub ignore_output: bool,
+    #[prost(bool, tag="10")]
+    pub watched: bool,
+    #[prost(bool, tag="11")]
+    pub from_watch: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CommandOutcome {
+    #[prost(string, tag="1")]
+    pub result: ::prost::alloc::string::String,
+    #[prost(int32, optional, tag="2")]
+    pub exit_code: ::core::option::Option<i32>,
+    #[prost(string, optional, tag="3")]
+    pub err: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(uint64, optional, tag="4")]
+    pub duration_ms: ::core::option::Option<u64>,
+    #[prost(uint64, tag="5")]
+    pub ended_ms: u64,
+    #[prost(message, optional, tag="6")]
+    pub command: ::core::option::Option<CommandText>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RunningCommand {
+    #[prost(message, optional, tag="1")]
+    pub command: ::core::option::Option<CommandText>,
+    #[prost(uint64, tag="2")]
+    pub started_ms: u64,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ReportedCwd {
+    #[prost(string, tag="1")]
+    pub path: ::prost::alloc::string::String,
+    #[prost(string, tag="2")]
+    pub source: ::prost::alloc::string::String,
+    #[prost(string, optional, tag="3")]
+    pub host: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, tag="4")]
+    pub is_local: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CommandState {
+    #[prost(string, tag="1")]
+    pub phase: ::prost::alloc::string::String,
+    #[prost(message, optional, tag="2")]
+    pub running: ::core::option::Option<RunningCommand>,
+    #[prost(message, optional, tag="3")]
+    pub last: ::core::option::Option<CommandOutcome>,
+    #[prost(message, optional, tag="4")]
+    pub cwd: ::core::option::Option<ReportedCwd>,
+    #[prost(bool, tag="5")]
+    pub reports_markers: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ProgramStatusRecord {
+    #[prost(string, optional, tag="1")]
+    pub id: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="2")]
+    pub state: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="3")]
+    pub kind: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(uint32, optional, tag="4")]
+    pub progress: ::core::option::Option<u32>,
+    #[prost(string, optional, tag="5")]
+    pub app: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="6")]
+    pub title: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="7")]
+    pub msg: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(uint64, tag="8")]
+    pub updated_ms: u64,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AttentionCounts {
+    #[prost(uint32, tag="1")]
+    pub needs_you: u32,
+    #[prost(uint32, tag="2")]
+    pub failed: u32,
+    #[prost(uint32, tag="3")]
+    pub done: u32,
+    #[prost(uint32, tag="4")]
+    pub working: u32,
+    #[prost(uint32, tag="5")]
+    pub quiet: u32,
+    #[prost(uint32, tag="6")]
+    pub new_output: u32,
+    #[prost(uint32, tag="7")]
+    pub muted: u32,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct TabAttention {
+    #[prost(string, tag="1")]
+    pub status: ::prost::alloc::string::String,
+    #[prost(message, optional, tag="2")]
+    pub counts: ::core::option::Option<AttentionCounts>,
+    #[prost(bool, tag="3")]
+    pub muted: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -800,6 +990,12 @@ pub struct PaneInfo {
     pub nested_session_name: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(bool, tag="27")]
     pub is_collapsed: bool,
+    #[prost(message, optional, tag="28")]
+    pub attention: ::core::option::Option<PaneAttention>,
+    #[prost(message, optional, tag="29")]
+    pub command_state: ::core::option::Option<CommandState>,
+    #[prost(message, repeated, tag="30")]
+    pub program_status: ::prost::alloc::vec::Vec<ProgramStatusRecord>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -852,6 +1048,8 @@ pub struct TabInfo {
     pub is_flashing_bell: bool,
     #[prost(uint32, repeated, tag="20")]
     pub other_focused_client_slots: ::prost::alloc::vec::Vec<u32>,
+    #[prost(message, optional, tag="21")]
+    pub attention: ::core::option::Option<TabAttention>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1253,6 +1451,10 @@ pub enum EventType {
     TerminalCommandSubmitted = 60,
     SessionPreview = 61,
     SavedSessionPreview = 62,
+    PaneAttentionChanged = 63,
+    PromptShown = 64,
+    CommandStarted = 65,
+    CommandFinished = 66,
 }
 impl EventType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1322,6 +1524,10 @@ impl EventType {
             EventType::TerminalCommandSubmitted => "TerminalCommandSubmitted",
             EventType::SessionPreview => "SessionPreview",
             EventType::SavedSessionPreview => "SavedSessionPreview",
+            EventType::PaneAttentionChanged => "PaneAttentionChanged",
+            EventType::PromptShown => "PromptShown",
+            EventType::CommandStarted => "CommandStarted",
+            EventType::CommandFinished => "CommandFinished",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1388,6 +1594,10 @@ impl EventType {
             "TerminalCommandSubmitted" => Some(Self::TerminalCommandSubmitted),
             "SessionPreview" => Some(Self::SessionPreview),
             "SavedSessionPreview" => Some(Self::SavedSessionPreview),
+            "PaneAttentionChanged" => Some(Self::PaneAttentionChanged),
+            "PromptShown" => Some(Self::PromptShown),
+            "CommandStarted" => Some(Self::CommandStarted),
+            "CommandFinished" => Some(Self::CommandFinished),
             _ => None,
         }
     }
@@ -1488,6 +1698,9 @@ pub enum ClickedPaneAction {
     TogglePinned = 3,
     ToggleInGroup = 4,
     StartRename = 5,
+    ToggleMute = 6,
+    ToggleIgnoreOutput = 7,
+    ToggleWatch = 8,
 }
 impl ClickedPaneAction {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1502,6 +1715,9 @@ impl ClickedPaneAction {
             ClickedPaneAction::TogglePinned => "ClickedPaneActionTogglePinned",
             ClickedPaneAction::ToggleInGroup => "ClickedPaneActionToggleInGroup",
             ClickedPaneAction::StartRename => "ClickedPaneActionStartRename",
+            ClickedPaneAction::ToggleMute => "ClickedPaneActionToggleMute",
+            ClickedPaneAction::ToggleIgnoreOutput => "ClickedPaneActionToggleIgnoreOutput",
+            ClickedPaneAction::ToggleWatch => "ClickedPaneActionToggleWatch",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1513,6 +1729,9 @@ impl ClickedPaneAction {
             "ClickedPaneActionTogglePinned" => Some(Self::TogglePinned),
             "ClickedPaneActionToggleInGroup" => Some(Self::ToggleInGroup),
             "ClickedPaneActionStartRename" => Some(Self::StartRename),
+            "ClickedPaneActionToggleMute" => Some(Self::ToggleMute),
+            "ClickedPaneActionToggleIgnoreOutput" => Some(Self::ToggleIgnoreOutput),
+            "ClickedPaneActionToggleWatch" => Some(Self::ToggleWatch),
             _ => None,
         }
     }
@@ -1524,6 +1743,7 @@ pub enum ClickedTabAction {
     StartRename = 1,
     MoveLeft = 2,
     MoveRight = 3,
+    Mute = 4,
 }
 impl ClickedTabAction {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1536,6 +1756,7 @@ impl ClickedTabAction {
             ClickedTabAction::StartRename => "ClickedTabActionStartRename",
             ClickedTabAction::MoveLeft => "ClickedTabActionMoveLeft",
             ClickedTabAction::MoveRight => "ClickedTabActionMoveRight",
+            ClickedTabAction::Mute => "ClickedTabActionMute",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1545,6 +1766,7 @@ impl ClickedTabAction {
             "ClickedTabActionStartRename" => Some(Self::StartRename),
             "ClickedTabActionMoveLeft" => Some(Self::MoveLeft),
             "ClickedTabActionMoveRight" => Some(Self::MoveRight),
+            "ClickedTabActionMute" => Some(Self::Mute),
             _ => None,
         }
     }

@@ -335,6 +335,9 @@ pub enum ServerToClientMsg {
     MobileState {
         payload: MobileStatePayload,
     },
+    HostProgramStatus {
+        status: Option<crate::attention::HostProgramStatus>,
+    },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

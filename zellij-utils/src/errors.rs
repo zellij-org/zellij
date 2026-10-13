@@ -527,6 +527,15 @@ pub enum ScreenContext {
     FocusHostSession,
     FocusGuestSession,
     ToggleHostFullscreen,
+    AttentionIdleCheck,
+    AttentionForegroundChanged,
+    MutePane,
+    IgnorePaneOutput,
+    WatchPane,
+    MuteTab,
+    MuteSession,
+    AttentionCommandPaneStarted,
+    SetAttentionConfig,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
@@ -655,6 +664,8 @@ pub enum ClientContext {
     ConfigFileUpdated,
     ForwardQueryToHost,
     EmitNestedSessionFrame,
+    HostProgramStatus,
+    HostProgramStatusSupported,
 }
 
 /// Stack call representations corresponding to the different types of [`ServerInstruction`]s.
@@ -712,6 +723,7 @@ pub enum ServerContext {
     ForwardQueryToHost,
     KeyPassthroughChanged,
     EmitNestedSessionFrameToClient,
+    HostProgramStatus,
     PopupStateChanged,
     HostTerminalThemeModeChanged,
 }
@@ -753,6 +765,8 @@ pub enum BackgroundJobContext {
     SessionSuggestions,
     SessionPreview,
     SavedSessionPreview,
+    AttentionIdleCheck,
+    ReportHostProgramStatus,
     Exit,
 }
 

@@ -329,6 +329,15 @@ message Action {
     MoveTabToPositionAction move_tab_to_position = 162;
     RunInBackgroundAction run_in_background = 163;
     ToggleSessionCardAction toggle_session_card = 165;
+    MutePaneAction mute_pane = 166;
+    MutePaneByPaneIdAction mute_pane_by_pane_id = 167;
+    IgnorePaneOutputAction ignore_pane_output = 168;
+    IgnorePaneOutputByPaneIdAction ignore_pane_output_by_pane_id = 169;
+    WatchPaneAction watch_pane = 170;
+    WatchPaneByPaneIdAction watch_pane_by_pane_id = 171;
+    MuteTabAction mute_tab = 172;
+    MuteTabByTabIdAction mute_tab_by_tab_id = 173;
+    MuteSessionAction mute_session = 174;
   }
 }
 
@@ -1005,6 +1014,7 @@ message RunCommandAction {
   bool hold_on_start = 6;                              // Renumbered
   optional OriginatingPlugin originating_plugin = 7;   // Added missing originating_plugin field
   bool use_terminal_title = 8;                         // Added missing use_terminal_title field
+  bool notify = 9;
 }
 
 message TiledPaneLayout {
@@ -1024,6 +1034,8 @@ message TiledPaneLayout {
   optional string default_fg = 14;
   optional string default_bg = 15;
   optional BorderStyleOverride border_style = 16;
+  optional bool attention_muted = 17;
+  optional bool ignore_output = 18;
   // NOTE: run_instructions_to_ignore is not represented here because it's a field used only inside the server itself and not part of the server/client contract
 }
 
@@ -1043,6 +1055,8 @@ message FloatingPaneLayout {
   optional string default_fg = 13;
   optional string default_bg = 14;
   optional BorderStyleOverride border_style = 15;
+  optional bool attention_muted = 16;
+  optional bool ignore_output = 17;
 }
 
 message SwapTiledLayout {
@@ -1387,6 +1401,15 @@ message StartRenameTabByTabIdAction { uint64 id = 1; }
 message DismissInfoPopupsAction {}
 message OpenContextMenuAction {}
 message ToggleSessionCardAction {}
+message MutePaneAction {}
+message MutePaneByPaneIdAction { PaneId pane_id = 1; }
+message IgnorePaneOutputAction {}
+message IgnorePaneOutputByPaneIdAction { PaneId pane_id = 1; }
+message WatchPaneAction {}
+message WatchPaneByPaneIdAction { PaneId pane_id = 1; }
+message MuteTabAction {}
+message MuteTabByTabIdAction { uint64 id = 1; }
+message MuteSessionAction {}
 
 enum HostTerminalThemeIndication {
   HOST_TERMINAL_THEME_INDICATION_DARK = 0;

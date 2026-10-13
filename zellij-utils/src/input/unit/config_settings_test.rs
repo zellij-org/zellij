@@ -251,6 +251,14 @@ pub(crate) fn every_setting_set() -> Config {
             font_size: Some(14),
         },
         window: every_window_setting_set(),
+        attention: crate::input::attention::AttentionConfig {
+            frame_markers: Some(false),
+            host_status: Some(false),
+            idle_rule: Some(crate::input::attention::IdleRuleScope::Watched),
+            done_threshold_secs: Some(30),
+            idle_activity_secs: Some(20),
+            idle_silence_secs: Some(5),
+        },
         ..Default::default()
     }
 }
@@ -268,13 +276,16 @@ fn kdl_names_in(config: &Config) -> BTreeSet<(SettingSection, String)> {
         "web_client",
         "context_menu",
         "window",
+        "attention",
     ];
     let mut names = BTreeSet::new();
     for node in document.nodes() {
         let name = node.name().value();
         if !blocks.contains(&name) {
             names.insert((SettingSection::TopLevel, name.to_owned()));
-        } else if !["keybinds", "mousebinds", "ui", "web_client", "window"].contains(&name) {
+        } else if !["keybinds", "mousebinds", "ui", "web_client", "window", "attention"]
+            .contains(&name)
+        {
             names.insert((SettingSection::Blocks, name.to_owned()));
         }
     }
@@ -295,6 +306,13 @@ fn kdl_names_in(config: &Config) -> BTreeSet<(SettingSection, String)> {
         .unwrap();
     for node in web_client.nodes() {
         names.insert((SettingSection::WebClient, node.name().value().to_owned()));
+    }
+    let attention = document
+        .get("attention")
+        .and_then(|attention| attention.children())
+        .unwrap();
+    for node in attention.nodes() {
+        names.insert((SettingSection::Attention, node.name().value().to_owned()));
     }
     let window = document
         .get("window")

@@ -372,6 +372,11 @@ impl InputHandler {
                     .send_client_instructions
                     .send(ClientInstruction::OuterGraphemeClusterMode(value));
             },
+            AnsiStdinInstruction::ProgramStatusSupport => {
+                let _ = self
+                    .send_client_instructions
+                    .send(ClientInstruction::HostProgramStatusSupported);
+            },
         }
     }
     fn handle_nested_session_frame_from_host(&mut self, payload_bytes: Vec<u8>) {

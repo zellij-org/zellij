@@ -9,6 +9,7 @@ use crate::{
         ClientToServerMsg as ProtoClientToServerMsg, ColorRegistersMsg, ConfigFileUpdatedMsg,
         ConnStatusMsg, ConnectedMsg, DesktopNotificationResponseMsg, DetachSessionMsg,
         EmitNestedSessionFrameMsg, ExitMsg, ExitReason as ProtoExitReason,
+        HostProgramStatus as ProtoHostProgramStatus, HostProgramStatusMsg,
         FailedToStartWebServerMsg, FirstClientConnectedMsg, FontFamiliesMsg, ForegroundColorMsg,
         ForwardQueryToHostMsg, ForwardedReplyFromHostMsg, HostTerminalFocusChangedMsg,
         HostTerminalThemeChangedMsg,
@@ -532,6 +533,16 @@ impl From<ServerToClientMsg> for ProtoServerToClientMsg {
             ServerToClientMsg::MobileState { payload } => {
                 server_to_client_msg::Message::MobileState(mobile_state_payload_to_proto(payload))
             },
+            ServerToClientMsg::HostProgramStatus { status } => {
+                server_to_client_msg::Message::HostProgramStatus(HostProgramStatusMsg {
+                    status: status.map(|status| ProtoHostProgramStatus {
+                        state: status.state,
+                        kind: status.kind,
+                        progress: status.progress.map(|p| p as u32),
+                        msg: status.msg,
+                    }),
+                })
+            },
         };
 
         ProtoServerToClientMsg {
@@ -795,6 +806,18 @@ impl TryFrom<ProtoServerToClientMsg> for ServerToClientMsg {
             Some(server_to_client_msg::Message::MobileState(msg)) => {
                 Ok(ServerToClientMsg::MobileState {
                     payload: mobile_state_payload_from_proto(msg),
+                })
+            },
+            Some(server_to_client_msg::Message::HostProgramStatus(msg)) => {
+                Ok(ServerToClientMsg::HostProgramStatus {
+                    status: msg
+                        .status
+                        .map(|status| crate::attention::HostProgramStatus {
+                            state: status.state,
+                            kind: status.kind,
+                            progress: status.progress.map(|p| p.min(100) as u8),
+                            msg: status.msg,
+                        }),
                 })
             },
             None => Err(anyhow!("Empty ServerToClientMsg message")),
@@ -1445,6 +1468,15 @@ impl From<crate::input::actions::Action>
             TogglePanePinnedAction,
             TogglePanePinnedByPaneIdAction,
             ToggleSessionCardAction,
+            MutePaneAction,
+            MutePaneByPaneIdAction,
+            IgnorePaneOutputAction,
+            IgnorePaneOutputByPaneIdAction,
+            WatchPaneAction,
+            WatchPaneByPaneIdAction,
+            MuteTabAction,
+            MuteTabByTabIdAction,
+            MuteSessionAction,
             ToggleTabAction,
             ToggleThemeAction,
             UndoRenamePaneAction,
@@ -1870,6 +1902,29 @@ impl From<crate::input::actions::Action>
             },
             crate::input::actions::Action::DismissInfoPopups => {
                 ActionType::DismissInfoPopups(DismissInfoPopupsAction {})
+            },
+            crate::input::actions::Action::MutePane => ActionType::MutePane(MutePaneAction {}),
+            crate::input::actions::Action::IgnorePaneOutput => ActionType::IgnorePaneOutput(IgnorePaneOutputAction {}),
+            crate::input::actions::Action::WatchPane => ActionType::WatchPane(WatchPaneAction {}),
+            crate::input::actions::Action::MuteTab => ActionType::MuteTab(MuteTabAction {}),
+            crate::input::actions::Action::MuteSession => ActionType::MuteSession(MuteSessionAction {}),
+            crate::input::actions::Action::MutePaneByPaneId { pane_id } => {
+                ActionType::MutePaneByPaneId(MutePaneByPaneIdAction {
+                    pane_id: Some(pane_id.into()),
+                })
+            },
+            crate::input::actions::Action::IgnorePaneOutputByPaneId { pane_id } => {
+                ActionType::IgnorePaneOutputByPaneId(IgnorePaneOutputByPaneIdAction {
+                    pane_id: Some(pane_id.into()),
+                })
+            },
+            crate::input::actions::Action::WatchPaneByPaneId { pane_id } => {
+                ActionType::WatchPaneByPaneId(WatchPaneByPaneIdAction {
+                    pane_id: Some(pane_id.into()),
+                })
+            },
+            crate::input::actions::Action::MuteTabByTabId { id } => {
+                ActionType::MuteTabByTabId(MuteTabByTabIdAction { id })
             },
             crate::input::actions::Action::ToggleSessionCard => {
                 ActionType::ToggleSessionCard(ToggleSessionCardAction {})
@@ -2844,6 +2899,32 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                 Ok(crate::input::actions::Action::DismissInfoPopups)
             },
             ActionType::OpenContextMenu(_) => Ok(crate::input::actions::Action::OpenContextMenu),
+            ActionType::MutePane(_) => Ok(crate::input::actions::Action::MutePane),
+            ActionType::IgnorePaneOutput(_) => Ok(crate::input::actions::Action::IgnorePaneOutput),
+            ActionType::WatchPane(_) => Ok(crate::input::actions::Action::WatchPane),
+            ActionType::MuteTab(_) => Ok(crate::input::actions::Action::MuteTab),
+            ActionType::MuteSession(_) => Ok(crate::input::actions::Action::MuteSession),
+            ActionType::MutePaneByPaneId(a) => Ok(crate::input::actions::Action::MutePaneByPaneId {
+                pane_id: a
+                    .pane_id
+                    .ok_or_else(|| anyhow!("MutePaneByPaneId missing pane_id"))?
+                    .try_into()?,
+            }),
+            ActionType::IgnorePaneOutputByPaneId(a) => Ok(crate::input::actions::Action::IgnorePaneOutputByPaneId {
+                pane_id: a
+                    .pane_id
+                    .ok_or_else(|| anyhow!("IgnorePaneOutputByPaneId missing pane_id"))?
+                    .try_into()?,
+            }),
+            ActionType::WatchPaneByPaneId(a) => Ok(crate::input::actions::Action::WatchPaneByPaneId {
+                pane_id: a
+                    .pane_id
+                    .ok_or_else(|| anyhow!("WatchPaneByPaneId missing pane_id"))?
+                    .try_into()?,
+            }),
+            ActionType::MuteTabByTabId(a) => {
+                Ok(crate::input::actions::Action::MuteTabByTabId { id: a.id })
+            },
             ActionType::ToggleSessionCard(_) => {
                 Ok(crate::input::actions::Action::ToggleSessionCard)
             },
@@ -4409,6 +4490,7 @@ impl From<crate::input::command::RunCommandAction>
             hold_on_start: action.hold_on_start,
             originating_plugin: action.originating_plugin.map(|op| op.into()),
             use_terminal_title: action.use_terminal_title,
+            notify: action.notify,
         }
     }
 }
@@ -4511,6 +4593,7 @@ impl From<crate::input::layout::Run>
                         hold_on_start: cmd.hold_on_start,
                         originating_plugin: cmd.originating_plugin.map(|op| op.into()),
                         use_terminal_title: cmd.use_terminal_title,
+                        notify: cmd.notify,
                     },
                 )),
             },
@@ -4631,6 +4714,8 @@ impl From<crate::input::layout::TiledPaneLayout>
             default_fg: layout.default_fg,
             default_bg: layout.default_bg,
             border_style: layout.border_style.map(|b| b.into()),
+            attention_muted: layout.attention_muted,
+            ignore_output: layout.ignore_output,
         }
     }
 }
@@ -4655,6 +4740,8 @@ impl From<crate::input::layout::FloatingPaneLayout>
             default_fg: layout.default_fg,
             default_bg: layout.default_bg,
             border_style: layout.border_style.map(|b| b.into()),
+            attention_muted: layout.attention_muted,
+            ignore_output: layout.ignore_output,
         }
     }
 }
@@ -4899,6 +4986,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Run>
                         .map(|op| op.try_into())
                         .transpose()?,
                     use_terminal_title: cmd.use_terminal_title,
+                    notify: cmd.notify,
                 },
             )),
             RunType::EditFile(edit) => Ok(crate::input::layout::Run::EditFile(
@@ -5009,6 +5097,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::RunCommandAc
                 .map(|op| op.try_into())
                 .transpose()?,
             use_terminal_title: action.use_terminal_title,
+            notify: action.notify,
         })
     }
 }
@@ -5070,6 +5159,8 @@ impl TryFrom<crate::client_server_contract::client_server_contract::TiledPaneLay
             default_fg: layout.default_fg,
             default_bg: layout.default_bg,
             border_style: layout.border_style.map(|b| b.into()),
+            attention_muted: layout.attention_muted,
+            ignore_output: layout.ignore_output,
         })
     }
 }
@@ -5105,6 +5196,8 @@ impl TryFrom<crate::client_server_contract::client_server_contract::FloatingPane
             default_fg: layout.default_fg,
             default_bg: layout.default_bg,
             border_style: layout.border_style.map(|b| b.into()),
+            attention_muted: layout.attention_muted,
+            ignore_output: layout.ignore_output,
         })
     }
 }

@@ -11,6 +11,7 @@ pub mod output;
 pub mod panes;
 pub mod tab;
 
+pub mod attention;
 pub mod background_jobs;
 mod global_async_runtime;
 mod logging_pipe;
@@ -236,6 +237,7 @@ pub enum ServerInstruction {
     ForwardQueryToHost(u32, Vec<u8>, bool),
     KeyPassthroughChanged(ClientId, PaneId, PaneId, bool, Option<Direction>, bool),
     EmitNestedSessionFrameToClient(ClientId, Vec<u8>),
+    HostProgramStatus(Option<zellij_utils::attention::HostProgramStatus>),
     PopupStateChanged(ClientId, bool, bool),
 }
 
@@ -317,6 +319,7 @@ impl From<&ServerInstruction> for ServerContext {
                 ServerContext::EmitNestedSessionFrameToClient
             },
             ServerInstruction::PopupStateChanged(..) => ServerContext::PopupStateChanged,
+            ServerInstruction::HostProgramStatus(..) => ServerContext::HostProgramStatus,
         }
     }
 }
@@ -1349,6 +1352,11 @@ impl SessionMetaData {
             let _ = self.senders.send_to_screen(ScreenInstruction::SetOnQuit(
                 new_config.options.on_quit.unwrap_or_default(),
             ));
+            let _ = self
+                .senders
+                .send_to_screen(ScreenInstruction::SetAttentionConfig(
+                    new_config.attention.clone(),
+                ));
             let _ = self
                 .senders
                 .send_to_background_jobs(BackgroundJob::SessionSuggestions(
@@ -3604,6 +3612,7 @@ pub fn start_server_impl(
 
     let mut last_attached_client_count = 0;
     let mut delete_session_on_exit = false;
+    let mut last_host_program_status: Option<zellij_utils::attention::HostProgramStatus> = None;
     // The socket filename is the session id, not the (renameable) display name.
     let mut own_session_name = zellij_utils::sessions::display_name_for_session_id(&session_id);
     loop {
@@ -3970,6 +3979,14 @@ pub fn start_server_impl(
                         None,
                     ))
                     .unwrap();
+                if last_host_program_status.is_some() {
+                    let _ = os_input.send_to_client(
+                        client_id,
+                        ServerToClientMsg::HostProgramStatus {
+                            status: last_host_program_status.clone(),
+                        },
+                    );
+                }
             },
             ServerInstruction::AttachWatcherClient(client_id, terminal_size, is_web_client) => {
                 // the client_id was inserted into clients upon ipc tunnel initialization
@@ -5028,6 +5045,20 @@ pub fn start_server_impl(
                     session_data
                 );
             },
+            ServerInstruction::HostProgramStatus(status) => {
+                if last_host_program_status != status {
+                    last_host_program_status = status.clone();
+                    let client_ids = session_state.read().unwrap().client_ids();
+                    for client_id in client_ids {
+                        let _ = os_input.send_to_client(
+                            client_id,
+                            ServerToClientMsg::HostProgramStatus {
+                                status: status.clone(),
+                            },
+                        );
+                    }
+                }
+            },
         }
     }
 
@@ -5045,12 +5076,12 @@ fn delete_unused_session_after_exit(session_id: &str, session_name: &str) {
     if session_id.is_empty() {
         return;
     }
-    let _ = std::fs::remove_dir_all(zellij_utils::consts::session_info_folder_for_session(
-        session_id,
-    ));
     if let Ok(index) = zellij_utils::session_index::SessionIndex::open_default() {
         let _ = index.delete(session_name);
     }
+    let _ = std::fs::remove_dir_all(zellij_utils::consts::session_info_folder_for_session(
+        session_id,
+    ));
 }
 
 fn init_session(

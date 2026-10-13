@@ -10565,3 +10565,269 @@ fn copy_a_wrapped_line_spanning_the_scrollback_boundary() {
         "a selection crossing the scrollback boundary must rejoin the wrapped line"
     );
 }
+
+fn attention_signals(content: &str) -> Vec<crate::attention::PaneSignal> {
+    let mut grid = create_grid_with_content(content);
+    grid.shell_reports.drain()
+}
+
+fn finished_commands(signals: &[crate::attention::PaneSignal]) -> Vec<(Option<i32>, Option<String>)> {
+    signals
+        .iter()
+        .filter_map(|s| match s {
+            crate::attention::PaneSignal::CommandFinished { exit_code, err, .. } => {
+                Some((*exit_code, err.clone()))
+            },
+            _ => None,
+        })
+        .collect()
+}
+
+fn started_commands(signals: &[crate::attention::PaneSignal]) -> Vec<Option<(String, String)>> {
+    signals
+        .iter()
+        .filter_map(|s| match s {
+            crate::attention::PaneSignal::CommandStarted { command, .. } => Some(
+                command
+                    .as_ref()
+                    .map(|c| (c.text.clone(), c.source.as_str().to_owned())),
+            ),
+            _ => None,
+        })
+        .collect()
+}
+
+fn prompt_count(signals: &[crate::attention::PaneSignal]) -> usize {
+    signals
+        .iter()
+        .filter(|s| matches!(s, crate::attention::PaneSignal::PromptShown { .. }))
+        .count()
+}
+
+#[test]
+fn program_status_query_is_answered_before_the_primary_device_attributes() {
+    let mut grid = create_grid_with_content("\x1b]7501;?\x1b\\\x1b[c");
+    let replies: Vec<String> = grid
+        .pending_messages_to_pty
+        .drain(..)
+        .map(|r| String::from_utf8(r).unwrap())
+        .collect();
+    assert_eq!(replies.len(), 2);
+    assert!(replies[0].starts_with("\x1b]7501;?"));
+    assert!(replies[0].ends_with("\x1b\\"));
+    assert!(replies[1].starts_with("\x1b[?"));
+    let mut grid = create_grid_with_content("\x1b]7501;?\x07");
+    let reply = String::from_utf8(grid.pending_messages_to_pty.remove(0)).unwrap();
+    assert!(reply.ends_with('\x07'));
+}
+
+#[test]
+fn program_status_reports_become_pane_signals() {
+    let signals = attention_signals(
+        "\x1b]7501;state=working:app=claude\x1b\\\x1b]7501;state=bogus\x1b\\\x1b]7501;state=clear\x07",
+    );
+    assert_eq!(signals.len(), 2);
+    assert!(matches!(
+        &signals[0],
+        crate::attention::PaneSignal::ProgramStatus(
+            crate::attention::program_status::ProgramStatusMessage::Set(_)
+        )
+    ));
+    assert!(matches!(
+        &signals[1],
+        crate::attention::PaneSignal::ProgramStatus(
+            crate::attention::program_status::ProgramStatusMessage::Clear { id: None }
+        )
+    ));
+}
+
+#[test]
+fn program_status_reports_are_not_shown_on_screen() {
+    let grid = create_grid_with_content("a\x1b]7501;state=working\x1b\\b");
+    assert!(format!("{:?}", grid).contains("ab"));
+}
+
+#[test]
+fn full_reset_resets_program_status() {
+    let signals = attention_signals("\x1b]7501;state=working\x1b\\\x1bc");
+    assert!(signals.contains(&crate::attention::PaneSignal::Reset));
+    let signals = attention_signals("\x1b]7501;state=working\x1b\\\x1b[!p");
+    assert!(!signals.contains(&crate::attention::PaneSignal::Reset));
+}
+
+#[test]
+fn only_main_prompts_count_as_prompt_returns() {
+    let mut grid = create_grid_with_content("\x1b]133;A;k=s\x07> \x1b]133;P;k=r\x07");
+    assert!(!grid.pending_prompt_return);
+    assert_eq!(prompt_count(&grid.shell_reports.drain()), 0);
+    let mut grid = create_grid_with_content("\x1b]133;P;k=c\x07");
+    assert!(!grid.pending_prompt_return);
+    let mut grid = create_grid_with_content("\x1b]133;D;0\x07");
+    assert!(!grid.pending_prompt_return);
+    let mut grid = create_grid_with_content("\x1b]133;A\x07$ ");
+    assert!(grid.pending_prompt_return);
+    assert_eq!(prompt_count(&grid.shell_reports.drain()), 1);
+    let grid = create_grid_with_content("\x1b]133;P;k=i\x07$ ");
+    assert!(grid.pending_prompt_return);
+    let grid = create_grid_with_content("\x1b]133;N\x07$ ");
+    assert!(grid.pending_prompt_return);
+}
+
+#[test]
+fn a_prompt_announced_twice_counts_once() {
+    let signals = attention_signals(
+        "\x1b]133;D\x1b\\\x1b]133;A;cl=m;aid=7\x1b\\\x1b]133;P;k=i\x1b\\$ \x1b]133;B\x1b\\",
+    );
+    assert_eq!(prompt_count(&signals), 1);
+}
+
+#[test]
+fn command_end_variants() {
+    let wrap = |end: &str| {
+        attention_signals(&format!(
+            "\x1b]133;A\x07$ \x1b]133;B\x07x\x1b]133;C\x07\r\n\x1b]133;{}\x07",
+            end
+        ))
+    };
+    assert_eq!(finished_commands(&wrap("D;0")), vec![(Some(0), None)]);
+    assert_eq!(finished_commands(&wrap("D")), vec![(None, None)]);
+    assert_eq!(finished_commands(&wrap("D;1;aid=123")), vec![(Some(1), None)]);
+    assert_eq!(finished_commands(&wrap("D;aid=123")), vec![(None, None)]);
+    assert_eq!(finished_commands(&wrap("D;0;history_id=x")), vec![(Some(0), None)]);
+    assert_eq!(
+        finished_commands(&wrap("D;0;err=CANCEL")),
+        vec![(Some(0), Some("CANCEL".to_owned()))]
+    );
+}
+
+#[test]
+fn command_text_sources() {
+    let shell = |c: &str| {
+        started_commands(&attention_signals(&format!(
+            "\x1b]133;A\x07$ \x1b]133;B\x07typed\x1b]133;{}\x07\r\n",
+            c
+        )))
+    };
+    assert_eq!(
+        shell(r"C;cmdline=ls\ -la"),
+        vec![Some(("ls -la".to_owned(), "shell".to_owned()))]
+    );
+    assert_eq!(
+        shell("C;cmdline_url=cargo%20build"),
+        vec![Some(("cargo build".to_owned(), "shell".to_owned()))]
+    );
+    assert_eq!(
+        shell("C"),
+        vec![Some(("typed".to_owned(), "screen".to_owned()))]
+    );
+    let without_input_marker =
+        started_commands(&attention_signals("\x1b]133;A\x07$ typed\x1b]133;C\x07\r\n"));
+    assert_eq!(without_input_marker, vec![None]);
+}
+
+#[test]
+fn vscode_command_text_and_duplicate_markers() {
+    let signals = attention_signals(
+        "\x1b]133;A\x07\x1b]633;A\x07$ \x1b]133;B\x07\x1b]633;B\x07ls\x1b]633;E;ls\\x3b pwd;nonce\x07\x1b]133;C\x07\x1b]633;C\x07\r\n\x1b]133;D;2\x07\x1b]633;D;2\x07",
+    );
+    assert_eq!(prompt_count(&signals), 1);
+    assert_eq!(
+        started_commands(&signals),
+        vec![Some(("ls; pwd".to_owned(), "shell".to_owned()))]
+    );
+    assert_eq!(finished_commands(&signals), vec![(Some(2), None)]);
+}
+
+#[test]
+fn nushell_under_vscode_uses_only_633() {
+    let signals = attention_signals(
+        "\x1b]633;A\x1b\\> \x1b]633;B\x1b\\\x1b]633;E;cargo test\x1b\\\x1b]633;C\x1b\\\r\n\x1b]633;D;101\x1b\\\x1b]633;P;Cwd=/home/u/x\x1b\\",
+    );
+    assert_eq!(
+        started_commands(&signals),
+        vec![Some(("cargo test".to_owned(), "shell".to_owned()))]
+    );
+    assert_eq!(finished_commands(&signals), vec![(Some(101), None)]);
+    assert!(signals.iter().any(|s| matches!(
+        s,
+        crate::attention::PaneSignal::Cwd(cwd) if cwd.path == "/home/u/x"
+    )));
+}
+
+#[test]
+fn fish_and_nushell_prompts() {
+    let fish = attention_signals(
+        "\x1b]133;A;click_events=1\x1b\\$ \x1b]133;B\x1b\\\x1b]133;C;cmdline_url=false\x1b\\\r\n\x1b]133;D;1\x1b\\\x1b]7;file://host/tmp\x07",
+    );
+    assert_eq!(
+        started_commands(&fish),
+        vec![Some(("false".to_owned(), "shell".to_owned()))]
+    );
+    assert_eq!(finished_commands(&fish), vec![(Some(1), None)]);
+    let nushell = attention_signals(
+        "\x1b]133;A;k=i;click_events=1\x1b\\> \x1b]133;P;k=r\x1b\\\x1b]133;B\x1b\\ls\x1b]133;C\x1b\\\r\n\x1b]133;D;0\x1b\\\x1b]133;A;k=s;click_events=1\x1b\\",
+    );
+    assert_eq!(prompt_count(&nushell), 1);
+    assert_eq!(
+        started_commands(&nushell),
+        vec![Some(("ls".to_owned(), "screen".to_owned()))]
+    );
+    assert_eq!(finished_commands(&nushell), vec![(Some(0), None)]);
+}
+
+#[test]
+fn working_directory_sources() {
+    let cwd_of = |content: &str| {
+        let mut grid = create_grid_with_content(content);
+        let signal = grid.shell_reports.drain().into_iter().find_map(|s| match s {
+            crate::attention::PaneSignal::Cwd(cwd) => Some(cwd),
+            _ => None,
+        });
+        (signal, grid.pending_osc7_cwd.take())
+    };
+    let (cwd, local) = cwd_of("\x1b]7;file://localhost/a%20b\x1b\\");
+    assert_eq!(cwd.unwrap().path, "/a b");
+    assert_eq!(local, Some(std::path::PathBuf::from("/a b")));
+    let (cwd, local) = cwd_of("\x1b]7;file://user@far-away.example.invalid/srv?machineID=1\x07");
+    let cwd = cwd.unwrap();
+    assert_eq!(cwd.path, "/srv");
+    assert!(!cwd.is_local);
+    assert_eq!(local, None);
+    let (cwd, _) = cwd_of("\x1b]7;kitty-shell-cwd://localhost/raw%20path\x07");
+    assert_eq!(cwd.unwrap().path, "/raw%20path");
+    let (cwd, local) = cwd_of("\x1b]9;9;\"/tmp/x\"\x07");
+    assert_eq!(cwd.unwrap().path, "/tmp/x");
+    assert_eq!(local, Some(std::path::PathBuf::from("/tmp/x")));
+    let (cwd, _) = cwd_of("\x1b]1337;CurrentDir=/opt\x07");
+    assert_eq!(cwd.unwrap().path, "/opt");
+    let (cwd, _) = cwd_of("\x1b]1337;RemoteHost=me@far-away.example.invalid\x07\x1b]1337;CurrentDir=/opt\x07");
+    assert!(!cwd.unwrap().is_local);
+}
+
+#[test]
+fn conemu_cwd_is_not_a_notification_and_progress_is_ignored() {
+    let grid = create_grid_with_content("\x1b]9;9;/tmp\x07\x1b]9;4;1;50\x07");
+    assert!(grid.pending_desktop_notifications.is_empty());
+    let grid = create_grid_with_content("\x1b]9;hello\x07");
+    assert_eq!(grid.pending_desktop_notifications.len(), 1);
+}
+
+#[test]
+fn bell_signal_only_for_real_bells() {
+    let signals = attention_signals("\x1b]0;title\x07");
+    assert!(!signals.contains(&crate::attention::PaneSignal::Bell));
+    let signals = attention_signals("ding\x07");
+    assert!(signals.contains(&crate::attention::PaneSignal::Bell));
+}
+
+#[test]
+fn navigation_markers_still_work_with_new_marker_parsing() {
+    let mut grid = create_grid_with_content(
+        "\x1b]133;A;cl=m;aid=1\x07$ \x1b]133;B\x07echo hi\x1b]133;C;\x07\r\nhi\x1b]133;D;0;aid=1\x07 suffix",
+    );
+    assert_eq!(
+        select_with_click_count(&mut grid, Position::new(1, 0), 3),
+        "echo hi\nhi"
+    );
+    assert_eq!(grid.osc133_end_exit_codes(), vec![Some(0)]);
+}

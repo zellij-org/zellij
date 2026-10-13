@@ -86,6 +86,10 @@ enum EventType {
     TerminalCommandSubmitted = 60;
     SessionPreview = 61;
     SavedSessionPreview = 62;
+    PaneAttentionChanged = 63;
+    PromptShown = 64;
+    CommandStarted = 65;
+    CommandFinished = 66;
 }
 
 message EventNameList {
@@ -148,7 +152,116 @@ message Event {
     FolderSessionsUpdatePayload folder_sessions_update_payload = 52;
     SessionPreviewPayload session_preview_payload = 53;
     SavedSessionPreviewPayload saved_session_preview_payload = 54;
+    PaneAttentionChangedPayload pane_attention_changed_payload = 55;
+    PromptShownPayload prompt_shown_payload = 56;
+    CommandStartedPayload command_started_payload = 57;
+    CommandFinishedPayload command_finished_payload = 58;
   }
+}
+
+message PaneAttentionChangedPayload {
+  PaneId pane_id = 1;
+  PaneAttention attention = 2;
+}
+
+message PromptShownPayload {
+  PaneId pane_id = 1;
+}
+
+message CommandStartedPayload {
+  PaneId pane_id = 1;
+  optional CommandText command = 2;
+}
+
+message CommandFinishedPayload {
+  PaneId pane_id = 1;
+  CommandOutcome outcome = 2;
+}
+
+message CommandText {
+  string text = 1;
+  string source = 2;
+}
+
+message AttentionDetail {
+  optional string kind = 1;
+  optional uint32 progress = 2;
+  optional string app = 3;
+  optional string title = 4;
+  optional string body = 5;
+  optional int32 exit_code = 6;
+  optional uint64 duration_ms = 7;
+  optional CommandText command = 8;
+}
+
+message PaneAttention {
+  string status = 1;
+  optional string source = 2;
+  string text = 3;
+  AttentionDetail detail = 4;
+  uint64 since_ms = 5;
+  uint64 changed_ms = 6;
+  bool seen = 7;
+  optional string muted = 8;
+  bool ignore_output = 9;
+  bool watched = 10;
+  bool from_watch = 11;
+}
+
+message CommandOutcome {
+  string result = 1;
+  optional int32 exit_code = 2;
+  optional string err = 3;
+  optional uint64 duration_ms = 4;
+  uint64 ended_ms = 5;
+  optional CommandText command = 6;
+}
+
+message RunningCommand {
+  optional CommandText command = 1;
+  uint64 started_ms = 2;
+}
+
+message ReportedCwd {
+  string path = 1;
+  string source = 2;
+  optional string host = 3;
+  bool is_local = 4;
+}
+
+message CommandState {
+  string phase = 1;
+  optional RunningCommand running = 2;
+  optional CommandOutcome last = 3;
+  optional ReportedCwd cwd = 4;
+  bool reports_markers = 5;
+}
+
+message ProgramStatusRecord {
+  optional string id = 1;
+  optional string state = 2;
+  optional string kind = 3;
+  optional uint32 progress = 4;
+  optional string app = 5;
+  optional string title = 6;
+  optional string msg = 7;
+  uint64 updated_ms = 8;
+}
+
+message AttentionCounts {
+  uint32 needs_you = 1;
+  uint32 failed = 2;
+  uint32 done = 3;
+  uint32 working = 4;
+  uint32 quiet = 5;
+  uint32 new_output = 6;
+  uint32 muted = 7;
+}
+
+message TabAttention {
+  string status = 1;
+  AttentionCounts counts = 2;
+  bool muted = 3;
 }
 
 message PromptResultPayload {
@@ -219,6 +332,9 @@ enum ClickedPaneAction {
   ClickedPaneActionTogglePinned = 3;
   ClickedPaneActionToggleInGroup = 4;
   ClickedPaneActionStartRename = 5;
+  ClickedPaneActionToggleMute = 6;
+  ClickedPaneActionToggleIgnoreOutput = 7;
+  ClickedPaneActionToggleWatch = 8;
 }
 
 enum ClickedTabAction {
@@ -226,6 +342,7 @@ enum ClickedTabAction {
   ClickedTabActionStartRename = 1;
   ClickedTabActionMoveLeft = 2;
   ClickedTabActionMoveRight = 3;
+  ClickedTabActionMute = 4;
 }
 
 message ContextMenuAction {
@@ -621,6 +738,9 @@ message PaneInfo {
     optional string default_bg = 25;
     optional string nested_session_name = 26;
     bool is_collapsed = 27;
+    PaneAttention attention = 28;
+    CommandState command_state = 29;
+    repeated ProgramStatusRecord program_status = 30;
 }
 
 message IndexInPaneGroup {
@@ -649,6 +769,7 @@ message TabInfo {
     bool has_bell_notification = 18;
     bool is_flashing_bell = 19;
     repeated uint32 other_focused_client_slots = 20;
+    TabAttention attention = 21;
 }
 
 message ModeUpdatePayload {

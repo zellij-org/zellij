@@ -385,6 +385,7 @@ Config {
                         },
                     ),
                 ],
+                toggled_label: None,
             },
             Item {
                 label: "New floating pane",
@@ -400,6 +401,7 @@ Config {
                         },
                     ),
                 ],
+                toggled_label: None,
             },
             Separator,
             Item {
@@ -409,6 +411,7 @@ Config {
                         ToggleFocusFullscreen,
                     ),
                 ],
+                toggled_label: None,
             },
             Item {
                 label: "Float / Embed",
@@ -417,6 +420,7 @@ Config {
                         ToggleEmbedOrFloating,
                     ),
                 ],
+                toggled_label: None,
             },
             Item {
                 label: "Rename pane",
@@ -425,6 +429,7 @@ Config {
                         StartRename,
                     ),
                 ],
+                toggled_label: None,
             },
             Item {
                 label: "Add to group",
@@ -433,6 +438,41 @@ Config {
                         ToggleInGroup,
                     ),
                 ],
+                toggled_label: None,
+            },
+            Separator,
+            Item {
+                label: "Notify me when this finishes",
+                actions: [
+                    ClickedPane(
+                        ToggleWatch,
+                    ),
+                ],
+                toggled_label: Some(
+                    "Stop watching",
+                ),
+            },
+            Item {
+                label: "Ignore output",
+                actions: [
+                    ClickedPane(
+                        ToggleIgnoreOutput,
+                    ),
+                ],
+                toggled_label: Some(
+                    "Report output",
+                ),
+            },
+            Item {
+                label: "Mute pane",
+                actions: [
+                    ClickedPane(
+                        ToggleMute,
+                    ),
+                ],
+                toggled_label: Some(
+                    "Unmute pane",
+                ),
             },
             Separator,
             Item {
@@ -442,6 +482,7 @@ Config {
                         CloseFocus,
                     ),
                 ],
+                toggled_label: None,
             },
         ],
         tab: [
@@ -462,6 +503,7 @@ Config {
                         },
                     ),
                 ],
+                toggled_label: None,
             },
             Item {
                 label: "Rename tab",
@@ -470,6 +512,7 @@ Config {
                         StartRename,
                     ),
                 ],
+                toggled_label: None,
             },
             Item {
                 label: "Move tab left",
@@ -480,6 +523,7 @@ Config {
                         ),
                     ),
                 ],
+                toggled_label: None,
             },
             Item {
                 label: "Move tab right",
@@ -490,6 +534,7 @@ Config {
                         ),
                     ),
                 ],
+                toggled_label: None,
             },
             Item {
                 label: "Move tab to start",
@@ -500,6 +545,7 @@ Config {
                         ),
                     ),
                 ],
+                toggled_label: None,
             },
             Item {
                 label: "Move tab to end",
@@ -510,6 +556,18 @@ Config {
                         ),
                     ),
                 ],
+                toggled_label: None,
+            },
+            Item {
+                label: "Mute tab",
+                actions: [
+                    ClickedTab(
+                        Mute,
+                    ),
+                ],
+                toggled_label: Some(
+                    "Unmute tab",
+                ),
             },
             Separator,
             Item {
@@ -519,6 +577,7 @@ Config {
                         Close,
                     ),
                 ],
+                toggled_label: None,
             },
         ],
         bar: [
@@ -533,6 +592,7 @@ Config {
                         },
                     ),
                 ],
+                toggled_label: None,
             },
             Item {
                 label: "New tab",
@@ -551,6 +611,7 @@ Config {
                         },
                     ),
                 ],
+                toggled_label: None,
             },
         ],
         common: [
@@ -580,6 +641,7 @@ Config {
                         },
                     ),
                 ],
+                toggled_label: None,
             },
             Item {
                 label: "Session manager",
@@ -607,6 +669,7 @@ Config {
                         },
                     ),
                 ],
+                toggled_label: None,
             },
             Item {
                 label: "Detach",
@@ -615,6 +678,7 @@ Config {
                         Detach,
                     ),
                 ],
+                toggled_label: None,
             },
         ],
     },
@@ -4913,5 +4977,13 @@ Config {
         then: None,
         script: None,
         record: None,
+    },
+    attention: AttentionConfig {
+        frame_markers: None,
+        host_status: None,
+        idle_rule: None,
+        done_threshold_secs: None,
+        idle_activity_secs: None,
+        idle_silence_secs: None,
     },
 }

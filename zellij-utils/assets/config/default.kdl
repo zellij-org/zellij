@@ -76,6 +76,10 @@ context_menu {
         item "Rename pane" { StartRenamePaneByPaneId; }
         item "Add to group" { TogglePaneInGroupByPaneId; }
         separator
+        item "Notify me when this finishes" toggled_label="Stop watching" { WatchPaneByPaneId; }
+        item "Ignore output" toggled_label="Report output" { IgnorePaneOutputByPaneId; }
+        item "Mute pane" toggled_label="Unmute pane" { MutePaneByPaneId; }
+        separator
         item "Close pane" { CloseFocusByPaneId; }
     }
     tab {
@@ -85,6 +89,7 @@ context_menu {
         item "Move tab right" { MoveTabByTabId "right"; }
         item "Move tab to start" { MoveTabToPosition "start"; }
         item "Move tab to end" { MoveTabToPosition "end"; }
+        item "Mute tab" toggled_label="Unmute tab" { MuteTabByTabId; }
         separator
         item "Close tab" { CloseTabById; }
     }

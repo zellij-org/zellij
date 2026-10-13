@@ -797,6 +797,10 @@ pub struct FloatingPaneLayout {
     pub logical_position: Option<usize>,
     pub default_fg: Option<String>,
     pub default_bg: Option<String>,
+    #[serde(default)]
+    pub attention_muted: Option<bool>,
+    #[serde(default)]
+    pub ignore_output: Option<bool>,
 }
 
 impl FloatingPaneLayout {
@@ -817,6 +821,8 @@ impl FloatingPaneLayout {
             logical_position: None,
             default_fg: None,
             default_bg: None,
+            attention_muted: None,
+            ignore_output: None,
         }
     }
     pub fn add_cwd_to_layout(&mut self, cwd: &PathBuf) {
@@ -841,6 +847,8 @@ impl From<&TiledPaneLayout> for FloatingPaneLayout {
             run: pane_layout.run.clone(),
             focus: pane_layout.focus,
             border_style: pane_layout.border_style,
+            attention_muted: pane_layout.attention_muted,
+            ignore_output: pane_layout.ignore_output,
             ..Default::default()
         }
     }
@@ -866,6 +874,10 @@ pub struct TiledPaneLayout {
     pub pane_initial_contents: Option<String>,
     pub default_fg: Option<String>,
     pub default_bg: Option<String>,
+    #[serde(default)]
+    pub attention_muted: Option<bool>,
+    #[serde(default)]
+    pub ignore_output: Option<bool>,
 }
 
 impl TiledPaneLayout {

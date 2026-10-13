@@ -1227,6 +1227,15 @@ pub enum ActionName {
     MoveTabToPosition = 127,
     RunInBackground = 128,
     ToggleSessionCard = 129,
+    MutePane = 130,
+    MutePaneByPaneId = 131,
+    IgnorePaneOutput = 132,
+    IgnorePaneOutputByPaneId = 133,
+    WatchPane = 134,
+    WatchPaneByPaneId = 135,
+    MuteTab = 136,
+    MuteTabByTabId = 137,
+    MuteSession = 138,
 }
 impl ActionName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1362,6 +1371,15 @@ impl ActionName {
             ActionName::MoveTabToPosition => "MoveTabToPosition",
             ActionName::RunInBackground => "RunInBackground",
             ActionName::ToggleSessionCard => "ToggleSessionCard",
+            ActionName::MutePane => "MutePane",
+            ActionName::MutePaneByPaneId => "MutePaneByPaneId",
+            ActionName::IgnorePaneOutput => "IgnorePaneOutput",
+            ActionName::IgnorePaneOutputByPaneId => "IgnorePaneOutputByPaneId",
+            ActionName::WatchPane => "WatchPane",
+            ActionName::WatchPaneByPaneId => "WatchPaneByPaneId",
+            ActionName::MuteTab => "MuteTab",
+            ActionName::MuteTabByTabId => "MuteTabByTabId",
+            ActionName::MuteSession => "MuteSession",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1494,6 +1512,15 @@ impl ActionName {
             "MoveTabToPosition" => Some(Self::MoveTabToPosition),
             "RunInBackground" => Some(Self::RunInBackground),
             "ToggleSessionCard" => Some(Self::ToggleSessionCard),
+            "MutePane" => Some(Self::MutePane),
+            "MutePaneByPaneId" => Some(Self::MutePaneByPaneId),
+            "IgnorePaneOutput" => Some(Self::IgnorePaneOutput),
+            "IgnorePaneOutputByPaneId" => Some(Self::IgnorePaneOutputByPaneId),
+            "WatchPane" => Some(Self::WatchPane),
+            "WatchPaneByPaneId" => Some(Self::WatchPaneByPaneId),
+            "MuteTab" => Some(Self::MuteTab),
+            "MuteTabByTabId" => Some(Self::MuteTabByTabId),
+            "MuteSession" => Some(Self::MuteSession),
             _ => None,
         }
     }

@@ -40,6 +40,9 @@ keybinds {
         bind "e" { TogglePaneEmbedOrFloating; SwitchToMode "Normal"; }
         bind "c" { SwitchToMode "RenamePane"; PaneNameInput 0;}
         bind "i" { TogglePanePinned; SwitchToMode "Normal"; }
+        bind "u" { MutePane; SwitchToMode "Normal"; }
+        bind "g" { IgnorePaneOutput; SwitchToMode "Normal"; }
+        bind "v" { WatchPane; SwitchToMode "Normal"; }
     }
     move {
         bind "Ctrl h" { SwitchToMode "Normal"; }
@@ -73,6 +76,7 @@ keybinds {
         bind "Tab" { ToggleTab; }
         bind "Space" { NextSwapLayout; }
         bind "Shift Space" { PreviousSwapLayout; }
+        bind "u" { MuteTab; SwitchToMode "Normal"; }
     }
     scroll {
         bind "Ctrl s" { SwitchToMode "Normal"; }
@@ -129,6 +133,7 @@ keybinds {
         bind "]" { FocusHostSession; SwitchToMode "Normal"; }
         bind "[" { FocusGuestSession; SwitchToMode "Normal"; }
         bind "f" { ToggleHostFullscreen; SwitchToMode "Normal"; }
+        bind "u" { MuteSession; SwitchToMode "Normal"; }
         bind "w" {
             LaunchOrFocusPlugin "session-manager" {
                 floating true
