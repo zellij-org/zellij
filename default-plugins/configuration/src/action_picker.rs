@@ -368,10 +368,28 @@ pub const ACTION_SPECS: &[ActionSpec] = &[
     ),
     plain(
         "WatchPane",
-        "Notify once when the focused pane finishes or goes quiet",
+        "Watch the focused pane: notify each time it finishes or goes quiet (toggles)",
     ),
     plain("MuteTab", "Mute or unmute what the panes of the tab report"),
-    plain("MuteSession", "Mute or unmute what the whole session reports"),
+    plain(
+        "MuteSession",
+        "Mute or unmute what the whole session reports",
+    ),
+    plain(
+        "ToggleSession",
+        "Switch to the previous session (again returns)",
+    ),
+    plain("GoBack", "Go back in this client's session history"),
+    plain("GoForward", "Go forward in this client's session history"),
+    plain(
+        "GoToNextAttention",
+        "Jump to the next pane that needs attention in any session",
+    ),
+    plain("MarkPaneSeen", "Clear past events of the focused pane"),
+    plain(
+        "MarkAllSeen",
+        "Clear past events of every pane in every session",
+    ),
     plain(
         "OpenContextMenu",
         "Open the right-click menu for the focused pane",
@@ -474,7 +492,7 @@ pub const ACTION_SPECS: &[ActionSpec] = &[
     ),
     menu_only(
         "WatchPaneByPaneId",
-        "Notify once when the clicked pane finishes",
+        "Watch the clicked pane: notify each time it finishes (toggles)",
         &[],
     ),
     menu_only("CloseTabById", "Close the clicked tab", &[]),

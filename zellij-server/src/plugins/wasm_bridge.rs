@@ -310,6 +310,8 @@ pub struct WasmBridge {
     downloader: Downloader,
     previous_pane_render_report: Option<PaneRenderReport>,
     last_host_terminal_theme_mode: Option<HostTerminalThemeMode>,
+    pub last_global_attention: Option<zellij_utils::attention::GlobalAttention>,
+    pub session_history_infos: HashMap<ClientId, zellij_utils::session_history::SessionHistoryInfo>,
     pub last_session_save_time: Arc<Mutex<Option<u64>>>, // milliseconds since UNIX epoch
     shared_instances: HashMap<PluginId, SharedInstanceInfo>,
     shared_keys: HashMap<SharedKey, PluginId>,
@@ -383,6 +385,8 @@ impl WasmBridge {
             previous_pane_render_report: None,
             latest_hovers: Arc::new(Mutex::new(HoverGenerations::default())),
             last_host_terminal_theme_mode: None,
+            last_global_attention: None,
+            session_history_infos: HashMap::new(),
             last_session_save_time: Arc::new(Mutex::new(None)),
             shared_instances: HashMap::new(),
             shared_keys: HashMap::new(),
@@ -1751,6 +1755,28 @@ impl WasmBridge {
             Some(plugin_id),
             Some(client_id),
             Event::HostTerminalThemeChanged(mode),
+        )]));
+    }
+
+    pub fn send_global_attention_to_plugin(&self, plugin_id: PluginId, client_id: ClientId) {
+        let Some(global) = self.last_global_attention.clone() else {
+            return;
+        };
+        let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![(
+            Some(plugin_id),
+            Some(client_id),
+            Event::GlobalAttentionUpdate(global),
+        )]));
+    }
+
+    pub fn send_session_history_to_plugin(&self, plugin_id: PluginId, client_id: ClientId) {
+        let Some(info) = self.session_history_infos.get(&client_id).cloned() else {
+            return;
+        };
+        let _ = self.senders.send_to_plugin(PluginInstruction::Update(vec![(
+            Some(plugin_id),
+            Some(client_id),
+            Event::SessionHistoryUpdate(info),
         )]));
     }
 
@@ -3383,6 +3409,8 @@ pub fn check_event_permission(
         | Event::PromptShown(..)
         | Event::CommandStarted(..)
         | Event::CommandFinished(..)
+        | Event::GlobalAttentionUpdate(..)
+        | Event::SessionHistoryUpdate(..)
         | Event::InputReceived => PermissionType::ReadApplicationState,
         Event::SessionPreview(..) => PermissionType::ReadPaneContents,
         Event::ConfigChangesDropped(..) | Event::ConfigFileChangedSinceRead => {
@@ -3441,6 +3469,9 @@ pub fn redact_event_for_plugin(plugin_env: &PluginEnv, event: &mut Event) {
         },
         Event::CommandFinished(_, outcome) => {
             outcome.command = None;
+        },
+        Event::GlobalAttentionUpdate(global) => {
+            *global = std::mem::take(global).without_command_text();
         },
         _ => {},
     }

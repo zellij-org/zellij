@@ -48,6 +48,8 @@ pub struct CliAssets {
     pub cwd: Option<PathBuf>,
     pub host_terminal_env: BTreeMap<String, String>,
     pub initial_panes: Option<Vec<CommandOrPlugin>>,
+    #[serde(default)]
+    pub switch_context: Option<crate::session_history::SwitchContext>,
 }
 
 impl CliAssets {

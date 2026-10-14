@@ -153,6 +153,12 @@ pub fn category_of(actions: &[String]) -> &'static str {
         | "DismissInfoPopups"
         | "ToggleSessionCard"
         | "MuteSession"
+        | "ToggleSession"
+        | "GoBack"
+        | "GoForward"
+        | "GoToNextAttention"
+        | "MarkPaneSeen"
+        | "MarkAllSeen"
         | "OpenContextMenu" => "Session and plugins",
         "MuteTab" => "Tabs",
         name if name.starts_with("Search") => "Search",

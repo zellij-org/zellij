@@ -1,3 +1,4 @@
+pub mod peers;
 pub mod program_status;
 pub mod shell;
 pub mod signals;

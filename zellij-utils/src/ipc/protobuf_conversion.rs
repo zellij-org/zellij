@@ -9,18 +9,19 @@ use crate::{
         ClientToServerMsg as ProtoClientToServerMsg, ColorRegistersMsg, ConfigFileUpdatedMsg,
         ConnStatusMsg, ConnectedMsg, DesktopNotificationResponseMsg, DetachSessionMsg,
         EmitNestedSessionFrameMsg, ExitMsg, ExitReason as ProtoExitReason,
-        HostProgramStatus as ProtoHostProgramStatus, HostProgramStatusMsg,
         FailedToStartWebServerMsg, FirstClientConnectedMsg, FontFamiliesMsg, ForegroundColorMsg,
-        ForwardQueryToHostMsg, ForwardedReplyFromHostMsg, HostTerminalFocusChangedMsg,
-        HostTerminalThemeChangedMsg,
+        ForwardQueryToHostMsg, ForwardedReplyFromHostMsg,
+        HostProgramStatus as ProtoHostProgramStatus, HostProgramStatusMsg,
+        HostTerminalFocusChangedMsg, HostTerminalThemeChangedMsg,
         HostTerminalThemeIndication as ProtoHostTerminalThemeIndication, HostThemeModeMsg,
         InputMode as ProtoInputMode, KeyMsg, KillSessionMsg, KittyGraphicsSupportMsg,
         KittyZlibSupportMsg, LayoutMetadata as ProtoLayoutMetadata, LogErrorMsg, LogMsg,
         MobileActivePaneMsg, MobilePaneMsg, MobileRenderPrefsMsg, MobileSessionMsg, MobileSizeMsg,
         MobileStateMsg, MobileTabMsg, NestedSessionFrameFromHostMsg,
-        PaneMetadata as ProtoPaneMetadata, PaneRenderUpdateMsg, QueryTerminalSizeMsg,
-        RenamedSessionMsg, RenderFrameAckMsg, RenderFrameMsg, RenderMsg, RequestSessionListMsg,
-        RequestSessionPreviewMsg, ServerToClientMsg as ProtoServerToClientMsg,
+        PaneMetadata as ProtoPaneMetadata, PaneRenderUpdateMsg, PeerAttentionChangedMsg,
+        QueryTerminalSizeMsg, RenamedSessionMsg, RenderFrameAckMsg, RenderFrameMsg, RenderMsg,
+        RequestSessionAttentionMsg, RequestSessionListMsg, RequestSessionPreviewMsg,
+        ServerToClientMsg as ProtoServerToClientMsg, SessionAttentionMsg, SessionPreviewMsg,
         SetMobileRenderPreferencesMsg, SetSoftKeyboardMsg, SixelSupportMsg,
         SoftKeyboardVisibilityChangedMsg, StartWebServerMsg, StructuredRenderSupportMsg,
         SubscribeToPaneRendersMsg, SubscribedPaneClosedMsg, SwitchSessionMsg,
@@ -185,13 +186,30 @@ impl From<ClientToServerMsg> for ProtoClientToServerMsg {
             ClientToServerMsg::RequestSessionList => {
                 client_to_server_msg::Message::RequestSessionList(RequestSessionListMsg {})
             },
-            ClientToServerMsg::RequestSessionPreview { tab_index, pane_id } => {
-                client_to_server_msg::Message::RequestSessionPreview(RequestSessionPreviewMsg {
-                    tab_index,
-                    pane_id: pane_id.map(|(id, _)| id),
-                    pane_is_plugin: pane_id.map(|(_, is_plugin)| is_plugin).unwrap_or(false),
+            ClientToServerMsg::RequestSessionPreview {
+                tab_index,
+                pane_id,
+                anchor,
+            } => client_to_server_msg::Message::RequestSessionPreview(RequestSessionPreviewMsg {
+                tab_index,
+                pane_id: pane_id.map(|(id, _)| id),
+                pane_is_plugin: pane_id.map(|(_, is_plugin)| is_plugin).unwrap_or(false),
+                anchor: anchor.map(super::attention_conversion::preview_anchor_to_proto),
+            }),
+            ClientToServerMsg::RequestSessionAttention {
+                include_command_text,
+            } => {
+                client_to_server_msg::Message::RequestSessionAttention(RequestSessionAttentionMsg {
+                    include_command_text,
                 })
             },
+            ClientToServerMsg::PeerAttentionChanged {
+                session_name,
+                attention,
+            } => client_to_server_msg::Message::PeerAttentionChanged(PeerAttentionChangedMsg {
+                session_name,
+                attention: attention.map(|a| a.into()),
+            }),
             ClientToServerMsg::SetMobileRenderPreferences { single_pane, fit } => {
                 client_to_server_msg::Message::SetMobileRenderPreferences(
                     SetMobileRenderPreferencesMsg { single_pane, fit },
@@ -392,6 +410,21 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
                 Ok(ClientToServerMsg::RequestSessionPreview {
                     tab_index: msg.tab_index,
                     pane_id: msg.pane_id.map(|id| (id, msg.pane_is_plugin)),
+                    anchor: msg
+                        .anchor
+                        .map(super::attention_conversion::preview_anchor_from_proto)
+                        .transpose()?,
+                })
+            },
+            Some(client_to_server_msg::Message::RequestSessionAttention(msg)) => {
+                Ok(ClientToServerMsg::RequestSessionAttention {
+                    include_command_text: msg.include_command_text,
+                })
+            },
+            Some(client_to_server_msg::Message::PeerAttentionChanged(msg)) => {
+                Ok(ClientToServerMsg::PeerAttentionChanged {
+                    session_name: msg.session_name,
+                    attention: msg.attention.map(|a| a.try_into()).transpose()?,
                 })
             },
             Some(client_to_server_msg::Message::SetMobileRenderPreferences(msg)) => {
@@ -541,6 +574,16 @@ impl From<ServerToClientMsg> for ProtoServerToClientMsg {
                         progress: status.progress.map(|p| p as u32),
                         msg: status.msg,
                     }),
+                })
+            },
+            ServerToClientMsg::SessionPreview { preview } => {
+                server_to_client_msg::Message::SessionPreview(SessionPreviewMsg {
+                    preview: preview.map(|p| p.into()),
+                })
+            },
+            ServerToClientMsg::SessionAttention { attention } => {
+                server_to_client_msg::Message::SessionAttention(SessionAttentionMsg {
+                    attention: Some(attention.into()),
                 })
             },
         };
@@ -820,6 +863,20 @@ impl TryFrom<ProtoServerToClientMsg> for ServerToClientMsg {
                         }),
                 })
             },
+            Some(server_to_client_msg::Message::SessionPreview(msg)) => {
+                Ok(ServerToClientMsg::SessionPreview {
+                    preview: msg.preview.map(|p| p.into()),
+                })
+            },
+            Some(server_to_client_msg::Message::SessionAttention(msg)) => {
+                Ok(ServerToClientMsg::SessionAttention {
+                    attention: msg
+                        .attention
+                        .map(|a| a.try_into())
+                        .transpose()?
+                        .unwrap_or_default(),
+                })
+            },
             None => Err(anyhow!("Empty ServerToClientMsg message")),
         }
     }
@@ -963,6 +1020,7 @@ impl From<crate::input::cli_assets::CliAssets>
                 .initial_panes
                 .map(|panes| panes.into_iter().map(|p| p.into()).collect())
                 .unwrap_or_default(),
+            switch_context: cli_assets.switch_context.map(|c| c.into()),
         }
     }
 }
@@ -1004,6 +1062,10 @@ impl TryFrom<crate::client_server_contract::client_server_contract::CliAssets>
                         .collect::<Result<Vec<_>>>()?,
                 )
             },
+            switch_context: cli_assets
+                .switch_context
+                .map(|c| c.try_into())
+                .transpose()?,
         })
     }
 }
@@ -1078,7 +1140,6 @@ impl From<crate::input::options::Options>
             stacked_resize: options.stacked_resize,
             stacked_pane_list: options.stacked_pane_list,
             dangerously_enable_paste_buffer_read: options.dangerously_enable_paste_buffer_read,
-            session_card: options.session_card,
             session_indicator: options.session_indicator,
             swap_layout_notification: options.swap_layout_notification,
             on_quit: options.on_quit.map(|on_quit| on_quit.as_str().to_owned()),
@@ -1229,7 +1290,6 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
             stacked_resize: options.stacked_resize,
             stacked_pane_list: options.stacked_pane_list,
             dangerously_enable_paste_buffer_read: options.dangerously_enable_paste_buffer_read,
-            session_card: options.session_card,
             session_indicator: options.session_indicator,
             swap_layout_notification: options.swap_layout_notification,
             on_quit: options
@@ -1351,6 +1411,9 @@ impl From<crate::input::actions::Action>
             FocusPluginPaneWithIdAction,
             FocusPreviousPaneAction,
             FocusTerminalPaneWithIdAction,
+            GoBackAction,
+            GoForwardAction,
+            GoToNextAttentionAction,
             GoToNextTabAction,
             GoToPreviousTabAction,
             GoToTabAction,
@@ -1361,12 +1424,16 @@ impl From<crate::input::actions::Action>
             HalfPageScrollUpAction,
             HalfPageScrollUpByPaneIdAction,
             HideFloatingPanesAction,
+            IgnorePaneOutputAction,
+            IgnorePaneOutputByPaneIdAction,
             KeybindPipeAction,
             LaunchOrFocusPluginAction,
             LaunchPluginAction,
             ListClientsAction,
             ListPanesAction,
             ListTabsAction,
+            MarkAllSeenAction,
+            MarkPaneSeenAction,
             MouseEventAction,
             MoveFocusAction,
             MoveFocusOrTabAction,
@@ -1377,6 +1444,11 @@ impl From<crate::input::actions::Action>
             MoveTabAction,
             MoveTabByTabIdAction,
             MoveTabToPositionAction,
+            MutePaneAction,
+            MutePaneByPaneIdAction,
+            MuteSessionAction,
+            MuteTabAction,
+            MuteTabByTabIdAction,
             NewBlockingPaneAction,
             NewFloatingPaneAction,
             NewFloatingPluginPaneAction,
@@ -1467,16 +1539,8 @@ impl From<crate::input::actions::Action>
             TogglePaneInGroupByPaneIdAction,
             TogglePanePinnedAction,
             TogglePanePinnedByPaneIdAction,
+            ToggleSessionAction,
             ToggleSessionCardAction,
-            MutePaneAction,
-            MutePaneByPaneIdAction,
-            IgnorePaneOutputAction,
-            IgnorePaneOutputByPaneIdAction,
-            WatchPaneAction,
-            WatchPaneByPaneIdAction,
-            MuteTabAction,
-            MuteTabByTabIdAction,
-            MuteSessionAction,
             ToggleTabAction,
             ToggleThemeAction,
             UndoRenamePaneAction,
@@ -1484,9 +1548,12 @@ impl From<crate::input::actions::Action>
             UndoRenameTabAction,
             // Tab-targeting
             UndoRenameTabByTabIdAction,
+            WatchPaneAction,
+            WatchPaneByPaneIdAction,
             WriteAction,
             WriteCharsAction,
             WriteCharsToPaneIdAction,
+            WriteKeyToPaneIdAction,
             WriteToPaneIdAction,
         };
         use std::collections::HashMap;
@@ -1904,10 +1971,38 @@ impl From<crate::input::actions::Action>
                 ActionType::DismissInfoPopups(DismissInfoPopupsAction {})
             },
             crate::input::actions::Action::MutePane => ActionType::MutePane(MutePaneAction {}),
-            crate::input::actions::Action::IgnorePaneOutput => ActionType::IgnorePaneOutput(IgnorePaneOutputAction {}),
+            crate::input::actions::Action::IgnorePaneOutput => {
+                ActionType::IgnorePaneOutput(IgnorePaneOutputAction {})
+            },
             crate::input::actions::Action::WatchPane => ActionType::WatchPane(WatchPaneAction {}),
             crate::input::actions::Action::MuteTab => ActionType::MuteTab(MuteTabAction {}),
-            crate::input::actions::Action::MuteSession => ActionType::MuteSession(MuteSessionAction {}),
+            crate::input::actions::Action::MuteSession => {
+                ActionType::MuteSession(MuteSessionAction {})
+            },
+            crate::input::actions::Action::ToggleSession => {
+                ActionType::ToggleSession(ToggleSessionAction {})
+            },
+            crate::input::actions::Action::GoBack => ActionType::GoBack(GoBackAction {}),
+            crate::input::actions::Action::GoForward => ActionType::GoForward(GoForwardAction {}),
+            crate::input::actions::Action::GoToNextAttention => {
+                ActionType::GoToNextAttention(GoToNextAttentionAction {})
+            },
+            crate::input::actions::Action::MarkPaneSeen { session, pane_id } => {
+                ActionType::MarkPaneSeen(MarkPaneSeenAction {
+                    session,
+                    pane_id: pane_id.map(|p| p.into()),
+                })
+            },
+            crate::input::actions::Action::MarkAllSeen { session } => {
+                ActionType::MarkAllSeen(MarkAllSeenAction { session })
+            },
+            crate::input::actions::Action::WriteKeyToPaneId {
+                key_with_modifier,
+                pane_id,
+            } => ActionType::WriteKeyToPaneId(WriteKeyToPaneIdAction {
+                key_with_modifier: key_with_modifier.map(|k| k.into()),
+                pane_id: Some(pane_id.into()),
+            }),
             crate::input::actions::Action::MutePaneByPaneId { pane_id } => {
                 ActionType::MutePaneByPaneId(MutePaneByPaneIdAction {
                     pane_id: Some(pane_id.into()),
@@ -2904,24 +2999,52 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             ActionType::WatchPane(_) => Ok(crate::input::actions::Action::WatchPane),
             ActionType::MuteTab(_) => Ok(crate::input::actions::Action::MuteTab),
             ActionType::MuteSession(_) => Ok(crate::input::actions::Action::MuteSession),
-            ActionType::MutePaneByPaneId(a) => Ok(crate::input::actions::Action::MutePaneByPaneId {
-                pane_id: a
-                    .pane_id
-                    .ok_or_else(|| anyhow!("MutePaneByPaneId missing pane_id"))?
-                    .try_into()?,
+            ActionType::ToggleSession(_) => Ok(crate::input::actions::Action::ToggleSession),
+            ActionType::GoBack(_) => Ok(crate::input::actions::Action::GoBack),
+            ActionType::GoForward(_) => Ok(crate::input::actions::Action::GoForward),
+            ActionType::GoToNextAttention(_) => {
+                Ok(crate::input::actions::Action::GoToNextAttention)
+            },
+            ActionType::MarkPaneSeen(a) => Ok(crate::input::actions::Action::MarkPaneSeen {
+                session: a.session,
+                pane_id: a.pane_id.map(|p| p.try_into()).transpose()?,
             }),
-            ActionType::IgnorePaneOutputByPaneId(a) => Ok(crate::input::actions::Action::IgnorePaneOutputByPaneId {
-                pane_id: a
-                    .pane_id
-                    .ok_or_else(|| anyhow!("IgnorePaneOutputByPaneId missing pane_id"))?
-                    .try_into()?,
-            }),
-            ActionType::WatchPaneByPaneId(a) => Ok(crate::input::actions::Action::WatchPaneByPaneId {
-                pane_id: a
-                    .pane_id
-                    .ok_or_else(|| anyhow!("WatchPaneByPaneId missing pane_id"))?
-                    .try_into()?,
-            }),
+            ActionType::MarkAllSeen(a) => {
+                Ok(crate::input::actions::Action::MarkAllSeen { session: a.session })
+            },
+            ActionType::WriteKeyToPaneId(a) => {
+                Ok(crate::input::actions::Action::WriteKeyToPaneId {
+                    key_with_modifier: a.key_with_modifier.map(|k| k.try_into()).transpose()?,
+                    pane_id: a
+                        .pane_id
+                        .ok_or_else(|| anyhow!("WriteKeyToPaneId missing pane_id"))?
+                        .try_into()?,
+                })
+            },
+            ActionType::MutePaneByPaneId(a) => {
+                Ok(crate::input::actions::Action::MutePaneByPaneId {
+                    pane_id: a
+                        .pane_id
+                        .ok_or_else(|| anyhow!("MutePaneByPaneId missing pane_id"))?
+                        .try_into()?,
+                })
+            },
+            ActionType::IgnorePaneOutputByPaneId(a) => {
+                Ok(crate::input::actions::Action::IgnorePaneOutputByPaneId {
+                    pane_id: a
+                        .pane_id
+                        .ok_or_else(|| anyhow!("IgnorePaneOutputByPaneId missing pane_id"))?
+                        .try_into()?,
+                })
+            },
+            ActionType::WatchPaneByPaneId(a) => {
+                Ok(crate::input::actions::Action::WatchPaneByPaneId {
+                    pane_id: a
+                        .pane_id
+                        .ok_or_else(|| anyhow!("WatchPaneByPaneId missing pane_id"))?
+                        .try_into()?,
+                })
+            },
             ActionType::MuteTabByTabId(a) => {
                 Ok(crate::input::actions::Action::MuteTabByTabId { id: a.id })
             },
@@ -3645,7 +3768,7 @@ impl From<crate::data::ConnectToSession>
             }),
             layout: connect.layout.map(|l| l.into()),
             cwd: connect.cwd.map(|p| p.to_string_lossy().to_string()),
-            session_card: connect.session_card,
+            switch_context: connect.switch_context.map(|c| c.into()),
         }
     }
 }
@@ -3663,7 +3786,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::ConnectToSes
             pane_id: connect.pane_id.map(|p| (p.pane_id, p.is_plugin)),
             layout: connect.layout.map(|l| l.try_into()).transpose()?,
             cwd: connect.cwd.map(PathBuf::from),
-            session_card: connect.session_card,
+            switch_context: connect.switch_context.map(|c| c.try_into()).transpose()?,
         })
     }
 }

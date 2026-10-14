@@ -1514,6 +1514,65 @@ fn route_action_with_origin(
                 ))
                 .with_context(err_context)?;
         },
+        Action::ToggleSession | Action::GoBack | Action::GoForward => {
+            let history_move = match action {
+                Action::ToggleSession => zellij_utils::session_history::HistoryMove::Toggle,
+                Action::GoBack => zellij_utils::session_history::HistoryMove::Back,
+                _ => zellij_utils::session_history::HistoryMove::Forward,
+            };
+            senders
+                .send_to_server(ServerInstruction::HistoryMove(
+                    history_move,
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::GoToNextAttention => {
+            senders
+                .send_to_screen(ScreenInstruction::GoToNextAttention(
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
+                .with_context(err_context)?;
+        },
+        Action::MarkPaneSeen { session, pane_id } => {
+            senders
+                .send_to_screen(ScreenInstruction::MarkPaneSeen {
+                    session,
+                    pane_id,
+                    client_id,
+                    completion: Some(NotificationEnd::new(completion_tx)),
+                })
+                .with_context(err_context)?;
+        },
+        Action::MarkAllSeen { session } => {
+            senders
+                .send_to_screen(ScreenInstruction::MarkAllSeen {
+                    session,
+                    completion: Some(NotificationEnd::new(completion_tx)),
+                })
+                .with_context(err_context)?;
+        },
+        Action::WriteKeyToPaneId {
+            key_with_modifier: Some(key_with_modifier),
+            pane_id,
+        } => {
+            senders
+                .send_to_screen(ScreenInstruction::SessionPaneCommand {
+                    session_name: None,
+                    command: crate::screen::SessionPaneCommand::Key(pane_id, key_with_modifier),
+                    client_id,
+                    completion: Some(NotificationEnd::new(completion_tx)),
+                })
+                .with_context(err_context)?;
+        },
+        Action::WriteKeyToPaneId {
+            key_with_modifier: None,
+            ..
+        } => {
+            drop(completion_tx);
+        },
         Action::OpenContextMenu => {
             senders
                 .send_to_screen(ScreenInstruction::OpenContextMenu(
@@ -1538,7 +1597,7 @@ fn route_action_with_origin(
                     pane_id: pane_id.clone(),
                     layout: layout.clone(),
                     cwd: cwd.clone(),
-                    session_card: None,
+                    switch_context: None,
                 };
                 let instruction = if close_current {
                     ServerInstruction::SwitchSessionAndCloseCurrent(
@@ -3426,29 +3485,21 @@ pub(crate) fn route_thread_main(
                                 },
                             }
                         },
-                        ClientToServerMsg::RequestSessionPreview { tab_index, pane_id } => {
-                            let mut lines = vec![];
-                            if let Some(senders) = senders.as_ref() {
-                                let (response_sender, response_receiver) =
-                                    crossbeam::channel::bounded(1);
-                                if senders
-                                    .send_to_screen(ScreenInstruction::GetSessionPreview {
-                                        tab_index: tab_index.map(|t| t as usize),
-                                        pane_id,
-                                        response_channel: response_sender,
-                                    })
-                                    .is_ok()
-                                {
-                                    if let Ok(preview) = response_receiver
-                                        .recv_timeout(std::time::Duration::from_millis(800))
-                                    {
-                                        if let Ok(json) = serde_json::to_string(&preview) {
-                                            lines.push(json);
-                                        }
-                                    }
-                                }
-                            }
-                            let _ = os_input.send_to_client(client_id, ServerToClientMsg::Log { lines });
+                        ClientToServerMsg::RequestSessionPreview {
+                            tab_index,
+                            pane_id,
+                            anchor,
+                        } => {
+                            let preview = crate::session_previews::answer_preview_request(
+                                senders.as_ref(),
+                                tab_index,
+                                pane_id,
+                                anchor,
+                            );
+                            let _ = os_input.send_to_client(
+                                client_id,
+                                ServerToClientMsg::SessionPreview { preview },
+                            );
                         },
                         ClientToServerMsg::RequestSessionList => {
                             if let Some(senders) = senders.as_ref() {
@@ -3481,6 +3532,38 @@ pub(crate) fn route_thread_main(
                                         ),
                                     );
                                 }
+                            }
+                        },
+                        ClientToServerMsg::RequestSessionAttention {
+                            include_command_text,
+                        } => {
+                            let attention = senders
+                                .as_ref()
+                                .map(|senders| {
+                                    crate::session_link::local_session_attention(
+                                        senders,
+                                        include_command_text,
+                                    )
+                                })
+                                .unwrap_or_default();
+                            let _ = os_input.send_to_client(
+                                client_id,
+                                ServerToClientMsg::SessionAttention { attention },
+                            );
+                        },
+                        ClientToServerMsg::PeerAttentionChanged {
+                            session_name,
+                            attention,
+                        } => {
+                            if let Some(senders) = senders.as_ref() {
+                                let _ = senders.send_to_background_jobs(
+                                    crate::background_jobs::BackgroundJob::PeerAttention(
+                                        crate::attention::peers::PeerAttentionJob::PeerChanged {
+                                            session_name,
+                                            attention,
+                                        },
+                                    ),
+                                );
                             }
                         },
                         ClientToServerMsg::SetMobileRenderPreferences { single_pane, fit } => {

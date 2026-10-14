@@ -684,6 +684,18 @@ impl TryFrom<ProtobufEvent> for Event {
                 },
                 _ => Err("Malformed payload for the ActionComplete Event"),
             },
+            Some(ProtobufEventType::GlobalAttentionUpdate) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::GlobalAttentionUpdatePayload(payload)) => {
+                    Ok(Event::GlobalAttentionUpdate(payload.try_into()?))
+                },
+                _ => Err("Malformed payload for the GlobalAttentionUpdate Event"),
+            },
+            Some(ProtobufEventType::SessionHistoryUpdate) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::SessionHistoryUpdatePayload(payload)) => {
+                    Ok(Event::SessionHistoryUpdate(payload.into()))
+                },
+                _ => Err("Malformed payload for the SessionHistoryUpdate Event"),
+            },
             Some(ProtobufEventType::PaneAttentionChanged) => match protobuf_event.payload {
                 Some(ProtobufEventPayload::PaneAttentionChangedPayload(payload)) => {
                     let pane_id: PaneId = payload
@@ -1473,6 +1485,16 @@ impl TryFrom<Event> for ProtobufEvent {
                     )),
                 })
             },
+            Event::GlobalAttentionUpdate(global) => Ok(ProtobufEvent {
+                name: ProtobufEventType::GlobalAttentionUpdate as i32,
+                payload: Some(event::Payload::GlobalAttentionUpdatePayload(
+                    global.try_into()?,
+                )),
+            }),
+            Event::SessionHistoryUpdate(info) => Ok(ProtobufEvent {
+                name: ProtobufEventType::SessionHistoryUpdate as i32,
+                payload: Some(event::Payload::SessionHistoryUpdatePayload(info.into())),
+            }),
             Event::PaneAttentionChanged(pane_id, attention) => {
                 let protobuf_pane_id: ProtobufPaneId = pane_id.try_into()?;
                 Ok(ProtobufEvent {
@@ -2803,6 +2825,8 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::PromptShown => EventType::PromptShown,
             ProtobufEventType::CommandStarted => EventType::CommandStarted,
             ProtobufEventType::CommandFinished => EventType::CommandFinished,
+            ProtobufEventType::GlobalAttentionUpdate => EventType::GlobalAttentionUpdate,
+            ProtobufEventType::SessionHistoryUpdate => EventType::SessionHistoryUpdate,
             ProtobufEventType::CommandChanged => EventType::CommandChanged,
             ProtobufEventType::AvailableLayoutInfo => EventType::AvailableLayoutInfo,
             ProtobufEventType::PluginConfigurationChanged => EventType::PluginConfigurationChanged,
@@ -2878,6 +2902,8 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::PromptShown => ProtobufEventType::PromptShown,
             EventType::CommandStarted => ProtobufEventType::CommandStarted,
             EventType::CommandFinished => ProtobufEventType::CommandFinished,
+            EventType::GlobalAttentionUpdate => ProtobufEventType::GlobalAttentionUpdate,
+            EventType::SessionHistoryUpdate => ProtobufEventType::SessionHistoryUpdate,
             EventType::CommandChanged => ProtobufEventType::CommandChanged,
             EventType::AvailableLayoutInfo => ProtobufEventType::AvailableLayoutInfo,
             EventType::PluginConfigurationChanged => ProtobufEventType::PluginConfigurationChanged,
@@ -4849,6 +4875,9 @@ mod session_suggestion_conversions {
                             .collect(),
                     })
                     .collect(),
+                pane_id: p.pane_id.map(|(id, _)| id),
+                pane_is_plugin: p.pane_id.map(|(_, is_plugin)| is_plugin).unwrap_or(false),
+                anchor_line: p.anchor_line.map(|l| l as u32),
             }
         }
     }
@@ -4883,6 +4912,8 @@ mod session_suggestion_conversions {
                             .collect(),
                     })
                     .collect(),
+                pane_id: p.pane_id.map(|id| (id, p.pane_is_plugin)),
+                anchor_line: p.anchor_line.map(|l| l as usize),
             }
         }
     }
@@ -5028,6 +5059,8 @@ mod session_suggestion_conversions {
                         contents: Some("$ ls".to_owned()),
                     }],
                 }],
+                pane_id: Some((1, false)),
+                anchor_line: Some(4),
             }));
             round_trip(Event::SavedSessionPreview(SavedSessionPreview {
                 session_name: "s".to_owned(),

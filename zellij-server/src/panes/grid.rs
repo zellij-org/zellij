@@ -1014,6 +1014,7 @@ pub struct Grid {
     word_separators: String,
     pub osc7_payload: Option<String>,
     pub shell_reports: crate::attention::signals::ShellReportState,
+    unseen_output_mark: Option<(usize, usize)>,
 }
 
 impl Grid {
@@ -1396,6 +1397,7 @@ impl Grid {
             word_separators: DEFAULT_WORD_SEPARATORS.to_owned(),
             osc7_payload: None,
             shell_reports: Default::default(),
+            unseen_output_mark: None,
         }
     }
     pub fn set_selection_options(&mut self, osc133_command_selection: bool, word_separators: &str) {
@@ -2302,6 +2304,49 @@ impl Grid {
         }
         scrollback.push_str(&viewport);
         scrollback
+    }
+    pub fn mark_unseen_output_start(&mut self) {
+        self.unseen_output_mark = Some((self.lines_above.len(), self.cursor.y));
+    }
+    fn last_output_marker_row(&self, rows: &[&Row]) -> Option<usize> {
+        rows.iter().rposition(|row| {
+            row.osc133_markers
+                .iter()
+                .any(|marker| marker.kind == Osc133MarkerKind::Output)
+        })
+    }
+    pub fn preview_with_anchor(
+        &self,
+        anchor: zellij_utils::data::PreviewAnchor,
+        max_scrollback: usize,
+    ) -> (String, Option<usize>) {
+        use zellij_utils::data::PreviewAnchor;
+        let skip = self.lines_above.len().saturating_sub(max_scrollback);
+        let rows: Vec<&Row> = self
+            .lines_above
+            .iter()
+            .skip(skip)
+            .chain(self.viewport.iter())
+            .chain(self.lines_below.iter())
+            .collect();
+        let anchor_row = match anchor {
+            PreviewAnchor::Bottom => None,
+            PreviewAnchor::LastCommandOutput => self.last_output_marker_row(&rows),
+            PreviewAnchor::NewOutputStart => self
+                .unseen_output_mark
+                .map(|(lines_above, cursor_y)| (lines_above + cursor_y).saturating_sub(skip))
+                .filter(|row| *row < rows.len())
+                .or_else(|| self.last_output_marker_row(&rows)),
+        };
+        let anchor_line = anchor_row.map(|row| {
+            rows.iter()
+                .take(row + 1)
+                .skip(1)
+                .filter(|r| r.is_canonical)
+                .count()
+        });
+        let contents: String = dump_screen_with_ansi!(rows);
+        (contents, anchor_line)
     }
     /// Dumps all lines (with ansi) above terminal viewport and the viewport itself to a string
     pub fn dump_screen_with_ansi(&self, full: bool) -> String {
@@ -4044,11 +4089,12 @@ impl Grid {
                     .clone()
                     .or_else(|| self.shell_reports.pending_command_text.take())
                     .or_else(|| {
-                        self.command_text_from_screen()
-                            .map(|text| zellij_utils::attention::CommandText {
+                        self.command_text_from_screen().map(|text| {
+                            zellij_utils::attention::CommandText {
                                 text,
                                 source: zellij_utils::attention::CommandTextSource::Screen,
-                            })
+                            }
+                        })
                     });
                 self.shell_reports.pending_command_text = None;
                 signal = Some(PaneSignal::CommandStarted {
@@ -5129,14 +5175,15 @@ impl Perform for Grid {
 
             b"7501" => match crate::attention::program_status::parse(params, bell_terminated) {
                 Some(crate::attention::program_status::ProgramStatusMessage::Query) => {
-                    self.pending_messages_to_pty
-                        .push(crate::attention::program_status::query_reply(
-                            bell_terminated,
-                        ));
+                    self.pending_messages_to_pty.push(
+                        crate::attention::program_status::query_reply(bell_terminated),
+                    );
                 },
                 Some(message) => {
                     self.shell_reports
-                        .push(crate::attention::signals::PaneSignal::ProgramStatus(message));
+                        .push(crate::attention::signals::PaneSignal::ProgramStatus(
+                            message,
+                        ));
                 },
                 None => {},
             },

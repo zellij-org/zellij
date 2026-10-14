@@ -12,6 +12,7 @@ use zellij_utils::data::{
     Event, FolderRelation, FolderSessions, SessionCounts, SessionPreviewPane, SessionPreviewTab,
     SessionSuggestion, SessionSuggestionColumn, SessionSuggestions,
 };
+use zellij_utils::input::attention::StartupCard;
 use zellij_utils::input::session_suggestions::{
     FactTiming, SessionSuggestionsConfig, FACT_HOSTNAME,
 };
@@ -28,6 +29,27 @@ pub const LAST_USED_MIN_INTERVAL: Duration = Duration::from_secs(60);
 pub const SCRIPT_CANDIDATE_LIMIT: usize = 100;
 pub const SCRIPT_HARD_TIMEOUT: Duration = Duration::from_secs(10);
 pub const INDEX_POLL_INTERVAL: Duration = Duration::from_secs(2);
+pub const STARTUP_CARD_MAX_WAIT: Duration = Duration::from_millis(1500);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PendingCard {
+    client_id: ClientId,
+    away_since_ms: Option<u64>,
+    rule: StartupCard,
+    deadline: Instant,
+}
+
+pub fn startup_card_should_open(
+    rule: StartupCard,
+    needs_you: usize,
+    other_live_sessions: usize,
+) -> bool {
+    match rule {
+        StartupCard::Never => false,
+        StartupCard::Always => other_live_sessions > 0,
+        StartupCard::Attention => needs_you > 0,
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ContextTrigger {
@@ -40,13 +62,23 @@ pub enum ContextTrigger {
 pub enum SessionSuggestionsJob {
     Configure {
         config: SessionSuggestionsConfig,
-        session_card: bool,
+        startup_card: StartupCard,
         session_indicator: bool,
     },
     SessionStarted {
         name: String,
         cwd: Option<PathBuf>,
         card_for_client: Option<ClientId>,
+        startup_card: Option<StartupCard>,
+    },
+    ClientReattached {
+        client_id: ClientId,
+        away_since_ms: u64,
+        startup_card: Option<StartupCard>,
+    },
+    GlobalAttentionChanged {
+        needs_you: usize,
+        scanned: bool,
     },
     SessionRenamed {
         old_name: String,
@@ -92,13 +124,17 @@ pub fn should_report_activity() -> bool {
         .is_ok()
 }
 
-pub fn spawn_session_suggestions_service(senders: ThreadSenders) -> Sender<SessionSuggestionsJob> {
+pub fn spawn_session_suggestions_service(
+    senders: ThreadSenders,
+    live_sessions: crate::attention::peers::LiveSessions,
+) -> Sender<SessionSuggestionsJob> {
     let (sender, receiver) = channel();
     let own_sender = sender.clone();
     let _ = thread::Builder::new()
         .name("session_suggestions".to_owned())
         .spawn(move || {
             let mut service = SessionSuggestionsService::new(senders, own_sender);
+            service.live_sessions = live_sessions;
             service.run(receiver);
         });
     sender
@@ -110,9 +146,13 @@ struct SessionSuggestionsService {
     index: Option<SessionIndex>,
     index_failed: bool,
     config: SessionSuggestionsConfig,
-    session_card: bool,
+    startup_card: StartupCard,
     session_indicator: bool,
     configured: bool,
+    live_sessions: crate::attention::peers::LiveSessions,
+    pending_card: Option<PendingCard>,
+    global_needs_you: usize,
+    global_scanned: bool,
     session_name: Option<String>,
     context: SessionContext,
     last_git_run: Option<Instant>,
@@ -140,9 +180,13 @@ impl SessionSuggestionsService {
             index: None,
             index_failed: false,
             config: SessionSuggestionsConfig::default(),
-            session_card: true,
+            startup_card: StartupCard::default(),
             session_indicator: true,
             configured: false,
+            live_sessions: crate::attention::peers::LiveSessions::default(),
+            pending_card: None,
+            global_needs_you: 0,
+            global_scanned: false,
             session_name: None,
             context: SessionContext::default(),
             last_git_run: None,
@@ -174,10 +218,14 @@ impl SessionSuggestionsService {
                         .get_or_insert_with(|| Instant::now() + INDEX_POLL_INTERVAL),
                 )
             };
-            let wake_at = match (self.pending_git_at, index_poll_at) {
-                (Some(a), Some(b)) => Some(a.min(b)),
-                (a, b) => a.or(b),
-            };
+            let wake_at = [
+                self.pending_git_at,
+                index_poll_at,
+                self.pending_card.map(|card| card.deadline),
+            ]
+            .into_iter()
+            .flatten()
+            .min();
             let job = match wake_at {
                 Some(at) => {
                     let wait = at.saturating_duration_since(Instant::now());
@@ -218,6 +266,11 @@ impl SessionSuggestionsService {
                     self.poll_index();
                 }
             }
+            if let Some(card) = self.pending_card {
+                if Instant::now() >= card.deadline {
+                    self.decide_pending_card();
+                }
+            }
         }
         self.watcher = None;
     }
@@ -227,7 +280,7 @@ impl SessionSuggestionsService {
     }
 
     fn enabled(&self) -> bool {
-        self.index.is_some() && (self.session_card || self.session_indicator)
+        self.index.is_some() && (self.startup_card != StartupCard::Never || self.session_indicator)
     }
 
     fn ensure_index(&mut self) {
@@ -247,12 +300,12 @@ impl SessionSuggestionsService {
         match job {
             SessionSuggestionsJob::Configure {
                 config,
-                session_card,
+                startup_card,
                 session_indicator,
             } => {
                 let changed = self.config != config;
                 self.config = config;
-                self.session_card = session_card;
+                self.startup_card = startup_card;
                 self.session_indicator = session_indicator;
                 self.configured = true;
                 if changed {
@@ -268,7 +321,35 @@ impl SessionSuggestionsService {
                 name,
                 cwd,
                 card_for_client,
-            } => self.session_started(name, cwd, card_for_client),
+                startup_card,
+            } => self.session_started(name, cwd, card_for_client, startup_card),
+            SessionSuggestionsJob::ClientReattached {
+                client_id,
+                away_since_ms,
+                startup_card,
+            } => {
+                let rule = startup_card.unwrap_or(self.startup_card);
+                if rule != StartupCard::Never {
+                    self.ensure_index();
+                    self.pending_card = Some(PendingCard {
+                        client_id,
+                        away_since_ms: Some(away_since_ms),
+                        rule,
+                        deadline: Instant::now() + STARTUP_CARD_MAX_WAIT,
+                    });
+                    if self.global_scanned {
+                        self.decide_pending_card();
+                    }
+                }
+            },
+            SessionSuggestionsJob::GlobalAttentionChanged { needs_you, scanned } => {
+                self.global_needs_you = needs_you;
+                self.global_scanned |= scanned;
+                if self.global_scanned && self.pending_card.is_some() {
+                    self.decide_pending_card();
+                }
+                self.report_counts_to_subscribers();
+            },
             SessionSuggestionsJob::SessionRenamed { old_name, new_name } => {
                 // The screen has already renamed the session's index row (by id).
                 if self.session_name.as_deref() == Some(old_name.as_str()) {
@@ -372,25 +453,55 @@ impl SessionSuggestionsService {
         name: String,
         cwd: Option<PathBuf>,
         card_for_client: Option<ClientId>,
+        startup_card: Option<StartupCard>,
     ) {
         self.session_name = Some(name.clone());
-        if self.session_card || self.session_indicator {
+        if self.startup_card != StartupCard::Never || self.session_indicator {
             self.ensure_index();
             if self.enabled() {
                 self.record_started_session(&name, cwd);
             }
         }
         self.start_reporting_counts();
-        if let (Some(client_id), true) = (card_for_client, self.session_card) {
-            let names_by_id = match self.index.as_ref() {
-                Some(index) => index.names_by_id().unwrap_or_default(),
-                None => zellij_utils::session_index::session_names_by_id(),
-            };
-            if other_sessions_are_running(&self.sock_dir, &name, &names_by_id) {
-                let _ = self
-                    .senders
-                    .send_to_screen(ScreenInstruction::OpenSessionCard(client_id));
+        let rule = startup_card.unwrap_or(self.startup_card);
+        if let (Some(client_id), true) = (card_for_client, rule != StartupCard::Never) {
+            self.pending_card = Some(PendingCard {
+                client_id,
+                away_since_ms: None,
+                rule,
+                deadline: Instant::now() + STARTUP_CARD_MAX_WAIT,
+            });
+            if self.global_scanned {
+                self.decide_pending_card();
             }
+        }
+    }
+
+    fn decide_pending_card(&mut self) {
+        let Some(card) = self.pending_card.take() else {
+            return;
+        };
+        let own_name = self.own_name();
+        let names_by_id = match self.index.as_ref() {
+            Some(index) => index.names_by_id().unwrap_or_default(),
+            None => zellij_utils::session_index::session_names_by_id(),
+        };
+        let other_live_sessions = self
+            .live_sessions
+            .retain_live(zellij_utils::session_index::running_session_names_in(
+                &self.sock_dir,
+                &names_by_id,
+            ))
+            .into_iter()
+            .filter(|name| name != &own_name)
+            .count();
+        if startup_card_should_open(card.rule, self.global_needs_you, other_live_sessions) {
+            let _ = self
+                .senders
+                .send_to_screen(ScreenInstruction::OpenSessionCard(
+                    card.client_id,
+                    card.away_since_ms,
+                ));
         }
     }
 
@@ -551,8 +662,9 @@ impl SessionSuggestionsService {
             return (SessionCounts::default(), None);
         };
         let now = now_secs();
-        let running = index
-            .running_session_names()
+        let live_sessions = self.live_sessions.clone();
+        let running = live_sessions
+            .retain_live(index.running_session_names())
             .into_iter()
             .filter(|n| n != &own_name)
             .count() as u32;
@@ -574,7 +686,15 @@ impl SessionSuggestionsService {
             let mut sorted = candidates;
             sorted.sort_by(|a, b| b.row.last_used_at.cmp(&a.row.last_used_at));
             for candidate in sorted {
-                match candidate.state {
+                let state = match candidate.state {
+                    SessionState::Running
+                        if live_sessions.is_live(&candidate.row.name) == Some(false) =>
+                    {
+                        SessionState::Resumable
+                    },
+                    state => state,
+                };
+                match state {
                     SessionState::Running => {
                         if context.branch.is_some()
                             && candidate.row.context.branch == context.branch
@@ -688,6 +808,18 @@ impl SessionSuggestionsService {
                 .unwrap_or_default(),
             None => vec![],
         };
+        let live_sessions = self.live_sessions.clone();
+        let candidates = candidates
+            .into_iter()
+            .map(|mut candidate| {
+                if candidate.state == SessionState::Running
+                    && live_sessions.is_live(&candidate.row.name) == Some(false)
+                {
+                    candidate.state = SessionState::Resumable;
+                }
+                candidate
+            })
+            .collect();
         let ranked = rank_candidates(&context, &rules, then, candidates, &column_facts);
         let base = SessionSuggestions {
             folder: context.folder.as_ref().map(|f| folder_key(f)),
@@ -786,16 +918,6 @@ impl SessionSuggestionsService {
             },
         }
     }
-}
-
-fn other_sessions_are_running(
-    sock_dir: &Path,
-    own_name: &str,
-    names_by_id: &HashMap<String, String>,
-) -> bool {
-    zellij_utils::session_index::running_session_names_in(sock_dir, names_by_id)
-        .iter()
-        .any(|name| name != own_name)
 }
 
 fn script_candidates(ranked: &[RankedCandidate]) -> Vec<RankedCandidate> {
@@ -1144,27 +1266,13 @@ mod tests {
         assert!(tabs[1].panes.is_empty());
     }
 
-    #[cfg(unix)]
     #[test]
-    fn only_sessions_other_than_this_one_count_as_running() {
-        let sock_dir =
-            std::env::temp_dir().join(format!("zellij-other-sessions-test-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&sock_dir);
-        std::fs::create_dir_all(&sock_dir).unwrap();
-        let no_names = HashMap::new();
-        assert!(!other_sessions_are_running(&sock_dir, "me", &no_names));
-        std::fs::write(sock_dir.join("me"), b"").unwrap();
-        std::fs::write(sock_dir.join("web_server_bus"), b"").unwrap();
-        std::fs::write(sock_dir.join("other-reply"), b"").unwrap();
-        assert!(!other_sessions_are_running(&sock_dir, "me", &no_names));
-        // A socket named by a session id stands for the session with that id.
-        std::fs::write(sock_dir.join("0123456789ab"), b"").unwrap();
-        let names_by_id = HashMap::from([("0123456789ab".to_owned(), "me".to_owned())]);
-        assert!(!other_sessions_are_running(&sock_dir, "me", &names_by_id));
-        assert!(other_sessions_are_running(&sock_dir, "me", &no_names));
-        std::fs::write(sock_dir.join("other"), b"").unwrap();
-        assert!(other_sessions_are_running(&sock_dir, "me", &names_by_id));
-        let _ = std::fs::remove_dir_all(&sock_dir);
+    fn the_startup_card_rule() {
+        assert!(!startup_card_should_open(StartupCard::Never, 3, 3));
+        assert!(startup_card_should_open(StartupCard::Always, 0, 1));
+        assert!(!startup_card_should_open(StartupCard::Always, 2, 0));
+        assert!(startup_card_should_open(StartupCard::Attention, 1, 0));
+        assert!(!startup_card_should_open(StartupCard::Attention, 0, 5));
     }
 
     fn service_capturing_screen(
@@ -1191,74 +1299,115 @@ mod tests {
             ScreenInstruction,
             zellij_utils::errors::ErrorContext,
         )>,
-    ) -> Vec<ClientId> {
+    ) -> Vec<(ClientId, Option<u64>)> {
         screen_receiver
             .try_iter()
             .filter_map(|(instruction, _)| match instruction {
-                ScreenInstruction::OpenSessionCard(client_id) => Some(client_id),
+                ScreenInstruction::OpenSessionCard(client_id, away_since_ms) => {
+                    Some((client_id, away_since_ms))
+                },
                 _ => None,
             })
             .collect()
     }
 
-    fn configure_session_card(service: &mut SessionSuggestionsService, session_card: bool) {
+    fn configure_startup_card(service: &mut SessionSuggestionsService, startup_card: StartupCard) {
         service.handle(SessionSuggestionsJob::Configure {
             config: SessionSuggestionsConfig::default(),
-            session_card,
+            startup_card,
             session_indicator: false,
         });
     }
 
-    #[cfg(unix)]
-    #[test]
-    fn the_startup_card_opens_only_when_another_session_is_running() {
-        let sock_dir = tempfile::tempdir().unwrap();
-        std::fs::write(sock_dir.path().join("me"), b"").unwrap();
-        let (mut service, screen_receiver) = service_capturing_screen(sock_dir.path());
-        configure_session_card(&mut service, true);
+    fn start(service: &mut SessionSuggestionsService, card_for_client: Option<ClientId>) {
         service.handle(SessionSuggestionsJob::SessionStarted {
             name: "me".to_owned(),
             cwd: None,
-            card_for_client: Some(1),
+            card_for_client,
+            startup_card: None,
         });
-        assert!(card_openings(&screen_receiver).is_empty());
-        std::fs::write(sock_dir.path().join("other"), b"").unwrap();
-        service.handle(SessionSuggestionsJob::SessionStarted {
-            name: "me".to_owned(),
-            cwd: None,
-            card_for_client: Some(1),
-        });
-        assert_eq!(card_openings(&screen_receiver), vec![1]);
     }
 
     #[cfg(unix)]
     #[test]
-    fn the_startup_card_stays_closed_without_a_client_to_show_it_to() {
+    fn the_startup_card_opens_when_something_needs_you() {
+        let sock_dir = tempfile::tempdir().unwrap();
+        let (mut service, screen_receiver) = service_capturing_screen(sock_dir.path());
+        configure_startup_card(&mut service, StartupCard::Attention);
+        start(&mut service, Some(1));
+        service.handle(SessionSuggestionsJob::GlobalAttentionChanged {
+            needs_you: 0,
+            scanned: true,
+        });
+        assert!(card_openings(&screen_receiver).is_empty());
+        service.handle(SessionSuggestionsJob::GlobalAttentionChanged {
+            needs_you: 2,
+            scanned: true,
+        });
+        assert!(card_openings(&screen_receiver).is_empty());
+        start(&mut service, Some(1));
+        assert_eq!(card_openings(&screen_receiver), vec![(1, None)]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn another_running_session_alone_no_longer_opens_the_card() {
         let sock_dir = tempfile::tempdir().unwrap();
         std::fs::write(sock_dir.path().join("other"), b"").unwrap();
         let (mut service, screen_receiver) = service_capturing_screen(sock_dir.path());
-        configure_session_card(&mut service, true);
+        configure_startup_card(&mut service, StartupCard::Attention);
+        service.handle(SessionSuggestionsJob::GlobalAttentionChanged {
+            needs_you: 0,
+            scanned: true,
+        });
+        start(&mut service, Some(1));
+        assert!(card_openings(&screen_receiver).is_empty());
+        configure_startup_card(&mut service, StartupCard::Always);
+        start(&mut service, Some(1));
+        assert_eq!(card_openings(&screen_receiver), vec![(1, None)]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_startup_card_stays_closed_without_a_client_or_when_turned_off() {
+        let sock_dir = tempfile::tempdir().unwrap();
+        let (mut service, screen_receiver) = service_capturing_screen(sock_dir.path());
+        configure_startup_card(&mut service, StartupCard::Attention);
+        service.handle(SessionSuggestionsJob::GlobalAttentionChanged {
+            needs_you: 1,
+            scanned: true,
+        });
+        start(&mut service, None);
+        assert!(card_openings(&screen_receiver).is_empty());
+        configure_startup_card(&mut service, StartupCard::Never);
+        start(&mut service, Some(1));
+        assert!(card_openings(&screen_receiver).is_empty());
+        configure_startup_card(&mut service, StartupCard::Attention);
         service.handle(SessionSuggestionsJob::SessionStarted {
             name: "me".to_owned(),
             cwd: None,
-            card_for_client: None,
+            card_for_client: Some(1),
+            startup_card: Some(StartupCard::Never),
         });
         assert!(card_openings(&screen_receiver).is_empty());
     }
 
     #[cfg(unix)]
     #[test]
-    fn the_startup_card_stays_closed_when_turned_off() {
+    fn a_reattach_opens_the_card_with_the_time_away() {
         let sock_dir = tempfile::tempdir().unwrap();
-        std::fs::write(sock_dir.path().join("other"), b"").unwrap();
         let (mut service, screen_receiver) = service_capturing_screen(sock_dir.path());
-        configure_session_card(&mut service, false);
-        service.handle(SessionSuggestionsJob::SessionStarted {
-            name: "me".to_owned(),
-            cwd: None,
-            card_for_client: Some(1),
+        configure_startup_card(&mut service, StartupCard::Attention);
+        service.handle(SessionSuggestionsJob::GlobalAttentionChanged {
+            needs_you: 1,
+            scanned: true,
         });
-        assert!(card_openings(&screen_receiver).is_empty());
+        service.handle(SessionSuggestionsJob::ClientReattached {
+            client_id: 4,
+            away_since_ms: 1234,
+            startup_card: None,
+        });
+        assert_eq!(card_openings(&screen_receiver), vec![(4, Some(1234))]);
     }
 
     #[test]

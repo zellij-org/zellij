@@ -30,6 +30,32 @@ impl IdleRuleScope {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+pub enum StartupCard {
+    #[default]
+    Attention,
+    Always,
+    Never,
+}
+
+impl StartupCard {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            StartupCard::Attention => "attention",
+            StartupCard::Always => "always",
+            StartupCard::Never => "never",
+        }
+    }
+    pub fn from_str(value: &str) -> Option<Self> {
+        match value {
+            "attention" => Some(StartupCard::Attention),
+            "always" => Some(StartupCard::Always),
+            "never" => Some(StartupCard::Never),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 pub struct AttentionConfig {
     pub frame_markers: Option<bool>,
@@ -38,6 +64,7 @@ pub struct AttentionConfig {
     pub done_threshold_secs: Option<u64>,
     pub idle_activity_secs: Option<u64>,
     pub idle_silence_secs: Option<u64>,
+    pub startup_card: Option<StartupCard>,
 }
 
 fn kdl_error(message: String, node: &KdlNode) -> ConfigError {
@@ -91,6 +118,9 @@ impl AttentionConfig {
     pub fn idle_silence_secs(&self) -> u64 {
         self.idle_silence_secs.unwrap_or(DEFAULT_IDLE_SILENCE_SECS)
     }
+    pub fn startup_card(&self) -> StartupCard {
+        self.startup_card.unwrap_or_default()
+    }
 
     pub fn from_kdl(kdl: &KdlNode) -> Result<Self, ConfigError> {
         let mut config = AttentionConfig::default();
@@ -105,15 +135,23 @@ impl AttentionConfig {
                     let value = first_value(node).and_then(|v| v.as_string());
                     config.idle_rule =
                         Some(value.and_then(IdleRuleScope::from_str).ok_or_else(|| {
-                            kdl_error(
-                                "idle_rule must be \"all\" or \"watched\"".to_owned(),
-                                node,
-                            )
+                            kdl_error("idle_rule must be \"all\" or \"watched\"".to_owned(), node)
                         })?);
                 },
                 "done_threshold_secs" => config.done_threshold_secs = Some(secs_value(node)?),
                 "idle_activity_secs" => config.idle_activity_secs = Some(secs_value(node)?),
                 "idle_silence_secs" => config.idle_silence_secs = Some(secs_value(node)?),
+                "startup_card" => {
+                    let value = first_value(node).and_then(|v| v.as_string());
+                    config.startup_card =
+                        Some(value.and_then(StartupCard::from_str).ok_or_else(|| {
+                            kdl_error(
+                                "startup_card must be \"attention\", \"always\" or \"never\""
+                                    .to_owned(),
+                                node,
+                            )
+                        })?);
+                },
                 other => {
                     return Err(kdl_error(
                         format!("Unknown attention setting \"{}\"", other),
@@ -154,6 +192,9 @@ impl AttentionConfig {
         if let Some(v) = self.idle_silence_secs {
             push("idle_silence_secs", KdlValue::Base10(v as i64));
         }
+        if let Some(v) = self.startup_card {
+            push("startup_card", KdlValue::String(v.as_str().to_owned()));
+        }
         node.set_children(children);
         Some(node)
     }
@@ -166,6 +207,7 @@ impl AttentionConfig {
             done_threshold_secs: other.done_threshold_secs.or(self.done_threshold_secs),
             idle_activity_secs: other.idle_activity_secs.or(self.idle_activity_secs),
             idle_silence_secs: other.idle_silence_secs.or(self.idle_silence_secs),
+            startup_card: other.startup_card.or(self.startup_card),
         }
     }
 }
@@ -188,6 +230,7 @@ mod tests {
         assert_eq!(config.done_threshold_secs(), 10);
         assert_eq!(config.idle_activity_secs(), 10);
         assert_eq!(config.idle_silence_secs(), 3);
+        assert_eq!(config.startup_card(), StartupCard::Attention);
         assert_eq!(config.to_kdl(), None);
     }
 
@@ -202,6 +245,7 @@ mod tests {
                 done_threshold_secs 5
                 idle_activity_secs 20
                 idle_silence_secs 4
+                startup_card "never"
             }
             "#,
         )
@@ -210,6 +254,7 @@ mod tests {
         assert!(!config.host_status());
         assert_eq!(config.idle_rule(), IdleRuleScope::Watched);
         assert_eq!(config.done_threshold_secs(), 5);
+        assert_eq!(config.startup_card(), StartupCard::Never);
         let reparsed = AttentionConfig::from_kdl(&config.to_kdl().unwrap()).unwrap();
         assert_eq!(config, reparsed);
     }
@@ -220,6 +265,7 @@ mod tests {
         assert!(parse("attention {\n frame_markers 3\n}").is_err());
         assert!(parse("attention {\n idle_silence_secs -1\n}").is_err());
         assert!(parse("attention {\n colour true\n}").is_err());
+        assert!(parse("attention {\n startup_card \"sometimes\"\n}").is_err());
     }
 
     #[test]

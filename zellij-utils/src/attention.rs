@@ -608,6 +608,186 @@ impl SessionAttention {
     }
 }
 
+impl AttentionCounts {
+    pub fn of(&self, status: AttentionStatus) -> usize {
+        match status {
+            AttentionStatus::NeedsYou => self.needs_you,
+            AttentionStatus::Failed => self.failed,
+            AttentionStatus::Done => self.done,
+            AttentionStatus::Working => self.working,
+            AttentionStatus::Quiet => self.quiet,
+            AttentionStatus::NewOutput => self.new_output,
+            AttentionStatus::Idle => 0,
+        }
+    }
+}
+
+pub const CURRENT_SESSION_LABEL: &str = "here";
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+pub struct GlobalSessionAttention {
+    pub name: String,
+    pub is_current: bool,
+    pub attention: SessionAttention,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct GlobalAttentionItem {
+    pub session: String,
+    pub is_current: bool,
+    pub item: AttentionItem,
+}
+
+impl GlobalAttentionItem {
+    pub fn is_counted(&self) -> bool {
+        !self.item.attention.is_muted() && self.item.attention.status.is_counted()
+    }
+    pub fn is_muted(&self) -> bool {
+        self.item.attention.is_muted()
+    }
+    pub fn is_activity(&self) -> bool {
+        !self.is_muted()
+            && matches!(
+                self.item.attention.status,
+                AttentionStatus::Quiet | AttentionStatus::NewOutput
+            )
+    }
+    pub fn session_label(&self) -> String {
+        if self.is_current {
+            CURRENT_SESSION_LABEL.to_owned()
+        } else {
+            sanitize_display_text(&self.session)
+        }
+    }
+    pub fn pane_label(&self) -> String {
+        let pane = sanitize_display_text(&self.item.pane_title);
+        if pane.is_empty() {
+            sanitize_display_text(&self.item.tab_name)
+        } else {
+            pane
+        }
+    }
+    pub fn place(&self) -> String {
+        format!("{} {}", self.session_label(), self.pane_label())
+    }
+    pub fn text(&self) -> String {
+        sanitize_display_text(&self.item.attention.text)
+    }
+    pub fn is_same_pane(&self, session: &str, pane_id: &PaneId) -> bool {
+        self.session == session && &self.item.pane_id == pane_id
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+pub struct GlobalAttention {
+    pub current_session: String,
+    pub sessions: Vec<GlobalSessionAttention>,
+    pub items: Vec<GlobalAttentionItem>,
+    pub counts: AttentionCounts,
+    pub status: AttentionStatus,
+}
+
+impl GlobalAttention {
+    pub fn build(current_session: &str, sessions: Vec<(String, SessionAttention)>) -> Self {
+        let mut sessions: Vec<GlobalSessionAttention> = sessions
+            .into_iter()
+            .map(|(name, attention)| GlobalSessionAttention {
+                is_current: name == current_session,
+                name,
+                attention,
+            })
+            .collect();
+        sessions.sort_by(|a, b| b.is_current.cmp(&a.is_current).then(a.name.cmp(&b.name)));
+        sessions.dedup_by(|a, b| a.name == b.name);
+        let mut counts = AttentionCounts::default();
+        let mut items = vec![];
+        for session in &sessions {
+            counts.merge(&session.attention.counts);
+            for item in &session.attention.items {
+                items.push(GlobalAttentionItem {
+                    session: session.name.clone(),
+                    is_current: session.is_current,
+                    item: item.clone(),
+                });
+            }
+        }
+        items.sort_by(|a, b| {
+            b.item
+                .attention
+                .effective_status()
+                .cmp(&a.item.attention.effective_status())
+                .then(b.item.attention.since_ms.cmp(&a.item.attention.since_ms))
+                .then(b.is_current.cmp(&a.is_current))
+                .then(a.session.cmp(&b.session))
+        });
+        GlobalAttention {
+            current_session: current_session.to_owned(),
+            sessions,
+            items,
+            status: counts.highest_counted(),
+            counts,
+        }
+    }
+    pub fn running(&self) -> usize {
+        self.sessions.len()
+    }
+    pub fn has_session(&self, name: &str) -> bool {
+        self.sessions.iter().any(|s| s.name == name)
+    }
+    pub fn session(&self, name: &str) -> Option<&GlobalSessionAttention> {
+        self.sessions.iter().find(|s| s.name == name)
+    }
+    pub fn top(&self) -> Option<(AttentionStatus, usize)> {
+        let status = self.counts.highest_counted();
+        if status.is_idle() {
+            None
+        } else {
+            Some((status, self.counts.of(status)))
+        }
+    }
+    pub fn counted_items(&self) -> Vec<&GlobalAttentionItem> {
+        self.items.iter().filter(|i| i.is_counted()).collect()
+    }
+    pub fn activity_items(&self) -> Vec<&GlobalAttentionItem> {
+        self.items.iter().filter(|i| i.is_activity()).collect()
+    }
+    pub fn muted_items(&self) -> Vec<&GlobalAttentionItem> {
+        self.items.iter().filter(|i| i.is_muted()).collect()
+    }
+    pub fn find(&self, session: &str, pane_id: &PaneId) -> Option<&GlobalAttentionItem> {
+        self.items.iter().find(|i| i.is_same_pane(session, pane_id))
+    }
+    pub fn next_counted_after(
+        &self,
+        session: &str,
+        pane_id: Option<&PaneId>,
+    ) -> Option<&GlobalAttentionItem> {
+        let counted = self.counted_items();
+        if counted.is_empty() {
+            return None;
+        }
+        let position = pane_id.and_then(|pane_id| {
+            counted
+                .iter()
+                .position(|item| item.is_same_pane(session, pane_id))
+        });
+        match position {
+            Some(_) if counted.len() == 1 => None,
+            Some(position) => Some(counted[(position + 1) % counted.len()]),
+            None => Some(counted[0]),
+        }
+    }
+    pub fn without_command_text(mut self) -> Self {
+        for session in self.sessions.iter_mut() {
+            session.attention = std::mem::take(&mut session.attention).without_command_text();
+        }
+        for item in self.items.iter_mut() {
+            item.item.attention = item.item.attention.clone().without_command_text();
+        }
+        self
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct HostProgramStatus {
     pub state: String,
@@ -723,8 +903,14 @@ mod tests {
 
     #[test]
     fn command_result_from_exit() {
-        assert_eq!(CommandResult::from_exit(Some(0), None), CommandResult::Succeeded);
-        assert_eq!(CommandResult::from_exit(Some(1), None), CommandResult::Failed);
+        assert_eq!(
+            CommandResult::from_exit(Some(0), None),
+            CommandResult::Succeeded
+        );
+        assert_eq!(
+            CommandResult::from_exit(Some(1), None),
+            CommandResult::Failed
+        );
         assert_eq!(CommandResult::from_exit(None, None), CommandResult::Unknown);
         assert_eq!(
             CommandResult::from_exit(Some(0), Some("CANCEL")),
@@ -734,7 +920,10 @@ mod tests {
             CommandResult::from_exit(Some(0), Some("")),
             CommandResult::Succeeded
         );
-        assert_eq!(CommandResult::from_exit(None, Some("")), CommandResult::Succeeded);
+        assert_eq!(
+            CommandResult::from_exit(None, Some("")),
+            CommandResult::Succeeded
+        );
     }
 
     #[test]
@@ -763,6 +952,141 @@ mod tests {
         assert_eq!(counts.muted, 1);
         assert_eq!(counts.new_output, 1);
         assert_eq!(counts.highest_counted(), AttentionStatus::Failed);
+    }
+
+    fn session_with(items: Vec<(u32, AttentionStatus, u64, bool)>) -> SessionAttention {
+        let mut counts = AttentionCounts::default();
+        let items: Vec<AttentionItem> = items
+            .into_iter()
+            .map(|(id, status, since_ms, muted)| {
+                let attention = PaneAttention {
+                    status,
+                    source: Some(AttentionSource::ShellCommand),
+                    text: format!("exited {}: secret", id),
+                    since_ms,
+                    muted: if muted { Some(MuteScope::Pane) } else { None },
+                    ..Default::default()
+                };
+                counts.add(&attention);
+                AttentionItem {
+                    pane_id: PaneId::Terminal(id),
+                    tab_id: 0,
+                    tab_name: "tab".to_owned(),
+                    pane_title: format!("pane{}", id),
+                    attention,
+                }
+            })
+            .collect();
+        SessionAttention {
+            status: counts.highest_counted(),
+            counts,
+            items,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn global_attention_merges_sorts_and_counts_every_session() {
+        let global = GlobalAttention::build(
+            "here",
+            vec![
+                (
+                    "api".to_owned(),
+                    session_with(vec![
+                        (1, AttentionStatus::Done, 50, false),
+                        (2, AttentionStatus::NeedsYou, 10, true),
+                    ]),
+                ),
+                (
+                    "here".to_owned(),
+                    session_with(vec![
+                        (1, AttentionStatus::NeedsYou, 20, false),
+                        (3, AttentionStatus::NewOutput, 90, false),
+                    ]),
+                ),
+                (
+                    "build".to_owned(),
+                    session_with(vec![(4, AttentionStatus::NeedsYou, 30, false)]),
+                ),
+            ],
+        );
+        assert_eq!(global.running(), 3);
+        assert_eq!(global.sessions[0].name, "here");
+        assert_eq!(global.counts.needs_you, 2);
+        assert_eq!(global.counts.done, 1);
+        assert_eq!(global.counts.muted, 1);
+        assert_eq!(global.top(), Some((AttentionStatus::NeedsYou, 2)));
+        let order: Vec<(String, PaneId)> = global
+            .items
+            .iter()
+            .map(|i| (i.session.clone(), i.item.pane_id))
+            .collect();
+        assert_eq!(
+            order,
+            vec![
+                ("build".to_owned(), PaneId::Terminal(4)),
+                ("here".to_owned(), PaneId::Terminal(1)),
+                ("api".to_owned(), PaneId::Terminal(1)),
+                ("here".to_owned(), PaneId::Terminal(3)),
+                ("api".to_owned(), PaneId::Terminal(2)),
+            ]
+        );
+        assert_eq!(global.counted_items().len(), 3);
+        assert_eq!(global.activity_items().len(), 1);
+        assert_eq!(global.muted_items().len(), 1);
+        assert_eq!(global.items[1].place(), "here pane1");
+        assert_eq!(global.items[0].place(), "build pane4");
+    }
+
+    #[test]
+    fn next_counted_item_wraps_and_skips_activity() {
+        let global = GlobalAttention::build(
+            "here",
+            vec![
+                (
+                    "here".to_owned(),
+                    session_with(vec![
+                        (1, AttentionStatus::NeedsYou, 20, false),
+                        (3, AttentionStatus::NewOutput, 90, false),
+                    ]),
+                ),
+                (
+                    "api".to_owned(),
+                    session_with(vec![(2, AttentionStatus::Failed, 10, false)]),
+                ),
+            ],
+        );
+        let first = global.next_counted_after("here", None).unwrap();
+        assert!(first.is_same_pane("here", &PaneId::Terminal(1)));
+        let second = global
+            .next_counted_after("here", Some(&PaneId::Terminal(1)))
+            .unwrap();
+        assert!(second.is_same_pane("api", &PaneId::Terminal(2)));
+        let wrapped = global
+            .next_counted_after("api", Some(&PaneId::Terminal(2)))
+            .unwrap();
+        assert!(wrapped.is_same_pane("here", &PaneId::Terminal(1)));
+        let from_activity = global
+            .next_counted_after("here", Some(&PaneId::Terminal(3)))
+            .unwrap();
+        assert!(from_activity.is_same_pane("here", &PaneId::Terminal(1)));
+    }
+
+    #[test]
+    fn global_attention_can_drop_command_text() {
+        let global = GlobalAttention::build(
+            "here",
+            vec![(
+                "api".to_owned(),
+                session_with(vec![(1, AttentionStatus::Failed, 1, false)]),
+            )],
+        )
+        .without_command_text();
+        assert_eq!(global.items[0].item.attention.text, "exited 1");
+        assert_eq!(
+            global.sessions[0].attention.items[0].attention.text,
+            "exited 1"
+        );
     }
 
     #[test]

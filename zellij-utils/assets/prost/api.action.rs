@@ -307,7 +307,7 @@ pub struct OverrideLayoutPayload {
 pub struct Action {
     #[prost(enumeration="ActionName", tag="1")]
     pub name: i32,
-    #[prost(oneof="action::OptionalPayload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68")]
+    #[prost(oneof="action::OptionalPayload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69")]
     pub optional_payload: ::core::option::Option<action::OptionalPayload>,
 }
 /// Nested message and enum types in `Action`.
@@ -443,7 +443,17 @@ pub mod action {
         MoveTabByTabIdPayload(super::MoveTabByTabIdPayload),
         #[prost(message, tag="68")]
         MoveTabToPositionPayload(super::MoveTabToPositionPayload),
+        #[prost(message, tag="69")]
+        SessionPanePayload(super::SessionPanePayload),
     }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SessionPanePayload {
+    #[prost(string, optional, tag="1")]
+    pub session: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, optional, tag="2")]
+    pub pane_id: ::core::option::Option<PaneId>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1236,6 +1246,12 @@ pub enum ActionName {
     MuteTab = 136,
     MuteTabByTabId = 137,
     MuteSession = 138,
+    ToggleSession = 139,
+    GoBack = 140,
+    GoForward = 141,
+    GoToNextAttention = 142,
+    MarkPaneSeen = 143,
+    MarkAllSeen = 144,
 }
 impl ActionName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1380,6 +1396,12 @@ impl ActionName {
             ActionName::MuteTab => "MuteTab",
             ActionName::MuteTabByTabId => "MuteTabByTabId",
             ActionName::MuteSession => "MuteSession",
+            ActionName::ToggleSession => "ToggleSession",
+            ActionName::GoBack => "GoBack",
+            ActionName::GoForward => "GoForward",
+            ActionName::GoToNextAttention => "GoToNextAttention",
+            ActionName::MarkPaneSeen => "MarkPaneSeen",
+            ActionName::MarkAllSeen => "MarkAllSeen",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1521,6 +1543,12 @@ impl ActionName {
             "MuteTab" => Some(Self::MuteTab),
             "MuteTabByTabId" => Some(Self::MuteTabByTabId),
             "MuteSession" => Some(Self::MuteSession),
+            "ToggleSession" => Some(Self::ToggleSession),
+            "GoBack" => Some(Self::GoBack),
+            "GoForward" => Some(Self::GoForward),
+            "GoToNextAttention" => Some(Self::GoToNextAttention),
+            "MarkPaneSeen" => Some(Self::MarkPaneSeen),
+            "MarkAllSeen" => Some(Self::MarkAllSeen),
             _ => None,
         }
     }

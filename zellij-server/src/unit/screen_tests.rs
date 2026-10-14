@@ -774,6 +774,7 @@ impl MockScreen {
             applied_env: self.session_metadata.applied_env.clone(),
             sent_window_settings: self.session_metadata.sent_window_settings.clone(),
             font_families: self.session_metadata.font_families.clone(),
+            live_sessions: self.session_metadata.live_sessions.clone(),
             key_passthrough_clients: self.session_metadata.key_passthrough_clients.clone(),
             popup_clients: self.session_metadata.popup_clients.clone(),
             modal_popup_clients: self.session_metadata.modal_popup_clients.clone(),
@@ -836,6 +837,7 @@ impl MockScreen {
             applied_env: Default::default(),
             sent_window_settings: Default::default(),
             font_families: Default::default(),
+            live_sessions: Default::default(),
             key_passthrough_clients: Default::default(),
             popup_clients: Default::default(),
             modal_popup_clients: Default::default(),
@@ -14705,6 +14707,98 @@ mod nested_hint_reporting {
             .collect()
     }
 
+    fn modal_shown(harness: &Harness) -> bool {
+        harness
+            .screen
+            .tabs
+            .values()
+            .any(|tab| tab.pane_has_guest_modal_for_client(PaneId::Terminal(1), 1))
+    }
+
+    fn announce_session(harness: &mut Harness, session_name: &str) {
+        harness.screen.handle_nested_session_message_from_pane(
+            PaneId::Terminal(1),
+            NestedSessionMessage::Announce {
+                session_name: session_name.to_owned(),
+                capabilities: vec![NestedSessionCapability::NestedControl],
+            },
+        );
+    }
+
+    #[test]
+    fn a_guest_switching_sessions_keeps_the_choice_and_shows_no_dialogue() {
+        let mut harness = Harness::new();
+        announce_session(&mut harness, "inner");
+        assert!(modal_shown(&harness));
+        harness.descend_into_guest();
+        assert!(!modal_shown(&harness));
+        let _ = harness.frames_written_to_guest();
+        announce_session(&mut harness, "other-inner");
+        assert!(!modal_shown(&harness));
+        assert!(
+            harness
+                .frames_written_to_guest()
+                .contains(&NestedSessionMessage::FocusGained {
+                    from_direction: None
+                }),
+            "the client of the new guest session must be told that it has control"
+        );
+        assert_eq!(
+            harness
+                .screen
+                .nested_guest_choices
+                .get(&(1, PaneId::Terminal(1))),
+            Some(&super::super::NestedGuestChoice::Descend)
+        );
+    }
+
+    #[test]
+    fn a_zoomed_guest_switching_sessions_is_told_it_is_still_fullscreen() {
+        let mut harness = Harness::new();
+        announce_session(&mut harness, "inner");
+        harness.screen.handle_guest_modal_choice(
+            1,
+            PaneId::Terminal(1),
+            super::super::GuestModalOutcome::Zoom,
+        );
+        let _ = harness.frames_written_to_guest();
+        announce_session(&mut harness, "other-inner");
+        let frames = harness.frames_written_to_guest();
+        assert!(
+            frames.contains(&NestedSessionMessage::FullscreenState { fullscreen: true }),
+            "{:?}",
+            frames
+        );
+        assert!(frames.contains(&NestedSessionMessage::FocusGained {
+            from_direction: None
+        }));
+    }
+
+    #[test]
+    fn a_reannouncing_guest_that_is_not_controlled_is_not_given_focus() {
+        let mut harness = Harness::new();
+        announce_session(&mut harness, "inner");
+        let _ = harness.frames_written_to_guest();
+        announce_session(&mut harness, "other-inner");
+        assert!(!harness
+            .frames_written_to_guest()
+            .iter()
+            .any(|frame| matches!(frame, NestedSessionMessage::FocusGained { .. })));
+    }
+
+    #[test]
+    fn a_guest_that_left_and_came_back_is_asked_again() {
+        let mut harness = Harness::new();
+        announce_session(&mut harness, "inner");
+        harness.descend_into_guest();
+        harness.screen.handle_nested_session_message_from_pane(
+            PaneId::Terminal(1),
+            NestedSessionMessage::Bye,
+        );
+        announce_session(&mut harness, "inner");
+        assert!(modal_shown(&harness));
+    }
+
     #[test]
     fn a_plugin_pane_is_not_a_nested_session() {
         let mut harness = Harness::new();
@@ -19117,12 +19211,12 @@ fn a_session_preview_shows_the_requested_pane_or_falls_back_to_the_focused_one()
         };
         tab.handle_pty_bytes(pid, text.as_bytes().to_vec()).unwrap();
     }
-    let preview = screen.session_preview(Some(0), Some((1, false)));
+    let preview = screen.session_preview(Some(0), Some((1, false)), None);
     assert!(preview.contents.contains("first pane text"));
     assert_eq!(preview.tab_index, Some(0));
-    let fallback = screen.session_preview(Some(1), Some((1, false)));
+    let fallback = screen.session_preview(Some(1), Some((1, false)), None);
     assert!(fallback.contents.contains("second pane text"));
-    let focused = screen.session_preview(None, None);
+    let focused = screen.session_preview(None, None, None);
     assert_eq!(focused.tab_names.len(), 2);
     assert_eq!(focused.tabs.len(), 2);
     assert_eq!(focused.tabs[0].panes.len(), 1);

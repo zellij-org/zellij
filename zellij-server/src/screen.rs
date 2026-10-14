@@ -967,7 +967,7 @@ pub enum ScreenInstruction {
         line: usize,
         column: usize,
     },
-    OpenSessionCard(ClientId),
+    OpenSessionCard(ClientId, Option<u64>),
     TerminalInputSubmitted(ClientId),
     TerminalEscapePressed(ClientId),
     ToggleSessionCard(ClientId, Option<NotificationEnd>),
@@ -985,7 +985,40 @@ pub enum ScreenInstruction {
     GetSessionPreview {
         tab_index: Option<usize>,
         pane_id: Option<(u32, bool)>,
+        anchor: Option<zellij_utils::data::PreviewAnchor>,
         response_channel: crossbeam::channel::Sender<zellij_utils::data::SessionPreview>,
+    },
+    GetSessionAttention {
+        include_command_text: bool,
+        response_channel: crossbeam::channel::Sender<zellij_utils::attention::SessionAttention>,
+    },
+    GlobalAttentionUpdate(zellij_utils::attention::GlobalAttention),
+    ClientSessionHistory {
+        client_id: ClientId,
+        history: zellij_utils::session_history::SessionHistory,
+        arrival: Option<zellij_utils::session_history::SessionArrival>,
+        arrived_from: Option<String>,
+    },
+    UpdateClientSessionHistory {
+        client_id: ClientId,
+        history: zellij_utils::session_history::SessionHistory,
+    },
+    GoToNextAttention(ClientId, Option<NotificationEnd>),
+    MarkPaneSeen {
+        session: Option<String>,
+        pane_id: Option<zellij_utils::data::PaneId>,
+        client_id: ClientId,
+        completion: Option<NotificationEnd>,
+    },
+    MarkAllSeen {
+        session: Option<String>,
+        completion: Option<NotificationEnd>,
+    },
+    SessionPaneCommand {
+        session_name: Option<String>,
+        command: SessionPaneCommand,
+        client_id: ClientId,
+        completion: Option<NotificationEnd>,
     },
     OpenPluginPopup {
         requesting_plugin_id: u32,
@@ -1486,6 +1519,16 @@ impl From<&ScreenInstruction> for ScreenContext {
             },
             ScreenInstruction::SetGraphemeClusters(..) => ScreenContext::SetGraphemeClusters,
             ScreenInstruction::GetSessionPreview { .. } => ScreenContext::GetSessionPreview,
+            ScreenInstruction::GetSessionAttention { .. } => ScreenContext::GetSessionAttention,
+            ScreenInstruction::GlobalAttentionUpdate(..) => ScreenContext::GlobalAttentionUpdate,
+            ScreenInstruction::ClientSessionHistory { .. }
+            | ScreenInstruction::UpdateClientSessionHistory { .. } => {
+                ScreenContext::ClientSessionHistory
+            },
+            ScreenInstruction::GoToNextAttention(..) => ScreenContext::GoToNextAttention,
+            ScreenInstruction::MarkPaneSeen { .. } => ScreenContext::MarkPaneSeen,
+            ScreenInstruction::MarkAllSeen { .. } => ScreenContext::MarkAllSeen,
+            ScreenInstruction::SessionPaneCommand { .. } => ScreenContext::SessionPaneCommand,
             ScreenInstruction::AddPopup { .. } => ScreenContext::AddPopup,
             ScreenInstruction::OpenPipePopup { .. } => ScreenContext::OpenPipePopup,
             ScreenInstruction::OpenPromptPopup { .. } => ScreenContext::OpenPromptPopup,
@@ -2024,6 +2067,23 @@ pub(crate) struct Screen {
     last_forwarded_osc7: HashMap<ClientId, Option<String>>,
     pub attention: crate::attention::AttentionTracker,
     last_session_attention: Option<zellij_utils::attention::SessionAttention>,
+    pub(crate) global_attention: Option<zellij_utils::attention::GlobalAttention>,
+    pub(crate) client_session_histories: HashMap<ClientId, attention::ClientSessionHistory>,
+    last_session_history_infos:
+        HashMap<ClientId, zellij_utils::session_history::SessionHistoryInfo>,
+    remote_actions: crate::session_link::RemoteActions,
+    pub(crate) pending_session_card_away_since: HashMap<ClientId, u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SessionPaneCommand {
+    MarkSeen(zellij_utils::data::PaneId),
+    Write(zellij_utils::data::PaneId, Vec<u8>),
+    Key(zellij_utils::data::PaneId, KeyWithModifier),
+    ToggleMute(zellij_utils::data::PaneId),
+    ToggleIgnoreOutput(zellij_utils::data::PaneId),
+    ToggleWatch(zellij_utils::data::PaneId),
+    Focus(zellij_utils::data::PaneId),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2364,6 +2424,11 @@ impl Screen {
             last_forwarded_osc7: HashMap::new(),
             attention: crate::attention::AttentionTracker::default(),
             last_session_attention: None,
+            global_attention: None,
+            client_session_histories: HashMap::new(),
+            last_session_history_infos: HashMap::new(),
+            remote_actions: crate::session_link::RemoteActions::default(),
+            pending_session_card_away_since: HashMap::new(),
         }
     }
 
@@ -4397,7 +4462,9 @@ impl Screen {
         if is_fresh {
             self.auto_apply_nested_session_handling(pane_id, &connected_client_ids);
         } else {
+            self.reported_guest_fullscreen.remove(&pane_id);
             self.revive_nested_guest(pane_id);
+            self.tell_reannounced_guest_it_has_focus(pane_id, terminal_id);
         }
         let _ = self.render(None);
         if announce_kind != AnnounceKind::Refresh {
@@ -4446,6 +4513,26 @@ impl Screen {
         }
         self.report_upward();
         let _ = self.log_and_report_session_state();
+    }
+
+    fn tell_reannounced_guest_it_has_focus(&self, pane_id: PaneId, terminal_id: u32) {
+        let client_ids: Vec<ClientId> = self.connected_clients.borrow().keys().copied().collect();
+        let controlled = client_ids.into_iter().any(|client_id| {
+            self.get_active_pane_id(&client_id) == Some(pane_id)
+                && self.should_route_keys_to_pane(client_id, pane_id)
+        });
+        if controlled {
+            let _ = self
+                .bus
+                .senders
+                .send_to_pty_writer(PtyWriteInstruction::Write(
+                    nested_session::encode_frame(&NestedSessionMessage::FocusGained {
+                        from_direction: None,
+                    }),
+                    terminal_id,
+                    None,
+                ));
+        }
     }
 
     fn revive_nested_guest(&mut self, pane_id: PaneId) {
@@ -10294,7 +10381,10 @@ pub(crate) fn screen_thread_main(
         )
         .ok()
         .and_then(|raw| SessionInfo::from_string(&raw, &session_name).ok());
-        if previous_metadata.map(|m| m.attention_muted).unwrap_or(false) {
+        if previous_metadata
+            .map(|m| m.attention_muted)
+            .unwrap_or(false)
+        {
             screen
                 .attention
                 .set_session_muted(true, crate::attention::now_ms());
@@ -12594,9 +12684,15 @@ pub(crate) fn screen_thread_main(
                 if screen.pending_session_card == Some(client_id) {
                     screen.pending_session_card = None;
                 }
+                screen.client_session_histories.remove(&client_id);
+                screen.last_session_history_infos.remove(&client_id);
+                screen.pending_session_card_away_since.remove(&client_id);
+                let was_attached = screen.connected_clients.borrow().contains_key(&client_id);
                 screen.remove_client(client_id).non_fatal();
-                screen.log_and_report_session_state().non_fatal();
-                screen.render(None).non_fatal();
+                if was_attached {
+                    screen.log_and_report_session_state().non_fatal();
+                    screen.render(None).non_fatal();
+                }
             },
             ScreenInstruction::UpdateSearch(
                 c,
@@ -14714,7 +14810,17 @@ pub(crate) fn screen_thread_main(
             } => {
                 screen.open_context_menu_from_plugin(plugin_id, client_id, target, line, column);
             },
-            ScreenInstruction::OpenSessionCard(client_id) => {
+            ScreenInstruction::OpenSessionCard(client_id, away_since_ms) => {
+                match away_since_ms {
+                    Some(away_since_ms) => {
+                        screen
+                            .pending_session_card_away_since
+                            .insert(client_id, away_since_ms);
+                    },
+                    None => {
+                        screen.pending_session_card_away_since.remove(&client_id);
+                    },
+                }
                 screen.open_session_card(client_id);
             },
             ScreenInstruction::TerminalInputSubmitted(client_id) => {
@@ -14750,10 +14856,77 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::GetSessionPreview {
                 tab_index,
                 pane_id,
+                anchor,
                 response_channel,
             } => {
-                let preview = screen.session_preview(tab_index, pane_id);
+                let preview = screen.session_preview(tab_index, pane_id, anchor);
                 let _ = response_channel.send(preview);
+            },
+            ScreenInstruction::GetSessionAttention {
+                include_command_text,
+                response_channel,
+            } => {
+                let attention = screen.session_attention();
+                let attention = if include_command_text {
+                    attention
+                } else {
+                    attention.without_command_text()
+                };
+                let _ = response_channel.send(attention);
+            },
+            ScreenInstruction::GlobalAttentionUpdate(global) => {
+                screen.set_global_attention(global);
+            },
+            ScreenInstruction::ClientSessionHistory {
+                client_id,
+                history,
+                arrival,
+                arrived_from,
+            } => {
+                screen.set_client_session_history(client_id, history, arrival, arrived_from);
+            },
+            ScreenInstruction::UpdateClientSessionHistory { client_id, history } => {
+                screen.update_client_session_history(client_id, history);
+            },
+            ScreenInstruction::GoToNextAttention(client_id, mut completion) => {
+                if !screen.go_to_next_attention(client_id) {
+                    completion.as_mut().map(|c| {
+                        c.set_error_message("Nothing needs attention".to_owned());
+                        c.set_exit_status(2)
+                    });
+                }
+            },
+            ScreenInstruction::MarkPaneSeen {
+                session,
+                pane_id,
+                client_id,
+                mut completion,
+            } => {
+                if !screen.mark_pane_seen(session, pane_id, client_id) {
+                    completion.as_mut().map(|c| {
+                        c.set_error_message("Pane not found".to_owned());
+                        c.set_exit_status(2)
+                    });
+                }
+            },
+            ScreenInstruction::MarkAllSeen {
+                session,
+                completion: _completion,
+            } => {
+                screen.mark_all_seen(session);
+            },
+            ScreenInstruction::SessionPaneCommand {
+                session_name,
+                command,
+                client_id,
+                mut completion,
+            } => {
+                if !screen.session_pane_command(session_name, command, client_id) {
+                    completion.as_mut().map(|c| {
+                        c.set_error_message("Pane not found".to_owned());
+                        c.set_exit_status(2)
+                    });
+                }
             },
             ScreenInstruction::OpenPluginPopup {
                 requesting_plugin_id,

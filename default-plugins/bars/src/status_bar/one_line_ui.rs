@@ -48,7 +48,10 @@ pub fn one_line_ui(
         max_len = max_len.saturating_sub(left.len);
         match help.mode {
             InputMode::Normal | InputMode::Locked => {
-                if let Some(secondary_info) = render_secondary_info(help, tab_info, max_len) {
+                if let Some(hint) = render_session_hint(help, max_len) {
+                    line_part_to_render.append(&hint);
+                } else if let Some(secondary_info) = render_secondary_info(help, tab_info, max_len)
+                {
                     line_part_to_render.append(&secondary_info);
                 }
             },
@@ -755,6 +758,39 @@ fn render_common_modifiers(
     line_part_to_render.part =
         format!("{}{}{}", line_part_to_render.part, prefix, suffix_separator);
     line_part_to_render.len += prefix_text_len + display_width(&separator);
+}
+
+fn render_session_hint(help: &ModeInfo, max_len: usize) -> Option<LinePart> {
+    let hints = crate::status_bar::session_hints::session_hints();
+    let text = match (hints.transient, hints.pane_note) {
+        (Some(transient), Some(note)) => format!("{} · {}", transient, note),
+        (Some(transient), None) => transient,
+        (None, Some(note)) => note,
+        (None, None) => return None,
+    };
+    let text = format!(" {} ", text);
+    let width = text.width();
+    if width > max_len {
+        return None;
+    }
+    let palette = help.style.colors;
+    let colored_elements = color_elements(palette, false, help.session_dimmed.unwrap_or(false));
+    let mut part = LinePart::default();
+    let padding_len = max_len.saturating_sub(width).saturating_sub(1);
+    let padding = colored_elements
+        .superkey_prefix
+        .paint(" ".repeat(padding_len))
+        .to_string();
+    let styled = style!(
+        palette.text_unselected.emphasis_2,
+        palette.text_unselected.background
+    )
+    .italic()
+    .paint(text)
+    .to_string();
+    part.part = format!("{}{}", padding, styled);
+    part.len = padding_len + width;
+    Some(part)
 }
 
 fn render_secondary_info(
@@ -1623,7 +1659,24 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
             action_key(&km, &[A::SearchToggleOption{option: SOpt::Wrap}])),
         (s("Whole words"), s("Whole"),
             action_key(&km, &[A::SearchToggleOption{option: SOpt::WholeWord}])),
-    ]} else if mi.mode == IM::Session { vec![
+    ]} else if mi.mode == IM::Session {
+        let hints = crate::status_bar::session_hints::session_hints();
+        let toggle_keys = crate::status_bar::session_hints::first_action_keys(&km, &A::ToggleSession);
+        let back_keys = crate::status_bar::session_hints::first_action_keys(&km, &A::GoBack);
+        let forward_keys = crate::status_bar::session_hints::first_action_keys(&km, &A::GoForward);
+        let next_keys = crate::status_bar::session_hints::first_action_keys(&km, &A::GoToNextAttention);
+        let mut history_keys: Vec<KeyWithModifier> = back_keys.into_iter().take(1).collect();
+        history_keys.extend(forward_keys.into_iter().take(1));
+        let mut hints_list = vec![];
+        if let Some(previous) = hints.previous.as_ref() {
+            let previous = sanitize_display_text(previous);
+            hints_list.push((format!("back to {}", previous), s("Back"), toggle_keys.into_iter().take(1).collect()));
+            hints_list.push((s("history"), s("History"), history_keys));
+        }
+        if hints.has_items {
+            hints_list.push((s("next item"), s("Next"), next_keys.into_iter().take(1).collect()));
+        }
+        hints_list.extend(vec![
         (s("Detach"), s("Detach"), action_key(&km, &[Action::Detach])),
         (s("Session Manager"), s("Manager"), session_manager_key(&km)),
         (s("Share"), s("Share"), share_key(&km)),
@@ -1632,7 +1685,9 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
         (s("Plugin Manager"), s("Plugins"), plugin_manager_key(&km)),
         (s("About"), s("About"), about_key(&km)),
         (s("Select pane"), s("Select"), to_basemode_key),
-    ]} else if mi.mode == IM::Tmux { vec![
+        ]);
+        hints_list
+    } else if mi.mode == IM::Tmux { vec![
         (s("Move focus"), s("Move"), action_key_group(&km, &[
             &[A::MoveFocus{direction: Dir::Left}], &[A::MoveFocus{direction: Dir::Down}],
             &[A::MoveFocus{direction: Dir::Up}], &[A::MoveFocus{direction: Dir::Right}]])),

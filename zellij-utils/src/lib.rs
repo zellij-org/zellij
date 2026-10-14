@@ -19,6 +19,7 @@ pub mod pane_size;
 pub mod plugin_api;
 pub mod position;
 pub mod prompt;
+pub mod session_history;
 pub mod session_serialization;
 pub mod setup;
 pub mod shared;

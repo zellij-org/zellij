@@ -157,7 +157,6 @@ Config {
         client_async_worker_tasks: None,
         nested_session_handling: None,
         dangerously_enable_paste_buffer_read: None,
-        session_card: None,
         session_indicator: None,
         swap_layout_notification: None,
         on_quit: None,
@@ -442,7 +441,7 @@ Config {
             },
             Separator,
             Item {
-                label: "Notify me when this finishes",
+                label: "Watch this pane",
                 actions: [
                     ClickedPane(
                         ToggleWatch,
@@ -609,6 +608,15 @@ Config {
                             initial_panes: None,
                             first_pane_unblock_condition: None,
                         },
+                    ),
+                ],
+                toggled_label: None,
+            },
+            Item {
+                label: "Back to {}",
+                actions: [
+                    Action(
+                        ToggleSession,
                     ),
                 ],
                 toggled_label: None,
@@ -4985,5 +4993,6 @@ Config {
         done_threshold_secs: None,
         idle_activity_secs: None,
         idle_silence_secs: None,
+        startup_card: None,
     },
 }

@@ -67,7 +67,11 @@ fn focus_right_pane(zellij: &TestSession) {
 const MARKERS: [char; 7] = ['●', '✗', '✓', '◌', '•', '◐', '⊘'];
 
 fn markers_on_screen(text: &str) -> String {
-    text.chars().filter(|c| MARKERS.contains(c)).collect()
+    text.lines()
+        .skip(1)
+        .flat_map(|line| line.chars())
+        .filter(|c| MARKERS.contains(c))
+        .collect()
 }
 
 fn wait_for_markers(zellij: &TestSession, expected: &str) {
@@ -105,9 +109,12 @@ fn split_right_pane_down(zellij: &TestSession) -> FakePtyHandle {
     let terminal = zellij.expect_pty_spawn();
     terminal.disable_echo();
     terminal.output(b"$ ");
-    zellij.wait_until("the lower right terminal prompt rendered", |grid_snapshot| {
-        grid_snapshot.status_bar_appears() && grid_snapshot.cursor_is_at(col(62).row(13))
-    });
+    zellij.wait_until(
+        "the lower right terminal prompt rendered",
+        |grid_snapshot| {
+            grid_snapshot.status_bar_appears() && grid_snapshot.cursor_is_at(col(62).row(13))
+        },
+    );
     terminal
 }
 
@@ -212,7 +219,7 @@ fn a_bell_and_a_notification_from_an_unfocused_pane_need_you() {
 }
 
 #[test]
-fn watching_a_pane_notifies_once() {
+fn watching_a_pane_notifies_every_time_until_the_watch_is_turned_off() {
     let (mut zellij, shell, _right) = start_with_two_panes(TestRunner::new(TERMINAL_SIZE));
     watch(&zellij, &shell);
     shell_command(&shell, "A", "make", "D;0");
@@ -221,6 +228,12 @@ fn watching_a_pane_notifies_once() {
     wait_for_markers(&zellij, "");
     focus_right_pane(&zellij);
     shell_command(&shell, "A", "make again", "D;0");
+    wait_for_markers(&zellij, "●");
+    watch(&zellij, &shell);
+    focus_left_pane(&zellij);
+    wait_for_markers(&zellij, "");
+    focus_right_pane(&zellij);
+    shell_command(&shell, "A", "make a third time", "D;0");
     shell.output(b"\x1b]133;A\x1b\\$ marker\r\n");
     zellij.wait_until("the second command finished", |grid_snapshot| {
         grid_snapshot.contains("marker")

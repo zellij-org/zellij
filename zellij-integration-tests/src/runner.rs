@@ -133,16 +133,15 @@ impl TestRunner {
                     None,
                     false,
                     start_detached_and_exit,
+                    None,
                 );
             })
             .unwrap();
         join_detaching_client_thread_with_timeout(detaching_client_thread);
-        session_context
-            .fake_server_os_api
-            .shared_ptys
-            .wait_for("the background session to start its first terminal", |fake_pty_registry| {
-                (!fake_pty_registry.fake_pty_states.is_empty()).then_some(())
-            });
+        session_context.fake_server_os_api.shared_ptys.wait_for(
+            "the background session to start its first terminal",
+            |fake_pty_registry| (!fake_pty_registry.fake_pty_states.is_empty()).then_some(()),
+        );
         BackgroundTestSession { session_context }
     }
 
@@ -409,6 +408,7 @@ fn spawn_client_thread(
         config_options,
         client_info,
         false,
+        None,
     )
 }
 
@@ -419,6 +419,7 @@ fn spawn_client_thread_with_reconnect(
     config_options: Options,
     client_info: ClientInfo,
     is_a_reconnect: bool,
+    switch_context: Option<zellij_utils::session_history::SwitchContext>,
 ) -> JoinHandle<Option<ConnectToSession>> {
     std::thread::Builder::new()
         .name("in_process_zellij_client".to_string())
@@ -436,6 +437,7 @@ fn spawn_client_thread_with_reconnect(
                 pane_id_to_focus,
                 is_a_reconnect,
                 start_detached_and_exit,
+                switch_context,
             )
         })
         .unwrap()
@@ -972,6 +974,58 @@ impl TestSession {
         };
     }
 
+    pub fn follow_switch_into(
+        &mut self,
+        target: BackgroundTestSession,
+    ) -> (ConnectToSession, BackgroundTestSession) {
+        let connect_to_session = self
+            .main_client
+            .join()
+            .expect("the client exited without switching sessions");
+        assert_eq!(
+            connect_to_session.name.as_deref(),
+            Some(target.session_name()),
+            "the client switched to another session than expected"
+        );
+        let target = target.session_context;
+        let (fake_client_os_api, fake_client_handle) = FakeClientOsApi::new(self.size, None);
+        let client_thread = spawn_client_thread_with_reconnect(
+            fake_client_os_api,
+            target.cli_args.clone(),
+            target.config.clone(),
+            target.config_options.clone(),
+            ClientInfo::Attach(target.session_name.clone(), target.config_options.clone()),
+            true,
+            connect_to_session.switch_context.clone(),
+        );
+        let previous = SessionContext {
+            session_name: std::mem::replace(&mut self.session_name, target.session_name),
+            size: self.size,
+            cli_args: std::mem::replace(&mut self.cli_args, target.cli_args),
+            config: std::mem::replace(&mut self.config, target.config),
+            config_options: std::mem::replace(&mut self.config_options, target.config_options),
+            fake_server_os_api: std::mem::replace(
+                &mut self.fake_server_os_api,
+                target.fake_server_os_api,
+            ),
+            server_thread: std::mem::replace(&mut self.server_thread, target.server_thread),
+            concurrency_slot: std::mem::replace(
+                &mut self._concurrency_slot,
+                target.concurrency_slot,
+            ),
+        };
+        self.main_client = TestClient {
+            fake_client_handle,
+            thread: Some(client_thread),
+        };
+        (
+            connect_to_session,
+            BackgroundTestSession {
+                session_context: previous,
+            },
+        )
+    }
+
     pub fn follow_switch(&mut self) -> ConnectToSession {
         let connect_to_session = self
             .main_client
@@ -987,8 +1041,7 @@ impl TestSession {
             "following a switch into the running session {} is not supported",
             session_name
         );
-        let mut config_options = self.config_options.clone();
-        connect_to_session.apply_to_options(&mut config_options);
+        let config_options = self.config_options.clone();
         let fake_server_os_api = FakeServerOsApi::default();
         let server_thread: Arc<Mutex<Option<JoinHandle<()>>>> = Arc::new(Mutex::new(None));
         let server_spawner = in_process_server_spawner(fake_server_os_api.clone(), &server_thread);
@@ -1007,6 +1060,7 @@ impl TestSession {
                 None,
             ),
             is_a_reconnect,
+            connect_to_session.switch_context.clone(),
         );
         self.session_name = session_name;
         self.config_options = config_options;

@@ -55,78 +55,99 @@ use crate::input::command::RunCommandAction;
 #[macro_export]
 macro_rules! parse_kdl_action_arguments {
     ( $action_name:expr, $action_arguments:expr, $action_node:expr ) => {{
-        if !$action_arguments.is_empty() {
-            Err(ConfigError::new_kdl_error(
-                format!("Action '{}' must have arguments", $action_name),
-                $action_node.span().offset(),
-                $action_node.span().len(),
-            ))
-        } else {
-            match $action_name {
-                "Quit" => Ok(Action::Quit),
-                "FocusNextPane" => Ok(Action::FocusNextPane),
-                "FocusPreviousPane" => Ok(Action::FocusPreviousPane),
-                "FocusLastPane" => Ok(Action::FocusLastPane),
-                "FocusHostSession" => Ok(Action::FocusHostSession),
-                "FocusGuestSession" => Ok(Action::FocusGuestSession),
-                "ToggleHostFullscreen" => Ok(Action::ToggleHostFullscreen),
-                "SwitchFocus" => Ok(Action::SwitchFocus),
-                "EditScrollback" => Ok(Action::EditScrollback { ansi: false }),
-                "ScrollUp" => Ok(Action::ScrollUp),
-                "ScrollDown" => Ok(Action::ScrollDown),
-                "ScrollToBottom" => Ok(Action::ScrollToBottom),
-                "ScrollToTop" => Ok(Action::ScrollToTop),
-                "ScrollToPreviousPrompt" => Ok(Action::ScrollToPreviousPrompt),
-                "ScrollToNextPrompt" => Ok(Action::ScrollToNextPrompt),
-                "SelectCommandAtScrollPosition" => Ok(Action::SelectCommandAtScrollPosition),
-                "CopyLastCommandOutput" => Ok(Action::CopyLastCommandOutput),
-                "PageScrollUp" => Ok(Action::PageScrollUp),
-                "PageScrollDown" => Ok(Action::PageScrollDown),
-                "HalfPageScrollUp" => Ok(Action::HalfPageScrollUp),
-                "HalfPageScrollDown" => Ok(Action::HalfPageScrollDown),
-                "ToggleFocusFullscreen" => Ok(Action::ToggleFocusFullscreen),
-                "ToggleFocusNoUiFullscreen" => Ok(Action::ToggleFocusNoUiFullscreen),
-                "TogglePaneFrames" => Ok(Action::TogglePaneFrames),
-                "ToggleActiveSyncTab" => Ok(Action::ToggleActiveSyncTab),
-                "TogglePaneEmbedOrFloating" => Ok(Action::TogglePaneEmbedOrFloating),
-                "ToggleFloatingPanes" => Ok(Action::ToggleFloatingPanes),
-                "ShowFloatingPanes" => Ok(Action::ShowFloatingPanes { tab_id: None }),
-                "HideFloatingPanes" => Ok(Action::HideFloatingPanes { tab_id: None }),
-                "CloseFocus" => Ok(Action::CloseFocus),
-                "UndoRenamePane" => Ok(Action::UndoRenamePane),
-                "NoOp" => Ok(Action::NoOp),
-                "GoToNextTab" => Ok(Action::GoToNextTab),
-                "GoToPreviousTab" => Ok(Action::GoToPreviousTab),
-                "CloseTab" => Ok(Action::CloseTab),
-                "ToggleTab" => Ok(Action::ToggleTab),
-                "UndoRenameTab" => Ok(Action::UndoRenameTab),
-                "Detach" => Ok(Action::Detach),
-                "SetDarkTheme" => Ok(Action::SetDarkTheme),
-                "SetLightTheme" => Ok(Action::SetLightTheme),
-                "ToggleTheme" => Ok(Action::ToggleTheme),
-                "DismissInfoPopups" => Ok(Action::DismissInfoPopups),
-                "OpenContextMenu" => Ok(Action::OpenContextMenu),
-                "ToggleSessionCard" => Ok(Action::ToggleSessionCard),
-                "MutePane" => Ok(Action::MutePane),
-                "IgnorePaneOutput" => Ok(Action::IgnorePaneOutput),
-                "WatchPane" => Ok(Action::WatchPane),
-                "MuteTab" => Ok(Action::MuteTab),
-                "MuteSession" => Ok(Action::MuteSession),
-                "Copy" => Ok(Action::Copy),
-                "Confirm" => Ok(Action::Confirm),
-                "Deny" => Ok(Action::Deny),
-                "ToggleMouseMode" => Ok(Action::ToggleMouseMode),
-                "PreviousSwapLayout" => Ok(Action::PreviousSwapLayout),
-                "NextSwapLayout" => Ok(Action::NextSwapLayout),
-                "Clear" => Ok(Action::ClearScreen),
-                _ => Err(ConfigError::new_kdl_error(
-                    format!("Unsupported action: {:?}", $action_name),
-                    $action_node.span().offset(),
-                    $action_node.span().len(),
-                )),
-            }
-        }
+        $crate::kdl::action_without_arguments(
+            $action_name,
+            !$action_arguments.is_empty(),
+            $action_node,
+        )
     }};
+}
+
+#[inline(never)]
+pub fn action_without_arguments(
+    action_name: &str,
+    has_arguments: bool,
+    action_node: &KdlNode,
+) -> Result<Action, ConfigError> {
+    if has_arguments {
+        return Err(ConfigError::new_kdl_error(
+            format!("Action '{}' must have arguments", action_name),
+            action_node.span().offset(),
+            action_node.span().len(),
+        ));
+    }
+    match action_name {
+        "Quit" => Ok(Action::Quit),
+        "FocusNextPane" => Ok(Action::FocusNextPane),
+        "FocusPreviousPane" => Ok(Action::FocusPreviousPane),
+        "FocusLastPane" => Ok(Action::FocusLastPane),
+        "FocusHostSession" => Ok(Action::FocusHostSession),
+        "FocusGuestSession" => Ok(Action::FocusGuestSession),
+        "ToggleHostFullscreen" => Ok(Action::ToggleHostFullscreen),
+        "SwitchFocus" => Ok(Action::SwitchFocus),
+        "EditScrollback" => Ok(Action::EditScrollback { ansi: false }),
+        "ScrollUp" => Ok(Action::ScrollUp),
+        "ScrollDown" => Ok(Action::ScrollDown),
+        "ScrollToBottom" => Ok(Action::ScrollToBottom),
+        "ScrollToTop" => Ok(Action::ScrollToTop),
+        "ScrollToPreviousPrompt" => Ok(Action::ScrollToPreviousPrompt),
+        "ScrollToNextPrompt" => Ok(Action::ScrollToNextPrompt),
+        "SelectCommandAtScrollPosition" => Ok(Action::SelectCommandAtScrollPosition),
+        "CopyLastCommandOutput" => Ok(Action::CopyLastCommandOutput),
+        "PageScrollUp" => Ok(Action::PageScrollUp),
+        "PageScrollDown" => Ok(Action::PageScrollDown),
+        "HalfPageScrollUp" => Ok(Action::HalfPageScrollUp),
+        "HalfPageScrollDown" => Ok(Action::HalfPageScrollDown),
+        "ToggleFocusFullscreen" => Ok(Action::ToggleFocusFullscreen),
+        "ToggleFocusNoUiFullscreen" => Ok(Action::ToggleFocusNoUiFullscreen),
+        "TogglePaneFrames" => Ok(Action::TogglePaneFrames),
+        "ToggleActiveSyncTab" => Ok(Action::ToggleActiveSyncTab),
+        "TogglePaneEmbedOrFloating" => Ok(Action::TogglePaneEmbedOrFloating),
+        "ToggleFloatingPanes" => Ok(Action::ToggleFloatingPanes),
+        "ShowFloatingPanes" => Ok(Action::ShowFloatingPanes { tab_id: None }),
+        "HideFloatingPanes" => Ok(Action::HideFloatingPanes { tab_id: None }),
+        "CloseFocus" => Ok(Action::CloseFocus),
+        "UndoRenamePane" => Ok(Action::UndoRenamePane),
+        "NoOp" => Ok(Action::NoOp),
+        "GoToNextTab" => Ok(Action::GoToNextTab),
+        "GoToPreviousTab" => Ok(Action::GoToPreviousTab),
+        "CloseTab" => Ok(Action::CloseTab),
+        "ToggleTab" => Ok(Action::ToggleTab),
+        "UndoRenameTab" => Ok(Action::UndoRenameTab),
+        "Detach" => Ok(Action::Detach),
+        "SetDarkTheme" => Ok(Action::SetDarkTheme),
+        "SetLightTheme" => Ok(Action::SetLightTheme),
+        "ToggleTheme" => Ok(Action::ToggleTheme),
+        "DismissInfoPopups" => Ok(Action::DismissInfoPopups),
+        "OpenContextMenu" => Ok(Action::OpenContextMenu),
+        "ToggleSessionCard" => Ok(Action::ToggleSessionCard),
+        "MutePane" => Ok(Action::MutePane),
+        "IgnorePaneOutput" => Ok(Action::IgnorePaneOutput),
+        "WatchPane" => Ok(Action::WatchPane),
+        "MuteTab" => Ok(Action::MuteTab),
+        "MuteSession" => Ok(Action::MuteSession),
+        "ToggleSession" => Ok(Action::ToggleSession),
+        "GoBack" => Ok(Action::GoBack),
+        "GoForward" => Ok(Action::GoForward),
+        "GoToNextAttention" => Ok(Action::GoToNextAttention),
+        "MarkPaneSeen" => Ok(Action::MarkPaneSeen {
+            session: None,
+            pane_id: None,
+        }),
+        "MarkAllSeen" => Ok(Action::MarkAllSeen { session: None }),
+        "Copy" => Ok(Action::Copy),
+        "Confirm" => Ok(Action::Confirm),
+        "Deny" => Ok(Action::Deny),
+        "ToggleMouseMode" => Ok(Action::ToggleMouseMode),
+        "PreviousSwapLayout" => Ok(Action::PreviousSwapLayout),
+        "NextSwapLayout" => Ok(Action::NextSwapLayout),
+        "Clear" => Ok(Action::ClearScreen),
+        _ => Err(ConfigError::new_kdl_error(
+            format!("Unsupported action: {:?}", action_name),
+            action_node.span().offset(),
+            action_node.span().len(),
+        )),
+    }
 }
 
 #[macro_export]
@@ -1441,6 +1462,15 @@ impl Action {
             Action::WatchPane => Some(KdlNode::new("WatchPane")),
             Action::MuteTab => Some(KdlNode::new("MuteTab")),
             Action::MuteSession => Some(KdlNode::new("MuteSession")),
+            Action::ToggleSession => Some(KdlNode::new("ToggleSession")),
+            Action::GoBack => Some(KdlNode::new("GoBack")),
+            Action::GoForward => Some(KdlNode::new("GoForward")),
+            Action::GoToNextAttention => Some(KdlNode::new("GoToNextAttention")),
+            Action::MarkPaneSeen {
+                session: None,
+                pane_id: None,
+            } => Some(KdlNode::new("MarkPaneSeen")),
+            Action::MarkAllSeen { session: None } => Some(KdlNode::new("MarkAllSeen")),
             Action::FocusHostSession => Some(KdlNode::new("FocusHostSession")),
             Action::FocusGuestSession => Some(KdlNode::new("FocusGuestSession")),
             Action::ToggleHostFullscreen => Some(KdlNode::new("ToggleHostFullscreen")),
@@ -1890,12 +1920,9 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
             "OpenContextMenu" => {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
-            "ToggleSessionCard"
-            | "MutePane"
-            | "IgnorePaneOutput"
-            | "WatchPane"
-            | "MuteTab"
-            | "MuteSession" => {
+            "ToggleSessionCard" | "MutePane" | "IgnorePaneOutput" | "WatchPane" | "MuteTab"
+            | "MuteSession" | "ToggleSession" | "GoBack" | "GoForward" | "GoToNextAttention"
+            | "MarkPaneSeen" | "MarkAllSeen" => {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
             "SwitchSession" => {
@@ -3396,8 +3423,6 @@ impl Options {
             "dangerously_enable_paste_buffer_read"
         )
         .map(|(v, _)| v);
-        let session_card =
-            kdl_property_first_arg_as_bool_or_error!(kdl_options, "session_card").map(|(v, _)| v);
         let session_indicator =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "session_indicator")
                 .map(|(v, _)| v);
@@ -3480,7 +3505,6 @@ impl Options {
             client_async_worker_tasks,
             nested_session_handling,
             dangerously_enable_paste_buffer_read,
-            session_card,
             session_indicator,
             swap_layout_notification,
             on_quit,
@@ -5364,18 +5388,6 @@ impl Options {
             None
         }
     }
-    fn session_card_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
-        Self::bool_option_to_kdl(
-            "session_card",
-            self.session_card,
-            &[
-                "// Whether to show a card listing other relevant sessions when a new session starts",
-                "// default is true",
-            ],
-            false,
-            add_comments,
-        )
-    }
     fn session_indicator_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         Self::bool_option_to_kdl(
             "session_indicator",
@@ -5639,9 +5651,6 @@ impl Options {
             self.host_notification_protocol_to_kdl(add_comments)
         {
             nodes.push(host_notification_protocol);
-        }
-        if let Some(session_card) = self.session_card_to_kdl(add_comments) {
-            nodes.push(session_card);
         }
         if let Some(session_indicator) = self.session_indicator_to_kdl(add_comments) {
             nodes.push(session_indicator);
@@ -6726,9 +6735,12 @@ impl Config {
                 SessionSuggestionsConfig::from_kdl(&session_suggestions_config)?;
             config.session_suggestions = config.session_suggestions.merge(session_suggestions);
         }
-        if let Some(attention_config) = kdl_config.get("attention") {
-            let attention =
-                crate::input::attention::AttentionConfig::from_kdl(&attention_config)?;
+        for attention_config in kdl_config
+            .nodes()
+            .iter()
+            .filter(|node| node.name().value() == "attention")
+        {
+            let attention = crate::input::attention::AttentionConfig::from_kdl(attention_config)?;
             config.attention = config.attention.merge(attention);
         }
         Ok(config)
@@ -9695,14 +9707,12 @@ fn env_vars_to_string() {
 #[test]
 fn session_options_from_kdl() {
     let fake_config = r##"
-        session_card false
         session_indicator true
         swap_layout_notification false
         on_quit "ask_detach"
     "##;
     let document: KdlDocument = fake_config.parse().unwrap();
     let options = Options::from_kdl(&document).unwrap();
-    assert_eq!(options.session_card, Some(false));
     assert_eq!(options.session_indicator, Some(true));
     assert_eq!(options.swap_layout_notification, Some(false));
     assert_eq!(

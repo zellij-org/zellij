@@ -443,6 +443,14 @@ pub trait Pane {
     fn dump_screen_with_ansi(&self, _full: bool, _client_id: Option<ClientId>) -> String {
         "".to_owned()
     }
+    fn preview_with_anchor(
+        &self,
+        _anchor: zellij_utils::data::PreviewAnchor,
+        _max_scrollback: usize,
+    ) -> (String, Option<usize>) {
+        (self.dump_screen_with_ansi(false, None), None)
+    }
+    fn mark_unseen_output_start(&mut self) {}
     fn scroll_up(&mut self, count: usize, client_id: ClientId);
     fn scroll_down(&mut self, count: usize, client_id: ClientId);
     fn scroll_left(&mut self, count: usize, client_id: ClientId);
@@ -7708,6 +7716,19 @@ impl Tab {
             }
         }
         drop(completion);
+    }
+
+    pub fn floating_plugin_for_location(&self, location: &str) -> Option<u32> {
+        self.floating_panes.get_panes().find_map(|(pane_id, pane)| {
+            match (pane_id, pane.invoked_with()) {
+                (PaneId::Plugin(plugin_id), Some(Run::Plugin(run_plugin_or_alias)))
+                    if run_plugin_or_alias.location_string().contains(location) =>
+                {
+                    Some(*plugin_id)
+                },
+                _ => None,
+            }
+        })
     }
 
     pub fn find_plugin(&self, run_plugin_or_alias: &RunPluginOrAlias) -> Option<PaneId> {

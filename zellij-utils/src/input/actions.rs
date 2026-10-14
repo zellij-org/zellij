@@ -775,6 +775,21 @@ pub enum Action {
         id: u64,
     },
     MuteSession,
+    ToggleSession,
+    GoBack,
+    GoForward,
+    GoToNextAttention,
+    MarkPaneSeen {
+        session: Option<String>,
+        pane_id: Option<PaneId>,
+    },
+    MarkAllSeen {
+        session: Option<String>,
+    },
+    WriteKeyToPaneId {
+        key_with_modifier: Option<KeyWithModifier>,
+        pane_id: PaneId,
+    },
 }
 
 impl Default for Action {
@@ -2228,6 +2243,21 @@ impl Action {
                 None => Ok(vec![Action::MuteTab]),
             },
             CliAction::MuteSession => Ok(vec![Action::MuteSession]),
+            CliAction::ToggleSession => Ok(vec![Action::ToggleSession]),
+            CliAction::GoBack => Ok(vec![Action::GoBack]),
+            CliAction::GoForward => Ok(vec![Action::GoForward]),
+            CliAction::GoToNextAttention => Ok(vec![Action::GoToNextAttention]),
+            CliAction::MarkPaneSeen { pane_id } => Ok(vec![Action::MarkPaneSeen {
+                session: None,
+                pane_id: pane_id.as_deref().map(parse_cli_pane_id).transpose()?,
+            }]),
+            CliAction::MarkAllSeen { this_session } => Ok(vec![Action::MarkAllSeen {
+                session: if this_session {
+                    std::env::var("ZELLIJ_SESSION_NAME").ok()
+                } else {
+                    None
+                },
+            }]),
             CliAction::TogglePanePinned { pane_id } => match pane_id {
                 Some(pane_id_str) => {
                     let pane_id = PaneId::from_str(&pane_id_str)

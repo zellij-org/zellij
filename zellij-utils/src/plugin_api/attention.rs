@@ -1,9 +1,20 @@
 use super::generated_api::api::event::{
+    session_arrival::Arrival as ProtobufArrival, AttentionArrival as ProtobufAttentionArrival,
+    BackArrival as ProtobufBackArrival, ForwardArrival as ProtobufForwardArrival,
+    SessionArrival as ProtobufSessionArrival, SwitchArrival as ProtobufSwitchArrival,
+    ToggleArrival as ProtobufToggleArrival,
+};
+use super::generated_api::api::event::{
     AttentionCounts as ProtobufAttentionCounts, AttentionDetail as ProtobufAttentionDetail,
     CommandOutcome as ProtobufCommandOutcome, CommandState as ProtobufCommandState,
     CommandText as ProtobufCommandText, PaneAttention as ProtobufPaneAttention,
     ProgramStatusRecord as ProtobufProgramStatusRecord, ReportedCwd as ProtobufReportedCwd,
     RunningCommand as ProtobufRunningCommand, TabAttention as ProtobufTabAttention,
+};
+use super::generated_api::api::event::{
+    AttentionItem as ProtobufAttentionItem, GlobalAttentionUpdatePayload,
+    GlobalSessionAttention as ProtobufGlobalSessionAttention, PaneId as ProtobufPaneId,
+    SessionAttention as ProtobufSessionAttention, SessionHistoryUpdatePayload,
 };
 use crate::attention::{
     AttentionCounts, AttentionDetail, AttentionSource, AttentionStatus, BlockedKind,
@@ -11,6 +22,8 @@ use crate::attention::{
     CwdSource, MuteScope, PaneAttention, ProgramState, ProgramStatusRecord, ReportedCwd,
     RunningCommand, TabAttention,
 };
+use crate::attention::{AttentionItem, GlobalAttention, SessionAttention};
+use crate::session_history::{SessionArrival, SessionHistoryInfo};
 
 impl From<CommandText> for ProtobufCommandText {
     fn from(command: CommandText) -> Self {
@@ -83,7 +96,10 @@ impl From<ProtobufPaneAttention> for PaneAttention {
     fn from(attention: ProtobufPaneAttention) -> Self {
         PaneAttention {
             status: AttentionStatus::from_str(&attention.status).unwrap_or_default(),
-            source: attention.source.as_deref().and_then(AttentionSource::from_str),
+            source: attention
+                .source
+                .as_deref()
+                .and_then(AttentionSource::from_str),
             text: attention.text,
             detail: attention.detail.map(|d| d.into()).unwrap_or_default(),
             since_ms: attention.since_ms,
@@ -265,9 +281,237 @@ impl From<ProtobufTabAttention> for TabAttention {
     }
 }
 
+impl TryFrom<AttentionItem> for ProtobufAttentionItem {
+    type Error = &'static str;
+    fn try_from(item: AttentionItem) -> Result<Self, &'static str> {
+        let pane_id: ProtobufPaneId = item.pane_id.try_into()?;
+        Ok(ProtobufAttentionItem {
+            pane_id: Some(pane_id),
+            tab_id: item.tab_id as u64,
+            tab_name: item.tab_name,
+            pane_title: item.pane_title,
+            attention: Some(item.attention.into()),
+        })
+    }
+}
+
+impl TryFrom<ProtobufAttentionItem> for AttentionItem {
+    type Error = &'static str;
+    fn try_from(item: ProtobufAttentionItem) -> Result<Self, &'static str> {
+        Ok(AttentionItem {
+            pane_id: item
+                .pane_id
+                .ok_or("Missing pane_id in AttentionItem")?
+                .try_into()
+                .map_err(|_| "Failed to convert PaneId in AttentionItem")?,
+            tab_id: item.tab_id as usize,
+            tab_name: item.tab_name,
+            pane_title: item.pane_title,
+            attention: item.attention.map(|a| a.into()).unwrap_or_default(),
+        })
+    }
+}
+
+impl TryFrom<SessionAttention> for ProtobufSessionAttention {
+    type Error = &'static str;
+    fn try_from(attention: SessionAttention) -> Result<Self, &'static str> {
+        Ok(ProtobufSessionAttention {
+            status: attention.status.as_str().to_owned(),
+            counts: Some(attention.counts.into()),
+            muted: attention.muted,
+            top: attention.top.map(|t| t.try_into()).transpose()?,
+            items: attention
+                .items
+                .into_iter()
+                .map(|i| i.try_into())
+                .collect::<Result<Vec<_>, _>>()?,
+        })
+    }
+}
+
+impl TryFrom<ProtobufSessionAttention> for SessionAttention {
+    type Error = &'static str;
+    fn try_from(attention: ProtobufSessionAttention) -> Result<Self, &'static str> {
+        Ok(SessionAttention {
+            status: AttentionStatus::from_str(&attention.status).unwrap_or_default(),
+            counts: attention.counts.map(|c| c.into()).unwrap_or_default(),
+            muted: attention.muted,
+            top: attention.top.map(|t| t.try_into()).transpose()?,
+            items: attention
+                .items
+                .into_iter()
+                .map(|i| i.try_into())
+                .collect::<Result<Vec<_>, _>>()?,
+        })
+    }
+}
+
+impl TryFrom<GlobalAttention> for GlobalAttentionUpdatePayload {
+    type Error = &'static str;
+    fn try_from(global: GlobalAttention) -> Result<Self, &'static str> {
+        Ok(GlobalAttentionUpdatePayload {
+            current_session: global.current_session,
+            sessions: global
+                .sessions
+                .into_iter()
+                .map(|s| {
+                    Ok(ProtobufGlobalSessionAttention {
+                        name: s.name,
+                        attention: Some(s.attention.try_into()?),
+                    })
+                })
+                .collect::<Result<Vec<_>, &'static str>>()?,
+        })
+    }
+}
+
+impl TryFrom<GlobalAttentionUpdatePayload> for GlobalAttention {
+    type Error = &'static str;
+    fn try_from(payload: GlobalAttentionUpdatePayload) -> Result<Self, &'static str> {
+        let sessions = payload
+            .sessions
+            .into_iter()
+            .map(|s| {
+                Ok((
+                    s.name,
+                    s.attention
+                        .map(|a| a.try_into())
+                        .transpose()?
+                        .unwrap_or_default(),
+                ))
+            })
+            .collect::<Result<Vec<(String, SessionAttention)>, &'static str>>()?;
+        Ok(GlobalAttention::build(&payload.current_session, sessions))
+    }
+}
+
+impl TryFrom<SessionArrival> for ProtobufSessionArrival {
+    type Error = &'static str;
+    fn try_from(arrival: SessionArrival) -> Result<Self, &'static str> {
+        let arrival = match arrival {
+            SessionArrival::Switch => ProtobufArrival::Switch(ProtobufSwitchArrival {}),
+            SessionArrival::Toggle => ProtobufArrival::Toggle(ProtobufToggleArrival {}),
+            SessionArrival::Back => ProtobufArrival::Back(ProtobufBackArrival {}),
+            SessionArrival::Forward => ProtobufArrival::Forward(ProtobufForwardArrival {}),
+            SessionArrival::Attention { pane_id } => {
+                ProtobufArrival::Attention(ProtobufAttentionArrival {
+                    pane_id: Some(pane_id.try_into()?),
+                })
+            },
+        };
+        Ok(ProtobufSessionArrival {
+            arrival: Some(arrival),
+        })
+    }
+}
+
+impl TryFrom<ProtobufSessionArrival> for SessionArrival {
+    type Error = &'static str;
+    fn try_from(arrival: ProtobufSessionArrival) -> Result<Self, &'static str> {
+        Ok(
+            match arrival.arrival.ok_or("Missing arrival in SessionArrival")? {
+                ProtobufArrival::Switch(_) => SessionArrival::Switch,
+                ProtobufArrival::Toggle(_) => SessionArrival::Toggle,
+                ProtobufArrival::Back(_) => SessionArrival::Back,
+                ProtobufArrival::Forward(_) => SessionArrival::Forward,
+                ProtobufArrival::Attention(attention) => SessionArrival::Attention {
+                    pane_id: attention
+                        .pane_id
+                        .ok_or("Missing pane_id in SessionArrival")?
+                        .try_into()
+                        .map_err(|_| "Failed to convert PaneId in SessionArrival")?,
+                },
+            },
+        )
+    }
+}
+
+impl From<SessionHistoryInfo> for SessionHistoryUpdatePayload {
+    fn from(info: SessionHistoryInfo) -> Self {
+        SessionHistoryUpdatePayload {
+            current: info.current,
+            previous: info.previous,
+            back: info.back,
+            forward: info.forward,
+            arrived_from: info.arrived_from,
+            arrival: info.arrival.and_then(|a| a.try_into().ok()),
+            arrived_at_ms: info.arrived_at_ms,
+        }
+    }
+}
+
+impl From<SessionHistoryUpdatePayload> for SessionHistoryInfo {
+    fn from(payload: SessionHistoryUpdatePayload) -> Self {
+        SessionHistoryInfo {
+            current: payload.current,
+            previous: payload.previous,
+            back: payload.back,
+            forward: payload.forward,
+            arrived_from: payload.arrived_from,
+            arrival: payload.arrival.and_then(|a| a.try_into().ok()),
+            arrived_at_ms: payload.arrived_at_ms,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn global_attention_and_history_round_trip() {
+        let item = AttentionItem {
+            pane_id: crate::data::PaneId::Terminal(2),
+            tab_id: 1,
+            tab_name: "api".to_owned(),
+            pane_title: "claude".to_owned(),
+            attention: PaneAttention {
+                status: AttentionStatus::NeedsYou,
+                text: "Allow edit?".to_owned(),
+                since_ms: 5,
+                ..Default::default()
+            },
+        };
+        let mut counts = AttentionCounts::default();
+        counts.add(&item.attention);
+        let global = GlobalAttention::build(
+            "here",
+            vec![
+                ("here".to_owned(), SessionAttention::default()),
+                (
+                    "api".to_owned(),
+                    SessionAttention {
+                        status: AttentionStatus::NeedsYou,
+                        counts,
+                        muted: false,
+                        top: Some(item.clone()),
+                        items: vec![item],
+                    },
+                ),
+            ],
+        );
+        let payload: GlobalAttentionUpdatePayload = global.clone().try_into().unwrap();
+        assert_eq!(GlobalAttention::try_from(payload).unwrap(), global);
+        let info = SessionHistoryInfo {
+            current: "here".to_owned(),
+            previous: Some("api".to_owned()),
+            back: vec!["api".to_owned()],
+            forward: vec![],
+            arrived_from: Some("api".to_owned()),
+            arrival: Some(SessionArrival::Back),
+            arrived_at_ms: 9,
+        };
+        let payload: SessionHistoryUpdatePayload = info.clone().into();
+        assert_eq!(SessionHistoryInfo::from(payload), info);
+        let info = SessionHistoryInfo {
+            arrival: Some(SessionArrival::Attention {
+                pane_id: crate::data::PaneId::Plugin(4),
+            }),
+            ..info
+        };
+        let payload: SessionHistoryUpdatePayload = info.clone().into();
+        assert_eq!(SessionHistoryInfo::from(payload), info);
+    }
 
     #[test]
     fn pane_attention_round_trips() {

@@ -117,10 +117,9 @@ fn serialize_tab(
                 ));
             }
             if attention_muted {
-                serialized_tab.entries_mut().push(KdlEntry::new_prop(
-                    "attention_muted",
-                    KdlValue::Bool(true),
-                ));
+                serialized_tab
+                    .entries_mut()
+                    .push(KdlEntry::new_prop("attention_muted", KdlValue::Bool(true)));
             }
 
             serialize_tiled_and_floating_panes(
@@ -870,7 +869,9 @@ fn tiled_pane_layout_from_manifest(
                 g.ignore_output.then_some(true),
             )
         })
-        .unwrap_or((None, None, false, None, None, None, None, None, None, None, None));
+        .unwrap_or((
+            None, None, false, None, None, None, None, None, None, None, None,
+        ));
     TiledPaneLayout {
         split_size,
         run,

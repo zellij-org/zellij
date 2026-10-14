@@ -6,6 +6,8 @@ use crate::route::PopupScroll;
 use crate::tab::{ContextMenuRequest, PopupKind, PopupMouseOutcome, PopupPlacement, Tab};
 use crate::{ClientId, ServerInstruction};
 use std::collections::BTreeMap;
+
+const PREVIEW_SCROLLBACK_LINES: usize = 300;
 use std::time::Instant;
 use zellij_utils::data::{
     ContextMenuContext, ContextMenuEntry, ContextMenuKind, ContextMenuTarget, Event, InputMode,
@@ -479,6 +481,7 @@ impl Screen {
                 .entries_for(context.kind),
         );
         let entries = self.resolve_toggled_context_menu_labels(entries, &context);
+        let entries = self.resolve_session_history_context_menu_entries(entries, client_id);
         if entries.is_empty() {
             return;
         }
@@ -931,13 +934,17 @@ impl Screen {
         let Ok(tab) = self.get_active_tab(client_id) else {
             return;
         };
+        let open_browser = tab.floating_plugin_for_location(SESSION_MANAGER_PLUGIN_ALIAS);
         match tab.popup_for_location(client_id, SESSION_MANAGER_PLUGIN_ALIAS) {
             Some((plugin_id, true)) => self.pipe_to_popup_plugin(plugin_id, client_id, "close"),
             Some((plugin_id, false)) => {
                 self.set_popup_focused(plugin_id, true);
                 self.pipe_to_popup_plugin(plugin_id, client_id, "focus_card");
             },
-            None => self.request_session_card(client_id, true),
+            None => match open_browser {
+                Some(plugin_id) => self.pipe_to_popup_plugin(plugin_id, client_id, "close"),
+                None => self.request_session_card(client_id, true),
+            },
         }
     }
     fn pipe_to_popup_plugin(&self, plugin_id: u32, client_id: ClientId, name: &str) {
@@ -974,7 +981,12 @@ impl Screen {
         } else {
             "card_startup"
         };
-        let configuration = BTreeMap::from([("role".to_owned(), role.to_owned())]);
+        let mut configuration = BTreeMap::from([("role".to_owned(), role.to_owned())]);
+        if !focused {
+            if let Some(away_since_ms) = self.pending_session_card_away_since.remove(&client_id) {
+                configuration.insert("away_since_ms".to_owned(), away_since_ms.to_string());
+            }
+        }
         let run_plugin_or_alias = match RunPluginOrAlias::from_url(
             SESSION_MANAGER_PLUGIN_ALIAS,
             &Some(configuration),
@@ -1156,6 +1168,7 @@ impl Screen {
         &mut self,
         tab_index: Option<usize>,
         pane_id: Option<(u32, bool)>,
+        anchor: Option<zellij_utils::data::PreviewAnchor>,
     ) -> zellij_utils::data::SessionPreview {
         let wanted_pane = pane_id.map(|(id, is_plugin)| {
             if is_plugin {
@@ -1176,7 +1189,18 @@ impl Screen {
             .and_then(|client_id| self.active_tab_ids.get(&client_id))
             .and_then(|tab_id| self.tabs.get(tab_id))
             .map(|tab| tab.position);
-        let wanted_index = tab_index.or(active_tab_index).unwrap_or(0);
+        let tab_of_wanted_pane = match (tab_index, wanted_pane) {
+            (None, Some(pane_id)) => self
+                .tabs
+                .values()
+                .find(|tab| tab.get_pane_with_id(pane_id).is_some())
+                .map(|tab| tab.position),
+            _ => None,
+        };
+        let wanted_index = tab_index
+            .or(tab_of_wanted_pane)
+            .or(active_tab_index)
+            .unwrap_or(0);
         let connected_clients = self.active_tab_ids.keys().len();
         let pane_client = client_id.unwrap_or(1);
         let mut ordered_tabs: Vec<&Tab> = self.tabs.values().collect();
@@ -1208,7 +1232,7 @@ impl Screen {
                 }
             })
             .collect();
-        let (contents, pane_count) = match self
+        let (contents, pane_count, shown_pane, anchor_line) = match self
             .tabs
             .values_mut()
             .find(|tab| tab.position == wanted_index)
@@ -1216,14 +1240,24 @@ impl Screen {
             Some(tab) => {
                 let pane_count = tab.get_selectable_tiled_panes_count()
                     + tab.get_selectable_floating_panes_count();
-                let contents = wanted_pane
+                let shown_pane = wanted_pane
                     .filter(|pane_id| tab.get_pane_with_id(*pane_id).is_some())
-                    .or_else(|| tab.get_active_pane_id_or_first_selectable(pane_client))
-                    .and_then(|pane_id| tab.get_dump_with_ansi_terminal_screen(pane_id, false))
-                    .unwrap_or_default();
-                (contents, pane_count)
+                    .or_else(|| tab.get_active_pane_id_or_first_selectable(pane_client));
+                let (contents, anchor_line) = match (shown_pane, anchor) {
+                    (Some(pane_id), Some(anchor)) => tab
+                        .get_pane_with_id(pane_id)
+                        .map(|pane| pane.preview_with_anchor(anchor, PREVIEW_SCROLLBACK_LINES))
+                        .unwrap_or_default(),
+                    (Some(pane_id), None) => (
+                        tab.get_dump_with_ansi_terminal_screen(pane_id, false)
+                            .unwrap_or_default(),
+                        None,
+                    ),
+                    (None, _) => (String::new(), None),
+                };
+                (contents, pane_count, shown_pane, anchor_line)
             },
-            None => (String::new(), 0),
+            None => (String::new(), 0, None, None),
         };
         zellij_utils::data::SessionPreview {
             session_name: self.session_name.clone(),
@@ -1235,6 +1269,11 @@ impl Screen {
             connected_clients,
             error: None,
             tabs: preview_tabs,
+            pane_id: shown_pane.map(|pane_id| match pane_id {
+                PaneId::Terminal(id) => (id, false),
+                PaneId::Plugin(id) => (id, true),
+            }),
+            anchor_line,
         }
     }
     fn schedule_popup_reveal(&self, plugin_id: u32, delay_ms: u64) {

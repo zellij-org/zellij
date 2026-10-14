@@ -499,6 +499,7 @@ fn get_session_preview(
     name: String,
     tab_index: Option<usize>,
     pane_id: Option<(u32, bool)>,
+    anchor: Option<zellij_utils::data::PreviewAnchor>,
 ) {
     let _ = env
         .senders
@@ -508,7 +509,30 @@ fn get_session_preview(
             session_name: name,
             tab_index,
             pane_id,
+            anchor,
         });
+}
+
+fn session_pane_command(
+    env: &PluginEnv,
+    session_name: Option<String>,
+    command: crate::screen::SessionPaneCommand,
+) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::SessionPaneCommand {
+            session_name,
+            command,
+            client_id: acting_client(env),
+            completion: None,
+        });
+}
+
+fn mark_all_seen(env: &PluginEnv, session_name: Option<String>) {
+    let _ = env.senders.send_to_screen(ScreenInstruction::MarkAllSeen {
+        session: session_name,
+        completion: None,
+    });
 }
 
 fn get_saved_session_preview(env: &PluginEnv, name: String) {
@@ -611,9 +635,69 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         name,
                         tab_index,
                         pane_id,
-                    } => {
-                        get_session_preview(env, name, tab_index, pane_id)
+                        anchor,
+                    } => get_session_preview(env, name, tab_index, pane_id, anchor),
+                    PluginCommand::MarkSessionPaneSeen {
+                        session_name,
+                        pane_id,
+                    } => session_pane_command(
+                        env,
+                        Some(session_name),
+                        crate::screen::SessionPaneCommand::MarkSeen(pane_id),
+                    ),
+                    PluginCommand::MarkAllSeen { session_name } => {
+                        mark_all_seen(env, session_name)
                     },
+                    PluginCommand::WriteToSessionPane {
+                        session_name,
+                        pane_id,
+                        bytes,
+                    } => session_pane_command(
+                        env,
+                        Some(session_name),
+                        crate::screen::SessionPaneCommand::Write(pane_id, bytes),
+                    ),
+                    PluginCommand::SendKeyToSessionPane {
+                        session_name,
+                        pane_id,
+                        key,
+                    } => session_pane_command(
+                        env,
+                        Some(session_name),
+                        crate::screen::SessionPaneCommand::Key(pane_id, key),
+                    ),
+                    PluginCommand::ToggleSessionPaneMute {
+                        session_name,
+                        pane_id,
+                    } => session_pane_command(
+                        env,
+                        Some(session_name),
+                        crate::screen::SessionPaneCommand::ToggleMute(pane_id),
+                    ),
+                    PluginCommand::ToggleSessionPaneIgnoreOutput {
+                        session_name,
+                        pane_id,
+                    } => session_pane_command(
+                        env,
+                        Some(session_name),
+                        crate::screen::SessionPaneCommand::ToggleIgnoreOutput(pane_id),
+                    ),
+                    PluginCommand::ToggleSessionPaneWatch {
+                        session_name,
+                        pane_id,
+                    } => session_pane_command(
+                        env,
+                        Some(session_name),
+                        crate::screen::SessionPaneCommand::ToggleWatch(pane_id),
+                    ),
+                    PluginCommand::FocusSessionPane {
+                        session_name,
+                        pane_id,
+                    } => session_pane_command(
+                        env,
+                        Some(session_name),
+                        crate::screen::SessionPaneCommand::Focus(pane_id),
+                    ),
                     PluginCommand::GetSavedSessionPreview(name) => {
                         get_saved_session_preview(env, name)
                     },
@@ -906,7 +990,7 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         connect_to_session.pane_id,
                         connect_to_session.layout,
                         connect_to_session.cwd,
-                        connect_to_session.session_card,
+                        connect_to_session.switch_context,
                     )?,
                     PluginCommand::DeleteDeadSession(session_name) => {
                         delete_dead_session(session_name)?;
@@ -3845,7 +3929,7 @@ fn switch_session(
     pane_id: Option<(u32, bool)>,
     layout: Option<LayoutInfo>,
     cwd: Option<PathBuf>,
-    session_card: Option<bool>,
+    switch_context: Option<zellij_utils::session_history::SwitchContext>,
 ) -> Result<()> {
     // pane_id is (id, is_plugin)
     let err_context = || format!("Failed to switch session");
@@ -3877,7 +3961,10 @@ fn switch_session(
             pane_id,
             layout,
             cwd,
-            session_card,
+            switch_context: switch_context.map(|c| zellij_utils::session_history::SwitchContext {
+                startup_card: c.startup_card,
+                ..Default::default()
+            }),
         };
         env.senders
             .send_to_server(ServerInstruction::SwitchSession(
@@ -4778,11 +4865,10 @@ fn get_pane_info(env: &PluginEnv, pane_id: zellij_utils::data::PaneId) {
     // Block waiting for response with 100ms timeout
     let pane_info = match response_receiver.recv_timeout(Duration::from_millis(100)) {
         Ok(Some(pane_info)) => {
-            let mut redacted = zellij_utils::data::Event::PaneUpdate(
-                zellij_utils::data::PaneManifest {
+            let mut redacted =
+                zellij_utils::data::Event::PaneUpdate(zellij_utils::data::PaneManifest {
                     panes: [(0, vec![pane_info])].into_iter().collect(),
-                },
-            );
+                });
             crate::plugins::wasm_bridge::redact_event_for_plugin(env, &mut redacted);
             let pane_info = match redacted {
                 zellij_utils::data::Event::PaneUpdate(mut manifest) => manifest
@@ -6522,7 +6608,15 @@ fn required_permission(command: &PluginCommand) -> Option<PermissionType> {
         PluginCommand::Write(..)
         | PluginCommand::WriteChars(..)
         | PluginCommand::WriteToPaneId(..)
-        | PluginCommand::WriteCharsToPaneId(..) => PermissionType::WriteToStdin,
+        | PluginCommand::WriteCharsToPaneId(..)
+        | PluginCommand::WriteToSessionPane { .. }
+        | PluginCommand::SendKeyToSessionPane { .. } => PermissionType::WriteToStdin,
+        PluginCommand::MarkSessionPaneSeen { .. }
+        | PluginCommand::MarkAllSeen { .. }
+        | PluginCommand::ToggleSessionPaneMute { .. }
+        | PluginCommand::ToggleSessionPaneIgnoreOutput { .. }
+        | PluginCommand::ToggleSessionPaneWatch { .. }
+        | PluginCommand::FocusSessionPane { .. } => PermissionType::ChangeApplicationState,
         PluginCommand::CopyToClipboard(..) => PermissionType::WriteToClipboard,
         PluginCommand::SwitchTabTo(..)
         | PluginCommand::SwitchToMode(..)

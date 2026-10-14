@@ -14,7 +14,6 @@ pub const CARD_TITLE: &str = "Running Sessions";
 pub const CARD_SHORTCUT: &str = "<F9>";
 pub const CARD_MIN_LIST_ROWS: usize = 5;
 pub const CARD_SCROLL_MARGIN: usize = 2;
-pub const DONT_SHOW_AGAIN_TEXT: &str = " Don't show again ";
 pub const NO_OTHER_SESSIONS_TEXT: &str = "No other sessions.";
 pub const EMPTY_PREVIEW_TEXT: &str = "Select a session to see its preview";
 pub const EMPTY_PREVIEW_HINT: &str = "You can do this by navigating with ";
@@ -36,14 +35,6 @@ impl PanelSize {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum CardTarget {
-    Row(usize),
-    ShowAll,
-    Close,
-    DontShowAgain,
-}
-
 #[derive(Clone, Debug, Default)]
 pub struct DisplayArea {
     pub columns: usize,
@@ -59,10 +50,8 @@ pub struct Panel {
     pub popup_focused: bool,
     pub needs_initial_layout: bool,
     pub suggestions: Option<SessionSuggestions>,
-    pub hovered: Option<CardTarget>,
     pub command_submitted: bool,
     pub display: DisplayArea,
-    pub card_targets: Vec<(usize, std::ops::Range<usize>, CardTarget)>,
     pub preview: Option<SessionPreview>,
     pub saved_preview: Option<SavedSessionPreview>,
     pub preview_tab: Option<usize>,
@@ -70,13 +59,38 @@ pub struct Panel {
     pub preview_timer_armed: bool,
     pub preview_area: Option<(usize, usize, usize, usize)>,
     pub own_plugin_id: Option<u32>,
-    pub card_scroll: usize,
-    pub card_page_rows: usize,
-    pub card_follow_selection: bool,
     pub tree: crate::session_tree::SessionTree,
     pub preview_pane: Option<usize>,
     pub preview_pane_id: Option<(u32, bool)>,
     pub opened_at_startup: bool,
+    pub attention: Option<GlobalAttention>,
+    pub previous_session: Option<String>,
+}
+
+fn status_marker(status: AttentionStatus) -> &'static str {
+    if status.is_idle() {
+        " "
+    } else {
+        status.symbol()
+    }
+}
+
+fn style_marker(text: Text, status: AttentionStatus) -> Text {
+    let range = 0..1;
+    match status {
+        AttentionStatus::NeedsYou => text.color_range(0, range),
+        AttentionStatus::Failed => text.error_color_range(range),
+        AttentionStatus::Done => text.success_color_range(range),
+        AttentionStatus::Working => text.color_range(1, range),
+        _ => text.dim_range(range),
+    }
+}
+
+fn top_status<'a>(items: impl Iterator<Item = &'a GlobalAttentionItem>) -> AttentionStatus {
+    items
+        .map(|item| item.item.attention.effective_status())
+        .max()
+        .unwrap_or_default()
 }
 
 impl Panel {
@@ -93,36 +107,6 @@ impl Panel {
             .filter(|s| s.is_running)
             .cloned()
             .collect()
-    }
-
-    pub fn move_card_selection(&mut self, delta: isize) {
-        self.card_follow_selection = true;
-        let count = self.card_suggestions().len();
-        if count == 0 {
-            self.hovered = Some(CardTarget::ShowAll);
-            return;
-        }
-        let current = match self.hovered {
-            Some(CardTarget::Row(index)) => Some(index.min(count - 1) as isize),
-            Some(CardTarget::ShowAll) => Some(count as isize),
-            _ => None,
-        };
-        let next = match current {
-            Some(current) => (current + delta).clamp(0, count as isize - 1) as usize,
-            None if delta < 0 => count - 1,
-            None => 0,
-        };
-        self.hovered = Some(CardTarget::Row(next));
-    }
-
-    pub fn select_card_edge(&mut self, last: bool) {
-        self.card_follow_selection = true;
-        let count = self.card_suggestions().len();
-        self.hovered = match (count, last) {
-            (0, _) => Some(CardTarget::ShowAll),
-            (_, false) => Some(CardTarget::Row(0)),
-            (count, true) => Some(CardTarget::Row(count - 1)),
-        };
     }
 
     pub fn card_resumable_count(&self) -> usize {
@@ -342,7 +326,10 @@ impl Panel {
 
     pub fn arm_preview_timer(&mut self) {
         if !self.preview_timer_armed {
-            set_timeout(PREVIEW_REFRESH_SECONDS);
+            crate::timers::start(
+                crate::timers::TimerOwner::SessionsPreview,
+                PREVIEW_REFRESH_SECONDS,
+            );
             self.preview_timer_armed = true;
         }
     }
@@ -588,201 +575,7 @@ fn layout_card_grid(
     }
 }
 
-pub fn render_card(panel: &mut Panel, rows: usize, cols: usize) {
-    let suggestions = panel.card_suggestions();
-    let width = cols;
-    let inner = width.saturating_sub(2);
-    let content_x = 1 + CARD_PADDING;
-    let content_width = width.saturating_sub(2 + 2 * CARD_PADDING);
-    let table = build_card_table(
-        &suggestions,
-        panel
-            .suggestions
-            .as_ref()
-            .map(|s| s.columns.clone())
-            .unwrap_or_default(),
-        content_width,
-        panel.context_branch(),
-    );
-    panel.card_targets.clear();
-    let title_main = CARD_TITLE;
-    let title = format!(" {} {} ", title_main, CARD_SHORTCUT);
-    let title_width = graphemes::display_width(&title);
-    let close_x = width.saturating_sub(4);
-    let top = format!(
-        "┌{}{} × ─┐",
-        title,
-        "─".repeat(inner.saturating_sub(title_width + 4))
-    );
-    let shortcut_start = 2 + title_main.chars().count() + 1;
-    let top_text = Text::from(top)
-        .color_range(2, 2..2 + title_main.chars().count())
-        .color_range(
-            0,
-            shortcut_start..shortcut_start + CARD_SHORTCUT.chars().count(),
-        );
-    let close_index = top_text.content().chars().count().saturating_sub(4);
-    let top_text = top_text.color_range(3, close_index..close_index + 1);
-    print_text_with_coordinates(top_text, 0, 0, Some(width), None);
-    if panel.hovered == Some(CardTarget::Close) {
-        print_text_with_coordinates(
-            Text::from("×").color_range(3, ..).italic_all(),
-            close_x,
-            0,
-            Some(1),
-            None,
-        );
-    }
-    panel
-        .card_targets
-        .push((0, close_x.saturating_sub(1)..close_x + 2, CardTarget::Close));
-    let first_row_y = 1 + CARD_PADDING;
-    let last_content_y = rows.saturating_sub(3 + CARD_PADDING);
-    let mut y = first_row_y;
-    if table.grid.is_none() {
-        print_text_with_coordinates(
-            Text::from(panel.card_empty_text()).dim_all(),
-            content_x,
-            y,
-            Some(content_width),
-            None,
-        );
-        y += 1;
-    }
-    let row_count = suggestions.len();
-    let header_rows = if table.grid.is_some() { 1 } else { 0 };
-    let capacity = last_content_y
-        .saturating_sub(y)
-        .saturating_sub(header_rows)
-        .min(panel.card_list_row_limit());
-    panel.card_page_rows = capacity.max(1);
-    let mut scroll = panel.card_scroll.min(row_count.saturating_sub(capacity));
-    if std::mem::take(&mut panel.card_follow_selection) {
-        if let Some(CardTarget::Row(index)) = panel.hovered {
-            scroll = scroll_with_margin(scroll, index, capacity, row_count, CARD_SCROLL_MARGIN);
-        }
-    }
-    panel.card_scroll = scroll;
-    let visible = row_count.saturating_sub(scroll).min(capacity);
-    let header_y = y;
-    if let Some(grid) = table.grid.as_ref() {
-        if y < last_content_y {
-            let mut table = Table::new().add_styled_row(grid[0].clone());
-            for index in scroll..scroll + visible {
-                let hovered = panel.hovered == Some(CardTarget::Row(index));
-                let cells = grid[index + 1]
-                    .iter()
-                    .map(|cell| {
-                        if hovered {
-                            cell.clone().selected()
-                        } else {
-                            cell.clone()
-                        }
-                    })
-                    .collect();
-                table = table.add_styled_row(cells);
-            }
-            print_table_with_coordinates(
-                table,
-                content_x,
-                y,
-                Some(content_width),
-                Some(visible + 1),
-            );
-            for offset in 0..visible {
-                panel.card_targets.push((
-                    y + 1 + offset,
-                    1..width.saturating_sub(1),
-                    CardTarget::Row(scroll + offset),
-                ));
-            }
-            y += visible + 1;
-        }
-    }
-    let more_above = scroll;
-    let more_below = row_count.saturating_sub(scroll + visible);
-    if more_above > 0 && header_rows > 0 {
-        let text = format!("↑ [+{}]", more_above);
-        print_text_with_coordinates(
-            Text::from(text.as_str()).color_range(1, ..),
-            (content_x + content_width).saturating_sub(graphemes::display_width(&text)),
-            header_y,
-            None,
-            None,
-        );
-    }
-    if more_below > 0 {
-        let text = format!("↓ [+{}]", more_below);
-        print_text_with_coordinates(
-            Text::from(text.as_str()).color_range(1, ..),
-            (content_x + content_width).saturating_sub(graphemes::display_width(&text)),
-            y,
-            None,
-            None,
-        );
-    }
-    let show_all_y = y + 1;
-    if let Some(resumable) = panel.resumable_text() {
-        let resumable_width = graphemes::display_width(&resumable).min(content_width);
-        print_text_with_coordinates(
-            Text::from(resumable.as_str()).dim_all(),
-            content_x,
-            show_all_y,
-            Some(resumable_width),
-            None,
-        );
-    }
-    let show_all_text = panel.show_all_text();
-    let show_all_width = graphemes::display_width(&show_all_text).min(content_width);
-    let show_all_x = (content_x + content_width).saturating_sub(show_all_width);
-    let shortcut_len = if panel.popup_focused {
-        SHOW_ALL_SHORTCUT.chars().count() + 1
-    } else {
-        0
-    };
-    let mut show_all = Text::from(show_all_text.as_str()).color_range(3, shortcut_len..);
-    if shortcut_len > 0 {
-        show_all = show_all.color_range(0, ..shortcut_len - 1);
-    }
-    if panel.hovered == Some(CardTarget::ShowAll) {
-        show_all = show_all.italic_all();
-    }
-    print_text_with_coordinates(show_all, show_all_x, show_all_y, Some(show_all_width), None);
-    panel.card_targets.push((
-        show_all_y,
-        show_all_x..show_all_x + show_all_width,
-        CardTarget::ShowAll,
-    ));
-    let bottom_y = show_all_y + CARD_PADDING + 1;
-    for side_y in 1..bottom_y {
-        print_text_with_coordinates(Text::from("│"), 0, side_y, Some(1), None);
-        print_text_with_coordinates(
-            Text::from("│"),
-            width.saturating_sub(1),
-            side_y,
-            Some(1),
-            None,
-        );
-    }
-    let bottom = format!("└{}┘", "─".repeat(inner));
-    print_text_with_coordinates(Text::from(bottom), 0, bottom_y, Some(width), None);
-    if panel.opened_at_startup && inner > graphemes::display_width(&DONT_SHOW_AGAIN_TEXT) + 2 {
-        let text_width = graphemes::display_width(&DONT_SHOW_AGAIN_TEXT);
-        let x = width.saturating_sub(text_width + 2);
-        let mut text = Text::from(DONT_SHOW_AGAIN_TEXT).dim_all();
-        if panel.hovered == Some(CardTarget::DontShowAgain) {
-            text = text.italic_all();
-        }
-        print_text_with_coordinates(text, x, bottom_y, Some(text_width), None);
-        panel.card_targets.push((
-            bottom_y,
-            x + 1..x + text_width - 1,
-            CardTarget::DontShowAgain,
-        ));
-    }
-}
-
-fn scroll_with_margin(
+pub(crate) fn scroll_with_margin(
     offset: usize,
     index: usize,
     rows: usize,
@@ -800,18 +593,6 @@ fn scroll_with_margin(
         offset = (index + 1 + margin).saturating_sub(rows);
     }
     offset.min(total.saturating_sub(rows))
-}
-
-pub fn card_target_at(panel: &Panel, line: isize, column: usize) -> Option<CardTarget> {
-    if line < 0 {
-        return None;
-    }
-    let line = line as usize;
-    panel
-        .card_targets
-        .iter()
-        .find(|(y, range, _)| *y == line && range.contains(&column))
-        .map(|(_, _, target)| target.clone())
 }
 
 pub fn render_session_tree(
@@ -855,9 +636,35 @@ pub fn render_session_tree(
     }
     panel.tree.offset = offset;
     let visible = rows.len().saturating_sub(offset).min(capacity);
-    let session_name_text = |row: &crate::ui::components::CachedRowData| match row.kind {
-        CachedRowKind::Resurrectable => format!("{} [EXITED]", row.session_name),
-        CachedRowKind::Active => row.session_name.clone(),
+    let attention = panel.attention.clone();
+    let previous_session = panel.previous_session.clone();
+    let session_status = |name: &str| {
+        attention
+            .as_ref()
+            .and_then(|g| g.session(name))
+            .map(|s| s.attention.status)
+            .unwrap_or_default()
+    };
+    let session_name_text = |row: &crate::ui::components::CachedRowData| {
+        let marker = status_marker(session_status(&row.session_name));
+        let mut text = format!("{} {}", marker, row.session_name);
+        if previous_session.as_deref() == Some(row.session_name.as_str()) {
+            text.push_str(" previous");
+        }
+        if matches!(row.kind, CachedRowKind::Resurrectable) {
+            text.push_str(" · ended");
+        }
+        text
+    };
+    let returns_to = |name: &str| {
+        suggestions.get(name).and_then(|s| {
+            let tab = s.tabs.iter().find(|t| t.active)?;
+            let pane = tab.panes.iter().find(|p| p.focused);
+            Some(match pane {
+                Some(pane) => format!("→ {} › {}", tab.name, pane.title),
+                None => format!("→ {}", tab.name),
+            })
+        })
     };
     let folder_text = |name: &str| {
         suggestions
@@ -924,27 +731,38 @@ pub fn render_session_tree(
                         &cached_row.details_color_ranges,
                     )
                 };
-                let line = format!(
+                let mut line = format!(
                     "{}  {}  {}  {}",
                     pad(&name, name_width),
                     pad(&folder, folder_width),
                     pad(&branch, branch_width),
                     details
                 );
+                if let Some(returns_to) = returns_to(&row.session) {
+                    line.push_str("  ");
+                    line.push_str(&returns_to);
+                }
                 let name_len = cached_row.session_name.chars().count();
-                let mut text = Text::from(line).color_range(1, ..name_len);
+                let mut text = style_marker(
+                    Text::from(line).color_range(1, 2..2 + name_len),
+                    session_status(&row.session),
+                );
                 let indices: Vec<usize> = cached_row
                     .indices
                     .iter()
                     .filter(|&&i| i < name_len)
-                    .cloned()
+                    .map(|i| i + 2)
                     .collect();
                 if !indices.is_empty() {
                     text = text.color_indices(3, indices);
                 }
+                let name_chars = name.chars().count();
+                if previous_session.as_deref() == Some(row.session.as_str()) {
+                    let start = 2 + name_len + 1;
+                    text = text.color_range(2, start..start + "previous".len());
+                }
                 if matches!(cached_row.kind, CachedRowKind::Resurrectable) {
-                    let start = name_len + 2;
-                    text = text.error_color_range(start..start + "EXITED".len());
+                    text = text.dim_range(name_chars.saturating_sub("ended".len())..name_chars);
                 }
                 let folder_start = name_width + 2;
                 let suggestion = suggestions.get(row.session.as_str());
@@ -984,11 +802,26 @@ pub fn render_session_tree(
                     if pane_count == 1 { "pane" } else { "panes" }
                 );
                 let active = tab.map(|t| t.active).unwrap_or(false);
-                let line = format!("{}{}{}", name, suffix, if active { " active" } else { "" });
-                let name_end = name.chars().count();
-                Text::from(line)
-                    .color_range(2, ..name_end)
-                    .dim_range(name_end..)
+                let status = top_status(
+                    attention
+                        .iter()
+                        .flat_map(|g| g.items.iter())
+                        .filter(|i| i.session == row.session && i.item.tab_name == name),
+                );
+                let line = format!(
+                    "{} {}{}{}",
+                    status_marker(status),
+                    name,
+                    suffix,
+                    if active { " active" } else { "" }
+                );
+                let name_end = 2 + name.chars().count();
+                style_marker(
+                    Text::from(line)
+                        .color_range(2, 2..name_end)
+                        .dim_range(name_end..),
+                    status,
+                )
             },
             TreeNode::Pane(tab_index, pane_index) => {
                 let pane = panel
@@ -999,9 +832,23 @@ pub fn render_session_tree(
                     .and_then(|tab| tab.panes.get(pane_index));
                 let title = pane.map(|p| p.title.clone()).unwrap_or_default();
                 let focused = pane.map(|p| p.focused).unwrap_or(false);
-                let line = format!("{}{}", title, if focused { " focused" } else { "" });
-                let title_end = title.chars().count();
-                Text::from(line).dim_range(title_end..)
+                let status = pane
+                    .filter(|p| !p.is_plugin)
+                    .and_then(|p| {
+                        attention.as_ref().and_then(|g| {
+                            g.find(&row.session, &PaneId::Terminal(p.id))
+                                .map(|i| i.item.attention.effective_status())
+                        })
+                    })
+                    .unwrap_or_default();
+                let line = format!(
+                    "{} {}{}",
+                    status_marker(status),
+                    title,
+                    if focused { " focused" } else { "" }
+                );
+                let title_end = 2 + title.chars().count();
+                style_marker(Text::from(line).dim_range(title_end..), status)
             },
         };
         let flat_index = offset + offset_index;
@@ -1238,7 +1085,7 @@ fn push_fitting_clusters(
     overflowed
 }
 
-fn fit_ansi(line: &str, width: usize) -> String {
+pub(crate) fn fit_ansi(line: &str, width: usize) -> String {
     let mut result = String::new();
     let mut visible = 0;
     let mut pending = String::new();
@@ -1334,7 +1181,7 @@ pub fn strip_ansi(line: &str) -> String {
     result
 }
 
-fn truncate_plain(text: &str, max_width: usize) -> String {
+pub(crate) fn truncate_plain(text: &str, max_width: usize) -> String {
     if graphemes::display_width(text) <= max_width {
         return text.to_owned();
     }
@@ -1552,28 +1399,6 @@ mod tests {
         assert!(no_branch_row[1].ends_with("zellij"), "{:?}", no_branch_row);
         assert_eq!(no_branch_row[2], "—");
         assert_eq!(row_text(&table, 3), vec!["neither", "—", "—", "0s ago"]);
-    }
-
-    #[test]
-    fn keyboard_selection_stays_inside_the_list() {
-        let mut panel = panel_with(
-            (0..4)
-                .map(|i| suggestion(&format!("s{}", i), true, FolderRelation::Other))
-                .collect(),
-        );
-        panel.move_card_selection(1);
-        assert_eq!(panel.hovered, Some(CardTarget::Row(0)));
-        panel.move_card_selection(10);
-        assert_eq!(panel.hovered, Some(CardTarget::Row(3)));
-        panel.move_card_selection(-10);
-        assert_eq!(panel.hovered, Some(CardTarget::Row(0)));
-        panel.select_card_edge(true);
-        assert_eq!(panel.hovered, Some(CardTarget::Row(3)));
-        panel.select_card_edge(false);
-        assert_eq!(panel.hovered, Some(CardTarget::Row(0)));
-        let mut empty = panel_with(vec![]);
-        empty.move_card_selection(1);
-        assert_eq!(empty.hovered, Some(CardTarget::ShowAll));
     }
 
     #[test]

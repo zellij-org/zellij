@@ -99,7 +99,9 @@ pub enum BackgroundJob {
         session_name: String,
         tab_index: Option<usize>,
         pane_id: Option<(u32, bool)>,
+        anchor: Option<zellij_utils::data::PreviewAnchor>,
     },
+    PeerAttention(crate::attention::peers::PeerAttentionJob),
     SavedSessionPreview {
         plugin_id: PluginId,
         client_id: ClientId,
@@ -148,6 +150,7 @@ impl From<&BackgroundJob> for BackgroundJobContext {
             BackgroundJob::SessionSuggestions(..) => BackgroundJobContext::SessionSuggestions,
             BackgroundJob::SessionPreview { .. } => BackgroundJobContext::SessionPreview,
             BackgroundJob::SavedSessionPreview { .. } => BackgroundJobContext::SavedSessionPreview,
+            BackgroundJob::PeerAttention(..) => BackgroundJobContext::PeerAttention,
             BackgroundJob::AttentionIdleCheck(..) => BackgroundJobContext::AttentionIdleCheck,
             BackgroundJob::ReportHostProgramStatus(..) => {
                 BackgroundJobContext::ReportHostProgramStatus
@@ -327,6 +330,7 @@ pub(crate) fn background_jobs_main(
     disable_session_metadata: bool,
     web_server_base_url: String,
     session_id: String,
+    live_sessions: crate::attention::peers::LiveSessions,
 ) -> Result<()> {
     let err_context = || "failed to write to pty".to_string();
     let mut running_jobs: HashMap<BackgroundJob, Instant> = HashMap::new();
@@ -346,8 +350,16 @@ pub(crate) fn background_jobs_main(
     let serialization_interval = serialization_interval.map(|s| s * 1000); // convert to
                                                                            // milliseconds
     let render_schedule = spawn_render_scheduler(bus.senders.clone());
-    let session_suggestions =
-        crate::session_suggestions::spawn_session_suggestions_service(bus.senders.clone());
+    let session_suggestions = crate::session_suggestions::spawn_session_suggestions_service(
+        bus.senders.clone(),
+        live_sessions.clone(),
+    );
+    let peer_attention = crate::attention::peers::spawn_peer_attention_service(
+        bus.senders.clone(),
+        current_session_name.clone(),
+        live_sessions,
+        session_suggestions.clone(),
+    );
     let pending_help_text_clear: Arc<Mutex<HashMap<ClientId, Instant>>> =
         Arc::new(Mutex::new(HashMap::new()));
     let pending_command_output_flash_clear: Arc<Mutex<HashMap<PaneId, Instant>>> =
@@ -1032,20 +1044,36 @@ pub(crate) fn background_jobs_main(
             BackgroundJob::SessionSuggestions(job) => {
                 let _ = session_suggestions.send(job);
             },
+            BackgroundJob::PeerAttention(job) => {
+                let _ = peer_attention.send(job);
+            },
             BackgroundJob::SessionPreview {
                 plugin_id,
                 client_id,
                 session_name,
                 tab_index,
                 pane_id,
+                anchor,
             } => {
                 let senders = bus.senders.clone();
+                let is_current = *current_session_name.lock().unwrap() == session_name;
                 thread::spawn(move || {
-                    let preview = crate::session_previews::running_session_preview(
-                        &session_name,
-                        tab_index,
-                        pane_id,
-                    );
+                    let preview = if is_current {
+                        crate::session_previews::current_session_preview(
+                            &senders,
+                            &session_name,
+                            tab_index,
+                            pane_id,
+                            anchor,
+                        )
+                    } else {
+                        crate::session_previews::running_session_preview(
+                            &session_name,
+                            tab_index,
+                            pane_id,
+                            anchor,
+                        )
+                    };
                     let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
                         Some(plugin_id),
                         Some(client_id),
@@ -1071,6 +1099,7 @@ pub(crate) fn background_jobs_main(
             BackgroundJob::Exit => {
                 let _ = session_suggestions
                     .send(crate::session_suggestions::SessionSuggestionsJob::Exit);
+                let _ = peer_attention.send(crate::attention::peers::PeerAttentionJob::Exit);
                 {
                     let (lock, wake) = &*render_schedule;
                     lock.lock().unwrap().exiting = true;

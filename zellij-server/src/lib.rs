@@ -25,6 +25,7 @@ mod pty_writer;
 mod route;
 mod screen;
 mod session_layout_metadata;
+pub mod session_link;
 mod session_previews;
 pub mod session_suggestions;
 mod socket_folder_watcher;
@@ -139,6 +140,11 @@ pub enum ServerInstruction {
     LogError(Vec<String>, ClientId, Option<NotificationEnd>),
     SwitchSession(ConnectToSession, ClientId, Option<NotificationEnd>),
     SwitchSessionAndCloseCurrent(ConnectToSession, ClientId, Option<NotificationEnd>),
+    HistoryMove(
+        zellij_utils::session_history::HistoryMove,
+        ClientId,
+        Option<NotificationEnd>,
+    ),
     TerminalCommandSubmitted,
     SessionRenamed(String),
     UnblockCliPipeInput(String, Option<i32>),
@@ -261,6 +267,7 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::SwitchSessionAndCloseCurrent(..) => {
                 ServerContext::SwitchSessionAndCloseCurrent
             },
+            ServerInstruction::HistoryMove(..) => ServerContext::HistoryMove,
             ServerInstruction::TerminalCommandSubmitted => ServerContext::TerminalCommandSubmitted,
             ServerInstruction::SessionRenamed(..) => ServerContext::SessionRenamed,
             ServerInstruction::UnblockCliPipeInput(..) => ServerContext::UnblockCliPipeInput,
@@ -1082,6 +1089,7 @@ pub(crate) struct SessionMetaData {
     applied_env: AppliedEnv,
     sent_window_settings: HashMap<ClientId, WindowSettings>,
     font_families: HashMap<ClientId, Vec<String>>,
+    pub live_sessions: crate::attention::peers::LiveSessions,
 }
 
 impl SessionMetaData {
@@ -1362,7 +1370,7 @@ impl SessionMetaData {
                 .send_to_background_jobs(BackgroundJob::SessionSuggestions(
                     SessionSuggestionsJob::Configure {
                         config: new_config.session_suggestions.clone(),
-                        session_card: new_config.options.session_card.unwrap_or(true),
+                        startup_card: new_config.attention.startup_card(),
                         session_indicator: new_config.options.session_indicator.unwrap_or(true),
                     },
                 ));
@@ -2684,6 +2692,7 @@ mod session_state_tests {
             applied_env: AppliedEnv::default(),
             sent_window_settings: HashMap::new(),
             font_families: HashMap::new(),
+            live_sessions: Default::default(),
         };
         (
             Arc::new(RwLock::new(Some(session))),
@@ -3255,7 +3264,7 @@ pub fn start_server(os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
 fn handle_new_connection(
     session_data: Arc<RwLock<Option<SessionMetaData>>>,
     session_state: Arc<RwLock<SessionState>>,
-    mut os_input: Box<dyn ServerOsApi>,
+    os_input: Box<dyn ServerOsApi>,
     to_server: SenderWithContext<ServerInstruction>,
     stream: interprocess::local_socket::Stream,
     #[cfg(windows)] reply_stream: interprocess::local_socket::Stream,
@@ -3276,6 +3285,86 @@ fn handle_new_connection(
         return Ok(());
     }
 
+    match first_instruction {
+        ClientToServerMsg::RequestSessionAttention {
+            include_command_text,
+        } => {
+            let senders = session_data
+                .read()
+                .unwrap()
+                .as_ref()
+                .map(|s| s.senders.clone());
+            let attention = senders
+                .map(|senders| {
+                    crate::session_link::local_session_attention(&senders, include_command_text)
+                })
+                .unwrap_or_default();
+            let mut sender = receiver.get_sender::<ServerToClientMsg>();
+            let _ = sender.send_server_msg(ServerToClientMsg::SessionAttention { attention });
+            return Ok(());
+        },
+        ClientToServerMsg::RequestSessionPreview {
+            tab_index,
+            pane_id,
+            anchor,
+        } => {
+            let senders = session_data
+                .read()
+                .unwrap()
+                .as_ref()
+                .map(|s| s.senders.clone());
+            let preview = crate::session_previews::answer_preview_request(
+                senders.as_ref(),
+                tab_index,
+                pane_id,
+                anchor,
+            );
+            let mut sender = receiver.get_sender::<ServerToClientMsg>();
+            let _ = sender.send_server_msg(ServerToClientMsg::SessionPreview { preview });
+            return Ok(());
+        },
+        ClientToServerMsg::PeerAttentionChanged {
+            session_name,
+            attention,
+        } => {
+            if let Some(session_data) = session_data.read().unwrap().as_ref() {
+                let _ = session_data
+                    .senders
+                    .send_to_background_jobs(BackgroundJob::PeerAttention(
+                        crate::attention::peers::PeerAttentionJob::PeerChanged {
+                            session_name,
+                            attention,
+                        },
+                    ));
+            }
+            let mut sender = receiver.get_sender::<ServerToClientMsg>();
+            let _ = sender.send_server_msg(ServerToClientMsg::Connected);
+            return Ok(());
+        },
+        first_instruction => {
+            return handle_client_connection(
+                session_data,
+                session_state,
+                os_input,
+                to_server,
+                receiver,
+                first_instruction,
+                #[cfg(windows)]
+                reply_stream,
+            );
+        },
+    }
+}
+
+fn handle_client_connection(
+    session_data: Arc<RwLock<Option<SessionMetaData>>>,
+    session_state: Arc<RwLock<SessionState>>,
+    mut os_input: Box<dyn ServerOsApi>,
+    to_server: SenderWithContext<ServerInstruction>,
+    receiver: IpcReceiverWithContext<ClientToServerMsg>,
+    first_instruction: ClientToServerMsg,
+    #[cfg(windows)] reply_stream: interprocess::local_socket::Stream,
+) -> Result<()> {
     let client_id = session_state.write().unwrap().new_client();
 
     #[cfg(windows)]
@@ -3615,9 +3704,15 @@ pub fn start_server_impl(
     let mut last_host_program_status: Option<zellij_utils::attention::HostProgramStatus> = None;
     // The socket filename is the session id, not the (renameable) display name.
     let mut own_session_name = zellij_utils::sessions::display_name_for_session_id(&session_id);
+    let mut client_histories: HashMap<ClientId, zellij_utils::session_history::SessionHistory> =
+        HashMap::new();
+    let mut last_detached_at_ms: Option<u64> = None;
     loop {
         let attached_client_count = session_state.read().unwrap().attached_client_count();
         if attached_client_count != last_attached_client_count {
+            if attached_client_count == 0 && last_attached_client_count > 0 {
+                last_detached_at_ms = Some(crate::attention::now_ms());
+            }
             last_attached_client_count = attached_client_count;
             if let Some(session_data) = session_data.read().unwrap().as_ref() {
                 let _ = session_data.senders.send_to_background_jobs(
@@ -3637,6 +3732,7 @@ pub fn start_server_impl(
                     _ => false,
                 };
                 let host_terminal_env = cli_assets.host_terminal_env.clone();
+                let switch_context = cli_assets.switch_context.clone().unwrap_or_default();
                 let mut initial_panes = cli_assets.initial_panes.clone();
                 let (config, layout) = cli_assets.load_config_and_layout();
                 let layout_is_welcome_screen = cli_assets.layout
@@ -3839,7 +3935,7 @@ pub fn start_server_impl(
                     let _ = session_data.senders.send_to_background_jobs(
                         BackgroundJob::SessionSuggestions(SessionSuggestionsJob::Configure {
                             config: config.session_suggestions.clone(),
-                            session_card: runtime_config_options.session_card.unwrap_or(true),
+                            startup_card: config.attention.startup_card(),
                             session_indicator: runtime_config_options
                                 .session_indicator
                                 .unwrap_or(true),
@@ -3854,7 +3950,16 @@ pub fn start_server_impl(
                             } else {
                                 None
                             },
+                            startup_card: switch_context.startup_card,
                         }),
+                    );
+                    report_attached_client_history(
+                        &mut client_histories,
+                        &session_data.senders,
+                        client_id,
+                        Some(&switch_context),
+                        false,
+                        None,
                     );
                     session_data
                         .senders
@@ -3897,6 +4002,18 @@ pub fn start_server_impl(
                 };
                 let config = session_data.session_configuration.saved_config.clone();
                 let host_terminal_env = cli_assets.host_terminal_env.clone();
+                let is_a_reattach = !session_state
+                    .read()
+                    .unwrap()
+                    .other_clients_are_attached(client_id);
+                report_attached_client_history(
+                    &mut client_histories,
+                    &session_data.senders,
+                    client_id,
+                    cli_assets.switch_context.as_ref(),
+                    is_a_reattach,
+                    last_detached_at_ms,
+                );
                 let runtime_config_options = match cli_assets.configuration_options {
                     Some(configuration_options) => config.options.merge(configuration_options),
                     None => config.options.clone(),
@@ -4090,6 +4207,7 @@ pub fn start_server_impl(
                 }
             },
             ServerInstruction::ClientExit(client_id, completion_tx) => {
+                client_histories.remove(&client_id);
                 let _ = os_input.send_to_client(
                     client_id,
                     ServerToClientMsg::Exit {
@@ -4157,6 +4275,7 @@ pub fn start_server_impl(
                 }
             },
             ServerInstruction::RemoveClient(client_id) => {
+                client_histories.remove(&client_id);
                 // Check if this is a watcher
                 let is_watcher = session_state.read().unwrap().is_watcher(&client_id);
                 if is_watcher {
@@ -4354,6 +4473,7 @@ pub fn start_server_impl(
                 );
             },
             ServerInstruction::SessionRenamed(new_name) => {
+                rename_in_client_histories(&mut client_histories, &own_session_name, &new_name);
                 own_session_name = new_name;
             },
             ServerInstruction::TerminalCommandSubmitted => {
@@ -4393,11 +4513,51 @@ pub fn start_server_impl(
                     let _ = to_server.send(ServerInstruction::KillSession);
                 }
             },
+            ServerInstruction::HistoryMove(history_move, client_id, completion_tx) => {
+                let live_sessions = session_data
+                    .read()
+                    .unwrap()
+                    .as_ref()
+                    .map(|s| s.live_sessions.clone())
+                    .unwrap_or_default();
+                match history_move_switch(
+                    &mut client_histories,
+                    &own_session_name,
+                    &live_sessions,
+                    history_move,
+                    client_id,
+                ) {
+                    Ok(connect_to_session) => {
+                        let _ = to_server.send(ServerInstruction::SwitchSession(
+                            connect_to_session,
+                            client_id,
+                            completion_tx,
+                        ));
+                    },
+                    Err(history) => {
+                        if let Some(session_data) = session_data.read().unwrap().as_ref() {
+                            let _ = session_data.senders.send_to_screen(
+                                ScreenInstruction::UpdateClientSessionHistory {
+                                    client_id,
+                                    history,
+                                },
+                            );
+                        }
+                        drop(completion_tx);
+                    },
+                }
+            },
             ServerInstruction::SwitchSession(mut connect_to_session, client_id, completion_tx) => {
                 let current_session_name = envs::get_session_name();
                 if connect_to_session.name == current_session_name.ok() {
                     log::error!("Cannot attach to same session");
                 } else {
+                    attach_switch_context(
+                        &mut connect_to_session,
+                        &mut client_histories,
+                        &own_session_name,
+                        client_id,
+                    );
                     let layout_dir = session_data
                         .read()
                         .unwrap()
@@ -5296,9 +5456,11 @@ fn init_session(
         })
         .unwrap();
 
+    let live_sessions = crate::attention::peers::LiveSessions::default();
     let background_jobs_thread = thread::Builder::new()
         .name("background_jobs".to_string())
         .spawn({
+            let live_sessions = live_sessions.clone();
             let background_jobs_bus = Bus::new(
                 vec![background_jobs_receiver],
                 Some(&to_screen),
@@ -5324,6 +5486,7 @@ fn init_session(
                     disable_session_metadata,
                     web_server_base_url,
                     session_id,
+                    live_sessions,
                 )
                 .fatal()
             }
@@ -5399,6 +5562,7 @@ fn init_session(
         applied_env,
         sent_window_settings: HashMap::new(),
         font_families: HashMap::new(),
+        live_sessions,
         config_file: ConfigFileState {
             contents_when_read: cli_assets
                 .config_file_path
@@ -5633,6 +5797,114 @@ fn client_configuration(
                 .get_client_configuration(&client_id)
         })
         .unwrap_or_default()
+}
+
+#[inline(never)]
+fn history_move_switch(
+    client_histories: &mut HashMap<ClientId, zellij_utils::session_history::SessionHistory>,
+    own_session_name: &str,
+    live_sessions: &crate::attention::peers::LiveSessions,
+    history_move: zellij_utils::session_history::HistoryMove,
+    client_id: ClientId,
+) -> std::result::Result<ConnectToSession, zellij_utils::session_history::SessionHistory> {
+    let mut history = client_histories
+        .get(&client_id)
+        .cloned()
+        .unwrap_or_default();
+    history.remove_session(own_session_name);
+    loop {
+        let Some(target) = history.target(history_move).map(|t| t.to_owned()) else {
+            client_histories.insert(client_id, history.clone());
+            return Err(history);
+        };
+        let is_live = live_sessions
+            .is_live(&target)
+            .unwrap_or_else(|| {
+                zellij_utils::sessions::resolve_session_socket_path(&target)
+                    .unwrap_or_else(|| zellij_utils::consts::ZELLIJ_SOCK_DIR.join(&target))
+                    .exists()
+            });
+        if is_live {
+            history.apply(history_move, own_session_name);
+            return Ok(ConnectToSession {
+                name: Some(target),
+                switch_context: Some(zellij_utils::session_history::SwitchContext {
+                    history,
+                    arrival: Some(history_move.into()),
+                    from_session: Some(own_session_name.to_owned()),
+                    startup_card: None,
+                }),
+                ..Default::default()
+            });
+        }
+        history.remove_session(&target);
+    }
+}
+
+#[inline(never)]
+fn rename_in_client_histories(
+    client_histories: &mut HashMap<ClientId, zellij_utils::session_history::SessionHistory>,
+    old_name: &str,
+    new_name: &str,
+) {
+    for history in client_histories.values_mut() {
+        history.rename_session(old_name, new_name);
+    }
+}
+
+#[inline(never)]
+fn attach_switch_context(
+    connect_to_session: &mut ConnectToSession,
+    client_histories: &mut HashMap<ClientId, zellij_utils::session_history::SessionHistory>,
+    own_session_name: &str,
+    client_id: ClientId,
+) {
+    let mut switch_context = connect_to_session.switch_context.take().unwrap_or_default();
+    if switch_context.from_session.is_none() {
+        let mut history = client_histories
+            .get(&client_id)
+            .cloned()
+            .unwrap_or_default();
+        history.record_switch(
+            own_session_name,
+            connect_to_session.name.as_deref().unwrap_or_default(),
+        );
+        switch_context.history = history;
+        switch_context.from_session = Some(own_session_name.to_owned());
+        if switch_context.arrival.is_none() {
+            switch_context.arrival = Some(zellij_utils::session_history::SessionArrival::Switch);
+        }
+    }
+    connect_to_session.switch_context = Some(switch_context);
+    client_histories.remove(&client_id);
+}
+
+#[inline(never)]
+fn report_attached_client_history(
+    client_histories: &mut HashMap<ClientId, zellij_utils::session_history::SessionHistory>,
+    senders: &ThreadSenders,
+    client_id: ClientId,
+    switch_context: Option<&zellij_utils::session_history::SwitchContext>,
+    may_be_a_reattach: bool,
+    last_detached_at_ms: Option<u64>,
+) {
+    let switch_context = switch_context.cloned().unwrap_or_default();
+    client_histories.insert(client_id, switch_context.history.clone());
+    let _ = senders.send_to_screen(ScreenInstruction::ClientSessionHistory {
+        client_id,
+        history: switch_context.history.clone(),
+        arrival: switch_context.arrival.clone(),
+        arrived_from: switch_context.from_session.clone(),
+    });
+    if may_be_a_reattach && !switch_context.is_a_switch() {
+        let _ = senders.send_to_background_jobs(BackgroundJob::SessionSuggestions(
+            SessionSuggestionsJob::ClientReattached {
+                client_id,
+                away_since_ms: last_detached_at_ms.unwrap_or_else(crate::attention::now_ms),
+                startup_card: switch_context.startup_card,
+            },
+        ));
+    }
 }
 
 fn apply_runtime_change(

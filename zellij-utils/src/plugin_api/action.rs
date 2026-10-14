@@ -60,6 +60,7 @@ pub use super::generated_api::api::{
         ScrollAtPayload,
         SearchDirection as ProtobufSearchDirection,
         SearchOption as ProtobufSearchOption,
+        SessionPanePayload,
         SetPaneFrameStylePayload,
         ShowFloatingPanesPayload,
         SplitDirection as ProtobufSplitDirection,
@@ -724,31 +725,73 @@ impl TryFrom<ProtobufAction> for Action {
                 Some(_) => Err("MuteSession should not have a payload"),
                 None => Ok(Action::MuteSession),
             },
-            Some(ProtobufActionName::MutePaneByPaneId) => match protobuf_action.optional_payload {
-                Some(OptionalPayload::TargetPaneIdPayload(payload)) => Ok(Action::MutePaneByPaneId {
-                    pane_id: payload
-                        .pane_id
-                        .ok_or("Missing pane id for Action::MutePaneByPaneId")?
-                        .try_into()?,
+            Some(ProtobufActionName::ToggleSession) => match protobuf_action.optional_payload {
+                Some(_) => Err("ToggleSession should not have a payload"),
+                None => Ok(Action::ToggleSession),
+            },
+            Some(ProtobufActionName::GoBack) => match protobuf_action.optional_payload {
+                Some(_) => Err("GoBack should not have a payload"),
+                None => Ok(Action::GoBack),
+            },
+            Some(ProtobufActionName::GoForward) => match protobuf_action.optional_payload {
+                Some(_) => Err("GoForward should not have a payload"),
+                None => Ok(Action::GoForward),
+            },
+            Some(ProtobufActionName::GoToNextAttention) => match protobuf_action.optional_payload {
+                Some(_) => Err("GoToNextAttention should not have a payload"),
+                None => Ok(Action::GoToNextAttention),
+            },
+            Some(ProtobufActionName::MarkPaneSeen) => match protobuf_action.optional_payload {
+                Some(OptionalPayload::SessionPanePayload(payload)) => Ok(Action::MarkPaneSeen {
+                    session: payload.session,
+                    pane_id: payload.pane_id.map(|p| p.try_into()).transpose()?,
                 }),
+                None => Ok(Action::MarkPaneSeen {
+                    session: None,
+                    pane_id: None,
+                }),
+                _ => Err("Wrong payload for Action::MarkPaneSeen"),
+            },
+            Some(ProtobufActionName::MarkAllSeen) => match protobuf_action.optional_payload {
+                Some(OptionalPayload::SessionPanePayload(payload)) => Ok(Action::MarkAllSeen {
+                    session: payload.session,
+                }),
+                None => Ok(Action::MarkAllSeen { session: None }),
+                _ => Err("Wrong payload for Action::MarkAllSeen"),
+            },
+            Some(ProtobufActionName::MutePaneByPaneId) => match protobuf_action.optional_payload {
+                Some(OptionalPayload::TargetPaneIdPayload(payload)) => {
+                    Ok(Action::MutePaneByPaneId {
+                        pane_id: payload
+                            .pane_id
+                            .ok_or("Missing pane id for Action::MutePaneByPaneId")?
+                            .try_into()?,
+                    })
+                },
                 _ => Err("Wrong payload for Action::MutePaneByPaneId"),
             },
-            Some(ProtobufActionName::IgnorePaneOutputByPaneId) => match protobuf_action.optional_payload {
-                Some(OptionalPayload::TargetPaneIdPayload(payload)) => Ok(Action::IgnorePaneOutputByPaneId {
-                    pane_id: payload
-                        .pane_id
-                        .ok_or("Missing pane id for Action::IgnorePaneOutputByPaneId")?
-                        .try_into()?,
-                }),
-                _ => Err("Wrong payload for Action::IgnorePaneOutputByPaneId"),
+            Some(ProtobufActionName::IgnorePaneOutputByPaneId) => {
+                match protobuf_action.optional_payload {
+                    Some(OptionalPayload::TargetPaneIdPayload(payload)) => {
+                        Ok(Action::IgnorePaneOutputByPaneId {
+                            pane_id: payload
+                                .pane_id
+                                .ok_or("Missing pane id for Action::IgnorePaneOutputByPaneId")?
+                                .try_into()?,
+                        })
+                    },
+                    _ => Err("Wrong payload for Action::IgnorePaneOutputByPaneId"),
+                }
             },
             Some(ProtobufActionName::WatchPaneByPaneId) => match protobuf_action.optional_payload {
-                Some(OptionalPayload::TargetPaneIdPayload(payload)) => Ok(Action::WatchPaneByPaneId {
-                    pane_id: payload
-                        .pane_id
-                        .ok_or("Missing pane id for Action::WatchPaneByPaneId")?
-                        .try_into()?,
-                }),
+                Some(OptionalPayload::TargetPaneIdPayload(payload)) => {
+                    Ok(Action::WatchPaneByPaneId {
+                        pane_id: payload
+                            .pane_id
+                            .ok_or("Missing pane id for Action::WatchPaneByPaneId")?
+                            .try_into()?,
+                    })
+                },
                 _ => Err("Wrong payload for Action::WatchPaneByPaneId"),
             },
             Some(ProtobufActionName::MuteTabByTabId) => match protobuf_action.optional_payload {
@@ -1391,6 +1434,7 @@ impl TryFrom<Action> for ProtobufAction {
                 })),
             }),
             Action::WriteToPaneId { .. }
+            | Action::WriteKeyToPaneId { .. }
             | Action::WriteCharsToPaneId { .. }
             | Action::Paste { .. }
             | Action::GoToTabById { .. }
@@ -2015,6 +2059,36 @@ impl TryFrom<Action> for ProtobufAction {
             Action::MuteSession => Ok(ProtobufAction {
                 name: ProtobufActionName::MuteSession as i32,
                 optional_payload: None,
+            }),
+            Action::ToggleSession => Ok(ProtobufAction {
+                name: ProtobufActionName::ToggleSession as i32,
+                optional_payload: None,
+            }),
+            Action::GoBack => Ok(ProtobufAction {
+                name: ProtobufActionName::GoBack as i32,
+                optional_payload: None,
+            }),
+            Action::GoForward => Ok(ProtobufAction {
+                name: ProtobufActionName::GoForward as i32,
+                optional_payload: None,
+            }),
+            Action::GoToNextAttention => Ok(ProtobufAction {
+                name: ProtobufActionName::GoToNextAttention as i32,
+                optional_payload: None,
+            }),
+            Action::MarkPaneSeen { session, pane_id } => Ok(ProtobufAction {
+                name: ProtobufActionName::MarkPaneSeen as i32,
+                optional_payload: Some(OptionalPayload::SessionPanePayload(SessionPanePayload {
+                    session,
+                    pane_id: pane_id.map(|p| p.try_into()).transpose()?,
+                })),
+            }),
+            Action::MarkAllSeen { session } => Ok(ProtobufAction {
+                name: ProtobufActionName::MarkAllSeen as i32,
+                optional_payload: Some(OptionalPayload::SessionPanePayload(SessionPanePayload {
+                    session,
+                    pane_id: None,
+                })),
             }),
             Action::MutePaneByPaneId { pane_id } => Ok(ProtobufAction {
                 name: ProtobufActionName::MutePaneByPaneId as i32,

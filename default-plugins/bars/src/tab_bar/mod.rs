@@ -138,12 +138,17 @@ pub struct TabBar {
     clients: BTreeMap<ClientId, ClientState>,
     slot_clients: BTreeMap<(SlotId, ClientId), SlotClientState>,
     hint_timeout_queue: VecDeque<ClientId>,
+    timer_requests: Vec<f64>,
     pub session_indicator: SessionIndicator,
 }
 
 impl TabBar {
     pub fn has_slots(&self) -> bool {
         !self.slots.is_empty()
+    }
+
+    pub fn take_timer_requests(&mut self) -> Vec<f64> {
+        std::mem::take(&mut self.timer_requests)
     }
 
     pub fn slot_added(&mut self, slot: &Slot) {
@@ -163,8 +168,8 @@ impl TabBar {
             EventType::Timer,
             EventType::InputReceived,
             EventType::ActionComplete,
+            EventType::GlobalAttentionUpdate,
             EventType::SessionCountsUpdate,
-            EventType::FolderSessionsUpdate,
         ]);
     }
 
@@ -267,7 +272,7 @@ impl TabBar {
         }
         if matches!(
             event,
-            Event::SessionCountsUpdate(_) | Event::FolderSessionsUpdate(_)
+            Event::GlobalAttentionUpdate(_) | Event::SessionCountsUpdate(_)
         ) {
             return if self.session_indicator.update(event) {
                 RenderResponse::Slots(self.slots.keys().copied().collect())
@@ -345,7 +350,7 @@ impl TabBar {
                     client.hint_text = Some(hint_variants.clone());
                     client.outstanding_hint_timeouts += 1;
                     self.hint_timeout_queue.push_back(client_id);
-                    set_timeout(5.0);
+                    self.timer_requests.push(5.0);
                     should_render = true;
                 }
             },

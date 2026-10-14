@@ -9,15 +9,14 @@ use zellij_integration_tests::{
 use zellij_utils::input::options::Options;
 use zellij_utils::session_index::{SessionIndex, SessionRow};
 
-const SESSION_FEATURES_ON: &str = "session_card true\nsession_indicator true\nmouse_mode true";
-const CARD_OFF_INDICATOR_ON: &str = "session_card false\nsession_indicator true\nmouse_mode true";
-const CARD_TITLE: &str = "Running Sessions";
+const SESSION_FEATURES_ON: &str =
+    "session_indicator true\nmouse_mode true\nattention {\n    startup_card \"always\"\n}";
+const CARD_OFF_INDICATOR_ON: &str = "session_indicator true\nmouse_mode true";
+const CARD_TITLE: &str = "Inbox (";
+const BROWSER_TABS: &str = "│ Sessions (";
 const DONT_SHOW_AGAIN: &str = "Don't show again";
-const SHOW_ALL_SHORTCUT: &str = "<Ctrl f>";
-const NO_OTHER_SESSIONS_YET: &str = "No other sessions yet";
-const NO_OTHER_LIVE_SESSIONS: &str = "No other live sessions";
-const ONE_RESURRECTABLE: &str = "+1 resurrectable session";
 const PLACEHOLDER: &str = "—";
+const EMPTY_INBOX_SECTION: &str = "Needs you (0)";
 const RESUME_LAYOUT: &str = r#"
 layout {
     pane size=1 borderless=true {
@@ -43,11 +42,24 @@ fn start_session_with_session_features() -> TestSession {
         .start()
 }
 
-fn wait_for_card_listing(zellij: &TestSession, session_name: &str) {
-    zellij.wait_until(
-        "the session card lists the other session",
-        |grid_snapshot| grid_snapshot.contains(CARD_TITLE) && grid_snapshot.contains(session_name),
-    );
+fn running_text(count: usize) -> String {
+    format!("Nothing needs you · {} running", count)
+}
+
+fn wait_for_card(zellij: &TestSession, running: usize) {
+    let expected = running_text(running);
+    zellij.wait_until("the inbox card is shown", |grid_snapshot| {
+        grid_snapshot.contains(CARD_TITLE)
+            && grid_snapshot.contains(&expected)
+            && !grid_snapshot.contains(BROWSER_TABS)
+    });
+}
+
+fn bar_says(grid_snapshot: &GridSnapshot, text: &str) -> bool {
+    grid_snapshot
+        .lines()
+        .first()
+        .is_some_and(|tab_bar| tab_bar.contains(text))
 }
 
 fn sgr_left_click(column: usize, line: usize) -> Vec<u8> {
@@ -73,10 +85,21 @@ fn position_of(
         .expect("the text is on screen")
 }
 
-fn focus_the_card_with_f9(zellij: &TestSession) {
+fn open_the_browser_with_f9(zellij: &TestSession) {
     zellij.send_stdin(&keys::F9);
-    zellij.wait_until("the session card is focused", |grid_snapshot| {
-        grid_snapshot.contains(CARD_TITLE) && grid_snapshot.contains(SHOW_ALL_SHORTCUT)
+    zellij.wait_until("the inbox browser opened", |grid_snapshot| {
+        grid_snapshot.contains(BROWSER_TABS)
+    });
+}
+
+fn open_the_sessions_tab_with_f9(zellij: &TestSession) {
+    zellij.send_stdin(&keys::F9);
+    zellij.wait_until("the browser opened on the empty inbox", |grid_snapshot| {
+        grid_snapshot.contains(BROWSER_TABS) && grid_snapshot.contains(EMPTY_INBOX_SECTION)
+    });
+    zellij.send_stdin(&keys::TAB);
+    zellij.wait_until("the sessions tab is shown", |grid_snapshot| {
+        grid_snapshot.contains(BROWSER_TABS) && !grid_snapshot.contains(EMPTY_INBOX_SECTION)
     });
 }
 
@@ -167,8 +190,14 @@ fn line_with(grid_snapshot: &GridSnapshot, needle: &str) -> String {
 }
 
 fn wait_for_the_card_to_close(zellij: &TestSession) {
-    zellij.wait_until("the session card closed", |grid_snapshot| {
+    zellij.wait_until("the inbox card closed", |grid_snapshot| {
         !grid_snapshot.contains(CARD_TITLE)
+    });
+}
+
+fn wait_for_the_browser_to_close(zellij: &TestSession) {
+    zellij.wait_until("the inbox browser closed", |grid_snapshot| {
+        !grid_snapshot.contains(BROWSER_TABS)
     });
 }
 
@@ -203,51 +232,46 @@ fn create_git_repository(name: &str, branch: &str) -> std::path::PathBuf {
 
 #[test]
 fn card_shows_on_a_new_session_when_another_session_is_running() {
-    let background = start_running_session_in_background();
+    let _background = start_running_session_in_background();
     let mut zellij = start_session_with_session_features();
     claim_first_terminal_and_wait_for_prompt(&zellij);
-    wait_for_card_listing(&zellij, background.session_name());
+    wait_for_card(&zellij, 2);
     zellij.quit();
 }
 
 #[test]
-fn without_other_running_sessions_there_is_no_card_but_the_dropdown_still_opens_it() {
+fn without_other_running_sessions_there_is_no_card_but_the_indicator_opens_the_browser() {
     let mut zellij = start_session_with_session_features();
     claim_first_terminal_and_wait_for_prompt(&zellij);
-    let grid_snapshot = zellij.wait_until(
-        "the dropdown says there are no other sessions",
+    let grid_snapshot = zellij.wait_until("the indicator counts this session", |grid_snapshot| {
+        bar_says(grid_snapshot, "1 running")
+    });
+    assert!(!grid_snapshot.contains(CARD_TITLE));
+    let (column, line) = position_of(&grid_snapshot, "1 running");
+    zellij.send_stdin(&sgr_left_click(column + 1, line));
+    zellij.wait_until(
+        "the indicator opened the browser on the empty inbox",
         |grid_snapshot| {
-            grid_snapshot
-                .lines()
-                .first()
-                .is_some_and(|tab_bar| tab_bar.contains("No Other Sessions"))
+            grid_snapshot.contains(BROWSER_TABS) && grid_snapshot.contains(EMPTY_INBOX_SECTION)
         },
     );
-    assert!(!grid_snapshot.contains(CARD_TITLE));
-    let (column, line) = position_of(&grid_snapshot, "No Other Sessions");
+    let grid_snapshot = zellij.snapshot();
+    let (column, line) = position_of(&grid_snapshot, "1 running");
     zellij.send_stdin(&sgr_left_click(column + 1, line));
-    zellij.wait_until("the dropdown opened the empty card", |grid_snapshot| {
-        grid_snapshot.contains(CARD_TITLE) && grid_snapshot.contains("No other sessions yet")
-    });
-    zellij.send_stdin(&sgr_left_click(column + 1, line));
-    zellij.wait_until("the dropdown closed the card", |grid_snapshot| {
-        !grid_snapshot.contains(CARD_TITLE)
-    });
+    wait_for_the_browser_to_close(&zellij);
     zellij.quit();
 }
 
 #[test]
-fn card_is_not_shown_on_attach() {
+fn card_is_shown_on_reattach_with_the_time_away() {
     let _other = start_running_session_in_background();
     let target = TestRunner::new(TERMINAL_SIZE)
         .with_config(SESSION_FEATURES_ON)
         .start_in_background();
     let mut zellij = target.attach(TERMINAL_SIZE);
-    zellij.wait_until("attached session rendered", |grid_snapshot| {
-        grid_snapshot.tab_bar_appears() && grid_snapshot.status_bar_appears()
+    zellij.wait_until("the reattach card is shown", |grid_snapshot| {
+        grid_snapshot.contains("While you were away")
     });
-    open_and_close_session_manager(&zellij);
-    assert!(!zellij.snapshot().contains(CARD_TITLE));
     zellij.quit();
 }
 
@@ -280,17 +304,38 @@ fn card_is_not_shown_on_resume() {
 
 #[test]
 fn card_closes_after_the_first_enter() {
-    let background = start_running_session_in_background();
+    let _background = start_running_session_in_background();
     let mut zellij = start_session_with_session_features();
     let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
-    wait_for_card_listing(&zellij, background.session_name());
+    wait_for_card(&zellij, 2);
     zellij.send_stdin(b"ls");
     zellij.send_stdin(&keys::ENTER);
     terminal.wait_for_stdin("the command reached the terminal", |stdin| {
         stdin.ends_with(b"\r")
     });
-    zellij.wait_until("the session card closed", |grid_snapshot| {
-        !grid_snapshot.contains(CARD_TITLE)
+    wait_for_the_card_to_close(&zellij);
+    zellij.quit();
+}
+
+#[test]
+fn the_indicator_opens_the_browser_after_the_startup_card_closed_by_itself() {
+    let _background = start_running_session_in_background();
+    let mut zellij = start_session_with_session_features();
+    let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
+    wait_for_card(&zellij, 2);
+    zellij.send_stdin(b"ls");
+    zellij.send_stdin(&keys::ENTER);
+    terminal.wait_for_stdin("the command reached the terminal", |stdin| {
+        stdin.ends_with(b"\r")
+    });
+    wait_for_the_card_to_close(&zellij);
+    let grid_snapshot = zellij.wait_until("the indicator shows it is closed", |grid_snapshot| {
+        bar_says(grid_snapshot, "2 running ▾")
+    });
+    let (column, line) = position_of(&grid_snapshot, "2 running");
+    zellij.send_stdin(&sgr_left_click(column + 1, line));
+    zellij.wait_until("the indicator opened the browser", |grid_snapshot| {
+        grid_snapshot.contains(BROWSER_TABS)
     });
     zellij.quit();
 }
@@ -303,8 +348,13 @@ fn switch_and_close_removes_the_unused_session() {
     let unused_session = zellij.session_name().to_owned();
     let unused_session_id = zellij.session_id();
     let socket = zellij.socket_path();
-    wait_for_card_listing(&zellij, background.session_name());
-    focus_the_card_with_f9(&zellij);
+    wait_for_card(&zellij, 2);
+    open_the_browser_with_f9(&zellij);
+    zellij.wait_until(
+        "the sessions tab lists the other session",
+        |grid_snapshot| grid_snapshot.contains(background.session_name()),
+    );
+    zellij.send_stdin(&keys::DOWN);
     zellij.send_stdin(&keys::ENTER);
     wait_for_path_to_disappear(&socket, "the unused session socket");
     let cache_folder = zellij_utils::consts::session_info_folder_for_session(&unused_session_id);
@@ -348,66 +398,50 @@ fn automatic_layout_changes_do_not_show_a_notification() {
 }
 
 #[test]
-fn the_card_lists_running_sessions_with_folder_and_branch_columns() {
-    let background = start_running_session_in_background();
+fn the_card_shows_the_running_count_and_its_controls() {
+    let _background = start_running_session_in_background();
     let mut zellij = start_session_with_session_features();
     claim_first_terminal_and_wait_for_prompt(&zellij);
-    let grid_snapshot = zellij.wait_until("the card shows its columns", |grid_snapshot| {
-        grid_snapshot.contains(CARD_TITLE)
-            && grid_snapshot.contains(background.session_name())
-            && grid_snapshot.contains("Folder")
-            && grid_snapshot.contains("Branch")
-            && grid_snapshot.contains("ago")
-    });
+    wait_for_card(&zellij, 2);
+    let grid_snapshot = zellij.snapshot();
     assert!(grid_snapshot.contains("<F9>"));
+    assert!(grid_snapshot.contains("Open inbox ›"));
     assert!(grid_snapshot.contains(DONT_SHOW_AGAIN));
-    assert!(!grid_snapshot.contains(SHOW_ALL_SHORTCUT));
     zellij.quit();
 }
 
 #[test]
-fn the_bar_counts_running_sessions() {
-    let background = start_running_session_in_background();
+fn the_bar_counts_running_sessions_including_this_one() {
+    let _background = start_running_session_in_background();
     let mut zellij = start_session_with_session_features();
     claim_first_terminal_and_wait_for_prompt(&zellij);
-    wait_for_card_listing(&zellij, background.session_name());
-    zellij.wait_until("the bar counts the running session", |grid_snapshot| {
-        grid_snapshot
-            .lines()
-            .first()
-            .is_some_and(|tab_bar| tab_bar.contains("1 running session"))
+    zellij.wait_until("the bar counts both sessions", |grid_snapshot| {
+        bar_says(grid_snapshot, "2 running")
     });
     zellij.quit();
 }
 
 #[test]
-fn f9_focuses_the_startup_card_and_closes_it_the_second_time() {
-    let background = start_running_session_in_background();
+fn f9_opens_the_browser_from_the_startup_card_and_closes_it_the_second_time() {
+    let _background = start_running_session_in_background();
     let mut zellij = start_session_with_session_features();
     claim_first_terminal_and_wait_for_prompt(&zellij);
-    wait_for_card_listing(&zellij, background.session_name());
-    focus_the_card_with_f9(&zellij);
+    wait_for_card(&zellij, 2);
+    open_the_browser_with_f9(&zellij);
     zellij.send_stdin(&keys::F9);
-    zellij.wait_until("the session card closed", |grid_snapshot| {
-        !grid_snapshot.contains(CARD_TITLE)
-    });
-    zellij.send_stdin(&keys::F9);
-    zellij.wait_until("f9 opened a focused card again", |grid_snapshot| {
-        grid_snapshot.contains(CARD_TITLE) && grid_snapshot.contains(SHOW_ALL_SHORTCUT)
-    });
+    wait_for_the_browser_to_close(&zellij);
+    open_the_browser_with_f9(&zellij);
     zellij.quit();
 }
 
 #[test]
 fn escape_typed_into_the_terminal_closes_the_card() {
-    let background = start_running_session_in_background();
+    let _background = start_running_session_in_background();
     let mut zellij = start_session_with_session_features();
     let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
-    wait_for_card_listing(&zellij, background.session_name());
+    wait_for_card(&zellij, 2);
     zellij.send_stdin(&keys::ESC);
-    zellij.wait_until("the session card closed", |grid_snapshot| {
-        !grid_snapshot.contains(CARD_TITLE)
-    });
+    wait_for_the_card_to_close(&zellij);
     terminal.wait_for_stdin("the escape still reached the terminal", |stdin| {
         stdin.contains(&0x1b)
     });
@@ -416,42 +450,40 @@ fn escape_typed_into_the_terminal_closes_the_card() {
 
 #[test]
 fn the_card_closes_when_a_new_pane_opens() {
-    let background = start_running_session_in_background();
+    let _background = start_running_session_in_background();
     let mut zellij = start_session_with_session_features();
     claim_first_terminal_and_wait_for_prompt(&zellij);
-    wait_for_card_listing(&zellij, background.session_name());
+    wait_for_card(&zellij, 2);
     split_right_and_wait_for_prompt(&zellij);
-    zellij.wait_until("the session card closed", |grid_snapshot| {
-        !grid_snapshot.contains(CARD_TITLE)
-    });
+    wait_for_the_card_to_close(&zellij);
     zellij.quit();
 }
 
 #[test]
-fn dont_show_again_turns_the_card_off_in_the_config() {
+fn dont_show_again_turns_the_startup_card_off_in_the_config() {
     let _background = start_running_session_in_background();
     let mut zellij = start_session_with_session_features();
     claim_first_terminal_and_wait_for_prompt(&zellij);
     let grid_snapshot = zellij.wait_until("the card offers to stop showing", |grid_snapshot| {
-        grid_snapshot.contains(CARD_TITLE) && grid_snapshot.contains(DONT_SHOW_AGAIN)
+        grid_snapshot.contains(CARD_TITLE)
+            && grid_snapshot.contains(DONT_SHOW_AGAIN)
+            && grid_snapshot.contains(&running_text(2))
     });
     let (column, line) = position_of(&grid_snapshot, DONT_SHOW_AGAIN);
     zellij.send_stdin(&sgr_left_click(column + 1, line));
-    zellij.wait_until("the session card closed", |grid_snapshot| {
-        !grid_snapshot.contains(CARD_TITLE)
-    });
+    wait_for_the_card_to_close(&zellij);
     let config_file_path = zellij
         .config_file_path()
         .expect("the session has a config file");
     let deadline = Instant::now() + default_timeout();
     loop {
         let contents = std::fs::read_to_string(&config_file_path).unwrap_or_default();
-        if contents.contains("session_card false") {
+        if contents.contains("startup_card \"never\"") {
             break;
         }
         if Instant::now() >= deadline {
             panic!(
-                "session_card false was not written to the config:\n{}",
+                "startup_card \"never\" was not written to the config:\n{}",
                 contents
             );
         }
@@ -461,18 +493,16 @@ fn dont_show_again_turns_the_card_off_in_the_config() {
 }
 
 #[test]
-fn ctrl_f_in_the_focused_card_opens_the_session_manager_with_an_expandable_list() {
+fn the_sessions_tab_lists_sessions_as_an_expandable_tree() {
     let background = start_running_session_in_background();
     let mut zellij = start_session_with_session_features();
     claim_first_terminal_and_wait_for_prompt(&zellij);
-    wait_for_card_listing(&zellij, background.session_name());
-    focus_the_card_with_f9(&zellij);
-    zellij.send_stdin(&keys::ctrl('f'));
-    zellij.wait_until("the session manager opened", |grid_snapshot| {
+    wait_for_card(&zellij, 2);
+    open_the_browser_with_f9(&zellij);
+    zellij.wait_until("the sessions tab is shown", |grid_snapshot| {
         grid_snapshot.contains("Session: ")
             && grid_snapshot.contains(background.session_name())
             && grid_snapshot.contains("<←↓↑→>")
-            && grid_snapshot.contains("Select a session to see its preview")
     });
     zellij.send_stdin(&keys::DOWN);
     zellij.send_stdin(&keys::RIGHT);
@@ -480,9 +510,7 @@ fn ctrl_f_in_the_focused_card_opens_the_session_manager_with_an_expandable_list(
         grid_snapshot.contains("Tab #1") && grid_snapshot.contains("pane")
     });
     zellij.send_stdin(&keys::ESC);
-    zellij.wait_until("the session manager closed", |grid_snapshot| {
-        !grid_snapshot.contains("Session: ")
-    });
+    wait_for_the_browser_to_close(&zellij);
     zellij.quit();
 }
 
@@ -507,7 +535,7 @@ fn enter_in_the_welcome_screen_starts_a_default_session_without_the_card() {
     loop {
         let messages = zellij.received_server_messages();
         if messages.iter().any(|message| {
-            message == "SwitchSession layout=Some(\"default\") session_card=Some(false)"
+            message == "SwitchSession layout=Some(\"default\") startup_card=Some(\"never\")"
         }) {
             break;
         }
@@ -523,25 +551,12 @@ fn enter_in_the_welcome_screen_starts_a_default_session_without_the_card() {
 }
 
 #[test]
-fn the_startup_card_lists_live_sessions_but_not_resurrectable_ones_and_closes_on_the_first_command()
-{
-    let resurrectable = leave_a_resurrectable_session();
-    let background = start_running_session_in_background();
+fn the_startup_card_counts_only_live_sessions_and_closes_on_the_first_command() {
+    let _resurrectable = leave_a_resurrectable_session();
+    let _background = start_running_session_in_background();
     let mut zellij = start_session_with_session_features();
     let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
-    let grid_snapshot = zellij.wait_until(
-        "the card lists the live session and counts the resurrectable one",
-        |grid_snapshot| {
-            grid_snapshot.contains(CARD_TITLE)
-                && grid_snapshot.contains(background.session_name())
-                && grid_snapshot.contains(ONE_RESURRECTABLE)
-        },
-    );
-    assert!(
-        !grid_snapshot.contains(&resurrectable),
-        "the resurrectable session is listed on the card:\n{}",
-        grid_snapshot.text
-    );
+    wait_for_card(&zellij, 2);
     zellij.send_stdin(b"ls");
     zellij.send_stdin(&keys::ENTER);
     terminal.wait_for_stdin("the command reached the terminal", |stdin| {
@@ -553,27 +568,17 @@ fn the_startup_card_lists_live_sessions_but_not_resurrectable_ones_and_closes_on
 
 #[test]
 fn without_other_live_sessions_there_is_no_card_even_with_resurrectable_sessions() {
-    let _resurrectable = leave_a_resurrectable_session();
+    let resurrectable = leave_a_resurrectable_session();
     let mut zellij = start_session_with_session_features();
     claim_first_terminal_and_wait_for_prompt(&zellij);
-    zellij.wait_until(
-        "the bar says there are no other sessions",
-        |grid_snapshot| {
-            grid_snapshot
-                .lines()
-                .first()
-                .is_some_and(|tab_bar| tab_bar.contains("No Other Sessions"))
-        },
-    );
+    zellij.wait_until("the bar counts only this session", |grid_snapshot| {
+        bar_says(grid_snapshot, "1 running")
+    });
     assert_no_card_after_the_session_settles(&zellij);
-    zellij.send_stdin(&keys::F9);
+    open_the_sessions_tab_with_f9(&zellij);
     zellij.wait_until(
-        "f9 shows the card, which knows about the resurrectable session",
-        |grid_snapshot| {
-            grid_snapshot.contains(CARD_TITLE)
-                && grid_snapshot.contains(NO_OTHER_LIVE_SESSIONS)
-                && grid_snapshot.contains(ONE_RESURRECTABLE)
-        },
+        "the sessions tab lists the ended session",
+        |grid_snapshot| grid_snapshot.contains(&resurrectable) && grid_snapshot.contains("ended"),
     );
     zellij.quit();
 }
@@ -591,13 +596,13 @@ fn a_session_created_from_the_welcome_screen_has_no_card_even_with_other_live_se
     );
     zellij.send_stdin(&keys::ENTER);
     let switch = zellij.follow_switch();
-    assert_eq!(switch.session_card, Some(false));
+    assert_eq!(
+        switch.startup_card(),
+        Some(zellij_utils::input::attention::StartupCard::Never)
+    );
     claim_first_terminal_and_wait_for_prompt(&zellij);
     zellij.wait_until("the new session sees the live session", |grid_snapshot| {
-        grid_snapshot
-            .lines()
-            .first()
-            .is_some_and(|tab_bar| tab_bar.contains("1 running session"))
+        bar_says(grid_snapshot, "running")
     });
     assert_no_card_after_the_session_settles(&zellij);
     zellij.quit();
@@ -624,45 +629,39 @@ fn a_named_session_created_from_the_welcome_screen_has_no_card_even_with_other_l
     assert_eq!(zellij.session_name(), "brand-new");
     claim_first_terminal_and_wait_for_prompt(&zellij);
     zellij.wait_until("the new session sees the live session", |grid_snapshot| {
-        grid_snapshot
-            .lines()
-            .first()
-            .is_some_and(|tab_bar| tab_bar.contains("1 running session"))
+        bar_says(grid_snapshot, "running")
     });
     assert_no_card_after_the_session_settles(&zellij);
     zellij.quit();
 }
 
 #[test]
-fn with_the_card_turned_off_it_is_not_shown_at_startup_but_f9_still_opens_it() {
+fn with_the_card_turned_off_it_is_not_shown_at_startup_but_f9_still_opens_the_browser() {
     let background = start_running_session_in_background();
     let mut zellij = TestRunner::new(TERMINAL_SIZE)
         .with_config(CARD_OFF_INDICATOR_ON)
         .start();
     claim_first_terminal_and_wait_for_prompt(&zellij);
     assert_no_card_after_the_session_settles(&zellij);
-    focus_the_card_with_f9(&zellij);
-    zellij.wait_until("the card lists the live session", |grid_snapshot| {
+    open_the_sessions_tab_with_f9(&zellij);
+    zellij.wait_until("the browser lists the live session", |grid_snapshot| {
         grid_snapshot.contains(background.session_name())
     });
     zellij.quit();
 }
 
 #[test]
-fn f9_opens_and_closes_the_card_in_the_default_keys_preset() {
+fn f9_opens_and_closes_the_browser_in_the_default_keys_preset() {
     let mut zellij = start_session_with_session_features();
     claim_first_terminal_and_wait_for_prompt(&zellij);
+    open_the_browser_with_f9(&zellij);
     zellij.send_stdin(&keys::F9);
-    zellij.wait_until("f9 opened the card", |grid_snapshot| {
-        grid_snapshot.contains(CARD_TITLE) && grid_snapshot.contains(NO_OTHER_SESSIONS_YET)
-    });
-    zellij.send_stdin(&keys::F9);
-    wait_for_the_card_to_close(&zellij);
+    wait_for_the_browser_to_close(&zellij);
     zellij.quit();
 }
 
 #[test]
-fn f9_opens_and_closes_the_card_in_locked_mode_of_the_unlock_first_preset() {
+fn f9_opens_and_closes_the_browser_in_locked_mode_of_the_unlock_first_preset() {
     let mut zellij = TestRunner::new(TERMINAL_SIZE)
         .with_config(SESSION_FEATURES_ON)
         .with_cli_options(Options {
@@ -677,12 +676,9 @@ fn f9_opens_and_closes_the_card_in_locked_mode_of_the_unlock_first_preset() {
             && grid_snapshot.contains("UNLOCK")
             && grid_snapshot.cursor_is_at(col(2).row(1))
     });
+    open_the_browser_with_f9(&zellij);
     zellij.send_stdin(&keys::F9);
-    zellij.wait_until("f9 opened the card", |grid_snapshot| {
-        grid_snapshot.contains(CARD_TITLE) && grid_snapshot.contains(NO_OTHER_SESSIONS_YET)
-    });
-    zellij.send_stdin(&keys::F9);
-    wait_for_the_card_to_close(&zellij);
+    wait_for_the_browser_to_close(&zellij);
     zellij.send_stdin(&keys::ctrl('g'));
     zellij.wait_until("the session is unlocked", |grid_snapshot| {
         grid_snapshot.contains("PANE")
@@ -691,14 +687,14 @@ fn f9_opens_and_closes_the_card_in_locked_mode_of_the_unlock_first_preset() {
 }
 
 #[test]
-fn escape_closes_a_focused_card_without_reaching_the_terminal() {
-    let background = start_running_session_in_background();
+fn escape_closes_the_browser_without_reaching_the_terminal() {
+    let _background = start_running_session_in_background();
     let mut zellij = start_session_with_session_features();
     let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
-    wait_for_card_listing(&zellij, background.session_name());
-    focus_the_card_with_f9(&zellij);
+    wait_for_card(&zellij, 2);
+    open_the_browser_with_f9(&zellij);
     zellij.send_stdin(&keys::ESC);
-    wait_for_the_card_to_close(&zellij);
+    wait_for_the_browser_to_close(&zellij);
     zellij.send_stdin(&keys::key('x'));
     let stdin = terminal.wait_for_stdin("the next key reached the terminal", |stdin| {
         stdin.ends_with(b"x")
@@ -738,12 +734,15 @@ fn sessions_without_a_folder_or_a_branch_are_listed() {
     );
     let mut zellij = start_session_with_session_features();
     claim_first_terminal_and_wait_for_prompt(&zellij);
-    let grid_snapshot = zellij.wait_until("the card lists all three sessions", |grid_snapshot| {
-        grid_snapshot.contains(CARD_TITLE)
-            && grid_snapshot.contains(never_recorded.session_name())
-            && grid_snapshot.contains(outside_git.session_name())
-            && grid_snapshot.contains(in_git.session_name())
-    });
+    wait_for_card(&zellij, 4);
+    open_the_browser_with_f9(&zellij);
+    let grid_snapshot =
+        zellij.wait_until("the browser lists all three sessions", |grid_snapshot| {
+            grid_snapshot.contains(BROWSER_TABS)
+                && grid_snapshot.contains(never_recorded.session_name())
+                && grid_snapshot.contains(outside_git.session_name())
+                && grid_snapshot.contains(in_git.session_name())
+        });
     let never_recorded_line = line_with(&grid_snapshot, never_recorded.session_name());
     assert_eq!(
         never_recorded_line.matches(PLACEHOLDER).count(),
@@ -772,14 +771,19 @@ fn switching_after_a_command_was_typed_keeps_the_current_session() {
     let mut zellij = start_session_with_session_features();
     let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
     let current_session = zellij.session_name().to_owned();
-    wait_for_card_listing(&zellij, background.session_name());
+    wait_for_card(&zellij, 2);
     zellij.send_stdin(b"ls");
     zellij.send_stdin(&keys::ENTER);
     terminal.wait_for_stdin("the command reached the terminal", |stdin| {
         stdin.ends_with(b"ls\r")
     });
     wait_for_the_card_to_close(&zellij);
-    focus_the_card_with_f9(&zellij);
+    open_the_sessions_tab_with_f9(&zellij);
+    zellij.wait_until(
+        "the sessions tab lists the other session",
+        |grid_snapshot| grid_snapshot.contains(background.session_name()),
+    );
+    zellij.send_stdin(&keys::DOWN);
     zellij.send_stdin(&keys::ENTER);
     zellij.wait_for_main_client_to_exit();
     assert!(zellij

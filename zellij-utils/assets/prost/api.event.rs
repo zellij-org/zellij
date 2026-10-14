@@ -10,7 +10,7 @@ pub struct EventNameList {
 pub struct Event {
     #[prost(enumeration="EventType", tag="1")]
     pub name: i32,
-    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58")]
+    #[prost(oneof="event::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60")]
     pub payload: ::core::option::Option<event::Payload>,
 }
 /// Nested message and enum types in `Event`.
@@ -130,6 +130,117 @@ pub mod event {
         CommandStartedPayload(super::CommandStartedPayload),
         #[prost(message, tag="58")]
         CommandFinishedPayload(super::CommandFinishedPayload),
+        #[prost(message, tag="59")]
+        GlobalAttentionUpdatePayload(super::GlobalAttentionUpdatePayload),
+        #[prost(message, tag="60")]
+        SessionHistoryUpdatePayload(super::SessionHistoryUpdatePayload),
+    }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AttentionItem {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+    #[prost(uint64, tag="2")]
+    pub tab_id: u64,
+    #[prost(string, tag="3")]
+    pub tab_name: ::prost::alloc::string::String,
+    #[prost(string, tag="4")]
+    pub pane_title: ::prost::alloc::string::String,
+    #[prost(message, optional, tag="5")]
+    pub attention: ::core::option::Option<PaneAttention>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SessionAttention {
+    #[prost(string, tag="1")]
+    pub status: ::prost::alloc::string::String,
+    #[prost(message, optional, tag="2")]
+    pub counts: ::core::option::Option<AttentionCounts>,
+    #[prost(bool, tag="3")]
+    pub muted: bool,
+    #[prost(message, optional, tag="4")]
+    pub top: ::core::option::Option<AttentionItem>,
+    #[prost(message, repeated, tag="5")]
+    pub items: ::prost::alloc::vec::Vec<AttentionItem>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GlobalSessionAttention {
+    #[prost(string, tag="1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(message, optional, tag="2")]
+    pub attention: ::core::option::Option<SessionAttention>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GlobalAttentionUpdatePayload {
+    #[prost(string, tag="1")]
+    pub current_session: ::prost::alloc::string::String,
+    #[prost(message, repeated, tag="2")]
+    pub sessions: ::prost::alloc::vec::Vec<GlobalSessionAttention>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SessionHistoryUpdatePayload {
+    #[prost(string, tag="1")]
+    pub current: ::prost::alloc::string::String,
+    #[prost(string, optional, tag="2")]
+    pub previous: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, repeated, tag="3")]
+    pub back: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(string, repeated, tag="4")]
+    pub forward: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="5")]
+    pub arrived_from: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, optional, tag="6")]
+    pub arrival: ::core::option::Option<SessionArrival>,
+    #[prost(uint64, tag="7")]
+    pub arrived_at_ms: u64,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SwitchArrival {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ToggleArrival {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BackArrival {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ForwardArrival {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AttentionArrival {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SessionArrival {
+    #[prost(oneof="session_arrival::Arrival", tags="1, 2, 3, 4, 5")]
+    pub arrival: ::core::option::Option<session_arrival::Arrival>,
+}
+/// Nested message and enum types in `SessionArrival`.
+pub mod session_arrival {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Arrival {
+        #[prost(message, tag="1")]
+        Switch(super::SwitchArrival),
+        #[prost(message, tag="2")]
+        Toggle(super::ToggleArrival),
+        #[prost(message, tag="3")]
+        Back(super::BackArrival),
+        #[prost(message, tag="4")]
+        Forward(super::ForwardArrival),
+        #[prost(message, tag="5")]
+        Attention(super::AttentionArrival),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -1311,6 +1422,12 @@ pub struct SessionPreviewPayload {
     pub connected_clients: u32,
     #[prost(message, repeated, tag="9")]
     pub tabs: ::prost::alloc::vec::Vec<SessionPreviewTab>,
+    #[prost(uint32, optional, tag="10")]
+    pub pane_id: ::core::option::Option<u32>,
+    #[prost(bool, tag="11")]
+    pub pane_is_plugin: bool,
+    #[prost(uint32, optional, tag="12")]
+    pub anchor_line: ::core::option::Option<u32>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1455,6 +1572,8 @@ pub enum EventType {
     PromptShown = 64,
     CommandStarted = 65,
     CommandFinished = 66,
+    GlobalAttentionUpdate = 67,
+    SessionHistoryUpdate = 68,
 }
 impl EventType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1528,6 +1647,8 @@ impl EventType {
             EventType::PromptShown => "PromptShown",
             EventType::CommandStarted => "CommandStarted",
             EventType::CommandFinished => "CommandFinished",
+            EventType::GlobalAttentionUpdate => "GlobalAttentionUpdate",
+            EventType::SessionHistoryUpdate => "SessionHistoryUpdate",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1598,6 +1719,8 @@ impl EventType {
             "PromptShown" => Some(Self::PromptShown),
             "CommandStarted" => Some(Self::CommandStarted),
             "CommandFinished" => Some(Self::CommandFinished),
+            "GlobalAttentionUpdate" => Some(Self::GlobalAttentionUpdate),
+            "SessionHistoryUpdate" => Some(Self::SessionHistoryUpdate),
             _ => None,
         }
     }

@@ -631,12 +631,12 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "false",
             Everyone,
         ),
-        SettingKey::SessionCard => info(
-            "Session card",
+        SettingKey::AttentionStartupCard => info(
+            "Inbox card at startup",
             Sessions,
-            "Show other relevant sessions when a new session starts",
-            Toggle,
-            "true",
+            "When to show the inbox card as a session starts or you reattach: when something needs you, always when other sessions run, or never",
+            Choice(&["attention", "always", "never"]),
+            "attention",
             Everyone,
         ),
         SettingKey::SessionIndicator => info(
@@ -1681,7 +1681,8 @@ pub fn section(key: SettingKey) -> &'static str {
         | AttentionIdleRule
         | AttentionDoneThresholdSecs
         | AttentionIdleActivitySecs
-        | AttentionIdleSilenceSecs => "Attention",
+        | AttentionIdleSilenceSecs
+        | AttentionStartupCard => "Attention",
         StyledUnderlines | Osc8Hyperlinks | GraphemeClusters => "Text",
         FrameRoundedCorners | FrameHideSessionName => "Frames",
         FrameBorderStyle
@@ -1706,8 +1707,9 @@ pub fn section(key: SettingKey) -> &'static str {
         DefaultMode => "New panes",
         AutoLayout | StackedResize | StackedPaneList | SwapLayoutNotification => "Layouts",
         NestedSessionHandling => "Nested sessions",
-        SessionName | AttachToSession | ShowStartupTips | ShowReleaseNotes | SessionCard
-        | SessionIndicator => "Startup",
+        SessionName | AttachToSession | ShowStartupTips | ShowReleaseNotes | SessionIndicator => {
+            "Startup"
+        },
         SessionSerialization
         | SerializePaneViewport
         | ScrollbackLinesToSerialize

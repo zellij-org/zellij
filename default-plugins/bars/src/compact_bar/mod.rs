@@ -213,8 +213,8 @@ impl CompactBar {
                 EventType::SystemClipboardFailure,
                 EventType::InitialKeybinds,
                 EventType::ActionComplete,
+                EventType::GlobalAttentionUpdate,
                 EventType::SessionCountsUpdate,
-                EventType::FolderSessionsUpdate,
             ]
         };
         subscribe(&events);
@@ -398,7 +398,7 @@ impl CompactBar {
             _ => {},
         }
         match event {
-            Event::SessionCountsUpdate(_) | Event::FolderSessionsUpdate(_) => {
+            Event::GlobalAttentionUpdate(_) | Event::SessionCountsUpdate(_) => {
                 if self.session_indicator.update(event) {
                     RenderResponse::Slots(self.main_slot_ids())
                 } else {

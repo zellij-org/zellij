@@ -281,6 +281,8 @@ impl From<ServerToClientMsg> for ClientInstruction {
             ServerToClientMsg::HostProgramStatus { status } => {
                 ClientInstruction::HostProgramStatus(status)
             },
+            ServerToClientMsg::SessionAttention { .. } => ClientInstruction::UnblockInputThread,
+            ServerToClientMsg::SessionPreview { .. } => ClientInstruction::UnblockInputThread,
         }
     }
 }
@@ -976,7 +978,10 @@ pub fn start_remote_client(
         host_contacted.clone(),
     ))?;
 
-    if host_contacted.load(std::sync::atomic::Ordering::Relaxed) {
+    if says_goodbye_to_host(
+        host_contacted.load(std::sync::atomic::Ordering::Relaxed),
+        reconnect_to_session.is_some(),
+    ) {
         let mut stdout = os_input.get_stdout_writer();
         let _ = stdout.write_all(&nested_session::encode_frame(
             &nested_session::NestedSessionMessage::Bye,
@@ -1012,6 +1017,7 @@ pub fn first_message(
     host_terminal_env: std::collections::BTreeMap<String, String>,
     tab_position_to_focus: Option<usize>,
     pane_id_to_focus: Option<(u32, bool)>,
+    switch_context: Option<zellij_utils::session_history::SwitchContext>,
 ) -> Handshake {
     let is_web_client = false;
     let layout_from_cli_args = |config_options: &Options| {
@@ -1055,6 +1061,7 @@ pub fn first_message(
             cwd,
             host_terminal_env: host_terminal_env.clone(),
             initial_panes,
+            switch_context: switch_context.clone(),
         }
     };
 
@@ -1117,6 +1124,10 @@ pub fn first_message(
     }
 }
 
+pub(crate) fn says_goodbye_to_host(host_contacted: bool, switching_sessions: bool) -> bool {
+    host_contacted && !switching_sessions
+}
+
 pub fn start_client(
     mut os_input: Box<dyn ClientOsApi>,
     cli_args: CliArgs,
@@ -1127,6 +1138,7 @@ pub fn start_client(
     pane_id_to_focus: Option<(u32, bool)>, // (pane_id, is_plugin)
     is_a_reconnect: bool,
     start_detached_and_exit: bool,
+    switch_context: Option<zellij_utils::session_history::SwitchContext>,
 ) -> Option<ConnectToSession> {
     if start_detached_and_exit {
         start_server_detached(os_input, cli_args, config, config_options, info);
@@ -1204,6 +1216,7 @@ pub fn start_client(
         host_terminal_env(),
         tab_position_to_focus,
         pane_id_to_focus,
+        switch_context,
     );
 
     envs::set_session_name(own_session_name.clone());
@@ -1246,6 +1259,13 @@ pub fn start_client(
         .write_all(&nested_session::encode_frame(&announce))
         .unwrap();
     let _ = stdout.flush();
+    if is_a_reconnect {
+        for message in os_input.remembered_host_state().replay() {
+            os_input.send_to_server(ClientToServerMsg::NestedSessionFrameFromHost {
+                payload_bytes: nested_session::encode_payload(&message),
+            });
+        }
+    }
     let nested_reannounce = crate::nested_reannounce::NestedReannounce::spawn(
         os_input.clone(),
         own_session_name.clone(),
@@ -1680,7 +1700,13 @@ pub fn start_client(
 
     router_thread.join().unwrap();
 
-    if nested_reannounce.host_contacted() {
+    if reconnect_to_session.is_none() {
+        os_input.forget_host_state();
+    }
+    if says_goodbye_to_host(
+        nested_reannounce.host_contacted(),
+        reconnect_to_session.is_some(),
+    ) {
         let mut stdout = os_input.get_stdout_writer();
         let _ = stdout.write_all(&nested_session::encode_frame(
             &nested_session::NestedSessionMessage::Bye,
@@ -1752,6 +1778,7 @@ pub fn start_server_detached(
                 cwd,
                 host_terminal_env: host_terminal_env(),
                 initial_panes: None,
+                switch_context: None,
             };
 
             os_input.update_session_name(name);
@@ -1811,6 +1838,7 @@ pub fn start_server_detached(
                 cwd: layout_cwd,
                 host_terminal_env: host_terminal_env(),
                 initial_panes,
+                switch_context: None,
             };
 
             os_input.update_session_name(name);

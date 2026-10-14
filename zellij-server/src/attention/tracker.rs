@@ -122,6 +122,7 @@ struct PaneTrack {
     muted: bool,
     ignore_output: bool,
     watch_armed_ms: Option<u64>,
+    dismissed_ms: Option<u64>,
     resolved: PaneAttention,
     frame: Option<FrameMarker>,
 }
@@ -333,6 +334,28 @@ impl AttentionTracker {
         self.session_muted
     }
 
+    pub fn unseen_output_since(&self, pane_id: &PaneId) -> Option<u64> {
+        self.panes
+            .get(pane_id)
+            .and_then(|t| t.first_unseen_output_ms)
+    }
+    pub fn mark_seen(&mut self, pane_id: PaneId, now: u64) -> bool {
+        let Some(track) = self.panes.get_mut(&pane_id) else {
+            return false;
+        };
+        track.last_visible_ms = Some(now);
+        track.last_focused_ms = Some(now);
+        track.first_unseen_output_ms = None;
+        track.dismissed_ms = Some(now);
+        self.resolve(pane_id, now);
+        true
+    }
+    pub fn mark_all_seen(&mut self, now: u64) {
+        let panes: Vec<PaneId> = self.panes.keys().copied().collect();
+        for pane_id in panes {
+            self.mark_seen(pane_id, now);
+        }
+    }
     pub fn set_pane_muted(&mut self, pane_id: PaneId, muted: bool, now: u64) {
         self.track(pane_id, now).muted = muted;
         self.resolve(pane_id, now);
@@ -502,7 +525,7 @@ impl AttentionTracker {
 
     fn fire_watch(&mut self, pane_id: PaneId, text: String, detail: AttentionDetail, now: u64) {
         if let Some(track) = self.panes.get_mut(&pane_id) {
-            if track.watch_armed_ms.take().is_some() {
+            if track.watch_armed_ms.is_some() {
                 track.watch_result = Some(WatchResult {
                     at_ms: now,
                     text,
@@ -543,9 +566,7 @@ impl AttentionTracker {
             result,
             exit_code,
             err,
-            duration_ms: running
-                .as_ref()
-                .map(|r| now.saturating_sub(r.started_ms)),
+            duration_ms: running.as_ref().map(|r| now.saturating_sub(r.started_ms)),
             ended_ms: now,
             command: running.and_then(|r| r.command),
         };
@@ -715,10 +736,12 @@ impl AttentionTracker {
             track.command.phase = CommandPhase::Finished;
             track.command.running = None;
             let running = running.or_else(|| {
-                track.command_pane_started_ms.map(|started_ms| RunningCommand {
-                    command: None,
-                    started_ms,
-                })
+                track
+                    .command_pane_started_ms
+                    .map(|started_ms| RunningCommand {
+                        command: None,
+                        started_ms,
+                    })
             });
             let exit_code = exit_status;
             let err = if exit_status.is_none() {
@@ -880,15 +903,20 @@ impl AttentionTracker {
         }
         if let Some(first_unseen) = track.first_unseen_output_ms {
             if !track.ignore_output && !track.visible {
+                let watched = track.watch_armed_ms.is_some();
                 candidates.push(Candidate {
-                    status: AttentionStatus::NewOutput,
+                    status: if watched {
+                        AttentionStatus::NeedsYou
+                    } else {
+                        AttentionStatus::NewOutput
+                    },
                     source: AttentionSource::UnseenOutput,
                     text: "new output".to_owned(),
                     detail: AttentionDetail::default(),
                     since_ms: first_unseen,
                     past: true,
-                    on_frame: false,
-                    from_watch: false,
+                    on_frame: watched,
+                    from_watch: watched,
                 });
             }
         }
@@ -923,6 +951,9 @@ impl AttentionTracker {
                     from_watch: false,
                 });
             }
+        }
+        if let Some(dismissed_ms) = track.dismissed_ms {
+            candidates.retain(|c| c.past || c.since_ms > dismissed_ms);
         }
         candidates
     }
@@ -1082,7 +1113,7 @@ impl AttentionTracker {
                     continue;
                 };
                 counts.add(&track.resolved);
-                if !track.resolved.status.is_idle() {
+                if !track.resolved.status.is_idle() || track.resolved.watched {
                     items.push(AttentionItem {
                         pane_id: *pane_id,
                         tab_id: *tab_id,

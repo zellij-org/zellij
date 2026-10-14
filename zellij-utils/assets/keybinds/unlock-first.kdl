@@ -148,6 +148,10 @@ keybinds {
         bind "[" { FocusGuestSession; SwitchToMode "Locked"; }
         bind "f" { ToggleHostFullscreen; SwitchToMode "Locked"; }
         bind "u" { MuteSession; SwitchToMode "Locked"; }
+        bind "Tab" { ToggleSession; SwitchToMode "Locked"; }
+        bind "Left" { GoBack; SwitchToMode "Locked"; }
+        bind "Right" { GoForward; SwitchToMode "Locked"; }
+        bind "n" { GoToNextAttention; SwitchToMode "Locked"; }
         bind "w" {
             LaunchOrFocusPlugin "session-manager" {
                 floating true

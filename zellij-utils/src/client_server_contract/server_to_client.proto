@@ -28,7 +28,17 @@ message ServerToClientMsg {
     HostThemeModeMsg host_theme_mode = 21;
     WindowSettingsMsg window_settings = 22;
     HostProgramStatusMsg host_program_status = 23;
+    SessionAttentionMsg session_attention = 24;
+    SessionPreviewMsg session_preview = 25;
   }
+}
+
+message SessionPreviewMsg {
+  optional SessionPreview preview = 1;
+}
+
+message SessionAttentionMsg {
+  SessionAttention attention = 1;
 }
 
 message HostProgramStatusMsg {

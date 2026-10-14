@@ -76,7 +76,7 @@ context_menu {
         item "Rename pane" { StartRenamePaneByPaneId; }
         item "Add to group" { TogglePaneInGroupByPaneId; }
         separator
-        item "Notify me when this finishes" toggled_label="Stop watching" { WatchPaneByPaneId; }
+        item "Watch this pane" toggled_label="Stop watching" { WatchPaneByPaneId; }
         item "Ignore output" toggled_label="Report output" { IgnorePaneOutputByPaneId; }
         item "Mute pane" toggled_label="Unmute pane" { MutePaneByPaneId; }
         separator
@@ -96,6 +96,7 @@ context_menu {
     bar {
         item "New pane" { NewPane; }
         item "New tab" { NewTab; }
+        item "Back to {}" { ToggleSession; }
     }
     common {
         item "Settings…" {
@@ -569,11 +570,6 @@ context_menu {
 // Default: false
 //
 // mouse_click_through true
-
-// Whether to show a card listing other relevant sessions when a new session starts
-// Default: true
-//
-// session_card false
 
 // Whether to show the other sessions indicator in the tab bar and compact bar
 // Default: true

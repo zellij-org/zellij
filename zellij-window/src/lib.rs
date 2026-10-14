@@ -307,6 +307,7 @@ fn connect(
     geometry: Geometry,
     focus: (Option<usize>, Option<(u32, bool)>),
     local_config: LocalConfig,
+    switch_context: Option<zellij_utils::session_history::SwitchContext>,
 ) -> Result<connection::Connection> {
     let info = match &target.reach {
         Reach::Local(info) => info,
@@ -322,6 +323,7 @@ fn connect(
         spawn::advertised_host_terminal_env(),
         focus.0,
         focus.1,
+        switch_context,
     );
     let session_name = info.get_session_name().to_owned();
     let socket_path = if handshake.starts_server {
@@ -376,9 +378,6 @@ fn switch_target(
     if let Some(cwd) = &to.cwd {
         resolved.client.set_cwd(cwd.clone());
     }
-    if let Some(session_card) = to.session_card {
-        resolved.config_options.session_card = Some(session_card);
-    }
     Ok((
         Target {
             reach: Reach::Local(resolved.client),
@@ -403,6 +402,7 @@ fn switch(
         geometry,
         (to.tab_position, to.pane_id),
         Default::default(),
+        to.switch_context.clone(),
     )
 }
 
@@ -449,6 +449,7 @@ fn open(args: WindowArgs, opts: CliArgs) -> Result<()> {
         geometry,
         (None, None),
         local_config,
+        None,
     ) {
         Ok(connection) => connection,
         Err(e) => {

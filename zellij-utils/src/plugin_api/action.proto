@@ -257,7 +257,13 @@ message Action {
     TargetTabIdPayload target_tab_id_payload = 66;
     MoveTabByTabIdPayload move_tab_by_tab_id_payload = 67;
     MoveTabToPositionPayload move_tab_to_position_payload = 68;
+    SessionPanePayload session_pane_payload = 69;
   }
+}
+
+message SessionPanePayload {
+  optional string session = 1;
+  optional PaneId pane_id = 2;
 }
 
 message TargetPaneIdPayload {
@@ -568,6 +574,12 @@ enum ActionName {
     MuteTab = 136;
     MuteTabByTabId = 137;
     MuteSession = 138;
+    ToggleSession = 139;
+    GoBack = 140;
+    GoForward = 141;
+    GoToNextAttention = 142;
+    MarkPaneSeen = 143;
+    MarkAllSeen = 144;
 }
 
 message Position {

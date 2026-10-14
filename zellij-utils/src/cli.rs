@@ -882,7 +882,7 @@ pub enum Sessions {
 
         #[clap(
             long,
-            help = "Notify once when the command finishes (or its output goes quiet)"
+            help = "Watch the pane: notify each time its command finishes or its output goes quiet, until the watch is turned off"
         )]
         notify: bool,
 
@@ -1367,7 +1367,7 @@ pub enum CliAction {
         #[clap(
             long,
             requires("command"),
-            help = "Notify once when the command finishes (or its output goes quiet)"
+            help = "Watch the pane: notify each time its command finishes or its output goes quiet, until the watch is turned off"
         )]
         notify: bool,
         #[clap(long, value_parser)]
@@ -1989,7 +1989,7 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         pane_id: Option<String>,
     },
     #[clap(
-        about = "Notify once when the command in a pane finishes or its output goes quiet (toggles; the focused pane by default)"
+        about = "Watch a pane: notify each time its command finishes or its output goes quiet, until turned off again (toggles; the focused pane by default)"
     )]
     WatchPane {
         #[clap(
@@ -2000,13 +2000,40 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         )]
         pane_id: Option<String>,
     },
-    #[clap(about = "Mute or unmute the attention status of all panes in a tab (the active tab by default)")]
+    #[clap(
+        about = "Mute or unmute the attention status of all panes in a tab (the active tab by default)"
+    )]
     MuteTab {
         #[clap(short, long, value_parser, help = "Target a specific tab by its ID")]
         tab_id: Option<u64>,
     },
     #[clap(about = "Mute or unmute the attention status of the whole session")]
     MuteSession,
+    #[clap(about = "Switch to the session this client was in before (run again to return)")]
+    ToggleSession,
+    #[clap(about = "Go back to the previous session in this client's history")]
+    GoBack,
+    #[clap(about = "Go forward in this client's session history")]
+    GoForward,
+    #[clap(
+        about = "Jump to the next pane that needs attention in any session, switching session if needed"
+    )]
+    GoToNextAttention,
+    #[clap(about = "Mark a pane as seen, clearing past events (the focused pane by default)")]
+    MarkPaneSeen {
+        #[clap(
+            short,
+            long,
+            value_parser,
+            help = "Target a specific pane by ID (eg. terminal_1 or 3)"
+        )]
+        pane_id: Option<String>,
+    },
+    #[clap(about = "Mark every pane of every running session as seen")]
+    MarkAllSeen {
+        #[clap(long, help = "Only mark the panes of the current session")]
+        this_session: bool,
+    },
     /// Stack pane ids
     /// Ids are a space separated list of pane ids.
     /// They should either be in the form of `terminal_<int>` (eg. terminal_1), `plugin_<int>` (eg.

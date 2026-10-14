@@ -170,7 +170,6 @@ fn option_values(options: &Options, values: &mut BTreeMap<SettingKey, Option<Str
         client_async_worker_tasks,
         nested_session_handling,
         dangerously_enable_paste_buffer_read,
-        session_card,
         session_indicator,
         swap_layout_notification,
         on_quit,
@@ -336,7 +335,6 @@ fn option_values(options: &Options, values: &mut BTreeMap<SettingKey, Option<Str
             SettingKey::DangerouslyEnablePasteBufferRead,
             display_text(dangerously_enable_paste_buffer_read),
         ),
-        (SettingKey::SessionCard, display_text(session_card)),
         (
             SettingKey::SessionIndicator,
             display_text(session_indicator),
@@ -702,6 +700,10 @@ fn attention_values(
         SettingKey::AttentionIdleSilenceSecs,
         attention.idle_silence_secs.map(|v| v.to_string()),
     );
+    values.insert(
+        SettingKey::AttentionStartupCard,
+        attention.startup_card.map(|v| v.as_str().to_owned()),
+    );
 }
 
 pub fn copy_setting(target: &mut Config, source: &Config, key: SettingKey) {
@@ -734,6 +736,10 @@ pub fn copy_setting(target: &mut Config, source: &Config, key: SettingKey) {
         },
         SettingKey::AttentionIdleSilenceSecs => {
             target.attention.idle_silence_secs = source.attention.idle_silence_secs;
+            return;
+        },
+        SettingKey::AttentionStartupCard => {
+            target.attention.startup_card = source.attention.startup_card;
             return;
         },
         _ => {},
@@ -840,7 +846,6 @@ pub fn copy_setting(target: &mut Config, source: &Config, key: SettingKey) {
         SettingKey::DangerouslyEnablePasteBufferRead => {
             options.dangerously_enable_paste_buffer_read = from.dangerously_enable_paste_buffer_read
         },
-        SettingKey::SessionCard => options.session_card = from.session_card,
         SettingKey::SessionIndicator => options.session_indicator = from.session_indicator,
         SettingKey::SwapLayoutNotification => {
             options.swap_layout_notification = from.swap_layout_notification

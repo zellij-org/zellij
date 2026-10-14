@@ -737,6 +737,16 @@ impl Pane for TerminalPane {
     fn dump_screen_with_ansi(&self, full: bool, _client_id: Option<ClientId>) -> String {
         self.grid.dump_screen_with_ansi(full)
     }
+    fn preview_with_anchor(
+        &self,
+        anchor: zellij_utils::data::PreviewAnchor,
+        max_scrollback: usize,
+    ) -> (String, Option<usize>) {
+        self.grid.preview_with_anchor(anchor, max_scrollback)
+    }
+    fn mark_unseen_output_start(&mut self) {
+        self.grid.mark_unseen_output_start();
+    }
     fn clear_screen(&mut self) {
         self.grid.clear_screen()
     }
@@ -1457,7 +1467,9 @@ impl TerminalPane {
             Some(symbol.to_owned())
         }
     }
-    fn frame_attention_marker(&self) -> Option<crate::ui::pane_boundaries_frame::FrameAttentionMarker> {
+    fn frame_attention_marker(
+        &self,
+    ) -> Option<crate::ui::pane_boundaries_frame::FrameAttentionMarker> {
         use zellij_utils::attention::AttentionStatus;
         let text = self.attention_marker_text()?;
         let marker = self.attention_marker.as_ref()?;

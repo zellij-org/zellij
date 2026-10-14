@@ -537,14 +537,6 @@ pub struct Options {
     #[clap(
         long,
         value_parser,
-        help = "Whether to show a card listing other relevant sessions when a new session starts (true or false), default is true"
-    )]
-    #[serde(default)]
-    pub session_card: Option<bool>,
-
-    #[clap(
-        long,
-        value_parser,
         help = "Whether to show the other sessions indicator in the tab bar and compact bar (true or false), default is true"
     )]
     #[serde(default)]
@@ -759,7 +751,6 @@ impl Options {
         let dangerously_enable_paste_buffer_read = other
             .dangerously_enable_paste_buffer_read
             .or(self.dangerously_enable_paste_buffer_read);
-        let session_card = other.session_card.or(self.session_card);
         let session_indicator = other.session_indicator.or(self.session_indicator);
         let swap_layout_notification = other
             .swap_layout_notification
@@ -834,7 +825,6 @@ impl Options {
             client_async_worker_tasks,
             nested_session_handling,
             dangerously_enable_paste_buffer_read,
-            session_card,
             session_indicator,
             swap_layout_notification,
             on_quit,
@@ -966,7 +956,6 @@ impl Options {
         let dangerously_enable_paste_buffer_read = other
             .dangerously_enable_paste_buffer_read
             .or(self.dangerously_enable_paste_buffer_read);
-        let session_card = merge_bool(other.session_card, self.session_card);
         let session_indicator = merge_bool(other.session_indicator, self.session_indicator);
         let swap_layout_notification = merge_bool(
             other.swap_layout_notification,
@@ -1042,7 +1031,6 @@ impl Options {
             client_async_worker_tasks,
             nested_session_handling,
             dangerously_enable_paste_buffer_read,
-            session_card,
             session_indicator,
             swap_layout_notification,
             on_quit,

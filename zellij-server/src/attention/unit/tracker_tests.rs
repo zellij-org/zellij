@@ -23,7 +23,12 @@ fn tracker() -> AttentionTracker {
 }
 
 fn hidden(tracker: &mut AttentionTracker, now: u64) {
-    tracker.sync_panes(&[(PANE, 0), (OTHER, 0)], &HashSet::new(), &HashSet::new(), now);
+    tracker.sync_panes(
+        &[(PANE, 0), (OTHER, 0)],
+        &HashSet::new(),
+        &HashSet::new(),
+        now,
+    );
 }
 
 fn visible(tracker: &mut AttentionTracker, now: u64) {
@@ -299,11 +304,8 @@ fn tab_and_session_mute() {
         tracker.attention(&PANE).unwrap().muted,
         Some(MuteScope::Session)
     );
-    let session = tracker.session_attention(&[(
-        0,
-        "tab".to_owned(),
-        vec![(PANE, "pane".to_owned())],
-    )]);
+    let session =
+        tracker.session_attention(&[(0, "tab".to_owned(), vec![(PANE, "pane".to_owned())])]);
     assert_eq!(session.top, None);
     assert_eq!(session.counts.muted, 1);
     assert_eq!(session.items.len(), 1);
@@ -409,7 +411,7 @@ fn idle_rule_scope_watched_only() {
 }
 
 #[test]
-fn watch_fires_once_on_command_finished() {
+fn a_watch_stays_armed_and_fires_on_every_command_until_turned_off() {
     let mut tracker = tracker();
     run_command(&mut tracker, "make", 2_000);
     tracker.set_pane_watched(PANE, true, 2_100);
@@ -420,12 +422,46 @@ fn watch_fires_once_on_command_finished() {
     assert!(attention.from_watch);
     assert_eq!(attention.source, Some(AttentionSource::Watch));
     assert_eq!(attention.text, "done · 1s: make");
-    assert!(!tracker.pane_is_watched(&PANE));
+    assert!(tracker.pane_is_watched(&PANE));
     visible(&mut tracker, 4_000);
     focused(&mut tracker, 4_100);
+    assert!(tracker.attention(&PANE).unwrap().watched);
+    hidden(&mut tracker, 4_200);
     run_command(&mut tracker, "make", 5_000);
     finish(&mut tracker, Some(0), None, 6_000);
+    assert_eq!(status(&tracker), AttentionStatus::NeedsYou);
+    assert!(tracker.attention(&PANE).unwrap().from_watch);
+    tracker.set_pane_watched(PANE, false, 6_100);
+    assert!(!tracker.pane_is_watched(&PANE));
+    visible(&mut tracker, 6_200);
+    focused(&mut tracker, 6_300);
+    hidden(&mut tracker, 6_400);
     assert_eq!(status(&tracker), AttentionStatus::Idle);
+    run_command(&mut tracker, "make", 7_000);
+    finish(&mut tracker, Some(0), None, 8_000);
+    assert_eq!(status(&tracker), AttentionStatus::Idle);
+}
+
+#[test]
+fn new_output_in_a_watched_pane_needs_you() {
+    let mut tracker = tracker();
+    tracker.set_pane_watched(PANE, true, 1_000);
+    hidden(&mut tracker, 4_500);
+    tracker.on_output(PANE, 5_000);
+    tracker.on_output(OTHER, 5_000);
+    let watched = tracker.attention(&PANE).unwrap();
+    assert_eq!(watched.status, AttentionStatus::NeedsYou);
+    assert!(watched.from_watch);
+    assert_eq!(watched.text, "new output");
+    assert!(frame(&tracker).is_some());
+    assert_eq!(
+        tracker.attention(&OTHER).unwrap().status,
+        AttentionStatus::NewOutput
+    );
+    visible(&mut tracker, 6_000);
+    focused(&mut tracker, 6_100);
+    assert_eq!(status(&tracker), AttentionStatus::Idle);
+    assert!(tracker.pane_is_watched(&PANE));
 }
 
 #[test]
@@ -435,12 +471,9 @@ fn watch_without_markers_fires_on_idle_rule_even_when_visible() {
     visible(&mut tracker, 9_500);
     steady_output(&mut tracker, 10_000, 21_000);
     tracker.idle_check(PANE, 24_100);
-    assert!(!tracker.pane_is_watched(&PANE));
+    assert!(tracker.pane_is_watched(&PANE));
     hidden(&mut tracker, 24_200);
-    assert_eq!(
-        tracker.attention(&PANE).unwrap().source,
-        None
-    );
+    assert_eq!(tracker.attention(&PANE).unwrap().source, None);
     assert_eq!(frame(&tracker).unwrap().text, "went quiet");
 }
 
@@ -493,7 +526,13 @@ fn events_are_emitted() {
     )));
     assert!(events.iter().any(|e| matches!(
         e,
-        AttentionEvent::CommandFinished(PANE, CommandOutcome { result: CommandResult::Succeeded, .. })
+        AttentionEvent::CommandFinished(
+            PANE,
+            CommandOutcome {
+                result: CommandResult::Succeeded,
+                ..
+            }
+        )
     )));
     assert!(events
         .iter()
@@ -514,4 +553,88 @@ fn session_summary_picks_the_highest_item() {
     assert_eq!(session.counts.failed, 1);
     assert_eq!(session.counts.working, 1);
     assert_eq!(session.top.unwrap().label(), "api › claude: failed: boom");
+}
+
+#[test]
+fn a_watched_pane_is_listed_even_while_idle() {
+    let mut tracker = tracker();
+    tracker.add_pane(OTHER, 1_000);
+    tracker.set_pane_watched(OTHER, true, 2_000);
+    let session = tracker.session_attention(&[(
+        0,
+        "api".to_owned(),
+        vec![(PANE, "claude".to_owned()), (OTHER, "build".to_owned())],
+    )]);
+    assert_eq!(session.items.len(), 1);
+    assert_eq!(session.items[0].pane_id, OTHER);
+    assert!(session.items[0].attention.watched);
+    assert!(session.top.is_none());
+    assert_eq!(session.counts, AttentionCounts::default());
+}
+
+#[test]
+fn marking_seen_clears_past_events_like_being_visible() {
+    let mut tracker = tracker();
+    tracker.on_signals(PANE, vec![PaneSignal::Bell], 2_000);
+    run_command(&mut tracker, "cargo test", 2_000);
+    finish(&mut tracker, Some(1), None, 2_500);
+    tracker.on_signals(OTHER, vec![PaneSignal::Bell], 2_600);
+    assert_eq!(status(&tracker), AttentionStatus::NeedsYou);
+    assert!(tracker.mark_seen(PANE, 3_000));
+    assert_eq!(status(&tracker), AttentionStatus::Idle);
+    assert!(frame(&tracker).is_none());
+    assert_eq!(
+        tracker.attention(&OTHER).unwrap().status,
+        AttentionStatus::NeedsYou
+    );
+    assert!(!tracker.mark_seen(PaneId::Terminal(99), 3_000));
+    tracker.mark_all_seen(3_100);
+    assert_eq!(
+        tracker.attention(&OTHER).unwrap().status,
+        AttentionStatus::Idle
+    );
+}
+
+#[test]
+fn marking_seen_dismisses_current_truths_until_the_program_reports_again() {
+    let mut tracker = tracker();
+    tracker.on_signals(PANE, vec![report("state=blocked:kind=permission")], 2_000);
+    assert_eq!(status(&tracker), AttentionStatus::NeedsYou);
+    tracker.mark_seen(PANE, 3_000);
+    assert_eq!(status(&tracker), AttentionStatus::Idle);
+    assert!(frame(&tracker).is_none());
+    tracker.on_signals(PANE, vec![report("state=working")], 4_000);
+    assert_eq!(status(&tracker), AttentionStatus::Working);
+    tracker.on_signals(PANE, vec![report("state=blocked:kind=question")], 5_000);
+    assert_eq!(status(&tracker), AttentionStatus::NeedsYou);
+}
+
+#[test]
+fn being_visible_keeps_current_truths() {
+    let mut tracker = tracker();
+    tracker.on_signals(PANE, vec![report("state=blocked:kind=permission")], 2_000);
+    visible(&mut tracker, 3_000);
+    let attention = tracker.attention(&PANE).unwrap();
+    assert_eq!(attention.status, AttentionStatus::NeedsYou);
+    assert!(attention.seen);
+}
+
+#[test]
+fn marking_seen_dismisses_a_running_command_until_the_next_one() {
+    let mut tracker = tracker();
+    run_command(&mut tracker, "cargo build", 2_000);
+    assert_eq!(status(&tracker), AttentionStatus::Working);
+    tracker.mark_seen(PANE, 3_000);
+    assert_eq!(status(&tracker), AttentionStatus::Idle);
+    finish(&mut tracker, Some(1), None, 4_000);
+    assert_eq!(status(&tracker), AttentionStatus::Failed);
+}
+
+#[test]
+fn unseen_output_start_is_known_until_seen() {
+    let mut tracker = tracker();
+    tracker.on_output(PANE, 10_000);
+    assert_eq!(tracker.unseen_output_since(&PANE), Some(10_000));
+    tracker.mark_seen(PANE, 11_000);
+    assert_eq!(tracker.unseen_output_since(&PANE), None);
 }

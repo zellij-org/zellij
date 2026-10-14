@@ -90,6 +90,8 @@ enum EventType {
     PromptShown = 64;
     CommandStarted = 65;
     CommandFinished = 66;
+    GlobalAttentionUpdate = 67;
+    SessionHistoryUpdate = 68;
 }
 
 message EventNameList {
@@ -156,6 +158,62 @@ message Event {
     PromptShownPayload prompt_shown_payload = 56;
     CommandStartedPayload command_started_payload = 57;
     CommandFinishedPayload command_finished_payload = 58;
+    GlobalAttentionUpdatePayload global_attention_update_payload = 59;
+    SessionHistoryUpdatePayload session_history_update_payload = 60;
+  }
+}
+
+message AttentionItem {
+  PaneId pane_id = 1;
+  uint64 tab_id = 2;
+  string tab_name = 3;
+  string pane_title = 4;
+  PaneAttention attention = 5;
+}
+
+message SessionAttention {
+  string status = 1;
+  AttentionCounts counts = 2;
+  bool muted = 3;
+  optional AttentionItem top = 4;
+  repeated AttentionItem items = 5;
+}
+
+message GlobalSessionAttention {
+  string name = 1;
+  SessionAttention attention = 2;
+}
+
+message GlobalAttentionUpdatePayload {
+  string current_session = 1;
+  repeated GlobalSessionAttention sessions = 2;
+}
+
+message SessionHistoryUpdatePayload {
+  string current = 1;
+  optional string previous = 2;
+  repeated string back = 3;
+  repeated string forward = 4;
+  optional string arrived_from = 5;
+  optional SessionArrival arrival = 6;
+  uint64 arrived_at_ms = 7;
+}
+
+message SwitchArrival {}
+message ToggleArrival {}
+message BackArrival {}
+message ForwardArrival {}
+message AttentionArrival {
+  PaneId pane_id = 1;
+}
+
+message SessionArrival {
+  oneof arrival {
+    SwitchArrival switch = 1;
+    ToggleArrival toggle = 2;
+    BackArrival back = 3;
+    ForwardArrival forward = 4;
+    AttentionArrival attention = 5;
   }
 }
 
@@ -936,6 +994,9 @@ message SessionPreviewPayload {
   uint32 pane_count = 7;
   uint32 connected_clients = 8;
   repeated SessionPreviewTab tabs = 9;
+  optional uint32 pane_id = 10;
+  bool pane_is_plugin = 11;
+  optional uint32 anchor_line = 12;
 }
 
 message SessionPreviewPane {

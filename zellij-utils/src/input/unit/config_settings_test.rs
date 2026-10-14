@@ -83,7 +83,6 @@ fn every_option_set() -> Options {
         client_async_worker_tasks: Some(8),
         nested_session_handling: Some(NestedSessionHandling::Never),
         dangerously_enable_paste_buffer_read: Some(true),
-        session_card: Some(false),
         session_indicator: Some(false),
         swap_layout_notification: Some(false),
         on_quit: Some(crate::input::options::OnQuit::Detach),
@@ -258,6 +257,7 @@ pub(crate) fn every_setting_set() -> Config {
             done_threshold_secs: Some(30),
             idle_activity_secs: Some(20),
             idle_silence_secs: Some(5),
+            startup_card: Some(crate::input::attention::StartupCard::Never),
         },
         ..Default::default()
     }
@@ -283,8 +283,15 @@ fn kdl_names_in(config: &Config) -> BTreeSet<(SettingSection, String)> {
         let name = node.name().value();
         if !blocks.contains(&name) {
             names.insert((SettingSection::TopLevel, name.to_owned()));
-        } else if !["keybinds", "mousebinds", "ui", "web_client", "window", "attention"]
-            .contains(&name)
+        } else if ![
+            "keybinds",
+            "mousebinds",
+            "ui",
+            "web_client",
+            "window",
+            "attention",
+        ]
+        .contains(&name)
         {
             names.insert((SettingSection::Blocks, name.to_owned()));
         }

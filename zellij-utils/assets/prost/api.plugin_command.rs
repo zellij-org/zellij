@@ -4,7 +4,7 @@
 pub struct PluginCommand {
     #[prost(enumeration="CommandName", tag="1")]
     pub name: i32,
-    #[prost(oneof="plugin_command::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207")]
+    #[prost(oneof="plugin_command::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215")]
     pub payload: ::core::option::Option<plugin_command::Payload>,
 }
 /// Nested message and enum types in `PluginCommand`.
@@ -392,6 +392,22 @@ pub mod plugin_command {
         GetSessionPreviewPayload(super::GetSessionPreviewPayload),
         #[prost(string, tag="207")]
         GetSavedSessionPreviewPayload(::prost::alloc::string::String),
+        #[prost(message, tag="208")]
+        MarkSessionPaneSeenPayload(super::SessionPanePayload),
+        #[prost(message, tag="209")]
+        MarkAllSeenPayload(super::MarkAllSeenPayload),
+        #[prost(message, tag="210")]
+        WriteToSessionPanePayload(super::WriteToSessionPanePayload),
+        #[prost(message, tag="211")]
+        ToggleSessionPaneMutePayload(super::SessionPanePayload),
+        #[prost(message, tag="212")]
+        ToggleSessionPaneIgnoreOutputPayload(super::SessionPanePayload),
+        #[prost(message, tag="213")]
+        ToggleSessionPaneWatchPayload(super::SessionPanePayload),
+        #[prost(message, tag="214")]
+        FocusSessionPanePayload(super::SessionPanePayload),
+        #[prost(message, tag="215")]
+        SendKeyToSessionPanePayload(super::SendKeyToSessionPanePayload),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -417,6 +433,42 @@ pub struct GetSessionPreviewPayload {
     pub pane_id: ::core::option::Option<u32>,
     #[prost(bool, tag="4")]
     pub pane_is_plugin: bool,
+    #[prost(string, optional, tag="5")]
+    pub anchor: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SessionPanePayload {
+    #[prost(string, tag="1")]
+    pub session_name: ::prost::alloc::string::String,
+    #[prost(message, optional, tag="2")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MarkAllSeenPayload {
+    #[prost(string, optional, tag="1")]
+    pub session_name: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct WriteToSessionPanePayload {
+    #[prost(string, tag="1")]
+    pub session_name: ::prost::alloc::string::String,
+    #[prost(message, optional, tag="2")]
+    pub pane_id: ::core::option::Option<PaneId>,
+    #[prost(bytes="vec", tag="3")]
+    pub bytes_to_write: ::prost::alloc::vec::Vec<u8>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SendKeyToSessionPanePayload {
+    #[prost(string, tag="1")]
+    pub session_name: ::prost::alloc::string::String,
+    #[prost(message, optional, tag="2")]
+    pub pane_id: ::core::option::Option<PaneId>,
+    #[prost(message, optional, tag="3")]
+    pub key: ::core::option::Option<super::key::Key>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1375,8 +1427,8 @@ pub struct SwitchSessionPayload {
     pub layout: ::core::option::Option<super::event::LayoutInfo>,
     #[prost(string, optional, tag="6")]
     pub cwd: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(bool, optional, tag="7")]
-    pub session_card: ::core::option::Option<bool>,
+    #[prost(string, optional, tag="8")]
+    pub startup_card: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -2789,6 +2841,14 @@ pub enum CommandName {
     SwitchSessionAndCloseCurrent = 262,
     GetSessionPreview = 263,
     GetSavedSessionPreview = 264,
+    MarkSessionPaneSeen = 265,
+    MarkAllSeen = 266,
+    WriteToSessionPane = 267,
+    SendKeyToSessionPane = 268,
+    ToggleSessionPaneMute = 269,
+    ToggleSessionPaneIgnoreOutput = 270,
+    ToggleSessionPaneWatch = 271,
+    FocusSessionPane = 272,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -3036,6 +3096,14 @@ impl CommandName {
             CommandName::SwitchSessionAndCloseCurrent => "SwitchSessionAndCloseCurrent",
             CommandName::GetSessionPreview => "GetSessionPreview",
             CommandName::GetSavedSessionPreview => "GetSavedSessionPreview",
+            CommandName::MarkSessionPaneSeen => "MarkSessionPaneSeen",
+            CommandName::MarkAllSeen => "MarkAllSeen",
+            CommandName::WriteToSessionPane => "WriteToSessionPane",
+            CommandName::SendKeyToSessionPane => "SendKeyToSessionPane",
+            CommandName::ToggleSessionPaneMute => "ToggleSessionPaneMute",
+            CommandName::ToggleSessionPaneIgnoreOutput => "ToggleSessionPaneIgnoreOutput",
+            CommandName::ToggleSessionPaneWatch => "ToggleSessionPaneWatch",
+            CommandName::FocusSessionPane => "FocusSessionPane",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -3280,6 +3348,14 @@ impl CommandName {
             "SwitchSessionAndCloseCurrent" => Some(Self::SwitchSessionAndCloseCurrent),
             "GetSessionPreview" => Some(Self::GetSessionPreview),
             "GetSavedSessionPreview" => Some(Self::GetSavedSessionPreview),
+            "MarkSessionPaneSeen" => Some(Self::MarkSessionPaneSeen),
+            "MarkAllSeen" => Some(Self::MarkAllSeen),
+            "WriteToSessionPane" => Some(Self::WriteToSessionPane),
+            "SendKeyToSessionPane" => Some(Self::SendKeyToSessionPane),
+            "ToggleSessionPaneMute" => Some(Self::ToggleSessionPaneMute),
+            "ToggleSessionPaneIgnoreOutput" => Some(Self::ToggleSessionPaneIgnoreOutput),
+            "ToggleSessionPaneWatch" => Some(Self::ToggleSessionPaneWatch),
+            "FocusSessionPane" => Some(Self::FocusSessionPane),
             _ => None,
         }
     }

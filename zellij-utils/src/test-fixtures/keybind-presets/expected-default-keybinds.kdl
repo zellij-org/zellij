@@ -134,6 +134,10 @@ keybinds {
         bind "[" { FocusGuestSession; SwitchToMode "Normal"; }
         bind "f" { ToggleHostFullscreen; SwitchToMode "Normal"; }
         bind "u" { MuteSession; SwitchToMode "Normal"; }
+        bind "Tab" { ToggleSession; SwitchToMode "Normal"; }
+        bind "Left" { GoBack; SwitchToMode "Normal"; }
+        bind "Right" { GoForward; SwitchToMode "Normal"; }
+        bind "n" { GoToNextAttention; SwitchToMode "Normal"; }
         bind "w" {
             LaunchOrFocusPlugin "session-manager" {
                 floating true

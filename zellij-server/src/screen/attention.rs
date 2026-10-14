@@ -1,19 +1,32 @@
 use super::Screen;
+use crate::attention::peers::PeerAttentionJob;
 use crate::attention::{now_ms, AttentionEvent};
 use crate::background_jobs::BackgroundJob;
 use crate::panes::PaneId;
 use crate::plugins::PluginInstruction;
+use crate::screen::SessionPaneCommand;
 use crate::tab::Tab;
-use crate::ClientId;
+use crate::{ClientId, ServerInstruction};
 use std::collections::HashSet;
 use zellij_utils::attention::{
-    AttentionSource, AttentionStatus, BlockedKind, HostProgramStatus, SessionAttention,
-    TabAttention,
+    sanitize_display_text, AttentionSource, AttentionStatus, BlockedKind, GlobalAttention,
+    HostProgramStatus, SessionAttention, TabAttention,
 };
 use zellij_utils::data::{
-    ClickedPaneAction, ClickedTabAction, ContextMenuAction, ContextMenuContext, ContextMenuEntry,
-    Event, PaneInfo,
+    ClickedPaneAction, ClickedTabAction, ConnectToSession, ContextMenuAction, ContextMenuContext,
+    ContextMenuEntry, Event, KeyWithModifier, PaneInfo,
 };
+use zellij_utils::session_history::{
+    SessionArrival, SessionHistory, SessionHistoryInfo, SwitchContext,
+};
+
+#[derive(Debug, Clone, Default)]
+pub struct ClientSessionHistory {
+    pub history: SessionHistory,
+    pub arrival: Option<SessionArrival>,
+    pub arrived_from: Option<String>,
+    pub arrived_at_ms: u64,
+}
 use zellij_utils::input::actions::Action;
 
 impl Screen {
@@ -129,7 +142,17 @@ impl Screen {
     pub(super) fn attention_output(&mut self, pid: u32) {
         let pane_id = zellij_utils::data::PaneId::Terminal(pid);
         if self.attention.has_pane(&pane_id) {
+            let was_unseen = self.attention.unseen_output_since(&pane_id).is_some();
             self.attention.on_output(pane_id, now_ms());
+            if !was_unseen && self.attention.unseen_output_since(&pane_id).is_some() {
+                let server_pane_id = PaneId::Terminal(pid);
+                for tab in self.tabs.values_mut() {
+                    if let Some(pane) = tab.get_pane_with_id_mut(server_pane_id) {
+                        pane.mark_unseen_output_start();
+                        break;
+                    }
+                }
+            }
         }
     }
 
@@ -237,11 +260,355 @@ impl Screen {
         } else {
             None
         };
-        self.last_session_attention = Some(summary);
+        self.last_session_attention = Some(summary.clone());
         let _ = self
             .bus
             .senders
             .send_to_background_jobs(BackgroundJob::ReportHostProgramStatus(host_status));
+        let _ = self
+            .bus
+            .senders
+            .send_to_background_jobs(BackgroundJob::PeerAttention(
+                PeerAttentionJob::LocalChanged(summary),
+            ));
+    }
+
+    pub(crate) fn set_global_attention(&mut self, global: GlobalAttention) {
+        if self.global_attention.as_ref() == Some(&global) {
+            return;
+        }
+        self.global_attention = Some(global.clone());
+        let _ = self
+            .bus
+            .senders
+            .send_to_plugin(PluginInstruction::GlobalAttentionUpdate(global));
+        self.report_session_histories();
+    }
+
+    fn fresh_global_attention(&self) -> GlobalAttention {
+        let own = self.session_name.clone();
+        let mut sessions: Vec<(String, SessionAttention)> = self
+            .global_attention
+            .as_ref()
+            .map(|global| {
+                global
+                    .sessions
+                    .iter()
+                    .filter(|s| s.name != own)
+                    .map(|s| (s.name.clone(), s.attention.clone()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        sessions.push((own.clone(), self.session_attention()));
+        GlobalAttention::build(&own, sessions)
+    }
+
+    pub(crate) fn set_client_session_history(
+        &mut self,
+        client_id: ClientId,
+        history: SessionHistory,
+        arrival: Option<SessionArrival>,
+        arrived_from: Option<String>,
+    ) {
+        self.client_session_histories.insert(
+            client_id,
+            ClientSessionHistory {
+                history,
+                arrival,
+                arrived_from,
+                arrived_at_ms: now_ms(),
+            },
+        );
+        self.report_session_histories();
+    }
+
+    pub(crate) fn update_client_session_history(
+        &mut self,
+        client_id: ClientId,
+        history: SessionHistory,
+    ) {
+        if let Some(entry) = self.client_session_histories.get_mut(&client_id) {
+            entry.history = history;
+        }
+        self.report_session_histories();
+    }
+
+    pub(crate) fn session_history_info(&self, client_id: ClientId) -> Option<SessionHistoryInfo> {
+        let entry = self.client_session_histories.get(&client_id)?;
+        let mut history = entry.history.clone();
+        if let Some(global) = self.global_attention.as_ref() {
+            history.retain_sessions(|name| global.has_session(name));
+        }
+        let mut info = history.info(&self.session_name);
+        info.arrived_from = entry.arrived_from.clone();
+        info.arrival = entry.arrival.clone();
+        info.arrived_at_ms = entry.arrived_at_ms;
+        Some(info)
+    }
+
+    pub(crate) fn report_session_histories(&mut self) {
+        let client_ids: Vec<ClientId> = self.client_session_histories.keys().copied().collect();
+        let mut updates = vec![];
+        for client_id in client_ids {
+            let Some(info) = self.session_history_info(client_id) else {
+                continue;
+            };
+            if self.last_session_history_infos.get(&client_id) != Some(&info) {
+                self.last_session_history_infos
+                    .insert(client_id, info.clone());
+                updates.push((client_id, info));
+            }
+        }
+        for (client_id, info) in updates {
+            let _ = self
+                .bus
+                .senders
+                .send_to_plugin(PluginInstruction::SessionHistoryUpdate(client_id, info));
+        }
+    }
+
+    fn is_this_session(&self, session: Option<&str>) -> bool {
+        match session {
+            None => true,
+            Some(name) => name == self.session_name,
+        }
+    }
+
+    pub(crate) fn go_to_session_pane(
+        &mut self,
+        client_id: ClientId,
+        session: &str,
+        pane_id: zellij_utils::data::PaneId,
+    ) -> bool {
+        if self.is_this_session(Some(session)) {
+            return self
+                .focus_pane_with_id(pane_id.into(), true, false, client_id)
+                .is_ok();
+        }
+        let (id, is_plugin) = match pane_id {
+            PaneIdUtils::Terminal(id) => (id, false),
+            PaneIdUtils::Plugin(id) => (id, true),
+        };
+        let connect_to_session = ConnectToSession {
+            name: Some(session.to_owned()),
+            pane_id: Some((id, is_plugin)),
+            switch_context: Some(SwitchContext {
+                arrival: Some(SessionArrival::Attention { pane_id }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        self.bus
+            .senders
+            .send_to_server(ServerInstruction::SwitchSession(
+                connect_to_session,
+                client_id,
+                None,
+            ))
+            .is_ok()
+    }
+
+    pub(crate) fn go_to_next_attention(&mut self, client_id: ClientId) -> bool {
+        let global = self.fresh_global_attention();
+        let focused: Option<zellij_utils::data::PaneId> = self
+            .get_active_tab(client_id)
+            .ok()
+            .and_then(|tab| tab.get_active_pane_id(client_id))
+            .map(|p| p.into());
+        let Some(next) = global
+            .next_counted_after(&self.session_name, focused.as_ref())
+            .cloned()
+        else {
+            return false;
+        };
+        self.go_to_session_pane(client_id, &next.session, next.item.pane_id)
+    }
+
+    pub(crate) fn mark_pane_seen(
+        &mut self,
+        session: Option<String>,
+        pane_id: Option<zellij_utils::data::PaneId>,
+        client_id: ClientId,
+    ) -> bool {
+        if self.is_this_session(session.as_deref()) {
+            let Some(pane_id) = self.attention_target_pane(pane_id, client_id) else {
+                return false;
+            };
+            let marked = self.attention.mark_seen(pane_id, now_ms());
+            self.flush_attention(true);
+            return marked;
+        }
+        let (Some(session), Some(pane_id)) = (session, pane_id) else {
+            return false;
+        };
+        self.remote_actions.send(
+            &session,
+            vec![Action::MarkPaneSeen {
+                session: Some(session.clone()),
+                pane_id: Some(pane_id),
+            }],
+        );
+        true
+    }
+
+    pub(crate) fn mark_all_seen(&mut self, session: Option<String>) {
+        match session {
+            Some(session) if !self.is_this_session(Some(&session)) => {
+                self.remote_actions.send(
+                    &session,
+                    vec![Action::MarkAllSeen {
+                        session: Some(session.clone()),
+                    }],
+                );
+            },
+            Some(_) => {
+                self.attention.mark_all_seen(now_ms());
+                self.flush_attention(true);
+            },
+            None => {
+                self.attention.mark_all_seen(now_ms());
+                self.flush_attention(true);
+                let own = self.session_name.clone();
+                let others: Vec<String> = self
+                    .global_attention
+                    .as_ref()
+                    .map(|global| {
+                        global
+                            .sessions
+                            .iter()
+                            .filter(|s| s.name != own)
+                            .map(|s| s.name.clone())
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                for other in others {
+                    self.remote_actions.send(
+                        &other,
+                        vec![Action::MarkAllSeen {
+                            session: Some(other.clone()),
+                        }],
+                    );
+                }
+            },
+        }
+    }
+
+    fn write_to_local_pane(
+        &mut self,
+        pane_id: zellij_utils::data::PaneId,
+        key: Option<KeyWithModifier>,
+        bytes: Vec<u8>,
+    ) -> bool {
+        let server_pane_id: PaneId = pane_id.into();
+        let is_kitty = key.is_some();
+        for tab in self.tabs.values_mut() {
+            if tab.has_pane_with_pid(&server_pane_id) {
+                return tab
+                    .write_to_pane_id(&key, bytes, is_kitty, server_pane_id, None, None)
+                    .is_ok();
+            }
+        }
+        false
+    }
+
+    pub(crate) fn session_pane_command(
+        &mut self,
+        session_name: Option<String>,
+        command: SessionPaneCommand,
+        client_id: ClientId,
+    ) -> bool {
+        if self.is_this_session(session_name.as_deref()) {
+            let handled = match command {
+                SessionPaneCommand::MarkSeen(pane_id) => {
+                    self.mark_pane_seen(None, Some(pane_id), client_id)
+                },
+                SessionPaneCommand::Write(pane_id, bytes) => {
+                    self.write_to_local_pane(pane_id, None, bytes)
+                },
+                SessionPaneCommand::Key(pane_id, key) => {
+                    let bytes = key
+                        .serialize_kitty()
+                        .map(|s| s.into_bytes())
+                        .unwrap_or_default();
+                    self.write_to_local_pane(pane_id, Some(key), bytes)
+                },
+                SessionPaneCommand::ToggleMute(pane_id) => {
+                    self.toggle_pane_mute(Some(pane_id), client_id)
+                },
+                SessionPaneCommand::ToggleIgnoreOutput(pane_id) => {
+                    self.toggle_pane_ignore_output(Some(pane_id), client_id)
+                },
+                SessionPaneCommand::ToggleWatch(pane_id) => {
+                    self.toggle_pane_watch(Some(pane_id), client_id)
+                },
+                SessionPaneCommand::Focus(pane_id) => {
+                    let own = self.session_name.clone();
+                    self.go_to_session_pane(client_id, &own, pane_id)
+                },
+            };
+            let _ = self.log_and_report_session_state();
+            return handled;
+        }
+        let Some(session_name) = session_name else {
+            return false;
+        };
+        let action = match command {
+            SessionPaneCommand::MarkSeen(pane_id) => Action::MarkPaneSeen {
+                session: Some(session_name.clone()),
+                pane_id: Some(pane_id),
+            },
+            SessionPaneCommand::Write(pane_id, bytes) => Action::WriteToPaneId { bytes, pane_id },
+            SessionPaneCommand::Key(pane_id, key_with_modifier) => Action::WriteKeyToPaneId {
+                key_with_modifier: Some(key_with_modifier),
+                pane_id,
+            },
+            SessionPaneCommand::ToggleMute(pane_id) => Action::MutePaneByPaneId { pane_id },
+            SessionPaneCommand::ToggleIgnoreOutput(pane_id) => {
+                Action::IgnorePaneOutputByPaneId { pane_id }
+            },
+            SessionPaneCommand::ToggleWatch(pane_id) => Action::WatchPaneByPaneId { pane_id },
+            SessionPaneCommand::Focus(pane_id) => {
+                return self.go_to_session_pane(client_id, &session_name, pane_id);
+            },
+        };
+        self.remote_actions.send(&session_name, vec![action]);
+        true
+    }
+
+    pub(super) fn resolve_session_history_context_menu_entries(
+        &self,
+        entries: Vec<ContextMenuEntry>,
+        client_id: ClientId,
+    ) -> Vec<ContextMenuEntry> {
+        let previous = self
+            .session_history_info(client_id)
+            .and_then(|info| info.previous);
+        entries
+            .into_iter()
+            .filter_map(|entry| match entry {
+                ContextMenuEntry::Item {
+                    label,
+                    actions,
+                    toggled_label,
+                } if actions
+                    .iter()
+                    .any(|a| matches!(a, ContextMenuAction::Action(Action::ToggleSession))) =>
+                {
+                    let previous = previous.as_ref()?;
+                    let label = if label.contains("{}") {
+                        label.replace("{}", &sanitize_display_text(previous))
+                    } else {
+                        format!("{} {}", label, sanitize_display_text(previous))
+                    };
+                    Some(ContextMenuEntry::Item {
+                        label,
+                        actions,
+                        toggled_label,
+                    })
+                },
+                other => Some(other),
+            })
+            .collect()
     }
 
     fn attention_target_pane(
@@ -343,19 +710,22 @@ impl Screen {
         if !self.attention.has_pane(&pane_id) {
             return;
         }
-        self.attention.foreground_changed(pane_id, command, now_ms());
+        self.attention
+            .foreground_changed(pane_id, command, now_ms());
         self.flush_attention(true);
     }
 
     pub(super) fn attention_notification(&mut self, pid: u32, title: String, body: String) {
         let pane_id = zellij_utils::data::PaneId::Terminal(pid);
-        self.attention.on_notification(pane_id, title, body, now_ms());
+        self.attention
+            .on_notification(pane_id, title, body, now_ms());
         self.flush_attention(true);
     }
 
     pub(super) fn attention_command_pane_started(&mut self, pid: u32, command: Option<String>) {
         let pane_id = zellij_utils::data::PaneId::Terminal(pid);
-        self.attention.command_pane_started(pane_id, command, now_ms());
+        self.attention
+            .command_pane_started(pane_id, command, now_ms());
         self.flush_attention(true);
     }
 

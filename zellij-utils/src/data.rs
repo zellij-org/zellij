@@ -1285,6 +1285,8 @@ pub enum Event {
     PromptShown(PaneId),
     CommandStarted(PaneId, Option<crate::attention::CommandText>),
     CommandFinished(PaneId, crate::attention::CommandOutcome),
+    GlobalAttentionUpdate(crate::attention::GlobalAttention),
+    SessionHistoryUpdate(crate::session_history::SessionHistoryInfo),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -1397,6 +1399,43 @@ pub struct SessionPreview {
     pub error: Option<String>,
     #[serde(default)]
     pub tabs: Vec<SessionPreviewTab>,
+    #[serde(default)]
+    pub pane_id: Option<(u32, bool)>,
+    #[serde(default)]
+    pub anchor_line: Option<usize>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum PreviewAnchor {
+    Bottom,
+    LastCommandOutput,
+    NewOutputStart,
+}
+
+impl PreviewAnchor {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            PreviewAnchor::Bottom => "bottom",
+            PreviewAnchor::LastCommandOutput => "last_command_output",
+            PreviewAnchor::NewOutputStart => "new_output_start",
+        }
+    }
+    pub fn from_str(value: &str) -> Option<Self> {
+        match value {
+            "bottom" => Some(PreviewAnchor::Bottom),
+            "last_command_output" => Some(PreviewAnchor::LastCommandOutput),
+            "new_output_start" => Some(PreviewAnchor::NewOutputStart),
+            _ => None,
+        }
+    }
+    pub fn for_status(status: crate::attention::AttentionStatus) -> Self {
+        use crate::attention::AttentionStatus;
+        match status {
+            AttentionStatus::Failed | AttentionStatus::Done => PreviewAnchor::LastCommandOutput,
+            AttentionStatus::NewOutput => PreviewAnchor::NewOutputStart,
+            _ => PreviewAnchor::Bottom,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -3942,7 +3981,7 @@ pub struct ConnectToSession {
     pub layout: Option<LayoutInfo>,
     pub cwd: Option<PathBuf>,
     #[serde(default)]
-    pub session_card: Option<bool>,
+    pub switch_context: Option<crate::session_history::SwitchContext>,
 }
 
 impl ConnectToSession {
@@ -3953,43 +3992,8 @@ impl ConnectToSession {
                 .to_string();
         }
     }
-    pub fn apply_to_options(&self, options: &mut crate::input::options::Options) {
-        if let Some(session_card) = self.session_card {
-            options.session_card = Some(session_card);
-        }
-    }
-}
-
-#[cfg(test)]
-mod connect_to_session_tests {
-    use super::*;
-    use crate::input::options::Options;
-
-    #[test]
-    fn a_session_card_choice_overrides_the_options_of_the_new_session() {
-        let mut options = Options {
-            session_card: Some(true),
-            ..Default::default()
-        };
-        ConnectToSession {
-            session_card: Some(false),
-            ..Default::default()
-        }
-        .apply_to_options(&mut options);
-        assert_eq!(options.session_card, Some(false));
-    }
-
-    #[test]
-    fn without_a_session_card_choice_the_options_are_kept() {
-        let mut options = Options {
-            session_card: Some(true),
-            ..Default::default()
-        };
-        ConnectToSession::default().apply_to_options(&mut options);
-        assert_eq!(options.session_card, Some(true));
-        let mut unset = Options::default();
-        ConnectToSession::default().apply_to_options(&mut unset);
-        assert_eq!(unset.session_card, None);
+    pub fn startup_card(&self) -> Option<crate::input::attention::StartupCard> {
+        self.switch_context.as_ref().and_then(|c| c.startup_card)
     }
 }
 
@@ -4950,8 +4954,42 @@ pub enum PluginCommand {
         name: String,
         tab_index: Option<usize>,
         pane_id: Option<(u32, bool)>,
+        anchor: Option<PreviewAnchor>,
     },
     GetSavedSessionPreview(String),
+    MarkSessionPaneSeen {
+        session_name: String,
+        pane_id: PaneId,
+    },
+    MarkAllSeen {
+        session_name: Option<String>,
+    },
+    WriteToSessionPane {
+        session_name: String,
+        pane_id: PaneId,
+        bytes: Vec<u8>,
+    },
+    SendKeyToSessionPane {
+        session_name: String,
+        pane_id: PaneId,
+        key: KeyWithModifier,
+    },
+    ToggleSessionPaneMute {
+        session_name: String,
+        pane_id: PaneId,
+    },
+    ToggleSessionPaneIgnoreOutput {
+        session_name: String,
+        pane_id: PaneId,
+    },
+    ToggleSessionPaneWatch {
+        session_name: String,
+        pane_id: PaneId,
+    },
+    FocusSessionPane {
+        session_name: String,
+        pane_id: PaneId,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -5091,7 +5129,6 @@ setting_keys! {
     ClientAsyncWorkerTasks => (TopLevel, "client_async_worker_tasks", true, Number),
     NestedSessionHandling => (TopLevel, "nested_session_handling", false, Text),
     DangerouslyEnablePasteBufferRead => (TopLevel, "dangerously_enable_paste_buffer_read", false, Flag),
-    SessionCard => (TopLevel, "session_card", false, Flag),
     SessionIndicator => (TopLevel, "session_indicator", false, Flag),
     SwapLayoutNotification => (TopLevel, "swap_layout_notification", false, Flag),
     OnQuit => (TopLevel, "on_quit", false, Text),
@@ -5194,6 +5231,7 @@ setting_keys! {
     AttentionDoneThresholdSecs => (Attention, "done_threshold_secs", false, Number),
     AttentionIdleActivitySecs => (Attention, "idle_activity_secs", false, Number),
     AttentionIdleSilenceSecs => (Attention, "idle_silence_secs", false, Number),
+    AttentionStartupCard => (Attention, "startup_card", false, Text),
 }
 
 impl SettingKey {
