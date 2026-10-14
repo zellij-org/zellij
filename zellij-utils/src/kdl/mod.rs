@@ -107,6 +107,7 @@ macro_rules! parse_kdl_action_arguments {
                 "DismissInfoPopups" => Ok(Action::DismissInfoPopups),
                 "OpenContextMenu" => Ok(Action::OpenContextMenu),
                 "ToggleSessionCard" => Ok(Action::ToggleSessionCard),
+                "KillSessionAndSwitch" => Ok(Action::KillSessionAndSwitch),
                 "Copy" => Ok(Action::Copy),
                 "Confirm" => Ok(Action::Confirm),
                 "Deny" => Ok(Action::Deny),
@@ -1431,6 +1432,7 @@ impl Action {
             Action::DismissInfoPopups => Some(KdlNode::new("DismissInfoPopups")),
             Action::OpenContextMenu => Some(KdlNode::new("OpenContextMenu")),
             Action::ToggleSessionCard => Some(KdlNode::new("ToggleSessionCard")),
+            Action::KillSessionAndSwitch => Some(KdlNode::new("KillSessionAndSwitch")),
             Action::FocusHostSession => Some(KdlNode::new("FocusHostSession")),
             Action::FocusGuestSession => Some(KdlNode::new("FocusGuestSession")),
             Action::ToggleHostFullscreen => Some(KdlNode::new("ToggleHostFullscreen")),
@@ -1872,6 +1874,9 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
             "ToggleSessionCard" => {
+                parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
+            },
+            "KillSessionAndSwitch" => {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
             "SwitchSession" => {

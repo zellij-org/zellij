@@ -1227,6 +1227,7 @@ pub enum ActionName {
     MoveTabToPosition = 127,
     RunInBackground = 128,
     ToggleSessionCard = 129,
+    KillSessionAndSwitch = 130,
 }
 impl ActionName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1362,6 +1363,7 @@ impl ActionName {
             ActionName::MoveTabToPosition => "MoveTabToPosition",
             ActionName::RunInBackground => "RunInBackground",
             ActionName::ToggleSessionCard => "ToggleSessionCard",
+            ActionName::KillSessionAndSwitch => "KillSessionAndSwitch",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1494,6 +1496,7 @@ impl ActionName {
             "MoveTabToPosition" => Some(Self::MoveTabToPosition),
             "RunInBackground" => Some(Self::RunInBackground),
             "ToggleSessionCard" => Some(Self::ToggleSessionCard),
+            "KillSessionAndSwitch" => Some(Self::KillSessionAndSwitch),
             _ => None,
         }
     }

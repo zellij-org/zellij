@@ -967,6 +967,7 @@ pub enum ScreenInstruction {
         column: usize,
     },
     OpenSessionCard(ClientId),
+    OpenSessionManagerAfterKill(ClientId, String), // String -> the session the client killed
     TerminalInputSubmitted(ClientId),
     TerminalEscapePressed(ClientId),
     ToggleSessionCard(ClientId, Option<NotificationEnd>),
@@ -1450,6 +1451,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             },
             ScreenInstruction::OpenPluginPopup { .. } => ScreenContext::OpenPluginPopup,
             ScreenInstruction::OpenSessionCard(..) => ScreenContext::OpenSessionCard,
+            ScreenInstruction::OpenSessionManagerAfterKill(..) => {
+                ScreenContext::OpenSessionManagerAfterKill
+            },
             ScreenInstruction::TerminalInputSubmitted(..) => ScreenContext::TerminalInputSubmitted,
             ScreenInstruction::TerminalEscapePressed(..) => ScreenContext::TerminalEscapePressed,
             ScreenInstruction::ToggleSessionCard(..) => ScreenContext::ToggleSessionCard,
@@ -1927,6 +1931,7 @@ pub(crate) struct Screen {
     background_plugin_subscriptions: HashMap<(PluginId, ClientId), HashSet<EventType>>,
     last_reported_plugin_tab_indices: HashMap<PluginId, usize>,
     pub(crate) pending_session_card: Option<ClientId>,
+    pub(crate) pending_session_manager: Option<(ClientId, String)>,
     pub(crate) terminal_command_submitted: bool,
     pub(crate) swap_layout_notification: bool,
     pub(crate) on_quit: zellij_utils::input::options::OnQuit,
@@ -2262,6 +2267,7 @@ impl Screen {
             background_plugin_subscriptions: HashMap::new(),
             last_reported_plugin_tab_indices: HashMap::new(),
             pending_session_card: None,
+            pending_session_manager: None,
             terminal_command_submitted: false,
             swap_layout_notification: true,
             on_quit: Default::default(),
@@ -10239,6 +10245,12 @@ pub(crate) fn screen_thread_main(
         {
             screen.open_pending_session_card();
         }
+        if screen.pending_session_manager.is_some()
+            && !matches!(event, ScreenInstruction::OpenSessionManagerAfterKill(..))
+            && !screen.tabs.is_empty()
+        {
+            screen.open_pending_session_manager();
+        }
 
         match event {
             ScreenInstruction::PtyBytes(pid, vte_bytes) => {
@@ -12480,6 +12492,9 @@ pub(crate) fn screen_thread_main(
                 if screen.pending_session_card == Some(client_id) {
                     screen.pending_session_card = None;
                 }
+                if matches!(&screen.pending_session_manager, Some((c, _)) if *c == client_id) {
+                    screen.pending_session_manager = None;
+                }
                 screen.remove_client(client_id).non_fatal();
                 screen.log_and_report_session_state().non_fatal();
                 screen.render(None).non_fatal();
@@ -14583,6 +14598,9 @@ pub(crate) fn screen_thread_main(
                 column,
             } => {
                 screen.open_context_menu_from_plugin(plugin_id, client_id, target, line, column);
+            },
+            ScreenInstruction::OpenSessionManagerAfterKill(client_id, killed_session) => {
+                screen.open_session_manager_after_kill(client_id, killed_session);
             },
             ScreenInstruction::OpenSessionCard(client_id) => {
                 screen.open_session_card(client_id);

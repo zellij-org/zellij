@@ -135,6 +135,7 @@ keybinds preset="default" primary="Ctrl" secondary="Alt" unlock="Ctrl g" {
         bind "Ctrl o" { SwitchToMode "Normal"; }
         bind "Ctrl s" { SwitchToMode "Scroll"; }
         bind "d" { Detach; }
+        bind "k" { KillSessionAndSwitch; }
         bind "w" {
             LaunchOrFocusPlugin "session-manager" {
                 floating true

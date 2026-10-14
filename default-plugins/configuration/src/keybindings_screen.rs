@@ -152,6 +152,7 @@ pub fn category_of(actions: &[String]) -> &'static str {
         | "MessagePlugin"
         | "DismissInfoPopups"
         | "ToggleSessionCard"
+        | "KillSessionAndSwitch"
         | "OpenContextMenu" => "Session and plugins",
         name if name.starts_with("Search") => "Search",
         name if name.contains("Scroll")

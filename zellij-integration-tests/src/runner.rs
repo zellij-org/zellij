@@ -131,6 +131,7 @@ impl TestRunner {
                     client_info,
                     None,
                     None,
+                    None,
                     false,
                     start_detached_and_exit,
                 );
@@ -402,6 +403,7 @@ fn spawn_client_thread(
         config_options,
         client_info,
         false,
+        None,
     )
 }
 
@@ -412,6 +414,7 @@ fn spawn_client_thread_with_reconnect(
     config_options: Options,
     client_info: ClientInfo,
     is_a_reconnect: bool,
+    killed_session: Option<String>,
 ) -> JoinHandle<Option<ConnectToSession>> {
     std::thread::Builder::new()
         .name("in_process_zellij_client".to_string())
@@ -427,6 +430,7 @@ fn spawn_client_thread_with_reconnect(
                 client_info,
                 tab_position_to_focus,
                 pane_id_to_focus,
+                killed_session,
                 is_a_reconnect,
                 start_detached_and_exit,
             )
@@ -969,6 +973,7 @@ impl TestSession {
                 None,
             ),
             is_a_reconnect,
+            connect_to_session.killed_session.clone(),
         );
         self.session_name = session_name;
         self.config_options = config_options;

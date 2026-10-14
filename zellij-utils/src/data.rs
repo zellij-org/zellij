@@ -3955,6 +3955,10 @@ pub struct ConnectToSession {
     pub cwd: Option<PathBuf>,
     #[serde(default)]
     pub session_card: Option<bool>,
+    /// The session this client is leaving and killing: on arrival, the new session opens the
+    /// session manager with that session listed (grayed out, so it can be resurrected).
+    #[serde(default)]
+    pub killed_session: Option<String>,
 }
 
 impl ConnectToSession {

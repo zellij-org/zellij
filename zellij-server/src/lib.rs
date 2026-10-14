@@ -138,6 +138,7 @@ pub enum ServerInstruction {
     LogError(Vec<String>, ClientId, Option<NotificationEnd>),
     SwitchSession(ConnectToSession, ClientId, Option<NotificationEnd>),
     SwitchSessionAndCloseCurrent(ConnectToSession, ClientId, Option<NotificationEnd>),
+    KillSessionAndSwitch(ClientId, Option<NotificationEnd>),
     TerminalCommandSubmitted,
     SessionRenamed(String),
     UnblockCliPipeInput(String, Option<i32>),
@@ -259,6 +260,7 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::SwitchSessionAndCloseCurrent(..) => {
                 ServerContext::SwitchSessionAndCloseCurrent
             },
+            ServerInstruction::KillSessionAndSwitch(..) => ServerContext::KillSessionAndSwitch,
             ServerInstruction::TerminalCommandSubmitted => ServerContext::TerminalCommandSubmitted,
             ServerInstruction::SessionRenamed(..) => ServerContext::SessionRenamed,
             ServerInstruction::UnblockCliPipeInput(..) => ServerContext::UnblockCliPipeInput,
@@ -3609,6 +3611,7 @@ pub fn start_server_impl(
         err_ctx.add_call(ContextType::IPCServer((&instruction).into()));
         match instruction {
             ServerInstruction::FirstClientConnected(cli_assets, is_web_client, client_id) => {
+                let killed_session = cli_assets.killed_session.clone();
                 let is_resumed_session = match &cli_assets.layout {
                     Some(LayoutInfo::File(path, _)) => Path::new(path)
                         .starts_with(&*zellij_utils::consts::ZELLIJ_SESSION_INFO_CACHE_DIR),
@@ -3844,6 +3847,14 @@ pub fn start_server_impl(
                             host_terminal_env,
                         ))
                         .unwrap();
+                    if let Some(killed_session) = killed_session {
+                        let _ = session_data.senders.send_to_screen(
+                            ScreenInstruction::OpenSessionManagerAfterKill(
+                                client_id,
+                                killed_session,
+                            ),
+                        );
+                    }
                 }
             },
             ServerInstruction::AttachClient(
@@ -3857,6 +3868,7 @@ pub fn start_server_impl(
                 let session_data = rlock.as_mut().unwrap();
                 let config = session_data.session_configuration.saved_config.clone();
                 let host_terminal_env = cli_assets.host_terminal_env.clone();
+                let killed_session = cli_assets.killed_session.clone();
                 let runtime_config_options = match cli_assets.configuration_options {
                     Some(configuration_options) => config.options.merge(configuration_options),
                     None => config.options.clone(),
@@ -3918,6 +3930,11 @@ pub fn start_server_impl(
                     .senders
                     .send_to_plugin(PluginInstruction::AddClient(client_id))
                     .unwrap();
+                if let Some(killed_session) = killed_session {
+                    let _ = session_data.senders.send_to_screen(
+                        ScreenInstruction::OpenSessionManagerAfterKill(client_id, killed_session),
+                    );
+                }
                 let client_configuration = session_data
                     .session_configuration
                     .get_client_configuration(&client_id);
@@ -4344,6 +4361,20 @@ pub fn start_server_impl(
                     delete_session_on_exit = true;
                     let _ = to_server.send(ServerInstruction::KillSession);
                 }
+            },
+            ServerInstruction::KillSessionAndSwitch(client_id, completion_tx) => {
+                // switch first so this client lands somewhere, then kill the session for
+                // everyone; a killed session stays resurrectable
+                let connect_to_session = ConnectToSession {
+                    name: next_session_after(&own_session_name),
+                    ..Default::default()
+                };
+                let _ = to_server.send(ServerInstruction::SwitchSession(
+                    connect_to_session,
+                    client_id,
+                    completion_tx,
+                ));
+                let _ = to_server.send(ServerInstruction::KillSession);
             },
             ServerInstruction::SwitchSession(mut connect_to_session, client_id, completion_tx) => {
                 let current_session_name = envs::get_session_name();
@@ -5006,6 +5037,74 @@ pub fn start_server_impl(
     server_socket.remove_on_exit();
     if delete_session_on_exit {
         delete_unused_session_after_exit(&own_session_name);
+    }
+}
+
+/// The session to move to when killing `own`: the next running session by name (wrapping
+/// around), else the most recently used exited one, else `None` for a new session.
+fn next_session_after(own: &str) -> Option<String> {
+    let running: Vec<String> = zellij_utils::sessions::get_sessions()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(name, _)| name)
+        .collect();
+    let exited = zellij_utils::sessions::get_resurrectable_sessions();
+    pick_next_session(own, running, exited)
+}
+
+fn pick_next_session(
+    own: &str,
+    mut running: Vec<String>,
+    mut exited: Vec<(String, std::time::Duration)>,
+) -> Option<String> {
+    running.retain(|name| name != own);
+    running.sort();
+    let after = running.iter().find(|name| name.as_str() > own);
+    if let Some(name) = after.or_else(|| running.first()) {
+        return Some(name.clone());
+    }
+    exited.retain(|(name, _)| name != own);
+    exited.sort_by_key(|(_, age)| *age);
+    exited.into_iter().next().map(|(name, _)| name)
+}
+
+#[cfg(test)]
+mod next_session_tests {
+    use super::pick_next_session;
+    use std::time::Duration;
+
+    fn names(names: &[&str]) -> Vec<String> {
+        names.iter().map(|n| n.to_string()).collect()
+    }
+
+    #[test]
+    fn picks_the_next_running_session_by_name() {
+        let running = names(&["c", "a", "b"]);
+        assert_eq!(pick_next_session("a", running, vec![]), Some("b".into()));
+    }
+
+    #[test]
+    fn wraps_around_to_the_first_running_session() {
+        let running = names(&["a", "b", "c"]);
+        assert_eq!(pick_next_session("c", running, vec![]), Some("a".into()));
+    }
+
+    #[test]
+    fn falls_back_to_the_most_recent_exited_session() {
+        let exited = vec![
+            ("old".to_owned(), Duration::from_secs(500)),
+            ("recent".to_owned(), Duration::from_secs(5)),
+            ("me".to_owned(), Duration::from_secs(1)),
+        ];
+        assert_eq!(
+            pick_next_session("me", names(&["me"]), exited),
+            Some("recent".into())
+        );
+    }
+
+    #[test]
+    fn with_nothing_else_a_new_session_is_made() {
+        assert_eq!(pick_next_session("me", names(&["me"]), vec![]), None);
     }
 }
 

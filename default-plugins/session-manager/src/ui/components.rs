@@ -20,6 +20,10 @@ pub struct CachedRowData {
     pub indices: Vec<usize>,
     pub original_index: usize,
     pub kind: CachedRowKind,
+    pub is_current: bool,
+    /// The session this client just killed from the manager, kept in the list so it can be
+    /// resurrected; drawn grayed out.
+    pub is_killed: bool,
     // Pre-formatted strings (computed once, reused across renders)
     pub full_details: String,
     pub abbr_details: String,
@@ -51,8 +55,11 @@ pub struct DetailsColorRanges {
 /// and timer re-renders reuse the cached data.
 #[derive(Default)]
 pub struct UnifiedResultsRenderCache {
-    /// Filtered rows (current session excluded), with pre-formatted strings.
+    /// Rows with pre-formatted strings. The session just killed (if any) comes first, then the
+    /// current session, then the rest.
     pub rows: Vec<CachedRowData>,
+    /// The session this client just killed, see `CachedRowData::is_killed`.
+    pub killed_session: Option<String>,
     /// Max column widths across all cached rows.
     pub full_name_width: usize,
     pub full_details_width: usize,
@@ -75,9 +82,6 @@ impl UnifiedResultsRenderCache {
                     ..
                 }
             );
-            if is_current {
-                continue;
-            }
 
             let row = match result {
                 UnifiedSearchResult::ActiveSession {
@@ -144,6 +148,8 @@ impl UnifiedResultsRenderCache {
                         indices: indices.clone(),
                         original_index: orig_i,
                         kind: CachedRowKind::Active,
+                        is_current,
+                        is_killed: false,
                         full_details,
                         abbr_details,
                         name_width,
@@ -199,6 +205,8 @@ impl UnifiedResultsRenderCache {
                         indices: indices.clone(),
                         original_index: orig_i,
                         kind: CachedRowKind::Resurrectable,
+                        is_current: false,
+                        is_killed: self.killed_session.as_ref() == Some(session_name),
                         full_details,
                         abbr_details,
                         name_width,
@@ -223,6 +231,8 @@ impl UnifiedResultsRenderCache {
 
             self.rows.push(row);
         }
+        self.rows
+            .sort_by_key(|row| (!row.is_killed, !row.is_current));
     }
 }
 
@@ -1198,17 +1208,17 @@ pub fn render_controls_line(
             let rename_text = colors.bold("Rename");
             let disconnect = colors.shortcuts("<Ctrl x>");
             let disconnect_text = colors.bold("Disconnect others");
-            let kill = colors.shortcuts("<Del>");
+            let kill = colors.shortcuts("<Del Del>");
             let kill_text = colors.bold("Kill");
             let kill_all = colors.shortcuts("<Ctrl d>");
             let kill_all_text = colors.bold("Kill all");
 
-            if max_cols > 90 {
+            if max_cols > 94 {
                 print!(
                     "\u{1b}[m\u{1b}[{y};{x}HHelp: {rename} - {rename_text}, {disconnect} - {disconnect_text}, {kill} - {kill_text}, {kill_all} - {kill_all_text}"
                 );
                 true
-            } else if max_cols >= 28 {
+            } else if max_cols >= 32 {
                 print!("\u{1b}[m\u{1b}[{y};{x}H{rename}/{disconnect}/{kill}/{kill_all}");
                 false
             } else {
@@ -1220,17 +1230,17 @@ pub fn render_controls_line(
             let navigate = colors.bold("Navigate");
             let enter = colors.shortcuts("<ENTER>");
             let select = colors.bold("Resurrect");
-            let del = colors.shortcuts("<DEL>");
+            let del = colors.shortcuts("<Del Del>");
             let del_text = colors.bold("Delete");
             let del_all = colors.shortcuts("<Ctrl d>");
             let del_all_text = colors.bold("Delete all");
 
-            if max_cols > 83 {
+            if max_cols > 87 {
                 print!(
                     "\u{1b}[m\u{1b}[{y};{x}HHelp: {arrows} - {navigate}, {enter} - {select}, {del} - {del_text}, {del_all} - {del_all_text}"
                 );
                 true
-            } else if max_cols >= 28 {
+            } else if max_cols >= 32 {
                 print!("\u{1b}[m\u{1b}[{y};{x}H{arrows}/{enter}/{del}/{del_all}");
                 false
             } else {
@@ -1245,27 +1255,27 @@ pub fn render_controls_line(
             let disconnect = colors.shortcuts("<Ctrl x>");
             let disconnect_full_text = colors.bold("Disconnect others");
             let disconnect_short_text = colors.bold("Disconnect");
-            let kill = colors.shortcuts("<Del>");
+            let kill = colors.shortcuts("<Del Del>");
             let kill_text = colors.bold("Kill/Delete");
             let layout = colors.shortcuts("<Ctrl l>");
             let layout_full_text = colors.bold("New with layout");
             let layout_short_text = colors.bold("Layout");
-            if max_cols > 121 {
+            if max_cols > 125 {
                 print!(
                     "\u{1b}[m\u{1b}[{y};{x}HHelp: {arrows} - {navigate}, {layout} - {layout_full_text}, {rename} - {rename_text}, {disconnect} - {disconnect_full_text}, {kill} - {kill_text}"
                 );
                 true
-            } else if max_cols > 105 {
+            } else if max_cols > 109 {
                 print!(
                     "\u{1b}[m\u{1b}[{y};{x}HHelp: {arrows} - {navigate}, {layout} - {layout_short_text}, {rename} - {rename_text}, {disconnect} - {disconnect_short_text}, {kill} - {kill_text}"
                 );
                 true
-            } else if max_cols > 61 {
+            } else if max_cols > 65 {
                 print!(
                     "\u{1b}[m\u{1b}[{y};{x}H{arrows} - {navigate}, {layout} - {layout_short_text}, {rename}/{disconnect}/{kill}"
                 );
                 false
-            } else if max_cols >= 39 {
+            } else if max_cols >= 43 {
                 print!("\u{1b}[m\u{1b}[{y};{x}H{arrows}/{layout}/{rename}/{disconnect}/{kill}");
                 false
             } else {
@@ -1278,23 +1288,23 @@ pub fn render_controls_line(
             let disconnect = colors.shortcuts("<Ctrl x>");
             let disconnect_full_text = colors.bold("Disconnect others");
             let disconnect_short_text = colors.bold("Disconnect");
-            let kill = colors.shortcuts("<Del>");
+            let kill = colors.shortcuts("<Del Del>");
             let kill_text = colors.bold("Kill/Delete");
 
-            // Full: "Help: <Ctrl r> - Rename, <Ctrl x> - Disconnect others, <Del> - Kill/Delete" = 76 chars
-            if max_cols > 76 {
+            // Full: "Help: <Ctrl r> - Rename, <Ctrl x> - Disconnect others, <Del Del> - Kill/Delete" = 80 chars
+            if max_cols > 80 {
                 print!(
                     "\u{1b}[m\u{1b}[{y};{x}HHelp: {rename} - {rename_text}, {disconnect} - {disconnect_full_text}, {kill} - {kill_text}"
                 );
                 true
-            // Medium: "Help: <Ctrl r> - Rename, <Ctrl x> - Disconnect, <Del> - Kill/Delete" = 69 chars
-            } else if max_cols > 69 {
+            // Medium: "Help: <Ctrl r> - Rename, <Ctrl x> - Disconnect, <Del Del> - Kill/Delete" = 73 chars
+            } else if max_cols > 73 {
                 print!(
                     "\u{1b}[m\u{1b}[{y};{x}HHelp: {rename} - {rename_text}, {disconnect} - {disconnect_short_text}, {kill} - {kill_text}"
                 );
                 true
-            // Compact: "<Ctrl r>/<Ctrl x>/<Del>" = 23 chars
-            } else if max_cols >= 23 {
+            // Compact: "<Ctrl r>/<Ctrl x>/<Del Del>" = 27 chars
+            } else if max_cols >= 27 {
                 print!("\u{1b}[m\u{1b}[{y};{x}H{rename}/{disconnect}/{kill}");
                 false
             } else {
