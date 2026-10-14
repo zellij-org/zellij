@@ -821,6 +821,41 @@ fn parse_sgr_mouse(buf: &[u8]) -> Option<(InputEvent, usize)> {
     ))
 }
 
+/// Try to parse a legacy (X10 / "normal") mouse report: `\x1b[M` followed by
+/// three bytes, button, column and row, each offset by 32. Hosts send this
+/// encoding when mouse tracking is on but SGR encoding (`?1006`) is not, for
+/// example a terminal front end that restored its tracking mode after a
+/// reconnect without the encoding mode. Without this the report fell through
+/// to the keymap, the `\x1b[` prefix was consumed, and the remaining bytes
+/// were typed into the focused pane as text (`MC4*MC5*...` while the mouse
+/// moved).
+/// Returns Some((InputEvent, bytes_consumed)) on success; None if the buffer
+/// does not hold a complete report.
+fn parse_x10_mouse(buf: &[u8]) -> Option<(InputEvent, usize)> {
+    if buf.len() < 6 || !buf.starts_with(b"\x1b[M") {
+        return None;
+    }
+    let (cb, cx, cy) = (buf[3], buf[4], buf[5]);
+    // the column and row are 1-based, so their bytes are at least 33
+    if cb < 32 || cx < 33 || cy < 33 {
+        return None;
+    }
+    let p0 = i64::from(cb - 32);
+    // X10 has no separate release final byte: button bits 3 mean "released",
+    // which decode_mouse_button maps to MouseButton::None, as for SGR
+    let button = decode_mouse_button(b'M', p0)?;
+    let modifiers = decode_mouse_modifiers(p0);
+    Some((
+        InputEvent::Mouse(MouseEvent {
+            x: u16::from(cx - 32),
+            y: u16::from(cy - 32),
+            mouse_buttons: button.into(),
+            modifiers,
+        }),
+        6,
+    ))
+}
+
 /// Attempt to parse an OSC (Operating System Command) sequence from the buffer.
 /// Returns `Some((InputEvent::OperatingSystemCommand(payload), len))` if a complete
 /// OSC sequence is found, where `payload` is the bytes between `\x1b]` and the
@@ -1718,6 +1753,24 @@ impl InputParser {
                             self.buf.advance(len);
                             callback(event, self.buf.len());
                             continue;
+                        }
+
+                        if let Some((event, len)) = parse_x10_mouse(self.buf.as_slice()) {
+                            self.flush_parked_esc_if_held(&mut callback);
+                            self.buf.advance(len);
+                            callback(event, self.buf.len());
+                            continue;
+                        }
+
+                        // An X10 report split across reads: its three payload
+                        // bytes can be anything from 32 up, so wait for them
+                        // rather than letting the keymap consume `\x1b[`
+                        if maybe_more
+                            && self.buf.as_slice().starts_with(b"\x1b[M")
+                            && self.buf.len() < 6
+                        {
+                            self.flush_parked_esc_if_held(&mut callback);
+                            return;
                         }
 
                         // OSC sequence check — must come before the incomplete-SGR-mouse early return
@@ -2808,6 +2861,76 @@ mod test {
     /// two events (Esc then Mouse), not as Alt+`[` (which would happen if
     /// the keymap's `\x1b[`=Alt+`[` registration short-circuits the SGR
     /// mouse parser while in `EscapeMaybeAlt` state).
+    #[test]
+    fn x10_mouse_motion_and_click_are_parsed() {
+        let mut p = InputParser::new();
+        // motion without a button at (20, 10), left press at (30, 10),
+        // drag to (31, 10), release at (31, 10)
+        let res = p.parse_as_vec(b"\x1b[MC4*\x1b[M >*\x1b[M@?*\x1b[M#?*", MAYBE_MORE);
+        let ev = |x, y, mouse_buttons| {
+            InputEvent::Mouse(MouseEvent {
+                x,
+                y,
+                mouse_buttons,
+                modifiers: Modifiers::NONE,
+            })
+        };
+        assert_eq!(
+            res,
+            vec![
+                ev(20, 10, MouseButtons::NONE),
+                ev(30, 10, MouseButtons::LEFT),
+                ev(31, 10, MouseButtons::LEFT),
+                ev(31, 10, MouseButtons::NONE),
+            ]
+        );
+    }
+
+    #[test]
+    fn x10_mouse_wheel_and_modifiers_are_parsed() {
+        let mut p = InputParser::new();
+        // wheel up (64) at (5, 6), then a left press with ctrl (16) at (7, 8)
+        let res = p.parse_as_vec(b"\x1b[M`%&\x1b[M0\x27(", MAYBE_MORE);
+        assert_eq!(
+            res,
+            vec![
+                InputEvent::Mouse(MouseEvent {
+                    x: 5,
+                    y: 6,
+                    mouse_buttons: MouseButtons::VERT_WHEEL | MouseButtons::WHEEL_POSITIVE,
+                    modifiers: Modifiers::NONE,
+                }),
+                InputEvent::Mouse(MouseEvent {
+                    x: 7,
+                    y: 8,
+                    mouse_buttons: MouseButtons::LEFT,
+                    modifiers: Modifiers::CTRL,
+                }),
+            ]
+        );
+    }
+
+    #[test]
+    fn x10_mouse_split_across_reads_is_reassembled() {
+        let mut p = InputParser::new();
+        let first = p.parse_as_vec(b"\x1b[MC", MAYBE_MORE);
+        assert!(
+            first.is_empty(),
+            "a partial report must not be typed: {:?}",
+            first
+        );
+        let second = p.parse_as_vec(b"4*", MAYBE_MORE);
+        assert_eq!(
+            second,
+            vec![InputEvent::Mouse(MouseEvent {
+                x: 20,
+                y: 10,
+                mouse_buttons: MouseButtons::NONE,
+                modifiers: Modifiers::NONE,
+            })]
+        );
+    }
+
     #[test]
     fn esc_then_sgr_mouse_emits_esc_and_mouse() {
         let mut p = InputParser::new();
