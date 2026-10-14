@@ -6,12 +6,17 @@ use crate::{
     data::SessionInfo,
     envs,
     input::layout::Layout,
-    ipc::{ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg},
+    ipc::{
+        ClientToServerMsg, IpcReceiveError, IpcReceiverWithContext, IpcSenderWithContext,
+        ServerToClientMsg,
+    },
 };
 use anyhow;
 use humantime::format_duration;
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
+use std::sync::mpsc;
+use std::thread;
 use std::time::{Duration, SystemTime};
 use std::{fs, io, process};
 use suggest::Suggest;
@@ -302,31 +307,7 @@ pub fn kill_session(name: &str) {
     use crate::consts::ipc_connect;
     let path = &*ZELLIJ_SOCK_DIR.join(name);
     match ipc_connect(path) {
-        Ok(stream) => {
-            // On Windows, the server uses a dual-pipe architecture: the main pipe
-            // for client→server and a reply pipe for server→client. We must:
-            // 1. Connect to the reply pipe (so the server unblocks from
-            //    reply_listener.accept() and spawns the route thread)
-            // 2. Send KillSession on the main pipe
-            // 3. Wait for the Exit response on the reply pipe (so we don't
-            //    disconnect before the server processes the message)
-            #[cfg(windows)]
-            {
-                let reply = crate::consts::ipc_connect_reply(path);
-                let _ = IpcSenderWithContext::<ClientToServerMsg>::new(stream)
-                    .send_client_msg(ClientToServerMsg::KillSession);
-                if let Ok(reply_stream) = reply {
-                    let mut receiver: IpcReceiverWithContext<ServerToClientMsg> =
-                        IpcReceiverWithContext::new(reply_stream);
-                    let _ = receiver.recv_server_msg();
-                }
-            }
-            #[cfg(not(windows))]
-            {
-                let _ = IpcSenderWithContext::<ClientToServerMsg>::new(stream)
-                    .send_client_msg(ClientToServerMsg::KillSession);
-            }
-        },
+        Ok(stream) => send_kill_session_and_wait_for_exit(stream, path, KILL_SESSION_EXIT_TIMEOUT),
         Err(e) => {
             eprintln!("Error occurred: {:?}", e);
             process::exit(1);
@@ -338,25 +319,9 @@ pub fn delete_session(name: &str, force: bool) {
     if force {
         use crate::consts::ipc_connect;
         let path = &*ZELLIJ_SOCK_DIR.join(name);
-        let _ = ipc_connect(path).ok().map(|stream| {
-            #[cfg(windows)]
-            {
-                let reply = crate::consts::ipc_connect_reply(path);
-                let _ = IpcSenderWithContext::<ClientToServerMsg>::new(stream)
-                    .send_client_msg(ClientToServerMsg::KillSession);
-                if let Ok(reply_stream) = reply {
-                    let mut receiver: IpcReceiverWithContext<ServerToClientMsg> =
-                        IpcReceiverWithContext::new(reply_stream);
-                    let _ = receiver.recv_server_msg();
-                }
-            }
-            #[cfg(not(windows))]
-            {
-                IpcSenderWithContext::<ClientToServerMsg>::new(stream)
-                    .send_client_msg(ClientToServerMsg::KillSession)
-                    .ok();
-            }
-        });
+        if let Ok(stream) = ipc_connect(path) {
+            send_kill_session_and_wait_for_exit(stream, path, KILL_SESSION_EXIT_TIMEOUT);
+        }
     }
     if let Ok(index) = crate::session_index::SessionIndex::open_default() {
         let _ = index.delete(name);
@@ -371,6 +336,49 @@ pub fn delete_session(name: &str, force: bool) {
     } else {
         println!("Session: {:?} successfully deleted.", name);
     }
+}
+
+const KILL_SESSION_EXIT_TIMEOUT: Duration = Duration::from_secs(2);
+
+#[cfg_attr(not(windows), allow(unused_variables))]
+fn send_kill_session_and_wait_for_exit(
+    stream: interprocess::local_socket::Stream,
+    path: &Path,
+    timeout: Duration,
+) {
+    // On Windows, the server uses a dual-pipe architecture: the main pipe for
+    // client→server and a reply pipe for server→client. Connecting to the reply
+    // pipe unblocks the server's reply_listener.accept() so it spawns the route
+    // thread.
+    #[cfg(windows)]
+    let receiver = crate::consts::ipc_connect_reply(path)
+        .ok()
+        .map(IpcReceiverWithContext::<ServerToClientMsg>::new);
+    let mut sender = IpcSenderWithContext::<ClientToServerMsg>::new(stream);
+    #[cfg(not(windows))]
+    let receiver = Some(sender.get_receiver::<ServerToClientMsg>());
+    if sender
+        .send_client_msg(ClientToServerMsg::KillSession)
+        .is_err()
+    {
+        return;
+    }
+    let Some(mut receiver) = receiver else {
+        return;
+    };
+    let (exited_tx, exited_rx) = mpsc::channel();
+    thread::spawn(move || {
+        loop {
+            match receiver.try_recv_server_msg() {
+                Ok((ServerToClientMsg::Exit { .. }, _)) | Err(IpcReceiveError::Disconnected) => {
+                    break
+                },
+                Ok(_) | Err(IpcReceiveError::Undecodable) => {},
+            }
+        }
+        let _ = exited_tx.send(());
+    });
+    let _ = exited_rx.recv_timeout(timeout);
 }
 
 pub fn list_sessions(no_formatting: bool, short: bool, reverse: bool) {
@@ -812,3 +820,85 @@ const NOUNS: &[&'static str] = &[
     "yak",
     "zebra",
 ];
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use crate::ipc::ExitReason;
+    use interprocess::local_socket::{prelude::*, GenericFilePath, ListenerOptions};
+    use std::path::PathBuf;
+
+    fn bind(dir: &tempfile::TempDir) -> (PathBuf, interprocess::local_socket::Listener) {
+        let path = dir.path().join("session.sock");
+        let listener = ListenerOptions::new()
+            .name(path.as_path().to_fs_name::<GenericFilePath>().unwrap())
+            .create_sync()
+            .expect("bind failed");
+        (path, listener)
+    }
+
+    fn kill_in_background(path: PathBuf, timeout: Duration) -> mpsc::Receiver<()> {
+        let (done_tx, done_rx) = mpsc::channel();
+        thread::spawn(move || {
+            let stream = crate::consts::ipc_connect(&path).expect("connect failed");
+            send_kill_session_and_wait_for_exit(stream, &path, timeout);
+            let _ = done_tx.send(());
+        });
+        done_rx
+    }
+
+    fn accept_kill(
+        listener: &interprocess::local_socket::Listener,
+    ) -> (
+        IpcReceiverWithContext<ClientToServerMsg>,
+        IpcSenderWithContext<ServerToClientMsg>,
+    ) {
+        let stream = listener.incoming().next().unwrap().expect("accept failed");
+        let mut receiver = IpcReceiverWithContext::<ClientToServerMsg>::new(stream);
+        let (msg, _) = receiver.recv_client_msg().expect("no message received");
+        assert!(
+            matches!(msg, ClientToServerMsg::KillSession),
+            "should be KillSession, got: {:?}",
+            msg
+        );
+        let sender = receiver.get_sender();
+        (receiver, sender)
+    }
+
+    #[test]
+    fn kill_session_waits_past_other_messages_for_exit() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let (path, listener) = bind(&dir);
+        let done = kill_in_background(path, Duration::from_secs(10));
+
+        let (_receiver, mut sender) = accept_kill(&listener);
+        sender
+            .send_server_msg(ServerToClientMsg::UnblockInputThread)
+            .unwrap();
+        assert!(
+            done.recv_timeout(Duration::from_millis(200)).is_err(),
+            "returned before the server sent Exit"
+        );
+        sender
+            .send_server_msg(ServerToClientMsg::Exit {
+                exit_reason: ExitReason::Normal,
+            })
+            .unwrap();
+        done.recv_timeout(Duration::from_secs(5))
+            .expect("did not return after the server sent Exit");
+    }
+
+    #[test]
+    fn kill_session_gives_up_on_a_server_that_never_exits() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let (path, listener) = bind(&dir);
+        let done = kill_in_background(path, Duration::from_millis(100));
+
+        let (_receiver, mut sender) = accept_kill(&listener);
+        sender
+            .send_server_msg(ServerToClientMsg::UnblockInputThread)
+            .unwrap();
+        done.recv_timeout(Duration::from_secs(5))
+            .expect("kept waiting past the timeout");
+    }
+}
