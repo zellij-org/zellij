@@ -112,6 +112,7 @@ struct SessionSuggestionsService {
     config: SessionSuggestionsConfig,
     session_card: bool,
     session_indicator: bool,
+    configured: bool,
     session_name: Option<String>,
     context: SessionContext,
     last_git_run: Option<Instant>,
@@ -141,6 +142,7 @@ impl SessionSuggestionsService {
             config: SessionSuggestionsConfig::default(),
             session_card: true,
             session_indicator: true,
+            configured: false,
             session_name: None,
             context: SessionContext::default(),
             last_git_run: None,
@@ -163,7 +165,7 @@ impl SessionSuggestionsService {
 
     fn run(&mut self, receiver: Receiver<SessionSuggestionsJob>) {
         loop {
-            let index_poll_at = if self.subscribers.is_empty() {
+            let index_poll_at = if self.subscribers.is_empty() || !self.reports_counts() {
                 None
             } else {
                 Some(
@@ -220,6 +222,10 @@ impl SessionSuggestionsService {
         self.watcher = None;
     }
 
+    fn reports_counts(&self) -> bool {
+        self.configured && self.session_indicator && self.session_name.is_some()
+    }
+
     fn enabled(&self) -> bool {
         self.index.is_some() && (self.session_card || self.session_indicator)
     }
@@ -248,14 +254,14 @@ impl SessionSuggestionsService {
                 self.config = config;
                 self.session_card = session_card;
                 self.session_indicator = session_indicator;
+                self.configured = true;
                 if changed {
                     self.live_fact_cache.clear();
                 }
                 if !self.session_indicator {
                     self.watcher = None;
-                } else if !self.subscribers.is_empty() {
-                    self.ensure_watcher();
-                    self.report_counts_to_subscribers();
+                } else {
+                    self.start_reporting_counts();
                 }
             },
             SessionSuggestionsJob::SessionStarted {
@@ -296,11 +302,14 @@ impl SessionSuggestionsService {
                 plugin_id,
                 client_id,
             } => {
-                if !self.session_indicator {
+                if self.configured && !self.session_indicator {
                     return;
                 }
                 self.ensure_index();
                 self.subscribers.insert((plugin_id, client_id));
+                if !self.reports_counts() {
+                    return;
+                }
                 self.ensure_watcher();
                 let (counts, folder_sessions) = self.compute_counts();
                 self.send_counts_to(plugin_id, client_id, counts, folder_sessions.clone());
@@ -336,8 +345,17 @@ impl SessionSuggestionsService {
         }
     }
 
+    fn start_reporting_counts(&mut self) {
+        if self.subscribers.is_empty() || !self.reports_counts() {
+            return;
+        }
+        self.ensure_index();
+        self.ensure_watcher();
+        self.report_counts_to_subscribers();
+    }
+
     fn ensure_watcher(&mut self) {
-        if self.watcher.is_some() || !self.session_indicator || self.subscribers.is_empty() {
+        if self.watcher.is_some() || !self.reports_counts() || self.subscribers.is_empty() {
             return;
         }
         let sender = self.own_sender.clone();
@@ -365,6 +383,7 @@ impl SessionSuggestionsService {
                 self.record_started_session(&name, cwd);
             }
         }
+        self.start_reporting_counts();
         if let (Some(client_id), true) = (card_for_client, self.session_card) {
             if other_sessions_are_running(&self.sock_dir, &name) {
                 let _ = self
@@ -612,7 +631,7 @@ impl SessionSuggestionsService {
     }
 
     fn report_counts(&mut self, force: bool) {
-        if self.subscribers.is_empty() || !self.session_indicator || self.index.is_none() {
+        if self.subscribers.is_empty() || !self.reports_counts() || self.index.is_none() {
             return;
         }
         let (counts, folder_sessions) = self.compute_counts();
