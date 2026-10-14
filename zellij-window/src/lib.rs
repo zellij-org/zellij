@@ -2,11 +2,16 @@
 mod diagnostics;
 #[cfg(test)]
 mod adversarial;
+#[cfg(windows)]
+mod app_registration;
 mod atlas;
 mod bell;
+mod blur;
 mod client_loop;
 mod clipboard;
 mod color;
+#[cfg(windows)]
+mod com;
 mod composition;
 mod connection;
 mod desktop_entry;
@@ -26,9 +31,12 @@ mod graphics;
 mod headless;
 mod host_reply;
 pub mod icns;
+mod identity;
 mod image_io;
 mod input;
 mod kitty;
+#[cfg(windows)]
+mod launcher;
 mod links;
 mod momentum;
 mod mouse;
@@ -53,13 +61,19 @@ mod scene;
 mod screen_buffer;
 mod scroll_animation;
 mod selection;
+#[cfg(windows)]
+mod session_end;
 mod settings;
 mod sixel;
 mod spawn;
 mod sprites;
+#[cfg(windows)]
+mod taskbar;
 mod terminal;
 #[cfg(test)]
 mod test_server;
+#[cfg(windows)]
+mod unattended;
 #[cfg(test)]
 mod vte_terminal;
 mod window;
@@ -89,8 +103,16 @@ use zellij_utils::input::window::StartupMode;
 
 pub fn run(args: WindowArgs, opts: CliArgs) -> Result<()> {
     diagnostics::log_crashes();
+    identity::declare();
+    #[cfg(windows)]
+    let unattended = unattended::prepare();
     spawn::forget_launching_session();
-    open(args, opts)
+    let result = open(args, opts);
+    #[cfg(windows)]
+    if let (Some(unattended), Err(error)) = (&unattended, &result) {
+        unattended.report(error);
+    }
+    result
 }
 
 pub fn install_desktop_entry() -> Result<()> {
