@@ -2202,6 +2202,8 @@ pub struct Options {
     pub swap_layout_notification: ::core::option::Option<bool>,
     #[prost(string, optional, tag="81")]
     pub on_quit: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, optional, tag="82")]
+    pub grapheme_clusters: ::core::option::Option<bool>,
 }
 /// Pane-targeting action messages
 #[allow(clippy::derive_partial_eq_without_eq)]

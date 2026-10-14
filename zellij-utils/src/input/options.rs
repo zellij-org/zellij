@@ -364,6 +364,17 @@ pub struct Options {
     #[serde(default)]
     pub support_kitty_graphics_protocol: Option<bool>,
 
+    #[clap(
+        long,
+        value_parser,
+        help = "Count each grapheme cluster (an emoji sequence, a letter with its accents) as one \
+                unit of width, as the Unicode standard does (true or false, default true). When \
+                false, widths are counted per code point and programs may still ask for clusters \
+                with mode 2027"
+    )]
+    #[serde(default)]
+    pub grapheme_clusters: Option<bool>,
+
     /// Whether to make sure a local web server is running when a new Zellij session starts.
     /// This web server will allow creating new sessions and attaching to existing ones that have
     /// opted in to being shared in the browser.
@@ -699,6 +710,7 @@ impl Options {
         let support_kitty_graphics_protocol = other
             .support_kitty_graphics_protocol
             .or(self.support_kitty_graphics_protocol);
+        let grapheme_clusters = other.grapheme_clusters.or(self.grapheme_clusters);
         let web_server = other.web_server.or(self.web_server);
         let web_sharing = other.web_sharing.or(self.web_sharing);
         let stacked_resize = other.stacked_resize.or(self.stacked_resize);
@@ -793,6 +805,7 @@ impl Options {
             disable_session_metadata,
             support_kitty_keyboard_protocol,
             support_kitty_graphics_protocol,
+            grapheme_clusters,
             web_server,
             web_sharing,
             stacked_resize,
@@ -904,6 +917,7 @@ impl Options {
         let support_kitty_graphics_protocol = other
             .support_kitty_graphics_protocol
             .or(self.support_kitty_graphics_protocol);
+        let grapheme_clusters = other.grapheme_clusters.or(self.grapheme_clusters);
         let web_server = other.web_server.or(self.web_server);
         let web_sharing = other.web_sharing.or(self.web_sharing);
         let stacked_resize = other.stacked_resize.or(self.stacked_resize);
@@ -999,6 +1013,7 @@ impl Options {
             disable_session_metadata,
             support_kitty_keyboard_protocol,
             support_kitty_graphics_protocol,
+            grapheme_clusters,
             web_server,
             web_sharing,
             stacked_resize,

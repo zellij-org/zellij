@@ -1,12 +1,14 @@
 use std::rc::Rc;
+use std::sync::Arc;
 
+use unicode_width::UnicodeWidthStr;
 use zellij_utils::structured_render::{
-    GeometryRecord, WireCell, WireColor, ATTR_BOLD, ATTR_DIM, ATTR_HIDDEN, ATTR_ITALIC,
-    ATTR_REVERSE, ATTR_STRIKE, LINK_NONE, UNDERLINE_CURLY, UNDERLINE_DASHED, UNDERLINE_DOTTED,
-    UNDERLINE_DOUBLE, UNDERLINE_SHIFT, UNDERLINE_STRAIGHT,
+    GeometryRecord, WireCell, WireColor, ATTR_BOLD, ATTR_DIM, ATTR_GROUP_CONTINUE, ATTR_HIDDEN,
+    ATTR_ITALIC, ATTR_REVERSE, ATTR_STRIKE, LINK_NONE, UNDERLINE_CURLY, UNDERLINE_DASHED,
+    UNDERLINE_DOTTED, UNDERLINE_DOUBLE, UNDERLINE_SHIFT, UNDERLINE_STRAIGHT,
 };
 
-use crate::atlas::{AtlasEntry, GlyphCache, Lookup};
+use crate::atlas::{AtlasEntry, ClusterLookup, GlyphCache, GlyphKey, Lookup, RenderedGlyph};
 use crate::color::{self, Contrast, Paints, Srgb};
 use crate::composition::Preedit;
 use crate::font::{CellMetrics, FaceStyle, FontId, GlyphContent, ShapedGlyph};
@@ -132,6 +134,10 @@ struct RowCell {
     inverted_by_cursor: bool,
     composing: bool,
     held: bool,
+    cluster: bool,
+    continuation: bool,
+    complex: bool,
+    unit_end: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -311,7 +317,7 @@ impl Transparency {
 pub struct PreeditOverlay {
     row: usize,
     start: usize,
-    cells: Vec<(WireCell, Occupancy)>,
+    cells: Vec<(WireCell, Occupancy, Option<Arc<str>>)>,
     cursor: Option<usize>,
 }
 
@@ -322,31 +328,45 @@ impl PreeditOverlay {
             return None;
         }
         let base = state.screen().cell(row, col);
-        let mut cells: Vec<(WireCell, Occupancy)> = Vec::new();
+        let mut cells: Vec<(WireCell, Occupancy, Option<Arc<str>>)> = Vec::new();
         for column in preedit.columns() {
             if col + cells.len() + column.width > size.cols {
                 break;
             }
+            let continues = if column.continues {
+                ATTR_GROUP_CONTINUE
+            } else {
+                0
+            };
             let head = WireCell {
-                ch: column.character as u32,
+                ch: column.character() as u32,
                 underline_color: 0,
-                attrs: UNDERLINE_STRAIGHT << UNDERLINE_SHIFT,
+                attrs: (UNDERLINE_STRAIGHT << UNDERLINE_SHIFT) | continues,
                 width: column.width as u8,
                 link: LINK_NONE,
                 ..base
             };
+            let mut text = column.text.clone();
+            if column.width < UnicodeWidthStr::width(text.as_str()) {
+                text.retain(|character| character != '\u{fe0f}');
+            }
+            let cluster = (text.chars().nth(1).is_some()).then(|| Arc::from(text.as_str()));
             if column.width > 1 {
-                cells.push((head, Occupancy::WideHead));
-                cells.push((
-                    WireCell {
-                        ch: ' ' as u32,
-                        width: 1,
-                        ..head
-                    },
-                    Occupancy::WideTail,
-                ));
+                cells.push((head, Occupancy::WideHead, cluster));
+                for _ in 1..column.width {
+                    cells.push((
+                        WireCell {
+                            ch: ' ' as u32,
+                            width: 1,
+                            attrs: head.attrs & !ATTR_GROUP_CONTINUE,
+                            ..head
+                        },
+                        Occupancy::WideTail,
+                        None,
+                    ));
+                }
             } else {
-                cells.push((head, Occupancy::Single));
+                cells.push((head, Occupancy::Single, cluster));
             }
         }
         if cells.is_empty() {
@@ -363,13 +383,12 @@ impl PreeditOverlay {
         })
     }
 
-    fn at(&self, row: usize, col: usize) -> Option<(WireCell, Occupancy)> {
+    fn at(&self, row: usize, col: usize) -> Option<&(WireCell, Occupancy, Option<Arc<str>>)> {
         if row != self.row {
             return None;
         }
         col.checked_sub(self.start)
             .and_then(|offset| self.cells.get(offset))
-            .copied()
     }
 }
 
@@ -493,6 +512,32 @@ impl<'a> RowContext<'a> {
         self
     }
 
+    fn cluster_at(&self, row: usize, col: usize) -> Option<Arc<str>> {
+        if let Some((_, _, cluster)) = self
+            .preedit
+            .as_ref()
+            .and_then(|overlay| overlay.at(row, col))
+        {
+            return cluster.clone();
+        }
+        self.state.screen().cluster_at(row, col).cloned()
+    }
+
+    fn push_text_to(&self, row: usize, col: usize, out: &mut String) {
+        if let Some((cell, _, cluster)) = self
+            .preedit
+            .as_ref()
+            .and_then(|overlay| overlay.at(row, col))
+        {
+            match cluster {
+                Some(text) => out.push_str(text),
+                None => out.push(cell.character()),
+            }
+            return;
+        }
+        self.state.screen().push_text_to(row, col, out);
+    }
+
     fn selects(&self, row: usize, col: usize) -> bool {
         self.selection
             .is_some_and(|selection| selection.covers(row, col))
@@ -588,6 +633,7 @@ pub struct RowScratch {
     run_keys: Vec<Option<RunKey>>,
     shaped: Vec<bool>,
     text: String,
+    unit_text: String,
 }
 
 pub fn build_row(
@@ -607,6 +653,7 @@ pub fn build_row(
         run_keys,
         shaped,
         text,
+        unit_text,
     } = scratch;
     let (state, paints, metrics) = (context.state, context.paints, context.metrics);
     let origin_y = (row as u32 * metrics.height) as i32;
@@ -617,9 +664,13 @@ pub fn build_row(
             .preedit
             .as_ref()
             .and_then(|overlay| overlay.at(row, col));
-        let (cell, occupancy) = match composed {
-            Some(composed) => composed,
-            None => (state.screen().cell(row, col), state.occupancy(row, col)),
+        let (cell, occupancy, cluster) = match composed {
+            Some((cell, occupancy, cluster)) => (*cell, *occupancy, cluster.is_some()),
+            None => (
+                state.screen().cell(row, col),
+                state.occupancy(row, col),
+                state.screen().cluster_at(row, col).is_some(),
+            ),
         };
         let on_cursor =
             context.cursor_visible && context.cursor_row == row && context.cursor_col == col;
@@ -664,8 +715,13 @@ pub fn build_row(
             inverted_by_cursor,
             composing: composed.is_some(),
             held: context.holds(row, col),
+            cluster,
+            continuation: occupancy != Occupancy::WideTail && cell.is_group_continuation(),
+            complex: false,
+            unit_end: 0,
         });
     }
+    mark_units(row_paints);
 
     shaped.clear();
     shaped.resize(context.size.cols, false);
@@ -709,6 +765,9 @@ pub fn build_row(
             inverted_by_cursor,
             composing,
             held,
+            complex,
+            unit_end,
+            ..
         } = row_paints[col];
         if held {
             continue;
@@ -733,10 +792,18 @@ pub fn build_row(
         }
 
         if paint.draw_glyph && !shaped[col] {
-            let spill = spill_room(row_paints, state.geometry(), row, col);
-            push_glyphs(
-                out, cache, cell, occupancy, &paint, origin_x, origin_y, metrics, spill,
-            );
+            if complex {
+                if unit_end > col {
+                    push_unit(
+                        out, context, cache, row_paints, unit_text, row, col, unit_end, origin_y,
+                    );
+                }
+            } else {
+                let spill = spill_room(row_paints, state.geometry(), row, col);
+                push_glyphs(
+                    out, cache, cell, occupancy, &paint, origin_x, origin_y, metrics, spill,
+                );
+            }
         }
 
         push_decorations(
@@ -782,6 +849,175 @@ pub fn build_row(
     }
 }
 
+fn mark_units(cells: &mut [RowCell]) {
+    let cols = cells.len();
+    let mut col = 0;
+    while col < cols {
+        if cells[col].occupancy == Occupancy::WideTail {
+            col += 1;
+            continue;
+        }
+        let mut end = col + 1;
+        let mut members = 1;
+        loop {
+            while end < cols && cells[end].occupancy == Occupancy::WideTail {
+                end += 1;
+            }
+            if end < cols && cells[end].continuation {
+                end += 1;
+                members += 1;
+                continue;
+            }
+            break;
+        }
+        let complex = members > 1 || cells[col].cluster;
+        cells[col].unit_end = end;
+        if complex {
+            for entry in cells[col..end].iter_mut() {
+                entry.complex = true;
+            }
+        }
+        col = end;
+    }
+}
+
+fn same_ink(left: &CellPaint, right: &CellPaint) -> bool {
+    left.foreground == right.foreground && left.tint == right.tint && left.hidden == right.hidden
+}
+
+#[allow(clippy::too_many_arguments)]
+fn push_unit(
+    out: &mut RowScene,
+    context: &RowContext<'_>,
+    cache: &mut GlyphCache,
+    cells: &[RowCell],
+    text: &mut String,
+    row: usize,
+    start: usize,
+    end: usize,
+    origin_y: i32,
+) {
+    let metrics = context.metrics;
+    let end = end.min(cells.len()).max(start + 1);
+    let heads: Vec<usize> = (start..end)
+        .filter(|col| cells[*col].occupancy != Occupancy::WideTail)
+        .collect();
+    let key = match heads.as_slice() {
+        [only] => match context.cluster_at(row, *only) {
+            Some(cluster) => GlyphKey::shared(&cluster),
+            None => GlyphKey::Char(cells[*only].cell.character()),
+        },
+        _ => {
+            text.clear();
+            for col in &heads {
+                context.push_text_to(row, *col, text);
+            }
+            GlyphKey::of(text)
+        },
+    };
+    let unit_text: std::borrow::Cow<'_, str> = match &key {
+        GlyphKey::Char(character) => std::borrow::Cow::Owned(character.to_string()),
+        GlyphKey::Text(shared) => std::borrow::Cow::Borrowed(&**shared),
+    };
+    if unit_text.chars().all(is_invisible) {
+        return;
+    }
+    let columns = end - start;
+    let drawn = UnicodeWidthStr::width(&*unit_text).max(1);
+    let budget = drawn.min(columns).max(1) as u32;
+    let style = cells[start].paint.style;
+    match cache.cluster_glyph(style, &key, budget) {
+        ClusterLookup::Sprite(rendered) => {
+            push_unit_sprite(out, rendered, cells, start, end, origin_y, metrics);
+        },
+        ClusterLookup::Blank => {},
+        ClusterLookup::PerCell => {
+            for col in heads {
+                push_unit_cell(out, context, cache, cells, row, col, origin_y);
+            }
+        },
+    }
+}
+
+fn push_unit_cell(
+    out: &mut RowScene,
+    context: &RowContext<'_>,
+    cache: &mut GlyphCache,
+    cells: &[RowCell],
+    row: usize,
+    col: usize,
+    origin_y: i32,
+) {
+    let metrics = context.metrics;
+    let entry = &cells[col];
+    if entry.held || !entry.paint.draw_glyph {
+        return;
+    }
+    let mut end = col + 1;
+    while end < cells.len() && cells[end].occupancy == Occupancy::WideTail {
+        end += 1;
+    }
+    let origin_x = (col as u32 * metrics.width) as i32;
+    if let Some(cluster) = context.cluster_at(row, col) {
+        let budget = (end - col) as u32;
+        match cache.cluster_glyph(entry.paint.style, &GlyphKey::shared(&cluster), budget) {
+            ClusterLookup::Sprite(rendered) => {
+                push_unit_sprite(out, rendered, cells, col, end, origin_y, metrics);
+                return;
+            },
+            ClusterLookup::Blank => return,
+            ClusterLookup::PerCell => {},
+        }
+    }
+    push_glyphs(
+        out,
+        cache,
+        entry.cell,
+        entry.occupancy,
+        &entry.paint,
+        origin_x,
+        origin_y,
+        metrics,
+        0,
+    );
+}
+
+fn push_unit_sprite(
+    out: &mut RowScene,
+    rendered: RenderedGlyph,
+    cells: &[RowCell],
+    start: usize,
+    end: usize,
+    origin_y: i32,
+    metrics: CellMetrics,
+) {
+    let baseline = origin_y + metrics.baseline as i32;
+    let left = (start as u32 * metrics.width) as i32;
+    let x = left + rendered.entry.left;
+    let y = baseline - rendered.entry.top;
+    let head = &cells[start].paint;
+    let one_paint = cells[start..end]
+        .iter()
+        .all(|entry| !entry.held && same_ink(&entry.paint, head));
+    if one_paint {
+        let right = (end as u32 * metrics.width) as i32;
+        if let Some((x, entry)) = clipped(rendered.entry, x, left, right) {
+            push_run_glyph(out, x, y, entry, rendered.content, head);
+        }
+        return;
+    }
+    for col in start..end {
+        if cells[col].held {
+            continue;
+        }
+        let cell_left = (col as u32 * metrics.width) as i32;
+        let cell_right = cell_left + metrics.width as i32;
+        if let Some((x, entry)) = clipped(rendered.entry, x, cell_left, cell_right) {
+            push_run_glyph(out, x, y, entry, rendered.content, &cells[col].paint);
+        }
+    }
+}
+
 fn run_key(
     cache: &mut GlyphCache,
     entry: &RowCell,
@@ -794,6 +1030,7 @@ fn run_key(
         || !entry.paint.draw_glyph
         || entry.composing
         || entry.held
+        || entry.complex
     {
         return None;
     }
@@ -1004,9 +1241,15 @@ pub fn ligating_sequences(state: &TerminalState, cache: &mut GlyphCache) -> Vec<
                     inverted_by_cursor: false,
                     composing: false,
                     held: false,
+                    cluster: state.screen().cluster_at(row, col).is_some(),
+                    continuation: occupancy != Occupancy::WideTail && cell.is_group_continuation(),
+                    complex: false,
+                    unit_end: 0,
                 }
             })
             .collect();
+        let mut cells = cells;
+        mark_units(&mut cells);
         let keys: Vec<Option<RunKey>> = (0..size.cols)
             .map(|col| run_key(cache, &cells[col], state.geometry(), row, col, cursor))
             .collect();
@@ -1352,7 +1595,7 @@ fn push_glyphs(
 ) {
     let baseline = origin_y + metrics.baseline as i32;
     let budget = if occupancy == Occupancy::WideHead {
-        2
+        (cell.width as u32).clamp(2, 3)
     } else {
         1
     };
@@ -1391,6 +1634,7 @@ fn spill_room(cells: &[RowCell], geometry: &GeometryRecord, row: usize, col: usi
         && next.occupancy == Occupancy::Single
         && !next.composing
         && !next.held
+        && !next.complex
         && next.cell.character() == ' '
         && region_of(geometry, row, col).is_some()
         && region_of(geometry, row, col) == region_of(geometry, row, col + 1);
@@ -1617,7 +1861,7 @@ mod tests {
     use crate::screen_buffer::painter::{self, Painter, Place};
     use zellij_utils::structured_render::{GraphicsRecord, PaneRect, PANE_SELECTABLE};
 
-    fn cache() -> GlyphCache {
+    pub(super) fn cache() -> GlyphCache {
         GlyphCache::new(FontStack::embedded(DEFAULT_FONT_SIZE).unwrap())
     }
 
@@ -2239,7 +2483,11 @@ mod tests {
         );
     }
 
-    fn entry_of(cache: &mut GlyphCache, style: FaceStyle, character: char) -> AtlasEntry {
+    pub(super) fn entry_of(
+        cache: &mut GlyphCache,
+        style: FaceStyle,
+        character: char,
+    ) -> AtlasEntry {
         match cache.glyph(style, character, 1) {
             Lookup::Rendered(rendered) => rendered.entry,
             other => panic!("expected a rendered glyph, got {:?}", other),
@@ -2356,7 +2604,7 @@ mod tests {
         );
     }
 
-    fn composing(
+    pub(super) fn composing(
         state: &TerminalState,
         cache: &mut GlyphCache,
         preedit: Option<&Preedit>,
@@ -2372,7 +2620,7 @@ mod tests {
         )
     }
 
-    fn composing_state() -> TerminalState {
+    pub(super) fn composing_state() -> TerminalState {
         Painter::state(2, 8, |painter| {
             painter.text(0, 0, "ab");
             painter.text(1, 0, "second");
@@ -2994,6 +3242,10 @@ mod tests {
                         inverted_by_cursor: false,
                         composing: false,
                         held: false,
+                        cluster: false,
+                        continuation: false,
+                        complex: false,
+                        unit_end: col + 1,
                     }
                 })
                 .collect();
@@ -3356,6 +3608,7 @@ mod tests {
 
 #[cfg(test)]
 mod ligature_tests {
+    use super::tests::{cache, composing, composing_state, entry_of};
     use super::*;
     use crate::font::{FontOptions, FontStack, DEFAULT_FONT_SIZE};
     use crate::screen_buffer::painter::Painter;
@@ -3444,6 +3697,10 @@ mod ligature_tests {
                 inverted_by_cursor: false,
                 composing: false,
                 held: false,
+                cluster: false,
+                continuation: false,
+                complex: false,
+                unit_end: 0,
             })
             .collect()
     }
@@ -3771,6 +4028,7 @@ mod ligature_tests {
                 glyph: id,
                 dx: 0,
                 dy: 0,
+                advance: 0,
             }],
             &uniform_cells(4, '='),
             0,
@@ -3806,6 +4064,7 @@ mod ligature_tests {
                 glyph: id,
                 dx: 0,
                 dy: 0,
+                advance: 0,
             }],
             &uniform_cells(3, '='),
             0,
@@ -3932,5 +4191,295 @@ mod ligature_tests {
             .glyphs
             .iter()
             .all(|quad| quad.color == Paints::default().background));
+    }
+
+    const MAN: &str = "\u{1f468}\u{200d}";
+    const WOMAN: &str = "\u{1f469}\u{200d}";
+    const GIRL: &str = "\u{1f467}";
+
+    fn within_columns(quad: &GlyphQuad, first: usize, last: usize, metrics: CellMetrics) -> bool {
+        let left = (first as u32 * metrics.width) as i32;
+        let right = ((last + 1) as u32 * metrics.width) as i32;
+        quad.x >= left && quad.x + quad.entry.width as i32 <= right
+    }
+
+    #[test]
+    fn a_single_cell_cluster_draws_one_glyph_inside_its_cell() {
+        let mut cache = cache();
+        let metrics = cache.metrics();
+        let scene = scene_through(&mut cache, 1, 4, |painter| {
+            painter.cluster(0, 0, "e\u{301}", 1);
+        });
+        assert_eq!(scene.glyphs.len(), 1, "{:?}", scene.glyphs);
+        assert!(scene.color_glyphs.is_empty());
+        assert!(within_columns(&scene.glyphs[0], 0, 0, metrics));
+        assert!(cache.cluster_entries() >= 1);
+    }
+
+    #[test]
+    fn a_combining_mark_is_drawn_over_its_base_rather_than_beside_it() {
+        let mut cache = cache();
+        let metrics = cache.metrics();
+        let plain = entry_of(&mut cache, FaceStyle::Regular, 'e');
+        let scene = scene_through(&mut cache, 1, 4, |painter| {
+            painter.cluster(0, 0, "e\u{301}", 1);
+        });
+        let quad = scene.glyphs[0];
+        assert_ne!(quad.entry, plain, "the mark was dropped");
+        assert!(
+            quad.entry.height > plain.height,
+            "the accent does not sit above the letter: {:?} vs {:?}",
+            quad.entry,
+            plain
+        );
+        assert!(within_columns(&quad, 0, 0, metrics));
+    }
+
+    fn assert_drawn_joined(members: &[(&str, usize)]) {
+        let mut cache = cache();
+        let metrics = cache.metrics();
+        let columns: usize = members.iter().map(|(_, width)| width).sum();
+        let scene = scene_through(&mut cache, 1, columns + 2, |painter| {
+            painter.group(0, 0, members);
+        });
+        let joined: String = members.iter().map(|(text, _)| *text).collect();
+        let parts: Vec<&str> = members.iter().map(|(text, _)| *text).collect();
+        assert_eq!(
+            scene.color_glyphs.len(),
+            1,
+            "{:?} was not drawn as one colour glyph: {:?}",
+            parts,
+            scene.color_glyphs
+        );
+        assert!(
+            scene.glyphs.is_empty(),
+            "{:?} drew pieces: {:?}",
+            parts,
+            scene.glyphs
+        );
+        assert!(
+            scene.rects.is_empty(),
+            "{:?} drew boxes: {:?}",
+            parts,
+            scene.rects
+        );
+        assert!(
+            within_columns(&scene.color_glyphs[0], 0, columns - 1, metrics),
+            "{:?} spilled out of its {} columns: {:?}",
+            parts,
+            columns,
+            scene.color_glyphs[0]
+        );
+        assert!(matches!(
+            cache.cluster_glyph(FaceStyle::Regular, &GlyphKey::of(&joined), 2),
+            ClusterLookup::Sprite(_)
+        ));
+    }
+
+    #[test]
+    fn a_family_group_is_drawn_as_one_joined_glyph() {
+        assert_drawn_joined(&[(MAN, 2), (WOMAN, 2), (GIRL, 2)]);
+    }
+
+    #[test]
+    fn a_skin_tone_group_is_drawn_as_one_joined_glyph() {
+        assert_drawn_joined(&[("\u{1f44d}", 2), ("\u{1f3fd}", 2)]);
+    }
+
+    #[test]
+    fn a_flag_group_is_drawn_as_one_joined_glyph() {
+        assert_drawn_joined(&[("\u{1f1e9}", 1), ("\u{1f1ea}", 1)]);
+    }
+
+    #[test]
+    fn a_rainbow_flag_group_is_drawn_as_one_joined_glyph() {
+        assert_drawn_joined(&[("\u{1f3f3}\u{fe0f}\u{200d}", 1), ("\u{1f308}", 2)]);
+    }
+
+    #[test]
+    fn an_england_tag_flag_is_drawn_as_one_joined_glyph() {
+        assert_drawn_joined(&[(
+            "\u{1f3f4}\u{e0067}\u{e0062}\u{e0065}\u{e006e}\u{e0067}\u{e007f}",
+            2,
+        )]);
+    }
+
+    #[test]
+    fn a_mode_2027_keycap_is_drawn_as_one_joined_glyph() {
+        assert_drawn_joined(&[("1\u{fe0f}\u{20e3}", 2)]);
+    }
+
+    #[test]
+    fn a_mode_2027_cluster_cell_draws_one_joined_glyph_over_its_columns() {
+        let mut cache = cache();
+        let metrics = cache.metrics();
+        let scene = scene_through(&mut cache, 1, 4, |painter| {
+            painter.cluster(0, 0, "\u{26a0}\u{fe0f}", 2);
+        });
+        assert_eq!(scene.color_glyphs.len(), 1, "{:?}", scene.color_glyphs);
+        assert!(scene.glyphs.is_empty(), "{:?}", scene.glyphs);
+        assert!(within_columns(&scene.color_glyphs[0], 0, 1, metrics));
+
+        let family = format!("{}{}{}", MAN, WOMAN, GIRL);
+        let joined = scene_through(&mut cache, 1, 4, |painter| {
+            painter.cluster(0, 0, &family, 2);
+        });
+        assert_eq!(joined.color_glyphs.len(), 1, "{:?}", joined.color_glyphs);
+        assert!(joined.glyphs.is_empty(), "{:?}", joined.glyphs);
+        assert!(joined.rects.is_empty(), "{:?}", joined.rects);
+        assert!(within_columns(&joined.color_glyphs[0], 0, 1, metrics));
+    }
+
+    #[test]
+    fn a_cluster_no_font_covers_falls_back_to_drawing_each_cell() {
+        let mut cache = cache();
+        let metrics = cache.metrics();
+        let a = entry_of(&mut cache, FaceStyle::Regular, 'a');
+        let scene = scene_through(&mut cache, 1, 4, |painter| {
+            painter.group(0, 0, &[("a", 1), ("\u{10fffd}", 1)]);
+        });
+        assert!(
+            scene
+                .glyphs
+                .iter()
+                .any(|quad| quad.entry == a && within_columns(quad, 0, 0, metrics)),
+            "the covered cell was not drawn on its own: {:?}",
+            scene.glyphs
+        );
+        assert!(
+            scene
+                .rects
+                .iter()
+                .any(|rect| rect.x >= metrics.width as i32 && rect.x < 2 * metrics.width as i32),
+            "the uncovered cell did not fall back to its tofu box: {:?}",
+            scene.rects
+        );
+    }
+
+    #[test]
+    fn an_ascii_ligature_next_to_a_cluster_still_ligates() {
+        let mut cache = cache_with(true);
+        let scene = scene_through(&mut cache, 1, 6, |painter| {
+            painter.text(0, 0, "->");
+            painter.cluster(0, 3, "e\u{301}", 1);
+        });
+        let dash = nominal_in(&mut cache, '-');
+        assert!(
+            !draws(&scene, dash),
+            "the run beside the cluster stopped ligating"
+        );
+        assert_eq!(cache.shaped_runs(), 1);
+    }
+
+    #[test]
+    fn a_cluster_is_never_part_of_an_ascii_run() {
+        let mut cache = cache_with(true);
+        scene_through(&mut cache, 1, 6, |painter| {
+            painter.text(0, 0, "-");
+            painter.group(0, 1, &[(">", 1), ("\u{903}", 1)]);
+        });
+        assert_eq!(
+            cache.shaped_runs(),
+            0,
+            "a group head was shaped into a run with its neighbour"
+        );
+    }
+
+    #[test]
+    fn overwriting_the_middle_of_a_group_leaves_no_trace_of_the_joined_glyph() {
+        let mut cache = cache();
+        let metrics = cache.metrics();
+        let mut state = Painter::state(1, 8, |painter| {
+            painter.group(0, 0, &[(MAN, 2), (WOMAN, 2), (GIRL, 2)]);
+        });
+        Painter::apply(&mut state, |painter| {
+            painter.cluster(0, 0, MAN, 2);
+            painter.text(0, 2, "x ");
+            painter.wide(0, 4, '\u{1f467}');
+        });
+        let overwritten = build(&state, &mut cache);
+        let fresh_state = Painter::state(1, 8, |painter| {
+            painter.cluster(0, 0, MAN, 2);
+            painter.text(0, 2, "x ");
+            painter.wide(0, 4, '\u{1f467}');
+        });
+        let fresh = build(&fresh_state, &mut cache);
+        assert_eq!(overwritten, fresh);
+        for quad in overwritten
+            .glyphs
+            .iter()
+            .chain(overwritten.color_glyphs.iter())
+        {
+            assert!(
+                within_columns(quad, 0, 1, metrics)
+                    || within_columns(quad, 2, 2, metrics)
+                    || within_columns(quad, 4, 5, metrics),
+                "{:?} crosses a cell of the overwritten row",
+                quad
+            );
+        }
+        let x = entry_of(&mut cache, FaceStyle::Regular, 'x');
+        assert!(overwritten.glyphs.iter().any(|quad| quad.entry == x));
+    }
+
+    #[test]
+    fn a_cluster_is_painted_in_its_own_cell_colour() {
+        let mut cache = cache();
+        let state = Painter::state(1, 8, |painter| {
+            painter.cluster_styled(0, 0, "e\u{301}", 1, |cell| {
+                cell.fg = WireColor::Named(1).pack();
+            });
+        });
+        let scene = build(&state, &mut cache);
+        assert_eq!(scene.glyphs.len(), 1);
+        assert_eq!(scene.glyphs[0].color, Paints::default().ansi[1]);
+    }
+
+    #[test]
+    fn a_composed_cluster_is_drawn_through_the_unit_path() {
+        let state = composing_state();
+        let mut cache = cache();
+        let metrics = cache.metrics();
+        let preedit = Preedit::new("e\u{301}", Some((3, 3)));
+        let scene = composing(&state, &mut cache, Some(&preedit));
+        let in_composition: Vec<&GlyphQuad> = scene
+            .glyphs
+            .iter()
+            .filter(|quad| quad.y < metrics.height as i32 && within_columns(quad, 2, 2, metrics))
+            .collect();
+        assert_eq!(in_composition.len(), 1, "{:?}", scene.glyphs);
+        assert!(cache.cluster_entries() >= 1);
+
+        let warning = "\u{26a0}\u{fe0f}";
+        let end = warning.len();
+        let preedit = Preedit::new(warning, Some((end, end)));
+        let wide_state = Painter::state(1, 10, |painter| {
+            painter.cursor(0, 0, CursorShape::Block);
+        });
+        let scene = composing(&wide_state, &mut cache, Some(&preedit));
+        assert!(
+            scene.color_glyphs.is_empty(),
+            "a one-column composition must show the text style: {:?}",
+            scene.color_glyphs
+        );
+        let sign = entry_of(&mut cache, FaceStyle::Regular, '\u{26a0}');
+        assert!(scene
+            .glyphs
+            .iter()
+            .any(|quad| quad.entry == sign && within_columns(quad, 0, 0, metrics)));
+    }
+
+    #[test]
+    fn a_width_three_cell_is_followed_by_two_blank_columns() {
+        let mut cache = cache();
+        let scene = scene_through(&mut cache, 1, 6, |painter| {
+            painter.cluster(0, 0, "\u{17d8}", 3);
+            painter.text(0, 3, "z");
+        });
+        let z = entry_of(&mut cache, FaceStyle::Regular, 'z');
+        assert!(scene
+            .glyphs
+            .iter()
+            .any(|quad| quad.entry == z && quad.x >= 3 * cache.metrics().width as i32));
     }
 }

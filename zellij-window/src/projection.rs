@@ -313,6 +313,15 @@ mod tests {
     }
 
     #[test]
+    fn a_cell_projects_its_whole_text_with_attached_code_points() {
+        let projection = projected(1, 6, "e\u{301}\u{1f468}\u{200d}\u{1f469}");
+        assert_eq!(projection.cells[0][0].text, "e\u{301}");
+        assert_eq!(projection.cells[0][1].text, "\u{1f468}\u{200d}");
+        assert_eq!(projection.cells[0][1].occupancy, Occupancy::WideHead);
+        assert_eq!(projection.cells[0][3].text, "\u{1f469}");
+    }
+
+    #[test]
     fn attributes_project_by_canonical_name() {
         let projection = projected(1, 4, "\u{1b}[1;3;4:3;9ma");
         let attrs: Vec<&str> = projection.cells[0][0].attrs.iter().copied().collect();

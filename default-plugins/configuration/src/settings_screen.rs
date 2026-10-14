@@ -218,15 +218,7 @@ fn is_shift_tab(key: &KeyWithModifier) -> bool {
 }
 
 fn truncate(text: &str, width: usize) -> String {
-    if text.chars().count() <= width {
-        text.to_owned()
-    } else if width == 0 {
-        String::new()
-    } else {
-        let mut truncated: String = text.chars().take(width.saturating_sub(1)).collect();
-        truncated.push('…');
-        truncated
-    }
+    crate::page::truncate(text, width)
 }
 
 fn key_hints(prefix: &str, hints: &[(&str, &str)], cols: usize) -> Text {
@@ -235,7 +227,10 @@ fn key_hints(prefix: &str, hints: &[(&str, &str)], cols: usize) -> Text {
     for (index, (key, action)) in hints.iter().enumerate() {
         let separator = if index == 0 { "" } else { ", " };
         let entry = format!("{}{} - {}", separator, key, action);
-        if line.chars().count() + entry.chars().count() > cols {
+        if zellij_tile::graphemes::display_width(&line)
+            + zellij_tile::graphemes::display_width(&entry)
+            > cols
+        {
             break;
         }
         let key_start = line.chars().count() + separator.chars().count();
@@ -2045,7 +2040,7 @@ impl SettingsScreen {
             let Some(title) = item.strip_suffix(" ●") else {
                 continue;
             };
-            let column = x + 1 + title.chars().count() + 1;
+            let column = x + 1 + zellij_tile::graphemes::display_width(title) + 1;
             if column + 1 >= x + width {
                 continue;
             }
@@ -2096,9 +2091,15 @@ impl SettingsScreen {
         match self.header_file() {
             Some(path) => {
                 print_text_with_coordinates(Text::from(FILE_PREFIX), x, y, None, None);
-                let link_x = x + FILE_PREFIX.chars().count();
-                let link = truncate(&path, cols.saturating_sub(FILE_PREFIX.chars().count()));
-                self.file_link_area = Some(Rect::new(link_x, y, link.chars().count(), 1));
+                let prefix_width = zellij_tile::graphemes::display_width(FILE_PREFIX);
+                let link_x = x + prefix_width;
+                let link = truncate(&path, cols.saturating_sub(prefix_width));
+                self.file_link_area = Some(Rect::new(
+                    link_x,
+                    y,
+                    zellij_tile::graphemes::display_width(&link),
+                    1,
+                ));
                 self.render_file_link(&link, link_x, y);
             },
             None => {

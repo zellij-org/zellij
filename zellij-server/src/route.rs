@@ -3113,6 +3113,7 @@ pub(crate) fn route_thread_main(
                             pane_to_focus: pane_id_to_focus,
                             is_web_client,
                         } => {
+                            wait_for_session_to_be_ready(&session_data);
                             let allow_web_connections = session_data
                                 .read()
                                 .ok()

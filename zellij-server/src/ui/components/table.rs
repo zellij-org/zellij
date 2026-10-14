@@ -1,10 +1,11 @@
+use super::text::text_cell_width;
 use super::{is_too_high, is_too_wide, stringify_text, Coordinates, Text};
 use crate::panes::{
     terminal_character::{AnsiCode, RESET_STYLES},
     CharacterStyles,
 };
 use std::collections::BTreeMap;
-use zellij_utils::{data::Style, shared::ansi_len};
+use zellij_utils::data::Style;
 
 pub fn table(
     columns: usize,
@@ -85,7 +86,7 @@ fn stringify_table_columns(contents: Vec<Text>, columns: usize) -> BTreeMap<usiz
 fn max_table_column_width(column: &Vec<Text>) -> usize {
     let mut max_column_width = 0;
     for cell in column {
-        let cell_width = ansi_len(&cell.text);
+        let cell_width = text_cell_width(&cell.text);
         if cell_width > max_column_width {
             max_column_width = cell_width;
         }

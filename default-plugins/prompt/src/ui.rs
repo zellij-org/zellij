@@ -1,4 +1,5 @@
 use serde_json::Value;
+use zellij_tile::graphemes;
 use zellij_tile::prelude::*;
 use zellij_utils::prompt::{ChoiceItem, MENU_CHOICE_FIELD, MENU_REMEMBER_FIELD};
 
@@ -32,19 +33,14 @@ impl Step {
 }
 
 pub fn truncate(text: &str, width: usize) -> String {
-    let count = text.chars().count();
-    if count <= width {
-        return text.to_owned();
-    }
-    if width == 0 {
-        return String::new();
-    }
-    let mut truncated: String = text.chars().take(width.saturating_sub(1)).collect();
-    truncated.push('…');
-    truncated
+    graphemes::truncate_end(text, width, "…").into_owned()
 }
 
 pub fn text_width(text: &str) -> usize {
+    graphemes::display_width(text)
+}
+
+pub fn char_len(text: &str) -> usize {
     text.chars().count()
 }
 
@@ -89,8 +85,8 @@ pub fn hints_text(hints: &[Hint], status: Option<&str>, width: usize) -> Text {
         if text_width(&line) + text_width(&entry) > room {
             break;
         }
-        let key_start = text_width(&line) + text_width(separator);
-        key_ranges.push(key_start..key_start + text_width(key));
+        let key_start = char_len(&line) + char_len(separator);
+        key_ranges.push(key_start..key_start + char_len(key));
         line.push_str(&entry);
     }
     let mut status_range = None;
@@ -98,9 +94,9 @@ pub fn hints_text(hints: &[Hint], status: Option<&str>, width: usize) -> Text {
         if text_width(&line) + text_width(status) + 2 <= width {
             let padding = width - text_width(&line) - text_width(status);
             line.push_str(&" ".repeat(padding));
-            let start = text_width(&line);
+            let start = char_len(&line);
             line.push_str(status);
-            status_range = Some(start..start + text_width(status));
+            status_range = Some(start..start + char_len(status));
         }
     }
     let mut text = Text::from(line);
@@ -1007,7 +1003,7 @@ impl NumberScreen {
         self.stepper.render(x + left, y + 2);
         if let Some(error) = &self.error {
             let error = truncate(error, width);
-            let error_left = width.saturating_sub(error.chars().count()) / 2;
+            let error_left = width.saturating_sub(text_width(&error)) / 2;
             print_error(
                 &error,
                 x + error_left,
@@ -1487,15 +1483,15 @@ impl NotifyScreen {
             if room > 0 {
                 let title = truncate(title, room);
                 top.push_str("─ ");
-                let start = text_width(&top);
+                let start = char_len(&top);
                 top.push_str(&title);
-                title_range = Some(start..start + text_width(&title));
+                title_range = Some(start..start + char_len(&title));
                 top.push(' ');
             }
         }
         let used = text_width(&top) - 1;
         top.push_str(&"─".repeat(inner.saturating_sub(used + close_width)));
-        let close_start = text_width(&top) + 1;
+        let close_start = char_len(&top) + 1;
         top.push_str(&close_section);
         top.push('╮');
         let mut top_text = Text::from(top).color_range(3, close_start..close_start + 1);
@@ -1528,7 +1524,7 @@ impl NotifyScreen {
                 .and_then(|index| name_lines.get(index))
             {
                 let from_line = truncate(from_line, text_width_available);
-                let length = text_width(&from_line);
+                let length = char_len(&from_line);
                 print_text_with_coordinates(
                     Text::from(from_line).dim_range(0..length),
                     x + 2,
@@ -1988,6 +1984,38 @@ mod tests {
     fn long_text_is_cut_to_fit() {
         assert_eq!(truncate("abcdef", 4), "abc…");
         assert_eq!(truncate("abc", 4), "abc");
+    }
+
+    #[test]
+    fn long_text_with_clusters_is_cut_by_width_on_cluster_boundaries() {
+        assert_eq!(
+            truncate("e\u{301}e\u{301}e\u{301}e\u{301}", 3),
+            "e\u{301}e\u{301}…"
+        );
+        assert_eq!(truncate("日本語", 4), "日…");
+        assert_eq!(truncate("日本", 4), "日本");
+        assert_eq!(
+            truncate("\u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467}x", 2),
+            "…"
+        );
+        assert_eq!(text_width("日本e\u{301}"), 5);
+    }
+
+    #[test]
+    fn help_key_highlights_use_character_positions_with_wide_keys() {
+        let text = hints_text(&[("<日>", "accept"), ("<Esc>", "cancel")], Some("1/3"), 40);
+        assert_eq!(text_width(text.content()), 40);
+        assert!(text.content().ends_with("1/3"));
+        let levels = levels_of(&text);
+        let indices = |level: &str| -> Vec<usize> {
+            level
+                .split(',')
+                .filter(|i| !i.is_empty())
+                .map(|i| i.parse().unwrap())
+                .collect()
+        };
+        assert_eq!(indices(&levels[3]), vec![0, 1, 2, 14, 15, 16, 17, 18]);
+        assert_eq!(indices(&levels[4]), vec![36, 37, 38]);
     }
 
     #[test]

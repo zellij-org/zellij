@@ -8,8 +8,9 @@ use zellij_utils::{
     shared::ansi_len,
 };
 
-use unicode_width::UnicodeWidthChar;
+use super::widget_common::text_clusters;
 use zellij_utils::errors::prelude::*;
+use zellij_utils::graphemes;
 
 pub fn text(content: Text, style: &Style, component_coordinates: Option<Coordinates>) -> Vec<u8> {
     if content.disabled {
@@ -81,29 +82,25 @@ pub fn stringify_text(
         component_text_style
     };
     stringified.push_str(&format!("{}", base_text_style));
-    for (i, character) in text.text.chars().enumerate() {
-        let character_width = character.width().unwrap_or(0);
+    let styled = !text.indices.is_empty() || text.selected || text.opaque;
+    for (cluster, cluster_width, index) in text_clusters(&text.text) {
         if is_too_wide(
-            character_width,
+            cluster_width,
             left_padding.unwrap_or(0) + text_width,
             &coordinates,
         ) {
             break;
         }
-        text_width += character_width;
-
+        text_width += cluster_width;
         if text.selected || text.opaque {
-            // we do this so that selected text will appear selected
-            // even if it does not have color indices
             stringified.push_str(&format!("{}", base_text_style));
         }
-
-        if !text.indices.is_empty() || text.selected || text.opaque {
-            let character_with_styling =
-                color_index_character(character, i, &text, style, styling, base_text_style);
-            stringified.push_str(&character_with_styling);
+        if styled {
+            let cluster_with_styling =
+                color_index_cluster(cluster, index, &text, style, styling, base_text_style);
+            stringified.push_str(&cluster_with_styling);
         } else {
-            stringified.push(character)
+            stringified.push_str(cluster)
         }
     }
     let coordinates_width = coordinates.as_ref().and_then(|c| c.width);
@@ -128,8 +125,8 @@ pub fn stringify_text(
     (stringified, text_width)
 }
 
-pub fn color_index_character(
-    character: char,
+pub fn color_index_cluster(
+    cluster: &str,
     index: usize,
     text: &Text,
     declaration: &StyleDeclaration,
@@ -163,7 +160,7 @@ pub fn color_index_character(
         character_style = character_style.italic(Some(AnsiCode::On));
     }
 
-    format!("{}{}{}", character_style, character, base_text_style)
+    format!("{}{}{}", character_style, cluster, base_text_style)
 }
 
 pub fn parse_text_params<'a>(params_iter: impl Iterator<Item = &'a mut String>) -> Vec<Text> {
@@ -236,7 +233,7 @@ impl Text {
     }
 
     pub fn pad_text(&mut self, max_column_width: usize) {
-        for _ in ansi_len(&self.text)..max_column_width {
+        for _ in text_cell_width(&self.text)..max_column_width {
             self.text.push(' ');
         }
     }
@@ -305,6 +302,14 @@ impl Text {
             }
         }
         Some(style.base)
+    }
+}
+
+pub fn text_cell_width(text: &str) -> usize {
+    if text.contains('\u{1b}') {
+        ansi_len(text)
+    } else {
+        graphemes::display_width(text)
     }
 }
 

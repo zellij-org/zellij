@@ -3371,76 +3371,36 @@ pub struct PaneContents {
     pub cursor: Option<(usize, usize)>,
 }
 
-/// Extract text from a line between two column positions, accounting for wide characters
 fn extract_text_by_columns(line: &str, start_col: usize, end_col: usize) -> String {
     let mut current_col = 0;
     let mut result = String::new();
-    let mut capturing = false;
-
+    let mut capturing_current = false;
     for ch in line.chars() {
         let char_width = ch.width().unwrap_or(0);
-
-        // Start capturing when we reach start_col
-        if current_col >= start_col && !capturing {
-            capturing = true;
+        if char_width == 0 {
+            if capturing_current {
+                result.push(ch);
+            }
+            continue;
         }
-
-        // Stop if we've reached or passed end_col
+        capturing_current = current_col >= start_col && current_col < end_col;
         if current_col >= end_col {
             break;
         }
-
-        // Capture character if we're in the range
-        if capturing {
+        if capturing_current {
             result.push(ch);
         }
-
         current_col += char_width;
     }
-
     result
 }
 
-/// Extract text from a line starting at a column position, accounting for wide characters
 fn extract_text_from_column(line: &str, start_col: usize) -> String {
-    let mut current_col = 0;
-    let mut result = String::new();
-    let mut capturing = false;
-
-    for ch in line.chars() {
-        let char_width = ch.width().unwrap_or(0);
-
-        if current_col >= start_col {
-            capturing = true;
-        }
-
-        if capturing {
-            result.push(ch);
-        }
-
-        current_col += char_width;
-    }
-
-    result
+    extract_text_by_columns(line, start_col, usize::MAX)
 }
 
-/// Extract text from a line up to a column position, accounting for wide characters
 fn extract_text_to_column(line: &str, end_col: usize) -> String {
-    let mut current_col = 0;
-    let mut result = String::new();
-
-    for ch in line.chars() {
-        let char_width = ch.width().unwrap_or(0);
-
-        if current_col >= end_col {
-            break;
-        }
-
-        result.push(ch);
-        current_col += char_width;
-    }
-
-    result
+    extract_text_by_columns(line, 0, end_col)
 }
 
 impl PaneContents {
@@ -5073,6 +5033,7 @@ setting_keys! {
     DisableSessionMetadata => (TopLevel, "disable_session_metadata", true, Flag),
     SupportKittyKeyboardProtocol => (TopLevel, "support_kitty_keyboard_protocol", true, Flag),
     SupportKittyGraphicsProtocol => (TopLevel, "support_kitty_graphics_protocol", true, Flag),
+    GraphemeClusters => (TopLevel, "grapheme_clusters", false, Flag),
     WebServer => (TopLevel, "web_server", true, Flag),
     WebSharing => (TopLevel, "web_sharing", true, Text),
     StackedResize => (TopLevel, "stacked_resize", false, Flag),
@@ -5785,5 +5746,22 @@ mod popup_placement_tests {
                 corner: None,
             }
         );
+    }
+}
+
+#[cfg(test)]
+mod extract_text_cluster_tests {
+    use super::*;
+
+    #[test]
+    fn column_extraction_keeps_combining_marks_with_their_base() {
+        let line = "ae\u{0301}b\u{1F468}\u{200D}\u{1F469}c";
+        assert_eq!(extract_text_by_columns(line, 1, 2), "e\u{0301}");
+        assert_eq!(
+            extract_text_from_column(line, 2),
+            "b\u{1F468}\u{200D}\u{1F469}c"
+        );
+        assert_eq!(extract_text_to_column(line, 2), "ae\u{0301}");
+        assert_eq!(extract_text_by_columns(line, 3, 5), "\u{1F468}\u{200D}");
     }
 }

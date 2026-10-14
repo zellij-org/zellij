@@ -54,6 +54,7 @@ fn every_option_set() -> Options {
         disable_session_metadata: Some(true),
         support_kitty_keyboard_protocol: Some(false),
         support_kitty_graphics_protocol: Some(false),
+        grapheme_clusters: Some(false),
         web_server: Some(true),
         web_sharing: Some(WebSharing::Disabled),
         stacked_resize: Some(false),

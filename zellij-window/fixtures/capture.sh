@@ -135,6 +135,46 @@ case_glyph_torture() {
     '
 }
 
+grapheme_samples() {
+    cat <<'SAMPLES'
+samples() {
+    printf "ACCENT:   e\u0301 a\u0308\u030a o\u0302|\n"
+    printf "STACKED:  a\u0301\u0302\u0303\u0304\u0305\u0306\u0307\u0308|\n"
+    printf "VS16:     \u26a0\ufe0f|\n"
+    printf "VS15:     \u231a\ufe0e| \U0001f600\ufe0e|\n"
+    printf "KEYCAP:   1\ufe0f\u20e3|\n"
+    printf "SKIN:     \U0001f44d\U0001f3fd| \U0001f3fd|\n"
+    printf "FLAG:     \U0001f1e9\U0001f1ea| \U0001f1e9\U0001f1ea\U0001f1eb|\n"
+    printf "FAMILY:   \U0001f468\u200d\U0001f469\u200d\U0001f467|\n"
+    printf "RAINBOW:  \U0001f3f3\ufe0f\u200d\U0001f308|\n"
+    printf "ENGLAND:  \U0001f3f4\U000e0067\U000e0062\U000e0065\U000e006e\U000e0067\U000e007f|\n"
+    printf "INDIC:    \u0915\u094d\u0937| \u0915\u093e|\n"
+    printf "THAI:     \u0e01\u0e49\u0e33|\n"
+    printf "HANGUL:   \u1100\u1161\u11a8|\n"
+    printf "KANA:     \uff76\uff9e|\n"
+    printf "SHY:      x\u00ady|\n"
+    printf "ZWJ:      a\u200db|\n"
+    printf "WIDE3:    \u17d8|\n"
+}
+SAMPLES
+}
+
+case_grapheme_clusters() {
+    run_in_session grapheme-clusters "$(grapheme_samples)"'
+        printf "\033[2J\033[H"
+        printf "default mode\n"
+        samples
+        printf "\033[?2027h"
+        printf "mode 2027\n"
+        samples
+        printf "\033[?2027l"
+        printf "OVERWRITE: \U0001f468\u200d\U0001f469\u200d\U0001f467|"
+        printf "\033[5D"
+        printf "X"
+        printf "\033[3C|\n"
+    '
+}
+
 case_cursor_shapes() {
     run_in_session cursor-shapes '
         printf "\033[2J\033[H"
@@ -300,7 +340,7 @@ case_reference_app() {
 
 requested=("$@")
 if [[ ${#requested[@]} -eq 0 ]]; then
-    requested=(smoke styling scroll-regions wide-chars glyph-torture cursor-shapes blink osc-signals kitty-graphics kitty-pane-open sixel-graphics sixel-pane-open panes-and-tabs vttest htop)
+    requested=(smoke styling scroll-regions wide-chars glyph-torture grapheme-clusters cursor-shapes blink osc-signals kitty-graphics kitty-pane-open sixel-graphics sixel-pane-open panes-and-tabs vttest htop)
 fi
 
 for case_name in "${requested[@]}"; do
@@ -310,6 +350,7 @@ for case_name in "${requested[@]}"; do
         scroll-regions) capture scroll-regions 8 case_scroll_regions ;;
         wide-chars) capture wide-chars 8 case_wide_chars ;;
         glyph-torture) capture glyph-torture 8 case_glyph_torture ;;
+        grapheme-clusters) capture grapheme-clusters 8 case_grapheme_clusters ;;
         cursor-shapes) capture cursor-shapes 10 case_cursor_shapes ;;
         blink) capture blink 8 case_blink ;;
         osc-signals) capture osc-signals 8 case_osc_signals ;;

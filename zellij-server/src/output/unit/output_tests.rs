@@ -572,11 +572,12 @@ fn create_watcher_output(watcher_id: ClientId, watcher_size: Size) -> Output {
 
 fn watcher_text(frame: &[u8], cols: usize, rows: usize) -> Vec<String> {
     let view = zellij_utils::structured_render::decode(frame).expect("the frame must decode");
-    let mut screen = vec![vec![' '; cols]; rows];
+    let clusters = view.clusters();
+    let mut screen = vec![vec![String::from(" "); cols]; rows];
     for (record, cells) in view.rows() {
         for (offset, cell) in cells.iter().enumerate() {
             screen[record.y as usize][record.x0 as usize + offset] =
-                char::from_u32(cell.ch).unwrap_or(' ');
+                cell.text(&clusters).into_owned();
         }
     }
     screen
@@ -2868,4 +2869,302 @@ mod scroll_hints_on_the_wire {
             record(&[(0, 1)])
         );
     }
+}
+
+const FAMILY: &str = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}";
+
+fn cells_of(parts: &[(&str, usize)]) -> Vec<TerminalCharacter> {
+    parts
+        .iter()
+        .map(|(text, width)| {
+            TerminalCharacter::from_cluster(text, *width, Default::default()).unwrap()
+        })
+        .collect()
+}
+
+fn family_cells() -> Vec<TerminalCharacter> {
+    cells_of(&[
+        ("\u{1F468}\u{200D}", 2),
+        ("\u{1F469}\u{200D}", 2),
+        ("\u{1F467}", 2),
+    ])
+}
+
+fn ansi_for(chunk: CharacterChunk, max_size: Option<Size>) -> String {
+    super::super::serialize_chunks(vec![chunk], None, None, None, true, true, max_size, None)
+        .unwrap()
+}
+
+fn grouped_chunk(cells: Vec<TerminalCharacter>, x: usize, y: usize) -> CharacterChunk {
+    let mut chunk = CharacterChunk::new(cells, x, y);
+    chunk.may_have_groups = true;
+    chunk
+}
+
+#[test]
+fn a_plain_ascii_chunk_serializes_exactly_as_before() {
+    let output = ansi_for(create_character_chunk_from_str("abc", 2, 1), None);
+    assert_eq!(output, "\u{1b}[2;3H\u{1b}[mabc");
+}
+
+#[test]
+fn a_cell_with_combining_marks_is_written_without_erase_or_column_moves() {
+    let output = ansi_for(
+        CharacterChunk::new(cells_of(&[("e\u{0301}\u{0302}", 1), ("x", 1)]), 0, 0),
+        None,
+    );
+    assert_eq!(output, "\u{1b}[1;1H\u{1b}[me\u{0301}\u{0302}x");
+}
+
+#[test]
+fn a_warning_sign_with_vs16_depends_on_its_stored_width() {
+    let narrow = ansi_for(
+        CharacterChunk::new(cells_of(&[("\u{26A0}\u{FE0F}", 1)]), 0, 0),
+        None,
+    );
+    assert_eq!(narrow, "\u{1b}[1;1H\u{1b}[m\u{26A0}");
+    let wide = ansi_for(
+        CharacterChunk::new(cells_of(&[("\u{26A0}\u{FE0F}", 2)]), 0, 0),
+        None,
+    );
+    assert_eq!(
+        wide,
+        "\u{1b}[1;1H\u{1b}[m\u{1b}[2X\u{26A0}\u{FE0F}\u{1b}[3G"
+    );
+}
+
+#[test]
+fn a_family_group_is_erased_written_and_followed_by_a_column_move() {
+    let mut cells = cells_of(&[("a", 1)]);
+    cells.extend(family_cells());
+    cells.extend(cells_of(&[("b", 1)]));
+    let output = ansi_for(grouped_chunk(cells, 4, 0), None);
+    assert_eq!(
+        output,
+        format!("\u{1b}[1;5H\u{1b}[ma\u{1b}[6X{}\u{1b}[12Gb", FAMILY)
+    );
+}
+
+#[test]
+fn skin_tone_flag_and_conjunct_groups_are_complex_units() {
+    for (parts, text, columns) in [
+        (
+            vec![("\u{1F44D}", 2), ("\u{1F3FD}", 2)],
+            "\u{1F44D}\u{1F3FD}",
+            4,
+        ),
+        (
+            vec![("\u{1F1E9}", 1), ("\u{1F1EA}", 1)],
+            "\u{1F1E9}\u{1F1EA}",
+            2,
+        ),
+        (
+            vec![("\u{0915}\u{094D}", 1), ("\u{0937}", 1)],
+            "\u{0915}\u{094D}\u{0937}",
+            2,
+        ),
+    ] {
+        let output = ansi_for(grouped_chunk(cells_of(&parts), 0, 0), None);
+        assert_eq!(
+            output,
+            format!(
+                "\u{1b}[1;1H\u{1b}[m\u{1b}[{}X{}\u{1b}[{}G",
+                columns,
+                text,
+                columns + 1
+            )
+        );
+    }
+}
+
+#[test]
+fn a_row_without_the_group_flag_never_groups() {
+    let output = ansi_for(CharacterChunk::new(family_cells(), 0, 0), None);
+    assert!(!output.contains("\u{1b}[6X"), "output={:?}", output);
+}
+
+#[test]
+fn cells_with_different_styles_are_not_grouped() {
+    let mut cells = family_cells();
+    cells[1]
+        .styles
+        .update(|styles| styles.bold = Some(crate::panes::terminal_character::AnsiCode::On));
+    let output = ansi_for(grouped_chunk(cells, 0, 0), None);
+    assert!(!output.contains("\u{1b}[6X"), "output={:?}", output);
+}
+
+#[test]
+fn a_group_with_its_middle_overwritten_is_drawn_as_separate_units() {
+    let cells = cells_of(&[("\u{1F468}\u{200D}", 2), ("x", 1), ("\u{1F467}", 2)]);
+    let output = ansi_for(grouped_chunk(cells, 0, 0), None);
+    assert!(!output.contains('X'), "output={:?}", output);
+    assert!(output.ends_with("\u{1F468}\u{200D}x\u{1F467}"));
+}
+
+#[test]
+fn a_selection_covering_a_group_keeps_it_grouped() {
+    let mut chunk = grouped_chunk(family_cells(), 0, 0);
+    let mut selection = crate::panes::Selection::default();
+    selection.start(zellij_utils::position::Position::new(0, 0));
+    selection.end(zellij_utils::position::Position::new(0, 6));
+    chunk.add_selection_and_colors(
+        super::super::HighlightSelection {
+            selection,
+            bg: Some(AnsiCode::ColorIndex(4)),
+            fg: Some(AnsiCode::ColorIndex(7)),
+            bold: false,
+            italic: false,
+            underline: false,
+            layer: zellij_utils::data::HighlightLayer::ActionFeedback,
+        },
+        0,
+        0,
+    );
+    let output = ansi_for(chunk, None);
+    assert!(
+        output.contains(&format!("\u{1b}[6X{}\u{1b}[7G", FAMILY)),
+        "output={:?}",
+        output
+    );
+}
+
+#[test]
+fn the_size_cut_off_never_cuts_a_unit() {
+    let mut cells = cells_of(&[("a", 1)]);
+    cells.extend(family_cells());
+    let output = ansi_for(grouped_chunk(cells, 0, 0), Some(Size { rows: 5, cols: 4 }));
+    assert_eq!(output, "\u{1b}[1;1H\u{1b}[ma");
+}
+
+#[test]
+fn cutting_the_middle_out_of_wide_and_grouped_cells_leaves_blanks() {
+    let mut chunk = CharacterChunk::new(cells_of(&[("a", 1), ("\u{17D8}", 3), ("b", 1)]), 0, 0);
+    let (left, right) = chunk.cut_middle_out(2, 3).unwrap();
+    let text = |cells: &[TerminalCharacter]| -> String {
+        cells.iter().map(|c| c.text().into_owned()).collect()
+    };
+    assert_eq!(text(&left), "a ");
+    assert_eq!(text(&right), " b");
+    let mut chunk = grouped_chunk(family_cells(), 0, 0);
+    let (left, right) = chunk.cut_middle_out(1, 3).unwrap();
+    assert_eq!(left.iter().map(|c| c.width()).sum::<usize>(), 1);
+    assert_eq!(right.iter().map(|c| c.width()).sum::<usize>(), 3);
+    assert!(left.iter().all(|c| c.text() == " "));
+    assert_eq!(text(&right), " \u{1F467}");
+}
+
+#[test]
+fn draining_across_a_width_three_cell_pads_both_sides() {
+    let mut chunk = CharacterChunk::new(cells_of(&[("\u{17D8}", 3), ("b", 1)]), 0, 0);
+    let drained: Vec<TerminalCharacter> = chunk.drain_by_width(1).collect();
+    assert_eq!(drained.len(), 1);
+    assert_eq!(chunk.width(), 3);
+    assert_eq!(chunk.terminal_characters.len(), 3);
+}
+
+#[test]
+fn a_chunk_that_starts_mid_row_is_erased_first() {
+    let mut chunk = create_character_chunk_from_str("xy", 3, 0);
+    chunk.erase_first = true;
+    let output = ansi_for(chunk, None);
+    assert_eq!(output, "\u{1b}[1;4H\u{1b}[m\u{1b}[2Xxy");
+}
+
+#[test]
+fn a_floating_pane_cut_marks_the_remaining_chunk_for_erasing() {
+    let stack = FloatingPanesStack {
+        layers: vec![create_pane_geom(2, 0, 2, 1)],
+    };
+    let mut cells = cells_of(&[("a", 1)]);
+    cells.extend(family_cells());
+    let chunks = stack
+        .visible_character_chunks(vec![grouped_chunk(cells, 0, 0)], None)
+        .unwrap();
+    let starts_mid_row: Vec<bool> = chunks
+        .iter()
+        .filter(|chunk| chunk.x > 0)
+        .map(|chunk| chunk.erase_first)
+        .collect();
+    assert!(!starts_mid_row.is_empty());
+    assert!(starts_mid_row.iter().all(|erase| *erase));
+    for chunk in &chunks {
+        let output = ansi_for(chunk.clone(), None);
+        assert!(!output.contains(FAMILY), "output={:?}", output);
+    }
+}
+
+#[test]
+fn session_serialization_writes_full_text_without_erase_or_column_moves() {
+    let mut row = Row::from_columns(family_cells());
+    row.may_have_groups = true;
+    let row = row.canonical();
+    let output = OutputBuffer::default()
+        .serialize(&[row], true, None)
+        .unwrap();
+    assert!(output.contains(FAMILY), "output={:?}", output);
+    assert!(!output.contains("\u{1b}[6X"));
+    assert!(!output.contains("G"));
+}
+
+#[test]
+fn a_watcher_frame_carries_cluster_texts_and_group_continuations() {
+    let followed_id = 1;
+    let watcher_id = 2;
+    let watcher_size = Size { rows: 3, cols: 20 };
+    let mut output = create_watcher_output(watcher_id, watcher_size);
+    let link_handler = Rc::new(RefCell::new(LinkHandler::new()));
+    output.add_clients(&create_test_clients(1), link_handler, None);
+    let mut cells = family_cells();
+    cells.extend(cells_of(&[
+        ("\u{26A0}\u{FE0F}", 1),
+        ("e\u{0301}", 1),
+        ("\u{17D8}", 3),
+        ("z", 1),
+    ]));
+    output
+        .add_character_chunks_to_client(followed_id, vec![grouped_chunk(cells, 0, 0)], None)
+        .unwrap();
+    let frame = output
+        .serialize_watcher_frame(followed_id, watcher_id)
+        .unwrap();
+    let view = zellij_utils::structured_render::decode(&frame).unwrap();
+    let clusters = view.clusters();
+    let (_, row) = view.rows().find(|(record, _)| record.y == 0).unwrap();
+    let continuation: Vec<bool> = row.iter().map(|c| c.is_group_continuation()).collect();
+    assert_eq!(
+        continuation[..12].to_vec(),
+        vec![false, false, true, false, true, false, false, false, false, false, false, false]
+    );
+    assert_eq!(row[0].text(&clusters), "\u{1F468}\u{200D}");
+    assert_eq!(row[2].text(&clusters), "\u{1F469}\u{200D}");
+    assert_eq!(row[4].text(&clusters), "\u{1F467}");
+    assert_eq!(row[6].text(&clusters), "\u{26A0}");
+    assert_eq!(row[7].text(&clusters), "e\u{0301}");
+    assert_eq!(row[8].width, 3);
+    assert_eq!(row[11].text(&clusters), "z");
+    let screen = watcher_text(&frame, watcher_size.cols, watcher_size.rows);
+    assert!(screen[0].starts_with(&format!(
+        "\u{1F468}\u{200D} \u{1F469}\u{200D} \u{1F467} \u{26A0}e\u{0301}\u{17D8}  z"
+    )));
+}
+
+#[test]
+fn a_frame_without_clusters_has_no_cluster_record() {
+    let followed_id = 1;
+    let watcher_id = 2;
+    let mut output = create_watcher_output(watcher_id, Size { rows: 3, cols: 20 });
+    let link_handler = Rc::new(RefCell::new(LinkHandler::new()));
+    output.add_clients(&create_test_clients(1), link_handler, None);
+    output
+        .add_character_chunks_to_client(
+            followed_id,
+            vec![create_character_chunk_from_str("plain", 0, 0)],
+            None,
+        )
+        .unwrap();
+    let frame = output
+        .serialize_watcher_frame(followed_id, watcher_id)
+        .unwrap();
+    let view = zellij_utils::structured_render::decode(&frame).unwrap();
+    assert!(view.clusters().is_empty());
 }

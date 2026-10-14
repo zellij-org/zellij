@@ -23,6 +23,9 @@ struct WindowClient {
     messages: mpsc::Receiver<ServerToClientMsg>,
     size: Size,
     cells: Vec<WireCell>,
+    texts: Vec<String>,
+    saw_cluster_record: bool,
+    saw_group_continuation: bool,
 }
 
 impl WindowClient {
@@ -65,6 +68,9 @@ impl WindowClient {
             messages,
             size,
             cells: vec![WireCell::BLANK; size.rows * size.cols],
+            texts: vec![String::from(" "); size.rows * size.cols],
+            saw_cluster_record: false,
+            saw_group_continuation: false,
         }
     }
 
@@ -93,16 +99,56 @@ impl WindowClient {
     fn apply(&mut self, frame: &[u8]) -> (u16, u16) {
         let view = structured_render::decode(frame).expect("a frame must decode");
         let header = (view.header().cols, view.header().rows);
-        view.apply(&mut self.cells, self.size.cols, self.size.rows);
+        if header == (self.size.cols as u16, self.size.rows as u16) {
+            if view.header().full_repaint() || view.header().clear() {
+                self.cells
+                    .iter_mut()
+                    .for_each(|cell| *cell = WireCell::BLANK);
+                self.texts
+                    .iter_mut()
+                    .for_each(|text| *text = String::from(" "));
+            }
+            view.apply(&mut self.cells, self.size.cols, self.size.rows);
+            self.resolve_texts(&view);
+        }
         let seq = view.header().seq;
         self.send(ClientToServerMsg::RenderFrameAck { seq });
         header
     }
 
+    fn resolve_texts(&mut self, view: &structured_render::FrameView<'_>) {
+        let clusters = view.clusters();
+        if !clusters.is_empty() {
+            self.saw_cluster_record = true;
+        }
+        for (record, cells) in view.rows() {
+            let start = record.y as usize * self.size.cols + record.x0 as usize;
+            if start + cells.len() > self.texts.len() {
+                continue;
+            }
+            for (offset, cell) in cells.iter().enumerate() {
+                self.texts[start + offset] = cell.text(&clusters).into_owned();
+                if cell.is_group_continuation() {
+                    self.saw_group_continuation = true;
+                }
+            }
+        }
+    }
+
+    fn row_text(&self, row: usize) -> String {
+        let start = row * self.size.cols;
+        let mut text = String::new();
+        let mut column = 0;
+        while column < self.size.cols {
+            text.push_str(&self.texts[start + column]);
+            column += (self.cells[start + column].width as usize).max(1);
+        }
+        text
+    }
+
     fn text(&self) -> String {
-        self.cells
-            .chunks(self.size.cols)
-            .map(|row| row.iter().map(|cell| cell.character()).collect::<String>())
+        (0..self.size.rows)
+            .map(|row| self.row_text(row))
             .collect::<Vec<_>>()
             .join("\n")
     }
@@ -287,4 +333,84 @@ fn a_window_is_told_the_session_ended_when_it_is_killed() {
         ExitReason::Normal,
         "a killed session ends normally for every client, so the window closes quietly"
     );
+}
+
+const FAMILY: &str = "\u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467}";
+const FLAG: &str = "\u{1f1e9}\u{1f1ea}";
+const THUMBS: &str = "\u{1f44d}\u{1f3fd}";
+const KSSA: &str = "\u{915}\u{94d}\u{937}";
+
+fn cluster_line(prefix: &str) -> String {
+    format!(
+        "{}{}|e\u{301}|{}|\u{4e16}|{}|{}|END",
+        prefix, FAMILY, FLAG, KSSA, THUMBS
+    )
+}
+
+#[test]
+fn a_window_receives_clusters_and_groups_and_reads_the_same_text_as_a_terminal() {
+    let zellij = TestRunner::new(TERMINAL_SIZE)
+        .with_config("grapheme_clusters false")
+        .start();
+    let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
+    terminal.disable_echo();
+
+    let mut window = WindowClient::attach(&zellij, TERMINAL_SIZE);
+    let line = cluster_line("W:");
+    terminal.output(format!("\r\n{}\r\n", line).as_bytes());
+
+    window.frame_showing(&line);
+    assert!(
+        window.saw_cluster_record,
+        "a frame showing cells with attached code points must carry a cluster record"
+    );
+    assert!(
+        window.saw_group_continuation,
+        "a frame showing default-mode groups must mark their continuation cells"
+    );
+
+    let grid_snapshot = zellij.wait_until("the terminal client to show the clusters", |grid| {
+        grid.contains(&line)
+    });
+    let terminal_line = grid_snapshot
+        .lines()
+        .into_iter()
+        .find(|row| row.contains(&line))
+        .expect("the terminal client shows the cluster line");
+    let window_line = window
+        .text()
+        .lines()
+        .find(|row| row.contains(&line))
+        .map(|row| row.to_owned())
+        .expect("the window shows the cluster line");
+    assert_eq!(
+        window_line.trim_end(),
+        terminal_line.trim_end(),
+        "the window and the terminal client must read the same text"
+    );
+
+    leave(window, zellij);
+}
+
+#[test]
+fn a_window_receives_emoji_sequences_as_single_clusters_by_default() {
+    let zellij = TestRunner::new(TERMINAL_SIZE).start();
+    let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
+    terminal.disable_echo();
+
+    let mut window = WindowClient::attach(&zellij, TERMINAL_SIZE);
+    let line = cluster_line("D:");
+    terminal.output(format!("\r\n{}\r\n", line).as_bytes());
+
+    window.frame_showing(&line);
+    assert!(
+        window.saw_cluster_record,
+        "a frame showing emoji sequences must carry a cluster record"
+    );
+    assert!(
+        !window.saw_group_continuation,
+        "with clusters counted as one unit, no cell continues a group"
+    );
+
+    leave(window, zellij);
 }

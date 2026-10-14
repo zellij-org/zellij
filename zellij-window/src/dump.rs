@@ -179,9 +179,11 @@ pub fn grid_rows(state: &TerminalState) -> Vec<String> {
     let size = state.size();
     (0..size.rows)
         .map(|row| {
-            (0..size.cols)
-                .map(|col| state.screen().cell(row, col).character())
-                .collect()
+            let mut text = String::new();
+            for col in 0..size.cols {
+                state.screen().push_text_to(row, col, &mut text);
+            }
+            text
         })
         .collect()
 }
@@ -250,6 +252,9 @@ fn flags(cell: WireCell, occupancy: Occupancy) -> String {
         Occupancy::WideHead => named.push("WIDE_CHAR"),
         Occupancy::WideTail => named.push("WIDE_CHAR_SPACER"),
         Occupancy::Single => {},
+    }
+    if occupancy != Occupancy::WideTail && cell.is_group_continuation() {
+        named.push("GROUP_CONTINUE");
     }
     if cell.has(ATTR_SLOW_BLINK) {
         named.push("BLINK_SLOW");

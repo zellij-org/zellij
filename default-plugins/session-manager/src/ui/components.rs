@@ -1,8 +1,7 @@
 use humantime::format_duration;
 use std::path::PathBuf;
 use std::time::Duration;
-use unicode_width::UnicodeWidthChar;
-use unicode_width::UnicodeWidthStr;
+use zellij_tile::graphemes;
 use zellij_tile::prelude::*;
 
 use crate::single_screen::UnifiedSearchResult;
@@ -135,9 +134,9 @@ impl UnifiedResultsRenderCache {
                         }
                     };
 
-                    let name_width = session_name.width();
-                    let full_details_width = full_details.width();
-                    let abbr_details_width = abbr_details.width();
+                    let name_width = graphemes::display_width(&session_name);
+                    let full_details_width = graphemes::display_width(&full_details);
+                    let abbr_details_width = graphemes::display_width(&abbr_details);
 
                     CachedRowData {
                         session_name: session_name.clone(),
@@ -190,9 +189,9 @@ impl UnifiedResultsRenderCache {
                         }
                     };
 
-                    let name_width = session_name.width();
-                    let full_details_width = full_details.width();
-                    let abbr_details_width = abbr_details.width();
+                    let name_width = graphemes::display_width(&session_name);
+                    let full_details_width = graphemes::display_width(&full_details);
+                    let abbr_details_width = graphemes::display_width(&abbr_details);
 
                     CachedRowData {
                         session_name: session_name.clone(),
@@ -445,36 +444,31 @@ impl TruncatableUiSpan {
         remaining_cols: &mut usize,
     ) {
         let mut rendered = String::new();
-        let truncated = if *remaining_cols >= self.text.width() {
+        let truncated = if *remaining_cols >= graphemes::display_width(&self.text) {
             self.text.clone()
         } else {
-            let mut truncated = String::new();
-            for character in self.text.chars() {
-                if truncated.width() + character.width().unwrap_or(0) <= *remaining_cols {
-                    truncated.push(character);
-                } else {
-                    break;
-                }
-            }
-            truncated
+            graphemes::truncate_end(&self.text, *remaining_cols, "").into_owned()
         };
         match indices {
             Some((index_style, indices)) => {
-                for (i, character) in truncated.chars().enumerate() {
-                    // TODO: optimize this by splitting the string up by its indices and only pushing those
-                    // chu8nks
-                    if indices.contains(&i) {
-                        rendered.push_str(&index_style.style_string(&character.to_string()));
+                let mut char_index = 0;
+                for (cluster, _) in graphemes::clusters(&truncated) {
+                    let char_count = cluster.chars().count();
+                    let highlighted =
+                        (char_index..char_index + char_count).any(|i| indices.contains(&i));
+                    if highlighted {
+                        rendered.push_str(&index_style.style_string(cluster));
                     } else {
-                        rendered.push_str(&self.style.style_string(&character.to_string()));
+                        rendered.push_str(&self.style.style_string(cluster));
                     }
+                    char_index += char_count;
                 }
             },
             None => {
                 rendered.push_str(&self.style.style_string(&truncated));
             },
         }
-        *remaining_cols = remaining_cols.saturating_sub(truncated.width());
+        *remaining_cols = remaining_cols.saturating_sub(graphemes::display_width(&truncated));
         line_to_render.append(&rendered);
     }
 }
@@ -621,21 +615,27 @@ pub fn build_session_ui_line(session_ui_info: &SessionUiInfo, colors: Colors) ->
     let tab_and_pane_count = UiSpan::UiSpanTelescope(UiSpanTelescope::new(vec![
         StringAndLength::new(
             format!(" ({tab_count_styled} tabs, {total_pane_count_styled} panes)"),
-            2 + tab_count.width() + 7 + total_pane_count.width() + 7,
+            2 + graphemes::display_width(&tab_count)
+                + 7
+                + graphemes::display_width(&total_pane_count)
+                + 7,
         ),
         StringAndLength::new(
             format!(" ({tab_count_styled}, {total_pane_count_styled})"),
-            2 + tab_count.width() + 2 + total_pane_count.width() + 3,
+            2 + graphemes::display_width(&tab_count)
+                + 2
+                + graphemes::display_width(&total_pane_count)
+                + 3,
         ),
     ]));
     let connected_users_count = UiSpan::UiSpanTelescope(UiSpanTelescope::new(vec![
         StringAndLength::new(
             format!(" [{connected_users_styled} connected users]"),
-            2 + connected_users.width() + 17,
+            2 + graphemes::display_width(&connected_users) + 17,
         ),
         StringAndLength::new(
             format!(" [{connected_users_styled}]"),
-            2 + connected_users.width() + 1,
+            2 + graphemes::display_width(&connected_users) + 1,
         ),
     ]));
     ui_spans.push(session_bullet_span);
@@ -674,11 +674,11 @@ pub fn build_tab_ui_line(tab_ui_info: &TabUiInfo, colors: Colors) -> Vec<UiSpan>
     let connected_users_count_span = UiSpan::UiSpanTelescope(UiSpanTelescope::new(vec![
         StringAndLength::new(
             format!(" ({pane_count_styled} panes)"),
-            2 + pane_count.width() + 7,
+            2 + graphemes::display_width(&pane_count) + 7,
         ),
         StringAndLength::new(
             format!(" ({pane_count_styled})"),
-            2 + pane_count.width() + 1,
+            2 + graphemes::display_width(&pane_count) + 1,
         ),
     ]));
     ui_spans.push(tab_bullet_span);
@@ -712,9 +712,12 @@ pub fn build_pane_ui_line(pane_ui_info: &PaneUiInfo, colors: Colors) -> Vec<UiSp
         let pane_name_span = UiSpan::UiSpanTelescope(UiSpanTelescope::new(vec![
             StringAndLength::new(
                 format!(" (EXIT CODE: {exit_code})"),
-                13 + exit_code.width() + 1,
+                13 + graphemes::display_width(&exit_code) + 1,
             ),
-            StringAndLength::new(format!(" ({exit_code})"), 2 + exit_code.width() + 1),
+            StringAndLength::new(
+                format!(" ({exit_code})"),
+                2 + graphemes::display_width(&exit_code) + 1,
+            ),
         ]));
         ui_spans.push(pane_name_span);
     }
@@ -855,12 +858,12 @@ fn render_new_session_folder_prompt(
             let reset_folder_shortcut = colors.shortcuts(reset_folder_shortcut_text);
             let to_reset = "to reset";
             if max_cols
-                >= folder_prompt.width()
-                    + new_session_folder.width()
-                    + change_folder_shortcut_text.width()
-                    + to_change.width()
-                    + reset_folder_shortcut_text.width()
-                    + to_reset.width()
+                >= graphemes::display_width(&folder_prompt)
+                    + graphemes::display_width(&new_session_folder)
+                    + graphemes::display_width(&change_folder_shortcut_text)
+                    + graphemes::display_width(&to_change)
+                    + graphemes::display_width(&reset_folder_shortcut_text)
+                    + graphemes::display_width(&to_reset)
                     + 8
             {
                 print!(
@@ -874,12 +877,12 @@ fn render_new_session_folder_prompt(
                     to_reset,
                 );
             } else if max_cols
-                >= short_folder_prompt.width()
-                    + new_session_folder.width()
-                    + change_folder_shortcut_text.width()
-                    + to_change.width()
-                    + reset_folder_shortcut_text.width()
-                    + to_reset.width()
+                >= graphemes::display_width(&short_folder_prompt)
+                    + graphemes::display_width(&new_session_folder)
+                    + graphemes::display_width(&change_folder_shortcut_text)
+                    + graphemes::display_width(&to_change)
+                    + graphemes::display_width(&reset_folder_shortcut_text)
+                    + graphemes::display_width(&to_reset)
                     + 8
             {
                 print!(
@@ -893,10 +896,10 @@ fn render_new_session_folder_prompt(
                     to_reset,
                 );
             } else if max_cols
-                >= short_folder_prompt.width()
-                    + new_session_folder.width()
-                    + change_folder_shortcut_text.width()
-                    + reset_folder_shortcut_text.width()
+                >= graphemes::display_width(&short_folder_prompt)
+                    + graphemes::display_width(&new_session_folder)
+                    + graphemes::display_width(&change_folder_shortcut_text)
+                    + graphemes::display_width(&reset_folder_shortcut_text)
                     + 5
             {
                 print!(
@@ -908,14 +911,14 @@ fn render_new_session_folder_prompt(
                     reset_folder_shortcut,
                 );
             } else {
-                let total_len = short_folder_prompt.width()
-                    + change_folder_shortcut_text.width()
-                    + reset_folder_shortcut_text.width()
+                let total_len = graphemes::display_width(&short_folder_prompt)
+                    + graphemes::display_width(&change_folder_shortcut_text)
+                    + graphemes::display_width(&reset_folder_shortcut_text)
                     + 5;
                 let max_path_len = max_cols.saturating_sub(total_len);
                 let truncated_path = truncate_path(
                     new_session_path,
-                    new_session_folder.width().saturating_sub(max_path_len),
+                    graphemes::display_width(&new_session_folder).saturating_sub(max_path_len),
                 );
                 print!(
                     "\u{1b}[m{}{} {} ({}/{})",
@@ -935,7 +938,10 @@ fn render_new_session_folder_prompt(
             let to_set = "to set";
 
             if max_cols
-                >= folder_prompt.width() + change_folder_shortcut_text.width() + to_set.width() + 4
+                >= graphemes::display_width(&folder_prompt)
+                    + graphemes::display_width(&change_folder_shortcut_text)
+                    + graphemes::display_width(&to_set)
+                    + 4
             {
                 print!(
                     "\u{1b}[m{}{} ({} {})",
@@ -945,9 +951,9 @@ fn render_new_session_folder_prompt(
                     to_set,
                 );
             } else if max_cols
-                >= short_folder_prompt.width()
-                    + change_folder_shortcut_text.width()
-                    + to_set.width()
+                >= graphemes::display_width(&short_folder_prompt)
+                    + graphemes::display_width(&change_folder_shortcut_text)
+                    + graphemes::display_width(&to_set)
                     + 4
             {
                 print!(
@@ -983,7 +989,10 @@ pub fn render_new_session_block(
         let long_instruction = "when done, blank for random";
         let new_session_name = new_session_info.name();
         if max_cols_of_new_session_block
-            > prompt.width() + long_instruction.width() + new_session_name.width() + 15
+            > graphemes::display_width(&prompt)
+                + graphemes::display_width(&long_instruction)
+                + graphemes::display_width(&new_session_name)
+                + 15
         {
             println!(
                 "\u{1b}[m{}{} {}_ ({} {})",
@@ -994,23 +1003,19 @@ pub fn render_new_session_block(
                 long_instruction,
             );
         } else {
-            let space_for_new_session_name =
-                max_cols_of_new_session_block.saturating_sub(prompt.width() + 18);
-            let new_session_name = if new_session_name.width() > space_for_new_session_name {
-                let mut truncated = String::new();
-                for character in new_session_name.chars().rev() {
-                    if truncated.width() + character.width().unwrap_or(0)
-                        < space_for_new_session_name
-                    {
-                        truncated.push(character);
-                    } else {
-                        break;
-                    }
-                }
-                format!("...{}", truncated.chars().rev().collect::<String>())
-            } else {
-                new_session_name.to_owned()
-            };
+            let space_for_new_session_name = max_cols_of_new_session_block
+                .saturating_sub(graphemes::display_width(&prompt) + 18);
+            let new_session_name =
+                if graphemes::display_width(&new_session_name) > space_for_new_session_name {
+                    let truncated = graphemes::truncate_start(
+                        &new_session_name,
+                        space_for_new_session_name.saturating_sub(1),
+                        "",
+                    );
+                    format!("...{}", truncated)
+                } else {
+                    new_session_name.to_owned()
+                };
             println!(
                 "\u{1b}[m{}{} {}_ {}",
                 format!("\u{1b}[{};{}H", y + 1, x + 1),
@@ -1029,7 +1034,10 @@ pub fn render_new_session_block(
         let long_instruction = "to correct";
         let esc = colors.shortcuts("<ESC>");
         if max_cols_of_new_session_block
-            > prompt.width() + long_instruction.width() + new_session_name.width() + 15
+            > graphemes::display_width(&prompt)
+                + graphemes::display_width(&long_instruction)
+                + graphemes::display_width(&new_session_name)
+                + 15
         {
             println!(
                 "\u{1b}[m{}{}: {} ({} to correct)",
@@ -1072,8 +1080,9 @@ pub fn render_layout_selection_list(
     y: usize,
 ) {
     let layout_search_term = new_session_info.layout_search_term();
-    let search_term_len = layout_search_term.width();
-    let layout_indication_line = if max_cols_of_new_session_block > 73 + search_term_len {
+    let search_term_width = graphemes::display_width(&layout_search_term);
+    let search_term_len = layout_search_term.chars().count();
+    let layout_indication_line = if max_cols_of_new_session_block > 73 + search_term_width {
         Text::from(format!(
             "New session layout: {}_ (Search and select from list, <ENTER> when done)",
             layout_search_term
@@ -1099,7 +1108,7 @@ pub fn render_layout_selection_list(
         .enumerate()
     {
         let layout_name = layout_info.name();
-        let layout_name_len = layout_name.width();
+        let layout_name_len = layout_name.chars().count();
         let is_builtin = layout_info.is_builtin();
         if i > max_rows_of_new_session_block.saturating_sub(1) {
             break;
@@ -1156,7 +1165,8 @@ pub fn render_renaming_session_screen(
     .color_range(2, ..29)
     .color_range(
         3,
-        33 + new_session_name.width()..40 + new_session_name.width(),
+        33 + graphemes::display_width(&new_session_name)
+            ..40 + graphemes::display_width(&new_session_name),
     );
     print_text_with_coordinates(text, x, y, None, None);
     if new_session_name.contains('/') {
@@ -1356,19 +1366,28 @@ pub fn render_unsaved_changes_line(
     };
 
     // Calculate component widths
-    let shortcut_width = shortcut_text.width();
-    let separator_width = separator.width();
-    let space_width = space.width();
-    let time_width = time_text.width();
+    let shortcut_width = graphemes::display_width(&shortcut_text);
+    let separator_width = graphemes::display_width(&separator);
+    let space_width = graphemes::display_width(&space);
+    let time_width = graphemes::display_width(&time_text);
 
     // Calculate total widths for each display mode
     // Format: "{shortcut}{separator}{action}{space}{time}"
-    let full_width =
-        shortcut_width + separator_width + full_action_text.width() + space_width + time_width;
-    let medium_width =
-        shortcut_width + separator_width + medium_action_text.width() + space_width + time_width;
-    let short_width =
-        shortcut_width + separator_width + short_action_text.width() + space_width + time_width;
+    let full_width = shortcut_width
+        + separator_width
+        + graphemes::display_width(&full_action_text)
+        + space_width
+        + time_width;
+    let medium_width = shortcut_width
+        + separator_width
+        + graphemes::display_width(&medium_action_text)
+        + space_width
+        + time_width;
+    let short_width = shortcut_width
+        + separator_width
+        + graphemes::display_width(&short_action_text)
+        + space_width
+        + time_width;
     let minimal_width = shortcut_width + space_width + time_width;
 
     // Select appropriate message based on available width
@@ -1471,8 +1490,8 @@ fn truncate_path(path: PathBuf, mut char_count_to_remove: usize) -> String {
             if i != 0 && i + 1 != component_count {
                 truncated.push('/');
             }
-            char_count_to_remove =
-                char_count_to_remove.saturating_sub(component_str.width().saturating_sub(1));
+            char_count_to_remove = char_count_to_remove
+                .saturating_sub(graphemes::display_width(&component_str).saturating_sub(1));
         } else {
             truncated.push_str(&component_str);
             if i != 0 && i + 1 != component_count {

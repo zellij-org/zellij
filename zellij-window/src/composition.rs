@@ -21,13 +21,26 @@ impl Preedit {
     }
 
     pub fn columns(&self) -> Vec<Column> {
-        self.text
-            .chars()
-            .filter_map(|character| {
+        let mut columns: Vec<Column> = Vec::new();
+        for (cluster, _) in zellij_utils::graphemes::clusters(&self.text) {
+            let mut first_of_cluster = true;
+            for character in cluster.chars() {
                 let width = character.width().unwrap_or(0);
-                (width > 0).then_some(Column { character, width })
-            })
-            .collect()
+                if width == 0 {
+                    if let Some(previous) = columns.last_mut() {
+                        previous.text.push(character);
+                    }
+                    continue;
+                }
+                columns.push(Column {
+                    text: character.to_string(),
+                    width,
+                    continues: !first_of_cluster,
+                });
+                first_of_cluster = false;
+            }
+        }
+        columns
     }
 
     pub fn cursor_column(&self) -> Option<usize> {
@@ -44,10 +57,17 @@ impl Preedit {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Column {
-    pub character: char,
+    pub text: String,
     pub width: usize,
+    pub continues: bool,
+}
+
+impl Column {
+    pub fn character(&self) -> char {
+        self.text.chars().next().unwrap_or(' ')
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -280,12 +300,14 @@ mod tests {
             preedit.columns(),
             vec![
                 Column {
-                    character: '你',
-                    width: 2
+                    text: "你".to_owned(),
+                    width: 2,
+                    continues: false,
                 },
                 Column {
-                    character: 'a',
-                    width: 1
+                    text: "a".to_owned(),
+                    width: 1,
+                    continues: false,
                 }
             ]
         );
@@ -294,6 +316,68 @@ mod tests {
     #[test]
     fn a_zero_width_character_takes_no_column() {
         assert_eq!(Preedit::new("a\u{301}", None).columns().len(), 1);
+    }
+
+    #[test]
+    fn a_combining_mark_in_a_preedit_stays_on_the_letter_it_follows() {
+        let columns = Preedit::new("e\u{301}x", None).columns();
+        assert_eq!(
+            columns,
+            vec![
+                Column {
+                    text: "e\u{301}".to_owned(),
+                    width: 1,
+                    continues: false,
+                },
+                Column {
+                    text: "x".to_owned(),
+                    width: 1,
+                    continues: false,
+                }
+            ]
+        );
+        assert_eq!(columns[0].character(), 'e');
+    }
+
+    #[test]
+    fn a_family_emoji_in_a_preedit_is_one_group_of_per_code_point_cells() {
+        let family = "\u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467}";
+        let columns = Preedit::new(format!("{}a", family), None).columns();
+        let described: Vec<(&str, usize, bool)> = columns
+            .iter()
+            .map(|column| (column.text.as_str(), column.width, column.continues))
+            .collect();
+        assert_eq!(
+            described,
+            vec![
+                ("\u{1f468}\u{200d}", 2, false),
+                ("\u{1f469}\u{200d}", 2, true),
+                ("\u{1f467}", 2, true),
+                ("a", 1, false),
+            ]
+        );
+    }
+
+    #[test]
+    fn the_cursor_column_after_a_cluster_counts_each_code_point() {
+        let family = "\u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467}";
+        let end = family.len();
+        assert_eq!(
+            Preedit::new(family, Some((end, end))).cursor_column(),
+            Some(6)
+        );
+        let accented = "e\u{301}";
+        let end = accented.len();
+        assert_eq!(
+            Preedit::new(accented, Some((end, end))).cursor_column(),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn a_mark_with_nothing_before_it_is_dropped() {
+        assert!(Preedit::new("\u{301}", None).columns().is_empty());
+        assert_eq!(Preedit::new("\u{301}a", None).columns().len(), 1);
     }
 
     #[test]

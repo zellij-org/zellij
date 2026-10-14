@@ -51,10 +51,10 @@ impl NewSessionInfo {
     pub fn handle_backspace(&mut self) {
         match self.entering_new_session_info {
             EnteringState::EnteringName => {
-                self.name.pop();
+                zellij_tile::graphemes::pop_cluster(&mut self.name);
             },
             EnteringState::EnteringLayoutSearch => {
-                self.layout_list.layout_search_term.pop();
+                zellij_tile::graphemes::pop_cluster(&mut self.layout_list.layout_search_term);
                 self.update_layout_search_term();
             },
         }

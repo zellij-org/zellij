@@ -15,7 +15,6 @@ pub use popup::{place_popup, PopupKind, PopupMouseOutcome, PopupPlacement, POPUP
 use std::env::temp_dir;
 use std::net::IpAddr;
 use std::path::PathBuf;
-use unicode_width::UnicodeWidthStr;
 use uuid::Uuid;
 use zellij_utils::data::PaneContents;
 use zellij_utils::data::{
@@ -342,6 +341,7 @@ pub(crate) struct Tab {
     focus_follows_mouse: bool,
     mouse_click_through: bool,
     context_menu_enabled: bool,
+    grapheme_clusters: bool,
     osc133_command_selection: bool,
     word_separators: String,
     currently_marking_pane_group: Rc<RefCell<HashMap<ClientId, bool>>>,
@@ -1143,6 +1143,7 @@ impl Tab {
             focus_follows_mouse,
             mouse_click_through,
             context_menu_enabled: true,
+            grapheme_clusters: false,
             osc133_command_selection: true,
             word_separators: DEFAULT_WORD_SEPARATORS.to_owned(),
             connected_clients_in_app,
@@ -1827,7 +1828,7 @@ impl Tab {
                         self.suppressed_panes.get(member).map(|(_, p)| &**p)
                     }
                 })
-                .map(|pane| pane.stack_list_entry_label().width())
+                .map(|pane| zellij_utils::graphemes::display_width(&pane.stack_list_entry_label()))
                 .max()
                 .unwrap_or(0);
             let stack_is_focused = active_panes.values().any(|p_id| *p_id == list.visible);
@@ -1933,6 +1934,7 @@ impl Tab {
             self.explicitly_disable_kitty_keyboard_protocol,
             blocking_terminal,
         )
+        .with_grapheme_clusters(self.grapheme_clusters)
         .apply_layout(
             layout,
             floating_panes_layout,
@@ -2025,6 +2027,7 @@ impl Tab {
             self.explicitly_disable_kitty_keyboard_protocol,
             blocking_terminal,
         )
+        .with_grapheme_clusters(self.grapheme_clusters)
         .override_layout(
             layout,
             floating_panes_layout,
@@ -2131,6 +2134,7 @@ impl Tab {
                 self.explicitly_disable_kitty_keyboard_protocol,
                 None,
             )
+            .with_grapheme_clusters(self.grapheme_clusters)
             .apply_floating_panes_layout_to_existing_panes(&layout_candidate)
             .non_fatal();
         }
@@ -2199,6 +2203,7 @@ impl Tab {
                 self.explicitly_disable_kitty_keyboard_protocol,
                 None,
             )
+            .with_grapheme_clusters(self.grapheme_clusters)
             .apply_tiled_panes_layout_to_existing_panes(&layout_candidate);
             match application_res {
                 Ok(panes_were_floated) => {
@@ -2938,27 +2943,30 @@ impl Tab {
         let mut new_pane = match pid {
             PaneId::Terminal(term_pid) => {
                 let next_terminal_position = self.get_next_terminal_position();
-                Box::new(TerminalPane::new(
-                    term_pid,
-                    PaneGeom::default(), // this will be filled out later
-                    self.style,
-                    next_terminal_position,
-                    initial_pane_title.clone().unwrap_or_default(),
-                    self.link_handler.clone(),
-                    self.character_cell_size.clone(),
-                    self.sixel_image_store.clone(),
-                    self.kitty_image_store.clone(),
-                    self.terminal_emulator_colors.clone(),
-                    self.terminal_emulator_color_codes.clone(),
-                    initial_pane_title,
-                    invoked_with,
-                    self.debug,
-                    self.arrow_fonts,
-                    self.styled_underlines,
-                    self.osc8_hyperlinks,
-                    self.explicitly_disable_kitty_keyboard_protocol,
-                    blocking_notification,
-                )) as Box<dyn Pane>
+                Box::new(
+                    TerminalPane::new(
+                        term_pid,
+                        PaneGeom::default(), // this will be filled out later
+                        self.style,
+                        next_terminal_position,
+                        initial_pane_title.clone().unwrap_or_default(),
+                        self.link_handler.clone(),
+                        self.character_cell_size.clone(),
+                        self.sixel_image_store.clone(),
+                        self.kitty_image_store.clone(),
+                        self.terminal_emulator_colors.clone(),
+                        self.terminal_emulator_color_codes.clone(),
+                        initial_pane_title,
+                        invoked_with,
+                        self.debug,
+                        self.arrow_fonts,
+                        self.styled_underlines,
+                        self.osc8_hyperlinks,
+                        self.explicitly_disable_kitty_keyboard_protocol,
+                        blocking_notification,
+                    )
+                    .with_grapheme_clusters(self.grapheme_clusters),
+                ) as Box<dyn Pane>
             },
             PaneId::Plugin(plugin_pid) => {
                 Box::new(PluginPane::new(
@@ -3063,27 +3071,30 @@ impl Tab {
         let mut new_pane = match pid {
             PaneId::Terminal(term_pid) => {
                 let next_terminal_position = self.get_next_terminal_position();
-                Box::new(TerminalPane::new(
-                    term_pid,
-                    PaneGeom::default(), // this will be filled out later
-                    self.style,
-                    next_terminal_position,
-                    initial_pane_title.clone().unwrap_or_default(),
-                    self.link_handler.clone(),
-                    self.character_cell_size.clone(),
-                    self.sixel_image_store.clone(),
-                    self.kitty_image_store.clone(),
-                    self.terminal_emulator_colors.clone(),
-                    self.terminal_emulator_color_codes.clone(),
-                    initial_pane_title,
-                    invoked_with,
-                    self.debug,
-                    self.arrow_fonts,
-                    self.styled_underlines,
-                    self.osc8_hyperlinks,
-                    self.explicitly_disable_kitty_keyboard_protocol,
-                    blocking_notification,
-                )) as Box<dyn Pane>
+                Box::new(
+                    TerminalPane::new(
+                        term_pid,
+                        PaneGeom::default(), // this will be filled out later
+                        self.style,
+                        next_terminal_position,
+                        initial_pane_title.clone().unwrap_or_default(),
+                        self.link_handler.clone(),
+                        self.character_cell_size.clone(),
+                        self.sixel_image_store.clone(),
+                        self.kitty_image_store.clone(),
+                        self.terminal_emulator_colors.clone(),
+                        self.terminal_emulator_color_codes.clone(),
+                        initial_pane_title,
+                        invoked_with,
+                        self.debug,
+                        self.arrow_fonts,
+                        self.styled_underlines,
+                        self.osc8_hyperlinks,
+                        self.explicitly_disable_kitty_keyboard_protocol,
+                        blocking_notification,
+                    )
+                    .with_grapheme_clusters(self.grapheme_clusters),
+                ) as Box<dyn Pane>
             },
             PaneId::Plugin(plugin_pid) => {
                 Box::new(PluginPane::new(
@@ -3178,27 +3189,30 @@ impl Tab {
         let mut new_pane = match pid {
             PaneId::Terminal(term_pid) => {
                 let next_terminal_position = self.get_next_terminal_position();
-                Box::new(TerminalPane::new(
-                    term_pid,
-                    PaneGeom::default(), // this will be filled out later
-                    self.style,
-                    next_terminal_position,
-                    initial_pane_title.clone().unwrap_or_default(),
-                    self.link_handler.clone(),
-                    self.character_cell_size.clone(),
-                    self.sixel_image_store.clone(),
-                    self.kitty_image_store.clone(),
-                    self.terminal_emulator_colors.clone(),
-                    self.terminal_emulator_color_codes.clone(),
-                    initial_pane_title,
-                    invoked_with,
-                    self.debug,
-                    self.arrow_fonts,
-                    self.styled_underlines,
-                    self.osc8_hyperlinks,
-                    self.explicitly_disable_kitty_keyboard_protocol,
-                    blocking_notification,
-                )) as Box<dyn Pane>
+                Box::new(
+                    TerminalPane::new(
+                        term_pid,
+                        PaneGeom::default(), // this will be filled out later
+                        self.style,
+                        next_terminal_position,
+                        initial_pane_title.clone().unwrap_or_default(),
+                        self.link_handler.clone(),
+                        self.character_cell_size.clone(),
+                        self.sixel_image_store.clone(),
+                        self.kitty_image_store.clone(),
+                        self.terminal_emulator_colors.clone(),
+                        self.terminal_emulator_color_codes.clone(),
+                        initial_pane_title,
+                        invoked_with,
+                        self.debug,
+                        self.arrow_fonts,
+                        self.styled_underlines,
+                        self.osc8_hyperlinks,
+                        self.explicitly_disable_kitty_keyboard_protocol,
+                        blocking_notification,
+                    )
+                    .with_grapheme_clusters(self.grapheme_clusters),
+                ) as Box<dyn Pane>
             },
             PaneId::Plugin(plugin_pid) => {
                 Box::new(PluginPane::new(
@@ -3356,27 +3370,30 @@ impl Tab {
         let mut new_pane = match pid {
             PaneId::Terminal(term_pid) => {
                 let next_terminal_position = self.get_next_terminal_position();
-                Box::new(TerminalPane::new(
-                    term_pid,
-                    PaneGeom::default(), // this will be filled out later
-                    self.style,
-                    next_terminal_position,
-                    initial_pane_title.clone().unwrap_or_default(),
-                    self.link_handler.clone(),
-                    self.character_cell_size.clone(),
-                    self.sixel_image_store.clone(),
-                    self.kitty_image_store.clone(),
-                    self.terminal_emulator_colors.clone(),
-                    self.terminal_emulator_color_codes.clone(),
-                    initial_pane_title,
-                    invoked_with,
-                    self.debug,
-                    self.arrow_fonts,
-                    self.styled_underlines,
-                    self.osc8_hyperlinks,
-                    self.explicitly_disable_kitty_keyboard_protocol,
-                    blocking_notification,
-                )) as Box<dyn Pane>
+                Box::new(
+                    TerminalPane::new(
+                        term_pid,
+                        PaneGeom::default(), // this will be filled out later
+                        self.style,
+                        next_terminal_position,
+                        initial_pane_title.clone().unwrap_or_default(),
+                        self.link_handler.clone(),
+                        self.character_cell_size.clone(),
+                        self.sixel_image_store.clone(),
+                        self.kitty_image_store.clone(),
+                        self.terminal_emulator_colors.clone(),
+                        self.terminal_emulator_color_codes.clone(),
+                        initial_pane_title,
+                        invoked_with,
+                        self.debug,
+                        self.arrow_fonts,
+                        self.styled_underlines,
+                        self.osc8_hyperlinks,
+                        self.explicitly_disable_kitty_keyboard_protocol,
+                        blocking_notification,
+                    )
+                    .with_grapheme_clusters(self.grapheme_clusters),
+                ) as Box<dyn Pane>
             },
             PaneId::Plugin(plugin_pid) => {
                 Box::new(PluginPane::new(
@@ -3624,7 +3641,8 @@ impl Tab {
                     self.osc8_hyperlinks,
                     self.explicitly_disable_kitty_keyboard_protocol,
                     completion_tx,
-                );
+                )
+                .with_grapheme_clusters(self.grapheme_clusters);
                 if let Some(supported) = self.kitty_host_support {
                     new_pane.update_kitty_host_support(supported);
                 }
@@ -3865,7 +3883,8 @@ impl Tab {
                     self.osc8_hyperlinks,
                     self.explicitly_disable_kitty_keyboard_protocol,
                     completion_tx,
-                );
+                )
+                .with_grapheme_clusters(self.grapheme_clusters);
                 if let Some(supported) = self.kitty_host_support {
                     new_terminal.update_kitty_host_support(supported);
                 }
@@ -3957,7 +3976,8 @@ impl Tab {
                     self.osc8_hyperlinks,
                     self.explicitly_disable_kitty_keyboard_protocol,
                     completion_tx,
-                );
+                )
+                .with_grapheme_clusters(self.grapheme_clusters);
                 if let Some(supported) = self.kitty_host_support {
                     new_terminal.update_kitty_host_support(supported);
                 }
@@ -4110,7 +4130,8 @@ impl Tab {
                 self.osc8_hyperlinks,
                 self.explicitly_disable_kitty_keyboard_protocol,
                 completion_tx,
-            );
+            )
+            .with_grapheme_clusters(self.grapheme_clusters);
             if let Some(supported) = self.kitty_host_support {
                 new_terminal.update_kitty_host_support(supported);
             }
@@ -7370,18 +7391,12 @@ impl Tab {
 
     pub fn update_search_term(&mut self, buf: Vec<u8>, client_id: ClientId) -> Result<()> {
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
-            // It only allows terminating char(\0), printable unicode, delete and backspace keys.
-            // TODO: we should really remove this limitation to allow searching for emojis and
-            // other wide chars - currently the search mechanism itself ignores wide chars, so we
-            // should first fix that before removing this condition
-            let is_updatable = buf
-                .iter()
-                .all(|u| matches!(u, 0x00 | 0x20..=0x7E | 0x08 | 0x7F));
-            if is_updatable {
-                let s = str::from_utf8(&buf).with_context(|| {
-                    format!("failed to update search term to '{buf:?}' for client {client_id}")
-                })?;
-                active_pane.update_search_term(s);
+            if let Ok(s) = str::from_utf8(&buf) {
+                let is_updatable =
+                    matches!(s, "\0" | "\u{8}" | "\u{7f}") || !s.chars().any(|c| c.is_control());
+                if is_updatable {
+                    active_pane.update_search_term(s);
+                }
             }
         }
         Ok(())
@@ -8515,6 +8530,9 @@ impl Tab {
     pub fn update_context_menu_enabled(&mut self, context_menu_enabled: bool) {
         self.context_menu_enabled = context_menu_enabled;
     }
+    pub fn update_grapheme_clusters(&mut self, grapheme_clusters: bool) {
+        self.grapheme_clusters = grapheme_clusters;
+    }
     pub fn update_selection_options(
         &mut self,
         osc133_command_selection: bool,
@@ -8795,7 +8813,8 @@ impl Tab {
             self.osc8_hyperlinks,
             self.explicitly_disable_kitty_keyboard_protocol,
             None,
-        );
+        )
+        .with_grapheme_clusters(self.grapheme_clusters);
         if let Some(supported) = self.kitty_host_support {
             new_pane.update_kitty_host_support(supported);
         }

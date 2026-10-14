@@ -77,9 +77,8 @@ fn a_redraw_split_across_pty_reads_is_never_shown_half_done() {
     let settled = frames.len();
 
     for round in 1..=10 {
-        terminal.output(b"\r\x1b[2K");
-        terminal.output(format!("PROGRESS {:02}", round).as_bytes());
         let expected = format!("PROGRESS {:02}", round);
+        terminal.output_chunks(&[b"\r\x1b[2K", expected.as_bytes()]);
         zellij.wait_until("the redrawn progress line", |grid_snapshot| {
             grid_snapshot.contains(&expected)
         });
@@ -143,10 +142,9 @@ fn a_redraw_arriving_after_the_echo_window_keeps_the_quiet_period_and_is_never_s
         terminal.wait_for_stdin("the keystroke", |stdin| stdin.ends_with(&keystroke));
         sleep(PAST_THE_ECHO_WINDOW);
 
-        let before = immediate_render_requests();
-        terminal.output(b"\r\x1b[2K");
-        terminal.output(format!("PROGRESS {:02}", round).as_bytes());
         let expected = format!("PROGRESS {:02}", round);
+        let before = immediate_render_requests();
+        terminal.output_chunks(&[b"\r\x1b[2K", expected.as_bytes()]);
         zellij.wait_until("the redrawn progress line", |grid_snapshot| {
             grid_snapshot.contains(&expected)
         });

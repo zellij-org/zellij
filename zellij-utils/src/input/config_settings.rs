@@ -141,6 +141,7 @@ fn option_values(options: &Options, values: &mut BTreeMap<SettingKey, Option<Str
         disable_session_metadata,
         support_kitty_keyboard_protocol,
         support_kitty_graphics_protocol,
+        grapheme_clusters,
         web_server,
         web_sharing,
         stacked_resize,
@@ -250,6 +251,10 @@ fn option_values(options: &Options, values: &mut BTreeMap<SettingKey, Option<Str
         (
             SettingKey::SupportKittyGraphicsProtocol,
             display_text(support_kitty_graphics_protocol),
+        ),
+        (
+            SettingKey::GraphemeClusters,
+            display_text(grapheme_clusters),
         ),
         (SettingKey::WebServer, display_text(web_server)),
         (
@@ -728,6 +733,7 @@ pub fn copy_setting(target: &mut Config, source: &Config, key: SettingKey) {
         SettingKey::SupportKittyGraphicsProtocol => {
             options.support_kitty_graphics_protocol = from.support_kitty_graphics_protocol
         },
+        SettingKey::GraphemeClusters => options.grapheme_clusters = from.grapheme_clusters,
         SettingKey::WebServer => options.web_server = from.web_server,
         SettingKey::WebSharing => options.web_sharing = from.web_sharing,
         SettingKey::StackedResize => options.stacked_resize = from.stacked_resize,

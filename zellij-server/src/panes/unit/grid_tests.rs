@@ -9701,11 +9701,11 @@ fn a_single_notification_being_assembled_is_bounded() {
 }
 
 fn rendered_row(grid: &Grid, row_index: usize) -> String {
-    grid.viewport[row_index]
-        .columns
-        .iter()
-        .map(|terminal_character| terminal_character.character)
-        .collect()
+    let mut text = String::new();
+    for terminal_character in &grid.viewport[row_index].columns {
+        terminal_character.push_text_to(&mut text);
+    }
+    text
 }
 
 fn cursor_position(grid: &Grid) -> Option<(usize, usize)> {
@@ -9744,8 +9744,9 @@ fn zwj_emoji_sequence_keeps_one_wide_cell_per_emoji() {
     let row = &grid.viewport[0];
     assert_eq!(
         rendered_row(&grid, 0),
-        "\u{1f468}\u{1f469}\u{1f467}\u{1f466}"
+        "\u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467}\u{200d}\u{1f466}"
     );
+    assert_eq!(row.columns.len(), 4);
     assert_eq!(row.width(), 8);
     assert_eq!(cursor_position(&grid), Some((8, 0)));
 }
@@ -9768,16 +9769,18 @@ fn skin_tone_modifier_occupies_its_own_two_columns() {
 fn variation_selector_and_zero_width_joiner_do_not_advance_the_cursor() {
     let grid = create_grid_with_content("\u{26a0}\u{fe0f}\u{200d}\u{200b}");
 
-    assert_eq!(rendered_row(&grid, 0), "\u{26a0}");
+    assert_eq!(rendered_row(&grid, 0), "\u{26a0}\u{fe0f}\u{200d}\u{200b}");
+    assert_eq!(grid.viewport[0].columns.len(), 1);
     assert_eq!(grid.viewport[0].width(), 1);
     assert_eq!(cursor_position(&grid), Some((1, 0)));
 }
 
 #[test]
-fn combining_marks_are_dropped_and_do_not_advance_the_cursor() {
+fn combining_marks_are_kept_and_do_not_advance_the_cursor() {
     let grid = create_grid_with_content("e\u{301}a\u{300}\u{308}o\u{331}");
 
-    assert_eq!(rendered_row(&grid, 0), "eao");
+    assert_eq!(rendered_row(&grid, 0), "e\u{301}a\u{300}\u{308}o\u{331}");
+    assert_eq!(grid.viewport[0].columns.len(), 3);
     assert_eq!(grid.viewport[0].width(), 3);
     assert_eq!(cursor_position(&grid), Some((3, 0)));
 }
@@ -9909,7 +9912,7 @@ fn yijing_and_trigram_symbols_are_wide_under_the_new_width_tables() {
 fn halfwidth_katakana_sound_marks_are_zero_width_under_the_new_width_tables() {
     let grid = create_grid_with_content("\u{ff76}\u{ff9e}\u{ff8a}\u{ff9f}");
 
-    assert_eq!(rendered_row(&grid, 0), "\u{ff76}\u{ff8a}");
+    assert_eq!(rendered_row(&grid, 0), "\u{ff76}\u{ff9e}\u{ff8a}\u{ff9f}");
     assert_eq!(grid.viewport[0].width(), 2);
     assert_eq!(cursor_position(&grid), Some((2, 0)));
 }
@@ -9918,7 +9921,8 @@ fn halfwidth_katakana_sound_marks_are_zero_width_under_the_new_width_tables() {
 fn soft_hyphen_and_hangul_filler_are_zero_width_under_the_new_width_tables() {
     let grid = create_grid_with_content("a\u{ad}b\u{3164}c");
 
-    assert_eq!(rendered_row(&grid, 0), "abc");
+    assert_eq!(rendered_row(&grid, 0), "a\u{ad}b\u{3164}c");
+    assert_eq!(grid.viewport[0].columns.len(), 3);
     assert_eq!(grid.viewport[0].width(), 3);
     assert_eq!(cursor_position(&grid), Some((3, 0)));
 }

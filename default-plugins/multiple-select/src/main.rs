@@ -556,17 +556,17 @@ fn group_controls_length(mode_info: &ModeInfo) -> usize {
                 .collect::<Vec<_>>()
                 .join(" ")
         );
-        length += modifiers_text.chars().count();
+        length += zellij_tile::graphemes::display_width(&modifiers_text);
     }
 
     if pane_group_bound {
         let toggle_text = format!("<{}> Toggle", pane_group_key);
-        length += toggle_text.chars().count() + 4;
+        length += zellij_tile::graphemes::display_width(&toggle_text) + 4;
     }
 
     if group_mark_bound {
         let follow_text = format!("<{}> Follow Focus", group_mark_key);
-        length += follow_text.chars().count() + 4;
+        length += zellij_tile::graphemes::display_width(&follow_text) + 4;
     }
 
     length
@@ -614,7 +614,7 @@ fn render_common_modifiers(
                 .collect::<Vec<_>>()
                 .join(" ")
         );
-        let modifiers_text_len = modifiers_text.chars().count();
+        let modifiers_text_len = zellij_tile::graphemes::display_width(&modifiers_text);
 
         print_text_with_coordinates(
             Text::from(modifiers_text).color_all(0),

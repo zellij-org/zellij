@@ -622,6 +622,56 @@ fn text_input_click_moves_the_cursor() {
     );
 }
 
+const FAMILY: &str = "\u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467}";
+
+#[test]
+fn text_input_serializes_clusters_with_display_widths() {
+    let text = format!("a{}", FAMILY);
+    let mut input = TextInput::new(text.clone()).label("Ñ👍").focused();
+    assert_eq!(
+        input.serialize(0, 0, 12),
+        dcs(
+            "text_input",
+            "0/0/12/1",
+            "f,lw=4,cur=6",
+            &[enc("Ñ👍"), enc(&text), String::new(), String::new()]
+        )
+    );
+}
+
+#[test]
+fn text_input_scrolls_by_whole_clusters() {
+    let mut input = TextInput::new(format!("{}{}{}", FAMILY, FAMILY, FAMILY)).focused();
+    let serialized = input.serialize(0, 0, 10);
+    let visible = format!("{}{}", FAMILY, FAMILY);
+    assert!(serialized.contains(&format!("cur=10;;{};", enc(&visible))));
+    input.move_to_start();
+    let serialized = input.serialize(0, 0, 10);
+    let visible = format!("{}{}{}", FAMILY, FAMILY, FAMILY);
+    assert!(serialized.contains(&format!("cur=0;;{};", enc(&visible))));
+}
+
+#[test]
+fn button_width_counts_clusters() {
+    assert_eq!(
+        Button::new(FAMILY).serialize(0, 0),
+        dcs("button", "0/0/6/1", "", &[enc(FAMILY)])
+    );
+    assert_eq!(
+        Button::new("e\u{301}").serialize(0, 0),
+        dcs("button", "0/0/5/1", "", &[enc("e\u{301}")])
+    );
+}
+
+#[test]
+fn fuzzy_match_indices_returns_character_positions_with_clusters() {
+    assert_eq!(fuzzy_match_indices("x", "e\u{301}x"), Some(vec![2]));
+    assert_eq!(
+        fuzzy_match_indices("b", &format!("{}b", FAMILY)),
+        Some(vec![5])
+    );
+}
+
 #[test]
 fn number_stepper_serializes_and_clamps_at_limits() {
     let mut stepper = NumberStepper::new("Size", 10).min(0).max(20);

@@ -2,6 +2,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use anyhow::{Context, Result};
 use miette::{GraphicalReportHandler, GraphicalTheme};
+use zellij_utils::graphemes::{clusters, display_width};
 use zellij_utils::input::config::ConfigError;
 use zellij_utils::ipc::ExitReason;
 use zellij_utils::structured_render::{FrameBuilder, WireCell};
@@ -184,16 +185,48 @@ fn frame_from(message: &str, rows: usize, cols: usize, top: usize) -> Vec<u8> {
         if y >= rows {
             break;
         }
-        let cells: Vec<WireCell> = line
-            .chars()
-            .map(|ch| WireCell {
-                ch: ch as u32,
-                ..WireCell::BLANK
-            })
-            .collect();
+        let cells = cells_of(&line, &mut builder);
         builder.push_row(y as u16, MARGIN as u16, &cells);
     }
     builder.finish()
+}
+
+fn cells_of(line: &str, builder: &mut FrameBuilder) -> Vec<WireCell> {
+    let mut cells = Vec::new();
+    for (cluster, width) in clusters(line) {
+        if width == 0 {
+            continue;
+        }
+        let mut characters = cluster.chars();
+        let ch = match (characters.next(), characters.next()) {
+            (Some(only), None) => only as u32,
+            (Some(first), Some(_)) => builder.cluster(cluster).unwrap_or(first as u32),
+            _ => continue,
+        };
+        let head = WireCell {
+            ch,
+            width: width.min(u8::MAX as usize) as u8,
+            ..WireCell::BLANK
+        };
+        cells.push(head);
+        for _ in 1..width {
+            cells.push(WireCell::BLANK);
+        }
+    }
+    cells
+}
+
+fn split_at_columns(text: &str, room: usize) -> (String, String) {
+    let mut used = 0;
+    let mut end = 0;
+    for (cluster, width) in clusters(text) {
+        if used + width > room && end > 0 {
+            break;
+        }
+        used += width;
+        end += cluster.len();
+    }
+    (text[..end].to_owned(), text[end..].to_owned())
 }
 
 fn wrapped(message: &str, width: usize) -> Vec<String> {
@@ -201,7 +234,7 @@ fn wrapped(message: &str, width: usize) -> Vec<String> {
     for paragraph in message.split('\n') {
         let paragraph = paragraph.replace('\t', TAB);
         let paragraph = paragraph.trim_end();
-        if paragraph.chars().count() <= width {
+        if display_width(paragraph) <= width {
             lines.push(paragraph.to_owned());
             continue;
         }
@@ -216,16 +249,18 @@ fn wrapped(message: &str, width: usize) -> Vec<String> {
         for word in paragraph.split(' ').filter(|word| !word.is_empty()) {
             if line.is_empty() {
                 line.push_str(word);
-            } else if line.chars().count() + 1 + word.chars().count() <= room {
+            } else if display_width(&line) + 1 + display_width(word) <= room {
                 line.push(' ');
                 line.push_str(word);
             } else {
                 lines.push(format!("{}{}", indent, std::mem::take(&mut line)));
                 line.push_str(word);
             }
-            while line.chars().count() > room {
-                let head: String = line.chars().take(room).collect();
-                let tail: String = line.chars().skip(room).collect();
+            while display_width(&line) > room {
+                let (head, tail) = split_at_columns(&line, room);
+                if tail.is_empty() {
+                    break;
+                }
                 lines.push(format!("{}{}", indent, head));
                 line = tail;
             }
@@ -486,5 +521,59 @@ mod tests {
         notice.scroll(isize::MAX, 10, 40);
         notice.frame(40, 40);
         assert_eq!(notice.top(), 0);
+    }
+
+    #[test]
+    fn wrapping_counts_columns_and_never_splits_a_cluster() {
+        let family = "\u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467}";
+        let word = format!("e\u{301}{}\u{4f60}e\u{301}{}", family, family);
+        let lines = wrapped(&word, 4);
+        for line in &lines {
+            assert!(
+                display_width(line) <= 4,
+                "{:?} is wider than 4: {:?}",
+                line,
+                lines
+            );
+            assert!(!line.starts_with('\u{301}'), "{:?}", lines);
+            assert!(!line.starts_with('\u{200d}'), "{:?}", lines);
+        }
+        assert_eq!(lines.concat(), word, "{:?}", lines);
+    }
+
+    #[test]
+    fn a_wide_word_wraps_by_its_columns_rather_than_its_characters() {
+        let lines = wrapped("\u{4f60}\u{597d}\u{4e16}\u{754c}", 4);
+        assert_eq!(
+            lines,
+            vec!["\u{4f60}\u{597d}".to_owned(), "\u{4e16}\u{754c}".to_owned()]
+        );
+    }
+
+    #[test]
+    fn a_notice_with_clusters_reaches_the_screen_whole() {
+        let mut state = TerminalState::new(6, 20);
+        state
+            .apply_frame(&frame_from(
+                "ok e\u{301} \u{1f44d}\u{1f3fd} \u{4f60}",
+                6,
+                20,
+                0,
+            ))
+            .unwrap();
+        let screen = state.screen();
+        let row = top_margin(6);
+        let text: String = (0..20)
+            .filter(|col| screen.occupancy(row, *col) != crate::screen_buffer::Occupancy::WideTail)
+            .map(|col| screen.text_at(row, col))
+            .collect();
+        assert!(
+            text.starts_with("  ok e\u{301} \u{1f44d}\u{1f3fd} \u{4f60}"),
+            "{:?}",
+            text
+        );
+        assert_eq!(screen.text_at(row, MARGIN + 3), "e\u{301}");
+        assert_eq!(screen.cell(row, MARGIN + 5).width, 2);
+        assert_eq!(screen.text_at(row, MARGIN + 5), "\u{1f44d}\u{1f3fd}");
     }
 }

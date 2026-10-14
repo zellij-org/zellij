@@ -6,6 +6,7 @@ use zellij_server::output::{
     CharacterChunk, HostKittyState, KittyImageChunk, Output, RenderPayload, SixelImageChunk,
     StructuredClientState,
 };
+use zellij_server::panes::grapheme_join;
 use zellij_server::panes::grid::Grid;
 use zellij_server::panes::kitty_graphics::interceptor::{InterceptorResult, KittyApcInterceptor};
 use zellij_server::panes::kitty_graphics::store::KittyImageStore;
@@ -132,6 +133,7 @@ impl Reference {
             &self.stores.links.borrow(),
             self.rows,
             self.cols,
+            false,
         )
     }
 }
@@ -315,6 +317,7 @@ impl Emitter {
             &self.stores.links.borrow(),
             self.rows,
             self.cols,
+            true,
         )
     }
 
@@ -329,11 +332,23 @@ impl Emitter {
     }
 
     pub fn project_scrolled(&self) -> Projection {
-        crate::projection::without_blink_or_cursor(self.project())
+        crate::projection::without_blink_or_cursor(project_grid(
+            &self.grid,
+            &self.stores.links.borrow(),
+            self.rows,
+            self.cols,
+            false,
+        ))
     }
 }
 
-fn project_grid(grid: &Grid, links: &LinkHandler, rows: usize, cols: usize) -> Projection {
+fn project_grid(
+    grid: &Grid,
+    links: &LinkHandler,
+    rows: usize,
+    cols: usize,
+    displayed: bool,
+) -> Projection {
     let defaults = PaneDefaults {
         foreground: grid.pane_default_fg,
         background: grid.pane_default_bg,
@@ -341,7 +356,7 @@ fn project_grid(grid: &Grid, links: &LinkHandler, rows: usize, cols: usize) -> P
     let cells = grid
         .as_character_lines()
         .into_iter()
-        .map(|line| project_line(&line, links, cols, defaults))
+        .map(|line| project_line(&line, links, cols, defaults, displayed))
         .collect();
 
     let cursor = match grid.cursor_coordinates() {
@@ -375,23 +390,48 @@ fn project_line(
     links: &LinkHandler,
     cols: usize,
     defaults: PaneDefaults,
+    displayed: bool,
 ) -> Vec<Cell> {
     let mut cells = Vec::with_capacity(cols);
-    for character in line {
+    let mut index = 0;
+    while index < line.len() {
         if cells.len() >= cols {
             break;
         }
-        let mut cell = project_character(character, links, defaults);
-        if character.width() >= 2 {
-            cell.occupancy = Occupancy::WideHead;
-            let mut tail = cell.clone();
-            tail.text = " ".to_owned();
-            tail.occupancy = Occupancy::WideTail;
-            cells.push(cell);
-            cells.push(tail);
+        let end = grapheme_join::group_end(line, index, |left, right| {
+            line[left].styles == line[right].styles
+        })
+        .max(index + 1);
+        let unit = &line[index..end];
+        let strip_vs16 = if !displayed || (unit.len() == 1 && !unit[0].has_attached()) {
+            false
         } else {
-            cells.push(cell);
+            let columns: usize = unit.iter().map(|character| character.width()).sum();
+            grapheme_join::prepare_unit(unit, columns).strip_vs16
+        };
+        for character in unit {
+            let mut cell = project_character(character, links, defaults);
+            if strip_vs16 {
+                cell.text.retain(|c| c != '\u{FE0F}');
+                if cell.text.is_empty() {
+                    cell.text.push(' ');
+                }
+            }
+            let width = character.width();
+            if width >= 2 {
+                cell.occupancy = Occupancy::WideHead;
+                let mut tail = cell.clone();
+                tail.text = " ".to_owned();
+                tail.occupancy = Occupancy::WideTail;
+                cells.push(cell);
+                for _ in 1..width {
+                    cells.push(tail.clone());
+                }
+            } else {
+                cells.push(cell);
+            }
         }
+        index = end;
     }
     cells.truncate(cols);
     cells.resize(cols, blank_cell(defaults));
@@ -443,7 +483,7 @@ fn project_character(
     }
 
     Cell {
-        text: character.character.to_string(),
+        text: character.text().into_owned(),
         occupancy: Occupancy::Single,
         fg: resolved(zellij_color(styles.foreground), defaults.foreground),
         bg: resolved(zellij_color(styles.background), defaults.background),
@@ -561,6 +601,87 @@ mod tests {
     #[test]
     fn a_wide_character_agrees_on_both_of_its_columns() {
         assert_agrees(1, 8, "\u{1b}[1;1H\u{1b}[m\u{4f60}\u{597d}x");
+    }
+
+    #[test]
+    fn combining_marks_agree_with_the_letter_they_follow() {
+        assert_agrees(
+            1,
+            16,
+            "\u{1b}[1;1H\u{1b}[me\u{301}a\u{308}\u{30a}o\u{302}\u{1b}[Dx\u{303}",
+        );
+    }
+
+    #[test]
+    fn variation_selectors_agree() {
+        assert_agrees(
+            1,
+            16,
+            "\u{1b}[1;1H\u{1b}[m\u{26a0}\u{fe0f}|\u{231a}\u{fe0e}|1\u{fe0f}\u{20e3}|",
+        );
+    }
+
+    #[test]
+    fn skin_tones_and_flags_agree_cell_by_cell() {
+        assert_agrees(
+            1,
+            16,
+            "\u{1b}[1;1H\u{1b}[m\u{1f44d}\u{1f3fd}|\u{1f1e9}\u{1f1ea}|\u{1f1e9}\u{1f1ea}\u{1f1eb}|",
+        );
+    }
+
+    #[test]
+    fn zwj_sequences_agree_cell_by_cell() {
+        assert_agrees(
+            1,
+            20,
+            "\u{1b}[1;1H\u{1b}[m\u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467}|\
+             \u{1f3f3}\u{fe0f}\u{200d}\u{1f308}|a\u{200d}b",
+        );
+    }
+
+    #[test]
+    fn a_mark_after_a_wide_character_and_in_pending_wrap_agrees() {
+        assert_agrees(2, 4, "\u{1b}[1;1H\u{1b}[m\u{4f60}\u{301}ab\u{302}c");
+    }
+
+    #[test]
+    fn the_emitter_round_trips_clusters_through_the_wire() {
+        let mut emitter = Emitter::new(2, 30);
+        emitter.advance(
+            "e\u{301} \u{26a0}\u{fe0f} \u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467} \u{915}\u{94d}\u{937}"
+                .as_bytes(),
+        );
+        let frame = emitter.frame().expect("a frame");
+        let mut reference = Reference::new(2, 30);
+        reference.advance(frame.as_bytes());
+        let divergences = compare(&emitter.project(), &reference.project());
+        assert!(
+            divergences.is_empty(),
+            "{}",
+            divergences
+                .iter()
+                .map(|divergence| divergence.describe())
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+        let projected = emitter.project();
+        assert_eq!(projected.cells[0][0].text, "e\u{301}");
+        assert_eq!(
+            projected.cells[0][2].text, "\u{26a0}",
+            "a narrow emoji is shown in its text style"
+        );
+    }
+
+    #[test]
+    fn a_width_three_cell_projects_a_head_and_two_tails() {
+        let mut reference = Reference::new(1, 6);
+        reference.advance("\u{17d8}x".as_bytes());
+        let projected = reference.project();
+        assert_eq!(projected.cells[0][0].occupancy, Occupancy::WideHead);
+        assert_eq!(projected.cells[0][1].occupancy, Occupancy::WideTail);
+        assert_eq!(projected.cells[0][2].occupancy, Occupancy::WideTail);
+        assert_eq!(projected.cells[0][3].text, "x");
     }
 
     #[test]

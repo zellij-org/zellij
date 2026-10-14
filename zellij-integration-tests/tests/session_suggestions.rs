@@ -137,6 +137,26 @@ fn wait_for_index_row(session_name: &str, what: &str, ready: impl Fn(&SessionRow
     }
 }
 
+fn wait_for_index_row_to_disappear(session_name: &str) {
+    let deadline = Instant::now() + default_timeout();
+    loop {
+        let row = SessionIndex::open_default()
+            .unwrap()
+            .get(session_name)
+            .unwrap();
+        if row.is_none() {
+            return;
+        }
+        if Instant::now() >= deadline {
+            panic!(
+                "timed out waiting for the index row of {} to be removed: {:?}",
+                session_name, row
+            );
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+}
+
 fn line_with(grid_snapshot: &GridSnapshot, needle: &str) -> String {
     grid_snapshot
         .lines()
@@ -287,8 +307,7 @@ fn switch_and_close_removes_the_unused_session() {
     wait_for_path_to_disappear(&socket, "the unused session socket");
     let cache_folder = zellij_utils::consts::session_info_folder_for_session(&unused_session);
     wait_for_path_to_disappear(&cache_folder, "the unused session cache folder");
-    let index = zellij_utils::session_index::SessionIndex::open_default().unwrap();
-    assert!(index.get(&unused_session).unwrap().is_none());
+    wait_for_index_row_to_disappear(&unused_session);
     zellij.quit();
 }
 

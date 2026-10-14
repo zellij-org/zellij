@@ -1341,6 +1341,11 @@ impl SessionMetaData {
                 .send_to_screen(ScreenInstruction::SetSwapLayoutNotification(
                     new_config.options.swap_layout_notification.unwrap_or(true),
                 ));
+            let _ = self
+                .senders
+                .send_to_screen(ScreenInstruction::SetGraphemeClusters(
+                    new_config.options.grapheme_clusters.unwrap_or(true),
+                ));
             let _ = self.senders.send_to_screen(ScreenInstruction::SetOnQuit(
                 new_config.options.on_quit.unwrap_or_default(),
             ));
@@ -3854,7 +3859,24 @@ pub fn start_server_impl(
                 client_id,
             ) => {
                 let mut rlock = session_data.write().unwrap();
-                let session_data = rlock.as_mut().unwrap();
+                let Some(session_data) = rlock.as_mut() else {
+                    drop(rlock);
+                    log::error!(
+                        "Client {} tried to attach before the session finished starting",
+                        client_id
+                    );
+                    let _ = os_input.send_to_client(
+                        client_id,
+                        ServerToClientMsg::Exit {
+                            exit_reason: ExitReason::Error(
+                                "The session is not ready yet, please try attaching again."
+                                    .to_owned(),
+                            ),
+                        },
+                    );
+                    remove_client!(client_id, os_input, session_state, session_data);
+                    continue;
+                };
                 let config = session_data.session_configuration.saved_config.clone();
                 let host_terminal_env = cli_assets.host_terminal_env.clone();
                 let runtime_config_options = match cli_assets.configuration_options {

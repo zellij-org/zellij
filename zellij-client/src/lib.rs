@@ -75,6 +75,28 @@ const DISABLE_HOST_THEME_NOTIFY: &str = "\u{1b}[?2031l";
 /// same `CSI ? 997 ; {1|2} n` form as unsolicited notifications, so the
 /// stdin parser handles both uniformly.
 const QUERY_HOST_THEME: &str = "\u{1b}[?996n";
+const ENABLE_GRAPHEME_CLUSTER_MODE: &str = "\u{1b}[?2027h";
+const DISABLE_GRAPHEME_CLUSTER_MODE: &str = "\u{1b}[?2027l";
+
+#[derive(Debug, Default, Clone, Copy)]
+pub(crate) struct OuterGraphemeClusterMode {
+    enabled: bool,
+}
+
+impl OuterGraphemeClusterMode {
+    pub(crate) fn handle_reply(&mut self, value: u8, stdout: &mut dyn Write) {
+        if self.enabled || !matches!(value, 1 | 2) {
+            return;
+        }
+        self.enabled = true;
+        let _ = stdout.write_all(ENABLE_GRAPHEME_CLUSTER_MODE.as_bytes());
+        let _ = stdout.flush();
+    }
+
+    pub(crate) fn is_enabled(&self) -> bool {
+        self.enabled
+    }
+}
 
 /// Spawn an async runtime for this client instance.
 ///
@@ -206,6 +228,7 @@ pub(crate) enum ClientInstruction {
         resolve_async: bool,
     },
     EmitNestedSessionFrame(Vec<u8>),
+    OuterGraphemeClusterMode(u8),
 }
 
 impl From<ServerToClientMsg> for ClientInstruction {
@@ -276,6 +299,9 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::ConfigFileUpdated => ClientContext::ConfigFileUpdated,
             ClientInstruction::ForwardQueryToHost { .. } => ClientContext::ForwardQueryToHost,
             ClientInstruction::EmitNestedSessionFrame(..) => ClientContext::EmitNestedSessionFrame,
+            ClientInstruction::OuterGraphemeClusterMode(..) => {
+                ClientContext::OuterGraphemeClusterMode
+            },
         }
     }
 }
@@ -898,7 +924,7 @@ pub fn start_remote_client(
         os_input.disable_mouse().non_fatal();
         os_input.unset_raw_mode().unwrap();
         os_input.restore_console_mode();
-        let error = terminal_teardown_message(&e, full_screen_ws.rows, true);
+        let error = terminal_teardown_message(&e, full_screen_ws.rows, true, false);
         let mut stdout = os_input.get_stdout_writer();
         stdout.write_all(error.as_bytes()).unwrap();
         stdout.flush().unwrap();
@@ -1374,7 +1400,7 @@ pub fn start_client(
         })
         .unwrap();
 
-    let handle_error = |backtrace: String| {
+    let handle_error = |backtrace: String, include_grapheme_cluster_exit: bool| {
         os_input.disable_mouse().non_fatal();
         let _ = os_input.unset_raw_mode();
         os_input.restore_console_mode();
@@ -1382,6 +1408,7 @@ pub fn start_client(
             &backtrace,
             full_screen_ws.rows,
             !explicitly_disable_kitty_keyboard_protocol,
+            include_grapheme_cluster_exit,
         );
         let mut stdout = os_input.get_stdout_writer();
         let _ = stdout.write_all(error.as_bytes());
@@ -1394,6 +1421,7 @@ pub fn start_client(
         Some("alacritty") => Some(SyncOutput::DCS),
         _ => None,
     };
+    let mut outer_grapheme_cluster_mode = OuterGraphemeClusterMode::default();
 
     loop {
         let (client_instruction, mut err_ctx) = receive_client_instructions
@@ -1407,13 +1435,13 @@ pub fn start_client(
                 os_input.send_to_server(ClientToServerMsg::ClientExited);
 
                 if let ExitReason::Error(_) = reason {
-                    handle_error(reason.to_string());
+                    handle_error(reason.to_string(), outer_grapheme_cluster_mode.is_enabled());
                 }
                 exit_msg = reason.to_string();
                 break;
             },
             ClientInstruction::Error(backtrace) => {
-                handle_error(backtrace);
+                handle_error(backtrace, outer_grapheme_cluster_mode.is_enabled());
             },
             ClientInstruction::Render(output) => {
                 let mut stdout = os_input.get_stdout_writer();
@@ -1421,8 +1449,12 @@ pub fn start_client(
                     let message = format!("Failed to write to the terminal: {}", e);
                     log::error!("{}", message);
                     os_input.send_to_server(ClientToServerMsg::ClientExited);
-                    handle_error(message);
+                    handle_error(message, outer_grapheme_cluster_mode.is_enabled());
                 }
+            },
+            ClientInstruction::OuterGraphemeClusterMode(value) => {
+                let mut stdout = os_input.get_stdout_writer();
+                outer_grapheme_cluster_mode.handle_reply(value, &mut *stdout);
             },
             ClientInstruction::UnblockInputThread => {
                 command_is_executing.unblock_input_thread();
@@ -1602,6 +1634,7 @@ pub fn start_client(
             &exit_msg,
             full_screen_ws.rows,
             !explicitly_disable_kitty_keyboard_protocol,
+            outer_grapheme_cluster_mode.is_enabled(),
         );
 
         os_input.disable_mouse().non_fatal();
@@ -1614,6 +1647,9 @@ pub fn start_client(
     } else {
         let clear_screen = "\u{1b}[2J";
         let mut stdout = os_input.get_stdout_writer();
+        if outer_grapheme_cluster_mode.is_enabled() {
+            let _ = stdout.write_all(DISABLE_GRAPHEME_CLUSTER_MODE.as_bytes());
+        }
         let _ = stdout.write_all(clear_screen.as_bytes());
         let _ = stdout.flush();
     }
@@ -1764,18 +1800,29 @@ fn write_render_output(
     stdout.flush()
 }
 
-fn terminal_teardown_message(message: &str, rows: usize, include_kitty_exit: bool) -> String {
+fn terminal_teardown_message(
+    message: &str,
+    rows: usize,
+    include_kitty_exit: bool,
+    include_grapheme_cluster_exit: bool,
+) -> String {
     let goto_start_of_last_line = format!("\u{1b}[{};{}H", rows, 1);
     let kitty_exit = if include_kitty_exit {
         EXIT_KITTY_KEYBOARD_MODE
     } else {
         ""
     };
+    let grapheme_cluster_exit = if include_grapheme_cluster_exit {
+        DISABLE_GRAPHEME_CLUSTER_MODE
+    } else {
+        ""
+    };
     format!(
-        "{}{}{}{}{}{}{}{}\n",
+        "{}{}{}{}{}{}{}{}{}\n",
         kitty_exit,
         DISABLE_HOST_THEME_NOTIFY,
         DISABLE_FOCUS_REPORTING,
+        grapheme_cluster_exit,
         EXIT_ALTERNATE_SCREEN,
         RESET_STYLE,
         SHOW_CURSOR,

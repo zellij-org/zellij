@@ -1,3 +1,5 @@
+use arrayvec::ArrayString;
+use std::borrow::Cow;
 use std::convert::From;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::ops::{Index, IndexMut};
@@ -11,12 +13,17 @@ use zellij_utils::data::{PaletteColor, Style};
 use zellij_utils::input::command::RunCommand;
 
 use crate::panes::alacritty_functions::parse_sgr_color;
+use crate::panes::cluster_table;
 
 pub const EMPTY_TERMINAL_CHARACTER: TerminalCharacter = TerminalCharacter {
     character: ' ',
-    width: 1,
+    packed: 1,
     styles: RcCharacterStyles::Reset,
 };
+
+pub const MAX_CODE_POINTS_PER_CELL: usize = 32;
+const EXTRA_TAG: u32 = 1 << 23;
+const EXTRA_VALUE_MASK: u32 = EXTRA_TAG - 1;
 
 pub const RESET_STYLES: CharacterStyles = CharacterStyles {
     foreground: Some(AnsiCode::Reset),
@@ -904,17 +911,65 @@ impl Cursor {
     }
 }
 
-#[derive(Clone, PartialEq)]
 pub struct TerminalCharacter {
     pub character: char,
     pub styles: RcCharacterStyles,
-    width: u8,
+    // Width and any code points attached after `character`, packed into one u32 so the cell
+    // stays 16 bytes:
+    //
+    //   bits 0..8   width in columns (0-255), see `width()`
+    //   bits 8..32  the "extra" value, see `extra_value()` and `attached()`:
+    //     0                        nothing attached; the cell is just `character`
+    //     bit 31 (EXTRA_TAG) clear one attached code point, stored as its scalar value
+    //                              (fits, since code points need at most 21 bits)
+    //     bit 31 (EXTRA_TAG) set   two or more attached code points; bits 8..31 are an id
+    //                              into `cluster_table`, which holds their text and a
+    //                              reference count (bumped on clone, released on drop)
+    //
+    // So `packed > 0xff` means "has attached code points", and the cell's full text is
+    // `character` followed by the inline code point or the table entry.
+    packed: u32,
 }
 
-// This size has significant memory and CPU implications for long lines,
-// be careful about allowing it to grow
 #[cfg(target_arch = "x86_64")]
 const _: [(); 16] = [(); std::mem::size_of::<TerminalCharacter>()];
+
+enum Attached {
+    None,
+    Inline(char),
+    Table(u32),
+}
+
+impl Clone for TerminalCharacter {
+    #[inline]
+    fn clone(&self) -> Self {
+        if self.is_tagged() {
+            cluster_table::retain(self.extra_value() & EXTRA_VALUE_MASK);
+        }
+        TerminalCharacter {
+            character: self.character,
+            styles: self.styles.clone(),
+            packed: self.packed,
+        }
+    }
+}
+
+impl Drop for TerminalCharacter {
+    #[inline]
+    fn drop(&mut self) {
+        if self.is_tagged() {
+            cluster_table::release(self.extra_value() & EXTRA_VALUE_MASK);
+        }
+    }
+}
+
+impl PartialEq for TerminalCharacter {
+    fn eq(&self, other: &Self) -> bool {
+        self.character == other.character
+            && self.packed == other.packed
+            && self.styles == other.styles
+    }
+}
 
 impl TerminalCharacter {
     pub fn shares_styles_with(&self, other: &TerminalCharacter) -> bool {
@@ -925,8 +980,23 @@ impl TerminalCharacter {
         }
     }
     pub fn copy_glyph_from(&mut self, other: &TerminalCharacter) {
+        if other.is_tagged() {
+            cluster_table::retain(other.extra_value() & EXTRA_VALUE_MASK);
+        }
+        if self.is_tagged() {
+            cluster_table::release(self.extra_value() & EXTRA_VALUE_MASK);
+        }
         self.character = other.character;
-        self.width = other.width;
+        self.packed = other.packed;
+    }
+
+    #[inline]
+    pub fn copy_plain_glyph(&mut self, character: char, width: u8) {
+        if self.is_tagged() {
+            cluster_table::release(self.extra_value() & EXTRA_VALUE_MASK);
+        }
+        self.character = character;
+        self.packed = width as u32;
     }
 
     #[inline]
@@ -939,8 +1009,33 @@ impl TerminalCharacter {
         TerminalCharacter {
             character,
             styles,
-            width: character.width().unwrap_or(0) as u8,
+            packed: character.width().unwrap_or(0) as u32 & 0xff,
         }
+    }
+
+    #[inline]
+    pub fn new_with_width(character: char, width: u8, styles: RcCharacterStyles) -> Self {
+        TerminalCharacter {
+            character,
+            styles,
+            packed: width as u32,
+        }
+    }
+
+    pub fn from_cluster(cluster: &str, width: usize, styles: RcCharacterStyles) -> Option<Self> {
+        let mut chars = cluster.chars();
+        let first = chars.next()?;
+        let mut cell = TerminalCharacter {
+            character: first,
+            styles,
+            packed: width.min(u8::MAX as usize) as u32,
+        };
+        for c in chars {
+            if !cell.attach(c) {
+                break;
+            }
+        }
+        Some(cell)
     }
 
     #[inline]
@@ -953,18 +1048,199 @@ impl TerminalCharacter {
         TerminalCharacter {
             character,
             styles,
-            width: 1,
+            packed: 1,
         }
     }
 
+    #[inline]
     pub fn width(&self) -> usize {
-        self.width as usize
+        (self.packed & 0xff) as usize
+    }
+
+    pub(crate) fn set_width(&mut self, width: u8) {
+        self.packed = (self.packed & !0xff) | width as u32;
+    }
+
+    #[inline]
+    fn is_tagged(&self) -> bool {
+        self.packed & 0x8000_0000 != 0
+    }
+
+    #[inline]
+    fn extra_value(&self) -> u32 {
+        self.packed >> 8
+    }
+
+    #[inline]
+    fn set_extra_value(&mut self, value: u32) {
+        self.packed = (self.packed & 0xff) | (value << 8);
+    }
+
+    #[inline]
+    fn attached(&self) -> Attached {
+        let value = self.extra_value();
+        if value == 0 {
+            Attached::None
+        } else if value & EXTRA_TAG != 0 {
+            Attached::Table(value & EXTRA_VALUE_MASK)
+        } else {
+            match char::from_u32(value) {
+                Some(c) => Attached::Inline(c),
+                None => Attached::None,
+            }
+        }
+    }
+
+    #[inline]
+    pub fn has_attached(&self) -> bool {
+        self.packed > 0xff
+    }
+
+    pub fn is_plain_blank(&self) -> bool {
+        self.character == ' ' && !self.has_attached()
+    }
+
+    pub fn attach(&mut self, c: char) -> bool {
+        if c == '\0' {
+            return false;
+        }
+        match self.attached() {
+            Attached::None => {
+                self.set_extra_value(c as u32);
+                true
+            },
+            Attached::Inline(previous) => {
+                let mut text = ArrayString::<8>::new();
+                text.push(previous);
+                text.push(c);
+                match cluster_table::intern(&text) {
+                    Some(id) => {
+                        self.set_extra_value(EXTRA_TAG | id);
+                        true
+                    },
+                    None => false,
+                }
+            },
+            Attached::Table(id) => {
+                let Some(existing) = cluster_table::text(id) else {
+                    return false;
+                };
+                if existing.chars().count() + 1 >= MAX_CODE_POINTS_PER_CELL {
+                    return false;
+                }
+                let mut text = ArrayString::<{ MAX_CODE_POINTS_PER_CELL * 4 }>::new();
+                if text.try_push_str(&existing).is_err() || text.try_push(c).is_err() {
+                    return false;
+                }
+                match cluster_table::intern(&text) {
+                    Some(new_id) => {
+                        cluster_table::release(id);
+                        self.set_extra_value(EXTRA_TAG | new_id);
+                        true
+                    },
+                    None => false,
+                }
+            },
+        }
+    }
+
+    pub fn clear_attached(&mut self) {
+        if let Attached::Table(id) = self.attached() {
+            cluster_table::release(id);
+        }
+        self.packed &= 0xff;
+    }
+
+    pub fn last_char(&self) -> char {
+        match self.attached() {
+            Attached::None => self.character,
+            Attached::Inline(c) => c,
+            Attached::Table(id) => cluster_table::text(id)
+                .and_then(|text| text.chars().last())
+                .unwrap_or(self.character),
+        }
+    }
+
+    pub fn code_point_count(&self) -> usize {
+        match self.attached() {
+            Attached::None => 1,
+            Attached::Inline(_) => 2,
+            Attached::Table(id) => {
+                1 + cluster_table::text(id)
+                    .map(|text| text.chars().count())
+                    .unwrap_or(0)
+            },
+        }
+    }
+
+    #[inline]
+    pub fn push_text_to(&self, out: &mut String) {
+        out.push(self.character);
+        match self.attached() {
+            Attached::None => {},
+            Attached::Inline(c) => out.push(c),
+            Attached::Table(id) => {
+                if let Some(text) = cluster_table::text(id) {
+                    out.push_str(&text);
+                }
+            },
+        }
+    }
+
+    pub fn for_each_char(&self, mut f: impl FnMut(char)) {
+        f(self.character);
+        match self.attached() {
+            Attached::None => {},
+            Attached::Inline(c) => f(c),
+            Attached::Table(id) => {
+                if let Some(text) = cluster_table::text(id) {
+                    text.chars().for_each(f);
+                }
+            },
+        }
+    }
+
+    pub fn text(&self) -> Cow<'_, str> {
+        if !self.has_attached() {
+            let mut buf = String::with_capacity(4);
+            buf.push(self.character);
+            return Cow::Owned(buf);
+        }
+        let mut out = String::new();
+        self.push_text_to(&mut out);
+        Cow::Owned(out)
+    }
+
+    pub fn utf8_len(&self) -> usize {
+        if !self.has_attached() {
+            return self.character.len_utf8();
+        }
+        let mut len = 0;
+        self.for_each_char(|c| len += c.len_utf8());
+        len
+    }
+
+    pub fn natural_width(&self) -> usize {
+        if !self.has_attached() {
+            return self.character.width().unwrap_or(0);
+        }
+        UnicodeWidthStr::width(self.text().as_ref())
+    }
+
+    pub fn summed_code_point_width(&self) -> usize {
+        let mut sum = 0;
+        self.for_each_char(|c| sum += c.width().unwrap_or(0));
+        sum
     }
 }
 
 impl ::std::fmt::Debug for TerminalCharacter {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.character)
+        if self.has_attached() {
+            write!(f, "{}", self.text())
+        } else {
+            write!(f, "{}", self.character)
+        }
     }
 }
 
@@ -986,7 +1262,9 @@ pub fn render_first_run_banner(
                 .bold(Some(AnsiCode::On));
             let waiting_to_run_text = "Waiting to run: ";
             let command_text = run_command.to_string();
-            let waiting_to_run_text_width = waiting_to_run_text.width() + command_text.width();
+            let waiting_to_run_text_width =
+                zellij_utils::graphemes::display_width(waiting_to_run_text)
+                    + zellij_utils::graphemes::display_width(&command_text);
             let column_start_postion = middle_column.saturating_sub(waiting_to_run_text_width / 2);
             let waiting_to_run_line = format!(
                 "\u{1b}[{};{}H{}{}{}{}{}",
@@ -1045,7 +1323,7 @@ pub fn render_first_run_banner(
         },
         None => {
             let bare_text = format!("Waiting to start...");
-            let bare_text_width = bare_text.width();
+            let bare_text_width = zellij_utils::graphemes::display_width(&bare_text);
             let column_start_postion = middle_column.saturating_sub(bare_text_width / 2);
             let bold_text = RESET_STYLES.bold(Some(AnsiCode::On));
             let waiting_to_run_line = format!(
@@ -1099,3 +1377,7 @@ pub fn render_first_run_banner(
         },
     }
 }
+
+#[cfg(test)]
+#[path = "./unit/cluster_table_tests.rs"]
+mod cluster_table_tests;

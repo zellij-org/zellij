@@ -34,6 +34,22 @@ pub fn preferred_fallbacks(platform: Platform) -> &'static [&'static str] {
     }
 }
 
+pub const EMOJI_FAMILIES: &[&str] = &[
+    "Apple Color Emoji",
+    "Segoe UI Emoji",
+    "Noto Color Emoji",
+    "Twemoji",
+    "JoyPixels",
+];
+
+pub fn emoji_order(faces: &[Face]) -> Vec<usize> {
+    let mut order: Vec<usize> = (0..faces.len())
+        .filter(|index| preference_rank(&faces[*index], EMOJI_FAMILIES) < EMOJI_FAMILIES.len())
+        .collect();
+    order.sort_by_key(|index| (preference_rank(&faces[*index], EMOJI_FAMILIES), *index));
+    order
+}
+
 fn named(face: &Face, family: &str) -> bool {
     face.families
         .iter()
@@ -112,7 +128,9 @@ mod scanner {
 
     use std::collections::HashMap;
 
-    use super::{fallback_order, family_choice, monospace_families, preferred_fallbacks, Face};
+    use super::{
+        emoji_order, fallback_order, family_choice, monospace_families, preferred_fallbacks, Face,
+    };
     use crate::font::FaceRequest;
     use crate::platform::Platform;
 
@@ -219,6 +237,13 @@ mod scanner {
             family_choice(&self.faces, family, request).and_then(|index| self.located(index))
         }
 
+        pub fn match_emoji(&self, character: char) -> Option<(PathBuf, u32)> {
+            emoji_order(&self.faces)
+                .into_iter()
+                .find(|index| self.covers(*index, character))
+                .and_then(|index| self.located(index))
+        }
+
         pub fn monospace_families(&self) -> Vec<String> {
             monospace_families(&self.faces)
         }
@@ -263,6 +288,18 @@ mod tests {
             weighted("Mono", 500),
             weighted("Mono", 700),
         ]
+    }
+
+    #[test]
+    fn colour_emoji_families_are_ordered_by_preference_and_others_left_out() {
+        let faces = vec![
+            face("Noto Color Emoji", false, false, false),
+            face("DejaVu Sans", false, false, false),
+            face("Apple Color Emoji", false, false, false),
+            face("Symbola", false, false, false),
+        ];
+        assert_eq!(emoji_order(&faces), vec![2, 0]);
+        assert!(emoji_order(&[face("Symbola", false, false, false)]).is_empty());
     }
 
     #[test]

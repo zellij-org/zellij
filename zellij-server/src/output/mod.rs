@@ -1,5 +1,3 @@
-use std::collections::VecDeque;
-
 use base64::engine::general_purpose::STANDARD as BASE64_ENCODER;
 use base64::engine::Engine as _;
 
@@ -13,7 +11,10 @@ use crate::{
     },
     panes::sixel::SixelImageStore,
     panes::terminal_character::{AnsiCode, AnsiStyledUnderline, CharacterStyles, NamedColor},
-    panes::{LinkHandler, PaneId, TerminalCharacter, DEFAULT_STYLES, EMPTY_TERMINAL_CHARACTER},
+    panes::{
+        grapheme_join, LinkHandler, PaneId, TerminalCharacter, DEFAULT_STYLES,
+        EMPTY_TERMINAL_CHARACTER,
+    },
     ClientId,
 };
 use std::cell::RefCell;
@@ -34,8 +35,8 @@ use zellij_utils::pane_size::{PaneGeom, Size};
 use zellij_utils::structured_render::{
     CursorState, FrameBuilder, GeometryRecord, GraphicsMedium, GraphicsRecord, LinkEntry,
     LinkRecord, PaneRect, PendingOverlay, ScrollRecord, WireCell, WireColor, ATTR_BOLD, ATTR_DIM,
-    ATTR_FAST_BLINK, ATTR_HIDDEN, ATTR_ITALIC, ATTR_REVERSE, ATTR_SLOW_BLINK, ATTR_STRIKE,
-    CURSOR_BLINKING, CURSOR_SHAPE_BEAM, CURSOR_SHAPE_BLOCK, CURSOR_SHAPE_DEFAULT,
+    ATTR_FAST_BLINK, ATTR_GROUP_CONTINUE, ATTR_HIDDEN, ATTR_ITALIC, ATTR_REVERSE, ATTR_SLOW_BLINK,
+    ATTR_STRIKE, CURSOR_BLINKING, CURSOR_SHAPE_BEAM, CURSOR_SHAPE_BLOCK, CURSOR_SHAPE_DEFAULT,
     CURSOR_SHAPE_UNDERLINE, GRAPHICS_FORMAT_RGBA8, LINK_NONE, MAX_LINK_ID, MAX_LINK_URI_LEN,
     UNDERLINE_CURLY, UNDERLINE_DASHED, UNDERLINE_DOTTED, UNDERLINE_DOUBLE, UNDERLINE_NONE,
     UNDERLINE_SHIFT, UNDERLINE_STRAIGHT,
@@ -221,7 +222,7 @@ fn serialize_chunks_with_newlines(
             )
             .with_context(err_context)?;
             chunk_width += t_character.width();
-            vte_output.push(t_character.character);
+            t_character.push_text_to(&mut vte_output);
         }
     }
     Ok(vte_output)
@@ -542,6 +543,7 @@ fn wire_attrs(styles: &CharacterStyles, styled_underlines: bool) -> u16 {
     attrs
 }
 
+#[inline]
 fn wire_cell(
     t_character: &TerminalCharacter,
     styles: CharacterStyles,
@@ -564,7 +566,7 @@ fn wire_cell(
             WireColor::Default.pack()
         },
         attrs: wire_attrs(&styles, styled_underlines),
-        width: t_character.width().min(2) as u8,
+        width: t_character.width().min(u8::MAX as usize) as u8,
         link: LINK_NONE,
     }
 }
@@ -597,41 +599,128 @@ fn flatten_chunks(
         let pane_default_fg = character_chunk.pane_default_fg;
         let pane_default_bg = character_chunk.pane_default_bg;
         run.clear();
-        let mut chunk_width = character_chunk.x;
-        for t_character in character_chunk.terminal_characters.iter() {
-            if chunk_width + t_character.width() > cols {
-                break;
-            }
-            let current_character_styles = adjust_styles_for_custom_bg_fg(
+        let cells = &character_chunk.terminal_characters;
+        let styles_at = |cell: &TerminalCharacter, column: usize| {
+            adjust_styles_for_custom_bg_fg(
                 adjust_styles_for_possible_selection(
                     character_chunk.selection_and_colors(),
-                    *t_character.styles,
+                    *cell.styles,
                     character_chunk.y,
-                    chunk_width,
+                    column,
                 ),
                 pane_default_fg,
                 pane_default_bg,
-            );
-            let mut cell = wire_cell(
-                t_character,
-                current_character_styles,
-                chunk_changed_colors,
-                styled_underlines,
-            );
-            if let Some(links) = links.as_deref_mut() {
-                if let Some(uri) = links.handler.uri(t_character.styles.link_anchor) {
-                    cell.link = links.table.id_for(uri, cols, rows);
+            )
+        };
+        let column_starts: Vec<usize> = if character_chunk.may_have_groups {
+            cells
+                .iter()
+                .scan(character_chunk.x, |column, cell| {
+                    let start = *column;
+                    *column += cell.width();
+                    Some(start)
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let mut chunk_width = character_chunk.x;
+        let mut index = 0;
+        while index < cells.len() {
+            let t_character = &cells[index];
+            if t_character.width() == 0 {
+                index += 1;
+                continue;
+            }
+            if !character_chunk.may_have_groups && !t_character.has_attached() {
+                if chunk_width + t_character.width() > cols {
+                    break;
+                }
+                let mut cell = wire_cell(
+                    t_character,
+                    styles_at(t_character, chunk_width),
+                    chunk_changed_colors,
+                    styled_underlines,
+                );
+                if let Some(links) = links.as_deref_mut() {
+                    if let Some(uri) = links.handler.uri(t_character.styles.link_anchor) {
+                        cell.link = links.table.id_for(uri, cols, rows);
+                    }
+                }
+                chunk_width += t_character.width();
+                run.push(cell);
+                for _ in 1..t_character.width() {
+                    run.push(WireCell {
+                        ch: ' ' as u32,
+                        width: 1,
+                        ..cell
+                    });
+                }
+                index += 1;
+                continue;
+            }
+            let unit_end = if character_chunk.may_have_groups {
+                grapheme_join::group_end(cells, index, |previous, next| {
+                    styles_at(&cells[previous], column_starts[previous])
+                        == styles_at(&cells[next], column_starts[next])
+                })
+            } else {
+                index + 1
+            };
+            let unit = &cells[index..unit_end];
+            let unit_columns: usize = unit.iter().map(|c| c.width()).sum();
+            if chunk_width + unit_columns > cols {
+                break;
+            }
+            let strip_vs16 = if unit_end == index + 1 && !t_character.has_attached() {
+                false
+            } else {
+                grapheme_join::prepare_unit(unit, unit_columns).strip_vs16
+            };
+            let mut member_text = String::new();
+            for (offset, member) in unit.iter().enumerate() {
+                let current_character_styles = styles_at(member, chunk_width);
+                let mut cell = wire_cell(
+                    member,
+                    current_character_styles,
+                    chunk_changed_colors,
+                    styled_underlines,
+                );
+                if member.has_attached() {
+                    member_text.clear();
+                    member.push_text_to(&mut member_text);
+                    if strip_vs16 {
+                        member_text.retain(|c| c != '\u{FE0F}');
+                    }
+                    let mut chars = member_text.chars();
+                    match (chars.next(), chars.next()) {
+                        (Some(only), None) => cell.ch = only as u32,
+                        (Some(first), Some(_)) => {
+                            cell.ch = builder.cluster(&member_text).unwrap_or(first as u32);
+                        },
+                        _ => cell.ch = ' ' as u32,
+                    }
+                }
+                if offset > 0 {
+                    cell.attrs |= ATTR_GROUP_CONTINUE;
+                }
+                if let Some(links) = links.as_deref_mut() {
+                    if let Some(uri) = links.handler.uri(member.styles.link_anchor) {
+                        cell.link = links.table.id_for(uri, cols, rows);
+                    }
+                }
+                chunk_width += member.width();
+                run.push(cell);
+                for _ in 1..member.width() {
+                    run.push(WireCell {
+                        ch: ' ' as u32,
+                        width: 1,
+                        attrs: cell.attrs & !ATTR_GROUP_CONTINUE,
+                        ..cell
+                    });
                 }
             }
-            chunk_width += t_character.width();
-            run.push(cell);
-            for _ in 1..t_character.width() {
-                run.push(WireCell {
-                    ch: ' ' as u32,
-                    width: 1,
-                    ..cell
-                });
-            }
+            index = unit_end;
         }
         builder.push_row(character_chunk.y as u16, character_chunk.x as u16, &run);
         if let Some(links) = links.as_deref_mut() {
@@ -683,6 +772,62 @@ fn flatten_chunks(
     Ok(())
 }
 
+fn push_decimal(out: &mut String, value: usize) {
+    let mut digits = [0u8; 20];
+    let mut at = digits.len();
+    let mut rest = value;
+    loop {
+        at -= 1;
+        digits[at] = b'0' + (rest % 10) as u8;
+        rest /= 10;
+        if rest == 0 {
+            break;
+        }
+    }
+    for digit in &digits[at..] {
+        out.push(*digit as char);
+    }
+}
+
+// Writes one unit (a cell, or a group of cells forming one cluster) to a host terminal.
+//
+// We know how many columns the unit occupies in our grid (`unit_columns`), but not how many
+// the host terminal will use to draw its text: hosts disagree on emoji sequences, flags,
+// skin tones, VS16 and combining marks, and a host without mode 2027 may draw a family emoji
+// six columns wide where our grid has two. If the host's idea of the width differs from ours,
+// its cursor ends up somewhere else and everything after the unit on that row is shifted.
+//
+// So for units where that can happen (`prepared.complex`, decided in `prepare_unit`):
+//   ESC[nX        erase our n columns first, so nothing old is left showing in them even if
+//                 the host draws the text narrower than we think
+//   <text>        draw the cluster, at whatever width the host chooses
+//   ESC[<col>G    move the cursor to the column right after the unit by absolute position,
+//                 so the rest of the row lands where our grid says regardless of how far
+//                 the host's cursor actually moved
+// Plain text, where every width agrees, is written as is so ordinary output costs nothing
+// extra.
+fn write_unit_text(
+    vte_output: &mut String,
+    unit: &[TerminalCharacter],
+    unit_columns: usize,
+    column: usize,
+) -> std::fmt::Result {
+    let prepared = grapheme_join::prepare_unit(unit, unit_columns);
+    if prepared.complex {
+        vte_output.push_str("\u{1b}[");
+        push_decimal(vte_output, unit_columns);
+        vte_output.push('X');
+        vte_output.push_str(&prepared.text);
+        vte_output.push_str("\u{1b}[");
+        push_decimal(vte_output, column + unit_columns + 1);
+        vte_output.push('G');
+        Ok(())
+    } else {
+        vte_output.push_str(&prepared.text);
+        Ok(())
+    }
+}
+
 fn serialize_chunks(
     character_chunks: Vec<CharacterChunk>,
     sixel_chunks: Option<&Vec<SixelImageChunk>>,
@@ -715,25 +860,99 @@ fn serialize_chunks(
         let mut character_styles = DEFAULT_STYLES.enable_styled_underlines(styled_underlines);
         vte_goto_instruction(character_chunk.x, character_chunk.y, &mut vte_output)
             .with_context(err_context)?;
-        let mut chunk_width = character_chunk.x;
-        for t_character in character_chunk.terminal_characters.iter() {
-            // Stop rendering if the next character would exceed max_size.cols
+        // A chunk marked `erase_first` starts in the middle of a row where a floating pane cut
+        // off its left part (see `remove_covered_parts`). The host may still show part of a
+        // wide character or cluster that straddled the cut, and writing into the middle of
+        // a wide glyph is handled differently by different terminals. Erasing the chunk's
+        // columns before drawing makes sure no half glyph is left behind.
+        if character_chunk.erase_first {
+            let mut erase_width = character_chunk.width();
             if let Some(size) = max_size {
-                if chunk_width + t_character.width() > size.cols {
-                    break; // Stop rendering this chunk
-                }
+                erase_width = erase_width.min(size.cols.saturating_sub(character_chunk.x));
             }
-
-            let current_character_styles = adjust_styles_for_custom_bg_fg(
+            if erase_width > 0 {
+                write!(vte_output, "\u{1b}[{}X", erase_width).with_context(err_context)?;
+            }
+        }
+        let cells = &character_chunk.terminal_characters;
+        if !character_chunk.may_have_groups {
+            let mut chunk_width = character_chunk.x;
+            for t_character in cells.iter() {
+                if let Some(size) = max_size {
+                    if chunk_width + t_character.width() > size.cols {
+                        break;
+                    }
+                }
+                let current_character_styles = adjust_styles_for_custom_bg_fg(
+                    adjust_styles_for_possible_selection(
+                        character_chunk.selection_and_colors(),
+                        *t_character.styles,
+                        character_chunk.y,
+                        chunk_width,
+                    ),
+                    pane_default_fg,
+                    pane_default_bg,
+                );
+                write_changed_styles(
+                    &mut character_styles,
+                    current_character_styles,
+                    chunk_changed_colors,
+                    link_handler.as_ref(),
+                    osc8_hyperlinks,
+                    &mut vte_output,
+                )
+                .with_context(err_context)?;
+                if t_character.has_attached() {
+                    write_unit_text(
+                        &mut vte_output,
+                        std::slice::from_ref(t_character),
+                        t_character.width(),
+                        chunk_width,
+                    )
+                    .with_context(err_context)?;
+                } else {
+                    vte_output.push(t_character.character);
+                }
+                chunk_width += t_character.width();
+            }
+            continue;
+        }
+        let styles_at = |cell: &TerminalCharacter, column: usize| {
+            adjust_styles_for_custom_bg_fg(
                 adjust_styles_for_possible_selection(
                     character_chunk.selection_and_colors(),
-                    *t_character.styles,
+                    *cell.styles,
                     character_chunk.y,
-                    chunk_width,
+                    column,
                 ),
                 pane_default_fg,
                 pane_default_bg,
-            );
+            )
+        };
+        let column_starts: Vec<usize> = cells
+            .iter()
+            .scan(character_chunk.x, |column, cell| {
+                let start = *column;
+                *column += cell.width();
+                Some(start)
+            })
+            .collect();
+        let mut chunk_width = character_chunk.x;
+        let mut index = 0;
+        while index < cells.len() {
+            let t_character = &cells[index];
+            let unit_end = grapheme_join::group_end(cells, index, |previous, next| {
+                styles_at(&cells[previous], column_starts[previous])
+                    == styles_at(&cells[next], column_starts[next])
+            });
+            let unit = &cells[index..unit_end];
+            let unit_columns: usize = unit.iter().map(|c| c.width()).sum();
+            if let Some(size) = max_size {
+                if chunk_width + unit_columns > size.cols {
+                    break;
+                }
+            }
+            let current_character_styles = styles_at(t_character, chunk_width);
             write_changed_styles(
                 &mut character_styles,
                 current_character_styles,
@@ -743,8 +962,14 @@ fn serialize_chunks(
                 &mut vte_output,
             )
             .with_context(err_context)?;
-            chunk_width += t_character.width();
-            vte_output.push(t_character.character);
+            if unit_end == index + 1 && !t_character.has_attached() {
+                vte_output.push(t_character.character);
+            } else {
+                write_unit_text(&mut vte_output, unit, unit_columns, chunk_width)
+                    .with_context(err_context)?;
+            }
+            chunk_width += unit_columns;
+            index = unit_end;
         }
     }
     if let Some(sixel_image_store) = sixel_image_store {
@@ -795,57 +1020,6 @@ fn serialize_chunks(
         }
     }
     Ok(vte_output)
-}
-
-type AbsoluteMiddleStart = usize;
-type AbsoluteMiddleEnd = usize;
-type PadLeftEndBy = usize;
-type PadRightStartBy = usize;
-fn adjust_middle_segment_for_wide_chars(
-    middle_start: usize,
-    middle_end: usize,
-    terminal_characters: &[TerminalCharacter],
-) -> Result<(
-    AbsoluteMiddleStart,
-    AbsoluteMiddleEnd,
-    PadLeftEndBy,
-    PadRightStartBy,
-)> {
-    let err_context = || {
-        format!(
-            "failed to adjust middle segment (from {} to {}) for wide chars: '{:?}'",
-            middle_start, middle_end, terminal_characters
-        )
-    };
-
-    let mut absolute_middle_start_index = None;
-    let mut absolute_middle_end_index = None;
-    let mut current_x = 0;
-    let mut pad_left_end_by = 0;
-    let mut pad_right_start_by = 0;
-    for (absolute_index, t_character) in terminal_characters.iter().enumerate() {
-        current_x += t_character.width();
-        if current_x >= middle_start && absolute_middle_start_index.is_none() {
-            if current_x > middle_start {
-                pad_left_end_by = current_x - middle_start;
-                absolute_middle_start_index = Some(absolute_index);
-            } else {
-                absolute_middle_start_index = Some(absolute_index + 1);
-            }
-        }
-        if current_x >= middle_end && absolute_middle_end_index.is_none() {
-            absolute_middle_end_index = Some(absolute_index + 1);
-            if current_x > middle_end {
-                pad_right_start_by = current_x - middle_end;
-            }
-        }
-    }
-    Ok((
-        absolute_middle_start_index.with_context(err_context)?,
-        absolute_middle_end_index.with_context(err_context)?,
-        pad_left_end_by,
-        pad_right_start_by,
-    ))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -2714,6 +2888,9 @@ impl FloatingPanesStack {
                 let covered_part = c_chunk.drain_by_width(pane_right_edge + 1 - c_chunk_left_side);
                 drop(covered_part);
                 c_chunk.x = pane_right_edge + 1;
+                // The chunk now starts right after the floating pane; a wide cell or cluster
+                // may have straddled that edge, so erase before drawing (see `serialize_chunks`).
+                c_chunk.erase_first = true;
                 return Ok(None);
             } else if pane_left_edge >= c_chunk_left_side
                 && pane_left_edge >= c_chunk_left_side
@@ -2737,12 +2914,19 @@ impl FloatingPanesStack {
                 left_chunk.pane_default_fg = c_chunk.pane_default_fg;
                 left_chunk.pane_default_bg = c_chunk.pane_default_bg;
                 left_chunk.changed_colors = c_chunk.changed_colors;
+                left_chunk.may_have_groups = c_chunk.may_have_groups;
+                // The left part starts where the original chunk started, so it needs erasing
+                // only if the original did.
+                left_chunk.erase_first = c_chunk.erase_first;
                 if !c_chunk.selection_and_colors.is_empty() {
                     left_chunk.selection_and_colors = c_chunk.selection_and_colors.clone();
                 }
 
                 c_chunk.x = right_chunk_x;
                 c_chunk.terminal_characters = right_chunk_characters;
+                // The right part starts right after the floating pane, where a wide cell or
+                // cluster may have straddled the edge, so erase before drawing.
+                c_chunk.erase_first = true;
                 return Ok(Some(left_chunk));
             }
         };
@@ -2937,6 +3121,10 @@ pub struct CharacterChunk {
     pub terminal_characters: Vec<TerminalCharacter>,
     pub x: usize,
     pub y: usize,
+    pub may_have_groups: bool,
+    // Erase the chunk's columns on the host before drawing it; set when a floating pane cut
+    // the chunk so that it starts mid-row (see `serialize_chunks`).
+    pub erase_first: bool,
     pub changed_colors: Option<[Option<AnsiCode>; 256]>,
     pub pane_default_fg: Option<AnsiCode>,
     pub pane_default_bg: Option<AnsiCode>,
@@ -2997,26 +3185,31 @@ impl CharacterChunk {
         width
     }
     pub fn drain_by_width(&mut self, x: usize) -> impl Iterator<Item = TerminalCharacter> {
-        let mut drained_part: VecDeque<TerminalCharacter> = VecDeque::new();
         let mut drained_part_len = 0;
-        loop {
-            if self.terminal_characters.is_empty() {
-                break;
-            }
-            let next_character = self.terminal_characters.remove(0); // TODO: consider copying self.terminal_characters into a VecDeque to make this process faster?
+        let mut split = 0;
+        for next_character in &self.terminal_characters {
             if drained_part_len + next_character.width() <= x {
                 drained_part_len += next_character.width();
-                drained_part.push_back(next_character);
+                split += 1;
             } else {
-                if drained_part_len == x {
-                    self.terminal_characters.insert(0, next_character); // put it back
-                } else if next_character.width() > 1 {
-                    for _ in 1..next_character.width() {
-                        self.terminal_characters.insert(0, EMPTY_TERMINAL_CHARACTER);
-                        drained_part.push_back(EMPTY_TERMINAL_CHARACTER);
-                    }
-                }
                 break;
+            }
+        }
+        let mut drained_part: Vec<TerminalCharacter> =
+            self.terminal_characters.drain(..split).collect();
+        if drained_part_len < x && !self.terminal_characters.is_empty() {
+            let crossing = self.terminal_characters.remove(0);
+            let crossing_width = crossing.width();
+            let left_blanks = x - drained_part_len;
+            let right_blanks = (drained_part_len + crossing_width).saturating_sub(x);
+            let mut blank = EMPTY_TERMINAL_CHARACTER;
+            blank.styles = crossing.styles.clone();
+            for _ in 0..left_blanks {
+                drained_part.push(blank.clone());
+            }
+            if right_blanks > 0 {
+                self.terminal_characters
+                    .splice(0..0, std::iter::repeat(blank).take(right_blanks));
             }
         }
         drained_part.into_iter()
@@ -3030,35 +3223,22 @@ impl CharacterChunk {
         middle_start: usize,
         middle_end: usize,
     ) -> Result<(Vec<TerminalCharacter>, Vec<TerminalCharacter>)> {
-        let err_context = || "failed to cut middle out of character chunk".to_string();
-
-        let (
-            absolute_middle_start_index,
-            absolute_middle_end_index,
-            pad_left_end_by,
-            pad_right_start_by,
-        ) = adjust_middle_segment_for_wide_chars(
-            middle_start,
-            middle_end,
-            &self.terminal_characters,
-        )
-        .with_context(err_context)?;
-        let mut terminal_characters: Vec<TerminalCharacter> =
+        if middle_end < middle_start || middle_start > self.width() {
+            return Err(anyhow!(
+                "failed to cut middle out of character chunk: {}..{} of width {}",
+                middle_start,
+                middle_end,
+                self.width()
+            ));
+        }
+        let characters_on_the_left: Vec<TerminalCharacter> =
+            self.drain_by_width(middle_start).collect();
+        drop(
+            self.drain_by_width(middle_end - middle_start)
+                .collect::<Vec<_>>(),
+        );
+        let characters_on_the_right: Vec<TerminalCharacter> =
             self.terminal_characters.drain(..).collect();
-        let mut characters_on_the_right: Vec<TerminalCharacter> = terminal_characters
-            .drain(absolute_middle_end_index..)
-            .collect();
-        let mut characters_on_the_left: Vec<TerminalCharacter> = terminal_characters
-            .drain(..absolute_middle_start_index)
-            .collect();
-        if pad_left_end_by > 0 {
-            characters_on_the_left.resize(pad_left_end_by, EMPTY_TERMINAL_CHARACTER);
-        }
-        if pad_right_start_by > 0 {
-            for _ in 0..pad_right_start_by {
-                characters_on_the_right.insert(0, EMPTY_TERMINAL_CHARACTER);
-            }
-        }
         Ok((characters_on_the_left, characters_on_the_right))
     }
 }
@@ -3123,7 +3303,9 @@ impl OutputBuffer {
 
             let x = 0;
             let y = line_index;
-            chunks.push(CharacterChunk::new(terminal_characters, x, y));
+            let mut chunk = CharacterChunk::new(terminal_characters, x, y);
+            chunk.may_have_groups = line.may_have_groups;
+            chunks.push(chunk);
             chunk_starts_a_line.push(line.is_canonical || line_index == 0);
         }
         serialize_chunks_with_newlines(
@@ -3152,7 +3334,12 @@ impl OutputBuffer {
 
                 let x = x_offset; // right now we only buffer full lines as this doesn't seem to have a huge impact on performance, but the infra is here if we want to change this
                 let y = line_index + y_offset;
-                changed_chunks.push(CharacterChunk::new(terminal_characters, x, y));
+                let mut chunk = CharacterChunk::new(terminal_characters, x, y);
+                chunk.may_have_groups = viewport
+                    .get(line_index)
+                    .map(|row| row.may_have_groups)
+                    .unwrap_or(false);
+                changed_chunks.push(chunk);
             }
             changed_chunks
         } else {
@@ -3169,7 +3356,12 @@ impl OutputBuffer {
                     self.extract_line_from_viewport(line_index, viewport, viewport_width);
                 let x = x_offset;
                 let y = line_index + y_offset;
-                changed_chunks.push(CharacterChunk::new(terminal_characters, x, y));
+                let mut chunk = CharacterChunk::new(terminal_characters, x, y);
+                chunk.may_have_groups = viewport
+                    .get(line_index)
+                    .map(|row| row.may_have_groups)
+                    .unwrap_or(false);
+                changed_chunks.push(chunk);
             }
             changed_chunks
         }
@@ -3192,10 +3384,18 @@ impl OutputBuffer {
             let mut padding = vec![pad_character; viewport_width - row_width];
             terminal_characters.append(&mut padding);
         } else if row_width > viewport_width {
-            let width_offset = row.excess_width_until(viewport_width);
-            let truncate_position = viewport_width.saturating_sub(width_offset);
-            if truncate_position < terminal_characters.len() {
-                terminal_characters.truncate(truncate_position);
+            let mut kept_width = 0;
+            let mut truncate_position = 0;
+            for character in &terminal_characters {
+                if kept_width + character.width() > viewport_width {
+                    break;
+                }
+                kept_width += character.width();
+                truncate_position += 1;
+            }
+            terminal_characters.truncate(truncate_position);
+            for _ in kept_width..viewport_width {
+                terminal_characters.push(EMPTY_TERMINAL_CHARACTER);
             }
         }
         terminal_characters

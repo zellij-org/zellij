@@ -19118,3 +19118,112 @@ fn a_session_preview_shows_the_requested_pane_or_falls_back_to_the_focused_one()
     assert!(focused.contents.contains("second pane text"));
     assert!(screen.get_active_tab(client_id).is_ok());
 }
+
+#[test]
+fn typing_a_pane_name_with_clusters_and_backspace_removes_the_whole_cluster() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    let client_id = 1;
+    new_tab(&mut screen, 1, 0);
+    let pane_id = PaneId::Terminal(1);
+    let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}";
+    {
+        let tab = screen.get_active_tab_mut(client_id).unwrap();
+        for c in format!("a{}e\u{0301}", family).chars() {
+            tab.update_active_pane_name(c.to_string().into_bytes(), client_id)
+                .unwrap();
+        }
+    }
+    assert_eq!(
+        screen
+            .get_active_tab(client_id)
+            .unwrap()
+            .get_pane_with_id(pane_id)
+            .unwrap()
+            .current_title(),
+        format!("a{}e\u{0301}", family)
+    );
+    {
+        let tab = screen.get_active_tab_mut(client_id).unwrap();
+        tab.update_active_pane_name(vec![0x7f], client_id).unwrap();
+    }
+    assert_eq!(
+        screen
+            .get_active_tab(client_id)
+            .unwrap()
+            .get_pane_with_id(pane_id)
+            .unwrap()
+            .current_title(),
+        format!("a{}", family)
+    );
+    {
+        let tab = screen.get_active_tab_mut(client_id).unwrap();
+        tab.update_active_pane_name(vec![0x08], client_id).unwrap();
+    }
+    assert_eq!(
+        screen
+            .get_active_tab(client_id)
+            .unwrap()
+            .get_pane_with_id(pane_id)
+            .unwrap()
+            .current_title(),
+        "a"
+    );
+}
+
+#[test]
+fn typing_a_tab_name_with_clusters_and_backspace_removes_the_whole_cluster() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    let client_id = 1;
+    new_tab(&mut screen, 1, 0);
+    screen
+        .update_active_tab_name("\0".as_bytes().to_vec(), client_id)
+        .unwrap();
+    for c in "x\u{1F1E9}\u{1F1EA}".chars() {
+        screen
+            .update_active_tab_name(c.to_string().into_bytes(), client_id)
+            .unwrap();
+    }
+    assert_eq!(
+        screen.get_active_tab(client_id).unwrap().name,
+        "x\u{1F1E9}\u{1F1EA}"
+    );
+    screen
+        .update_active_tab_name(vec![0x7f], client_id)
+        .unwrap();
+    assert_eq!(screen.get_active_tab(client_id).unwrap().name, "x");
+    screen.undo_active_rename_tab(client_id).unwrap();
+    assert_eq!(screen.get_active_tab(client_id).unwrap().name, "Tab #1");
+}
+
+#[test]
+fn cli_pane_renames_drop_control_characters() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    let client_id = 1;
+    new_tab(&mut screen, 1, 0);
+    let pane_id = PaneId::Terminal(1);
+    if let Ok(tab) = screen.get_active_tab_mut(client_id) {
+        let _ = tab.rename_pane_by_pane_id(
+            pane_id,
+            "a\u{1b}]0;evil\u{7}b\nc\u{1F1E9}\u{1F1EA}"
+                .as_bytes()
+                .to_vec(),
+        );
+    }
+    let tab = screen.get_active_tab(client_id).unwrap();
+    assert_eq!(
+        tab.get_pane_with_id(pane_id).unwrap().current_title(),
+        "a]0;evilbc\u{1F1E9}\u{1F1EA}"
+    );
+}

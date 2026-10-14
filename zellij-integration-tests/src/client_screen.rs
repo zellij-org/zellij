@@ -31,6 +31,7 @@ pub enum HostTerminal {
     Kitty,
     KittyZlib,
     Manual,
+    GraphemeClusterAware(u8),
 }
 
 const PRIMARY_DA_QUERY: &[u8] = b"\x1b[c";
@@ -41,6 +42,7 @@ const KITTY_ZLIB_PROBE_PREFIX: &[u8] = b"\x1b_Ga=q,i=32,";
 const KITTY_ZLIB_PROBE_REPLY: &[u8] = b"\x1b_Gi=32;OK\x1b\\";
 const CELL_SIZE_QUERY: &[u8] = b"\x1b[16t";
 const CELL_SIZE_REPLY: &[u8] = b"\x1b[6;21;8t";
+const GRAPHEME_CLUSTER_MODE_QUERY: &[u8] = b"\x1b[?2027$p";
 
 struct HostResponder {
     host_terminal: HostTerminal,
@@ -49,9 +51,11 @@ struct HostResponder {
 }
 
 impl HostResponder {
-    fn answers(&self) -> &'static [(&'static [u8], &'static [u8])] {
-        match self.host_terminal {
-            HostTerminal::Basic => &[(PRIMARY_DA_QUERY, PRIMARY_DA_REPLY)],
+    fn answers(&self) -> Vec<(&'static [u8], Vec<u8>)> {
+        let static_answers: &[(&'static [u8], &'static [u8])] = match self.host_terminal {
+            HostTerminal::Basic | HostTerminal::GraphemeClusterAware(_) => {
+                &[(PRIMARY_DA_QUERY, PRIMARY_DA_REPLY)]
+            },
             HostTerminal::Kitty => &[
                 (PRIMARY_DA_QUERY, PRIMARY_DA_REPLY),
                 (KITTY_GRAPHICS_PROBE_PREFIX, KITTY_GRAPHICS_PROBE_REPLY),
@@ -64,7 +68,18 @@ impl HostResponder {
                 (CELL_SIZE_QUERY, CELL_SIZE_REPLY),
             ],
             HostTerminal::Manual => &[],
+        };
+        let mut answers: Vec<(&'static [u8], Vec<u8>)> = static_answers
+            .iter()
+            .map(|(query, reply)| (*query, reply.to_vec()))
+            .collect();
+        if let HostTerminal::GraphemeClusterAware(value) = self.host_terminal {
+            answers.push((
+                GRAPHEME_CLUSTER_MODE_QUERY,
+                format!("\x1b[?2027;{}$y", value).into_bytes(),
+            ));
         }
+        answers
     }
 
     fn observe(&mut self, bytes: &[u8]) {
@@ -424,7 +439,7 @@ pub fn render_bytes(bytes: &[u8], win_size: Size) -> GridSnapshot {
                 text.push('█');
                 continue;
             }
-            text.push(terminal_character.character);
+            terminal_character.push_text_to(&mut text);
         }
         styles.push(style_row);
         if line_index != output_lines.len() - 1 {

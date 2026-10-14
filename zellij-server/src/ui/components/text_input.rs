@@ -1,10 +1,9 @@
 use super::widget_common::{
     accented_field_bracket_styles, colored, decode_styled, decode_text, dimmed, field_styles, fit,
-    label_width, move_to, paint, render_label, reversed, text_width, WidgetState,
+    label_width, move_to, paint, render_label, reversed, text_clusters, text_width, WidgetState,
 };
 use super::Coordinates;
 use crate::panes::terminal_character::{AnsiCode, CharacterStyles};
-use unicode_width::UnicodeWidthChar;
 use zellij_utils::data::Style;
 
 const MIN_FIELD_WIDTH: usize = 5;
@@ -103,17 +102,19 @@ fn render_text_area(
     let mut output = String::new();
     let mut used_width = 0;
     let mut cursor_drawn = false;
-    for (index, character) in text.chars().enumerate() {
-        let character_width = character.width().unwrap_or(0);
-        if used_width + character_width > width {
+    for (cluster, cluster_width, index) in text_clusters(text) {
+        if used_width + cluster_width > width {
             break;
         }
-        used_width += character_width;
-        if cursor == Some(index) {
-            output.push_str(&paint(reversed(value_styles), &character.to_string()));
+        used_width += cluster_width;
+        let char_count = cluster.chars().count();
+        if cursor.map_or(false, |cursor| {
+            cursor >= index && cursor < index + char_count
+        }) {
+            output.push_str(&paint(reversed(value_styles), cluster));
             cursor_drawn = true;
         } else {
-            output.push_str(&paint(text_styles, &character.to_string()));
+            output.push_str(&paint(text_styles, cluster));
         }
     }
     if let Some(_) = cursor.filter(|_| !cursor_drawn && used_width < width) {

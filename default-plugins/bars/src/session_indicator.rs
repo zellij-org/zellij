@@ -1,5 +1,5 @@
 use std::collections::BTreeMap;
-use unicode_width::UnicodeWidthStr;
+use zellij_tile::graphemes::display_width;
 use zellij_tile::prelude::*;
 
 pub const SESSION_MANAGER_ALIAS: &str = "session-manager";
@@ -156,11 +156,11 @@ impl SessionIndicator {
     pub fn fitting_variant(&self, max_width: usize) -> Option<IndicatorText> {
         self.variants()
             .into_iter()
-            .find(|variant| variant.text.width() + DROPDOWN_CHROME_WIDTH <= max_width)
+            .find(|variant| display_width(&variant.text) + DROPDOWN_CHROME_WIDTH <= max_width)
     }
 
     pub fn width_of(text: &IndicatorText) -> usize {
-        text.text.width() + DROPDOWN_CHROME_WIDTH
+        display_width(&text.text) + DROPDOWN_CHROME_WIDTH
     }
 
     pub fn render(&self, text: &IndicatorText, x: usize, y: usize, simplified_ui: bool) -> String {

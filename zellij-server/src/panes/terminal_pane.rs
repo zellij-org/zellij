@@ -674,7 +674,7 @@ impl Pane for TerminalPane {
                 self.pane_name = String::new();
             },
             DELETE_KEY | BACKSPACE_KEY => {
-                self.pane_name.pop();
+                zellij_utils::graphemes::pop_cluster(&mut self.pane_name);
             },
             c => {
                 self.pane_name.push_str(c);
@@ -1075,7 +1075,7 @@ impl Pane for TerminalPane {
                 self.search_term = String::new();
             },
             DELETE_KEY | BACKSPACE_KEY => {
-                self.search_term.pop();
+                zellij_utils::graphemes::pop_cluster(&mut self.search_term);
             },
             c => {
                 self.search_term.push_str(c);
@@ -1229,7 +1229,9 @@ impl Pane for TerminalPane {
         }
     }
     fn rename(&mut self, buf: Vec<u8>) {
-        self.pane_name = String::from_utf8_lossy(&buf).to_string();
+        self.pane_name = zellij_utils::shared::clean_string_from_control_and_linebreak(
+            &String::from_utf8_lossy(&buf),
+        );
         self.set_should_render(true);
     }
     fn serialize(&self, scrollback_lines_to_serialize: Option<usize>) -> Option<String> {
@@ -1522,6 +1524,10 @@ impl TerminalPane {
             self.render_first_run_banner();
         }
         self.set_should_render(true);
+    }
+    pub fn with_grapheme_clusters(mut self, grapheme_clusters: bool) -> Self {
+        self.grid.set_grapheme_mode_by_default(grapheme_clusters);
+        self
     }
     pub fn read_buffer_as_lines(&self) -> Vec<Vec<TerminalCharacter>> {
         self.grid.as_character_lines()

@@ -92,15 +92,9 @@ impl Text {
         self
     }
     pub fn dim_substring<S: AsRef<str>>(mut self, substr: S) -> Self {
-        let substr = substr.as_ref();
-        let mut start = 0;
-
-        while let Some(pos) = self.text[start..].find(substr) {
-            let abs_pos = start + pos;
-            self = self.dim_range(abs_pos..abs_pos + substr.chars().count());
-            start = abs_pos + substr.len();
+        for (start, end) in self.substring_char_ranges(substr.as_ref()) {
+            self = self.dim_range(start..end);
         }
-
         self
     }
     pub fn dim_all(self) -> Self {
@@ -135,15 +129,9 @@ impl Text {
         self
     }
     pub fn unbold_substring<S: AsRef<str>>(mut self, substr: S) -> Self {
-        let substr = substr.as_ref();
-        let mut start = 0;
-
-        while let Some(pos) = self.text[start..].find(substr) {
-            let abs_pos = start + pos;
-            self = self.unbold_range(abs_pos..abs_pos + substr.chars().count());
-            start = abs_pos + substr.len();
+        for (start, end) in self.substring_char_ranges(substr.as_ref()) {
+            self = self.unbold_range(start..end);
         }
-
         self
     }
     pub fn italic_range<R: RangeBounds<usize>>(self, indices: R) -> Self {
@@ -186,15 +174,9 @@ impl Text {
         self
     }
     pub fn error_color_substring<S: AsRef<str>>(mut self, substr: S) -> Self {
-        let substr = substr.as_ref();
-        let mut start = 0;
-
-        while let Some(pos) = self.text[start..].find(substr) {
-            let abs_pos = start + pos;
-            self = self.error_color_range(abs_pos..abs_pos + substr.chars().count());
-            start = abs_pos + substr.len();
+        for (start, end) in self.substring_char_ranges(substr.as_ref()) {
+            self = self.error_color_range(start..end);
         }
-
         self
     }
     pub fn error_color_nth_substring<S: AsRef<str>>(
@@ -202,29 +184,21 @@ impl Text {
         substr: S,
         occurrence_index: usize,
     ) -> Self {
-        let substr = substr.as_ref();
-        let mut start = 0;
-        let mut count = 0;
-
-        while let Some(pos) = self.text[start..].find(substr) {
-            if count == occurrence_index {
-                let abs_pos = start + pos;
-                return self.error_color_range(abs_pos..abs_pos + substr.len());
-            }
-            count += 1;
-            start = start + pos + substr.len();
+        match self
+            .substring_char_ranges(substr.as_ref())
+            .get(occurrence_index)
+            .copied()
+        {
+            Some((start, end)) => self.error_color_range(start..end),
+            None => self,
         }
-
-        self
     }
 
     pub fn error_color_last_substring<S: AsRef<str>>(self, substr: S) -> Self {
-        let substr = substr.as_ref();
-
-        if let Some(pos) = self.text.rfind(substr) {
-            return self.error_color_range(pos..pos + substr.len());
+        match self.last_substring_char_range(substr.as_ref()) {
+            Some((start, end)) => self.error_color_range(start..end),
+            None => self,
         }
-        self
     }
 
     pub fn error_color_all(self) -> Self {
@@ -258,15 +232,9 @@ impl Text {
         self
     }
     pub fn success_color_substring<S: AsRef<str>>(mut self, substr: S) -> Self {
-        let substr = substr.as_ref();
-        let mut start = 0;
-
-        while let Some(pos) = self.text[start..].find(substr) {
-            let abs_pos = start + pos;
-            self = self.success_color_range(abs_pos..abs_pos + substr.chars().count());
-            start = abs_pos + substr.len();
+        for (start, end) in self.substring_char_ranges(substr.as_ref()) {
+            self = self.success_color_range(start..end);
         }
-
         self
     }
     pub fn success_color_nth_substring<S: AsRef<str>>(
@@ -274,29 +242,21 @@ impl Text {
         substr: S,
         occurrence_index: usize,
     ) -> Self {
-        let substr = substr.as_ref();
-        let mut start = 0;
-        let mut count = 0;
-
-        while let Some(pos) = self.text[start..].find(substr) {
-            if count == occurrence_index {
-                let abs_pos = start + pos;
-                return self.success_color_range(abs_pos..abs_pos + substr.len());
-            }
-            count += 1;
-            start = start + pos + substr.len();
+        match self
+            .substring_char_ranges(substr.as_ref())
+            .get(occurrence_index)
+            .copied()
+        {
+            Some((start, end)) => self.success_color_range(start..end),
+            None => self,
         }
-
-        self
     }
 
     pub fn success_color_last_substring<S: AsRef<str>>(self, substr: S) -> Self {
-        let substr = substr.as_ref();
-
-        if let Some(pos) = self.text.rfind(substr) {
-            return self.success_color_range(pos..pos + substr.len());
+        match self.last_substring_char_range(substr.as_ref()) {
+            Some((start, end)) => self.success_color_range(start..end),
+            None => self,
         }
-        self
     }
 
     pub fn success_color_all(self) -> Self {
@@ -329,14 +289,8 @@ impl Text {
     }
 
     pub fn color_substring<S: AsRef<str>>(mut self, index_level: usize, substr: S) -> Self {
-        let substr = substr.as_ref();
-        let mut start = 0;
-        while let Some(pos) = self.text[start..].find(substr) {
-            let abs_pos = start + pos;
-            let char_start = self.text[..abs_pos].chars().count();
-            let char_end = char_start + substr.chars().count();
-            self = self.color_range(index_level, char_start..char_end);
-            start = abs_pos + substr.len();
+        for (start, end) in self.substring_char_ranges(substr.as_ref()) {
+            self = self.color_range(index_level, start..end);
         }
         self
     }
@@ -351,67 +305,90 @@ impl Text {
         substr: S,
         occurrence_index: usize,
     ) -> Self {
-        let substr = substr.as_ref();
-        let mut start = 0;
-        let mut count = 0;
-
-        while let Some(pos) = self.text[start..].find(substr) {
-            if count == occurrence_index {
-                let abs_pos = start + pos;
-                return self.color_range(index_level, abs_pos..abs_pos + substr.len());
-            }
-            count += 1;
-            start = start + pos + substr.len();
+        match self
+            .substring_char_ranges(substr.as_ref())
+            .get(occurrence_index)
+            .copied()
+        {
+            Some((start, end)) => self.color_range(index_level, start..end),
+            None => self,
         }
-
-        self
     }
 
     pub fn color_last_substring<S: AsRef<str>>(self, index_level: usize, substr: S) -> Self {
-        let substr = substr.as_ref();
-
-        if let Some(pos) = self.text.rfind(substr) {
-            return self.color_range(index_level, pos..pos + substr.len());
+        match self.last_substring_char_range(substr.as_ref()) {
+            Some((start, end)) => self.color_range(index_level, start..end),
+            None => self,
         }
-        self
+    }
+
+    fn substring_char_ranges(&self, substr: &str) -> Vec<(usize, usize)> {
+        let mut ranges = vec![];
+        if substr.is_empty() {
+            return ranges;
+        }
+        let substr_chars = substr.chars().count();
+        let mut start = 0;
+        while let Some(pos) = self.text[start..].find(substr) {
+            let abs_pos = start + pos;
+            let char_start = self.text[..abs_pos].chars().count();
+            ranges.push((char_start, char_start + substr_chars));
+            start = abs_pos + substr.len();
+        }
+        ranges
+    }
+
+    fn last_substring_char_range(&self, substr: &str) -> Option<(usize, usize)> {
+        if substr.is_empty() {
+            return None;
+        }
+        self.text.rfind(substr).map(|pos| {
+            let char_start = self.text[..pos].chars().count();
+            (char_start, char_start + substr.chars().count())
+        })
     }
 
     pub fn content(&self) -> &str {
         &self.text
     }
     pub fn width(&self) -> usize {
-        unicode_width::UnicodeWidthStr::width(self.text.as_str())
+        zellij_utils::graphemes::display_width(&self.text)
     }
     pub fn is_plain(&self) -> bool {
         self.indices.iter().all(|level| level.is_empty())
     }
     pub fn wrap(&self, width: usize) -> Vec<Text> {
         let width = width.max(1);
-        let chars: Vec<char> = self.text.chars().collect();
-        let char_width =
-            |character: char| unicode_width::UnicodeWidthChar::width(character).unwrap_or(0);
+        let mut units: Vec<(&str, usize, usize)> = vec![];
+        let mut char_index = 0;
+        for (cluster, cluster_width) in zellij_utils::graphemes::clusters(&self.text) {
+            units.push((cluster, char_index, cluster_width));
+            char_index += cluster.chars().count();
+        }
+        let is_newline = |unit: &(&str, usize, usize)| unit.0.contains('\n');
+        let is_whitespace = |unit: &(&str, usize, usize)| unit.0.chars().all(char::is_whitespace);
         let mut lines: Vec<Vec<Option<usize>>> = vec![];
         let mut line: Vec<Option<usize>> = vec![];
         let mut line_width = 0;
         let mut position = 0;
-        while position <= chars.len() {
-            if position == chars.len() || chars[position] == '\n' {
+        while position <= units.len() {
+            if position == units.len() || is_newline(&units[position]) {
                 lines.push(std::mem::take(&mut line));
                 line_width = 0;
                 position += 1;
                 continue;
             }
-            if chars[position].is_whitespace() {
+            if is_whitespace(&units[position]) {
                 position += 1;
                 continue;
             }
-            let word_end = (position..chars.len())
-                .find(|index| chars[*index].is_whitespace())
-                .unwrap_or(chars.len());
+            let word_end = (position..units.len())
+                .find(|index| is_whitespace(&units[*index]))
+                .unwrap_or(units.len());
             let mut word: Vec<usize> = (position..word_end).collect();
             position = word_end;
             loop {
-                let word_width: usize = word.iter().map(|index| char_width(chars[*index])).sum();
+                let word_width: usize = word.iter().map(|index| units[*index].2).sum();
                 let separator = if line.is_empty() { 0 } else { 1 };
                 if line_width + separator + word_width <= width {
                     if separator == 1 {
@@ -429,7 +406,7 @@ impl Text {
                 let mut taken = 0;
                 let mut split_at = 0;
                 for index in &word {
-                    let next = char_width(chars[*index]);
+                    let next = units[*index].2;
                     if taken + next > width && split_at > 0 {
                         break;
                     }
@@ -468,24 +445,33 @@ impl Text {
                         indices[level].push(column);
                     }
                 };
-                for (column, original) in line.iter().enumerate() {
+                let mut column = 0;
+                for (slot, original) in line.iter().enumerate() {
                     match original {
                         Some(original) => {
-                            content.push(chars[*original]);
-                            mark(levels_at(*original), column);
+                            let (cluster, first_char, _) = units[*original];
+                            for (offset, character) in cluster.chars().enumerate() {
+                                content.push(character);
+                                mark(levels_at(first_char + offset), column);
+                                column += 1;
+                            }
                         },
                         None => {
                             content.push(' ');
-                            let before = line[..column].iter().rev().find_map(|index| *index);
-                            let after = line[column + 1..].iter().find_map(|index| *index);
+                            let before = line[..slot].iter().rev().find_map(|index| *index);
+                            let after = line[slot + 1..].iter().find_map(|index| *index);
                             if let (Some(before), Some(after)) = (before, after) {
-                                let after_levels = levels_at(after);
-                                let shared = levels_at(before)
+                                let after_levels = levels_at(units[after].1);
+                                let (before_cluster, before_start, _) = units[before];
+                                let before_last =
+                                    before_start + before_cluster.chars().count().saturating_sub(1);
+                                let shared = levels_at(before_last)
                                     .into_iter()
                                     .filter(|level| after_levels.contains(level))
                                     .collect();
                                 mark(shared, column);
                             }
+                            column += 1;
                         },
                     }
                 }
@@ -644,5 +630,73 @@ mod tests {
         assert!(serialized.starts_with('d'));
         assert!(serialized.contains("0,1,2$"));
         assert!(serialized.ends_with(&text_body("Foo bar baz")));
+    }
+
+    fn level(text: &Text, level: usize) -> Vec<usize> {
+        text.indices.get(level).cloned().unwrap_or_default()
+    }
+
+    #[test]
+    fn substring_methods_use_character_positions_with_non_ascii_text() {
+        let text = Text::from("é foo é foo")
+            .dim_substring("foo")
+            .unbold_substring("é")
+            .error_color_substring("o é")
+            .success_color_substring("fo");
+        assert_eq!(level(&text, 4), vec![2, 3, 4, 8, 9, 10]);
+        assert_eq!(level(&text, 5), vec![0, 6]);
+        assert_eq!(level(&text, 6), vec![4, 5, 6]);
+        assert_eq!(level(&text, 7), vec![2, 3, 8, 9]);
+    }
+
+    #[test]
+    fn nth_and_last_substring_methods_use_character_positions_with_non_ascii_text() {
+        let text = Text::from("日本 ab 日本 ab")
+            .error_color_nth_substring("ab", 1)
+            .success_color_nth_substring("日本", 1)
+            .color_nth_substring(0, "ab", 0)
+            .color_last_substring(1, "本 a");
+        assert_eq!(level(&text, 6), vec![9, 10]);
+        assert_eq!(level(&text, 7), vec![6, 7]);
+        assert_eq!(level(&text, 0), vec![3, 4]);
+        assert_eq!(level(&text, 1), vec![7, 8, 9]);
+        let last = Text::from("ü x ü y")
+            .error_color_last_substring("ü")
+            .success_color_last_substring(" y");
+        assert_eq!(level(&last, 6), vec![4]);
+        assert_eq!(level(&last, 7), vec![5, 6]);
+    }
+
+    #[test]
+    fn missing_or_empty_substring_leaves_indices_untouched() {
+        let text = Text::from("👨‍👩‍👧 ab")
+            .error_color_nth_substring("ab", 3)
+            .color_last_substring(0, "zz")
+            .dim_substring("");
+        assert!(text.is_plain());
+    }
+
+    #[test]
+    fn width_counts_clusters() {
+        assert_eq!(Text::from("e\u{301}x").width(), 2);
+        assert_eq!(Text::from("👨‍👩‍👧").width(), 2);
+    }
+
+    #[test]
+    fn wrap_never_splits_a_cluster() {
+        let lines = Text::from("e\u{301}e\u{301}e\u{301}").wrap(2);
+        let contents: Vec<&str> = lines.iter().map(|line| line.content()).collect();
+        assert_eq!(contents, vec!["e\u{301}e\u{301}", "e\u{301}"]);
+        let lines = Text::from("👨‍👩‍👧 ab").wrap(3);
+        let contents: Vec<&str> = lines.iter().map(|line| line.content()).collect();
+        assert_eq!(contents, vec!["👨‍👩‍👧", "ab"]);
+    }
+
+    #[test]
+    fn wrap_keeps_character_highlights_on_clusters() {
+        let lines = Text::from("ab e\u{301}x").color_range(0, 3..6).wrap(2);
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[1].content(), "e\u{301}x");
+        assert_eq!(level(&lines[1], 0), vec![0, 1, 2]);
     }
 }

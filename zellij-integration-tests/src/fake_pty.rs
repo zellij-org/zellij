@@ -368,6 +368,22 @@ impl FakePtyHandle {
         });
     }
 
+    pub fn output_chunks(&self, chunks: &[&[u8]]) {
+        self.shared_ptys.read(|fake_pty_registry| {
+            let fake_pty_state = fake_pty_registry
+                .fake_pty_states
+                .get(&self.terminal_id)
+                .unwrap_or_else(|| panic!("unknown terminal id {}", self.terminal_id));
+            let output_tx = fake_pty_state
+                .output_tx
+                .as_ref()
+                .unwrap_or_else(|| panic!("terminal {} already exited", self.terminal_id));
+            for chunk in chunks {
+                let _ = output_tx.send(chunk.to_vec());
+            }
+        })
+    }
+
     pub fn output(&self, bytes: &[u8]) {
         self.shared_ptys.read(|fake_pty_registry| {
             let fake_pty_state = fake_pty_registry

@@ -67,6 +67,7 @@ pub enum HostReply {
     KittyGraphicsSupport(bool),
     KittyZlibSupport(bool),
     SixelSupport(bool),
+    GraphemeClusterMode(u8),
 }
 
 /// Retained alias for the pre-refactor type name used by other modules in
@@ -120,6 +121,11 @@ impl HostReply {
             // to CSI ?996n, or unsolicited host-theme notification when
             // CSI ?2031h is enabled.
             static ref THEME_RE: Regex = Regex::new(r"^\u{1b}\[\?997;([12])n$").unwrap();
+            static ref GRAPHEME_CLUSTER_RE: Regex = Regex::new(r"^\u{1b}\[\?2027;([0-4])\$y$").unwrap();
+        }
+        if let Some(caps) = GRAPHEME_CLUSTER_RE.captures(s) {
+            let value: u8 = caps[1].parse().ok()?;
+            return Some(HostReply::GraphemeClusterMode(value));
         }
         if let Some(caps) = PIX_RE.captures(s) {
             let which: usize = caps[1].parse().ok()?;
@@ -341,6 +347,7 @@ pub struct StdinAnsiParser {
     in_bracketed_paste: bool,
     startup_kitty_probe: StartupKittyProbe,
     startup_kitty_zlib_probe: StartupKittyProbe,
+    startup_grapheme_cluster_probe: StartupKittyProbe,
     partial_apc: Vec<u8>,
 }
 
@@ -367,8 +374,13 @@ impl StdinAnsiParser {
             in_bracketed_paste: false,
             startup_kitty_probe: StartupKittyProbe::NotSent,
             startup_kitty_zlib_probe: StartupKittyProbe::NotSent,
+            startup_grapheme_cluster_probe: StartupKittyProbe::NotSent,
             partial_apc: Vec::new(),
         }
+    }
+
+    pub fn expect_grapheme_cluster_mode_reply(&mut self) {
+        self.startup_grapheme_cluster_probe = StartupKittyProbe::AwaitingReply;
     }
 
     pub fn expect_kitty_probe_reply(&mut self) {
@@ -595,6 +607,17 @@ impl StdinAnsiParser {
                             if let Some(reply) = HostReply::sixel_support_from_primary_da(&raw) {
                                 out.replies.push(reply);
                             }
+                            let closes_own_batch = !matches!(
+                                self.batches.front().map(|batch| &batch.owner),
+                                Some(BatchOwner::Pane(_))
+                            );
+                            if closes_own_batch
+                                && self.startup_grapheme_cluster_probe
+                                    == StartupKittyProbe::AwaitingReply
+                            {
+                                self.startup_grapheme_cluster_probe = StartupKittyProbe::Resolved;
+                                out.replies.push(HostReply::GraphemeClusterMode(0));
+                            }
                             // Primary-DA — the barrier. Close the slot and
                             // emit the completed forwarded reply if active.
                             if let Some(QueryBatch {
@@ -613,6 +636,18 @@ impl StdinAnsiParser {
                             let reply = HostReply::from_csi_report(&raw);
                             let is_theme_notification =
                                 matches!(reply, Some(HostReply::HostTerminalThemeChanged(_)));
+                            if let Some(HostReply::GraphemeClusterMode(value)) = reply {
+                                if let Some(slot) = self.collecting_forward_mut() {
+                                    slot.reply_bytes.extend_from_slice(&raw);
+                                } else if self.startup_grapheme_cluster_probe
+                                    == StartupKittyProbe::AwaitingReply
+                                {
+                                    self.startup_grapheme_cluster_probe =
+                                        StartupKittyProbe::Resolved;
+                                    out.replies.push(HostReply::GraphemeClusterMode(value));
+                                }
+                                continue;
+                            }
                             if let Some(reply) = reply {
                                 out.replies.push(reply);
                             }

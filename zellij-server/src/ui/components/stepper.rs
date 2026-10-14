@@ -1,7 +1,7 @@
 use super::widget_common::{
     bold, center, colored, decode_styled, decode_text, dimmed, disabled_look, field_styles, fit,
     hovered_row_styles, label_width, move_to, paint, plain_styles, render_label, reversed,
-    text_width, WidgetState,
+    text_clusters, text_width, WidgetState,
 };
 use super::Coordinates;
 use zellij_utils::data::Style;
@@ -51,17 +51,17 @@ pub fn stepper(
     if editing {
         let cursor = state.number("cur").unwrap_or(value.chars().count());
         let mut used = 0;
-        for (index, character) in value.chars().enumerate() {
-            if used >= inner_width {
+        for (cluster, cluster_width, index) in text_clusters(&value) {
+            if used + cluster_width > inner_width {
                 break;
             }
-            let styles = if index == cursor {
+            let styles = if cursor >= index && cursor < index + cluster.chars().count() {
                 reversed(value_styles)
             } else {
                 value_styles
             };
-            output.push_str(&paint(styles, &character.to_string()));
-            used += 1;
+            output.push_str(&paint(styles, cluster));
+            used += cluster_width;
         }
         if cursor >= value.chars().count() && used < inner_width {
             output.push_str(&paint(reversed(value_styles), " "));

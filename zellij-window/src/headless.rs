@@ -1466,4 +1466,182 @@ mod tests {
         assert_eq!((small_image.width, small_image.height), (16, 40));
         assert_eq!((large_image.width, large_image.height), (80, 80));
     }
+
+    fn background_pixel() -> [u8; 4] {
+        let [r, g, b] = color::DEFAULT_BACKGROUND;
+        [r, g, b, 255]
+    }
+
+    fn inked_columns(
+        image: &Image,
+        metrics: crate::font::CellMetrics,
+        row: u32,
+        cols: u32,
+    ) -> Vec<u32> {
+        let blank = background_pixel();
+        (0..cols)
+            .filter(|col| {
+                (0..metrics.height).any(|y| {
+                    (0..metrics.width).any(|x| {
+                        image.pixel(col * metrics.width + x, row * metrics.height + y) != blank
+                    })
+                })
+            })
+            .collect()
+    }
+
+    fn coloured_pixels(image: &Image, metrics: crate::font::CellMetrics, cols: u32) -> usize {
+        (0..metrics.height)
+            .flat_map(|y| (0..metrics.width * cols).map(move |x| (x, y)))
+            .map(|(x, y)| image.pixel(x, y))
+            .filter(|[r, g, b, _]| r != g || g != b)
+            .count()
+    }
+
+    #[test]
+    fn an_emoji_style_cluster_is_one_colour_glyph_over_its_columns_and_blank_after() {
+        let Some(mut gpu) = Headless::exclusive() else {
+            return;
+        };
+        let (image, metrics) = draw(
+            &mut gpu,
+            &painted(1, 6, |painter| painter.cluster(0, 0, "\u{26a0}\u{fe0f}", 2)),
+        );
+        assert!(coloured_pixels(&image, metrics, 2) > 20);
+        let inked = inked_columns(&image, metrics, 0, 6);
+        assert!(
+            !inked.is_empty() && inked.iter().all(|col| *col < 2),
+            "{:?}",
+            inked
+        );
+    }
+
+    #[test]
+    fn a_joined_family_emoji_is_one_grey_glyph_inside_its_member_columns() {
+        let Some(mut gpu) = Headless::exclusive() else {
+            return;
+        };
+        let (image, metrics) = draw(
+            &mut gpu,
+            &painted(1, 8, |painter| {
+                painter.group(
+                    0,
+                    0,
+                    &[
+                        ("\u{1f468}\u{200d}", 2),
+                        ("\u{1f469}\u{200d}", 2),
+                        ("\u{1f467}", 2),
+                    ],
+                )
+            }),
+        );
+        assert_eq!(
+            coloured_pixels(&image, metrics, 6),
+            0,
+            "the bundled family glyph is grey, so colour means the yellow pieces were drawn apart"
+        );
+        let inked = inked_columns(&image, metrics, 0, 8);
+        assert!(
+            !inked.is_empty() && inked.iter().all(|col| *col < 6),
+            "{:?}",
+            inked
+        );
+    }
+
+    #[test]
+    fn a_joined_flag_is_coloured_and_stays_inside_its_two_columns() {
+        let Some(mut gpu) = Headless::exclusive() else {
+            return;
+        };
+        let (image, metrics) = draw(
+            &mut gpu,
+            &painted(1, 4, |painter| {
+                painter.group(0, 0, &[("\u{1f1e9}", 1), ("\u{1f1ea}", 1)])
+            }),
+        );
+        assert!(coloured_pixels(&image, metrics, 2) > 20);
+        let inked = inked_columns(&image, metrics, 0, 4);
+        assert!(
+            !inked.is_empty() && inked.iter().all(|col| *col < 2),
+            "{:?}",
+            inked
+        );
+    }
+
+    #[test]
+    fn a_devanagari_conjunct_is_drawn_inside_its_two_columns() {
+        let Some(mut gpu) = Headless::exclusive() else {
+            return;
+        };
+        let mut cache = GlyphCache::new(FontStack::new(DEFAULT_FONT_SIZE, true).unwrap());
+        if cache
+            .cluster_font(crate::font::FaceStyle::Regular, "\u{915}\u{94d}\u{937}")
+            .is_none()
+        {
+            eprintln!(
+                "zellij-window: no Devanagari font is installed, skipping the conjunct check"
+            );
+            return;
+        }
+        let state = painted(1, 4, |painter| {
+            painter.group(0, 0, &[("\u{915}\u{94d}", 1), ("\u{937}", 1)])
+        });
+        let built = scene::build(&state, &mut cache);
+        let metrics = cache.metrics();
+        let image = gpu.get().render(&built, cache.atlases()).unwrap();
+        let inked = inked_columns(&image, metrics, 0, 4);
+        assert!(!inked.is_empty(), "the conjunct drew nothing");
+        assert!(inked.iter().all(|col| *col < 2), "{:?}", inked);
+    }
+
+    #[test]
+    fn a_combining_mark_is_drawn_above_its_letter_in_the_same_cell() {
+        let Some(mut gpu) = Headless::exclusive() else {
+            return;
+        };
+        let (plain, metrics) = draw(&mut gpu, &painted(1, 3, |painter| painter.text(0, 0, "e")));
+        let (accented, _) = draw(
+            &mut gpu,
+            &painted(1, 3, |painter| painter.cluster(0, 0, "e\u{301}", 1)),
+        );
+        assert_ne!(plain.pixels, accented.pixels, "the accent was not drawn");
+        assert_eq!(inked_columns(&accented, metrics, 0, 3), vec![0]);
+        let blank = background_pixel();
+        let top_ink = |image: &Image| {
+            (0..metrics.height).find(|y| (0..metrics.width).any(|x| image.pixel(x, *y) != blank))
+        };
+        assert!(
+            top_ink(&accented) < top_ink(&plain),
+            "the accent does not reach above the letter"
+        );
+    }
+
+    #[test]
+    fn a_text_style_warning_sign_stays_in_its_one_column() {
+        let Some(mut gpu) = Headless::exclusive() else {
+            return;
+        };
+        let mut emitter = crate::reference::Emitter::new(1, 4);
+        emitter.advance("\u{1b}[?25l\u{26a0}\u{fe0f}x".as_bytes());
+        let mut state = TerminalState::new(1, 4);
+        while let Some((_, frame)) = emitter.dialects() {
+            if let zellij_server::output::RenderPayload::Frame(frame) = frame {
+                state.apply_frame(&frame).unwrap();
+            }
+        }
+        assert_eq!(state.screen().text_at(0, 0), "\u{26a0}");
+        assert_eq!(state.screen().text_at(0, 1), "x");
+        let (image, metrics) = draw(&mut gpu, &state);
+        assert_eq!(
+            coloured_pixels(&image, metrics, 1),
+            0,
+            "the sign was drawn as an emoji"
+        );
+        let inked = inked_columns(&image, metrics, 0, 4);
+        assert_eq!(
+            inked,
+            vec![0, 1],
+            "the sign overflowed into the next column"
+        );
+    }
 }

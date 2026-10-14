@@ -1,10 +1,12 @@
 use ansi_term::ANSIStrings;
-use unicode_width::UnicodeWidthStr;
 
 use crate::compact_bar::{LinePart, TabRenderData, ARROW_SEPARATOR};
 use crate::session_indicator::{IndicatorText, SessionIndicator};
+use zellij_tile::graphemes::display_width;
 use zellij_tile::prelude::*;
 use zellij_tile_utils::style;
+
+pub(crate) const PREFIX_TEXT: &str = " Zellij ";
 
 pub struct TabLineOutput {
     pub parts: Vec<LinePart>,
@@ -272,7 +274,7 @@ impl TabLinePopulator {
 
     fn create_styled_indicator(&self, text: String, tab_index: usize) -> LinePart {
         let separator = tab_separator(self.capabilities);
-        let text_len = text.width() + 2 * separator.width();
+        let text_len = display_width(&text) + 2 * display_width(separator);
 
         let colors = IndicatorColors {
             text: self.palette.ribbon_unselected.base,
@@ -396,6 +398,14 @@ impl<'a> TabLinePrefixBuilder<'a> {
         }
     }
 
+    fn build_minimal(&self) -> TabLinePrefix {
+        TabLinePrefix {
+            parts: vec![self.create_zellij_part()],
+            breadcrumb_range: None,
+            mode_range: None,
+        }
+    }
+
     fn create_breadcrumb_parts(
         &self,
         name: &str,
@@ -404,11 +414,11 @@ impl<'a> TabLinePrefixBuilder<'a> {
         let bg_color = self.palette.text_unselected.background;
         let text_color = self.palette.text_unselected.base;
         let ancestor_text = format!("({} ▸ ", self.breadcrumb_ancestry.join(" ▸ "));
-        let ancestor_len = ancestor_text.width();
+        let ancestor_len = display_width(&ancestor_text);
         let name_text = name.to_string();
-        let name_len = name_text.width();
+        let name_len = display_width(&name_text);
         let closing_text = ") ".to_string();
-        let closing_len = closing_text.width();
+        let closing_len = display_width(&closing_text);
         let total_len = ancestor_len + name_len + closing_len;
 
         if self.cols.saturating_sub(used_len) < total_len {
@@ -461,7 +471,7 @@ impl<'a> TabLinePrefixBuilder<'a> {
     }
 
     fn create_zellij_part(&self) -> LinePart {
-        let prefix_text = " Zellij ";
+        let prefix_text = PREFIX_TEXT;
         let colors = self.get_text_colors();
         let text_style = if self.dimmed {
             style!(colors.text, colors.background).italic()
@@ -471,14 +481,14 @@ impl<'a> TabLinePrefixBuilder<'a> {
 
         LinePart {
             part: text_style.paint(prefix_text).to_string(),
-            len: prefix_text.chars().count(),
+            len: display_width(prefix_text),
             tab_index: None,
         }
     }
 
     fn create_session_name_part(&self, name: &str, used_len: usize) -> Option<LinePart> {
         let name_part = format!("({})", name);
-        let name_part_len = name_part.width();
+        let name_part_len = display_width(&name_part);
 
         if self.cols.saturating_sub(used_len) >= name_part_len {
             let colors = self.get_text_colors();
@@ -499,7 +509,7 @@ impl<'a> TabLinePrefixBuilder<'a> {
 
     fn create_mode_part(&self, mode: InputMode, used_len: usize) -> Option<LinePart> {
         let mode_text = format!(" {} ", format!("{:?}", mode).to_uppercase());
-        let mode_len = mode_text.width();
+        let mode_len = display_width(&mode_text);
 
         if self.cols.saturating_sub(used_len) >= mode_len {
             let colors = self.get_text_colors();
@@ -598,8 +608,8 @@ impl RightSideElementsBuilder {
             keys.iter().map(|key| format!("<{}>", key)).collect()
         };
 
-        let prefix_len = prefix.width() + 1;
-        let keys_display_len: usize = keys_text.iter().map(|k| k.width()).sum::<usize>()
+        let prefix_len = display_width(prefix) + 1;
+        let keys_display_len: usize = keys_text.iter().map(|k| display_width(k)).sum::<usize>()
             + keys_text.len().saturating_sub(1) * 3;
 
         if !keys_text.is_empty() && prefix_len + keys_display_len <= max_len {
@@ -627,7 +637,7 @@ impl RightSideElementsBuilder {
             NestedSessionHint::Descend(_) => " host session",
             NestedSessionHint::None => return None,
         };
-        let message_len = message.width();
+        let message_len = display_width(message);
         if message_len <= max_len {
             let style = dim_style(bg).italic();
             return Some(LinePart {
@@ -658,7 +668,7 @@ impl RightSideElementsBuilder {
 
         LinePart {
             part: format!("{} {}", serialize_text(&key), serialize_ribbon(&ribbon)),
-            len: key_text.chars().count() + ribbon_text.chars().count() + 6,
+            len: display_width(key_text) + display_width(ribbon_text) + 6,
             tab_index: None,
         }
     }
@@ -708,7 +718,13 @@ impl TabLineBuilder {
             self.config.hover,
         );
 
-        let prefix_result = prefix_builder.build(session_name, self.config.mode);
+        let mut prefix_result = prefix_builder.build(session_name, self.config.mode);
+        if calculate_total_length(&prefix_result.parts) + active_tab.len > self.cols {
+            prefix_result = prefix_builder.build(None, self.config.mode);
+        }
+        if calculate_total_length(&prefix_result.parts) + active_tab.len > self.cols {
+            prefix_result = prefix_builder.build_minimal();
+        }
         let mut prefix = prefix_result.parts;
         let breadcrumb_range = prefix_result.breadcrumb_range;
         let mode_range = prefix_result.mode_range;

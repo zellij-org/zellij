@@ -71,6 +71,7 @@ macro_rules! get_or_create_grid {
                 explicitly_disable_kitty_keyboard_protocol,
             );
             grid.hide_cursor();
+            grid.grapheme_mode = true;
             grid
         })
     }};
@@ -532,7 +533,7 @@ impl Pane for PluginPane {
             },
             "\u{007F}" | "\u{0008}" => {
                 //delete and backspace keys
-                self.pane_name.pop();
+                zellij_utils::graphemes::pop_cluster(&mut self.pane_name);
             },
             c => {
                 self.pane_name.push_str(c);
@@ -869,7 +870,9 @@ impl Pane for PluginPane {
         }
     }
     fn rename(&mut self, buf: Vec<u8>) {
-        self.pane_name = String::from_utf8_lossy(&buf).to_string();
+        self.pane_name = zellij_utils::shared::clean_string_from_control_and_linebreak(
+            &String::from_utf8_lossy(&buf),
+        );
         self.set_should_render(true);
     }
     fn update_theme(&mut self, theme: Styling) {

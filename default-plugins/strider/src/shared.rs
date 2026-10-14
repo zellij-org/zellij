@@ -1,6 +1,6 @@
 use crate::platform::Platform;
 use std::path::PathBuf;
-use unicode_width::UnicodeWidthStr;
+use zellij_tile::graphemes;
 use zellij_tile::prelude::*;
 
 pub fn render_instruction_line(y: usize, max_cols: usize) {
@@ -82,8 +82,8 @@ pub fn render_search_term(search_term: &str) {
 pub fn render_virtual_root_header(_cols: usize) {
     let prompt = "PATH: ";
     let title = "Computer";
-    let prompt_len = prompt.width();
-    let path_end = prompt_len + title.width();
+    let prompt_len = prompt.chars().count();
+    let path_end = prompt_len + title.chars().count();
     let text = Text::from(format!("{}{}", prompt, title))
         .color_range(2, 0..prompt_len)
         .color_range(0, prompt_len..path_end);
@@ -101,8 +101,9 @@ pub fn render_current_path(
 ) {
     let prompt = "PATH: ";
     let current_path = Platform::to_host_display(full_path, platform);
-    let prompt_len = prompt.width();
-    let current_path_len = current_path.width();
+    let prompt_len = graphemes::display_width(prompt);
+    let prompt_chars = prompt.chars().count();
+    let current_path_len = graphemes::display_width(&current_path);
 
     let enter_tip = if handling_filepick {
         "Select"
@@ -111,14 +112,14 @@ pub fn render_current_path(
     } else {
         "Open in editor"
     };
-    if max_cols > prompt_len + current_path_len + enter_tip.width() + 13 {
-        let path_end = prompt_len + current_path_len;
+    if max_cols > prompt_len + current_path_len + graphemes::display_width(enter_tip) + 13 {
+        let path_end = prompt_chars + current_path.chars().count();
         let current_path = Text::from(format!(
             "{}{} (<ENTER> - {})",
             prompt, current_path, enter_tip
         ))
-        .color_range(2, 0..prompt_len)
-        .color_range(0, prompt_len..path_end)
+        .color_range(2, 0..prompt_chars)
+        .color_range(0, prompt_chars..path_end)
         .color_range(3, path_end + 2..path_end + 9);
         print_text(current_path);
     } else {
@@ -135,11 +136,10 @@ pub fn render_current_path(
                 platform,
             )
         };
-        let current_path_len = current_path.width();
-        let path_end = prompt_len + current_path_len;
+        let path_end = prompt_chars + current_path.chars().count();
         let current_path = Text::from(format!("{}{} <ENTER>", prompt, current_path))
-            .color_range(2, 0..prompt_len)
-            .color_range(0, prompt_len..path_end)
+            .color_range(2, 0..prompt_chars)
+            .color_range(0, prompt_chars..path_end)
             .color_range(3, path_end + 1..path_end + 9);
         print_text(current_path);
     }
@@ -147,18 +147,23 @@ pub fn render_current_path(
     println!();
 }
 
-fn truncate_path(path: PathBuf, mut char_count_to_remove: usize, platform: Platform) -> String {
+fn truncate_path(path: PathBuf, mut columns_to_remove: usize, platform: Platform) -> String {
     let sep = platform.separator();
     let mut truncated = String::new();
     let component_count = path.iter().count();
     for (i, component) in path.iter().enumerate() {
-        let mut component_str = component.to_string_lossy().to_string();
-        if char_count_to_remove > 0 {
-            truncated.push(component_str.remove(0));
+        let component_str = component.to_string_lossy().to_string();
+        if columns_to_remove > 0 {
+            let first_cluster_len = graphemes::clusters(&component_str)
+                .next()
+                .map(|(cluster, _)| cluster.len())
+                .unwrap_or(0);
+            truncated.push_str(&component_str[..first_cluster_len]);
             if i != 0 && i + 1 != component_count {
                 truncated.push(sep);
             }
-            char_count_to_remove = char_count_to_remove.saturating_sub(component_str.width() + 1);
+            columns_to_remove = columns_to_remove
+                .saturating_sub(graphemes::display_width(&component_str[first_cluster_len..]) + 1);
         } else {
             truncated.push_str(&component_str);
             if i != 0 && i + 1 != component_count {
