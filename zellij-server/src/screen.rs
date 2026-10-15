@@ -8024,7 +8024,9 @@ impl Screen {
         }
         match tab_index_and_plugin_pane_id {
             Some((tab_index, plugin_pane_id)) => {
-                self.go_to_tab(tab_index + 1, client_id)?;
+                if let Some(tab_position) = self.get_tab_position_by_id(tab_index) {
+                    self.go_to_tab(tab_position + 1, client_id)?;
+                }
                 self.tabs
                     .get_mut(&tab_index)
                     .with_context(err_context)?
