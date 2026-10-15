@@ -50,6 +50,7 @@ use zellij_utils::home::default_layout_dir;
 use zellij_utils::input::permission::PermissionCache;
 use zellij_utils::ipc::{ClientToServerMsg, IpcSenderWithContext};
 use zellij_utils::sessions::generate_random_name as generate_random_name_impl;
+use zellij_utils::sessions::validate_session_name;
 #[cfg(feature = "web_server_capability")]
 use zellij_utils::web_authentication_tokens::{
     create_token, list_tokens, rename_token, revoke_all_tokens, revoke_token,
@@ -3897,6 +3898,7 @@ fn delete_session_index_row(session_name: &str) {
 }
 
 fn delete_dead_session(session_name: String) -> Result<()> {
+    validate_session_name(&session_name).map_err(|e| anyhow!(e))?;
     // The cache folder is keyed by session id; resolve the name (falling back to
     // treating the argument as the id, e.g. when called with an id directly).
     let id = zellij_utils::sessions::resolve_session_id(&session_name)
@@ -4459,17 +4461,22 @@ fn kill_sessions_and_reply(env: &PluginEnv, session_names: Vec<String>) {
 }
 
 fn delete_dead_session_and_reply(env: &PluginEnv, session_name: String) {
-    // Cache folder is keyed by session id; resolve the display name.
-    let id = zellij_utils::sessions::resolve_session_id(&session_name)
-        .unwrap_or_else(|| session_name.clone());
-    delete_session_index_row(&session_name);
-    notify_session_index_changed(env);
-    let response = match std::fs::remove_dir_all(&*ZELLIJ_SESSION_INFO_CACHE_DIR.join(&id)) {
-        Ok(()) => DeleteDeadSessionResponse::Ok,
-        Err(e) => DeleteDeadSessionResponse::Err(format!(
-            "Failed to delete dead session {}: {}",
-            session_name, e
-        )),
+    let response = match validate_session_name(&session_name) {
+        Err(e) => DeleteDeadSessionResponse::Err(e),
+        Ok(()) => {
+            // Cache folder is keyed by session id; resolve the display name.
+            let id = zellij_utils::sessions::resolve_session_id(&session_name)
+                .unwrap_or_else(|| session_name.clone());
+            delete_session_index_row(&session_name);
+            notify_session_index_changed(env);
+            match std::fs::remove_dir_all(&*ZELLIJ_SESSION_INFO_CACHE_DIR.join(&id)) {
+                Ok(()) => DeleteDeadSessionResponse::Ok,
+                Err(e) => DeleteDeadSessionResponse::Err(format!(
+                    "Failed to delete dead session {}: {}",
+                    session_name, e
+                )),
+            }
+        },
     };
     let protobuf_response = ProtobufDeleteDeadSessionResponse::from(response);
     wasi_write_object(env, &protobuf_response.encode_to_vec())
