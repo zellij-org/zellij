@@ -17995,6 +17995,46 @@ fn mouse_events_work_again_when_the_selecting_pane_is_gone() {
 }
 
 #[test]
+fn a_shift_click_selection_in_a_pane_with_mouse_reporting_ends_on_release() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut pty_instruction_bus = MockPtyInstructionBus::new();
+    let mut tab = create_new_tab_with_mock_pty_writer(
+        size,
+        ModeInfo::default(),
+        pty_instruction_bus.pty_write_sender(),
+    );
+    pty_instruction_bus.start();
+    tab.handle_pty_bytes(1, Vec::from("\u{1b}[?1002h\u{1b}[?1006h".as_bytes()))
+        .unwrap();
+    let position = Position::new(5, 10);
+    let mut shift_press = MouseEvent::new_left_press_event(position);
+    shift_press.shift = true;
+    let mut shift_release = MouseEvent::new_left_release_event(position);
+    shift_release.shift = true;
+    tab.handle_mouse_event(&shift_press, client_id).unwrap();
+    assert_eq!(tab.selecting_with_mouse_in_pane, Some(PaneId::Terminal(1)));
+    tab.handle_mouse_event(&shift_release, client_id).unwrap();
+    assert!(
+        tab.selecting_with_mouse_in_pane.is_none(),
+        "releasing the button ends the selection"
+    );
+    tab.handle_mouse_event(&MouseEvent::new_left_press_event(position), client_id)
+        .unwrap();
+    tab.handle_mouse_event(&MouseEvent::new_left_release_event(position), client_id)
+        .unwrap();
+    pty_instruction_bus.exit();
+    assert_eq!(
+        pty_instruction_bus.clone_output(),
+        vec!["\u{1b}[<0;10;5M".to_string(), "\u{1b}[<0;10;5m".to_string()],
+        "the program gets the later plain click, and no release for the shift-click it never saw"
+    );
+}
+
+#[test]
 fn a_collapsed_bar_gives_its_row_to_the_viewport_across_a_swap_layout() {
     let size = Size {
         cols: 121,
