@@ -562,7 +562,7 @@ fn launch_app(
             )
         },
     };
-    let dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
+    let dir = zellij_utils::consts::app_dir();
     match app::instance::claim(&dir, &handed, app::instance::HANDOFF_WAIT) {
         Ok(app::instance::Claim::Handed(AppReply::Refused(text))) => bail!("{}", text),
         Ok(app::instance::Claim::Handed(_)) => Ok(()),
@@ -1020,6 +1020,10 @@ fn start_server(session_name: &str) -> Result<PathBuf> {
     let program = spawn::resolve_program()?;
     spawn::prepare_socket_dir()?;
     let socket_path = connection::new_session_socket_path(session_name)?;
+    if let Some(parent) = socket_path.parent() {
+        zellij_utils::consts::prepare_private_dir(parent)
+            .map_err(|e| anyhow!("failed to create {:?}: {}", parent, e))?;
+    }
     spawn::spawn(&spawn::server_command(
         program,
         &socket_path,

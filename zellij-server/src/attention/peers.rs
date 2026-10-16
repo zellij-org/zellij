@@ -352,8 +352,7 @@ impl PeerAttentionService {
     }
 
     fn app_socket(&self) -> Option<PathBuf> {
-        let path = self
-            .sock_dir
+        let path = zellij_utils::consts::app_dir_in(&self.sock_dir)
             .join(zellij_utils::consts::APP_ATTENTION_SOCKET_NAME);
         path.exists().then_some(path)
     }
@@ -513,7 +512,9 @@ mod tests {
     fn app_listener(sock_dir: &std::path::Path) -> Receiver<(String, Option<SessionAttention>)> {
         use interprocess::local_socket::prelude::*;
         use zellij_utils::ipc::{ClientToServerMsg, IpcReceiverWithContext};
-        let path = sock_dir.join(zellij_utils::consts::APP_ATTENTION_SOCKET_NAME);
+        let app_dir = zellij_utils::consts::app_dir_in(sock_dir);
+        zellij_utils::consts::prepare_private_dir(&app_dir).unwrap();
+        let path = app_dir.join(zellij_utils::consts::APP_ATTENTION_SOCKET_NAME);
         let listener = zellij_utils::consts::ipc_bind(&path).unwrap();
         let (sender, receiver) = channel();
         thread::spawn(move || {
@@ -621,7 +622,7 @@ mod tests {
         assert_eq!(
             std::fs::read_dir(dir.path()).unwrap().count(),
             0,
-            "no socket is created for an app that is not running"
+            "no socket or folder is created for an app that is not running"
         );
     }
 

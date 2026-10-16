@@ -8,7 +8,8 @@ use zellij_utils::app_control::{
     describe_app_at, send_app_request_to, AppReply, AppRequest, AppState, PanelState, PopupView,
 };
 use zellij_utils::consts::{
-    APP_CONTROL_SOCKET_NAME, APP_PANEL_SESSION, CLIENT_SERVER_CONTRACT_DIR,
+    app_dir_in, session_socket_path_in, APP_CONTROL_SOCKET_NAME, APP_PANEL_SESSION,
+    CLIENT_SERVER_CONTRACT_DIR,
 };
 use zellij_utils::data::{BareKey, KeyWithModifier, PaneId};
 use zellij_utils::input::actions::Action;
@@ -145,7 +146,11 @@ impl Desktop {
     }
 
     fn control_socket(&self) -> PathBuf {
-        self.contract_dir().join(APP_CONTROL_SOCKET_NAME)
+        app_dir_in(&self.contract_dir()).join(APP_CONTROL_SOCKET_NAME)
+    }
+
+    fn socket_of(&self, session: &str) -> PathBuf {
+        session_socket_path_in(&self.contract_dir(), session)
     }
 
     fn command(&self, args: &[&str]) -> Command {
@@ -302,7 +307,7 @@ impl Desktop {
     }
 
     fn answers(&self, session: &str) -> bool {
-        let Ok(mut link) = SessionLink::open_path(&self.contract_dir().join(session)) else {
+        let Ok(mut link) = SessionLink::open_path(&self.socket_of(session)) else {
             return false;
         };
         if link.send(ClientToServerMsg::ConnStatus).is_err() {
@@ -315,7 +320,7 @@ impl Desktop {
     }
 
     fn act_on_panel(&self, actions: Vec<Action>) {
-        let mut link = SessionLink::open_path(&self.contract_dir().join(APP_PANEL_SESSION))
+        let mut link = SessionLink::open_path(&self.socket_of(APP_PANEL_SESSION))
             .expect("the panel session answers");
         for action in actions {
             link.send(ClientToServerMsg::Action {
@@ -336,7 +341,7 @@ impl Desktop {
     }
 
     fn panel_plugin(&self) -> Option<u32> {
-        let mut link = SessionLink::open_path(&self.contract_dir().join(APP_PANEL_SESSION)).ok()?;
+        let mut link = SessionLink::open_path(&self.socket_of(APP_PANEL_SESSION)).ok()?;
         link.send(ClientToServerMsg::Action {
             action: Action::ListPanes {
                 show_tab: false,
@@ -408,7 +413,6 @@ impl Desktop {
                             .unwrap_or(false)
                     })
                     .map(|entry| entry.file_name().to_string_lossy().into_owned())
-                    .filter(|name| !name.starts_with(".app-"))
                     .collect()
             })
             .unwrap_or_default()
@@ -428,8 +432,10 @@ impl Desktop {
             let _ = app.kill();
             let _ = app.wait();
         }
-        for session in self.running_sessions() {
-            if let Ok(mut link) = SessionLink::open_path(&self.contract_dir().join(&session)) {
+        let mut sessions = self.running_sessions();
+        sessions.push(APP_PANEL_SESSION.to_owned());
+        for session in sessions {
+            if let Ok(mut link) = SessionLink::open_path(&self.socket_of(&session)) {
                 let _ = link.send(ClientToServerMsg::KillSession);
                 let _ = link.recv(Duration::from_secs(2));
             }
@@ -474,7 +480,12 @@ fn the_app_opens_one_window_on_a_new_session_and_keeps_its_panel_session_hidden(
     let state = desktop.state().unwrap();
     assert_eq!(state.live_sessions, vec![session.clone()]);
     assert_eq!(state.windows.len(), 1);
-    assert_eq!(desktop.listed_sessions(), vec![session]);
+    assert_eq!(desktop.listed_sessions(), vec![session.clone()]);
+    assert_eq!(
+        desktop.running_sessions(),
+        vec![session],
+        "an older zellij reading the socket folder finds only the real session"
+    );
 }
 
 #[test]
@@ -510,10 +521,8 @@ fn a_panel_shortcut_without_a_running_app_starts_the_app_with_only_the_panel() {
         state.panel == panel(PopupView::Inbox)
     });
     assert!(state.windows.is_empty(), "{:?}", state);
-    assert!(desktop
-        .running_sessions()
-        .iter()
-        .all(|name| name == APP_PANEL_SESSION));
+    assert!(desktop.answers(APP_PANEL_SESSION));
+    assert!(desktop.running_sessions().is_empty());
 }
 
 #[test]

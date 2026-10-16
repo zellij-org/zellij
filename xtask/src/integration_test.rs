@@ -70,8 +70,9 @@ fn desktop_tests_wanted(args: &[std::ffi::OsString]) -> bool {
             .iter()
             .any(|arg| arg.to_string_lossy().contains(DESKTOP_TESTS));
     let excluded = args.iter().any(|arg| {
-        let arg = arg.to_string_lossy();
-        arg.contains("not") && arg.contains(DESKTOP_TESTS)
+        let arg = arg.to_string_lossy().replace(' ', "");
+        arg.contains(&format!("notbinary({})", DESKTOP_TESTS))
+            || arg.contains(&format!("!binary({})", DESKTOP_TESTS))
     });
     can_run && (selected || !args.iter().any(|arg| arg == "--test")) && !excluded
 }
@@ -100,6 +101,10 @@ mod tests {
         assert!(!desktop_tests_wanted(&args(&[
             "-E",
             "not binary(desktop_app)"
+        ])));
+        assert!(desktop_tests_wanted(&args(&[
+            "-E",
+            "binary(app_notifications) | binary(desktop_app)"
         ])));
         std::env::remove_var(REQUIRE_DESKTOP_TESTS);
     }

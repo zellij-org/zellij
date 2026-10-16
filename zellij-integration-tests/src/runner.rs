@@ -1078,8 +1078,7 @@ impl TestSession {
             .clone()
             .unwrap_or_else(test_env::unique_session_name);
         assert!(
-            zellij_utils::sessions::resolve_session_socket_path(&session_name)
-                .map_or(true, |socket_path| !socket_path.exists()),
+            !zellij_utils::consts::session_socket_path(&session_name).exists(),
             "following a switch into the running session {} is not supported",
             session_name
         );

@@ -23,7 +23,7 @@ pub struct SessionLink {
 
 impl SessionLink {
     pub fn open(session_name: &str) -> Result<Self, String> {
-        Self::open_path(&session_socket_path(session_name))
+        Self::open_path(&crate::consts::session_socket_path(session_name))
     }
     pub fn open_path(socket_path: &Path) -> Result<Self, String> {
         let stream = crate::consts::ipc_connect(socket_path).map_err(|e| e.to_string())?;
@@ -79,7 +79,7 @@ pub fn push_session_attention(
     wait_for_reply: bool,
 ) -> Result<(), String> {
     push_session_attention_to(
-        &session_socket_path(target_session),
+        &crate::consts::session_socket_path(target_session),
         own_session,
         attention,
         wait_for_reply,
@@ -246,13 +246,8 @@ fn remote_action_worker(
     }
 }
 
-pub fn session_socket_path(session_name: &str) -> std::path::PathBuf {
-    crate::sessions::resolve_session_socket_path(session_name)
-        .unwrap_or_else(|| ZELLIJ_SOCK_DIR.join(session_name))
-}
-
 fn session_socket_exists(session_name: &str) -> bool {
-    session_socket_path(session_name).exists()
+    crate::consts::session_socket_path(session_name).exists()
 }
 
 #[cfg(test)]

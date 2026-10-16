@@ -26,7 +26,7 @@ pub struct Instance {
 }
 
 pub fn claim(dir: &Path, request: &AppRequest, wait: Duration) -> Result<Claim> {
-    std::fs::create_dir_all(dir)
+    zellij_utils::consts::prepare_private_dir(dir)
         .with_context(|| format!("failed to create the folder {}", dir.display()))?;
     let lock_path = dir.join(APP_LOCK_FILE_NAME);
     let control = dir.join(APP_CONTROL_SOCKET_NAME);

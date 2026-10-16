@@ -842,13 +842,21 @@ fn the_reattach_card_closes_itself_once_its_last_item_is_seen() {
     let other = start_running_session_in_background();
     let other_terminal = other.expect_pty_spawn();
     other_terminal.output(PROMPT);
-    let target = TestRunner::new(TERMINAL_SIZE)
-        .with_config(SESSION_FEATURES_ON)
-        .start_in_background();
+    let mut zellij = start_session_with_session_features();
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+    zellij.wait_until("the session is drawn", |grid_snapshot| {
+        grid_snapshot.status_bar_appears()
+    });
+    zellij.detach_main_client();
     other_terminal.output(&blocked("Which branch?"));
     wait_for_needs_you(other.session_name(), 1);
-    let mut zellij = target.attach(TERMINAL_SIZE);
-    zellij.wait_until("the reattach card lists the item", |grid_snapshot| {
+    std::thread::sleep(
+        (zellij_server::attention::peers::PEER_PUSH_DEBOUNCE
+            + zellij_server::attention::peers::GLOBAL_PUBLISH_DEBOUNCE)
+            * 5,
+    );
+    let reattached = zellij.attach_client(TERMINAL_SIZE);
+    reattached.wait_until("the reattach card lists the item", |grid_snapshot| {
         grid_snapshot.contains("While you were away") && grid_snapshot.contains("Which br")
     });
     let name = other.session_name().to_owned();
@@ -859,9 +867,10 @@ fn the_reattach_card_closes_itself_once_its_last_item_is_seen() {
         }],
     )
     .unwrap();
-    zellij.wait_until("the empty card closed itself", |grid_snapshot| {
+    reattached.wait_until("the empty card closed itself", |grid_snapshot| {
         !grid_snapshot.contains("While you were away")
     });
+    reattached.quit();
     zellij.quit();
 }
 

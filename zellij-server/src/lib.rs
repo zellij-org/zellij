@@ -5849,11 +5849,7 @@ fn history_move_switch(
         };
         let is_live = live_sessions
             .is_live(&target)
-            .unwrap_or_else(|| {
-                zellij_utils::sessions::resolve_session_socket_path(&target)
-                    .unwrap_or_else(|| zellij_utils::consts::ZELLIJ_SOCK_DIR.join(&target))
-                    .exists()
-            });
+            .unwrap_or_else(|| zellij_utils::consts::session_socket_path(&target).exists());
         if is_live {
             history.apply(history_move, own_session_name);
             return Ok(ConnectToSession {

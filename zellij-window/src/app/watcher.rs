@@ -246,7 +246,10 @@ pub struct AttentionListener {
 
 impl AttentionListener {
     pub fn bind(sock_dir: &Path, jobs: Sender<Job>) -> Result<AttentionListener> {
-        let path = sock_dir.join(zellij_utils::consts::APP_ATTENTION_SOCKET_NAME);
+        let app_dir = zellij_utils::consts::app_dir_in(sock_dir);
+        zellij_utils::consts::prepare_private_dir(&app_dir)
+            .with_context(|| format!("failed to create {}", app_dir.display()))?;
+        let path = app_dir.join(zellij_utils::consts::APP_ATTENTION_SOCKET_NAME);
         #[cfg(unix)]
         if path.exists() {
             let _ = std::fs::remove_file(&path);
@@ -331,8 +334,7 @@ mod tests {
         let dir = tempfile::TempDir::new().unwrap();
         let (jobs, received) = channel();
         let _listener = AttentionListener::bind(dir.path(), jobs).unwrap();
-        let socket = dir
-            .path()
+        let socket = zellij_utils::consts::app_dir_in(dir.path())
             .join(zellij_utils::consts::APP_ATTENTION_SOCKET_NAME);
         let attention = session(vec![item(1, AttentionStatus::NeedsYou, "x", 1)]);
         push_session_attention_to(&socket, "b", Some(attention.clone()), true).unwrap();

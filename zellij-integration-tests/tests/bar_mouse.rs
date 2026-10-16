@@ -478,5 +478,10 @@ fn the_hover_follows_a_mode_label_that_changes_under_a_resting_mouse() {
     zellij.wait_until("hover left the locked label", |grid_snapshot| {
         grid_snapshot.cell_style(lock_column, status_row) != hovered_locked_style
     });
+    zellij.send_stdin(&keys::ctrl('g'));
+    zellij.wait_until(
+        "unlocked again so the session can be quit",
+        |grid_snapshot| grid_snapshot.contains("PANE"),
+    );
     zellij.quit();
 }

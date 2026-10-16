@@ -38,8 +38,7 @@ impl NotificationProbe {
         let policy = Policy {
             statuses: DesktopNotifications::default(),
             details,
-            paused: false,
-            do_not_disturb: false,
+            ..Policy::default()
         };
         let recorded = events.clone();
         let kept = latest.clone();

@@ -59,8 +59,8 @@ impl StartupCard {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub enum DesktopNotifications {
     NeedsYou,
-    #[default]
     NeedsYouFailed,
+    #[default]
     NeedsYouFailedDone,
     None,
 }
@@ -318,7 +318,7 @@ mod tests {
         assert!(config.tray_icon());
         assert_eq!(
             config.desktop_notifications(),
-            DesktopNotifications::NeedsYouFailed
+            DesktopNotifications::NeedsYouFailedDone
         );
         assert!(config.notification_details());
         assert_eq!(config.to_kdl(), None);
@@ -375,7 +375,8 @@ mod tests {
         let default = DesktopNotifications::default();
         assert!(default.includes(AttentionStatus::NeedsYou));
         assert!(default.includes(AttentionStatus::Failed));
-        assert!(!default.includes(AttentionStatus::Done));
+        assert!(default.includes(AttentionStatus::Done));
+        assert!(!DesktopNotifications::NeedsYouFailed.includes(AttentionStatus::Done));
         assert!(!default.includes(AttentionStatus::Quiet));
         assert!(!default.includes(AttentionStatus::NewOutput));
         assert!(!default.includes(AttentionStatus::Working));

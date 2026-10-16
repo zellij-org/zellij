@@ -814,6 +814,7 @@ impl AttentionTracker {
                         app: record.app.clone(),
                         title: record.title.clone(),
                         body: record.msg.clone(),
+                        duration_ms: past.then(|| track.records.worked_ms(&record.id)).flatten(),
                         ..Default::default()
                     },
                     since_ms: record.updated_ms,

@@ -36,6 +36,7 @@ fn needs_you(text: &str) -> Vec<u8> {
 fn fake_desktop_app() -> mpsc::Receiver<AppRequest> {
     use interprocess::local_socket::prelude::*;
     let socket = zellij_utils::consts::app_control_socket();
+    zellij_utils::consts::prepare_private_dir(socket.parent().unwrap()).unwrap();
     let _ = std::fs::remove_file(&socket);
     let listener = zellij_utils::consts::ipc_bind(&socket).unwrap();
     let (requests, received) = mpsc::channel();

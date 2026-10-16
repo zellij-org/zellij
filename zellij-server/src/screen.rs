@@ -74,7 +74,6 @@ use zellij_utils::pane_size::{PaneGeom, Size, SizeInPixels};
 use zellij_utils::shared::{clean_string_from_control_and_linebreak, detect_theme_hue};
 use zellij_utils::structured_render;
 use zellij_utils::{
-    consts::ZELLIJ_SOCK_DIR,
     envs::set_session_name,
     input::command::TerminalAction,
     input::layout::{
@@ -7094,7 +7093,7 @@ impl Screen {
         let available_layouts = self.cached_layouts.clone();
         let creation_time = {
             // The socket is named by the stable session id, not the display name.
-            let sock_path = ZELLIJ_SOCK_DIR.join(&self.session_id);
+            let sock_path = zellij_utils::consts::session_id_socket_path(&self.session_id);
             std::fs::metadata(&sock_path)
                 .ok()
                 .and_then(|f| f.created().ok().or_else(|| f.modified().ok()))
@@ -13998,7 +13997,7 @@ pub(crate) fn screen_thread_main(
 
                 let creation_time = {
                     // The socket is named by the stable session id, not the display name.
-                    let sock_path = ZELLIJ_SOCK_DIR.join(&screen.session_id);
+                    let sock_path = zellij_utils::consts::session_id_socket_path(&screen.session_id);
                     std::fs::metadata(&sock_path)
                         .ok()
                         .and_then(|f| f.created().ok().or_else(|| f.modified().ok()))

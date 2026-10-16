@@ -273,6 +273,7 @@ impl Background {
     pub fn policy(&self) -> Policy {
         Policy {
             statuses: self.config.desktop_notifications(),
+            done_after_ms: self.config.done_threshold_secs() * 1000,
             details: self.config.notification_details(),
             paused: self.paused(),
             do_not_disturb: false,

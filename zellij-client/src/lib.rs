@@ -537,13 +537,32 @@ fn prepare_sock_dir(teardown: Option<TerminalTeardown>) {
     }
 }
 
+fn prepare_parent_dir(teardown: Option<TerminalTeardown>, path: &Path) {
+    let sock_dir = &*ZELLIJ_SOCK_DIR;
+    if let Some(parent) = path.parent().filter(|parent| *parent != sock_dir.as_path()) {
+        if let Err(e) = zellij_utils::consts::prepare_private_dir(parent) {
+            exit_after_startup_error(
+                teardown,
+                format!(
+                    "Error: failed to create the folder {}: {}",
+                    parent.display(),
+                    e
+                ),
+            );
+        }
+    }
+}
+
 /// IPC pipe path for a NEW session: register it in the session index under a
 /// fresh id and return `ZELLIJ_SOCK_DIR/<id>`. The session name is read from the
 /// environment (set by the caller just before).
 fn create_ipc_pipe(teardown: Option<TerminalTeardown>) -> PathBuf {
     prepare_sock_dir(teardown);
     let name = envs::get_session_name().unwrap();
-    ZELLIJ_SOCK_DIR.join(zellij_utils::sessions::register_session(&name))
+    let path = zellij_utils::consts::new_session_socket_path_in(&ZELLIJ_SOCK_DIR, &name);
+    prepare_parent_dir(teardown, &path);
+    check_ipc_pipe_length(&path);
+    path
 }
 
 /// IPC pipe path for an EXISTING session: resolve its id via the session index,
@@ -551,8 +570,9 @@ fn create_ipc_pipe(teardown: Option<TerminalTeardown>) -> PathBuf {
 fn resolve_ipc_pipe(teardown: Option<TerminalTeardown>) -> PathBuf {
     prepare_sock_dir(teardown);
     let name = envs::get_session_name().unwrap();
-    zellij_utils::sessions::resolve_session_socket_path(&name)
-        .unwrap_or_else(|| ZELLIJ_SOCK_DIR.join(name))
+    let path = zellij_utils::consts::session_socket_path(&name);
+    prepare_parent_dir(teardown, &path);
+    path
 }
 
 #[derive(Debug, Clone)]

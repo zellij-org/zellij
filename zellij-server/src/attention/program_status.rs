@@ -185,6 +185,8 @@ pub fn parse(params: &[&[u8]], bell_terminated: bool) -> Option<ProgramStatusMes
 pub struct ProgramStatusRecords {
     records: BTreeMap<String, (u64, ProgramStatusRecord)>,
     sequence: u64,
+    working_since: BTreeMap<String, u64>,
+    worked: BTreeMap<String, u64>,
 }
 
 fn record_key(id: &Option<String>) -> String {
@@ -219,7 +221,38 @@ impl ProgramStatusRecords {
             })
             .collect()
     }
+    pub fn worked_ms(&self, id: &Option<String>) -> Option<u64> {
+        self.worked.get(&record_key(id)).copied()
+    }
+    fn follow_work(&mut self, key: &str, state: ProgramState, now_ms: u64) {
+        match state {
+            ProgramState::Working | ProgramState::Blocked => {
+                self.working_since.entry(key.to_owned()).or_insert(now_ms);
+                self.worked.remove(key);
+            },
+            ProgramState::Done | ProgramState::Error => {
+                if let Some(started) = self.working_since.remove(key) {
+                    self.worked
+                        .insert(key.to_owned(), now_ms.saturating_sub(started));
+                }
+            },
+            ProgramState::Idle => {
+                self.working_since.remove(key);
+                self.worked.remove(key);
+            },
+        }
+    }
+    fn forget_missing(&mut self) {
+        let records = &self.records;
+        self.working_since.retain(|key, _| records.contains_key(key));
+        self.worked.retain(|key, _| records.contains_key(key));
+    }
     pub fn apply(&mut self, message: ProgramStatusMessage, now_ms: u64) -> bool {
+        let changed = self.apply_message(message, now_ms);
+        self.forget_missing();
+        changed
+    }
+    fn apply_message(&mut self, message: ProgramStatusMessage, now_ms: u64) -> bool {
         match message {
             ProgramStatusMessage::Query => false,
             ProgramStatusMessage::Clear { id: None } => {
@@ -248,6 +281,7 @@ impl ProgramStatusRecords {
                     }
                 }
                 self.sequence += 1;
+                self.follow_work(&key, record.state(), now_ms);
                 let changed = self
                     .records
                     .get(&key)
@@ -265,11 +299,13 @@ impl ProgramStatusRecords {
     pub fn clear_all(&mut self) -> bool {
         let changed = !self.records.is_empty();
         self.records.clear();
+        self.forget_missing();
         changed
     }
     pub fn drop_transient(&mut self) -> bool {
         let before = self.records.len();
         self.records.retain(|_, (_, r)| !r.state().is_transient());
+        self.forget_missing();
         before != self.records.len()
     }
     pub fn inherited_app(&self, id: &Option<String>) -> Option<String> {
@@ -561,5 +597,36 @@ mod tests {
         let (status, record) = records.deciding_record().unwrap();
         assert_eq!(status, AttentionStatus::Working);
         assert_eq!(record.id, None);
+    }
+
+    #[test]
+    fn a_finished_program_remembers_how_long_it_worked() {
+        let mut records = ProgramStatusRecords::default();
+        records.apply(parse_body("state=working").unwrap(), 1_000);
+        records.apply(parse_body("state=blocked:kind=question").unwrap(), 4_000);
+        records.apply(parse_body("state=working").unwrap(), 6_000);
+        assert_eq!(records.worked_ms(&None), None);
+        records.apply(parse_body("state=done").unwrap(), 13_000);
+        assert_eq!(records.worked_ms(&None), Some(12_000));
+        records.apply(parse_body("state=done").unwrap(), 20_000);
+        assert_eq!(
+            records.worked_ms(&None),
+            Some(12_000),
+            "repeating done does not restart the clock"
+        );
+        records.apply(parse_body("state=working:id=a").unwrap(), 30_000);
+        records.apply(parse_body("state=error:id=a").unwrap(), 30_500);
+        assert_eq!(records.worked_ms(&Some("a".to_owned())), Some(500));
+        records.apply(parse_body("state=done:id=b").unwrap(), 31_000);
+        assert_eq!(
+            records.worked_ms(&Some("b".to_owned())),
+            None,
+            "a program that never said it was working has no known duration"
+        );
+        records.apply(parse_body("state=working").unwrap(), 40_000);
+        assert_eq!(records.worked_ms(&None), None);
+        records.clear_all();
+        records.apply(parse_body("state=done").unwrap(), 50_000);
+        assert_eq!(records.worked_ms(&None), None);
     }
 }

@@ -71,6 +71,7 @@ pub enum Command {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Policy {
     pub statuses: DesktopNotifications,
+    pub done_after_ms: u64,
     pub details: bool,
     pub paused: bool,
     pub do_not_disturb: bool,
@@ -80,6 +81,7 @@ impl Default for Policy {
     fn default() -> Self {
         Policy {
             statuses: DesktopNotifications::default(),
+            done_after_ms: zellij_utils::input::attention::DEFAULT_DONE_THRESHOLD_SECS * 1000,
             details: true,
             paused: false,
             do_not_disturb: false,
@@ -90,6 +92,18 @@ impl Default for Policy {
 impl Policy {
     fn quiet(&self) -> bool {
         self.paused || self.do_not_disturb
+    }
+
+    fn notifies(&self, attention: &zellij_utils::attention::PaneAttention) -> bool {
+        if !self.statuses.includes(attention.status) {
+            return false;
+        }
+        attention.status != AttentionStatus::Done
+            || attention
+                .detail
+                .duration_ms
+                .map(|ran| ran >= self.done_after_ms)
+                .unwrap_or(false)
     }
 }
 
@@ -163,8 +177,7 @@ impl Engine {
             if attention.seen {
                 seen.insert(key.clone());
             }
-            if attention.is_muted() || attention.seen || !policy.statuses.includes(attention.status)
-            {
+            if attention.is_muted() || attention.seen || !policy.notifies(attention) {
                 continue;
             }
             current.insert(
@@ -691,14 +704,59 @@ mod tests {
         assert!(engine.tick(now + Duration::from_secs(5)).is_empty());
 
         let mut engine = started(now);
-        let all = Policy {
-            statuses: DesktopNotifications::NeedsYouFailedDone,
+        let without_done = Policy {
+            statuses: DesktopNotifications::NeedsYouFailed,
             ..policy()
         };
-        engine.update(&quiet, all, now);
+        engine.update(&quiet, without_done, now);
+        engine.update(
+            &global(vec![(
+                "b",
+                vec![ran(item(1, AttentionStatus::Done, "", 10), 60_000)],
+            )]),
+            without_done,
+            now,
+        );
+        assert!(engine.tick(now + Duration::from_secs(5)).is_empty());
+    }
+
+    fn ran(
+        mut item: zellij_utils::attention::AttentionItem,
+        ms: u64,
+    ) -> zellij_utils::attention::AttentionItem {
+        item.attention.detail.duration_ms = Some(ms);
+        item
+    }
+
+    #[test]
+    fn done_is_notified_by_default_only_for_work_that_took_at_least_the_threshold() {
+        let now = Instant::now();
+        let mut engine = started(now);
+        engine.update(&global(vec![("b", vec![])]), policy(), now);
+        let finished = global(vec![(
+            "b",
+            vec![
+                ran(item(1, AttentionStatus::Done, "", 10), 10_000),
+                ran(item(2, AttentionStatus::Done, "", 10), 9_999),
+                item(3, AttentionStatus::Done, "", 10),
+                ran(item(4, AttentionStatus::Failed, "", 10), 5),
+            ],
+        )]);
+        engine.update(&finished, policy(), now);
         assert_eq!(
             shows(&engine.tick(now + FIRST_SHOW_DELAY)),
-            vec![key("b", 1)]
+            vec![key("b", 1), key("b", 4)]
+        );
+        let mut engine = started(now);
+        let patient = Policy {
+            done_after_ms: 30_000,
+            ..policy()
+        };
+        engine.update(&global(vec![("b", vec![])]), patient, now);
+        engine.update(&finished, patient, now);
+        assert_eq!(
+            shows(&engine.tick(now + FIRST_SHOW_DELAY)),
+            vec![key("b", 4)]
         );
     }
 

@@ -649,7 +649,7 @@ pub fn describe(key: SettingKey) -> SettingInfo {
                 "needs_you_failed_done",
                 "none",
             ]),
-            "needs_you_failed",
+            "needs_you_failed_done",
             OnlyYou,
         ),
         SettingKey::AttentionNotificationDetails => info(
@@ -1731,7 +1731,9 @@ pub fn section(key: SettingKey) -> &'static str {
         DefaultMode => "New panes",
         AutoLayout | StackedResize | StackedPaneList | SwapLayoutNotification => "Layouts",
         NestedSessionHandling => "Nested sessions",
-        SessionName | AttachToSession | ShowStartupTips | ShowReleaseNotes | SessionIndicator => "Startup",
+        SessionName | AttachToSession | ShowStartupTips | ShowReleaseNotes | SessionIndicator => {
+            "Startup"
+        },
         SessionSerialization
         | SerializePaneViewport
         | ScrollbackLinesToSerialize

@@ -9,7 +9,7 @@ use zellij_integration_tests::{
     claim_first_terminal_and_wait_for_prompt, Size, TestRunner, TestSession, TERMINAL_SIZE,
 };
 use zellij_utils::cli::CliArgs;
-use zellij_utils::consts::{ipc_connect, ZELLIJ_SOCK_DIR};
+use zellij_utils::consts::ipc_connect;
 use zellij_utils::data::{BareKey, KeyWithModifier};
 use zellij_utils::input::actions::Action;
 use zellij_utils::input::options::Options;
@@ -34,8 +34,7 @@ impl WindowClient {
     }
 
     fn attach_to(session_name: &str, size: Size, pane_id: Option<(u32, bool)>) -> Self {
-        let path = zellij_utils::sessions::resolve_session_socket_path(session_name)
-            .unwrap_or_else(|| ZELLIJ_SOCK_DIR.join(session_name));
+        let path = zellij_utils::consts::session_socket_path(session_name);
         let stream = ipc_connect(&path)
             .unwrap_or_else(|e| panic!("failed to connect to {:?}: {:?}", path, e));
         let mut sender = IpcSenderWithContext::new(stream);
@@ -467,7 +466,7 @@ fn keys_a_window_sends_to_the_inbox_stay_out_of_the_pane_below() {
     press.event_type = zellij_utils::input::mouse::MouseEventType::Release;
     press.left = false;
     window.act(Action::MouseEvent { event: press });
-    window.frame_showing("Inbox (");
+    window.frame_showing("Needs you (");
     for _ in 0..4 {
         window.send(key(BareKey::Down));
         std::thread::sleep(Duration::from_millis(100));
