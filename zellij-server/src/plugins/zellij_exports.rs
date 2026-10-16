@@ -4014,7 +4014,9 @@ fn delete_all_dead_sessions() -> Result<()> {
         files.for_each(|file| {
             if let Ok(file) = file {
                 if let Ok(file_name) = file.file_name().into_string() {
-                    if is_ipc_socket(&file.file_type().unwrap()) {
+                    if !zellij_utils::consts::is_app_socket_name(&file_name)
+                        && is_ipc_socket(&file.file_type().unwrap())
+                    {
                         live_sessions.push(file_name);
                     }
                 }

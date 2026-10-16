@@ -2,6 +2,8 @@ use std::collections::BTreeMap;
 use zellij_tile::graphemes;
 use zellij_tile::prelude::*;
 
+use crate::app_panel::close_self;
+
 pub const CARD_MAX_WIDTH: usize = 72;
 pub const CARD_PADDING: usize = 1;
 pub const CARD_EMPTY_TEXT: &str = "No other sessions yet";
@@ -598,6 +600,7 @@ pub(crate) fn scroll_with_margin(
 pub fn render_session_tree(
     panel: &mut Panel,
     cache: &crate::ui::components::UnifiedResultsRenderCache,
+    expand_exited: bool,
     selected_index: Option<usize>,
     max_rows: usize,
     max_cols: usize,
@@ -608,12 +611,18 @@ pub fn render_session_tree(
     use crate::ui::components::CachedRowKind;
     panel.tree.row_targets.clear();
     panel.tree.marker_targets.clear();
-    let sessions: Vec<(usize, String)> = cache
+    let sessions: Vec<(usize, String, bool)> = cache
         .rows
         .iter()
-        .map(|r| (r.original_index, r.session_name.clone()))
+        .map(|r| {
+            (
+                r.original_index,
+                r.session_name.clone(),
+                matches!(r.kind, CachedRowKind::Resurrectable),
+            )
+        })
         .collect();
-    let rows = panel.tree.flatten(&sessions);
+    let rows = panel.tree.flatten_grouped(&sessions, expand_exited);
     if rows.is_empty() || max_rows < 2 {
         panel.tree.rows = rows;
         return;
@@ -678,10 +687,14 @@ pub fn render_session_tree(
             .and_then(|s| s.branch.clone())
             .unwrap_or_else(|| "—".to_owned())
     };
-    let name_width = cache
-        .rows
+    let name_width = rows
         .iter()
-        .map(|r| graphemes::display_width(&session_name_text(r)))
+        .filter(|row| row.node == TreeNode::Session)
+        .filter_map(|row| {
+            cached.get(&row.original_index).map(|cached_row| {
+                graphemes::display_width(&session_name_text(cached_row)) + row.depth * 2
+            })
+        })
         .max()
         .unwrap_or(0);
     let folder_width = cache
@@ -713,6 +726,14 @@ pub fn render_session_tree(
     let mut items = vec![];
     for (offset_index, row) in rows[offset..offset + visible].iter().enumerate() {
         let mut text = match row.node {
+            TreeNode::Exited => {
+                let line = format!(
+                    "{} Exited ({})",
+                    if row.expanded { "▾" } else { "▸" },
+                    row.covers.len()
+                );
+                Text::from(line).dim_all()
+            },
             TreeNode::Session => {
                 let Some(cached_row) = cached.get(&row.original_index) else {
                     continue;
@@ -733,7 +754,7 @@ pub fn render_session_tree(
                 };
                 let mut line = format!(
                     "{}  {}  {}  {}",
-                    pad(&name, name_width),
+                    pad(&name, name_width.saturating_sub(row.depth * 2)),
                     pad(&folder, folder_width),
                     pad(&branch, branch_width),
                     details
@@ -764,7 +785,7 @@ pub fn render_session_tree(
                 if matches!(cached_row.kind, CachedRowKind::Resurrectable) {
                     text = text.dim_range(name_chars.saturating_sub("ended".len())..name_chars);
                 }
-                let folder_start = name_width + 2;
+                let folder_start = name_width.saturating_sub(row.depth * 2) + 2;
                 let suggestion = suggestions.get(row.session.as_str());
                 if suggestion
                     .map(|s| s.column_matches("directory"))

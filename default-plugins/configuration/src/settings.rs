@@ -631,6 +631,35 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "false",
             Everyone,
         ),
+        SettingKey::AttentionTrayIcon => info(
+            "Tray icon",
+            TerminalWindow,
+            "Show the desktop app's icon in the tray or menu bar (sessions and notifications continue when hidden)",
+            Toggle,
+            "true",
+            OnlyYou,
+        ),
+        SettingKey::AttentionDesktopNotifications => info(
+            "Desktop notifications",
+            TerminalWindow,
+            "Which inbox items the desktop app shows as desktop notifications",
+            Choice(&[
+                "needs_you",
+                "needs_you_failed",
+                "needs_you_failed_done",
+                "none",
+            ]),
+            "needs_you_failed",
+            OnlyYou,
+        ),
+        SettingKey::AttentionNotificationDetails => info(
+            "Notification details",
+            TerminalWindow,
+            "Show program and command text in desktop notifications",
+            Toggle,
+            "true",
+            OnlyYou,
+        ),
         SettingKey::AttentionStartupCard => info(
             "Inbox card at startup",
             Sessions,
@@ -1374,14 +1403,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "visual",
             OnlyYou,
         ),
-        SettingKey::WindowNotifications => info(
-            "Notifications",
-            TerminalWindow,
-            "How program notifications are shown",
-            Choice(&["desktop", "attention", "none"]),
-            "desktop",
-            OnlyYou,
-        ),
         SettingKey::WindowOpenLinks => info(
             "Open links",
             TerminalWindow,
@@ -1682,7 +1703,10 @@ pub fn section(key: SettingKey) -> &'static str {
         | AttentionDoneThresholdSecs
         | AttentionIdleActivitySecs
         | AttentionIdleSilenceSecs
-        | AttentionStartupCard => "Attention",
+        | AttentionStartupCard
+        | AttentionTrayIcon
+        | AttentionDesktopNotifications
+        | AttentionNotificationDetails => "Attention",
         StyledUnderlines | Osc8Hyperlinks | GraphemeClusters => "Text",
         FrameRoundedCorners | FrameHideSessionName => "Frames",
         FrameBorderStyle
@@ -1707,9 +1731,7 @@ pub fn section(key: SettingKey) -> &'static str {
         DefaultMode => "New panes",
         AutoLayout | StackedResize | StackedPaneList | SwapLayoutNotification => "Layouts",
         NestedSessionHandling => "Nested sessions",
-        SessionName | AttachToSession | ShowStartupTips | ShowReleaseNotes | SessionIndicator => {
-            "Startup"
-        },
+        SessionName | AttachToSession | ShowStartupTips | ShowReleaseNotes | SessionIndicator => "Startup",
         SessionSerialization
         | SerializePaneViewport
         | ScrollbackLinesToSerialize
@@ -1750,7 +1772,6 @@ pub fn section(key: SettingKey) -> &'static str {
         | WindowScrollMomentum
         | WindowScrollMomentumFriction => "Scrolling",
         WindowBell
-        | WindowNotifications
         | WindowOpenLinks
         | WindowOpenLinksWithShift
         | WindowShiftDragSelects

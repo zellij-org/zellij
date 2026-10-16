@@ -1,3 +1,4 @@
+mod app_panel;
 mod inbox;
 mod new_session_info;
 mod panel;
@@ -10,6 +11,11 @@ mod ui;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 use zellij_tile::prelude::*;
+
+use app_panel::{
+    close_self, hide_self, switch_session, switch_session_and_close_current,
+    switch_session_with_focus, switch_session_with_options,
+};
 
 use new_session_info::NewSessionInfo;
 use single_screen::{DeleteTarget, SingleScreenMode, SingleScreenState, UnifiedSearchResult};
@@ -43,6 +49,10 @@ impl Default for ActiveScreen {
 
 #[derive(Default)]
 pub(crate) struct State {
+    app_quit: bool,
+    app_panel_initial_view: Option<String>,
+    app_panel_auto_pending: bool,
+    app_panel_cols: usize,
     session_name: Option<String>,
     pub(crate) sessions: SessionList,
     pub(crate) resurrectable_sessions: ResurrectableSessions,
@@ -134,6 +144,20 @@ impl ZellijPlugin for State {
             self.single_screen_state.ordered_names = Some(vec![]);
             let role = configuration.get("role").map(|r| r.as_str());
             match role {
+                Some(app_panel::ROLE) => {
+                    app_panel::enable();
+                    self.app_panel_initial_view = Some(
+                        configuration
+                            .get("view")
+                            .cloned()
+                            .unwrap_or_else(|| "auto".to_owned()),
+                    );
+                    self.panel.popup_focused = true;
+                    self.panel.is_popup = false;
+                    self.panel.size = Some(PanelSize::Manager);
+                    self.panel.needs_initial_layout = false;
+                    self.inbox.choose_inbox_tab();
+                },
                 Some("card_startup") => {
                     self.panel.opened_at_startup = true;
                     self.panel.popup_focused = false;
@@ -176,12 +200,27 @@ impl ZellijPlugin for State {
     }
 
     fn pipe(&mut self, pipe_message: PipeMessage) -> bool {
+        app_panel::begin_event();
+        if pipe_message.name == app_panel::VIEW_PIPE {
+            if !app_panel::is_enabled() {
+                return false;
+            }
+            self.app_panel_initial_view = None;
+            let view = pipe_message.payload.unwrap_or_else(|| "auto".to_owned());
+            self.app_panel_auto_pending = view == "auto";
+            self.show_app_panel_view(Some(&view));
+            return true;
+        }
         let should_render = self.handle_pipe(pipe_message);
         self.keep_ages_fresh();
         should_render
     }
     fn update(&mut self, event: Event) -> bool {
-        let should_render = self.handle_event(event);
+        app_panel::begin_event();
+        let user_input = matches!(event, Event::Key(_) | Event::Mouse(_));
+        let attention = matches!(event, Event::GlobalAttentionUpdate(_));
+        let mut should_render = self.handle_event(event);
+        should_render |= self.settle_app_panel_view(user_input, attention);
         self.keep_ages_fresh();
         should_render
     }
@@ -354,6 +393,10 @@ impl State {
                 let previous_preview = self.inbox.selected_item().map(ItemKey::of);
                 self.panel.attention = Some(global.clone());
                 should_render = self.inbox.update_global(global);
+                if self.away_card_is_empty() {
+                    close_self();
+                    return false;
+                }
                 if self.panel.size == Some(PanelSize::Card) {
                     self.resize_card_popup();
                 }
@@ -425,6 +468,14 @@ impl State {
                     should_render = true;
                 }
             },
+            Event::Mouse(Mouse::LeftClick(line, column))
+                if app_panel::is_enabled()
+                    && app_panel::is_close_button(line, column, self.app_panel_cols) =>
+            {
+                self.app_quit = false;
+                self.panel.close();
+            },
+            Event::Mouse(_) if self.app_quit => {},
             Event::Mouse(mouse) => {
                 should_render = self.handle_mouse(mouse);
             },
@@ -465,6 +516,18 @@ impl State {
     }
 
     fn render_plugin(&mut self, rows: usize, cols: usize) {
+        self.render_plugin_body(rows, cols);
+        if app_panel::is_enabled() {
+            self.app_panel_cols = cols;
+            app_panel::render_close_button(cols);
+        }
+    }
+
+    fn render_plugin_body(&mut self, rows: usize, cols: usize) {
+        if self.app_quit {
+            self.render_app_quit(rows, cols);
+            return;
+        }
         if self.panel.size == Some(PanelSize::Manager) && self.shows_browser_tabs() {
             let sessions = self.running_session_count();
             self.inbox.render_tabs(sessions, 0, 0);
@@ -604,8 +667,12 @@ impl State {
                             // Use max_table_rows as fixed content height so the
                             // prompt position stays stable regardless of result count
                             let max_table_rows = height.saturating_sub(5);
-                            let content_height = 2 + max_table_rows; // prompt + header + max data rows
-                                                                     // Available space above help lines (2 help rows at bottom)
+                            let content_height = if self.no_other_sessions() {
+                                3
+                            } else {
+                                2 + max_table_rows
+                            };
+                            // Available space above help lines (2 help rows at bottom)
                             let available = height.saturating_sub(3);
                             let y_offset = y + available.saturating_sub(content_height) / 2;
 
@@ -669,6 +736,7 @@ impl State {
                                 render_session_tree(
                                     &mut self.panel,
                                     &self.single_screen_state.render_cache,
+                                    !self.single_screen_state.search_term.is_empty(),
                                     self.single_screen_state.selected_index,
                                     max_table_rows,
                                     content_width,
@@ -788,7 +856,7 @@ impl State {
             );
             let adjusted_x = help_x + help_offset;
             let adjusted_width = width.saturating_sub(help_offset);
-            if !self.is_welcome_screen {
+            if !self.is_welcome_screen && !app_panel::is_enabled() {
                 render_unsaved_changes_line(
                     adjusted_width,
                     adjusted_x,
@@ -805,6 +873,21 @@ impl State {
         self.sessions.reset_selected_index();
     }
     fn handle_key(&mut self, key: KeyWithModifier) -> bool {
+        if self.app_quit {
+            match key.bare_key {
+                BareKey::Enter | BareKey::Char('y') | BareKey::Char('Y')
+                    if key.has_no_modifiers() || key.has_only_modifiers(&[KeyModifier::Shift]) =>
+                {
+                    app_panel::request_quit();
+                },
+                BareKey::Esc | BareKey::Char('n') | BareKey::Char('N') => {
+                    self.app_quit = false;
+                    self.panel.close();
+                },
+                _ => return false,
+            }
+            return true;
+        }
         if self.error.is_some() {
             self.error = None;
             return true;
@@ -1024,7 +1107,9 @@ impl State {
                     should_render = true;
                 },
                 BareKey::Char('x') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
-                    disconnect_other_clients()
+                    if !app_panel::is_enabled() {
+                        disconnect_other_clients()
+                    }
                 },
                 BareKey::Char('c') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                     if !self.search_term.is_empty() {
@@ -1287,10 +1372,12 @@ impl State {
                 should_render = true;
             },
             BareKey::Char('x') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
-                disconnect_other_clients();
+                if !app_panel::is_enabled() {
+                    disconnect_other_clients();
+                }
             },
             BareKey::Char('a') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
-                if !self.is_welcome_screen {
+                if !self.is_welcome_screen && !app_panel::is_enabled() {
                     if let Err(e) = save_session() {
                         self.show_error(&format!("Couldn't save session: {}", e));
                     }
@@ -2076,11 +2163,17 @@ impl State {
         if !matches!(self.panel.size, Some(PanelSize::Manager)) {
             return;
         }
+        if self.on_exited_header() {
+            self.panel.clear_preview();
+            return;
+        }
         match self.selected_session() {
             Some((name, is_running, is_current)) => {
                 let (tab, pane) = if self.panel.tree.node_session == name {
                     match self.panel.tree.node {
-                        session_tree::TreeNode::Session => (None, None),
+                        session_tree::TreeNode::Exited | session_tree::TreeNode::Session => {
+                            (None, None)
+                        },
                         session_tree::TreeNode::Tab(tab) => (Some(tab), None),
                         session_tree::TreeNode::Pane(tab, pane) => (Some(tab), Some(pane)),
                     }
@@ -2158,7 +2251,23 @@ impl State {
         }
         match size {
             PanelSize::Card => self.handle_card_key(key),
-            PanelSize::Manager => match key.bare_key {
+            PanelSize::Manager if self.on_exited_header() && !self.inbox_is_shown() => {
+                match key.bare_key {
+                    BareKey::Enter if key.has_no_modifiers() => {
+                        self.open_tree_child();
+                        Some(true)
+                    },
+                    BareKey::Delete => Some(false),
+                    BareKey::Char('r') if key.has_modifiers(&[KeyModifier::Ctrl]) => Some(false),
+                    _ => self.handle_manager_key(key),
+                }
+            },
+            PanelSize::Manager => self.handle_manager_key(key),
+        }
+    }
+    fn handle_manager_key(&mut self, key: &KeyWithModifier) -> Option<bool> {
+        {
+            match key.bare_key {
                 BareKey::Tab
                     if key.has_no_modifiers()
                         && self.shows_browser_tabs()
@@ -2229,7 +2338,7 @@ impl State {
                     }
                 },
                 _ => None,
-            },
+            }
         }
     }
     fn no_other_sessions(&self) -> bool {
@@ -2237,6 +2346,12 @@ impl State {
             .suggestions
             .as_ref()
             .map(|s| s.suggestions.is_empty())
+            .unwrap_or(false)
+    }
+    fn on_exited_header(&self) -> bool {
+        self.tree_cursor()
+            .and_then(|cursor| self.panel.tree.rows.get(cursor))
+            .map(|row| row.node == session_tree::TreeNode::Exited)
             .unwrap_or(false)
     }
     fn tree_cursor(&self) -> Option<usize> {
@@ -2328,6 +2443,11 @@ impl State {
             return false;
         };
         let (tab, pane) = match row.node {
+            TreeNode::Exited => {
+                self.panel.tree.toggle(&row);
+                self.panel.tree.follow = true;
+                return true;
+            },
             TreeNode::Session => return false,
             TreeNode::Tab(tab) => (tab, None),
             TreeNode::Pane(tab, pane) => (tab, Some(pane)),
@@ -2379,6 +2499,14 @@ impl State {
             .find(|(y, x, _)| *y == line && *x == column)
             .map(|(_, _, index)| *index)
     }
+    fn away_card_is_empty(&self) -> bool {
+        self.panel.size == Some(PanelSize::Card)
+            && self.panel.opened_at_startup
+            && !self.panel.popup_focused
+            && self.inbox.away_since_ms.is_some()
+            && self.inbox.card_content(inbox::now_ms()).items.is_empty()
+    }
+
     fn resize_card_popup(&self) {
         if self.panel.size == Some(PanelSize::Card) && self.panel.is_popup {
             let screen_rows = self
@@ -2409,10 +2537,106 @@ impl State {
             .map(|g| g.running())
             .unwrap_or_else(|| self.sessions.session_ui_infos.len())
     }
+    fn settle_app_panel_view(&mut self, user_input: bool, attention: bool) -> bool {
+        if !app_panel::is_enabled() {
+            return false;
+        }
+        if user_input {
+            self.app_panel_auto_pending = false;
+        }
+        if let Some(view) = self.app_panel_initial_view.take() {
+            self.app_panel_auto_pending = view == "auto";
+            self.show_app_panel_view(Some(&view));
+            return true;
+        }
+        if attention && self.app_panel_auto_pending && self.inbox.counted_count() > 0 {
+            self.app_panel_auto_pending = false;
+            if self.inbox.tab != BrowserTab::Inbox {
+                self.show_app_panel_view(Some("inbox"));
+                return true;
+            }
+        }
+        false
+    }
+
+    fn app_panel_sessions(&self) -> Vec<String> {
+        let mut names: Vec<String> = match self.inbox.global.as_ref() {
+            Some(global) => global.sessions.iter().map(|s| s.name.clone()).collect(),
+            None => self
+                .sessions
+                .session_ui_infos
+                .iter()
+                .filter(|s| !s.is_current_session)
+                .map(|s| s.name.clone())
+                .collect(),
+        };
+        names.sort();
+        names.dedup();
+        names
+    }
+
+    fn render_app_quit(&self, rows: usize, cols: usize) {
+        let lines = app_panel::quit_lines(&self.app_panel_sessions());
+        let (x, y, shown) = app_panel::centered_block(&lines, rows, cols);
+        let last = shown.len().saturating_sub(1);
+        for (index, line) in shown.iter().enumerate() {
+            let text = Text::from(line.as_str());
+            let text = if index == 0 {
+                text.color_range(2, ..)
+            } else if index == last {
+                text.color_substring(3, "<Enter>")
+                    .color_substring(3, "<Esc>")
+            } else if line.starts_with("  ") {
+                text.color_range(1, ..)
+            } else {
+                text
+            };
+            print_text_with_coordinates(text, x, y + index, None, None);
+        }
+    }
+
+    fn set_app_panel_title(&self, view: &str) {
+        if let Some(plugin_id) = self.panel.own_plugin_id {
+            rename_plugin_pane(plugin_id, &app_panel::title(view));
+        }
+    }
+
+    fn show_app_panel_view(&mut self, view: Option<&str>) {
+        self.app_quit = view == Some("quit");
+        self.panel.size = Some(PanelSize::Manager);
+        if self.app_quit {
+            self.set_app_panel_title("Quit");
+            return;
+        }
+        self.inbox.reply = None;
+        self.single_screen_state.search_term.clear();
+        self.single_screen_state.selected_index = None;
+        let tab = match view {
+            Some("sessions") => BrowserTab::Sessions,
+            Some("inbox") => BrowserTab::Inbox,
+            _ if self.inbox.counted_count() == 0 => BrowserTab::Sessions,
+            _ => BrowserTab::Inbox,
+        };
+        self.switch_browser_tab(tab);
+        if tab == BrowserTab::Inbox {
+            self.inbox.select_next_counted();
+        }
+    }
+
+    fn follow_app_panel_title(&self) {
+        if app_panel::is_enabled() && !self.app_quit {
+            self.set_app_panel_title(match self.inbox.tab {
+                BrowserTab::Inbox => "Inbox",
+                BrowserTab::Sessions => "Sessions",
+            });
+        }
+    }
+
     fn switch_browser_tab(&mut self, tab: BrowserTab) {
         self.inbox.tab = tab;
         self.inbox.tab_chosen = true;
         self.inbox.reply = None;
+        self.follow_app_panel_title();
         match tab {
             BrowserTab::Inbox => {
                 self.inbox.request_preview();
@@ -2616,11 +2840,7 @@ impl State {
                 if self.inbox.toggle_header() {
                     return true;
                 }
-                if self.inbox.go_to_selected() {
-                    self.panel.size = None;
-                    self.panel.report_size();
-                    close_self();
-                }
+                self.go_to_selected_inbox_item();
             },
             BareKey::Char('r') if plain => {
                 self.inbox.start_reply();
@@ -2641,6 +2861,14 @@ impl State {
         }
         true
     }
+    fn go_to_selected_inbox_item(&mut self) {
+        if self.inbox.go_to_selected() {
+            self.panel.size = None;
+            self.panel.report_size();
+            close_self();
+        }
+    }
+
     fn handle_inbox_mouse(&mut self, mouse: Mouse) -> bool {
         match mouse {
             Mouse::LeftClick(line, column) => match self.inbox.browser_target_at(line, column) {
@@ -2650,9 +2878,14 @@ impl State {
                 },
                 Some(BrowserTarget::Row(index)) => {
                     self.inbox.reply = None;
+                    let rows = self.inbox.visible_rows();
+                    let already_selected = self.inbox.selected_row_index(&rows) == Some(index);
                     self.inbox.select_row(index);
                     if matches!(self.inbox.selected_row(), Some(InboxRow::Group(..))) {
                         self.inbox.toggle_header();
+                    } else if already_selected {
+                        self.go_to_selected_inbox_item();
+                        return true;
                     }
                     self.after_inbox_selection_change();
                     true

@@ -345,6 +345,7 @@ message Action {
     MarkPaneSeenAction mark_pane_seen = 179;
     MarkAllSeenAction mark_all_seen = 180;
     WriteKeyToPaneIdAction write_key_to_pane_id = 181;
+    ToggleTrayIconAction toggle_tray_icon = 182;
   }
 }
 
@@ -1423,6 +1424,7 @@ message ToggleSessionAction {}
 message GoBackAction {}
 message GoForwardAction {}
 message GoToNextAttentionAction {}
+message ToggleTrayIconAction {}
 message MarkPaneSeenAction { optional string session = 1; optional PaneId pane_id = 2; }
 message MarkAllSeenAction { optional string session = 1; }
 message WriteKeyToPaneIdAction { optional KeyWithModifier key_with_modifier = 1; PaneId pane_id = 2; }

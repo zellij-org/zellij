@@ -1,5 +1,8 @@
 use crate::screen::ScreenInstruction;
-use crate::session_link::{push_session_attention, request_session_attention, PEER_REPLY_TIMEOUT};
+use crate::session_link::{
+    push_session_attention, push_session_attention_to, request_session_attention,
+    PEER_REPLY_TIMEOUT,
+};
 use crate::session_suggestions::SessionSuggestionsJob;
 use crate::thread_bus::ThreadSenders;
 use std::collections::{BTreeMap, BTreeSet};
@@ -112,7 +115,7 @@ impl PeerAttentionState {
         self.scanned = true;
     }
     pub fn peer_changed(&mut self, name: String, attention: Option<SessionAttention>) {
-        if name == self.own_name {
+        if name == self.own_name || zellij_utils::consts::is_app_socket_name(&name) {
             return;
         }
         match attention {
@@ -137,8 +140,13 @@ impl PeerAttentionState {
             .iter()
             .map(|(name, attention)| (name.clone(), attention.clone()))
             .collect();
-        sessions.push((self.own_name.clone(), self.local.clone()));
+        if !self.is_app_session() {
+            sessions.push((self.own_name.clone(), self.local.clone()));
+        }
         GlobalAttention::build(&self.own_name, sessions)
+    }
+    pub fn is_app_session(&self) -> bool {
+        zellij_utils::consts::is_app_socket_name(&self.own_name)
     }
 }
 
@@ -311,7 +319,7 @@ impl PeerAttentionService {
 
     fn push_to_peers(&mut self) {
         let own_name = self.state.own_name.clone();
-        if own_name.is_empty() {
+        if own_name.is_empty() || self.state.is_app_session() {
             return;
         }
         let peers: Vec<String> = self.state.peers.keys().cloned().collect();
@@ -319,13 +327,21 @@ impl PeerAttentionService {
             .last_pushed_name
             .replace(own_name.clone())
             .filter(|previous| previous != &own_name);
-        if peers.is_empty() {
+        let app = self.app_socket();
+        if peers.is_empty() && app.is_none() {
             return;
         }
         let attention = self.state.local.clone();
         let _ = thread::Builder::new()
             .name("peer_attention_push".to_owned())
             .spawn(move || {
+                if let Some(app) = app.as_ref() {
+                    if let Some(previous_name) = previous_name.as_ref() {
+                        let _ = push_session_attention_to(app, previous_name, None, true);
+                    }
+                    let _ =
+                        push_session_attention_to(app, &own_name, Some(attention.clone()), true);
+                }
                 for_each_peer(peers, |peer| {
                     if let Some(previous_name) = previous_name.as_ref() {
                         let _ = push_session_attention(peer, previous_name, None, true);
@@ -335,10 +351,20 @@ impl PeerAttentionService {
             });
     }
 
+    fn app_socket(&self) -> Option<PathBuf> {
+        let path = self
+            .sock_dir
+            .join(zellij_utils::consts::APP_ATTENTION_SOCKET_NAME);
+        path.exists().then_some(path)
+    }
+
     fn announce_exit(&mut self) {
         let own_name = self.state.own_name.clone();
-        if own_name.is_empty() {
+        if own_name.is_empty() || self.state.is_app_session() {
             return;
+        }
+        if let Some(app) = self.app_socket() {
+            let _ = push_session_attention_to(&app, &own_name, None, false);
         }
         let peers: Vec<String> = self.state.peers.keys().cloned().collect();
         for_each_peer(peers, |peer| {
@@ -439,6 +465,28 @@ mod tests {
     }
 
     #[test]
+    fn the_app_panel_session_never_counts_itself_or_other_app_sessions() {
+        let mut state = PeerAttentionState {
+            own_name: ".zellij-app-panel".to_owned(),
+            local: attention(AttentionStatus::Done),
+            ..Default::default()
+        };
+        state.apply_scan(vec![(
+            "api".to_owned(),
+            Some(attention(AttentionStatus::NeedsYou)),
+        )]);
+        state.peer_changed(
+            ".other-app".to_owned(),
+            Some(attention(AttentionStatus::Failed)),
+        );
+        let global = state.global();
+        assert_eq!(global.running(), 1);
+        assert_eq!(global.counts.done, 0);
+        assert_eq!(global.counts.failed, 0);
+        assert!(state.is_app_session());
+    }
+
+    #[test]
     fn a_new_scan_forgets_sessions_that_stopped_answering() {
         let mut state = state();
         state.apply_scan(vec![(
@@ -459,6 +507,122 @@ mod tests {
         expected.sort();
         assert_eq!(answers, expected);
         assert!(for_each_peer(vec![], |_| ()).is_empty());
+    }
+
+    #[cfg(unix)]
+    fn app_listener(sock_dir: &std::path::Path) -> Receiver<(String, Option<SessionAttention>)> {
+        use interprocess::local_socket::prelude::*;
+        use zellij_utils::ipc::{ClientToServerMsg, IpcReceiverWithContext};
+        let path = sock_dir.join(zellij_utils::consts::APP_ATTENTION_SOCKET_NAME);
+        let listener = zellij_utils::consts::ipc_bind(&path).unwrap();
+        let (sender, receiver) = channel();
+        thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(stream) = stream else {
+                    continue;
+                };
+                let mut incoming: IpcReceiverWithContext<ClientToServerMsg> =
+                    IpcReceiverWithContext::new(stream);
+                if let Ok((
+                    ClientToServerMsg::PeerAttentionChanged {
+                        session_name,
+                        attention,
+                    },
+                    _,
+                )) = incoming.try_recv_client_msg()
+                {
+                    let _ = sender.send((session_name, attention));
+                }
+            }
+        });
+        receiver
+    }
+
+    #[cfg(unix)]
+    fn running_service(
+        sock_dir: &std::path::Path,
+        name: &str,
+    ) -> (Sender<PeerAttentionJob>, thread::JoinHandle<()>) {
+        let (sender, receiver) = channel();
+        let (suggestions, _) = channel();
+        let own_sender = sender.clone();
+        let own_name = Arc::new(Mutex::new(name.to_owned()));
+        let sock_dir = sock_dir.to_path_buf();
+        let handle = thread::spawn(move || {
+            let mut service = PeerAttentionService {
+                senders: ThreadSenders::default(),
+                own_name,
+                live_sessions: LiveSessions::default(),
+                suggestions,
+                own_sender,
+                state: PeerAttentionState::default(),
+                last_pushed_name: None,
+                next_scan: Instant::now(),
+                push_due: None,
+                publish_due: None,
+                last_global: None,
+                last_needs_you: None,
+                watcher: None,
+                sock_dir,
+            };
+            service.run(receiver);
+        });
+        (sender, handle)
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_change_is_pushed_to_the_desktop_app_and_an_exit_says_the_session_ended() {
+        let dir = tempfile::tempdir().unwrap();
+        let pushed = app_listener(dir.path());
+        let (jobs, service) = running_service(dir.path(), "api");
+        jobs.send(PeerAttentionJob::LocalChanged(attention(
+            AttentionStatus::NeedsYou,
+        )))
+        .unwrap();
+        let (session, attention) = pushed.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert_eq!(session, "api");
+        assert_eq!(attention.expect("the change is sent").counts.needs_you, 1);
+        jobs.send(PeerAttentionJob::Exit).unwrap();
+        service.join().unwrap();
+        assert_eq!(
+            pushed.recv_timeout(Duration::from_secs(2)).unwrap(),
+            ("api".to_owned(), None)
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_panel_session_never_pushes_to_the_desktop_app() {
+        let dir = tempfile::tempdir().unwrap();
+        let pushed = app_listener(dir.path());
+        let (jobs, service) = running_service(dir.path(), zellij_utils::consts::APP_PANEL_SESSION);
+        jobs.send(PeerAttentionJob::LocalChanged(attention(
+            AttentionStatus::NeedsYou,
+        )))
+        .unwrap();
+        thread::sleep(PEER_PUSH_DEBOUNCE * 3);
+        jobs.send(PeerAttentionJob::Exit).unwrap();
+        service.join().unwrap();
+        assert!(pushed.recv_timeout(Duration::from_millis(300)).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn without_a_desktop_app_nothing_is_pushed_and_the_exit_is_quiet() {
+        let dir = tempfile::tempdir().unwrap();
+        let (jobs, service) = running_service(dir.path(), "api");
+        jobs.send(PeerAttentionJob::LocalChanged(attention(
+            AttentionStatus::NeedsYou,
+        )))
+        .unwrap();
+        jobs.send(PeerAttentionJob::Exit).unwrap();
+        service.join().unwrap();
+        assert_eq!(
+            std::fs::read_dir(dir.path()).unwrap().count(),
+            0,
+            "no socket is created for an app that is not running"
+        );
     }
 
     #[test]

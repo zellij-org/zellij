@@ -291,3 +291,109 @@ fn the_window_is_described_by_what_it_is_for() {
         help
     );
 }
+
+#[test]
+fn the_window_can_toggle_one_panel_of_the_desktop_app() {
+    assert!(window_args(&["--inbox"]).inbox);
+    assert!(window_args(&["--sessions"]).sessions);
+    for argv in [
+        vec!["--inbox", "--sessions"],
+        vec!["--inbox", "--standalone"],
+        vec!["--sessions", "--watch"],
+    ] {
+        let mut args = vec!["zellij", "window"];
+        args.extend_from_slice(&argv);
+        assert!(
+            try_parse(&args).is_err(),
+            "`zellij window {}` was accepted",
+            argv.join(" ")
+        );
+    }
+}
+
+#[test]
+fn the_window_can_run_on_its_own_in_a_separate_socket_folder() {
+    let args = window_args(&["--standalone", "--socket-dir", "/tmp/elsewhere"]);
+    assert!(args.standalone);
+    assert_eq!(
+        args.socket_dir.as_deref(),
+        Some(std::path::Path::new("/tmp/elsewhere"))
+    );
+    assert!(!window_args(&[]).standalone);
+    assert_eq!(window_args(&[]).socket_dir, None);
+}
+
+#[test]
+fn only_the_window_command_moves_the_socket_folder() {
+    let window = try_parse(&["zellij", "window", "--socket-dir", "/tmp/elsewhere"]).unwrap();
+    assert_eq!(
+        crate::socket_dir_override(&window),
+        Some(std::path::Path::new("/tmp/elsewhere"))
+    );
+    let plain = try_parse(&["zellij", "window"]).unwrap();
+    assert_eq!(crate::socket_dir_override(&plain), None);
+    let other = try_parse(&["zellij", "list-sessions"]).unwrap();
+    assert_eq!(crate::socket_dir_override(&other), None);
+}
+
+#[cfg(unix)]
+fn fake_app(
+    reply: zellij_utils::app_control::AppReply,
+) -> (
+    std::path::PathBuf,
+    std::sync::mpsc::Receiver<zellij_utils::app_control::AppRequest>,
+) {
+    use interprocess::local_socket::prelude::*;
+    use std::io::Write;
+    let dir = std::env::temp_dir().join(format!(
+        "zellij-fake-app-{}-{:?}",
+        std::process::id(),
+        std::thread::current().id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    let socket = dir.join(zellij_utils::consts::APP_CONTROL_SOCKET_NAME);
+    let _ = std::fs::remove_file(&socket);
+    let listener = zellij_utils::consts::ipc_bind(&socket).unwrap();
+    let (requests, received) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        if let Some(Ok(mut stream)) = listener.incoming().next() {
+            let reader = interprocess::TryClone::try_clone(&stream).unwrap();
+            if let Ok(request) = zellij_utils::app_control::read_line(reader) {
+                let _ = requests.send(request);
+            }
+            let _ = stream.write_all(&zellij_utils::app_control::encode_line(&reply).unwrap());
+        }
+    });
+    (socket, received)
+}
+
+#[cfg(unix)]
+#[test]
+fn the_cli_toggles_the_tray_icon_by_asking_the_desktop_app() {
+    use zellij_utils::app_control::{AppReply, AppRequest};
+    let (socket, received) = fake_app(AppReply::Done);
+    assert_eq!(crate::commands::toggle_tray_icon_at(&socket), Ok(()));
+    assert_eq!(
+        received
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .unwrap(),
+        AppRequest::ToggleTrayIcon
+    );
+    let _ = std::fs::remove_file(&socket);
+}
+
+#[cfg(unix)]
+#[test]
+fn the_cli_reports_a_refusal_or_a_missing_desktop_app() {
+    use zellij_utils::app_control::AppReply;
+    let (socket, _received) = fake_app(AppReply::Refused("The Zellij app is closing.".to_owned()));
+    assert_eq!(
+        crate::commands::toggle_tray_icon_at(&socket),
+        Err("The Zellij app is closing.".to_owned())
+    );
+    let _ = std::fs::remove_file(&socket);
+    assert_eq!(
+        crate::commands::toggle_tray_icon_at(&socket),
+        Err("The Zellij desktop app is not running.".to_owned())
+    );
+}

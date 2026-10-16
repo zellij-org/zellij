@@ -779,6 +779,7 @@ pub enum Action {
     GoBack,
     GoForward,
     GoToNextAttention,
+    ToggleTrayIcon,
     MarkPaneSeen {
         session: Option<String>,
         pane_id: Option<PaneId>,
@@ -2247,6 +2248,7 @@ impl Action {
             CliAction::GoBack => Ok(vec![Action::GoBack]),
             CliAction::GoForward => Ok(vec![Action::GoForward]),
             CliAction::GoToNextAttention => Ok(vec![Action::GoToNextAttention]),
+            CliAction::ToggleTrayIcon => Ok(vec![Action::ToggleTrayIcon]),
             CliAction::MarkPaneSeen { pane_id } => Ok(vec![Action::MarkPaneSeen {
                 session: None,
                 pane_id: pane_id.as_deref().map(parse_cli_pane_id).transpose()?,

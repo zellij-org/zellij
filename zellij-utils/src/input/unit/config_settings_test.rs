@@ -173,7 +173,6 @@ const EVERY_WINDOW_SETTING_SET: &str = "window {
     scroll_momentum false
     scroll_momentum_friction 4.5
     bell \"both\"
-    notifications \"attention\"
     open_links false
     open_links_with_shift false
     shift_drag_selects false
@@ -258,6 +257,11 @@ pub(crate) fn every_setting_set() -> Config {
             idle_activity_secs: Some(20),
             idle_silence_secs: Some(5),
             startup_card: Some(crate::input::attention::StartupCard::Never),
+            tray_icon: Some(false),
+            desktop_notifications: Some(
+                crate::input::attention::DesktopNotifications::NeedsYouFailedDone,
+            ),
+            notification_details: Some(false),
         },
         ..Default::default()
     }

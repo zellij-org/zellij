@@ -193,7 +193,7 @@ fn notification_needs_you_with_text() {
 fn failed_command_always_counts() {
     let mut tracker = tracker();
     run_command(&mut tracker, "cargo build", 2_000);
-    assert_eq!(status(&tracker), AttentionStatus::Working);
+    assert_eq!(status(&tracker), AttentionStatus::Idle);
     finish(&mut tracker, Some(1), None, 2_500);
     let attention = tracker.attention(&PANE).unwrap();
     assert_eq!(attention.status, AttentionStatus::Failed);
@@ -481,7 +481,7 @@ fn watch_without_markers_fires_on_idle_rule_even_when_visible() {
 fn foreground_fallback_reports_unknown_result() {
     let mut tracker = tracker();
     tracker.foreground_changed(PANE, Some("cargo test".to_owned()), 2_000);
-    assert_eq!(status(&tracker), AttentionStatus::Working);
+    assert_eq!(status(&tracker), AttentionStatus::Idle);
     tracker.foreground_changed(PANE, None, 20_000);
     let attention = tracker.attention(&PANE).unwrap();
     assert_eq!(attention.status, AttentionStatus::Done);
@@ -501,7 +501,7 @@ fn foreground_fallback_is_ignored_for_panes_with_markers() {
 fn command_pane_exit() {
     let mut tracker = tracker();
     tracker.command_pane_started(PANE, Some("npm test".to_owned()), 2_000);
-    assert_eq!(status(&tracker), AttentionStatus::Working);
+    assert_eq!(status(&tracker), AttentionStatus::Idle);
     tracker.pane_exited(PANE, Some(3), 2_500);
     let attention = tracker.attention(&PANE).unwrap();
     assert_eq!(attention.status, AttentionStatus::Failed);
@@ -518,6 +518,8 @@ fn events_are_emitted() {
     tracker.take_events();
     run_command(&mut tracker, "ls", 2_000);
     finish(&mut tracker, Some(0), None, 2_100);
+    run_command(&mut tracker, "false", 2_200);
+    finish(&mut tracker, Some(1), None, 2_300);
     let events = tracker.take_events();
     assert!(events.contains(&AttentionEvent::PromptShown(PANE)));
     assert!(events.iter().any(|e| matches!(
@@ -620,10 +622,10 @@ fn being_visible_keeps_current_truths() {
 }
 
 #[test]
-fn marking_seen_dismisses_a_running_command_until_the_next_one() {
+fn a_running_command_is_not_working_and_its_failure_still_counts() {
     let mut tracker = tracker();
     run_command(&mut tracker, "cargo build", 2_000);
-    assert_eq!(status(&tracker), AttentionStatus::Working);
+    assert_eq!(status(&tracker), AttentionStatus::Idle);
     tracker.mark_seen(PANE, 3_000);
     assert_eq!(status(&tracker), AttentionStatus::Idle);
     finish(&mut tracker, Some(1), None, 4_000);
@@ -637,4 +639,16 @@ fn unseen_output_start_is_known_until_seen() {
     assert_eq!(tracker.unseen_output_since(&PANE), Some(10_000));
     tracker.mark_seen(PANE, 11_000);
     assert_eq!(tracker.unseen_output_since(&PANE), None);
+}
+
+#[test]
+fn programs_that_report_nothing_are_never_working() {
+    let mut tracker = tracker();
+    run_command(&mut tracker, "htop", 2_000);
+    assert_eq!(status(&tracker), AttentionStatus::Idle);
+    tracker.foreground_changed(PANE, Some("htop".to_owned()), 2_500);
+    assert_eq!(status(&tracker), AttentionStatus::Idle);
+    let session = tracker.session_attention(&[(0, "t".to_owned(), vec![(PANE, "p".to_owned())])]);
+    assert_eq!(session.counts.working, 0);
+    assert!(session.items.is_empty());
 }

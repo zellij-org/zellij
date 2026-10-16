@@ -741,6 +741,10 @@ impl TryFrom<ProtobufAction> for Action {
                 Some(_) => Err("GoToNextAttention should not have a payload"),
                 None => Ok(Action::GoToNextAttention),
             },
+            Some(ProtobufActionName::ToggleTrayIcon) => match protobuf_action.optional_payload {
+                Some(_) => Err("ToggleTrayIcon should not have a payload"),
+                None => Ok(Action::ToggleTrayIcon),
+            },
             Some(ProtobufActionName::MarkPaneSeen) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::SessionPanePayload(payload)) => Ok(Action::MarkPaneSeen {
                     session: payload.session,
@@ -2074,6 +2078,10 @@ impl TryFrom<Action> for ProtobufAction {
             }),
             Action::GoToNextAttention => Ok(ProtobufAction {
                 name: ProtobufActionName::GoToNextAttention as i32,
+                optional_payload: None,
+            }),
+            Action::ToggleTrayIcon => Ok(ProtobufAction {
+                name: ProtobufActionName::ToggleTrayIcon as i32,
                 optional_payload: None,
             }),
             Action::MarkPaneSeen { session, pane_id } => Ok(ProtobufAction {

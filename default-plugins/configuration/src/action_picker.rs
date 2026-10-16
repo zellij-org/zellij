@@ -385,6 +385,10 @@ pub const ACTION_SPECS: &[ActionSpec] = &[
         "GoToNextAttention",
         "Jump to the next pane that needs attention in any session",
     ),
+    plain(
+        "ToggleTrayIcon",
+        "Show or hide the desktop app's tray icon until it restarts",
+    ),
     plain("MarkPaneSeen", "Clear past events of the focused pane"),
     plain(
         "MarkAllSeen",

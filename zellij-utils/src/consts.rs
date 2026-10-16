@@ -227,6 +227,28 @@ pub fn ipc_bind_reply(
     ListenerOptions::new().name(ns_name).create_sync()
 }
 
+pub const APP_CONTROL_SOCKET_NAME: &str = ".app-control";
+pub const APP_ATTENTION_SOCKET_NAME: &str = ".app-attention";
+pub const APP_LOCK_FILE_NAME: &str = ".app-lock";
+pub const APP_PANEL_SESSION: &str = ".zellij-app-panel";
+pub const APP_QUIT_REQUEST: &str = ".zellij-app-quit";
+
+pub fn is_app_socket_name(name: &str) -> bool {
+    name.starts_with('.')
+}
+
+pub fn app_control_socket() -> PathBuf {
+    ZELLIJ_SOCK_DIR.join(APP_CONTROL_SOCKET_NAME)
+}
+
+pub fn app_attention_socket() -> PathBuf {
+    ZELLIJ_SOCK_DIR.join(APP_ATTENTION_SOCKET_NAME)
+}
+
+pub fn app_lock_file() -> PathBuf {
+    ZELLIJ_SOCK_DIR.join(APP_LOCK_FILE_NAME)
+}
+
 #[cfg(unix)]
 pub use unix_only::*;
 

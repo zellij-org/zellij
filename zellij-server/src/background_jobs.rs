@@ -1242,6 +1242,9 @@ fn find_resurrectable_sessions(
             files_that_are_folders
                 .filter_map(|folder_name| {
                     let id = folder_name.file_name()?.to_str()?.to_owned();
+                    if zellij_utils::consts::is_app_socket_name(&id) {
+                        return None;
+                    }
                     let session_name = names_by_id.get(&id).cloned().unwrap_or_else(|| id.clone());
                     if session_infos_on_machine.contains_key(&session_name) {
                         // this is not a dead session...
@@ -1417,6 +1420,40 @@ mod tests {
         for name in ["live-a", "live-b", "live-c"] {
             assert!(!resurrectable.contains_key(name));
         }
+    }
+
+    #[test]
+    fn the_hidden_app_sessions_are_neither_live_nor_resurrectable() {
+        let sock_dir = tempdir().unwrap();
+        let info_dir = tempdir().unwrap();
+        let panel = zellij_utils::consts::APP_PANEL_SESSION;
+        let _panel = make_socket(sock_dir.path(), panel);
+        write_metadata(info_dir.path(), panel, &SessionInfo::new(panel.to_string()));
+        write_layout(info_dir.path(), panel);
+        write_layout(info_dir.path(), ".old-app-thing");
+        let _live = make_socket(sock_dir.path(), "visible");
+        write_metadata(
+            info_dir.path(),
+            "visible",
+            &SessionInfo::new("visible".to_string()),
+        );
+        write_layout(info_dir.path(), "exited");
+
+        let (live, resurrectable) = scan_session_list(
+            "me",
+            &[],
+            &BTreeMap::new(),
+            sock_dir.path(),
+            info_dir.path(),
+        );
+        assert_eq!(live.keys().collect::<Vec<_>>(), vec!["visible"]);
+        assert_eq!(resurrectable.keys().collect::<Vec<_>>(), vec!["exited"]);
+        let read = zellij_utils::sessions::read_live_session_states(
+            "me",
+            sock_dir.path(),
+            info_dir.path(),
+        );
+        assert_eq!(read.keys().collect::<Vec<_>>(), vec!["visible"]);
     }
 }
 

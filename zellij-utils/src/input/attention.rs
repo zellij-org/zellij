@@ -56,6 +56,47 @@ impl StartupCard {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+pub enum DesktopNotifications {
+    NeedsYou,
+    #[default]
+    NeedsYouFailed,
+    NeedsYouFailedDone,
+    None,
+}
+
+impl DesktopNotifications {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            DesktopNotifications::NeedsYou => "needs_you",
+            DesktopNotifications::NeedsYouFailed => "needs_you_failed",
+            DesktopNotifications::NeedsYouFailedDone => "needs_you_failed_done",
+            DesktopNotifications::None => "none",
+        }
+    }
+    pub fn from_str(value: &str) -> Option<Self> {
+        match value {
+            "needs_you" => Some(DesktopNotifications::NeedsYou),
+            "needs_you_failed" => Some(DesktopNotifications::NeedsYouFailed),
+            "needs_you_failed_done" => Some(DesktopNotifications::NeedsYouFailedDone),
+            "none" => Some(DesktopNotifications::None),
+            _ => None,
+        }
+    }
+    pub fn includes(&self, status: crate::attention::AttentionStatus) -> bool {
+        use crate::attention::AttentionStatus;
+        match status {
+            AttentionStatus::NeedsYou => *self != DesktopNotifications::None,
+            AttentionStatus::Failed => matches!(
+                self,
+                DesktopNotifications::NeedsYouFailed | DesktopNotifications::NeedsYouFailedDone
+            ),
+            AttentionStatus::Done => *self == DesktopNotifications::NeedsYouFailedDone,
+            _ => false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 pub struct AttentionConfig {
     pub frame_markers: Option<bool>,
@@ -65,6 +106,9 @@ pub struct AttentionConfig {
     pub idle_activity_secs: Option<u64>,
     pub idle_silence_secs: Option<u64>,
     pub startup_card: Option<StartupCard>,
+    pub tray_icon: Option<bool>,
+    pub desktop_notifications: Option<DesktopNotifications>,
+    pub notification_details: Option<bool>,
 }
 
 fn kdl_error(message: String, node: &KdlNode) -> ConfigError {
@@ -121,6 +165,15 @@ impl AttentionConfig {
     pub fn startup_card(&self) -> StartupCard {
         self.startup_card.unwrap_or_default()
     }
+    pub fn tray_icon(&self) -> bool {
+        self.tray_icon.unwrap_or(true)
+    }
+    pub fn desktop_notifications(&self) -> DesktopNotifications {
+        self.desktop_notifications.unwrap_or_default()
+    }
+    pub fn notification_details(&self) -> bool {
+        self.notification_details.unwrap_or(true)
+    }
 
     pub fn from_kdl(kdl: &KdlNode) -> Result<Self, ConfigError> {
         let mut config = AttentionConfig::default();
@@ -151,6 +204,22 @@ impl AttentionConfig {
                                 node,
                             )
                         })?);
+                },
+                "tray_icon" => config.tray_icon = Some(bool_value(node)?),
+                "notification_details" => config.notification_details = Some(bool_value(node)?),
+                "desktop_notifications" => {
+                    let value = first_value(node).and_then(|v| v.as_string());
+                    config.desktop_notifications = Some(
+                        value
+                            .and_then(DesktopNotifications::from_str)
+                            .ok_or_else(|| {
+                                kdl_error(
+                                    "desktop_notifications must be \"needs_you\", \"needs_you_failed\", \"needs_you_failed_done\" or \"none\""
+                                        .to_owned(),
+                                    node,
+                                )
+                            })?,
+                    );
                 },
                 other => {
                     return Err(kdl_error(
@@ -195,6 +264,18 @@ impl AttentionConfig {
         if let Some(v) = self.startup_card {
             push("startup_card", KdlValue::String(v.as_str().to_owned()));
         }
+        if let Some(v) = self.tray_icon {
+            push("tray_icon", KdlValue::Bool(v));
+        }
+        if let Some(v) = self.desktop_notifications {
+            push(
+                "desktop_notifications",
+                KdlValue::String(v.as_str().to_owned()),
+            );
+        }
+        if let Some(v) = self.notification_details {
+            push("notification_details", KdlValue::Bool(v));
+        }
         node.set_children(children);
         Some(node)
     }
@@ -208,6 +289,9 @@ impl AttentionConfig {
             idle_activity_secs: other.idle_activity_secs.or(self.idle_activity_secs),
             idle_silence_secs: other.idle_silence_secs.or(self.idle_silence_secs),
             startup_card: other.startup_card.or(self.startup_card),
+            tray_icon: other.tray_icon.or(self.tray_icon),
+            desktop_notifications: other.desktop_notifications.or(self.desktop_notifications),
+            notification_details: other.notification_details.or(self.notification_details),
         }
     }
 }
@@ -231,6 +315,12 @@ mod tests {
         assert_eq!(config.idle_activity_secs(), 10);
         assert_eq!(config.idle_silence_secs(), 3);
         assert_eq!(config.startup_card(), StartupCard::Attention);
+        assert!(config.tray_icon());
+        assert_eq!(
+            config.desktop_notifications(),
+            DesktopNotifications::NeedsYouFailed
+        );
+        assert!(config.notification_details());
         assert_eq!(config.to_kdl(), None);
     }
 
@@ -246,6 +336,9 @@ mod tests {
                 idle_activity_secs 20
                 idle_silence_secs 4
                 startup_card "never"
+                tray_icon false
+                desktop_notifications "needs_you_failed_done"
+                notification_details false
             }
             "#,
         )
@@ -255,6 +348,12 @@ mod tests {
         assert_eq!(config.idle_rule(), IdleRuleScope::Watched);
         assert_eq!(config.done_threshold_secs(), 5);
         assert_eq!(config.startup_card(), StartupCard::Never);
+        assert!(!config.tray_icon());
+        assert_eq!(
+            config.desktop_notifications(),
+            DesktopNotifications::NeedsYouFailedDone
+        );
+        assert!(!config.notification_details());
         let reparsed = AttentionConfig::from_kdl(&config.to_kdl().unwrap()).unwrap();
         assert_eq!(config, reparsed);
     }
@@ -266,6 +365,24 @@ mod tests {
         assert!(parse("attention {\n idle_silence_secs -1\n}").is_err());
         assert!(parse("attention {\n colour true\n}").is_err());
         assert!(parse("attention {\n startup_card \"sometimes\"\n}").is_err());
+        assert!(parse("attention {\n desktop_notifications \"done\"\n}").is_err());
+        assert!(parse("attention {\n tray_icon \"no\"\n}").is_err());
+    }
+
+    #[test]
+    fn desktop_notification_choices_cover_the_counted_statuses() {
+        use crate::attention::AttentionStatus;
+        let default = DesktopNotifications::default();
+        assert!(default.includes(AttentionStatus::NeedsYou));
+        assert!(default.includes(AttentionStatus::Failed));
+        assert!(!default.includes(AttentionStatus::Done));
+        assert!(!default.includes(AttentionStatus::Quiet));
+        assert!(!default.includes(AttentionStatus::NewOutput));
+        assert!(!default.includes(AttentionStatus::Working));
+        assert!(DesktopNotifications::NeedsYou.includes(AttentionStatus::NeedsYou));
+        assert!(!DesktopNotifications::NeedsYou.includes(AttentionStatus::Failed));
+        assert!(DesktopNotifications::NeedsYouFailedDone.includes(AttentionStatus::Done));
+        assert!(!DesktopNotifications::None.includes(AttentionStatus::NeedsYou));
     }
 
     #[test]

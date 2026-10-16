@@ -580,6 +580,7 @@ enum ActionName {
     GoToNextAttention = 142;
     MarkPaneSeen = 143;
     MarkAllSeen = 144;
+    ToggleTrayIcon = 145;
 }
 
 message Position {

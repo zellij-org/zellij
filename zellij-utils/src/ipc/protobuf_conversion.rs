@@ -1543,6 +1543,7 @@ impl From<crate::input::actions::Action>
             ToggleSessionCardAction,
             ToggleTabAction,
             ToggleThemeAction,
+            ToggleTrayIconAction,
             UndoRenamePaneAction,
             UndoRenamePaneByPaneIdAction,
             UndoRenameTabAction,
@@ -1986,6 +1987,9 @@ impl From<crate::input::actions::Action>
             crate::input::actions::Action::GoForward => ActionType::GoForward(GoForwardAction {}),
             crate::input::actions::Action::GoToNextAttention => {
                 ActionType::GoToNextAttention(GoToNextAttentionAction {})
+            },
+            crate::input::actions::Action::ToggleTrayIcon => {
+                ActionType::ToggleTrayIcon(ToggleTrayIconAction {})
             },
             crate::input::actions::Action::MarkPaneSeen { session, pane_id } => {
                 ActionType::MarkPaneSeen(MarkPaneSeenAction {
@@ -3005,6 +3009,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             ActionType::GoToNextAttention(_) => {
                 Ok(crate::input::actions::Action::GoToNextAttention)
             },
+            ActionType::ToggleTrayIcon(_) => Ok(crate::input::actions::Action::ToggleTrayIcon),
             ActionType::MarkPaneSeen(a) => Ok(crate::input::actions::Action::MarkPaneSeen {
                 session: a.session,
                 pane_id: a.pane_id.map(|p| p.try_into()).transpose()?,

@@ -409,6 +409,17 @@ pub(crate) fn web_server_status(
     std::process::exit(2);
 }
 
+pub(crate) fn toggle_tray_icon_at(socket: &std::path::Path) -> Result<(), String> {
+    match zellij_utils::app_control::send_app_request_to(
+        socket,
+        &zellij_utils::app_control::AppRequest::ToggleTrayIcon,
+    ) {
+        Ok(zellij_utils::app_control::AppReply::Done) => Ok(()),
+        Ok(zellij_utils::app_control::AppReply::Refused(reason)) => Err(reason),
+        Err(_) => Err("The Zellij desktop app is not running.".to_owned()),
+    }
+}
+
 /// Client entrypoint for all [`zellij_utils::cli::CliAction`]
 ///
 /// Checks session to send the action to and attaches with client
@@ -417,6 +428,15 @@ pub(crate) fn send_action_to_session(
     requested_session_name: Option<String>,
     config: Option<Config>,
 ) {
+    if matches!(cli_action, zellij_utils::cli::CliAction::ToggleTrayIcon) {
+        match toggle_tray_icon_at(&zellij_utils::consts::app_control_socket()) {
+            Ok(()) => std::process::exit(0),
+            Err(reason) => {
+                eprintln!("{}", reason);
+                std::process::exit(1);
+            },
+        }
+    }
     match get_active_session() {
         ActiveSession::None => {
             eprintln!("There is no active session!");

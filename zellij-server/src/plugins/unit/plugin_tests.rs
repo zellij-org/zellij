@@ -13745,3 +13745,132 @@ pub fn plugin_unloaded_while_loading_does_not_run_once_loaded() {
         "the plugin keeps running after being unloaded while it was loading"
     );
 }
+
+fn plugin_env_without_read_pane_contents() -> super::plugin_map::PluginEnv {
+    let stdin_pipe = Arc::new(Mutex::new(std::collections::VecDeque::new()));
+    let stdout_pipe = Arc::new(Mutex::new(std::collections::VecDeque::new()));
+    let dir = std::env::temp_dir();
+    let wasi_ctx = super::plugin_loader::PluginLoader::create_wasi_ctx(
+        &dir,
+        &dir,
+        &dir,
+        &dir,
+        &"file:/tmp/third-party.wasm".to_owned(),
+        1,
+        stdin_pipe.clone(),
+        stdout_pipe.clone(),
+    )
+    .unwrap();
+    let permissions: std::collections::HashSet<PermissionType> =
+        [PermissionType::ReadApplicationState].into_iter().collect();
+    super::plugin_map::PluginEnv {
+        plugin_id: 1,
+        client_id: 1,
+        plugin: zellij_utils::input::plugins::PluginConfig {
+            path: PathBuf::from("/tmp/third-party.wasm"),
+            _allow_exec_host_cmd: false,
+            location: RunPluginLocation::File(PathBuf::from("/tmp/third-party.wasm")),
+            initial_userspace_configuration: PluginUserConfiguration::new(BTreeMap::new()),
+            initial_cwd: None,
+        },
+        permissions: Arc::new(Mutex::new(Some(permissions))),
+        senders: Default::default(),
+        wasi_ctx,
+        plugin_own_data_dir: dir.clone(),
+        plugin_own_cache_dir: dir.clone(),
+        path_to_default_shell: dir.clone(),
+        default_shell: None,
+        layout_dir: None,
+        plugin_cwd: dir.clone(),
+        session_env_vars: BTreeMap::new(),
+        input_pipes_to_unblock: Arc::new(Mutex::new(std::collections::HashSet::new())),
+        input_pipes_to_block: Arc::new(Mutex::new(std::collections::HashSet::new())),
+        default_mode: InputMode::Normal,
+        subscriptions: Arc::new(Mutex::new(std::collections::HashSet::new())),
+        stdin_pipe,
+        stdout_pipe,
+        keybinds: Arc::new(Default::default()),
+        intercepting_key_presses: false,
+        pending_popup_size: None,
+        store_limits: wasmi::StoreLimitsBuilder::new().build(),
+        shared: None,
+    }
+}
+
+fn pane_manifest_with_command_text() -> zellij_utils::data::PaneManifest {
+    use zellij_utils::attention::{
+        AttentionSource, AttentionStatus, CommandPhase, CommandState, CommandText,
+        CommandTextSource, PaneAttention, RunningCommand,
+    };
+    let command = CommandText {
+        text: "deploy --token hunter2".to_owned(),
+        source: CommandTextSource::Shell,
+    };
+    let mut pane_info = zellij_utils::data::PaneInfo::default();
+    pane_info.id = 1;
+    pane_info.attention = PaneAttention {
+        status: AttentionStatus::Working,
+        source: Some(AttentionSource::ShellCommand),
+        text: "running: deploy --token hunter2".to_owned(),
+        detail: zellij_utils::attention::AttentionDetail {
+            command: Some(command.clone()),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    pane_info.command_state = CommandState {
+        phase: CommandPhase::Running,
+        running: Some(RunningCommand {
+            command: Some(command),
+            started_ms: 1,
+        }),
+        ..Default::default()
+    };
+    zellij_utils::data::PaneManifest {
+        panes: [(0, vec![pane_info])].into_iter().collect(),
+    }
+}
+
+fn manifest_leaks_command_text(manifest: &zellij_utils::data::PaneManifest) -> bool {
+    manifest.panes.values().flatten().any(|pane_info| {
+        pane_info.attention.text.contains("hunter2")
+            || pane_info.attention.detail.command.is_some()
+            || pane_info
+                .command_state
+                .running
+                .as_ref()
+                .and_then(|r| r.command.as_ref())
+                .is_some()
+    })
+}
+
+#[test]
+pub fn pane_update_hides_command_text_from_plugins_without_read_pane_contents() {
+    let env = plugin_env_without_read_pane_contents();
+    let mut event = Event::PaneUpdate(pane_manifest_with_command_text());
+    super::wasm_bridge::redact_event_for_plugin(&env, &mut event);
+    let Event::PaneUpdate(manifest) = event else {
+        panic!("event changed kind");
+    };
+    assert!(!manifest_leaks_command_text(&manifest));
+}
+
+#[test]
+pub fn session_update_hides_command_text_from_plugins_without_read_pane_contents() {
+    let env = plugin_env_without_read_pane_contents();
+    let current_session = zellij_utils::data::SessionInfo {
+        name: "here".to_owned(),
+        is_current_session: true,
+        panes: pane_manifest_with_command_text(),
+        ..Default::default()
+    };
+    let mut event = Event::SessionUpdate(vec![current_session], vec![]);
+    super::wasm_bridge::redact_event_for_plugin(&env, &mut event);
+    let Event::SessionUpdate(sessions, _) = event else {
+        panic!("event changed kind");
+    };
+    assert!(
+        !manifest_leaks_command_text(&sessions[0].panes),
+        "SessionUpdate carries command text to a plugin without ReadPaneContents"
+    );
+}

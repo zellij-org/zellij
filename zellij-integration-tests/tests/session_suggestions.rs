@@ -577,6 +577,12 @@ fn without_other_live_sessions_there_is_no_card_even_with_resurrectable_sessions
     assert_no_card_after_the_session_settles(&zellij);
     open_the_sessions_tab_with_f9(&zellij);
     zellij.wait_until(
+        "the sessions tab folds the ended session",
+        |grid_snapshot| grid_snapshot.contains("▸ Exited (1)"),
+    );
+    zellij.send_stdin(b"\x1b[F");
+    zellij.send_stdin(&keys::ENTER);
+    zellij.wait_until(
         "the sessions tab lists the ended session",
         |grid_snapshot| grid_snapshot.contains(&resurrectable) && grid_snapshot.contains("ended"),
     );
@@ -798,4 +804,89 @@ fn switching_after_a_command_was_typed_keeps_the_current_session() {
     let index = SessionIndex::open_default().unwrap();
     assert!(index.get(&current_session).unwrap().is_some());
     client.quit();
+}
+
+fn blocked(text: &str) -> Vec<u8> {
+    use base64::Engine as _;
+    format!(
+        "\u{1b}]7501;state=blocked:kind=question:msg={}\u{1b}\\",
+        base64::engine::general_purpose::STANDARD.encode(text)
+    )
+    .into_bytes()
+}
+
+fn wait_for_needs_you(session: &str, count: usize) {
+    let deadline = Instant::now() + default_timeout();
+    loop {
+        let counted = zellij_utils::session_link::request_session_attention(
+            session,
+            std::time::Duration::from_secs(2),
+        )
+        .map(|attention| attention.counts.needs_you)
+        .unwrap_or(usize::MAX);
+        if counted == count {
+            return;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "{} never counted {} item(s)",
+            session,
+            count
+        );
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+}
+
+#[test]
+fn the_reattach_card_closes_itself_once_its_last_item_is_seen() {
+    let other = start_running_session_in_background();
+    let other_terminal = other.expect_pty_spawn();
+    other_terminal.output(PROMPT);
+    let target = TestRunner::new(TERMINAL_SIZE)
+        .with_config(SESSION_FEATURES_ON)
+        .start_in_background();
+    other_terminal.output(&blocked("Which branch?"));
+    wait_for_needs_you(other.session_name(), 1);
+    let mut zellij = target.attach(TERMINAL_SIZE);
+    zellij.wait_until("the reattach card lists the item", |grid_snapshot| {
+        grid_snapshot.contains("While you were away") && grid_snapshot.contains("Which br")
+    });
+    let name = other.session_name().to_owned();
+    zellij_utils::session_link::send_actions_to_session(
+        &name,
+        vec![zellij_utils::input::actions::Action::MarkAllSeen {
+            session: Some(name.clone()),
+        }],
+    )
+    .unwrap();
+    zellij.wait_until("the empty card closed itself", |grid_snapshot| {
+        !grid_snapshot.contains("While you were away")
+    });
+    zellij.quit();
+}
+
+#[test]
+fn attaching_to_go_to_a_pane_skips_the_reattach_card() {
+    let other = start_running_session_in_background();
+    let other_terminal = other.expect_pty_spawn();
+    other_terminal.output(PROMPT);
+    let target = TestRunner::new(TERMINAL_SIZE)
+        .with_config(SESSION_FEATURES_ON)
+        .start_in_background();
+    let terminal = target.expect_pty_spawn();
+    terminal.output(PROMPT);
+    other_terminal.output(&blocked("Which branch?"));
+    wait_for_needs_you(other.session_name(), 1);
+    let mut zellij = target.attach_focusing(TERMINAL_SIZE, Some((terminal.terminal_id(), false)));
+    zellij.wait_until("the session counts the item", |grid_snapshot| {
+        grid_snapshot.status_bar_appears() && bar_says(grid_snapshot, "1 need you")
+    });
+    std::thread::sleep(std::time::Duration::from_millis(1500));
+    let grid_snapshot = zellij.snapshot();
+    assert!(
+        !grid_snapshot.contains("While you were away"),
+        "the reattach card opened over the pane:\n{}",
+        grid_snapshot.text
+    );
+    zellij.quit();
 }

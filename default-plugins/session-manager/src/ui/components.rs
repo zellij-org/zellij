@@ -1247,6 +1247,27 @@ pub fn render_controls_line(
                 false
             }
         },
+        ActiveScreen::SingleScreen if show_navigate && crate::app_panel::is_enabled() => {
+            let arrows = colors.shortcuts("<←↓↑→>");
+            let navigate = colors.bold("Navigate");
+            let rename = colors.shortcuts("<Ctrl r>");
+            let rename_text = colors.bold("Rename");
+            let kill = colors.shortcuts("<Del>");
+            let kill_text = colors.bold("Stop/Delete");
+            let layout = colors.shortcuts("<Ctrl l>");
+            let layout_text = colors.bold("New with layout");
+            if max_cols > 92 {
+                print!(
+                    "\u{1b}[m\u{1b}[{y};{x}HHelp: {arrows} - {navigate}, {layout} - {layout_text}, {rename} - {rename_text}, {kill} - {kill_text}"
+                );
+                true
+            } else if max_cols >= 34 {
+                print!("\u{1b}[m\u{1b}[{y};{x}H{arrows}/{layout}/{rename}/{kill}");
+                false
+            } else {
+                false
+            }
+        },
         ActiveScreen::SingleScreen if show_navigate => {
             let arrows = colors.shortcuts("<←↓↑→>");
             let navigate = colors.bold("Navigate");

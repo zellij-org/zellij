@@ -33,6 +33,7 @@ pub struct TestRunner {
     host_terminal: Option<HostTerminal>,
     cli_options: Option<Options>,
     without_config_file: bool,
+    session_name: Option<String>,
 }
 
 impl TestRunner {
@@ -48,7 +49,13 @@ impl TestRunner {
             host_terminal: None,
             cli_options: None,
             without_config_file: false,
+            session_name: None,
         }
+    }
+
+    pub fn with_session_name(mut self, session_name: &str) -> Self {
+        self.session_name = Some(session_name.to_owned());
+        self
     }
 
     pub fn without_config_file(mut self) -> Self {
@@ -154,7 +161,10 @@ impl TestRunner {
         ClientInfo,
     ) {
         test_env::init();
-        let session_name = test_env::unique_session_name();
+        let session_name = self
+            .session_name
+            .clone()
+            .unwrap_or_else(test_env::unique_session_name);
         let data_dir = test_env::init().join("data");
 
         let cli_args = if self.without_config_file {
@@ -266,8 +276,12 @@ impl BackgroundTestSession {
     }
 
     pub fn attach(self, size: Size) -> TestSession {
+        self.attach_focusing(size, None)
+    }
+
+    pub fn attach_focusing(self, size: Size, pane_id_to_focus: Option<(u32, bool)>) -> TestSession {
         let (fake_client_os_api, fake_client_handle) = FakeClientOsApi::new(size, None);
-        let client_thread = spawn_client_thread(
+        let client_thread = spawn_focusing_client_thread(
             fake_client_os_api,
             self.session_context.cli_args.clone(),
             self.session_context.config.clone(),
@@ -276,6 +290,7 @@ impl BackgroundTestSession {
                 self.session_context.session_name.clone(),
                 self.session_context.config_options.clone(),
             ),
+            pane_id_to_focus,
         );
         self.session_context.into_session(TestClient {
             fake_client_handle,
@@ -410,6 +425,33 @@ fn spawn_client_thread(
         false,
         None,
     )
+}
+
+fn spawn_focusing_client_thread(
+    fake_client_os_api: FakeClientOsApi,
+    cli_args: CliArgs,
+    config: zellij_utils::input::config::Config,
+    config_options: Options,
+    client_info: ClientInfo,
+    pane_id_to_focus: Option<(u32, bool)>,
+) -> JoinHandle<Option<ConnectToSession>> {
+    std::thread::Builder::new()
+        .name("in_process_zellij_client".to_string())
+        .spawn(move || {
+            zellij_client::start_client(
+                Box::new(fake_client_os_api),
+                cli_args,
+                config,
+                config_options,
+                client_info,
+                None,
+                pane_id_to_focus,
+                false,
+                false,
+                None,
+            )
+        })
+        .unwrap()
 }
 
 fn spawn_client_thread_with_reconnect(
@@ -1123,6 +1165,10 @@ impl TestSession {
                 block_until_exit,
             )),
         }
+    }
+
+    pub fn join_main_client(&mut self) -> Option<ConnectToSession> {
+        self.main_client.join()
     }
 
     pub fn wait_for_main_client_to_exit(&mut self) {

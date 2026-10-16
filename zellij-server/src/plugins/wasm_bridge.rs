@@ -3473,6 +3473,15 @@ pub fn redact_event_for_plugin(plugin_env: &PluginEnv, event: &mut Event) {
         Event::GlobalAttentionUpdate(global) => {
             *global = std::mem::take(global).without_command_text();
         },
+        Event::SessionUpdate(sessions, _) => {
+            for session in sessions.iter_mut() {
+                for pane_infos in session.panes.panes.values_mut() {
+                    for pane_info in pane_infos.iter_mut() {
+                        redact_pane_info(pane_info);
+                    }
+                }
+            }
+        },
         _ => {},
     }
 }

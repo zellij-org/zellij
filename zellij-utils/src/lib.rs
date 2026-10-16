@@ -27,6 +27,8 @@ pub mod structured_render;
 
 // The following modules can't be used when targeting wasm
 #[cfg(not(target_family = "wasm"))]
+pub mod app_control;
+#[cfg(not(target_family = "wasm"))]
 pub mod channels; // Requires tokio
 #[cfg(not(target_family = "wasm"))]
 pub mod common_path;
@@ -42,6 +44,8 @@ pub mod nested_session;
 pub mod remote_session_tokens;
 #[cfg(not(target_family = "wasm"))]
 pub mod session_index;
+#[cfg(not(target_family = "wasm"))]
+pub mod session_link;
 #[cfg(not(target_family = "wasm"))]
 pub mod sessions;
 #[cfg(all(not(target_family = "wasm"), feature = "web_server_capability"))]

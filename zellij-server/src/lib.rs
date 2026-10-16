@@ -3279,13 +3279,16 @@ fn handle_new_connection(
     };
     let _ = receiver.set_read_timeout(None);
 
-    if let ClientToServerMsg::ConnStatus = first_instruction {
-        let mut sender = receiver.get_sender::<ServerToClientMsg>();
-        let _ = sender.send_server_msg(ServerToClientMsg::Connected);
-        return Ok(());
-    }
-
     match first_instruction {
+        ClientToServerMsg::ConnStatus => {
+            answer_before_registration(
+                &receiver,
+                #[cfg(windows)]
+                reply_stream,
+                ServerToClientMsg::Connected,
+            );
+            return Ok(());
+        },
         ClientToServerMsg::RequestSessionAttention {
             include_command_text,
         } => {
@@ -3299,8 +3302,12 @@ fn handle_new_connection(
                     crate::session_link::local_session_attention(&senders, include_command_text)
                 })
                 .unwrap_or_default();
-            let mut sender = receiver.get_sender::<ServerToClientMsg>();
-            let _ = sender.send_server_msg(ServerToClientMsg::SessionAttention { attention });
+            answer_before_registration(
+                &receiver,
+                #[cfg(windows)]
+                reply_stream,
+                ServerToClientMsg::SessionAttention { attention },
+            );
             return Ok(());
         },
         ClientToServerMsg::RequestSessionPreview {
@@ -3319,8 +3326,12 @@ fn handle_new_connection(
                 pane_id,
                 anchor,
             );
-            let mut sender = receiver.get_sender::<ServerToClientMsg>();
-            let _ = sender.send_server_msg(ServerToClientMsg::SessionPreview { preview });
+            answer_before_registration(
+                &receiver,
+                #[cfg(windows)]
+                reply_stream,
+                ServerToClientMsg::SessionPreview { preview },
+            );
             return Ok(());
         },
         ClientToServerMsg::PeerAttentionChanged {
@@ -3337,8 +3348,12 @@ fn handle_new_connection(
                         },
                     ));
             }
-            let mut sender = receiver.get_sender::<ServerToClientMsg>();
-            let _ = sender.send_server_msg(ServerToClientMsg::Connected);
+            answer_before_registration(
+                &receiver,
+                #[cfg(windows)]
+                reply_stream,
+                ServerToClientMsg::Connected,
+            );
             return Ok(());
         },
         first_instruction => {
@@ -3354,6 +3369,21 @@ fn handle_new_connection(
             );
         },
     }
+}
+
+fn answer_before_registration(
+    receiver: &IpcReceiverWithContext<ClientToServerMsg>,
+    #[cfg(windows)] reply_stream: interprocess::local_socket::Stream,
+    message: ServerToClientMsg,
+) {
+    #[cfg(windows)]
+    let mut sender = {
+        let _ = receiver;
+        zellij_utils::ipc::IpcSenderWithContext::<ServerToClientMsg>::new(reply_stream)
+    };
+    #[cfg(not(windows))]
+    let mut sender = receiver.get_sender::<ServerToClientMsg>();
+    let _ = sender.send_server_msg(message);
 }
 
 fn handle_client_connection(
@@ -4011,7 +4041,7 @@ pub fn start_server_impl(
                     &session_data.senders,
                     client_id,
                     cli_assets.switch_context.as_ref(),
-                    is_a_reattach,
+                    is_a_reattach && pane_id_to_focus.is_none(),
                     last_detached_at_ms,
                 );
                 let runtime_config_options = match cli_assets.configuration_options {

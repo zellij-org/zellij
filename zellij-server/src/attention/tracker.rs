@@ -232,6 +232,7 @@ pub struct AttentionTracker {
     events: Vec<AttentionEvent>,
     idle_checks: Vec<(PaneId, u64)>,
     changed: BTreeSet<PaneId>,
+    summary_stale: bool,
 }
 
 impl Default for AttentionTracker {
@@ -251,6 +252,7 @@ impl AttentionTracker {
             events: vec![],
             idle_checks: vec![],
             changed: BTreeSet::new(),
+            summary_stale: false,
         }
     }
     pub fn config(&self) -> &AttentionConfig {
@@ -278,9 +280,17 @@ impl AttentionTracker {
         self.track(pane_id, now);
     }
     pub fn remove_pane(&mut self, pane_id: PaneId) {
-        self.panes.remove(&pane_id);
+        if let Some(track) = self.panes.remove(&pane_id) {
+            let resolved = &track.resolved;
+            if !resolved.status.is_idle() || resolved.watched || resolved.is_muted() {
+                self.summary_stale = true;
+            }
+        }
         self.pane_tabs.remove(&pane_id);
         self.changed.remove(&pane_id);
+    }
+    pub fn take_summary_stale(&mut self) -> bool {
+        std::mem::take(&mut self.summary_stale)
     }
     pub fn has_pane(&self, pane_id: &PaneId) -> bool {
         self.panes.contains_key(pane_id)
@@ -917,38 +927,6 @@ impl AttentionTracker {
                     past: true,
                     on_frame: watched,
                     from_watch: watched,
-                });
-            }
-        }
-        if !has_records {
-            let running = track
-                .command
-                .running
-                .clone()
-                .filter(|_| track.command.phase == CommandPhase::Running)
-                .map(|r| {
-                    let source = if track.command_pane_running.is_some() {
-                        AttentionSource::CommandPane
-                    } else if track.foreground.is_some() {
-                        AttentionSource::ForegroundProcess
-                    } else {
-                        AttentionSource::ShellCommand
-                    };
-                    (r, source)
-                });
-            if let Some((running, source)) = running {
-                candidates.push(Candidate {
-                    status: AttentionStatus::Working,
-                    source,
-                    text: with_command("running".to_owned(), &running.command),
-                    detail: AttentionDetail {
-                        command: running.command.clone(),
-                        ..Default::default()
-                    },
-                    since_ms: running.started_ms,
-                    past: false,
-                    on_frame: false,
-                    from_watch: false,
                 });
             }
         }

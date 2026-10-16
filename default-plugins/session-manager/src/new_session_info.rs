@@ -3,6 +3,8 @@ use fuzzy_matcher::FuzzyMatcher;
 use std::path::PathBuf;
 use zellij_tile::prelude::*;
 
+use crate::app_panel::{close_self, hide_self, switch_session, switch_session_with_layout};
+
 #[derive(Default)]
 pub struct NewSessionInfo {
     name: String,

@@ -2509,6 +2509,12 @@ fn test_client_messages() {
         is_cli_client: true,
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::ToggleTrayIcon,
+        terminal_id: None,
+        client_id: None,
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
         action: Action::MarkPaneSeen {
             session: Some("api".to_owned()),
             pane_id: Some(crate::data::PaneId::Terminal(3)),

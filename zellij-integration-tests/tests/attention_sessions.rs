@@ -274,3 +274,52 @@ fn tabs_show_the_status_symbol_instead_of_an_exclamation_mark() {
     assert!(!tab_bar(&grid_snapshot).contains("[!]"));
     zellij.quit();
 }
+
+fn sgr(button: u8, column: usize, line: usize, end: char) -> Vec<u8> {
+    format!("\u{1b}[<{};{};{}{}", button, column, line, end).into_bytes()
+}
+
+fn leaked_since(terminal: &FakePtyHandle, before: usize) -> String {
+    String::from_utf8_lossy(&terminal.stdin_bytes()[before..]).into_owned()
+}
+
+#[test]
+fn keys_and_wheel_in_the_inbox_opened_from_the_indicator_stay_out_of_the_pane() {
+    let background = TestRunner::new(TERMINAL_SIZE)
+        .with_config(ATTENTION_ON)
+        .skip_concurrency_slot()
+        .start_in_background();
+    let terminal = background.expect_pty_spawn();
+    terminal.output(b"$ ");
+    for i in 0..3 {
+        terminal.output(&needs_you(&format!("question {}", i)));
+    }
+    let pane = terminal.terminal_id();
+    let zellij = background.attach_focusing(TERMINAL_SIZE, Some((pane, false)));
+    let grid_snapshot = zellij.wait_until("the indicator shows the items", |grid_snapshot| {
+        tab_bar(grid_snapshot).contains("need you")
+    });
+    std::thread::sleep(Duration::from_millis(500));
+    let before = terminal.stdin_bytes().len();
+    let bar = tab_bar(&grid_snapshot);
+    let column = bar[..bar.rfind('●').unwrap()].chars().count() + 2;
+    zellij.send_stdin(&sgr(0, column, 1, 'M'));
+    zellij.send_stdin(&sgr(0, column, 1, 'm'));
+    zellij.wait_until("the inbox opens", |grid_snapshot| {
+        grid_snapshot.contains("Inbox (")
+    });
+    std::thread::sleep(Duration::from_millis(300));
+    for _ in 0..4 {
+        zellij.send_stdin(&keys::DOWN);
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(leaked_since(&terminal, before), "", "keys leaked");
+    let (rows, cols) = (TERMINAL_SIZE.rows, TERMINAL_SIZE.cols);
+    for _ in 0..4 {
+        zellij.send_stdin(&sgr(65, cols / 2, rows / 2, 'M'));
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(leaked_since(&terminal, before), "", "the wheel leaked");
+}

@@ -3,7 +3,7 @@ pub mod commands;
 mod tests;
 
 use zellij_utils::{
-    cli::{CliAction, CliArgs, Command, Sessions},
+    cli::{CliAction, CliArgs, Command, Sessions, WindowArgs},
     consts::{create_config_and_cache_folders, VERSION},
     data::UnblockCondition,
     distribution::set_distribution,
@@ -36,10 +36,23 @@ pub fn run_zellij() {
     main()
 }
 
+pub(crate) fn socket_dir_override(opts: &CliArgs) -> Option<&std::path::Path> {
+    match opts.command.as_ref() {
+        Some(Command::Window(WindowArgs {
+            socket_dir: Some(socket_dir),
+            ..
+        })) => Some(socket_dir.as_path()),
+        _ => None,
+    }
+}
+
 fn main() {
     configure_logger();
     create_config_and_cache_folders();
     let opts = CliArgs::parse_for_distribution();
+    if let Some(socket_dir) = socket_dir_override(&opts) {
+        std::env::set_var(zellij_utils::envs::SOCKET_DIR_ENV_KEY, socket_dir);
+    }
 
     if let Some(Command::Setup(ref setup)) = opts.command {
         if setup.install_desktop_entry {

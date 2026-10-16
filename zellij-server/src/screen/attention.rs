@@ -184,13 +184,14 @@ impl Screen {
             self.attention.take_changed().into_iter().collect();
         let events = self.attention.take_events();
         let has_changes = !changed.is_empty();
+        let summary_stale = self.attention.take_summary_stale();
         if has_changes {
             self.apply_attention_markers(changed);
         }
         if !events.is_empty() {
             self.send_attention_events(events);
         }
-        if has_changes {
+        if has_changes || summary_stale {
             let _ = self.generate_and_report_pane_state();
             let _ = self.generate_and_report_tab_state();
             self.report_session_attention();

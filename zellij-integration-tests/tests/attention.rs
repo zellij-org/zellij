@@ -294,3 +294,37 @@ fn the_host_terminal_is_told_what_the_session_needs() {
     });
     zellij.quit();
 }
+
+#[test]
+fn only_programs_that_report_it_are_shown_as_working() {
+    let (mut zellij, left, right) =
+        start_with_two_panes(TestRunner::new(TERMINAL_SIZE).with_config("session_indicator true"));
+    left.output(
+        b"\x1b]133;A\x1b\\$ \x1b]133;B\x1b\\cargo build\x1b]133;C\x1b\\\r\nCompiling...\r\n",
+    );
+    right.set_foreground(&["htop"]);
+    right.output(b"htop is drawing\r\n");
+    right.wait_for_foreground_to_be_seen();
+    left.output(b"still compiling\r\n");
+    right.output(b"htop is still drawing\r\n");
+    zellij.wait_until("both panes drew their output", |grid_snapshot| {
+        grid_snapshot.contains("still compiling") && grid_snapshot.contains("htop is still drawing")
+    });
+    std::thread::sleep(Duration::from_millis(1500));
+    let grid_snapshot = zellij.snapshot();
+    assert_eq!(
+        markers_on_screen(&grid_snapshot.text),
+        "",
+        "a running command or a foreground program is not working:\n{}",
+        grid_snapshot.text
+    );
+    let indicator = grid_snapshot.lines()[0].clone();
+    assert!(
+        !indicator.contains('◐') && !indicator.contains("working"),
+        "the indicator counts something as working: {}",
+        indicator
+    );
+    left.output(&program_status("state=working:app=claude"));
+    wait_for_markers(&zellij, "◐");
+    zellij.quit();
+}

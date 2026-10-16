@@ -1528,6 +1528,18 @@ fn route_action_with_origin(
                 ))
                 .with_context(err_context)?;
         },
+        Action::ToggleTrayIcon => {
+            drop(NotificationEnd::new(completion_tx));
+            let _ = std::thread::Builder::new()
+                .name("toggle_tray_icon".to_owned())
+                .spawn(|| {
+                    if let Err(e) = zellij_utils::app_control::send_app_request(
+                        &zellij_utils::app_control::AppRequest::ToggleTrayIcon,
+                    ) {
+                        log::info!("The desktop app did not take the tray icon toggle: {}", e);
+                    }
+                });
+        },
         Action::GoToNextAttention => {
             senders
                 .send_to_screen(ScreenInstruction::GoToNextAttention(
@@ -3047,6 +3059,25 @@ pub(crate) fn route_thread_main(
                                 });
                             }
 
+                            let popup_has_focus = !is_cli_client
+                                && session_data
+                                    .read()
+                                    .unwrap()
+                                    .as_ref()
+                                    .map(|s| s.popup_clients.contains(&client_id))
+                                    .unwrap_or(false);
+                            let action = match action {
+                                Action::WriteChars { chars } if popup_has_focus => {
+                                    if let Some(senders) = senders.as_ref() {
+                                        type_into_popup(senders, client_id, &chars);
+                                    }
+                                    return Ok(should_break);
+                                },
+                                Action::Paste { pane_id: None, .. } if popup_has_focus => {
+                                    return Ok(should_break);
+                                },
+                                action => action,
+                            };
                             // The read guard ends as a temporary in this expression so
                             // `route_action` runs without holding `session_data.read()` —
                             // see the doc comment on `route_action` for why this matters.
@@ -4105,6 +4136,32 @@ fn send_output_to_client(
                 },
             );
         }
+    }
+}
+
+fn type_into_popup(senders: &ThreadSenders, client_id: ClientId, chars: &str) {
+    for ch in chars.chars() {
+        let key = zellij_utils::data::KeyWithModifier::new(BareKey::Char(ch));
+        let bytes = ch.to_string().into_bytes();
+        let _ = senders.send_to_plugin(PluginInstruction::UserInput {
+            client_id,
+            action: Action::Write {
+                key_with_modifier: Some(key.clone()),
+                bytes: bytes.clone(),
+                is_kitty_keyboard_protocol: false,
+            },
+            terminal_id: None,
+            cli_client_id: None,
+        });
+        let (completion_tx, completion_rx) = oneshot::channel();
+        let _ = senders.send_to_screen(ScreenInstruction::KeyToPopup(
+            key,
+            bytes,
+            false,
+            client_id,
+            Some(NotificationEnd::new(completion_tx)),
+        ));
+        let _ = wait_for_action_completion(completion_rx, "KeyToPopup", false);
     }
 }
 

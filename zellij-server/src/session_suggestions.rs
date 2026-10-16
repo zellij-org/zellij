@@ -280,7 +280,16 @@ impl SessionSuggestionsService {
     }
 
     fn enabled(&self) -> bool {
-        self.index.is_some() && (self.startup_card != StartupCard::Never || self.session_indicator)
+        self.index.is_some()
+            && !self.is_app_session()
+            && (self.startup_card != StartupCard::Never || self.session_indicator)
+    }
+
+    fn is_app_session(&self) -> bool {
+        self.session_name
+            .as_deref()
+            .map(zellij_utils::consts::is_app_socket_name)
+            .unwrap_or(false)
     }
 
     fn ensure_index(&mut self) {
@@ -329,7 +338,7 @@ impl SessionSuggestionsService {
                 startup_card,
             } => {
                 let rule = startup_card.unwrap_or(self.startup_card);
-                if rule != StartupCard::Never {
+                if rule != StartupCard::Never && !self.is_app_session() {
                     self.ensure_index();
                     self.pending_card = Some(PendingCard {
                         client_id,
@@ -464,7 +473,8 @@ impl SessionSuggestionsService {
         }
         self.start_reporting_counts();
         let rule = startup_card.unwrap_or(self.startup_card);
-        if let (Some(client_id), true) = (card_for_client, rule != StartupCard::Never) {
+        let wants_card = rule != StartupCard::Never && !self.is_app_session();
+        if let (Some(client_id), true) = (card_for_client, wants_card) {
             self.pending_card = Some(PendingCard {
                 client_id,
                 away_since_ms: None,
@@ -1408,6 +1418,32 @@ mod tests {
             startup_card: None,
         });
         assert_eq!(card_openings(&screen_receiver), vec![(4, Some(1234))]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_hidden_panel_session_never_opens_a_card() {
+        let sock_dir = tempfile::tempdir().unwrap();
+        std::fs::write(sock_dir.path().join("other"), b"").unwrap();
+        let (mut service, screen_receiver) = service_capturing_screen(sock_dir.path());
+        configure_startup_card(&mut service, StartupCard::Always);
+        service.handle(SessionSuggestionsJob::GlobalAttentionChanged {
+            needs_you: 3,
+            scanned: true,
+        });
+        service.handle(SessionSuggestionsJob::SessionStarted {
+            name: zellij_utils::consts::APP_PANEL_SESSION.to_owned(),
+            cwd: None,
+            card_for_client: Some(1),
+            startup_card: None,
+        });
+        service.handle(SessionSuggestionsJob::ClientReattached {
+            client_id: 2,
+            away_since_ms: 1234,
+            startup_card: None,
+        });
+        assert!(card_openings(&screen_receiver).is_empty());
+        assert!(!service.enabled());
     }
 
     #[test]

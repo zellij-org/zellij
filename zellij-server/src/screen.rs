@@ -2862,6 +2862,7 @@ impl Screen {
         let err_context = || format!("failed to close tab at index {tab_id:?}");
 
         let mut tab_to_close = self.tabs.remove(&tab_id).with_context(err_context)?;
+        self.attention.remove_tab(tab_id);
         let popups_of_closed_tab = tab_to_close.drain_popups();
         self.close_popups_of_closed_tab(popups_of_closed_tab);
         let mut pane_ids = tab_to_close.get_all_pane_ids();

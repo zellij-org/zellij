@@ -609,6 +609,33 @@ pub struct WindowArgs {
         help = "Open the window windowed, maximized, fullscreen, or the way the last one was closed (remember), overriding startup_mode in the window section of the configuration"
     )]
     pub startup_mode: Option<crate::input::window::StartupMode>,
+
+    #[clap(
+        long,
+        help = "Open this window on its own instead of handing it to the running desktop app (no tray, no notifications from this process)"
+    )]
+    pub standalone: bool,
+
+    #[clap(
+        long,
+        value_name = "PATH",
+        help = "Use this folder for session sockets instead of the default, so this window, its desktop app and its sessions are separate from every other Zellij (same as setting ZELLIJ_SOCKET_DIR)"
+    )]
+    pub socket_dir: Option<PathBuf>,
+
+    #[clap(
+        long,
+        conflicts_with_all = &["sessions", "standalone", "watch", "headless"],
+        help = "Show or hide the inbox panel of the running desktop app (starting it if needed), for a desktop keyboard shortcut"
+    )]
+    pub inbox: bool,
+
+    #[clap(
+        long,
+        conflicts_with_all = &["standalone", "watch", "headless"],
+        help = "Show or hide the sessions panel of the running desktop app (starting it if needed), for a desktop keyboard shortcut"
+    )]
+    pub sessions: bool,
 }
 
 impl WindowArgs {
@@ -2019,6 +2046,10 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         about = "Jump to the next pane that needs attention in any session, switching session if needed"
     )]
     GoToNextAttention,
+    #[clap(
+        about = "Show or hide the desktop app's tray / menu-bar icon until the app restarts (sessions and notifications continue)"
+    )]
+    ToggleTrayIcon,
     #[clap(about = "Mark a pane as seen, clearing past events (the focused pane by default)")]
     MarkPaneSeen {
         #[clap(

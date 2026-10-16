@@ -704,6 +704,20 @@ fn attention_values(
         SettingKey::AttentionStartupCard,
         attention.startup_card.map(|v| v.as_str().to_owned()),
     );
+    values.insert(
+        SettingKey::AttentionTrayIcon,
+        attention.tray_icon.map(|v| v.to_string()),
+    );
+    values.insert(
+        SettingKey::AttentionDesktopNotifications,
+        attention
+            .desktop_notifications
+            .map(|v| v.as_str().to_owned()),
+    );
+    values.insert(
+        SettingKey::AttentionNotificationDetails,
+        attention.notification_details.map(|v| v.to_string()),
+    );
 }
 
 pub fn copy_setting(target: &mut Config, source: &Config, key: SettingKey) {
@@ -740,6 +754,18 @@ pub fn copy_setting(target: &mut Config, source: &Config, key: SettingKey) {
         },
         SettingKey::AttentionStartupCard => {
             target.attention.startup_card = source.attention.startup_card;
+            return;
+        },
+        SettingKey::AttentionTrayIcon => {
+            target.attention.tray_icon = source.attention.tray_icon;
+            return;
+        },
+        SettingKey::AttentionDesktopNotifications => {
+            target.attention.desktop_notifications = source.attention.desktop_notifications;
+            return;
+        },
+        SettingKey::AttentionNotificationDetails => {
+            target.attention.notification_details = source.attention.notification_details;
             return;
         },
         _ => {},

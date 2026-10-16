@@ -5186,7 +5186,6 @@ setting_keys! {
     WindowScrollMomentum => (Window, "scroll_momentum", false, Flag),
     WindowScrollMomentumFriction => (Window, "scroll_momentum_friction", false, Decimal),
     WindowBell => (Window, "bell", false, Text),
-    WindowNotifications => (Window, "notifications", false, Text),
     WindowOpenLinks => (Window, "open_links", false, Flag),
     WindowOpenLinksWithShift => (Window, "open_links_with_shift", false, Flag),
     WindowShiftDragSelects => (Window, "shift_drag_selects", false, Flag),
@@ -5232,6 +5231,9 @@ setting_keys! {
     AttentionIdleActivitySecs => (Attention, "idle_activity_secs", false, Number),
     AttentionIdleSilenceSecs => (Attention, "idle_silence_secs", false, Number),
     AttentionStartupCard => (Attention, "startup_card", false, Text),
+    AttentionTrayIcon => (Attention, "tray_icon", false, Flag),
+    AttentionDesktopNotifications => (Attention, "desktop_notifications", false, Text),
+    AttentionNotificationDetails => (Attention, "notification_details", false, Flag),
 }
 
 impl SettingKey {

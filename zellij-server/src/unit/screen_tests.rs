@@ -19338,3 +19338,80 @@ fn cli_pane_renames_drop_control_characters() {
         "a]0;evilbc\u{1F1E9}\u{1F1EA}"
     );
 }
+
+#[test]
+fn closing_a_pane_that_needs_you_updates_the_reported_session_attention() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    screen.render(None).expect("TEST");
+    let blocked = crate::attention::program_status::parse(
+        &[b"7501", b"state=blocked:kind=permission"],
+        false,
+    )
+    .expect("TEST");
+    for tab in screen.tabs.values_mut() {
+        if tab.has_terminal_pid(1) {
+            tab.pending_pane_signals.push((
+                PaneId::Terminal(1),
+                vec![crate::attention::PaneSignal::ProgramStatus(blocked.clone())],
+            ));
+        }
+    }
+    screen.process_attention();
+    let reported_pane_ids = |screen: &Screen| -> Vec<zellij_utils::data::PaneId> {
+        screen
+            .last_session_attention
+            .as_ref()
+            .map(|summary| summary.items.iter().map(|item| item.pane_id).collect())
+            .unwrap_or_default()
+    };
+    assert_eq!(
+        reported_pane_ids(&screen),
+        vec![zellij_utils::data::PaneId::Terminal(1)],
+        "precondition: the blocked pane is reported"
+    );
+    screen.switch_tab_prev(None, true, 1).expect("TEST");
+    screen.render(None).expect("TEST");
+    screen.process_attention();
+    screen.close_tab(1).expect("TEST");
+    screen.sync_attention_visibility();
+    assert!(screen.session_attention().items.is_empty());
+    assert_eq!(
+        reported_pane_ids(&screen),
+        Vec::<zellij_utils::data::PaneId>::new(),
+        "the session still reports the closed pane to peers and to its own global attention"
+    );
+}
+
+#[test]
+fn a_new_tab_does_not_inherit_the_mute_of_a_closed_tab() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    let muted_tab_id = screen.get_active_tab(1).expect("TEST").id;
+    assert!(screen.toggle_tab_mute(None, 1));
+    assert!(screen.attention.tab_is_muted(muted_tab_id));
+    screen.close_tab(1).expect("TEST");
+    let new_tab_id = screen.get_new_tab_id();
+    assert_eq!(
+        new_tab_id, muted_tab_id,
+        "precondition: the tab id is reused"
+    );
+    new_tab(&mut screen, 3, new_tab_id);
+    screen.render(None).expect("TEST");
+    screen.process_attention();
+    let new_tab = screen.tabs.get(&new_tab_id).expect("TEST");
+    assert!(
+        !screen.tab_attention(new_tab).muted,
+        "a freshly opened tab is reported as muted"
+    );
+}

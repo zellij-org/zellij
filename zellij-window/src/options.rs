@@ -1,8 +1,7 @@
 use zellij_utils::data::{BareKey, HostTerminalThemeMode, KeyWithModifier, PaletteColor, Styling};
 use zellij_utils::input::theme::Theme;
 use zellij_utils::input::window::{
-    BellMode, CursorStyle, NotificationMode, OptionAsAlt, PaddingColor, StartupMode, WindowConfig,
-    WindowTheme,
+    BellMode, CursorStyle, OptionAsAlt, PaddingColor, StartupMode, WindowConfig, WindowTheme,
 };
 
 use crate::color::{Paints, Srgb};
@@ -28,7 +27,6 @@ pub struct Options {
     pub shift_drag_selects: bool,
     pub copy_keys: Vec<KeyWithModifier>,
     pub bell: BellMode,
-    pub notifications: NotificationMode,
     pub paints: Paints,
     pub cursor_shape: Option<CursorShape>,
     pub cursor_blink: Option<bool>,
@@ -136,7 +134,6 @@ pub fn resolve(settings: &Settings, mode: Option<HostTerminalThemeMode>) -> Opti
         shift_drag_selects: section.shift_drag_selects.unwrap_or(true),
         copy_keys: section.copy_keys.clone().unwrap_or_else(default_copy_keys),
         bell: section.bell.unwrap_or(BellMode::Visual),
-        notifications: section.notifications.unwrap_or(NotificationMode::Desktop),
         paints: paints(section.theme.as_ref(), settings.theme(mode).as_ref()),
         cursor_shape: section.cursor_style.map(cursor_shape),
         cursor_blink: section.cursor_blink,
@@ -324,7 +321,6 @@ pub struct Change {
     pub selection: bool,
     pub copy_keys: bool,
     pub bell: bool,
-    pub notifications: bool,
     pub transparency: bool,
     pub blur: bool,
     pub layout: bool,
@@ -355,7 +351,6 @@ impl Change {
             selection: current.shift_drag_selects != next.shift_drag_selects,
             copy_keys: current.copy_keys != next.copy_keys,
             bell: current.bell != next.bell,
-            notifications: current.notifications != next.notifications,
             transparency: current.transparency != next.transparency,
             blur: current.blur != next.blur,
             layout: current.padding != next.padding
@@ -387,7 +382,6 @@ impl Change {
             || self.selection
             || self.copy_keys
             || self.bell
-            || self.notifications
             || self.transparency
             || self.blur
             || self.layout
@@ -548,12 +542,6 @@ mod tests {
             options.bell,
             BellMode::Visual,
             "the shipped bell must stay the window attention the window always requested"
-        );
-        assert_eq!(
-            options.notifications,
-            NotificationMode::Desktop,
-            "a notification a pane sends is meant for the desktop; \
-             with no service to hand it to, it falls back to the window attention on its own"
         );
         assert_eq!(options.paints, Paints::default());
         assert_eq!(

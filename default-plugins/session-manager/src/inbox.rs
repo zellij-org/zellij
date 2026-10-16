@@ -3,6 +3,8 @@ use std::ops::Range;
 use unicode_width::UnicodeWidthStr;
 use zellij_tile::prelude::*;
 
+use crate::app_panel::focus_session_pane;
+
 use crate::panel::{fit_ansi, truncate_plain};
 
 pub const INBOX_PREVIEW_REFRESH_SECONDS: f64 = 0.3;

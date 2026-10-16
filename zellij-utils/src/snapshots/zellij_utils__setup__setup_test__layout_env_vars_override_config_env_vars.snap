@@ -11072,7 +11072,6 @@ Config {
         middle_click_paste: None,
         open_links: None,
         bell: None,
-        notifications: None,
         startup_mode: None,
         opacity: None,
         opacity_mode: None,
@@ -11122,5 +11121,8 @@ Config {
         idle_activity_secs: None,
         idle_silence_secs: None,
         startup_card: None,
+        tray_icon: None,
+        desktop_notifications: None,
+        notification_details: None,
     },
 }
