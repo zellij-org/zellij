@@ -2,14 +2,13 @@
 
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine as _;
-use std::io::Write;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 use zellij_integration_tests::{
     claim_first_terminal_and_wait_for_prompt, keys, BackgroundTestSession, LayoutInfo, TestRunner,
     TERMINAL_SIZE,
 };
-use zellij_utils::app_control::{encode_line, read_line, AppReply, AppRequest};
+use zellij_utils::app_control::{read_request, write_reply, AppReply, AppRequest};
 use zellij_utils::cli::CliAction;
 use zellij_utils::consts::APP_PANEL_SESSION;
 use zellij_utils::session_link::{request_session_attention, session_answers};
@@ -45,13 +44,10 @@ fn fake_desktop_app() -> mpsc::Receiver<AppRequest> {
             let Ok(mut stream) = stream else {
                 continue;
             };
-            let Ok(reader) = interprocess::TryClone::try_clone(&stream) else {
-                continue;
-            };
-            if let Ok(request) = read_line::<AppRequest>(reader) {
+            if let Ok(request) = read_request(&mut stream) {
                 let _ = requests.send(request);
             }
-            let _ = stream.write_all(&encode_line(&AppReply::Done).unwrap());
+            let _ = write_reply(&mut stream, &AppReply::Done);
         }
     });
     received

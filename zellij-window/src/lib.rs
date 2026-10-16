@@ -564,8 +564,8 @@ fn launch_app(
     };
     let dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
     match app::instance::claim(&dir, &handed, app::instance::HANDOFF_WAIT) {
-        Ok(app::instance::Claim::Handed(AppReply::Done)) => Ok(()),
         Ok(app::instance::Claim::Handed(AppReply::Refused(text))) => bail!("{}", text),
+        Ok(app::instance::Claim::Handed(_)) => Ok(()),
         Ok(app::instance::Claim::Primary(instance)) => {
             run_app(instance, first, args, opts, config_options, settings)
         },
@@ -604,6 +604,7 @@ fn run_app(
         let poster = poster.clone();
         instance.serve(move |request| match request {
             AppRequest::Ping => AppReply::Done,
+            AppRequest::Describe => describe(&poster),
             request => {
                 if poster.post(app::AppEvent::Request(request)) {
                     AppReply::Done
@@ -675,6 +676,17 @@ fn run_app(
         })),
         windowing,
     )
+}
+
+fn describe(poster: &window::AppPoster) -> AppReply {
+    let (answer, answered) = std::sync::mpsc::channel();
+    if !poster.post(app::AppEvent::Describe(answer)) {
+        return AppReply::Refused("The Zellij app is closing.".to_owned());
+    }
+    match answered.recv_timeout(Duration::from_secs(1)) {
+        Ok(state) => AppReply::State(state),
+        Err(_) => AppReply::Refused("The Zellij app did not answer in time.".to_owned()),
+    }
 }
 
 fn terminate_on_signal(poster: window::AppPoster) {

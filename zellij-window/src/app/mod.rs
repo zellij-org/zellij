@@ -44,6 +44,7 @@ pub enum AppEvent {
     },
     #[cfg_attr(not(unix), allow(dead_code))]
     Terminate,
+    Describe(std::sync::mpsc::Sender<zellij_utils::app_control::AppState>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -73,7 +74,7 @@ pub enum Intent {
 
 pub fn request_intents(request: AppRequest) -> (AppReply, Vec<Intent>) {
     match request {
-        AppRequest::Ping => (AppReply::Done, vec![]),
+        AppRequest::Ping | AppRequest::Describe => (AppReply::Done, vec![]),
         AppRequest::OpenWindow(request) => match request.session.clone() {
             Some(session) if !request.create && request.command.is_empty() => (
                 AppReply::Done,

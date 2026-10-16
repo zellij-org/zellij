@@ -344,7 +344,6 @@ fn fake_app(
     std::sync::mpsc::Receiver<zellij_utils::app_control::AppRequest>,
 ) {
     use interprocess::local_socket::prelude::*;
-    use std::io::Write;
     let dir = std::env::temp_dir().join(format!(
         "zellij-fake-app-{}-{:?}",
         std::process::id(),
@@ -357,11 +356,10 @@ fn fake_app(
     let (requests, received) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
         if let Some(Ok(mut stream)) = listener.incoming().next() {
-            let reader = interprocess::TryClone::try_clone(&stream).unwrap();
-            if let Ok(request) = zellij_utils::app_control::read_line(reader) {
+            if let Ok(request) = zellij_utils::app_control::read_request(&mut stream) {
                 let _ = requests.send(request);
             }
-            let _ = stream.write_all(&zellij_utils::app_control::encode_line(&reply).unwrap());
+            let _ = zellij_utils::app_control::write_reply(&mut stream, &reply);
         }
     });
     (socket, received)

@@ -152,6 +152,20 @@ impl Conductor {
         self.panel.map(|panel| panel.view)
     }
 
+    pub(crate) fn panel_state(&self) -> Option<zellij_utils::app_control::PanelState> {
+        match (self.panel, self.panel_pending) {
+            (Some(panel), _) => Some(zellij_utils::app_control::PanelState {
+                view: panel.view,
+                shown: true,
+            }),
+            (None, Some(pending)) => Some(zellij_utils::app_control::PanelState {
+                view: pending.view,
+                shown: false,
+            }),
+            (None, None) => None,
+        }
+    }
+
     pub(crate) fn started(&self) -> bool {
         self.started
     }
@@ -633,6 +647,34 @@ mod tests {
             name: Some(name.to_owned()),
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn the_panel_is_described_as_connecting_then_shown_then_gone() {
+        use zellij_utils::app_control::PanelState;
+        let mut rig = Rig::hosted();
+        assert_eq!(rig.conductor.panel_state(), None);
+        let ticket = opened_panel(&rig.intent(0, toggle(PopupView::Sessions))).unwrap();
+        assert_eq!(
+            rig.conductor.panel_state(),
+            Some(PanelState {
+                view: Some(PopupView::Sessions),
+                shown: false
+            })
+        );
+        rig.feed(Input::Connected {
+            ticket,
+            error: None,
+        });
+        assert_eq!(
+            rig.conductor.panel_state(),
+            Some(PanelState {
+                view: Some(PopupView::Sessions),
+                shown: true
+            })
+        );
+        rig.feed(Input::PanelClosedByUser);
+        assert_eq!(rig.conductor.panel_state(), None);
     }
 
     #[test]

@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 use anyhow::{anyhow, Context, Result};
 use interprocess::local_socket::prelude::*;
 use zellij_utils::app_control::{
-    encode_line, read_line, send_app_request_to, AppReply, AppRequest,
+    read_request, refusal_for, send_app_request_to, write_reply, AppReply, AppRequest,
 };
 use zellij_utils::consts::{APP_CONTROL_SOCKET_NAME, APP_LOCK_FILE_NAME};
 
@@ -119,19 +119,16 @@ impl Instance {
 }
 
 fn answer(
-    stream: interprocess::local_socket::Stream,
+    mut stream: interprocess::local_socket::Stream,
     mut reply: interprocess::local_socket::Stream,
     handle: &impl Fn(AppRequest) -> AppReply,
 ) {
     let _ = stream.set_recv_timeout(Some(Duration::from_secs(2)));
-    let answer = match read_line::<AppRequest>(stream) {
+    let answer = match read_request(&mut stream) {
         Ok(request) => handle(request),
-        Err(e) => AppReply::Refused(format!("the request could not be read: {}", e)),
+        Err(e) => refusal_for(&e),
     };
-    if let Ok(line) = encode_line(&answer) {
-        let _ = reply.write_all(&line);
-        let _ = reply.flush();
-    }
+    let _ = write_reply(&mut reply, &answer);
 }
 
 pub struct Holder {

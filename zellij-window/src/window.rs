@@ -1696,9 +1696,7 @@ impl App {
             .with_window_attributes(Some(attributes))
             .build(
                 event_loop,
-                ConfigTemplateBuilder::new()
-                    .with_alpha_size(8)
-                    .with_transparency(requires_transparent_configs(Platform::current())),
+                ConfigTemplateBuilder::new().with_alpha_size(8),
                 pick_config,
             )
             .map_err(|e| anyhow!("failed to create a window: {}", e))?;
@@ -2572,10 +2570,6 @@ fn pick_config(configs: Box<dyn Iterator<Item = Config> + '_>) -> Config {
         .into_iter()
         .nth(best)
         .expect("the chosen config is one of those offered")
-}
-
-fn requires_transparent_configs(platform: Platform) -> bool {
-    platform != Platform::Windows
 }
 
 fn transparency_available(
@@ -4192,16 +4186,6 @@ mod tests {
             Some(1)
         );
         assert_eq!(best_config(std::iter::empty()), None);
-    }
-
-    #[test]
-    fn windows_never_requires_a_wgl_transparent_config() {
-        assert!(
-            !requires_transparent_configs(Platform::Windows),
-            "a driver that honors WGL_TRANSPARENT_ARB would offer no config at all"
-        );
-        assert!(requires_transparent_configs(Platform::Linux));
-        assert!(requires_transparent_configs(Platform::MacOs));
     }
 
     #[test]

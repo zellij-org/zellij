@@ -829,6 +829,10 @@ impl Desktop {
                 }
                 return;
             },
+            AppEvent::Describe(answer) => {
+                let _ = answer.send(self.describe());
+                return;
+            },
             other => other,
         };
         let Some(hosting) = self.hosting() else {
@@ -842,10 +846,35 @@ impl Desktop {
                 hosting.background.on_config(*config, now);
                 vec![]
             },
-            AppEvent::Connected { .. } | AppEvent::Terminate | AppEvent::Snapshot(_) => vec![],
+            AppEvent::Connected { .. }
+            | AppEvent::Terminate
+            | AppEvent::Snapshot(_)
+            | AppEvent::Describe(_) => vec![],
         };
         if !intents.is_empty() {
             self.run(event_loop, Input::Intents(intents));
+        }
+    }
+
+    fn describe(&self) -> zellij_utils::app_control::AppState {
+        let (live_sessions, tray_icon) = match &self.mode {
+            DesktopMode::Background(hosting) => (
+                hosting.background.live_sessions(),
+                hosting.background.tray_visible(),
+            ),
+            DesktopMode::Single => (vec![], false),
+        };
+        zellij_utils::app_control::AppState {
+            windows: self
+                .windows
+                .values()
+                .map(|app| zellij_utils::app_control::WindowState {
+                    session: app.session_name().map(str::to_owned),
+                })
+                .collect(),
+            panel: self.conductor.panel_state(),
+            live_sessions,
+            tray_icon,
         }
     }
 

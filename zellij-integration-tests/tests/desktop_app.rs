@@ -1,0 +1,594 @@
+#![cfg(target_os = "linux")]
+
+use std::path::{Path, PathBuf};
+use std::process::{Child, Command, ExitStatus, Stdio};
+use std::time::{Duration, Instant};
+
+use zellij_utils::app_control::{
+    describe_app_at, send_app_request_to, AppReply, AppRequest, AppState, PanelState, PopupView,
+};
+use zellij_utils::consts::{
+    APP_CONTROL_SOCKET_NAME, APP_PANEL_SESSION, CLIENT_SERVER_CONTRACT_DIR,
+};
+use zellij_utils::data::{BareKey, KeyWithModifier, PaneId};
+use zellij_utils::input::actions::Action;
+use zellij_utils::ipc::{ClientToServerMsg, ServerToClientMsg};
+use zellij_utils::session_link::SessionLink;
+
+const REQUIRE_ENV: &str = "ZELLIJ_REQUIRE_DESKTOP_TESTS";
+const BINARY_ENV: &str = "ZELLIJ_TEST_BINARY";
+const LIMIT: Duration = Duration::from_secs(30);
+const CONFIG: &str = "show_startup_tips false\nshow_release_notes false\n";
+const XKB_X11: &str = "libxkbcommon-x11.so.0";
+const LIBRARY_DIRS: [&str; 6] = [
+    "/usr/lib/x86_64-linux-gnu",
+    "/usr/lib/aarch64-linux-gnu",
+    "/usr/lib64",
+    "/usr/lib",
+    "/lib/x86_64-linux-gnu",
+    "/lib64",
+];
+
+fn unavailable(reason: &str) -> Option<Desktop> {
+    if std::env::var_os(REQUIRE_ENV).is_some() {
+        panic!("the desktop app tests cannot run: {}", reason);
+    }
+    eprintln!("skipping the desktop app test: {}", reason);
+    None
+}
+
+fn on_path(program: &str) -> bool {
+    std::env::var_os("PATH")
+        .map(|paths| std::env::split_paths(&paths).any(|dir| dir.join(program).is_file()))
+        .unwrap_or(false)
+}
+
+fn zellij_binary() -> Option<PathBuf> {
+    if let Some(path) = std::env::var_os(BINARY_ENV) {
+        return Some(PathBuf::from(path)).filter(|path| path.is_file());
+    }
+    let test = std::env::current_exe().ok()?;
+    let profile_dir = test.parent()?.parent()?;
+    Some(profile_dir.join("zellij")).filter(|path| path.is_file())
+}
+
+fn display_is_free(number: u32) -> bool {
+    !Path::new(&format!("/tmp/.X11-unix/X{}", number)).exists()
+        && !Path::new(&format!("/tmp/.X{}-lock", number)).exists()
+}
+
+fn start_xvfb() -> Option<(Child, String)> {
+    let first = 100 + std::process::id() % 400;
+    for number in (first..first + 60).filter(|n| display_is_free(*n)) {
+        let mut xvfb = Command::new("Xvfb")
+            .arg(format!(":{}", number))
+            .args(["-screen", "0", "1280x800x24", "-nolisten", "tcp"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .ok()?;
+        let socket = format!("/tmp/.X11-unix/X{}", number);
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            if Path::new(&socket).exists() {
+                return Some((xvfb, format!(":{}", number)));
+            }
+            if xvfb.try_wait().ok().flatten().is_some() || Instant::now() >= deadline {
+                let _ = xvfb.kill();
+                let _ = xvfb.wait();
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+    None
+}
+
+struct Desktop {
+    root: tempfile::TempDir,
+    binary: PathBuf,
+    display: String,
+    xvfb: Child,
+    apps: Vec<Child>,
+}
+
+impl Desktop {
+    fn start() -> Option<Desktop> {
+        let Some(binary) = zellij_binary() else {
+            return unavailable(&format!(
+                "no zellij executable next to the test (build it with `cargo xtask integration-test` or set {})",
+                BINARY_ENV
+            ));
+        };
+        if !on_path("Xvfb") {
+            return unavailable("Xvfb is not installed");
+        }
+        if !LIBRARY_DIRS
+            .iter()
+            .any(|dir| Path::new(dir).join(XKB_X11).exists())
+        {
+            return unavailable("libxkbcommon-x11 is not installed");
+        }
+        let Some((xvfb, display)) = start_xvfb() else {
+            return unavailable("Xvfb could not start a display");
+        };
+        let root = tempfile::Builder::new()
+            .prefix("zd")
+            .tempdir_in("/tmp")
+            .expect("a temporary folder");
+        for folder in ["sock", "home", "cache", "data", "config/zellij", "runtime"] {
+            std::fs::create_dir_all(root.path().join(folder)).unwrap();
+        }
+        std::fs::write(root.path().join("config/zellij/config.kdl"), CONFIG).unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(
+            root.path().join("runtime"),
+            std::fs::Permissions::from_mode(0o700),
+        )
+        .unwrap();
+        Some(Desktop {
+            root,
+            binary,
+            display,
+            xvfb,
+            apps: vec![],
+        })
+    }
+
+    fn socket_dir(&self) -> PathBuf {
+        self.root.path().join("sock")
+    }
+
+    fn contract_dir(&self) -> PathBuf {
+        self.socket_dir().join(&*CLIENT_SERVER_CONTRACT_DIR)
+    }
+
+    fn control_socket(&self) -> PathBuf {
+        self.contract_dir().join(APP_CONTROL_SOCKET_NAME)
+    }
+
+    fn command(&self, args: &[&str]) -> Command {
+        let root = self.root.path();
+        let mut command = Command::new(&self.binary);
+        command
+            .args(args)
+            .env_clear()
+            .env("PATH", std::env::var_os("PATH").unwrap_or_default())
+            .env("HOME", root.join("home"))
+            .env("XDG_CACHE_HOME", root.join("cache"))
+            .env("XDG_DATA_HOME", root.join("data"))
+            .env("XDG_CONFIG_HOME", root.join("config"))
+            .env("XDG_RUNTIME_DIR", root.join("runtime"))
+            .env("DISPLAY", &self.display)
+            .env("SHELL", "/bin/sh")
+            .stdin(Stdio::null());
+        command
+    }
+
+    fn window_command(&self, extra: &[&str]) -> Command {
+        let socket_dir = self.socket_dir();
+        let mut args = vec!["window", "--socket-dir", socket_dir.to_str().unwrap()];
+        args.extend_from_slice(extra);
+        self.command(&args)
+    }
+
+    fn log_path(&self, index: usize) -> PathBuf {
+        self.root.path().join(format!("app-{}.log", index))
+    }
+
+    fn launch(&mut self, extra: &[&str]) -> usize {
+        let index = self.apps.len();
+        let log = std::fs::File::create(self.log_path(index)).unwrap();
+        let child = self
+            .window_command(extra)
+            .stdout(log.try_clone().unwrap())
+            .stderr(log)
+            .spawn()
+            .expect("the zellij executable starts");
+        self.apps.push(child);
+        index
+    }
+
+    fn launch_and_wait(&mut self, extra: &[&str]) -> ExitStatus {
+        let index = self.launch(extra);
+        self.wait_for_exit(index)
+    }
+
+    fn wait_for_exit(&mut self, index: usize) -> ExitStatus {
+        let deadline = Instant::now() + LIMIT;
+        loop {
+            if let Some(status) = self.apps[index].try_wait().unwrap() {
+                return status;
+            }
+            if Instant::now() >= deadline {
+                panic!("the app did not exit\n{}", self.logs());
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
+
+    fn logs(&self) -> String {
+        (0..self.apps.len())
+            .map(|index| {
+                format!(
+                    "--- app {} ---\n{}",
+                    index,
+                    std::fs::read_to_string(self.log_path(index)).unwrap_or_default()
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    fn state(&self) -> Option<AppState> {
+        describe_app_at(&self.control_socket()).ok()
+    }
+
+    fn wait_for_state(&self, what: &str, check: impl Fn(&AppState) -> bool) -> AppState {
+        let deadline = Instant::now() + LIMIT;
+        let mut last = None;
+        loop {
+            if let Some(state) = self.state() {
+                if check(&state) {
+                    return state;
+                }
+                last = Some(state);
+            }
+            if Instant::now() >= deadline {
+                panic!(
+                    "timed out waiting for {}\nlast state: {:?}\n{}",
+                    what,
+                    last,
+                    self.logs()
+                );
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
+
+    fn wait_for(&self, what: &str, check: impl Fn() -> bool) {
+        let deadline = Instant::now() + LIMIT;
+        while !check() {
+            if Instant::now() >= deadline {
+                panic!(
+                    "timed out waiting for {}\nlast state: {:?}\n{}",
+                    what,
+                    self.state(),
+                    self.logs()
+                );
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
+
+    fn start_app(&mut self) -> String {
+        self.launch(&[]);
+        let state = self.wait_for_state("the first window on a new session", |state| {
+            state.windows.len() == 1 && state.windows[0].session.is_some()
+        });
+        let session = state.windows[0].session.clone().unwrap();
+        self.wait_for_state("the app to see its session", |state| {
+            state.live_sessions.contains(&session)
+        });
+        session
+    }
+
+    fn start_background_session(&self, name: &str) {
+        let status = self
+            .command(&["attach", "--create-background", name])
+            .env("ZELLIJ_SOCKET_DIR", self.socket_dir())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .expect("zellij attach runs");
+        assert!(status.success(), "the background session {} started", name);
+        self.wait_for_state("the app to see the background session", |state| {
+            state.live_sessions.iter().any(|live| live == name)
+        });
+    }
+
+    fn listed_sessions(&self) -> Vec<String> {
+        let output = self
+            .command(&["list-sessions", "--short"])
+            .env("ZELLIJ_SOCKET_DIR", self.socket_dir())
+            .output()
+            .expect("zellij list-sessions runs");
+        String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .map(|line| line.trim().to_owned())
+            .filter(|line| !line.is_empty())
+            .collect()
+    }
+
+    fn answers(&self, session: &str) -> bool {
+        let Ok(mut link) = SessionLink::open_path(&self.contract_dir().join(session)) else {
+            return false;
+        };
+        if link.send(ClientToServerMsg::ConnStatus).is_err() {
+            return false;
+        }
+        matches!(
+            link.recv(Duration::from_millis(500)),
+            Ok(ServerToClientMsg::Connected)
+        )
+    }
+
+    fn act_on_panel(&self, actions: Vec<Action>) {
+        let mut link = SessionLink::open_path(&self.contract_dir().join(APP_PANEL_SESSION))
+            .expect("the panel session answers");
+        for action in actions {
+            link.send(ClientToServerMsg::Action {
+                action,
+                terminal_id: None,
+                client_id: None,
+                is_cli_client: true,
+            })
+            .unwrap();
+            loop {
+                match link.recv(Duration::from_secs(5)) {
+                    Ok(ServerToClientMsg::UnblockInputThread) => break,
+                    Ok(ServerToClientMsg::Exit { .. }) | Err(_) => return,
+                    Ok(_) => {},
+                }
+            }
+        }
+    }
+
+    fn panel_plugin(&self) -> Option<u32> {
+        let mut link = SessionLink::open_path(&self.contract_dir().join(APP_PANEL_SESSION)).ok()?;
+        link.send(ClientToServerMsg::Action {
+            action: Action::ListPanes {
+                show_tab: false,
+                show_command: true,
+                show_state: false,
+                show_geometry: false,
+                show_all: false,
+                output_json: false,
+            },
+            terminal_id: None,
+            client_id: None,
+            is_cli_client: true,
+        })
+        .ok()?;
+        loop {
+            match link.recv(Duration::from_secs(2)).ok()? {
+                ServerToClientMsg::Log { lines } => {
+                    return lines
+                        .iter()
+                        .filter(|line| line.contains("session-manager"))
+                        .flat_map(|line| line.split_whitespace())
+                        .find_map(|word| word.strip_prefix("plugin_")?.parse().ok());
+                },
+                ServerToClientMsg::UnblockInputThread | ServerToClientMsg::Exit { .. } => {
+                    return None
+                },
+                _ => {},
+            }
+        }
+    }
+
+    fn wait_for_panel_plugin(&self) -> u32 {
+        let deadline = Instant::now() + LIMIT;
+        loop {
+            if let Some(plugin) = self.panel_plugin() {
+                return plugin;
+            }
+            if Instant::now() >= deadline {
+                panic!("the panel never showed its plugin\n{}", self.logs());
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
+
+    fn type_into_panel(&self, text: &str) {
+        let plugin = self.wait_for_panel_plugin();
+        let keys = text
+            .chars()
+            .map(|character| press(plugin, BareKey::Char(character)))
+            .collect();
+        self.act_on_panel(keys);
+    }
+
+    fn press_enter_in_panel(&self) {
+        let plugin = self.wait_for_panel_plugin();
+        self.act_on_panel(vec![press(plugin, BareKey::Enter)]);
+    }
+
+    fn running_sessions(&self) -> Vec<String> {
+        std::fs::read_dir(self.contract_dir())
+            .map(|entries| {
+                entries
+                    .filter_map(|entry| entry.ok())
+                    .filter(|entry| {
+                        use std::os::unix::fs::FileTypeExt;
+                        entry
+                            .file_type()
+                            .map(|kind| kind.is_socket())
+                            .unwrap_or(false)
+                    })
+                    .map(|entry| entry.file_name().to_string_lossy().into_owned())
+                    .filter(|name| !name.starts_with(".app-"))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    fn stop_everything(&mut self) {
+        for app in self.apps.iter_mut() {
+            if app.try_wait().ok().flatten().is_none() {
+                let _ = Command::new("kill").arg(app.id().to_string()).status();
+            }
+        }
+        let deadline = Instant::now() + Duration::from_secs(5);
+        for app in self.apps.iter_mut() {
+            while app.try_wait().ok().flatten().is_none() && Instant::now() < deadline {
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            let _ = app.kill();
+            let _ = app.wait();
+        }
+        for session in self.running_sessions() {
+            if let Ok(mut link) = SessionLink::open_path(&self.contract_dir().join(&session)) {
+                let _ = link.send(ClientToServerMsg::KillSession);
+                let _ = link.recv(Duration::from_secs(2));
+            }
+        }
+    }
+}
+
+impl Drop for Desktop {
+    fn drop(&mut self) {
+        self.stop_everything();
+        let _ = self.xvfb.kill();
+        let _ = self.xvfb.wait();
+    }
+}
+
+fn press(plugin: u32, bare_key: BareKey) -> Action {
+    Action::WriteKeyToPaneId {
+        key_with_modifier: Some(KeyWithModifier::new(bare_key)),
+        pane_id: PaneId::Plugin(plugin),
+    }
+}
+
+fn panel(view: PopupView) -> Option<PanelState> {
+    Some(PanelState {
+        view: Some(view),
+        shown: true,
+    })
+}
+
+#[test]
+fn the_app_opens_one_window_on_a_new_session_and_keeps_its_panel_session_hidden() {
+    let Some(mut desktop) = Desktop::start() else {
+        return;
+    };
+    let session = desktop.start_app();
+    assert!(desktop.listed_sessions().contains(&session));
+    assert_eq!(desktop.launch_and_wait(&["--sessions"]).code(), Some(0));
+    desktop.wait_for_state("the sessions panel", |state| {
+        state.panel == panel(PopupView::Sessions)
+    });
+    assert!(desktop.answers(APP_PANEL_SESSION));
+    let state = desktop.state().unwrap();
+    assert_eq!(state.live_sessions, vec![session.clone()]);
+    assert_eq!(state.windows.len(), 1);
+    assert_eq!(desktop.listed_sessions(), vec![session]);
+}
+
+#[test]
+fn a_panel_shortcut_toggles_its_own_view_and_switches_another() {
+    let Some(mut desktop) = Desktop::start() else {
+        return;
+    };
+    desktop.start_app();
+    assert!(desktop.launch_and_wait(&["--inbox"]).success());
+    desktop.wait_for_state("the inbox panel", |state| {
+        state.panel == panel(PopupView::Inbox)
+    });
+    assert!(desktop.launch_and_wait(&["--sessions"]).success());
+    desktop.wait_for_state("the panel switched to the sessions", |state| {
+        state.panel == panel(PopupView::Sessions)
+    });
+    assert!(desktop.launch_and_wait(&["--sessions"]).success());
+    let state = desktop.wait_for_state("the panel closed", |state| state.panel.is_none());
+    assert_eq!(state.windows.len(), 1);
+    assert!(
+        desktop.answers(APP_PANEL_SESSION),
+        "closing the panel keeps its session"
+    );
+}
+
+#[test]
+fn a_panel_shortcut_without_a_running_app_starts_the_app_with_only_the_panel() {
+    let Some(mut desktop) = Desktop::start() else {
+        return;
+    };
+    desktop.launch(&["--inbox"]);
+    let state = desktop.wait_for_state("the inbox panel", |state| {
+        state.panel == panel(PopupView::Inbox)
+    });
+    assert!(state.windows.is_empty(), "{:?}", state);
+    assert!(desktop
+        .running_sessions()
+        .iter()
+        .all(|name| name == APP_PANEL_SESSION));
+}
+
+#[test]
+fn a_second_launch_opens_its_window_in_the_running_app() {
+    let Some(mut desktop) = Desktop::start() else {
+        return;
+    };
+    let first = desktop.start_app();
+    assert!(desktop.launch_and_wait(&[]).success());
+    let state = desktop.wait_for_state("a second window in the same app", |state| {
+        state.windows.len() == 2 && state.windows.iter().all(|w| w.session.is_some())
+    });
+    assert_ne!(state.windows[1].session.as_deref(), Some(first.as_str()));
+    assert!(desktop.apps[0].try_wait().unwrap().is_none());
+}
+
+#[test]
+fn choosing_a_session_in_the_panel_opens_a_window_for_it_or_brings_its_window_forward() {
+    let Some(mut desktop) = Desktop::start() else {
+        return;
+    };
+    let first = desktop.start_app();
+    desktop.start_background_session("elsewhere");
+    assert!(desktop.launch_and_wait(&["--sessions"]).success());
+    desktop.wait_for_state("the sessions panel", |state| {
+        state.panel == panel(PopupView::Sessions)
+    });
+    desktop.type_into_panel("elsewhere");
+    desktop.press_enter_in_panel();
+    let state = desktop.wait_for_state("a window on the chosen session", |state| {
+        state.panel.is_none()
+            && state
+                .windows
+                .iter()
+                .any(|window| window.session.as_deref() == Some("elsewhere"))
+    });
+    assert_eq!(state.windows.len(), 2);
+    assert!(desktop.launch_and_wait(&["--sessions"]).success());
+    desktop.wait_for_state("the sessions panel again", |state| {
+        state.panel == panel(PopupView::Sessions)
+    });
+    desktop.type_into_panel(&first);
+    desktop.press_enter_in_panel();
+    let state = desktop.wait_for_state("the panel to go to the session", |state| {
+        state.panel.is_none()
+    });
+    assert_eq!(
+        state.windows.len(),
+        2,
+        "the window already on the session is brought forward instead of opening another"
+    );
+}
+
+#[test]
+fn confirming_quit_in_the_panel_stops_every_session_and_the_app() {
+    let Some(mut desktop) = Desktop::start() else {
+        return;
+    };
+    let first = desktop.start_app();
+    desktop.start_background_session("elsewhere");
+    assert_eq!(
+        send_app_request_to(
+            &desktop.control_socket(),
+            &AppRequest::ShowPopup(PopupView::Quit)
+        ),
+        Ok(AppReply::Done)
+    );
+    desktop.wait_for_state("the quit question", |state| {
+        state.panel == panel(PopupView::Quit)
+    });
+    desktop.press_enter_in_panel();
+    desktop.wait_for_exit(0);
+    for session in [first.as_str(), "elsewhere", APP_PANEL_SESSION] {
+        desktop.wait_for(&format!("{} to stop", session), || {
+            !desktop.answers(session)
+        });
+    }
+}

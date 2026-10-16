@@ -414,8 +414,8 @@ pub(crate) fn toggle_tray_icon_at(socket: &std::path::Path) -> Result<(), String
         socket,
         &zellij_utils::app_control::AppRequest::ToggleTrayIcon,
     ) {
-        Ok(zellij_utils::app_control::AppReply::Done) => Ok(()),
         Ok(zellij_utils::app_control::AppReply::Refused(reason)) => Err(reason),
+        Ok(_) => Ok(()),
         Err(_) => Err("The Zellij desktop app is not running.".to_owned()),
     }
 }

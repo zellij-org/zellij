@@ -3898,6 +3898,203 @@ impl PreviewAnchor {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AppControlRequest {
+    #[prost(oneof="app_control_request::Request", tags="1, 2, 3, 4, 5, 6")]
+    pub request: ::core::option::Option<app_control_request::Request>,
+}
+/// Nested message and enum types in `AppControlRequest`.
+pub mod app_control_request {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Request {
+        #[prost(message, tag="1")]
+        OpenWindow(super::AppOpenWindowRequest),
+        #[prost(message, tag="2")]
+        ToggleTrayIcon(super::AppToggleTrayIconRequest),
+        #[prost(message, tag="3")]
+        ShowPopup(super::AppShowPopupRequest),
+        #[prost(message, tag="4")]
+        TogglePanel(super::AppTogglePanelRequest),
+        #[prost(message, tag="5")]
+        Ping(super::AppPingRequest),
+        #[prost(message, tag="6")]
+        Describe(super::AppDescribeRequest),
+    }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AppControlReply {
+    #[prost(oneof="app_control_reply::Reply", tags="1, 2, 3")]
+    pub reply: ::core::option::Option<app_control_reply::Reply>,
+}
+/// Nested message and enum types in `AppControlReply`.
+pub mod app_control_reply {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Reply {
+        #[prost(message, tag="1")]
+        Done(super::AppDoneReply),
+        #[prost(message, tag="2")]
+        Refused(super::AppRefusedReply),
+        #[prost(message, tag="3")]
+        State(super::AppStateReply),
+    }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AppOpenWindowRequest {
+    #[prost(string, optional, tag="1")]
+    pub session: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, tag="2")]
+    pub create: bool,
+    #[prost(message, optional, tag="3")]
+    pub pane_id: ::core::option::Option<PaneIdWithPlugin>,
+    #[prost(string, repeated, tag="4")]
+    pub command: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="5")]
+    pub cwd: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, tag="6")]
+    pub close_on_exit: bool,
+    #[prost(bool, tag="7")]
+    pub start_suspended: bool,
+    #[prost(bool, tag="8")]
+    pub force_run_commands: bool,
+    #[prost(enumeration="AppStartupMode", tag="9")]
+    pub startup_mode: i32,
+    #[prost(message, optional, tag="10")]
+    pub layout: ::core::option::Option<LayoutInfo>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AppToggleTrayIconRequest {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AppShowPopupRequest {
+    #[prost(enumeration="AppPopupView", tag="1")]
+    pub view: i32,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AppTogglePanelRequest {
+    #[prost(enumeration="AppPopupView", tag="1")]
+    pub view: i32,
+    #[prost(string, optional, tag="2")]
+    pub token: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AppPingRequest {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AppDescribeRequest {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AppDoneReply {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AppRefusedReply {
+    #[prost(string, tag="1")]
+    pub reason: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AppStateReply {
+    #[prost(message, repeated, tag="1")]
+    pub windows: ::prost::alloc::vec::Vec<AppWindowState>,
+    #[prost(message, optional, tag="2")]
+    pub panel: ::core::option::Option<AppPanelState>,
+    #[prost(string, repeated, tag="3")]
+    pub live_sessions: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(bool, tag="4")]
+    pub tray_icon: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AppWindowState {
+    #[prost(string, optional, tag="1")]
+    pub session: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AppPanelState {
+    #[prost(enumeration="AppPopupView", tag="1")]
+    pub view: i32,
+    #[prost(bool, tag="2")]
+    pub shown: bool,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum AppPopupView {
+    Unspecified = 0,
+    Inbox = 1,
+    Sessions = 2,
+    Quit = 3,
+}
+impl AppPopupView {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            AppPopupView::Unspecified => "APP_POPUP_VIEW_UNSPECIFIED",
+            AppPopupView::Inbox => "APP_POPUP_VIEW_INBOX",
+            AppPopupView::Sessions => "APP_POPUP_VIEW_SESSIONS",
+            AppPopupView::Quit => "APP_POPUP_VIEW_QUIT",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "APP_POPUP_VIEW_UNSPECIFIED" => Some(Self::Unspecified),
+            "APP_POPUP_VIEW_INBOX" => Some(Self::Inbox),
+            "APP_POPUP_VIEW_SESSIONS" => Some(Self::Sessions),
+            "APP_POPUP_VIEW_QUIT" => Some(Self::Quit),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum AppStartupMode {
+    Unspecified = 0,
+    Windowed = 1,
+    Maximized = 2,
+    Fullscreen = 3,
+    Remember = 4,
+}
+impl AppStartupMode {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            AppStartupMode::Unspecified => "APP_STARTUP_MODE_UNSPECIFIED",
+            AppStartupMode::Windowed => "APP_STARTUP_MODE_WINDOWED",
+            AppStartupMode::Maximized => "APP_STARTUP_MODE_MAXIMIZED",
+            AppStartupMode::Fullscreen => "APP_STARTUP_MODE_FULLSCREEN",
+            AppStartupMode::Remember => "APP_STARTUP_MODE_REMEMBER",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "APP_STARTUP_MODE_UNSPECIFIED" => Some(Self::Unspecified),
+            "APP_STARTUP_MODE_WINDOWED" => Some(Self::Windowed),
+            "APP_STARTUP_MODE_MAXIMIZED" => Some(Self::Maximized),
+            "APP_STARTUP_MODE_FULLSCREEN" => Some(Self::Fullscreen),
+            "APP_STARTUP_MODE_REMEMBER" => Some(Self::Remember),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ClientToServerMsg {
     #[prost(oneof="client_to_server_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34")]
     pub message: ::core::option::Option<client_to_server_msg::Message>,
