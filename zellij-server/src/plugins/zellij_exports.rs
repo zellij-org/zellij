@@ -815,6 +815,7 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     PluginCommand::EditScrollback => edit_scrollback(env),
                     PluginCommand::Write(bytes) => write(env, bytes),
                     PluginCommand::WriteChars(chars) => write_chars(env, chars),
+                    PluginCommand::Paste(chars) => paste(env, chars),
                     PluginCommand::CopyToClipboard(text) => copy_to_clipboard(env, text)?,
                     PluginCommand::ToggleTab => toggle_tab(env),
                     PluginCommand::MovePane => move_pane(env),
@@ -1017,6 +1018,9 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     },
                     PluginCommand::WriteCharsToPaneId(chars, pane_id) => {
                         write_chars_to_pane_id(env, chars, pane_id.into())
+                    },
+                    PluginCommand::PasteToPaneId(chars, pane_id) => {
+                        paste_to_pane_id(env, chars, pane_id)
                     },
                     PluginCommand::SendSigintToPaneId(pane_id) => {
                         send_sigint_to_pane_id(env, pane_id.into())
@@ -3967,6 +3971,15 @@ fn write_chars(env: &PluginEnv, chars_to_write: String) {
     apply_action!(action, error_msg, env);
 }
 
+fn paste(env: &PluginEnv, chars_to_paste: String) {
+    let error_msg = || format!("failed to paste in plugin {}", env.name());
+    let action = Action::Paste {
+        chars: chars_to_paste,
+        pane_id: None,
+    };
+    apply_action!(action, error_msg, env);
+}
+
 fn copy_to_clipboard(env: &PluginEnv, text: String) -> Result<()> {
     env.senders
         .send_to_screen(ScreenInstruction::CopyTextToClipboard(text, env.plugin_id))
@@ -5196,6 +5209,15 @@ fn write_chars_to_pane_id(env: &PluginEnv, chars: String, pane_id: PaneId) {
         let wait_forever = false;
         let _ = wait_for_action_completion(completion_rx, "write_chars_to_pane_id", wait_forever);
     }
+}
+
+fn paste_to_pane_id(env: &PluginEnv, chars_to_paste: String, pane_id: zellij_utils::data::PaneId) {
+    let error_msg = || format!("failed to paste to pane id in plugin {}", env.name());
+    let action = Action::Paste {
+        chars: chars_to_paste,
+        pane_id: Some(pane_id),
+    };
+    apply_action!(action, error_msg, env);
 }
 
 fn send_sigint_to_pane_id(env: &PluginEnv, pane_id: PaneId) {
@@ -6480,7 +6502,9 @@ fn required_permission(command: &PluginCommand) -> Option<PermissionType> {
         PluginCommand::Write(..)
         | PluginCommand::WriteChars(..)
         | PluginCommand::WriteToPaneId(..)
-        | PluginCommand::WriteCharsToPaneId(..) => PermissionType::WriteToStdin,
+        | PluginCommand::WriteCharsToPaneId(..)
+        | PluginCommand::Paste(..)
+        | PluginCommand::PasteToPaneId(..) => PermissionType::WriteToStdin,
         PluginCommand::CopyToClipboard(..) => PermissionType::WriteToClipboard,
         PluginCommand::SwitchTabTo(..)
         | PluginCommand::SwitchToMode(..)
