@@ -256,6 +256,7 @@ enum CommandName {
   SwitchSessionAndCloseCurrent = 262;
   GetSessionPreview = 263;
   GetSavedSessionPreview = 264;
+  SetUiTheme = 265;
 }
 
 message PluginCommand {
@@ -452,6 +453,7 @@ message PluginCommand {
     SwitchSessionPayload switch_session_and_close_current_payload = 205;
     GetSessionPreviewPayload get_session_preview_payload = 206;
     string get_saved_session_preview_payload = 207;
+    SetUiThemePayload set_ui_theme_payload = 208;
   }
 }
 
@@ -1626,6 +1628,18 @@ message SetPaneColorPayload {
   PaneId pane_id = 1;
   optional string fg = 2;
   optional string bg = 3;
+}
+
+message SetUiThemePayload {
+  UiThemeTarget target = 1;
+  optional string theme_name = 2;
+}
+
+message UiThemeTarget {
+  oneof target {
+    uint64 tab_id = 1;
+    PaneId pane_id = 2;
+  }
 }
 
 message HighlightStyle {

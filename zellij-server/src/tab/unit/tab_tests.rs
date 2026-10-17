@@ -19463,6 +19463,7 @@ pub fn a_pane_that_fails_to_render_does_not_fail_the_tab_render() {
             &HashMap::new(),
             false,
             false,
+            &HashMap::new(),
         )
         .is_ok());
     let mut floating_output = crate::output::Output::default();
@@ -19477,6 +19478,7 @@ pub fn a_pane_that_fails_to_render_does_not_fail_the_tab_render() {
             &HashMap::new(),
             false,
             false,
+            &HashMap::new(),
         )
         .is_ok());
 }
