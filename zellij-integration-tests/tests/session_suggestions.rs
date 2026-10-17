@@ -114,10 +114,11 @@ fn leave_a_resurrectable_session() -> String {
     zellij.save_session();
     zellij.wait_for_serialized_session();
     let session_name = zellij.session_name().to_owned();
+    let session_id = zellij.session_id();
+    let socket = zellij.socket_path();
     zellij.quit();
-    let socket = zellij_utils::consts::ZELLIJ_SOCK_DIR.join(&session_name);
     wait_for_path_to_disappear(&socket, "the exited session socket");
-    assert!(zellij_utils::consts::session_layout_cache_file_name(&session_name).exists());
+    assert!(zellij_utils::consts::session_layout_cache_file_name(&session_id).exists());
     session_name
 }
 
@@ -300,12 +301,13 @@ fn switch_and_close_removes_the_unused_session() {
     let mut zellij = start_session_with_session_features();
     claim_first_terminal_and_wait_for_prompt(&zellij);
     let unused_session = zellij.session_name().to_owned();
+    let unused_session_id = zellij.session_id();
+    let socket = zellij.socket_path();
     wait_for_card_listing(&zellij, background.session_name());
     focus_the_card_with_f9(&zellij);
     zellij.send_stdin(&keys::ENTER);
-    let socket = zellij_utils::consts::ZELLIJ_SOCK_DIR.join(&unused_session);
     wait_for_path_to_disappear(&socket, "the unused session socket");
-    let cache_folder = zellij_utils::consts::session_info_folder_for_session(&unused_session);
+    let cache_folder = zellij_utils::consts::session_info_folder_for_session(&unused_session_id);
     wait_for_path_to_disappear(&cache_folder, "the unused session cache folder");
     wait_for_index_row_to_disappear(&unused_session);
     zellij.quit();
@@ -788,9 +790,7 @@ fn switching_after_a_command_was_typed_keeps_the_current_session() {
     client.wait_until("the kept session can be attached to", |grid_snapshot| {
         grid_snapshot.tab_bar_appears() && grid_snapshot.contains(&current_session)
     });
-    assert!(zellij_utils::consts::ZELLIJ_SOCK_DIR
-        .join(&current_session)
-        .exists());
+    assert!(zellij.socket_path().exists());
     let index = SessionIndex::open_default().unwrap();
     assert!(index.get(&current_session).unwrap().is_some());
     client.quit();

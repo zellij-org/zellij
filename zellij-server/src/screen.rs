@@ -73,7 +73,7 @@ use zellij_utils::pane_size::{PaneGeom, Size, SizeInPixels};
 use zellij_utils::shared::{clean_string_from_control_and_linebreak, detect_theme_hue};
 use zellij_utils::structured_render;
 use zellij_utils::{
-    consts::{session_info_folder_for_session, ZELLIJ_SOCK_DIR},
+    consts::ZELLIJ_SOCK_DIR,
     envs::set_session_name,
     input::command::TerminalAction,
     input::layout::{
@@ -1884,6 +1884,8 @@ pub(crate) struct Screen {
     copy_options: CopyOptions,
     debug: bool,
     session_name: String,
+    /// Stable session id (socket/pipe filename), decoupled from `session_name`.
+    session_id: String,
     peer_sessions_cache: BTreeMap<String, SessionInfo>, // String is the session name, can
     // also be this session
     resurrectable_sessions_cache: BTreeMap<String, Duration>, // String is the session name,
@@ -2167,6 +2169,7 @@ impl Screen {
         web_server_ip: IpAddr,
         web_server_port: u16,
         nested_session_handling: NestedSessionHandling,
+        session_id: String,
     ) -> Self {
         let session_name = mode_info.session_name.clone().unwrap_or_default();
         let session_info = SessionInfo::new(session_name.clone());
@@ -2223,6 +2226,7 @@ impl Screen {
             copy_options,
             debug,
             session_name,
+            session_id,
             peer_sessions_cache,
             default_layout,
             default_layout_name,
@@ -6956,7 +6960,8 @@ impl Screen {
         }
         let available_layouts = self.cached_layouts.clone();
         let creation_time = {
-            let sock_path = ZELLIJ_SOCK_DIR.join(&self.session_name);
+            // The socket is named by the stable session id, not the display name.
+            let sock_path = ZELLIJ_SOCK_DIR.join(&self.session_id);
             std::fs::metadata(&sock_path)
                 .ok()
                 .and_then(|f| f.created().ok().or_else(|| f.modified().ok()))
@@ -10060,6 +10065,7 @@ pub(crate) fn screen_thread_main(
     debug: bool,
     default_layout: Box<Layout>,
     default_keybinds: SharedKeybinds,
+    session_id: String,
 ) -> Result<()> {
     // Resolve `theme_dark` / `theme_light` to concrete `Styling` from the
     // bundled themes BEFORE `config.options` is moved out below. These
@@ -10207,6 +10213,7 @@ pub(crate) fn screen_thread_main(
         web_server_ip,
         web_server_port,
         nested_session_handling,
+        session_id,
     );
     screen.default_keybinds = default_keybinds;
     screen.default_context_menu_config = config.context_menu.clone();
@@ -13786,7 +13793,8 @@ pub(crate) fn screen_thread_main(
                 let available_layouts = vec![];
 
                 let creation_time = {
-                    let sock_path = ZELLIJ_SOCK_DIR.join(&screen.session_name);
+                    // The socket is named by the stable session id, not the display name.
+                    let sock_path = ZELLIJ_SOCK_DIR.join(&screen.session_id);
                     std::fs::metadata(&sock_path)
                         .ok()
                         .and_then(|f| f.created().ok().or_else(|| f.modified().ok()))
@@ -13879,24 +13887,11 @@ pub(crate) fn screen_thread_main(
                         tab.rename_session(name.clone()).with_context(err_context)?;
                     }
 
-                    // rename socket file
-                    let old_socket_file_path = ZELLIJ_SOCK_DIR.join(&old_session_name);
-                    let new_socket_file_path = ZELLIJ_SOCK_DIR.join(&name);
-                    if let Err(e) = std::fs::rename(old_socket_file_path, new_socket_file_path) {
-                        log::error!("Failed to rename ipc socket: {:?}", e);
-                    }
-
-                    // rename session_info folder (TODO: make this atomic, right now there is a
-                    // chance background_jobs will re-create this folder before it knows the
-                    // session was renamed)
-                    let old_session_info_folder =
-                        session_info_folder_for_session(&old_session_name);
-                    let new_session_info_folder = session_info_folder_for_session(&name);
-                    if let Err(e) =
-                        std::fs::rename(old_session_info_folder, new_session_info_folder)
-                    {
-                        log::error!("Failed to rename session_info folder: {:?}", e);
-                    }
+                    // Record the new name in the session index. Nothing on disk is
+                    // renamed: the socket/pipe and the session-info cache folder
+                    // are both named by the stable session id — which is what makes
+                    // rename work for Windows named pipes (they cannot be renamed).
+                    zellij_utils::sessions::rename_session(&screen.session_id, &name);
 
                     // report
                     screen

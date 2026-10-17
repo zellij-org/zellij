@@ -36,17 +36,26 @@ pub const DEFAULT_LIGHT_THEME_NAME: &str = "default-light";
 
 pub const CLIENT_SERVER_CONTRACT_VERSION: usize = 1;
 
-pub fn session_info_cache_file_name(session_name: &str) -> PathBuf {
-    session_info_folder_for_session(session_name).join("session-metadata.kdl")
+// The session-info cache is keyed by session id (a short random id for new sessions,
+// or the session name for sessions from before ids), NOT the user-visible
+// display name — so renaming a session never moves its cache folder.
+pub fn session_info_cache_file_name(session_id: &str) -> PathBuf {
+    session_info_folder_for_session(session_id).join("session-metadata.kdl")
 }
 
-pub fn session_layout_cache_file_name(session_name: &str) -> PathBuf {
-    session_info_folder_for_session(session_name).join("session-layout.kdl")
+pub fn session_layout_cache_file_name(session_id: &str) -> PathBuf {
+    session_info_folder_for_session(session_id).join("session-layout.kdl")
 }
 
-pub fn session_info_folder_for_session(session_name: &str) -> PathBuf {
-    ZELLIJ_SESSION_INFO_CACHE_DIR.join(session_name)
+pub fn session_info_folder_for_session(session_id: &str) -> PathBuf {
+    ZELLIJ_SESSION_INFO_CACHE_DIR.join(session_id)
 }
+
+/// Length of a generated session id (hex chars). Kept short so the socket/pipe
+/// path stays within the platform limit (104 bytes on macOS) even under a long
+/// temp dir — a full 36-char UUID would overflow it. The client checks the socket
+/// directory against this length at startup. See `generate_session_id`.
+pub const SESSION_ID_LENGTH: usize = 12;
 
 pub fn create_config_and_cache_folders() {
     if let Err(e) = std::fs::create_dir_all(&ZELLIJ_CACHE_DIR.as_path()) {
