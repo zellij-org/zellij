@@ -3492,6 +3492,16 @@ pub fn start_server_impl(
 ) {
     envs::set_zellij("0".to_string());
 
+    // The socket/pipe filename is the stable session id, decoupled from the
+    // (renameable) display name. It is threaded into the per-session threads
+    // (screen / pty / background_jobs) so they key the session-info cache and
+    // the session index by id — NOT via a process-global, which would collide
+    // between the many sessions an integration test runs in one process.
+    let session_id = socket_path
+        .file_name()
+        .map(|f| f.to_string_lossy().to_string())
+        .unwrap_or_default();
+
     let (to_server, server_receiver): ChannelWithContext<ServerInstruction> = channels::bounded(50);
     let to_server = SenderWithContext::new(to_server);
     let session_data: Arc<RwLock<Option<SessionMetaData>>> = Arc::new(RwLock::new(None));
@@ -3594,10 +3604,8 @@ pub fn start_server_impl(
 
     let mut last_attached_client_count = 0;
     let mut delete_session_on_exit = false;
-    let mut own_session_name = socket_path
-        .file_name()
-        .map(|name| name.to_string_lossy().to_string())
-        .unwrap_or_default();
+    // The socket filename is the session id, not the (renameable) display name.
+    let mut own_session_name = zellij_utils::sessions::display_name_for_session_id(&session_id);
     loop {
         let attached_client_count = session_state.read().unwrap().attached_client_count();
         if attached_client_count != last_attached_client_count {
@@ -3677,6 +3685,7 @@ pub fn start_server_impl(
                     config.clone(),
                     config.plugins.clone(),
                     client_id,
+                    session_id.clone(),
                 );
                 info!("FirstClientConnected: session initialized, spawning tabs");
                 let mut runtime_configuration = config.clone();
@@ -5027,16 +5036,17 @@ pub fn start_server_impl(
 
     server_socket.remove_on_exit();
     if delete_session_on_exit {
-        delete_unused_session_after_exit(&own_session_name);
+        delete_unused_session_after_exit(&session_id, &own_session_name);
     }
 }
 
-fn delete_unused_session_after_exit(session_name: &str) {
-    if session_name.is_empty() {
+// The session-info cache folder is named by session id; the session index row by name.
+fn delete_unused_session_after_exit(session_id: &str, session_name: &str) {
+    if session_id.is_empty() {
         return;
     }
     let _ = std::fs::remove_dir_all(zellij_utils::consts::session_info_folder_for_session(
-        session_name,
+        session_id,
     ));
     if let Ok(index) = zellij_utils::session_index::SessionIndex::open_default() {
         let _ = index.delete(session_name);
@@ -5053,6 +5063,7 @@ fn init_session(
     mut config: Config,
     plugin_aliases: PluginAliases,
     client_id: ClientId,
+    session_id: String,
 ) -> SessionMetaData {
     config.options = config.options.merge(*config_options.clone());
     if config.has_command_line_keybinds() {
@@ -5141,7 +5152,8 @@ fn init_session(
                 applied_env.pane_env(),
             );
 
-            move || pty_thread_main(pty, layout.clone()).fatal()
+            let session_id = session_id.clone();
+            move || pty_thread_main(pty, layout.clone(), session_id).fatal()
         })
         .unwrap();
 
@@ -5167,6 +5179,7 @@ fn init_session(
             let layout = layout.clone();
             let config = config.clone();
             let default_keybinds = default_keybinds.clone();
+            let session_id = session_id.clone();
             move || {
                 screen_thread_main(
                     screen_bus,
@@ -5176,6 +5189,7 @@ fn init_session(
                     debug,
                     layout,
                     default_keybinds,
+                    session_id,
                 )
                 .fatal();
             }
@@ -5271,12 +5285,14 @@ fn init_session(
                 enforce_https_for_localhost,
                 dangerously_allow_web_serving_without_a_certificate,
             );
+            let session_id = session_id.clone();
             move || {
                 background_jobs_main(
                     background_jobs_bus,
                     serialization_interval,
                     disable_session_metadata,
                     web_server_base_url,
+                    session_id,
                 )
                 .fatal()
             }

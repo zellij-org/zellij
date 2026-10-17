@@ -324,10 +324,13 @@ fn connect(
         focus.1,
     );
     let session_name = info.get_session_name().to_owned();
-    if handshake.starts_server {
-        start_server(&session_name)?;
-    }
-    connection::open(
+    let socket_path = if handshake.starts_server {
+        start_server(&session_name)?
+    } else {
+        connection::socket_path(&session_name)?
+    };
+    connection::open_at(
+        &socket_path,
         &session_name,
         geometry,
         target.opening,
@@ -497,18 +500,19 @@ fn fallback_surface() -> Result<(FontStack, Options)> {
     Ok((fonts, options))
 }
 
+// Returns the new session's socket path, which is named by a freshly registered session id.
 fn start_server(session_name: &str) -> Result<PathBuf> {
     let cwd = spawn::resolve_cwd(None)?;
     let program = spawn::resolve_program()?;
     spawn::prepare_socket_dir()?;
-    let socket_path = connection::socket_path(session_name)?;
+    let socket_path = connection::new_session_socket_path(session_name)?;
     spawn::spawn(&spawn::server_command(
         program,
         &socket_path,
         session_name,
         &cwd,
     ))?;
-    Ok(cwd)
+    Ok(socket_path)
 }
 
 fn installed_font_families() -> Vec<String> {
