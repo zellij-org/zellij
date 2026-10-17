@@ -81,6 +81,8 @@ keybinds {
         bind "8" { GoToTab 8; SwitchToMode "Locked"; }
         bind "9" { GoToTab 9; SwitchToMode "Locked"; }
         bind "Tab" { ToggleTab; }
+        bind "Space" { NextSwapLayout; }
+        bind "Shift Space" { PreviousSwapLayout; }
     }
     scroll {
         bind "s" { SwitchToMode "Normal"; }
@@ -183,6 +185,9 @@ keybinds {
             };
             SwitchToMode "Locked"
         }
+    }
+    shared_except "renametab" "renamepane" "entersearch" {
+        bind "F9" { ToggleSessionCard; }
     }
     shared_except "locked" "renametab" "renamepane" {
         bind "{unlock}" { SwitchToMode "Locked"; }

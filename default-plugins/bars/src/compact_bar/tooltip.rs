@@ -1,5 +1,6 @@
 use crate::click_actions::ClickRegion;
 use crate::compact_bar::keybind_utils::{KeybindProcessor, TooltipEntry};
+use zellij_tile::graphemes::display_width;
 use zellij_tile::prelude::actions::Action;
 use zellij_tile::prelude::*;
 
@@ -97,8 +98,8 @@ impl<'a> TooltipRenderer<'a> {
         let mut max_columns = 0;
         for (index, entry) in self.entries(mode).into_iter().enumerate() {
             let is_first = index == 0;
-            let key_len = entry.key_text().chars().count();
-            let description_len = entry.description.chars().count();
+            let key_len = display_width(&entry.key_text());
+            let description_len = display_width(&entry.description);
             let line_length = if is_first {
                 key_len + description_len
             } else {
@@ -119,8 +120,8 @@ impl<'a> TooltipRenderer<'a> {
         let mut key_width = 0;
         let mut action_width = 0;
         for entry in entries {
-            key_width = key_width.max(entry.key_text().chars().count());
-            action_width = action_width.max(format!("- {}", entry.description).chars().count());
+            key_width = key_width.max(display_width(&entry.key_text()));
+            action_width = action_width.max(display_width(&format!("- {}", entry.description)));
         }
         (key_width, action_width)
     }
@@ -133,14 +134,14 @@ impl<'a> TooltipRenderer<'a> {
             let base_x = cols.saturating_sub(tooltip_columns) / 2;
             let base_y = rows.saturating_sub(1) / 2;
             for component in components {
-                let text_width = component.key_text().chars().count();
-                let ribbon_total_width = component.entry.description.chars().count() + 4;
+                let text_width = display_width(&component.key_text());
+                let ribbon_total_width = display_width(&component.entry.description) + 4;
                 let start = base_x + component.x;
                 if start + text_width + ribbon_total_width + 1 > cols {
                     break;
                 }
                 let key_start = start + component.key_offset();
-                for (chunk_start, chunk_end, chunk) in component.entry.chunk_ranges() {
+                for (chunk_start, chunk_end, chunk) in component.entry.column_ranges() {
                     if let Some(actions) = &chunk.actions {
                         regions.push(TooltipRegion {
                             row: base_y,
@@ -176,7 +177,7 @@ impl<'a> TooltipRenderer<'a> {
             let key_column_width = key_width.max(1);
             for (index, entry) in entries.iter().enumerate() {
                 let row = base_y + 1 + index;
-                for (chunk_start, chunk_end, chunk) in entry.chunk_ranges() {
+                for (chunk_start, chunk_end, chunk) in entry.column_ranges() {
                     if let Some(actions) = &chunk.actions {
                         regions.push(TooltipRegion {
                             row,
@@ -190,7 +191,7 @@ impl<'a> TooltipRenderer<'a> {
                 }
                 if let Some(actions) = entry.description_actions() {
                     let start = base_x + key_column_width + 1;
-                    let end = start + format!("- {}", entry.description).chars().count();
+                    let end = start + display_width(&format!("- {}", entry.description));
                     regions.push(TooltipRegion {
                         row,
                         region: ClickRegion::new(start, end, actions),
@@ -211,8 +212,8 @@ impl<'a> TooltipRenderer<'a> {
 
             for component in components {
                 let key_text = component.key_text();
-                let text_width = key_text.chars().count();
-                let ribbon_content_width = component.entry.description.chars().count();
+                let text_width = display_width(&key_text);
+                let ribbon_content_width = display_width(&component.entry.description);
                 let ribbon_total_width = ribbon_content_width + 4;
                 let total_element_width = text_width + ribbon_total_width + 1;
                 let x = component.x;
@@ -282,7 +283,7 @@ impl<'a> TooltipRenderer<'a> {
                     format!("{:?}", self.mode_info.mode)
                 },
             };
-            let total_width = tooltip_text.chars().count();
+            let total_width = display_width(&tooltip_text);
             table = table.add_styled_row(vec![Text::from(tooltip_text).color_all(0)]);
             row_count += 1;
             (table, row_count, total_width)
@@ -453,5 +454,47 @@ mod tests {
         );
         assert!(!not_hovered);
         assert_eq!(plus_minus.description_actions(), None);
+    }
+
+    #[test]
+    fn wide_key_chunks_get_column_regions_and_character_highlights() {
+        use crate::compact_bar::keybind_utils::TooltipKeyChunk;
+        let wide = resize(Resize::Increase, None);
+        let narrow = resize(Resize::Decrease, None);
+        let entry = TooltipEntry {
+            chunks: vec![
+                TooltipKeyChunk {
+                    text: "<".to_owned(),
+                    actions: None,
+                },
+                TooltipKeyChunk {
+                    text: "日".to_owned(),
+                    actions: Some(wide.clone()),
+                },
+                TooltipKeyChunk {
+                    text: "ü".to_owned(),
+                    actions: Some(narrow.clone()),
+                },
+                TooltipKeyChunk {
+                    text: ">".to_owned(),
+                    actions: None,
+                },
+            ],
+            description: "Größe".to_owned(),
+        };
+        let columns: Vec<(usize, usize)> = entry
+            .column_ranges()
+            .into_iter()
+            .map(|(start, end, _)| (start, end))
+            .collect();
+        assert_eq!(columns, vec![(0, 1), (1, 3), (3, 4), (4, 5)]);
+        let characters: Vec<(usize, usize)> = entry
+            .chunk_ranges()
+            .into_iter()
+            .map(|(start, end, _)| (start, end))
+            .collect();
+        assert_eq!(characters, vec![(0, 1), (1, 2), (2, 3), (3, 4)]);
+        let (_, is_hovered) = styled_key_text(entry.key_text(), &entry, 0, Some(&narrow));
+        assert!(is_hovered);
     }
 }

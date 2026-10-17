@@ -37,6 +37,7 @@ sixel-tokenizer = { version = "0.1.0", default-features = false }
 sysinfo = { version = "0.39.5", default-features = false, features = ["system"] }
 tempfile = { workspace = true }
 tokio = { workspace = true }
+unicode-segmentation = { workspace = true }
 unicode-width = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true }

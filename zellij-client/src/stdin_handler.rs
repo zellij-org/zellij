@@ -51,6 +51,7 @@ pub(crate) fn stdin_loop(
             {
                 let mut stdin_ansi_parser = stdin_ansi_parser.lock().unwrap();
                 stdin_ansi_parser.open_own_query_batch();
+                stdin_ansi_parser.expect_grapheme_cluster_mode_reply();
                 if support_kitty_graphics_protocol {
                     stdin_ansi_parser.expect_kitty_probe_reply();
                     stdin_ansi_parser.expect_kitty_zlib_probe_reply();
@@ -417,7 +418,7 @@ fn build_startup_query_string(
         ""
     };
     format!(
-        "{}{}\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}\u{1b}[?2026$p{}\u{1b}[c",
+        "{}{}\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}\u{1b}[?2026$p{}\u{1b}[?2027$p\u{1b}[c",
         host_theme_query, PIXEL_SIZE_QUERY, kitty_graphics_probe
     )
 }
@@ -484,7 +485,7 @@ mod tests {
         let query = build_startup_query_string(true, false);
         assert_eq!(
             query,
-            "\u{1b}[14t\u{1b}[16t\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}\u{1b}[?2026$p\u{1b}_Ga=q,i=31,s=1,v=1,t=d,f=24;AAAA\u{1b}\u{5c}\u{1b}_Ga=q,i=32,s=4,v=4,t=d,f=24,o=z;eJxjYCANAAAAMAAB\u{1b}\u{5c}\u{1b}[c"
+            "\u{1b}[14t\u{1b}[16t\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}\u{1b}[?2026$p\u{1b}_Ga=q,i=31,s=1,v=1,t=d,f=24;AAAA\u{1b}\u{5c}\u{1b}_Ga=q,i=32,s=4,v=4,t=d,f=24,o=z;eJxjYCANAAAAMAAB\u{1b}\u{5c}\u{1b}[?2027$p\u{1b}[c"
         );
         assert!(
             !query.contains("\u{1b}]4;"),
@@ -533,6 +534,15 @@ mod tests {
         let barrier_pos = query.find("\u{1b}[c").unwrap();
         assert!(probe_pos < zlib_probe_pos);
         assert!(zlib_probe_pos < barrier_pos);
+    }
+
+    #[test]
+    fn startup_query_asks_for_grapheme_cluster_mode_right_before_the_barrier() {
+        for (kitty, theme) in [(true, true), (false, false)] {
+            let query = build_startup_query_string(kitty, theme);
+            assert!(query.ends_with("\u{1b}[?2027$p\u{1b}[c"), "{:?}", query);
+            assert_eq!(query.matches("\u{1b}[?2027$p").count(), 1);
+        }
     }
 
     #[test]

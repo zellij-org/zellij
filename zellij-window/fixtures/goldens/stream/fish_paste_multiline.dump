@@ -1,0 +1,102 @@
+size: 40x120
+cursor: row=21 col=41 visible shape=Default
+grid:
+|⏎                                                                                                                       |
+|                                                                                                                        |
+| OS: 5.9.14-arch1-1 GNU/Linux                                                                                           |
+| Uptime: 12 hours, 21 minutes                                                                                           |
+| Hostname: kingdom                                                                                                      |
+| Disk usage:                                                                                                            |
+|                                                                                                                        |
+|df: /run/user/1000/doc: Operation not permitted                                                                         |
+|        /       295G / 514G  61%                                                                                        |
+|        /efi     27M /  96M  28%                                                                                        |
+|                                                                                                                        |
+| Network:                                                                                                               |
+|                                                                                                                        |
+|        wlp2s0  192.168.0.3                                                                                             |
+|                                                                                                                        |
+|[I] [21:58] kingdom:mosaic (main) | echo -ne (\                                                                         |
+|                                            df -l -h | grep -E 'dev/(xvda|sd|mapper)' | \                               |
+|                                            awk '{printf "\\\\t%s\\\\t%4s / %4s  %s\\\\n\n", $6, $3, $2, $5}' | \       |
+|                                            sed -e 's/^\(.*\([8][5-9]\|[9][0-9]\)%.*\)$/\\\\e[0;31m\1\\\\e[0m/' -e 's/^\|
+|(.*\([7][5-9]\|[8][0-4]\)%.*\)$/\\\\e[0;33m\1\\\\e[0m/' | \                                                             |
+|                                            paste -sd ''\                                                               |
+|                                        )                                                                               |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+styles:
+row 0: cols 0-0 fg=Foreground bg=Background flags=DIM
+row 2: cols 1-4 fg=Foreground bg=Background flags=BOLD
+row 2: cols 5-28 fg=Green bg=Background
+row 3: cols 1-8 fg=Foreground bg=Background flags=BOLD
+row 3: cols 9-28 fg=Green bg=Background
+row 4: cols 1-10 fg=Foreground bg=Background flags=BOLD
+row 4: cols 11-17 fg=Green bg=Background
+row 5: cols 1-11 fg=Foreground bg=Background flags=BOLD
+row 11: cols 1-8 fg=Foreground bg=Background flags=BOLD
+row 13: cols 8-26 fg=Magenta bg=Background
+row 15: cols 0-2 fg=White bg=Green flags=BOLD
+row 15: cols 4-11 fg=BrightBlack bg=Background
+row 15: cols 12-18 fg=Blue bg=Background
+row 15: cols 19-19 fg=BrightBlack bg=Background
+row 15: cols 20-25 fg=Yellow bg=Background
+row 15: cols 26-33 fg=Green bg=Background
+row 15: cols 34-35 fg=Red bg=Background
+row 15: cols 36-39 fg=#a1b56c bg=Background
+row 15: cols 41-43 fg=#d8d8d8 bg=Background
+row 15: cols 45-45 fg=#7cafc2 bg=Background
+row 16: cols 44-45 fg=#a1b56c bg=Background
+row 16: cols 47-48 fg=#d8d8d8 bg=Background
+row 16: cols 50-51 fg=#d8d8d8 bg=Background
+row 16: cols 53-53 fg=#ba8baf bg=Background
+row 16: cols 55-58 fg=#a1b56c bg=Background
+row 16: cols 60-61 fg=#d8d8d8 bg=Background
+row 16: cols 63-84 fg=#f7ca88 bg=Background
+row 16: cols 86-86 fg=#ba8baf bg=Background
+row 17: cols 44-46 fg=#a1b56c bg=Background
+row 17: cols 48-57 fg=#f7ca88 bg=Background
+row 17: cols 58-61 fg=#86c1b9 bg=Background
+row 17: cols 62-64 fg=#f7ca88 bg=Background
+row 17: cols 65-68 fg=#86c1b9 bg=Background
+row 17: cols 69-82 fg=#f7ca88 bg=Background
+row 17: cols 83-86 fg=#86c1b9 bg=Background
+row 17: cols 87-108 fg=#f7ca88 bg=Background
+row 17: cols 110-110 fg=#ba8baf bg=Background
+row 18: cols 44-46 fg=#a1b56c bg=Background
+row 18: cols 48-49 fg=#d8d8d8 bg=Background
+row 18: cols 51-87 fg=#f7ca88 bg=Background
+row 18: cols 88-91 fg=#86c1b9 bg=Background
+row 18: cols 92-100 fg=#f7ca88 bg=Background
+row 18: cols 101-104 fg=#86c1b9 bg=Background
+row 18: cols 105-110 fg=#f7ca88 bg=Background
+row 18: cols 112-113 fg=#d8d8d8 bg=Background
+row 18: cols 115-119 fg=#f7ca88 bg=Background
+row 19: cols 0-31 fg=#f7ca88 bg=Background
+row 19: cols 32-35 fg=#86c1b9 bg=Background
+row 19: cols 36-44 fg=#f7ca88 bg=Background
+row 19: cols 45-48 fg=#86c1b9 bg=Background
+row 19: cols 49-54 fg=#f7ca88 bg=Background
+row 19: cols 56-56 fg=#ba8baf bg=Background
+row 20: cols 44-48 fg=#a1b56c bg=Background
+row 20: cols 50-52 fg=#d8d8d8 bg=Background
+row 20: cols 54-55 fg=#f7ca88 bg=Background
+row 20: cols 56-56 fg=#d8d8d8 bg=Background
+row 21: cols 40-40 fg=#7cafc2 bg=Background
+images:

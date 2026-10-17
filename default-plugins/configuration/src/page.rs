@@ -1,5 +1,6 @@
 use std::cell::{Cell, RefCell};
 
+use zellij_tile::graphemes;
 use zellij_tile::prelude::*;
 
 thread_local! {
@@ -201,20 +202,12 @@ pub fn typed(key: &KeyWithModifier, character: char) -> bool {
 }
 
 pub fn truncate(text: &str, width: usize) -> String {
-    if text.chars().count() <= width {
-        text.to_owned()
-    } else if width == 0 {
-        String::new()
-    } else {
-        let mut truncated: String = text.chars().take(width.saturating_sub(1)).collect();
-        truncated.push('…');
-        truncated
-    }
+    graphemes::truncate_end(text, width, "…").into_owned()
 }
 
 pub fn pad(text: &str, width: usize) -> String {
     let text = truncate(text, width);
-    let length = text.chars().count();
+    let length = graphemes::display_width(&text);
     format!("{}{}", text, " ".repeat(width.saturating_sub(length)))
 }
 
@@ -343,9 +336,9 @@ impl ColumnLayout {
                 widths.resize(columns.len(), 0);
             }
             for (index, column) in columns.iter().enumerate() {
-                widths[index] = widths[index].max(column.chars().count());
+                widths[index] = widths[index].max(graphemes::display_width(column));
             }
-            marker_width = marker_width.max(marker.chars().count());
+            marker_width = marker_width.max(graphemes::display_width(marker));
         }
         let shown = widths.iter().filter(|width| **width > 0).count();
         let fixed = ROW_INDENT
@@ -429,7 +422,7 @@ impl ColumnLayout {
             text_end
         }
     }
-    fn column_start(&self, column: usize) -> usize {
+    fn column_start(&self, columns: &[String], column: usize) -> usize {
         let mut start = self.indent;
         for (index, width) in self.widths.iter().enumerate() {
             if *width == 0 {
@@ -438,7 +431,8 @@ impl ColumnLayout {
             if index == column {
                 return start;
             }
-            start += width + COLUMN_GAP;
+            let text = columns.get(index).map(|c| c.as_str()).unwrap_or("");
+            start += pad(text, *width).chars().count() + COLUMN_GAP;
         }
         start
     }
@@ -456,7 +450,7 @@ impl ColumnLayout {
             let column = columns.get(index).map(|c| c.as_str()).unwrap_or("");
             line.push_str(&pad(column, *width));
         }
-        let text_end = line.chars().count();
+        let text_end = graphemes::display_width(&line);
         if self.marker_column > text_end {
             line.push_str(&" ".repeat(self.marker_column - text_end));
         }
@@ -508,7 +502,7 @@ impl ColumnLayout {
             if column_width == 0 {
                 continue;
             }
-            let start = self.column_start(*column);
+            let start = self.column_start(columns, *column);
             let from = (start + range.start.min(column_width)).min(width);
             let to = (start + range.end.min(column_width)).min(width);
             if from < to && dim {
@@ -793,6 +787,36 @@ mod tests {
         let layout = ColumnLayout::new(rows.iter().map(|(c, m)| (c.as_slice(), m.as_str())), 30);
         assert_eq!(layout.widths, vec![4, 22]);
         assert_eq!(layout.line(&rows[0].0, "").0.chars().count(), 30);
+    }
+
+    #[test]
+    fn wide_and_combined_text_is_measured_by_display_width() {
+        let rows = vec![
+            (strings(&["日本語", "x"]), "○ default".to_owned()),
+            (strings(&["ab", "y"]), "● unsaved".to_owned()),
+        ];
+        let layout = ColumnLayout::new(rows.iter().map(|(c, m)| (c.as_slice(), m.as_str())), 200);
+        assert_eq!(layout.widths, vec![6, 1]);
+        let (first, first_marker) = layout.line(&rows[0].0, &rows[0].1);
+        let (second, second_marker) = layout.line(&rows[1].0, &rows[1].1);
+        assert_eq!(first, "  日本語  x  ○ default");
+        assert_eq!(second, "  ab      y  ● unsaved");
+        assert_eq!(
+            graphemes::display_width(&first),
+            graphemes::display_width(&second)
+        );
+        assert_eq!(first_marker, 10);
+        assert_eq!(second_marker, 13);
+        assert_eq!(layout.column_start(&rows[0].0, 1), 7);
+        assert_eq!(layout.column_start(&rows[1].0, 1), 10);
+    }
+
+    #[test]
+    fn truncation_cuts_by_width_on_cluster_boundaries() {
+        assert_eq!(truncate("日本語", 5), "日本…");
+        assert_eq!(truncate("e\u{301}e\u{301}e\u{301}", 2), "e\u{301}…");
+        assert_eq!(truncate("e\u{301}e\u{301}", 2), "e\u{301}e\u{301}");
+        assert_eq!(pad("日本", 6), "日本  ");
     }
 
     #[test]

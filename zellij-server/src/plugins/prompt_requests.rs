@@ -11,7 +11,20 @@ pub struct PromptCaller {
     pub request_id: u64,
 }
 
+pub const SERVER_NOTICE_CALLER_ID: PluginId = u32::MAX;
+pub const CLOSE_DIALOGUE_CALLER_ID: PluginId = u32::MAX - 1;
+
 impl PromptCaller {
+    pub fn close_dialogue(client_id: ClientId, request_id: u64) -> Self {
+        PromptCaller {
+            plugin_id: CLOSE_DIALOGUE_CALLER_ID,
+            client_id,
+            request_id,
+        }
+    }
+    pub fn is_close_dialogue(&self) -> bool {
+        self.plugin_id == CLOSE_DIALOGUE_CALLER_ID
+    }
     pub fn result_event(
         &self,
         result: PromptResult,
@@ -120,6 +133,9 @@ impl PromptRequests {
         let mut actions = self.prompt_closed(plugin_id);
         actions.append(&mut self.callers_gone(|caller| caller.plugin_id == plugin_id));
         actions
+    }
+    pub fn withdraw(&mut self, caller: PromptCaller) -> Vec<PromptAction> {
+        self.callers_gone(|pending| *pending == caller)
     }
     pub fn caller_reloaded(&mut self, plugin_id: PluginId) -> Vec<PromptAction> {
         self.callers_gone(|caller| caller.plugin_id == plugin_id)
@@ -312,6 +328,25 @@ mod tests {
         assert_eq!(
             requests.reply(11, 8, answer.clone()),
             vec![PromptAction::Deliver(clicked, answer)]
+        );
+    }
+
+    #[test]
+    fn a_withdrawn_prompt_closes_without_an_answer() {
+        let mut requests = PromptRequests::default();
+        let asker = PromptCaller::close_dialogue(1, 3);
+        let other = caller(1, 1, 3);
+        opened(&mut requests, asker, 10);
+        opened(&mut requests, other, 11);
+        assert_eq!(requests.withdraw(asker), vec![PromptAction::Close(10)]);
+        assert!(requests.plugin_unloaded(10).is_empty());
+        assert!(requests.is_waiting_for(&other));
+        let opening = PromptCaller::close_dialogue(1, 4);
+        requests.start(opening, message(opening), false);
+        assert!(requests.withdraw(opening).is_empty());
+        assert_eq!(
+            requests.attach(opening, 12, 1, BTreeMap::new()),
+            vec![PromptAction::Close(12)]
         );
     }
 

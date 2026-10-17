@@ -1,0 +1,60 @@
+size: 40x120
+cursor: row=7 col=0 visible shape=Default
+grid:
+|नमस्ते दुनिया                                                                                                              |
+|क्षत्रिय श्री                                                                                                              |
+|வணக்கம்                                                                                                                   |
+|สวัสดีครับ ก้ำ                                                                                                              |
+|مرحبًا شُكْرًا                                                                                                              |
+|שָׁלוֹם                                                                                                                    |
+|한 글  한 글                                                                                                                |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+styles:
+row 0: cols 3-3 fg=Foreground bg=Background flags=GROUP_CONTINUE
+row 0: cols 7-7 fg=Foreground bg=Background flags=GROUP_CONTINUE
+row 0: cols 9-9 fg=Foreground bg=Background flags=GROUP_CONTINUE
+row 1: cols 1-1 fg=Foreground bg=Background flags=GROUP_CONTINUE
+row 1: cols 3-4 fg=Foreground bg=Background flags=GROUP_CONTINUE
+row 1: cols 8-9 fg=Foreground bg=Background flags=GROUP_CONTINUE
+row 3: cols 9-9 fg=Foreground bg=Background flags=GROUP_CONTINUE
+row 6: cols 0-0 fg=Foreground bg=Background flags=WIDE_CHAR
+row 6: cols 1-1 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 6: cols 2-2 fg=Foreground bg=Background flags=WIDE_CHAR
+row 6: cols 3-3 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 6: cols 5-5 fg=Foreground bg=Background flags=WIDE_CHAR
+row 6: cols 6-6 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 6: cols 7-7 fg=Foreground bg=Background flags=WIDE_CHAR
+row 6: cols 8-8 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+images:

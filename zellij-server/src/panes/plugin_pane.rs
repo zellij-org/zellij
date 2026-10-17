@@ -71,6 +71,7 @@ macro_rules! get_or_create_grid {
                 explicitly_disable_kitty_keyboard_protocol,
             );
             grid.hide_cursor();
+            grid.grapheme_mode = true;
             grid
         })
     }};
@@ -512,7 +513,7 @@ impl Pane for PluginPane {
         &mut self,
         _cursor_color: PaletteColor,
         _text_color: PaletteColor,
-    ) -> Option<String> {
+    ) -> Option<crate::output::CharacterChunk> {
         None
     }
     fn render_terminal_title(&mut self, input_mode: InputMode) -> String {
@@ -532,7 +533,7 @@ impl Pane for PluginPane {
             },
             "\u{007F}" | "\u{0008}" => {
                 //delete and backspace keys
-                self.pane_name.pop();
+                zellij_utils::graphemes::pop_cluster(&mut self.pane_name);
             },
             c => {
                 self.pane_name.push_str(c);
@@ -595,6 +596,13 @@ impl Pane for PluginPane {
             .and_then(|c| self.grids.get(&c))
             .map(|g| g.dump_screen(full))
             .unwrap_or_else(|| "".to_owned())
+    }
+    fn dump_screen_with_ansi(&self, full: bool, client_id: Option<ClientId>) -> String {
+        client_id
+            .and_then(|c| self.grids.get(&c))
+            .or_else(|| self.grids.keys().min().and_then(|c| self.grids.get(c)))
+            .map(|g| g.dump_screen_with_ansi(full))
+            .unwrap_or_default()
     }
     fn scroll_up(&mut self, count: usize, client_id: ClientId) {
         self.send_plugin_instructions
@@ -862,7 +870,9 @@ impl Pane for PluginPane {
         }
     }
     fn rename(&mut self, buf: Vec<u8>) {
-        self.pane_name = String::from_utf8_lossy(&buf).to_string();
+        self.pane_name = zellij_utils::shared::clean_string_from_control_and_linebreak(
+            &String::from_utf8_lossy(&buf),
+        );
         self.set_should_render(true);
     }
     fn update_theme(&mut self, theme: Styling) {

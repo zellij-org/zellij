@@ -176,6 +176,7 @@ pub fn start_web_client(
         }
     };
 
+    let config_file_path = config_file_path.or_else(|| Config::default_config_file_path());
     runtime.block_on(serve_web_client(
         config,
         config_options,
@@ -200,11 +201,6 @@ pub async fn serve_web_client(
     web_server_ip: IpAddr,
     web_server_port: u16,
 ) {
-    let Some(config_file_path) = config_file_path.or_else(|| Config::default_config_file_path())
-    else {
-        log::error!("Failed to find default config file path");
-        return;
-    };
     let connection_table = Arc::new(Mutex::new(ConnectionTable::default()));
     let server_handle = Handle::new();
     let session_manager = session_manager.unwrap_or_else(|| Arc::new(RealSessionManager));

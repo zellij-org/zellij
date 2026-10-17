@@ -1,6 +1,6 @@
 use crate::tab_bar::{line::tab_separator, LinePart};
 use ansi_term::{ANSIString, ANSIStrings};
-use unicode_width::UnicodeWidthStr;
+use zellij_tile::graphemes;
 use zellij_tile::prelude::*;
 use zellij_tile_utils::style;
 
@@ -19,6 +19,14 @@ fn cursors<'a>(
     (cursors, len)
 }
 
+pub(crate) fn fit_tab_text(text: String, max_width: usize) -> String {
+    if max_width == 0 || graphemes::display_width(&text) <= max_width {
+        text
+    } else {
+        graphemes::truncate_end(&text, max_width, "…").into_owned()
+    }
+}
+
 pub fn render_tab(
     text: String,
     tab: &TabInfo,
@@ -28,9 +36,10 @@ pub fn render_tab(
     palette: Styling,
     separator: &str,
     dimmed: bool,
+    max_width: usize,
 ) -> LinePart {
     let focused_clients = tab.other_focused_client_slots.as_slice();
-    let separator_width = separator.width();
+    let separator_width = graphemes::display_width(separator);
 
     let alternate_tab_color = if is_alternate_tab {
         palette.ribbon_unselected.emphasis_1
@@ -76,14 +85,22 @@ pub fn render_tab(
     };
     let left_separator = style!(separator_fill_color, background_color).paint(separator);
     let right_separator_style = style!(background_color, separator_fill_color);
-    let mut tab_text_len = text.width() + (separator_width * 2) + 2;
+    let cursor_info = if focused_clients.is_empty() {
+        None
+    } else {
+        Some(cursors(focused_clients, palette.multiplayer_user_colors))
+    };
+    let cursor_len = cursor_info
+        .as_ref()
+        .map(|(_, extra_length)| extra_length + 2)
+        .unwrap_or(0);
+    let decoration_len = (separator_width * 2) + 2 + cursor_len;
+    let text = fit_tab_text(text, max_width.saturating_sub(decoration_len));
+    let tab_text_len = graphemes::display_width(&text) + decoration_len;
     let tab_styled_text = text_style.paint(format!(" {} ", text));
 
     let right_separator = right_separator_style.paint(separator);
-    let tab_styled_text = if !focused_clients.is_empty() {
-        let (cursor_section, extra_length) =
-            cursors(focused_clients, palette.multiplayer_user_colors);
-        tab_text_len += extra_length + 2;
+    let tab_styled_text = if let Some((cursor_section, _)) = cursor_info {
         let mut s = String::new();
         let cursor_beginning = text_style.paint("[").to_string();
         let cursor_section = ANSIStrings(&cursor_section).to_string();
@@ -115,6 +132,7 @@ pub fn tab_style(
     palette: Styling,
     capabilities: PluginCapabilities,
     dimmed: bool,
+    max_width: usize,
 ) -> LinePart {
     let separator = tab_separator(capabilities);
 
@@ -139,6 +157,7 @@ pub fn tab_style(
         palette,
         separator,
         dimmed,
+        max_width,
     )
 }
 

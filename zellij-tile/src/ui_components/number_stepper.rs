@@ -12,11 +12,51 @@ fn accepts_number_char(character: char) -> bool {
     character.is_ascii_digit() || character == '-'
 }
 
+fn accepts_decimal_char(character: char) -> bool {
+    accepts_number_char(character) || character == '.'
+}
+
+fn scale(decimals: u32) -> i64 {
+    10i64.saturating_pow(decimals)
+}
+
+pub fn format_scaled(value: i64, decimals: u32) -> String {
+    if decimals == 0 {
+        return value.to_string();
+    }
+    let scale = scale(decimals);
+    let sign = if value < 0 { "-" } else { "" };
+    let whole = (value / scale).abs();
+    let fraction = (value % scale).abs();
+    if fraction == 0 {
+        return format!("{}{}", sign, whole);
+    }
+    let digits = format!("{:0width$}", fraction, width = decimals as usize);
+    format!("{}{}.{}", sign, whole, digits.trim_end_matches('0'))
+}
+
+pub fn parse_scaled(text: &str, decimals: u32) -> Option<i64> {
+    let text = text.trim();
+    if decimals == 0 {
+        return text.parse::<i64>().ok();
+    }
+    let number = text
+        .parse::<f64>()
+        .ok()
+        .filter(|number| number.is_finite())?;
+    let scaled = (number * scale(decimals) as f64).round();
+    if scaled.abs() >= i64::MAX as f64 {
+        return None;
+    }
+    Some(scaled as i64)
+}
+
 #[derive(Debug, Clone)]
 pub struct NumberStepper {
     label: Text,
     value: i64,
     step: i64,
+    decimals: u32,
     min: Option<i64>,
     max: Option<i64>,
     label_width: Option<usize>,
@@ -38,6 +78,7 @@ impl NumberStepper {
             label: label.into(),
             value,
             step: 1,
+            decimals: 0,
             min: None,
             max: None,
             label_width: None,
@@ -55,6 +96,11 @@ impl NumberStepper {
     }
     pub fn step(mut self, step: i64) -> Self {
         self.step = step.max(1);
+        self
+    }
+    pub fn decimals(mut self, decimals: u32) -> Self {
+        self.decimals = decimals.min(9);
+        self.input = TextInput::empty().accept(self.char_filter());
         self
     }
     pub fn min(mut self, min: i64) -> Self {
@@ -101,6 +147,16 @@ impl NumberStepper {
         self.value = self.clamp(value);
         self.editing = false;
     }
+    pub fn display_value(&self) -> String {
+        format_scaled(self.value, self.decimals)
+    }
+    fn char_filter(&self) -> fn(char) -> bool {
+        if self.decimals > 0 {
+            accepts_decimal_char
+        } else {
+            accepts_number_char
+        }
+    }
     pub fn set_field_width(&mut self, field_width: usize) {
         self.field_width = Some(field_width.max(MIN_FIELD_WIDTH));
     }
@@ -135,14 +191,14 @@ impl NumberStepper {
             let digits = [Some(self.value), self.min, self.max]
                 .iter()
                 .flatten()
-                .map(|v| v.to_string().len())
+                .map(|v| format_scaled(*v, self.decimals).len())
                 .max()
                 .unwrap_or(1);
             (digits + 4).max(MIN_FIELD_WIDTH)
         })
     }
     fn start_editing(&mut self, text: String) {
-        self.input = TextInput::new(text).accept(accepts_number_char);
+        self.input = TextInput::new(text).accept(self.char_filter());
         self.editing = true;
     }
     fn commit(&mut self) -> bool {
@@ -151,7 +207,7 @@ impl NumberStepper {
         }
         self.editing = false;
         let previous = self.value;
-        if let Ok(parsed) = self.input.get_text().parse::<i64>() {
+        if let Some(parsed) = parse_scaled(self.input.get_text(), self.decimals) {
             self.value = self.clamp(parsed);
         }
         self.value != previous
@@ -194,7 +250,7 @@ impl NumberStepper {
             state_value(&mut state, "cur", self.input.get_cursor_position());
             self.input.get_text().to_owned()
         } else {
-            self.value.to_string()
+            self.display_value()
         };
         widget_dcs(
             "stepper",
@@ -251,7 +307,7 @@ impl Widget for NumberStepper {
             };
         }
         if let Some(character) = typed_char(key) {
-            if !accepts_number_char(character) {
+            if !(self.char_filter())(character) {
                 return UiResponse::NotHandled;
             }
             if character == '-' && self.min.map(|min| min >= 0).unwrap_or(false) {
@@ -265,7 +321,7 @@ impl Widget for NumberStepper {
         }
         if is_plain(key, BareKey::Backspace) || is_plain(key, BareKey::Delete) {
             if !self.editing {
-                self.start_editing(self.value.to_string());
+                self.start_editing(self.display_value());
             }
             self.input.handle_key(key);
             return UiResponse::Consumed;

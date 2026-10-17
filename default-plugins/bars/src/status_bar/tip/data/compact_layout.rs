@@ -1,5 +1,6 @@
+use crate::status_bar::unstyled_len;
 use ansi_term::{
-    unstyled_len, ANSIString, ANSIStrings,
+    ANSIString, ANSIStrings,
     Color::{Fixed, RGB},
     Style,
 };

@@ -100,7 +100,7 @@ impl DisplayLayout {
     }
 
     fn name_width(&self) -> usize {
-        self.name().chars().count()
+        zellij_tile::graphemes::display_width(&self.name())
     }
     fn last_modified_width(&self) -> usize {
         let display_info = get_layout_display_info(self);

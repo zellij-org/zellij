@@ -22,6 +22,7 @@ message PromptRequest {
     FormSpec form = 14;
     NotifySpec notify = 15;
   }
+  bool capture_all_keys = 16;
 }
 
 enum PromptPlacementKind {
@@ -42,6 +43,7 @@ message PromptPlacement {
 message ChoiceItem {
   string value = 1;
   optional string label = 2;
+  repeated uint32 emphasis = 3;
 }
 
 message ConfirmSpec {
@@ -81,6 +83,8 @@ message SelectSpec {
 
 message MenuSpec {
   repeated ChoiceItem items = 1;
+  optional string remember = 2;
+  bool padded = 3;
 }
 
 enum FormFieldKind {

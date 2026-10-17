@@ -1,0 +1,45 @@
+size: 40x120
+cursor: row=0 col=13 visible shape=Default
+grid:
+|Push <RETURN>                                                                                                           |
+|Jump scroll down region [1..24] size 24 Line 29                                                                         |
+|Jump scroll down region [1..24] size 24 Line 28                                                                         |
+|Jump scroll down region [1..24] size 24 Line 27                                                                         |
+|Jump scroll down region [1..24] size 24 Line 26                                                                         |
+|Jump scroll down region [1..24] size 24 Line 25                                                                         |
+|Jump scroll down region [1..24] size 24 Line 24                                                                         |
+|Jump scroll down region [1..24] size 24 Line 23                                                                         |
+|Jump scroll down region [1..24] size 24 Line 22                                                                         |
+|Jump scroll down region [1..24] size 24 Line 21                                                                         |
+|Jump scroll down region [1..24] size 24 Line 20                                                                         |
+|Jump scroll down region [1..24] size 24 Line 19                                                                         |
+|Jump scroll down region [1..24] size 24 Line 18                                                                         |
+|Jump scroll down region [1..24] size 24 Line 17                                                                         |
+|Jump scroll down region [1..24] size 24 Line 16                                                                         |
+|Jump scroll down region [1..24] size 24 Line 15                                                                         |
+|Jump scroll down region [1..24] size 24 Line 14                                                                         |
+|Jump scroll down region [1..24] size 24 Line 13                                                                         |
+|Jump scroll down region [1..24] size 24 Line 12                                                                         |
+|Jump scroll down region [1..24] size 24 Line 11                                                                         |
+|Jump scroll down region [1..24] size 24 Line 10                                                                         |
+|Jump scroll down region [1..24] size 24 Line 9                                                                          |
+|Jump scroll down region [1..24] size 24 Line 8                                                                          |
+|Jump scroll down region [1..24] size 24 Line 7                                                                          |
+|Jump scroll down region [1..24] size 24 Line 6                                                                          |
+|Jump scroll down region [1..24] size 24 Line 5                                                                          |
+|Jump scroll down region [1..24] size 24 Line 4                                                                          |
+|Jump scroll down region [1..24] size 24 Line 3                                                                          |
+|Jump scroll down region [1..24] size 24 Line 2                                                                          |
+|Jump scroll down region [1..24] size 24 Line 1                                                                          |
+|Jump scroll up region [1..24] size 24 Line 7                                                                            |
+|Jump scroll up region [1..24] size 24 Line 8                                                                            |
+|Jump scroll up region [1..24] size 24 Line 9                                                                            |
+|Jump scroll up region [1..24] size 24 Line 10                                                                           |
+|Jump scroll up region [1..24] size 24 Line 11                                                                           |
+|Jump scroll up region [1..24] size 24 Line 12                                                                           |
+|Jump scroll up region [1..24] size 24 Line 13                                                                           |
+|Jump scroll up region [1..24] size 24 Line 14                                                                           |
+|Jump scroll up region [1..24] size 24 Line 15                                                                           |
+|Jump scroll up region [1..24] size 24 Line 16                                                                           |
+styles:
+images:

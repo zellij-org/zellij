@@ -1,8 +1,9 @@
 ---
 source: zellij-integration-tests/tests/rendering_width.rs
+assertion_line: 54
 expression: rendered
 ---
  Zellij (test)  Tab #1  + 
-$ ecole|a|o|école|ᄀ|
+$ école|à̈|o̱|école|각|
 FIXTURE-END█
  Ctrl + <g> LOCK  <p> PANE  <t> TAB  <n> RESIZE  <h> MOVE  <s> SEARCH  <o> SESSION  <q> QUIT        ...

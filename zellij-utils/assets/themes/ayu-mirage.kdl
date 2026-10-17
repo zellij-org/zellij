@@ -116,6 +116,25 @@ themes {
             player_9 0
             player_10 0
         }
+        // terminal_colors: https://github.com/mbadolato/iTerm2-Color-Schemes/blob/master/alacritty/Ayu%20Mirage.toml
+        terminal_colors {
+            black 23 27 36
+            red 237 130 116
+            green 135 217 108
+            yellow 250 204 110
+            blue 109 203 250
+            magenta 218 186 250
+            cyan 144 225 198
+            white 199 199 199
+            bright_black 104 104 104
+            bright_red 242 135 121
+            bright_green 213 255 128
+            bright_yellow 255 209 115
+            bright_blue 115 208 255
+            bright_magenta 223 191 255
+            bright_cyan 149 230 203
+            bright_white 255 255 255
+        }
     }
   }
 

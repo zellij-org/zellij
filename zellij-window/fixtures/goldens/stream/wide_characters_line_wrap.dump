@@ -1,0 +1,142 @@
+size: 40x120
+cursor: row=2 col=114 visible shape=Default
+grid:
+|Welcome to fish, the friendly interactive shell                                                                         |
+|⋊> ~/c/zellij on main ⨯ bash                                                                    15:50:11                |
+|[aram@green zellij]$ Ｈ Ｈ Ｈ Ｈ Ｈ Ｈ Ｈ Ｈ Ｈ Ｈ Ｈ Ｈ Ｈ Ｈ Ｈ Ｈ Ｈ Ｈ Ｈ Ｈ Ｈ Ｈ Ｈ Ｈ Ｈ Ｈ Ｈ Ｈ Ｈ Ｈ Ｈ Ｈ Ｈ Ｈ Ｈ Ｈ Ｈ Ｈ Ｈ Ｈ Ｈ  Ｈ Ｈ Ｈ Ｈ Ｈ       |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+styles:
+row 1: cols 0-1 fg=BrightWhite bg=Cyan
+row 1: cols 3-12 fg=Yellow bg=Background
+row 1: cols 17-20 fg=Green bg=Background
+row 1: cols 24-27 fg=Foreground bg=Background flags=BOLD
+row 1: cols 96-103 fg=#555555 bg=Background
+row 2: cols 21-21 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 22-22 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 23-23 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 24-24 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 25-25 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 26-26 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 27-27 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 28-28 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 29-29 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 30-30 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 31-31 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 32-32 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 33-33 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 34-34 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 35-35 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 36-36 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 37-37 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 38-38 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 39-39 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 40-40 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 41-41 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 42-42 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 43-43 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 44-44 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 45-45 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 46-46 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 47-47 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 48-48 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 49-49 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 50-50 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 51-51 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 52-52 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 53-53 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 54-54 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 55-55 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 56-56 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 57-57 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 58-58 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 59-59 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 60-60 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 61-61 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 62-62 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 63-63 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 64-64 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 65-65 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 66-66 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 67-67 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 68-68 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 69-69 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 70-70 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 71-71 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 72-72 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 73-73 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 74-74 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 75-75 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 76-76 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 77-77 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 78-78 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 79-79 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 80-80 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 81-81 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 82-82 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 83-83 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 84-84 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 85-85 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 86-86 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 87-87 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 88-88 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 89-89 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 90-90 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 91-91 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 92-92 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 93-93 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 94-94 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 95-95 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 96-96 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 97-97 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 98-98 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 99-99 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 100-100 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 101-101 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 102-102 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 104-104 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 105-105 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 106-106 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 107-107 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 108-108 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 109-109 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 110-110 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 111-111 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 2: cols 112-112 fg=Foreground bg=Background flags=WIDE_CHAR
+row 2: cols 113-113 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+images:

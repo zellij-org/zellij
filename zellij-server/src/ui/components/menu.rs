@@ -1,7 +1,7 @@
 use super::widget_common::{
     bold, colored, decode_text, dimmed, disabled_look, fit, frame_color, indicator_label,
-    indicator_row, indicator_styles, move_to, paint, plain_styles, selected_row_styles, text_width,
-    truncate, WidgetState,
+    indicator_row, indicator_styles, move_to, paint, plain_styles, selected_row_styles,
+    text_clusters, text_width, truncate, WidgetState,
 };
 use super::Coordinates;
 use crate::panes::terminal_character::{AnsiCode, CharacterStyles};
@@ -16,7 +16,14 @@ pub enum MenuRow {
         disabled: bool,
         marked: bool,
         matched: Vec<usize>,
+        emphasized: Vec<usize>,
     },
+}
+
+fn indices(raw: &str) -> Vec<usize> {
+    raw.split(',')
+        .filter_map(|index| index.parse::<usize>().ok())
+        .collect()
 }
 
 pub fn parse_menu_row(raw: &str) -> MenuRow {
@@ -28,15 +35,12 @@ pub fn parse_menu_row(raw: &str) -> MenuRow {
         .take_while(|c| c.is_ascii_alphabetic())
         .collect();
     let rest = &raw[flags.len()..];
-    let (rest, matched) = match rest.split_once('/') {
-        Some((rest, matched)) => (
-            rest,
-            matched
-                .split(',')
-                .filter_map(|index| index.parse::<usize>().ok())
-                .collect(),
-        ),
-        None => (rest, vec![]),
+    let (rest, matched, emphasized) = match rest.split_once('/') {
+        Some((rest, positions)) => match positions.split_once('/') {
+            Some((matched, emphasized)) => (rest, indices(matched), indices(emphasized)),
+            None => (rest, indices(positions), vec![]),
+        },
+        None => (rest, vec![], vec![]),
     };
     let (label, shortcut) = match rest.split_once(':') {
         Some((label, shortcut)) => (decode_text(label), Some(decode_text(shortcut))),
@@ -48,6 +52,7 @@ pub fn parse_menu_row(raw: &str) -> MenuRow {
         disabled: flags.contains('d'),
         marked: flags.contains('m'),
         matched,
+        emphasized,
     }
 }
 
@@ -61,13 +66,14 @@ pub fn menu(
     let border = state.flag("b");
     let indicators = state.flag("ind") && !border;
     let focused = state.flag("f");
+    let mark_column = !state.flag("nm");
     let highlighted = state.number("hl");
     let above = state.count("above");
     let below = state.count("below");
     let border_width = if border { 1 } else { 0 };
     let width = coordinates
         .width
-        .unwrap_or_else(|| natural_width(&rows) + border_width * 2)
+        .unwrap_or_else(|| natural_width(&rows, mark_column) + border_width * 2)
         .max(border_width * 2 + 1);
     let inner_width = width - border_width * 2;
     let base_styles = plain_styles(style);
@@ -121,6 +127,7 @@ pub fn menu(
                 disabled,
                 marked,
                 matched,
+                emphasized,
             } => {
                 let is_highlighted = highlighted == Some(index) && !disabled;
                 let row_styles = if *disabled {
@@ -133,13 +140,17 @@ pub fn menu(
                 output.push_str(&render_item(
                     label,
                     shortcut.as_deref(),
-                    *marked,
-                    matched,
+                    mark_column.then_some(*marked),
+                    &LabelPaint {
+                        matched,
+                        emphasized,
+                        row_styles,
+                        match_styles: match_styles(style, row_styles),
+                        emphasis_styles: emphasis_styles(style, row_styles, is_highlighted),
+                    },
                     inner_width,
-                    row_styles,
                     bold(row_styles),
                     dimmed(row_styles.bold(Some(AnsiCode::Reset))),
-                    match_styles(style, row_styles),
                 ));
             },
         }
@@ -209,56 +220,85 @@ fn match_styles(style: &Style, row_styles: CharacterStyles) -> CharacterStyles {
     bold(row_styles.foreground(Some(style.colors.text_unselected.emphasis_0.into())))
 }
 
+fn emphasis_styles(
+    style: &Style,
+    row_styles: CharacterStyles,
+    is_highlighted: bool,
+) -> CharacterStyles {
+    let palette = if is_highlighted {
+        style.colors.text_selected
+    } else {
+        style.colors.text_unselected
+    };
+    row_styles.foreground(Some(palette.emphasis_3.into()))
+}
+
+struct LabelPaint<'a> {
+    matched: &'a [usize],
+    emphasized: &'a [usize],
+    row_styles: CharacterStyles,
+    match_styles: CharacterStyles,
+    emphasis_styles: CharacterStyles,
+}
+
+impl LabelPaint<'_> {
+    fn styles_at(&self, index: usize) -> CharacterStyles {
+        if self.matched.contains(&index) {
+            self.match_styles
+        } else if self.emphasized.contains(&index) {
+            self.emphasis_styles
+        } else {
+            self.row_styles
+        }
+    }
+    fn paint(&self, text: &str) -> String {
+        if self.matched.is_empty() && self.emphasized.is_empty() {
+            return paint(self.row_styles, text);
+        }
+        let mut output = String::new();
+        let mut run = String::new();
+        let mut run_styles = self.row_styles;
+        for (cluster, _, index) in text_clusters(text) {
+            let styles = self.styles_at(index);
+            if styles != run_styles && !run.is_empty() {
+                output.push_str(&paint(run_styles, &run));
+                run.clear();
+            }
+            run_styles = styles;
+            run.push_str(cluster);
+        }
+        output.push_str(&paint(run_styles, &run));
+        output
+    }
+}
+
+#[cfg(test)]
 fn paint_with_matches(
     text: &str,
     matched: &[usize],
     row_styles: CharacterStyles,
     match_styles: CharacterStyles,
 ) -> String {
-    if matched.is_empty() {
-        return paint(row_styles, text);
+    LabelPaint {
+        matched,
+        emphasized: &[],
+        row_styles,
+        match_styles,
+        emphasis_styles: row_styles,
     }
-    let mut output = String::new();
-    let mut run = String::new();
-    let mut run_is_match = false;
-    for (index, character) in text.chars().enumerate() {
-        let is_match = matched.contains(&index);
-        if is_match != run_is_match && !run.is_empty() {
-            output.push_str(&paint(
-                if run_is_match {
-                    match_styles
-                } else {
-                    row_styles
-                },
-                &run,
-            ));
-            run.clear();
-        }
-        run_is_match = is_match;
-        run.push(character);
-    }
-    output.push_str(&paint(
-        if run_is_match {
-            match_styles
-        } else {
-            row_styles
-        },
-        &run,
-    ));
-    output
+    .paint(text)
 }
 
 fn render_item(
     label: &str,
     shortcut: Option<&str>,
-    marked: bool,
-    matched: &[usize],
+    marked: Option<bool>,
+    label_paint: &LabelPaint,
     width: usize,
-    row_styles: CharacterStyles,
     mark_styles: CharacterStyles,
     shortcut_styles: CharacterStyles,
-    match_styles: CharacterStyles,
 ) -> String {
+    let row_styles = label_paint.row_styles;
     if width < 5 {
         return paint(row_styles, &fit(label, width));
     }
@@ -266,17 +306,15 @@ fn render_item(
         .map(|s| truncate(s, (width - 4) / 2))
         .filter(|s| !s.is_empty());
     let shortcut_width = shortcut.as_ref().map(|s| text_width(s) + 1).unwrap_or(0);
-    let label_width = width - 4 - shortcut_width;
+    let mark_width = if marked.is_some() { 2 } else { 0 };
+    let label_width = width - 2 - mark_width - shortcut_width;
     let mut output = String::new();
     output.push_str(&paint(row_styles, " "));
-    output.push_str(&paint(mark_styles, if marked { "●" } else { " " }));
-    output.push_str(&paint(row_styles, " "));
-    output.push_str(&paint_with_matches(
-        &fit(label, label_width),
-        matched,
-        row_styles,
-        match_styles,
-    ));
+    if let Some(marked) = marked {
+        output.push_str(&paint(mark_styles, if marked { "●" } else { " " }));
+        output.push_str(&paint(row_styles, " "));
+    }
+    output.push_str(&label_paint.paint(&fit(label, label_width)));
     if let Some(shortcut) = shortcut {
         output.push_str(&paint(row_styles, " "));
         output.push_str(&paint(shortcut_styles, &shortcut));
@@ -285,13 +323,19 @@ fn render_item(
     output
 }
 
-fn natural_width(rows: &[MenuRow]) -> usize {
+fn natural_width(rows: &[MenuRow], mark_column: bool) -> usize {
+    let mark_width = if mark_column { 2 } else { 0 };
     rows.iter()
         .map(|row| match row {
             MenuRow::Separator => 0,
             MenuRow::Item {
                 label, shortcut, ..
-            } => text_width(label) + 4 + shortcut.as_ref().map(|s| text_width(s) + 1).unwrap_or(0),
+            } => {
+                text_width(label)
+                    + 2
+                    + mark_width
+                    + shortcut.as_ref().map(|s| text_width(s) + 1).unwrap_or(0)
+            },
         })
         .max()
         .unwrap_or(0)
@@ -312,6 +356,19 @@ mod tests {
                 disabled: false,
                 marked: true,
                 matched: vec![0, 2],
+                emphasized: vec![],
+            }
+        );
+        let row = parse_menu_row("109,97,105,110//0,1");
+        assert_eq!(
+            row,
+            MenuRow::Item {
+                label: "main".to_owned(),
+                shortcut: None,
+                disabled: false,
+                marked: false,
+                matched: vec![],
+                emphasized: vec![0, 1],
             }
         );
         let row = parse_menu_row("109,97:67");
@@ -323,7 +380,67 @@ mod tests {
                 disabled: false,
                 marked: false,
                 matched: vec![],
+                emphasized: vec![],
             }
+        );
+    }
+
+    #[test]
+    fn without_the_mark_column_the_label_starts_after_one_space() {
+        let row = crate::panes::terminal_character::RESET_STYLES;
+        let label_paint = LabelPaint {
+            matched: &[],
+            emphasized: &[],
+            row_styles: row,
+            match_styles: row,
+            emphasis_styles: row,
+        };
+        assert_eq!(
+            render_item("ab", None, None, &label_paint, 6, row, row),
+            format!(
+                "{}{}{}",
+                paint(row, " "),
+                paint(row, "ab  "),
+                paint(row, " ")
+            )
+        );
+        assert_eq!(
+            render_item("ab", None, Some(false), &label_paint, 6, row, row),
+            format!(
+                "{}{}{}{}{}",
+                paint(row, " "),
+                paint(row, " "),
+                paint(row, " "),
+                paint(row, "ab"),
+                paint(row, " ")
+            )
+        );
+    }
+
+    #[test]
+    fn emphasized_characters_use_emphasis_3_of_the_row() {
+        let style = Style::default();
+        let row = crate::panes::terminal_character::RESET_STYLES;
+        assert_eq!(
+            emphasis_styles(&style, row, false),
+            row.foreground(Some(style.colors.text_unselected.emphasis_3.into()))
+        );
+        assert_eq!(
+            emphasis_styles(&style, row, true),
+            row.foreground(Some(style.colors.text_selected.emphasis_3.into()))
+        );
+        let emphasis = emphasis_styles(&style, row, false);
+        let painted = LabelPaint {
+            matched: &[],
+            emphasized: &[0, 1],
+            row_styles: row,
+            match_styles: row,
+            emphasis_styles: emphasis,
+        }
+        .paint("abc");
+        assert_eq!(
+            painted,
+            format!("{}{}", paint(emphasis, "ab"), paint(row, "c"))
         );
     }
 
@@ -335,6 +452,133 @@ mod tests {
             match_styles(&style, row),
             bold(row.foreground(Some(style.colors.text_unselected.emphasis_0.into())))
         );
+    }
+
+    const FAMILY: &str = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}";
+    const DECOMPOSED_E: &str = "e\u{301}";
+    const FLAG: &str = "\u{1F1E9}\u{1F1EA}";
+
+    fn encoded(text: &str) -> String {
+        text.bytes()
+            .map(|byte| byte.to_string())
+            .collect::<Vec<_>>()
+            .join(",")
+    }
+
+    #[test]
+    fn menu_rows_decode_clusters_and_keep_character_positions() {
+        let label = format!("{}{}", FAMILY, DECOMPOSED_E);
+        let row = parse_menu_row(&format!("{}:{}/5", encoded(&label), encoded(FLAG)));
+        assert_eq!(
+            row,
+            MenuRow::Item {
+                label,
+                shortcut: Some(FLAG.to_owned()),
+                disabled: false,
+                marked: false,
+                matched: vec![5],
+                emphasized: vec![],
+            }
+        );
+    }
+
+    #[test]
+    fn a_matched_cluster_takes_the_style_of_its_first_character() {
+        let plain = crate::panes::terminal_character::RESET_STYLES;
+        let emphasis = bold(plain);
+        let text = format!("a{}b", FAMILY);
+        assert_eq!(
+            paint_with_matches(&text, &[1], plain, emphasis),
+            format!(
+                "{}{}{}",
+                paint(plain, "a"),
+                paint(emphasis, FAMILY),
+                paint(plain, "b")
+            )
+        );
+        assert_eq!(
+            paint_with_matches(&text, &[3], plain, emphasis),
+            paint(plain, &text)
+        );
+        let text = format!("{}{}", DECOMPOSED_E, FLAG);
+        assert_eq!(
+            paint_with_matches(&text, &[2], plain, emphasis),
+            format!("{}{}", paint(plain, DECOMPOSED_E), paint(emphasis, FLAG))
+        );
+    }
+
+    #[test]
+    fn a_label_with_clusters_is_cut_on_a_cluster_boundary() {
+        let row = crate::panes::terminal_character::RESET_STYLES;
+        let label_paint = LabelPaint {
+            matched: &[],
+            emphasized: &[],
+            row_styles: row,
+            match_styles: row,
+            emphasis_styles: row,
+        };
+        assert_eq!(
+            render_item(
+                &format!("ab{}cd", FAMILY),
+                None,
+                Some(false),
+                &label_paint,
+                8,
+                row,
+                row
+            ),
+            format!(
+                "{}{}{}{}{}",
+                paint(row, " "),
+                paint(row, " "),
+                paint(row, " "),
+                paint(row, "ab… "),
+                paint(row, " ")
+            )
+        );
+        assert_eq!(
+            render_item(
+                "a",
+                Some(FAMILY.repeat(3).as_str()),
+                None,
+                &label_paint,
+                9,
+                row,
+                row
+            ),
+            format!(
+                "{}{}{}{}{}",
+                paint(row, " "),
+                paint(row, "a    "),
+                paint(row, " "),
+                paint(row, "…"),
+                paint(row, " ")
+            )
+        );
+    }
+
+    #[test]
+    fn natural_width_measures_clusters() {
+        let rows = vec![
+            MenuRow::Item {
+                label: format!("{}x", FAMILY),
+                shortcut: Some(FLAG.to_owned()),
+                disabled: false,
+                marked: false,
+                matched: vec![],
+                emphasized: vec![],
+            },
+            MenuRow::Item {
+                label: DECOMPOSED_E.repeat(4),
+                shortcut: None,
+                disabled: false,
+                marked: false,
+                matched: vec![],
+                emphasized: vec![],
+            },
+        ];
+        assert_eq!(natural_width(&rows, true), 10);
+        assert_eq!(natural_width(&rows, false), 8);
     }
 
     #[test]

@@ -15,7 +15,6 @@ pub use popup::{place_popup, PopupKind, PopupMouseOutcome, PopupPlacement, POPUP
 use std::env::temp_dir;
 use std::net::IpAddr;
 use std::path::PathBuf;
-use unicode_width::UnicodeWidthStr;
 use uuid::Uuid;
 use zellij_utils::data::PaneContents;
 use zellij_utils::data::{
@@ -31,11 +30,14 @@ use zellij_utils::input::options::DEFAULT_WORD_SEPARATORS;
 use zellij_utils::position::Position;
 use zellij_utils::position::{Column, Line};
 use zellij_utils::shared::clean_string_from_control_and_linebreak;
+use zellij_utils::structured_render::{
+    PaneRect, PANE_FOCUSED, PANE_FRAMED, PANE_PLUGIN_UI, PANE_SELECTABLE, PANE_WANTS_MOUSE,
+};
 
 use crate::background_jobs::BackgroundJob;
 use crate::pane_groups::PaneGroups;
 use crate::pty_writer::PtyWriteInstruction;
-use crate::screen::{CopyOptions, GuestModalOutcome, ScreenInstruction};
+use crate::screen::{CopyOptions, GuestModalOutcome, ScreenInstruction, TypedInput};
 use crate::ui::hint_text::{
     held_hint_variants, hover_hint_variants, resize_hint_variants, HintExitStatus,
 };
@@ -61,7 +63,7 @@ use crate::{
     plugins::PluginInstruction,
     pty::{ClientTabIndexOrPaneId, PtyInstruction, VteBytes},
     thread_bus::ThreadSenders,
-    ClientId, ServerInstruction,
+    ClientId,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -324,9 +326,11 @@ pub(crate) struct Tab {
     mouse_click_tracker: HashMap<ClientId, mouse_handler::MouseClickRecord>,
     dimmed_clients: HashSet<ClientId>,
     plugin_hover_pane_id: HashMap<ClientId, PaneId>,
+    popup_hover_plugin_id: HashMap<ClientId, u32>,
     mouse_last_pane_id: HashMap<ClientId, PaneId>,
     mouse_help_text_visible: HashMap<ClientId, bool>,
     last_mouse_activity_time: HashMap<ClientId, Instant>,
+    typed_input: TypedInput,
     last_hint_text: HashMap<ClientId, BTreeMap<usize, StyledText>>,
     last_active_pane_scroll: HashMap<ClientId, Option<(usize, usize)>>,
     current_pane_group: Rc<RefCell<PaneGroups>>,
@@ -337,6 +341,7 @@ pub(crate) struct Tab {
     focus_follows_mouse: bool,
     mouse_click_through: bool,
     context_menu_enabled: bool,
+    grapheme_clusters: bool,
     osc133_command_selection: bool,
     word_separators: String,
     currently_marking_pane_group: Rc<RefCell<HashMap<ClientId, bool>>>,
@@ -417,7 +422,7 @@ pub trait Pane {
         &mut self,
         cursor_color: PaletteColor,
         text_color: PaletteColor,
-    ) -> Option<String>;
+    ) -> Option<crate::output::CharacterChunk>;
     fn render_terminal_title(&mut self, _input_mode: InputMode) -> String;
     fn update_name(&mut self, name: &str);
     fn pid(&self) -> PaneId;
@@ -632,6 +637,9 @@ pub trait Pane {
     fn drain_osc7_cwd(&mut self) -> Option<std::path::PathBuf> {
         None
     }
+    fn drain_prompt_return(&mut self) -> bool {
+        false
+    }
     fn render_full_viewport(&mut self) {}
     fn relative_position(&self, position_on_screen: &Position) -> Position {
         position_on_screen.relative_to(self.get_content_y(), self.get_content_x())
@@ -822,6 +830,9 @@ pub trait Pane {
     }
     fn scroll_position(&self) -> (usize, usize) {
         (0, 0)
+    }
+    fn viewport_scroll_state(&self) -> Option<(usize, u64)> {
+        None
     }
     fn is_held(&self) -> bool {
         false
@@ -1117,9 +1128,11 @@ impl Tab {
             mouse_press_owner: HashMap::new(),
             mouse_click_tracker: HashMap::new(),
             plugin_hover_pane_id: HashMap::new(),
+            popup_hover_plugin_id: HashMap::new(),
             mouse_last_pane_id: HashMap::new(),
             mouse_help_text_visible: HashMap::new(),
             last_mouse_activity_time: HashMap::new(),
+            typed_input: TypedInput::default(),
             last_hint_text: HashMap::new(),
             last_active_pane_scroll: HashMap::new(),
             current_pane_group,
@@ -1131,6 +1144,7 @@ impl Tab {
             focus_follows_mouse,
             mouse_click_through,
             context_menu_enabled: true,
+            grapheme_clusters: false,
             osc133_command_selection: true,
             word_separators: DEFAULT_WORD_SEPARATORS.to_owned(),
             connected_clients_in_app,
@@ -1815,7 +1829,7 @@ impl Tab {
                         self.suppressed_panes.get(member).map(|(_, p)| &**p)
                     }
                 })
-                .map(|pane| pane.stack_list_entry_label().width())
+                .map(|pane| zellij_utils::graphemes::display_width(&pane.stack_list_entry_label()))
                 .max()
                 .unwrap_or(0);
             let stack_is_focused = active_panes.values().any(|p_id| *p_id == list.visible);
@@ -1921,6 +1935,7 @@ impl Tab {
             self.explicitly_disable_kitty_keyboard_protocol,
             blocking_terminal,
         )
+        .with_grapheme_clusters(self.grapheme_clusters)
         .apply_layout(
             layout,
             floating_panes_layout,
@@ -2013,6 +2028,7 @@ impl Tab {
             self.explicitly_disable_kitty_keyboard_protocol,
             blocking_terminal,
         )
+        .with_grapheme_clusters(self.grapheme_clusters)
         .override_layout(
             layout,
             floating_panes_layout,
@@ -2119,6 +2135,7 @@ impl Tab {
                 self.explicitly_disable_kitty_keyboard_protocol,
                 None,
             )
+            .with_grapheme_clusters(self.grapheme_clusters)
             .apply_floating_panes_layout_to_existing_panes(&layout_candidate)
             .non_fatal();
         }
@@ -2187,6 +2204,7 @@ impl Tab {
                 self.explicitly_disable_kitty_keyboard_protocol,
                 None,
             )
+            .with_grapheme_clusters(self.grapheme_clusters)
             .apply_tiled_panes_layout_to_existing_panes(&layout_candidate);
             match application_res {
                 Ok(panes_were_floated) => {
@@ -2926,27 +2944,30 @@ impl Tab {
         let mut new_pane = match pid {
             PaneId::Terminal(term_pid) => {
                 let next_terminal_position = self.get_next_terminal_position();
-                Box::new(TerminalPane::new(
-                    term_pid,
-                    PaneGeom::default(), // this will be filled out later
-                    self.style,
-                    next_terminal_position,
-                    initial_pane_title.clone().unwrap_or_default(),
-                    self.link_handler.clone(),
-                    self.character_cell_size.clone(),
-                    self.sixel_image_store.clone(),
-                    self.kitty_image_store.clone(),
-                    self.terminal_emulator_colors.clone(),
-                    self.terminal_emulator_color_codes.clone(),
-                    initial_pane_title,
-                    invoked_with,
-                    self.debug,
-                    self.arrow_fonts,
-                    self.styled_underlines,
-                    self.osc8_hyperlinks,
-                    self.explicitly_disable_kitty_keyboard_protocol,
-                    blocking_notification,
-                )) as Box<dyn Pane>
+                Box::new(
+                    TerminalPane::new(
+                        term_pid,
+                        PaneGeom::default(), // this will be filled out later
+                        self.style,
+                        next_terminal_position,
+                        initial_pane_title.clone().unwrap_or_default(),
+                        self.link_handler.clone(),
+                        self.character_cell_size.clone(),
+                        self.sixel_image_store.clone(),
+                        self.kitty_image_store.clone(),
+                        self.terminal_emulator_colors.clone(),
+                        self.terminal_emulator_color_codes.clone(),
+                        initial_pane_title,
+                        invoked_with,
+                        self.debug,
+                        self.arrow_fonts,
+                        self.styled_underlines,
+                        self.osc8_hyperlinks,
+                        self.explicitly_disable_kitty_keyboard_protocol,
+                        blocking_notification,
+                    )
+                    .with_grapheme_clusters(self.grapheme_clusters),
+                ) as Box<dyn Pane>
             },
             PaneId::Plugin(plugin_pid) => {
                 Box::new(PluginPane::new(
@@ -3051,27 +3072,30 @@ impl Tab {
         let mut new_pane = match pid {
             PaneId::Terminal(term_pid) => {
                 let next_terminal_position = self.get_next_terminal_position();
-                Box::new(TerminalPane::new(
-                    term_pid,
-                    PaneGeom::default(), // this will be filled out later
-                    self.style,
-                    next_terminal_position,
-                    initial_pane_title.clone().unwrap_or_default(),
-                    self.link_handler.clone(),
-                    self.character_cell_size.clone(),
-                    self.sixel_image_store.clone(),
-                    self.kitty_image_store.clone(),
-                    self.terminal_emulator_colors.clone(),
-                    self.terminal_emulator_color_codes.clone(),
-                    initial_pane_title,
-                    invoked_with,
-                    self.debug,
-                    self.arrow_fonts,
-                    self.styled_underlines,
-                    self.osc8_hyperlinks,
-                    self.explicitly_disable_kitty_keyboard_protocol,
-                    blocking_notification,
-                )) as Box<dyn Pane>
+                Box::new(
+                    TerminalPane::new(
+                        term_pid,
+                        PaneGeom::default(), // this will be filled out later
+                        self.style,
+                        next_terminal_position,
+                        initial_pane_title.clone().unwrap_or_default(),
+                        self.link_handler.clone(),
+                        self.character_cell_size.clone(),
+                        self.sixel_image_store.clone(),
+                        self.kitty_image_store.clone(),
+                        self.terminal_emulator_colors.clone(),
+                        self.terminal_emulator_color_codes.clone(),
+                        initial_pane_title,
+                        invoked_with,
+                        self.debug,
+                        self.arrow_fonts,
+                        self.styled_underlines,
+                        self.osc8_hyperlinks,
+                        self.explicitly_disable_kitty_keyboard_protocol,
+                        blocking_notification,
+                    )
+                    .with_grapheme_clusters(self.grapheme_clusters),
+                ) as Box<dyn Pane>
             },
             PaneId::Plugin(plugin_pid) => {
                 Box::new(PluginPane::new(
@@ -3166,27 +3190,30 @@ impl Tab {
         let mut new_pane = match pid {
             PaneId::Terminal(term_pid) => {
                 let next_terminal_position = self.get_next_terminal_position();
-                Box::new(TerminalPane::new(
-                    term_pid,
-                    PaneGeom::default(), // this will be filled out later
-                    self.style,
-                    next_terminal_position,
-                    initial_pane_title.clone().unwrap_or_default(),
-                    self.link_handler.clone(),
-                    self.character_cell_size.clone(),
-                    self.sixel_image_store.clone(),
-                    self.kitty_image_store.clone(),
-                    self.terminal_emulator_colors.clone(),
-                    self.terminal_emulator_color_codes.clone(),
-                    initial_pane_title,
-                    invoked_with,
-                    self.debug,
-                    self.arrow_fonts,
-                    self.styled_underlines,
-                    self.osc8_hyperlinks,
-                    self.explicitly_disable_kitty_keyboard_protocol,
-                    blocking_notification,
-                )) as Box<dyn Pane>
+                Box::new(
+                    TerminalPane::new(
+                        term_pid,
+                        PaneGeom::default(), // this will be filled out later
+                        self.style,
+                        next_terminal_position,
+                        initial_pane_title.clone().unwrap_or_default(),
+                        self.link_handler.clone(),
+                        self.character_cell_size.clone(),
+                        self.sixel_image_store.clone(),
+                        self.kitty_image_store.clone(),
+                        self.terminal_emulator_colors.clone(),
+                        self.terminal_emulator_color_codes.clone(),
+                        initial_pane_title,
+                        invoked_with,
+                        self.debug,
+                        self.arrow_fonts,
+                        self.styled_underlines,
+                        self.osc8_hyperlinks,
+                        self.explicitly_disable_kitty_keyboard_protocol,
+                        blocking_notification,
+                    )
+                    .with_grapheme_clusters(self.grapheme_clusters),
+                ) as Box<dyn Pane>
             },
             PaneId::Plugin(plugin_pid) => {
                 Box::new(PluginPane::new(
@@ -3344,27 +3371,30 @@ impl Tab {
         let mut new_pane = match pid {
             PaneId::Terminal(term_pid) => {
                 let next_terminal_position = self.get_next_terminal_position();
-                Box::new(TerminalPane::new(
-                    term_pid,
-                    PaneGeom::default(), // this will be filled out later
-                    self.style,
-                    next_terminal_position,
-                    initial_pane_title.clone().unwrap_or_default(),
-                    self.link_handler.clone(),
-                    self.character_cell_size.clone(),
-                    self.sixel_image_store.clone(),
-                    self.kitty_image_store.clone(),
-                    self.terminal_emulator_colors.clone(),
-                    self.terminal_emulator_color_codes.clone(),
-                    initial_pane_title,
-                    invoked_with,
-                    self.debug,
-                    self.arrow_fonts,
-                    self.styled_underlines,
-                    self.osc8_hyperlinks,
-                    self.explicitly_disable_kitty_keyboard_protocol,
-                    blocking_notification,
-                )) as Box<dyn Pane>
+                Box::new(
+                    TerminalPane::new(
+                        term_pid,
+                        PaneGeom::default(), // this will be filled out later
+                        self.style,
+                        next_terminal_position,
+                        initial_pane_title.clone().unwrap_or_default(),
+                        self.link_handler.clone(),
+                        self.character_cell_size.clone(),
+                        self.sixel_image_store.clone(),
+                        self.kitty_image_store.clone(),
+                        self.terminal_emulator_colors.clone(),
+                        self.terminal_emulator_color_codes.clone(),
+                        initial_pane_title,
+                        invoked_with,
+                        self.debug,
+                        self.arrow_fonts,
+                        self.styled_underlines,
+                        self.osc8_hyperlinks,
+                        self.explicitly_disable_kitty_keyboard_protocol,
+                        blocking_notification,
+                    )
+                    .with_grapheme_clusters(self.grapheme_clusters),
+                ) as Box<dyn Pane>
             },
             PaneId::Plugin(plugin_pid) => {
                 Box::new(PluginPane::new(
@@ -3612,7 +3642,8 @@ impl Tab {
                     self.osc8_hyperlinks,
                     self.explicitly_disable_kitty_keyboard_protocol,
                     completion_tx,
-                );
+                )
+                .with_grapheme_clusters(self.grapheme_clusters);
                 if let Some(supported) = self.kitty_host_support {
                     new_pane.update_kitty_host_support(supported);
                 }
@@ -3759,6 +3790,7 @@ impl Tab {
             Ok(replaced_pane) => {
                 self.track_stack_list_member_id_swap(pane_id_to_replace, replacement_pane_id);
                 let pane_id = replaced_pane.pid();
+                self.forget_typed_input(pane_id);
                 let _ = self
                     .senders
                     .send_to_pty(PtyInstruction::ClosePane(pane_id, completion_tx));
@@ -3852,7 +3884,8 @@ impl Tab {
                     self.osc8_hyperlinks,
                     self.explicitly_disable_kitty_keyboard_protocol,
                     completion_tx,
-                );
+                )
+                .with_grapheme_clusters(self.grapheme_clusters);
                 if let Some(supported) = self.kitty_host_support {
                     new_terminal.update_kitty_host_support(supported);
                 }
@@ -3944,7 +3977,8 @@ impl Tab {
                     self.osc8_hyperlinks,
                     self.explicitly_disable_kitty_keyboard_protocol,
                     completion_tx,
-                );
+                )
+                .with_grapheme_clusters(self.grapheme_clusters);
                 if let Some(supported) = self.kitty_host_support {
                     new_terminal.update_kitty_host_support(supported);
                 }
@@ -4097,7 +4131,8 @@ impl Tab {
                 self.osc8_hyperlinks,
                 self.explicitly_disable_kitty_keyboard_protocol,
                 completion_tx,
-            );
+            )
+            .with_grapheme_clusters(self.grapheme_clusters);
             if let Some(supported) = self.kitty_host_support {
                 new_terminal.update_kitty_host_support(supported);
             }
@@ -4620,7 +4655,11 @@ impl Tab {
         bytes: VteBytes,
     ) -> Result<()> {
         if let Some(popup_pane) = self.popup_pane_mut(pid) {
+            let has_content = !bytes.is_empty();
             popup_pane.handle_plugin_bytes(client_id, bytes);
+            if has_content {
+                self.reveal_popup(pid);
+            }
             return Ok(());
         }
         if let Some(plugin_pane) = self
@@ -4733,6 +4772,7 @@ impl Tab {
             let clipboard_update = terminal_output.drain_clipboard_update();
             let desktop_notifications = terminal_output.drain_desktop_notifications();
             let osc7_cwd = terminal_output.drain_osc7_cwd();
+            let prompt_returned = terminal_output.drain_prompt_return();
             for message in messages_to_pty {
                 self.write_to_pane_id_without_preprocessing(message, PaneId::Terminal(pid))
                     .with_context(err_context)?;
@@ -4769,6 +4809,11 @@ impl Tab {
                 let _ = self
                     .senders
                     .send_to_pty(PtyInstruction::NotifyCwdFromOsc7(pid, path));
+            }
+            if prompt_returned {
+                let _ = self
+                    .senders
+                    .send_to_pty(PtyInstruction::PromptReturned(pid));
             }
         }
         Ok(())
@@ -4955,6 +5000,9 @@ impl Tab {
                     client_id,
                 ) {
                     Some(AdjustedInput::WriteBytesToTerminal(adjusted_input)) => {
+                        if client_id.is_some() {
+                            self.typed_input.record(active_terminal_id, Instant::now());
+                        }
                         self.senders
                             .send_to_pty_writer(PtyWriteInstruction::Write(
                                 adjusted_input,
@@ -5062,6 +5110,14 @@ impl Tab {
             },
         }
         Ok(should_update_ui)
+    }
+    pub fn output_answers_typed_input(&mut self, terminal_id: u32, now: Instant) -> bool {
+        self.typed_input.output_answers_input(terminal_id, now)
+    }
+    fn forget_typed_input(&mut self, pane_id: PaneId) {
+        if let PaneId::Terminal(terminal_id) = pane_id {
+            self.typed_input.forget(terminal_id);
+        }
     }
     pub fn write_to_pane_id_without_preprocessing(
         &mut self,
@@ -5415,6 +5471,7 @@ impl Tab {
             { self.connected_clients.borrow().iter().copied().collect() };
         for client_id in connected_clients {
             if self.has_focused_popup_for_client(client_id) {
+                output.set_client_cursor(client_id, 0, 0, false, "");
                 output.add_post_vte_instruction_to_client(client_id, "\u{1b}[?25l");
                 continue;
             }
@@ -5450,6 +5507,13 @@ impl Tab {
                                     || previous_shape != &desired_cursor_shape
                             })
                             .unwrap_or(true);
+                        output.set_client_cursor(
+                            client_id,
+                            cursor_position_x,
+                            cursor_position_y,
+                            true,
+                            &desired_cursor_shape,
+                        );
                         if output.is_dirty() || cursor_changed_position_or_shape {
                             let show_cursor = "\u{1b}[?25h";
                             let goto_cursor_position = &format!(
@@ -5479,15 +5543,30 @@ impl Tab {
                             cursor_position_y + 1,
                             cursor_position_x + 1,
                         );
+                        output.set_client_cursor(
+                            client_id,
+                            cursor_position_x,
+                            cursor_position_y,
+                            false,
+                            "",
+                        );
                         output.add_post_vte_instruction_to_client(client_id, hide_cursor);
                         output.add_post_vte_instruction_to_client(client_id, goto_cursor_position);
                     } else {
                         let hide_cursor = "\u{1b}[?25l";
+                        output.set_client_cursor(
+                            client_id,
+                            cursor_position_x,
+                            cursor_position_y,
+                            false,
+                            "",
+                        );
                         output.add_post_vte_instruction_to_client(client_id, hide_cursor);
                     }
                 },
                 None => {
                     let hide_cursor = "\u{1b}[?25l";
+                    output.set_client_cursor(client_id, 0, 0, false, "");
                     output.add_post_vte_instruction_to_client(client_id, hide_cursor);
                 },
             }
@@ -5510,6 +5589,23 @@ impl Tab {
     }
     fn get_selectable_floating_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
         self.get_floating_panes().filter(|(_, p)| p.selectable())
+    }
+    pub fn preview_panes(&self) -> Vec<(PaneId, String)> {
+        let mut tiled: Vec<(PaneId, String, usize, usize)> = self
+            .get_selectable_tiled_panes()
+            .map(|(id, pane)| (*id, pane.current_title(), pane.y(), pane.x()))
+            .collect();
+        tiled.sort_by_key(|(_, _, y, x)| (*y, *x));
+        let mut floating: Vec<(PaneId, String, usize, usize)> = self
+            .get_selectable_floating_panes()
+            .map(|(id, pane)| (*id, pane.current_title(), pane.y(), pane.x()))
+            .collect();
+        floating.sort_by_key(|(_, _, y, x)| (*y, *x));
+        tiled
+            .into_iter()
+            .chain(floating)
+            .map(|(id, title, _, _)| (id, title))
+            .collect()
     }
     pub fn get_selectable_tiled_panes_count(&self) -> usize {
         self.get_selectable_tiled_panes().count()
@@ -6197,6 +6293,7 @@ impl Tab {
         if self.selecting_with_mouse_in_pane == Some(id) {
             self.selecting_with_mouse_in_pane = None;
         }
+        self.forget_typed_input(id);
         let id_parks_a_different_pane = self.pane_parked_by(&id).is_some();
         if !ignore_suppressed_panes
             && !id_parks_a_different_pane
@@ -6304,6 +6401,7 @@ impl Tab {
         id: PaneId,
         dont_swap_if_suppressed: bool,
     ) -> Option<Box<dyn Pane>> {
+        self.forget_typed_input(id);
         let id_parks_a_different_pane = self.pane_parked_by(&id).is_some();
         if self.pane_is_stack_list_member(&id)
             && (dont_swap_if_suppressed || !id_parks_a_different_pane)
@@ -7165,33 +7263,27 @@ impl Tab {
     fn write_selection_to_clipboard(&self, selection: &str) -> Result<()> {
         let err_context = || format!("failed to write selection to clipboard: '{}'", selection);
 
-        let mut output = Output::default();
-        let connected_clients: HashSet<ClientId> =
+        let connected_clients: Vec<ClientId> =
             { self.connected_clients.borrow().iter().copied().collect() };
-        output.add_clients(&connected_clients, self.link_handler.clone(), None);
-        let client_ids = connected_clients.iter().copied();
-        let clipboard_event =
-            match self
-                .clipboard_provider
-                .set_content(selection, &mut output, client_ids)
-            {
-                Ok(_) => output
-                    .serialize()
-                    .and_then(|serialized_output| {
-                        self.senders
-                            .send_to_server(ServerInstruction::Render(Some(serialized_output)))
-                    })
-                    .and_then(|_| {
-                        Ok(Event::CopyToClipboard(
-                            self.clipboard_provider.as_copy_destination(),
-                        ))
-                    })
-                    .with_context(err_context)?,
-                Err(err) => {
-                    Err::<(), _>(err).with_context(err_context).non_fatal();
-                    Event::SystemClipboardFailure
-                },
-            };
+        let clipboard_event = match self.clipboard_provider.set_content(selection) {
+            Ok(None) => Event::CopyToClipboard(self.clipboard_provider.as_copy_destination()),
+            Ok(Some(vte_instruction)) => self
+                .senders
+                .send_to_screen(ScreenInstruction::SendVteInstructionToClients(
+                    connected_clients,
+                    vte_instruction,
+                ))
+                .and_then(|_| {
+                    Ok(Event::CopyToClipboard(
+                        self.clipboard_provider.as_copy_destination(),
+                    ))
+                })
+                .with_context(err_context)?,
+            Err(err) => {
+                Err::<(), _>(err).with_context(err_context).non_fatal();
+                Event::SystemClipboardFailure
+            },
+        };
         self.senders
             .send_to_plugin(PluginInstruction::Update(vec![(
                 None,
@@ -7331,18 +7423,12 @@ impl Tab {
 
     pub fn update_search_term(&mut self, buf: Vec<u8>, client_id: ClientId) -> Result<()> {
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
-            // It only allows terminating char(\0), printable unicode, delete and backspace keys.
-            // TODO: we should really remove this limitation to allow searching for emojis and
-            // other wide chars - currently the search mechanism itself ignores wide chars, so we
-            // should first fix that before removing this condition
-            let is_updatable = buf
-                .iter()
-                .all(|u| matches!(u, 0x00 | 0x20..=0x7E | 0x08 | 0x7F));
-            if is_updatable {
-                let s = str::from_utf8(&buf).with_context(|| {
-                    format!("failed to update search term to '{buf:?}' for client {client_id}")
-                })?;
-                active_pane.update_search_term(s);
+            if let Ok(s) = str::from_utf8(&buf) {
+                let is_updatable =
+                    matches!(s, "\0" | "\u{8}" | "\u{7f}") || !s.chars().any(|c| c.is_control());
+                if is_updatable {
+                    active_pane.update_search_term(s);
+                }
             }
         }
         Ok(())
@@ -7639,6 +7725,10 @@ impl Tab {
                         run_plugin_or_alias.is_equivalent_to_run(pane.invoked_with())
                     })
                     .map(|(_, (_, pane))| pane.pid()) // TODO: does this break things????
+            })
+            .or_else(|| {
+                self.find_popup_plugin(run_plugin_or_alias)
+                    .map(|(_, plugin_id)| PaneId::Plugin(plugin_id))
             })
     }
 
@@ -8242,7 +8332,11 @@ impl Tab {
     }
     pub fn request_plugin_permissions(&mut self, pid: u32, permissions: Option<PluginPermission>) {
         if let Some(popup_pane) = self.popup_pane_mut(pid) {
+            let asks_for_permissions = permissions.is_some();
             popup_pane.request_permissions_from_user(permissions);
+            if asks_for_permissions {
+                self.reveal_popup(pid);
+            }
             self.set_force_render();
             return;
         }
@@ -8467,6 +8561,9 @@ impl Tab {
     }
     pub fn update_context_menu_enabled(&mut self, context_menu_enabled: bool) {
         self.context_menu_enabled = context_menu_enabled;
+    }
+    pub fn update_grapheme_clusters(&mut self, grapheme_clusters: bool) {
+        self.grapheme_clusters = grapheme_clusters;
     }
     pub fn update_selection_options(
         &mut self,
@@ -8748,7 +8845,8 @@ impl Tab {
             self.osc8_hyperlinks,
             self.explicitly_disable_kitty_keyboard_protocol,
             None,
-        );
+        )
+        .with_grapheme_clusters(self.grapheme_clusters);
         if let Some(supported) = self.kitty_host_support {
             new_pane.update_kitty_host_support(supported);
         }
@@ -8971,6 +9069,49 @@ impl Tab {
             pane.toggle_pinned();
             self.set_force_render();
         }
+    }
+}
+
+pub fn pane_rect_for_pane(
+    pane: &Box<dyn Pane>,
+    framed: bool,
+    focused: bool,
+    extra_flags: u8,
+) -> PaneRect {
+    let cell = |value: usize| value.min(u16::MAX as usize) as u16;
+    let inset = |value: usize| value.min(u8::MAX as usize) as u8;
+    let x = pane.x();
+    let y = pane.y();
+    let cols = pane.cols();
+    let rows = pane.rows();
+    let left = pane.get_content_x().saturating_sub(x);
+    let top = pane.get_content_y().saturating_sub(y);
+    let mut flags = extra_flags;
+    if framed {
+        flags |= PANE_FRAMED;
+    }
+    if matches!(pane.pid(), PaneId::Plugin(_)) && !pane.supports_mouse_selection() {
+        flags |= PANE_PLUGIN_UI;
+    }
+    if focused {
+        flags |= PANE_FOCUSED;
+    }
+    if pane.selectable() {
+        flags |= PANE_SELECTABLE;
+    }
+    if pane.terminal_emulator_wants_mouse() {
+        flags |= PANE_WANTS_MOUSE;
+    }
+    PaneRect {
+        x: cell(x),
+        y: cell(y),
+        cols: cell(cols),
+        rows: cell(rows),
+        top: inset(top),
+        bottom: inset(rows.saturating_sub(top + pane.get_content_rows())),
+        left: inset(left),
+        right: inset(cols.saturating_sub(left + pane.get_content_columns())),
+        flags,
     }
 }
 
