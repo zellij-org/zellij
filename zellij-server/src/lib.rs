@@ -3399,10 +3399,14 @@ impl ServerSocket {
         Ok(listener)
     }
 
-    fn remove_on_exit(&self) {
+    /// Returns whether this server owned (and therefore removed) the socket.
+    fn remove_on_exit(&self) -> bool {
         if let Some(ownership) = self.ownership.lock().unwrap().take() {
             drop(std::fs::remove_file(&self.path));
             ownership.release();
+            true
+        } else {
+            false
         }
     }
 }
@@ -3491,6 +3495,25 @@ pub fn start_server_impl(
     install_panic_hook: bool,
 ) {
     envs::set_zellij("0".to_string());
+
+    // The socket/pipe filename is the stable session id, decoupled from the
+    // (renameable) display name. It is threaded into the per-session threads
+    // (screen / pty / background_jobs) so they key the session-info cache and
+    // registry updates by id — NOT via a process-global, which would collide
+    // between the many sessions an integration test runs in one process.
+    let session_id = socket_path
+        .file_name()
+        .map(|f| f.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    // Record the real server PID in the registry (post-daemonize on Unix).
+    if let Err(e) = zellij_utils::sessions::with_registry(|reg| {
+        if let Some(entry) = reg.find_by_id_mut(&session_id) {
+            entry.pid = Some(std::process::id());
+        }
+    }) {
+        log::error!("Failed to update PID in session registry: {:?}", e);
+    }
 
     let (to_server, server_receiver): ChannelWithContext<ServerInstruction> = channels::bounded(50);
     let to_server = SenderWithContext::new(to_server);
@@ -3677,6 +3700,7 @@ pub fn start_server_impl(
                     config.clone(),
                     config.plugins.clone(),
                     client_id,
+                    session_id.clone(),
                 );
                 info!("FirstClientConnected: session initialized, spawning tabs");
                 let mut runtime_configuration = config.clone();
@@ -5025,19 +5049,45 @@ pub fn start_server_impl(
     // Drop cached session data before exit.
     *session_data.write().unwrap() = None;
 
-    server_socket.remove_on_exit();
+    // Only the server that bound the socket owns its registry entry: a server that lost a bind
+    // race must not mark the winner's session as exited.
+    let owned_socket = server_socket.remove_on_exit();
     if delete_session_on_exit {
-        delete_unused_session_after_exit(&own_session_name);
+        delete_unused_session_after_exit(&session_id, &own_session_name);
+    } else if owned_socket {
+        mark_session_exited_in_registry(&session_id);
     }
 }
 
-fn delete_unused_session_after_exit(session_name: &str) {
-    if session_name.is_empty() {
+// Mark the session exited in the registry (clear PID, stamp exit time) so it is
+// listed as resurrectable rather than running.
+fn mark_session_exited_in_registry(session_id: &str) {
+    if let Err(e) = zellij_utils::sessions::with_registry(|reg| {
+        if let Some(entry) = reg.find_by_id_mut(session_id) {
+            entry.state = zellij_utils::sessions::SessionState::Exited;
+            entry.pid = None;
+            entry.exited_at = Some(
+                std::time::SystemTime::now()
+                    .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0),
+            );
+        }
+    }) {
+        log::error!("Failed to update session registry on exit: {:?}", e);
+    }
+}
+
+// The session-info cache folder and the registry entry are keyed by session id; the
+// session index is keyed by display name.
+fn delete_unused_session_after_exit(session_id: &str, session_name: &str) {
+    if session_id.is_empty() {
         return;
     }
     let _ = std::fs::remove_dir_all(zellij_utils::consts::session_info_folder_for_session(
-        session_name,
+        session_id,
     ));
+    let _ = zellij_utils::sessions::with_registry(|reg| reg.remove_by_id(session_id));
     if let Ok(index) = zellij_utils::session_index::SessionIndex::open_default() {
         let _ = index.delete(session_name);
     }
@@ -5053,6 +5103,7 @@ fn init_session(
     mut config: Config,
     plugin_aliases: PluginAliases,
     client_id: ClientId,
+    session_id: String,
 ) -> SessionMetaData {
     config.options = config.options.merge(*config_options.clone());
     if config.has_command_line_keybinds() {
@@ -5141,7 +5192,8 @@ fn init_session(
                 applied_env.pane_env(),
             );
 
-            move || pty_thread_main(pty, layout.clone()).fatal()
+            let session_id = session_id.clone();
+            move || pty_thread_main(pty, layout.clone(), session_id).fatal()
         })
         .unwrap();
 
@@ -5167,6 +5219,7 @@ fn init_session(
             let layout = layout.clone();
             let config = config.clone();
             let default_keybinds = default_keybinds.clone();
+            let session_id = session_id.clone();
             move || {
                 screen_thread_main(
                     screen_bus,
@@ -5176,6 +5229,7 @@ fn init_session(
                     debug,
                     layout,
                     default_keybinds,
+                    session_id,
                 )
                 .fatal();
             }
@@ -5271,12 +5325,14 @@ fn init_session(
                 enforce_https_for_localhost,
                 dangerously_allow_web_serving_without_a_certificate,
             );
+            let session_id = session_id.clone();
             move || {
                 background_jobs_main(
                     background_jobs_bus,
                     serialization_interval,
                     disable_session_metadata,
                     web_server_base_url,
+                    session_id,
                 )
                 .fatal()
             }
