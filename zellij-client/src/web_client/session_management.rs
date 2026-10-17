@@ -146,16 +146,12 @@ pub fn create_ipc_pipe(session_name: &str, session_exists: bool) -> PathBuf {
     fs::create_dir_all(&sock_dir).unwrap();
     zellij_utils::shared::set_permissions(&sock_dir, 0o700).unwrap();
     let zellij_ipc_pipe: PathBuf = if session_exists {
-        // Existing session: resolve its id via the registry.
+        // Existing session: resolve its id via the session index.
         zellij_utils::sessions::resolve_session_socket_path(session_name)
             .unwrap_or_else(|| sock_dir.join(session_name))
     } else {
         // New session: register it under a fresh id.
-        let id = zellij_utils::sessions::register_session(session_name).unwrap_or_else(|e| {
-            log::error!("Failed to register session {:?}: {}", session_name, e);
-            panic!("Failed to register session {:?}: {}", session_name, e);
-        });
-        sock_dir.join(id)
+        sock_dir.join(zellij_utils::sessions::register_session(session_name))
     };
     crate::check_ipc_pipe_length(&zellij_ipc_pipe);
     zellij_ipc_pipe

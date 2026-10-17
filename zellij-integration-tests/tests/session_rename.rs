@@ -9,8 +9,8 @@ use zellij_utils::cli::CliAction;
 use zellij_utils::sessions::resolve_session_socket_path;
 
 /// Renaming a session must not move its socket / named pipe — named pipes cannot
-/// be renamed on Windows, which is the bug this whole registry exists to fix.
-/// Instead the registry remaps the new display name onto the same, unchanged
+/// be renamed on Windows, which is the bug session ids exist to fix. Instead
+/// the session index maps the new display name onto the same, unchanged
 /// pipe, so a client can reattach using the new name.
 #[test]
 fn rename_keeps_socket_and_reattaches_by_new_name() {
@@ -32,7 +32,7 @@ fn rename_keeps_socket_and_reattaches_by_new_name() {
         "the rename cli action should exit successfully"
     );
 
-    // The server processes the rename asynchronously; wait for the registry to
+    // The server processes the rename asynchronously; wait for the index to
     // reflect it (the new name resolving to a running session).
     let deadline = Instant::now() + default_timeout();
     while resolve_session_socket_path(new_name).is_none() {

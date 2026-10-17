@@ -1095,7 +1095,7 @@ fn find_resurrectable_sessions(
 ) -> BTreeMap<String, Duration> {
     // Cache folders are keyed by session id; map each to its display name so we
     // can compare against the (name-keyed) live set and report a readable name.
-    let registry = zellij_utils::sessions::ensure_registry();
+    let names_by_id = zellij_utils::session_index::session_names_by_id();
     match fs::read_dir(session_info_cache_dir) {
         Ok(files_in_session_info_folder) => {
             let files_that_are_folders = files_in_session_info_folder
@@ -1104,10 +1104,7 @@ fn find_resurrectable_sessions(
             files_that_are_folders
                 .filter_map(|folder_name| {
                     let id = folder_name.file_name()?.to_str()?.to_owned();
-                    let session_name = registry
-                        .find_by_id(&id)
-                        .map(|e| e.display_name.clone())
-                        .unwrap_or_else(|| id.clone());
+                    let session_name = names_by_id.get(&id).cloned().unwrap_or_else(|| id.clone());
                     if session_infos_on_machine.contains_key(&session_name) {
                         // this is not a dead session...
                         return None;

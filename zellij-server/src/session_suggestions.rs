@@ -270,10 +270,7 @@ impl SessionSuggestionsService {
                 card_for_client,
             } => self.session_started(name, cwd, card_for_client),
             SessionSuggestionsJob::SessionRenamed { old_name, new_name } => {
-                self.ensure_index();
-                if let Some(index) = self.index.as_ref() {
-                    let _ = index.rename(&old_name, &new_name);
-                }
+                // The screen has already renamed the session's index row (by id).
                 if self.session_name.as_deref() == Some(old_name.as_str()) {
                     self.session_name = Some(new_name);
                 }
@@ -385,7 +382,11 @@ impl SessionSuggestionsService {
         }
         self.start_reporting_counts();
         if let (Some(client_id), true) = (card_for_client, self.session_card) {
-            if other_sessions_are_running(&self.sock_dir, &name) {
+            let names_by_id = match self.index.as_ref() {
+                Some(index) => index.names_by_id().unwrap_or_default(),
+                None => zellij_utils::session_index::session_names_by_id(),
+            };
+            if other_sessions_are_running(&self.sock_dir, &name, &names_by_id) {
                 let _ = self
                     .senders
                     .send_to_screen(ScreenInstruction::OpenSessionCard(client_id));
@@ -787,8 +788,12 @@ impl SessionSuggestionsService {
     }
 }
 
-fn other_sessions_are_running(sock_dir: &Path, own_name: &str) -> bool {
-    zellij_utils::session_index::running_session_names_in(sock_dir)
+fn other_sessions_are_running(
+    sock_dir: &Path,
+    own_name: &str,
+    names_by_id: &HashMap<String, String>,
+) -> bool {
+    zellij_utils::session_index::running_session_names_in(sock_dir, names_by_id)
         .iter()
         .any(|name| name != own_name)
 }
@@ -1146,13 +1151,19 @@ mod tests {
             std::env::temp_dir().join(format!("zellij-other-sessions-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&sock_dir);
         std::fs::create_dir_all(&sock_dir).unwrap();
-        assert!(!other_sessions_are_running(&sock_dir, "me"));
+        let no_names = HashMap::new();
+        assert!(!other_sessions_are_running(&sock_dir, "me", &no_names));
         std::fs::write(sock_dir.join("me"), b"").unwrap();
         std::fs::write(sock_dir.join("web_server_bus"), b"").unwrap();
         std::fs::write(sock_dir.join("other-reply"), b"").unwrap();
-        assert!(!other_sessions_are_running(&sock_dir, "me"));
+        assert!(!other_sessions_are_running(&sock_dir, "me", &no_names));
+        // A socket named by a session id stands for the session with that id.
+        std::fs::write(sock_dir.join("0123456789ab"), b"").unwrap();
+        let names_by_id = HashMap::from([("0123456789ab".to_owned(), "me".to_owned())]);
+        assert!(!other_sessions_are_running(&sock_dir, "me", &names_by_id));
+        assert!(other_sessions_are_running(&sock_dir, "me", &no_names));
         std::fs::write(sock_dir.join("other"), b"").unwrap();
-        assert!(other_sessions_are_running(&sock_dir, "me"));
+        assert!(other_sessions_are_running(&sock_dir, "me", &names_by_id));
         let _ = std::fs::remove_dir_all(&sock_dir);
     }
 

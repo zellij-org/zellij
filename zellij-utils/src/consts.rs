@@ -37,7 +37,7 @@ pub const DEFAULT_LIGHT_THEME_NAME: &str = "default-light";
 pub const CLIENT_SERVER_CONTRACT_VERSION: usize = 1;
 
 // The session-info cache is keyed by session id (a short random id for new sessions,
-// or the legacy session name for pre-registry sessions), NOT the user-visible
+// or the session name for sessions from before ids), NOT the user-visible
 // display name — so renaming a session never moves its cache folder.
 pub fn session_info_cache_file_name(session_id: &str) -> PathBuf {
     session_info_folder_for_session(session_id).join("session-metadata.kdl")
@@ -133,8 +133,6 @@ lazy_static! {
     pub static ref ZELLIJ_SESSION_INFO_CACHE_DIR: PathBuf = ZELLIJ_CACHE_DIR
         .join(CLIENT_SERVER_CONTRACT_DIR.clone())
         .join("session_info");
-    pub static ref ZELLIJ_SESSIONS_KDL: PathBuf = ZELLIJ_SOCK_DIR.join("sessions.kdl");
-    pub static ref ZELLIJ_SESSIONS_LOCK: PathBuf = ZELLIJ_SOCK_DIR.join("sessions.kdl.lock");
     pub static ref ZELLIJ_PLUGIN_ARTIFACT_DIR: PathBuf = ZELLIJ_CACHE_DIR.join(VERSION);
     pub static ref ZELLIJ_SEEN_RELEASE_NOTES_CACHE_FILE: PathBuf =
         ZELLIJ_CACHE_DIR.join(VERSION).join("seen_release_notes");

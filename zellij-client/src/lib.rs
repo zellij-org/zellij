@@ -525,21 +525,17 @@ fn prepare_sock_dir(teardown: Option<TerminalTeardown>) {
     }
 }
 
-/// IPC pipe path for a NEW session: register it in the registry under a fresh
-/// id and return `ZELLIJ_SOCK_DIR/<id>`. The session name is read from the
+/// IPC pipe path for a NEW session: register it in the session index under a
+/// fresh id and return `ZELLIJ_SOCK_DIR/<id>`. The session name is read from the
 /// environment (set by the caller just before).
 fn create_ipc_pipe(teardown: Option<TerminalTeardown>) -> PathBuf {
     prepare_sock_dir(teardown);
     let name = envs::get_session_name().unwrap();
-    let id = zellij_utils::sessions::register_session(&name).unwrap_or_else(|e| {
-        eprintln!("Failed to register session {:?}: {}", name, e);
-        std::process::exit(1);
-    });
-    ZELLIJ_SOCK_DIR.join(id)
+    ZELLIJ_SOCK_DIR.join(zellij_utils::sessions::register_session(&name))
 }
 
-/// IPC pipe path for an EXISTING session: resolve its id via the registry,
-/// falling back to the legacy name-based path for pre-registry sessions.
+/// IPC pipe path for an EXISTING session: resolve its id via the session index,
+/// falling back to the name-based path of sessions from before ids.
 fn resolve_ipc_pipe(teardown: Option<TerminalTeardown>) -> PathBuf {
     prepare_sock_dir(teardown);
     let name = envs::get_session_name().unwrap();

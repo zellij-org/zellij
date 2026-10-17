@@ -3,9 +3,11 @@ use crate::input::session_suggestions::{
     MatchRule, ThenOrder, FACT_DIRECTORY, FACT_GIT_BRANCH, FACT_GIT_REPO, FACT_GIT_WORKTREE,
     FACT_HOSTNAME,
 };
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{
+    params, Connection, OpenFlags, OptionalExtension, Transaction, TransactionBehavior,
+};
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -386,12 +388,14 @@ impl SessionIndex {
                 branch TEXT,
                 facts TEXT NOT NULL DEFAULT '{}',
                 created_at INTEGER NOT NULL,
-                last_used_at INTEGER NOT NULL
+                last_used_at INTEGER NOT NULL,
+                id TEXT
             );
             CREATE INDEX IF NOT EXISTS sessions_folder ON sessions(folder);
             CREATE INDEX IF NOT EXISTS sessions_repo_branch ON sessions(repo, branch);
             CREATE INDEX IF NOT EXISTS sessions_last_used_at ON sessions(last_used_at);",
         )?;
+        add_id_column(&conn)?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -427,8 +431,6 @@ impl SessionIndex {
         let Ok(entries) = std::fs::read_dir(&self.cache_dir) else {
             return;
         };
-        // Cache folders are named by session id; rows are keyed by display name.
-        let registry = crate::sessions::read_registry_in(&self.sock_dir);
         let mut rows = vec![];
         for entry in entries.flatten() {
             let path = entry.path();
@@ -436,10 +438,7 @@ impl SessionIndex {
             let Ok(metadata) = std::fs::metadata(&layout_file) else {
                 continue;
             };
-            let Some(name) = path
-                .file_name()
-                .map(|n| registry.name_for_id(&n.to_string_lossy()))
-            else {
+            let Some(name) = path.file_name().map(|n| n.to_string_lossy().to_string()) else {
                 continue;
             };
             let modified = metadata
@@ -569,13 +568,97 @@ impl SessionIndex {
     }
 
     pub fn rename(&self, old_name: &str, new_name: &str) -> Result<bool> {
-        self.conn
-            .execute("DELETE FROM sessions WHERE name = ?1", params![new_name])?;
-        let changed = self.conn.execute(
-            "UPDATE sessions SET name = ?2 WHERE name = ?1",
-            params![old_name, new_name],
+        match self.session_id(old_name)? {
+            Some(id) => {
+                self.rename_by_id(&id, new_name, now_secs())?;
+                Ok(true)
+            },
+            None => Ok(false),
+        }
+    }
+
+    /// Register a session that is about to start and return its id, which names its socket and
+    /// its session-info cache folder. A session that already has a row (being resurrected) keeps
+    /// its id, and so its cache folder. A session from before ids existed, whose socket or cache
+    /// folder is named after it, uses its name as its id.
+    pub fn register(&self, name: &str, now: u64) -> Result<String> {
+        let transaction = Transaction::new_unchecked(&self.conn, TransactionBehavior::Immediate)?;
+        let id = match query_session_id(&transaction, name)? {
+            Some(id) => id,
+            None => {
+                let id = if self.files_named(name) {
+                    name.to_owned()
+                } else {
+                    self.unused_id(&transaction)?
+                };
+                transaction.execute(
+                    "INSERT INTO sessions (name, id, facts, created_at, last_used_at)
+                     VALUES (?1, ?2, '{}', ?3, ?3)",
+                    params![name, id, now as i64],
+                )?;
+                id
+            },
+        };
+        transaction.commit()?;
+        Ok(id)
+    }
+
+    /// Give the session with this id a new name. Nothing on disk is renamed: the socket and the
+    /// cache folder stay named by the id.
+    pub fn rename_by_id(&self, id: &str, new_name: &str, now: u64) -> Result<()> {
+        let transaction = Transaction::new_unchecked(&self.conn, TransactionBehavior::Immediate)?;
+        // A row left under the new name by a session that no longer exists gives way.
+        transaction.execute(
+            "DELETE FROM sessions WHERE name = ?1 AND COALESCE(id, name) <> ?2",
+            params![new_name, id],
         )?;
-        Ok(changed > 0)
+        // Pinning the id keeps a session from before ids existed (no id, named on disk by its old
+        // name) reachable under its new name.
+        let renamed = transaction.execute(
+            "UPDATE sessions SET name = ?2, id = COALESCE(id, name) WHERE COALESCE(id, name) = ?1",
+            params![id, new_name],
+        )?;
+        if renamed == 0 {
+            // A session started without a row (by an older version, or while the index was
+            // unavailable) gets one, so that its new name finds its socket.
+            transaction.execute(
+                "INSERT INTO sessions (name, id, facts, created_at, last_used_at)
+                 VALUES (?1, ?2, '{}', ?3, ?3)",
+                params![new_name, id, now as i64],
+            )?;
+        }
+        transaction.commit()?;
+        Ok(())
+    }
+
+    /// The id of the session with this name, if the index knows the session.
+    pub fn session_id(&self, name: &str) -> Result<Option<String>> {
+        query_session_id(&self.conn, name)
+    }
+
+    /// The name of the session with this id, if the index knows the session.
+    pub fn session_name(&self, id: &str) -> Result<Option<String>> {
+        query_session_name(&self.conn, id)
+    }
+
+    /// Session names keyed by the ids their sockets and cache folders are named by.
+    pub fn names_by_id(&self) -> Result<HashMap<String, String>> {
+        query_names_by_id(&self.conn)
+    }
+
+    fn files_named(&self, name: &str) -> bool {
+        self.sock_dir.join(name).exists() || self.cache_dir.join(name).exists()
+    }
+
+    fn unused_id(&self, transaction: &Transaction) -> Result<String> {
+        loop {
+            let candidate = crate::sessions::generate_session_id();
+            if query_session_name(transaction, &candidate)?.is_none()
+                && !self.files_named(&candidate)
+            {
+                return Ok(candidate);
+            }
+        }
     }
 
     pub fn delete(&self, name: &str) -> Result<bool> {
@@ -586,17 +669,12 @@ impl SessionIndex {
     }
 
     pub fn session_state(&self, name: &str) -> Option<SessionState> {
-        self.session_state_in(&crate::sessions::read_registry_in(&self.sock_dir), name)
-    }
-
-    // The socket and the cache folder are named by session id, which the registry maps from the
-    // display name.
-    fn session_state_in(
-        &self,
-        registry: &crate::sessions::SessionRegistry,
-        name: &str,
-    ) -> Option<SessionState> {
-        let id = registry.id_for_name(name);
+        // The socket and the cache folder are named by the session's id.
+        let id = self
+            .session_id(name)
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| name.to_owned());
         if self.sock_dir.join(&id).exists() {
             Some(SessionState::Running)
         } else if self
@@ -762,14 +840,13 @@ impl SessionIndex {
         exclude: &str,
         now: u64,
     ) -> Vec<Candidate> {
-        let registry = crate::sessions::read_registry_in(&self.sock_dir);
         let mut seen = HashSet::new();
         let mut candidates = vec![];
         for row in rows {
             if row.name == exclude || !seen.insert(row.name.clone()) {
                 continue;
             }
-            match self.session_state_in(&registry, &row.name) {
+            match self.session_state(&row.name) {
                 Some(state) => candidates.push(Candidate { row, state }),
                 None => {
                     if now.saturating_sub(row.created_at) > RECENTLY_CREATED_GRACE_SECS {
@@ -788,7 +865,7 @@ impl SessionIndex {
     }
 
     pub fn running_session_names(&self) -> Vec<String> {
-        running_session_names_in(&self.sock_dir)
+        running_session_names_in(&self.sock_dir, &self.names_by_id().unwrap_or_default())
     }
 
     pub fn matching_candidates(
@@ -867,12 +944,94 @@ impl SessionIndex {
     }
 }
 
-pub fn running_session_names_in(sock_dir: &Path) -> Vec<String> {
+// Sessions are named on disk (socket, cache folder) by an id. Indexes created before ids existed
+// lack the column; their rows, like sessions started by older versions, have no id and use their
+// name as their id, hence the `COALESCE(id, name)` lookups.
+fn add_id_column(conn: &Connection) -> Result<()> {
+    let has_id_column = conn
+        .prepare("SELECT 1 FROM pragma_table_info('sessions') WHERE name = 'id'")?
+        .exists([])?;
+    if !has_id_column {
+        if let Err(e) = conn.execute_batch("ALTER TABLE sessions ADD COLUMN id TEXT") {
+            // Another process may have added it since we looked.
+            if !e.to_string().contains("duplicate column name") {
+                return Err(e.into());
+            }
+        }
+    }
+    conn.execute_batch("CREATE UNIQUE INDEX IF NOT EXISTS sessions_id ON sessions(id)")?;
+    Ok(())
+}
+
+fn query_session_id(conn: &Connection, name: &str) -> Result<Option<String>> {
+    Ok(conn
+        .query_row(
+            "SELECT COALESCE(id, name) FROM sessions WHERE name = ?1",
+            params![name],
+            |row| row.get(0),
+        )
+        .optional()?)
+}
+
+fn query_session_name(conn: &Connection, id: &str) -> Result<Option<String>> {
+    Ok(conn
+        .query_row(
+            "SELECT name FROM sessions WHERE COALESCE(id, name) = ?1",
+            params![id],
+            |row| row.get(0),
+        )
+        .optional()?)
+}
+
+fn query_names_by_id(conn: &Connection) -> Result<HashMap<String, String>> {
+    let mut statement = conn.prepare_cached("SELECT COALESCE(id, name), name FROM sessions")?;
+    let names = statement
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(names)
+}
+
+// Lookups for callers that only map between session names and ids (listings, attaching). They
+// skip `open`'s setup and integrity check and never create the index: a missing, unreadable or
+// pre-id index knows no session, which callers take to mean "the id is the name".
+fn open_existing_default_index() -> Option<Connection> {
+    let conn = Connection::open_with_flags(
+        default_index_path(),
+        OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .ok()?;
+    conn.busy_timeout(BUSY_TIMEOUT).ok()?;
+    Some(conn)
+}
+
+pub fn session_id_for_name(name: &str) -> Option<String> {
+    query_session_id(&open_existing_default_index()?, name)
+        .ok()
+        .flatten()
+}
+
+pub fn session_name_for_id(id: &str) -> Option<String> {
+    query_session_name(&open_existing_default_index()?, id)
+        .ok()
+        .flatten()
+}
+
+pub fn session_names_by_id() -> HashMap<String, String> {
+    open_existing_default_index()
+        .and_then(|conn| query_names_by_id(&conn).ok())
+        .unwrap_or_default()
+}
+
+/// Socket filenames are session ids; `names_by_id` maps them to session names (an id without an
+/// entry is the name of a session that predates ids).
+pub fn running_session_names_in(
+    sock_dir: &Path,
+    names_by_id: &HashMap<String, String>,
+) -> Vec<String> {
     let Ok(entries) = std::fs::read_dir(sock_dir) else {
         return vec![];
     };
-    // Socket filenames are session ids; report the display names they map to.
-    let registry = crate::sessions::read_registry_in(sock_dir);
     entries
         .flatten()
         .filter(|entry| {
@@ -883,12 +1042,9 @@ pub fn running_session_names_in(sock_dir: &Path) -> Vec<String> {
         })
         .filter_map(|entry| entry.file_name().into_string().ok())
         .filter(|name| {
-            name != "web_server_bus"
-                && !name.ends_with("-reply")
-                && !name.starts_with('.')
-                && !crate::sessions::is_registry_file(name)
+            name != "web_server_bus" && !name.ends_with("-reply") && !name.starts_with('.')
         })
-        .map(|id| registry.name_for_id(&id))
+        .map(|id| names_by_id.get(&id).cloned().unwrap_or(id))
         .collect()
 }
 
@@ -1344,5 +1500,151 @@ mod tests {
         );
         assert_eq!(layout_cwd("layout {\n}\n"), None);
         assert_eq!(layout_cwd("not kdl {"), None);
+    }
+
+    #[test]
+    fn a_new_session_gets_an_id_that_maps_both_ways() {
+        let test = TestIndex::new();
+        let id = test.index.register("work", 10).unwrap();
+        assert_eq!(id.len(), crate::consts::SESSION_ID_LENGTH);
+        assert_ne!(id, "work");
+        assert_eq!(test.index.session_id("work").unwrap(), Some(id.clone()));
+        assert_eq!(
+            test.index.session_name(&id).unwrap(),
+            Some("work".to_owned())
+        );
+        assert_eq!(
+            test.index.names_by_id().unwrap().get(&id),
+            Some(&"work".to_owned())
+        );
+    }
+
+    #[test]
+    fn registering_a_known_session_again_keeps_its_id() {
+        let test = TestIndex::new();
+        let id = test.index.register("work", 10).unwrap();
+        test.mark_resumable(&id);
+        assert_eq!(test.index.register("work", 20).unwrap(), id);
+    }
+
+    #[test]
+    fn sessions_from_before_ids_use_their_name_as_their_id() {
+        let test = TestIndex::new();
+        // A row written without an id, by the backfill or by an index from before ids.
+        test.index.ensure_row("old-row", 1).unwrap();
+        assert_eq!(
+            test.index.session_id("old-row").unwrap(),
+            Some("old-row".to_owned())
+        );
+        assert_eq!(test.index.register("old-row", 2).unwrap(), "old-row");
+        // A session started by an older version: named on disk after itself, without a row.
+        test.mark_resumable("old-files");
+        assert_eq!(test.index.register("old-files", 3).unwrap(), "old-files");
+        assert_eq!(
+            test.index.session_name("old-files").unwrap(),
+            Some("old-files".to_owned())
+        );
+    }
+
+    #[test]
+    fn renaming_keeps_the_id_and_frees_the_old_name() {
+        let test = TestIndex::new();
+        let id = test.index.register("before", 10).unwrap();
+        test.index.rename_by_id(&id, "after", 20).unwrap();
+        assert_eq!(test.index.session_id("after").unwrap(), Some(id.clone()));
+        assert_eq!(test.index.session_id("before").unwrap(), None);
+        assert_eq!(
+            test.index.session_name(&id).unwrap(),
+            Some("after".to_owned())
+        );
+    }
+
+    #[test]
+    fn renaming_a_session_from_before_ids_keeps_it_reachable_under_its_new_name() {
+        let test = TestIndex::new();
+        test.index.ensure_row("legacy-row", 1).unwrap();
+        test.index
+            .rename_by_id("legacy-row", "renamed-row", 2)
+            .unwrap();
+        assert_eq!(
+            test.index.session_id("renamed-row").unwrap(),
+            Some("legacy-row".to_owned())
+        );
+        test.index
+            .rename_by_id("legacy-no-row", "renamed-no-row", 3)
+            .unwrap();
+        assert_eq!(
+            test.index.session_id("renamed-no-row").unwrap(),
+            Some("legacy-no-row".to_owned())
+        );
+    }
+
+    #[test]
+    fn a_stale_rename_by_name_after_a_rename_by_id_changes_nothing() {
+        let test = TestIndex::new();
+        let id = test.index.register("before", 10).unwrap();
+        test.index.rename_by_id(&id, "after", 20).unwrap();
+        assert!(!test.index.rename("before", "after").unwrap());
+        assert_eq!(test.index.session_id("after").unwrap(), Some(id));
+    }
+
+    #[test]
+    fn session_state_finds_the_socket_and_layout_by_id() {
+        let test = TestIndex::new();
+        let id = test.index.register("work", 10).unwrap();
+        assert_eq!(test.index.session_state("work"), None);
+        test.mark_resumable(&id);
+        assert_eq!(
+            test.index.session_state("work"),
+            Some(SessionState::Resumable)
+        );
+        test.mark_running(&id);
+        assert_eq!(
+            test.index.session_state("work"),
+            Some(SessionState::Running)
+        );
+    }
+
+    #[test]
+    fn running_session_names_are_the_names_of_the_socket_ids() {
+        let test = TestIndex::new();
+        let id = test.index.register("work", 10).unwrap();
+        test.mark_running(&id);
+        test.mark_running("legacy");
+        let mut names = test.index.running_session_names();
+        names.sort();
+        assert_eq!(names, vec!["legacy".to_owned(), "work".to_owned()]);
+    }
+
+    #[test]
+    fn an_index_from_before_ids_gains_the_id_column_and_keeps_its_rows() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("index.sqlite");
+        let sock_dir = root.path().join("sock");
+        let cache_dir = root.path().join("cache");
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE sessions (
+                    name TEXT PRIMARY KEY,
+                    folder TEXT,
+                    repo TEXT,
+                    worktree TEXT,
+                    branch TEXT,
+                    facts TEXT NOT NULL DEFAULT '{}',
+                    created_at INTEGER NOT NULL,
+                    last_used_at INTEGER NOT NULL
+                );
+                INSERT INTO sessions (name, created_at, last_used_at) VALUES ('old', 1, 1);",
+            )
+            .unwrap();
+        }
+        let index = SessionIndex::open(&path, sock_dir.clone(), cache_dir.clone()).unwrap();
+        assert_eq!(index.session_id("old").unwrap(), Some("old".to_owned()));
+        let id = index.register("new", 2).unwrap();
+        assert_eq!(index.session_name(&id).unwrap(), Some("new".to_owned()));
+        drop(index);
+        let reopened = SessionIndex::open(&path, sock_dir, cache_dir).unwrap();
+        assert_eq!(reopened.session_id("new").unwrap(), Some(id));
     }
 }

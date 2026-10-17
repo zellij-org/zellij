@@ -3399,14 +3399,10 @@ impl ServerSocket {
         Ok(listener)
     }
 
-    /// Returns whether this server owned (and therefore removed) the socket.
-    fn remove_on_exit(&self) -> bool {
+    fn remove_on_exit(&self) {
         if let Some(ownership) = self.ownership.lock().unwrap().take() {
             drop(std::fs::remove_file(&self.path));
             ownership.release();
-            true
-        } else {
-            false
         }
     }
 }
@@ -3499,21 +3495,12 @@ pub fn start_server_impl(
     // The socket/pipe filename is the stable session id, decoupled from the
     // (renameable) display name. It is threaded into the per-session threads
     // (screen / pty / background_jobs) so they key the session-info cache and
-    // registry updates by id — NOT via a process-global, which would collide
+    // the session index by id — NOT via a process-global, which would collide
     // between the many sessions an integration test runs in one process.
     let session_id = socket_path
         .file_name()
         .map(|f| f.to_string_lossy().to_string())
         .unwrap_or_default();
-
-    // Record the real server PID in the registry (post-daemonize on Unix).
-    if let Err(e) = zellij_utils::sessions::with_registry(|reg| {
-        if let Some(entry) = reg.find_by_id_mut(&session_id) {
-            entry.pid = Some(std::process::id());
-        }
-    }) {
-        log::error!("Failed to update PID in session registry: {:?}", e);
-    }
 
     let (to_server, server_receiver): ChannelWithContext<ServerInstruction> = channels::bounded(50);
     let to_server = SenderWithContext::new(to_server);
@@ -5047,37 +5034,13 @@ pub fn start_server_impl(
     // Drop cached session data before exit.
     *session_data.write().unwrap() = None;
 
-    // Only the server that bound the socket owns its registry entry: a server that lost a bind
-    // race must not mark the winner's session as exited.
-    let owned_socket = server_socket.remove_on_exit();
+    server_socket.remove_on_exit();
     if delete_session_on_exit {
         delete_unused_session_after_exit(&session_id, &own_session_name);
-    } else if owned_socket {
-        mark_session_exited_in_registry(&session_id);
     }
 }
 
-// Mark the session exited in the registry (clear PID, stamp exit time) so it is
-// listed as resurrectable rather than running.
-fn mark_session_exited_in_registry(session_id: &str) {
-    if let Err(e) = zellij_utils::sessions::with_registry(|reg| {
-        if let Some(entry) = reg.find_by_id_mut(session_id) {
-            entry.state = zellij_utils::sessions::SessionState::Exited;
-            entry.pid = None;
-            entry.exited_at = Some(
-                std::time::SystemTime::now()
-                    .duration_since(std::time::SystemTime::UNIX_EPOCH)
-                    .map(|d| d.as_secs())
-                    .unwrap_or(0),
-            );
-        }
-    }) {
-        log::error!("Failed to update session registry on exit: {:?}", e);
-    }
-}
-
-// The session-info cache folder and the registry entry are keyed by session id; the
-// session index is keyed by display name.
+// The session-info cache folder is named by session id; the session index row by name.
 fn delete_unused_session_after_exit(session_id: &str, session_name: &str) {
     if session_id.is_empty() {
         return;
@@ -5085,7 +5048,6 @@ fn delete_unused_session_after_exit(session_id: &str, session_name: &str) {
     let _ = std::fs::remove_dir_all(zellij_utils::consts::session_info_folder_for_session(
         session_id,
     ));
-    let _ = zellij_utils::sessions::with_registry(|reg| reg.remove_by_id(session_id));
     if let Ok(index) = zellij_utils::session_index::SessionIndex::open_default() {
         let _ = index.delete(session_name);
     }

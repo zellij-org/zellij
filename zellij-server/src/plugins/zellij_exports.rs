@@ -3904,40 +3904,48 @@ fn delete_dead_session(session_name: String) -> Result<()> {
     // The session index is keyed by display name, which differs from the argument
     // when called with an id.
     let display_name = zellij_utils::sessions::display_name_for_session_id(&id);
-    let _ = zellij_utils::sessions::with_registry(|reg| {
-        reg.sessions
-            .retain(|s| s.id != id && s.display_name != session_name);
-    });
     delete_session_index_row(&display_name);
     std::fs::remove_dir_all(&*ZELLIJ_SESSION_INFO_CACHE_DIR.join(&id))
         .with_context(|| format!("Failed to delete dead session: {:?}", &session_name))
 }
 
 fn delete_all_dead_sessions() -> Result<()> {
-    // Live sessions are the running registry entries. The cache is keyed by id,
-    // so compare folder ids against running ids and delete the rest by id.
-    let registry = zellij_utils::sessions::ensure_registry();
-    let live_ids: Vec<String> = registry.running_sessions().map(|e| e.id.clone()).collect();
-    let dead_ids: Vec<String> = match std::fs::read_dir(&*ZELLIJ_SESSION_INFO_CACHE_DIR) {
-        Ok(entries) => entries
-            .filter_map(|f| f.ok().map(|f| f.path()))
-            .filter(|p| p.is_dir())
-            .filter_map(|folder| {
-                let id = folder.file_name()?.to_str()?.to_owned();
-                if live_ids.contains(&id) {
-                    None
-                } else {
-                    Some(id)
+    use zellij_utils::consts::is_ipc_socket;
+    let mut live_sessions = vec![];
+    if let Ok(files) = std::fs::read_dir(&*ZELLIJ_SOCK_DIR) {
+        files.for_each(|file| {
+            if let Ok(file) = file {
+                if let Ok(file_name) = file.file_name().into_string() {
+                    if is_ipc_socket(&file.file_type().unwrap()) {
+                        live_sessions.push(file_name);
+                    }
                 }
-            })
-            .collect(),
+            }
+        });
+    }
+    let dead_sessions: Vec<String> = match std::fs::read_dir(&*ZELLIJ_SESSION_INFO_CACHE_DIR) {
+        Ok(files_in_session_info_folder) => {
+            let files_that_are_folders = files_in_session_info_folder
+                .filter_map(|f| f.ok().map(|f| f.path()))
+                .filter(|f| f.is_dir());
+            files_that_are_folders
+                .filter_map(|folder_name| {
+                    let session_name = folder_name.file_name()?.to_str()?.to_owned();
+                    if live_sessions.contains(&session_name) {
+                        // this is not a dead session...
+                        return None;
+                    }
+                    Some(session_name)
+                })
+                .collect()
+        },
         Err(e) => {
             log::error!("Failed to read session info cache dir: {:?}", e);
             vec![]
         },
     };
-    for id in dead_ids {
-        delete_dead_session(id)?;
+    for session in dead_sessions {
+        delete_dead_session(session)?;
     }
     Ok(())
 }
@@ -4454,10 +4462,6 @@ fn delete_dead_session_and_reply(env: &PluginEnv, session_name: String) {
     // Cache folder is keyed by session id; resolve the display name.
     let id = zellij_utils::sessions::resolve_session_id(&session_name)
         .unwrap_or_else(|| session_name.clone());
-    let _ = zellij_utils::sessions::with_registry(|reg| {
-        reg.sessions
-            .retain(|s| s.id != id && s.display_name != session_name);
-    });
     delete_session_index_row(&session_name);
     notify_session_index_changed(env);
     let response = match std::fs::remove_dir_all(&*ZELLIJ_SESSION_INFO_CACHE_DIR.join(&id)) {

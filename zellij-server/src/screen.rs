@@ -13887,19 +13887,11 @@ pub(crate) fn screen_thread_main(
                         tab.rename_session(name.clone()).with_context(err_context)?;
                     }
 
-                    // Update the display name in the registry. Nothing on disk is
+                    // Record the new name in the session index. Nothing on disk is
                     // renamed: the socket/pipe and the session-info cache folder
-                    // are both named by the stable session id, so this is a
-                    // pure registry update — which is what makes rename work for
-                    // Windows named pipes (they cannot be renamed).
-                    let session_id = screen.session_id.clone();
-                    if let Err(e) = zellij_utils::sessions::with_registry(|reg| {
-                        if let Some(entry) = reg.find_by_id_mut(&session_id) {
-                            entry.display_name = name.clone();
-                        }
-                    }) {
-                        log::error!("Failed to update session registry: {:?}", e);
-                    }
+                    // are both named by the stable session id — which is what makes
+                    // rename work for Windows named pipes (they cannot be renamed).
+                    zellij_utils::sessions::rename_session(&screen.session_id, &name);
 
                     // report
                     screen

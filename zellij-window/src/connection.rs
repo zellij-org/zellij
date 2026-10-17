@@ -126,8 +126,8 @@ pub enum Role {
     Watcher,
 }
 
-/// The socket of an existing session. Sockets are named by session id, which the session registry
-/// maps from the name; pre-registry sessions are named after the session itself.
+/// The socket of an existing session. Sockets are named by session id, which the session index
+/// maps from the name; sessions from before ids are named after the session itself.
 pub fn socket_path(session_name: &str) -> Result<PathBuf> {
     let path = zellij_utils::sessions::resolve_session_socket_path(session_name)
         .unwrap_or_else(|| ZELLIJ_SOCK_DIR.join(session_name));
@@ -137,9 +137,9 @@ pub fn socket_path(session_name: &str) -> Result<PathBuf> {
 /// The socket for a new session: registers the session under a fresh id and names the socket by
 /// it.
 pub fn new_session_socket_path(session_name: &str) -> Result<PathBuf> {
-    let id = zellij_utils::sessions::register_session(session_name)
-        .map_err(|e| anyhow!("failed to register session {:?}: {}", session_name, e))?;
-    checked_socket_path(ZELLIJ_SOCK_DIR.join(id))
+    checked_socket_path(
+        ZELLIJ_SOCK_DIR.join(zellij_utils::sessions::register_session(session_name)),
+    )
 }
 
 fn checked_socket_path(path: PathBuf) -> Result<PathBuf> {
