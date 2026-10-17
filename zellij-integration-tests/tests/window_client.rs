@@ -9,7 +9,7 @@ use zellij_integration_tests::{
     claim_first_terminal_and_wait_for_prompt, Size, TestRunner, TestSession, TERMINAL_SIZE,
 };
 use zellij_utils::cli::CliArgs;
-use zellij_utils::consts::{ipc_connect, ZELLIJ_SOCK_DIR};
+use zellij_utils::consts::ipc_connect;
 use zellij_utils::data::{BareKey, KeyWithModifier};
 use zellij_utils::input::actions::Action;
 use zellij_utils::input::options::Options;
@@ -30,7 +30,7 @@ struct WindowClient {
 
 impl WindowClient {
     fn attach(zellij: &TestSession, size: Size) -> Self {
-        let path = ZELLIJ_SOCK_DIR.join(zellij.session_name());
+        let path = zellij.socket_path();
         let stream = ipc_connect(&path)
             .unwrap_or_else(|e| panic!("failed to connect to {:?}: {:?}", path, e));
         let mut sender = IpcSenderWithContext::new(stream);

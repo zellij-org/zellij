@@ -99,7 +99,7 @@ pub fn generate_session_id() -> String {
     id
 }
 
-fn is_registry_file(file_name: &str) -> bool {
+pub fn is_registry_file(file_name: &str) -> bool {
     // Covers sessions.kdl, sessions.kdl.lock, sessions.kdl.bak, and the
     // sessions.kdl.tmp.<pid> scratch files written by atomic_write. On Windows
     // these are regular files that would otherwise look like socket markers.
@@ -285,6 +285,23 @@ impl SessionRegistry {
         self.sessions.retain(|s| s.id != id);
     }
 
+    /// The id of a session (running first, then any state) by display name, or
+    /// the name itself for sessions not in the registry (legacy: id == name).
+    pub fn id_for_name(&self, name: &str) -> String {
+        self.find_running_by_name(name)
+            .or_else(|| self.find_by_name(name))
+            .map(|e| e.id.clone())
+            .unwrap_or_else(|| name.to_string())
+    }
+
+    /// The display name for an id, or the id itself for sessions not in the
+    /// registry (legacy: id == name).
+    pub fn name_for_id(&self, id: &str) -> String {
+        self.find_by_id(id)
+            .map(|e| e.display_name.clone())
+            .unwrap_or_else(|| id.to_string())
+    }
+
     /// Resolve a running session display name to its socket path.
     pub fn resolve_socket_path(&self, name: &str) -> Option<PathBuf> {
         self.find_running_by_name(name)
@@ -399,22 +416,30 @@ pub fn registry_exists() -> bool {
 /// Read the registry from disk, returning an empty one if it's missing. A
 /// corrupt file falls back to the `.bak` backup before giving up empty.
 pub fn read_registry() -> SessionRegistry {
-    match fs::read_to_string(&*ZELLIJ_SESSIONS_KDL) {
+    read_registry_file(&ZELLIJ_SESSIONS_KDL)
+}
+
+/// Read the registry kept in `sock_dir` without migrating or writing anything.
+/// A missing registry reads as empty, so lookups fall back to treating ids as
+/// names (legacy sessions).
+pub fn read_registry_in(sock_dir: &Path) -> SessionRegistry {
+    let file_name = ZELLIJ_SESSIONS_KDL.file_name().unwrap_or_default();
+    read_registry_file(&sock_dir.join(file_name))
+}
+
+fn read_registry_file(path: &Path) -> SessionRegistry {
+    match fs::read_to_string(path) {
         Ok(raw) => SessionRegistry::from_kdl(&raw).unwrap_or_else(|e| {
-            log::error!(
-                "Corrupt {}: {}; falling back to backup",
-                ZELLIJ_SESSIONS_KDL.display(),
-                e
-            );
-            read_registry_backup().unwrap_or_default()
+            log::error!("Corrupt {}: {}; falling back to backup", path.display(), e);
+            read_registry_backup(path).unwrap_or_default()
         }),
         Err(_) => SessionRegistry::new(),
     }
 }
 
 /// Try to read the last good registry from the `.bak` backup file.
-fn read_registry_backup() -> Option<SessionRegistry> {
-    let raw = fs::read_to_string(backup_path(&ZELLIJ_SESSIONS_KDL)).ok()?;
+fn read_registry_backup(path: &Path) -> Option<SessionRegistry> {
+    let raw = fs::read_to_string(backup_path(path)).ok()?;
     SessionRegistry::from_kdl(&raw).ok()
 }
 
@@ -607,10 +632,7 @@ pub fn resolve_session_id(name: &str) -> Option<String> {
 /// The display name for an id, or the id itself if it isn't in the registry
 /// (legacy / orphaned cache folders whose id is the old session name).
 fn display_name_for_id(registry: &SessionRegistry, id: &str) -> String {
-    registry
-        .find_by_id(id)
-        .map(|e| e.display_name.clone())
-        .unwrap_or_else(|| id.to_string())
+    registry.name_for_id(id)
 }
 
 /// Resolve a session id (socket/pipe filename) to its display name via the

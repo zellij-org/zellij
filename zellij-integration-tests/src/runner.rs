@@ -644,6 +644,17 @@ impl TestSession {
         &self.session_name
     }
 
+    /// The session id: the socket/pipe filename and the session-info cache folder name.
+    pub fn session_id(&self) -> String {
+        zellij_utils::sessions::resolve_session_id(&self.session_name)
+            .unwrap_or_else(|| self.session_name.clone())
+    }
+
+    /// The session's socket/pipe path, which is named by the session id.
+    pub fn socket_path(&self) -> PathBuf {
+        zellij_utils::consts::ZELLIJ_SOCK_DIR.join(self.session_id())
+    }
+
     pub fn expect_pty_spawn(&self) -> FakePtyHandle {
         expect_pty_spawn(&self.fake_server_os_api)
     }
@@ -883,9 +894,7 @@ impl TestSession {
 
     pub fn wait_for_serialized_session(&self) {
         // The session-info cache is keyed by session id, not the display name.
-        let id = zellij_utils::sessions::resolve_session_id(&self.session_name)
-            .unwrap_or_else(|| self.session_name.clone());
-        let layout_path = zellij_utils::consts::session_layout_cache_file_name(&id);
+        let layout_path = zellij_utils::consts::session_layout_cache_file_name(&self.session_id());
         let session_dir = layout_path.parent().map(|parent| parent.to_path_buf());
         let mut deadline = ProgressDeadline::starting_now(SERIALIZATION_PROGRESS);
         let mut written = serialization_progress(&layout_path, session_dir.as_deref());
@@ -923,9 +932,7 @@ impl TestSession {
         // The session-info cache is keyed by session id, not the display name.
         // register_session reuses this id when resurrecting, so the resurrected
         // server writes back to the same folder.
-        let id = zellij_utils::sessions::resolve_session_id(&self.session_name)
-            .unwrap_or_else(|| self.session_name.clone());
-        let layout_path = zellij_utils::consts::session_layout_cache_file_name(&id);
+        let layout_path = zellij_utils::consts::session_layout_cache_file_name(&self.session_id());
         assert!(
             layout_path.exists(),
             "no serialized layout to resurrect from at {}",
@@ -968,9 +975,8 @@ impl TestSession {
             .clone()
             .unwrap_or_else(test_env::unique_session_name);
         assert!(
-            !zellij_utils::consts::ZELLIJ_SOCK_DIR
-                .join(&session_name)
-                .exists(),
+            zellij_utils::sessions::resolve_session_socket_path(&session_name)
+                .map_or(true, |socket_path| !socket_path.exists()),
             "following a switch into the running session {} is not supported",
             session_name
         );
@@ -1094,7 +1100,7 @@ impl TestSession {
     }
 
     pub fn kill_session(&mut self) {
-        let socket_path = zellij_utils::consts::ZELLIJ_SOCK_DIR.join(&self.session_name);
+        let socket_path = self.socket_path();
         let stream = zellij_utils::consts::ipc_connect(&socket_path)
             .unwrap_or_else(|err| panic!("failed to connect to {:?}: {:?}", socket_path, err));
         let _ =

@@ -427,6 +427,8 @@ impl SessionIndex {
         let Ok(entries) = std::fs::read_dir(&self.cache_dir) else {
             return;
         };
+        // Cache folders are named by session id; rows are keyed by display name.
+        let registry = crate::sessions::read_registry_in(&self.sock_dir);
         let mut rows = vec![];
         for entry in entries.flatten() {
             let path = entry.path();
@@ -434,7 +436,10 @@ impl SessionIndex {
             let Ok(metadata) = std::fs::metadata(&layout_file) else {
                 continue;
             };
-            let Some(name) = path.file_name().map(|n| n.to_string_lossy().to_string()) else {
+            let Some(name) = path
+                .file_name()
+                .map(|n| registry.name_for_id(&n.to_string_lossy()))
+            else {
                 continue;
             };
             let modified = metadata
@@ -581,11 +586,22 @@ impl SessionIndex {
     }
 
     pub fn session_state(&self, name: &str) -> Option<SessionState> {
-        if self.sock_dir.join(name).exists() {
+        self.session_state_in(&crate::sessions::read_registry_in(&self.sock_dir), name)
+    }
+
+    // The socket and the cache folder are named by session id, which the registry maps from the
+    // display name.
+    fn session_state_in(
+        &self,
+        registry: &crate::sessions::SessionRegistry,
+        name: &str,
+    ) -> Option<SessionState> {
+        let id = registry.id_for_name(name);
+        if self.sock_dir.join(&id).exists() {
             Some(SessionState::Running)
         } else if self
             .cache_dir
-            .join(name)
+            .join(&id)
             .join(SESSION_LAYOUT_FILE_NAME)
             .exists()
         {
@@ -746,13 +762,14 @@ impl SessionIndex {
         exclude: &str,
         now: u64,
     ) -> Vec<Candidate> {
+        let registry = crate::sessions::read_registry_in(&self.sock_dir);
         let mut seen = HashSet::new();
         let mut candidates = vec![];
         for row in rows {
             if row.name == exclude || !seen.insert(row.name.clone()) {
                 continue;
             }
-            match self.session_state(&row.name) {
+            match self.session_state_in(&registry, &row.name) {
                 Some(state) => candidates.push(Candidate { row, state }),
                 None => {
                     if now.saturating_sub(row.created_at) > RECENTLY_CREATED_GRACE_SECS {
@@ -854,6 +871,8 @@ pub fn running_session_names_in(sock_dir: &Path) -> Vec<String> {
     let Ok(entries) = std::fs::read_dir(sock_dir) else {
         return vec![];
     };
+    // Socket filenames are session ids; report the display names they map to.
+    let registry = crate::sessions::read_registry_in(sock_dir);
     entries
         .flatten()
         .filter(|entry| {
@@ -864,8 +883,12 @@ pub fn running_session_names_in(sock_dir: &Path) -> Vec<String> {
         })
         .filter_map(|entry| entry.file_name().into_string().ok())
         .filter(|name| {
-            name != "web_server_bus" && !name.ends_with("-reply") && !name.starts_with('.')
+            name != "web_server_bus"
+                && !name.ends_with("-reply")
+                && !name.starts_with('.')
+                && !crate::sessions::is_registry_file(name)
         })
+        .map(|id| registry.name_for_id(&id))
         .collect()
 }
 

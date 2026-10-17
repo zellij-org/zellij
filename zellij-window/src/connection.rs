@@ -126,8 +126,23 @@ pub enum Role {
     Watcher,
 }
 
+/// The socket of an existing session. Sockets are named by session id, which the session registry
+/// maps from the name; pre-registry sessions are named after the session itself.
 pub fn socket_path(session_name: &str) -> Result<PathBuf> {
-    let path = ZELLIJ_SOCK_DIR.join(session_name);
+    let path = zellij_utils::sessions::resolve_session_socket_path(session_name)
+        .unwrap_or_else(|| ZELLIJ_SOCK_DIR.join(session_name));
+    checked_socket_path(path)
+}
+
+/// The socket for a new session: registers the session under a fresh id and names the socket by
+/// it.
+pub fn new_session_socket_path(session_name: &str) -> Result<PathBuf> {
+    let id = zellij_utils::sessions::register_session(session_name)
+        .map_err(|e| anyhow!("failed to register session {:?}: {}", session_name, e))?;
+    checked_socket_path(ZELLIJ_SOCK_DIR.join(id))
+}
+
+fn checked_socket_path(path: PathBuf) -> Result<PathBuf> {
     let length = path.as_os_str().len();
     if length >= ZELLIJ_SOCK_MAX_LENGTH {
         bail!(
@@ -164,24 +179,6 @@ impl Opening {
             }
         }
     }
-}
-
-pub fn open(
-    session_name: &str,
-    geometry: Geometry,
-    opening: Opening,
-    first_message: ClientToServerMsg,
-    starts_server: bool,
-) -> Result<Connection> {
-    let path = socket_path(session_name)?;
-    open_at(
-        &path,
-        session_name,
-        geometry,
-        opening,
-        first_message,
-        starts_server,
-    )
 }
 
 pub fn open_at(

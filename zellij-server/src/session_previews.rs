@@ -24,7 +24,9 @@ pub fn running_session_preview(
     tab_index: Option<usize>,
     pane_id: Option<(u32, bool)>,
 ) -> SessionPreview {
-    let socket_path = ZELLIJ_SOCK_DIR.join(session_name);
+    // Sockets are named by session id; legacy sessions are named after the session.
+    let socket_path = zellij_utils::sessions::resolve_session_socket_path(session_name)
+        .unwrap_or_else(|| ZELLIJ_SOCK_DIR.join(session_name));
     let stream = match zellij_utils::consts::ipc_connect(&socket_path) {
         Ok(stream) => stream,
         Err(e) => return preview_error(session_name, tab_index, e.to_string()),
@@ -182,7 +184,10 @@ pub fn saved_session_preview_from_layout(
 }
 
 pub fn saved_session_preview(session_name: &str) -> SavedSessionPreview {
-    let layout_path = session_layout_cache_file_name(session_name);
+    // The layout cache is keyed by session id (== name for legacy sessions).
+    let session_id = zellij_utils::sessions::resolve_session_id(session_name)
+        .unwrap_or_else(|| session_name.to_owned());
+    let layout_path = session_layout_cache_file_name(&session_id);
     match std::fs::read_to_string(&layout_path) {
         Ok(raw_layout) => {
             saved_session_preview_from_layout(session_name, &raw_layout, Some(layout_path))

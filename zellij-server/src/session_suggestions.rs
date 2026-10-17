@@ -898,8 +898,10 @@ fn to_suggestions(
 }
 
 fn live_session_layout(name: &str) -> Option<(Vec<SessionPreviewTab>, usize)> {
+    // The session-info cache is keyed by session id (== name for legacy sessions).
+    let id = zellij_utils::sessions::resolve_session_id(name).unwrap_or_else(|| name.to_owned());
     let raw =
-        std::fs::read_to_string(zellij_utils::consts::session_info_cache_file_name(name)).ok()?;
+        std::fs::read_to_string(zellij_utils::consts::session_info_cache_file_name(&id)).ok()?;
     let info = zellij_utils::data::SessionInfo::from_string(&raw, "").ok()?;
     Some(session_layout_from_info(&info))
 }

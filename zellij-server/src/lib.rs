@@ -3617,10 +3617,8 @@ pub fn start_server_impl(
 
     let mut last_attached_client_count = 0;
     let mut delete_session_on_exit = false;
-    let mut own_session_name = socket_path
-        .file_name()
-        .map(|name| name.to_string_lossy().to_string())
-        .unwrap_or_default();
+    // The socket filename is the session id, not the (renameable) display name.
+    let mut own_session_name = zellij_utils::sessions::display_name_for_session_id(&session_id);
     loop {
         let attached_client_count = session_state.read().unwrap().attached_client_count();
         if attached_client_count != last_attached_client_count {
