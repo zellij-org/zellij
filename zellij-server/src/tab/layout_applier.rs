@@ -46,6 +46,7 @@ pub struct LayoutApplier<'a> {
     styled_underlines: bool,
     osc8_hyperlinks: bool,
     explicitly_disable_kitty_keyboard_protocol: bool,
+    grapheme_clusters: bool,
     blocking_terminal: Option<(u32, NotificationEnd)>,
 }
 
@@ -108,8 +109,13 @@ impl<'a> LayoutApplier<'a> {
             styled_underlines,
             osc8_hyperlinks,
             explicitly_disable_kitty_keyboard_protocol,
+            grapheme_clusters: false,
             blocking_terminal,
         }
+    }
+    pub fn with_grapheme_clusters(mut self, grapheme_clusters: bool) -> Self {
+        self.grapheme_clusters = grapheme_clusters;
+        self
     }
     pub fn apply_layout(
         &mut self,
@@ -699,7 +705,8 @@ impl<'a> LayoutApplier<'a> {
             self.osc8_hyperlinks,
             self.explicitly_disable_kitty_keyboard_protocol,
             None,
-        );
+        )
+        .with_grapheme_clusters(self.grapheme_clusters);
         if let Some(pane_initial_contents) = &floating_pane_layout.pane_initial_contents {
             new_pane.handle_pty_bytes(pane_initial_contents.as_bytes().into());
             new_pane.handle_pty_bytes("\n\r".as_bytes().into());
@@ -778,7 +785,8 @@ impl<'a> LayoutApplier<'a> {
             self.osc8_hyperlinks,
             self.explicitly_disable_kitty_keyboard_protocol,
             notification_end,
-        );
+        )
+        .with_grapheme_clusters(self.grapheme_clusters);
         if let Some(pane_initial_contents) = &layout.pane_initial_contents {
             new_pane.handle_pty_bytes(pane_initial_contents.as_bytes().into());
             new_pane.handle_pty_bytes("\n\r".as_bytes().into());

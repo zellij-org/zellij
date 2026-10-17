@@ -116,5 +116,24 @@ themes {
             player_9 0
             player_10 0
         }
+        // terminal_colors: https://gist.github.com/sainnhe/6432f83181c4520ea87b5211fed27950 (everforest_dark_medium)
+        terminal_colors {
+            black 71 82 88
+            red 230 126 128
+            green 167 192 128
+            yellow 219 188 127
+            blue 127 187 179
+            magenta 214 153 182
+            cyan 131 192 146
+            white 211 198 170
+            bright_black 71 82 88
+            bright_red 230 126 128
+            bright_green 167 192 128
+            bright_yellow 219 188 127
+            bright_blue 127 187 179
+            bright_magenta 214 153 182
+            bright_cyan 131 192 146
+            bright_white 211 198 170
+        }
     }
 }

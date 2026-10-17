@@ -55,6 +55,17 @@ impl TooltipEntry {
         }
         ranges
     }
+
+    pub fn column_ranges(&self) -> Vec<(usize, usize, &TooltipKeyChunk)> {
+        let mut ranges = vec![];
+        let mut start = 0;
+        for chunk in &self.chunks {
+            let end = start + zellij_tile::graphemes::display_width(&chunk.text);
+            ranges.push((start, end, chunk));
+            start = end;
+        }
+        ranges
+    }
 }
 
 pub struct KeybindProcessor;

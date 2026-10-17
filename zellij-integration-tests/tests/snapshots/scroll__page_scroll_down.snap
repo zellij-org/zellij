@@ -1,8 +1,9 @@
 ---
 source: zellij-integration-tests/tests/scroll.rs
+assertion_line: 58
 expression: normalized(&grid_snapshot)
 ---
- Zellij (test)  Tab #1  +                                                                         [ SCROLL 0/19 ]
+ Zellij (test)  Tab #1  + 
 line20
 line21
 line22

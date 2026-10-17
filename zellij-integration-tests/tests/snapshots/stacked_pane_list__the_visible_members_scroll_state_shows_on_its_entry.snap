@@ -1,5 +1,6 @@
 ---
 source: zellij-integration-tests/tests/stacked_pane_list.rs
+assertion_line: 535
 expression: normalized(&grid_snapshot)
 ---
  Zellij (test)  Tab #1  + 

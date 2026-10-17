@@ -1,0 +1,45 @@
+size: 40x120
+cursor: row=4 col=22 visible shape=Default
+grid:
+|AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA                                                                                 |
+|BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB                                                                                  |
+|CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC                                                                                   |
+|The right column should be staggered                                                                                    |
+|by one.  Push <RETURN>EEEEEEEEEEEEE                                                                                     |
+|FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF                                                                                      |
+|GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG                                                                                       |
+|HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH                                                                                        |
+|IIIIIIIIIIIIIIIIIIIIIIIIIIIIIII                                                                                         |
+|JJJJJJJJJJJJJJJJJJJJJJJJJJJJJJ                                                                                          |
+|KKKKKKKKKKKKKKKKKKKKKKKKKKKKK                                                                                           |
+|LLLLLLLLLLLLLLLLLLLLLLLLLLLL                                                                                            |
+|MMMMMMMMMMMMMMMMMMMMMMMMMMM                                                                                             |
+|NNNNNNNNNNNNNNNNNNNNNNNNNN                                                                                              |
+|OOOOOOOOOOOOOOOOOOOOOOOOO                                                                                               |
+|PPPPPPPPPPPPPPPPPPPPPPPP                                                                                                |
+|QQQQQQQQQQQQQQQQQQQQQQQ                                                                                                 |
+|RRRRRRRRRRRRRRRRRRRRRR                                                                                                  |
+|SSSSSSSSSSSSSSSSSSSSS                                                                                                   |
+|TTTTTTTTTTTTTTTTTTTT                                                                                                    |
+|UUUUUUUUUUUUUUUUUUU                                                                                                     |
+|VVVVVVVVVVVVVVVVVV                                                                                                      |
+|WWWWWWWWWWWWWWWWW                                                                                                       |
+|XXXXXXXXXXXXXXXX                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+styles:
+images:

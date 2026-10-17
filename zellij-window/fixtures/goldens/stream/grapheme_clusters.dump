@@ -1,0 +1,80 @@
+size: 40x120
+cursor: row=22 col=0 visible shape=Default
+grid:
+|ascii       |Hello, world|                                                                                              |
+|cjk         |你 好 世 界 |                                                                                                  |
+|e+acute     |école|                                                                                                     |
+|stacked     |á̂̃̄̅|                                                                                                         |
+|warn+vs16   |⚠|                                                                                                         |
+|watch+vs15  |⌚︎ |                                                                                                        |
+|grin+vs15   |😀︎ |                                                                                                        |
+|keycap      |1⃣|                                                                                                         |
+|thumbs+tone |👍 🏽 |                                                                                                      |
+|lone tone   |🏽 |                                                                                                        |
+|flag DE     |🇩🇪|                                                                                                        |
+|three RI    |🇩🇪🇫|                                                                                                       |
+|family      |👨‍ 👩‍ 👧 |                                                                                                    |
+|rainbow     |🏳️‍🌈 |                                                                                                       |
+|england     |🏴󠁧󠁢󠁥󠁮󠁧󠁿 |                                                                                                        |
+|kssa        |क्ष|                                                                                                        |
+|kaa         |का|                                                                                                        |
+|thai        |ก้ำ|                                                                                                        |
+|jamo LVT    |각 |                                                                                                        |
+|halfwidth   |ｶﾞ|                                                                                                         |
+|soft hyphen |a­b|                                                                                                        |
+|a zwj b     |a‍b|                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+|                                                                                                                        |
+styles:
+row 1: cols 13-13 fg=Foreground bg=Background flags=WIDE_CHAR
+row 1: cols 14-14 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 1: cols 15-15 fg=Foreground bg=Background flags=WIDE_CHAR
+row 1: cols 16-16 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 1: cols 17-17 fg=Foreground bg=Background flags=WIDE_CHAR
+row 1: cols 18-18 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 1: cols 19-19 fg=Foreground bg=Background flags=WIDE_CHAR
+row 1: cols 20-20 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 5: cols 13-13 fg=Foreground bg=Background flags=WIDE_CHAR
+row 5: cols 14-14 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 6: cols 13-13 fg=Foreground bg=Background flags=WIDE_CHAR
+row 6: cols 14-14 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 8: cols 13-13 fg=Foreground bg=Background flags=WIDE_CHAR
+row 8: cols 14-14 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 8: cols 15-15 fg=Foreground bg=Background flags=WIDE_CHAR|GROUP_CONTINUE
+row 8: cols 16-16 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 9: cols 13-13 fg=Foreground bg=Background flags=WIDE_CHAR|GROUP_CONTINUE
+row 9: cols 14-14 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 10: cols 14-14 fg=Foreground bg=Background flags=GROUP_CONTINUE
+row 11: cols 14-14 fg=Foreground bg=Background flags=GROUP_CONTINUE
+row 12: cols 13-13 fg=Foreground bg=Background flags=WIDE_CHAR
+row 12: cols 14-14 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 12: cols 15-15 fg=Foreground bg=Background flags=WIDE_CHAR|GROUP_CONTINUE
+row 12: cols 16-16 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 12: cols 17-17 fg=Foreground bg=Background flags=WIDE_CHAR|GROUP_CONTINUE
+row 12: cols 18-18 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 13: cols 14-14 fg=Foreground bg=Background flags=WIDE_CHAR|GROUP_CONTINUE
+row 13: cols 15-15 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 14: cols 13-13 fg=Foreground bg=Background flags=WIDE_CHAR
+row 14: cols 14-14 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+row 15: cols 14-14 fg=Foreground bg=Background flags=GROUP_CONTINUE
+row 16: cols 14-14 fg=Foreground bg=Background flags=GROUP_CONTINUE
+row 17: cols 14-14 fg=Foreground bg=Background flags=GROUP_CONTINUE
+row 18: cols 13-13 fg=Foreground bg=Background flags=WIDE_CHAR
+row 18: cols 14-14 fg=Foreground bg=Background flags=WIDE_CHAR_SPACER
+images:

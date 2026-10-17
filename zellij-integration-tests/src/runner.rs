@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -14,6 +14,7 @@ use zellij_utils::pane_size::Size;
 use zellij_utils::setup::Setup;
 
 use crate::client_screen::{GridSnapshot, HostTerminal};
+use crate::deadline::{ProgressDeadline, SERIALIZATION_PROGRESS};
 use crate::fake_client_os_api::{FakeClientHandle, FakeClientOsApi};
 use crate::fake_pty::FakePtyHandle;
 use crate::fake_server_os_api::FakeServerOsApi;
@@ -367,6 +368,17 @@ fn new_pane_cli_action(
     }
 }
 
+fn serialization_progress(layout_path: &Path, session_dir: Option<&Path>) -> (u64, usize) {
+    let layout_bytes = std::fs::metadata(layout_path)
+        .map(|metadata| metadata.len())
+        .unwrap_or(0);
+    let files_on_disk = session_dir
+        .and_then(|dir| std::fs::read_dir(dir).ok())
+        .map(|entries| entries.flatten().count())
+        .unwrap_or(0);
+    (layout_bytes, files_on_disk)
+}
+
 fn referenced_contents_files(layout: &str) -> impl Iterator<Item = &str> {
     layout
         .match_indices("contents_file=\"")
@@ -383,12 +395,29 @@ fn spawn_client_thread(
     config_options: Options,
     client_info: ClientInfo,
 ) -> JoinHandle<Option<ConnectToSession>> {
+    spawn_client_thread_with_reconnect(
+        fake_client_os_api,
+        cli_args,
+        config,
+        config_options,
+        client_info,
+        false,
+    )
+}
+
+fn spawn_client_thread_with_reconnect(
+    fake_client_os_api: FakeClientOsApi,
+    cli_args: CliArgs,
+    config: zellij_utils::input::config::Config,
+    config_options: Options,
+    client_info: ClientInfo,
+    is_a_reconnect: bool,
+) -> JoinHandle<Option<ConnectToSession>> {
     std::thread::Builder::new()
         .name("in_process_zellij_client".to_string())
         .spawn(move || {
             let tab_position_to_focus = None;
             let pane_id_to_focus = None;
-            let is_a_reconnect = false;
             let start_detached_and_exit = false;
             zellij_client::start_client(
                 Box::new(fake_client_os_api),
@@ -462,6 +491,18 @@ impl TestClient {
 
     pub fn received_server_messages(&self) -> Vec<String> {
         self.fake_client_handle.received_server_messages()
+    }
+
+    pub fn received_window_settings(&self) -> Vec<zellij_utils::input::window::WindowSettings> {
+        self.fake_client_handle.received_window_settings()
+    }
+
+    pub fn send_action(&self, action: zellij_utils::input::actions::Action) {
+        self.fake_client_handle.send_action(action);
+    }
+
+    pub fn wait_for_client_to_exit(mut self) {
+        self.join();
     }
 
     pub fn quit(mut self) {
@@ -654,6 +695,29 @@ impl TestSession {
         self.main_client.received_server_messages()
     }
 
+    pub fn wait_for_window_settings(
+        &self,
+        what: &str,
+        predicate: impl Fn(&zellij_utils::input::window::WindowSettings) -> bool,
+    ) -> zellij_utils::input::window::WindowSettings {
+        let deadline = std::time::Instant::now() + crate::default_timeout();
+        loop {
+            if let Some(found) = self
+                .main_client
+                .received_window_settings()
+                .into_iter()
+                .rev()
+                .find(|settings| predicate(settings))
+            {
+                return found;
+            }
+            if std::time::Instant::now() >= deadline {
+                panic!("timed out waiting for window settings: {}", what);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    }
+
     pub fn wait_for_app_load(&self) -> GridSnapshot {
         self.main_client.wait_until("app to load", |grid_snapshot| {
             (grid_snapshot.status_bar_appears() || grid_snapshot.contains("Descend:"))
@@ -803,7 +867,8 @@ impl TestSession {
     pub fn wait_for_serialized_session(&self) {
         let layout_path = zellij_utils::consts::session_layout_cache_file_name(&self.session_name);
         let session_dir = layout_path.parent().map(|parent| parent.to_path_buf());
-        let deadline = std::time::Instant::now() + crate::default_timeout();
+        let mut deadline = ProgressDeadline::starting_now(SERIALIZATION_PROGRESS);
+        let mut written = serialization_progress(&layout_path, session_dir.as_deref());
         loop {
             if let Ok(layout) = std::fs::read_to_string(&layout_path) {
                 let referenced_contents_files_exist = session_dir.as_ref().map_or(true, |dir| {
@@ -813,13 +878,24 @@ impl TestSession {
                     return;
                 }
             }
-            if std::time::Instant::now() >= deadline {
+            let now = std::time::Instant::now();
+            if let Some(tripped) = deadline.tripped(now) {
                 panic!(
-                    "timed out waiting for session serialization at {}",
-                    layout_path.display()
+                    "timed out waiting for session serialization at {}\n{}",
+                    layout_path.display(),
+                    tripped
                 );
             }
-            std::thread::sleep(std::time::Duration::from_millis(10));
+            std::thread::sleep(
+                deadline
+                    .remaining(now)
+                    .min(std::time::Duration::from_millis(10)),
+            );
+            let written_now = serialization_progress(&layout_path, session_dir.as_deref());
+            if written_now != written {
+                written = written_now;
+                deadline.note_progress(std::time::Instant::now());
+            }
         }
     }
 
@@ -855,6 +931,54 @@ impl TestSession {
             fake_client_handle,
             thread: Some(client_thread),
         };
+    }
+
+    pub fn follow_switch(&mut self) -> ConnectToSession {
+        let connect_to_session = self
+            .main_client
+            .join()
+            .expect("the client exited without switching sessions");
+        let session_name = connect_to_session
+            .name
+            .clone()
+            .unwrap_or_else(test_env::unique_session_name);
+        assert!(
+            !zellij_utils::consts::ZELLIJ_SOCK_DIR
+                .join(&session_name)
+                .exists(),
+            "following a switch into the running session {} is not supported",
+            session_name
+        );
+        let mut config_options = self.config_options.clone();
+        connect_to_session.apply_to_options(&mut config_options);
+        let fake_server_os_api = FakeServerOsApi::default();
+        let server_thread: Arc<Mutex<Option<JoinHandle<()>>>> = Arc::new(Mutex::new(None));
+        let server_spawner = in_process_server_spawner(fake_server_os_api.clone(), &server_thread);
+        let (fake_client_os_api, fake_client_handle) =
+            FakeClientOsApi::new(self.size, Some(server_spawner));
+        let is_a_reconnect = true;
+        let client_thread = spawn_client_thread_with_reconnect(
+            fake_client_os_api,
+            self.cli_args.clone(),
+            self.config.clone(),
+            config_options.clone(),
+            ClientInfo::New(
+                session_name.clone(),
+                connect_to_session.layout.clone(),
+                connect_to_session.cwd.clone(),
+                None,
+            ),
+            is_a_reconnect,
+        );
+        self.session_name = session_name;
+        self.config_options = config_options;
+        self.fake_server_os_api = fake_server_os_api;
+        self.server_thread = server_thread;
+        self.main_client = TestClient {
+            fake_client_handle,
+            thread: Some(client_thread),
+        };
+        connect_to_session
     }
 
     pub fn override_layout(&self, layout_name: &str) {
@@ -907,6 +1031,10 @@ impl TestSession {
                 block_until_exit,
             )),
         }
+    }
+
+    pub fn wait_for_main_client_to_exit(&mut self) {
+        self.main_client.join();
     }
 
     pub fn detach_main_client(&mut self) {

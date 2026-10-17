@@ -257,7 +257,7 @@ impl NewLayoutFromCurrentSessionScreen {
     fn save_as_line_text(&self, width: usize) -> (String, usize) {
         // (text, cursor_position_in_line)
         let input_text = self.name_input.get_text();
-        let cursor_pos = self.name_input.get_cursor_position();
+        let cursor_pos = self.name_input.cursor_column();
 
         let display_name = if input_text.is_empty() && !self.editing_name {
             "RANDOM"
@@ -266,13 +266,13 @@ impl NewLayoutFromCurrentSessionScreen {
         };
         let mut text = format!("Save as: {} (<r> Rename)", display_name);
         let mut cursor_position_in_line = 9 + cursor_pos;
-        if text.chars().count() > width {
+        if zellij_tile::graphemes::display_width(&text) > width {
             let truncated_display_name = truncate_with_ellipsis_start(
                 display_name,
                 width.saturating_sub(22), // size of text without the display name
             );
             text = format!("Save as: {} (<r> Rename)", truncated_display_name);
-            let truncated_len = truncated_display_name.chars().count();
+            let truncated_len = zellij_tile::graphemes::display_width(&truncated_display_name);
             cursor_position_in_line = 9 + cursor_pos.min(truncated_len);
         }
         (text, cursor_position_in_line)

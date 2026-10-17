@@ -60,7 +60,8 @@ pub use super::generated_api::api::{
         GetSessionEnvironmentVariablesPayload as ProtobufGetSessionEnvironmentVariablesPayload,
         GetSessionEnvironmentVariablesResponse as ProtobufGetSessionEnvironmentVariablesResponse,
         GetSessionListPayload as ProtobufGetSessionListPayload,
-        GetSessionListResponse as ProtobufGetSessionListResponse, GetTabInfoPayload,
+        GetSessionListResponse as ProtobufGetSessionListResponse, GetSessionPreviewPayload,
+        GetSessionSuggestionsPayload, GetTabInfoPayload,
         GetTabInfoResponse as ProtobufGetTabInfoResponse, GoToTabWithIdPayload,
         GroupAndUngroupPanesPayload, HideFloatingPanesPayload as ProtobufHideFloatingPanesPayload,
         HideFloatingPanesResponse as ProtobufHideFloatingPanesResponse, HidePaneWithIdPayload,
@@ -120,9 +121,10 @@ pub use super::generated_api::api::{
         PaneIdAndFloatingPaneCoordinates, PaneType as ProtobufPaneType, ParseLayoutPayload,
         ParseLayoutResponse as ProtobufParseLayoutResponse,
         PluginAliasEntry as ProtobufPluginAliasEntry, PluginCommand as ProtobufPluginCommand,
-        PluginEntry as ProtobufPluginEntry, PluginMessagePayload, PromptPayload, ReadConfigPayload,
-        ReadConfigResponse as ProtobufReadConfigResponse, RebindKeysPayload, ReconfigurePayload,
-        RegexHighlight as ProtobufRegexHighlight, ReloadPluginPayload, RenameLayoutPayload,
+        PluginEntry as ProtobufPluginEntry, PluginMessagePayload, PopupToFloatingPanePayload,
+        PromptPayload, ReadConfigPayload, ReadConfigResponse as ProtobufReadConfigResponse,
+        RebindKeysPayload, ReconfigurePayload, RegexHighlight as ProtobufRegexHighlight,
+        ReloadPluginPayload, RenameLayoutPayload,
         RenameLayoutResponse as ProtobufRenameLayoutResponse, RenameTabWithIdPayload,
         RenameWebLoginTokenPayload, RenameWebTokenResponse, ReplacePaneWithExistingPanePayload,
         ReplyToPromptPayload, RequestPluginPermissionPayload, RerunCommandPanePayload,
@@ -1336,6 +1338,7 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                         pane_id,
                         layout: payload.layout.and_then(|l| l.try_into().ok()),
                         cwd: payload.cwd.map(|c| PathBuf::from(c)),
+                        session_card: payload.session_card,
                     }))
                 },
                 _ => Err("Mismatched payload for SwitchSession"),
@@ -2693,6 +2696,64 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 },
                 _ => Err("Mismatched payload for WriteThemeFile"),
             },
+            Some(CommandName::GetSessionSuggestions) => match protobuf_plugin_command.payload {
+                Some(Payload::GetSessionSuggestionsPayload(payload)) => {
+                    Ok(PluginCommand::GetSessionSuggestions {
+                        limit: payload.limit as usize,
+                    })
+                },
+                _ => Err("Mismatched payload for GetSessionSuggestions"),
+            },
+            Some(CommandName::SetPopupFocused) => match protobuf_plugin_command.payload {
+                Some(Payload::SetPopupFocusedPayload(focused)) => {
+                    Ok(PluginCommand::SetPopupFocused(focused))
+                },
+                _ => Err("Mismatched payload for SetPopupFocused"),
+            },
+            Some(CommandName::PopupToFloatingPane) => match protobuf_plugin_command.payload {
+                Some(Payload::PopupToFloatingPanePayload(payload)) => Ok(
+                    PluginCommand::PopupToFloatingPane(payload.coordinates.map(|c| c.into())),
+                ),
+                _ => Err("Mismatched payload for PopupToFloatingPane"),
+            },
+            Some(CommandName::SwitchSessionAndCloseCurrent) => {
+                match protobuf_plugin_command.payload {
+                    Some(Payload::SwitchSessionAndCloseCurrentPayload(payload)) => {
+                        let pane_id = match (payload.pane_id, payload.pane_id_is_plugin) {
+                            (Some(pane_id), Some(is_plugin)) => Some((pane_id, is_plugin)),
+                            (None, None) => None,
+                            _ => return Err("Malformed payload for SwitchSessionAndCloseCurrent"),
+                        };
+                        Ok(PluginCommand::SwitchSessionAndCloseCurrent(
+                            ConnectToSession {
+                                name: payload.name,
+                                tab_position: payload.tab_position.map(|p| p as usize),
+                                pane_id,
+                                layout: payload.layout.and_then(|l| l.try_into().ok()),
+                                cwd: payload.cwd.map(PathBuf::from),
+                                session_card: payload.session_card,
+                            },
+                        ))
+                    },
+                    _ => Err("Mismatched payload for SwitchSessionAndCloseCurrent"),
+                }
+            },
+            Some(CommandName::GetSessionPreview) => match protobuf_plugin_command.payload {
+                Some(Payload::GetSessionPreviewPayload(payload)) => {
+                    Ok(PluginCommand::GetSessionPreview {
+                        name: payload.name,
+                        tab_index: payload.tab_index.map(|t| t as usize),
+                        pane_id: payload.pane_id.map(|id| (id, payload.pane_is_plugin)),
+                    })
+                },
+                _ => Err("Mismatched payload for GetSessionPreview"),
+            },
+            Some(CommandName::GetSavedSessionPreview) => match protobuf_plugin_command.payload {
+                Some(Payload::GetSavedSessionPreviewPayload(name)) => {
+                    Ok(PluginCommand::GetSavedSessionPreview(name))
+                },
+                _ => Err("Mismatched payload for GetSavedSessionPreview"),
+            },
             Some(CommandName::DeleteThemeFile) => match protobuf_plugin_command.payload {
                 Some(Payload::DeleteThemeFilePayload(name)) => {
                     Ok(PluginCommand::DeleteThemeFile { name })
@@ -3526,6 +3587,7 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     pane_id_is_plugin: switch_to_session.pane_id.map(|p| p.1),
                     layout: switch_to_session.layout.and_then(|l| l.try_into().ok()),
                     cwd: switch_to_session.cwd.map(|c| c.display().to_string()),
+                    session_card: switch_to_session.session_card,
                 })),
             }),
             PluginCommand::OpenTerminalInPlace(cwd) => Ok(ProtobufPluginCommand {
@@ -4724,6 +4786,61 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     colours,
                 })),
             }),
+            PluginCommand::GetSessionSuggestions { limit } => Ok(ProtobufPluginCommand {
+                name: CommandName::GetSessionSuggestions as i32,
+                payload: Some(Payload::GetSessionSuggestionsPayload(
+                    GetSessionSuggestionsPayload {
+                        limit: limit as u32,
+                    },
+                )),
+            }),
+            PluginCommand::SetPopupFocused(focused) => Ok(ProtobufPluginCommand {
+                name: CommandName::SetPopupFocused as i32,
+                payload: Some(Payload::SetPopupFocusedPayload(focused)),
+            }),
+            PluginCommand::PopupToFloatingPane(coordinates) => Ok(ProtobufPluginCommand {
+                name: CommandName::PopupToFloatingPane as i32,
+                payload: Some(Payload::PopupToFloatingPanePayload(
+                    PopupToFloatingPanePayload {
+                        coordinates: coordinates.map(|c| c.into()),
+                    },
+                )),
+            }),
+            PluginCommand::SwitchSessionAndCloseCurrent(switch_to_session) => {
+                Ok(ProtobufPluginCommand {
+                    name: CommandName::SwitchSessionAndCloseCurrent as i32,
+                    payload: Some(Payload::SwitchSessionAndCloseCurrentPayload(
+                        SwitchSessionPayload {
+                            name: switch_to_session.name,
+                            tab_position: switch_to_session.tab_position.map(|t| t as u32),
+                            pane_id: switch_to_session.pane_id.map(|p| p.0),
+                            pane_id_is_plugin: switch_to_session.pane_id.map(|p| p.1),
+                            layout: switch_to_session.layout.and_then(|l| l.try_into().ok()),
+                            cwd: switch_to_session.cwd.map(|c| c.display().to_string()),
+                            session_card: switch_to_session.session_card,
+                        },
+                    )),
+                })
+            },
+            PluginCommand::GetSessionPreview {
+                name,
+                tab_index,
+                pane_id,
+            } => Ok(ProtobufPluginCommand {
+                name: CommandName::GetSessionPreview as i32,
+                payload: Some(Payload::GetSessionPreviewPayload(
+                    GetSessionPreviewPayload {
+                        name,
+                        tab_index: tab_index.map(|t| t as u32),
+                        pane_id: pane_id.map(|(id, _)| id),
+                        pane_is_plugin: pane_id.map(|(_, is_plugin)| is_plugin).unwrap_or(false),
+                    },
+                )),
+            }),
+            PluginCommand::GetSavedSessionPreview(name) => Ok(ProtobufPluginCommand {
+                name: CommandName::GetSavedSessionPreview as i32,
+                payload: Some(Payload::GetSavedSessionPreviewPayload(name)),
+            }),
             PluginCommand::DeleteThemeFile { name } => Ok(ProtobufPluginCommand {
                 name: CommandName::DeleteThemeFile as i32,
                 payload: Some(Payload::DeleteThemeFilePayload(name)),
@@ -5730,6 +5847,35 @@ mod tests {
     use crate::data::PluginCommand;
 
     #[test]
+    fn a_config_snapshot_keeps_its_fonts_and_window_settings_through_protobuf() {
+        use crate::data::{ConfigSettingState, ConfigSnapshot, SettingKey};
+        use prost::Message;
+        let original = ConfigSnapshot {
+            settings: vec![
+                ConfigSettingState {
+                    key: SettingKey::WindowOpacity,
+                    saved_value: Some("1".to_owned()),
+                    current_value: Some("0.9".to_owned()),
+                    set_in_file: true,
+                },
+                ConfigSettingState {
+                    key: SettingKey::WindowColorRed,
+                    saved_value: None,
+                    current_value: Some("#ff0000".to_owned()),
+                    set_in_file: false,
+                },
+            ],
+            pending_restart_settings: vec![SettingKey::WindowStartupMode],
+            font_families: vec!["Iosevka Term".to_owned(), "JetBrains Mono".to_owned()],
+            ..Default::default()
+        };
+        let protobuf: ProtobufReadConfigResponse = original.clone().into();
+        let decoded = ProtobufReadConfigResponse::decode(protobuf.encode_to_vec().as_slice())
+            .expect("decode bytes");
+        assert_eq!(ConfigSnapshot::from(decoded), original);
+    }
+
+    #[test]
     fn set_pane_border_style_protobuf_round_trip() {
         use crate::data::{BorderStyleOverride, LineStyle, PaneId};
         let border_style = BorderStyleOverride {
@@ -5924,6 +6070,51 @@ mod tests {
                 assert_eq!(decoded_result, result);
             },
             other => panic!("expected ReplyToPrompt, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn session_card_commands_protobuf_round_trip() {
+        use crate::data::{ConnectToSession, LayoutInfo};
+        use prost::Message;
+        for (tab_index, pane_id) in [
+            (Some(2), Some((7, true))),
+            (None, None),
+            (Some(0), Some((3, false))),
+        ] {
+            let original = PluginCommand::GetSessionPreview {
+                name: "api".to_owned(),
+                tab_index,
+                pane_id,
+            };
+            let protobuf: ProtobufPluginCommand = original.try_into().expect("encode");
+            let decoded_bytes = ProtobufPluginCommand::decode(protobuf.encode_to_vec().as_slice())
+                .expect("decode bytes");
+            match PluginCommand::try_from(decoded_bytes).expect("decode") {
+                PluginCommand::GetSessionPreview {
+                    name,
+                    tab_index: decoded_tab,
+                    pane_id: decoded_pane,
+                } => {
+                    assert_eq!(name, "api");
+                    assert_eq!(decoded_tab, tab_index);
+                    assert_eq!(decoded_pane, pane_id);
+                },
+                other => panic!("expected GetSessionPreview, got {:?}", other),
+            }
+        }
+        let connect = ConnectToSession {
+            name: Some("new".to_owned()),
+            layout: Some(LayoutInfo::BuiltIn("default".to_owned())),
+            session_card: Some(false),
+            ..Default::default()
+        };
+        let protobuf: ProtobufPluginCommand = PluginCommand::SwitchSession(connect.clone())
+            .try_into()
+            .expect("encode");
+        match PluginCommand::try_from(protobuf).expect("decode") {
+            PluginCommand::SwitchSession(decoded) => assert_eq!(decoded, connect),
+            other => panic!("expected SwitchSession, got {:?}", other),
         }
     }
 
@@ -6135,6 +6326,7 @@ impl From<ConfigSnapshot> for ProtobufReadConfigResponse {
             default_blocks: Some(snapshot.default_blocks.into()),
             keybindings: snapshot.keybindings.into_iter().map(Into::into).collect(),
             mousebindings: snapshot.mousebindings.into_iter().map(Into::into).collect(),
+            font_families: snapshot.font_families,
         }
     }
 }
@@ -6528,6 +6720,7 @@ impl From<ProtobufReadConfigResponse> for ConfigSnapshot {
                 .into_iter()
                 .filter_map(mousebinding_entry_from_protobuf)
                 .collect(),
+            font_families: response.font_families,
         }
     }
 }

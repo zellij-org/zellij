@@ -9,24 +9,26 @@ use crate::{
         ClientToServerMsg as ProtoClientToServerMsg, ColorRegistersMsg, ConfigFileUpdatedMsg,
         ConnStatusMsg, ConnectedMsg, DesktopNotificationResponseMsg, DetachSessionMsg,
         EmitNestedSessionFrameMsg, ExitMsg, ExitReason as ProtoExitReason,
-        FailedToStartWebServerMsg, FirstClientConnectedMsg, ForegroundColorMsg,
+        FailedToStartWebServerMsg, FirstClientConnectedMsg, FontFamiliesMsg, ForegroundColorMsg,
         ForwardQueryToHostMsg, ForwardedReplyFromHostMsg, HostTerminalFocusChangedMsg,
         HostTerminalThemeChangedMsg,
-        HostTerminalThemeIndication as ProtoHostTerminalThemeIndication,
+        HostTerminalThemeIndication as ProtoHostTerminalThemeIndication, HostThemeModeMsg,
         InputMode as ProtoInputMode, KeyMsg, KillSessionMsg, KittyGraphicsSupportMsg,
         KittyZlibSupportMsg, LayoutMetadata as ProtoLayoutMetadata, LogErrorMsg, LogMsg,
         MobileActivePaneMsg, MobilePaneMsg, MobileRenderPrefsMsg, MobileSessionMsg, MobileSizeMsg,
         MobileStateMsg, MobileTabMsg, NestedSessionFrameFromHostMsg,
         PaneMetadata as ProtoPaneMetadata, PaneRenderUpdateMsg, QueryTerminalSizeMsg,
-        RenamedSessionMsg, RenderMsg, RequestSessionListMsg,
-        ServerToClientMsg as ProtoServerToClientMsg, SetMobileRenderPreferencesMsg,
-        SetSoftKeyboardMsg, SixelSupportMsg, SoftKeyboardVisibilityChangedMsg, StartWebServerMsg,
+        RenamedSessionMsg, RenderFrameAckMsg, RenderFrameMsg, RenderMsg, RequestSessionListMsg,
+        RequestSessionPreviewMsg, ServerToClientMsg as ProtoServerToClientMsg,
+        SetMobileRenderPreferencesMsg, SetSoftKeyboardMsg, SixelSupportMsg,
+        SoftKeyboardVisibilityChangedMsg, StartWebServerMsg, StructuredRenderSupportMsg,
         SubscribeToPaneRendersMsg, SubscribedPaneClosedMsg, SwitchSessionMsg,
         TabMetadata as ProtoTabMetadata, TerminalPixelDimensionsMsg, TerminalResizeMsg,
-        UnblockCliPipeInputMsg, UnblockInputThreadMsg, WebServerStartedMsg,
+        UnblockCliPipeInputMsg, UnblockInputThreadMsg, WebServerStartedMsg, WindowSettingsMsg,
     },
     data::{HostTerminalThemeMode, InputMode, PaneId},
     errors::prelude::*,
+    input::window::WindowSettings,
     ipc::{
         ClientToServerMsg, ColorRegister, ExitReason, MobileActivePanePayload, MobilePanePayload,
         MobileRenderPrefsPayload, MobileSessionPayload, MobileSizePayload, MobileStatePayload,
@@ -166,11 +168,13 @@ impl From<ClientToServerMsg> for ProtoClientToServerMsg {
                     NestedSessionFrameFromHostMsg { payload_bytes },
                 )
             },
-            ClientToServerMsg::KittyGraphicsSupport { supported } => {
-                client_to_server_msg::Message::KittyGraphicsSupport(KittyGraphicsSupportMsg {
-                    supported,
-                })
-            },
+            ClientToServerMsg::KittyGraphicsSupport {
+                supported,
+                local_media,
+            } => client_to_server_msg::Message::KittyGraphicsSupport(KittyGraphicsSupportMsg {
+                supported,
+                local_media,
+            }),
             ClientToServerMsg::KittyZlibSupport { supported } => {
                 client_to_server_msg::Message::KittyZlibSupport(KittyZlibSupportMsg { supported })
             },
@@ -179,6 +183,13 @@ impl From<ClientToServerMsg> for ProtoClientToServerMsg {
             },
             ClientToServerMsg::RequestSessionList => {
                 client_to_server_msg::Message::RequestSessionList(RequestSessionListMsg {})
+            },
+            ClientToServerMsg::RequestSessionPreview { tab_index, pane_id } => {
+                client_to_server_msg::Message::RequestSessionPreview(RequestSessionPreviewMsg {
+                    tab_index,
+                    pane_id: pane_id.map(|(id, _)| id),
+                    pane_is_plugin: pane_id.map(|(_, is_plugin)| is_plugin).unwrap_or(false),
+                })
             },
             ClientToServerMsg::SetMobileRenderPreferences { single_pane, fit } => {
                 client_to_server_msg::Message::SetMobileRenderPreferences(
@@ -189,6 +200,17 @@ impl From<ClientToServerMsg> for ProtoClientToServerMsg {
                 client_to_server_msg::Message::HostTerminalFocusChanged(
                     HostTerminalFocusChangedMsg { focused },
                 )
+            },
+            ClientToServerMsg::StructuredRenderSupport { supported } => {
+                client_to_server_msg::Message::StructuredRenderSupport(StructuredRenderSupportMsg {
+                    supported,
+                })
+            },
+            ClientToServerMsg::RenderFrameAck { seq } => {
+                client_to_server_msg::Message::RenderFrameAck(RenderFrameAckMsg { seq })
+            },
+            ClientToServerMsg::FontFamilies { families } => {
+                client_to_server_msg::Message::FontFamilies(FontFamiliesMsg { families })
             },
         };
 
@@ -349,6 +371,7 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
             Some(client_to_server_msg::Message::KittyGraphicsSupport(msg)) => {
                 Ok(ClientToServerMsg::KittyGraphicsSupport {
                     supported: msg.supported,
+                    local_media: msg.local_media,
                 })
             },
             Some(client_to_server_msg::Message::KittyZlibSupport(msg)) => {
@@ -364,6 +387,12 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
             Some(client_to_server_msg::Message::RequestSessionList(_)) => {
                 Ok(ClientToServerMsg::RequestSessionList)
             },
+            Some(client_to_server_msg::Message::RequestSessionPreview(msg)) => {
+                Ok(ClientToServerMsg::RequestSessionPreview {
+                    tab_index: msg.tab_index,
+                    pane_id: msg.pane_id.map(|id| (id, msg.pane_is_plugin)),
+                })
+            },
             Some(client_to_server_msg::Message::SetMobileRenderPreferences(msg)) => {
                 Ok(ClientToServerMsg::SetMobileRenderPreferences {
                     single_pane: msg.single_pane,
@@ -373,6 +402,19 @@ impl TryFrom<ProtoClientToServerMsg> for ClientToServerMsg {
             Some(client_to_server_msg::Message::HostTerminalFocusChanged(msg)) => {
                 Ok(ClientToServerMsg::HostTerminalFocusChanged {
                     focused: msg.focused,
+                })
+            },
+            Some(client_to_server_msg::Message::StructuredRenderSupport(msg)) => {
+                Ok(ClientToServerMsg::StructuredRenderSupport {
+                    supported: msg.supported,
+                })
+            },
+            Some(client_to_server_msg::Message::RenderFrameAck(msg)) => {
+                Ok(ClientToServerMsg::RenderFrameAck { seq: msg.seq })
+            },
+            Some(client_to_server_msg::Message::FontFamilies(msg)) => {
+                Ok(ClientToServerMsg::FontFamilies {
+                    families: msg.families,
                 })
             },
             None => Err(anyhow!("Empty ClientToServerMsg message")),
@@ -386,6 +428,9 @@ impl From<ServerToClientMsg> for ProtoServerToClientMsg {
         let message = match msg {
             ServerToClientMsg::Render { content } => {
                 server_to_client_msg::Message::Render(RenderMsg { content })
+            },
+            ServerToClientMsg::RenderFrame { frame } => {
+                server_to_client_msg::Message::RenderFrame(RenderFrameMsg { frame })
             },
             ServerToClientMsg::UnblockInputThread => {
                 server_to_client_msg::Message::UnblockInputThread(UnblockInputThreadMsg {})
@@ -438,6 +483,17 @@ impl From<ServerToClientMsg> for ProtoServerToClientMsg {
             },
             ServerToClientMsg::ConfigFileUpdated => {
                 server_to_client_msg::Message::ConfigFileUpdated(ConfigFileUpdatedMsg {})
+            },
+            ServerToClientMsg::WindowSettingsChanged { settings } => {
+                server_to_client_msg::Message::WindowSettings(WindowSettingsMsg {
+                    settings_json: settings.to_json().unwrap_or_default(),
+                })
+            },
+            ServerToClientMsg::HostTerminalThemeChanged { mode } => {
+                let proto_mode: ProtoHostTerminalThemeIndication = mode.into();
+                server_to_client_msg::Message::HostThemeMode(HostThemeModeMsg {
+                    mode: proto_mode as i32,
+                })
             },
             ServerToClientMsg::PaneRenderUpdate {
                 pane_id,
@@ -612,6 +668,9 @@ impl TryFrom<ProtoServerToClientMsg> for ServerToClientMsg {
             Some(server_to_client_msg::Message::Render(render)) => Ok(ServerToClientMsg::Render {
                 content: render.content,
             }),
+            Some(server_to_client_msg::Message::RenderFrame(msg)) => {
+                Ok(ServerToClientMsg::RenderFrame { frame: msg.frame })
+            },
             Some(server_to_client_msg::Message::UnblockInputThread(_)) => {
                 Ok(ServerToClientMsg::UnblockInputThread)
             },
@@ -676,8 +735,23 @@ impl TryFrom<ProtoServerToClientMsg> for ServerToClientMsg {
             Some(server_to_client_msg::Message::RenamedSession(renamed)) => {
                 Ok(ServerToClientMsg::RenamedSession { name: renamed.name })
             },
+            Some(server_to_client_msg::Message::HostThemeMode(msg)) => {
+                let proto_mode = ProtoHostTerminalThemeIndication::try_from(msg.mode)
+                    .ok()
+                    .ok_or_else(|| anyhow!("Unknown HostTerminalThemeIndication: {}", msg.mode))?;
+                Ok(ServerToClientMsg::HostTerminalThemeChanged {
+                    mode: proto_mode.into(),
+                })
+            },
             Some(server_to_client_msg::Message::ConfigFileUpdated(_)) => {
                 Ok(ServerToClientMsg::ConfigFileUpdated)
+            },
+            Some(server_to_client_msg::Message::WindowSettings(msg)) => {
+                let settings = WindowSettings::from_json(&msg.settings_json)
+                    .map_err(|e| anyhow!("Unreadable window settings: {}", e))?;
+                Ok(ServerToClientMsg::WindowSettingsChanged {
+                    settings: Box::new(settings),
+                })
             },
             Some(server_to_client_msg::Message::PaneRenderUpdate(msg)) => {
                 let pane_id: PaneId = msg
@@ -971,6 +1045,7 @@ impl From<crate::input::options::Options>
             disable_session_metadata: options.disable_session_metadata,
             support_kitty_keyboard_protocol: options.support_kitty_keyboard_protocol,
             support_kitty_graphics_protocol: options.support_kitty_graphics_protocol,
+            grapheme_clusters: options.grapheme_clusters,
             web_server: options.web_server,
             web_sharing: options.web_sharing.map(|w| match w {
                 crate::data::WebSharing::On => ProtoWebSharing::On as i32,
@@ -980,6 +1055,10 @@ impl From<crate::input::options::Options>
             stacked_resize: options.stacked_resize,
             stacked_pane_list: options.stacked_pane_list,
             dangerously_enable_paste_buffer_read: options.dangerously_enable_paste_buffer_read,
+            session_card: options.session_card,
+            session_indicator: options.session_indicator,
+            swap_layout_notification: options.swap_layout_notification,
+            on_quit: options.on_quit.map(|on_quit| on_quit.as_str().to_owned()),
             show_startup_tips: options.show_startup_tips,
             show_release_notes: options.show_release_notes,
             advanced_mouse_actions: options.advanced_mouse_actions,
@@ -1113,6 +1192,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
             disable_session_metadata: options.disable_session_metadata,
             support_kitty_keyboard_protocol: options.support_kitty_keyboard_protocol,
             support_kitty_graphics_protocol: options.support_kitty_graphics_protocol,
+            grapheme_clusters: options.grapheme_clusters,
             web_server: options.web_server,
             web_sharing: options
                 .web_sharing
@@ -1126,6 +1206,17 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
             stacked_resize: options.stacked_resize,
             stacked_pane_list: options.stacked_pane_list,
             dangerously_enable_paste_buffer_read: options.dangerously_enable_paste_buffer_read,
+            session_card: options.session_card,
+            session_indicator: options.session_indicator,
+            swap_layout_notification: options.swap_layout_notification,
+            on_quit: options
+                .on_quit
+                .map(|on_quit| {
+                    on_quit
+                        .parse::<crate::input::options::OnQuit>()
+                        .map_err(|e| anyhow!(e))
+                })
+                .transpose()?,
             show_startup_tips: options.show_startup_tips,
             show_release_notes: options.show_release_notes,
             advanced_mouse_actions: options.advanced_mouse_actions,
@@ -1353,6 +1444,7 @@ impl From<crate::input::actions::Action>
             TogglePaneInGroupByPaneIdAction,
             TogglePanePinnedAction,
             TogglePanePinnedByPaneIdAction,
+            ToggleSessionCardAction,
             ToggleTabAction,
             ToggleThemeAction,
             UndoRenamePaneAction,
@@ -1779,6 +1871,9 @@ impl From<crate::input::actions::Action>
             crate::input::actions::Action::DismissInfoPopups => {
                 ActionType::DismissInfoPopups(DismissInfoPopupsAction {})
             },
+            crate::input::actions::Action::ToggleSessionCard => {
+                ActionType::ToggleSessionCard(ToggleSessionCardAction {})
+            },
             crate::input::actions::Action::OpenContextMenu => {
                 ActionType::OpenContextMenu(OpenContextMenuAction {})
             },
@@ -1788,7 +1883,9 @@ impl From<crate::input::actions::Action>
                 pane_id,
                 layout,
                 cwd,
+                close_current,
             } => ActionType::SwitchSession(SwitchSessionAction {
+                close_current,
                 name: name.clone(),
                 tab_position: tab_position.map(|p| p as u32),
                 pane_id: pane_id.map(|(id, is_plugin)| PaneIdWithPlugin {
@@ -2747,6 +2844,9 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                 Ok(crate::input::actions::Action::DismissInfoPopups)
             },
             ActionType::OpenContextMenu(_) => Ok(crate::input::actions::Action::OpenContextMenu),
+            ActionType::ToggleSessionCard(_) => {
+                Ok(crate::input::actions::Action::ToggleSessionCard)
+            },
             ActionType::SwitchSession(switch_session_action) => {
                 Ok(crate::input::actions::Action::SwitchSession {
                     name: switch_session_action.name.clone(),
@@ -2760,6 +2860,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                         .map(|l| l.try_into())
                         .transpose()?,
                     cwd: switch_session_action.cwd.map(PathBuf::from),
+                    close_current: switch_session_action.close_current,
                 })
             },
             ActionType::LaunchOrFocusPlugin(launch_plugin_action) => {
@@ -3463,6 +3564,7 @@ impl From<crate::data::ConnectToSession>
             }),
             layout: connect.layout.map(|l| l.into()),
             cwd: connect.cwd.map(|p| p.to_string_lossy().to_string()),
+            session_card: connect.session_card,
         }
     }
 }
@@ -3480,6 +3582,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::ConnectToSes
             pane_id: connect.pane_id.map(|p| (p.pane_id, p.is_plugin)),
             layout: connect.layout.map(|l| l.try_into()).transpose()?,
             cwd: connect.cwd.map(PathBuf::from),
+            session_card: connect.session_card,
         })
     }
 }
@@ -4283,6 +4386,7 @@ impl From<crate::input::mouse::MouseEvent>
             wheel_down: event.wheel_down,
             wheel_left: event.wheel_left,
             wheel_right: event.wheel_right,
+            wheel_lines: u32::from(event.wheel_lines),
             shift: event.shift,
             alt: event.alt,
             ctrl: event.ctrl,
@@ -4875,6 +4979,7 @@ impl TryFrom<crate::client_server_contract::client_server_contract::MouseEvent>
             wheel_down: event.wheel_down,
             wheel_left: event.wheel_left,
             wheel_right: event.wheel_right,
+            wheel_lines: u16::try_from(event.wheel_lines).unwrap_or(u16::MAX),
             shift: event.shift,
             alt: event.alt,
             ctrl: event.ctrl,

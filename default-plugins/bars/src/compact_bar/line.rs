@@ -1,14 +1,18 @@
 use ansi_term::ANSIStrings;
-use unicode_width::UnicodeWidthStr;
 
 use crate::compact_bar::{LinePart, TabRenderData, ARROW_SEPARATOR};
+use crate::session_indicator::{IndicatorText, SessionIndicator};
+use zellij_tile::graphemes::display_width;
 use zellij_tile::prelude::*;
 use zellij_tile_utils::style;
+
+pub(crate) const PREFIX_TEXT: &str = " Zellij ";
 
 pub struct TabLineOutput {
     pub parts: Vec<LinePart>,
     pub breadcrumb_range: Option<(usize, usize)>,
     pub mode_range: Option<(usize, usize)>,
+    pub session_indicator_range: Option<(usize, usize)>,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -23,6 +27,7 @@ pub fn tab_line(
     toggle_tooltip_key: Option<String>,
     tooltip_is_active: bool,
     hover: CompactHover,
+    session_indicator: &SessionIndicator,
 ) -> TabLineOutput {
     let dimmed = mode_info.session_ascended == Some(true) || mode_info.session_dimmed == Some(true);
     let breadcrumb_ancestry = if mode_info.host_fullscreen == Some(true) {
@@ -35,8 +40,7 @@ pub fn tab_line(
         session_name: mode_info.session_name.to_owned(),
         hide_session_name: mode_info.style.hide_session_name,
         mode: mode_info.mode,
-        active_swap_layout_name: tab_data.active_swap_layout_name,
-        is_swap_layout_dirty: tab_data.is_swap_layout_dirty,
+        session_indicator: session_indicator.clone(),
         toggle_tooltip_key,
         tooltip_is_active,
         dimmed,
@@ -77,8 +81,7 @@ pub struct TabLineConfig {
     pub session_name: Option<String>,
     pub hide_session_name: bool,
     pub mode: InputMode,
-    pub active_swap_layout_name: Option<String>,
-    pub is_swap_layout_dirty: bool,
+    pub session_indicator: SessionIndicator,
     pub toggle_tooltip_key: Option<String>,
     pub tooltip_is_active: bool,
     pub dimmed: bool,
@@ -271,7 +274,7 @@ impl TabLinePopulator {
 
     fn create_styled_indicator(&self, text: String, tab_index: usize) -> LinePart {
         let separator = tab_separator(self.capabilities);
-        let text_len = text.width() + 2 * separator.width();
+        let text_len = display_width(&text) + 2 * display_width(separator);
 
         let colors = IndicatorColors {
             text: self.palette.ribbon_unselected.base,
@@ -395,6 +398,14 @@ impl<'a> TabLinePrefixBuilder<'a> {
         }
     }
 
+    fn build_minimal(&self) -> TabLinePrefix {
+        TabLinePrefix {
+            parts: vec![self.create_zellij_part()],
+            breadcrumb_range: None,
+            mode_range: None,
+        }
+    }
+
     fn create_breadcrumb_parts(
         &self,
         name: &str,
@@ -403,11 +414,11 @@ impl<'a> TabLinePrefixBuilder<'a> {
         let bg_color = self.palette.text_unselected.background;
         let text_color = self.palette.text_unselected.base;
         let ancestor_text = format!("({} ▸ ", self.breadcrumb_ancestry.join(" ▸ "));
-        let ancestor_len = ancestor_text.width();
+        let ancestor_len = display_width(&ancestor_text);
         let name_text = name.to_string();
-        let name_len = name_text.width();
+        let name_len = display_width(&name_text);
         let closing_text = ") ".to_string();
-        let closing_len = closing_text.width();
+        let closing_len = display_width(&closing_text);
         let total_len = ancestor_len + name_len + closing_len;
 
         if self.cols.saturating_sub(used_len) < total_len {
@@ -460,7 +471,7 @@ impl<'a> TabLinePrefixBuilder<'a> {
     }
 
     fn create_zellij_part(&self) -> LinePart {
-        let prefix_text = " Zellij ";
+        let prefix_text = PREFIX_TEXT;
         let colors = self.get_text_colors();
         let text_style = if self.dimmed {
             style!(colors.text, colors.background).italic()
@@ -470,14 +481,14 @@ impl<'a> TabLinePrefixBuilder<'a> {
 
         LinePart {
             part: text_style.paint(prefix_text).to_string(),
-            len: prefix_text.chars().count(),
+            len: display_width(prefix_text),
             tab_index: None,
         }
     }
 
     fn create_session_name_part(&self, name: &str, used_len: usize) -> Option<LinePart> {
         let name_part = format!("({})", name);
-        let name_part_len = name_part.width();
+        let name_part_len = display_width(&name_part);
 
         if self.cols.saturating_sub(used_len) >= name_part_len {
             let colors = self.get_text_colors();
@@ -498,7 +509,7 @@ impl<'a> TabLinePrefixBuilder<'a> {
 
     fn create_mode_part(&self, mode: InputMode, used_len: usize) -> Option<LinePart> {
         let mode_text = format!(" {} ", format!("{:?}", mode).to_uppercase());
-        let mode_len = mode_text.width();
+        let mode_len = display_width(&mode_text);
 
         if self.cols.saturating_sub(used_len) >= mode_len {
             let colors = self.get_text_colors();
@@ -538,25 +549,24 @@ impl<'a> TabLinePrefixBuilder<'a> {
 
 struct RightSideElementsBuilder {
     palette: Styling,
-    capabilities: PluginCapabilities,
     dimmed: bool,
 }
 
 impl RightSideElementsBuilder {
-    fn new(palette: Styling, capabilities: PluginCapabilities, dimmed: bool) -> Self {
-        Self {
-            palette,
-            capabilities,
-            dimmed,
-        }
+    fn new(palette: Styling, dimmed: bool) -> Self {
+        Self { palette, dimmed }
     }
 
-    fn build(&self, config: &TabLineConfig, available_space: usize) -> Vec<LinePart> {
+    fn build(
+        &self,
+        config: &TabLineConfig,
+        available_space: usize,
+    ) -> (Vec<LinePart>, Option<IndicatorText>) {
         if config.nested_hint.is_active() {
             if let Some(hint) = self.create_nested_hint(&config.nested_hint, available_space) {
-                return vec![hint];
+                return (vec![hint], None);
             }
-            return Vec::new();
+            return (Vec::new(), None);
         }
 
         let mut elements = Vec::new();
@@ -565,11 +575,21 @@ impl RightSideElementsBuilder {
             elements.push(self.create_tooltip_indicator(tooltip_key, config.tooltip_is_active));
         }
 
-        if let Some(swap_status) = self.create_swap_layout_status(config, available_space) {
-            elements.push(swap_status);
+        let used = calculate_total_length(&elements);
+        let mut indicator_text = None;
+        if let Some(text) = config
+            .session_indicator
+            .fitting_variant(available_space.saturating_sub(used))
+        {
+            elements.push(LinePart {
+                part: String::new(),
+                len: SessionIndicator::width_of(&text),
+                tab_index: None,
+            });
+            indicator_text = Some(text);
         }
 
-        elements
+        (elements, indicator_text)
     }
 
     fn create_nested_hint(&self, hint: &NestedSessionHint, max_len: usize) -> Option<LinePart> {
@@ -588,8 +608,8 @@ impl RightSideElementsBuilder {
             keys.iter().map(|key| format!("<{}>", key)).collect()
         };
 
-        let prefix_len = prefix.width() + 1;
-        let keys_display_len: usize = keys_text.iter().map(|k| k.width()).sum::<usize>()
+        let prefix_len = display_width(prefix) + 1;
+        let keys_display_len: usize = keys_text.iter().map(|k| display_width(k)).sum::<usize>()
             + keys_text.len().saturating_sub(1) * 3;
 
         if !keys_text.is_empty() && prefix_len + keys_display_len <= max_len {
@@ -617,7 +637,7 @@ impl RightSideElementsBuilder {
             NestedSessionHint::Descend(_) => " host session",
             NestedSessionHint::None => return None,
         };
-        let message_len = message.width();
+        let message_len = display_width(message);
         if message_len <= max_len {
             let style = dim_style(bg).italic();
             return Some(LinePart {
@@ -648,108 +668,10 @@ impl RightSideElementsBuilder {
 
         LinePart {
             part: format!("{} {}", serialize_text(&key), serialize_ribbon(&ribbon)),
-            len: key_text.chars().count() + ribbon_text.chars().count() + 6,
+            len: display_width(key_text) + display_width(ribbon_text) + 6,
             tab_index: None,
         }
     }
-
-    fn create_swap_layout_status(
-        &self,
-        config: &TabLineConfig,
-        max_len: usize,
-    ) -> Option<LinePart> {
-        let swap_layout_name = config.active_swap_layout_name.as_ref()?;
-
-        let mut layout_name = format!(" {} ", swap_layout_name);
-        layout_name.make_ascii_uppercase();
-        let layout_name_len = layout_name.len() + 3;
-
-        let colors = SwapLayoutColors {
-            bg: self.palette.text_unselected.background,
-            fg: self.palette.ribbon_unselected.background,
-            green: self.palette.ribbon_selected.background,
-        };
-
-        let separator = tab_separator(self.capabilities);
-        let styled_parts = self.create_swap_layout_styled_parts(
-            &layout_name,
-            config.mode,
-            config.is_swap_layout_dirty,
-            &colors,
-            separator,
-        );
-
-        let indicator = format!("{}{}{}", styled_parts.0, styled_parts.1, styled_parts.2);
-        let (part, full_len) = (indicator.clone(), layout_name_len);
-        let short_len = layout_name_len + 1;
-
-        if full_len <= max_len {
-            Some(LinePart {
-                part,
-                len: full_len,
-                tab_index: None,
-            })
-        } else if short_len <= max_len && config.mode != InputMode::Locked {
-            Some(LinePart {
-                part: indicator,
-                len: short_len,
-                tab_index: None,
-            })
-        } else {
-            None
-        }
-    }
-
-    fn create_swap_layout_styled_parts(
-        &self,
-        layout_name: &str,
-        mode: InputMode,
-        is_dirty: bool,
-        colors: &SwapLayoutColors,
-        separator: &str,
-    ) -> (String, String, String) {
-        if self.dimmed {
-            let text_style = style!(colors.bg, colors.fg).italic();
-            return (
-                style!(colors.bg, colors.fg).paint(separator).to_string(),
-                text_style.paint(layout_name).to_string(),
-                style!(colors.fg, colors.bg).paint(separator).to_string(),
-            );
-        }
-        match mode {
-            InputMode::Locked => (
-                style!(colors.bg, colors.fg).paint(separator).to_string(),
-                style!(colors.bg, colors.fg)
-                    .italic()
-                    .paint(layout_name)
-                    .to_string(),
-                style!(colors.fg, colors.bg).paint(separator).to_string(),
-            ),
-            _ if is_dirty => (
-                style!(colors.bg, colors.fg).paint(separator).to_string(),
-                style!(colors.bg, colors.fg)
-                    .bold()
-                    .paint(layout_name)
-                    .to_string(),
-                style!(colors.fg, colors.bg).paint(separator).to_string(),
-            ),
-            _ => (
-                style!(colors.bg, colors.green).paint(separator).to_string(),
-                style!(colors.bg, colors.green)
-                    .bold()
-                    .paint(layout_name)
-                    .to_string(),
-                style!(colors.green, colors.bg).paint(separator).to_string(),
-            ),
-        }
-    }
-}
-
-#[derive(Debug)]
-struct SwapLayoutColors {
-    bg: PaletteColor,
-    fg: PaletteColor,
-    green: PaletteColor,
 }
 
 pub struct TabLineBuilder {
@@ -796,7 +718,13 @@ impl TabLineBuilder {
             self.config.hover,
         );
 
-        let prefix_result = prefix_builder.build(session_name, self.config.mode);
+        let mut prefix_result = prefix_builder.build(session_name, self.config.mode);
+        if calculate_total_length(&prefix_result.parts) + active_tab.len > self.cols {
+            prefix_result = prefix_builder.build(None, self.config.mode);
+        }
+        if calculate_total_length(&prefix_result.parts) + active_tab.len > self.cols {
+            prefix_result = prefix_builder.build_minimal();
+        }
         let mut prefix = prefix_result.parts;
         let breadcrumb_range = prefix_result.breadcrumb_range;
         let mode_range = prefix_result.mode_range;
@@ -807,6 +735,7 @@ impl TabLineBuilder {
                 parts: prefix,
                 breadcrumb_range,
                 mode_range,
+                session_indicator_range: None,
             };
         }
 
@@ -824,11 +753,12 @@ impl TabLineBuilder {
 
         prefix.append(&mut tabs_to_render);
 
-        self.add_right_side_elements(&mut prefix);
+        let session_indicator_range = self.add_right_side_elements(&mut prefix);
         TabLineOutput {
             parts: prefix,
             breadcrumb_range,
             mode_range,
+            session_indicator_range,
         }
     }
 
@@ -849,14 +779,15 @@ impl TabLineBuilder {
         (tabs_before_active, active_tab, tabs_after_active)
     }
 
-    fn add_right_side_elements(&self, prefix: &mut Vec<LinePart>) {
+    fn add_right_side_elements(&self, prefix: &mut Vec<LinePart>) -> Option<(usize, usize)> {
         let current_len = calculate_total_length(prefix);
+        let mut session_indicator_range = None;
 
         if current_len < self.cols {
-            let right_builder =
-                RightSideElementsBuilder::new(self.palette, self.capabilities, self.config.dimmed);
+            let right_builder = RightSideElementsBuilder::new(self.palette, self.config.dimmed);
             let available_space = self.cols.saturating_sub(current_len);
-            let mut right_elements = right_builder.build(&self.config, available_space);
+            let (mut right_elements, indicator_text) =
+                right_builder.build(&self.config, available_space);
 
             let right_len = calculate_total_length(&right_elements);
 
@@ -870,9 +801,21 @@ impl TabLineBuilder {
                     prefix.push(self.create_spacer(remaining_space));
                 }
 
+                if let (Some(text), Some(last)) = (indicator_text, right_elements.last_mut()) {
+                    let start = self.cols.saturating_sub(last.len);
+                    last.part = self.config.session_indicator.render(
+                        &text,
+                        start,
+                        0,
+                        self.capabilities.arrow_fonts,
+                    );
+                    session_indicator_range = Some((start, start + last.len));
+                }
+
                 prefix.append(&mut right_elements);
             }
         }
+        session_indicator_range
     }
 
     fn create_spacer(&self, space: usize) -> LinePart {

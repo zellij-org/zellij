@@ -172,8 +172,11 @@ pub(crate) fn key_dispatch(
     is_kitty_keyboard_protocol: bool,
     in_key_passthrough: bool,
     has_focused_popup: bool,
+    popup_takes_all_keys: bool,
 ) -> Vec<PopupKeyAction> {
-    if has_focused_popup && (in_key_passthrough || always_reaches_popup(key)) {
+    if has_focused_popup
+        && (in_key_passthrough || popup_takes_all_keys || always_reaches_popup(key))
+    {
         return vec![key_to_popup(key, raw_bytes, is_kitty_keyboard_protocol)];
     }
     let actions = actions_for_key(
@@ -255,6 +258,7 @@ mod tests {
             false,
             false,
             true,
+            false,
         )
     }
 
@@ -304,6 +308,7 @@ mod tests {
             false,
             false,
             has_focused_popup,
+            false,
         )
     }
 
@@ -445,6 +450,27 @@ mod tests {
     }
 
     #[test]
+    fn a_popup_that_takes_all_keys_gets_bound_keys_in_every_mode() {
+        let down = KeyWithModifier::new(BareKey::Down);
+        for mode in [InputMode::Normal, InputMode::Pane, InputMode::Locked] {
+            for key in [ctrl('p'), key('h'), down.clone(), ctrl('g')] {
+                let actions = key_dispatch(
+                    &keybinds(),
+                    &mode,
+                    InputMode::Normal,
+                    &key,
+                    vec![],
+                    false,
+                    false,
+                    true,
+                    true,
+                );
+                assert_eq!(actions, vec![to_popup(key.clone())], "{:?} {:?}", mode, key);
+            }
+        }
+    }
+
+    #[test]
     fn key_passthrough_sends_bound_keys_to_the_popup() {
         let actions = key_dispatch(
             &keybinds(),
@@ -455,6 +481,7 @@ mod tests {
             false,
             true,
             true,
+            false,
         );
         assert_eq!(actions, vec![to_popup(ctrl('g'))]);
         let actions = key_dispatch(
@@ -465,6 +492,7 @@ mod tests {
             vec![],
             false,
             true,
+            false,
             false,
         );
         assert_eq!(actions, vec![write(ctrl('g'))]);
@@ -478,6 +506,7 @@ mod tests {
             InputMode::Normal,
             &key('f'),
             vec![],
+            false,
             false,
             false,
             false,

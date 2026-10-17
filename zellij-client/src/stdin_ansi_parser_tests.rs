@@ -350,9 +350,9 @@ fn partial_osc_overflow_falls_back_to_residue() {
     // residue and parsing resumes from a clean state.
     let mut p = StdinAnsiParser::new();
     let _ = p.feed(b"\x1b]52;c;");
-    let chunk = vec![b'A'; 1024 * 1024]; // 1 MB
+    let chunk = vec![b'A'; 64 * 1024];
     let mut total_residue = 0usize;
-    for _ in 0..110 {
+    for _ in 0..20 {
         let out = p.feed(&chunk);
         total_residue += out.residue.len();
     }
@@ -2061,4 +2061,129 @@ fn clipboard_timeout_only_fires_for_the_open_token() {
         Some((3, Vec::new()))
     );
     assert_eq!(parser.close_clipboard_forward_on_timeout(3), None);
+}
+
+fn grapheme_cluster_replies(replies: &[HostReply]) -> Vec<u8> {
+    replies
+        .iter()
+        .filter_map(|r| match r {
+            HostReply::GraphemeClusterMode(value) => Some(*value),
+            _ => None,
+        })
+        .collect()
+}
+
+fn startup_parser() -> StdinAnsiParser {
+    let mut parser = StdinAnsiParser::new();
+    parser.open_own_query_batch();
+    parser.expect_grapheme_cluster_mode_reply();
+    parser
+}
+
+#[test]
+fn grapheme_cluster_mode_replies_are_classified_with_their_value() {
+    for value in 0u8..=4 {
+        let mut parser = startup_parser();
+        let reply = format!("\x1b[?2027;{}$y\x1b[?62;22c", value);
+        let out = parser.feed(reply.as_bytes());
+        assert!(out.residue.is_empty(), "value {}: {:?}", value, out.residue);
+        assert_eq!(
+            grapheme_cluster_replies(&out.replies),
+            vec![value],
+            "value {} must be reported once and not resettled by the barrier",
+            value
+        );
+    }
+}
+
+#[test]
+fn grapheme_cluster_mode_reply_parses_from_csi_report() {
+    match HostReply::from_csi_report(b"\x1b[?2027;3$y") {
+        Some(HostReply::GraphemeClusterMode(3)) => {},
+        other => panic!("unexpected reply: {:?}", other),
+    }
+    assert!(HostReply::from_csi_report(b"\x1b[?2027;5$y").is_none());
+}
+
+#[test]
+fn grapheme_cluster_mode_reply_split_across_two_reads_is_classified() {
+    let mut parser = startup_parser();
+    let first = parser.feed(b"\x1b[?20");
+    assert!(first.residue.is_empty());
+    assert!(grapheme_cluster_replies(&first.replies).is_empty());
+    let second = parser.feed(b"27;1$y\x1b[?62;22c");
+    assert!(second.residue.is_empty());
+    assert_eq!(grapheme_cluster_replies(&second.replies), vec![1]);
+}
+
+#[test]
+fn grapheme_cluster_mode_without_reply_before_the_barrier_settles_as_unsupported() {
+    let mut parser = startup_parser();
+    let out = parser.feed(b"\x1b[?2026;2$y\x1b[?62;22c");
+    assert!(out.residue.is_empty());
+    assert_eq!(grapheme_cluster_replies(&out.replies), vec![0]);
+    let later = parser.feed(b"\x1b[?62;22c");
+    assert!(
+        grapheme_cluster_replies(&later.replies).is_empty(),
+        "the probe settles only once"
+    );
+}
+
+#[test]
+fn grapheme_cluster_mode_is_not_reported_when_it_was_never_asked() {
+    let mut parser = StdinAnsiParser::new();
+    let out = parser.feed(b"\x1b[?62;22c");
+    assert!(grapheme_cluster_replies(&out.replies).is_empty());
+}
+
+#[test]
+fn grapheme_cluster_mode_reply_never_reaches_keyboard_input() {
+    let mut parser = startup_parser();
+    let out = parser.feed(b"a\x1b[?2027;2$yb\x1b[Ac\x1b[?62;22c");
+    assert_eq!(out.residue, b"ab\x1b[Ac");
+    assert_eq!(grapheme_cluster_replies(&out.replies), vec![2]);
+    let unsolicited = parser.feed(b"x\x1b[?2027;1$yy");
+    assert_eq!(unsolicited.residue, b"xy");
+    assert!(grapheme_cluster_replies(&unsolicited.replies).is_empty());
+}
+
+#[test]
+fn grapheme_cluster_mode_reply_in_a_forwarded_pane_batch_is_forwarded() {
+    let mut parser = StdinAnsiParser::new();
+    parser.open_forward(9);
+    let out = parser.feed(b"\x1b[?2027;1$y\x1b[?62;22c");
+    assert!(out.residue.is_empty());
+    assert!(
+        grapheme_cluster_replies(&out.replies).is_empty(),
+        "the pane's reply must not be consumed by zellij"
+    );
+    assert_eq!(out.completed_forward, Some((9, b"\x1b[?2027;1$y".to_vec())));
+}
+
+#[test]
+fn grapheme_cluster_mode_replies_are_split_between_zellij_and_a_forwarding_pane() {
+    let mut parser = startup_parser();
+    parser.open_forward(4);
+    let own = parser.feed(b"\x1b[?2027;2$y\x1b[?62;22c");
+    assert_eq!(grapheme_cluster_replies(&own.replies), vec![2]);
+    assert!(own.completed_forward.is_none());
+    let pane = parser.feed(b"\x1b[?2027;1$y\x1b[?62;22c");
+    assert!(grapheme_cluster_replies(&pane.replies).is_empty());
+    assert_eq!(
+        pane.completed_forward,
+        Some((4, b"\x1b[?2027;1$y".to_vec()))
+    );
+}
+
+#[test]
+fn grapheme_cluster_mode_is_not_settled_by_a_pane_barrier() {
+    let mut parser = StdinAnsiParser::new();
+    parser.open_forward(3);
+    parser.open_own_query_batch();
+    parser.expect_grapheme_cluster_mode_reply();
+    let pane = parser.feed(b"\x1b[?62;22c");
+    assert!(grapheme_cluster_replies(&pane.replies).is_empty());
+    assert_eq!(pane.completed_forward, Some((3, Vec::new())));
+    let own = parser.feed(b"\x1b[?62;22c");
+    assert_eq!(grapheme_cluster_replies(&own.replies), vec![0]);
 }

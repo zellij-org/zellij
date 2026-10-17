@@ -18275,6 +18275,7 @@ fn create_tab_with_receivers_without_layout(
     let (to_background_jobs, background_jobs): ChannelWithContext<BackgroundJob> = unbounded();
     let senders = ThreadSenders {
         to_screen: Some(SenderWithContext::new(to_screen)),
+        to_screen_priority: None,
         to_pty: Some(SenderWithContext::new(to_pty)),
         to_plugin: Some(SenderWithContext::new(to_plugin)),
         to_server: Some(SenderWithContext::new(to_server)),
@@ -21153,6 +21154,272 @@ fn pane_info_reports_whether_a_pane_is_collapsed() {
     assert!(!is_collapsed(&tab, 2));
 }
 
+fn left_click_at(row: usize, column: usize, shift: bool) -> zellij_utils::input::mouse::MouseEvent {
+    use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
+    let mut event = MouseEvent::new();
+    event.event_type = MouseEventType::Press;
+    event.left = true;
+    event.shift = shift;
+    event.position = zellij_utils::position::Position::new(row as i32, column as u16);
+    event
+}
+
+#[test]
+pub fn a_click_reaches_a_program_that_asked_for_the_mouse() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let rx = install_pty_writer_capture(&mut tab);
+    tab.handle_pty_bytes(1, b"\x1b[?1000h\x1b[?1006h".to_vec())
+        .unwrap();
+
+    tab.handle_mouse_event(&left_click_at(5, 5, false), 1)
+        .unwrap();
+
+    let writes = drain_pty_writer(&rx);
+    assert!(
+        writes.iter().any(|write| matches!(
+            write,
+            PtyWriteInstruction::Write(bytes, _, _)
+                if String::from_utf8_lossy(bytes).starts_with("\u{1b}[<0;")
+        )),
+        "expected the click to be forwarded, got {writes:?}"
+    );
+}
+
+#[test]
+pub fn a_shift_click_bypasses_a_program_that_asked_for_the_mouse() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let rx = install_pty_writer_capture(&mut tab);
+    tab.handle_pty_bytes(1, b"\x1b[?1000h\x1b[?1006h".to_vec())
+        .unwrap();
+
+    tab.handle_mouse_event(&left_click_at(5, 5, true), 1)
+        .unwrap();
+
+    let writes = drain_pty_writer(&rx);
+    assert!(
+        !writes.iter().any(|write| matches!(
+            write,
+            PtyWriteInstruction::Write(bytes, _, _)
+                if String::from_utf8_lossy(bytes).starts_with("\u{1b}[<")
+        )),
+        "shift must hold the click back from the program so the terminal can use it, got {writes:?}"
+    );
+}
+
+#[test]
+pub fn a_shift_right_click_opens_the_context_menu_instead_of_going_to_the_program() {
+    use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
+
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let rx = install_pty_writer_capture(&mut tab);
+    tab.handle_pty_bytes(1, b"\x1b[?1000h\x1b[?1006h".to_vec())
+        .unwrap();
+
+    let mut event = MouseEvent::new();
+    event.event_type = MouseEventType::Press;
+    event.right = true;
+    event.shift = true;
+    event.position = zellij_utils::position::Position::new(5, 5);
+    let effect = tab.handle_mouse_event(&event, 1).unwrap();
+
+    let writes = drain_pty_writer(&rx);
+    assert!(
+        !writes.iter().any(|write| matches!(
+            write,
+            PtyWriteInstruction::Write(bytes, _, _)
+                if String::from_utf8_lossy(bytes).starts_with("\u{1b}[<")
+        )),
+        "shift must hold the right click back from the program, got {writes:?}"
+    );
+    assert!(
+        effect.open_context_menu.is_some(),
+        "a shift right click over a program that wants the mouse opens the context menu"
+    );
+}
+
+fn counted_wheel_up(
+    position: zellij_utils::position::Position,
+    lines: u16,
+) -> zellij_utils::input::mouse::MouseEvent {
+    let mut event = zellij_utils::input::mouse::MouseEvent::new_scroll_up_event(position);
+    event.wheel_lines = lines;
+    event
+}
+
+fn counted_wheel_down(
+    position: zellij_utils::position::Position,
+    lines: u16,
+) -> zellij_utils::input::mouse::MouseEvent {
+    let mut event = zellij_utils::input::mouse::MouseEvent::new_scroll_down_event(position);
+    event.wheel_lines = lines;
+    event
+}
+
+fn tab_with_scrollback() -> Tab {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let mut content = String::new();
+    for i in 0..80 {
+        content.push_str(&format!("Line {}\r\n", i));
+    }
+    tab.handle_pty_bytes(1, content.into_bytes()).unwrap();
+    tab
+}
+
+fn scrolled_lines(tab: &Tab) -> usize {
+    tab.get_pane_with_id(PaneId::Terminal(1))
+        .unwrap()
+        .scroll_position()
+        .0
+}
+
+fn written_strings(
+    rx: &Receiver<(PtyWriteInstruction, zellij_utils::errors::ErrorContext)>,
+) -> Vec<String> {
+    drain_pty_writer(rx)
+        .into_iter()
+        .filter_map(|instruction| match instruction {
+            PtyWriteInstruction::Write(bytes, _, _) => {
+                Some(String::from_utf8_lossy(&bytes).into_owned())
+            },
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_counted_wheel_event_scrolls_the_normal_screen_by_exactly_that_many_lines() {
+    let mut tab = tab_with_scrollback();
+    let at = zellij_utils::position::Position::new(5, 10);
+    tab.handle_mouse_event(&counted_wheel_up(at, 5), 1).unwrap();
+    assert_eq!(scrolled_lines(&tab), 5);
+    tab.handle_mouse_event(&counted_wheel_up(at, 1), 1).unwrap();
+    assert_eq!(scrolled_lines(&tab), 6);
+    tab.handle_mouse_event(&counted_wheel_down(at, 4), 1)
+        .unwrap();
+    assert_eq!(scrolled_lines(&tab), 2);
+}
+
+#[test]
+fn a_classic_wheel_step_still_scrolls_the_normal_screen_by_three_lines() {
+    let mut tab = tab_with_scrollback();
+    let at = zellij_utils::position::Position::new(5, 10);
+    tab.handle_mouse_event(&counted_wheel_up(at, 0), 1).unwrap();
+    assert_eq!(scrolled_lines(&tab), 3);
+    tab.handle_mouse_event(&counted_wheel_down(at, 0), 1)
+        .unwrap();
+    assert_eq!(scrolled_lines(&tab), 0);
+}
+
+#[test]
+fn a_counted_wheel_event_sends_that_many_wheel_reports_to_a_mouse_tracking_program() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let rx = install_pty_writer_capture(&mut tab);
+    tab.handle_pty_bytes(1, b"\x1b[?1000h\x1b[?1006h".to_vec())
+        .unwrap();
+    let at = zellij_utils::position::Position::new(5, 10);
+
+    tab.handle_mouse_event(&counted_wheel_up(at, 4), 1).unwrap();
+    let writes = written_strings(&rx);
+    assert_eq!(writes.len(), 4, "got {writes:?}");
+    assert!(writes.iter().all(|w| w.starts_with("\u{1b}[<64;")));
+
+    tab.handle_mouse_event(&counted_wheel_down(at, 0), 1)
+        .unwrap();
+    let writes = written_strings(&rx);
+    assert_eq!(writes.len(), 1, "got {writes:?}");
+    assert!(writes[0].starts_with("\u{1b}[<65;"));
+}
+
+#[test]
+fn a_counted_wheel_event_sends_that_many_arrow_keys_on_the_alternate_screen() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size, true);
+    let rx = install_pty_writer_capture(&mut tab);
+    tab.handle_pty_bytes(1, b"\x1b[?1049h".to_vec()).unwrap();
+    let at = zellij_utils::position::Position::new(5, 10);
+
+    tab.handle_mouse_event(&counted_wheel_up(at, 4), 1).unwrap();
+    assert_eq!(written_strings(&rx), vec!["\u{1b}[A".to_string(); 4]);
+
+    tab.handle_mouse_event(&counted_wheel_down(at, 0), 1)
+        .unwrap();
+    assert_eq!(written_strings(&rx), vec!["\u{1b}[B".to_string(); 3]);
+}
+
+#[test]
+fn a_counted_wheel_event_tells_a_plugin_that_many_lines() {
+    let (mut tab, plugin_receiver) = tab_with_floating_plugin_pane(1);
+    let pane = tab.get_pane_with_id(PaneId::Plugin(1)).unwrap();
+    let at = zellij_utils::position::Position::new(
+        pane.get_content_y() as i32 + 1,
+        pane.get_content_x() as u16 + 1,
+    );
+    while plugin_receiver.try_recv().is_ok() {}
+
+    tab.handle_mouse_event(&counted_wheel_up(at, 6), 1).unwrap();
+    tab.handle_mouse_event(&counted_wheel_down(at, 0), 1)
+        .unwrap();
+
+    let mut scrolls = vec![];
+    while let Ok((instruction, _)) = plugin_receiver.try_recv() {
+        if let PluginInstruction::Update(updates) = instruction {
+            for (_pid, _client_id, event) in updates {
+                if let Event::Mouse(
+                    mouse @ (zellij_utils::data::Mouse::ScrollUp(_)
+                    | zellij_utils::data::Mouse::ScrollDown(_)),
+                ) = event
+                {
+                    scrolls.push(mouse);
+                }
+            }
+        }
+    }
+    assert_eq!(
+        scrolls,
+        vec![
+            zellij_utils::data::Mouse::ScrollUp(6),
+            zellij_utils::data::Mouse::ScrollDown(3)
+        ]
+    );
+}
+
+#[test]
+fn ctrl_wheel_resizes_and_alt_wheel_jumps_prompts_regardless_of_the_line_count() {
+    let mut tab = tab_with_scrollback();
+    let at = zellij_utils::position::Position::new(5, 10);
+    let mut ctrl = zellij_utils::input::mouse::MouseEvent::new_ctrl_scroll_up_event(at);
+    ctrl.wheel_lines = 9;
+    tab.handle_mouse_event(&ctrl, 1).unwrap();
+    assert_eq!(scrolled_lines(&tab), 0);
+    let mut alt = zellij_utils::input::mouse::MouseEvent::new_alt_scroll_up_event(at);
+    alt.wheel_lines = 9;
+    tab.handle_mouse_event(&alt, 1).unwrap();
+    assert_ne!(scrolled_lines(&tab), 9);
+}
+
 mod host_terminal_title_tests {
     use super::*;
     use crate::output::Output;
@@ -21182,7 +21449,12 @@ mod host_terminal_title_tests {
     fn render(tab: &mut Tab) -> HashMap<ClientId, String> {
         let mut output = Output::default();
         tab.render(&mut output, None).unwrap();
-        output.serialize().unwrap()
+        output
+            .serialize()
+            .unwrap()
+            .into_iter()
+            .map(|(client_id, payload)| (client_id, payload.ansi().to_owned()))
+            .collect()
     }
 
     fn assert_title(output: &HashMap<ClientId, String>, client_id: ClientId) {

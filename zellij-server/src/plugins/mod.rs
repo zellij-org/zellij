@@ -27,7 +27,7 @@ use crate::{pty::PtyInstruction, thread_bus::Bus, ClientId, ServerInstruction, S
 use zellij_utils::data::PaneRenderReport;
 use zellij_utils::input::layout::TabLayoutInfo;
 
-pub use prompt_requests::{PopupRequest, PromptCaller};
+pub use prompt_requests::{PopupRequest, PromptCaller, SERVER_NOTICE_CALLER_ID};
 pub use wasm_bridge::PluginRenderAsset;
 use wasm_bridge::{PipePopupRoute, WasmBridge};
 
@@ -193,6 +193,7 @@ pub enum PluginInstruction {
         caller: PromptCaller,
         error: String,
     },
+    WithdrawPrompt(PromptCaller),
     KeybindPipe {
         name: String,
         payload: Option<String>,
@@ -270,6 +271,11 @@ pub enum PluginInstruction {
         initial_events: Vec<Event>,
         pipe: Option<(PopupRequest, BTreeMap<String, String>)>,
     },
+    PopupBecamePane {
+        plugin_id: PluginId,
+        client_id: ClientId,
+        pipe_after: Option<String>,
+    },
     Exit,
 }
 
@@ -316,6 +322,7 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::PromptRequest { .. } => PluginContext::PromptRequest,
             PluginInstruction::PromptReplied { .. } => PluginContext::PromptReplied,
             PluginInstruction::PromptPopupFailed { .. } => PluginContext::PromptPopupFailed,
+            PluginInstruction::WithdrawPrompt(..) => PluginContext::WithdrawPrompt,
             PluginInstruction::CachePluginEvents { .. } => PluginContext::CachePluginEvents,
             PluginInstruction::MessageFromPlugin { .. } => PluginContext::MessageFromPlugin,
             PluginInstruction::UnblockCliPipes { .. } => PluginContext::UnblockCliPipes,
@@ -352,6 +359,7 @@ impl From<&PluginInstruction> for PluginContext {
                 PluginContext::DetectPluginConfigChanges
             },
             PluginInstruction::HighlightClicked { .. } => PluginContext::HighlightClicked,
+            PluginInstruction::PopupBecamePane { .. } => PluginContext::PopupBecamePane,
         }
     }
 }
@@ -1263,6 +1271,7 @@ pub(crate) fn plugin_thread_main(
                                     run_plugin_or_alias,
                                     placement: request.placement,
                                     focused: request.focused,
+                                    capture_all_keys: request.capture_all_keys,
                                 }),
                         );
                     },
@@ -1283,6 +1292,9 @@ pub(crate) fn plugin_thread_main(
             },
             PluginInstruction::PromptPopupFailed { caller, error } => {
                 wasm_bridge.fail_prompt_popup(caller, error);
+            },
+            PluginInstruction::WithdrawPrompt(caller) => {
+                wasm_bridge.withdraw_prompt(caller);
             },
             PluginInstruction::KeybindPipe {
                 name,
@@ -1600,6 +1612,24 @@ pub(crate) fn plugin_thread_main(
                 };
                 let updates = vec![(Some(plugin_id), Some(client_id), event)];
                 wasm_bridge.update_plugins(updates, shutdown_send.clone())?;
+            },
+            PluginInstruction::PopupBecamePane {
+                plugin_id,
+                client_id,
+                pipe_after,
+            } => {
+                wasm_bridge.popup_became_pane(plugin_id);
+                if let Some(pipe_name) = pipe_after {
+                    wasm_bridge.pipe_messages(
+                        vec![(
+                            Some(plugin_id),
+                            Some(client_id),
+                            PipeMessage::new(PipeSource::Keybind, pipe_name, &None, &None, true),
+                        )],
+                        shutdown_send.clone(),
+                        None,
+                    )?;
+                }
             },
             PluginInstruction::Exit => {
                 break;

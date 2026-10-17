@@ -17,7 +17,7 @@ use crate::status_bar::second_line::{
 };
 use crate::status_bar::{action_key, action_key_group, color_elements, MORE_MSG, TO_NORMAL};
 use crate::status_bar::{ColoredElements, LinePart};
-use unicode_width::UnicodeWidthStr;
+use zellij_tile::graphemes::display_width;
 
 pub fn one_line_ui(
     help: &ModeInfo,
@@ -744,7 +744,7 @@ fn render_common_modifiers(
                 .join("-")
         )
     };
-    let prefix_text_len = prefix_text.len();
+    let prefix_text_len = display_width(&prefix_text);
 
     let prefix = if mode_info.session_dimmed.unwrap_or(false) {
         serialize_text(&Text::from(prefix_text).disabled().opaque())
@@ -754,7 +754,7 @@ fn render_common_modifiers(
     let suffix_separator = palette.superkey_suffix_separator.paint(separator);
     line_part_to_render.part =
         format!("{}{}{}", line_part_to_render.part, prefix, suffix_separator);
-    line_part_to_render.len += prefix_text_len + separator.chars().count();
+    line_part_to_render.len += prefix_text_len + display_width(&separator);
 }
 
 fn render_secondary_info(
@@ -1044,7 +1044,7 @@ fn secondary_keybinds(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usiz
 }
 
 fn text_as_line_part_with_emphasis(text: String, emphases_index: usize, dimmed: bool) -> LinePart {
-    let text_width = text.width();
+    let text_width = display_width(&text);
     let part = if dimmed {
         serialize_text(&Text::from(text).disabled().opaque())
     } else {
@@ -1162,7 +1162,7 @@ fn label_ranges(
         if index > 0 {
             col += separator_width;
         }
-        let end = col + label.width();
+        let end = col + display_width(&label);
         ranges.push((col, end));
         col = end;
     }
@@ -1258,9 +1258,9 @@ fn add_shortcut(
     };
     ret.part = format!("{}{}", ret.part, ribbon);
     ret.len += if supports_arrow_fonts {
-        text.width() + 4
+        display_width(&text) + 4
     } else {
-        text.width() + 2
+        display_width(&text) + 2
     };
     ret.clicks = hint_clicks(&targets, &key_ranges, ret.len);
     ret
@@ -1293,25 +1293,25 @@ fn add_shortcut_with_inline_key(
     } else if is_selected {
         serialize_ribbon(
             &Text::from(format!("<{}> {}", key_string, text))
-                .color_range(0, 1..key_string.width() + 1)
+                .color_range(0, 1..key_string.chars().count() + 1)
                 .selected(),
         )
     } else {
         serialize_ribbon(
             &Text::from(format!("<{}> {}", key_string, text))
-                .color_range(0, 1..key_string.width() + 1),
+                .color_range(0, 1..key_string.chars().count() + 1),
         )
     };
     ret.part = ribbon;
     let supports_arrow_fonts = !capabilities.arrow_fonts;
     ret.len += if supports_arrow_fonts {
-        text.width() + key_string.width() + 7
+        display_width(&text) + display_width(&key_string) + 7
     } else {
-        text.width() + key_string.width() + 5
+        display_width(&text) + display_width(&key_string) + 5
     };
     let key_ranges = label_ranges(
         &labels,
-        key_separator.width(),
+        display_width(&key_separator),
         ribbon_content_offset(help) + 1,
     );
     ret.clicks = hint_clicks(&targets, &key_ranges, ret.len);
@@ -1359,9 +1359,9 @@ fn add_shortcut_with_key_only(
     };
     ret.part = ribbon;
     ret.len += if supports_arrow_fonts {
-        key_string.width() + 4
+        display_width(&key_string) + 4
     } else {
-        key_string.width() + 2
+        display_width(&key_string) + 2
     };
     let key_ranges = label_ranges(&labels, 1, ribbon_content_offset(help));
     ret.clicks = hint_clicks(&targets, &key_ranges, ret.len);
@@ -1393,7 +1393,7 @@ fn add_keygroup_separator(help: &ModeInfo, max_len: usize) -> Option<LinePart> {
         };
         if let Some(mode_help_text) = mode_help_text {
             bits.push(dim_style.paint(format!(" {} ", mode_help_text)));
-            ret.len += mode_help_text.width() + 2;
+            ret.len += display_width(&mode_help_text) + 2;
         }
         bits.push(dim_style.paint(format!("{}", separator)));
         bits.push(dim_style.paint(format!(" ")));
@@ -1428,7 +1428,7 @@ fn add_keygroup_separator(help: &ModeInfo, max_len: usize) -> Option<LinePart> {
                 .bold()
                 .paint(format!(" {} ", mode_help_text)),
         );
-        ret.len += mode_help_text.width() + 2;
+        ret.len += display_width(&mode_help_text) + 2;
     }
     bits.push(
         Style::new()
@@ -1561,6 +1561,10 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
             &[Action::BreakPaneRight, TO_NORMAL],
         ])),
         (s("Toggle"), s("Toggle"), single_action_key(&km, &[A::ToggleTab])),
+        (s("Layout"), s("Layout"), action_key_group(&km, &[
+            &[A::NextSwapLayout],
+            &[A::PreviousSwapLayout],
+        ])),
         (s("Select pane"), s("Select"), to_basemode_key),
     ]} else if mi.mode == IM::Resize { vec![
         (s("Increase/Decrease size"), s("Increase/Decrease"),
@@ -1679,9 +1683,9 @@ fn best_effort_shortcut_list(help: &ModeInfo, max_len: usize) -> LinePart {
     let keys_and_hints = get_keys_and_hints(help);
     for (_, short, keys) in keys_and_hints.into_iter() {
         let shortcut = add_shortcut(help, &short, &keys.to_vec(), false, Some(2));
-        if line_part.len + shortcut.len + MORE_MSG.chars().count() > max_len {
+        if line_part.len + shortcut.len + display_width(&MORE_MSG) > max_len {
             line_part.part = format!("{}{}", line_part.part, MORE_MSG);
-            line_part.len += MORE_MSG.chars().count();
+            line_part.len += display_width(&MORE_MSG);
             break;
         } else {
             line_part.append(&shortcut);
@@ -1901,7 +1905,7 @@ fn style_key_with_modifier(
             color_index,
             dimmed,
         ));
-        len += text.width();
+        len += display_width(&text);
         (start, len)
     };
 

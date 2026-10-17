@@ -4,8 +4,7 @@ use super::{
 };
 use crate::panes::terminal_character::{AnsiCode, CharacterStyles, RESET_STYLES};
 use zellij_utils::data::Style;
-
-use unicode_width::UnicodeWidthChar;
+use zellij_utils::graphemes;
 
 #[derive(Debug, Clone)]
 pub struct NestedListItem {
@@ -119,11 +118,7 @@ fn parse_indentation_level(stringified: &mut String) -> usize {
 fn max_nested_item_width(contents: &Vec<NestedListItem>) -> usize {
     let mut width_of_longest_line = 0;
     for line_item in contents.iter() {
-        let mut line_item_text_width = 0;
-        for character in line_item.text.text.chars() {
-            let character_width = character.width().unwrap_or(0);
-            line_item_text_width += character_width;
-        }
+        let line_item_text_width = graphemes::display_width(&line_item.text.text);
         let bulletin_width = 2;
         let padding = line_item.indentation_level * 2 + 1;
         let total_width = line_item_text_width + bulletin_width + padding;

@@ -29,8 +29,12 @@ use crate::input::options::{
 };
 use crate::input::permission::{GrantedPermission, PermissionCache};
 use crate::input::plugins::PluginAliases;
-use crate::input::theme::{FrameConfig, Theme, Themes, UiConfig};
+use crate::input::session_suggestions::SessionSuggestionsConfig;
+use crate::input::theme::{
+    FrameConfig, TerminalColors, Theme, Themes, UiConfig, TERMINAL_COLOR_NAMES,
+};
 use crate::input::web_client::WebClientConfig;
+use crate::input::window::WindowConfig;
 use kdl_layout_parser::KdlLayoutParser;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::net::{IpAddr, Ipv4Addr};
@@ -102,6 +106,7 @@ macro_rules! parse_kdl_action_arguments {
                 "ToggleTheme" => Ok(Action::ToggleTheme),
                 "DismissInfoPopups" => Ok(Action::DismissInfoPopups),
                 "OpenContextMenu" => Ok(Action::OpenContextMenu),
+                "ToggleSessionCard" => Ok(Action::ToggleSessionCard),
                 "Copy" => Ok(Action::Copy),
                 "Confirm" => Ok(Action::Confirm),
                 "Deny" => Ok(Action::Deny),
@@ -1170,8 +1175,12 @@ impl Action {
                 pane_id,
                 layout,
                 cwd,
+                close_current,
             } => {
                 let mut node = KdlNode::new("SwitchSession");
+                if *close_current {
+                    node.push(KdlEntry::new_prop("close_current", true));
+                }
                 node.push(KdlEntry::new_prop("name", name.clone()));
                 if let Some(pos) = tab_position {
                     node.push(KdlEntry::new_prop("tab_position", *pos as i64));
@@ -1421,6 +1430,7 @@ impl Action {
             Action::ToggleTheme => Some(KdlNode::new("ToggleTheme")),
             Action::DismissInfoPopups => Some(KdlNode::new("DismissInfoPopups")),
             Action::OpenContextMenu => Some(KdlNode::new("OpenContextMenu")),
+            Action::ToggleSessionCard => Some(KdlNode::new("ToggleSessionCard")),
             Action::FocusHostSession => Some(KdlNode::new("FocusHostSession")),
             Action::FocusGuestSession => Some(KdlNode::new("FocusGuestSession")),
             Action::ToggleHostFullscreen => Some(KdlNode::new("ToggleHostFullscreen")),
@@ -1629,6 +1639,57 @@ impl TryFrom<(&str, &KdlDocument)> for PaletteColor {
     }
 }
 
+pub fn palette_color_refusing_index(
+    color_name: &str,
+    colors: &KdlDocument,
+) -> Result<PaletteColor, ConfigError> {
+    let color = PaletteColor::try_from((color_name, colors))?;
+    if let PaletteColor::EightBit(_) = color {
+        let node = colors.get(color_name);
+        let (offset, len) = node
+            .map(|node| (node.span().offset(), node.span().len()))
+            .unwrap_or((colors.span().offset(), colors.span().len()));
+        return Err(ConfigError::new_kdl_error(
+            format!(
+                "{} must be given as rgb or as a hex string: a palette index would resolve \
+                 through the very table it is defining",
+                color_name
+            ),
+            offset,
+            len,
+        ));
+    }
+    Ok(color)
+}
+
+impl TerminalColors {
+    pub fn from_kdl(kdl: &KdlNode) -> Result<Self, ConfigError> {
+        let mut table = TerminalColors::default();
+        let Some(colors) = kdl.children() else {
+            return Ok(table);
+        };
+        for (slot, name) in TERMINAL_COLOR_NAMES.iter().enumerate() {
+            if colors.get(name).is_none() {
+                continue;
+            }
+            table.set(slot, palette_color_refusing_index(name, colors)?);
+        }
+        Ok(table)
+    }
+
+    pub fn to_kdl(&self) -> KdlNode {
+        let mut node = KdlNode::new("terminal_colors");
+        let mut doc = KdlDocument::new();
+        for (slot, name) in TERMINAL_COLOR_NAMES.iter().enumerate() {
+            if let Some(color) = self.get(slot) {
+                doc.nodes_mut().push(color.to_kdl(name));
+            }
+        }
+        node.set_children(doc);
+        node
+    }
+}
+
 impl PaletteColor {
     pub fn to_kdl(&self, color_name: &str) -> KdlNode {
         let mut node = KdlNode::new(color_name);
@@ -1810,6 +1871,9 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
             "OpenContextMenu" => {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
+            "ToggleSessionCard" => {
+                parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
+            },
             "SwitchSession" => {
                 let name = kdl_get_string_property_or_child_value!(kdl_action, "name")
                     .map(|s| s.to_string())
@@ -1846,12 +1910,16 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 let cwd =
                     kdl_get_string_property_or_child_value!(kdl_action, "cwd").map(PathBuf::from);
 
+                let close_current =
+                    crate::kdl_get_bool_property_or_child_value!(kdl_action, "close_current")
+                        .unwrap_or(false);
                 Ok(Action::SwitchSession {
                     name,
                     tab_position,
                     pane_id: pane_id_tuple,
                     layout,
                     cwd,
+                    close_current,
                 })
             },
             "Copy" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
@@ -3161,6 +3229,9 @@ impl Options {
             "support_kitty_graphics_protocol"
         )
         .map(|(v, _)| v);
+        let grapheme_clusters =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "grapheme_clusters")
+                .map(|(v, _)| v);
         let web_server =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "web_server").map(|(v, _)| v);
         let web_sharing =
@@ -3293,6 +3364,21 @@ impl Options {
             "dangerously_enable_paste_buffer_read"
         )
         .map(|(v, _)| v);
+        let session_card =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "session_card").map(|(v, _)| v);
+        let session_indicator =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "session_indicator")
+                .map(|(v, _)| v);
+        let swap_layout_notification =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "swap_layout_notification")
+                .map(|(v, _)| v);
+        let on_quit = match kdl_property_first_arg_as_string_or_error!(kdl_options, "on_quit") {
+            Some((value, entry)) => match value.parse::<crate::input::options::OnQuit>() {
+                Ok(v) => Some(v),
+                Err(e) => return Err(kdl_parsing_error!(e, entry)),
+            },
+            None => None,
+        };
 
         Ok(Options {
             simplified_ui,
@@ -3333,6 +3419,7 @@ impl Options {
             disable_session_metadata,
             support_kitty_keyboard_protocol,
             support_kitty_graphics_protocol,
+            grapheme_clusters,
             web_server,
             web_sharing,
             stacked_resize,
@@ -3361,6 +3448,10 @@ impl Options {
             client_async_worker_tasks,
             nested_session_handling,
             dangerously_enable_paste_buffer_read,
+            session_card,
+            session_indicator,
+            swap_layout_notification,
+            on_quit,
         })
     }
     pub fn from_string(stringified_keybindings: &String) -> Result<Self, ConfigError> {
@@ -4338,6 +4429,35 @@ impl Options {
             None
         }
     }
+    fn grapheme_clusters_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!("{}\n{}\n{}\n{}\n{}\n{}",
+            " ",
+            "// Count each grapheme cluster (an emoji sequence such as a flag or a skin tone, a letter with its accents) as one unit of width, as the Unicode standard does",
+            "// When false, widths are counted per code point, the way older programs expect; programs can still ask for clusters with mode 2027",
+            "// (Applies to new panes)",
+            "// Default: true",
+            "// ",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("grapheme_clusters");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(grapheme_clusters) = self.grapheme_clusters {
+            let mut node = create_node(grapheme_clusters);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(false);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
     fn support_kitty_graphics_protocol_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!("{}\n{}\n{}\n{}\n{}",
             " ",
@@ -5181,6 +5301,105 @@ impl Options {
             None
         }
     }
+    fn bool_option_to_kdl(
+        name: &str,
+        value: Option<bool>,
+        comment_lines: &[&str],
+        default_value: bool,
+        add_comments: bool,
+    ) -> Option<KdlNode> {
+        let mut comment_text = String::from(" ");
+        for line in comment_lines {
+            comment_text.push('\n');
+            comment_text.push_str(line);
+        }
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new(name);
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(value) = value {
+            let mut node = create_node(value);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(default_value);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn session_card_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        Self::bool_option_to_kdl(
+            "session_card",
+            self.session_card,
+            &[
+                "// Whether to show a card listing other relevant sessions when a new session starts",
+                "// default is true",
+            ],
+            false,
+            add_comments,
+        )
+    }
+    fn session_indicator_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        Self::bool_option_to_kdl(
+            "session_indicator",
+            self.session_indicator,
+            &[
+                "// Whether to show the other sessions indicator in the tab bar and compact bar",
+                "// default is true",
+            ],
+            false,
+            add_comments,
+        )
+    }
+    fn swap_layout_notification_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        Self::bool_option_to_kdl(
+            "swap_layout_notification",
+            self.swap_layout_notification,
+            &[
+                "// Whether to briefly show the name of the new swap layout when it is changed",
+                "// default is true",
+            ],
+            false,
+            add_comments,
+        )
+    }
+    fn on_quit_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        use crate::input::options::OnQuit;
+        let comment_text = [
+            " ",
+            "// What the quit action does",
+            "// Options:",
+            "//   - \"ask_quit\" (Default - ask whether to detach or quit, with quit preselected)",
+            "//   - \"ask_detach\" (ask whether to detach or quit, with detach preselected)",
+            "//   - \"quit\" (quit without asking)",
+            "//   - \"detach\" (detach without asking)",
+            "// ",
+        ]
+        .join("\n");
+        let create_node = |value: OnQuit| -> KdlNode {
+            let mut node = KdlNode::new("on_quit");
+            node.push(KdlValue::String(value.as_str().to_owned()));
+            node
+        };
+        if let Some(value) = self.on_quit {
+            let mut node = create_node(value);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(OnQuit::AskQuit);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
     pub fn to_kdl(&self, add_comments: bool) -> Vec<KdlNode> {
         let mut nodes = vec![];
         if let Some(simplified_ui_node) = self.simplified_ui_to_kdl(add_comments) {
@@ -5291,6 +5510,9 @@ impl Options {
         {
             nodes.push(support_kitty_graphics_protocol);
         }
+        if let Some(grapheme_clusters) = self.grapheme_clusters_to_kdl(add_comments) {
+            nodes.push(grapheme_clusters);
+        }
         if let Some(web_server) = self.web_server_to_kdl(add_comments) {
             nodes.push(web_server);
         }
@@ -5385,6 +5607,18 @@ impl Options {
             self.host_notification_protocol_to_kdl(add_comments)
         {
             nodes.push(host_notification_protocol);
+        }
+        if let Some(session_card) = self.session_card_to_kdl(add_comments) {
+            nodes.push(session_card);
+        }
+        if let Some(session_indicator) = self.session_indicator_to_kdl(add_comments) {
+            nodes.push(session_indicator);
+        }
+        if let Some(swap_layout_notification) = self.swap_layout_notification_to_kdl(add_comments) {
+            nodes.push(swap_layout_notification);
+        }
+        if let Some(on_quit) = self.on_quit_to_kdl(add_comments) {
+            nodes.push(on_quit);
         }
         nodes
     }
@@ -6451,6 +6685,15 @@ impl Config {
         if should_resolve_keybinds {
             config.resolve_keybinds();
         }
+        if let Some(window_config) = kdl_config.get("window") {
+            let config_window = WindowConfig::from_kdl(&window_config)?;
+            config.window = config.window.merge(config_window);
+        }
+        if let Some(session_suggestions_config) = kdl_config.get("session_suggestions") {
+            let session_suggestions =
+                SessionSuggestionsConfig::from_kdl(&session_suggestions_config)?;
+            config.session_suggestions = config.session_suggestions.merge(session_suggestions);
+        }
         Ok(config)
     }
     pub fn to_string(&self, add_comments: bool) -> String {
@@ -6486,6 +6729,14 @@ impl Config {
 
         if let Some(context_menu) = self.context_menu.to_kdl() {
             document.nodes_mut().push(context_menu);
+        }
+
+        if let Some(window) = self.window.to_kdl() {
+            document.nodes_mut().push(window);
+        }
+
+        if let Some(session_suggestions) = self.session_suggestions.to_kdl() {
+            document.nodes_mut().push(session_suggestions);
         }
 
         let mut options = self.options.clone();
@@ -7213,11 +7464,21 @@ impl Themes {
                 "fg", "bg", "red", "green", "blue", "yellow", "magenta", "orange", "cyan", "black",
                 "white",
             ]);
-            let theme = if theme_colors
+            let terminal_colors = match kdl_child_with_name!(theme_config, "terminal_colors") {
+                Some(node) => Some(TerminalColors::from_kdl(node)?),
+                None => None,
+            };
+            let declarations: Vec<&KdlNode> = theme_colors
                 .nodes()
                 .iter()
-                .all(|n| palette_color_names.contains(n.name().value()))
-            {
+                .filter(|node| node.name().value() != "terminal_colors")
+                .collect();
+            let looks_like_a_palette = theme_colors.nodes().is_empty()
+                || (!declarations.is_empty()
+                    && declarations
+                        .iter()
+                        .all(|n| palette_color_names.contains(n.name().value())));
+            let theme = if looks_like_a_palette {
                 // Older palette based theme definition
                 let palette = Palette {
                     fg: PaletteColor::try_from(("fg", theme_colors))?,
@@ -7236,6 +7497,7 @@ impl Themes {
                 Theme {
                     palette: palette.into(),
                     sourced_from_external_file,
+                    terminal_colors,
                 }
             } else {
                 // Newer theme definition with named styles
@@ -7317,6 +7579,7 @@ impl Themes {
                 Theme {
                     palette: s,
                     sourced_from_external_file,
+                    terminal_colors,
                 }
             };
             themes.insert(theme_name.into(), theme);
@@ -7379,7 +7642,13 @@ impl Themes {
                 continue;
             }
             has_themes = true;
-            let current_theme_node = theme_to_kdl(&theme_name, &theme.palette);
+            let mut current_theme_node = theme_to_kdl(&theme_name, &theme.palette);
+            if let Some(terminal_colors) = theme.terminal_colors {
+                current_theme_node
+                    .ensure_children()
+                    .nodes_mut()
+                    .push(terminal_colors.to_kdl());
+            }
             themes.nodes_mut().push(current_theme_node);
         }
         if has_themes {
@@ -8469,6 +8738,34 @@ fn can_bind_open_context_menu_and_write_it_back() {
 }
 
 #[test]
+fn can_bind_toggle_session_card_and_write_it_back() {
+    let fake_config = r#"
+        keybinds {
+            normal {
+                bind "F9" { ToggleSessionCard; }
+            }
+        }"#;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = Keybinds::from_kdl(
+        document.get("keybinds").unwrap(),
+        Default::default(),
+        &Default::default(),
+    )
+    .unwrap();
+    let f9 = KeyWithModifier::new(BareKey::F(9));
+    assert_eq!(
+        deserialized.get_actions_for_key_in_mode(&InputMode::Normal, &f9),
+        Some(&vec![Action::ToggleSessionCard])
+    );
+    assert_eq!(
+        Action::ToggleSessionCard
+            .to_kdl()
+            .map(|node| node.name().value().to_owned()),
+        Some("ToggleSessionCard".to_owned())
+    );
+}
+
+#[test]
 fn can_bind_dismiss_info_popups_and_write_it_back() {
     let fake_config = r#"
         keybinds {
@@ -9073,6 +9370,51 @@ fn themes_to_string_with_multiple_theme_definitions() {
 }
 
 #[test]
+fn themes_to_string_with_terminal_colors() {
+    let fake_config = r##"
+        themes {
+           dracula {
+                fg 248 248 242
+                bg 40 42 54
+                black 0 0 0
+                red 255 85 85
+                green 80 250 123
+                yellow 241 250 140
+                blue 98 114 164
+                magenta 255 121 198
+                cyan 139 233 253
+                white 255 255 255
+                orange 255 184 108
+                terminal_colors {
+                    black 33 34 44
+                    red 255 85 85
+                    bright_white "#ffffff"
+                }
+            }
+        }"##;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let sourced_from_external_file = false;
+    let deserialized =
+        Themes::from_kdl(document.get("themes").unwrap(), sourced_from_external_file).unwrap();
+    let serialized = Themes::to_kdl(&deserialized).unwrap();
+    let deserialized_from_serialized = Themes::from_kdl(
+        serialized
+            .to_string()
+            .parse::<KdlDocument>()
+            .unwrap()
+            .get("themes")
+            .unwrap(),
+        sourced_from_external_file,
+    )
+    .unwrap();
+    assert_eq!(
+        deserialized, deserialized_from_serialized,
+        "Deserialized serialized config equals original config"
+    );
+    insta::assert_snapshot!(serialized.to_string());
+}
+
+#[test]
 fn plugins_to_string() {
     let fake_config = r##"
         plugins {
@@ -9265,6 +9607,50 @@ fn env_vars_to_string() {
         deserialized, deserialized_from_serialized,
         "Deserialized serialized config equals original config"
     );
+    insta::assert_snapshot!(serialized.to_string());
+}
+
+#[test]
+fn session_options_from_kdl() {
+    let fake_config = r##"
+        session_card false
+        session_indicator true
+        swap_layout_notification false
+        on_quit "ask_detach"
+    "##;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let options = Options::from_kdl(&document).unwrap();
+    assert_eq!(options.session_card, Some(false));
+    assert_eq!(options.session_indicator, Some(true));
+    assert_eq!(options.swap_layout_notification, Some(false));
+    assert_eq!(
+        options.on_quit,
+        Some(crate::input::options::OnQuit::AskDetach)
+    );
+    let mut serialized = Options::to_kdl(&options, false);
+    let mut fake_document = KdlDocument::new();
+    fake_document.nodes_mut().append(&mut serialized);
+    let reparsed =
+        Options::from_kdl(&fake_document.to_string().parse::<KdlDocument>().unwrap()).unwrap();
+    assert_eq!(options, reparsed);
+    insta::assert_snapshot!(fake_document.to_string());
+}
+
+#[test]
+fn session_suggestions_to_string() {
+    let fake_config = r##"
+        session_suggestions {
+            fact "project" command="echo $PROJECT" column="project" at="live"
+            match "directory" "git_branch"
+            match "project"
+            then "alphabetical"
+            script "~/.config/zellij/rank.sh" timeout_ms=300 hide_unlisted=false
+            record "~/.config/zellij/record.sh"
+        }"##;
+    let config = Config::from_kdl(fake_config, None).unwrap();
+    let serialized = config.session_suggestions.to_kdl().unwrap();
+    let reparsed = Config::from_kdl(&serialized.to_string(), None).unwrap();
+    assert_eq!(config.session_suggestions, reparsed.session_suggestions);
     insta::assert_snapshot!(serialized.to_string());
 }
 
@@ -9740,6 +10126,20 @@ fn osc8_hyperlinks_config_parsing() {
     let serialized = config.to_string(false);
     let deserialized = Config::from_kdl(&serialized, None).unwrap();
     assert_eq!(deserialized.options.osc8_hyperlinks, Some(true));
+}
+
+#[test]
+fn grapheme_clusters_config_parsing() {
+    let config = Config::from_kdl("", None).unwrap();
+    assert_eq!(config.options.grapheme_clusters, None);
+
+    let config = Config::from_kdl("grapheme_clusters false", None).unwrap();
+    assert_eq!(config.options.grapheme_clusters, Some(false));
+    let deserialized = Config::from_kdl(&config.to_string(false), None).unwrap();
+    assert_eq!(deserialized.options.grapheme_clusters, Some(false));
+
+    let config = Config::from_kdl("grapheme_clusters true", None).unwrap();
+    assert_eq!(config.options.grapheme_clusters, Some(true));
 }
 
 #[cfg(test)]
