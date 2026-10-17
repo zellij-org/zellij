@@ -66,6 +66,9 @@ pub struct RunCommand {
     pub cwd: Option<PathBuf>,
     #[serde(default)]
     pub hold_on_close: bool,
+    /// Return to a shell after a command discovered in a shell pane exits.
+    #[serde(default)]
+    pub drop_to_shell_on_exit: bool,
     #[serde(default)]
     pub hold_on_start: bool,
     #[serde(default)]
@@ -118,6 +121,7 @@ impl From<RunCommandAction> for RunCommand {
             args: action.args,
             cwd: action.cwd,
             hold_on_close: action.hold_on_close,
+            drop_to_shell_on_exit: false,
             hold_on_start: action.hold_on_start,
             originating_plugin: action.originating_plugin,
             use_terminal_title: action.use_terminal_title,
