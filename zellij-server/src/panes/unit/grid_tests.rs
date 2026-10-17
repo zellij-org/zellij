@@ -5541,6 +5541,16 @@ fn pane_contents_with_ansi_scrollback_preserves_escape_codes() {
 }
 
 #[test]
+fn dump_screen_with_ansi_does_not_add_separator_for_empty_scrollback() {
+    let grid = create_grid_with_size_and_raw(1, 5, b"\r\nx");
+    assert_eq!(grid.lines_above.len(), 1, "expected a blank scrollback row");
+
+    let dump = grid.dump_screen_with_ansi(true);
+    let ansi_escape = regex::Regex::new(r"\x1b\[[0-9;]*m").unwrap();
+    assert_eq!(ansi_escape.replace_all(&dump, ""), "x");
+}
+
+#[test]
 fn pane_contents_with_ansi_scrollback_truncation() {
     let grid = create_grid_with_colored_scrollback();
     let result = grid.pane_contents_with_ansi(true, Some(3));
