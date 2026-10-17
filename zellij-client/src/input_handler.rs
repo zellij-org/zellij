@@ -354,7 +354,10 @@ impl InputHandler {
             },
             AnsiStdinInstruction::KittyGraphicsSupport(supported) => {
                 self.os_input
-                    .send_to_server(ClientToServerMsg::KittyGraphicsSupport { supported });
+                    .send_to_server(ClientToServerMsg::KittyGraphicsSupport {
+                        supported,
+                        local_media: false,
+                    });
             },
             AnsiStdinInstruction::KittyZlibSupport(supported) => {
                 self.os_input
@@ -363,6 +366,11 @@ impl InputHandler {
             AnsiStdinInstruction::SixelSupport(supported) => {
                 self.os_input
                     .send_to_server(ClientToServerMsg::SixelSupport { supported });
+            },
+            AnsiStdinInstruction::GraphemeClusterMode(value) => {
+                let _ = self
+                    .send_client_instructions
+                    .send(ClientInstruction::OuterGraphemeClusterMode(value));
             },
         }
     }

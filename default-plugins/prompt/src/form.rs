@@ -4,7 +4,7 @@ use zellij_utils::prompt::{FormField, FormFieldKind, FormSpec};
 
 use crate::outcome::{Answer, Outcome};
 use crate::request::Pattern;
-use crate::ui::{check_text, print_error, text_width, truncate, Step};
+use crate::ui::{char_len, check_text, print_error, text_width, truncate, Step};
 
 const CHOOSE_ROWS: usize = 6;
 const DIALOG_TEXT_WIDTH: usize = 56;
@@ -584,7 +584,7 @@ impl FormScreen {
                         " (Space picks)"
                     };
                     let label = truncate(&format!("{}{}", field.label, hint), content_width);
-                    let label_length = text_width(&field.label).min(label.chars().count());
+                    let label_length = char_len(&field.label).min(char_len(&label));
                     print_text_with_coordinates(
                         Text::from(label.clone())
                             .color_range(0, 0..label_length)

@@ -22,6 +22,10 @@ pub struct Dropdown {
     opens_upward: bool,
     hovered: bool,
     accent_brackets: bool,
+    arrow: Option<String>,
+    styled_value: Option<Text>,
+    hover_emphasis: bool,
+    bold_value: bool,
     menu: MenuList,
     area: Option<Rect>,
     list_area: Option<Rect>,
@@ -41,6 +45,10 @@ impl Dropdown {
             opens_upward: false,
             hovered: false,
             accent_brackets: false,
+            arrow: None,
+            styled_value: None,
+            hover_emphasis: false,
+            bold_value: false,
             menu: MenuList::new(vec![]),
             area: None,
             list_area: None,
@@ -52,6 +60,22 @@ impl Dropdown {
     }
     pub fn accent_brackets(mut self) -> Self {
         self.accent_brackets = true;
+        self
+    }
+    pub fn arrow(mut self, arrow: impl Into<String>) -> Self {
+        self.arrow = Some(arrow.into());
+        self
+    }
+    pub fn styled_value(mut self, value: impl Into<Text>) -> Self {
+        self.styled_value = Some(value.into());
+        self
+    }
+    pub fn hover_emphasis(mut self) -> Self {
+        self.hover_emphasis = true;
+        self
+    }
+    pub fn bold_value(mut self) -> Self {
+        self.bold_value = true;
         self
     }
     pub fn label_width(mut self, label_width: usize) -> Self {
@@ -197,19 +221,24 @@ impl Dropdown {
         state_flag(&mut state, "d", self.disabled);
         state_flag(&mut state, "o", self.open);
         state_flag(&mut state, "h", self.hovered && !self.disabled);
+        state_flag(&mut state, "ab", self.accent_brackets);
+        state_flag(&mut state, "he", self.hover_emphasis);
+        state_flag(&mut state, "bv", self.bold_value);
         state_value(&mut state, "lw", label_width);
-        widget_dcs(
-            "dropdown",
-            x,
-            y,
-            Some(width),
-            Some(1),
-            &state,
-            &[
-                self.label.serialize(),
-                encode_text(self.selected_value().unwrap_or("")),
-            ],
-        )
+        let mut fields = vec![
+            self.label.serialize(),
+            encode_text(self.selected_value().unwrap_or("")),
+        ];
+        if self.arrow.is_some() || self.styled_value.is_some() {
+            fields.push(encode_text(self.arrow.as_deref().unwrap_or("")));
+            fields.push(
+                self.styled_value
+                    .as_ref()
+                    .map(|value| value.serialize())
+                    .unwrap_or_default(),
+            );
+        }
+        widget_dcs("dropdown", x, y, Some(width), Some(1), &state, &fields)
     }
     pub fn render(&mut self, x: usize, y: usize, width: usize) {
         print!("{}", self.serialize(x, y, width));

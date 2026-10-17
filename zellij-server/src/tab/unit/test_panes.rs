@@ -96,7 +96,7 @@ impl Pane for FailingRenderPane {
         &mut self,
         cursor_color: PaletteColor,
         text_color: PaletteColor,
-    ) -> Option<String> {
+    ) -> Option<crate::output::CharacterChunk> {
         self.inner.render_fake_cursor(cursor_color, text_color)
     }
     fn render_terminal_title(&mut self, _input_mode: InputMode) -> String {
@@ -302,7 +302,7 @@ impl Pane for FocusReportingPane {
         &mut self,
         cursor_color: PaletteColor,
         text_color: PaletteColor,
-    ) -> Option<String> {
+    ) -> Option<crate::output::CharacterChunk> {
         self.inner.render_fake_cursor(cursor_color, text_color)
     }
     fn render_terminal_title(&mut self, _input_mode: InputMode) -> String {

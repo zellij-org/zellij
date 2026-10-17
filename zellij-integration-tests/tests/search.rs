@@ -18,6 +18,7 @@ fn enter_search_on_visible_match_with_full_frames(zellij: &TestSession) {
     zellij.wait_until("match visible on screen", |grid_snapshot| {
         grid_snapshot.contains("NEEDLE on screen")
     });
+    zellij.wait_for_app_load();
     enter_search_for_needle(zellij);
 }
 

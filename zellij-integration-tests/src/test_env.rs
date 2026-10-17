@@ -127,21 +127,93 @@ fn slot_count() -> usize {
     (cpus / 4).max(1)
 }
 
+struct QueueTicket {
+    queue_dir: PathBuf,
+    name: String,
+    _ticket_file: File,
+}
+
+impl QueueTicket {
+    fn join(queue_dir: &Path) -> QueueTicket {
+        let enqueued_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let name = format!(
+            "{:024}-{:010}-{:06}",
+            enqueued_at,
+            std::process::id(),
+            TICKET_COUNTER.fetch_add(1, Ordering::Relaxed)
+        );
+        let staging_path = queue_dir.join(format!(".{}", name));
+        let ticket_file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .open(&staging_path)
+            .unwrap();
+        ticket_file.lock().unwrap();
+        std::fs::rename(&staging_path, queue_dir.join(&name)).unwrap();
+        QueueTicket {
+            queue_dir: queue_dir.to_path_buf(),
+            name,
+            _ticket_file: ticket_file,
+        }
+    }
+
+    fn is_first_in_line(&self) -> bool {
+        let Ok(entries) = std::fs::read_dir(&self.queue_dir) else {
+            return true;
+        };
+        let mut earlier: Vec<String> = entries
+            .flatten()
+            .filter_map(|entry| entry.file_name().into_string().ok())
+            .filter(|name| !name.starts_with('.') && name.as_str() < self.name.as_str())
+            .collect();
+        earlier.sort();
+        for name in earlier {
+            let path = self.queue_dir.join(&name);
+            let Ok(ticket_file) = OpenOptions::new().write(true).open(&path) else {
+                continue;
+            };
+            if ticket_file.try_lock().is_ok() {
+                let _ = std::fs::remove_file(&path);
+                let _ = ticket_file.unlock();
+            } else {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+impl Drop for QueueTicket {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(self.queue_dir.join(&self.name));
+    }
+}
+
+static TICKET_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
 pub fn acquire_concurrency_slot() -> ConcurrencySlot {
     let slots = slot_count();
     let slot_dir = PathBuf::from(TEMP_PARENT).join("concurrency-slots");
+    let queue_dir = PathBuf::from(TEMP_PARENT).join("concurrency-queue");
     std::fs::create_dir_all(&slot_dir).unwrap();
+    std::fs::create_dir_all(&queue_dir).unwrap();
+    let ticket = QueueTicket::join(&queue_dir);
     loop {
-        for slot_index in 0..slots {
-            let slot_file = OpenOptions::new()
-                .create(true)
-                .write(true)
-                .open(slot_dir.join(format!("slot-{}", slot_index)))
-                .unwrap();
-            if slot_file.try_lock().is_ok() {
-                return ConcurrencySlot {
-                    _slot_file: slot_file,
-                };
+        if ticket.is_first_in_line() {
+            for slot_index in 0..slots {
+                let slot_file = OpenOptions::new()
+                    .create(true)
+                    .write(true)
+                    .open(slot_dir.join(format!("slot-{}", slot_index)))
+                    .unwrap();
+                if slot_file.try_lock().is_ok() {
+                    return ConcurrencySlot {
+                        _slot_file: slot_file,
+                    };
+                }
             }
         }
         std::thread::sleep(Duration::from_millis(10));
@@ -158,6 +230,10 @@ mouse_mode false
 advanced_mouse_actions false
 pane_frame_style "titles"
 theme "default"
+session_card false
+session_indicator false
+swap_layout_notification false
+on_quit "quit"
 "#;
 
 pub fn default_test_options() -> zellij_utils::input::options::Options {

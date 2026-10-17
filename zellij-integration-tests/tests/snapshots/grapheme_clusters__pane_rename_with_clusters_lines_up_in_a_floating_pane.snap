@@ -1,0 +1,19 @@
+---
+source: zellij-integration-tests/tests/grapheme_clusters.rs
+assertion_line: 1298
+expression: normalized(&grid_snapshot)
+---
+ Zellij (test)  Tab #1  + 
+$
+                              ┌ ab👨‍👩‍👧cé ───────────────────────────────────────── PIN [ ] ┐
+                              │$ █                                                       │
+                              │                                                          │
+                              │                                                          │
+                              │                                                          │
+                              │                                                          │
+                              │                                                          │
+                              │                                                          │
+                              │                                                          │
+                              │                                                          │
+                              └──────────────────────────────────────────────────────────┘
+ Ctrl + <g> LOCK  <p> PANE  <t> TAB  <n> RESIZE  <h> MOVE  <s> SEARCH  <o> SESSION  <q> QUIT        ...

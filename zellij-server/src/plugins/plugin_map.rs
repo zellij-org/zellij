@@ -335,6 +335,7 @@ pub struct PluginEnv {
     pub stdout_pipe: Arc<Mutex<VecDeque<u8>>>,
     pub keybinds: SharedKeybinds,
     pub intercepting_key_presses: bool,
+    pub pending_popup_size: Option<(usize, usize)>,
     pub store_limits: StoreLimits,
     pub shared: Option<SharedEnv>,
 }

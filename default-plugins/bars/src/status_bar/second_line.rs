@@ -1,8 +1,10 @@
+use crate::status_bar::unstyled_len;
 use ansi_term::{
-    unstyled_len, ANSIString, ANSIStrings,
+    ANSIString, ANSIStrings,
     Color::{Fixed, RGB},
     Style,
 };
+use zellij_tile::graphemes::display_width;
 use zellij_tile::prelude::actions::Action;
 use zellij_tile::prelude::*;
 use zellij_tile_utils::palette_match;
@@ -45,7 +47,7 @@ fn full_length_shortcut(
 
 fn locked_interface_indication(palette: Styling) -> LinePart {
     let locked_text = " -- INTERFACE LOCKED -- ";
-    let locked_text_len = locked_text.chars().count();
+    let locked_text_len = display_width(&locked_text);
     let text_color = palette_match!(palette.text_unselected.base);
     let locked_styled_text = Style::new().fg(text_color).bold().paint(locked_text);
     LinePart {
@@ -161,6 +163,10 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
             &[Action::BreakPaneRight, TO_NORMAL],
         ])),
         (s("Toggle"), s("Toggle"), action_key(&km, &[A::ToggleTab])),
+        (s("Layout"), s("Layout"), action_key_group(&km, &[
+            &[A::NextSwapLayout],
+            &[A::PreviousSwapLayout],
+        ])),
         (s("Select pane"), s("Select"), to_normal_key),
     ]} else if mi.mode == IM::Resize { vec![
         (s("Increase/Decrease size"), s("Increase/Decrease"),
@@ -285,9 +291,9 @@ fn best_effort_shortcut_list_nonstandard_mode(help: &ModeInfo, max_len: usize) -
 
     for (_, short, keys) in keys_and_hints.into_iter() {
         let new_line_part = add_shortcut(help, &line_part, &short, keys.to_vec());
-        if new_line_part.len + MORE_MSG.chars().count() > max_len {
+        if new_line_part.len + display_width(&MORE_MSG) > max_len {
             line_part.part = format!("{}{}", line_part.part, MORE_MSG);
-            line_part.len += MORE_MSG.chars().count();
+            line_part.len += display_width(&MORE_MSG);
             break;
         }
         line_part = new_line_part;
@@ -400,7 +406,7 @@ pub fn text_copied_hint(copy_destination: CopyDestination) -> LinePart {
     };
     LinePart {
         part: serialize_text(&Text::from(hint).color_range(2, ..).opaque()),
-        len: hint.len(),
+        len: display_width(hint),
         ..Default::default()
     }
 }
@@ -410,7 +416,7 @@ pub fn system_clipboard_error(palette: &Styling) -> LinePart {
     let red_color = palette_match!(palette.text_unselected.emphasis_3);
     LinePart {
         part: Style::new().fg(red_color).bold().paint(hint).to_string(),
-        len: hint.len(),
+        len: display_width(hint),
         ..Default::default()
     }
 }
@@ -425,10 +431,10 @@ pub fn fullscreen_panes_to_hide(palette: &Styling, panes_to_hide: usize) -> Line
     let puls = "+ ";
     let panes = panes_to_hide.to_string();
     let hide = " hidden panes";
-    let len = fullscreen.chars().count()
-        + puls.chars().count()
-        + panes.chars().count()
-        + hide.chars().count()
+    let len = display_width(&fullscreen)
+        + display_width(&puls)
+        + display_width(&panes)
+        + display_width(&hide)
         + 5;
     LinePart {
         part: format!(
@@ -480,14 +486,14 @@ pub fn floating_panes_are_visible(mode_info: &ModeInfo) -> LinePart {
     let p_right_separator = "> ";
     let to_hide = "to hide.";
 
-    let len = floating_panes.chars().count()
-        + press.chars().count()
-        + pane_mode.chars().count()
-        + plus.chars().count()
-        + p_left_separator.chars().count()
-        + p.chars().count()
-        + p_right_separator.chars().count()
-        + to_hide.chars().count()
+    let len = display_width(&floating_panes)
+        + display_width(&press)
+        + display_width(&pane_mode)
+        + display_width(&plus)
+        + display_width(&p_left_separator)
+        + display_width(&p)
+        + display_width(&p_right_separator)
+        + display_width(&to_hide)
         + 5;
     LinePart {
         part: format!(
@@ -519,11 +525,11 @@ pub fn locked_fullscreen_panes_to_hide(palette: &Styling, panes_to_hide: usize) 
     let puls = "+ ";
     let panes = panes_to_hide.to_string();
     let hide = " hidden panes";
-    let len = locked_text.chars().count()
-        + fullscreen.chars().count()
-        + puls.chars().count()
-        + panes.chars().count()
-        + hide.chars().count()
+    let len = display_width(&locked_text)
+        + display_width(&fullscreen)
+        + display_width(&puls)
+        + display_width(&panes)
+        + display_width(&hide)
         + 5;
     LinePart {
         part: format!(
@@ -549,7 +555,7 @@ pub fn locked_floating_panes_are_visible(palette: &Styling) -> LinePart {
     let locked_text = " -- INTERFACE LOCKED -- ";
     let floating_panes = "FLOATING PANES VISIBLE";
 
-    let len = locked_text.chars().count() + floating_panes.chars().count();
+    let len = display_width(&locked_text) + display_width(&floating_panes);
     LinePart {
         part: format!(
             "{}{}{}{}",

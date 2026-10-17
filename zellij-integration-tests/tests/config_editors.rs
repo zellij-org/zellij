@@ -13,12 +13,13 @@ const SHIFT_DOWN: &[u8] = b"\x1b[1;2B";
 const DELETE: &[u8] = b"\x1b[3~";
 const END: &[u8] = b"\x1b[F";
 const BACKSPACE: &[u8] = &[0x7f];
+const PROMPT_MARKER: &str = "<Esc> - cancel";
 
 const KEYS_PAGE: usize = 2;
 const MOUSE_BINDINGS_PAGE: usize = 4;
 const MENU_PAGE: usize = 5;
 const THEMES_PAGE: usize = 6;
-const PLUGINS_PAGE: usize = 12;
+const PLUGINS_PAGE: usize = 14;
 
 fn open_settings(zellij: &TestSession) {
     zellij.send_stdin(&keys::ctrl('o'));
@@ -211,6 +212,7 @@ fn a_removed_preset_key_is_written_as_unbind_and_reset_back() {
             && (delete_column + 7..delete_column + 12)
                 .all(|column| grid_snapshot.cell_foreground(column, question_row) == key_color)
             && grid_snapshot.cell_foreground(delete_column + 13, question_row) == plain_color
+            && grid_snapshot.contains(PROMPT_MARKER)
     });
     let question_row = grid_snapshot
         .row_of_line("Delete Alt n from Normal mode?")

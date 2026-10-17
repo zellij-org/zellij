@@ -5,7 +5,7 @@ mod second_line;
 mod tip;
 
 use ansi_term::{
-    ANSIString,
+    unstyle, ANSIString, ANSIStrings,
     Colour::{Fixed, RGB},
     Style,
 };
@@ -34,6 +34,10 @@ const RUNNER_OWNER: &str = "status-bar";
 
 static ARROW_SEPARATOR: &str = "";
 static MORE_MSG: &str = " ... ";
+
+pub(crate) fn unstyled_len(strings: &ANSIStrings) -> usize {
+    zellij_tile::graphemes::display_width(&unstyle(strings))
+}
 const TO_NORMAL: Action = Action::SwitchToMode {
     input_mode: InputMode::Normal,
 };

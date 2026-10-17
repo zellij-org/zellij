@@ -44,7 +44,7 @@ impl ErrorScreen {
     }
 
     pub fn render(&self, rows: usize, cols: usize) {
-        if self.message.chars().count() > cols.saturating_sub(4) {
+        if zellij_tile::graphemes::display_width(&self.message) > cols.saturating_sub(4) {
             let max_width = cols.saturating_sub(4);
             let max_rows = rows.saturating_sub(4);
             let lines = wrap_text_to_width(&self.message, max_width);
@@ -52,7 +52,7 @@ impl ErrorScreen {
             let base_y = rows.saturating_sub(4 + lines.len()) / 2;
             MultiLineErrorMessage::new(lines).render(base_x, base_y, max_rows);
         } else {
-            let desired_width = self.message.chars().count();
+            let desired_width = zellij_tile::graphemes::display_width(&self.message);
             let base_y = rows.saturating_sub(5) / 2;
             let base_x = cols.saturating_sub(desired_width) / 2;
             ErrorMessage::new(&self.message).render(base_x, base_y);

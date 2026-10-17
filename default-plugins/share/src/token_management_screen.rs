@@ -137,7 +137,7 @@ impl<'a> TokenManagementScreen<'a> {
     }
 
     fn truncate_token_name(&self, token: &str, max_width: usize) -> String {
-        if token.chars().count() <= max_width {
+        if zellij_tile::graphemes::display_width(token) <= max_width {
             return token.to_string();
         }
 
@@ -147,23 +147,7 @@ impl<'a> TokenManagementScreen<'a> {
         }
 
         let truncator = if max_width <= 10 { "[..]" } else { "[...]" };
-        let truncator_len = truncator.chars().count();
-        let remaining_chars = max_width.saturating_sub(truncator_len);
-        let start_chars = remaining_chars / 2;
-        let end_chars = remaining_chars.saturating_sub(start_chars);
-
-        let token_chars: Vec<char> = token.chars().collect();
-        let start_part: String = token_chars.iter().take(start_chars).collect();
-        let end_part: String = token_chars
-            .iter()
-            .rev()
-            .take(end_chars)
-            .collect::<String>()
-            .chars()
-            .rev()
-            .collect();
-
-        format!("{}{}{}", start_part, truncator, end_part)
+        zellij_tile::graphemes::truncate_middle(token, max_width, truncator).into_owned()
     }
 
     fn format_date(
@@ -523,9 +507,8 @@ impl<'a> TokenManagementScreen<'a> {
 
         if let Some(name) = &self.entering_new_token_name {
             let max_width = self.cols.saturating_sub(1); // Leave room for cursor
-            let truncated_name = if name.chars().count() > max_width {
-                let chars: Vec<char> = name.chars().take(max_width).collect();
-                chars.into_iter().collect()
+            let truncated_name = if zellij_tile::graphemes::display_width(name) > max_width {
+                zellij_tile::graphemes::truncate_end(name, max_width, "").into_owned()
             } else {
                 name.clone()
             };

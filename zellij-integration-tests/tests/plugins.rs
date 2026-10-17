@@ -27,7 +27,6 @@ fn load_plugins_in_background_on_startup() {
             grid_snapshot.contains("Allow? (y/n)")
                 && grid_snapshot.tab_bar_appears()
                 && grid_snapshot.status_bar_appears()
-                && grid_snapshot.contains("STAGGERED")
         });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.send_stdin(b"y");

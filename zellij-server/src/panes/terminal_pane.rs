@@ -238,6 +238,19 @@ impl Pane for TerminalPane {
         let mut index = 0;
         let mut capture_started = false;
         while index < bytes.len() {
+            if self.kitty_interceptor.is_ground() {
+                let rest = &bytes[index..];
+                let run = rest
+                    .iter()
+                    .position(|byte| *byte == 0x1b)
+                    .unwrap_or(rest.len());
+                if run > 0 {
+                    capture_started = false;
+                    forwarded.extend_from_slice(&rest[..run]);
+                    index += run;
+                    continue;
+                }
+            }
             let byte = bytes[index];
             index += 1;
             match self.kitty_interceptor.advance(byte) {
@@ -507,7 +520,9 @@ impl Pane for TerminalPane {
             }
             match self.grid.render(content_x, content_y, &self.style) {
                 Ok(rendered_assets) => {
-                    self.set_should_render(false);
+                    if rendered_assets.is_some() {
+                        self.set_should_render(false);
+                    }
                     return Ok(rendered_assets);
                 },
                 e => return e,
@@ -624,29 +639,24 @@ impl Pane for TerminalPane {
         &mut self,
         cursor_color: PaletteColor,
         text_color: PaletteColor,
-    ) -> Option<String> {
-        let mut vte_output = None;
-        if let Some((cursor_x, cursor_y, true)) = self.cursor_coordinates() {
-            let mut character_under_cursor = self
-                .grid
-                .get_character_under_cursor()
-                .unwrap_or(EMPTY_TERMINAL_CHARACTER);
-            character_under_cursor.styles.update(|styles| {
-                styles.background = Some(cursor_color.into());
-                styles.foreground = Some(text_color.into());
-            });
-            // we keep track of these so that we can clear them up later (see render function)
-            self.fake_cursor_locations.insert((cursor_y, cursor_x));
-            let mut fake_cursor = format!(
-                "\u{1b}[{};{}H\u{1b}[m{}",           // goto row column and clear styles
-                self.get_content_y() + cursor_y + 1, // + 1 because goto is 1 indexed
-                self.get_content_x() + cursor_x + 1,
-                &character_under_cursor.styles,
-            );
-            fake_cursor.push(character_under_cursor.character);
-            vte_output = Some(fake_cursor);
-        }
-        vte_output
+    ) -> Option<crate::output::CharacterChunk> {
+        let Some((cursor_x, cursor_y, true)) = self.cursor_coordinates() else {
+            return None;
+        };
+        let mut character_under_cursor = self
+            .grid
+            .get_character_under_cursor()
+            .unwrap_or(EMPTY_TERMINAL_CHARACTER);
+        character_under_cursor.styles.update(|styles| {
+            styles.background = Some(cursor_color.into());
+            styles.foreground = Some(text_color.into());
+        });
+        self.fake_cursor_locations.insert((cursor_y, cursor_x));
+        Some(CharacterChunk::new(
+            vec![character_under_cursor],
+            self.get_content_x() + cursor_x,
+            self.get_content_y() + cursor_y,
+        ))
     }
     fn render_terminal_title(&mut self, input_mode: InputMode) -> String {
         let pane_title = if self.pane_name.is_empty() && input_mode == InputMode::RenamePane {
@@ -664,7 +674,7 @@ impl Pane for TerminalPane {
                 self.pane_name = String::new();
             },
             DELETE_KEY | BACKSPACE_KEY => {
-                self.pane_name.pop();
+                zellij_utils::graphemes::pop_cluster(&mut self.pane_name);
             },
             c => {
                 self.pane_name.push_str(c);
@@ -912,6 +922,10 @@ impl Pane for TerminalPane {
         self.grid.pending_osc7_cwd.take()
     }
 
+    fn drain_prompt_return(&mut self) -> bool {
+        std::mem::take(&mut self.grid.pending_prompt_return)
+    }
+
     fn set_selection_options(&mut self, osc133_command_selection: bool, word_separators: &str) {
         self.grid
             .set_selection_options(osc133_command_selection, word_separators);
@@ -1061,7 +1075,7 @@ impl Pane for TerminalPane {
                 self.search_term = String::new();
             },
             DELETE_KEY | BACKSPACE_KEY => {
-                self.search_term.pop();
+                zellij_utils::graphemes::pop_cluster(&mut self.search_term);
             },
             c => {
                 self.search_term.push_str(c);
@@ -1200,6 +1214,9 @@ impl Pane for TerminalPane {
     fn scroll_position(&self) -> (usize, usize) {
         self.grid.scrollback_position_and_length()
     }
+    fn viewport_scroll_state(&self) -> Option<(usize, u64)> {
+        self.grid.viewport_scroll_state()
+    }
     fn exit_status(&self) -> Option<i32> {
         self.is_held
             .as_ref()
@@ -1215,7 +1232,9 @@ impl Pane for TerminalPane {
         }
     }
     fn rename(&mut self, buf: Vec<u8>) {
-        self.pane_name = String::from_utf8_lossy(&buf).to_string();
+        self.pane_name = zellij_utils::shared::clean_string_from_control_and_linebreak(
+            &String::from_utf8_lossy(&buf),
+        );
         self.set_should_render(true);
     }
     fn serialize(&self, scrollback_lines_to_serialize: Option<usize>) -> Option<String> {
@@ -1508,6 +1527,10 @@ impl TerminalPane {
             self.render_first_run_banner();
         }
         self.set_should_render(true);
+    }
+    pub fn with_grapheme_clusters(mut self, grapheme_clusters: bool) -> Self {
+        self.grid.set_grapheme_mode_by_default(grapheme_clusters);
+        self
     }
     pub fn read_buffer_as_lines(&self) -> Vec<Vec<TerminalCharacter>> {
         self.grid.as_character_lines()

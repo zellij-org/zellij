@@ -1,6 +1,7 @@
 use fuzzy_matcher::skim::SkimMatcherV2;
 use fuzzy_matcher::FuzzyMatcher;
 use uuid::Uuid;
+use zellij_tile::graphemes;
 use zellij_tile::prelude::*;
 
 use std::collections::{BTreeMap, HashMap};
@@ -184,12 +185,12 @@ impl NewPluginScreen {
                                                                          // cursor, 2 ": "
         let config_key_max_len = config_line_max_len / 2;
         let config_val_max_len = config_line_max_len.saturating_sub(config_key_max_len);
-        let config_key = if config_key.chars().count() > config_key_max_len {
+        let config_key = if graphemes::display_width(config_key) > config_key_max_len {
             truncate_string_start(&config_key, config_key_max_len)
         } else {
             config_key.to_owned()
         };
-        let config_val = if config_val.chars().count() > config_val_max_len {
+        let config_val = if graphemes::display_width(config_val) > config_val_max_len {
             truncate_string_start(&config_val, config_val_max_len)
         } else {
             config_val.to_owned()
@@ -239,13 +240,13 @@ impl NewPluginScreen {
         };
         let config_key_max_len = config_line_max_len / 2;
         let config_val_max_len = config_line_max_len.saturating_sub(config_key_max_len);
-        let config_key = if config_key.chars().count() > config_key_max_len {
+        let config_key = if graphemes::display_width(config_key) > config_key_max_len {
             truncate_string_start(&config_key, config_key_max_len)
         } else {
             config_key.to_owned()
         };
 
-        let config_val = if config_val.chars().count() > config_val_max_len {
+        let config_val = if graphemes::display_width(config_val) > config_val_max_len {
             truncate_string_start(&config_val, config_val_max_len)
         } else {
             config_val.to_owned()
@@ -369,7 +370,7 @@ impl NewPluginScreen {
             },
             BareKey::Backspace if key.has_no_modifiers() => {
                 if let Some(field) = self.get_field_being_edited_mut() {
-                    field.pop();
+                    graphemes::pop_cluster(field);
                 }
                 should_render = true;
             },
@@ -709,7 +710,7 @@ impl State {
     }
     pub fn render_search(&self, cols: usize) {
         let text = format!(" SEARCH: {}_", self.search_term);
-        if text.chars().count() <= cols {
+        if graphemes::display_width(&text) <= cols {
             let text = Text::from(text).color_range(3, 9..);
             print_text_with_coordinates(text, 0, 0, None, None);
         } else {
@@ -729,7 +730,7 @@ impl State {
         cols: usize,
     ) -> Vec<NestedListItem> {
         let mut items = vec![];
-        let plugin_location_len = plugin_info.location.chars().count();
+        let plugin_location_len = graphemes::display_width(&plugin_info.location);
         let max_location_len = cols.saturating_sub(3); // 3 for the bulletin
         let location_string = if plugin_location_len > max_location_len {
             truncate_string_start(&plugin_info.location, max_location_len)
@@ -767,13 +768,13 @@ impl State {
         let config_line_max_len = cols.saturating_sub(config_line_padding);
         let config_key_max_len = config_line_max_len / 2;
         let config_val_max_len = config_line_max_len.saturating_sub(config_key_max_len);
-        let config_key = if config_key.chars().count() > config_key_max_len {
+        let config_key = if graphemes::display_width(config_key) > config_key_max_len {
             truncate_string_start(&config_key, config_key_max_len)
         } else {
             config_key.to_owned()
         };
 
-        let config_val = if config_val.chars().count() > config_val_max_len {
+        let config_val = if graphemes::display_width(config_val) > config_val_max_len {
             truncate_string_start(&config_val, config_val_max_len)
         } else {
             config_val.to_owned()
@@ -801,12 +802,12 @@ impl State {
             .map(|p| p.to_string().chars().count() + 4)
             .unwrap_or(0); // 4 for the plus indication decorators and space
         let max_location_len = cols.saturating_sub(plus_indication_len + 3); // 3 for the bulletin
-        let (location_string, indices) = if plugin_info.location.chars().count() <= max_location_len
-        {
-            (plugin_info.location.clone(), indices.clone())
-        } else {
-            truncate_search_result(&plugin_info.location, max_location_len, indices)
-        };
+        let (location_string, indices) =
+            if graphemes::display_width(&plugin_info.location) <= max_location_len {
+                (plugin_info.location.clone(), indices.clone())
+            } else {
+                truncate_search_result(&plugin_info.location, max_location_len, indices)
+            };
         let mut item = match plus_indication {
             Some(plus_indication) => self.render_plugin_line_with_plus_indication(
                 location_string,
@@ -867,7 +868,7 @@ impl State {
         let tab_line_padding_count = 10; // 5 the length of the "Tab: " + 5 for the left padding
 
         let tab_of_plugin_id =
-            if tab_of_plugin_id.chars().count() + tab_line_padding_count > max_width {
+            if graphemes::display_width(&tab_of_plugin_id) + tab_line_padding_count > max_width {
                 truncate_string_start(
                     &tab_of_plugin_id,
                     max_width.saturating_sub(tab_line_padding_count),
@@ -986,7 +987,7 @@ impl State {
                 should_render = true;
             },
             BareKey::Backspace if key.has_no_modifiers() => {
-                self.search_term.pop();
+                graphemes::pop_cluster(&mut self.search_term);
                 self.update_search_term();
                 self.reset_selection();
                 should_render = true;
@@ -1086,13 +1087,10 @@ impl State {
     }
 }
 
+const TRUNCATION_MARKER: &str = "[...]";
+
 fn truncate_string_start(string_to_truncate: &str, max_len: usize) -> String {
-    let mut truncated_string = string_to_truncate.to_owned();
-    let count_to_remove = truncated_string.chars().count().saturating_sub(max_len) + 5;
-    if truncated_string.chars().count() > max_len {
-        truncated_string.replace_range(0..count_to_remove, "[...]");
-    }
-    truncated_string
+    graphemes::truncate_start(string_to_truncate, max_len, TRUNCATION_MARKER).into_owned()
 }
 
 fn truncate_search_result(
@@ -1101,19 +1099,59 @@ fn truncate_search_result(
     indices: &Vec<usize>,
 ) -> (String, Vec<usize>) {
     let truncated_location = truncate_string_start(&plugin_location, max_location_len);
-    let truncated_count = plugin_location
+    let was_truncated = graphemes::display_width(plugin_location) > max_location_len;
+    let marker_chars =
+        if was_truncated && graphemes::display_width(TRUNCATION_MARKER) <= max_location_len {
+            TRUNCATION_MARKER.chars().count()
+        } else {
+            0
+        };
+    let kept_chars = truncated_location
         .chars()
         .count()
-        .saturating_sub(max_location_len);
+        .saturating_sub(marker_chars);
+    let removed_chars = plugin_location.chars().count().saturating_sub(kept_chars);
     let adjusted_indices = indices
         .iter()
-        .filter_map(|i| {
-            if i.saturating_sub(truncated_count) >= 5 {
-                Some(i.saturating_sub(truncated_count))
-            } else {
-                None
-            }
-        })
+        .filter(|i| **i >= removed_chars)
+        .map(|i| i - removed_chars + marker_chars)
         .collect();
     (truncated_location, adjusted_indices)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn truncate_string_start_keeps_the_end_within_the_width_for_non_ascii_text() {
+        let truncated = truncate_string_start("/home/ünïcödé/plügîn.wasm", 12);
+        assert_eq!(truncated, "[...]în.wasm");
+        assert_eq!(graphemes::display_width(&truncated), 12);
+    }
+
+    #[test]
+    fn truncate_string_start_never_splits_a_cluster() {
+        let family = "\u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467}";
+        let location = format!("{}{}{}{}", family, family, family, family);
+        let truncated = truncate_string_start(&location, 7);
+        assert_eq!(truncated, format!("[...]{}", family));
+        assert_eq!(graphemes::display_width(&truncated), 7);
+        let truncated = truncate_string_start("abce\u{301}fg", 8);
+        assert_eq!(truncated, "abce\u{301}fg");
+        let truncated = truncate_string_start("abcdefe\u{301}fg", 8);
+        assert_eq!(truncated, "[...]e\u{301}fg");
+    }
+
+    #[test]
+    fn truncate_string_start_leaves_short_strings_alone() {
+        assert_eq!(truncate_string_start("plügîn", 6), "plügîn");
+    }
+
+    #[test]
+    fn truncate_search_result_moves_indices_with_the_cut() {
+        let (truncated, indices) = truncate_search_result("ääääääbbbbcc", 9, &vec![0, 8, 10, 11]);
+        assert_eq!(truncated, "[...]bbcc");
+        assert_eq!(indices, vec![5, 7, 8]);
+    }
 }

@@ -219,6 +219,13 @@ support_kitty_keyboard_protocol false
 // Default: true (if the host terminal supports it)
 // 
 // support_kitty_graphics_protocol false
+ 
+// Count each grapheme cluster (an emoji sequence such as a flag or a skin tone, a letter with its accents) as one unit of width, as the Unicode standard does
+// When false, widths are counted per code point, the way older programs expect; programs can still ask for clusters with mode 2027
+// (Applies to new panes)
+// Default: true
+// 
+// grapheme_clusters false
 // Whether to make sure a local web server is running when a new Zellij session starts.
 // This web server will allow creating new sessions and attaching to existing ones that have
 // opted in to being shared in the browser.
@@ -394,3 +401,24 @@ web_sharing "disabled"
 //   - "off" (do not forward notifications to the host terminal)
 // 
 // host_notification_protocol "auto"
+ 
+// Whether to show a card listing other relevant sessions when a new session starts
+// default is true
+// session_card false
+ 
+// Whether to show the other sessions indicator in the tab bar and compact bar
+// default is true
+// session_indicator false
+ 
+// Whether to briefly show the name of the new swap layout when it is changed
+// default is true
+// swap_layout_notification false
+ 
+// What the quit action does
+// Options:
+//   - "ask_quit" (Default - ask whether to detach or quit, with quit preselected)
+//   - "ask_detach" (ask whether to detach or quit, with detach preselected)
+//   - "quit" (quit without asking)
+//   - "detach" (detach without asking)
+// 
+// on_quit "ask_quit"

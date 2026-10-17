@@ -1,11 +1,36 @@
 use super::text::Text;
 use super::widget_common::{
-    char_width, default_label_width, encode_text, is_plain, state_flag, state_value, text_width,
-    typed_char, update_hover, widget_dcs, Rect, UiResponse, UiValue, Widget,
+    default_label_width, encode_text, is_plain, state_flag, state_value, text_width, typed_char,
+    update_hover, widget_dcs, Rect, UiResponse, UiValue, Widget,
 };
 use std::fmt;
 use std::rc::Rc;
 use zellij_utils::data::{BareKey, KeyModifier, KeyWithModifier, Mouse};
+use zellij_utils::graphemes;
+
+#[derive(Debug, Clone, Copy)]
+struct ClusterSpan {
+    start: usize,
+    end: usize,
+    width: usize,
+    whitespace: bool,
+}
+
+fn cluster_spans(text: &str) -> Vec<ClusterSpan> {
+    let mut spans = Vec::new();
+    let mut start = 0;
+    for (cluster, width) in graphemes::clusters(text) {
+        let end = start + cluster.chars().count();
+        spans.push(ClusterSpan {
+            start,
+            end,
+            width,
+            whitespace: cluster.chars().all(char::is_whitespace),
+        });
+        start = end;
+    }
+    spans
+}
 
 const MAX_UNDO_STACK_SIZE: usize = 100;
 const MIN_FIELD_WIDTH: usize = 5;
@@ -188,6 +213,11 @@ impl TextInput {
         self.cursor_position
     }
 
+    pub fn cursor_column(&self) -> usize {
+        let byte_index = self.char_index_to_byte_index(self.cursor_position);
+        graphemes::display_width(&self.buffer[..byte_index])
+    }
+
     pub fn get_text_mut(&mut self) -> &mut String {
         &mut self.buffer
     }
@@ -202,7 +232,36 @@ impl TextInput {
 
     pub fn set_cursor_position(&mut self, pos: usize) {
         let text_len = self.buffer.chars().count();
-        self.cursor_position = pos.min(text_len);
+        let pos = pos.min(text_len);
+        self.cursor_position = cluster_spans(&self.buffer)
+            .iter()
+            .find(|span| pos > span.start && pos < span.end)
+            .map(|span| span.start)
+            .unwrap_or(pos);
+    }
+
+    fn previous_boundary(&self, position: usize) -> usize {
+        cluster_spans(&self.buffer)
+            .iter()
+            .rev()
+            .map(|span| span.start)
+            .find(|start| *start < position)
+            .unwrap_or(0)
+    }
+
+    fn next_boundary(&self, position: usize) -> usize {
+        let spans = cluster_spans(&self.buffer);
+        spans
+            .iter()
+            .map(|span| span.end)
+            .find(|end| *end > position)
+            .unwrap_or_else(|| spans.last().map(|span| span.end).unwrap_or(0))
+    }
+
+    fn remove_char_range(&mut self, start: usize, end: usize) {
+        let start_byte = self.char_index_to_byte_index(start);
+        let end_byte = self.char_index_to_byte_index(end);
+        self.buffer.drain(start_byte..end_byte);
     }
 
     pub fn clear(&mut self) {
@@ -223,9 +282,10 @@ impl TextInput {
         if self.cursor_position > 0 {
             self.break_coalescing();
             self.save_undo_state();
-            self.cursor_position -= 1;
-            let byte_index = self.char_index_to_byte_index(self.cursor_position);
-            self.buffer.remove(byte_index);
+            let end = self.cursor_position;
+            let start = self.previous_boundary(end);
+            self.remove_char_range(start, end);
+            self.cursor_position = start;
         }
     }
 
@@ -234,8 +294,9 @@ impl TextInput {
         if self.cursor_position < len {
             self.break_coalescing();
             self.save_undo_state();
-            let byte_index = self.char_index_to_byte_index(self.cursor_position);
-            self.buffer.remove(byte_index);
+            let start = self.cursor_position;
+            let end = self.next_boundary(start);
+            self.remove_char_range(start, end);
         }
     }
 
@@ -248,36 +309,25 @@ impl TextInput {
         let old_position = self.cursor_position;
         self.move_word_left();
         let new_position = self.cursor_position;
-        let start_byte = self.char_index_to_byte_index(new_position);
-        let end_byte = self.char_index_to_byte_index(old_position);
-        self.buffer.drain(start_byte..end_byte);
+        self.remove_char_range(new_position, old_position);
     }
 
     pub fn delete_word_forward(&mut self) {
-        let chars: Vec<char> = self.buffer.chars().collect();
-        let len = chars.len();
+        let len = self.buffer.chars().count();
         if self.cursor_position >= len {
             return;
         }
         self.break_coalescing();
         self.save_undo_state();
         let start_position = self.cursor_position;
-        let mut end_position = start_position;
-        while end_position < len && !chars[end_position].is_whitespace() {
-            end_position += 1;
-        }
-        while end_position < len && chars[end_position].is_whitespace() {
-            end_position += 1;
-        }
-        let start_byte = self.char_index_to_byte_index(start_position);
-        let end_byte = self.char_index_to_byte_index(end_position);
-        self.buffer.drain(start_byte..end_byte);
+        let end_position = self.word_right_position(start_position);
+        self.remove_char_range(start_position, end_position);
     }
 
     pub fn move_left(&mut self) {
         if self.cursor_position > 0 {
             self.break_coalescing();
-            self.cursor_position -= 1;
+            self.cursor_position = self.previous_boundary(self.cursor_position);
         }
     }
 
@@ -285,7 +335,7 @@ impl TextInput {
         let len = self.buffer.chars().count();
         if self.cursor_position < len {
             self.break_coalescing();
-            self.cursor_position += 1;
+            self.cursor_position = self.next_boundary(self.cursor_position);
         }
     }
 
@@ -304,32 +354,46 @@ impl TextInput {
             return;
         }
         self.break_coalescing();
-        let chars: Vec<char> = self.buffer.chars().collect();
-        let mut pos = self.cursor_position;
-        while pos > 0 && chars[pos - 1].is_whitespace() {
-            pos -= 1;
+        let spans = cluster_spans(&self.buffer);
+        let mut index = spans
+            .iter()
+            .position(|span| span.end >= self.cursor_position)
+            .map(|index| index + 1)
+            .unwrap_or(spans.len());
+        while index > 0 && spans[index - 1].whitespace {
+            index -= 1;
         }
-        while pos > 0 && !chars[pos - 1].is_whitespace() {
-            pos -= 1;
+        while index > 0 && !spans[index - 1].whitespace {
+            index -= 1;
         }
-        self.cursor_position = pos;
+        self.cursor_position = if index == 0 { 0 } else { spans[index - 1].end };
+    }
+
+    fn word_right_position(&self, position: usize) -> usize {
+        let spans = cluster_spans(&self.buffer);
+        let mut index = spans
+            .iter()
+            .position(|span| span.end > position)
+            .unwrap_or(spans.len());
+        while index < spans.len() && !spans[index].whitespace {
+            index += 1;
+        }
+        while index < spans.len() && spans[index].whitespace {
+            index += 1;
+        }
+        spans
+            .get(index)
+            .map(|span| span.start)
+            .unwrap_or_else(|| self.buffer.chars().count())
     }
 
     pub fn move_word_right(&mut self) {
-        let chars: Vec<char> = self.buffer.chars().collect();
-        let len = chars.len();
+        let len = self.buffer.chars().count();
         if self.cursor_position >= len {
             return;
         }
         self.break_coalescing();
-        let mut pos = self.cursor_position;
-        while pos < len && !chars[pos].is_whitespace() {
-            pos += 1;
-        }
-        while pos < len && chars[pos].is_whitespace() {
-            pos += 1;
-        }
-        self.cursor_position = pos;
+        self.cursor_position = self.word_right_position(self.cursor_position);
     }
 
     fn char_index_to_byte_index(&self, char_index: usize) -> usize {
@@ -413,39 +477,47 @@ impl TextInput {
     }
 
     fn keep_cursor_visible(&mut self, text_area_width: usize) {
-        let chars: Vec<char> = self.buffer.chars().collect();
-        let cursor = self.cursor_position.min(chars.len());
-        if cursor < self.scroll_offset {
-            self.scroll_offset = cursor;
-        }
+        let spans = cluster_spans(&self.buffer);
+        let total = spans.last().map(|span| span.end).unwrap_or(0);
+        let cursor = self.cursor_position.min(total);
+        let cursor_index = spans
+            .iter()
+            .position(|span| span.start >= cursor)
+            .unwrap_or(spans.len());
+        let mut offset_index = spans
+            .iter()
+            .position(|span| span.end > self.scroll_offset)
+            .unwrap_or(spans.len())
+            .min(cursor_index);
         let width_between = |from: usize, to: usize| -> usize {
-            chars[from..to]
-                .iter()
-                .map(|c| char_width(*c))
-                .sum::<usize>()
+            spans[from..to].iter().map(|span| span.width).sum::<usize>()
         };
-        while self.scroll_offset < cursor
-            && width_between(self.scroll_offset, cursor) + 1 > text_area_width
+        while offset_index < cursor_index
+            && width_between(offset_index, cursor_index) + 1 > text_area_width
         {
-            self.scroll_offset += 1;
+            offset_index += 1;
         }
-        while self.scroll_offset > 0
-            && width_between(self.scroll_offset - 1, chars.len()) + 1 <= text_area_width
+        while offset_index > 0
+            && width_between(offset_index - 1, spans.len()) + 1 <= text_area_width
         {
-            self.scroll_offset -= 1;
+            offset_index -= 1;
         }
+        self.scroll_offset = spans
+            .get(offset_index)
+            .map(|span| span.start)
+            .unwrap_or(total);
     }
 
     fn visible_text(&self, text_area_width: usize) -> String {
         let mut visible = String::new();
         let mut used = 0;
-        for character in self.buffer.chars().skip(self.scroll_offset) {
-            let width = char_width(character);
+        let start_byte = self.char_index_to_byte_index(self.scroll_offset);
+        for (cluster, width) in graphemes::clusters(&self.buffer[start_byte..]) {
             if used + width > text_area_width {
                 break;
             }
             used += width;
-            visible.push(character);
+            visible.push_str(cluster);
         }
         visible
     }
@@ -599,13 +671,15 @@ impl Widget for TextInput {
                 {
                     let mut used = 0;
                     let mut position = self.scroll_offset;
-                    for character in self.buffer.chars().skip(self.scroll_offset) {
-                        let width = char_width(character);
-                        if self.text_start_x + used + width > column {
+                    for span in cluster_spans(&self.buffer)
+                        .into_iter()
+                        .filter(|span| span.start >= self.scroll_offset)
+                    {
+                        if self.text_start_x + used + span.width > column {
                             break;
                         }
-                        used += width;
-                        position += 1;
+                        used += span.width;
+                        position = span.end;
                     }
                     self.break_coalescing();
                     self.set_cursor_position(position);
@@ -1101,5 +1175,102 @@ mod tests {
 
         input.undo();
         assert_eq!(input.get_text(), "");
+    }
+
+    const FAMILY: &str = "\u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467}";
+
+    #[test]
+    fn cursor_moves_over_family_emoji_in_one_step() {
+        let mut input = TextInput::new(format!("a{}b", FAMILY));
+        assert_eq!(input.get_cursor_position(), 7);
+        input.move_left();
+        assert_eq!(input.get_cursor_position(), 6);
+        input.move_left();
+        assert_eq!(input.get_cursor_position(), 1);
+        input.move_left();
+        assert_eq!(input.get_cursor_position(), 0);
+        input.move_right();
+        assert_eq!(input.get_cursor_position(), 1);
+        input.move_right();
+        assert_eq!(input.get_cursor_position(), 6);
+    }
+
+    #[test]
+    fn cursor_moves_over_decomposed_e_in_one_step() {
+        let mut input = TextInput::new("e\u{301}x".to_string());
+        input.move_left();
+        assert_eq!(input.get_cursor_position(), 2);
+        input.move_left();
+        assert_eq!(input.get_cursor_position(), 0);
+        input.move_right();
+        assert_eq!(input.get_cursor_position(), 2);
+    }
+
+    #[test]
+    fn backspace_removes_whole_cluster() {
+        let mut input = TextInput::new(format!("a{}", FAMILY));
+        input.backspace();
+        assert_eq!(input.get_text(), "a");
+        assert_eq!(input.get_cursor_position(), 1);
+        let mut input = TextInput::new("xe\u{301}".to_string());
+        input.backspace();
+        assert_eq!(input.get_text(), "x");
+        assert_eq!(input.get_cursor_position(), 1);
+    }
+
+    #[test]
+    fn delete_removes_whole_cluster() {
+        let mut input = TextInput::new("e\u{301}x".to_string());
+        input.move_to_start();
+        input.delete();
+        assert_eq!(input.get_text(), "x");
+        assert_eq!(input.get_cursor_position(), 0);
+        let mut input = TextInput::new(format!("{}b", FAMILY));
+        input.move_to_start();
+        input.delete();
+        assert_eq!(input.get_text(), "b");
+    }
+
+    #[test]
+    fn word_movement_steps_over_clusters() {
+        let mut input = TextInput::new(format!("{} e\u{301}e\u{301}", FAMILY));
+        assert_eq!(input.get_cursor_position(), 10);
+        input.move_word_left();
+        assert_eq!(input.get_cursor_position(), 6);
+        input.move_word_left();
+        assert_eq!(input.get_cursor_position(), 0);
+        input.move_word_right();
+        assert_eq!(input.get_cursor_position(), 6);
+        input.move_to_start();
+        input.delete_word_forward();
+        assert_eq!(input.get_text(), "e\u{301}e\u{301}");
+    }
+
+    #[test]
+    fn set_cursor_position_inside_a_cluster_snaps_to_its_start() {
+        let mut input = TextInput::new(format!("a{}", FAMILY));
+        input.set_cursor_position(3);
+        assert_eq!(input.get_cursor_position(), 1);
+    }
+
+    #[test]
+    fn click_on_wide_cluster_maps_to_cluster_boundaries() {
+        let mut input = TextInput::new(format!("{}ab", FAMILY)).focused();
+        input.serialize(0, 0, 20);
+        input.handle_mouse(Mouse::LeftClick(0, 3));
+        assert_eq!(input.get_cursor_position(), 0);
+        input.handle_mouse(Mouse::LeftClick(0, 4));
+        assert_eq!(input.get_cursor_position(), 5);
+        input.handle_mouse(Mouse::LeftClick(0, 5));
+        assert_eq!(input.get_cursor_position(), 6);
+    }
+
+    #[test]
+    fn visible_text_scrolls_by_whole_clusters() {
+        let text = format!("{}{}{}", FAMILY, FAMILY, FAMILY);
+        let mut input = TextInput::new(text).focused();
+        let serialized = input.serialize(0, 0, 8);
+        assert_eq!(input.scroll_offset % 5, 0);
+        assert!(serialized.contains(&encode_text(FAMILY)));
     }
 }

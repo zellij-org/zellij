@@ -303,7 +303,7 @@ impl ResurrectableSessions {
         }
     }
     pub fn handle_backspace(&mut self) {
-        self.search_term.pop();
+        zellij_tile::graphemes::pop_cluster(&mut self.search_term);
         self.update_search_term();
     }
     pub fn has_session(&self, session_name: &str) -> bool {
