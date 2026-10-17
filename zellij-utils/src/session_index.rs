@@ -578,22 +578,31 @@ impl SessionIndex {
     }
 
     /// Register a session that is about to start and return its id, which names its socket and
-    /// its session-info cache folder. A session that already has a row (being resurrected) keeps
-    /// its id, and so its cache folder. A session from before ids existed, whose socket or cache
-    /// folder is named after it, uses its name as its id.
+    /// its session-info cache folder. A session that already has an id (being resurrected) keeps
+    /// it, and so its cache folder. A session from before ids, whose socket or cache folder is
+    /// named after it, keeps its name as its id, unless a session renamed since goes by that id
+    /// (the files are then that session's). Other sessions get a fresh id.
     pub fn register(&self, name: &str, now: u64) -> Result<String> {
         let transaction = Transaction::new_unchecked(&self.conn, TransactionBehavior::Immediate)?;
-        let id = match query_session_id(&transaction, name)? {
-            Some(id) => id,
-            None => {
-                let id = if self.files_named(name) {
+        let registered_id: Option<Option<String>> = transaction
+            .query_row(
+                "SELECT id FROM sessions WHERE name = ?1",
+                params![name],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let id = match registered_id {
+            Some(Some(id)) => id,
+            _ => {
+                let id = if self.files_named(name) && !id_taken_by_another(&transaction, name)? {
                     name.to_owned()
                 } else {
                     self.unused_id(&transaction)?
                 };
                 transaction.execute(
                     "INSERT INTO sessions (name, id, facts, created_at, last_used_at)
-                     VALUES (?1, ?2, '{}', ?3, ?3)",
+                     VALUES (?1, ?2, '{}', ?3, ?3)
+                     ON CONFLICT(name) DO UPDATE SET id = excluded.id",
                     params![name, id, now as i64],
                 )?;
                 id
@@ -961,6 +970,14 @@ fn add_id_column(conn: &Connection) -> Result<()> {
     }
     conn.execute_batch("CREATE UNIQUE INDEX IF NOT EXISTS sessions_id ON sessions(id)")?;
     Ok(())
+}
+
+// Whether a session other than `name` goes by `name` as its id: a session from before ids that
+// was renamed keeps its old name as its id.
+fn id_taken_by_another(conn: &Connection, name: &str) -> Result<bool> {
+    Ok(conn
+        .prepare_cached("SELECT 1 FROM sessions WHERE id = ?1 AND name <> ?1")?
+        .exists(params![name])?)
 }
 
 fn query_session_id(conn: &Connection, name: &str) -> Result<Option<String>> {
@@ -1530,7 +1547,9 @@ mod tests {
     #[test]
     fn sessions_from_before_ids_use_their_name_as_their_id() {
         let test = TestIndex::new();
-        // A row written without an id, by the backfill or by an index from before ids.
+        // A row written without an id, by the backfill or by an index from before ids, for a
+        // session whose files are named after it.
+        test.mark_resumable("old-row");
         test.index.ensure_row("old-row", 1).unwrap();
         assert_eq!(
             test.index.session_id("old-row").unwrap(),
@@ -1544,6 +1563,34 @@ mod tests {
             test.index.session_name("old-files").unwrap(),
             Some("old-files".to_owned())
         );
+    }
+
+    #[test]
+    fn registering_records_the_id_in_the_row() {
+        let test = TestIndex::new();
+        test.mark_resumable("old-row");
+        test.index.ensure_row("old-row", 1).unwrap();
+        test.index.register("old-row", 2).unwrap();
+        let stored: Option<String> = test
+            .index
+            .conn
+            .query_row(
+                "SELECT id FROM sessions WHERE name = 'old-row'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(stored, Some("old-row".to_owned()));
+    }
+
+    #[test]
+    fn a_row_without_files_gets_a_fresh_id() {
+        let test = TestIndex::new();
+        // Only history: the session's files are gone.
+        test.index.ensure_row("history", 1).unwrap();
+        let id = test.index.register("history", 2).unwrap();
+        assert_ne!(id, "history");
+        assert_eq!(test.index.session_id("history").unwrap(), Some(id));
     }
 
     #[test]
@@ -1646,5 +1693,20 @@ mod tests {
         drop(index);
         let reopened = SessionIndex::open(&path, sock_dir, cache_dir).unwrap();
         assert_eq!(reopened.session_id("new").unwrap(), Some(id));
+    }
+
+    #[test]
+    fn a_new_session_named_like_a_renamed_old_session_gets_its_own_id() {
+        let test = TestIndex::new();
+        // A session from before ids, renamed since: its files keep its old name.
+        test.mark_resumable("foo");
+        test.index.ensure_row("foo", 1).unwrap();
+        test.index.rename_by_id("foo", "bar", 2).unwrap();
+        let id = test.index.register("foo", 3).unwrap();
+        assert_ne!(id, "foo", "the files named foo belong to bar");
+        assert_eq!(
+            test.index.session_id("bar").unwrap(),
+            Some("foo".to_owned())
+        );
     }
 }
