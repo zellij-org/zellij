@@ -4,6 +4,7 @@ use super::super::config_file_edit::*;
 use super::super::config_settings::config_settings_test::every_setting_set;
 use super::super::config_settings::{settings_set_in_file, unset_setting};
 use super::super::keybind_presets::KeybindChanges;
+use super::super::layout::{PluginUserConfiguration, RunPluginLocation, RunPluginOrAlias};
 use crate::data::{InputMode, KeyWithModifier, SettingKey};
 use std::str::FromStr;
 
@@ -1076,4 +1077,257 @@ fn a_shorter_window_key_list_drops_the_extra_keys() {
         reconfigure(saved, "window { paste_keys \"Super v\"; }")
     });
     assert_eq!(text, "window {\n    paste_keys \"Super v\"\n}\n");
+}
+
+const ALIAS_FILE: &str = "plugins {
+    // status bar hints
+    zjhints location=\"file:~/.local/share/zellij/plugins/zjhints.wasm\" {
+        // Hard cap on the width of the hint line, in columns
+        max_length 0 // 0 = unlimited
+
+        // Name of the pipe for zjstatus integration
+        //pipe_name \"zjstatus_hints\" // default
+        hide_in_base_mode false // default
+        overflow_str \"...\"
+    }
+    other location=\"zellij:strider\" {
+        b \"2\"
+        a \"1\"
+    }
+}
+";
+
+fn with_alias_option(config: &Config, alias: &str, key: &str, value: Option<&str>) -> Config {
+    let mut runtime = config.clone();
+    let plugin = runtime.plugins.aliases.get_mut(alias).unwrap();
+    let mut configuration = plugin.configuration.inner().clone();
+    match value {
+        Some(value) => configuration.insert(key.to_owned(), value.to_owned()),
+        None => configuration.remove(key),
+    };
+    plugin.configuration = PluginUserConfiguration::new(configuration);
+    runtime
+}
+
+#[test]
+fn a_changed_alias_option_keeps_the_comments_blank_lines_and_order_of_the_alias() {
+    let text = saved_text_after(ALIAS_FILE, |saved| {
+        with_alias_option(saved, "zjhints", "overflow_str", Some("~"))
+    });
+    assert_eq!(
+        text,
+        ALIAS_FILE.replace("overflow_str \"...\"", "overflow_str \"~\"")
+    );
+}
+
+#[test]
+fn a_changed_alias_option_keeps_its_trailing_comment_and_integer_literal() {
+    let text = saved_text_after(ALIAS_FILE, |saved| {
+        let runtime = with_alias_option(saved, "zjhints", "max_length", Some("40"));
+        with_alias_option(&runtime, "zjhints", "hide_in_base_mode", Some("true"))
+    });
+    assert_eq!(
+        text,
+        ALIAS_FILE
+            .replace("max_length 0 //", "max_length 40 //")
+            .replace("hide_in_base_mode false //", "hide_in_base_mode true //")
+    );
+    let text = saved_text_after(ALIAS_FILE, |saved| {
+        with_alias_option(saved, "zjhints", "max_length", Some("wide"))
+    });
+    assert!(
+        text.contains("        max_length \"wide\" // 0 = unlimited\n"),
+        "{}",
+        text
+    );
+}
+
+#[test]
+fn an_added_alias_option_is_appended_and_a_removed_one_loses_only_its_line() {
+    let added = saved_text_after(ALIAS_FILE, |saved| {
+        with_alias_option(saved, "zjhints", "pipe_name", Some("hints"))
+    });
+    assert_eq!(
+        added,
+        ALIAS_FILE.replace(
+            "        overflow_str \"...\"\n",
+            "        overflow_str \"...\"\n        pipe_name \"hints\"\n"
+        )
+    );
+    let removed = saved_text_after(ALIAS_FILE, |saved| {
+        with_alias_option(saved, "zjhints", "max_length", None)
+    });
+    assert_eq!(
+        removed,
+        ALIAS_FILE.replace("        max_length 0 // 0 = unlimited\n", "")
+    );
+}
+
+#[test]
+fn a_changed_alias_location_keeps_the_children_untouched() {
+    let text = saved_text_after(ALIAS_FILE, |saved| {
+        let mut runtime = saved.clone();
+        runtime.plugins.aliases.get_mut("other").unwrap().location =
+            RunPluginLocation::parse("zellij:about", None).unwrap();
+        runtime
+    });
+    assert_eq!(
+        text,
+        ALIAS_FILE.replace(
+            "other location=\"zellij:strider\"",
+            "other location=\"zellij:about\""
+        )
+    );
+}
+
+fn with_alias_cwd(config: &Config, cwd: Option<&str>) -> Config {
+    let mut runtime = config.clone();
+    runtime
+        .plugins
+        .aliases
+        .get_mut("my-plugin")
+        .unwrap()
+        .initial_cwd = cwd.map(std::path::PathBuf::from);
+    runtime
+}
+
+#[test]
+fn an_alias_cwd_is_changed_added_and_removed_in_place() {
+    let file = "plugins {\n    my-plugin location=\"zellij:strider\" {\n        cwd \"/a\" // start here\n        cwd \"/ignored\"\n        b \"2\"\n    }\n}\n";
+    assert_eq!(
+        saved_text_after(file, |saved| with_alias_cwd(saved, Some("/b"))),
+        file.replace("cwd \"/a\"", "cwd \"/b\"")
+    );
+    assert_eq!(
+        saved_text_after(file, |saved| with_alias_cwd(saved, None)),
+        "plugins {\n    my-plugin location=\"zellij:strider\" {\n        b \"2\"\n    }\n}\n"
+    );
+    let file =
+        "plugins {\n    my-plugin location=\"zellij:strider\" {\n        b \"2\"\n    }\n}\n";
+    assert_eq!(
+        saved_text_after(file, |saved| with_alias_cwd(saved, Some("/b"))),
+        file.replace("b \"2\"\n", "b \"2\"\n        cwd \"/b\"\n")
+    );
+}
+
+#[test]
+fn a_duplicated_alias_option_edits_the_occurrence_the_parser_uses() {
+    let file = "plugins {\n    my-plugin location=\"zellij:strider\" {\n        a \"1\" // shadowed\n        a \"2\" // wins\n        title \"ignored by the parser\"\n    }\n}\n";
+    let changed = saved_text_after(file, |saved| {
+        with_alias_option(saved, "my-plugin", "a", Some("3"))
+    });
+    assert_eq!(changed, file.replace("a \"2\"", "a \"3\""));
+    let removed = saved_text_after(file, |saved| {
+        with_alias_option(saved, "my-plugin", "a", None)
+    });
+    assert_eq!(
+        removed,
+        "plugins {\n    my-plugin location=\"zellij:strider\" {\n        title \"ignored by the parser\"\n    }\n}\n"
+    );
+}
+
+#[test]
+fn an_alias_without_children_gets_a_block_for_its_first_option_and_keeps_it_when_emptied() {
+    let added = saved_text_after(COMMENTED_FILE, |saved| {
+        with_alias_option(saved, "my-plugin", "a", Some("1"))
+    });
+    assert_eq!(
+        added,
+        COMMENTED_FILE.replace(
+            "    my-plugin location=\"file:/tmp/plugin.wasm\"\n",
+            "    my-plugin location=\"file:/tmp/plugin.wasm\" {\n        a \"1\"\n    }\n"
+        )
+    );
+    let file = "plugins {\n    my-plugin location=\"zellij:strider\" {\n        // nothing yet\n        a \"1\"\n    }\n}\n";
+    let emptied = saved_text_after(file, |saved| {
+        with_alias_option(saved, "my-plugin", "a", None)
+    });
+    assert_eq!(
+        emptied,
+        "plugins {\n    my-plugin location=\"zellij:strider\" {\n        // nothing yet\n    }\n}\n"
+    );
+}
+
+#[test]
+fn an_alias_the_writer_cannot_edit_per_option_is_replaced_and_still_reads_back() {
+    for (file, key) in [
+        ("plugins {\n    my-plugin location=\"zellij:strider\" {\n        // gone\n        list \"a\" \"b\"\n        b \"2\"\n    }\n}\n", "list"),
+        ("plugins {\n    my-plugin location=\"zellij:strider\" {\n        // gone\n        nested { x 1; }\n        b \"2\"\n    }\n}\n", "nested"),
+        ("plugins {\n    my-plugin location=\"zellij:strider\" b=\"2\" {\n        // gone\n    }\n}\n", "c"),
+    ] {
+        let text = saved_text_after(file, |saved| {
+            with_alias_option(saved, "my-plugin", key, Some("3"))
+        });
+        assert!(!text.contains("// gone"), "{}", text);
+        assert!(text.contains(&format!("{} \"3\"", key)), "{}", text);
+    }
+}
+
+#[test]
+fn an_alias_option_with_several_arguments_is_kept_when_another_option_changes() {
+    let file = "plugins {\n    my-plugin location=\"zellij:strider\" {\n        // kept\n        list \"a\" \"b\"\n        nested { x 1; }\n        b \"2\"\n    }\n}\n";
+    let text = saved_text_after(file, |saved| {
+        with_alias_option(saved, "my-plugin", "b", Some("3"))
+    });
+    assert_eq!(text, file.replace("b \"2\"", "b \"3\""));
+}
+
+#[test]
+fn an_alias_in_two_plugins_blocks_is_edited_at_its_first_occurrence() {
+    let file = "plugins {\n    my-plugin location=\"zellij:strider\" {\n        // mine\n        a \"1\"\n    }\n}\nplugins {\n    my-plugin location=\"zellij:about\"\n}\n";
+    let text = saved_text_after(file, |saved| {
+        with_alias_option(saved, "my-plugin", "a", Some("2"))
+    });
+    assert_eq!(
+        text,
+        "plugins {\n    my-plugin location=\"zellij:strider\" {\n        // mine\n        a \"2\"\n    }\n}\nplugins {\n}\n"
+    );
+}
+
+#[test]
+fn an_alias_edited_per_option_parses_back_to_the_runtime_alias() {
+    let saved = load(ALIAS_FILE);
+    let runtime = with_alias_option(&saved, "zjhints", "max_length", Some("7"));
+    let runtime = with_alias_option(&runtime, "zjhints", "hide_in_base_mode", None);
+    let runtime = with_alias_option(&runtime, "other", "c", Some("true"));
+    let edits = edits_between(&saved, &runtime);
+    let text = apply_edits(Some(ALIAS_FILE), &edits, &runtime).unwrap();
+    assert_eq!(load(&text).plugins.aliases, runtime.plugins.aliases);
+    assert!(text.contains("        //pipe_name \"zjstatus_hints\" // default\n"));
+}
+
+#[test]
+fn a_load_plugins_entry_with_a_changed_option_is_edited_in_place() {
+    let file = "load_plugins {\n    // first\n    \"zellij:strider\" {\n        // mine\n        a \"1\" // keep\n        b \"2\"\n    }\n    \"zellij:about\"\n}\n";
+    let text = saved_text_after(file, |saved| {
+        let mut runtime = saved.clone();
+        if let RunPluginOrAlias::RunPlugin(plugin) = &mut runtime.background_plugins[0] {
+            plugin.configuration.insert("a", "9");
+        }
+        runtime
+    });
+    assert_eq!(text, file.replace("a \"1\"", "a \"9\""));
+}
+
+#[test]
+fn a_swapped_load_plugins_entry_keeps_the_block_indentation() {
+    let file = "load_plugins {\n  \"zellij:strider\"\n}\n";
+    let text = saved_text_after(file, |saved| {
+        let mut runtime = saved.clone();
+        runtime.background_plugins = load("load_plugins { \"zellij:about\"; }").background_plugins;
+        runtime
+    });
+    assert_eq!(text, "load_plugins {\n  \"zellij:about\"\n}\n");
+}
+
+#[test]
+fn an_option_added_to_a_one_line_alias_block_replaces_the_alias() {
+    let file = "plugins {\n    my-plugin location=\"zellij:strider\" { a \"1\"; }\n}\n";
+    let text = saved_text_after(file, |saved| {
+        with_alias_option(saved, "my-plugin", "b", Some("2"))
+    });
+    assert_eq!(
+        text,
+        "plugins {\n    my-plugin location=\"zellij:strider\" {\n        a \"1\"\n        b \"2\"\n    }\n}\n"
+    );
 }

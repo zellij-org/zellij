@@ -257,7 +257,7 @@ pub fn styling_from_colours(colours: &[String]) -> Styling {
     styling
 }
 
-fn config_value(value: &str) -> KdlValue {
+pub fn config_value(value: &str) -> KdlValue {
     match value {
         "true" => KdlValue::Bool(true),
         "false" => KdlValue::Bool(false),
