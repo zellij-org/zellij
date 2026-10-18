@@ -92,7 +92,7 @@ impl FieldValue {
             FieldValue::Pairs(pairs) => pairs
                 .iter()
                 .filter(|(key, value)| !key.trim().is_empty() || !value.trim().is_empty())
-                .map(|(key, value)| (key.trim().to_owned(), value.trim().to_owned()))
+                .map(|(key, value)| (key.trim().to_owned(), value.clone()))
                 .collect(),
             _ => vec![],
         }

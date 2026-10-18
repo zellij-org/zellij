@@ -1121,6 +1121,17 @@ fn a_changed_alias_option_keeps_the_comments_blank_lines_and_order_of_the_alias(
 }
 
 #[test]
+fn an_alias_option_set_to_a_space_keeps_the_space() {
+    let text = saved_text_after(ALIAS_FILE, |saved| {
+        with_alias_option(saved, "zjhints", "overflow_str", Some(" "))
+    });
+    assert_eq!(
+        text,
+        ALIAS_FILE.replace("overflow_str \"...\"", "overflow_str \" \"")
+    );
+}
+
+#[test]
 fn a_changed_alias_option_keeps_its_trailing_comment_and_integer_literal() {
     let text = saved_text_after(ALIAS_FILE, |saved| {
         let runtime = with_alias_option(saved, "zjhints", "max_length", Some("40"));
