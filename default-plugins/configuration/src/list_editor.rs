@@ -446,6 +446,7 @@ impl EntryForm {
                 }
             },
         }
+        self.scroll.follow();
     }
     fn field_keys(&self) -> Vec<FormKey> {
         self.group
@@ -651,6 +652,16 @@ impl EntryForm {
                 (field_count + 6).min(max_height),
             ),
         };
+        let reserved_rows = match picker_rows {
+            Some(wanted) => 4 + wanted.unwrap_or(2).min(4),
+            None => 6,
+        };
+        let field_rows = field_count.min(height.saturating_sub(reserved_rows).max(1));
+        let width = if takeover {
+            width
+        } else {
+            RowScroll::fitted_width(field_count, field_rows, width, max_width)
+        };
         let dialog_x = cols.saturating_sub(width) / 2;
         let dialog_y = rows.saturating_sub(height) / 2;
         crate::page::render_frame(&self.title, dialog_x, dialog_y, width, height);
@@ -675,8 +686,16 @@ impl EntryForm {
             return;
         }
         let focused_key = self.group.focused_key().copied();
+        let focused_field =
+            focused_key.and_then(|focused| fields.iter().position(|k| *k == focused));
+        let visible = self
+            .scroll
+            .layout(x, y, inner, field_rows, field_count, focused_field);
+        let row_field_width = natural_width
+            .min(self.scroll.row_width().saturating_sub(content_column))
+            .max(5);
         let mut row = y;
-        for key in &fields {
+        for key in &fields[visible] {
             let label = match key {
                 FormKey::Text(index) | FormKey::Choice(index) | FormKey::AddPair(index) => {
                     self.specs[*index].label.to_owned()
@@ -695,10 +714,10 @@ impl EntryForm {
             match self.group.get_mut(key) {
                 Some(Element::TextInput(input)) => {
                     input.set_show_cursor(focused);
-                    input.render(x + content_column, row, field_width);
+                    input.render(x + content_column, row, row_field_width);
                 },
                 Some(Element::Dropdown(dropdown)) => {
-                    dropdown.render(x + content_column, row, field_width)
+                    dropdown.render(x + content_column, row, row_field_width)
                 },
                 Some(Element::Button(button)) => button.render(x + content_column, row),
                 _ => {},
@@ -889,6 +908,7 @@ impl EntryForm {
         for_menu: bool,
     ) -> FormResult {
         if self.dialog {
+            self.scroll.follow();
             return self.handle_dialog_key(key);
         }
         if let Some((_, picker)) = self.picker.as_mut() {
@@ -937,6 +957,11 @@ impl EntryForm {
                     self.handle_event(event, self.base_mode, self.for_menu, false),
                     changed,
                 );
+            }
+            if self.picker.is_none() && !self.group.has_open_overlay() {
+                if let Some(changed) = self.scroll.handle_wheel(&mouse) {
+                    return (FormResult::Pending, changed);
+                }
             }
             return (self.handle_dialog_mouse(mouse), true);
         }
@@ -3197,6 +3222,39 @@ mod tests {
             vec![Effect::ReplaceBlocks("A=1,B=2,Z=9".to_owned())]
         );
         assert!(editor.form.is_none());
+    }
+
+    #[test]
+    fn a_dialog_form_with_many_pairs_scrolls_its_fields() {
+        let pairs = (0..15)
+            .map(|index| (format!("key{}", index), index.to_string()))
+            .collect();
+        let mut form = EntryForm::new(
+            "Edit".to_owned(),
+            None,
+            vec![FieldSpec::pairs("Config")],
+            vec![FieldValue::Pairs(pairs)],
+            vec![],
+        )
+        .into_dialog(None, false);
+        let last = form.field_keys().len() - 1;
+        form.render_overlays(20, 80);
+        assert_eq!(form.scroll.screen_row(0), Some(3));
+        assert_eq!(form.scroll.screen_row(11), Some(14));
+        assert_eq!(form.scroll.screen_row(12), None);
+        for _ in 0..last {
+            form.handle_key(&KeyWithModifier::new(BareKey::Down), None, false);
+        }
+        assert_eq!(form.group.focused_key(), Some(&FormKey::AddPair(0)));
+        form.render_overlays(20, 80);
+        assert_eq!(form.scroll.screen_row(0), None);
+        assert_eq!(form.scroll.screen_row(last), Some(14));
+        assert_eq!(
+            form.handle_mouse(Mouse::ScrollUp(40), None, false),
+            (FormResult::Pending, true)
+        );
+        form.render_overlays(20, 80);
+        assert_eq!(form.scroll.screen_row(0), Some(3));
     }
 
     #[test]
