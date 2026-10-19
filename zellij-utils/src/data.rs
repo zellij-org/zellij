@@ -1343,6 +1343,10 @@ pub struct SessionSuggestions {
     pub suggestions: Vec<SessionSuggestion>,
     pub command_submitted: bool,
     pub from_script: bool,
+    #[serde(default)]
+    pub desktop_app_running: bool,
+    #[serde(default)]
+    pub desktop_window_sessions: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -2675,6 +2679,8 @@ pub struct ModeInfo {
     pub nested_ascend_keys: Vec<KeyWithModifier>,
     pub session_ascended: Option<bool>,
     pub nested_descend_keys: Vec<KeyWithModifier>,
+    #[serde(default)]
+    pub remote_client: Option<String>,
 }
 
 impl ModeInfo {
@@ -3974,6 +3980,42 @@ impl MessageToPlugin {
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SessionWindowRequest {
+    pub session_name: Option<String>,
+    pub new_window: bool,
+    pub pane_id: Option<PaneId>,
+    pub layout: Option<LayoutInfo>,
+    pub cwd: Option<PathBuf>,
+}
+
+impl SessionWindowRequest {
+    pub fn existing(session_name: &str, pane_id: Option<PaneId>, new_window: bool) -> Self {
+        SessionWindowRequest {
+            session_name: Some(session_name.to_owned()),
+            new_window,
+            pane_id,
+            ..Default::default()
+        }
+    }
+    pub fn new_session(
+        session_name: Option<&str>,
+        layout: Option<LayoutInfo>,
+        cwd: Option<PathBuf>,
+    ) -> Self {
+        SessionWindowRequest {
+            session_name: session_name.map(|n| n.to_owned()),
+            new_window: true,
+            layout,
+            cwd,
+            ..Default::default()
+        }
+    }
+    pub fn creates_a_session(&self) -> bool {
+        self.session_name.is_none() || self.layout.is_some()
+    }
+}
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ConnectToSession {
     pub name: Option<String>,
     pub tab_position: Option<usize>,
@@ -3994,6 +4036,12 @@ impl ConnectToSession {
     }
     pub fn startup_card(&self) -> Option<crate::input::attention::StartupCard> {
         self.switch_context.as_ref().and_then(|c| c.startup_card)
+    }
+    pub fn disconnects_others(&self) -> bool {
+        self.switch_context
+            .as_ref()
+            .map(|c| c.disconnect_others)
+            .unwrap_or(false)
     }
 }
 
@@ -4964,6 +5012,7 @@ pub enum PluginCommand {
     MarkAllSeen {
         session_name: Option<String>,
     },
+    OpenSessionWindow(SessionWindowRequest),
     WriteToSessionPane {
         session_name: String,
         pane_id: PaneId,

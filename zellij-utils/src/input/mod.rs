@@ -70,6 +70,7 @@ mod not_wasm {
             nested_ascend_keys: vec![],
             session_ascended: None,
             nested_descend_keys: vec![],
+            remote_client: None,
         }
     }
 

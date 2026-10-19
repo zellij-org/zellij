@@ -341,6 +341,71 @@ impl Desktop {
     }
 
     fn panel_plugin(&self) -> Option<u32> {
+        self.panel_pane_lines()?
+            .iter()
+            .filter(|line| line.contains("session-manager"))
+            .flat_map(|line| line.split_whitespace())
+            .find_map(|word| word.strip_prefix("plugin_")?.parse().ok())
+    }
+
+    fn panel_shows(&self, view: &str) -> bool {
+        let title = format!("Zellij · {}", view);
+        self.panel_pane_lines()
+            .map(|lines| lines.iter().any(|line| line.contains(&title)))
+            .unwrap_or(false)
+    }
+
+    fn wait_for_panel_to_show(&self, view: &str) {
+        let deadline = Instant::now() + LIMIT;
+        while !self.panel_shows(view) {
+            if Instant::now() >= deadline {
+                panic!(
+                    "the panel never showed {}\npanes: {:?}\n{}",
+                    view,
+                    self.panel_pane_lines(),
+                    self.logs()
+                );
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
+
+    fn needs_you_in(&self, session: &str) -> Option<usize> {
+        let mut link = SessionLink::open_path(&self.socket_of(session)).ok()?;
+        link.send(ClientToServerMsg::RequestSessionAttention {
+            include_command_text: false,
+        })
+        .ok()?;
+        match link.recv(Duration::from_secs(2)).ok()? {
+            ServerToClientMsg::SessionAttention { attention } => Some(attention.counts.needs_you),
+            _ => None,
+        }
+    }
+
+    fn make_session_need_you(&self, session: &str) {
+        let mut link =
+            SessionLink::open_path(&self.socket_of(session)).expect("the session answers");
+        link.send(ClientToServerMsg::Action {
+            action: Action::WriteCharsToPaneId {
+                chars: "printf '\\033]7501;state=blocked:kind=question\\033\\\\'\n".to_owned(),
+                pane_id: PaneId::Terminal(0),
+            },
+            terminal_id: None,
+            client_id: None,
+            is_cli_client: true,
+        })
+        .unwrap();
+        let _ = link.recv(Duration::from_secs(5));
+        self.wait_for(&format!("{} to need you", session), || {
+            self.needs_you_in(session) == Some(1)
+        });
+    }
+
+    fn toggle_inbox_with_the_shortcut(&mut self) {
+        assert!(self.launch_and_wait(&["--inbox"]).success());
+    }
+
+    fn panel_pane_lines(&self) -> Option<Vec<String>> {
         let mut link = SessionLink::open_path(&self.socket_of(APP_PANEL_SESSION)).ok()?;
         link.send(ClientToServerMsg::Action {
             action: Action::ListPanes {
@@ -358,13 +423,7 @@ impl Desktop {
         .ok()?;
         loop {
             match link.recv(Duration::from_secs(2)).ok()? {
-                ServerToClientMsg::Log { lines } => {
-                    return lines
-                        .iter()
-                        .filter(|line| line.contains("session-manager"))
-                        .flat_map(|line| line.split_whitespace())
-                        .find_map(|word| word.strip_prefix("plugin_")?.parse().ok());
-                },
+                ServerToClientMsg::Log { lines } => return Some(lines),
                 ServerToClientMsg::UnblockInputThread | ServerToClientMsg::Exit { .. } => {
                     return None
                 },
@@ -600,4 +659,53 @@ fn confirming_quit_in_the_panel_stops_every_session_and_the_app() {
             !desktop.answers(session)
         });
     }
+}
+
+#[test]
+fn the_inbox_shortcut_and_the_tray_open_the_sessions_until_something_needs_you() {
+    let Some(mut desktop) = Desktop::start() else {
+        return;
+    };
+    desktop.start_app();
+    desktop.start_background_session("elsewhere");
+    desktop.toggle_inbox_with_the_shortcut();
+    desktop.wait_for_state("the inbox panel", |state| {
+        state.panel == panel(PopupView::Inbox)
+    });
+    desktop.wait_for_panel_to_show("Sessions");
+    desktop.toggle_inbox_with_the_shortcut();
+    desktop.wait_for_state("the panel closed", |state| state.panel.is_none());
+    assert_eq!(
+        send_app_request_to(
+            &desktop.control_socket(),
+            &AppRequest::ShowPopup(PopupView::Inbox)
+        ),
+        Ok(AppReply::Done)
+    );
+    desktop.wait_for_state("the inbox panel from the tray", |state| {
+        state.panel == panel(PopupView::Inbox)
+    });
+    desktop.wait_for_panel_to_show("Sessions");
+    assert!(!desktop.panel_shows("Inbox"));
+    desktop.toggle_inbox_with_the_shortcut();
+    desktop.wait_for_state("the panel closed", |state| state.panel.is_none());
+    desktop.make_session_need_you("elsewhere");
+    desktop.toggle_inbox_with_the_shortcut();
+    desktop.wait_for_state("the inbox panel", |state| {
+        state.panel == panel(PopupView::Inbox)
+    });
+    desktop.wait_for_panel_to_show("Inbox");
+    desktop.toggle_inbox_with_the_shortcut();
+    desktop.wait_for_state("the panel closed", |state| state.panel.is_none());
+    assert_eq!(
+        send_app_request_to(
+            &desktop.control_socket(),
+            &AppRequest::ShowPopup(PopupView::Inbox)
+        ),
+        Ok(AppReply::Done)
+    );
+    desktop.wait_for_state("the inbox panel from the tray", |state| {
+        state.panel == panel(PopupView::Inbox)
+    });
+    desktop.wait_for_panel_to_show("Inbox");
 }

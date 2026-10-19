@@ -16,7 +16,8 @@ const CARD_TITLE: &str = "Inbox (";
 const BROWSER_TABS: &str = "│ Sessions (";
 const DONT_SHOW_AGAIN: &str = "Don't show again";
 const PLACEHOLDER: &str = "—";
-const EMPTY_INBOX_SECTION: &str = "Needs you (0)";
+const EMPTY_INBOX_SECTION: &str = "Nothing in the inbox";
+const SESSIONS_HELP: &str = "<F1> all keys";
 const RESUME_LAYOUT: &str = r#"
 layout {
     pane size=1 borderless=true {
@@ -94,12 +95,10 @@ fn open_the_browser_with_f9(zellij: &TestSession) {
 
 fn open_the_sessions_tab_with_f9(zellij: &TestSession) {
     zellij.send_stdin(&keys::F9);
-    zellij.wait_until("the browser opened on the empty inbox", |grid_snapshot| {
-        grid_snapshot.contains(BROWSER_TABS) && grid_snapshot.contains(EMPTY_INBOX_SECTION)
-    });
-    zellij.send_stdin(&keys::TAB);
-    zellij.wait_until("the sessions tab is shown", |grid_snapshot| {
-        grid_snapshot.contains(BROWSER_TABS) && !grid_snapshot.contains(EMPTY_INBOX_SECTION)
+    zellij.wait_until("the browser opened on the sessions", |grid_snapshot| {
+        grid_snapshot.contains(BROWSER_TABS)
+            && grid_snapshot.contains(SESSIONS_HELP)
+            && !grid_snapshot.contains(EMPTY_INBOX_SECTION)
     });
 }
 
@@ -250,9 +249,11 @@ fn without_other_running_sessions_there_is_no_card_but_the_indicator_opens_the_b
     let (column, line) = position_of(&grid_snapshot, "1 running");
     zellij.send_stdin(&sgr_left_click(column + 1, line));
     zellij.wait_until(
-        "the indicator opened the browser on the empty inbox",
+        "the indicator opened the browser on the sessions",
         |grid_snapshot| {
-            grid_snapshot.contains(BROWSER_TABS) && grid_snapshot.contains(EMPTY_INBOX_SECTION)
+            grid_snapshot.contains(BROWSER_TABS)
+                && grid_snapshot.contains(SESSIONS_HELP)
+                && !grid_snapshot.contains(EMPTY_INBOX_SECTION)
         },
     );
     let grid_snapshot = zellij.snapshot();
@@ -527,7 +528,7 @@ fn enter_in_the_welcome_screen_starts_a_default_session_without_the_card() {
     let mut zellij = start_welcome_screen();
     zellij.wait_until("the welcome screen is shown", |grid_snapshot| {
         grid_snapshot.contains("Enter a session name to create it")
-            && grid_snapshot.contains("New session with a random name")
+            && grid_snapshot.contains("new session with a random name")
             && grid_snapshot.contains(background.session_name())
     });
     zellij.send_stdin(&keys::ENTER);
@@ -596,7 +597,7 @@ fn a_session_created_from_the_welcome_screen_has_no_card_even_with_other_live_se
     zellij.wait_until(
         "the welcome screen lists the live session",
         |grid_snapshot| {
-            grid_snapshot.contains("New session with a random name")
+            grid_snapshot.contains("new session with a random name")
                 && grid_snapshot.contains(background.session_name())
         },
     );
@@ -621,13 +622,13 @@ fn a_named_session_created_from_the_welcome_screen_has_no_card_even_with_other_l
     zellij.wait_until(
         "the welcome screen lists the live session",
         |grid_snapshot| {
-            grid_snapshot.contains("New session with a random name")
+            grid_snapshot.contains("new session with a random name")
                 && grid_snapshot.contains(background.session_name())
         },
     );
     zellij.send_stdin(b"brand-new");
     zellij.wait_until("the welcome screen offers to create it", |grid_snapshot| {
-        grid_snapshot.contains("brand-new") && grid_snapshot.contains("Create new")
+        grid_snapshot.contains("brand-new") && grid_snapshot.contains("create new")
     });
     zellij.send_stdin(&keys::ENTER);
     let switch = zellij.follow_switch();

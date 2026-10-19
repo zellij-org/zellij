@@ -71,7 +71,7 @@ pub use super::generated_api::api::{
         KeybindingSourceKind as ProtobufKeybindingSourceKind,
         KeybindsSelectionSnapshot as ProtobufKeybindsSelectionSnapshot, KillSessionsPayload,
         KillSessionsResponse as ProtobufKillSessionsResponse, LeaderValue as ProtobufLeaderValue,
-        ListTokensResponse, LoadNewPluginPayload, MarkAllSeenPayload,
+        ListTokensResponse, LoadNewPluginPayload, MarkAllSeenPayload, OpenSessionWindowPayload,
         MenuItemEntry as ProtobufMenuItemEntry, MenuSectionEntries as ProtobufMenuSectionEntries,
         MessageToPluginPayload, MouseTriggerInMode as ProtobufMouseTriggerInMode,
         MousebindingEntry as ProtobufMousebindingEntry, MovePaneWithPaneIdInDirectionPayload,
@@ -666,12 +666,14 @@ impl TryFrom<(InputMode, KeyWithModifier)> for KeyToUnbind {
     }
 }
 
-fn startup_card_context(
+fn plugin_switch_context(
     startup_card: Option<&str>,
+    disconnect_others: Option<bool>,
 ) -> Option<crate::session_history::SwitchContext> {
-    startup_card
-        .and_then(crate::input::attention::StartupCard::from_str)
-        .map(crate::session_history::SwitchContext::with_startup_card)
+    crate::session_history::SwitchContext::from_plugin_request(
+        startup_card.and_then(crate::input::attention::StartupCard::from_str),
+        disconnect_others.unwrap_or(false),
+    )
 }
 
 fn session_pane_payload(
@@ -1369,7 +1371,10 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                         pane_id,
                         layout: payload.layout.and_then(|l| l.try_into().ok()),
                         cwd: payload.cwd.map(|c| PathBuf::from(c)),
-                        switch_context: startup_card_context(payload.startup_card.as_deref()),
+                        switch_context: plugin_switch_context(
+                            payload.startup_card.as_deref(),
+                            payload.disconnect_others,
+                        ),
                     }))
                 },
                 _ => Err("Mismatched payload for SwitchSession"),
@@ -2762,8 +2767,9 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                                 pane_id,
                                 layout: payload.layout.and_then(|l| l.try_into().ok()),
                                 cwd: payload.cwd.map(PathBuf::from),
-                                switch_context: startup_card_context(
+                                switch_context: plugin_switch_context(
                                     payload.startup_card.as_deref(),
+                                    payload.disconnect_others,
                                 ),
                             },
                         ))
@@ -2800,6 +2806,26 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                     session_name: payload.session_name,
                 }),
                 _ => Err("Mismatched payload for MarkAllSeen"),
+            },
+            Some(CommandName::OpenSessionWindow) => match protobuf_plugin_command.payload {
+                Some(Payload::OpenSessionWindowPayload(payload)) => {
+                    Ok(PluginCommand::OpenSessionWindow(
+                        crate::data::SessionWindowRequest {
+                            session_name: payload.session_name.filter(|n| !n.is_empty()),
+                            new_window: payload.new_window,
+                            pane_id: payload.pane_id.map(|id| {
+                                if payload.pane_is_plugin {
+                                    PaneId::Plugin(id)
+                                } else {
+                                    PaneId::Terminal(id)
+                                }
+                            }),
+                            layout: payload.layout.and_then(|l| l.try_into().ok()),
+                            cwd: payload.cwd.map(PathBuf::from),
+                        },
+                    ))
+                },
+                _ => Err("Mismatched payload for OpenSessionWindow"),
             },
             Some(CommandName::WriteToSessionPane) => match protobuf_plugin_command.payload {
                 Some(Payload::WriteToSessionPanePayload(payload)) => {
@@ -3708,6 +3734,9 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     startup_card: switch_to_session
                         .startup_card()
                         .map(|c| c.as_str().to_owned()),
+                    disconnect_others: switch_to_session
+                        .disconnects_others()
+                        .then_some(true),
                     name: switch_to_session.name,
                     tab_position: switch_to_session.tab_position.map(|t| t as u32),
                     pane_id: switch_to_session.pane_id.map(|p| p.0),
@@ -4940,6 +4969,9 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                             startup_card: switch_to_session
                                 .startup_card()
                                 .map(|c| c.as_str().to_owned()),
+                            disconnect_others: switch_to_session
+                                .disconnects_others()
+                                .then_some(true),
                             name: switch_to_session.name,
                             tab_position: switch_to_session.tab_position.map(|t| t as u32),
                             pane_id: switch_to_session.pane_id.map(|p| p.0),
@@ -4982,6 +5014,21 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 payload: Some(Payload::MarkAllSeenPayload(MarkAllSeenPayload {
                     session_name,
                 })),
+            }),
+            PluginCommand::OpenSessionWindow(request) => Ok(ProtobufPluginCommand {
+                name: CommandName::OpenSessionWindow as i32,
+                payload: Some(Payload::OpenSessionWindowPayload(
+                    OpenSessionWindowPayload {
+                        session_name: request.session_name,
+                        new_window: request.new_window,
+                        pane_id: request.pane_id.map(|p| match p {
+                            PaneId::Terminal(id) | PaneId::Plugin(id) => id,
+                        }),
+                        pane_is_plugin: matches!(request.pane_id, Some(PaneId::Plugin(_))),
+                        layout: request.layout.and_then(|l| l.try_into().ok()),
+                        cwd: request.cwd.map(|c| c.display().to_string()),
+                    },
+                )),
             }),
             PluginCommand::WriteToSessionPane {
                 session_name,
@@ -6333,6 +6380,21 @@ mod tests {
             PluginCommand::SwitchSession(decoded) => assert_eq!(decoded, connect),
             other => panic!("expected SwitchSession, got {:?}", other),
         }
+        let connect = ConnectToSession {
+            name: Some("api".to_owned()),
+            switch_context: crate::session_history::SwitchContext::from_plugin_request(None, true),
+            ..Default::default()
+        };
+        let protobuf: ProtobufPluginCommand = PluginCommand::SwitchSession(connect.clone())
+            .try_into()
+            .expect("encode");
+        match PluginCommand::try_from(protobuf).expect("decode") {
+            PluginCommand::SwitchSession(decoded) => {
+                assert!(decoded.disconnects_others());
+                assert_eq!(decoded, connect);
+            },
+            other => panic!("expected SwitchSession, got {:?}", other),
+        }
     }
 
     #[test]
@@ -6344,6 +6406,19 @@ mod tests {
                 pane_id: PaneId::Terminal(3),
             },
             PluginCommand::MarkAllSeen { session_name: None },
+            PluginCommand::OpenSessionWindow(crate::data::SessionWindowRequest::existing(
+                "api", None, true,
+            )),
+            PluginCommand::OpenSessionWindow(crate::data::SessionWindowRequest::existing(
+                "api",
+                Some(PaneId::Plugin(4)),
+                false,
+            )),
+            PluginCommand::OpenSessionWindow(crate::data::SessionWindowRequest::new_session(
+                None,
+                Some(crate::data::LayoutInfo::BuiltIn("compact".to_owned())),
+                Some(PathBuf::from("/tmp")),
+            )),
             PluginCommand::MarkAllSeen {
                 session_name: Some("api".to_owned()),
             },

@@ -339,8 +339,8 @@ message Action {
     MuteTabByTabIdAction mute_tab_by_tab_id = 173;
     MuteSessionAction mute_session = 174;
     ToggleSessionAction toggle_session = 175;
-    GoBackAction go_back = 176;
-    GoForwardAction go_forward = 177;
+    GoToPreviousSessionAction go_to_previous_session = 176;
+    GoToNextSessionAction go_to_next_session = 177;
     GoToNextAttentionAction go_to_next_attention = 178;
     MarkPaneSeenAction mark_pane_seen = 179;
     MarkAllSeenAction mark_all_seen = 180;
@@ -1421,8 +1421,8 @@ message MuteTabAction {}
 message MuteTabByTabIdAction { uint64 id = 1; }
 message MuteSessionAction {}
 message ToggleSessionAction {}
-message GoBackAction {}
-message GoForwardAction {}
+message GoToPreviousSessionAction {}
+message GoToNextSessionAction {}
 message GoToNextAttentionAction {}
 message ToggleTrayIconAction {}
 message MarkPaneSeenAction { optional string session = 1; optional PaneId pane_id = 2; }
@@ -1565,6 +1565,7 @@ message SwitchContext {
   optional SessionArrival arrival = 2;
   optional string from_session = 3;
   optional StartupCard startup_card = 4;
+  bool disconnect_others = 5;
 }
 
 enum PreviewAnchor {

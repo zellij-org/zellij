@@ -831,6 +831,7 @@ impl SessionSuggestionsService {
             })
             .collect();
         let ranked = rank_candidates(&context, &rules, then, candidates, &column_facts);
+        let desktop_windows = desktop_window_sessions();
         let base = SessionSuggestions {
             folder: context.folder.as_ref().map(|f| folder_key(f)),
             branch: context.branch.clone(),
@@ -844,6 +845,8 @@ impl SessionSuggestionsService {
             suggestions: vec![],
             command_submitted: self.command_submitted,
             from_script: false,
+            desktop_app_running: desktop_windows.is_some(),
+            desktop_window_sessions: desktop_windows.unwrap_or_default(),
         };
         let senders = self.senders.clone();
         let send = move |senders: &ThreadSenders, suggestions: SessionSuggestions| {
@@ -928,6 +931,22 @@ impl SessionSuggestionsService {
             },
         }
     }
+}
+
+fn desktop_window_sessions() -> Option<Vec<String>> {
+    let socket = zellij_utils::consts::app_control_socket();
+    if cfg!(unix) && !socket.exists() {
+        return None;
+    }
+    let state = zellij_utils::app_control::describe_app_at(&socket).ok()?;
+    let mut sessions: Vec<String> = state
+        .windows
+        .into_iter()
+        .filter_map(|window| window.session)
+        .collect();
+    sessions.sort();
+    sessions.dedup();
+    Some(sessions)
 }
 
 fn script_candidates(ranked: &[RankedCandidate]) -> Vec<RankedCandidate> {

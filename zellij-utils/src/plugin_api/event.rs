@@ -2678,6 +2678,7 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
             nested_ascend_keys,
             session_ascended,
             nested_descend_keys,
+            remote_client: protobuf_mode_update_payload.remote_client,
         };
         Ok(mode_info)
     }
@@ -2720,6 +2721,7 @@ impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
             .iter()
             .map(|key| key.to_kdl())
             .collect();
+        let remote_client = mode_info.remote_client;
         let protobuf_input_mode_keybinds = keybinds_to_protobuf(mode_info.keybinds);
         Ok(ProtobufModeUpdatePayload {
             current_mode: current_mode as i32,
@@ -2744,6 +2746,7 @@ impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
             nested_ascend_keys,
             session_ascended,
             nested_descend_keys,
+            remote_client,
         })
     }
 }
@@ -3148,6 +3151,7 @@ fn serialize_mode_update_event_with_non_default_values() {
             KeyWithModifier::new(BareKey::Char('o')).with_ctrl_modifier(),
             KeyWithModifier::new(BareKey::Down),
         ],
+        remote_client: Some("over SSH from 192.168.1.5".to_owned()),
     });
     let protobuf_event: ProtobufEvent = mode_update_event.clone().try_into().unwrap();
     let serialized_protobuf_event = protobuf_event.encode_to_vec();
@@ -4781,6 +4785,8 @@ mod session_suggestion_conversions {
                 suggestions: s.suggestions.into_iter().map(Into::into).collect(),
                 command_submitted: s.command_submitted,
                 from_script: s.from_script,
+                desktop_app_running: s.desktop_app_running,
+                desktop_window_sessions: s.desktop_window_sessions,
             }
         }
     }
@@ -4801,6 +4807,8 @@ mod session_suggestion_conversions {
                 suggestions: s.suggestions.into_iter().map(Into::into).collect(),
                 command_submitted: s.command_submitted,
                 from_script: s.from_script,
+                desktop_app_running: s.desktop_app_running,
+                desktop_window_sessions: s.desktop_window_sessions,
             }
         }
     }
@@ -5027,6 +5035,8 @@ mod session_suggestion_conversions {
                 }],
                 command_submitted: true,
                 from_script: false,
+                desktop_app_running: true,
+                desktop_window_sessions: vec!["api".to_owned()],
             }));
             round_trip(Event::SessionCountsUpdate(SessionCounts {
                 running: 2,

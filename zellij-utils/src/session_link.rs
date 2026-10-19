@@ -120,6 +120,11 @@ pub fn stop_session(session_name: &str, timeout: Duration) -> Result<(), String>
     Ok(())
 }
 
+pub fn detach_all_clients(session_name: &str) -> Result<(), String> {
+    let mut link = SessionLink::open(session_name)?;
+    link.send(ClientToServerMsg::DetachSession { client_ids: vec![] })
+}
+
 pub fn send_actions_to_session(session_name: &str, actions: Vec<Action>) -> Result<(), String> {
     let mut link = SessionLink::open(session_name)?;
     for action in actions {
@@ -270,7 +275,7 @@ mod tests {
     #[test]
     fn remote_action_workers_leave_when_the_session_is_gone() {
         let mut remote_actions = RemoteActions::default();
-        remote_actions.send("this-session-does-not-exist-anywhere", vec![Action::GoBack]);
+        remote_actions.send("this-session-does-not-exist-anywhere", vec![Action::GoToPreviousSession]);
         let deadline = std::time::Instant::now() + Duration::from_secs(5);
         while remote_actions.queue_count() > 0 && std::time::Instant::now() < deadline {
             thread::sleep(Duration::from_millis(10));

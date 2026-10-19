@@ -1010,9 +1010,18 @@ impl App {
             return;
         }
         self.focused = focused;
+        self.report_focus();
         self.retained
             .mark(&Damage::Rows(vec![self.state.cursor_position().0]));
         self.schedule_draw();
+    }
+
+    fn report_focus(&self) {
+        if let Err(e) = self.tell(ClientToServerMsg::HostTerminalFocusChanged {
+            focused: self.focused,
+        }) {
+            report!("failed to report the window focus: {}", e);
+        }
     }
 
     fn toggle_fullscreen(&mut self) {
@@ -1531,6 +1540,9 @@ impl App {
                     if let Err(e) = self.tell(msg) {
                         report!("failed to re-declare a color: {}", e);
                     }
+                }
+                if !self.focused {
+                    self.report_focus();
                 }
                 true
             },
@@ -3356,7 +3368,7 @@ mod tests {
 
     #[test]
     fn a_focus_change_turns_the_cursor_hollow_and_redraws_its_row() {
-        let mut harness = Harness::new(0, true, "");
+        let mut harness = Harness::new(3, true, "");
         assert!(harness.app.focused, "a new window counts as focused");
         assert!(!harness.app.cursor_options().hollow);
         harness.app.refresh_scene();
@@ -3372,6 +3384,15 @@ mod tests {
         harness.app.options.cursor_unfocused_hollow = false;
         harness.app.set_focused(false);
         assert!(!harness.app.cursor_options().hollow);
+        let reported: Vec<bool> = harness
+            .sent()
+            .into_iter()
+            .filter_map(|msg| match msg {
+                ClientToServerMsg::HostTerminalFocusChanged { focused } => Some(focused),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(reported, vec![false, true, false]);
     }
 
     #[test]

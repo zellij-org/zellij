@@ -106,7 +106,7 @@ use zellij_utils::app_control::{AppReply, AppRequest, OpenWindowRequest};
 use zellij_utils::input::window::StartupMode;
 
 pub use app::probe::{NotificationProbe, ProbeEvent};
-pub use app::{clear_all_sessions, stop_all_sessions};
+pub use app::{clear_all_sessions, detach_everywhere, stop_all_sessions};
 
 pub fn run(args: WindowArgs, opts: CliArgs) -> Result<()> {
     diagnostics::log_crashes();
@@ -769,6 +769,9 @@ impl Dialer {
                 }
                 if let Some(layout) = request.layout.clone() {
                     resolved.client.set_layout_info(layout);
+                }
+                if let (Some(cwd), ClientInfo::New(..)) = (request.cwd.clone(), &resolved.client) {
+                    resolved.client.set_cwd(cwd);
                 }
                 resolved.client
             },

@@ -1411,8 +1411,8 @@ impl From<crate::input::actions::Action>
             FocusPluginPaneWithIdAction,
             FocusPreviousPaneAction,
             FocusTerminalPaneWithIdAction,
-            GoBackAction,
-            GoForwardAction,
+            GoToPreviousSessionAction,
+            GoToNextSessionAction,
             GoToNextAttentionAction,
             GoToNextTabAction,
             GoToPreviousTabAction,
@@ -1983,8 +1983,8 @@ impl From<crate::input::actions::Action>
             crate::input::actions::Action::ToggleSession => {
                 ActionType::ToggleSession(ToggleSessionAction {})
             },
-            crate::input::actions::Action::GoBack => ActionType::GoBack(GoBackAction {}),
-            crate::input::actions::Action::GoForward => ActionType::GoForward(GoForwardAction {}),
+            crate::input::actions::Action::GoToPreviousSession => ActionType::GoToPreviousSession(GoToPreviousSessionAction {}),
+            crate::input::actions::Action::GoToNextSession => ActionType::GoToNextSession(GoToNextSessionAction {}),
             crate::input::actions::Action::GoToNextAttention => {
                 ActionType::GoToNextAttention(GoToNextAttentionAction {})
             },
@@ -3004,8 +3004,8 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             ActionType::MuteTab(_) => Ok(crate::input::actions::Action::MuteTab),
             ActionType::MuteSession(_) => Ok(crate::input::actions::Action::MuteSession),
             ActionType::ToggleSession(_) => Ok(crate::input::actions::Action::ToggleSession),
-            ActionType::GoBack(_) => Ok(crate::input::actions::Action::GoBack),
-            ActionType::GoForward(_) => Ok(crate::input::actions::Action::GoForward),
+            ActionType::GoToPreviousSession(_) => Ok(crate::input::actions::Action::GoToPreviousSession),
+            ActionType::GoToNextSession(_) => Ok(crate::input::actions::Action::GoToNextSession),
             ActionType::GoToNextAttention(_) => {
                 Ok(crate::input::actions::Action::GoToNextAttention)
             },

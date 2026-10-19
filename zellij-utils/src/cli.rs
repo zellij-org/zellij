@@ -2036,12 +2036,14 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
     },
     #[clap(about = "Mute or unmute the attention status of the whole session")]
     MuteSession,
-    #[clap(about = "Switch to the session this client was in before (run again to return)")]
+    #[clap(
+        about = "Switch to the session this client was in before (run again to return), or to the next running session if there is none"
+    )]
     ToggleSession,
     #[clap(about = "Go back to the previous session in this client's history")]
-    GoBack,
+    GoToPreviousSession,
     #[clap(about = "Go forward in this client's session history")]
-    GoForward,
+    GoToNextSession,
     #[clap(
         about = "Jump to the next pane that needs attention in any session, switching session if needed"
     )]

@@ -479,6 +479,7 @@ fn test_client_messages() {
                 }),
                 from_session: Some("api".to_owned()),
                 startup_card: Some(crate::input::attention::StartupCard::Never),
+                disconnect_others: false,
             }),
         },
         is_web_client: true,
@@ -2491,13 +2492,13 @@ fn test_client_messages() {
         is_cli_client: true,
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
-        action: Action::GoBack,
+        action: Action::GoToPreviousSession,
         terminal_id: None,
         client_id: None,
         is_cli_client: true,
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
-        action: Action::GoForward,
+        action: Action::GoToNextSession,
         terminal_id: None,
         client_id: None,
         is_cli_client: true,
@@ -4331,6 +4332,7 @@ fn test_server_messages() {
                     arrival: Some(arrival),
                     from_session: Some("b".to_owned()),
                     startup_card: Some(crate::input::attention::StartupCard::Always),
+                    disconnect_others: true,
                 }),
                 ..Default::default()
             }

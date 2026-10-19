@@ -4303,7 +4303,7 @@ Config {
                 bare_key: Left,
                 key_modifiers: {},
             }: [
-                GoBack,
+                GoToPreviousSession,
                 SwitchToMode {
                     input_mode: Normal,
                 },
@@ -4342,7 +4342,7 @@ Config {
                 bare_key: Right,
                 key_modifiers: {},
             }: [
-                GoForward,
+                GoToNextSession,
                 SwitchToMode {
                     input_mode: Normal,
                 },

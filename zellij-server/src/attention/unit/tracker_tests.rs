@@ -612,6 +612,64 @@ fn marking_seen_dismisses_current_truths_until_the_program_reports_again() {
 }
 
 #[test]
+fn focusing_keeps_a_program_working_but_marking_it_seen_clears_it() {
+    let mut tracker = tracker();
+    tracker.on_signals(PANE, vec![report("state=working")], 2_000);
+    focused(&mut tracker, 2_500);
+    assert_eq!(status(&tracker), AttentionStatus::Working);
+    hidden(&mut tracker, 2_800);
+    tracker.mark_seen(PANE, 3_000);
+    assert_eq!(status(&tracker), AttentionStatus::Idle);
+    tracker.on_signals(PANE, vec![report("state=done")], 15_000);
+    let attention = tracker.attention(&PANE).unwrap();
+    assert_eq!(attention.status, AttentionStatus::Done);
+    assert_eq!(attention.detail.duration_ms, Some(13_000));
+}
+
+#[test]
+fn output_from_a_working_program_out_of_sight_keeps_it_working_until_done() {
+    let mut tracker = tracker();
+    visible(&mut tracker, 5_000);
+    tracker.on_signals(PANE, vec![report("state=working:app=opencode")], 5_000);
+    hidden(&mut tracker, 6_000);
+    for at in [7_000, 8_000, 9_000] {
+        tracker.on_output(PANE, at);
+    }
+    assert_eq!(tracker.unseen_output_since(&PANE), Some(7_000));
+    assert_eq!(status(&tracker), AttentionStatus::Working);
+    tracker.on_signals(PANE, vec![report("state=done:app=opencode")], 20_000);
+    let attention = tracker.attention(&PANE).unwrap();
+    assert_eq!(attention.status, AttentionStatus::Done);
+    assert!(!attention.seen);
+    assert_eq!(attention.detail.duration_ms, Some(15_000));
+    tracker.on_output(PANE, 21_000);
+    assert_eq!(status(&tracker), AttentionStatus::Done);
+    tracker.on_signals(PANE, vec![report("state=working")], 22_000);
+    tracker.on_output(PANE, 23_000);
+    assert_eq!(status(&tracker), AttentionStatus::Working);
+}
+
+#[test]
+fn output_from_a_program_reporting_under_an_id_or_as_idle_is_not_new_output() {
+    let mut tracker = tracker();
+    tracker.on_signals(PANE, vec![report("id=task:state=working")], 5_000);
+    tracker.on_signals(OTHER, vec![report("state=idle")], 5_000);
+    hidden(&mut tracker, 6_000);
+    for at in [7_000, 8_000, 9_000] {
+        tracker.on_output(PANE, at);
+        tracker.on_output(OTHER, at);
+    }
+    assert_eq!(status(&tracker), AttentionStatus::Idle);
+    assert_eq!(
+        tracker.attention(&OTHER).unwrap().status,
+        AttentionStatus::Idle
+    );
+    tracker.set_pane_watched(PANE, true, 10_000);
+    tracker.on_output(PANE, 11_000);
+    assert_eq!(status(&tracker), AttentionStatus::NeedsYou);
+}
+
+#[test]
 fn being_visible_keeps_current_truths() {
     let mut tracker = tracker();
     tracker.on_signals(PANE, vec![report("state=blocked:kind=permission")], 2_000);

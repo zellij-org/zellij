@@ -75,7 +75,9 @@ impl Screen {
         let mut visible = HashSet::new();
         let mut focused = HashSet::new();
         for (client_id, tab_id) in &self.active_tab_ids {
-            if self.watcher_clients.contains_key(client_id) {
+            if self.watcher_clients.contains_key(client_id)
+                || !self.client_host_is_focused(client_id)
+            {
                 continue;
             }
             if let Some(tab) = self.tabs.get(tab_id) {

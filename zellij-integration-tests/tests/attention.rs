@@ -166,6 +166,22 @@ fn an_agent_reporting_its_status_is_shown_on_its_frame_until_seen() {
 }
 
 #[test]
+fn the_focused_pane_reports_its_status_while_the_host_window_is_unfocused() {
+    let (mut zellij, _left, focused) = start_with_two_panes(TestRunner::new(TERMINAL_SIZE));
+    focused.output(&program_status("state=done:app=claude"));
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(markers_on_screen(&zellij.snapshot().text), "");
+    zellij.send_stdin(b"\x1b[O");
+    std::thread::sleep(Duration::from_millis(200));
+    focused.output(&program_status("state=working:app=claude"));
+    focused.output(&program_status("state=done:app=claude"));
+    wait_for_markers(&zellij, "✓");
+    zellij.send_stdin(b"\x1b[I");
+    wait_for_markers(&zellij, "");
+    zellij.quit();
+}
+
+#[test]
 fn a_new_shell_prompt_drops_stale_working_and_blocked_reports() {
     let (mut zellij, agent, _other) = start_with_two_panes(TestRunner::new(TERMINAL_SIZE));
     agent.output(&program_status("state=blocked:kind=question"));
@@ -326,5 +342,128 @@ fn only_programs_that_report_it_are_shown_as_working() {
     );
     left.output(&program_status("state=working:app=claude"));
     wait_for_markers(&zellij, "◐");
+    zellij.quit();
+}
+
+const SESSION_INDICATOR_ON: &str = "session_indicator true";
+
+fn let_the_startup_grace_pass() {
+    std::thread::sleep(Duration::from_millis(3200));
+}
+
+fn unfocus_the_host_window(zellij: &TestSession) {
+    zellij.send_stdin(b"\x1b[O");
+    std::thread::sleep(Duration::from_millis(200));
+}
+
+fn print_lines(terminal: &FakePtyHandle, label: &str) {
+    for line in 0..3 {
+        terminal.output(format!("{} {}\r\n", label, line).as_bytes());
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
+fn indicator(zellij: &TestSession) -> String {
+    zellij.snapshot().lines()[0].clone()
+}
+
+fn open_inbox(zellij: &TestSession) {
+    zellij.send_stdin(&keys::F9);
+    let opened = zellij.wait_until("the session manager opens", |grid_snapshot| {
+        grid_snapshot.contains("<?> all keys") || grid_snapshot.contains("<F1> all keys")
+    });
+    if !opened.contains("<?> all keys") {
+        zellij.send_stdin(&keys::TAB);
+        zellij.wait_until("the inbox is shown", |grid_snapshot| {
+            grid_snapshot.contains("<?> all keys")
+        });
+    }
+}
+
+#[test]
+fn plain_output_from_an_unwatched_pane_never_needs_you_while_the_window_is_unfocused() {
+    let (mut zellij, left, _right) =
+        start_with_two_panes(TestRunner::new(TERMINAL_SIZE).with_config(SESSION_INDICATOR_ON));
+    let_the_startup_grace_pass();
+    unfocus_the_host_window(&zellij);
+    print_lines(&left, "plain output");
+    zellij.wait_until("the output is drawn", |grid_snapshot| {
+        grid_snapshot.contains("plain output 2")
+    });
+    std::thread::sleep(Duration::from_millis(700));
+    assert_eq!(markers_on_screen(&zellij.snapshot().text), "");
+    let bar = indicator(&zellij);
+    assert!(
+        bar.contains(" running") && !bar.contains("need you") && !bar.contains("watch alert"),
+        "the indicator reacted to plain output: {}",
+        bar
+    );
+    open_inbox(&zellij);
+    let inbox = zellij.wait_until("the new output waits behind the line", |grid_snapshot| {
+        grid_snapshot.contains("with only new output")
+    });
+    assert!(!inbox.contains("NEEDS YOU"), "{}", inbox.text);
+    zellij.quit();
+}
+
+#[test]
+fn output_from_programs_that_report_their_own_status_is_never_new_output() {
+    let (mut zellij, working, under_id) =
+        start_with_two_panes(TestRunner::new(TERMINAL_SIZE).with_config(SESSION_INDICATOR_ON));
+    let idle = split_right_pane_down(&zellij);
+    working.output(&program_status("state=working:app=claude"));
+    under_id.output(&program_status("id=task:state=working:app=claude"));
+    idle.output(&program_status("state=idle:app=claude"));
+    zellij.wait_until("the working program is shown", |grid_snapshot| {
+        markers_on_screen(&grid_snapshot.text).contains('◐')
+    });
+    let_the_startup_grace_pass();
+    unfocus_the_host_window(&zellij);
+    print_lines(&working, "working output");
+    print_lines(&under_id, "task output");
+    print_lines(&idle, "idle output");
+    zellij.wait_until("the output is drawn", |grid_snapshot| {
+        grid_snapshot.contains("working output 2")
+            && grid_snapshot.contains("task output 2")
+            && grid_snapshot.contains("idle output 2")
+    });
+    std::thread::sleep(Duration::from_millis(700));
+    let markers = markers_on_screen(&zellij.snapshot().text);
+    assert!(
+        markers.contains('◐') && !markers.contains('●') && !markers.contains('•'),
+        "markers: {:?}",
+        markers
+    );
+    let bar = indicator(&zellij);
+    assert!(
+        !bar.contains("need you") && !bar.contains("watch alert"),
+        "the indicator reacted to the output: {}",
+        bar
+    );
+    open_inbox(&zellij);
+    std::thread::sleep(Duration::from_millis(300));
+    let inbox = zellij.snapshot();
+    assert!(
+        !inbox.contains("with only new output") && !inbox.contains("NEEDS YOU"),
+        "{}",
+        inbox.text
+    );
+    zellij.quit();
+}
+
+#[test]
+fn output_from_a_watched_pane_needs_you_while_the_window_is_unfocused_until_refocused() {
+    let (mut zellij, left, _right) =
+        start_with_two_panes(TestRunner::new(TERMINAL_SIZE).with_config(SESSION_INDICATOR_ON));
+    watch(&zellij, &left);
+    let_the_startup_grace_pass();
+    unfocus_the_host_window(&zellij);
+    print_lines(&left, "watched output");
+    wait_for_markers(&zellij, "●");
+    zellij.wait_until("the indicator shows a watch alert", |grid_snapshot| {
+        grid_snapshot.lines()[0].contains("watch alert")
+    });
+    zellij.send_stdin(b"\x1b[I");
+    wait_for_markers(&zellij, "");
     zellij.quit();
 }

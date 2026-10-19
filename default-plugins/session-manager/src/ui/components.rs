@@ -760,19 +760,43 @@ pub fn render_prompt(search_term: &str, colors: Colors, x: usize, y: usize) {
 pub fn render_single_screen_prompt(
     search_term: &str,
     enter_action: Option<&str>,
+    extra_hints: &[(&str, &str)],
+    max_width: usize,
     colors: Colors,
     x: usize,
     y: usize,
 ) {
     let prompt = colors.session_name_prompt("Session:");
     let search_term_display = colors.bold(&format!("{}_", search_term));
-    let enter_hint = match enter_action {
+    let mut used = "Session: ".chars().count() + search_term.chars().count() + 1;
+    let mut enter_hint = match enter_action {
         Some(action) => {
             let enter_key = colors.shortcuts("<ENTER>");
-            format!(" {} - {}", enter_key, action)
+            let room = max_width.saturating_sub(used + " <ENTER> - ".chars().count() + 1);
+            if room < 4 {
+                String::new()
+            } else {
+                let action = if action.chars().count() > room {
+                    let mut short: String = action.chars().take(room - 1).collect();
+                    short.push('…');
+                    short
+                } else {
+                    action.to_owned()
+                };
+                used += format!(" <ENTER> - {}", action).chars().count();
+                format!(" {} - {}", enter_key, action)
+            }
         },
         None => String::new(),
     };
+    for (key, label) in extra_hints {
+        let width = format!(", {} - {}", key, label).chars().count();
+        if used + width >= max_width {
+            break;
+        }
+        used += width;
+        enter_hint.push_str(&format!(", {} - {}", colors.shortcuts(key), label));
+    }
     println!(
         "\u{1b}[m\u{1b}[{};{}H\u{1b}[0m{} {}{}\n",
         y + 2,
@@ -1364,6 +1388,13 @@ fn format_elapsed_time(elapsed_millis: u64) -> String {
     }
 }
 
+pub fn saved_text(last_saved_timestamp: Option<u64>) -> String {
+    match last_saved_timestamp {
+        Some(timestamp) => format!("(saved {})", format_elapsed_time(timestamp)),
+        None => "(not saved)".to_string(),
+    }
+}
+
 pub fn render_unsaved_changes_line(
     max_cols: usize,
     x: usize,
@@ -1378,13 +1409,7 @@ pub fn render_unsaved_changes_line(
     let separator = " - ";
     let space = " ";
 
-    let time_text = match last_saved_timestamp {
-        Some(timestamp) => {
-            let elapsed = format_elapsed_time(timestamp);
-            format!("(saved {})", elapsed)
-        },
-        None => "(not saved)".to_string(),
-    };
+    let time_text = saved_text(last_saved_timestamp);
 
     // Calculate component widths
     let shortcut_width = graphemes::display_width(&shortcut_text);

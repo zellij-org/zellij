@@ -1209,6 +1209,8 @@ pub struct ModeUpdatePayload {
     pub session_ascended: ::core::option::Option<bool>,
     #[prost(string, repeated, tag="22")]
     pub nested_descend_keys: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="23")]
+    pub remote_client: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1380,6 +1382,10 @@ pub struct SessionSuggestionsPayload {
     pub command_submitted: bool,
     #[prost(bool, tag="6")]
     pub from_script: bool,
+    #[prost(bool, tag="7")]
+    pub desktop_app_running: bool,
+    #[prost(string, repeated, tag="8")]
+    pub desktop_window_sessions: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

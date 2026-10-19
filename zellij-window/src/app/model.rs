@@ -4,6 +4,8 @@ use zellij_utils::attention::GlobalAttention;
 pub enum PillColor {
     Attention,
     Error,
+    Done,
+    Working,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -33,6 +35,18 @@ pub fn pill(global: &GlobalAttention) -> Option<Pill> {
         return Some(Pill {
             color: PillColor::Error,
             count: global.counts.failed,
+        });
+    }
+    if global.counts.done > 0 {
+        return Some(Pill {
+            color: PillColor::Done,
+            count: global.counts.done,
+        });
+    }
+    if global.counts.working > 0 {
+        return Some(Pill {
+            color: PillColor::Working,
+            count: global.counts.working,
         });
     }
     None
@@ -74,6 +88,12 @@ pub fn tooltip(global: &GlobalAttention, paused: bool) -> String {
     }
     if global.counts.failed > 0 {
         parts.push(format!("{} failed", global.counts.failed));
+    }
+    if global.counts.done > 0 {
+        parts.push(format!("{} done", global.counts.done));
+    }
+    if global.counts.working > 0 {
+        parts.push(format!("{} working", global.counts.working));
     }
     parts.push(format!("{} running", global.running()));
     if paused {
@@ -147,17 +167,43 @@ mod tests {
     use zellij_utils::attention::AttentionStatus;
 
     #[test]
-    fn the_pill_mirrors_the_top_counted_status_only_for_needs_you_and_failed() {
+    fn the_pill_mirrors_the_top_counted_status() {
         let calm = global(vec![(
             "a",
             vec![
-                item(1, AttentionStatus::Done, "", 1),
-                item(2, AttentionStatus::Working, "", 1),
                 item(3, AttentionStatus::Quiet, "", 1),
                 item(4, AttentionStatus::NewOutput, "", 1),
             ],
         )]);
         assert_eq!(pill(&calm), None);
+        let working = global(vec![("a", vec![item(1, AttentionStatus::Working, "", 1)])]);
+        assert_eq!(
+            pill(&working),
+            Some(Pill {
+                color: PillColor::Working,
+                count: 1
+            })
+        );
+        let done = global(vec![(
+            "a",
+            vec![
+                item(1, AttentionStatus::Working, "", 1),
+                item(2, AttentionStatus::Done, "", 1),
+                item(3, AttentionStatus::Done, "", 1),
+            ],
+        )]);
+        assert_eq!(
+            pill(&done),
+            Some(Pill {
+                color: PillColor::Done,
+                count: 2
+            })
+        );
+        let seen_done = global(vec![(
+            "a",
+            vec![seen(item(1, AttentionStatus::Done, "", 1))],
+        )]);
+        assert_eq!(pill(&seen_done).map(|p| p.color), Some(PillColor::Done));
         let failed = global(vec![("a", vec![item(1, AttentionStatus::Failed, "", 1)])]);
         assert_eq!(
             pill(&failed),

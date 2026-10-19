@@ -67,6 +67,135 @@ pub struct Panel {
     pub opened_at_startup: bool,
     pub attention: Option<GlobalAttention>,
     pub previous_session: Option<String>,
+    pub preview_pan: PreviewPan,
+}
+
+pub const PREVIEW_PAN_ROWS: usize = 3;
+pub const PREVIEW_PAN_COLUMNS: usize = 8;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PreviewPan {
+    pub rows_up: usize,
+    pub columns: usize,
+    pub jump_to: Option<usize>,
+    pub page_rows: usize,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PreviewWindow {
+    pub start: usize,
+    pub skip_columns: usize,
+    pub hidden_above: usize,
+    pub hidden_right: bool,
+    pub panned: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PanMove {
+    Up,
+    Down,
+    PageUp,
+    PageDown,
+    Left,
+    Right,
+    Top,
+    Reset,
+}
+
+impl PreviewPan {
+    pub fn reset(&mut self) {
+        let page_rows = self.page_rows;
+        *self = PreviewPan {
+            page_rows,
+            ..Default::default()
+        };
+    }
+    pub fn apply(&mut self, pan_move: PanMove, top: usize) {
+        let page = self.page_rows.saturating_sub(1).max(1);
+        match pan_move {
+            PanMove::Up => self.rows_up = self.rows_up.saturating_add(PREVIEW_PAN_ROWS),
+            PanMove::Down => self.rows_up = self.rows_up.saturating_sub(PREVIEW_PAN_ROWS),
+            PanMove::PageUp => self.rows_up = self.rows_up.saturating_add(page),
+            PanMove::PageDown => self.rows_up = self.rows_up.saturating_sub(page),
+            PanMove::Left => self.columns = self.columns.saturating_sub(PREVIEW_PAN_COLUMNS),
+            PanMove::Right => self.columns = self.columns.saturating_add(PREVIEW_PAN_COLUMNS),
+            PanMove::Top => self.jump_to = Some(top),
+            PanMove::Reset => self.reset(),
+        }
+    }
+    pub fn place(&mut self, lines: &[String], rows: usize, width: usize) -> PreviewWindow {
+        self.page_rows = rows;
+        let last_start = lines.len().saturating_sub(rows);
+        if let Some(line) = self.jump_to.take() {
+            self.rows_up = last_start.saturating_sub(line);
+        }
+        self.rows_up = self.rows_up.min(last_start);
+        let start = last_start - self.rows_up;
+        let widest = lines
+            .iter()
+            .skip(start)
+            .take(rows)
+            .map(|line| ansi_width(line))
+            .max()
+            .unwrap_or(0);
+        self.columns = self.columns.min(widest.saturating_sub(width));
+        PreviewWindow {
+            start,
+            skip_columns: self.columns,
+            hidden_above: start,
+            hidden_right: widest > width + self.columns,
+            panned: self.rows_up > 0 || self.columns > 0,
+        }
+    }
+}
+
+impl PreviewWindow {
+    pub fn label(&self) -> Option<String> {
+        if self.panned {
+            let mut parts = vec![];
+            if self.hidden_above > 0 {
+                parts.push(format!("line {}", self.hidden_above + 1));
+            }
+            if self.skip_columns > 0 {
+                parts.push(format!("col {}", self.skip_columns + 1));
+            }
+            parts.push("<Shift End> reset".to_owned());
+            Some(parts.join(" · "))
+        } else if self.hidden_above > 0 || self.hidden_right {
+            Some("<Shift ←↓↑→> scroll".to_owned())
+        } else {
+            None
+        }
+    }
+}
+
+pub fn preview_lines(contents: &str) -> Vec<String> {
+    let mut lines: Vec<String> = contents.lines().map(|l| l.to_owned()).collect();
+    while lines
+        .last()
+        .map(|line| strip_ansi(line).trim().is_empty())
+        .unwrap_or(false)
+    {
+        lines.pop();
+    }
+    lines
+}
+
+pub fn pan_move_for_key(key: &KeyWithModifier) -> Option<PanMove> {
+    if !key.has_only_modifiers(&[KeyModifier::Shift]) {
+        return None;
+    }
+    match key.bare_key {
+        BareKey::Up => Some(PanMove::Up),
+        BareKey::Down => Some(PanMove::Down),
+        BareKey::PageUp => Some(PanMove::PageUp),
+        BareKey::PageDown => Some(PanMove::PageDown),
+        BareKey::Left => Some(PanMove::Left),
+        BareKey::Right => Some(PanMove::Right),
+        BareKey::Home => Some(PanMove::Top),
+        BareKey::End => Some(PanMove::Reset),
+        _ => None,
+    }
 }
 
 fn status_marker(status: AttentionStatus) -> &'static str {
@@ -224,6 +353,7 @@ impl Panel {
     }
 
     pub fn clear_preview(&mut self) {
+        self.preview_pan.reset();
         self.preview = None;
         self.saved_preview = None;
         self.preview_session = None;
@@ -306,6 +436,9 @@ impl Panel {
             _ => None,
         };
         let pane_changed = self.preview_pane_id != pane_id;
+        if session_changed || tab_changed || pane_changed {
+            self.preview_pan.reset();
+        }
         self.preview_pane_id = pane_id;
         if session_changed {
             self.preview = None;
@@ -319,7 +452,7 @@ impl Panel {
         }
         if is_running {
             if session_changed || tab_changed || pane_changed || self.preview.is_none() {
-                get_session_preview(name, tab, pane_id);
+                get_session_preview_with_history(name, tab, pane_id);
             }
         } else if session_changed || self.saved_preview.is_none() {
             get_saved_session_preview(name);
@@ -952,7 +1085,7 @@ pub fn render_preview(panel: &mut Panel, x: usize, y: usize, width: usize, heigh
         if let Some(error) = &preview.error {
             body.push(format!("Preview unavailable: {}", error));
         } else {
-            body.extend(preview.contents.lines().map(|l| l.to_owned()));
+            body.extend(preview_lines(&preview.contents));
         }
         if preview.error.is_none() {
             summary = Some(format!(
@@ -977,7 +1110,7 @@ pub fn render_preview(panel: &mut Panel, x: usize, y: usize, width: usize, heigh
                     .or_else(|| tab.panes.iter().find(|p| p.focused))
                     .or_else(|| tab.panes.first());
                 if let Some(contents) = pane.and_then(|p| p.contents.as_ref()) {
-                    body.extend(contents.lines().map(|l| l.to_owned()));
+                    body.extend(preview_lines(contents));
                 } else if let Some(command) = pane.and_then(|p| p.command.as_ref()) {
                     body.push(format!("$ {}", command));
                 }
@@ -1007,15 +1140,24 @@ pub fn render_preview(panel: &mut Panel, x: usize, y: usize, width: usize, heigh
     let max_details = height.saturating_sub(2) / 3;
     let details_height = details.len().min(max_details);
     let body_height = height.saturating_sub(2 + details_height);
+    let window = panel.preview_pan.place(&body, body_height, inner_width);
     for row in 0..body_height {
-        let line = body.get(row).map(|l| l.as_str()).unwrap_or("");
+        let line = body
+            .get(window.start + row)
+            .map(|l| l.as_str())
+            .unwrap_or("");
         print!(
             "\u{1b}[{};{}H\u{1b}[m│{}│",
             y + row + 2,
             x + 1,
-            fit_ansi(line, inner_width),
+            fit_ansi_from(line, window.skip_columns, inner_width),
         );
     }
+    let summary = match (summary, window.label()) {
+        (Some(summary), Some(label)) => Some(format!("{}  {}", label, summary)),
+        (None, Some(label)) => Some(label),
+        (summary, None) => summary,
+    };
     for (index, detail) in details.into_iter().take(details_height).enumerate() {
         let row_y = y + 1 + body_height + index;
         print!(
@@ -1090,25 +1232,57 @@ fn render_empty_preview(x: usize, y: usize, width: usize, height: usize) {
 fn push_fitting_clusters(
     pending: &mut String,
     result: &mut String,
+    column: &mut usize,
+    skip: usize,
     visible: &mut usize,
     width: usize,
 ) -> bool {
     let mut overflowed = false;
     for (cluster, cluster_width) in graphemes::clusters(pending) {
+        if *column + cluster_width <= skip {
+            *column += cluster_width;
+            continue;
+        }
+        if *column < skip {
+            let spaces = (*column + cluster_width - skip).min(width.saturating_sub(*visible));
+            result.push_str(&" ".repeat(spaces));
+            *visible += spaces;
+            *column += cluster_width;
+            continue;
+        }
         if *visible + cluster_width > width {
             overflowed = true;
             break;
         }
         *visible += cluster_width;
+        *column += cluster_width;
         result.push_str(cluster);
     }
     pending.clear();
     overflowed
 }
 
+#[cfg(test)]
 pub(crate) fn fit_ansi(line: &str, width: usize) -> String {
+    fit_ansi_from(line, 0, width)
+}
+
+pub(crate) fn ansi_width(line: &str) -> usize {
+    let mut column = 0;
+    for (cluster, cluster_width) in graphemes::clusters(&strip_ansi(line)) {
+        if cluster == "\t" {
+            column += 8 - column % 8;
+        } else {
+            column += cluster_width;
+        }
+    }
+    column
+}
+
+pub(crate) fn fit_ansi_from(line: &str, skip: usize, width: usize) -> String {
     let mut result = String::new();
     let mut visible = 0;
+    let mut column = 0;
     let mut pending = String::new();
     let mut overflowed = false;
     let mut chars = line.chars().peekable();
@@ -1117,7 +1291,14 @@ pub(crate) fn fit_ansi(line: &str, width: usize) -> String {
             pending.push(c);
             continue;
         }
-        if push_fitting_clusters(&mut pending, &mut result, &mut visible, width) {
+        if push_fitting_clusters(
+            &mut pending,
+            &mut result,
+            &mut column,
+            skip,
+            &mut visible,
+            width,
+        ) {
             overflowed = true;
             break;
         }
@@ -1151,7 +1332,12 @@ pub(crate) fn fit_ansi(line: &str, width: usize) -> String {
             continue;
         }
         if c == '\t' {
-            let spaces = (8 - visible % 8).min(width.saturating_sub(visible));
+            let tab_end = column + 8 - column % 8;
+            let shown_from = column.max(skip);
+            column = tab_end;
+            let spaces = tab_end
+                .saturating_sub(shown_from)
+                .min(width.saturating_sub(visible));
             result.push_str(&" ".repeat(spaces));
             visible += spaces;
             if visible >= width {
@@ -1161,14 +1347,20 @@ pub(crate) fn fit_ansi(line: &str, width: usize) -> String {
         }
     }
     if !overflowed {
-        push_fitting_clusters(&mut pending, &mut result, &mut visible, width);
+        push_fitting_clusters(
+            &mut pending,
+            &mut result,
+            &mut column,
+            skip,
+            &mut visible,
+            width,
+        );
     }
     result.push_str("\u{1b}[m");
     result.push_str(&" ".repeat(width.saturating_sub(visible)));
     result
 }
 
-#[cfg(test)]
 pub fn strip_ansi(line: &str) -> String {
     let mut result = String::new();
     let mut chars = line.chars().peekable();
@@ -1506,5 +1698,43 @@ mod tests {
         let short = shorten_path("/プロジェクト/フォルダ名前", 9);
         assert!(graphemes::display_width(&short) <= 9, "{}", short);
         assert!(short.starts_with('…'));
+    }
+
+    #[test]
+    fn panned_lines_skip_columns_but_keep_colours() {
+        let line = "\u{1b}[31mabcdef\u{1b}[0m";
+        let fitted = fit_ansi_from(line, 2, 3);
+        assert!(fitted.starts_with("\u{1b}[31m"));
+        assert_eq!(strip_ansi(&fitted), "cde");
+        assert_eq!(strip_ansi(&fit_ansi_from("a漢b", 2, 3)), " b ");
+        assert_eq!(strip_ansi(&fit_ansi_from("a\tb", 4, 6)), "    b ");
+    }
+
+    #[test]
+    fn previews_start_at_the_bottom_and_pan_within_the_content() {
+        let lines = preview_lines("1\n2\n3\n4\n5\n\n  \n");
+        assert_eq!(lines.len(), 5);
+        let mut pan = PreviewPan::default();
+        let window = pan.place(&lines, 2, 10);
+        assert_eq!(window.start, 3);
+        assert!(!window.panned);
+        assert!(window.label().is_some());
+        pan.apply(PanMove::PageUp, 0);
+        pan.apply(PanMove::Up, 0);
+        let window = pan.place(&lines, 2, 10);
+        assert_eq!(window.start, 0);
+        assert!(window.panned);
+        pan.apply(PanMove::Down, 0);
+        assert_eq!(pan.place(&lines, 2, 10).start, 3);
+        pan.apply(PanMove::Top, 1);
+        assert_eq!(pan.place(&lines, 2, 10).start, 1);
+        let wide = vec!["x".repeat(20)];
+        pan.apply(PanMove::Right, 0);
+        pan.apply(PanMove::Right, 0);
+        let window = pan.place(&wide, 2, 10);
+        assert_eq!(window.skip_columns, 10);
+        assert!(!window.hidden_right);
+        pan.apply(PanMove::Reset, 0);
+        assert_eq!(pan.place(&wide, 2, 10).skip_columns, 0);
     }
 }

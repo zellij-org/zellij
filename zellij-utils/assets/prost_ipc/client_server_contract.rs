@@ -511,9 +511,9 @@ pub mod action {
         #[prost(message, tag="175")]
         ToggleSession(super::ToggleSessionAction),
         #[prost(message, tag="176")]
-        GoBack(super::GoBackAction),
+        GoToPreviousSession(super::GoToPreviousSessionAction),
         #[prost(message, tag="177")]
-        GoForward(super::GoForwardAction),
+        GoToNextSession(super::GoToNextSessionAction),
         #[prost(message, tag="178")]
         GoToNextAttention(super::GoToNextAttentionAction),
         #[prost(message, tag="179")]
@@ -2527,11 +2527,11 @@ pub struct ToggleSessionAction {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct GoBackAction {
+pub struct GoToPreviousSessionAction {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct GoForwardAction {
+pub struct GoToNextSessionAction {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -2729,6 +2729,8 @@ pub struct SwitchContext {
     pub from_session: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(enumeration="StartupCard", optional, tag="4")]
     pub startup_card: ::core::option::Option<i32>,
+    #[prost(bool, tag="5")]
+    pub disconnect_others: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

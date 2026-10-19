@@ -70,6 +70,7 @@ pub enum Intent {
     ConfirmQuitAll,
     Back,
     QuitApp,
+    DetachWindows,
 }
 
 pub fn request_intents(request: AppRequest) -> (AppReply, Vec<Intent>) {
@@ -374,6 +375,11 @@ impl Background {
                 request: OpenWindowRequest::default(),
                 token: None,
             }],
+            MenuAction::DetachAllWindows => vec![Intent::DetachWindows],
+            MenuAction::DetachEverywhere => {
+                detach_everywhere(self.live_sessions());
+                vec![]
+            },
             MenuAction::ClearAll => {
                 clear_all_sessions(self.live_sessions());
                 vec![]
@@ -515,6 +521,21 @@ pub fn clear_all_sessions(names: Vec<String>) {
                     zellij_utils::session_link::send_actions_to_session(&name, vec![action])
                 {
                     report!("the items of {} could not be cleared: {}", name, e);
+                }
+            }
+        });
+}
+
+pub fn detach_everywhere(names: Vec<String>) {
+    let _ = std::thread::Builder::new()
+        .name("app_detach_everywhere".to_owned())
+        .spawn(move || {
+            for name in names
+                .into_iter()
+                .filter(|name| !zellij_utils::consts::is_app_socket_name(name))
+            {
+                if let Err(e) = zellij_utils::session_link::detach_all_clients(&name) {
+                    report!("the clients of {} could not be detached: {}", name, e);
                 }
             }
         });

@@ -31,6 +31,10 @@ pub fn advertised_host_terminal_env() -> BTreeMap<String, String> {
             "KITTY_WINDOW_ID".to_owned(),
             ADVERTISED_KITTY_WINDOW_ID.to_owned(),
         ),
+        (
+            zellij_utils::input::cli_assets::DESKTOP_WINDOW_ENV_KEY.to_owned(),
+            "1".to_owned(),
+        ),
     ])
 }
 
@@ -190,6 +194,7 @@ mod tests {
             BTreeMap::from([
                 ("TERM".to_owned(), "xterm-256color".to_owned()),
                 ("KITTY_WINDOW_ID".to_owned(), "1".to_owned()),
+                ("ZELLIJ_DESKTOP_WINDOW".to_owned(), "1".to_owned()),
             ])
         );
     }

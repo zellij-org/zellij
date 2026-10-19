@@ -2431,6 +2431,16 @@ impl Screen {
         }
     }
 
+    fn client_location(&self, client_id: ClientId) -> Option<String> {
+        let empty = BTreeMap::new();
+        zellij_utils::input::cli_assets::client_location(
+            self.client_host_terminal_env
+                .get(&client_id)
+                .unwrap_or(&empty),
+            self.client_is_web(client_id),
+        )
+    }
+
     fn client_is_web(&self, client_id: ClientId) -> bool {
         self.connected_clients
             .borrow()
@@ -5944,6 +5954,7 @@ impl Screen {
         if was_focused == focused {
             return;
         }
+        self.sync_attention_visibility();
         let Some(pane_id) = self.get_active_pane_id(&client_id) else {
             return;
         };
@@ -5971,7 +5982,7 @@ impl Screen {
             })
     }
 
-    fn client_host_is_focused(&self, client_id: &ClientId) -> bool {
+    pub(crate) fn client_host_is_focused(&self, client_id: &ClientId) -> bool {
         self.client_host_focused
             .get(client_id)
             .copied()
@@ -5989,6 +6000,24 @@ impl Screen {
         );
         self.client_host_terminal_env
             .insert(client_id, host_terminal_env);
+        let remote = self.client_location(client_id);
+        self.ensure_client_keybinds(client_id);
+        let mode_info = self
+            .mode_info
+            .entry(client_id)
+            .or_insert_with(|| self.default_mode_info.clone());
+        let updated = if mode_info.remote_client != remote {
+            mode_info.remote_client = remote;
+            Some(mode_info.clone())
+        } else {
+            None
+        };
+        if let Some(mode_info) = updated {
+            for tab in self.tabs.values_mut() {
+                tab.change_mode_info(mode_info.clone(), client_id);
+                let _ = tab.update_input_modes();
+            }
+        }
     }
 
     pub fn set_host_notification_protocol(
@@ -6569,12 +6598,18 @@ impl Screen {
             self.push_sixel_host_support_to_tabs();
         }
         self.tab_history.insert(client_id, tab_history);
+        let mut client_mode_info = self
+            .mode_info
+            .get(&client_id)
+            .cloned()
+            .unwrap_or_else(|| self.default_mode_info.clone());
+        client_mode_info.remote_client = self.client_location(client_id);
         let tab = self
             .tabs
             .get_mut(&tab_index)
             .with_context(|| err_context(tab_index))?;
         let tab_was_empty = tab.has_no_connected_clients();
-        tab.add_client(client_id, None)
+        tab.add_client(client_id, Some(client_mode_info))
             .with_context(|| err_context(tab_index))?;
         if tab_was_empty {
             tab.visible(true).with_context(|| err_context(tab_index))?;
@@ -7756,6 +7791,7 @@ impl Screen {
         if mode_info.session_name.as_ref() != Some(&self.session_name) {
             mode_info.session_name = Some(self.session_name.clone());
         }
+        mode_info.remote_client = self.client_location(client_id);
 
         // If we leave the Search-related modes, we need to clear all previous searches
         let search_related_modes = [InputMode::EnterSearch, InputMode::Search, InputMode::Scroll];

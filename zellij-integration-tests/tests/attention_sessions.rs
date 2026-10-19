@@ -107,6 +107,13 @@ fn attention_from_another_session_reaches_the_indicator_and_the_inbox() {
         started.elapsed()
     );
     zellij.send_stdin(&keys::F9);
+    let place = format!("in session {}", background.session_name());
+    zellij.wait_until("the inbox opens on the item's card", |grid_snapshot| {
+        grid_snapshot.contains("NEEDS YOU")
+            && grid_snapshot.contains(&place)
+            && grid_snapshot.contains("has a question: Which branch to use?")
+    });
+    zellij.send_stdin(&keys::DOWN);
     let place = format!("{} ", background.session_name());
     zellij.wait_until("the inbox lists the item", |grid_snapshot| {
         grid_snapshot.contains("Inbox (1)")
@@ -140,8 +147,8 @@ fn reply_mode_writes_into_a_pane_of_another_session_and_ends_when_its_status_cha
     terminal.output(&needs_you("Allow edit?"));
     wait_for_indicator(&zellij, "the item arrived", "● 1");
     zellij.send_stdin(&keys::F9);
-    zellij.wait_until("the inbox shows the item", |grid_snapshot| {
-        grid_snapshot.contains("Inbox (1)") && grid_snapshot.contains("has a quest")
+    zellij.wait_until("the inbox shows the item on its card", |grid_snapshot| {
+        grid_snapshot.contains("NEEDS YOU") && grid_snapshot.contains("has a quest")
     });
     zellij.send_stdin(&keys::key('r'));
     zellij.wait_until("reply mode started", |grid_snapshot| {
@@ -186,7 +193,7 @@ fn toggle_back_and_forward_follow_the_client_history() {
     assert_eq!(context.arrival, Some(SessionArrival::Toggle));
     assert_eq!(context.history.previous(), Some(second.as_str()));
 
-    zellij.main_client().send_action(Action::GoBack);
+    zellij.main_client().send_action(Action::GoToPreviousSession);
     let (switch, first_session) = follow(&mut zellij, second_session);
     let context = switch
         .switch_context
@@ -195,13 +202,29 @@ fn toggle_back_and_forward_follow_the_client_history() {
     assert_eq!(context.arrival, Some(SessionArrival::Back));
     assert_eq!(context.history.forward, vec![first.clone()]);
 
-    zellij.main_client().send_action(Action::GoForward);
+    zellij.main_client().send_action(Action::GoToNextSession);
     let (switch, _second_session) = follow(&mut zellij, first_session);
     let context = switch
         .switch_context
         .expect("going forward carries the history");
     assert_eq!(switch.name.as_deref(), Some(first.as_str()));
     assert_eq!(context.arrival, Some(SessionArrival::Forward));
+    zellij.quit();
+}
+
+#[test]
+fn toggle_without_history_goes_to_the_next_running_session() {
+    let (background, _) = background_session(ATTENTION_ON);
+    let (mut zellij, _) = start_main_session(ATTENTION_ON);
+    let first = zellij.session_name().to_owned();
+    let second = background.session_name().to_owned();
+    wait_for_indicator(&zellij, "both sessions are known", "2 running");
+    zellij.main_client().send_action(Action::ToggleSession);
+    let (switch, _first_session) = follow(&mut zellij, background);
+    assert_eq!(switch.name.as_deref(), Some(second.as_str()));
+    let context = switch.switch_context.expect("the switch carries the history");
+    assert_eq!(context.arrival, Some(SessionArrival::Toggle));
+    assert_eq!(context.history.previous(), Some(first.as_str()));
     zellij.quit();
 }
 
@@ -322,4 +345,123 @@ fn keys_and_wheel_in_the_inbox_opened_from_the_indicator_stay_out_of_the_pane() 
     }
     std::thread::sleep(Duration::from_millis(300));
     assert_eq!(leaked_since(&terminal, before), "", "the wheel leaked");
+}
+
+const SESSIONS_HELP: &str = "<F1> all keys";
+const INBOX_HELP: &str = "<?> all keys";
+
+fn open_dropdown_on_the_sessions(zellij: &TestSession, listed: &str) {
+    zellij.send_stdin(&keys::F9);
+    let grid_snapshot = zellij.wait_until("the dropdown opens on the sessions", |grid_snapshot| {
+        grid_snapshot.contains(SESSIONS_HELP) && grid_snapshot.contains(listed)
+    });
+    assert!(
+        !grid_snapshot.contains(INBOX_HELP),
+        "{}",
+        grid_snapshot.text
+    );
+}
+
+#[test]
+fn the_dropdown_opens_on_the_sessions_when_nothing_is_counted_and_tab_shows_the_empty_inbox() {
+    let (background, _terminal) = background_session(ATTENTION_ON);
+    let (mut zellij, _) = start_main_session(ATTENTION_ON);
+    wait_for_indicator(&zellij, "the calm indicator", "2 running");
+    open_dropdown_on_the_sessions(&zellij, background.session_name());
+    zellij.send_stdin(&keys::TAB);
+    zellij.wait_until("tab shows the empty inbox", |grid_snapshot| {
+        grid_snapshot.contains(INBOX_HELP) && !grid_snapshot.contains(SESSIONS_HELP)
+    });
+    zellij.quit();
+}
+
+#[test]
+fn the_dropdown_opens_on_the_newest_counted_item() {
+    let (older, older_terminal) = background_session(ATTENTION_ON);
+    let (newer, newer_terminal) = background_session(ATTENTION_ON);
+    let (mut zellij, _) = start_main_session(ATTENTION_ON);
+    older_terminal.output(&needs_you("Older question?"));
+    wait_for_indicator(&zellij, "the first item is counted", "● 1");
+    std::thread::sleep(Duration::from_millis(50));
+    newer_terminal.output(&needs_you("Newer question?"));
+    wait_for_indicator(&zellij, "both items are counted", "● 2");
+    zellij.send_stdin(&keys::F9);
+    zellij.wait_until("the dropdown opens on the inbox", |grid_snapshot| {
+        grid_snapshot.contains(INBOX_HELP)
+            && grid_snapshot.contains("Newer question?")
+            && grid_snapshot.contains("<ENTER> go there")
+    });
+    zellij.send_stdin(&keys::ENTER);
+    let _previous = follow(&mut zellij, newer);
+    drop(older);
+    zellij.quit();
+}
+
+#[test]
+fn the_dropdown_opened_empty_turns_to_the_inbox_when_an_item_arrives_before_any_input() {
+    let (background, terminal) = background_session(ATTENTION_ON);
+    let (mut zellij, _) = start_main_session(ATTENTION_ON);
+    wait_for_indicator(&zellij, "the calm indicator", "2 running");
+    open_dropdown_on_the_sessions(&zellij, background.session_name());
+    terminal.output(&needs_you("Arrived later?"));
+    zellij.wait_until("the dropdown turns to the inbox", |grid_snapshot| {
+        grid_snapshot.contains(INBOX_HELP)
+            && grid_snapshot.contains("Arrived later?")
+            && grid_snapshot.contains("<ENTER> go there")
+    });
+    zellij.quit();
+}
+
+#[test]
+fn after_any_input_the_dropdown_stays_where_the_user_left_it() {
+    let (background, terminal) = background_session(ATTENTION_ON);
+    let (mut zellij, _) = start_main_session(ATTENTION_ON);
+    wait_for_indicator(&zellij, "the calm indicator", "2 running");
+    open_dropdown_on_the_sessions(&zellij, background.session_name());
+    zellij.send_stdin(&keys::DOWN);
+    zellij.wait_until("the other session is selected", |grid_snapshot| {
+        grid_snapshot
+            .lines()
+            .iter()
+            .any(|line| line.contains(background.session_name()) && line.contains('>'))
+    });
+    terminal.output(&needs_you("Arrived later?"));
+    zellij.wait_until("the item is counted", |grid_snapshot| {
+        grid_snapshot.contains("Inbox (1)")
+    });
+    std::thread::sleep(Duration::from_millis(500));
+    let grid_snapshot = zellij.snapshot();
+    assert!(
+        grid_snapshot.contains(SESSIONS_HELP) && !grid_snapshot.contains(INBOX_HELP),
+        "the dropdown left the view the user was using:\n{}",
+        grid_snapshot.text
+    );
+    zellij.quit();
+}
+
+#[test]
+fn showing_a_hidden_session_manager_again_selects_the_newest_item() {
+    let (background, terminal) = background_session(ATTENTION_ON);
+    let (mut zellij, _) = start_main_session(ATTENTION_ON);
+    wait_for_indicator(&zellij, "the calm indicator", "2 running");
+    zellij.send_stdin(&keys::ctrl('o'));
+    zellij.send_stdin(&keys::key('w'));
+    zellij.wait_until("the session manager opens on the sessions", |grid_snapshot| {
+        grid_snapshot.contains(SESSIONS_HELP) && grid_snapshot.contains(background.session_name())
+    });
+    zellij.send_stdin(&keys::alt('f'));
+    zellij.wait_until("the session manager is hidden", |grid_snapshot| {
+        !grid_snapshot.contains(SESSIONS_HELP) && grid_snapshot.status_bar_appears()
+    });
+    terminal.output(&needs_you("While hidden?"));
+    wait_for_indicator(&zellij, "the item is counted", "● 1");
+    zellij.send_stdin(&keys::alt('f'));
+    zellij.wait_until("the session manager shows the newest item", |grid_snapshot| {
+        grid_snapshot.contains(INBOX_HELP)
+            && grid_snapshot.contains("While hidden?")
+            && grid_snapshot.contains("<ENTER> go there")
+    });
+    zellij.send_stdin(&keys::ENTER);
+    let _previous = follow(&mut zellij, background);
+    zellij.quit();
 }

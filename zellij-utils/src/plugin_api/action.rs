@@ -729,13 +729,13 @@ impl TryFrom<ProtobufAction> for Action {
                 Some(_) => Err("ToggleSession should not have a payload"),
                 None => Ok(Action::ToggleSession),
             },
-            Some(ProtobufActionName::GoBack) => match protobuf_action.optional_payload {
-                Some(_) => Err("GoBack should not have a payload"),
-                None => Ok(Action::GoBack),
+            Some(ProtobufActionName::GoToPreviousSession) => match protobuf_action.optional_payload {
+                Some(_) => Err("GoToPreviousSession should not have a payload"),
+                None => Ok(Action::GoToPreviousSession),
             },
-            Some(ProtobufActionName::GoForward) => match protobuf_action.optional_payload {
-                Some(_) => Err("GoForward should not have a payload"),
-                None => Ok(Action::GoForward),
+            Some(ProtobufActionName::GoToNextSession) => match protobuf_action.optional_payload {
+                Some(_) => Err("GoToNextSession should not have a payload"),
+                None => Ok(Action::GoToNextSession),
             },
             Some(ProtobufActionName::GoToNextAttention) => match protobuf_action.optional_payload {
                 Some(_) => Err("GoToNextAttention should not have a payload"),
@@ -2068,12 +2068,12 @@ impl TryFrom<Action> for ProtobufAction {
                 name: ProtobufActionName::ToggleSession as i32,
                 optional_payload: None,
             }),
-            Action::GoBack => Ok(ProtobufAction {
-                name: ProtobufActionName::GoBack as i32,
+            Action::GoToPreviousSession => Ok(ProtobufAction {
+                name: ProtobufActionName::GoToPreviousSession as i32,
                 optional_payload: None,
             }),
-            Action::GoForward => Ok(ProtobufAction {
-                name: ProtobufActionName::GoForward as i32,
+            Action::GoToNextSession => Ok(ProtobufAction {
+                name: ProtobufActionName::GoToNextSession as i32,
                 optional_payload: None,
             }),
             Action::GoToNextAttention => Ok(ProtobufAction {

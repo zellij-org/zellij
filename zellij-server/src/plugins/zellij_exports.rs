@@ -528,6 +528,42 @@ fn session_pane_command(
         });
 }
 
+fn open_session_window(env: &PluginEnv, request: zellij_utils::data::SessionWindowRequest) {
+    let creates_a_session = request.creates_a_session();
+    let mut layout_holder = ConnectToSession {
+        layout: request.layout.clone(),
+        ..Default::default()
+    };
+    if let Some(layout_dir) = env.layout_dir.clone().or_else(default_layout_dir) {
+        layout_holder.apply_layout_dir(&layout_dir);
+    }
+    let cwd = request
+        .cwd
+        .clone()
+        .map(|c| translate_plugin_path(env, c))
+        .or_else(|| creates_a_session.then(|| env.plugin_cwd.clone()));
+    let _ = std::thread::Builder::new()
+        .name("open_session_window".to_owned())
+        .spawn(move || {
+            let request = zellij_utils::app_control::AppRequest::OpenWindow(
+                zellij_utils::app_control::OpenWindowRequest {
+                    create: request.new_window || request.session_name.is_none(),
+                    session: request.session_name,
+                    pane_id: request.pane_id.map(|p| match p {
+                        zellij_utils::data::PaneId::Terminal(id) => (id, false),
+                        zellij_utils::data::PaneId::Plugin(id) => (id, true),
+                    }),
+                    layout: layout_holder.layout,
+                    cwd,
+                    ..Default::default()
+                },
+            );
+            if let Err(e) = zellij_utils::app_control::send_app_request(&request) {
+                log::info!("The desktop app did not open the session window: {}", e);
+            }
+        });
+}
+
 fn mark_all_seen(env: &PluginEnv, session_name: Option<String>) {
     let _ = env.senders.send_to_screen(ScreenInstruction::MarkAllSeen {
         session: session_name,
@@ -647,6 +683,9 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                     ),
                     PluginCommand::MarkAllSeen { session_name } => {
                         mark_all_seen(env, session_name)
+                    },
+                    PluginCommand::OpenSessionWindow(request) => {
+                        open_session_window(env, request)
                     },
                     PluginCommand::WriteToSessionPane {
                         session_name,
@@ -3961,9 +4000,11 @@ fn switch_session(
             pane_id,
             layout,
             cwd,
-            switch_context: switch_context.map(|c| zellij_utils::session_history::SwitchContext {
-                startup_card: c.startup_card,
-                ..Default::default()
+            switch_context: switch_context.and_then(|c| {
+                zellij_utils::session_history::SwitchContext::from_plugin_request(
+                    c.startup_card,
+                    c.disconnect_others,
+                )
             }),
         };
         env.senders
@@ -4461,6 +4502,7 @@ fn disconnect_other_clients(env: &PluginEnv) {
         .senders
         .send_to_server(ServerInstruction::DisconnectAllClientsExcept(
             acting_client(env),
+            zellij_utils::ipc::ExitReason::KickedByHost,
         ))
         .context("failed to send disconnect other clients instruction");
 }
@@ -6615,6 +6657,7 @@ fn required_permission(command: &PluginCommand) -> Option<PermissionType> {
         | PluginCommand::SendKeyToSessionPane { .. } => PermissionType::WriteToStdin,
         PluginCommand::MarkSessionPaneSeen { .. }
         | PluginCommand::MarkAllSeen { .. }
+        | PluginCommand::OpenSessionWindow(..)
         | PluginCommand::ToggleSessionPaneMute { .. }
         | PluginCommand::ToggleSessionPaneIgnoreOutput { .. }
         | PluginCommand::ToggleSessionPaneWatch { .. }

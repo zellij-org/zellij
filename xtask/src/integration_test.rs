@@ -20,9 +20,10 @@ pub fn integration_test(sh: &Shell, flags: flags::IntegrationTest) -> anyhow::Re
         let msg = ">> Building the zellij executable for the desktop app tests";
         crate::status(msg);
         println!("{}", msg);
+        let features = DESKTOP_BINARY_FEATURES;
         cmd!(
             sh,
-            "{cargo} build --profile {profile} -p zellij --bin zellij"
+            "{cargo} build --profile {profile} -p zellij --bin zellij --no-default-features --features {features}"
         )
         .run()
         .context(err_context)?;
@@ -61,6 +62,7 @@ pub fn integration_test(sh: &Shell, flags: flags::IntegrationTest) -> anyhow::Re
 }
 
 const DESKTOP_TESTS: &str = "desktop_app";
+const DESKTOP_BINARY_FEATURES: &str = "vendored_curl,web_server_capability,window";
 const REQUIRE_DESKTOP_TESTS: &str = "ZELLIJ_REQUIRE_DESKTOP_TESTS";
 
 fn desktop_tests_wanted(args: &[std::ffi::OsString]) -> bool {

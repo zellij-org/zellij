@@ -44,6 +44,8 @@ pub struct SwitchContext {
     pub arrival: Option<SessionArrival>,
     pub from_session: Option<String>,
     pub startup_card: Option<StartupCard>,
+    #[serde(default)]
+    pub disconnect_others: bool,
 }
 
 impl SwitchContext {
@@ -66,7 +68,21 @@ impl SwitchContext {
             arrival: Some(arrival),
             from_session: Some(from.to_owned()),
             startup_card: None,
+            disconnect_others: false,
         }
+    }
+    pub fn from_plugin_request(
+        startup_card: Option<StartupCard>,
+        disconnect_others: bool,
+    ) -> Option<Self> {
+        if startup_card.is_none() && !disconnect_others {
+            return None;
+        }
+        Some(SwitchContext {
+            startup_card,
+            disconnect_others,
+            ..Default::default()
+        })
     }
     pub fn is_a_switch(&self) -> bool {
         self.from_session.is_some()
@@ -208,9 +224,40 @@ impl SessionHistory {
     }
 }
 
+pub fn next_session_after<'a>(
+    names: impl IntoIterator<Item = &'a String>,
+    current: &str,
+) -> Option<String> {
+    let mut names: Vec<&String> = names
+        .into_iter()
+        .filter(|name| !crate::consts::is_app_socket_name(name))
+        .collect();
+    names.sort();
+    names.dedup();
+    names
+        .iter()
+        .find(|name| name.as_str() > current)
+        .or_else(|| names.first())
+        .filter(|name| name.as_str() != current)
+        .map(|name| (*name).clone())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn next_session_follows_name_order_and_wraps() {
+        let names: Vec<String> = ["b", "a", "c", ".zellij-app-panel"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        assert_eq!(next_session_after(&names, "a"), Some("b".to_owned()));
+        assert_eq!(next_session_after(&names, "c"), Some("a".to_owned()));
+        assert_eq!(next_session_after(&names, "bb"), Some("c".to_owned()));
+        let only: Vec<String> = vec!["a".to_owned()];
+        assert_eq!(next_session_after(&only, "a"), None);
+    }
 
     fn visit(history: &mut SessionHistory, path: &[&str]) {
         for pair in path.windows(2) {

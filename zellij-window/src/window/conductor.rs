@@ -319,6 +319,14 @@ impl Conductor {
                     }
                 },
                 Intent::QuitApp => self.quit(false, facts, effects),
+                Intent::DetachWindows => {
+                    for key in self.windows.keys() {
+                        effects.push(Effect::SendAction {
+                            key: *key,
+                            action: Action::Detach,
+                        });
+                    }
+                },
             }
         }
     }
@@ -1205,6 +1213,26 @@ mod tests {
             })
             .is_empty());
         assert!(rig.conductor.should_exit());
+    }
+
+    #[test]
+    fn closing_all_windows_detaches_each_of_them() {
+        let mut rig = Rig::hosted();
+        let first = rig.window_on("a");
+        let second = rig.window_on("b");
+        assert_eq!(
+            rig.intent(0, Intent::DetachWindows),
+            vec![
+                Effect::SendAction {
+                    key: first,
+                    action: Action::Detach
+                },
+                Effect::SendAction {
+                    key: second,
+                    action: Action::Detach
+                },
+            ]
+        );
     }
 
     #[test]

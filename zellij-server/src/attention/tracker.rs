@@ -913,8 +913,8 @@ impl AttentionTracker {
             }
         }
         if let Some(first_unseen) = track.first_unseen_output_ms {
-            if !track.ignore_output && !track.visible {
-                let watched = track.watch_armed_ms.is_some();
+            let watched = track.watch_armed_ms.is_some();
+            if !track.ignore_output && !track.visible && (watched || !has_records) {
                 candidates.push(Candidate {
                     status: if watched {
                         AttentionStatus::NeedsYou

@@ -279,6 +279,24 @@ impl BackgroundTestSession {
         self.attach_focusing(size, None)
     }
 
+    pub fn attach_client(&self, size: Size) -> TestClient {
+        let (fake_client_os_api, fake_client_handle) = FakeClientOsApi::new(size, None);
+        let thread = spawn_client_thread(
+            fake_client_os_api,
+            self.session_context.cli_args.clone(),
+            self.session_context.config.clone(),
+            self.session_context.config_options.clone(),
+            ClientInfo::Attach(
+                self.session_context.session_name.clone(),
+                self.session_context.config_options.clone(),
+            ),
+        );
+        TestClient {
+            fake_client_handle,
+            thread: Some(thread),
+        }
+    }
+
     pub fn attach_focusing(self, size: Size, pane_id_to_focus: Option<(u32, bool)>) -> TestSession {
         let (fake_client_os_api, fake_client_handle) = FakeClientOsApi::new(size, None);
         let client_thread = spawn_focusing_client_thread(
@@ -550,6 +568,13 @@ impl TestClient {
 
     pub fn send_action(&self, action: zellij_utils::input::actions::Action) {
         self.fake_client_handle.send_action(action);
+    }
+
+    pub fn has_exited(&self) -> bool {
+        self.thread
+            .as_ref()
+            .map(|thread| thread.is_finished())
+            .unwrap_or(true)
     }
 
     pub fn wait_for_client_to_exit(mut self) {

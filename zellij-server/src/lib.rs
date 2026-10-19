@@ -153,7 +153,7 @@ pub enum ServerInstruction {
         pipe_id: String,
         client_id: ClientId,
     },
-    DisconnectAllClientsExcept(ClientId),
+    DisconnectAllClientsExcept(ClientId, ExitReason),
     ChangeMode(ClientId, InputMode, Option<NotificationEnd>),
     ChangeModeForAllClients(InputMode),
     Reconfigure {
@@ -4044,6 +4044,17 @@ pub fn start_server_impl(
                     is_a_reattach && pane_id_to_focus.is_none(),
                     last_detached_at_ms,
                 );
+                if cli_assets
+                    .switch_context
+                    .as_ref()
+                    .map(|c| c.disconnect_others)
+                    .unwrap_or(false)
+                {
+                    let _ = to_server.send(ServerInstruction::DisconnectAllClientsExcept(
+                        client_id,
+                        ExitReason::KickedByHost,
+                    ));
+                }
                 let runtime_config_options = match cli_assets.configuration_options {
                     Some(configuration_options) => config.options.merge(configuration_options),
                     None => config.options.clone(),
@@ -4359,7 +4370,7 @@ pub fn start_server_impl(
                 }
                 break;
             },
-            ServerInstruction::DisconnectAllClientsExcept(client_id) => {
+            ServerInstruction::DisconnectAllClientsExcept(client_id, exit_reason) => {
                 let client_ids: Vec<ClientId> = session_state
                     .read()
                     .unwrap()
@@ -4375,7 +4386,7 @@ pub fn start_server_impl(
                     let _ = os_input.send_to_client(
                         client_id,
                         ServerToClientMsg::Exit {
-                            exit_reason: ExitReason::KickedByHost,
+                            exit_reason: exit_reason.clone(),
                         },
                     );
                     remove_client!(client_id, os_input, session_state, session_data);
@@ -5844,6 +5855,21 @@ fn history_move_switch(
     history.remove_session(own_session_name);
     loop {
         let Some(target) = history.target(history_move).map(|t| t.to_owned()) else {
+            if history_move == zellij_utils::session_history::HistoryMove::Toggle {
+                if let Some(target) = next_live_session(live_sessions, own_session_name) {
+                    let context = zellij_utils::session_history::SwitchContext::local_switch(
+                        &history,
+                        own_session_name,
+                        &target,
+                        zellij_utils::session_history::SessionArrival::Toggle,
+                    );
+                    return Ok(ConnectToSession {
+                        name: Some(target),
+                        switch_context: Some(context),
+                        ..Default::default()
+                    });
+                }
+            }
             client_histories.insert(client_id, history.clone());
             return Err(history);
         };
@@ -5859,12 +5885,25 @@ fn history_move_switch(
                     arrival: Some(history_move.into()),
                     from_session: Some(own_session_name.to_owned()),
                     startup_card: None,
+                    disconnect_others: false,
                 }),
                 ..Default::default()
             });
         }
         history.remove_session(&target);
     }
+}
+
+fn next_live_session(
+    live_sessions: &crate::attention::peers::LiveSessions,
+    own_session_name: &str,
+) -> Option<String> {
+    let names: std::collections::BTreeSet<String> = live_sessions.known().unwrap_or_else(|| {
+        zellij_utils::session_index::running_session_names_in(&zellij_utils::consts::ZELLIJ_SOCK_DIR)
+            .into_iter()
+            .collect()
+    });
+    zellij_utils::session_history::next_session_after(names.iter(), own_session_name)
 }
 
 #[inline(never)]

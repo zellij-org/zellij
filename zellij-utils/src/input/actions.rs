@@ -776,8 +776,8 @@ pub enum Action {
     },
     MuteSession,
     ToggleSession,
-    GoBack,
-    GoForward,
+    GoToPreviousSession,
+    GoToNextSession,
     GoToNextAttention,
     ToggleTrayIcon,
     MarkPaneSeen {
@@ -2245,8 +2245,8 @@ impl Action {
             },
             CliAction::MuteSession => Ok(vec![Action::MuteSession]),
             CliAction::ToggleSession => Ok(vec![Action::ToggleSession]),
-            CliAction::GoBack => Ok(vec![Action::GoBack]),
-            CliAction::GoForward => Ok(vec![Action::GoForward]),
+            CliAction::GoToPreviousSession => Ok(vec![Action::GoToPreviousSession]),
+            CliAction::GoToNextSession => Ok(vec![Action::GoToNextSession]),
             CliAction::GoToNextAttention => Ok(vec![Action::GoToNextAttention]),
             CliAction::ToggleTrayIcon => Ok(vec![Action::ToggleTrayIcon]),
             CliAction::MarkPaneSeen { pane_id } => Ok(vec![Action::MarkPaneSeen {

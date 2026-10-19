@@ -3,6 +3,8 @@ use crate::app::model::{Pill, PillColor, TrayLook};
 pub const DOT_BELOW: u32 = 20;
 pub const ATTENTION_COLOR: [u8; 3] = [255, 140, 0];
 pub const ERROR_COLOR: [u8; 3] = [229, 72, 77];
+pub const DONE_COLOR: [u8; 3] = [48, 164, 108];
+pub const WORKING_COLOR: [u8; 3] = [62, 130, 247];
 pub const PILL_TEXT: [u8; 3] = [255, 255, 255];
 #[cfg_attr(not(any(target_os = "macos", windows, test)), allow(dead_code))]
 pub const LIGHT_INK: [u8; 3] = [236, 236, 236];
@@ -216,6 +218,8 @@ fn pill_color(pill: &Pill) -> [u8; 3] {
     match pill.color {
         PillColor::Attention => ATTENTION_COLOR,
         PillColor::Error => ERROR_COLOR,
+        PillColor::Done => DONE_COLOR,
+        PillColor::Working => WORKING_COLOR,
     }
 }
 
@@ -348,6 +352,10 @@ mod tests {
         let error = render(32, &with_pill(PillColor::Error, 1), LIGHT_INK);
         assert!(has_color(&error, ERROR_COLOR));
         assert!(!has_color(&error, ATTENTION_COLOR));
+        let done = render(32, &with_pill(PillColor::Done, 1), LIGHT_INK);
+        assert!(has_color(&done, DONE_COLOR));
+        let working = render(32, &with_pill(PillColor::Working, 1), LIGHT_INK);
+        assert!(has_color(&working, WORKING_COLOR));
     }
 
     #[test]

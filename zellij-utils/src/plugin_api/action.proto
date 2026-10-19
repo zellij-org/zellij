@@ -575,8 +575,8 @@ enum ActionName {
     MuteTabByTabId = 137;
     MuteSession = 138;
     ToggleSession = 139;
-    GoBack = 140;
-    GoForward = 141;
+    GoToPreviousSession = 140;
+    GoToNextSession = 141;
     GoToNextAttention = 142;
     MarkPaneSeen = 143;
     MarkAllSeen = 144;

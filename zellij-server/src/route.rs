@@ -1514,10 +1514,10 @@ fn route_action_with_origin(
                 ))
                 .with_context(err_context)?;
         },
-        Action::ToggleSession | Action::GoBack | Action::GoForward => {
+        Action::ToggleSession | Action::GoToPreviousSession | Action::GoToNextSession => {
             let history_move = match action {
                 Action::ToggleSession => zellij_utils::session_history::HistoryMove::Toggle,
-                Action::GoBack => zellij_utils::session_history::HistoryMove::Back,
+                Action::GoToPreviousSession => zellij_utils::session_history::HistoryMove::Back,
                 _ => zellij_utils::session_history::HistoryMove::Forward,
             };
             senders
@@ -3358,6 +3358,13 @@ pub(crate) fn route_thread_main(
                         },
                         ClientToServerMsg::ConnStatus => {
                             let _ = to_server.send(ServerInstruction::ConnStatus(client_id));
+                            should_break = true;
+                        },
+                        ClientToServerMsg::DetachSession { client_ids } if client_ids.is_empty() => {
+                            let _ = to_server.send(ServerInstruction::DisconnectAllClientsExcept(
+                                client_id,
+                                ExitReason::NormalDetached,
+                            ));
                             should_break = true;
                         },
                         ClientToServerMsg::DetachSession { client_ids } => {

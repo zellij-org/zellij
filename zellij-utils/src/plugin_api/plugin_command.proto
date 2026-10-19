@@ -264,6 +264,7 @@ enum CommandName {
   ToggleSessionPaneIgnoreOutput = 270;
   ToggleSessionPaneWatch = 271;
   FocusSessionPane = 272;
+  OpenSessionWindow = 273;
 }
 
 message PluginCommand {
@@ -468,6 +469,7 @@ message PluginCommand {
     SessionPanePayload toggle_session_pane_watch_payload = 213;
     SessionPanePayload focus_session_pane_payload = 214;
     SendKeyToSessionPanePayload send_key_to_session_pane_payload = 215;
+    OpenSessionWindowPayload open_session_window_payload = 216;
   }
 }
 
@@ -494,6 +496,15 @@ message SessionPanePayload {
 
 message MarkAllSeenPayload {
   optional string session_name = 1;
+}
+
+message OpenSessionWindowPayload {
+  optional string session_name = 1;
+  bool new_window = 2;
+  optional uint32 pane_id = 3;
+  bool pane_is_plugin = 4;
+  optional event.LayoutInfo layout = 5;
+  optional string cwd = 6;
 }
 
 message WriteToSessionPanePayload {
@@ -1102,6 +1113,7 @@ message SwitchSessionPayload {
   optional string cwd = 6;
   reserved 7;
   optional string startup_card = 8;
+  optional bool disconnect_others = 9;
 }
 
 message RequestPluginPermissionPayload {

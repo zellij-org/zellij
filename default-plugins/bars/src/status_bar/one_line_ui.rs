@@ -1662,8 +1662,8 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<KeyWithModifier
     ]} else if mi.mode == IM::Session {
         let hints = crate::status_bar::session_hints::session_hints();
         let toggle_keys = crate::status_bar::session_hints::first_action_keys(&km, &A::ToggleSession);
-        let back_keys = crate::status_bar::session_hints::first_action_keys(&km, &A::GoBack);
-        let forward_keys = crate::status_bar::session_hints::first_action_keys(&km, &A::GoForward);
+        let back_keys = crate::status_bar::session_hints::first_action_keys(&km, &A::GoToPreviousSession);
+        let forward_keys = crate::status_bar::session_hints::first_action_keys(&km, &A::GoToNextSession);
         let next_keys = crate::status_bar::session_hints::first_action_keys(&km, &A::GoToNextAttention);
         let mut history_keys: Vec<KeyWithModifier> = back_keys.into_iter().take(1).collect();
         history_keys.extend(forward_keys.into_iter().take(1));

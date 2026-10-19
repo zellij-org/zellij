@@ -20,6 +20,8 @@ pub enum MenuAction {
     ShowInbox,
     ShowSessions,
     NewWindow,
+    DetachAllWindows,
+    DetachEverywhere,
     ClearAll,
     PauseHour,
     PauseUntilTomorrow,
@@ -80,6 +82,19 @@ pub fn menu(paused: bool) -> Vec<MenuEntry> {
         item(2, "Show sessions", MenuAction::ShowSessions, true),
         MenuEntry::Separator { id: 3 },
         item(4, "New window", MenuAction::NewWindow, true),
+        MenuEntry::Submenu {
+            id: 10,
+            label: "Detach all",
+            items: vec![
+                item(111, "Close all windows", MenuAction::DetachAllWindows, true),
+                item(
+                    112,
+                    "Detach every client from every session",
+                    MenuAction::DetachEverywhere,
+                    true,
+                ),
+            ],
+        },
         item(9, "Clear all notifications", MenuAction::ClearAll, true),
         MenuEntry::Submenu {
             id: 5,
@@ -187,6 +202,7 @@ mod tests {
                 "Show sessions",
                 "─",
                 "New window",
+                "Detach all",
                 "Clear all notifications",
                 "Pause notifications",
                 "Hide icon",
@@ -203,5 +219,13 @@ mod tests {
         assert_eq!(find_action(&menu(false), 3), None);
         assert_eq!(find_action(&menu(false), 99), None);
         assert_eq!(find_action(&menu(false), 9), Some(MenuAction::ClearAll));
+        assert_eq!(
+            find_action(&menu(false), 111),
+            Some(MenuAction::DetachAllWindows)
+        );
+        assert_eq!(
+            find_action(&menu(false), 112),
+            Some(MenuAction::DetachEverywhere)
+        );
     }
 }

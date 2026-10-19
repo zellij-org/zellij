@@ -127,8 +127,8 @@ pub fn action_without_arguments(
         "MuteTab" => Ok(Action::MuteTab),
         "MuteSession" => Ok(Action::MuteSession),
         "ToggleSession" => Ok(Action::ToggleSession),
-        "GoBack" => Ok(Action::GoBack),
-        "GoForward" => Ok(Action::GoForward),
+        "GoToPreviousSession" => Ok(Action::GoToPreviousSession),
+        "GoToNextSession" => Ok(Action::GoToNextSession),
         "GoToNextAttention" => Ok(Action::GoToNextAttention),
         "ToggleTrayIcon" => Ok(Action::ToggleTrayIcon),
         "MarkPaneSeen" => Ok(Action::MarkPaneSeen {
@@ -1464,8 +1464,8 @@ impl Action {
             Action::MuteTab => Some(KdlNode::new("MuteTab")),
             Action::MuteSession => Some(KdlNode::new("MuteSession")),
             Action::ToggleSession => Some(KdlNode::new("ToggleSession")),
-            Action::GoBack => Some(KdlNode::new("GoBack")),
-            Action::GoForward => Some(KdlNode::new("GoForward")),
+            Action::GoToPreviousSession => Some(KdlNode::new("GoToPreviousSession")),
+            Action::GoToNextSession => Some(KdlNode::new("GoToNextSession")),
             Action::GoToNextAttention => Some(KdlNode::new("GoToNextAttention")),
             Action::ToggleTrayIcon => Some(KdlNode::new("ToggleTrayIcon")),
             Action::MarkPaneSeen {
@@ -1923,7 +1923,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
             "ToggleSessionCard" | "MutePane" | "IgnorePaneOutput" | "WatchPane" | "MuteTab"
-            | "MuteSession" | "ToggleSession" | "GoBack" | "GoForward" | "GoToNextAttention"
+            | "MuteSession" | "ToggleSession" | "GoToPreviousSession" | "GoToNextSession" | "GoToNextAttention"
             | "ToggleTrayIcon" | "MarkPaneSeen" | "MarkAllSeen" => {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },

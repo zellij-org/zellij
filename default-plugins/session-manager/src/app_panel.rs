@@ -21,6 +21,10 @@ pub fn is_enabled() -> bool {
     ENABLED.with(|enabled| enabled.get())
 }
 
+pub fn waits_for_items(view: &str) -> bool {
+    matches!(view, "auto" | "inbox")
+}
+
 pub fn begin_event() {
     SWITCHED.with(|switched| switched.set(false));
 }

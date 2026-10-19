@@ -422,6 +422,7 @@ impl From<SwitchContext> for ProtoSwitchContext {
             arrival: context.arrival.map(|a| a.into()),
             from_session: context.from_session,
             startup_card: context.startup_card.map(startup_card_to_proto),
+            disconnect_others: context.disconnect_others,
         }
     }
 }
@@ -437,6 +438,7 @@ impl TryFrom<ProtoSwitchContext> for SwitchContext {
                 .startup_card
                 .map(startup_card_from_proto)
                 .transpose()?,
+            disconnect_others: context.disconnect_others,
         })
     }
 }

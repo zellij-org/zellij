@@ -185,3 +185,48 @@ fn the_hidden_panel_session_is_left_out_of_every_session_list() {
     );
     panel.quit();
 }
+
+#[test]
+fn detaching_everywhere_detaches_every_client_of_every_listed_session_and_only_those() {
+    let first = TestRunner::new(TERMINAL_SIZE)
+        .skip_concurrency_slot()
+        .start_in_background();
+    let second = TestRunner::new(TERMINAL_SIZE)
+        .skip_concurrency_slot()
+        .start_in_background();
+    let kept = TestRunner::new(TERMINAL_SIZE)
+        .skip_concurrency_slot()
+        .start_in_background();
+    let _terminals: Vec<_> = [&first, &second, &kept]
+        .iter()
+        .map(|session| {
+            let terminal = session.expect_pty_spawn();
+            terminal.output(b"$ ");
+            terminal
+        })
+        .collect();
+    let clients = [
+        first.attach_client(TERMINAL_SIZE),
+        first.attach_client(TERMINAL_SIZE),
+        second.attach_client(TERMINAL_SIZE),
+    ];
+    let kept_client = kept.attach_client(TERMINAL_SIZE);
+    for client in clients.iter().chain(std::iter::once(&kept_client)) {
+        client.wait_until("the client is attached", |grid_snapshot| {
+            grid_snapshot.status_bar_appears()
+        });
+    }
+    zellij_window::detach_everywhere(vec![
+        first.session_name().to_owned(),
+        second.session_name().to_owned(),
+    ]);
+    for client in &clients {
+        wait_for("every client of the listed sessions to detach", || {
+            client.has_exited()
+        });
+    }
+    assert!(session_answers(first.session_name(), Duration::from_secs(2)));
+    assert!(session_answers(second.session_name(), Duration::from_secs(2)));
+    std::thread::sleep(Duration::from_millis(300));
+    assert!(!kept_client.has_exited(), "a session that was not listed lost its client");
+}
