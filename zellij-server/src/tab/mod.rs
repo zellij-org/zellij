@@ -158,8 +158,8 @@ macro_rules! resize_pty {
 }
 
 // FIXME: This should be replaced by `RESIZE_PERCENT` at some point
-pub const MIN_TERMINAL_HEIGHT: usize = 5;
-pub const MIN_TERMINAL_WIDTH: usize = 5;
+pub const MIN_TERMINAL_HEIGHT: usize = 0;
+pub const MIN_TERMINAL_WIDTH: usize = 0;
 
 const MAX_PENDING_VTE_EVENTS: usize = 7000;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
