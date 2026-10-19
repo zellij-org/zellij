@@ -1431,47 +1431,27 @@ impl MouseHandler {
         client_id: ClientId,
     ) -> Result<MouseEffect> {
         let err_context = || "failed to end selection";
-        Self::forget_selection_in_missing_pane(tab);
         let mut leave_clipboard_message = false;
         let copy_on_release = tab.copy_on_select;
 
+        // Zellij consumed the press that started this selection (it never reached the pane's
+        // program), so the release is ours as well, even if the program wants the mouse
         if let Some(pane_with_selection) = tab
             .selecting_with_mouse_in_pane
+            .take()
             .and_then(|p_id| tab.get_pane_with_id_mut(p_id))
         {
-            let mut relative_position = pane_with_selection.relative_position(&position);
-
-            relative_position.change_column(
-                (relative_position.column())
-                    .max(0)
-                    .min(pane_with_selection.get_content_columns()),
-            );
-
-            relative_position.change_line(
-                (relative_position.line())
-                    .max(0)
-                    .min(pane_with_selection.get_content_rows() as isize),
-            );
-
-            if let Some(mouse_event) =
-                pane_with_selection.mouse_left_click_release(&relative_position)
-            {
-                tab.write_to_active_terminal(&None, mouse_event.into_bytes(), false, client_id)
-                    .with_context(err_context)?;
-            } else {
-                let relative_position = pane_with_selection.relative_position(&position);
-                pane_with_selection.end_selection(&relative_position, client_id);
-                if pane_with_selection.supports_mouse_selection() {
-                    if copy_on_release {
-                        let selected_text = pane_with_selection.get_selected_text(client_id);
-                        if let Some(selected_text) = selected_text {
-                            leave_clipboard_message = true;
-                            tab.write_selection_to_clipboard(&selected_text)
-                                .with_context(err_context)?;
-                        }
+            let relative_position = pane_with_selection.relative_position(&position);
+            pane_with_selection.end_selection(&relative_position, client_id);
+            if pane_with_selection.supports_mouse_selection() {
+                if copy_on_release {
+                    let selected_text = pane_with_selection.get_selected_text(client_id);
+                    if let Some(selected_text) = selected_text {
+                        leave_clipboard_message = true;
+                        tab.write_selection_to_clipboard(&selected_text)
+                            .with_context(err_context)?;
                     }
                 }
-                tab.selecting_with_mouse_in_pane = None;
             }
         }
 
