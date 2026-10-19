@@ -2125,6 +2125,20 @@ impl Output {
         self.client_kitty_visible_panes.insert(client_id, pane_ids);
     }
     pub fn serialize(&mut self) -> Result<HashMap<ClientId, RenderPayload>> {
+        self.serialize_for_clients(None)
+    }
+
+    pub fn serialize_with_client_sizes(
+        &mut self,
+        client_sizes: &HashMap<ClientId, Size>,
+    ) -> Result<HashMap<ClientId, RenderPayload>> {
+        self.serialize_for_clients(Some(client_sizes))
+    }
+
+    fn serialize_for_clients(
+        &mut self,
+        client_sizes: Option<&HashMap<ClientId, Size>>,
+    ) -> Result<HashMap<ClientId, RenderPayload>> {
         let err_context = || "failed to serialize output to clients".to_string();
 
         let mut serialized_render_instructions = HashMap::new();
@@ -2219,6 +2233,7 @@ impl Output {
             } else {
                 None
             };
+            let max_size = client_sizes.and_then(|sizes| sizes.get(&client_id).copied());
 
             if let Some(mut builder) = structured_builder.take() {
                 let panes = self
@@ -2282,7 +2297,7 @@ impl Output {
                     Some(&mut self.sixel_image_store.borrow_mut()),
                     self.styled_underlines,
                     self.osc8_hyperlinks,
-                    None, // No size constraints for regular rendering
+                    max_size,
                     kitty_input,
                 )
                 .with_context(err_context)?,
@@ -2294,6 +2309,14 @@ impl Output {
             {
                 for vte_instruction in post_vte_instructions_for_client {
                     client_serialized_render_instructions.push_str(&vte_instruction);
+                }
+            }
+            if let (Some(max_size), Some((cursor_x, cursor_y))) =
+                (max_size, self.cursor_coordinates)
+            {
+                if cursor_y >= max_size.rows || cursor_x >= max_size.cols {
+                    vte_hide_cursor_instruction(&mut client_serialized_render_instructions)
+                        .with_context(err_context)?;
                 }
             }
             serialized_render_instructions.insert(

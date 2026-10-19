@@ -5630,7 +5630,9 @@ impl Screen {
             }
 
             if non_watcher_output_was_dirty || has_bell || has_osc7_update {
-                let mut serialized_output = output.serialize().context(err_context)?;
+                let mut serialized_output = output
+                    .serialize_with_client_sizes(&self.client_sizes)
+                    .context(err_context)?;
                 self.pace_structured_payloads(&mut serialized_output)
                     .context(err_context)?;
                 if !serialized_output.is_empty() {
