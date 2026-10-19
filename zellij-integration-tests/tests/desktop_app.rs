@@ -159,9 +159,10 @@ impl Desktop {
     }
 
     fn bus(&self) -> &FakeSessionBus {
-        self.bus.as_ref().expect("the desktop runs with a session bus")
+        self.bus
+            .as_ref()
+            .expect("the desktop runs with a session bus")
     }
-
 
     fn socket_dir(&self) -> PathBuf {
         self.root.path().join("sock")
@@ -419,8 +420,7 @@ impl Desktop {
                 SessionLink::open_path(&self.socket_of(session)).expect("the session answers");
             link.send(ClientToServerMsg::Action {
                 action: Action::WriteCharsToPaneId {
-                    chars: "printf '\\033]7501;state=blocked:kind=question\\033\\\\'\n"
-                        .to_owned(),
+                    chars: "printf '\\033]7501;state=blocked:kind=question\\033\\\\'\n".to_owned(),
                     pane_id: PaneId::Terminal(0),
                 },
                 terminal_id: None,
@@ -1175,7 +1175,10 @@ fn a_window_on_an_unnamed_new_session_starts_in_the_chosen_folder() {
         Ok(AppReply::Done)
     );
     let is_new = |session: &Option<String>| -> bool {
-        session.as_deref().map(|name| name != first).unwrap_or(false)
+        session
+            .as_deref()
+            .map(|name| name != first)
+            .unwrap_or(false)
     };
     let state = desktop.wait_for_state("a window on a second session", |state| {
         state.windows.iter().any(|window| is_new(&window.session))

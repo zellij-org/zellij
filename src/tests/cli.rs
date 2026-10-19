@@ -431,7 +431,10 @@ fn the_attention_actions_parse_from_the_command_line() {
         parse_action(&["mute-tab", "-t", "2"]),
         CliAction::MuteTab { tab_id: Some(2) }
     ));
-    assert!(matches!(parse_action(&["mute-session"]), CliAction::MuteSession));
+    assert!(matches!(
+        parse_action(&["mute-session"]),
+        CliAction::MuteSession
+    ));
     assert!(matches!(
         parse_action(&["mark-pane-seen", "-p", "terminal_1"]),
         CliAction::MarkPaneSeen { pane_id: Some(id) } if id == "terminal_1"
@@ -486,7 +489,10 @@ fn new_panes_and_runs_can_be_watched_with_notify() {
     ));
     match try_parse(&["zellij", "run", "--notify", "--", "make"]) {
         Ok(CliArgs {
-            command: Some(Command::Sessions(Sessions::Run { notify, command, .. })),
+            command:
+                Some(Command::Sessions(Sessions::Run {
+                    notify, command, ..
+                })),
             ..
         }) => {
             assert!(notify);

@@ -128,9 +128,9 @@ impl WindowClient {
 
     fn focus(&mut self, focused: bool) {
         self.sender
-            .send_client_msg(zellij_utils::ipc::ClientToServerMsg::HostTerminalFocusChanged {
-                focused,
-            })
+            .send_client_msg(
+                zellij_utils::ipc::ClientToServerMsg::HostTerminalFocusChanged { focused },
+            )
             .expect("the focus change is sent");
     }
 }

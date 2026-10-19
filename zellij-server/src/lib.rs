@@ -5958,9 +5958,11 @@ fn next_live_session(
     own_session_name: &str,
 ) -> Option<String> {
     let names: std::collections::BTreeSet<String> = live_sessions.known().unwrap_or_else(|| {
-        zellij_utils::session_index::running_session_names_in(&zellij_utils::consts::ZELLIJ_SOCK_DIR)
-            .into_iter()
-            .collect()
+        zellij_utils::session_index::running_session_names_in(
+            &zellij_utils::consts::ZELLIJ_SOCK_DIR,
+        )
+        .into_iter()
+        .collect()
     });
     zellij_utils::session_history::next_session_after(names.iter(), own_session_name)
 }

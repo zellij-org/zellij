@@ -9582,8 +9582,7 @@ impl Screen {
             session_layout_metadata.update_default_shell(default_shell);
         }
         if tab_index.is_none() {
-            session_layout_metadata
-                .set_session_attention_muted(self.attention.session_is_muted());
+            session_layout_metadata.set_session_attention_muted(self.attention.session_is_muted());
         }
         let first_client_id = self.get_first_client_id();
         let active_tab_index =

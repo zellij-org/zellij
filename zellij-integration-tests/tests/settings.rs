@@ -311,7 +311,11 @@ fn the_attention_settings_are_listed_and_saved() {
     zellij_integration_tests::split_right_and_wait_for_prompt(&zellij);
     terminal.output(b"\x1b]7501;state=blocked:kind=question\x1b\\");
     zellij.wait_until("the pane frame shows the status", |grid_snapshot| {
-        grid_snapshot.lines().iter().skip(1).any(|line| line.contains('●'))
+        grid_snapshot
+            .lines()
+            .iter()
+            .skip(1)
+            .any(|line| line.contains('●'))
     });
     let config_file_path = zellij
         .config_file_path()
@@ -330,7 +334,11 @@ fn the_attention_settings_are_listed_and_saved() {
     close_search(&zellij);
     close_settings(&zellij);
     zellij.wait_until("the frame marker is gone", |grid_snapshot| {
-        !grid_snapshot.lines().iter().skip(1).any(|line| line.contains('●'))
+        !grid_snapshot
+            .lines()
+            .iter()
+            .skip(1)
+            .any(|line| line.contains('●'))
     });
     zellij.quit();
 }

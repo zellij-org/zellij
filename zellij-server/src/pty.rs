@@ -2125,13 +2125,12 @@ impl Pty {
                     self.id_to_child_pid.insert(id, child_pid);
                     self.capture_initial_cwd(id, child_pid);
                 }
-                let _ = self
-                    .bus
-                    .senders
-                    .send_to_screen(ScreenInstruction::AttentionCommandPaneStarted(
+                let _ = self.bus.senders.send_to_screen(
+                    ScreenInstruction::AttentionCommandPaneStarted(
                         PaneId::Terminal(id),
                         Some(command_text),
-                    ));
+                    ),
+                );
                 if let Some(originating_plugin) = self.originating_plugins.get(&id) {
                     self.bus
                         .senders
@@ -2383,17 +2382,17 @@ impl Pty {
                 } else {
                     (foreground_cmd.clone(), true)
                 };
-                let _ = self
-                    .bus
-                    .senders
-                    .send_to_screen(ScreenInstruction::AttentionForegroundChanged(
-                        pane_id,
-                        if foreground_cmd.is_empty() {
-                            None
-                        } else {
-                            Some(foreground_cmd.join(" "))
-                        },
-                    ));
+                let _ =
+                    self.bus
+                        .senders
+                        .send_to_screen(ScreenInstruction::AttentionForegroundChanged(
+                            pane_id,
+                            if foreground_cmd.is_empty() {
+                                None
+                            } else {
+                                Some(foreground_cmd.join(" "))
+                            },
+                        ));
                 let _ = self
                     .bus
                     .senders

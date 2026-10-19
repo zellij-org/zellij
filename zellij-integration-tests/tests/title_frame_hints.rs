@@ -98,9 +98,10 @@ fn without_full_frames_hovering_a_pane_shows_no_hint() {
     zellij.send_stdin(&sgr_motion(FOCUSED_PANE_COLUMN, HOVER_LINE));
     zellij.send_stdin(&sgr_motion(OTHER_PANE_COLUMN, HOVER_LINE));
     left_terminal.output(b"HOVER_SYNC_MARKER");
-    let settled = zellij.wait_until("a render settles after hovering both panes", |grid_snapshot| {
-        grid_snapshot.contains("HOVER_SYNC_MARKER")
-    });
+    let settled = zellij.wait_until(
+        "a render settles after hovering both panes",
+        |grid_snapshot| grid_snapshot.contains("HOVER_SYNC_MARKER"),
+    );
     assert!(
         !settled.contains("resize") && !settled.contains("group"),
         "without full frames no pane hint may be shown, not even in the tab bar:\n{}",

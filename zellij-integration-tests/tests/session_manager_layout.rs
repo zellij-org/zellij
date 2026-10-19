@@ -78,11 +78,14 @@ fn shows_line_ends(grid_snapshot: &GridSnapshot, prefix: &str, last: usize) -> b
 
 fn open_sessions_and_select(zellij: &TestSession, name: &str) {
     zellij.send_stdin(&keys::F9);
-    zellij.wait_until("the sessions tab lists the other session", |grid_snapshot| {
-        grid_snapshot.contains(BROWSER_TABS)
-            && grid_snapshot.contains(SESSIONS_HELP)
-            && grid_snapshot.contains(name)
-    });
+    zellij.wait_until(
+        "the sessions tab lists the other session",
+        |grid_snapshot| {
+            grid_snapshot.contains(BROWSER_TABS)
+                && grid_snapshot.contains(SESSIONS_HELP)
+                && grid_snapshot.contains(name)
+        },
+    );
     zellij.send_stdin(&keys::DOWN);
     let title = format!("┌ {}", name);
     zellij.wait_until("the preview shows the other session", |grid_snapshot| {
@@ -175,9 +178,10 @@ fn shift_keys_pan_the_sessions_preview() {
         first_number(grid_snapshot, "row") == Some(after_up)
     });
     zellij.send_stdin(&SHIFT_PAGE_UP);
-    zellij.wait_until("shift page up shows a page of earlier lines", |grid_snapshot| {
-        first_number(grid_snapshot, "row").map_or(false, |first| first < after_up)
-    });
+    zellij.wait_until(
+        "shift page up shows a page of earlier lines",
+        |grid_snapshot| first_number(grid_snapshot, "row").map_or(false, |first| first < after_up),
+    );
     zellij.send_stdin(&keys::SHIFT_END);
     zellij.wait_until("shift end returns to the bottom", |grid_snapshot| {
         shows_bottom(grid_snapshot, "row", 16)
@@ -197,9 +201,12 @@ fn shift_keys_pan_the_sessions_preview() {
         shows_line_ends(grid_snapshot, "row", 16)
     });
     zellij.send_stdin(&keys::SHIFT_END);
-    zellij.wait_until("shift end shows the starts of the lines again", |grid_snapshot| {
-        shows_bottom(grid_snapshot, "row", 16) && !numbers(grid_snapshot, "END").contains(&16)
-    });
+    zellij.wait_until(
+        "shift end shows the starts of the lines again",
+        |grid_snapshot| {
+            shows_bottom(grid_snapshot, "row", 16) && !numbers(grid_snapshot, "END").contains(&16)
+        },
+    );
     zellij.quit();
 }
 
@@ -224,9 +231,10 @@ fn shift_keys_pan_the_inbox_output_from_where_the_notification_began() {
         first_number(grid_snapshot, "res") == Some(after_up)
     });
     zellij.send_stdin(&SHIFT_PAGE_UP);
-    zellij.wait_until("shift page up shows a page of earlier lines", |grid_snapshot| {
-        first_number(grid_snapshot, "res").map_or(false, |first| first < after_up)
-    });
+    zellij.wait_until(
+        "shift page up shows a page of earlier lines",
+        |grid_snapshot| first_number(grid_snapshot, "res").map_or(false, |first| first < after_up),
+    );
     zellij.send_stdin(&keys::SHIFT_END);
     zellij.wait_until("shift end returns to the bottom", |grid_snapshot| {
         shows_bottom(grid_snapshot, "res", 20)
@@ -291,11 +299,14 @@ fn the_sessions_help_has_an_empty_row_above_and_below_it() {
     let (background, _terminal) = background_session_with(ATTENTION_CONFIG);
     let (mut zellij, _) = main_session_sized(TERMINAL_SIZE);
     zellij.send_stdin(&keys::F9);
-    zellij.wait_until("the sessions help has empty rows around it", |grid_snapshot| {
-        grid_snapshot.contains(BROWSER_TABS)
-            && grid_snapshot.contains(background.session_name())
-            && help_has_blank_rows_around_it(grid_snapshot)
-    });
+    zellij.wait_until(
+        "the sessions help has empty rows around it",
+        |grid_snapshot| {
+            grid_snapshot.contains(BROWSER_TABS)
+                && grid_snapshot.contains(background.session_name())
+                && help_has_blank_rows_around_it(grid_snapshot)
+        },
+    );
     zellij.quit();
 }
 
@@ -343,11 +354,12 @@ fn the_inbox_notifications_and_help_are_centred_in_the_panel() {
     let (mut zellij, _) = main_session_sized(size);
     wait_for_indicator(&zellij, "the item is counted", "● 1");
     zellij.send_stdin(&keys::F9);
-    let grid_snapshot = zellij.wait_until("the inbox shows the item and its help", |grid_snapshot| {
-        grid_snapshot.contains(INBOX_HELP)
-            && grid_snapshot.contains("<ENTER> go there")
-            && grid_snapshot.contains("ZZZZZZZZZZ…")
-    });
+    let grid_snapshot =
+        zellij.wait_until("the inbox shows the item and its help", |grid_snapshot| {
+            grid_snapshot.contains(INBOX_HELP)
+                && grid_snapshot.contains("<ENTER> go there")
+                && grid_snapshot.contains("ZZZZZZZZZZ…")
+        });
     let grid_snapshot = settled(&zellij, grid_snapshot);
     let lines = grid_snapshot.lines();
     let (block_left, text_row) = grid_snapshot.position_of("ZZZZZZZZZZ").unwrap();
@@ -418,11 +430,7 @@ fn more_markers_count_the_notifications_out_of_view_and_follow_scrolling() {
     for index in 0..6 {
         let (session, terminal) = background_session_with(ATTENTION_CONFIG);
         terminal.output(&needs_you(&format!("Question number {}?", index)));
-        wait_for_indicator(
-            &zellij,
-            "the item is counted",
-            &format!("● {}", index + 1),
-        );
+        wait_for_indicator(&zellij, "the item is counted", &format!("● {}", index + 1));
         sessions.push((session, terminal));
     }
     zellij.send_stdin(&keys::F9);
@@ -444,10 +452,6 @@ fn more_markers_count_the_notifications_out_of_view_and_follow_scrolling() {
         more_marker(grid_snapshot, "↑").is_some()
             && more_marker(grid_snapshot, "↓").map_or(true, |below| below < below_at_top)
     });
-    assert!(
-        more_marker(&bottom, "↑").unwrap() >= 1,
-        "{}",
-        bottom.text
-    );
+    assert!(more_marker(&bottom, "↑").unwrap() >= 1, "{}", bottom.text);
     zellij.quit();
 }

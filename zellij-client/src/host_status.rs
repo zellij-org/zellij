@@ -65,7 +65,10 @@ mod tests {
         let written = writer.set_supported().unwrap();
         assert!(written.starts_with("\u{1b}]7501;state=blocked:app=zellij:kind=permission:msg="));
         assert!(written.ends_with("\u{1b}\\"));
-        assert_eq!(writer.teardown(), Some("\u{1b}]7501;state=clear\u{1b}\\".to_owned()));
+        assert_eq!(
+            writer.teardown(),
+            Some("\u{1b}]7501;state=clear\u{1b}\\".to_owned())
+        );
         assert_eq!(writer.teardown(), None);
     }
 

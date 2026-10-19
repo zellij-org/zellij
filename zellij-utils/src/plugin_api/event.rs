@@ -4684,7 +4684,9 @@ mod context_menu_tests {
         };
         let entries = vec![ContextMenuEntry::Item {
             label: "Watch this pane".to_owned(),
-            actions: vec![ContextMenuAction::ClickedPane(ClickedPaneAction::ToggleWatch)],
+            actions: vec![ContextMenuAction::ClickedPane(
+                ClickedPaneAction::ToggleWatch,
+            )],
             toggled_label: Some("Stop watching".to_owned()),
         }];
         let original = Event::ContextMenu(context, entries);

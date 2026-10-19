@@ -729,7 +729,8 @@ impl TryFrom<ProtobufAction> for Action {
                 Some(_) => Err("ToggleSession should not have a payload"),
                 None => Ok(Action::ToggleSession),
             },
-            Some(ProtobufActionName::GoToPreviousSession) => match protobuf_action.optional_payload {
+            Some(ProtobufActionName::GoToPreviousSession) => match protobuf_action.optional_payload
+            {
                 Some(_) => Err("GoToPreviousSession should not have a payload"),
                 None => Ok(Action::GoToPreviousSession),
             },

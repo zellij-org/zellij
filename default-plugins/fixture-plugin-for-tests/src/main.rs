@@ -761,11 +761,17 @@ impl ZellijPlugin for State {
                 {
                     let session = self.target_session();
                     let pane = self.target_pane();
-                    run_session_pane_command(session_pane_command_for_key(character), &session, pane);
+                    run_session_pane_command(
+                        session_pane_command_for_key(character),
+                        &session,
+                        pane,
+                    );
                 },
                 BareKey::Char('s') if key.has_only_modifiers(&[KeyModifier::Super]) => {
-                    self.explicit_string_to_render =
-                        Some(format!("Pane info: {:?}", get_pane_info(self.target_pane())));
+                    self.explicit_string_to_render = Some(format!(
+                        "Pane info: {:?}",
+                        get_pane_info(self.target_pane())
+                    ));
                 },
                 BareKey::Char('t') if key.has_only_modifiers(&[KeyModifier::Super]) => {
                     let session = self.target_session();

@@ -244,7 +244,8 @@ impl ProgramStatusRecords {
     }
     fn forget_missing(&mut self) {
         let records = &self.records;
-        self.working_since.retain(|key, _| records.contains_key(key));
+        self.working_since
+            .retain(|key, _| records.contains_key(key));
         self.worked.retain(|key, _| records.contains_key(key));
     }
     pub fn apply(&mut self, message: ProgramStatusMessage, now_ms: u64) -> bool {
@@ -445,28 +446,43 @@ mod tests {
     #[test]
     fn app_outside_charset_is_absent_and_too_long_discards() {
         assert_eq!(set("state=idle:app=a,b").app, None);
-        assert_eq!(parse_body(&format!("state=idle:app={}", "a".repeat(33))), None);
+        assert_eq!(
+            parse_body(&format!("state=idle:app={}", "a".repeat(33))),
+            None
+        );
     }
 
     #[test]
     fn invalid_ids_ignore_the_report() {
         assert_eq!(parse_body("state=idle:id=a//b"), None);
         assert_eq!(parse_body("state=idle:id=a,b"), None);
-        assert_eq!(parse_body(&format!("state=idle:id={}", "a".repeat(33))), None);
+        assert_eq!(
+            parse_body(&format!("state=idle:id={}", "a".repeat(33))),
+            None
+        );
         assert_eq!(parse_body("state=idle:id=1/2/3/4/5/6/7/8/9"), None);
         let long_id = vec!["abcdefghijklmno"; 8].join("/");
         assert_eq!(long_id.len(), 127);
         assert!(parse_body(&format!("state=idle:id={}", long_id)).is_some());
         let too_long = vec!["abcdefghijklmnop"; 8].join("/");
         assert_eq!(parse_body(&format!("state=idle:id={}", too_long)), None);
-        assert_eq!(set("state=idle:id=build/test").id.as_deref(), Some("build/test"));
+        assert_eq!(
+            set("state=idle:id=build/test").id.as_deref(),
+            Some("build/test")
+        );
     }
 
     #[test]
     fn control_characters_in_text_discard_the_report() {
         assert_eq!(parse_body(&format!("state=idle:msg={}", b64("a\nb"))), None);
-        assert_eq!(parse_body(&format!("state=idle:msg={}", b64("a\u{85}b"))), None);
-        assert_eq!(parse_body(&format!("state=idle:title={}", b64("\u{7f}"))), None);
+        assert_eq!(
+            parse_body(&format!("state=idle:msg={}", b64("a\u{85}b"))),
+            None
+        );
+        assert_eq!(
+            parse_body(&format!("state=idle:title={}", b64("\u{7f}"))),
+            None
+        );
         assert_eq!(set("state=idle:msg=!!!").msg, None);
         assert_eq!(parse_body("state=idle:msg=_-_-"), None);
     }
@@ -532,10 +548,7 @@ mod tests {
         }
         records.apply(parse_body("state=clear:id=a").unwrap(), 2);
         let ids: Vec<Option<String>> = records.iter().map(|r| r.id.clone()).collect();
-        assert_eq!(
-            ids,
-            vec![None, Some("ab".to_owned()), Some("c".to_owned())]
-        );
+        assert_eq!(ids, vec![None, Some("ab".to_owned()), Some("c".to_owned())]);
         records.apply(parse_body("state=clear").unwrap(), 3);
         assert!(records.is_empty());
     }

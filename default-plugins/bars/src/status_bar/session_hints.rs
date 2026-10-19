@@ -224,7 +224,10 @@ mod tests {
         vec![Action::SwitchToMode { input_mode: mode }]
     }
 
-    fn mode_info(mode: InputMode, keybinds: Vec<(InputMode, Vec<(&str, Vec<Action>)>)>) -> ModeInfo {
+    fn mode_info(
+        mode: InputMode,
+        keybinds: Vec<(InputMode, Vec<(&str, Vec<Action>)>)>,
+    ) -> ModeInfo {
         ModeInfo {
             mode,
             keybinds: keybinds
@@ -262,7 +265,13 @@ mod tests {
     fn the_back_keys_go_through_session_mode_from_normal() {
         let info = mode_info(
             InputMode::Normal,
-            vec![(InputMode::Normal, vec![("Ctrl o", to_mode(InputMode::Session))]), session_mode()],
+            vec![
+                (
+                    InputMode::Normal,
+                    vec![("Ctrl o", to_mode(InputMode::Session))],
+                ),
+                session_mode(),
+            ],
         );
         assert_eq!(back_keys_text(&info).as_deref(), Some("Ctrl o, TAB"));
     }
@@ -272,7 +281,10 @@ mod tests {
         let info = mode_info(
             InputMode::Locked,
             vec![
-                (InputMode::Locked, vec![("Ctrl g", to_mode(InputMode::Normal))]),
+                (
+                    InputMode::Locked,
+                    vec![("Ctrl g", to_mode(InputMode::Normal))],
+                ),
                 (InputMode::Normal, vec![("o", to_mode(InputMode::Session))]),
                 session_mode(),
             ],
@@ -302,7 +314,13 @@ mod tests {
     fn in_session_mode_only_the_toggle_key_is_shown() {
         let info = mode_info(
             InputMode::Session,
-            vec![(InputMode::Normal, vec![("Ctrl o", to_mode(InputMode::Session))]), session_mode()],
+            vec![
+                (
+                    InputMode::Normal,
+                    vec![("Ctrl o", to_mode(InputMode::Session))],
+                ),
+                session_mode(),
+            ],
         );
         assert_eq!(back_keys_text(&info).as_deref(), Some("TAB"));
     }

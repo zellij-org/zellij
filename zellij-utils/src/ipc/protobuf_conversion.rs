@@ -1411,10 +1411,10 @@ impl From<crate::input::actions::Action>
             FocusPluginPaneWithIdAction,
             FocusPreviousPaneAction,
             FocusTerminalPaneWithIdAction,
-            GoToPreviousSessionAction,
-            GoToNextSessionAction,
             GoToNextAttentionAction,
+            GoToNextSessionAction,
             GoToNextTabAction,
+            GoToPreviousSessionAction,
             GoToPreviousTabAction,
             GoToTabAction,
             GoToTabByIdAction,
@@ -1983,8 +1983,12 @@ impl From<crate::input::actions::Action>
             crate::input::actions::Action::ToggleSession => {
                 ActionType::ToggleSession(ToggleSessionAction {})
             },
-            crate::input::actions::Action::GoToPreviousSession => ActionType::GoToPreviousSession(GoToPreviousSessionAction {}),
-            crate::input::actions::Action::GoToNextSession => ActionType::GoToNextSession(GoToNextSessionAction {}),
+            crate::input::actions::Action::GoToPreviousSession => {
+                ActionType::GoToPreviousSession(GoToPreviousSessionAction {})
+            },
+            crate::input::actions::Action::GoToNextSession => {
+                ActionType::GoToNextSession(GoToNextSessionAction {})
+            },
             crate::input::actions::Action::GoToNextAttention => {
                 ActionType::GoToNextAttention(GoToNextAttentionAction {})
             },
@@ -3008,7 +3012,9 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
             ActionType::MuteTab(_) => Ok(crate::input::actions::Action::MuteTab),
             ActionType::MuteSession(_) => Ok(crate::input::actions::Action::MuteSession),
             ActionType::ToggleSession(_) => Ok(crate::input::actions::Action::ToggleSession),
-            ActionType::GoToPreviousSession(_) => Ok(crate::input::actions::Action::GoToPreviousSession),
+            ActionType::GoToPreviousSession(_) => {
+                Ok(crate::input::actions::Action::GoToPreviousSession)
+            },
             ActionType::GoToNextSession(_) => Ok(crate::input::actions::Action::GoToNextSession),
             ActionType::GoToNextAttention(_) => {
                 Ok(crate::input::actions::Action::GoToNextAttention)

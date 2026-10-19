@@ -226,8 +226,14 @@ fn detaching_everywhere_detaches_every_client_of_every_listed_session_and_only_t
             client.has_exited()
         });
     }
-    assert!(session_answers(first.session_name(), Duration::from_secs(2)));
-    assert!(session_answers(second.session_name(), Duration::from_secs(2)));
+    assert!(session_answers(
+        first.session_name(),
+        Duration::from_secs(2)
+    ));
+    assert!(session_answers(
+        second.session_name(),
+        Duration::from_secs(2)
+    ));
     std::thread::sleep(Duration::from_millis(300));
     assert!(
         !kept_client.has_exited(),

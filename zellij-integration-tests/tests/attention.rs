@@ -469,8 +469,11 @@ fn output_from_a_watched_pane_needs_you_while_the_window_is_unfocused_until_refo
 }
 
 fn session_attention(zellij: &TestSession) -> zellij_utils::attention::SessionAttention {
-    zellij_utils::session_link::request_session_attention(zellij.session_name(), Duration::from_secs(2))
-        .expect("the session answers")
+    zellij_utils::session_link::request_session_attention(
+        zellij.session_name(),
+        Duration::from_secs(2),
+    )
+    .expect("the session answers")
 }
 
 fn wait_for_session_attention(
@@ -1056,17 +1059,24 @@ fn frame_row(zellij: &TestSession) -> String {
 
 #[test]
 fn without_arrow_fonts_frames_use_letters() {
-    let (mut zellij, left, _right) = start_with_two_panes(
-        TestRunner::new(TERMINAL_SIZE).with_config("simplified_ui true"),
-    );
+    let (mut zellij, left, _right) =
+        start_with_two_panes(TestRunner::new(TERMINAL_SIZE).with_config("simplified_ui true"));
     left.output(&program_status("state=blocked:kind=question"));
     zellij.wait_until("the blocked pane shows a letter", |grid_snapshot| {
-        grid_snapshot.lines()[1].chars().take(60).collect::<String>().contains(" ! ")
+        grid_snapshot.lines()[1]
+            .chars()
+            .take(60)
+            .collect::<String>()
+            .contains(" ! ")
     });
     left.output(&program_status("state=clear"));
     shell_command(&left, "A", "cargo test", "D;1");
     zellij.wait_until("the failed pane shows a letter", |grid_snapshot| {
-        grid_snapshot.lines()[1].chars().take(60).collect::<String>().contains(" x ")
+        grid_snapshot.lines()[1]
+            .chars()
+            .take(60)
+            .collect::<String>()
+            .contains(" x ")
     });
     let row = frame_row(&zellij);
     assert!(!row.contains('✗') && !row.contains('●'), "{}", row);

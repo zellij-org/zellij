@@ -14026,7 +14026,9 @@ fn command_outcome() -> zellij_utils::attention::CommandOutcome {
 }
 
 fn global_attention_with_command_text() -> zellij_utils::attention::GlobalAttention {
-    use zellij_utils::attention::{AttentionCounts, AttentionItem, GlobalAttention, SessionAttention};
+    use zellij_utils::attention::{
+        AttentionCounts, AttentionItem, GlobalAttention, SessionAttention,
+    };
     let item = AttentionItem {
         pane_id: zellij_utils::data::PaneId::Terminal(1),
         tab_id: 0,
@@ -14065,8 +14067,12 @@ const WITH_PANE_READ: [PermissionType; 2] = [
 
 #[test]
 pub fn command_started_and_finished_hide_the_command_without_pane_read_permission() {
-    let started = Event::CommandStarted(zellij_utils::data::PaneId::Terminal(1), Some(command_text()));
-    let finished = Event::CommandFinished(zellij_utils::data::PaneId::Terminal(1), command_outcome());
+    let started = Event::CommandStarted(
+        zellij_utils::data::PaneId::Terminal(1),
+        Some(command_text()),
+    );
+    let finished =
+        Event::CommandFinished(zellij_utils::data::PaneId::Terminal(1), command_outcome());
     assert!(!redacted(&WITHOUT_PANE_READ, started.clone()).contains("hunter2"));
     assert!(!redacted(&WITHOUT_PANE_READ, finished.clone()).contains("hunter2"));
     assert!(redacted(&WITH_PANE_READ, started).contains("hunter2"));
@@ -14171,13 +14177,14 @@ fn run_attention_fixture(
                         } else {
                             PermissionStatus::Granted
                         };
-                        let _ = plugin_thread_sender.send(PluginInstruction::PermissionRequestResult(
-                            0,
-                            Some(client_id),
-                            allowed,
-                            status,
-                            Some(cache_path.clone()),
-                        ));
+                        let _ =
+                            plugin_thread_sender.send(PluginInstruction::PermissionRequestResult(
+                                0,
+                                Some(client_id),
+                                allowed,
+                                status,
+                                Some(cache_path.clone()),
+                            ));
                         answered.store(true, Ordering::SeqCst);
                     },
                     ScreenInstruction::GetPaneInfo {
@@ -14394,7 +14401,11 @@ pub fn prompt_shown_reaches_a_subscribed_plugin() {
         )
     });
     let rendered = run.rendered();
-    assert!(rendered.contains("PromptShown(Terminal(4))"), "{}", rendered);
+    assert!(
+        rendered.contains("PromptShown(Terminal(4))"),
+        "{}",
+        rendered
+    );
 }
 
 #[test]
@@ -14403,7 +14414,10 @@ pub fn command_started_reaches_a_subscribed_plugin() {
     let run = run_attention_fixture(&WITH_PANE_READ, |sender| {
         send_event(
             sender,
-            Event::CommandStarted(zellij_utils::data::PaneId::Terminal(5), Some(command_text())),
+            Event::CommandStarted(
+                zellij_utils::data::PaneId::Terminal(5),
+                Some(command_text()),
+            ),
         )
     });
     let rendered = run.rendered();

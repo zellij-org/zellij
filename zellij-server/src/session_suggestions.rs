@@ -127,7 +127,10 @@ pub fn should_report_activity() -> bool {
 pub fn spawn_session_suggestions_service(
     senders: ThreadSenders,
     live_sessions: crate::attention::peers::LiveSessions,
-) -> (Sender<SessionSuggestionsJob>, Option<thread::JoinHandle<()>>) {
+) -> (
+    Sender<SessionSuggestionsJob>,
+    Option<thread::JoinHandle<()>>,
+) {
     let (sender, receiver) = channel();
     let own_sender = sender.clone();
     let handle = thread::Builder::new()

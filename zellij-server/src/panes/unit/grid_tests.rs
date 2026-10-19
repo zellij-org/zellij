@@ -10571,7 +10571,9 @@ fn attention_signals(content: &str) -> Vec<crate::attention::PaneSignal> {
     grid.shell_reports.drain()
 }
 
-fn finished_commands(signals: &[crate::attention::PaneSignal]) -> Vec<(Option<i32>, Option<String>)> {
+fn finished_commands(
+    signals: &[crate::attention::PaneSignal],
+) -> Vec<(Option<i32>, Option<String>)> {
     signals
         .iter()
         .filter_map(|s| match s {
@@ -10691,9 +10693,15 @@ fn command_end_variants() {
     };
     assert_eq!(finished_commands(&wrap("D;0")), vec![(Some(0), None)]);
     assert_eq!(finished_commands(&wrap("D")), vec![(None, None)]);
-    assert_eq!(finished_commands(&wrap("D;1;aid=123")), vec![(Some(1), None)]);
+    assert_eq!(
+        finished_commands(&wrap("D;1;aid=123")),
+        vec![(Some(1), None)]
+    );
     assert_eq!(finished_commands(&wrap("D;aid=123")), vec![(None, None)]);
-    assert_eq!(finished_commands(&wrap("D;0;history_id=x")), vec![(Some(0), None)]);
+    assert_eq!(
+        finished_commands(&wrap("D;0;history_id=x")),
+        vec![(Some(0), None)]
+    );
     assert_eq!(
         finished_commands(&wrap("D;0;err=CANCEL")),
         vec![(Some(0), Some("CANCEL".to_owned()))]
@@ -10720,8 +10728,9 @@ fn command_text_sources() {
         shell("C"),
         vec![Some(("typed".to_owned(), "screen".to_owned()))]
     );
-    let without_input_marker =
-        started_commands(&attention_signals("\x1b]133;A\x07$ typed\x1b]133;C\x07\r\n"));
+    let without_input_marker = started_commands(&attention_signals(
+        "\x1b]133;A\x07$ typed\x1b]133;C\x07\r\n",
+    ));
     assert_eq!(without_input_marker, vec![None]);
 }
 
@@ -10779,10 +10788,14 @@ fn fish_and_nushell_prompts() {
 fn working_directory_sources() {
     let cwd_of = |content: &str| {
         let mut grid = create_grid_with_content(content);
-        let signal = grid.shell_reports.drain().into_iter().find_map(|s| match s {
-            crate::attention::PaneSignal::Cwd(cwd) => Some(cwd),
-            _ => None,
-        });
+        let signal = grid
+            .shell_reports
+            .drain()
+            .into_iter()
+            .find_map(|s| match s {
+                crate::attention::PaneSignal::Cwd(cwd) => Some(cwd),
+                _ => None,
+            });
         (signal, grid.pending_osc7_cwd.take())
     };
     let (cwd, local) = cwd_of("\x1b]7;file://localhost/a%20b\x1b\\");
@@ -10800,7 +10813,8 @@ fn working_directory_sources() {
     assert_eq!(local, Some(std::path::PathBuf::from("/tmp/x")));
     let (cwd, _) = cwd_of("\x1b]1337;CurrentDir=/opt\x07");
     assert_eq!(cwd.unwrap().path, "/opt");
-    let (cwd, _) = cwd_of("\x1b]1337;RemoteHost=me@far-away.example.invalid\x07\x1b]1337;CurrentDir=/opt\x07");
+    let (cwd, _) =
+        cwd_of("\x1b]1337;RemoteHost=me@far-away.example.invalid\x07\x1b]1337;CurrentDir=/opt\x07");
     assert!(!cwd.unwrap().is_local);
 }
 
@@ -10853,8 +10867,7 @@ fn a_preview_anchored_at_the_last_command_output_starts_at_that_output() {
         anchor_line,
         lines.get(anchor_line)
     );
-    let (_, bottom) =
-        grid.preview_with_anchor(zellij_utils::data::PreviewAnchor::Bottom, 300);
+    let (_, bottom) = grid.preview_with_anchor(zellij_utils::data::PreviewAnchor::Bottom, 300);
     assert_eq!(bottom, None);
 }
 
@@ -10865,8 +10878,7 @@ fn a_preview_keeps_only_the_newest_scrollback_lines() {
         content.push_str(&format!("grid line {:02}\r\n", line));
     }
     let grid = create_grid_with_content(&content);
-    let (everything, _) =
-        grid.preview_with_anchor(zellij_utils::data::PreviewAnchor::Bottom, 300);
+    let (everything, _) = grid.preview_with_anchor(zellij_utils::data::PreviewAnchor::Bottom, 300);
     assert!(everything.contains("grid line 00"));
     assert!(everything.contains("grid line 59"));
     let (capped, _) = grid.preview_with_anchor(zellij_utils::data::PreviewAnchor::Bottom, 10);

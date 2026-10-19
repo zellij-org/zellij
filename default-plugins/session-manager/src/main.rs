@@ -672,27 +672,18 @@ impl State {
     }
     fn enter_action(&self) -> Option<&'static str> {
         let selected_result = self.single_screen_state.get_selected_result();
-        if let (Some(result), true) =
-            (selected_result, self.panel.size.is_some())
-        {
+        if let (Some(result), true) = (selected_result, self.panel.size.is_some()) {
             match result {
                 UnifiedSearchResult::ActiveSession { .. } => Some("Attach"),
-                UnifiedSearchResult::ResurrectableSession { .. } => {
-                    Some("Resurrect")
-                },
+                UnifiedSearchResult::ResurrectableSession { .. } => Some("Resurrect"),
             }
-        } else if self.single_screen_state.search_term.is_empty()
-            && self.panel.size.is_some()
-        {
+        } else if self.single_screen_state.search_term.is_empty() && self.panel.size.is_some() {
             Some("New session with a random name")
         } else if !self.single_screen_state.search_term.is_empty() {
-            if let Some(result) = self.single_screen_state.get_selected_result()
-            {
+            if let Some(result) = self.single_screen_state.get_selected_result() {
                 match result {
                     UnifiedSearchResult::ActiveSession { .. } => Some("Attach"),
-                    UnifiedSearchResult::ResurrectableSession { .. } => {
-                        Some("Resurrect")
-                    },
+                    UnifiedSearchResult::ResurrectableSession { .. } => Some("Resurrect"),
                 }
             } else {
                 let typed = &self.single_screen_state.search_term;
@@ -745,7 +736,9 @@ impl State {
         cols.saturating_sub(4).max(10)
     }
     fn footer_rows(&self) -> usize {
-        self.sessions_help_block(self.help_width(self.last_cols)).len() + 2
+        self.sessions_help_block(self.help_width(self.last_cols))
+            .len()
+            + 2
     }
     fn render_footer(&self, x: usize, width: usize, rows: usize, centered: bool) {
         if self.active_screen == ActiveScreen::SingleScreen {
@@ -843,8 +836,7 @@ impl State {
                         } else {
                             // Use max_table_rows as fixed content height so the
                             // prompt position stays stable regardless of result count
-                            let max_table_rows =
-                                height.saturating_sub(3 + self.footer_rows());
+                            let max_table_rows = height.saturating_sub(3 + self.footer_rows());
                             let content_height = if self.no_other_sessions() {
                                 3
                             } else {
@@ -2283,7 +2275,9 @@ impl State {
     }
     fn window_request_for(&self, target: &OpenTarget) -> Result<SessionWindowRequest, String> {
         match (target.name.as_deref(), target.exists, target.running) {
-            (Some(name), true, true) => Ok(SessionWindowRequest::existing(name, target.pane, false)),
+            (Some(name), true, true) => {
+                Ok(SessionWindowRequest::existing(name, target.pane, false))
+            },
             (Some(name), true, false) => Ok(SessionWindowRequest::existing(name, None, true)),
             (name, _, _) => {
                 if let Some(name) = name {
@@ -2376,8 +2370,8 @@ impl State {
         self.open_disconnecting = false;
     }
     fn dispatch_window_request(&mut self, pending: PendingWindow) {
-        let needs_confirmation = self.remote_client.is_some()
-            && (pending.leave || !self.remote_window_confirmed);
+        let needs_confirmation =
+            self.remote_client.is_some() && (pending.leave || !self.remote_window_confirmed);
         if needs_confirmation {
             self.pending_remote_window = Some(pending);
         } else {
@@ -2429,7 +2423,8 @@ impl State {
             let text = if index == 0 {
                 text.color_range(2, ..)
             } else if index == last {
-                text.color_substring(3, "<Enter>").color_substring(3, "<Esc>")
+                text.color_substring(3, "<Enter>")
+                    .color_substring(3, "<Esc>")
             } else if line.starts_with("Detaching") {
                 text.error_color_all()
             } else {
@@ -2665,7 +2660,14 @@ impl State {
             hint("<p>", "show or hide the latest output"),
             hint("<ESC>", "close"),
             hint("<m>", if muted { "unmute" } else { "mute" }),
-            hint("<n>", if watched { "stop watching" } else { "watch (notify me)" }),
+            hint(
+                "<n>",
+                if watched {
+                    "stop watching"
+                } else {
+                    "watch (notify me)"
+                },
+            ),
             hint("<C>", "dismiss everything"),
         ];
         hints.extend(self.open_way_hints(target.as_ref(), true));
@@ -3731,11 +3733,16 @@ mod remote_window_tests {
     #[test]
     fn the_remote_warning_says_where_the_window_opens_and_warns_before_detaching() {
         let lines = remote_window_warning_lines("from a terminal, over SSH from 10.0.0.7", false);
-        assert_eq!(lines[0], "You are connected from a terminal, over SSH from 10.0.0.7.");
+        assert_eq!(
+            lines[0],
+            "You are connected from a terminal, over SSH from 10.0.0.7."
+        );
         assert!(lines.iter().any(|l| l.contains("you will not see it")));
         assert!(!lines.iter().any(|l| l.starts_with("Detaching")));
         let leaving = remote_window_warning_lines("from a terminal", true);
-        assert!(leaving.iter().any(|l| l.starts_with("Detaching here also ends")));
+        assert!(leaving
+            .iter()
+            .any(|l| l.starts_with("Detaching here also ends")));
         assert_eq!(
             leaving.last().map(|l| l.as_str()),
             Some("<Enter> open it anyway    <Esc> cancel")

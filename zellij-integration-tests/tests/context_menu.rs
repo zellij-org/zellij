@@ -588,7 +588,11 @@ fn right_click_on_a_watched_pane_offers_stop_watching() {
     let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
     right_click(&zellij, 30, 10);
     let grid_snapshot = wait_for_pane_menu(&zellij);
-    assert!(grid_snapshot.contains("Watch this pane"), "{}", grid_snapshot.text);
+    assert!(
+        grid_snapshot.contains("Watch this pane"),
+        "{}",
+        grid_snapshot.text
+    );
     zellij.send_stdin(&keys::ESC);
     wait_for_menu_to_close(&zellij);
     zellij.run_cli_action(CliAction::WatchPane {
@@ -598,7 +602,11 @@ fn right_click_on_a_watched_pane_offers_stop_watching() {
     let grid_snapshot = zellij.wait_until("the menu offers to stop watching", |grid_snapshot| {
         grid_snapshot.contains(PANE_MENU_MARKER) && grid_snapshot.contains("Stop watching")
     });
-    assert!(!grid_snapshot.contains("Watch this pane"), "{}", grid_snapshot.text);
+    assert!(
+        !grid_snapshot.contains("Watch this pane"),
+        "{}",
+        grid_snapshot.text
+    );
     zellij.send_stdin(&keys::ESC);
     wait_for_menu_to_close(&zellij);
     zellij.quit();

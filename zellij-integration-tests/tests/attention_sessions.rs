@@ -132,12 +132,10 @@ fn marking_everything_seen_clears_items_in_other_sessions() {
     wait_for_indicator(&zellij, "the calm indicator", "2 running");
     failed_command(&terminal, "cargo test");
     wait_for_indicator(&zellij, "the failed command is counted", "✗ 1");
-    zellij
-        .main_client()
-        .send_action(Action::MarkAllSeen {
-            session: None,
-            this_session: false,
-        });
+    zellij.main_client().send_action(Action::MarkAllSeen {
+        session: None,
+        this_session: false,
+    });
     zellij.wait_until("the other session's item was cleared", |grid_snapshot| {
         let bar = tab_bar(grid_snapshot);
         bar.contains("2 running") && !bar.contains('✗')
@@ -198,7 +196,9 @@ fn toggle_back_and_forward_follow_the_client_history() {
     assert_eq!(context.arrival, Some(SessionArrival::Toggle));
     assert_eq!(context.history.previous(), Some(second.as_str()));
 
-    zellij.main_client().send_action(Action::GoToPreviousSession);
+    zellij
+        .main_client()
+        .send_action(Action::GoToPreviousSession);
     let (switch, first_session) = follow(&mut zellij, second_session);
     let context = switch
         .switch_context
@@ -227,7 +227,9 @@ fn toggle_without_history_goes_to_the_next_running_session() {
     zellij.main_client().send_action(Action::ToggleSession);
     let (switch, _first_session) = follow(&mut zellij, background);
     assert_eq!(switch.name.as_deref(), Some(second.as_str()));
-    let context = switch.switch_context.expect("the switch carries the history");
+    let context = switch
+        .switch_context
+        .expect("the switch carries the history");
     assert_eq!(context.arrival, Some(SessionArrival::Toggle));
     assert_eq!(context.history.previous(), Some(first.as_str()));
     zellij.quit();
@@ -344,9 +346,10 @@ fn keys_and_wheel_in_the_inbox_opened_from_the_indicator_stay_out_of_the_pane() 
         zellij.send_stdin(&sgr(65, cols / 2, rows / 2, 'M'));
     }
     zellij.send_stdin(&keys::key('p'));
-    zellij.wait_until("the keys before the barrier were handled", |grid_snapshot| {
-        grid_snapshot.contains("Latest output")
-    });
+    zellij.wait_until(
+        "the keys before the barrier were handled",
+        |grid_snapshot| grid_snapshot.contains("Latest output"),
+    );
     assert_eq!(
         leaked_since(&terminal, before),
         "",
@@ -464,9 +467,13 @@ fn showing_a_hidden_session_manager_again_selects_the_newest_item() {
     wait_for_indicator(&zellij, "the calm indicator", "2 running");
     zellij.send_stdin(&keys::ctrl('o'));
     zellij.send_stdin(&keys::key('w'));
-    zellij.wait_until("the session manager opens on the sessions", |grid_snapshot| {
-        grid_snapshot.contains(SESSIONS_HELP) && grid_snapshot.contains(background.session_name())
-    });
+    zellij.wait_until(
+        "the session manager opens on the sessions",
+        |grid_snapshot| {
+            grid_snapshot.contains(SESSIONS_HELP)
+                && grid_snapshot.contains(background.session_name())
+        },
+    );
     zellij.send_stdin(&keys::alt('f'));
     zellij.wait_until("the session manager is hidden", |grid_snapshot| {
         !grid_snapshot.contains(SESSIONS_HELP) && grid_snapshot.status_bar_appears()
@@ -474,11 +481,14 @@ fn showing_a_hidden_session_manager_again_selects_the_newest_item() {
     terminal.output(&needs_you("While hidden?"));
     wait_for_indicator(&zellij, "the item is counted", "● 1");
     zellij.send_stdin(&keys::alt('f'));
-    zellij.wait_until("the session manager shows the newest item", |grid_snapshot| {
-        grid_snapshot.contains(INBOX_HELP)
-            && grid_snapshot.contains("While hidden?")
-            && grid_snapshot.contains("<ENTER> go there")
-    });
+    zellij.wait_until(
+        "the session manager shows the newest item",
+        |grid_snapshot| {
+            grid_snapshot.contains(INBOX_HELP)
+                && grid_snapshot.contains("While hidden?")
+                && grid_snapshot.contains("<ENTER> go there")
+        },
+    );
     zellij.send_stdin(&keys::ENTER);
     let _previous = follow(&mut zellij, background);
     zellij.quit();
@@ -657,9 +667,10 @@ fn switching_sessions_shows_switched_from_for_a_few_seconds() {
     zellij.main_client().send_action(Action::ToggleSession);
     let _previous = follow(&mut zellij, background);
     let expected = format!("Switched from {}", first);
-    zellij.wait_until("the status bar says where the client came from", |grid_snapshot| {
-        status_bar(grid_snapshot).contains(&expected)
-    });
+    zellij.wait_until(
+        "the status bar says where the client came from",
+        |grid_snapshot| status_bar(grid_snapshot).contains(&expected),
+    );
     let shown_at = Instant::now();
     zellij.wait_until("the hint goes away", |grid_snapshot| {
         !status_bar(grid_snapshot).contains(&expected)
@@ -713,7 +724,9 @@ fn session_mode_shows_the_next_item_hint() {
 fn the_compact_bar_shows_tab_status_symbols() {
     let mut zellij = TestRunner::new(TERMINAL_SIZE)
         .with_config(ATTENTION_ON)
-        .with_layout(zellij_utils::data::LayoutInfo::BuiltIn("compact".to_owned()))
+        .with_layout(zellij_utils::data::LayoutInfo::BuiltIn(
+            "compact".to_owned(),
+        ))
         .start();
     let first_terminal = zellij.expect_pty_spawn();
     first_terminal.output(b"$ ");

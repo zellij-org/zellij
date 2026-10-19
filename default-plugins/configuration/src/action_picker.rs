@@ -379,8 +379,14 @@ pub const ACTION_SPECS: &[ActionSpec] = &[
         "ToggleSession",
         "Switch to the previous session (again returns)",
     ),
-    plain("GoToPreviousSession", "Go back in this client's session history"),
-    plain("GoToNextSession", "Go forward in this client's session history"),
+    plain(
+        "GoToPreviousSession",
+        "Go back in this client's session history",
+    ),
+    plain(
+        "GoToNextSession",
+        "Go forward in this client's session history",
+    ),
     plain(
         "GoToNextAttention",
         "Jump to the next pane that needs attention in any session",

@@ -125,12 +125,13 @@ fn the_app_panel_ignores_zellij_keybindings_and_closes_from_its_cross() {
     std::thread::sleep(Duration::from_millis(500));
     let after = panel.snapshot();
     assert!(
-        !after.contains("Tab #2") && !after
-            .text
-            .replace("<TAB> switch", "")
-            .replace("<TAB> inbox", "")
-            .replace("<TAB> sessions", "")
-            .contains("TAB"),
+        !after.contains("Tab #2")
+            && !after
+                .text
+                .replace("<TAB> switch", "")
+                .replace("<TAB> inbox", "")
+                .replace("<TAB> sessions", "")
+                .contains("TAB"),
         "zellij keybindings reached the panel session: {}",
         after.lines().join("\n")
     );
@@ -623,7 +624,10 @@ fn opening_the_panel_shows_the_newest_item_in_full_with_its_actions() {
             && grid_snapshot.contains("Which branch to use?")
             && grid_snapshot.contains("<ENTER> go there")
     });
-    assert!(!shown.contains("Latest output"), "the output stays hidden until asked for");
+    assert!(
+        !shown.contains("Latest output"),
+        "the output stays hidden until asked for"
+    );
     panel.send_stdin(&keys::key('p'));
     panel.wait_until("the output is shown on request", |grid_snapshot| {
         grid_snapshot.contains("Latest output") && grid_snapshot.contains("hide output")
@@ -700,7 +704,10 @@ fn only_muted_items_waiting_still_open_the_sessions() {
     };
     let deadline = std::time::Instant::now() + Duration::from_secs(10);
     while needs_you_in(&name) != Some(1) {
-        assert!(std::time::Instant::now() < deadline, "the item was not counted");
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the item was not counted"
+        );
         std::thread::sleep(Duration::from_millis(50));
     }
     zellij_utils::session_link::send_actions_to_session(
@@ -711,7 +718,10 @@ fn only_muted_items_waiting_still_open_the_sessions() {
     )
     .unwrap();
     while needs_you_in(&name) != Some(0) {
-        assert!(std::time::Instant::now() < deadline, "the item stayed counted");
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the item stayed counted"
+        );
         std::thread::sleep(Duration::from_millis(50));
     }
     let mut panel = start_panel_on("inbox");
@@ -760,7 +770,10 @@ fn the_pointer_resting_on_the_panel_does_not_stop_it_turning_to_the_inbox() {
     assert!(panel.join_main_client().is_none());
 }
 
-fn start_panel_sized(view: &str, size: zellij_integration_tests::Size) -> zellij_integration_tests::TestSession {
+fn start_panel_sized(
+    view: &str,
+    size: zellij_integration_tests::Size,
+) -> zellij_integration_tests::TestSession {
     TestRunner::new(size)
         .with_session_name(APP_PANEL_SESSION)
         .with_config("show_startup_tips false\nshow_release_notes false\npane_frames false")
@@ -780,7 +793,8 @@ fn alt_x_and_ctrl_a_are_not_offered_in_the_app_panel() {
         .start_in_background();
     let mut panel = start_panel_sized("sessions", TALL);
     panel.wait_until("the panel lists the session", |grid_snapshot| {
-        grid_snapshot.contains(SESSIONS_VIEW_ONLY) && grid_snapshot.contains(background.session_name())
+        grid_snapshot.contains(SESSIONS_VIEW_ONLY)
+            && grid_snapshot.contains(background.session_name())
     });
     panel.send_stdin(&keys::F1);
     let all_keys = panel.wait_until("the panel lists all keys", |grid_snapshot| {
@@ -865,7 +879,10 @@ fn a_long_list_shows_more_markers() {
         terminal.output(&needs_you(&format!("Long list item {}?", index)));
         sessions.push(background);
     }
-    let short = zellij_integration_tests::Size { cols: 120, rows: 14 };
+    let short = zellij_integration_tests::Size {
+        cols: 120,
+        rows: 14,
+    };
     let mut panel = start_panel_sized("inbox", short);
     panel.wait_until("the list shows a more marker", |grid_snapshot| {
         grid_snapshot.contains("Inbox (4)") && grid_snapshot.contains("more")

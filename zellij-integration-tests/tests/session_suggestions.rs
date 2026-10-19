@@ -1133,4 +1133,3 @@ fn clicking_a_card_target_goes_there() {
     });
     zellij.quit();
 }
-

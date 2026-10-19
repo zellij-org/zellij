@@ -83,17 +83,19 @@ fn selected_session_line(grid_snapshot: &GridSnapshot, name: &str) -> bool {
 
 fn open_sessions_tab(zellij: &TestSession, other: &str) {
     zellij.send_stdin(&keys::F9);
-    zellij.wait_until("the session manager opens on the sessions", |grid_snapshot| {
-        grid_snapshot.contains("<F1> all keys") && grid_snapshot.contains(other)
-    });
+    zellij.wait_until(
+        "the session manager opens on the sessions",
+        |grid_snapshot| grid_snapshot.contains("<F1> all keys") && grid_snapshot.contains(other),
+    );
 }
 
 fn open_sessions_with(zellij: &TestSession, other: &str, help: &str) {
     open_sessions_tab(zellij, other);
     zellij.send_stdin(&keys::DOWN);
-    zellij.wait_until("the session is selected and the help offers it", |grid_snapshot| {
-        selected_session_line(grid_snapshot, other) && grid_snapshot.contains(help)
-    });
+    zellij.wait_until(
+        "the session is selected and the help offers it",
+        |grid_snapshot| selected_session_line(grid_snapshot, other) && grid_snapshot.contains(help),
+    );
 }
 
 fn confirm_warning(zellij: &TestSession, detaching: bool) {
@@ -159,16 +161,22 @@ fn alt_w_on_a_typed_name_creates_that_session_in_a_new_window() {
     let mut zellij = main_session();
     open_sessions_tab(&zellij, other.session_name());
     zellij.send_stdin(b"brand-new");
-    zellij.wait_until("the help offers to create it in a window", |grid_snapshot| {
-        grid_snapshot.contains("brand-new")
-            && grid_snapshot.contains("<Alt w> create it in a window")
-    });
+    zellij.wait_until(
+        "the help offers to create it in a window",
+        |grid_snapshot| {
+            grid_snapshot.contains("brand-new")
+                && grid_snapshot.contains("<Alt w> create it in a window")
+        },
+    );
     zellij.send_stdin(&keys::alt('w'));
     confirm_warning(&zellij, false);
     let request = open_window(&requests);
     assert_eq!(request.session.as_deref(), Some("brand-new"));
     assert!(request.create);
-    assert!(request.layout.is_some(), "a new session gets the default layout");
+    assert!(
+        request.layout.is_some(),
+        "a new session gets the default layout"
+    );
     zellij.quit();
 }
 
@@ -315,7 +323,10 @@ fn alt_w_in_the_layout_picker_creates_the_named_session_in_a_new_window() {
     assert_eq!(request.session.as_deref(), Some("from-layout"));
     assert!(request.create);
     assert!(request.layout.is_some(), "the chosen layout is sent");
-    assert!(!zellij.main_client().has_exited(), "plain keys keep this terminal");
+    assert!(
+        !zellij.main_client().has_exited(),
+        "plain keys keep this terminal"
+    );
     zellij.quit();
 }
 
@@ -378,15 +389,22 @@ fn welcome_screen() -> TestSession {
 }
 
 fn select_on_the_welcome_screen(zellij: &TestSession, other: &str) {
-    let listed = zellij.wait_until("the welcome screen lists the other session", |grid_snapshot| {
-        grid_snapshot.contains("new session with a random name") && grid_snapshot.contains(other)
-    });
+    let listed = zellij.wait_until(
+        "the welcome screen lists the other session",
+        |grid_snapshot| {
+            grid_snapshot.contains("new session with a random name")
+                && grid_snapshot.contains(other)
+        },
+    );
     if !listed.contains("<Alt w> go to its window") {
         zellij.send_stdin(&keys::DOWN);
     }
-    zellij.wait_until("the other session is selected with its window keys", |grid_snapshot| {
-        grid_snapshot.contains(other) && grid_snapshot.contains("<Alt w> go to its window")
-    });
+    zellij.wait_until(
+        "the other session is selected with its window keys",
+        |grid_snapshot| {
+            grid_snapshot.contains(other) && grid_snapshot.contains("<Alt w> go to its window")
+        },
+    );
 }
 
 fn warning_is_shown(grid_snapshot: &GridSnapshot) -> bool {

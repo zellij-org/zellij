@@ -62,11 +62,18 @@ impl MarkOptions {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MarkKind {
-    PromptStart { main: bool },
+    PromptStart {
+        main: bool,
+    },
     FreshLine,
     InputStart,
-    CommandStart { command: Option<CommandText> },
-    CommandEnd { exit_code: Option<i32>, err: Option<String> },
+    CommandStart {
+        command: Option<CommandText>,
+    },
+    CommandEnd {
+        exit_code: Option<i32>,
+        err: Option<String>,
+    },
     CommandText(CommandText),
     Cwd(ReportedCwd),
 }
@@ -136,7 +143,9 @@ fn main_prompt(command: &[u8], options: &MarkOptions) -> Option<MarkKind> {
         b"A" | b"N" => Some(MarkKind::PromptStart {
             main: !matches!(
                 kind,
-                Some(PromptKind::Secondary) | Some(PromptKind::Continuation) | Some(PromptKind::Right)
+                Some(PromptKind::Secondary)
+                    | Some(PromptKind::Continuation)
+                    | Some(PromptKind::Right)
             ),
         }),
         b"P" => Some(MarkKind::PromptStart {
@@ -230,7 +239,9 @@ pub fn parse_osc633(params: &[&[u8]]) -> Option<ShellMark> {
             err: None,
         },
         b"E" => {
-            let text = fields.first().map(|f| decode_633(&String::from_utf8_lossy(f)))?;
+            let text = fields
+                .first()
+                .map(|f| decode_633(&String::from_utf8_lossy(f)))?;
             MarkKind::CommandText(shell_text(text)?)
         },
         b"P" => {
@@ -629,7 +640,8 @@ mod tests {
 
     #[test]
     fn options_are_parsed_and_unknown_ignored() {
-        let mark = mark133("133;A;aid=7;cl=m;special_key=1;redraw=last;history_id=x;foo=bar").unwrap();
+        let mark =
+            mark133("133;A;aid=7;cl=m;special_key=1;redraw=last;history_id=x;foo=bar").unwrap();
         assert_eq!(mark.options.aid.as_deref(), Some("7"));
         assert_eq!(mark.options.cl.as_deref(), Some("m"));
         assert_eq!(mark.options.special_key.as_deref(), Some("1"));
@@ -641,8 +653,14 @@ mod tests {
     fn d_variants() {
         assert_eq!(end_of("133;D;0"), (Some(0), None, None));
         assert_eq!(end_of("133;D"), (None, None, None));
-        assert_eq!(end_of("133;D;1;aid=123"), (Some(1), None, Some("123".to_owned())));
-        assert_eq!(end_of("133;D;aid=123"), (None, None, Some("123".to_owned())));
+        assert_eq!(
+            end_of("133;D;1;aid=123"),
+            (Some(1), None, Some("123".to_owned()))
+        );
+        assert_eq!(
+            end_of("133;D;aid=123"),
+            (None, None, Some("123".to_owned()))
+        );
         assert_eq!(end_of("133;D;0;history_id=x"), (Some(0), None, None));
         assert_eq!(
             end_of("133;D;0;err=CANCEL"),
@@ -761,7 +779,10 @@ mod tests {
 
     #[test]
     fn other_cwd_sources() {
-        assert_eq!(parse_conemu_cwd("\"C:\\Users\\me\"").unwrap().path, "C:\\Users\\me");
+        assert_eq!(
+            parse_conemu_cwd("\"C:\\Users\\me\"").unwrap().path,
+            "C:\\Users\\me"
+        );
         assert_eq!(parse_conemu_cwd("/tmp").unwrap().path, "/tmp");
         assert_eq!(parse_conemu_cwd("\"\""), None);
         let cwd = parse_iterm2_cwd("CurrentDir=/a b", None).unwrap();
@@ -774,7 +795,10 @@ mod tests {
 
     #[test]
     fn command_text_is_cleaned() {
-        assert_eq!(clean_command_text("  a\tb\u{202e}c  "), Some("a bc".to_owned()));
+        assert_eq!(
+            clean_command_text("  a\tb\u{202e}c  "),
+            Some("a bc".to_owned())
+        );
         assert_eq!(clean_command_text(" \n "), None);
     }
 }

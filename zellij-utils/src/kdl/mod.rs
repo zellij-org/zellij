@@ -1934,9 +1934,18 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
             "OpenContextMenu" => {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
-            "ToggleSessionCard" | "MutePane" | "IgnorePaneOutput" | "WatchPane" | "MuteTab"
-            | "MuteSession" | "ToggleSession" | "GoToPreviousSession" | "GoToNextSession" | "GoToNextAttention"
-            | "ToggleTrayIcon" | "MarkPaneSeen" => {
+            "ToggleSessionCard"
+            | "MutePane"
+            | "IgnorePaneOutput"
+            | "WatchPane"
+            | "MuteTab"
+            | "MuteSession"
+            | "ToggleSession"
+            | "GoToPreviousSession"
+            | "GoToNextSession"
+            | "GoToNextAttention"
+            | "ToggleTrayIcon"
+            | "MarkPaneSeen" => {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
             "MarkAllSeen" => {

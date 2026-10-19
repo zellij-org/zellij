@@ -1387,7 +1387,9 @@ pub mod fake {
                 (BUS_SERVICE, "GetId") => Some(vec![Value::str("0123456789abcdef")]),
                 (WATCHER_SERVICE, "RegisterStatusNotifierItem")
                 | (WATCHER_SERVICE, "RegisterStatusNotifierHost") => Some(vec![]),
-                (super::PROPERTIES, "Get") if call.path.as_deref() == Some("/StatusNotifierWatcher") => {
+                (super::PROPERTIES, "Get")
+                    if call.path.as_deref() == Some("/StatusNotifierWatcher") =>
+                {
                     Some(vec![Value::variant(Value::Bool(true))])
                 },
                 (NOTIFICATIONS, "Notify") => {

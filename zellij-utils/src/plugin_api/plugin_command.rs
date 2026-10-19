@@ -71,7 +71,7 @@ pub use super::generated_api::api::{
         KeybindingSourceKind as ProtobufKeybindingSourceKind,
         KeybindsSelectionSnapshot as ProtobufKeybindsSelectionSnapshot, KillSessionsPayload,
         KillSessionsResponse as ProtobufKillSessionsResponse, LeaderValue as ProtobufLeaderValue,
-        ListTokensResponse, LoadNewPluginPayload, MarkAllSeenPayload, OpenSessionWindowPayload,
+        ListTokensResponse, LoadNewPluginPayload, MarkAllSeenPayload,
         MenuItemEntry as ProtobufMenuItemEntry, MenuSectionEntries as ProtobufMenuSectionEntries,
         MessageToPluginPayload, MouseTriggerInMode as ProtobufMouseTriggerInMode,
         MousebindingEntry as ProtobufMousebindingEntry, MovePaneWithPaneIdInDirectionPayload,
@@ -106,7 +106,7 @@ pub use super::generated_api::api::{
         OpenPluginPaneFloatingPayload,
         OpenPluginPaneFloatingResponse as ProtobufOpenPluginPaneFloatingResponse,
         OpenPluginPaneInNewTabPayload as ProtobufOpenPluginPaneInNewTabPayload,
-        OpenPluginPopupPayload, OpenTerminalFloatingNearPluginPayload,
+        OpenPluginPopupPayload, OpenSessionWindowPayload, OpenTerminalFloatingNearPluginPayload,
         OpenTerminalFloatingNearPluginResponse as ProtobufOpenTerminalFloatingNearPluginResponse,
         OpenTerminalFloatingResponse as ProtobufOpenTerminalFloatingResponse,
         OpenTerminalInPlaceOfPluginPayload,
@@ -2808,23 +2808,21 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                 _ => Err("Mismatched payload for MarkAllSeen"),
             },
             Some(CommandName::OpenSessionWindow) => match protobuf_plugin_command.payload {
-                Some(Payload::OpenSessionWindowPayload(payload)) => {
-                    Ok(PluginCommand::OpenSessionWindow(
-                        crate::data::SessionWindowRequest {
-                            session_name: payload.session_name.filter(|n| !n.is_empty()),
-                            new_window: payload.new_window,
-                            pane_id: payload.pane_id.map(|id| {
-                                if payload.pane_is_plugin {
-                                    PaneId::Plugin(id)
-                                } else {
-                                    PaneId::Terminal(id)
-                                }
-                            }),
-                            layout: payload.layout.and_then(|l| l.try_into().ok()),
-                            cwd: payload.cwd.map(PathBuf::from),
-                        },
-                    ))
-                },
+                Some(Payload::OpenSessionWindowPayload(payload)) => Ok(
+                    PluginCommand::OpenSessionWindow(crate::data::SessionWindowRequest {
+                        session_name: payload.session_name.filter(|n| !n.is_empty()),
+                        new_window: payload.new_window,
+                        pane_id: payload.pane_id.map(|id| {
+                            if payload.pane_is_plugin {
+                                PaneId::Plugin(id)
+                            } else {
+                                PaneId::Terminal(id)
+                            }
+                        }),
+                        layout: payload.layout.and_then(|l| l.try_into().ok()),
+                        cwd: payload.cwd.map(PathBuf::from),
+                    }),
+                ),
                 _ => Err("Mismatched payload for OpenSessionWindow"),
             },
             Some(CommandName::WriteToSessionPane) => match protobuf_plugin_command.payload {
@@ -3734,9 +3732,7 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     startup_card: switch_to_session
                         .startup_card()
                         .map(|c| c.as_str().to_owned()),
-                    disconnect_others: switch_to_session
-                        .disconnects_others()
-                        .then_some(true),
+                    disconnect_others: switch_to_session.disconnects_others().then_some(true),
                     name: switch_to_session.name,
                     tab_position: switch_to_session.tab_position.map(|t| t as u32),
                     pane_id: switch_to_session.pane_id.map(|p| p.0),

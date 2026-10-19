@@ -98,7 +98,12 @@ pub struct BlockLine {
     pub secondary: bool,
 }
 
-pub fn block_lines(primary: &[Hint], secondary: &[Hint], more: &Hint, width: usize) -> Vec<BlockLine> {
+pub fn block_lines(
+    primary: &[Hint],
+    secondary: &[Hint],
+    more: &Hint,
+    width: usize,
+) -> Vec<BlockLine> {
     if width == 0 {
         return vec![];
     }
@@ -200,7 +205,8 @@ pub fn render_all_keys(title: &str, hints: &[Hint], rows: usize, cols: usize, sc
     let mut lines = all_keys_lines(hints, inner);
     let room = rows.saturating_sub(4).max(1);
     let widest = lines.iter().map(|l| l.width()).max().unwrap_or(0);
-    let two_columns = lines.len() > room && widest * 2 + 4 <= inner && (lines.len() + 1) / 2 <= room;
+    let two_columns =
+        lines.len() > room && widest * 2 + 4 <= inner && (lines.len() + 1) / 2 <= room;
     let (columns, closing): (Vec<Vec<String>>, &str) = if two_columns {
         let half = (lines.len() + 1) / 2;
         let right = lines.split_off(half);
@@ -274,7 +280,9 @@ mod tests {
         let lines = footer_lines(&hints(), &hint("<?>", "all keys"), 200, 2);
         assert_eq!(
             lines,
-            vec!["<ENTER> go to pane  <↓↑> select  <r> reply  <c> mark seen  <ESC> close  <m> mute"]
+            vec![
+                "<ENTER> go to pane  <↓↑> select  <r> reply  <c> mark seen  <ESC> close  <m> mute"
+            ]
         );
     }
 

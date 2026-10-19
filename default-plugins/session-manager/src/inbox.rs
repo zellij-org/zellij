@@ -96,7 +96,6 @@ enum BlockLine {
     },
 }
 
-
 pub fn item_text(item: &GlobalAttentionItem) -> String {
     let text = item.text();
     if text.is_empty() && item.item.attention.watched {
@@ -162,7 +161,6 @@ pub fn status_word(status: AttentionStatus) -> &'static str {
         AttentionStatus::Idle => "WATCHING",
     }
 }
-
 
 pub fn now_ms() -> u64 {
     std::time::SystemTime::now()
@@ -525,7 +523,11 @@ impl Inbox {
     }
 
     pub fn select_item(&mut self, key: ItemKey) {
-        if self.find(&key).map(|item| !item.is_counted()).unwrap_or(false) {
+        if self
+            .find(&key)
+            .map(|item| !item.is_counted())
+            .unwrap_or(false)
+        {
             self.show_quiet = true;
         }
         self.selection = Some(key);
@@ -844,7 +846,8 @@ impl Inbox {
         let available_width = cols.saturating_sub(4).max(10);
         let side_preview = showing_preview && available_width >= SIDE_PREVIEW_MIN_COLS;
         let (list_width, preview_width) = if side_preview {
-            let list = (available_width.saturating_sub(SIDE_GAP) * 9 / 20).clamp(28, BLOCK_MAX_WIDTH);
+            let list =
+                (available_width.saturating_sub(SIDE_GAP) * 9 / 20).clamp(28, BLOCK_MAX_WIDTH);
             let preview = available_width
                 .saturating_sub(list + SIDE_GAP)
                 .min(SIDE_PREVIEW_MAX_COLS);
@@ -863,7 +866,11 @@ impl Inbox {
         let stacked_preview = showing_preview && !side_preview;
         let lines = self.block_lines(list_width, now, simplified_ui);
         let needed = lines.len().max(1);
-        let gap = if body_rows >= needed + help_height + 4 { 2 } else { 1 };
+        let gap = if body_rows >= needed + help_height + 4 {
+            2
+        } else {
+            1
+        };
         let room = body_rows.saturating_sub(help_height + gap + 1);
         let selected_len = self.selected_range.len().max(1);
         let stacked_height = if stacked_preview {
@@ -873,8 +880,16 @@ impl Inbox {
         } else {
             0
         };
-        let stacked_height = if stacked_height >= 4 { stacked_height } else { 0 };
-        let list_room = room.saturating_sub(if stacked_height > 0 { stacked_height + 1 } else { 0 });
+        let stacked_height = if stacked_height >= 4 {
+            stacked_height
+        } else {
+            0
+        };
+        let list_room = room.saturating_sub(if stacked_height > 0 {
+            stacked_height + 1
+        } else {
+            0
+        });
         let overflowing = needed > list_room;
         let list_rows = needed.min(list_room);
         let side_height = if side_preview {
@@ -883,7 +898,11 @@ impl Inbox {
             0
         };
         let block_height = list_rows.max(side_height)
-            + if stacked_height > 0 { stacked_height + 1 } else { 0 };
+            + if stacked_height > 0 {
+                stacked_height + 1
+            } else {
+                0
+            };
         let total = block_height + gap + help_height;
         let top = body_y + 1 + body_rows.saturating_sub(total + 1) / 2;
         let indicator_rows = if overflowing { 2 } else { 0 };
@@ -1095,12 +1114,7 @@ impl Inbox {
         }
     }
 
-    fn block_lines(
-        &mut self,
-        width: usize,
-        now: u64,
-        simplified_ui: bool,
-    ) -> Vec<BlockLine> {
+    fn block_lines(&mut self, width: usize, now: u64, simplified_ui: bool) -> Vec<BlockLine> {
         let mut lines = vec![];
         self.selected_range = 0..0;
         self.item_ranges.clear();
@@ -1226,7 +1240,10 @@ impl Inbox {
         let place_text = if item.is_current {
             place_text
         } else {
-            let session_start = place.chars().count().saturating_sub(item.session_label().chars().count());
+            let session_start = place
+                .chars()
+                .count()
+                .saturating_sub(item.session_label().chars().count());
             place_text.color_range(1, session_start..)
         };
         lines.push(BlockLine::Text {
@@ -1592,7 +1609,10 @@ mod tests {
         inbox.move_selection(10);
         assert_eq!(inbox.selected_item().unwrap().session, "api");
         inbox.toggle_show_quiet();
-        assert_eq!(sessions_in_order(&inbox), vec!["web", "docs", "api", "build"]);
+        assert_eq!(
+            sessions_in_order(&inbox),
+            vec!["web", "docs", "api", "build"]
+        );
         inbox.toggle_show_quiet();
         inbox.select_item(ItemKey {
             session: "build".to_owned(),
@@ -1665,7 +1685,12 @@ mod tests {
         inbox.move_selection(3);
         let lines = inbox.block_lines(60, 200, false);
         let scroll = inbox.scroll_for(8, lines.len());
-        assert!(starts.contains(&scroll), "{} is not an item start {:?}", scroll, starts);
+        assert!(
+            starts.contains(&scroll),
+            "{} is not an item start {:?}",
+            scroll,
+            starts
+        );
         let selected = inbox.selected_range.clone();
         assert!(selected.start >= scroll && selected.end <= scroll + 8);
         inbox.move_selection(-3);
@@ -1695,7 +1720,10 @@ mod tests {
     #[test]
     fn when_the_selected_item_clears_the_next_one_is_selected() {
         let mut inbox = sample();
-        inbox.select_item(ItemKey { session: "api".to_owned(), pane_id: PaneId::Terminal(1) });
+        inbox.select_item(ItemKey {
+            session: "api".to_owned(),
+            pane_id: PaneId::Terminal(1),
+        });
         assert!(inbox.start_reply());
         inbox.update_global(global(vec![
             item("here", 2, AttentionStatus::Failed, 90),
@@ -1714,7 +1742,10 @@ mod tests {
     #[test]
     fn reply_mode_ends_when_the_status_changes() {
         let mut inbox = sample();
-        inbox.select_item(ItemKey { session: "api".to_owned(), pane_id: PaneId::Terminal(1) });
+        inbox.select_item(ItemKey {
+            session: "api".to_owned(),
+            pane_id: PaneId::Terminal(1),
+        });
         inbox.start_reply();
         inbox.update_global(global(vec![
             item("api", 1, AttentionStatus::NeedsYou, 100),
@@ -1876,20 +1907,12 @@ mod tests {
         ]));
         let now = 200_000;
         let width = 80;
-        let widths = ColumnWidths::measure(
-            inbox.items().iter().map(|item| (item, 2)),
-            now,
-            width,
-        );
+        let widths = ColumnWidths::measure(inbox.items().iter().map(|item| (item, 2)), now, width);
         let rows: Vec<(String, usize, String)> = inbox
             .items()
             .iter()
             .map(|item| {
-                let indent = if item.is_counted() {
-                    0
-                } else {
-                    2
-                };
+                let indent = if item.is_counted() { 0 } else { 2 };
                 let line = item_line(item, &widths, indent, width, now, false).line;
                 (
                     format!("{}{}", " ".repeat(indent), line),
@@ -1963,12 +1986,23 @@ mod tests {
         ]));
         inbox.help_hints = browser_hints();
         let help = inbox.help_block(76);
-        assert!(help[0].text.starts_with("<ENTER> go there  <r> reply  <c> dismiss"));
+        assert!(help[0]
+            .text
+            .starts_with("<ENTER> go there  <r> reply  <c> dismiss"));
         inbox.render_browser(0, 1, 88, 15, false);
-        assert_eq!(inbox.browser_target_at(5, 8), Some(BrowserTarget::Item(key("api", 1))));
-        assert_eq!(inbox.browser_target_at(7, 8), Some(BrowserTarget::Item(key("api", 1))));
+        assert_eq!(
+            inbox.browser_target_at(5, 8),
+            Some(BrowserTarget::Item(key("api", 1)))
+        );
+        assert_eq!(
+            inbox.browser_target_at(7, 8),
+            Some(BrowserTarget::Item(key("api", 1)))
+        );
         assert_eq!(inbox.browser_target_at(8, 8), None);
-        assert_eq!(inbox.browser_target_at(9, 8), Some(BrowserTarget::ShowQuiet));
+        assert_eq!(
+            inbox.browser_target_at(9, 8),
+            Some(BrowserTarget::ShowQuiet)
+        );
         assert_eq!(inbox.browser_target_at(10, 8), None);
         assert_eq!(
             inbox.browser_target_at(12, 6),
@@ -2044,9 +2078,18 @@ mod tests {
         assert_eq!(inbox.shown_end(&lines, 0, 11), 11);
         assert_eq!(inbox.hidden_counts(0, 11), (0, 3));
         inbox.render_browser(0, 1, 88, 17, false);
-        assert_eq!(inbox.browser_target_at(4, 10), Some(BrowserTarget::Item(key("api", 6))));
-        assert_eq!(inbox.browser_target_at(8, 10), Some(BrowserTarget::Item(key("api", 5))));
-        assert_eq!(inbox.browser_target_at(10, 10), Some(BrowserTarget::Item(key("api", 5))));
+        assert_eq!(
+            inbox.browser_target_at(4, 10),
+            Some(BrowserTarget::Item(key("api", 6)))
+        );
+        assert_eq!(
+            inbox.browser_target_at(8, 10),
+            Some(BrowserTarget::Item(key("api", 5)))
+        );
+        assert_eq!(
+            inbox.browser_target_at(10, 10),
+            Some(BrowserTarget::Item(key("api", 5)))
+        );
         for row in 11..=15 {
             assert_eq!(inbox.browser_target_at(row, 10), None, "row {}", row);
         }

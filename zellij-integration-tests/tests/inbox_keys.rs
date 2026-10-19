@@ -1,9 +1,7 @@
 #![cfg(unix)]
 
 use std::time::Duration;
-use zellij_integration_tests::attention::{
-    counted, needs_you, session_counts, wait_for_counted,
-};
+use zellij_integration_tests::attention::{counted, needs_you, session_counts, wait_for_counted};
 use zellij_integration_tests::inbox::{
     background_session_with, inbox_shows, open_inbox_on, session_needing_you, ATTENTION_CONFIG,
     INBOX_HELP, SESSIONS_HELP,
@@ -47,7 +45,9 @@ fn indicator(grid_snapshot: &GridSnapshot) -> String {
 }
 
 fn wait_for_indicator(zellij: &TestSession, what: &str, text: &str) -> GridSnapshot {
-    zellij.wait_until(what, |grid_snapshot| indicator(grid_snapshot).contains(text))
+    zellij.wait_until(what, |grid_snapshot| {
+        indicator(grid_snapshot).contains(text)
+    })
 }
 
 fn is_selected(grid_snapshot: &GridSnapshot, text: &str) -> bool {
@@ -108,7 +108,9 @@ fn two_items(zellij: &TestSession) -> (BackgroundTestSession, BackgroundTestSess
     (older, newer)
 }
 
-fn one_counted_and_one_muted(zellij: &TestSession) -> (BackgroundTestSession, BackgroundTestSession) {
+fn one_counted_and_one_muted(
+    zellij: &TestSession,
+) -> (BackgroundTestSession, BackgroundTestSession) {
     let (counted_session, _) = session_needing_you("Counted question?");
     let (muted_session, muted_terminal) = session_needing_you("Muted question?");
     wait_for_indicator(zellij, "both items are counted", "● 2");
@@ -217,9 +219,10 @@ fn a_shows_and_hides_the_items_behind_the_line() {
     let (mut zellij, _) = main_session();
     let (_counted, _muted) = one_counted_and_one_muted(&zellij);
     open_inbox_on(&zellij, "Counted question?");
-    let grid_snapshot = zellij.wait_until("the muted item waits behind the line", |grid_snapshot| {
-        grid_snapshot.contains("1 more item with only new output, quiet or muted · <a> show")
-    });
+    let grid_snapshot =
+        zellij.wait_until("the muted item waits behind the line", |grid_snapshot| {
+            grid_snapshot.contains("1 more item with only new output, quiet or muted · <a> show")
+        });
     assert!(!grid_snapshot.contains("Muted question?"));
     zellij.send_stdin(&keys::key('a'));
     zellij.wait_until("a shows the muted item", |grid_snapshot| {
@@ -237,9 +240,10 @@ fn clicking_the_line_shows_the_hidden_items() {
     let (mut zellij, _) = main_session();
     let (_counted, _muted) = one_counted_and_one_muted(&zellij);
     open_inbox_on(&zellij, "Counted question?");
-    let grid_snapshot = zellij.wait_until("the muted item waits behind the line", |grid_snapshot| {
-        grid_snapshot.contains(HIDDEN_LINE)
-    });
+    let grid_snapshot = zellij
+        .wait_until("the muted item waits behind the line", |grid_snapshot| {
+            grid_snapshot.contains(HIDDEN_LINE)
+        });
     click(&zellij, &grid_snapshot, HIDDEN_LINE);
     zellij.wait_until("the click shows the muted item", |grid_snapshot| {
         grid_snapshot.contains(SHOWN_LINE) && grid_snapshot.contains("Muted question?")
@@ -385,17 +389,16 @@ fn clicking_the_tab_headers_switches_between_inbox_and_sessions() {
 
 #[test]
 fn page_down_scrolls_the_list_by_whole_notifications() {
-    let short = Size { cols: 120, rows: 18 };
+    let short = Size {
+        cols: 120,
+        rows: 18,
+    };
     let (mut zellij, _) = main_session_sized(short);
     let mut sessions = vec![];
     for index in 0..5 {
         let (session, terminal) = background_session_with(ATTENTION_CONFIG);
         terminal.output(&needs_you(&format!("Question number {}?", index)));
-        wait_for_indicator(
-            &zellij,
-            "the item is counted",
-            &format!("● {}", index + 1),
-        );
+        wait_for_indicator(&zellij, "the item is counted", &format!("● {}", index + 1));
         std::thread::sleep(Duration::from_millis(30));
         sessions.push(session);
     }

@@ -275,7 +275,10 @@ mod tests {
     #[test]
     fn remote_action_workers_leave_when_the_session_is_gone() {
         let mut remote_actions = RemoteActions::default();
-        remote_actions.send("this-session-does-not-exist-anywhere", vec![Action::GoToPreviousSession]);
+        remote_actions.send(
+            "this-session-does-not-exist-anywhere",
+            vec![Action::GoToPreviousSession],
+        );
         let deadline = std::time::Instant::now() + Duration::from_secs(5);
         while remote_actions.queue_count() > 0 && std::time::Instant::now() < deadline {
             thread::sleep(Duration::from_millis(10));
