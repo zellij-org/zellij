@@ -127,13 +127,15 @@ export function installSoftKeyboardCapture(term, sendFunction) {
     resetBaseline();
 
     // A single backspace tap fires two deleteContentBackward events ~5 ms apart;
-    // this dedupe window merges them into one \x7f.
+    // this dedupe window merges them into one \x7f. It must not apply to text: a paste
+    // inserts every character at once, and keystrokes queued behind a busy main thread
+    // are handled back to back, so the second letter of "ss" would be dropped.
     let lastCh = null;
     let lastChAt = 0;
     const DEDUPE_MS = 8;
     const dispatchCh = (ch) => {
         const now = performance.now();
-        if (ch === lastCh && now - lastChAt < DEDUPE_MS) {
+        if (ch === "\x7f" && ch === lastCh && now - lastChAt < DEDUPE_MS) {
             return;
         }
         lastCh = ch;
@@ -184,6 +186,17 @@ export function installSoftKeyboardCapture(term, sendFunction) {
             lastText = BASELINE;
             setCaretToMiddle();
         }
+    });
+
+    // Paste through xterm.js, which honors bracketed paste mode and keeps the line breaks
+    // an <input> strips from its value.
+    div.addEventListener("paste", (ev) => {
+        const text = ev.clipboardData && ev.clipboardData.getData("text/plain");
+        if (!text) {
+            return;
+        }
+        ev.preventDefault();
+        term.paste(text);
     });
 
     // The input event only sees keys that edit the text, so named keys such as F2, Home or
