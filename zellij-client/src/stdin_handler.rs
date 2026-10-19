@@ -418,7 +418,7 @@ fn build_startup_query_string(
         ""
     };
     format!(
-        "{}{}\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}\u{1b}[?2026$p{}\u{1b}[?2027$p{}\u{1b}[c",
+        "{}{}\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}\u{1b}[?2026$p{}{}\u{1b}[?2027$p\u{1b}[c",
         host_theme_query, PIXEL_SIZE_QUERY, kitty_graphics_probe, PROGRAM_STATUS_QUERY
     )
 }
@@ -486,7 +486,7 @@ mod tests {
         let query = build_startup_query_string(true, false);
         assert_eq!(
             query,
-            "\u{1b}[14t\u{1b}[16t\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}\u{1b}[?2026$p\u{1b}_Ga=q,i=31,s=1,v=1,t=d,f=24;AAAA\u{1b}\u{5c}\u{1b}_Ga=q,i=32,s=4,v=4,t=d,f=24,o=z;eJxjYCANAAAAMAAB\u{1b}\u{5c}\u{1b}[?2027$p\u{1b}]7501;?\u{1b}\u{5c}\u{1b}[c"
+            "\u{1b}[14t\u{1b}[16t\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}\u{1b}[?2026$p\u{1b}_Ga=q,i=31,s=1,v=1,t=d,f=24;AAAA\u{1b}\u{5c}\u{1b}_Ga=q,i=32,s=4,v=4,t=d,f=24,o=z;eJxjYCANAAAAMAAB\u{1b}\u{5c}\u{1b}]7501;?\u{1b}\u{5c}\u{1b}[?2027$p\u{1b}[c"
         );
         assert!(
             !query.contains("\u{1b}]4;"),

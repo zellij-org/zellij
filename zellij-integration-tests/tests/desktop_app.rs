@@ -176,8 +176,33 @@ impl Desktop {
         app_dir_in(&self.contract_dir()).join(APP_CONTROL_SOCKET_NAME)
     }
 
+    fn session_index(&self) -> Option<zellij_utils::session_index::SessionIndex> {
+        let cache_dir = self
+            .root
+            .path()
+            .join("cache")
+            .join(zellij_utils::consts::ZELLIJ_CACHE_DIR.file_name()?)
+            .join(&*CLIENT_SERVER_CONTRACT_DIR);
+        let index_path = cache_dir.join(zellij_utils::session_index::SESSION_INDEX_FILE_NAME);
+        if !index_path.exists() {
+            return None;
+        }
+        zellij_utils::session_index::SessionIndex::open(
+            &index_path,
+            self.contract_dir(),
+            cache_dir.join("session_info"),
+        )
+        .ok()
+    }
+
     fn socket_of(&self, session: &str) -> PathBuf {
-        session_socket_path_in(&self.contract_dir(), session)
+        let id = self
+            .session_index()
+            .and_then(|index| index.session_id(session).ok().flatten());
+        match id {
+            Some(id) => self.contract_dir().join(id),
+            None => session_socket_path_in(&self.contract_dir(), session),
+        }
     }
 
     fn command(&self, args: &[&str]) -> Command {
@@ -506,6 +531,10 @@ impl Desktop {
     }
 
     fn running_sessions(&self) -> Vec<String> {
+        let names_by_id = self
+            .session_index()
+            .and_then(|index| index.names_by_id().ok())
+            .unwrap_or_default();
         std::fs::read_dir(self.contract_dir())
             .map(|entries| {
                 entries
@@ -518,6 +547,7 @@ impl Desktop {
                             .unwrap_or(false)
                     })
                     .map(|entry| entry.file_name().to_string_lossy().into_owned())
+                    .map(|id| names_by_id.get(&id).cloned().unwrap_or(id))
                     .collect()
             })
             .unwrap_or_default()

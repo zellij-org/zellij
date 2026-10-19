@@ -3604,7 +3604,7 @@ mod tests {
         harness.app.resized(720, 0);
         harness.app.relayout(0, 0);
         harness.app.resized(720, 600);
-        assert!(!harness.app.close_requested());
+        assert!(harness.app.close_requested());
         let sent = harness.sent();
         assert_eq!(
             sent[0],
@@ -3616,7 +3616,7 @@ mod tests {
             matches!(
                 sent[2],
                 ClientToServerMsg::Action {
-                    action: Action::Quit,
+                    action: Action::Detach,
                     ..
                 }
             ),

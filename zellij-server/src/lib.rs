@@ -5960,6 +5960,7 @@ fn next_live_session(
     let names: std::collections::BTreeSet<String> = live_sessions.known().unwrap_or_else(|| {
         zellij_utils::session_index::running_session_names_in(
             &zellij_utils::consts::ZELLIJ_SOCK_DIR,
+            &zellij_utils::session_index::session_names_by_id(),
         )
         .into_iter()
         .collect()

@@ -1,5 +1,4 @@
 use crate::attention::SessionAttention;
-use crate::consts::ZELLIJ_SOCK_DIR;
 use crate::input::actions::Action;
 use crate::ipc::{
     ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg,

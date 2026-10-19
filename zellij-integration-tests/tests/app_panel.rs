@@ -190,11 +190,7 @@ fn exited_sessions_are_collapsed_under_one_line_in_the_sessions_view() {
     let background = TestRunner::new(TERMINAL_SIZE)
         .skip_concurrency_slot()
         .start_in_background();
-    for name in ["gone-one", "gone-two"] {
-        let folder = zellij_utils::consts::session_info_folder_for_session(name);
-        std::fs::create_dir_all(&folder).unwrap();
-        std::fs::write(folder.join("session-layout.kdl"), "layout {\n    pane\n}\n").unwrap();
-    }
+    leave_exited_sessions(&["gone-one", "gone-two"]);
     let mut panel = start_panel_on("sessions");
     let grid_snapshot = panel.wait_until("the exited sessions are folded", |grid_snapshot| {
         grid_snapshot.contains("▸ Exited (2)") && grid_snapshot.contains(background.session_name())
@@ -246,10 +242,16 @@ fn send_view(view: &str) {
 }
 
 fn leave_exited_sessions(names: &[&str]) {
+    let index = zellij_utils::session_index::SessionIndex::open_default().unwrap();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
     for name in names {
         let folder = zellij_utils::consts::session_info_folder_for_session(name);
         std::fs::create_dir_all(&folder).unwrap();
         std::fs::write(folder.join("session-layout.kdl"), "layout {\n    pane\n}\n").unwrap();
+        index.ensure_row(name, now).unwrap();
     }
 }
 

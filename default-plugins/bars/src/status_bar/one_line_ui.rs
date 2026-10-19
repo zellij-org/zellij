@@ -769,7 +769,7 @@ fn render_session_hint(help: &ModeInfo, max_len: usize) -> Option<LinePart> {
         (None, None) => return None,
     };
     let text = format!(" {} ", text);
-    let width = text.width();
+    let width = display_width(&text);
     if width > max_len {
         return None;
     }

@@ -571,7 +571,7 @@ const SERIALIZING: &str =
     "session_serialization true\ndisable_session_metadata false\nsession_indicator true";
 
 fn serialized_layout(zellij: &TestSession) -> String {
-    let path = zellij_utils::consts::session_layout_cache_file_name(zellij.session_name());
+    let path = zellij_utils::consts::session_layout_cache_file_name(&zellij.session_id());
     std::fs::read_to_string(path).unwrap_or_default()
 }
 

@@ -266,11 +266,13 @@ pub fn session_socket_path_in(sock_dir: &std::path::Path, session_name: &str) ->
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
 pub fn session_socket_path(session_name: &str) -> PathBuf {
     crate::sessions::resolve_session_socket_path(session_name)
         .unwrap_or_else(|| session_socket_path_in(&ZELLIJ_SOCK_DIR, session_name))
 }
 
+#[cfg(not(target_family = "wasm"))]
 pub fn new_session_socket_path_in(sock_dir: &std::path::Path, session_name: &str) -> PathBuf {
     if is_app_socket_name(session_name) {
         session_socket_path_in(sock_dir, session_name)

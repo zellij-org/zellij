@@ -158,7 +158,8 @@ impl WatchState {
     }
 
     fn listing(&self) -> BTreeSet<String> {
-        zellij_utils::session_index::running_session_names_in(&self.sock_dir)
+        let names_by_id = zellij_utils::session_index::session_names_by_id();
+        zellij_utils::session_index::running_session_names_in(&self.sock_dir, &names_by_id)
             .into_iter()
             .collect()
     }
@@ -198,13 +199,14 @@ pub fn snapshot_of(sessions: &BTreeMap<String, SessionAttention>, details: bool)
 }
 
 fn last_used_ms(name: &str) -> Option<u64> {
+    let id = zellij_utils::sessions::resolve_session_id(name).unwrap_or_else(|| name.to_owned());
     let metadata = zellij_utils::consts::ZELLIJ_SESSION_INFO_CACHE_DIR
-        .join(name)
+        .join(id)
         .join("session-metadata.kdl");
     let modified = std::fs::metadata(metadata)
         .and_then(|m| m.modified())
         .or_else(|_| {
-            std::fs::metadata(zellij_utils::consts::ZELLIJ_SOCK_DIR.join(name))
+            std::fs::metadata(zellij_utils::consts::session_socket_path(name))
                 .and_then(|m| m.modified())
         })
         .ok()?;

@@ -728,7 +728,7 @@ impl TestSession {
 
     /// The session's socket/pipe path, which is named by the session id.
     pub fn socket_path(&self) -> PathBuf {
-        zellij_utils::consts::ZELLIJ_SOCK_DIR.join(self.session_id())
+        zellij_utils::consts::session_socket_path(&self.session_name)
     }
 
     pub fn expect_pty_spawn(&self) -> FakePtyHandle {

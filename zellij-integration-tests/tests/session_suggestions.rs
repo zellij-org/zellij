@@ -1001,25 +1001,24 @@ fn quitting_a_renamed_session_leaves_no_socket_under_either_name() {
     claim_first_terminal_and_wait_for_prompt(&zellij);
     let old_name = zellij.session_name().to_owned();
     let new_name = format!("{}-renamed", old_name);
-    let old_socket = zellij_utils::consts::session_socket_path(&old_name);
-    let new_socket = zellij_utils::consts::session_socket_path(&new_name);
-    assert!(old_socket.exists());
+    let socket = zellij.socket_path();
+    assert!(socket.exists());
     zellij.run_cli_action(zellij_utils::cli::CliAction::RenameSession {
         name: new_name.clone(),
     });
     zellij.wait_until("the session has its new name", |grid_snapshot| {
         grid_snapshot.lines()[0].contains(&new_name)
     });
-    zellij_integration_tests::wait_for("the socket to follow the new name", || {
-        new_socket.exists() && !old_socket.exists()
+    zellij_integration_tests::wait_for("the new name to lead to the same socket", || {
+        zellij_utils::consts::session_socket_path(&new_name) == socket
     });
-    assert!(lock_file_of(&new_socket).exists());
-    assert!(!lock_file_of(&old_socket).exists());
+    assert!(socket.exists());
+    assert!(lock_file_of(&socket).exists());
+    assert!(!zellij_utils::consts::ZELLIJ_SOCK_DIR.join(&old_name).exists());
+    assert!(!zellij_utils::consts::ZELLIJ_SOCK_DIR.join(&new_name).exists());
     zellij.quit();
-    wait_for_path_to_disappear(&new_socket, "the renamed session socket");
-    wait_for_path_to_disappear(&lock_file_of(&new_socket), "the renamed session lock");
-    assert!(!old_socket.exists());
-    assert!(!lock_file_of(&old_socket).exists());
+    wait_for_path_to_disappear(&socket, "the renamed session socket");
+    wait_for_path_to_disappear(&lock_file_of(&socket), "the renamed session lock");
 }
 
 #[test]
