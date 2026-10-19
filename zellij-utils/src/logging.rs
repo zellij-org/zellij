@@ -78,6 +78,7 @@ pub fn configure_logger() {
                 .appender("logFile")
                 .build("isahc", LevelFilter::Error),
         )
+        .logger(Logger::builder().build("notify", LevelFilter::Error))
         .logger(
             Logger::builder()
                 .appender("logPlugin")
