@@ -1988,7 +1988,6 @@ mod tests {
         vec![
             (ctrl('g'), to_mode(InputMode::Locked)),
             (ctrl('p'), to_mode(InputMode::Pane)),
-            //(ctrl('i'), to_mode(InputMode::Pane)),
             (ctrl('t'), to_mode(InputMode::Tab)),
             (ctrl('n'), to_mode(InputMode::Resize)),
             (ctrl('h'), to_mode(InputMode::Move)),
