@@ -830,7 +830,62 @@ function installSoftKeyboardCapture(term, sendFunction) {
         }
     });
 
+    // The input event only sees keys that edit the text, so named keys such as F2, Home or
+    // Delete and Ctrl/Alt/Meta chords never reach it. They go to xterm.js's own keydown
+    // handler instead, which encodes them as it would with its textarea focused and cancels
+    // the event so browser shortcuts don't fire. Soft keyboards report text keys as
+    // "Unidentified", and unmodified Backspace/Enter/Tab/Escape/arrows keep the handling below.
+    const NEVER_FORWARDED = new Set([
+        "Unidentified",
+        "Process",
+        "Dead",
+        "Shift",
+        "Control",
+        "Alt",
+        "AltGraph",
+        "Meta",
+    ]);
+    const CAPTURE_KEYS = new Set([
+        "Backspace",
+        "Enter",
+        "Tab",
+        "Escape",
+        "ArrowUp",
+        "ArrowDown",
+        "ArrowRight",
+        "ArrowLeft",
+    ]);
+    const isKeyForXterm = (ev) => {
+        if (ev.isComposing || NEVER_FORWARDED.has(ev.key)) {
+            return false;
+        }
+        // Windows reports AltGr as Ctrl+Alt, but it types text the input event handles.
+        if (ev.getModifierState && ev.getModifierState("AltGraph")) {
+            return false;
+        }
+        if (ev.ctrlKey || ev.altKey || ev.metaKey) {
+            return true;
+        }
+        if ([...ev.key].length === 1) {
+            return false;
+        }
+        return ev.shiftKey || !CAPTURE_KEYS.has(ev.key);
+    };
+    // Only keydown is forwarded: xterm.js's keyup handler focuses its textarea, which would
+    // dismiss the OS keyboard.
+    const forwardToXterm = (ev) => {
+        const core = term && term._core;
+        if (!core || typeof core._keyDown !== "function") {
+            return false;
+        }
+        core._keyDown(ev);
+        return true;
+    };
+
     div.addEventListener("keydown", (ev) => {
+        if (isKeyForXterm(ev) && forwardToXterm(ev)) {
+            return;
+        }
         switch (ev.key) {
             case "Enter":
                 ev.preventDefault();
