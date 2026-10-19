@@ -23,6 +23,7 @@ pub struct SessionLayoutMetadata {
     pub default_shell: Option<PathBuf>,
     pub default_editor: Option<PathBuf>,
     tabs: Vec<TabLayoutMetadata>,
+    session_attention_muted: bool,
 }
 
 impl SessionLayoutMetadata {
@@ -106,20 +107,24 @@ impl SessionLayoutMetadata {
         }
         clients_metadata
     }
+    pub fn set_session_attention_muted(&mut self, session_attention_muted: bool) {
+        self.session_attention_muted = session_attention_muted;
+    }
     pub fn set_last_tab_attention_muted(&mut self, attention_muted: bool) {
         if let Some(tab) = self.tabs.last_mut() {
             tab.attention_muted = attention_muted;
         }
     }
     fn has_attention_flags(&self) -> bool {
-        self.tabs.iter().any(|tab| {
-            tab.attention_muted
-                || tab
-                    .tiled_panes
-                    .iter()
-                    .chain(tab.floating_panes.iter())
-                    .any(|p| p.attention_muted || p.ignore_output)
-        })
+        self.session_attention_muted
+            || self.tabs.iter().any(|tab| {
+                tab.attention_muted
+                    || tab
+                        .tiled_panes
+                        .iter()
+                        .chain(tab.floating_panes.iter())
+                        .any(|p| p.attention_muted || p.ignore_output)
+            })
     }
     pub fn is_dirty(&self) -> bool {
         if self.has_attention_flags() {
@@ -506,6 +511,7 @@ impl Into<GlobalLayoutManifest> for SessionLayoutMetadata {
                 .into_iter()
                 .map(|t| (t.name.clone().unwrap_or_default(), t.into()))
                 .collect(),
+            session_attention_muted: self.session_attention_muted,
         }
     }
 }

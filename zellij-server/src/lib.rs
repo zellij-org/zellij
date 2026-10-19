@@ -3506,29 +3506,56 @@ impl SocketOwnership {
 /// that lost a bind race to another server must leave the winner's socket alone.
 #[derive(Clone)]
 struct ServerSocket {
-    path: PathBuf,
+    path: Arc<std::sync::Mutex<PathBuf>>,
     ownership: Arc<std::sync::Mutex<Option<SocketOwnership>>>,
 }
 
 impl ServerSocket {
     fn new(path: PathBuf) -> Self {
         ServerSocket {
-            path,
+            path: Arc::new(std::sync::Mutex::new(path)),
             ownership: Arc::new(std::sync::Mutex::new(None)),
         }
     }
 
+    fn path(&self) -> PathBuf {
+        self.path.lock().unwrap().clone()
+    }
+
     fn bind(&self) -> std::io::Result<interprocess::local_socket::Listener> {
-        let ownership = SocketOwnership::acquire(&self.path)?;
-        drop(std::fs::remove_file(&self.path));
-        let listener = zellij_utils::consts::ipc_bind(&self.path)?;
+        let path = self.path();
+        let ownership = SocketOwnership::acquire(&path)?;
+        drop(std::fs::remove_file(&path));
+        let listener = zellij_utils::consts::ipc_bind(&path)?;
         *self.ownership.lock().unwrap() = Some(ownership);
         Ok(listener)
     }
 
+    fn rename(&self, new_path: PathBuf) -> std::io::Result<()> {
+        let mut ownership = self.ownership.lock().unwrap();
+        let mut path = self.path.lock().unwrap();
+        if *path == new_path {
+            return Ok(());
+        }
+        if ownership.is_none() {
+            *path = new_path;
+            return Ok(());
+        }
+        let new_ownership = SocketOwnership::acquire(&new_path)?;
+        if let Err(e) = std::fs::rename(&*path, &new_path) {
+            new_ownership.release();
+            return Err(e);
+        }
+        if let Some(old_ownership) = ownership.replace(new_ownership) {
+            old_ownership.release();
+        }
+        *path = new_path;
+        Ok(())
+    }
+
     fn remove_on_exit(&self) {
         if let Some(ownership) = self.ownership.lock().unwrap().take() {
-            drop(std::fs::remove_file(&self.path));
+            drop(std::fs::remove_file(self.path()));
             ownership.release();
         }
     }
@@ -3609,6 +3636,34 @@ mod server_socket_tests {
         let _second_listener = second.bind().unwrap();
 
         assert!(zellij_utils::consts::ipc_connect(&path).is_ok());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_renamed_server_moves_its_socket_and_lock_and_removes_them_on_exit() {
+        let dir = tempfile::tempdir().unwrap();
+        let old_path = dir.path().join("old-name");
+        let new_path = dir.path().join("new-name");
+        let server = ServerSocket::new(old_path.clone());
+        let _listener = server.bind().unwrap();
+
+        server.rename(new_path.clone()).unwrap();
+
+        assert!(!old_path.exists());
+        assert!(!SocketOwnership::lock_path(&old_path).unwrap().exists());
+        assert!(new_path.exists());
+        assert!(SocketOwnership::lock_path(&new_path).unwrap().exists());
+        let other = ServerSocket::new(new_path.clone());
+        assert_eq!(
+            other.bind().unwrap_err().kind(),
+            std::io::ErrorKind::AddrInUse
+        );
+
+        server.remove_on_exit();
+
+        assert!(!old_path.exists());
+        assert!(!new_path.exists());
+        assert!(!SocketOwnership::lock_path(&new_path).unwrap().exists());
     }
 }
 
@@ -4514,6 +4569,11 @@ pub fn start_server_impl(
                 );
             },
             ServerInstruction::SessionRenamed(new_name) => {
+                if let Err(e) =
+                    server_socket.rename(zellij_utils::consts::session_socket_path(&new_name))
+                {
+                    log::error!("Failed to rename ipc socket: {:?}", e);
+                }
                 rename_in_client_histories(&mut client_histories, &own_session_name, &new_name);
                 own_session_name = new_name;
             },
@@ -4589,8 +4649,7 @@ pub fn start_server_impl(
                 }
             },
             ServerInstruction::SwitchSession(mut connect_to_session, client_id, completion_tx) => {
-                let current_session_name = envs::get_session_name();
-                if connect_to_session.name == current_session_name.ok() {
+                if connect_to_session.name.as_deref() == Some(own_session_name.as_str()) {
                     log::error!("Cannot attach to same session");
                 } else {
                     attach_switch_context(

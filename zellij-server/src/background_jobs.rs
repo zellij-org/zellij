@@ -178,6 +178,7 @@ static PLUGIN_ANIMATION_OFFSET_DURATION_MD: u64 = 500;
 static SESSION_METADATA_WRITE_INTERVAL_MS: u64 = 1000;
 static UPDATE_AND_REPORT_CWDS_INTERVAL_MS: u64 = 1000;
 static DEFAULT_SERIALIZATION_INTERVAL: u64 = 60000;
+const SESSION_SUGGESTIONS_EXIT_WAIT: Duration = Duration::from_secs(3);
 pub const RENDER_QUIET_PERIOD: Duration = Duration::from_millis(1);
 pub const RENDER_MAX_DELAY: Duration = Duration::from_millis(8);
 
@@ -350,10 +351,11 @@ pub(crate) fn background_jobs_main(
     let serialization_interval = serialization_interval.map(|s| s * 1000); // convert to
                                                                            // milliseconds
     let render_schedule = spawn_render_scheduler(bus.senders.clone());
-    let session_suggestions = crate::session_suggestions::spawn_session_suggestions_service(
-        bus.senders.clone(),
-        live_sessions.clone(),
-    );
+    let (session_suggestions, mut session_suggestions_thread) =
+        crate::session_suggestions::spawn_session_suggestions_service(
+            bus.senders.clone(),
+            live_sessions.clone(),
+        );
     let peer_attention = crate::attention::peers::spawn_peer_attention_service(
         bus.senders.clone(),
         current_session_name.clone(),
@@ -418,11 +420,13 @@ pub(crate) fn background_jobs_main(
         });
     }
 
+    let session_metadata_writer_stopped = Arc::new(Mutex::new(false));
     if !disable_session_metadata {
         let current_session_name = current_session_name.clone();
         let current_session_info = current_session_info.clone();
         let current_session_layout = current_session_layout.clone();
         let session_id = session_id.clone();
+        let stopped = session_metadata_writer_stopped.clone();
         runtime.spawn(async move {
             let mut ticker = tokio::time::interval(std::time::Duration::from_millis(
                 SESSION_METADATA_WRITE_INTERVAL_MS,
@@ -430,15 +434,23 @@ pub(crate) fn background_jobs_main(
             ticker.tick().await;
             loop {
                 ticker.tick().await;
-                // Guard on the name (only set once the session is initialised),
-                // but key the cache folder by the stable session id.
-                let name = current_session_name.lock().unwrap().clone();
-                if name.is_empty() || session_id.is_empty() {
-                    continue;
+                let keep_running = {
+                    let stopped_guard = stopped.lock().unwrap();
+                    if *stopped_guard {
+                        false
+                    } else {
+                        let name = current_session_name.lock().unwrap().clone();
+                        if !name.is_empty() && !session_id.is_empty() {
+                            let info = current_session_info.lock().unwrap().clone();
+                            let layout = current_session_layout.lock().unwrap().clone();
+                            write_session_state_to_disk(session_id.clone(), info, layout);
+                        }
+                        true
+                    }
+                };
+                if !keep_running {
+                    return;
                 }
-                let info = current_session_info.lock().unwrap().clone();
-                let layout = current_session_layout.lock().unwrap().clone();
-                write_session_state_to_disk(session_id.clone(), info, layout);
             }
         });
     }
@@ -1097,8 +1109,15 @@ pub(crate) fn background_jobs_main(
                 });
             },
             BackgroundJob::Exit => {
+                *session_metadata_writer_stopped.lock().unwrap() = true;
                 let _ = session_suggestions
                     .send(crate::session_suggestions::SessionSuggestionsJob::Exit);
+                if let Some(handle) = session_suggestions_thread.take() {
+                    crate::session_suggestions::join_with_deadline(
+                        handle,
+                        SESSION_SUGGESTIONS_EXIT_WAIT,
+                    );
+                }
                 let _ = peer_attention.send(crate::attention::peers::PeerAttentionJob::Exit);
                 {
                     let (lock, wake) = &*render_schedule;

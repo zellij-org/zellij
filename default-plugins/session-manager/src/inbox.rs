@@ -889,34 +889,33 @@ impl Inbox {
         let indicator_rows = if overflowing { 2 } else { 0 };
         let item_rows = list_rows.saturating_sub(indicator_rows).max(1);
         let scroll = self.scroll_for(item_rows, lines.len());
+        let shown_end = self.shown_end(&lines, scroll, item_rows);
         let item_top = top + if overflowing { 1 } else { 0 };
-        if overflowing {
-            let above = self.item_ranges.iter().filter(|r| r.start < scroll).count();
-            let below = self
-                .item_ranges
-                .iter()
-                .filter(|r| r.end > scroll + item_rows)
-                .count();
-            if above > 0 {
-                print_text_with_coordinates(
-                    Text::from(format!("↑ {} more", above).as_str()).dim_all(),
-                    left,
-                    top,
-                    None,
-                    None,
-                );
-            }
-            if below > 0 {
-                print_text_with_coordinates(
-                    Text::from(format!("↓ {} more", below).as_str()).dim_all(),
-                    left,
-                    item_top + item_rows,
-                    None,
-                    None,
-                );
-            }
+        let (above, below) = self.hidden_counts(scroll, shown_end);
+        if above > 0 {
+            print_text_with_coordinates(
+                Text::from(format!("↑ {} more", above).as_str()).dim_all(),
+                left,
+                top,
+                None,
+                None,
+            );
         }
-        for (row, line) in lines.into_iter().enumerate().skip(scroll).take(item_rows) {
+        if below > 0 {
+            print_text_with_coordinates(
+                Text::from(format!("↓ {} more", below).as_str()).dim_all(),
+                left,
+                item_top + item_rows,
+                None,
+                None,
+            );
+        }
+        for (row, line) in lines
+            .into_iter()
+            .enumerate()
+            .skip(scroll)
+            .take(shown_end.saturating_sub(scroll))
+        {
             let line_y = item_top + row - scroll;
             if let BlockLine::Text {
                 text,
@@ -992,6 +991,31 @@ impl Inbox {
         }
         self.list_scroll = scroll;
         scroll
+    }
+
+    fn shown_end(&self, lines: &[BlockLine], scroll: usize, item_rows: usize) -> usize {
+        let mut end = (scroll + item_rows).min(lines.len());
+        if let Some(cut) = self
+            .item_ranges
+            .iter()
+            .find(|r| r.start > scroll && r.start < end && r.end > end)
+        {
+            end = cut.start;
+        }
+        while end > scroll && matches!(lines.get(end - 1), Some(BlockLine::Blank)) {
+            end -= 1;
+        }
+        end
+    }
+
+    fn hidden_counts(&self, scroll: usize, shown_end: usize) -> (usize, usize) {
+        let above = self.item_ranges.iter().filter(|r| r.start < scroll).count();
+        let below = self
+            .item_ranges
+            .iter()
+            .filter(|r| r.start >= scroll && r.end > shown_end)
+            .count();
+        (above, below)
     }
 
     fn primary_hints(&self) -> Vec<(crate::help::Hint, ItemAction)> {
@@ -1249,8 +1273,10 @@ impl Inbox {
         if width < 10 || height < 4 {
             return;
         }
-        self.browser_targets
-            .push((y, x..x + width, BrowserTarget::Preview));
+        for row in y..y + height {
+            self.browser_targets
+                .push((row, x..x + width, BrowserTarget::Preview));
+        }
         let item = self.selected_item().cloned();
         let inner = width.saturating_sub(2);
         let title = match (fixed_title, item.as_ref()) {
@@ -1912,6 +1938,125 @@ mod tests {
         assert_eq!(inbox.tab, BrowserTab::Inbox);
         assert!(!inbox.select_newest_on_arrival);
         assert_eq!(inbox.selected_item().unwrap().session, "api");
+    }
+
+    fn browser_hints() -> Vec<crate::help::Hint> {
+        vec![
+            crate::help::hint("<↓↑>", "select"),
+            crate::help::hint("<?>", "all keys"),
+        ]
+    }
+
+    fn key(session: &str, id: u32) -> ItemKey {
+        ItemKey {
+            session: session.to_owned(),
+            pane_id: PaneId::Terminal(id),
+        }
+    }
+
+    #[test]
+    fn clicks_on_the_help_actions_and_the_hidden_items_line_hit_what_is_drawn_there() {
+        let mut inbox = Inbox::default();
+        inbox.update_global(global(vec![
+            item("api", 1, AttentionStatus::NeedsYou, 100),
+            item("build", 4, AttentionStatus::Quiet, 70),
+        ]));
+        inbox.help_hints = browser_hints();
+        let help = inbox.help_block(76);
+        assert!(help[0].text.starts_with("<ENTER> go there  <r> reply  <c> dismiss"));
+        inbox.render_browser(0, 1, 88, 15, false);
+        assert_eq!(inbox.browser_target_at(5, 8), Some(BrowserTarget::Item(key("api", 1))));
+        assert_eq!(inbox.browser_target_at(7, 8), Some(BrowserTarget::Item(key("api", 1))));
+        assert_eq!(inbox.browser_target_at(8, 8), None);
+        assert_eq!(inbox.browser_target_at(9, 8), Some(BrowserTarget::ShowQuiet));
+        assert_eq!(inbox.browser_target_at(10, 8), None);
+        assert_eq!(
+            inbox.browser_target_at(12, 6),
+            Some(BrowserTarget::Action(ItemAction::Go))
+        );
+        assert_eq!(
+            inbox.browser_target_at(12, 21),
+            Some(BrowserTarget::Action(ItemAction::Go))
+        );
+        assert_eq!(
+            inbox.browser_target_at(12, 36),
+            Some(BrowserTarget::Action(ItemAction::Dismiss))
+        );
+        assert_eq!(inbox.browser_target_at(13, 8), None);
+        inbox.render_browser(0, 1, 88, 15, false);
+        assert_eq!(
+            inbox.browser_target_at(12, 36),
+            Some(BrowserTarget::Action(ItemAction::Dismiss))
+        );
+        assert_eq!(
+            inbox
+                .browser_targets
+                .iter()
+                .filter(|(_, _, t)| matches!(t, BrowserTarget::Action(ItemAction::Go)))
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn the_whole_preview_can_be_clicked() {
+        let mut inbox = Inbox::default();
+        inbox.update_global(global(vec![item("api", 1, AttentionStatus::NeedsYou, 100)]));
+        inbox.help_hints = browser_hints();
+        inbox.preview_open = true;
+        inbox.render_browser(0, 1, 88, 15, false);
+        let rows: Vec<usize> = inbox
+            .browser_targets
+            .iter()
+            .filter(|(_, _, t)| *t == BrowserTarget::Preview)
+            .map(|(y, _, _)| *y)
+            .collect();
+        assert!(rows.len() >= 4, "{:?}", rows);
+        assert!(rows.windows(2).all(|w| w[1] == w[0] + 1), "{:?}", rows);
+        let (_, columns, _) = inbox
+            .browser_targets
+            .iter()
+            .find(|(_, _, t)| *t == BrowserTarget::Preview)
+            .unwrap()
+            .clone();
+        assert_eq!(
+            inbox.browser_target_at(rows[1] as isize, columns.start + 3),
+            Some(BrowserTarget::Preview)
+        );
+    }
+
+    #[test]
+    fn a_notification_that_does_not_fit_is_left_out_and_counted_as_more() {
+        let mut inbox = Inbox::default();
+        inbox.update_global(global(
+            (1..=6)
+                .map(|id| item("api", id, AttentionStatus::NeedsYou, 100 + id as u64))
+                .collect(),
+        ));
+        inbox.help_hints = browser_hints();
+        let lines = inbox.block_lines(76, 200, false);
+        assert_eq!(lines.len(), 23);
+        let scroll = inbox.scroll_for(10, lines.len());
+        assert_eq!(scroll, 0);
+        let end = inbox.shown_end(&lines, scroll, 10);
+        assert_eq!(end, 7);
+        assert_eq!(inbox.hidden_counts(scroll, end), (0, 4));
+        assert_eq!(inbox.shown_end(&lines, 0, 11), 11);
+        assert_eq!(inbox.hidden_counts(0, 11), (0, 3));
+        inbox.render_browser(0, 1, 88, 17, false);
+        assert_eq!(inbox.browser_target_at(4, 10), Some(BrowserTarget::Item(key("api", 6))));
+        assert_eq!(inbox.browser_target_at(8, 10), Some(BrowserTarget::Item(key("api", 5))));
+        assert_eq!(inbox.browser_target_at(10, 10), Some(BrowserTarget::Item(key("api", 5))));
+        for row in 11..=15 {
+            assert_eq!(inbox.browser_target_at(row, 10), None, "row {}", row);
+        }
+        let items: Vec<&BrowserTarget> = inbox
+            .browser_targets
+            .iter()
+            .filter(|(_, _, t)| matches!(t, BrowserTarget::Item(_)))
+            .map(|(_, _, t)| t)
+            .collect();
+        assert_eq!(items.len(), 6);
     }
 
     #[test]

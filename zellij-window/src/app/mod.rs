@@ -8,6 +8,7 @@ pub mod notifier;
 pub mod platform_windows;
 pub mod probe;
 pub mod route;
+pub mod standalone;
 pub mod state;
 pub mod tray;
 pub mod watcher;
@@ -45,6 +46,13 @@ pub enum AppEvent {
     #[cfg_attr(not(unix), allow(dead_code))]
     Terminate,
     Describe(std::sync::mpsc::Sender<zellij_utils::app_control::AppState>),
+    RaiseWindows {
+        pane: Option<PaneId>,
+    },
+    DetachWindows,
+    Handled {
+        ticket: u64,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -375,8 +383,12 @@ impl Background {
                 request: OpenWindowRequest::default(),
                 token: None,
             }],
-            MenuAction::DetachAllWindows => vec![Intent::DetachWindows],
+            MenuAction::DetachAllWindows => {
+                standalone::detach_all_soon();
+                vec![Intent::DetachWindows]
+            },
             MenuAction::DetachEverywhere => {
+                standalone::detach_all_soon();
                 detach_everywhere(self.live_sessions());
                 vec![]
             },

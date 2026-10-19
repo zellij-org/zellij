@@ -691,7 +691,7 @@ pub type SwapFloatingLayout = (
     Option<String>,
 ); // Option<String> is the swap layout name
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct Layout {
     pub tabs: Vec<(Option<String>, TiledPaneLayout, Vec<FloatingPaneLayout>)>,
     pub focused_tab_index: Option<usize>,
@@ -699,6 +699,25 @@ pub struct Layout {
     pub swap_layouts: Vec<(TiledPaneLayout, Vec<FloatingPaneLayout>)>,
     pub swap_tiled_layouts: Vec<SwapTiledLayout>,
     pub swap_floating_layouts: Vec<SwapFloatingLayout>,
+    #[serde(default)]
+    pub session_attention_muted: bool,
+}
+
+impl std::fmt::Debug for Layout {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let mut debug_struct = f.debug_struct("Layout");
+        debug_struct
+            .field("tabs", &self.tabs)
+            .field("focused_tab_index", &self.focused_tab_index)
+            .field("template", &self.template)
+            .field("swap_layouts", &self.swap_layouts)
+            .field("swap_tiled_layouts", &self.swap_tiled_layouts)
+            .field("swap_floating_layouts", &self.swap_floating_layouts);
+        if self.session_attention_muted {
+            debug_struct.field("session_attention_muted", &self.session_attention_muted);
+        }
+        debug_struct.finish()
+    }
 }
 
 /// Layout configuration for a single tab in multi-tab override

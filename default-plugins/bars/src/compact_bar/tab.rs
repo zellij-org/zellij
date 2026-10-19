@@ -100,14 +100,12 @@ pub fn render_tab(
 
     let marker_part = match marker {
         Some(marker) => {
-            let fallback = if tab.active {
-                palette.ribbon_selected.base
-            } else {
+            let color = if dimmed {
                 palette.ribbon_unselected.base
+            } else {
+                foreground_color
             };
-            marker
-                .paint(&palette, fallback, background_color)
-                .to_string()
+            marker.paint(color, background_color).to_string()
         },
         None => String::new(),
     };

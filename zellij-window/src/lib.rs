@@ -618,7 +618,7 @@ fn run_app(
         let poster = poster.clone();
         instance.serve(move |request| match request {
             AppRequest::Ping => AppReply::Done,
-            AppRequest::Describe => describe(&poster),
+            AppRequest::Describe => app::standalone::with_standalone(describe(&poster)),
             request => {
                 if poster.post(app::AppEvent::Request(request)) {
                     AppReply::Done
@@ -739,6 +739,22 @@ impl Dialer {
         request: &OpenWindowRequest,
         geometry: Geometry,
     ) -> Result<connection::Connection> {
+        let target = Target {
+            reach: Reach::Local(self.client_info(request)?),
+            opening: Opening::Participant(self.capabilities),
+        };
+        connect(
+            &target,
+            &self.opts,
+            &self.config_options,
+            geometry,
+            (None, request.pane_id),
+            Default::default(),
+            None,
+        )
+    }
+
+    fn client_info(&self, request: &OpenWindowRequest) -> Result<ClientInfo> {
         let caller_cwd = request
             .cwd
             .clone()
@@ -790,19 +806,7 @@ impl Dialer {
                 resolved.client
             },
         };
-        let target = Target {
-            reach: Reach::Local(info),
-            opening: Opening::Participant(self.capabilities),
-        };
-        connect(
-            &target,
-            &self.opts,
-            &self.config_options,
-            geometry,
-            (None, request.pane_id),
-            Default::default(),
-            None,
-        )
+        Ok(info)
     }
 }
 
@@ -1095,7 +1099,14 @@ fn drive(
             let switching = move |to: &ConnectToSession, geometry: Geometry| {
                 switch(to, &opts, &config_options, geometry, capabilities)
             };
-            window::run(connection, loop_options, window, fonts, Box::new(switching))?;
+            window::run(
+                connection,
+                loop_options,
+                window,
+                fonts,
+                Box::new(switching),
+                !args.watch,
+            )?;
         },
         None => {
             let outcome = client_loop::run(connection, loop_options)?;
@@ -1594,6 +1605,56 @@ mod tests {
             panel_border(&themed(eight_bit), &options),
             options.paints.indexed(4)
         );
+    }
+
+    fn dialer() -> Dialer {
+        Dialer {
+            opts: CliArgs::default(),
+            config_options: SessionOptions::default(),
+            capabilities: capabilities(),
+        }
+    }
+
+    #[test]
+    fn a_window_request_without_a_session_starts_a_new_session_in_its_folder() {
+        let cwd = PathBuf::from("/tmp/zellij-window-chosen-folder");
+        let info = dialer()
+            .client_info(&OpenWindowRequest {
+                session: None,
+                create: true,
+                cwd: Some(cwd.clone()),
+                ..Default::default()
+            })
+            .unwrap();
+        match info {
+            ClientInfo::New(name, layout, folder, _initial_panes) => {
+                assert!(!name.is_empty());
+                assert_eq!(layout, None);
+                assert_eq!(folder, Some(cwd));
+            },
+            other => panic!("a nameless window request resolved to {:?}", other),
+        }
+    }
+
+    #[test]
+    fn a_window_request_creating_an_unknown_session_starts_it_in_its_folder() {
+        let name = format!("zellij-window-new-in-folder-{}", std::process::id());
+        let cwd = PathBuf::from("/tmp/zellij-window-chosen-folder");
+        let info = dialer()
+            .client_info(&OpenWindowRequest {
+                session: Some(name.clone()),
+                create: true,
+                cwd: Some(cwd.clone()),
+                ..Default::default()
+            })
+            .unwrap();
+        match info {
+            ClientInfo::New(found, _layout, folder, _initial_panes) => {
+                assert_eq!(found, name);
+                assert_eq!(folder, Some(cwd));
+            },
+            other => panic!("a new named session resolved to {:?}", other),
+        }
     }
 
     fn capabilities() -> connection::Capabilities {

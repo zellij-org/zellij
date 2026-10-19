@@ -323,33 +323,48 @@ fn keys_and_wheel_in_the_inbox_opened_from_the_indicator_stay_out_of_the_pane() 
         terminal.output(&needs_you(&format!("question {}", i)));
     }
     let pane = terminal.terminal_id();
-    let zellij = background.attach_focusing(TERMINAL_SIZE, Some((pane, false)));
-    let grid_snapshot = zellij.wait_until("the indicator shows the items", |grid_snapshot| {
+    let mut zellij = background.attach_focusing(TERMINAL_SIZE, Some((pane, false)));
+    let grid_snapshot = zellij.wait_until("the indicator shows the item", |grid_snapshot| {
         tab_bar(grid_snapshot).contains("need you")
     });
-    std::thread::sleep(Duration::from_millis(500));
+    let grid_snapshot = settled(&zellij, grid_snapshot);
     let before = terminal.stdin_bytes().len();
     let bar = tab_bar(&grid_snapshot);
     let column = bar[..bar.rfind('●').unwrap()].chars().count() + 2;
     zellij.send_stdin(&sgr(0, column, 1, 'M'));
     zellij.send_stdin(&sgr(0, column, 1, 'm'));
-    zellij.wait_until("the inbox opens", |grid_snapshot| {
+    zellij.wait_until("the inbox opens focused", |grid_snapshot| {
         grid_snapshot.contains("Inbox (")
+            && grid_snapshot.contains("<ENTER> go there")
+            && grid_snapshot.cursor.is_none()
     });
-    std::thread::sleep(Duration::from_millis(300));
-    for _ in 0..4 {
-        zellij.send_stdin(&keys::DOWN);
-        std::thread::sleep(Duration::from_millis(100));
-    }
-    std::thread::sleep(Duration::from_millis(300));
-    assert_eq!(leaked_since(&terminal, before), "", "keys leaked");
     let (rows, cols) = (TERMINAL_SIZE.rows, TERMINAL_SIZE.cols);
     for _ in 0..4 {
+        zellij.send_stdin(&keys::DOWN);
         zellij.send_stdin(&sgr(65, cols / 2, rows / 2, 'M'));
-        std::thread::sleep(Duration::from_millis(100));
     }
-    std::thread::sleep(Duration::from_millis(300));
-    assert_eq!(leaked_since(&terminal, before), "", "the wheel leaked");
+    zellij.send_stdin(&keys::key('p'));
+    zellij.wait_until("the keys before the barrier were handled", |grid_snapshot| {
+        grid_snapshot.contains("Latest output")
+    });
+    assert_eq!(
+        leaked_since(&terminal, before),
+        "",
+        "keys or the wheel leaked"
+    );
+    zellij.quit();
+}
+
+fn settled(zellij: &TestSession, mut grid_snapshot: GridSnapshot) -> GridSnapshot {
+    let deadline = Instant::now() + zellij_integration_tests::default_timeout();
+    loop {
+        std::thread::sleep(Duration::from_millis(200));
+        let current = zellij.snapshot();
+        if current.text == grid_snapshot.text || Instant::now() >= deadline {
+            return current;
+        }
+        grid_snapshot = current;
+    }
 }
 
 const SESSIONS_HELP: &str = "<F1> all keys";
@@ -424,11 +439,9 @@ fn after_any_input_the_dropdown_stays_where_the_user_left_it() {
     wait_for_indicator(&zellij, "the calm indicator", "2 running");
     open_dropdown_on_the_sessions(&zellij, background.session_name());
     zellij.send_stdin(&keys::DOWN);
+    let preview_frame = format!("┌ {} ", background.session_name());
     zellij.wait_until("the other session is selected", |grid_snapshot| {
-        grid_snapshot
-            .lines()
-            .iter()
-            .any(|line| line.contains(background.session_name()) && line.contains('>'))
+        grid_snapshot.contains(&preview_frame)
     });
     terminal.output(&needs_you("Arrived later?"));
     zellij.wait_until("the item is counted", |grid_snapshot| {

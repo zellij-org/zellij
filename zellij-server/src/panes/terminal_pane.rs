@@ -1478,7 +1478,7 @@ impl TerminalPane {
             (colors.text_unselected.base, true)
         } else {
             match marker.status {
-                AttentionStatus::NeedsYou => (colors.frame_highlight.emphasis_0, false),
+                AttentionStatus::NeedsYou => (colors.text_unselected.emphasis_0, false),
                 AttentionStatus::Failed => (colors.exit_code_error.base, false),
                 AttentionStatus::Done => (colors.exit_code_success.base, false),
                 AttentionStatus::Working => (colors.text_unselected.emphasis_1, false),

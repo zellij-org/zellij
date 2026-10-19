@@ -79,10 +79,7 @@ fn main_session() -> TestSession {
 }
 
 fn selected_session_line(grid_snapshot: &GridSnapshot, name: &str) -> bool {
-    grid_snapshot
-        .lines()
-        .iter()
-        .any(|line| line.contains(name) && line.contains('>'))
+    grid_snapshot.contains(&format!("┌ {} ", name))
 }
 
 fn open_sessions_tab(zellij: &TestSession, other: &str) {
@@ -401,12 +398,14 @@ fn welcome_screen() -> TestSession {
 }
 
 fn select_on_the_welcome_screen(zellij: &TestSession, other: &str) {
-    zellij.wait_until("the welcome screen lists the other session", |grid_snapshot| {
+    let listed = zellij.wait_until("the welcome screen lists the other session", |grid_snapshot| {
         grid_snapshot.contains("new session with a random name") && grid_snapshot.contains(other)
     });
-    zellij.send_stdin(&keys::DOWN);
+    if !listed.contains("<Ctrl w>") {
+        zellij.send_stdin(&keys::DOWN);
+    }
     zellij.wait_until("the other session is selected with its window keys", |grid_snapshot| {
-        selected_session_line(grid_snapshot, other) && grid_snapshot.contains("<Ctrl w>")
+        grid_snapshot.contains(other) && grid_snapshot.contains("<Ctrl w>")
     });
 }
 

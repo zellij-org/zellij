@@ -127,17 +127,30 @@ pub fn should_report_activity() -> bool {
 pub fn spawn_session_suggestions_service(
     senders: ThreadSenders,
     live_sessions: crate::attention::peers::LiveSessions,
-) -> Sender<SessionSuggestionsJob> {
+) -> (Sender<SessionSuggestionsJob>, Option<thread::JoinHandle<()>>) {
     let (sender, receiver) = channel();
     let own_sender = sender.clone();
-    let _ = thread::Builder::new()
+    let handle = thread::Builder::new()
         .name("session_suggestions".to_owned())
         .spawn(move || {
             let mut service = SessionSuggestionsService::new(senders, own_sender);
             service.live_sessions = live_sessions;
             service.run(receiver);
-        });
-    sender
+        })
+        .ok();
+    (sender, handle)
+}
+
+pub fn join_with_deadline(handle: thread::JoinHandle<()>, limit: Duration) {
+    let deadline = Instant::now() + limit;
+    while !handle.is_finished() {
+        if Instant::now() >= deadline {
+            log::error!("The session suggestions thread did not stop in time");
+            return;
+        }
+        thread::sleep(Duration::from_millis(5));
+    }
+    let _ = handle.join();
 }
 
 struct SessionSuggestionsService {
@@ -243,10 +256,18 @@ impl SessionSuggestionsService {
             match job {
                 Some(SessionSuggestionsJob::Exit) => break,
                 Some(SessionSuggestionsJob::SocketFolderChanged) => {
+                    let mut exiting = false;
                     while let Ok(next) = receiver.try_recv() {
+                        if next == SessionSuggestionsJob::Exit {
+                            exiting = true;
+                            break;
+                        }
                         if next != SessionSuggestionsJob::SocketFolderChanged {
                             self.handle(next);
                         }
+                    }
+                    if exiting {
+                        break;
                     }
                     self.report_counts_to_subscribers();
                 },

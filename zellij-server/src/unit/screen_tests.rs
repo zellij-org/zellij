@@ -19415,3 +19415,27 @@ fn a_new_tab_does_not_inherit_the_mute_of_a_closed_tab() {
         "a freshly opened tab is reported as muted"
     );
 }
+
+#[test]
+fn a_session_preview_with_an_anchor_includes_lines_that_scrolled_off_the_pane() {
+    let (mut screen, _plugin_receiver) = screen_capturing_plugin_instructions();
+    let mut output = String::new();
+    for line in 0..60 {
+        output.push_str(&format!("history line {:03}\r\n", line));
+    }
+    for tab in screen.tabs.values_mut() {
+        tab.handle_pty_bytes(1, output.as_bytes().to_vec()).unwrap();
+    }
+    let screen_only = screen.session_preview(None, Some((1, false)), None);
+    assert!(screen_only.contents.contains("history line 059"));
+    assert!(!screen_only.contents.contains("history line 000"));
+    let with_history = screen.session_preview(
+        None,
+        Some((1, false)),
+        Some(zellij_utils::data::PreviewAnchor::Bottom),
+    );
+    assert!(with_history.contents.contains("history line 000"));
+    assert!(with_history.contents.contains("history line 059"));
+    assert_eq!(with_history.anchor_line, None);
+    assert_eq!(with_history.pane_id, Some((1, false)));
+}

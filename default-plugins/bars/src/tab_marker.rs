@@ -37,29 +37,27 @@ impl TabMarker {
         self.symbol.width() + 1
     }
 
-    fn color(&self, palette: &Styling, fallback: PaletteColor) -> PaletteColor {
-        match self.status {
-            Some(AttentionStatus::NeedsYou) => palette.frame_highlight.emphasis_0,
-            Some(AttentionStatus::Failed) => palette.exit_code_error.base,
-            Some(AttentionStatus::Done) => palette.exit_code_success.base,
-            Some(AttentionStatus::Working) => palette.text_unselected.emphasis_1,
-            _ => fallback,
+    fn is_urgent(&self) -> bool {
+        matches!(
+            self.status,
+            Some(AttentionStatus::NeedsYou) | Some(AttentionStatus::Failed)
+        )
+    }
+
+    fn style(&self, color: PaletteColor, background: PaletteColor) -> ansi_term::Style {
+        let base = style!(color, background);
+        if self.muted {
+            base.dimmed()
+        } else if self.is_urgent() {
+            base.bold()
+        } else {
+            base
         }
     }
 
-    pub fn paint(
-        &self,
-        palette: &Styling,
-        fallback: PaletteColor,
-        background: PaletteColor,
-    ) -> ANSIString<'static> {
-        let color = self.color(palette, fallback);
-        let text = format!("{} ", self.symbol);
-        if self.muted {
-            style!(color, background).dimmed().paint(text)
-        } else {
-            style!(color, background).bold().paint(text)
-        }
+    pub fn paint(&self, color: PaletteColor, background: PaletteColor) -> ANSIString<'static> {
+        self.style(color, background)
+            .paint(format!("{} ", self.symbol))
     }
 }
 
@@ -111,6 +109,24 @@ mod tests {
         assert_eq!(marker.symbol, "⊘");
         let marker = TabMarker::for_tab(&tab(AttentionStatus::Idle, true, false), true).unwrap();
         assert_eq!(marker.symbol, "-");
+    }
+
+    #[test]
+    fn marks_use_the_tab_text_colour_and_only_urgent_ones_are_bold() {
+        let text = PaletteColor::Rgb((11, 11, 11));
+        let background = PaletteColor::Rgb((150, 220, 90));
+        let expected = style!(text, background);
+        let cases = [
+            (AttentionStatus::NeedsYou, false, expected.bold()),
+            (AttentionStatus::Failed, false, expected.bold()),
+            (AttentionStatus::Done, false, expected),
+            (AttentionStatus::Working, false, expected),
+            (AttentionStatus::NeedsYou, true, expected.dimmed()),
+        ];
+        for (status, muted, style) in cases {
+            let marker = TabMarker::for_tab(&tab(status, muted, false), false).unwrap();
+            assert_eq!(marker.style(text, background), style, "{:?}", status);
+        }
     }
 
     #[test]

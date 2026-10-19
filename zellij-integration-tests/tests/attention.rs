@@ -628,7 +628,6 @@ fn mute_ignore_and_tab_mute_are_restored_after_resurrection() {
 }
 
 #[test]
-#[ignore = "a session muted before saving is not muted after resurrection, although ATTENTION_PLAN.md says session mute is saved in session-metadata.kdl; listed under Questions for the operator"]
 fn a_muted_session_stays_muted_after_resurrection() {
     let mut zellij = TestRunner::new(TERMINAL_SIZE)
         .with_config(SERIALIZING)
@@ -637,7 +636,13 @@ fn a_muted_session_stays_muted_after_resurrection() {
     terminal.disable_echo();
     zellij.run_cli_action(CliAction::MuteSession);
     wait_for_session_attention(&zellij, "the session is muted", |attention| attention.muted);
-    save_and_resurrect(&mut zellij);
+    zellij.save_session();
+    zellij.wait_for_serialized_session();
+    zellij_integration_tests::wait_for("the session mute to be saved", || {
+        serialized_layout(&zellij).contains("session_attention_muted=true")
+    });
+    zellij.quit();
+    zellij.resurrect(TERMINAL_SIZE);
     let restored = zellij.expect_pty_spawn();
     restored.disable_echo();
     restored.output(b"$ ");

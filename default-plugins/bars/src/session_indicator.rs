@@ -294,7 +294,7 @@ impl SessionIndicator {
                     CARD_WIDTH,
                     CARD_HEIGHT,
                     PopupOptions {
-                        focused: false,
+                        focused: true,
                         corner: Some(PopupCorner::TopRight),
                     },
                 );

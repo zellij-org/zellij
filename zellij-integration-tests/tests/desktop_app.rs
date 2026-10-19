@@ -5,7 +5,8 @@ use std::process::{Child, Command, ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 
 use zellij_utils::app_control::{
-    describe_app_at, send_app_request_to, AppReply, AppRequest, AppState, PanelState, PopupView,
+    describe_app_at, send_app_request_to, AppReply, AppRequest, AppState, OpenWindowRequest,
+    PanelState, PopupView,
 };
 use zellij_utils::consts::{
     app_dir_in, session_socket_path_in, APP_CONTROL_SOCKET_NAME, APP_PANEL_SESSION,
@@ -54,37 +55,48 @@ fn zellij_binary() -> Option<PathBuf> {
     Some(profile_dir.join("zellij")).filter(|path| path.is_file())
 }
 
-fn display_is_free(number: u32) -> bool {
-    !Path::new(&format!("/tmp/.X11-unix/X{}", number)).exists()
-        && !Path::new(&format!("/tmp/.X{}-lock", number)).exists()
-}
-
 fn start_xvfb() -> Option<(Child, String)> {
-    let first = 100 + std::process::id() % 400;
-    for number in (first..first + 60).filter(|n| display_is_free(*n)) {
-        let mut xvfb = Command::new("Xvfb")
-            .arg(format!(":{}", number))
-            .args(["-screen", "0", "1280x800x24", "-nolisten", "tcp"])
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .ok()?;
-        let socket = format!("/tmp/.X11-unix/X{}", number);
-        let deadline = Instant::now() + Duration::from_secs(10);
-        loop {
-            if Path::new(&socket).exists() {
-                return Some((xvfb, format!(":{}", number)));
-            }
-            if xvfb.try_wait().ok().flatten().is_some() || Instant::now() >= deadline {
-                let _ = xvfb.kill();
-                let _ = xvfb.wait();
-                break;
-            }
-            std::thread::sleep(Duration::from_millis(20));
-        }
+    let mut xvfb = Command::new("Xvfb")
+        .args([
+            "-displayfd",
+            "1",
+            "-screen",
+            "0",
+            "1280x800x24",
+            "-nolisten",
+            "tcp",
+            "-noreset",
+        ])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+    let Some(stdout) = xvfb.stdout.take() else {
+        let _ = xvfb.kill();
+        let _ = xvfb.wait();
+        return None;
+    };
+    let (sender, received) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut reader = std::io::BufReader::new(stdout);
+        let mut line = String::new();
+        let _ = std::io::BufRead::read_line(&mut reader, &mut line);
+        let _ = sender.send(line);
+        let _ = std::io::copy(&mut reader, &mut std::io::sink());
+    });
+    let number = received
+        .recv_timeout(Duration::from_secs(10))
+        .ok()
+        .and_then(|line| line.trim().parse::<u32>().ok());
+    match number {
+        Some(number) => Some((xvfb, format!(":{}", number))),
+        None => {
+            let _ = xvfb.kill();
+            let _ = xvfb.wait();
+            None
+        },
     }
-    None
 }
 
 struct Desktop {
@@ -178,6 +190,7 @@ impl Desktop {
             .env("XDG_CACHE_HOME", root.join("cache"))
             .env("XDG_DATA_HOME", root.join("data"))
             .env("XDG_CONFIG_HOME", root.join("config"))
+            .env("ZELLIJ_CONFIG_DIR", root.join("config/zellij"))
             .env("XDG_RUNTIME_DIR", root.join("runtime"))
             .env("DISPLAY", &self.display)
             .env("SHELL", "/bin/sh")
@@ -955,6 +968,12 @@ fn the_tray_icon_registers_and_its_menu_works() {
     }
     desktop.click_menu(MENU_HIDE_PERMANENTLY);
     desktop.wait_for_state("the icon to be hidden", |state| !state.tray_icon);
+    let config = desktop.root.path().join("config/zellij/config.kdl");
+    desktop.wait_for("the hidden icon to be saved in the config file", || {
+        std::fs::read_to_string(&config)
+            .map(|text| text.contains("attention") && text.contains("tray_icon false"))
+            .unwrap_or(false)
+    });
 }
 
 #[test]
@@ -1015,20 +1034,49 @@ fn two_socket_folders_keep_two_apps_apart() {
 }
 
 #[test]
-fn a_standalone_window_does_not_join_the_app() {
-    let Some(mut desktop) = Desktop::start() else {
+fn a_standalone_window_is_listed_brought_forward_and_closed_by_the_app() {
+    let Some(mut desktop) = Desktop::start_with_bus() else {
         return;
     };
-    let session = desktop.start_app();
-    let standalone = desktop.launch(&["--standalone", &session]);
+    desktop.start_app();
+    desktop.start_background_session("solo");
+    let standalone = desktop.launch(&["--standalone", "solo"]);
+    let on_solo = |state: &AppState| -> usize {
+        state
+            .windows
+            .iter()
+            .filter(|window| window.session.as_deref() == Some("solo"))
+            .count()
+    };
+    desktop.wait_for_state("the app to list the standalone window", |state| {
+        state.windows.len() == 2 && on_solo(state) == 1
+    });
+    assert_eq!(
+        send_app_request_to(
+            &desktop.control_socket(),
+            &AppRequest::OpenWindow(OpenWindowRequest {
+                session: Some("solo".to_owned()),
+                create: false,
+                ..Default::default()
+            })
+        ),
+        Ok(AppReply::Done)
+    );
     std::thread::sleep(QUIET);
     let state = desktop.state().unwrap();
-    assert_eq!(state.windows.len(), 1, "{:?}", state);
+    assert_eq!(state.windows.len(), 2, "{:?}\n{}", state, desktop.logs());
+    assert_eq!(on_solo(&state), 1, "{:?}", state);
     assert!(
         desktop.apps[standalone].try_wait().unwrap().is_none(),
         "the standalone window exited\n{}",
         desktop.logs()
     );
+    desktop.click_menu(MENU_CLOSE_ALL_WINDOWS);
+    desktop.wait_for_state("every window closed, the standalone one too", |state| {
+        state.windows.is_empty()
+    });
+    desktop.wait_for_exit(standalone);
+    assert!(desktop.answers("solo"), "closing the windows stopped solo");
 }
 
 #[test]
@@ -1101,6 +1149,47 @@ fn a_new_session_window_starts_in_the_chosen_folder() {
     desktop.wait_for("the new session's pane to start in the folder", || {
         desktop
             .pane_lines_of("in-folder")
+            .map(|lines| lines.iter().any(|line| line.contains(&folder_text)))
+            .unwrap_or(false)
+    });
+}
+
+#[test]
+fn a_window_on_an_unnamed_new_session_starts_in_the_chosen_folder() {
+    let Some(mut desktop) = Desktop::start() else {
+        return;
+    };
+    let first = desktop.start_app();
+    let folder = desktop.root.path().join("unnamed-folder");
+    std::fs::create_dir_all(&folder).unwrap();
+    assert_eq!(
+        send_app_request_to(
+            &desktop.control_socket(),
+            &AppRequest::OpenWindow(OpenWindowRequest {
+                session: None,
+                create: true,
+                cwd: Some(folder.clone()),
+                ..Default::default()
+            })
+        ),
+        Ok(AppReply::Done)
+    );
+    let is_new = |session: &Option<String>| -> bool {
+        session.as_deref().map(|name| name != first).unwrap_or(false)
+    };
+    let state = desktop.wait_for_state("a window on a second session", |state| {
+        state.windows.iter().any(|window| is_new(&window.session))
+    });
+    let session = state
+        .windows
+        .iter()
+        .find(|window| is_new(&window.session))
+        .and_then(|window| window.session.clone())
+        .unwrap();
+    let folder_text = folder.display().to_string();
+    desktop.wait_for("the new session's pane to start in the folder", || {
+        desktop
+            .pane_lines_of(&session)
             .map(|lines| lines.iter().any(|line| line.contains(&folder_text)))
             .unwrap_or(false)
     });

@@ -2597,7 +2597,7 @@ impl<'a> KdlLayoutParser<'a> {
                 )?;
             }
         }
-        if !child_tabs.is_empty() {
+        let mut layout = if !child_tabs.is_empty() {
             // Check if layout_node has tab properties when there are explicit tabs
             let layout_has_tab_name =
                 kdl_get_string_property_or_child_value!(layout_node, "name").is_some();
@@ -2698,6 +2698,10 @@ impl<'a> KdlLayoutParser<'a> {
                 hide_floating_panes,
                 tab_cwd,
             )
-        }
+        }?;
+        layout.session_attention_muted =
+            kdl_get_bool_property_or_child_value!(layout_node, "session_attention_muted")
+                .unwrap_or(false);
+        Ok(layout)
     }
 }

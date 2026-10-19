@@ -229,5 +229,9 @@ fn detaching_everywhere_detaches_every_client_of_every_listed_session_and_only_t
     assert!(session_answers(first.session_name(), Duration::from_secs(2)));
     assert!(session_answers(second.session_name(), Duration::from_secs(2)));
     std::thread::sleep(Duration::from_millis(300));
-    assert!(!kept_client.has_exited(), "a session that was not listed lost its client");
+    assert!(
+        !kept_client.has_exited(),
+        "a session that was not listed lost its client; it received {:?}",
+        kept_client.received_server_messages()
+    );
 }

@@ -560,6 +560,10 @@ impl State {
     }
 
     fn render_plugin_body(&mut self, rows: usize, cols: usize) {
+        self.inbox.browser_targets.clear();
+        if self.panel.is_popup && self.panel.needs_initial_layout {
+            return;
+        }
         if self.app_quit {
             self.render_app_quit(rows, cols);
             return;

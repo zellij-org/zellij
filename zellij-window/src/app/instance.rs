@@ -86,7 +86,7 @@ fn become_primary(mut lock: File, control: PathBuf) -> Result<Instance> {
     })
 }
 
-type Handler = Arc<dyn Fn(AppRequest) -> AppReply + Send + Sync>;
+pub(crate) type Handler = Arc<dyn Fn(AppRequest) -> AppReply + Send + Sync>;
 
 impl Instance {
     pub fn serve(
@@ -123,7 +123,7 @@ impl Instance {
     }
 }
 
-fn spawn_answering(
+pub(crate) fn spawn_answering(
     listener: interprocess::local_socket::Listener,
     #[cfg(windows)] reply_listener: interprocess::local_socket::Listener,
     handle: Handler,

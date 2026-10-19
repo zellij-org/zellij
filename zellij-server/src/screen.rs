@@ -9581,6 +9581,10 @@ impl Screen {
         if let Some(default_shell) = default_shell {
             session_layout_metadata.update_default_shell(default_shell);
         }
+        if tab_index.is_none() {
+            session_layout_metadata
+                .set_session_attention_muted(self.attention.session_is_muted());
+        }
         let first_client_id = self.get_first_client_id();
         let active_tab_index =
             first_client_id.and_then(|client_id| self.active_tab_ids.get(&client_id));
@@ -10412,9 +10416,17 @@ pub(crate) fn screen_thread_main(
     screen
         .attention
         .set_config(config.attention.clone(), crate::attention::now_ms());
-    if let Ok(session_name) = zellij_utils::envs::get_session_name() {
+    if screen.default_layout.session_attention_muted {
+        screen
+            .attention
+            .set_session_muted(true, crate::attention::now_ms());
+    }
+    if let Some(session_name) = Some(screen.session_name.clone()).filter(|n| !n.is_empty()) {
+        let session_id = Some(screen.session_id.clone())
+            .filter(|id| !id.is_empty())
+            .unwrap_or_else(|| session_name.clone());
         let previous_metadata = std::fs::read_to_string(
-            zellij_utils::consts::session_info_cache_file_name(&session_name),
+            zellij_utils::consts::session_info_cache_file_name(&session_id),
         )
         .ok()
         .and_then(|raw| SessionInfo::from_string(&raw, &session_name).ok());

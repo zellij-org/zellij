@@ -18,6 +18,7 @@ pub struct GlobalLayoutManifest {
     pub default_shell: Option<PathBuf>,
     pub default_layout: Box<Layout>,
     pub tabs: Vec<(String, TabLayoutManifest)>,
+    pub session_attention_muted: bool,
 }
 
 #[derive(Default, Debug, Clone)]
@@ -53,6 +54,12 @@ pub fn serialize_session_layout(
     let mut pane_contents = BTreeMap::new();
     let mut layout_node = KdlNode::new("layout");
     let mut layout_node_children = KdlDocument::new();
+    if global_layout_manifest.session_attention_muted {
+        layout_node.entries_mut().push(KdlEntry::new_prop(
+            "session_attention_muted",
+            KdlValue::Bool(true),
+        ));
+    }
     if let Some(global_cwd) = serialize_global_cwd(&global_layout_manifest.global_cwd) {
         layout_node_children.nodes_mut().push(global_cwd);
     }
@@ -2716,6 +2723,40 @@ mod tests {
         assert!(stack.children_are_stacked, "{}", kdl);
         assert_eq!(stack.children.len(), 2, "{}", kdl);
         assert!(stack.children.iter().all(|c| c.children.is_empty()));
+    }
+
+    #[test]
+    fn session_and_tab_attention_mute_survive_a_round_trip() {
+        let tab = |attention_muted: bool| TabLayoutManifest {
+            tiled_panes: vec![PaneLayoutManifest {
+                geom: round_trip_geom(0, 0, Dimension::fixed(10), Dimension::fixed(10)),
+                ..Default::default()
+            }],
+            attention_muted,
+            ..Default::default()
+        };
+        let global_layout_manifest = GlobalLayoutManifest {
+            tabs: vec![
+                ("muted".to_owned(), tab(true)),
+                ("unmuted".to_owned(), tab(false)),
+            ],
+            session_attention_muted: true,
+            ..Default::default()
+        };
+        let (kdl, layout) = serialize_and_parse(global_layout_manifest);
+        assert!(kdl.contains("session_attention_muted=true"), "{}", kdl);
+        assert!(layout.session_attention_muted, "{}", kdl);
+        assert_eq!(layout.tabs.len(), 2, "{}", kdl);
+        assert_eq!(layout.tabs[0].1.attention_muted, Some(true), "{}", kdl);
+        assert_eq!(layout.tabs[1].1.attention_muted, None, "{}", kdl);
+
+        let global_layout_manifest = GlobalLayoutManifest {
+            tabs: vec![("unmuted".to_owned(), tab(false))],
+            ..Default::default()
+        };
+        let (kdl, layout) = serialize_and_parse(global_layout_manifest);
+        assert!(!kdl.contains("session_attention_muted"), "{}", kdl);
+        assert!(!layout.session_attention_muted, "{}", kdl);
     }
 
     #[test]

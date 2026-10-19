@@ -10857,3 +10857,20 @@ fn a_preview_anchored_at_the_last_command_output_starts_at_that_output() {
         grid.preview_with_anchor(zellij_utils::data::PreviewAnchor::Bottom, 300);
     assert_eq!(bottom, None);
 }
+
+#[test]
+fn a_preview_keeps_only_the_newest_scrollback_lines() {
+    let mut content = String::new();
+    for line in 0..60 {
+        content.push_str(&format!("grid line {:02}\r\n", line));
+    }
+    let grid = create_grid_with_content(&content);
+    let (everything, _) =
+        grid.preview_with_anchor(zellij_utils::data::PreviewAnchor::Bottom, 300);
+    assert!(everything.contains("grid line 00"));
+    assert!(everything.contains("grid line 59"));
+    let (capped, _) = grid.preview_with_anchor(zellij_utils::data::PreviewAnchor::Bottom, 10);
+    assert!(!capped.contains("grid line 00"));
+    assert!(capped.contains("grid line 59"));
+    assert!(capped.lines().count() < everything.lines().count());
+}

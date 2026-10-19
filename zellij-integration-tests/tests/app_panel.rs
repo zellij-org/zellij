@@ -792,8 +792,13 @@ fn ctrl_x_and_ctrl_a_are_not_offered_in_the_app_panel() {
         all_keys.text
     );
     panel.send_stdin(&keys::ESC);
+    panel.wait_until("the all keys screen closes", |grid_snapshot| {
+        !grid_snapshot.contains("All keys") && grid_snapshot.contains(SESSIONS_VIEW_ONLY)
+    });
     panel.send_stdin(&keys::ESC);
     assert!(panel.join_main_client().is_none());
+    assert!(panel.main_client().has_exited(), "the panel did not close");
+    drop(panel);
     let mut zellij = TestRunner::new(TALL)
         .with_config("session_indicator true")
         .start();

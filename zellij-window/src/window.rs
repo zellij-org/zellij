@@ -2153,8 +2153,14 @@ pub fn run(
     window: WindowOptions,
     fonts: FontStack,
     switching: Switching,
+    listen: bool,
 ) -> Result<LoopOutcome> {
     let windowing = Windowing::bring_up()?;
+    let _listening = if listen {
+        crate::app::standalone::listen(AppPoster::new(windowing.proxy()))
+    } else {
+        None
+    };
     let clipboard: ClipboardHandle = Arc::new(Mutex::new(Clipboard::open()));
     let app = terminal_app(
         TerminalWindow {

@@ -58,9 +58,22 @@ fn is_selected(grid_snapshot: &GridSnapshot, text: &str) -> bool {
 }
 
 fn click(zellij: &TestSession, grid_snapshot: &GridSnapshot, text: &str) {
-    let (column, row) = grid_snapshot
-        .position_of(text)
-        .unwrap_or_else(|| panic!("{:?} is not on screen:\n{}", text, grid_snapshot.text));
+    let mut position = grid_snapshot.position_of(text);
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    loop {
+        std::thread::sleep(Duration::from_millis(200));
+        let current = zellij.snapshot().position_of(text);
+        if current.is_some() && current == position {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "{:?} never settled on screen",
+            text
+        );
+        position = current;
+    }
+    let (column, row) = position.unwrap();
     zellij.send_stdin(&keys::sgr_click(column + 1, row));
 }
 
@@ -220,7 +233,6 @@ fn a_shows_and_hides_the_items_behind_the_line() {
 }
 
 #[test]
-#[ignore = "clicking the line of hidden items leaves the client with a blank screen instead of showing them; not diagnosed, listed as an open issue in handoff.md"]
 fn clicking_the_line_shows_the_hidden_items() {
     let (mut zellij, _) = main_session();
     let (_counted, _muted) = one_counted_and_one_muted(&zellij);
@@ -293,7 +305,7 @@ fn clicking_the_preview_starts_a_reply() {
         grid_snapshot.contains("Latest output")
     });
     let (column, row) = grid_snapshot.position_of("Latest output").unwrap();
-    zellij.send_stdin(&keys::sgr_click(column + 2, row));
+    zellij.send_stdin(&keys::sgr_click(column + 2, row + 2));
     zellij.wait_until("the click started a reply", |grid_snapshot| {
         grid_snapshot.contains("REPLYING TO")
     });
@@ -323,7 +335,6 @@ fn clicking_an_unselected_item_only_selects_it() {
 }
 
 #[test]
-#[ignore = "clicking an action in the Inbox help block does nothing in the harness (the same click on an item works); not diagnosed, listed as an open issue in handoff.md"]
 fn clicking_the_go_there_action_switches_to_the_item() {
     let (mut zellij, _) = main_session();
     let (other, terminal) = session_needing_you("Go there?");
@@ -342,7 +353,6 @@ fn clicking_the_go_there_action_switches_to_the_item() {
 }
 
 #[test]
-#[ignore = "clicking an action in the Inbox help block does nothing in the harness (the same click on an item works); not diagnosed, listed as an open issue in handoff.md"]
 fn clicking_dismiss_marks_it_seen() {
     let (mut zellij, _) = main_session();
     let (other, _) = session_needing_you("Dismiss me?");

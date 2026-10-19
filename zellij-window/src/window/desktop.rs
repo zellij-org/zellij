@@ -532,6 +532,10 @@ impl Desktop {
         };
         let connector = hosting.maker.connector();
         let geometry = prepared.geometry;
+        let routed = request
+            .session
+            .clone()
+            .filter(|_| !request.create && request.command.is_empty());
         self.pending.insert(
             ticket,
             Pending {
@@ -543,6 +547,13 @@ impl Desktop {
         let spawned = std::thread::Builder::new()
             .name("app_connect".to_owned())
             .spawn(move || {
+                if let Some(session) = routed {
+                    let standalone = crate::app::standalone::windows_dir();
+                    if crate::app::standalone::raise_in(&standalone, &session, request.pane_id) {
+                        let _ = proxy.send_event(Wake::App(AppEvent::Handled { ticket }));
+                        return;
+                    }
+                }
                 let result = connector(&request, geometry).map_err(|e| format!("{:#}", e));
                 let _ = proxy.send_event(Wake::App(AppEvent::Connected { ticket, result }));
             });
@@ -833,6 +844,24 @@ impl Desktop {
                 let _ = answer.send(self.describe());
                 return;
             },
+            AppEvent::RaiseWindows { pane } => {
+                let keys: Vec<u64> = self.windows.keys().copied().collect();
+                for key in keys {
+                    self.raise(key, pane, None);
+                }
+                return;
+            },
+            AppEvent::DetachWindows => {
+                for app in self.windows.values() {
+                    app.send_action(Action::Detach);
+                }
+                return;
+            },
+            AppEvent::Handled { ticket } => {
+                self.run(event_loop, Input::OpenAbandoned { ticket });
+                self.discard(ticket);
+                return;
+            },
             other => other,
         };
         let Some(hosting) = self.hosting() else {
@@ -849,7 +878,10 @@ impl Desktop {
             AppEvent::Connected { .. }
             | AppEvent::Terminate
             | AppEvent::Snapshot(_)
-            | AppEvent::Describe(_) => vec![],
+            | AppEvent::Describe(_)
+            | AppEvent::RaiseWindows { .. }
+            | AppEvent::DetachWindows
+            | AppEvent::Handled { .. } => vec![],
         };
         if !intents.is_empty() {
             self.run(event_loop, Input::Intents(intents));

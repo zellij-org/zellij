@@ -160,26 +160,6 @@ fn wait_for_index_row(session_name: &str, what: &str, ready: impl Fn(&SessionRow
     }
 }
 
-fn wait_for_index_row_to_disappear(session_name: &str) {
-    let deadline = Instant::now() + default_timeout();
-    loop {
-        let row = SessionIndex::open_default()
-            .unwrap()
-            .get(session_name)
-            .unwrap();
-        if row.is_none() {
-            return;
-        }
-        if Instant::now() >= deadline {
-            panic!(
-                "timed out waiting for the index row of {} to be removed: {:?}",
-                session_name, row
-            );
-        }
-        std::thread::sleep(std::time::Duration::from_millis(10));
-    }
-}
-
 fn line_with(grid_snapshot: &GridSnapshot, needle: &str) -> String {
     grid_snapshot
         .lines()
@@ -356,12 +336,35 @@ fn switch_and_close_removes_the_unused_session() {
         |grid_snapshot| grid_snapshot.contains(background.session_name()),
     );
     zellij.send_stdin(&keys::DOWN);
+    wait_for_preview_of(
+        &zellij,
+        background.session_name(),
+        "the other session is selected",
+    );
     zellij.send_stdin(&keys::ENTER);
+    let (_switch, _closed) = zellij.follow_switch_into(background);
     wait_for_path_to_disappear(&socket, "the unused session socket");
     let cache_folder = zellij_utils::consts::session_info_folder_for_session(&unused_session_id);
-    wait_for_path_to_disappear(&cache_folder, "the unused session cache folder");
-    wait_for_index_row_to_disappear(&unused_session);
+    let index_row_exists = || {
+        SessionIndex::open_default()
+            .ok()
+            .and_then(|index| index.get(&unused_session).ok().flatten())
+            .is_some()
+    };
+    stays_true_once_true(
+        "the unused session cache folder and index row are removed",
+        || !cache_folder.exists() && !index_row_exists(),
+    );
     zellij.quit();
+}
+
+fn stays_true_once_true(what: &str, check: impl Fn() -> bool) {
+    zellij_integration_tests::wait_for(what, &check);
+    let settled_at = Instant::now() + std::time::Duration::from_millis(1500);
+    while Instant::now() < settled_at {
+        assert!(check(), "{}: it came back", what);
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
 }
 
 #[test]
@@ -908,12 +911,15 @@ fn open_sessions_and_select(zellij: &TestSession, name: &str) {
         grid_snapshot.contains(name)
     });
     zellij.send_stdin(&keys::DOWN);
-    zellij.wait_until("the other session is selected", |grid_snapshot| {
-        grid_snapshot
-            .lines()
-            .iter()
-            .any(|line| line.contains(name) && line.contains('>'))
-    });
+    wait_for_preview_of(zellij, name, "the other session is selected");
+}
+
+fn preview_frame_of(grid_snapshot: &GridSnapshot, name: &str) -> bool {
+    grid_snapshot.contains(&format!("┌ {} ", name))
+}
+
+fn wait_for_preview_of(zellij: &TestSession, name: &str, what: &str) {
+    zellij.wait_until(what, |grid_snapshot| preview_frame_of(grid_snapshot, name));
 }
 
 fn answers(name: &str) -> bool {
@@ -956,30 +962,67 @@ fn delete_on_a_running_session_asks_before_stopping_it() {
 }
 
 #[test]
-#[ignore = "renaming the current session from the Sessions tab leaves the in-process client with a blank screen and a lost connection; not diagnosed, listed as an open issue in handoff.md"]
 fn ctrl_r_renames_the_current_session() {
     let mut zellij = TestRunner::new(TERMINAL_SIZE)
         .with_config(CARD_OFF_INDICATOR_ON)
         .start();
     claim_first_terminal_and_wait_for_prompt(&zellij);
+    let new_name = format!("{}-rn", zellij.session_name());
     open_the_sessions_tab_with_f9(&zellij);
     zellij.send_stdin(&keys::ctrl('r'));
     zellij.wait_until("the rename prompt is shown", |grid_snapshot| {
         grid_snapshot.contains("<ENTER> rename")
+            && grid_snapshot.contains("New name for current session: _")
     });
-    for _ in 0..40 {
-        zellij.send_stdin(b"\x7f");
-    }
-    zellij.send_stdin(b"renamed-here");
+    zellij.send_stdin(new_name.as_bytes());
+    let typed = format!("New name for current session: {}_", new_name);
+    zellij.wait_until("the rename prompt shows the typed name", |grid_snapshot| {
+        grid_snapshot.contains(&typed)
+    });
     zellij.send_stdin(&keys::ENTER);
     zellij.wait_until("the session has its new name", |grid_snapshot| {
-        grid_snapshot.lines()[0].contains("renamed-here")
+        grid_snapshot.lines()[0].contains(&new_name)
     });
     zellij.quit();
 }
 
+fn lock_file_of(socket: &std::path::Path) -> std::path::PathBuf {
+    let mut lock_name = std::ffi::OsString::from(".");
+    lock_name.push(socket.file_name().unwrap());
+    lock_name.push(".lock");
+    socket.with_file_name(lock_name)
+}
+
 #[test]
-#[ignore = "in a terminal session manager neither Down nor Right moves the selection from the opened Exited header to the session under it, although the same keys work in the app panel; listed as an open issue in handoff.md"]
+fn quitting_a_renamed_session_leaves_no_socket_under_either_name() {
+    let mut zellij = TestRunner::new(TERMINAL_SIZE)
+        .with_config(CARD_OFF_INDICATOR_ON)
+        .start();
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+    let old_name = zellij.session_name().to_owned();
+    let new_name = format!("{}-renamed", old_name);
+    let old_socket = zellij_utils::consts::session_socket_path(&old_name);
+    let new_socket = zellij_utils::consts::session_socket_path(&new_name);
+    assert!(old_socket.exists());
+    zellij.run_cli_action(zellij_utils::cli::CliAction::RenameSession {
+        name: new_name.clone(),
+    });
+    zellij.wait_until("the session has its new name", |grid_snapshot| {
+        grid_snapshot.lines()[0].contains(&new_name)
+    });
+    zellij_integration_tests::wait_for("the socket to follow the new name", || {
+        new_socket.exists() && !old_socket.exists()
+    });
+    assert!(lock_file_of(&new_socket).exists());
+    assert!(!lock_file_of(&old_socket).exists());
+    zellij.quit();
+    wait_for_path_to_disappear(&new_socket, "the renamed session socket");
+    wait_for_path_to_disappear(&lock_file_of(&new_socket), "the renamed session lock");
+    assert!(!old_socket.exists());
+    assert!(!lock_file_of(&old_socket).exists());
+}
+
+#[test]
 fn enter_on_an_exited_session_resumes_it() {
     let resurrectable = leave_a_resurrectable_session();
     let mut zellij = TestRunner::new(TERMINAL_SIZE)
@@ -995,13 +1038,8 @@ fn enter_on_an_exited_session_resumes_it() {
     zellij.wait_until("the exited group opens", |grid_snapshot| {
         grid_snapshot.contains(&resurrectable)
     });
-    zellij.send_stdin(&keys::RIGHT);
-    zellij.wait_until("the exited session is selected", |grid_snapshot| {
-        grid_snapshot
-            .lines()
-            .iter()
-            .any(|line| line.contains(&resurrectable) && line.contains('>'))
-    });
+    zellij.send_stdin(&keys::DOWN);
+    wait_for_preview_of(&zellij, &resurrectable, "the exited session is selected");
     zellij.send_stdin(&keys::ENTER);
     let switch = zellij.follow_switch();
     assert_eq!(switch.name.as_deref(), Some(resurrectable.as_str()));
