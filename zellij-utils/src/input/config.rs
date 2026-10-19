@@ -680,6 +680,14 @@ pub async fn watch_layout_dir_changes<F, Fut>(
     use std::time::Duration;
     use tokio::sync::mpsc;
 
+    // A watcher failure that is not caused by the layout directory itself disappearing (eg. a
+    // dangling symlink somewhere inside it) is transient and recoverable: the watcher keeps
+    // running and will report the fix as soon as it happens. We do not tear it down, because
+    // recreating it immediately while the condition persists would busy-spin the server at 100%
+    // CPU. This backoff additionally guards against any residual tight-looping.
+    let mut error_backoff = Duration::from_millis(100);
+    const MAX_ERROR_BACKOFF: Duration = Duration::from_secs(5);
+
     loop {
         if layout_dir.exists() {
             let (tx, mut rx) = mpsc::unbounded_channel();
@@ -721,11 +729,25 @@ pub async fn watch_layout_dir_changes<F, Fut>(
                             on_layout_change(layouts, layout_errors).await;
                         }
                     },
-                    Err(_) => break,
+                    Err(_) => {
+                        // The notify PollWatcher emits an error event for paths it cannot walk
+                        // (for example a dangling symlink inside the layout directory). Treat
+                        // this as transient: wait before handling the next event rather than
+                        // breaking out so the outer loop recreates the watcher in a tight loop.
+                        if !layout_dir.exists() {
+                            // The layout directory itself is gone - wait for it to come back
+                            // (the outer loop below handles the waiting).
+                            break;
+                        }
+                        tokio::time::sleep(error_backoff).await;
+                        error_backoff = std::cmp::min(error_backoff * 2, MAX_ERROR_BACKOFF);
+                    },
                 }
             }
         }
 
+        // Only reached when the watcher could not be created or the layout directory went away.
+        // Wait for the layout directory to exist again, without busy-looping.
         while !layout_dir.exists() {
             tokio::time::sleep(Duration::from_secs(3)).await;
         }
@@ -826,6 +848,7 @@ mod config_test {
     use crate::input::theme::{FrameConfig, Theme, Themes, UiConfig};
     use std::collections::{BTreeMap, HashMap};
     use std::io::Write;
+    use std::time::Duration;
     use tempfile::tempdir;
 
     #[test]
@@ -1746,6 +1769,68 @@ mod config_test {
             config.env,
             EnvironmentVariables::from_data(expected_env_config),
             "Env variables defined in config"
+        );
+    }
+
+    // A dangling symlink inside the layout directory used to busy-spin the server at 100%+ CPU:
+    // notify's PollWatcher follows symlinks, so its walk hit the dangling link and emitted an
+    // error event, the inner loop broke on that error and the outer loop immediately recreated
+    // the PollWatcher because the (parent) layout directory still existed. This test makes sure
+    // the watcher survives such an error instead of tearing down and recreating itself in a tight
+    // loop, and that it still reports layouts once the dangling symlink is fixed.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn watch_layout_dir_changes_survives_dangling_symlink() {
+        let tmp = tempdir().unwrap();
+        let layout_dir = tmp.path().join("layouts");
+        std::fs::create_dir_all(&layout_dir).unwrap();
+
+        // a valid layout, so we can observe a successful change notification
+        std::fs::write(layout_dir.join("my-layout.kdl"), "layout {\n}\n").unwrap();
+
+        // a dangling symlink pointing nowhere inside the watched directory
+        let dangling = layout_dir.join("dangling.kdl");
+        std::os::unix::fs::symlink(layout_dir.join("does-not-exist.kdl"), &dangling).unwrap();
+
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let watched_dir = layout_dir.clone();
+        tokio::spawn(async move {
+            watch_layout_dir_changes(watched_dir, None, move |layouts, layout_errors| {
+                let tx = tx.clone();
+                async move {
+                    let _ = tx.send((layouts, layout_errors));
+                }
+            })
+            .await;
+        });
+
+        // let at least one poll interval pass so notify has walked the directory and hit the
+        // dangling symlink
+        tokio::time::sleep(Duration::from_millis(1500)).await;
+
+        // the directory changed: a new valid layout appears. If the watcher had been torn down
+        // and recreated in a tight loop (or given up) this would either never arrive or the
+        // process would be burning CPU. We assert we get a healthy notification containing the
+        // new layout within a reasonable time.
+        std::fs::write(layout_dir.join("second-layout.kdl"), "layout {\n}\n").unwrap();
+
+        let found_second_layout = tokio::time::timeout(Duration::from_secs(10), async {
+            while let Some((layouts, _errors)) = rx.recv().await {
+                if layouts.iter().any(
+                    |layout| matches!(layout, LayoutInfo::File(name, _) if name == "second-layout"),
+                ) {
+                    return true;
+                }
+            }
+            false
+        })
+        .await
+        .unwrap_or(false);
+
+        assert!(
+            found_second_layout,
+            "watch_layout_dir_changes should keep watching (and report layout changes) despite a \
+             dangling symlink in the layout directory"
         );
     }
 }
