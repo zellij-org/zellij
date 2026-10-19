@@ -453,6 +453,25 @@ pub fn load_config_file(config_file_path: &Path, config_dir: Option<&Path>) -> O
 }
 
 #[cfg(not(target_family = "wasm"))]
+#[derive(Default)]
+struct WatcherErrorLog {
+    reported: std::collections::HashSet<String>,
+}
+
+#[cfg(not(target_family = "wasm"))]
+impl WatcherErrorLog {
+    fn report(&mut self, watcher_name: &str, error: &notify::Error) {
+        if self.reported.insert(error.to_string()) {
+            log::warn!(
+                "{} watcher could not read a path, still watching: {}",
+                watcher_name,
+                error
+            );
+        }
+    }
+}
+
+#[cfg(not(target_family = "wasm"))]
 pub async fn watch_config_file_changes<F, Fut>(
     config_file_path: PathBuf,
     config_dir: Option<&Path>,
@@ -556,6 +575,7 @@ pub async fn watch_config_file_changes<F, Fut>(
         Some(new_watched_paths.as_slice() != watched_paths)
     }
 
+    let mut error_log = WatcherErrorLog::default();
     loop {
         if config_file_path.exists() {
             let (watched_paths, missing_theme_dir) =
@@ -619,8 +639,12 @@ pub async fn watch_config_file_changes<F, Fut>(
                 let event = match event_result {
                     Ok(event) => event,
                     Err(e) => {
-                        log::error!("Config watcher event error: {}", e);
-                        break;
+                        if !config_file_path.exists() {
+                            log::error!("Config watcher event error: {}", e);
+                            break;
+                        }
+                        error_log.report("Config", &e);
+                        continue;
                     },
                 };
 
@@ -680,6 +704,7 @@ pub async fn watch_layout_dir_changes<F, Fut>(
     use std::time::Duration;
     use tokio::sync::mpsc;
 
+    let mut error_log = WatcherErrorLog::default();
     loop {
         if layout_dir.exists() {
             let (tx, mut rx) = mpsc::unbounded_channel();
@@ -721,7 +746,12 @@ pub async fn watch_layout_dir_changes<F, Fut>(
                             on_layout_change(layouts, layout_errors).await;
                         }
                     },
-                    Err(_) => break,
+                    Err(e) => {
+                        if !layout_dir.exists() {
+                            break;
+                        }
+                        error_log.report("Layout", &e);
+                    },
                 }
             }
         }
@@ -748,6 +778,7 @@ pub async fn watch_keybinds_dir_changes<F, Fut>(
     use tokio::sync::mpsc;
 
     let stopped = || stop.load(Ordering::SeqCst);
+    let mut error_log = WatcherErrorLog::default();
     while !stopped() {
         if keybinds_dir.exists() {
             let (tx, mut rx) = mpsc::unbounded_channel();
@@ -801,7 +832,12 @@ pub async fn watch_keybinds_dir_changes<F, Fut>(
                             on_presets_change(presets, preset_errors).await;
                         }
                     },
-                    Err(_) => break,
+                    Err(e) => {
+                        if !keybinds_dir.exists() {
+                            break;
+                        }
+                        error_log.report("Keybinds", &e);
+                    },
                 }
             }
             if stopped() {
@@ -1746,6 +1782,161 @@ mod config_test {
             config.env,
             EnvironmentVariables::from_data(expected_env_config),
             "Env variables defined in config"
+        );
+    }
+
+    #[cfg(unix)]
+    fn add_dangling_symlink(dir: &Path, link_name: &str) {
+        std::os::unix::fs::symlink(dir.join("missing-target"), dir.join(link_name)).unwrap();
+    }
+
+    #[cfg(unix)]
+    async fn wait_for<T>(
+        rx: &mut tokio::sync::mpsc::UnboundedReceiver<T>,
+        matches: impl Fn(&T) -> bool,
+    ) -> bool {
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            while let Some(item) = rx.recv().await {
+                if matches(&item) {
+                    return true;
+                }
+            }
+            false
+        })
+        .await
+        .unwrap_or(false)
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn layout_watcher_reports_changes_despite_dangling_symlink() {
+        let tmp = tempdir().unwrap();
+        let layout_dir = tmp.path().join("layouts");
+        std::fs::create_dir_all(&layout_dir).unwrap();
+        std::fs::write(layout_dir.join("first.kdl"), "layout {\n}\n").unwrap();
+        add_dangling_symlink(&layout_dir, "dangling.kdl");
+
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let watched_dir = layout_dir.clone();
+        let watcher = tokio::spawn(watch_layout_dir_changes(
+            watched_dir,
+            None,
+            move |layouts, _errors| {
+                let tx = tx.clone();
+                async move {
+                    let _ = tx.send(layouts);
+                }
+            },
+        ));
+
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        std::fs::write(layout_dir.join("second.kdl"), "layout {\n}\n").unwrap();
+
+        let reported = wait_for(&mut rx, |layouts: &Vec<LayoutInfo>| {
+            layouts
+                .iter()
+                .any(|layout| matches!(layout, LayoutInfo::File(name, _) if name == "second"))
+        })
+        .await;
+        watcher.abort();
+        assert!(
+            reported,
+            "a new layout should be reported while a dangling symlink is in the layout dir"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn keybinds_watcher_reports_changes_despite_dangling_symlink() {
+        use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+
+        let tmp = tempdir().unwrap();
+        let keybinds_dir = tmp.path().join("keybinds");
+        std::fs::create_dir_all(&keybinds_dir).unwrap();
+        std::fs::write(keybinds_dir.join("first.kdl"), "keybinds {\n}\n").unwrap();
+        add_dangling_symlink(&keybinds_dir, "dangling.kdl");
+
+        let stop = Arc::new(AtomicBool::new(false));
+        let callback_count = Arc::new(AtomicUsize::new(0));
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let counter = callback_count.clone();
+        let watcher = tokio::spawn(watch_keybinds_dir_changes(
+            keybinds_dir.clone(),
+            stop.clone(),
+            move |presets, errors| {
+                counter.fetch_add(1, Ordering::SeqCst);
+                let names: Vec<String> = presets
+                    .into_iter()
+                    .map(|preset| preset.name)
+                    .chain(errors.into_iter().map(|error| error.name))
+                    .collect();
+                let tx = tx.clone();
+                async move {
+                    let _ = tx.send(names);
+                }
+            },
+        ));
+
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        let idle_callbacks = callback_count.load(Ordering::SeqCst);
+        std::fs::write(keybinds_dir.join("second.kdl"), "keybinds {\n}\n").unwrap();
+
+        let reported = wait_for(&mut rx, |names: &Vec<String>| {
+            names.iter().any(|name| name == "second")
+        })
+        .await;
+        stop.store(true, Ordering::SeqCst);
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(2), watcher).await;
+        assert!(
+            idle_callbacks <= 2,
+            "the keybinds watcher should not keep reloading presets while idle, got {} reloads",
+            idle_callbacks
+        );
+        assert!(
+            reported,
+            "a new preset should be reported while a dangling symlink is in the keybinds dir"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn config_watcher_reports_changes_despite_dangling_symlink_in_theme_dir() {
+        let tmp = tempdir().unwrap();
+        let theme_dir = tmp.path().join("themes");
+        std::fs::create_dir_all(&theme_dir).unwrap();
+        add_dangling_symlink(&theme_dir, "dangling");
+        let config_dir: &'static Path = Box::leak(tmp.path().to_path_buf().into_boxed_path());
+        let config_file_path = tmp.path().join("config.kdl");
+        let config_contents = format!("theme_dir \"{}\"\n", theme_dir.display());
+        std::fs::write(&config_file_path, &config_contents).unwrap();
+
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let watcher = tokio::spawn(watch_config_file_changes(
+            config_file_path.clone(),
+            Some(config_dir),
+            move |config: Config| {
+                let tx = tx.clone();
+                async move {
+                    let _ = tx.send(config.options.scroll_buffer_size);
+                }
+            },
+        ));
+
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        std::fs::write(
+            &config_file_path,
+            format!("{}scroll_buffer_size 1234\n", config_contents),
+        )
+        .unwrap();
+
+        let reported = wait_for(&mut rx, |scroll_buffer_size: &Option<usize>| {
+            *scroll_buffer_size == Some(1234)
+        })
+        .await;
+        watcher.abort();
+        assert!(
+            reported,
+            "a config change should be reported while a dangling symlink is in the theme dir"
         );
     }
 }

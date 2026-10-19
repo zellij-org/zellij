@@ -420,6 +420,10 @@ pub fn kill_session(name: &str) {
 pub fn delete_session(name: &str, force: bool) {
     // The socket and the cache folder are named by the session id; the index row by the name.
     let session_id = resolve_session_id(name).unwrap_or_else(|| name.to_owned());
+    if let Err(e) = validate_session_folder_name(&session_id) {
+        eprintln!("{}", e);
+        process::exit(1);
+    }
     if force {
         use crate::consts::ipc_connect;
         let path = &*ZELLIJ_SOCK_DIR.join(&session_id);
@@ -627,7 +631,23 @@ pub fn validate_session_name(name: &str) -> Result<(), String> {
     if name.contains('/') {
         return Err("Session name cannot contain '/'.".to_string());
     }
+    #[cfg(windows)]
+    if name.contains('\\') {
+        return Err("Session name cannot contain '\\'.".to_string());
+    }
     Ok(())
+}
+
+pub fn validate_session_folder_name(name: &str) -> Result<(), String> {
+    let mut components = Path::new(name).components();
+    match (components.next(), components.next()) {
+        (Some(std::path::Component::Normal(component)), None)
+            if component == std::ffi::OsStr::new(name) =>
+        {
+            Ok(())
+        },
+        _ => Err(format!("Invalid session name or id: {:?}.", name)),
+    }
 }
 
 pub fn assert_session_ne(name: &str) {
@@ -916,5 +936,56 @@ mod session_id_tests {
             id
         );
         assert_ne!(id, generate_session_id());
+    }
+}
+
+#[cfg(test)]
+mod session_folder_name_tests {
+    use super::*;
+
+    #[test]
+    fn session_folder_name_accepts_plain_names() {
+        assert!(validate_session_folder_name(&generate_session_id()).is_ok());
+        assert!(validate_session_folder_name("my-session").is_ok());
+        assert!(validate_session_folder_name("my session.v2").is_ok());
+    }
+
+    #[test]
+    fn session_folder_name_rejects_paths() {
+        for name in [
+            "",
+            ".",
+            "..",
+            "../x",
+            "../../../../poc",
+            "a/b",
+            "/abs",
+            "a/",
+            "./a",
+        ] {
+            assert!(
+                validate_session_folder_name(name).is_err(),
+                "should reject {:?}",
+                name
+            );
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn session_folder_name_rejects_windows_paths() {
+        for name in ["..\\x", "a\\b", "C:\\x", "C:x", "\\\\server\\share"] {
+            assert!(
+                validate_session_folder_name(name).is_err(),
+                "should reject {:?}",
+                name
+            );
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn validate_session_name_rejects_backslash_on_windows() {
+        assert!(validate_session_name("a\\b").is_err());
     }
 }
