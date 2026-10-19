@@ -1,6 +1,9 @@
 use std::fs::{File, OpenOptions, TryLockError};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+#[cfg(not(windows))]
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Context, Result};
@@ -11,6 +14,8 @@ use zellij_utils::app_control::{
 use zellij_utils::consts::{APP_CONTROL_SOCKET_NAME, APP_LOCK_FILE_NAME};
 
 pub const HANDOFF_WAIT: Duration = Duration::from_secs(3);
+#[cfg(not(windows))]
+const SOCKET_CHECK: Duration = Duration::from_secs(2);
 
 pub enum Claim {
     Primary(Instance),
@@ -81,8 +86,14 @@ fn become_primary(mut lock: File, control: PathBuf) -> Result<Instance> {
     })
 }
 
+type Handler = Arc<dyn Fn(AppRequest) -> AppReply + Send + Sync>;
+
 impl Instance {
-    pub fn serve(self, handle: impl Fn(AppRequest) -> AppReply + Send + 'static) -> Result<Holder> {
+    pub fn serve(
+        self,
+        handle: impl Fn(AppRequest) -> AppReply + Send + Sync + 'static,
+    ) -> Result<Holder> {
+        let handle: Handler = Arc::new(handle);
         let Instance {
             _lock,
             control,
@@ -90,38 +101,118 @@ impl Instance {
             #[cfg(windows)]
             reply_listener,
         } = self;
-        let holder = Holder {
-            _lock,
-            control: control.clone(),
-        };
-        std::thread::Builder::new()
-            .name("app_control".to_owned())
-            .spawn(move || {
-                for stream in listener.incoming() {
-                    let Ok(stream) = stream else {
-                        continue;
-                    };
-                    #[cfg(windows)]
-                    let reply = match reply_listener.accept() {
-                        Ok(reply) => reply,
-                        Err(_) => continue,
-                    };
-                    #[cfg(not(windows))]
-                    let reply = match interprocess::TryClone::try_clone(&stream) {
-                        Ok(reply) => reply,
-                        Err(_) => continue,
-                    };
-                    answer(stream, reply, &handle);
-                }
-            })?;
-        Ok(holder)
+        #[cfg(windows)]
+        {
+            spawn_answering(listener, reply_listener, handle)?;
+            Ok(Holder { _lock, control })
+        }
+        #[cfg(not(windows))]
+        {
+            let watch = Arc::new(Mutex::new(Watch {
+                identity: socket_identity(&control),
+                stopped: false,
+            }));
+            spawn_answering(listener, handle.clone())?;
+            spawn_socket_watch(control.clone(), watch.clone(), handle)?;
+            Ok(Holder {
+                _lock,
+                control,
+                watch,
+            })
+        }
     }
+}
+
+fn spawn_answering(
+    listener: interprocess::local_socket::Listener,
+    #[cfg(windows)] reply_listener: interprocess::local_socket::Listener,
+    handle: Handler,
+) -> std::io::Result<()> {
+    std::thread::Builder::new()
+        .name("app_control".to_owned())
+        .spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(stream) = stream else {
+                    continue;
+                };
+                #[cfg(windows)]
+                let reply = match reply_listener.accept() {
+                    Ok(reply) => reply,
+                    Err(_) => continue,
+                };
+                #[cfg(not(windows))]
+                let reply = match interprocess::TryClone::try_clone(&stream) {
+                    Ok(reply) => reply,
+                    Err(_) => continue,
+                };
+                answer(stream, reply, &*handle);
+            }
+        })?;
+    Ok(())
+}
+
+#[cfg(not(windows))]
+struct Watch {
+    identity: Option<(u64, u64)>,
+    stopped: bool,
+}
+
+#[cfg(not(windows))]
+fn socket_identity(path: &Path) -> Option<(u64, u64)> {
+    use std::os::unix::fs::MetadataExt;
+    std::fs::symlink_metadata(path)
+        .ok()
+        .map(|metadata| (metadata.dev(), metadata.ino()))
+}
+
+#[cfg(not(windows))]
+fn spawn_socket_watch(
+    control: PathBuf,
+    watch: Arc<Mutex<Watch>>,
+    handle: Handler,
+) -> std::io::Result<()> {
+    std::thread::Builder::new()
+        .name("app_control_watch".to_owned())
+        .spawn(move || loop {
+            std::thread::sleep(SOCKET_CHECK);
+            let mut watch = match watch.lock() {
+                Ok(watch) => watch,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            if watch.stopped {
+                return;
+            }
+            let current = socket_identity(&control);
+            if current.is_some() && current == watch.identity {
+                continue;
+            }
+            let _ = std::fs::remove_file(&control);
+            match zellij_utils::consts::ipc_bind(&control) {
+                Ok(listener) => {
+                    watch.identity = socket_identity(&control);
+                    log::warn!(
+                        "the app's control socket {} was removed or replaced, so it was made again",
+                        control.display()
+                    );
+                    if let Err(e) = spawn_answering(listener, handle.clone()) {
+                        log::warn!("the app cannot answer on its new control socket: {}", e);
+                        return;
+                    }
+                },
+                Err(e) => log::warn!(
+                    "the app could not make its control socket {} again: {}",
+                    control.display(),
+                    e
+                ),
+            }
+        })?;
+    Ok(())
 }
 
 fn answer(
     mut stream: interprocess::local_socket::Stream,
     mut reply: interprocess::local_socket::Stream,
-    handle: &impl Fn(AppRequest) -> AppReply,
+    handle: &dyn Fn(AppRequest) -> AppReply,
 ) {
     let _ = stream.set_recv_timeout(Some(Duration::from_secs(2)));
     let answer = match read_request(&mut stream) {
@@ -134,11 +225,27 @@ fn answer(
 pub struct Holder {
     _lock: File,
     control: PathBuf,
+    #[cfg(not(windows))]
+    watch: Arc<Mutex<Watch>>,
 }
 
 impl Drop for Holder {
+    #[cfg(windows)]
     fn drop(&mut self) {
         let _ = std::fs::remove_file(&self.control);
+    }
+
+    #[cfg(not(windows))]
+    fn drop(&mut self) {
+        let mut watch = match self.watch.lock() {
+            Ok(watch) => watch,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        watch.stopped = true;
+        let current = socket_identity(&self.control);
+        if current.is_some() && current == watch.identity {
+            let _ = std::fs::remove_file(&self.control);
+        }
     }
 }
 
@@ -232,6 +339,29 @@ mod tests {
             },
             Claim::Handed(_) => panic!("a dead app cannot take a request"),
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_control_socket_replaced_by_another_process_is_made_again() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let instance = match claim(dir.path(), &request(), HANDOFF_WAIT).unwrap() {
+            Claim::Primary(instance) => instance,
+            Claim::Handed(_) => panic!("nothing was running yet"),
+        };
+        let holder = instance.serve(|_| AppReply::Done).unwrap();
+        let control = dir.path().join(APP_CONTROL_SOCKET_NAME);
+        std::fs::remove_file(&control).unwrap();
+        {
+            let _stray = std::os::unix::net::UnixListener::bind(&control).unwrap();
+        }
+        assert!(send_app_request_to(&control, &AppRequest::Ping).is_err());
+        match claim(dir.path(), &request(), HANDOFF_WAIT).unwrap() {
+            Claim::Handed(reply) => assert_eq!(reply, AppReply::Done),
+            Claim::Primary(_) => panic!("the running app still holds the lock"),
+        }
+        drop(holder);
+        assert!(!control.exists(), "a clean exit removes the new socket");
     }
 
     #[test]

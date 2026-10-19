@@ -18,6 +18,7 @@ const CONFIG: &str = "session_indicator true\nmouse_mode true";
 const ALT_ENTER: [u8; 2] = [0x1b, b'\r'];
 
 fn fake_desktop_app(windows_on: &[&str]) -> mpsc::Receiver<AppRequest> {
+    zellij_integration_tests::test_env::init();
     let socket = zellij_utils::consts::app_control_socket();
     zellij_utils::consts::prepare_private_dir(socket.parent().unwrap()).unwrap();
     let _ = std::fs::remove_file(&socket);

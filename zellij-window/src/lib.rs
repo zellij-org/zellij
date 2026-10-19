@@ -575,6 +575,14 @@ fn launch_app(
         Ok(app::instance::Claim::Primary(instance)) => {
             run_app(instance, first, args, opts, config_options, settings)
         },
+        Err(e) if panel_view(&args).is_some() => refuse(
+            Refusal::new(format!(
+                "The panel could not be opened because the desktop app did not answer: {:#}",
+                e
+            )),
+            &args,
+            None,
+        ),
         Err(e) => {
             report!(
                 "the desktop app could not take charge, so this window runs on its own: {:#}",
