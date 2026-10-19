@@ -2554,6 +2554,8 @@ pub struct MarkPaneSeenAction {
 pub struct MarkAllSeenAction {
     #[prost(string, optional, tag="1")]
     pub session: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, tag="2")]
+    pub this_session: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

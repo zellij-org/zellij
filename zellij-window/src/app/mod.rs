@@ -516,6 +516,7 @@ pub fn clear_all_sessions(names: Vec<String>) {
             for name in names {
                 let action = zellij_utils::input::actions::Action::MarkAllSeen {
                     session: Some(name.clone()),
+                    this_session: false,
                 };
                 if let Err(e) =
                     zellij_utils::session_link::send_actions_to_session(&name, vec![action])

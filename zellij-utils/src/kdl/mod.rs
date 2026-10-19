@@ -135,7 +135,10 @@ pub fn action_without_arguments(
             session: None,
             pane_id: None,
         }),
-        "MarkAllSeen" => Ok(Action::MarkAllSeen { session: None }),
+        "MarkAllSeen" => Ok(Action::MarkAllSeen {
+            session: None,
+            this_session: false,
+        }),
         "Copy" => Ok(Action::Copy),
         "Confirm" => Ok(Action::Confirm),
         "Deny" => Ok(Action::Deny),
@@ -1472,7 +1475,16 @@ impl Action {
                 session: None,
                 pane_id: None,
             } => Some(KdlNode::new("MarkPaneSeen")),
-            Action::MarkAllSeen { session: None } => Some(KdlNode::new("MarkAllSeen")),
+            Action::MarkAllSeen {
+                session: None,
+                this_session,
+            } => {
+                let mut node = KdlNode::new("MarkAllSeen");
+                if *this_session {
+                    node.push(KdlEntry::new_prop("this_session", true));
+                }
+                Some(node)
+            },
             Action::FocusHostSession => Some(KdlNode::new("FocusHostSession")),
             Action::FocusGuestSession => Some(KdlNode::new("FocusGuestSession")),
             Action::ToggleHostFullscreen => Some(KdlNode::new("ToggleHostFullscreen")),
@@ -1924,8 +1936,17 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
             },
             "ToggleSessionCard" | "MutePane" | "IgnorePaneOutput" | "WatchPane" | "MuteTab"
             | "MuteSession" | "ToggleSession" | "GoToPreviousSession" | "GoToNextSession" | "GoToNextAttention"
-            | "ToggleTrayIcon" | "MarkPaneSeen" | "MarkAllSeen" => {
+            | "ToggleTrayIcon" | "MarkPaneSeen" => {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
+            },
+            "MarkAllSeen" => {
+                let this_session =
+                    crate::kdl_get_bool_property_or_child_value!(kdl_action, "this_session")
+                        .unwrap_or(false);
+                Ok(Action::MarkAllSeen {
+                    session: None,
+                    this_session,
+                })
             },
             "SwitchSession" => {
                 let name = kdl_get_string_property_or_child_value!(kdl_action, "name")
@@ -8859,6 +8880,62 @@ fn can_bind_toggle_session_card_and_write_it_back() {
             .map(|node| node.name().value().to_owned()),
         Some("ToggleSessionCard".to_owned())
     );
+}
+
+#[test]
+fn can_bind_the_seen_and_tray_actions_and_write_them_back() {
+    let fake_config = r#"
+        keybinds {
+            normal {
+                bind "Alt 1" { MarkPaneSeen; }
+                bind "Alt 2" { MarkAllSeen; }
+                bind "Alt 3" { MarkAllSeen this_session=true; }
+                bind "Alt 4" { ToggleTrayIcon; }
+            }
+        }"#;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = Keybinds::from_kdl(
+        document.get("keybinds").unwrap(),
+        Default::default(),
+        &Default::default(),
+    )
+    .unwrap();
+    let expected = [
+        (
+            '1',
+            Action::MarkPaneSeen {
+                session: None,
+                pane_id: None,
+            },
+        ),
+        (
+            '2',
+            Action::MarkAllSeen {
+                session: None,
+                this_session: false,
+            },
+        ),
+        (
+            '3',
+            Action::MarkAllSeen {
+                session: None,
+                this_session: true,
+            },
+        ),
+        ('4', Action::ToggleTrayIcon),
+    ];
+    for (character, action) in expected {
+        let key = KeyWithModifier::new(BareKey::Char(character)).with_alt_modifier();
+        assert_eq!(
+            deserialized.get_actions_for_key_in_mode(&InputMode::Normal, &key),
+            Some(&vec![action.clone()]),
+            "Alt {}",
+            character
+        );
+        let written = action.to_kdl().expect("the action is written back");
+        let reparsed = Action::try_from((&written, &Options::default())).unwrap();
+        assert_eq!(reparsed, action);
+    }
 }
 
 #[test]

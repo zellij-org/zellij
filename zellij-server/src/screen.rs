@@ -1011,6 +1011,7 @@ pub enum ScreenInstruction {
     },
     MarkAllSeen {
         session: Option<String>,
+        this_session: bool,
         completion: Option<NotificationEnd>,
     },
     SessionPaneCommand {
@@ -14947,9 +14948,10 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::MarkAllSeen {
                 session,
+                this_session,
                 completion: _completion,
             } => {
-                screen.mark_all_seen(session);
+                screen.mark_all_seen(session, this_session);
             },
             ScreenInstruction::SessionPaneCommand {
                 session_name,

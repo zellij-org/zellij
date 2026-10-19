@@ -108,6 +108,12 @@ use zellij_utils::input::window::StartupMode;
 pub use app::probe::{NotificationProbe, ProbeEvent};
 pub use app::{clear_all_sessions, detach_everywhere, stop_all_sessions};
 
+#[cfg(all(target_os = "linux", feature = "test-support"))]
+pub mod test_support {
+    pub use crate::dbus::fake::*;
+    pub use crate::dbus::{Kind, Message, Value};
+}
+
 pub fn run(args: WindowArgs, opts: CliArgs) -> Result<()> {
     diagnostics::log_crashes();
     identity::declare();

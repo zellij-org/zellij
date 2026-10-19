@@ -567,6 +567,7 @@ fn open_session_window(env: &PluginEnv, request: zellij_utils::data::SessionWind
 fn mark_all_seen(env: &PluginEnv, session_name: Option<String>) {
     let _ = env.senders.send_to_screen(ScreenInstruction::MarkAllSeen {
         session: session_name,
+        this_session: false,
         completion: None,
     });
 }
@@ -6593,7 +6594,7 @@ pub fn wasi_read_bytes(plugin_env: &PluginEnv) -> Result<Vec<u8>> {
 }
 
 // TODO: move to permissions?
-fn check_command_permission(
+pub(crate) fn check_command_permission(
     plugin_env: &PluginEnv,
     command: &PluginCommand,
 ) -> (PermissionStatus, Option<PermissionType>) {

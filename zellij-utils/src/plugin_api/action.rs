@@ -759,8 +759,12 @@ impl TryFrom<ProtobufAction> for Action {
             Some(ProtobufActionName::MarkAllSeen) => match protobuf_action.optional_payload {
                 Some(OptionalPayload::SessionPanePayload(payload)) => Ok(Action::MarkAllSeen {
                     session: payload.session,
+                    this_session: payload.this_session,
                 }),
-                None => Ok(Action::MarkAllSeen { session: None }),
+                None => Ok(Action::MarkAllSeen {
+                    session: None,
+                    this_session: false,
+                }),
                 _ => Err("Wrong payload for Action::MarkAllSeen"),
             },
             Some(ProtobufActionName::MutePaneByPaneId) => match protobuf_action.optional_payload {
@@ -2089,13 +2093,18 @@ impl TryFrom<Action> for ProtobufAction {
                 optional_payload: Some(OptionalPayload::SessionPanePayload(SessionPanePayload {
                     session,
                     pane_id: pane_id.map(|p| p.try_into()).transpose()?,
+                    this_session: false,
                 })),
             }),
-            Action::MarkAllSeen { session } => Ok(ProtobufAction {
+            Action::MarkAllSeen {
+                session,
+                this_session,
+            } => Ok(ProtobufAction {
                 name: ProtobufActionName::MarkAllSeen as i32,
                 optional_payload: Some(OptionalPayload::SessionPanePayload(SessionPanePayload {
                     session,
                     pane_id: None,
+                    this_session,
                 })),
             }),
             Action::MutePaneByPaneId { pane_id } => Ok(ProtobufAction {
@@ -4081,6 +4090,28 @@ mod tests {
             Action::ScrollToNextPrompt,
             Action::SelectCommandAtScrollPosition,
             Action::CopyLastCommandOutput,
+        ] {
+            let protobuf: ProtobufAction = original.clone().try_into().expect("encode");
+            let decoded: Action = protobuf.try_into().expect("decode");
+            assert_eq!(original, decoded);
+        }
+    }
+
+    #[test]
+    fn mark_all_seen_keeps_its_scope_over_protobuf() {
+        for original in [
+            Action::MarkAllSeen {
+                session: None,
+                this_session: false,
+            },
+            Action::MarkAllSeen {
+                session: None,
+                this_session: true,
+            },
+            Action::MarkAllSeen {
+                session: Some("api".to_owned()),
+                this_session: false,
+            },
         ] {
             let protobuf: ProtobufAction = original.clone().try_into().expect("encode");
             let decoded: Action = protobuf.try_into().expect("decode");

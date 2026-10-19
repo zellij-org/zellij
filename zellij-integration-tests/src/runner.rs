@@ -774,6 +774,27 @@ impl TestSession {
         self.main_client.snapshot()
     }
 
+    pub fn wait_briefly(
+        &self,
+        what: &str,
+        predicate: impl Fn(&GridSnapshot) -> bool,
+    ) -> GridSnapshot {
+        let deadline = std::time::Instant::now() + crate::default_timeout();
+        loop {
+            let grid_snapshot = self.snapshot();
+            if predicate(&grid_snapshot) {
+                return grid_snapshot;
+            }
+            if std::time::Instant::now() >= deadline {
+                panic!(
+                    "timed out waiting for: {}\nlast rendered grid:\n{}",
+                    what, grid_snapshot.text
+                );
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+    }
+
     pub fn raw_bytes(&self) -> Vec<u8> {
         self.main_client.raw_bytes()
     }

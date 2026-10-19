@@ -1558,10 +1558,14 @@ fn route_action_with_origin(
                 })
                 .with_context(err_context)?;
         },
-        Action::MarkAllSeen { session } => {
+        Action::MarkAllSeen {
+            session,
+            this_session,
+        } => {
             senders
                 .send_to_screen(ScreenInstruction::MarkAllSeen {
                     session,
+                    this_session,
                     completion: Some(NotificationEnd::new(completion_tx)),
                 })
                 .with_context(err_context)?;

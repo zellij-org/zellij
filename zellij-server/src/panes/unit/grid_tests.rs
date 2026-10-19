@@ -10831,3 +10831,29 @@ fn navigation_markers_still_work_with_new_marker_parsing() {
     );
     assert_eq!(grid.osc133_end_exit_codes(), vec![Some(0)]);
 }
+
+#[test]
+fn a_preview_anchored_at_the_last_command_output_starts_at_that_output() {
+    let mut content = String::new();
+    for line in 0..30 {
+        content.push_str(&format!("old line {}\r\n", line));
+    }
+    content.push_str("\x1b]133;A\x07$ \x1b]133;B\x07make\x1b]133;C\x07\r\n");
+    for line in 0..5 {
+        content.push_str(&format!("output {}\r\n", line));
+    }
+    let grid = create_grid_with_content(&content);
+    let (contents, anchor_line) =
+        grid.preview_with_anchor(zellij_utils::data::PreviewAnchor::LastCommandOutput, 300);
+    let anchor_line = anchor_line.expect("the last command output is found");
+    let lines: Vec<&str> = contents.lines().collect();
+    assert!(
+        lines[anchor_line].contains("make") || lines[anchor_line].contains("output 0"),
+        "line {} is {:?}",
+        anchor_line,
+        lines.get(anchor_line)
+    );
+    let (_, bottom) =
+        grid.preview_with_anchor(zellij_utils::data::PreviewAnchor::Bottom, 300);
+    assert_eq!(bottom, None);
+}

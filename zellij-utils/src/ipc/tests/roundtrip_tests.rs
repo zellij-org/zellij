@@ -2534,7 +2534,28 @@ fn test_client_messages() {
         is_cli_client: true,
     });
     test_client_roundtrip!(ClientToServerMsg::Action {
-        action: Action::MarkAllSeen { session: None },
+        action: Action::MarkAllSeen {
+            session: None,
+            this_session: false,
+        },
+        terminal_id: None,
+        client_id: None,
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::MarkAllSeen {
+            session: None,
+            this_session: true,
+        },
+        terminal_id: None,
+        client_id: None,
+        is_cli_client: true,
+    });
+    test_client_roundtrip!(ClientToServerMsg::Action {
+        action: Action::MarkAllSeen {
+            session: Some("api".to_owned()),
+            this_session: false,
+        },
         terminal_id: None,
         client_id: None,
         is_cli_client: true,

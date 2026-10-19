@@ -395,3 +395,103 @@ fn the_cli_reports_a_refusal_or_a_missing_desktop_app() {
         Err("The Zellij desktop app is not running.".to_owned())
     );
 }
+
+fn parse_action(args: &[&str]) -> zellij_utils::cli::CliAction {
+    let mut line = vec!["zellij", "action"];
+    line.extend_from_slice(args);
+    match try_parse(&line) {
+        Ok(CliArgs {
+            command: Some(Command::Action(action)),
+            ..
+        }) => *action,
+        other => panic!("{:?} did not parse as an action: {:?}", args, other),
+    }
+}
+
+#[test]
+fn the_attention_actions_parse_from_the_command_line() {
+    use zellij_utils::cli::CliAction;
+    assert!(matches!(
+        parse_action(&["mute-pane"]),
+        CliAction::MutePane { pane_id: None }
+    ));
+    assert!(matches!(
+        parse_action(&["mute-pane", "-p", "terminal_3"]),
+        CliAction::MutePane { pane_id: Some(id) } if id == "terminal_3"
+    ));
+    assert!(matches!(
+        parse_action(&["ignore-pane-output", "--pane-id", "4"]),
+        CliAction::IgnorePaneOutput { pane_id: Some(id) } if id == "4"
+    ));
+    assert!(matches!(
+        parse_action(&["watch-pane"]),
+        CliAction::WatchPane { pane_id: None }
+    ));
+    assert!(matches!(
+        parse_action(&["mute-tab", "-t", "2"]),
+        CliAction::MuteTab { tab_id: Some(2) }
+    ));
+    assert!(matches!(parse_action(&["mute-session"]), CliAction::MuteSession));
+    assert!(matches!(
+        parse_action(&["mark-pane-seen", "-p", "terminal_1"]),
+        CliAction::MarkPaneSeen { pane_id: Some(id) } if id == "terminal_1"
+    ));
+    assert!(matches!(
+        parse_action(&["mark-all-seen"]),
+        CliAction::MarkAllSeen {
+            this_session: false
+        }
+    ));
+    assert!(matches!(
+        parse_action(&["mark-all-seen", "--this-session"]),
+        CliAction::MarkAllSeen { this_session: true }
+    ));
+}
+
+#[test]
+fn the_session_switching_actions_parse_from_the_command_line() {
+    use zellij_utils::cli::CliAction;
+    assert!(matches!(
+        parse_action(&["toggle-session"]),
+        CliAction::ToggleSession
+    ));
+    assert!(matches!(
+        parse_action(&["go-to-previous-session"]),
+        CliAction::GoToPreviousSession
+    ));
+    assert!(matches!(
+        parse_action(&["go-to-next-session"]),
+        CliAction::GoToNextSession
+    ));
+    assert!(matches!(
+        parse_action(&["go-to-next-attention"]),
+        CliAction::GoToNextAttention
+    ));
+    assert!(matches!(
+        parse_action(&["toggle-tray-icon"]),
+        CliAction::ToggleTrayIcon
+    ));
+}
+
+#[test]
+fn new_panes_and_runs_can_be_watched_with_notify() {
+    use zellij_utils::cli::CliAction;
+    assert!(matches!(
+        parse_action(&["new-pane", "--notify", "--", "make"]),
+        CliAction::NewPane { notify: true, .. }
+    ));
+    assert!(matches!(
+        parse_action(&["new-pane", "--", "make"]),
+        CliAction::NewPane { notify: false, .. }
+    ));
+    match try_parse(&["zellij", "run", "--notify", "--", "make"]) {
+        Ok(CliArgs {
+            command: Some(Command::Sessions(Sessions::Run { notify, command, .. })),
+            ..
+        }) => {
+            assert!(notify);
+            assert_eq!(command, vec!["make".to_owned()]);
+        },
+        other => panic!("zellij run --notify did not parse: {:?}", other),
+    }
+}

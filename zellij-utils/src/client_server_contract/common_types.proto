@@ -1426,7 +1426,10 @@ message GoToNextSessionAction {}
 message GoToNextAttentionAction {}
 message ToggleTrayIconAction {}
 message MarkPaneSeenAction { optional string session = 1; optional PaneId pane_id = 2; }
-message MarkAllSeenAction { optional string session = 1; }
+message MarkAllSeenAction {
+  optional string session = 1;
+  bool this_session = 2;
+}
 message WriteKeyToPaneIdAction { optional KeyWithModifier key_with_modifier = 1; PaneId pane_id = 2; }
 
 enum HostTerminalThemeIndication {

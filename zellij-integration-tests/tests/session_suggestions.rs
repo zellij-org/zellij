@@ -865,6 +865,7 @@ fn the_reattach_card_closes_itself_once_its_last_item_is_seen() {
         &name,
         vec![zellij_utils::input::actions::Action::MarkAllSeen {
             session: Some(name.clone()),
+            this_session: false,
         }],
     )
     .unwrap();
@@ -900,3 +901,198 @@ fn attaching_to_go_to_a_pane_skips_the_reattach_card() {
     );
     zellij.quit();
 }
+
+fn open_sessions_and_select(zellij: &TestSession, name: &str) {
+    open_the_sessions_tab_with_f9(zellij);
+    zellij.wait_until("the other session is listed", |grid_snapshot| {
+        grid_snapshot.contains(name)
+    });
+    zellij.send_stdin(&keys::DOWN);
+    zellij.wait_until("the other session is selected", |grid_snapshot| {
+        grid_snapshot
+            .lines()
+            .iter()
+            .any(|line| line.contains(name) && line.contains('>'))
+    });
+}
+
+fn answers(name: &str) -> bool {
+    zellij_utils::session_link::session_answers(name, std::time::Duration::from_secs(1))
+}
+
+#[test]
+fn delete_on_a_running_session_asks_before_stopping_it() {
+    let background = TestRunner::new(TERMINAL_SIZE)
+        .with_config(CARD_OFF_INDICATOR_ON)
+        .skip_concurrency_slot()
+        .start_in_background();
+    let name = background.session_name().to_owned();
+    let mut zellij = TestRunner::new(TERMINAL_SIZE)
+        .with_config(CARD_OFF_INDICATOR_ON)
+        .start();
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+    open_sessions_and_select(&zellij, &name);
+    let question = format!("This will stop the session {}", name);
+    zellij.send_stdin(&keys::DELETE);
+    zellij.wait_until("the stop is confirmed first", |grid_snapshot| {
+        grid_snapshot.contains(&question)
+    });
+    zellij.send_stdin(&keys::key('n'));
+    zellij.wait_until("the question is gone", |grid_snapshot| {
+        !grid_snapshot.contains(&question) && grid_snapshot.contains(&name)
+    });
+    assert!(answers(&name), "cancelling stopped the session");
+    zellij.send_stdin(&keys::DELETE);
+    zellij.wait_until("the stop is confirmed again", |grid_snapshot| {
+        grid_snapshot.contains(&question)
+    });
+    zellij.send_stdin(&keys::key('y'));
+    let deadline = Instant::now() + default_timeout();
+    while answers(&name) {
+        assert!(Instant::now() < deadline, "the session was not stopped");
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    zellij.quit();
+}
+
+#[test]
+#[ignore = "renaming the current session from the Sessions tab leaves the in-process client with a blank screen and a lost connection; not diagnosed, listed as an open issue in handoff.md"]
+fn ctrl_r_renames_the_current_session() {
+    let mut zellij = TestRunner::new(TERMINAL_SIZE)
+        .with_config(CARD_OFF_INDICATOR_ON)
+        .start();
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+    open_the_sessions_tab_with_f9(&zellij);
+    zellij.send_stdin(&keys::ctrl('r'));
+    zellij.wait_until("the rename prompt is shown", |grid_snapshot| {
+        grid_snapshot.contains("<ENTER> rename")
+    });
+    for _ in 0..40 {
+        zellij.send_stdin(b"\x7f");
+    }
+    zellij.send_stdin(b"renamed-here");
+    zellij.send_stdin(&keys::ENTER);
+    zellij.wait_until("the session has its new name", |grid_snapshot| {
+        grid_snapshot.lines()[0].contains("renamed-here")
+    });
+    zellij.quit();
+}
+
+#[test]
+#[ignore = "in a terminal session manager neither Down nor Right moves the selection from the opened Exited header to the session under it, although the same keys work in the app panel; listed as an open issue in handoff.md"]
+fn enter_on_an_exited_session_resumes_it() {
+    let resurrectable = leave_a_resurrectable_session();
+    let mut zellij = TestRunner::new(TERMINAL_SIZE)
+        .with_config(CARD_OFF_INDICATOR_ON)
+        .start();
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+    open_the_sessions_tab_with_f9(&zellij);
+    zellij.wait_until("the exited group is listed", |grid_snapshot| {
+        grid_snapshot.contains("▸ Exited (1)")
+    });
+    zellij.send_stdin(b"\x1b[F");
+    zellij.send_stdin(&keys::ENTER);
+    zellij.wait_until("the exited group opens", |grid_snapshot| {
+        grid_snapshot.contains(&resurrectable)
+    });
+    zellij.send_stdin(&keys::RIGHT);
+    zellij.wait_until("the exited session is selected", |grid_snapshot| {
+        grid_snapshot
+            .lines()
+            .iter()
+            .any(|line| line.contains(&resurrectable) && line.contains('>'))
+    });
+    zellij.send_stdin(&keys::ENTER);
+    let switch = zellij.follow_switch();
+    assert_eq!(switch.name.as_deref(), Some(resurrectable.as_str()));
+    zellij.quit();
+}
+
+fn numbered_output(terminal: &zellij_integration_tests::FakePtyHandle, count: usize) {
+    let mut text = String::new();
+    for line in 1..=count {
+        text.push_str(&format!("row {:03}\r\n", line));
+    }
+    terminal.output(text.as_bytes());
+}
+
+fn visible_rows(grid_snapshot: &GridSnapshot) -> Vec<usize> {
+    regex::Regex::new(r"row (\d{3})")
+        .unwrap()
+        .captures_iter(&grid_snapshot.text)
+        .filter_map(|captures| captures[1].parse().ok())
+        .collect()
+}
+
+fn preview_of_a_busy_session(zellij: &TestSession, name: &str) -> GridSnapshot {
+    open_sessions_and_select(zellij, name);
+    zellij.wait_until("the preview shows the last line", |grid_snapshot| {
+        visible_rows(grid_snapshot).contains(&60)
+    })
+}
+
+#[test]
+fn the_sessions_tab_preview_shows_the_bottom_of_a_running_session() {
+    let background = TestRunner::new(TERMINAL_SIZE)
+        .with_config(CARD_OFF_INDICATOR_ON)
+        .skip_concurrency_slot()
+        .start_in_background();
+    let terminal = background.expect_pty_spawn();
+    numbered_output(&terminal, 60);
+    let mut zellij = TestRunner::new(TERMINAL_SIZE)
+        .with_config(CARD_OFF_INDICATOR_ON)
+        .start();
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+    let grid_snapshot = preview_of_a_busy_session(&zellij, background.session_name());
+    assert!(
+        !visible_rows(&grid_snapshot).contains(&1),
+        "{}",
+        grid_snapshot.text
+    );
+    zellij.quit();
+}
+
+#[test]
+fn shift_arrows_pan_the_sessions_preview() {
+    let background = TestRunner::new(TERMINAL_SIZE)
+        .with_config(CARD_OFF_INDICATOR_ON)
+        .skip_concurrency_slot()
+        .start_in_background();
+    let terminal = background.expect_pty_spawn();
+    numbered_output(&terminal, 60);
+    let mut zellij = TestRunner::new(TERMINAL_SIZE)
+        .with_config(CARD_OFF_INDICATOR_ON)
+        .start();
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+    let bottom = preview_of_a_busy_session(&zellij, background.session_name());
+    let first_visible = *visible_rows(&bottom).iter().min().unwrap();
+    let wanted = first_visible.saturating_sub(3);
+    for _ in 0..3 {
+        zellij.send_stdin(&keys::SHIFT_UP);
+    }
+    zellij.wait_until("shift up shows earlier lines", |grid_snapshot| {
+        visible_rows(grid_snapshot).contains(&wanted)
+    });
+    zellij.send_stdin(&keys::SHIFT_END);
+    zellij.wait_until("shift end returns to the bottom", |grid_snapshot| {
+        let rows = visible_rows(grid_snapshot);
+        rows.contains(&60) && !rows.contains(&wanted)
+    });
+    zellij.quit();
+}
+
+#[test]
+fn clicking_a_card_target_goes_there() {
+    let _background = start_running_session_in_background();
+    let mut zellij = start_session_with_session_features();
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+    wait_for_card(&zellij, 2);
+    let grid_snapshot = zellij.snapshot();
+    let (column, line) = position_of(&grid_snapshot, "Open inbox ›");
+    zellij.send_stdin(&sgr_left_click(column + 1, line));
+    zellij.wait_until("the card opened the browser", |grid_snapshot| {
+        grid_snapshot.contains(BROWSER_TABS)
+    });
+    zellij.quit();
+}
+

@@ -416,6 +416,7 @@ message ContextMenuEntry {
   bool is_separator = 1;
   string label = 2;
   repeated ContextMenuAction actions = 3;
+  optional string toggled_label = 4;
 }
 
 message ContextMenuPayload {
@@ -692,6 +693,7 @@ message SessionManifest {
   repeated ClientTabHistory tab_history = 10;
   repeated ClientPaneHistory pane_history = 11;
   uint64 creation_time = 12;
+  bool attention_muted = 13;
 }
 
 message ClientTabHistory {

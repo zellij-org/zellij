@@ -35,6 +35,7 @@ tokio-tungstenite = { version = "0.28", optional = true }
 url = { workspace = true, optional = true }
 
 [features]
+test-support = []
 web_server_capability = [
     "dep:futures-util",
     "dep:tokio",

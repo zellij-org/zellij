@@ -15,6 +15,7 @@ use zellij_utils::data::{BareKey, KeyWithModifier, PaneId};
 use zellij_utils::input::actions::Action;
 use zellij_utils::ipc::{ClientToServerMsg, ServerToClientMsg};
 use zellij_utils::session_link::SessionLink;
+use zellij_window::test_support::{FakeSessionBus, Message, Value, NOTIFICATIONS};
 
 const REQUIRE_ENV: &str = "ZELLIJ_REQUIRE_DESKTOP_TESTS";
 const BINARY_ENV: &str = "ZELLIJ_TEST_BINARY";
@@ -92,6 +93,7 @@ struct Desktop {
     display: String,
     xvfb: Child,
     apps: Vec<Child>,
+    bus: Option<FakeSessionBus>,
 }
 
 impl Desktop {
@@ -134,8 +136,20 @@ impl Desktop {
             display,
             xvfb,
             apps: vec![],
+            bus: None,
         })
     }
+
+    fn start_with_bus() -> Option<Desktop> {
+        let mut desktop = Desktop::start()?;
+        desktop.bus = Some(FakeSessionBus::listen(desktop.root.path().join("bus")));
+        Some(desktop)
+    }
+
+    fn bus(&self) -> &FakeSessionBus {
+        self.bus.as_ref().expect("the desktop runs with a session bus")
+    }
+
 
     fn socket_dir(&self) -> PathBuf {
         self.root.path().join("sock")
@@ -168,6 +182,9 @@ impl Desktop {
             .env("DISPLAY", &self.display)
             .env("SHELL", "/bin/sh")
             .stdin(Stdio::null());
+        if let Some(bus) = &self.bus {
+            command.env("DBUS_SESSION_BUS_ADDRESS", bus.address());
+        }
         command
     }
 
@@ -383,22 +400,38 @@ impl Desktop {
     }
 
     fn make_session_need_you(&self, session: &str) {
-        let mut link =
-            SessionLink::open_path(&self.socket_of(session)).expect("the session answers");
-        link.send(ClientToServerMsg::Action {
-            action: Action::WriteCharsToPaneId {
-                chars: "printf '\\033]7501;state=blocked:kind=question\\033\\\\'\n".to_owned(),
-                pane_id: PaneId::Terminal(0),
-            },
-            terminal_id: None,
-            client_id: None,
-            is_cli_client: true,
-        })
-        .unwrap();
-        let _ = link.recv(Duration::from_secs(5));
-        self.wait_for(&format!("{} to need you", session), || {
-            self.needs_you_in(session) == Some(1)
-        });
+        let deadline = Instant::now() + LIMIT;
+        loop {
+            let mut link =
+                SessionLink::open_path(&self.socket_of(session)).expect("the session answers");
+            link.send(ClientToServerMsg::Action {
+                action: Action::WriteCharsToPaneId {
+                    chars: "printf '\\033]7501;state=blocked:kind=question\\033\\\\'\n"
+                        .to_owned(),
+                    pane_id: PaneId::Terminal(0),
+                },
+                terminal_id: None,
+                client_id: None,
+                is_cli_client: true,
+            })
+            .unwrap();
+            let _ = link.recv(Duration::from_secs(5));
+            let asked = Instant::now();
+            while asked.elapsed() < Duration::from_secs(3) {
+                if self.needs_you_in(session) == Some(1) {
+                    return;
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            if Instant::now() >= deadline {
+                panic!(
+                    "timed out waiting for {} to need you: {:?}\n{}",
+                    session,
+                    self.pane_lines_of(session),
+                    self.logs()
+                );
+            }
+        }
     }
 
     fn toggle_inbox_with_the_shortcut(&mut self) {
@@ -708,4 +741,367 @@ fn the_inbox_shortcut_and_the_tray_open_the_sessions_until_something_needs_you()
         state.panel == panel(PopupView::Inbox)
     });
     desktop.wait_for_panel_to_show("Inbox");
+}
+
+const NOTIFICATIONS_PATH: &str = "/org/freedesktop/Notifications";
+const MENU_PATH: &str = "/MenuBar";
+const MENU_INTERFACE: &str = "com.canonical.dbusmenu";
+const WATCHER: &str = "org.kde.StatusNotifierWatcher";
+const MENU_PAUSE_HOUR: i32 = 51;
+const MENU_RESUME: i32 = 53;
+const MENU_CLEAR_ALL: i32 = 9;
+const MENU_CLOSE_ALL_WINDOWS: i32 = 111;
+const MENU_HIDE_PERMANENTLY: i32 = 62;
+const QUIET: Duration = Duration::from_millis(3000);
+
+impl Desktop {
+    fn act_on(&self, session: &str, actions: Vec<Action>) {
+        let mut link =
+            SessionLink::open_path(&self.socket_of(session)).expect("the session answers");
+        for action in actions {
+            link.send(ClientToServerMsg::Action {
+                action,
+                terminal_id: None,
+                client_id: None,
+                is_cli_client: true,
+            })
+            .unwrap();
+            loop {
+                match link.recv(Duration::from_secs(5)) {
+                    Ok(ServerToClientMsg::UnblockInputThread) => break,
+                    Ok(ServerToClientMsg::Exit { .. }) | Err(_) => return,
+                    Ok(_) => {},
+                }
+            }
+        }
+    }
+
+    fn notifications(&self) -> Vec<(u32, String)> {
+        let mut next = 0;
+        let mut shown: Vec<(u32, String)> = vec![];
+        for call in self.bus().calls_to(NOTIFICATIONS, "Notify") {
+            let replaces = call.body.get(1).and_then(Value::as_u32).unwrap_or(0);
+            let id = if replaces == 0 {
+                next += 1;
+                next
+            } else {
+                replaces
+            };
+            let text = call
+                .body
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<_>>()
+                .join(" ");
+            shown.push((id, text));
+        }
+        shown
+    }
+
+    fn notification_about(&self, session: &str) -> Option<u32> {
+        self.notifications()
+            .into_iter()
+            .find(|(_, text)| text.contains(session))
+            .map(|(id, _)| id)
+    }
+
+    fn wait_for_notification_about(&self, session: &str) -> u32 {
+        self.wait_for(&format!("a notification about {}", session), || {
+            self.notification_about(session).is_some()
+        });
+        self.notification_about(session).unwrap()
+    }
+
+    fn tray_service(&self) -> String {
+        self.wait_for("the tray icon to register", || {
+            !self
+                .bus()
+                .calls_to(WATCHER, "RegisterStatusNotifierItem")
+                .is_empty()
+        });
+        self.bus().calls_to(WATCHER, "RegisterStatusNotifierItem")[0]
+            .body
+            .first()
+            .and_then(Value::as_str)
+            .unwrap()
+            .to_owned()
+    }
+
+    fn click_menu(&self, id: i32) {
+        let service = self.tray_service();
+        self.bus()
+            .call_client(
+                &service,
+                MENU_PATH,
+                MENU_INTERFACE,
+                "Event",
+                vec![
+                    Value::I32(id),
+                    Value::str("clicked"),
+                    Value::variant(Value::I32(0)),
+                    Value::U32(0),
+                ],
+            )
+            .expect("the tray menu takes the click");
+    }
+
+    fn pane_lines_of(&self, session: &str) -> Option<Vec<String>> {
+        let mut link = SessionLink::open_path(&self.socket_of(session)).ok()?;
+        link.send(ClientToServerMsg::Action {
+            action: Action::ListPanes {
+                show_tab: false,
+                show_command: true,
+                show_state: false,
+                show_geometry: false,
+                show_all: false,
+                output_json: false,
+            },
+            terminal_id: None,
+            client_id: None,
+            is_cli_client: true,
+        })
+        .ok()?;
+        loop {
+            match link.recv(Duration::from_secs(2)).ok()? {
+                ServerToClientMsg::Log { lines } => return Some(lines),
+                ServerToClientMsg::UnblockInputThread | ServerToClientMsg::Exit { .. } => {
+                    return None
+                },
+                _ => {},
+            }
+        }
+    }
+}
+
+#[test]
+fn a_session_needing_you_shows_a_notification_and_seeing_it_withdraws_it() {
+    let Some(mut desktop) = Desktop::start_with_bus() else {
+        return;
+    };
+    desktop.start_app();
+    desktop.start_background_session("elsewhere");
+    desktop.make_session_need_you("elsewhere");
+    let id = desktop.wait_for_notification_about("elsewhere");
+    desktop.act_on(
+        "elsewhere",
+        vec![Action::MarkPaneSeen {
+            session: Some("elsewhere".to_owned()),
+            pane_id: Some(PaneId::Terminal(0)),
+        }],
+    );
+    desktop.wait_for("the notification to be withdrawn", || {
+        desktop
+            .bus()
+            .calls_to(NOTIFICATIONS, "CloseNotification")
+            .iter()
+            .any(|call| call.body.first().and_then(Value::as_u32) == Some(id))
+    });
+}
+
+#[test]
+fn clicking_a_notification_opens_a_window_on_its_session() {
+    let Some(mut desktop) = Desktop::start_with_bus() else {
+        return;
+    };
+    desktop.start_app();
+    desktop.start_background_session("elsewhere");
+    desktop.make_session_need_you("elsewhere");
+    let id = desktop.wait_for_notification_about("elsewhere");
+    desktop.bus().signal(Message::signal(
+        NOTIFICATIONS_PATH,
+        NOTIFICATIONS,
+        "ActionInvoked",
+        vec![Value::U32(id), Value::str("default")],
+    ));
+    desktop.wait_for_state("a window on the notified session", |state| {
+        state
+            .windows
+            .iter()
+            .any(|window| window.session.as_deref() == Some("elsewhere"))
+    });
+}
+
+#[test]
+fn the_tray_icon_registers_and_its_menu_works() {
+    let Some(mut desktop) = Desktop::start_with_bus() else {
+        return;
+    };
+    let first = desktop.start_app();
+    desktop.start_background_session("paused");
+    desktop.start_background_session("resumed");
+    desktop.tray_service();
+    desktop.click_menu(MENU_PAUSE_HOUR);
+    desktop.make_session_need_you("paused");
+    std::thread::sleep(QUIET);
+    assert_eq!(
+        desktop.notification_about("paused"),
+        None,
+        "a paused app notified: {:?}",
+        desktop.notifications()
+    );
+    desktop.click_menu(MENU_RESUME);
+    desktop.make_session_need_you("resumed");
+    desktop.wait_for_notification_about("resumed");
+    desktop.click_menu(MENU_CLEAR_ALL);
+    for session in ["paused", "resumed"] {
+        desktop.wait_for(&format!("{} to be cleared", session), || {
+            desktop.needs_you_in(session) == Some(0)
+        });
+    }
+    desktop.click_menu(MENU_CLOSE_ALL_WINDOWS);
+    desktop.wait_for_state("every window closed", |state| state.windows.is_empty());
+    for session in [first.as_str(), "paused", "resumed"] {
+        assert!(desktop.answers(session), "{} stopped", session);
+    }
+    desktop.click_menu(MENU_HIDE_PERMANENTLY);
+    desktop.wait_for_state("the icon to be hidden", |state| !state.tray_icon);
+}
+
+#[test]
+fn toggle_tray_icon_from_the_cli_hides_and_shows_the_real_icon() {
+    let Some(mut desktop) = Desktop::start() else {
+        return;
+    };
+    desktop.start_app();
+    let before = desktop.state().unwrap().tray_icon;
+    let toggle = |desktop: &Desktop| {
+        let status = desktop
+            .command(&["action", "toggle-tray-icon"])
+            .env("ZELLIJ_SOCKET_DIR", desktop.socket_dir())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .expect("zellij action runs");
+        assert!(status.success());
+    };
+    toggle(&desktop);
+    desktop.wait_for_state("the icon to flip", |state| state.tray_icon != before);
+    toggle(&desktop);
+    desktop.wait_for_state("the icon to flip back", |state| state.tray_icon == before);
+}
+
+#[test]
+fn a_launch_after_the_app_crashed_takes_over() {
+    let Some(mut desktop) = Desktop::start() else {
+        return;
+    };
+    desktop.start_app();
+    let _ = Command::new("kill")
+        .args(["-9", &desktop.apps[0].id().to_string()])
+        .status();
+    desktop.wait_for_exit(0);
+    desktop.launch(&[]);
+    desktop.wait_for_state("a new app with a window", |state| {
+        state.windows.len() == 1 && state.windows[0].session.is_some()
+    });
+    assert!(desktop.apps[1].try_wait().unwrap().is_none());
+}
+
+#[test]
+fn two_socket_folders_keep_two_apps_apart() {
+    let Some(mut first) = Desktop::start() else {
+        return;
+    };
+    let Some(mut second) = Desktop::start() else {
+        return;
+    };
+    let first_session = first.start_app();
+    let second_session = second.start_app();
+    let first_state = first.state().unwrap();
+    let second_state = second.state().unwrap();
+    assert_eq!(first_state.live_sessions, vec![first_session.clone()]);
+    assert_eq!(second_state.live_sessions, vec![second_session.clone()]);
+    assert_ne!(first_session, second_session);
+}
+
+#[test]
+fn a_standalone_window_does_not_join_the_app() {
+    let Some(mut desktop) = Desktop::start() else {
+        return;
+    };
+    let session = desktop.start_app();
+    let standalone = desktop.launch(&["--standalone", &session]);
+    std::thread::sleep(QUIET);
+    let state = desktop.state().unwrap();
+    assert_eq!(state.windows.len(), 1, "{:?}", state);
+    assert!(
+        desktop.apps[standalone].try_wait().unwrap().is_none(),
+        "the standalone window exited\n{}",
+        desktop.logs()
+    );
+}
+
+#[test]
+fn the_desktop_entry_is_installed_and_removed_from_the_cli() {
+    let Some(desktop) = Desktop::start() else {
+        return;
+    };
+    let applications = desktop.root.path().join("data/applications");
+    let output = desktop
+        .command(&["setup", "--install-desktop-entry"])
+        .output()
+        .expect("zellij runs");
+    assert!(
+        output.status.success(),
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let entries: Vec<PathBuf> = std::fs::read_dir(&applications)
+        .expect("the applications folder exists")
+        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+        .filter(|path| path.extension().map(|e| e == "desktop").unwrap_or(false))
+        .collect();
+    assert_eq!(entries.len(), 1, "{:?}", entries);
+    let entry = std::fs::read_to_string(&entries[0]).unwrap();
+    for action in [
+        "[Desktop Action inbox]",
+        "[Desktop Action sessions]",
+        "[Desktop Action new-window]",
+    ] {
+        assert!(entry.contains(action), "{} is missing:\n{}", action, entry);
+    }
+    let status = desktop
+        .command(&["setup", "--uninstall-desktop-entry"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .expect("zellij runs");
+    assert!(status.success());
+    assert!(!entries[0].exists());
+}
+
+#[test]
+fn a_new_session_window_starts_in_the_chosen_folder() {
+    let Some(mut desktop) = Desktop::start() else {
+        return;
+    };
+    desktop.start_app();
+    let folder = desktop.root.path().join("chosen-folder");
+    std::fs::create_dir_all(&folder).unwrap();
+    assert_eq!(
+        send_app_request_to(
+            &desktop.control_socket(),
+            &AppRequest::OpenWindow(zellij_utils::app_control::OpenWindowRequest {
+                session: Some("in-folder".to_owned()),
+                create: true,
+                cwd: Some(folder.clone()),
+                ..Default::default()
+            })
+        ),
+        Ok(AppReply::Done)
+    );
+    desktop.wait_for_state("a window on the new session", |state| {
+        state
+            .windows
+            .iter()
+            .any(|window| window.session.as_deref() == Some("in-folder"))
+    });
+    let folder_text = folder.display().to_string();
+    desktop.wait_for("the new session's pane to start in the folder", || {
+        desktop
+            .pane_lines_of("in-folder")
+            .map(|lines| lines.iter().any(|line| line.contains(&folder_text)))
+            .unwrap_or(false)
+    });
 }

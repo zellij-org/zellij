@@ -786,6 +786,7 @@ pub enum Action {
     },
     MarkAllSeen {
         session: Option<String>,
+        this_session: bool,
     },
     WriteKeyToPaneId {
         key_with_modifier: Option<KeyWithModifier>,
@@ -2254,11 +2255,8 @@ impl Action {
                 pane_id: pane_id.as_deref().map(parse_cli_pane_id).transpose()?,
             }]),
             CliAction::MarkAllSeen { this_session } => Ok(vec![Action::MarkAllSeen {
-                session: if this_session {
-                    std::env::var("ZELLIJ_SESSION_NAME").ok()
-                } else {
-                    None
-                },
+                session: None,
+                this_session,
             }]),
             CliAction::TogglePanePinned { pane_id } => match pane_id {
                 Some(pane_id_str) => {

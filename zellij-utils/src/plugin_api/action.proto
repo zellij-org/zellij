@@ -264,6 +264,7 @@ message Action {
 message SessionPanePayload {
   optional string session = 1;
   optional PaneId pane_id = 2;
+  bool this_session = 3;
 }
 
 message TargetPaneIdPayload {

@@ -1997,9 +1997,13 @@ impl From<crate::input::actions::Action>
                     pane_id: pane_id.map(|p| p.into()),
                 })
             },
-            crate::input::actions::Action::MarkAllSeen { session } => {
-                ActionType::MarkAllSeen(MarkAllSeenAction { session })
-            },
+            crate::input::actions::Action::MarkAllSeen {
+                session,
+                this_session,
+            } => ActionType::MarkAllSeen(MarkAllSeenAction {
+                session,
+                this_session,
+            }),
             crate::input::actions::Action::WriteKeyToPaneId {
                 key_with_modifier,
                 pane_id,
@@ -3014,9 +3018,10 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Action>
                 session: a.session,
                 pane_id: a.pane_id.map(|p| p.try_into()).transpose()?,
             }),
-            ActionType::MarkAllSeen(a) => {
-                Ok(crate::input::actions::Action::MarkAllSeen { session: a.session })
-            },
+            ActionType::MarkAllSeen(a) => Ok(crate::input::actions::Action::MarkAllSeen {
+                session: a.session,
+                this_session: a.this_session,
+            }),
             ActionType::WriteKeyToPaneId(a) => {
                 Ok(crate::input::actions::Action::WriteKeyToPaneId {
                     key_with_modifier: a.key_with_modifier.map(|k| k.try_into()).transpose()?,

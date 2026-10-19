@@ -454,13 +454,19 @@ impl Screen {
         true
     }
 
-    pub(crate) fn mark_all_seen(&mut self, session: Option<String>) {
+    pub(crate) fn mark_all_seen(&mut self, session: Option<String>, this_session: bool) {
+        let session = if this_session {
+            Some(self.session_name.clone())
+        } else {
+            session
+        };
         match session {
             Some(session) if !self.is_this_session(Some(&session)) => {
                 self.remote_actions.send(
                     &session,
                     vec![Action::MarkAllSeen {
                         session: Some(session.clone()),
+                        this_session: false,
                     }],
                 );
             },
@@ -489,6 +495,7 @@ impl Screen {
                         &other,
                         vec![Action::MarkAllSeen {
                             session: Some(other.clone()),
+                            this_session: false,
                         }],
                     );
                 }

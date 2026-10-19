@@ -454,6 +454,8 @@ pub struct SessionPanePayload {
     pub session: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(message, optional, tag="2")]
     pub pane_id: ::core::option::Option<PaneId>,
+    #[prost(bool, tag="3")]
+    pub this_session: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

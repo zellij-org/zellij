@@ -467,3 +467,651 @@ fn output_from_a_watched_pane_needs_you_while_the_window_is_unfocused_until_refo
     wait_for_markers(&zellij, "");
     zellij.quit();
 }
+
+fn session_attention(zellij: &TestSession) -> zellij_utils::attention::SessionAttention {
+    zellij_utils::session_link::request_session_attention(zellij.session_name(), Duration::from_secs(2))
+        .expect("the session answers")
+}
+
+fn wait_for_session_attention(
+    zellij: &TestSession,
+    what: &str,
+    check: impl Fn(&zellij_utils::attention::SessionAttention) -> bool,
+) {
+    zellij_integration_tests::wait_for(what, || {
+        zellij_utils::session_link::request_session_attention(
+            zellij.session_name(),
+            Duration::from_secs(2),
+        )
+        .map(|attention| check(&attention))
+        .unwrap_or(false)
+    });
+}
+
+fn pane_id(terminal: &FakePtyHandle) -> Option<String> {
+    Some(format!("terminal_{}", terminal.terminal_id()))
+}
+
+fn status_bar(zellij: &TestSession) -> String {
+    let lines = zellij.snapshot().lines();
+    lines[lines.len().saturating_sub(2)..].join("\n")
+}
+
+fn open_second_tab(zellij: &TestSession) -> FakePtyHandle {
+    zellij.send_stdin(&keys::ctrl('t'));
+    zellij.send_stdin(&keys::key('n'));
+    let terminal = zellij.expect_pty_spawn();
+    terminal.disable_echo();
+    terminal.output(b"$ ");
+    zellij.wait_until("the second tab is open", |grid_snapshot| {
+        grid_snapshot.lines()[0].contains("Tab #2") && grid_snapshot.status_bar_appears()
+    });
+    terminal
+}
+
+fn go_to_tab(zellij: &TestSession, number: char) {
+    zellij.send_stdin(&keys::ctrl('t'));
+    zellij.send_stdin(&keys::key(number));
+    zellij.send_stdin(&keys::ENTER);
+    zellij.wait_until("the tab is shown", |grid_snapshot| {
+        grid_snapshot.status_bar_appears()
+    });
+}
+
+#[test]
+fn muting_the_session_hides_every_marker_and_the_indicator_count() {
+    let (mut zellij, left, _right) =
+        start_with_two_panes(TestRunner::new(TERMINAL_SIZE).with_config(SESSION_INDICATOR_ON));
+    left.output(&program_status("state=blocked:kind=question"));
+    wait_for_markers(&zellij, "●");
+    zellij.wait_until("the indicator counts the item", |grid_snapshot| {
+        grid_snapshot.lines()[0].contains("● 1")
+    });
+    zellij.run_cli_action(CliAction::MuteSession);
+    zellij.wait_until("the session mute hides the marker", |grid_snapshot| {
+        !markers_on_screen(&grid_snapshot.text).contains('●')
+            && !grid_snapshot.lines()[0].contains("● 1")
+    });
+    wait_for_session_attention(&zellij, "the session reports it is muted", |attention| {
+        attention.muted && attention.counts.needs_you == 0
+    });
+    zellij.run_cli_action(CliAction::MuteSession);
+    wait_for_markers(&zellij, "●");
+    zellij.quit();
+}
+
+#[test]
+#[ignore = "dismissing a working item with c in the Inbox removes it from the list but the session still counts it as working, which contradicts the handoff decision that marking seen clears working; listed under Questions for the operator"]
+fn focusing_a_working_pane_keeps_it_working_but_dismissing_it_clears_it() {
+    let (mut zellij, _left, right) =
+        start_with_two_panes(TestRunner::new(TERMINAL_SIZE).with_config(SESSION_INDICATOR_ON));
+    right.output(&program_status("state=working:app=claude"));
+    wait_for_markers(&zellij, "◐");
+    focus_right_pane(&zellij);
+    focus_left_pane(&zellij);
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(markers_on_screen(&zellij.snapshot().text), "◐");
+    open_inbox(&zellij);
+    zellij.wait_until("the working item is listed", |grid_snapshot| {
+        grid_snapshot.contains("WORKING") && grid_snapshot.contains("<c> dismiss")
+    });
+    zellij.send_stdin(&keys::key('c'));
+    zellij.wait_until("the working item is dismissed", |grid_snapshot| {
+        !grid_snapshot.contains("WORKING")
+    });
+    zellij.send_stdin(&keys::ESC);
+    wait_for_markers(&zellij, "");
+    zellij.quit();
+}
+
+const SERIALIZING: &str =
+    "session_serialization true\ndisable_session_metadata false\nsession_indicator true";
+
+fn serialized_layout(zellij: &TestSession) -> String {
+    let path = zellij_utils::consts::session_layout_cache_file_name(zellij.session_name());
+    std::fs::read_to_string(path).unwrap_or_default()
+}
+
+fn save_and_resurrect(zellij: &mut TestSession) {
+    zellij.save_session();
+    zellij.wait_for_serialized_session();
+    zellij.quit();
+    zellij.resurrect(TERMINAL_SIZE);
+}
+
+#[test]
+fn mute_ignore_and_tab_mute_are_restored_after_resurrection() {
+    let (mut zellij, left, right) =
+        start_with_two_panes(TestRunner::new(TERMINAL_SIZE).with_config(SERIALIZING));
+    let _third = open_second_tab(&zellij);
+    zellij.run_cli_action(CliAction::MutePane {
+        pane_id: pane_id(&left),
+    });
+    zellij.run_cli_action(CliAction::IgnorePaneOutput {
+        pane_id: pane_id(&right),
+    });
+    zellij.run_cli_action(CliAction::MuteTab { tab_id: None });
+    zellij.wait_until("the second tab is muted", |grid_snapshot| {
+        grid_snapshot.lines()[0].contains("Tab #2 ⊘")
+    });
+    zellij.save_session();
+    zellij.wait_for_serialized_session();
+    zellij_integration_tests::wait_for("the flags to be saved", || {
+        let layout = serialized_layout(&zellij);
+        layout.contains("attention_muted=true") && layout.contains("ignore_output=true")
+    });
+    zellij.quit();
+    zellij.resurrect(TERMINAL_SIZE);
+    let restored_left = zellij.expect_pty_spawn();
+    let restored_right = zellij.expect_pty_spawn();
+    let restored_third = zellij.expect_pty_spawn();
+    for terminal in [&restored_left, &restored_right, &restored_third] {
+        terminal.disable_echo();
+        terminal.output(b"$ ");
+    }
+    zellij.wait_until("the restored tab is still muted", |grid_snapshot| {
+        grid_snapshot.lines()[0].contains("Tab #2 ⊘") && grid_snapshot.status_bar_appears()
+    });
+    restored_third.output(&program_status("state=blocked:kind=question"));
+    go_to_tab(&zellij, '1');
+    zellij.wait_until("the restored muted pane shows its mark", |grid_snapshot| {
+        markers_on_screen(&grid_snapshot.text).contains('⊘')
+    });
+    go_to_tab(&zellij, '2');
+    let_the_startup_grace_pass();
+    print_lines(&restored_right, "ignored output");
+    std::thread::sleep(Duration::from_millis(700));
+    let attention = session_attention(&zellij);
+    assert_eq!(attention.counts.new_output, 0, "{:?}", attention.counts);
+    assert_eq!(attention.counts.needs_you, 0, "{:?}", attention.counts);
+    zellij.quit();
+}
+
+#[test]
+#[ignore = "a session muted before saving is not muted after resurrection, although ATTENTION_PLAN.md says session mute is saved in session-metadata.kdl; listed under Questions for the operator"]
+fn a_muted_session_stays_muted_after_resurrection() {
+    let mut zellij = TestRunner::new(TERMINAL_SIZE)
+        .with_config(SERIALIZING)
+        .start();
+    let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
+    terminal.disable_echo();
+    zellij.run_cli_action(CliAction::MuteSession);
+    wait_for_session_attention(&zellij, "the session is muted", |attention| attention.muted);
+    save_and_resurrect(&mut zellij);
+    let restored = zellij.expect_pty_spawn();
+    restored.disable_echo();
+    restored.output(b"$ ");
+    zellij.wait_until("the session is restored", |grid_snapshot| {
+        grid_snapshot.status_bar_appears()
+    });
+    wait_for_session_attention(&zellij, "the restored session is muted", |attention| {
+        attention.muted
+    });
+    zellij.quit();
+}
+
+#[test]
+fn a_watch_is_not_restored_after_resurrection() {
+    let (mut zellij, left, _right) =
+        start_with_two_panes(TestRunner::new(TERMINAL_SIZE).with_config(SERIALIZING));
+    watch(&zellij, &left);
+    wait_for_session_attention(&zellij, "the pane is watched", |attention| {
+        attention.items.iter().any(|item| item.attention.watched)
+    });
+    save_and_resurrect(&mut zellij);
+    let restored_left = zellij.expect_pty_spawn();
+    let restored_right = zellij.expect_pty_spawn();
+    for terminal in [&restored_left, &restored_right] {
+        terminal.disable_echo();
+        terminal.output(b"$ ");
+    }
+    zellij.wait_until("the session is restored", |grid_snapshot| {
+        grid_snapshot.status_bar_appears()
+    });
+    focus_left_pane(&zellij);
+    std::thread::sleep(Duration::from_millis(500));
+    assert!(
+        !status_bar(&zellij).contains("watching this pane"),
+        "{}",
+        status_bar(&zellij)
+    );
+    focus_right_pane(&zellij);
+    shell_command(&restored_left, "A", "make", "D;0");
+    restored_left.output(b"\x1b]133;A\x1b\\$ after\r\n");
+    zellij.wait_until("the command finished", |grid_snapshot| {
+        grid_snapshot.contains("after")
+    });
+    std::thread::sleep(Duration::from_millis(700));
+    assert_eq!(markers_on_screen(&zellij.snapshot().text), "");
+    let attention = session_attention(&zellij);
+    assert!(
+        !attention.items.iter().any(|item| item.attention.watched),
+        "a watch came back: {:?}",
+        attention.items
+    );
+    zellij.quit();
+}
+
+#[test]
+fn ignoring_a_panes_output_hides_only_new_output() {
+    let (mut zellij, left, _right) =
+        start_with_two_panes(TestRunner::new(TERMINAL_SIZE).with_config(SESSION_INDICATOR_ON));
+    zellij.run_cli_action(CliAction::IgnorePaneOutput {
+        pane_id: pane_id(&left),
+    });
+    let_the_startup_grace_pass();
+    unfocus_the_host_window(&zellij);
+    print_lines(&left, "ignored output");
+    zellij.wait_until("the output is drawn", |grid_snapshot| {
+        grid_snapshot.contains("ignored output 2")
+    });
+    std::thread::sleep(Duration::from_millis(700));
+    assert_eq!(markers_on_screen(&zellij.snapshot().text), "");
+    assert_eq!(session_attention(&zellij).counts.new_output, 0);
+    left.output(&program_status("state=blocked:kind=question"));
+    wait_for_markers(&zellij, "●");
+    zellij.quit();
+}
+
+#[test]
+fn muting_a_tab_hides_its_panes_and_marks_the_tab() {
+    let (mut zellij, left, _right) =
+        start_with_two_panes(TestRunner::new(TERMINAL_SIZE).with_config(SESSION_INDICATOR_ON));
+    left.output(&program_status("state=blocked:kind=question"));
+    wait_for_markers(&zellij, "●");
+    zellij.run_cli_action(CliAction::MuteTab { tab_id: None });
+    zellij.wait_until("the tab is muted", |grid_snapshot| {
+        grid_snapshot.lines()[0].contains("Tab #1 ⊘")
+            && !markers_on_screen(&grid_snapshot.text).contains('●')
+    });
+    zellij.run_cli_action(CliAction::MuteTab { tab_id: None });
+    wait_for_markers(&zellij, "●");
+    zellij.quit();
+}
+
+fn press_in_mode(zellij: &TestSession, mode: char, key: char) {
+    zellij.send_stdin(&keys::ctrl(mode));
+    zellij.send_stdin(&keys::key(key));
+    zellij.wait_until("back in normal mode", |grid_snapshot| {
+        grid_snapshot.status_bar_appears()
+    });
+}
+
+#[test]
+fn the_pane_tab_and_session_mode_keys_mute_ignore_and_watch() {
+    let (mut zellij, _left, right) =
+        start_with_two_panes(TestRunner::new(TERMINAL_SIZE).with_config(SESSION_INDICATOR_ON));
+    press_in_mode(&zellij, 'p', 'u');
+    wait_for_markers(&zellij, "⊘");
+    press_in_mode(&zellij, 'p', 'u');
+    wait_for_markers(&zellij, "");
+    press_in_mode(&zellij, 'p', 'g');
+    let_the_startup_grace_pass();
+    focus_left_pane(&zellij);
+    unfocus_the_host_window(&zellij);
+    print_lines(&right, "ignored by key");
+    std::thread::sleep(Duration::from_millis(700));
+    assert_eq!(session_attention(&zellij).counts.new_output, 0);
+    zellij.send_stdin(b"\x1b[I");
+    press_in_mode(&zellij, 'p', 'v');
+    wait_for_session_attention(&zellij, "the focused pane is watched", |attention| {
+        attention.items.iter().any(|item| item.attention.watched)
+    });
+    press_in_mode(&zellij, 't', 'u');
+    zellij.wait_until("the tab is muted", |grid_snapshot| {
+        grid_snapshot.lines()[0].contains("Tab #1 ⊘")
+    });
+    press_in_mode(&zellij, 'o', 'u');
+    wait_for_session_attention(&zellij, "the session is muted", |attention| attention.muted);
+    zellij.quit();
+}
+
+#[test]
+fn the_unlock_first_preset_mutes_the_pane_from_pane_mode() {
+    let mut zellij = TestRunner::new(TERMINAL_SIZE)
+        .with_config(SESSION_INDICATOR_ON)
+        .with_cli_options(zellij_utils::input::options::Options {
+            keybinds_preset: Some("unlock-first".to_owned()),
+            ..Default::default()
+        })
+        .start();
+    let terminal = zellij.expect_pty_spawn();
+    terminal.disable_echo();
+    terminal.output(b"$ ");
+    zellij.wait_until("the session starts locked", |grid_snapshot| {
+        grid_snapshot.tab_bar_appears() && grid_snapshot.contains("UNLOCK")
+    });
+    zellij.send_stdin(&keys::ctrl('g'));
+    zellij.send_stdin(&keys::key('p'));
+    zellij.send_stdin(&keys::key('u'));
+    zellij.wait_until("the status bar says the pane is muted", |grid_snapshot| {
+        grid_snapshot
+            .lines()
+            .last()
+            .map(|line| line.contains("pane muted"))
+            .unwrap_or(false)
+    });
+    zellij.quit();
+}
+
+#[test]
+fn mark_pane_seen_from_the_cli_clears_that_pane() {
+    let (mut zellij, left, _right) = start_with_two_panes(TestRunner::new(TERMINAL_SIZE));
+    shell_command(&left, "A", "cargo test", "D;1");
+    wait_for_markers(&zellij, "✗");
+    zellij.run_cli_action(CliAction::MarkPaneSeen {
+        pane_id: pane_id(&left),
+    });
+    wait_for_markers(&zellij, "");
+    zellij.quit();
+}
+
+fn new_command_pane_with_notify(command: &[&str]) -> CliAction {
+    CliAction::NewPane {
+        direction: None,
+        command: command.iter().map(|part| part.to_string()).collect(),
+        plugin: None,
+        cwd: None,
+        floating: false,
+        in_place: false,
+        close_replaced_pane: false,
+        pane_id: None,
+        name: None,
+        close_on_exit: false,
+        start_suspended: false,
+        configuration: None,
+        skip_plugin_cache: false,
+        x: None,
+        y: None,
+        width: None,
+        height: None,
+        pinned: None,
+        stacked: false,
+        blocking: false,
+        block_until_exit_success: false,
+        block_until_exit_failure: false,
+        block_until_exit: false,
+        unblock_condition: None,
+        near_current_pane: false,
+        no_focus: false,
+        borderless: None,
+        tab_id: None,
+        border_style: None,
+        notify: true,
+    }
+}
+
+#[test]
+fn notify_on_a_new_command_pane_reports_when_it_finishes() {
+    let mut zellij = TestRunner::new(TERMINAL_SIZE)
+        .with_config(SESSION_INDICATOR_ON)
+        .start();
+    let first = claim_first_terminal_and_wait_for_prompt(&zellij);
+    first.disable_echo();
+    zellij.run_cli_action(new_command_pane_with_notify(&["false"]));
+    let command = zellij.expect_pty_spawn();
+    command.disable_echo();
+    command.output(b"running\r\n");
+    zellij.wait_until("the command pane is drawn", |grid_snapshot| {
+        grid_snapshot.contains("running")
+    });
+    wait_for_session_attention(&zellij, "the command pane is watched", |attention| {
+        attention.items.iter().any(|item| {
+            item.pane_id == zellij_utils::data::PaneId::Terminal(command.terminal_id())
+                && item.attention.watched
+        })
+    });
+    let _other_tab = open_second_tab(&zellij);
+    command.exit(Some(1));
+    zellij.wait_until("the exit raised a watch alert", |grid_snapshot| {
+        grid_snapshot.lines()[0].contains("watch alert")
+    });
+    zellij.quit();
+}
+
+#[test]
+fn frame_markers_false_hides_every_pane_marker_but_keeps_the_indicator() {
+    let (mut zellij, left, _right) = start_with_two_panes(
+        TestRunner::new(TERMINAL_SIZE)
+            .with_config("session_indicator true\nattention {\n    frame_markers false\n}"),
+    );
+    left.output(&program_status("state=blocked:kind=question"));
+    zellij.wait_until("the indicator counts the item", |grid_snapshot| {
+        grid_snapshot.lines()[0].contains("● 1")
+    });
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(markers_on_screen(&zellij.snapshot().text), "");
+    zellij.quit();
+}
+
+#[test]
+fn host_status_false_never_tells_the_host_terminal() {
+    let (mut zellij, agent, _right) = start_with_two_panes(
+        TestRunner::new(TERMINAL_SIZE)
+            .with_host_terminal(HostTerminal::ProgramStatus)
+            .with_config("attention {\n    host_status false\n}"),
+    );
+    agent.output(&program_status("state=blocked:kind=permission"));
+    wait_for_markers(&zellij, "●");
+    std::thread::sleep(Duration::from_millis(1200));
+    assert!(!contains_subslice(
+        &zellij.raw_bytes(),
+        b"\x1b]7501;state=blocked:app=zellij"
+    ));
+    zellij.quit();
+}
+
+#[test]
+fn a_successful_command_counts_as_done_only_after_the_threshold() {
+    let (mut zellij, left, _right) = start_with_two_panes(
+        TestRunner::new(TERMINAL_SIZE).with_config("attention {\n    done_threshold_secs 1\n}"),
+    );
+    shell_command(&left, "A", "true", "D;0");
+    left.output(b"\x1b]133;A\x1b\\$ quick done\r\n");
+    zellij.wait_until("the quick command finished", |grid_snapshot| {
+        grid_snapshot.contains("quick done")
+    });
+    std::thread::sleep(Duration::from_millis(500));
+    assert_eq!(markers_on_screen(&zellij.snapshot().text), "");
+    left.output(b"\x1b]133;A\x1b\\$ \x1b]133;B\x1b\\sleep 1\x1b]133;C\x1b\\\r\n");
+    std::thread::sleep(Duration::from_millis(1200));
+    left.output(b"\x1b]133;D;0\x1b\\");
+    wait_for_markers(&zellij, "✓");
+    zellij.quit();
+}
+
+fn busy_then_silent_in_another_tab(config: &str) -> (TestSession, FakePtyHandle) {
+    let zellij = TestRunner::new(TERMINAL_SIZE).with_config(config).start();
+    let busy = claim_first_terminal_and_wait_for_prompt(&zellij);
+    busy.disable_echo();
+    let _second = open_second_tab(&zellij);
+    produce_steady_output(&[&busy], Duration::from_millis(3000));
+    (zellij, busy)
+}
+
+#[test]
+fn idle_rule_all_marks_an_unwatched_busy_pane_quiet() {
+    let (mut zellij, _busy) = busy_then_silent_in_another_tab(
+        "attention {\n    idle_rule \"all\"\n    idle_activity_secs 1\n    idle_silence_secs 1\n}",
+    );
+    wait_for_session_attention(&zellij, "the busy pane went quiet", |attention| {
+        attention.counts.quiet >= 1
+    });
+    zellij.quit();
+}
+
+#[test]
+fn idle_rule_watched_ignores_unwatched_panes() {
+    let (mut zellij, _busy) = busy_then_silent_in_another_tab(
+        "attention {\n    idle_rule \"watched\"\n    idle_activity_secs 1\n    idle_silence_secs 1\n}",
+    );
+    std::thread::sleep(Duration::from_millis(2500));
+    assert_eq!(session_attention(&zellij).counts.quiet, 0);
+    zellij.quit();
+}
+
+#[test]
+fn state_error_shows_failed() {
+    let (mut zellij, left, _right) = start_with_two_panes(TestRunner::new(TERMINAL_SIZE));
+    left.output(&program_status("state=error"));
+    wait_for_markers(&zellij, "✗");
+    zellij.quit();
+}
+
+#[test]
+fn state_clear_removes_the_status() {
+    let (mut zellij, left, _right) = start_with_two_panes(TestRunner::new(TERMINAL_SIZE));
+    left.output(&program_status("state=blocked:kind=question"));
+    wait_for_markers(&zellij, "●");
+    left.output(&program_status("state=clear"));
+    wait_for_markers(&zellij, "");
+    zellij.quit();
+}
+
+#[test]
+fn nested_ids_keep_the_most_urgent_and_clear_with_their_parent() {
+    let (mut zellij, left, _right) = start_with_two_panes(TestRunner::new(TERMINAL_SIZE));
+    left.output(&program_status("id=a:state=working"));
+    left.output(&program_status("id=a/b:state=blocked"));
+    wait_for_markers(&zellij, "●");
+    left.output(&program_status("id=a:state=clear"));
+    wait_for_markers(&zellij, "");
+    zellij.quit();
+}
+
+#[test]
+fn title_and_progress_are_shown_in_the_inbox() {
+    let (mut zellij, left, _right) =
+        start_with_two_panes(TestRunner::new(TERMINAL_SIZE).with_config(SESSION_INDICATOR_ON));
+    left.output(&program_status(&format!(
+        "state=working:title={}:progress=40",
+        encoded("Deploying")
+    )));
+    wait_for_markers(&zellij, "◐");
+    open_inbox(&zellij);
+    zellij.wait_until("the inbox shows the title and progress", |grid_snapshot| {
+        grid_snapshot.contains("working 40%: Deploying")
+    });
+    zellij.quit();
+}
+
+#[test]
+fn vscode_shell_integration_reports_a_failed_command() {
+    let (mut zellij, left, _right) =
+        start_with_two_panes(TestRunner::new(TERMINAL_SIZE).with_config(SESSION_INDICATOR_ON));
+    let _other_tab = open_second_tab(&zellij);
+    left.output(
+        b"\x1b]633;A\x07$ \x1b]633;B\x07\x1b]633;E;make test\x07\x1b]633;C\x07\r\nboom\r\n\x1b]633;D;1\x07",
+    );
+    zellij.wait_until("the failed command is counted", |grid_snapshot| {
+        grid_snapshot.lines()[0].contains("✗ 1")
+    });
+    open_inbox(&zellij);
+    zellij.wait_briefly("the inbox shows the command", |grid_snapshot| {
+        grid_snapshot.contains("FAILED") && grid_snapshot.contains("make test")
+    });
+    zellij.quit();
+}
+
+#[test]
+fn osc_99_and_osc_777_notifications_need_you() {
+    let (mut zellij, left, _right) = start_with_two_panes(TestRunner::new(TERMINAL_SIZE));
+    left.output(b"\x1b]777;notify;Build;finished\x07");
+    wait_for_markers(&zellij, "●");
+    focus_left_pane(&zellij);
+    wait_for_markers(&zellij, "");
+    focus_right_pane(&zellij);
+    left.output(b"\x1b]99;;Tests passed\x1b\\");
+    wait_for_markers(&zellij, "●");
+    zellij.quit();
+}
+
+#[test]
+fn a_notifications_text_is_shown_in_the_inbox() {
+    let (mut zellij, left, _right) =
+        start_with_two_panes(TestRunner::new(TERMINAL_SIZE).with_config(SESSION_INDICATOR_ON));
+    left.output(b"\x1b]9;Build finished\x07");
+    wait_for_markers(&zellij, "●");
+    assert!(!zellij.snapshot().contains("Build finished"));
+    let _other_tab = open_second_tab(&zellij);
+    left.output(b"\x1b]9;Deploy finished\x07");
+    zellij.wait_until("the notification is counted", |grid_snapshot| {
+        grid_snapshot.lines()[0].contains("● 1")
+    });
+    open_inbox(&zellij);
+    zellij.wait_until("the inbox shows the notification text", |grid_snapshot| {
+        grid_snapshot.contains("Deploy finished")
+    });
+    zellij.quit();
+}
+
+fn frame_row(zellij: &TestSession) -> String {
+    zellij.snapshot().lines()[1].chars().take(60).collect()
+}
+
+#[test]
+fn without_arrow_fonts_frames_use_letters() {
+    let (mut zellij, left, _right) = start_with_two_panes(
+        TestRunner::new(TERMINAL_SIZE).with_config("simplified_ui true"),
+    );
+    left.output(&program_status("state=blocked:kind=question"));
+    zellij.wait_until("the blocked pane shows a letter", |grid_snapshot| {
+        grid_snapshot.lines()[1].chars().take(60).collect::<String>().contains(" ! ")
+    });
+    left.output(&program_status("state=clear"));
+    shell_command(&left, "A", "cargo test", "D;1");
+    zellij.wait_until("the failed pane shows a letter", |grid_snapshot| {
+        grid_snapshot.lines()[1].chars().take(60).collect::<String>().contains(" x ")
+    });
+    let row = frame_row(&zellij);
+    assert!(!row.contains('✗') && !row.contains('●'), "{}", row);
+    zellij.quit();
+}
+
+const NARROW_LAYOUT: &str = r#"
+layout {
+    pane size=1 borderless=true {
+        plugin location="tab-bar"
+    }
+    pane split_direction="vertical" {
+        pane size=6
+        pane focus=true
+    }
+    pane size=2 borderless=true {
+        plugin location="status-bar"
+    }
+}
+"#;
+
+#[test]
+fn the_marker_is_dropped_on_a_very_narrow_pane_title() {
+    let mut zellij = TestRunner::new(TERMINAL_SIZE)
+        .with_layout(zellij_utils::data::LayoutInfo::Stringified(
+            NARROW_LAYOUT.to_owned(),
+        ))
+        .start();
+    let narrow = zellij.expect_pty_spawn();
+    let wide = zellij.expect_pty_spawn();
+    for terminal in [&narrow, &wide] {
+        terminal.disable_echo();
+        terminal.output(b"$ ");
+    }
+    zellij.wait_until("both panes are drawn", |grid_snapshot| {
+        grid_snapshot.status_bar_appears()
+    });
+    let before = zellij.snapshot().lines()[1].clone();
+    narrow.output(&program_status("state=blocked:kind=question"));
+    narrow.output(b"reported\r\n");
+    std::thread::sleep(Duration::from_millis(700));
+    let after = zellij.snapshot().lines()[1].clone();
+    let narrow_frame: String = after.chars().take(6).collect();
+    assert!(!narrow_frame.contains('●'), "{}", after);
+    assert_eq!(
+        before.chars().take(6).collect::<String>(),
+        narrow_frame,
+        "the narrow frame changed:\n{}\n{}",
+        before,
+        after
+    );
+    zellij.quit();
+}

@@ -78,7 +78,7 @@ fn the_app_panel_shows_the_inbox_and_going_to_an_item_switches_the_client() {
     let column = lines[row][..lines[row].find("Which bran").unwrap()]
         .chars()
         .count();
-    panel.send_stdin(&sgr_click(column + 1, row + 1));
+    panel.send_stdin(&keys::sgr_click(column, row));
     let switched = panel
         .join_main_client()
         .expect("going to the item switches the client away");
@@ -102,12 +102,6 @@ fn escape_detaches_from_the_app_panel_and_keeps_it_running() {
     assert!(!zellij_utils::sessions::get_resurrectable_session_names()
         .iter()
         .any(|name| name == APP_PANEL_SESSION));
-}
-
-fn sgr_click(column: usize, line: usize) -> Vec<u8> {
-    let mut bytes = format!("\u{1b}[<0;{};{}M", column, line).into_bytes();
-    bytes.extend(format!("\u{1b}[<0;{};{}m", column, line).into_bytes());
-    bytes
 }
 
 #[test]
@@ -142,7 +136,7 @@ fn the_app_panel_ignores_zellij_keybindings_and_closes_from_its_cross() {
     );
     let first = after.lines()[0].clone();
     let column = first[..first.rfind('×').unwrap()].chars().count();
-    panel.send_stdin(&sgr_click(column + 1, 1));
+    panel.send_stdin(&keys::sgr_click(column, 0));
     assert!(panel.join_main_client().is_none());
     assert!(zellij_utils::session_link::session_answers(
         APP_PANEL_SESSION,
@@ -210,7 +204,7 @@ fn exited_sessions_are_collapsed_under_one_line_in_the_sessions_view() {
     let column = lines[row][..lines[row].find("Exited").unwrap()]
         .chars()
         .count();
-    panel.send_stdin(&sgr_click(column + 1, row + 1));
+    panel.send_stdin(&keys::sgr_click(column, row));
     panel.wait_until("the exited sessions unfold", |grid_snapshot| {
         grid_snapshot.contains("▾ Exited (2)")
             && grid_snapshot.contains("gone-one")
@@ -761,6 +755,113 @@ fn the_pointer_resting_on_the_panel_does_not_stop_it_turning_to_the_inbox() {
     terminal.output(&needs_you("Deploy now?"));
     panel.wait_until("the panel turns to the inbox", |grid_snapshot| {
         grid_snapshot.contains("NEEDS YOU") && grid_snapshot.contains("Deploy now")
+    });
+    panel.send_stdin(&keys::ESC);
+    assert!(panel.join_main_client().is_none());
+}
+
+fn start_panel_sized(view: &str, size: zellij_integration_tests::Size) -> zellij_integration_tests::TestSession {
+    TestRunner::new(size)
+        .with_session_name(APP_PANEL_SESSION)
+        .with_config("show_startup_tips false\nshow_release_notes false\npane_frames false")
+        .with_layout(LayoutInfo::Stringified(panel_layout(view)))
+        .start()
+}
+
+const TALL: zellij_integration_tests::Size = zellij_integration_tests::Size {
+    cols: 140,
+    rows: 44,
+};
+
+#[test]
+fn ctrl_x_and_ctrl_a_are_not_offered_in_the_app_panel() {
+    let background = TestRunner::new(TERMINAL_SIZE)
+        .skip_concurrency_slot()
+        .start_in_background();
+    let mut panel = start_panel_sized("sessions", TALL);
+    panel.wait_until("the panel lists the session", |grid_snapshot| {
+        grid_snapshot.contains(SESSIONS_VIEW_ONLY) && grid_snapshot.contains(background.session_name())
+    });
+    panel.send_stdin(&keys::F1);
+    let all_keys = panel.wait_until("the panel lists all keys", |grid_snapshot| {
+        grid_snapshot.contains("All keys") && grid_snapshot.contains("<Ctrl r>")
+    });
+    assert!(
+        !all_keys.contains("<Ctrl x>") && !all_keys.contains("<Ctrl a>"),
+        "{}",
+        all_keys.text
+    );
+    panel.send_stdin(&keys::ESC);
+    panel.send_stdin(&keys::ESC);
+    assert!(panel.join_main_client().is_none());
+    let mut zellij = TestRunner::new(TALL)
+        .with_config("session_indicator true")
+        .start();
+    let terminal = zellij.expect_pty_spawn();
+    terminal.output(b"$ ");
+    zellij.wait_until("the session is drawn", |grid_snapshot| {
+        grid_snapshot.status_bar_appears()
+    });
+    zellij.send_stdin(&keys::F9);
+    zellij.wait_until("the sessions are shown", |grid_snapshot| {
+        grid_snapshot.contains("<F1> all keys")
+    });
+    zellij.send_stdin(&keys::F1);
+    let all_keys = zellij.wait_until("all keys are listed", |grid_snapshot| {
+        grid_snapshot.contains("All keys") && grid_snapshot.contains("<Ctrl r>")
+    });
+    assert!(
+        all_keys.contains("<Ctrl x>") && all_keys.contains("<Ctrl a>"),
+        "{}",
+        all_keys.text
+    );
+    zellij.quit();
+}
+
+#[test]
+fn on_a_narrow_panel_the_output_opens_below_the_list() {
+    let background = TestRunner::new(TERMINAL_SIZE)
+        .skip_concurrency_slot()
+        .start_in_background();
+    let terminal = background.expect_pty_spawn();
+    terminal.output(b"$ ");
+    terminal.output(&needs_you("Below or beside?"));
+    let narrow = zellij_integration_tests::Size { cols: 70, rows: 40 };
+    let mut panel = start_panel_sized("auto", narrow);
+    panel.wait_until("the panel shows the item", |grid_snapshot| {
+        grid_snapshot.contains("Below or beside?") && grid_snapshot.contains("<ENTER> go there")
+    });
+    panel.send_stdin(&keys::key('p'));
+    let grid_snapshot = panel.wait_until("the output is shown", |grid_snapshot| {
+        grid_snapshot.contains("Latest output")
+    });
+    let (_, item_row) = grid_snapshot.position_of("Below or beside?").unwrap();
+    let (_, output_row) = grid_snapshot.position_of("Latest output").unwrap();
+    assert!(
+        output_row > item_row,
+        "the output is not below the list:\n{}",
+        grid_snapshot.text
+    );
+    panel.send_stdin(&keys::ESC);
+    assert!(panel.join_main_client().is_none());
+}
+
+#[test]
+fn a_long_list_shows_more_markers() {
+    let mut sessions = vec![];
+    for index in 0..4 {
+        let background = TestRunner::new(TERMINAL_SIZE)
+            .skip_concurrency_slot()
+            .start_in_background();
+        let terminal = background.expect_pty_spawn();
+        terminal.output(b"$ ");
+        terminal.output(&needs_you(&format!("Long list item {}?", index)));
+        sessions.push(background);
+    }
+    let short = zellij_integration_tests::Size { cols: 120, rows: 14 };
+    let mut panel = start_panel_sized("inbox", short);
+    panel.wait_until("the list shows a more marker", |grid_snapshot| {
+        grid_snapshot.contains("Inbox (4)") && grid_snapshot.contains("more")
     });
     panel.send_stdin(&keys::ESC);
     assert!(panel.join_main_client().is_none());

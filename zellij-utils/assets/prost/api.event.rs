@@ -527,6 +527,8 @@ pub struct ContextMenuEntry {
     pub label: ::prost::alloc::string::String,
     #[prost(message, repeated, tag="3")]
     pub actions: ::prost::alloc::vec::Vec<ContextMenuAction>,
+    #[prost(string, optional, tag="4")]
+    pub toggled_label: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -919,6 +921,8 @@ pub struct SessionManifest {
     pub pane_history: ::prost::alloc::vec::Vec<ClientPaneHistory>,
     #[prost(uint64, tag="12")]
     pub creation_time: u64,
+    #[prost(bool, tag="13")]
+    pub attention_muted: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

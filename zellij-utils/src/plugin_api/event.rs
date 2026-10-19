@@ -888,7 +888,7 @@ impl TryFrom<ProtobufEvent> for Event {
                             entries.push(ContextMenuEntry::Item {
                                 label: entry.label,
                                 actions,
-                                toggled_label: None,
+                                toggled_label: entry.toggled_label,
                             });
                         }
                     }
@@ -1742,9 +1742,14 @@ impl TryFrom<Event> for ProtobufEvent {
                                 is_separator: true,
                                 label: String::new(),
                                 actions: vec![],
+                                toggled_label: None,
                             });
                         },
-                        ContextMenuEntry::Item { label, actions, .. } => {
+                        ContextMenuEntry::Item {
+                            label,
+                            actions,
+                            toggled_label,
+                        } => {
                             let mut protobuf_actions = vec![];
                             for action in actions {
                                 protobuf_actions.push(ProtobufContextMenuAction::try_from(action)?);
@@ -1753,6 +1758,7 @@ impl TryFrom<Event> for ProtobufEvent {
                                 is_separator: false,
                                 label,
                                 actions: protobuf_actions,
+                                toggled_label,
                             });
                         },
                     }
@@ -1854,6 +1860,7 @@ impl TryFrom<SessionInfo> for ProtobufSessionManifest {
                 .map(|p| ProtobufClientPaneHistory::from(p))
                 .collect(),
             creation_time: session_info.creation_time.as_secs(),
+            attention_muted: session_info.attention_muted,
         })
     }
 }
@@ -1965,7 +1972,7 @@ impl TryFrom<ProtobufSessionManifest> for SessionInfo {
             tab_history,
             pane_history,
             creation_time: Duration::from_secs(protobuf_session_manifest.creation_time),
-            attention_muted: false,
+            attention_muted: protobuf_session_manifest.attention_muted,
         })
     }
 }
@@ -4660,6 +4667,107 @@ mod context_menu_tests {
         let protobuf = ProtobufEvent::try_from(original.clone()).unwrap();
         let decoded = Event::try_from(protobuf).unwrap();
         assert_eq!(original, decoded);
+    }
+
+    #[test]
+    fn a_context_menu_item_keeps_its_alternate_label() {
+        let context = ContextMenuContext {
+            kind: ContextMenuKind::Pane,
+            pane_id: Some(PaneId::Terminal(1)),
+            pane_is_floating: false,
+            tab_index: Some(0),
+            tab_id: Some(0),
+            tab_count: 1,
+            line: 3,
+            column: 4,
+            client_id: 1,
+        };
+        let entries = vec![ContextMenuEntry::Item {
+            label: "Watch this pane".to_owned(),
+            actions: vec![ContextMenuAction::ClickedPane(ClickedPaneAction::ToggleWatch)],
+            toggled_label: Some("Stop watching".to_owned()),
+        }];
+        let original = Event::ContextMenu(context, entries);
+        let protobuf = ProtobufEvent::try_from(original.clone()).unwrap();
+        let decoded = Event::try_from(protobuf).unwrap();
+        assert_eq!(original, decoded);
+    }
+}
+
+#[cfg(test)]
+mod attention_event_tests {
+    use super::*;
+    use crate::attention::{
+        AttentionStatus, CommandOutcome, CommandResult, CommandText, CommandTextSource,
+        PaneAttention,
+    };
+    use prost::Message;
+
+    fn round_trip(event: Event) {
+        let protobuf = ProtobufEvent::try_from(event.clone()).unwrap();
+        let bytes = protobuf.encode_to_vec();
+        let decoded: ProtobufEvent = Message::decode(bytes.as_slice()).unwrap();
+        assert_eq!(Event::try_from(decoded).unwrap(), event);
+    }
+
+    #[test]
+    fn a_muted_session_is_reported_to_plugins() {
+        let session = SessionInfo {
+            name: "muted".to_owned(),
+            attention_muted: true,
+            ..Default::default()
+        };
+        round_trip(Event::SessionUpdate(vec![session], vec![]));
+    }
+
+    #[test]
+    fn pane_attention_changed_round_trips() {
+        round_trip(Event::PaneAttentionChanged(
+            PaneId::Terminal(3),
+            PaneAttention {
+                status: AttentionStatus::Failed,
+                text: "exited 1".to_owned(),
+                since_ms: 2,
+                changed_ms: 3,
+                ..Default::default()
+            },
+        ));
+    }
+
+    #[test]
+    fn prompt_shown_round_trips() {
+        round_trip(Event::PromptShown(PaneId::Terminal(5)));
+        round_trip(Event::PromptShown(PaneId::Plugin(2)));
+    }
+
+    #[test]
+    fn command_started_round_trips() {
+        round_trip(Event::CommandStarted(PaneId::Terminal(1), None));
+        round_trip(Event::CommandStarted(
+            PaneId::Terminal(1),
+            Some(CommandText {
+                text: "cargo build".to_owned(),
+                source: CommandTextSource::Shell,
+            }),
+        ));
+    }
+
+    #[test]
+    fn command_finished_round_trips() {
+        round_trip(Event::CommandFinished(
+            PaneId::Terminal(4),
+            CommandOutcome {
+                result: CommandResult::Failed,
+                exit_code: Some(1),
+                err: None,
+                duration_ms: Some(1500),
+                ended_ms: 9,
+                command: Some(CommandText {
+                    text: "make".to_owned(),
+                    source: CommandTextSource::Shell,
+                }),
+            },
+        ));
     }
 }
 

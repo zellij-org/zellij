@@ -3,6 +3,8 @@
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine as _;
 use std::time::{Duration, Instant};
+use zellij_integration_tests::attention::{counted, session_counts, wait_for_counted};
+use zellij_integration_tests::inbox::inbox_shows;
 use zellij_integration_tests::{
     claim_first_terminal_and_wait_for_prompt, keys, BackgroundTestSession, FakePtyHandle,
     GridSnapshot, TestRunner, TestSession, TERMINAL_SIZE,
@@ -132,7 +134,10 @@ fn marking_everything_seen_clears_items_in_other_sessions() {
     wait_for_indicator(&zellij, "the failed command is counted", "✗ 1");
     zellij
         .main_client()
-        .send_action(Action::MarkAllSeen { session: None });
+        .send_action(Action::MarkAllSeen {
+            session: None,
+            this_session: false,
+        });
     zellij.wait_until("the other session's item was cleared", |grid_snapshot| {
         let bar = tab_bar(grid_snapshot);
         bar.contains("2 running") && !bar.contains('✗')
@@ -464,4 +469,308 @@ fn showing_a_hidden_session_manager_again_selects_the_newest_item() {
     zellij.send_stdin(&keys::ENTER);
     let _previous = follow(&mut zellij, background);
     zellij.quit();
+}
+
+fn status_bar(grid_snapshot: &GridSnapshot) -> String {
+    grid_snapshot
+        .lines()
+        .iter()
+        .rev()
+        .take(2)
+        .cloned()
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn press_a_key_in(zellij: &TestSession, terminal: &FakePtyHandle) {
+    let before = terminal.stdin_bytes().len();
+    zellij.send_stdin(&keys::key('x'));
+    terminal.wait_for_stdin("the key reached the pane", |stdin| stdin.len() > before);
+}
+
+#[test]
+fn mark_all_seen_for_this_session_clears_only_the_session_it_is_sent_to() {
+    let (mut zellij, terminal) = start_main_session(ATTENTION_ON);
+    let (other, other_terminal) = background_session(ATTENTION_ON);
+    wait_for_indicator(&zellij, "both sessions are known", "2 running");
+    other_terminal.output(&needs_you("Over there?"));
+    terminal.output(&needs_you("Over here?"));
+    wait_for_indicator(&zellij, "both items are counted", "● 2");
+    zellij.run_cli_action(zellij_utils::cli::CliAction::MarkAllSeen { this_session: true });
+    wait_for_counted(zellij.session_name(), 0);
+    std::thread::sleep(Duration::from_millis(700));
+    assert_eq!(
+        session_counts(other.session_name()).map(|counts| counted(&counts)),
+        Some(1),
+        "the other session was cleared too"
+    );
+    zellij.quit();
+}
+
+#[test]
+fn the_session_switching_commands_work_from_the_cli() {
+    let (background, background_terminal) = background_session(ATTENTION_ON);
+    let (mut zellij, terminal) = start_main_session(ATTENTION_ON);
+    let first = zellij.session_name().to_owned();
+    let second = background.session_name().to_owned();
+    wait_for_indicator(&zellij, "both sessions are known", "2 running");
+    press_a_key_in(&zellij, &terminal);
+    zellij.run_cli_action(zellij_utils::cli::CliAction::ToggleSession);
+    let (switch, first_session) = follow(&mut zellij, background);
+    assert_eq!(switch.name.as_deref(), Some(second.as_str()));
+    press_a_key_in(&zellij, &background_terminal);
+    zellij.run_cli_action(zellij_utils::cli::CliAction::GoToPreviousSession);
+    let (switch, second_session) = follow(&mut zellij, first_session);
+    assert_eq!(switch.name.as_deref(), Some(first.as_str()));
+    press_a_key_in(&zellij, &terminal);
+    zellij.run_cli_action(zellij_utils::cli::CliAction::GoToNextSession);
+    let (switch, first_session) = follow(&mut zellij, second_session);
+    assert_eq!(switch.name.as_deref(), Some(second.as_str()));
+    terminal.output(&needs_you("Back here?"));
+    wait_for_indicator(&zellij, "the item in the first session is counted", "● 1");
+    press_a_key_in(&zellij, &background_terminal);
+    zellij.run_cli_action(zellij_utils::cli::CliAction::GoToNextAttention);
+    let (switch, _second_session) = follow(&mut zellij, first_session);
+    assert_eq!(switch.name.as_deref(), Some(first.as_str()));
+    assert_eq!(switch.pane_id, Some((terminal.terminal_id(), false)));
+    zellij.quit();
+}
+
+fn numbered_lines(terminal: &FakePtyHandle, prefix: &str, count: usize) {
+    let mut text = String::new();
+    for line in 1..=count {
+        text.push_str(&format!("{} {:03}\r\n", prefix, line));
+    }
+    terminal.output(text.as_bytes());
+}
+
+fn visible_numbers(grid_snapshot: &GridSnapshot, prefix: &str) -> Vec<usize> {
+    let pattern = regex::Regex::new(&format!(r"{} (\d{{3}})", prefix)).unwrap();
+    pattern
+        .captures_iter(&grid_snapshot.text)
+        .filter_map(|captures| captures[1].parse().ok())
+        .collect()
+}
+
+fn open_inbox_output(zellij: &TestSession, text: &str) -> GridSnapshot {
+    zellij.send_stdin(&keys::F9);
+    zellij.wait_briefly("the inbox shows the item", |grid_snapshot| {
+        inbox_shows(grid_snapshot, text) && grid_snapshot.contains("<ENTER> go there")
+    });
+    zellij.send_stdin(&keys::key('p'));
+    zellij.wait_briefly("the output is shown", |grid_snapshot| {
+        grid_snapshot.contains("Latest output") && grid_snapshot.contains("hide output")
+    })
+}
+
+#[test]
+fn the_inbox_preview_starts_where_the_notifications_output_begins() {
+    let (_background, terminal) = background_session(ATTENTION_ON);
+    let (mut zellij, _) = start_main_session(ATTENTION_ON);
+    numbered_lines(&terminal, "line", 40);
+    terminal.output(b"\x1b]133;A\x1b\\$ \x1b]133;B\x1b\\make\x1b]133;C\x1b\\\r\n");
+    numbered_lines(&terminal, "res", 20);
+    terminal.output(b"\x1b]133;D;1\x1b\\");
+    wait_for_indicator(&zellij, "the failed command is counted", "✗ 1");
+    open_inbox_output(&zellij, "FAILED");
+    zellij.wait_briefly("the output shows its bottom", |grid_snapshot| {
+        let results = visible_numbers(grid_snapshot, "res");
+        results.contains(&20) && !results.contains(&1)
+    });
+    zellij.send_stdin(&keys::SHIFT_HOME);
+    zellij.wait_briefly(
+        "shift home shows where the command output begins",
+        |grid_snapshot| {
+            let results = visible_numbers(grid_snapshot, "res");
+            results.contains(&1) && !results.contains(&20)
+        },
+    );
+    zellij.send_stdin(&keys::SHIFT_END);
+    zellij.wait_briefly("shift end returns to the bottom", |grid_snapshot| {
+        visible_numbers(grid_snapshot, "res").contains(&20)
+    });
+    zellij.quit();
+}
+
+#[test]
+fn shift_arrows_pan_the_inbox_output() {
+    let (_background, terminal) = background_session(ATTENTION_ON);
+    let (mut zellij, _) = start_main_session(ATTENTION_ON);
+    numbered_lines(&terminal, "line", 60);
+    terminal.output(&needs_you("Scroll me?"));
+    wait_for_indicator(&zellij, "the item is counted", "● 1");
+    open_inbox_output(&zellij, "Scroll me?");
+    let bottom = zellij.wait_until("the output shows its last line", |grid_snapshot| {
+        visible_numbers(grid_snapshot, "line").contains(&60)
+    });
+    let first_visible = *visible_numbers(&bottom, "line").iter().min().unwrap();
+    for _ in 0..3 {
+        zellij.send_stdin(&keys::SHIFT_UP);
+    }
+    let wanted = first_visible.saturating_sub(3);
+    zellij.wait_until("shift up shows earlier lines", |grid_snapshot| {
+        visible_numbers(grid_snapshot, "line").contains(&wanted)
+    });
+    zellij.send_stdin(&keys::SHIFT_END);
+    zellij.wait_until("shift end returns to the bottom", |grid_snapshot| {
+        let numbers = visible_numbers(grid_snapshot, "line");
+        numbers.contains(&60) && !numbers.contains(&wanted)
+    });
+    zellij.quit();
+}
+
+const WIDE: zellij_integration_tests::Size = zellij_integration_tests::Size {
+    cols: 220,
+    rows: 24,
+};
+
+fn start_wide_main_session() -> TestSession {
+    let zellij = TestRunner::new(WIDE).with_config(ATTENTION_ON).start();
+    let terminal = zellij.expect_pty_spawn();
+    terminal.disable_echo();
+    terminal.output(b"$ ");
+    zellij.wait_until("the session is drawn", |grid_snapshot| {
+        grid_snapshot.tab_bar_appears() && grid_snapshot.status_bar_appears()
+    });
+    zellij
+}
+
+#[test]
+fn switching_sessions_shows_switched_from_for_a_few_seconds() {
+    let (background, _) = background_session(ATTENTION_ON);
+    let mut zellij = start_wide_main_session();
+    let first = zellij.session_name().to_owned();
+    wait_for_indicator(&zellij, "both sessions are known", "2 running");
+    zellij.main_client().send_action(Action::ToggleSession);
+    let _previous = follow(&mut zellij, background);
+    let expected = format!("Switched from {}", first);
+    zellij.wait_until("the status bar says where the client came from", |grid_snapshot| {
+        status_bar(grid_snapshot).contains(&expected)
+    });
+    let shown_at = Instant::now();
+    zellij.wait_until("the hint goes away", |grid_snapshot| {
+        !status_bar(grid_snapshot).contains(&expected)
+    });
+    assert!(
+        shown_at.elapsed() > Duration::from_secs(2),
+        "the hint went away after {:?}",
+        shown_at.elapsed()
+    );
+    zellij.quit();
+}
+
+#[test]
+fn going_to_an_item_shows_done_and_the_way_back_once_it_clears() {
+    let (background, terminal) = background_session(ATTENTION_ON);
+    let mut zellij = start_wide_main_session();
+    let first = zellij.session_name().to_owned();
+    terminal.output(&needs_you("Go there?"));
+    wait_for_indicator(&zellij, "the item is counted", "● 1");
+    zellij.send_stdin(&keys::F9);
+    zellij.wait_until("the inbox selects the item", |grid_snapshot| {
+        grid_snapshot.contains("Go there?") && grid_snapshot.contains("<ENTER> go there")
+    });
+    zellij.send_stdin(&keys::ENTER);
+    let _previous = follow(&mut zellij, background);
+    terminal.output(&program_status("state=clear"));
+    let expected = format!("back to {}", first);
+    zellij.wait_until("the status bar offers the way back", |grid_snapshot| {
+        let bar = status_bar(grid_snapshot);
+        bar.contains("Done ·") && bar.contains(&expected)
+    });
+    zellij.quit();
+}
+
+#[test]
+fn session_mode_shows_the_next_item_hint() {
+    let (_background, terminal) = background_session(ATTENTION_ON);
+    let (mut zellij, _) = start_main_session(ATTENTION_ON);
+    terminal.output(&needs_you("Next?"));
+    wait_for_indicator(&zellij, "the item is counted", "● 1");
+    zellij.send_stdin(&keys::ctrl('o'));
+    zellij.wait_until("session mode offers the next item", |grid_snapshot| {
+        let bar = status_bar(grid_snapshot);
+        bar.contains("next item") || bar.contains("Next")
+    });
+    zellij.send_stdin(&keys::ESC);
+    zellij.quit();
+}
+
+#[test]
+fn the_compact_bar_shows_tab_status_symbols() {
+    let mut zellij = TestRunner::new(TERMINAL_SIZE)
+        .with_config(ATTENTION_ON)
+        .with_layout(zellij_utils::data::LayoutInfo::BuiltIn("compact".to_owned()))
+        .start();
+    let first_terminal = zellij.expect_pty_spawn();
+    first_terminal.output(b"$ ");
+    zellij.wait_until("the compact bar is drawn", |grid_snapshot| {
+        grid_snapshot.contains("Tab #1")
+    });
+    zellij.send_stdin(&keys::ctrl('t'));
+    zellij.send_stdin(&keys::key('n'));
+    let second_terminal = zellij.expect_pty_spawn();
+    second_terminal.output(b"$ ");
+    zellij.send_stdin(&keys::ESC);
+    zellij.wait_until("the second tab is open", |grid_snapshot| {
+        grid_snapshot.contains("Tab #2")
+    });
+    first_terminal.output(&needs_you("Compact?"));
+    zellij.wait_until("the first tab shows needs you", |grid_snapshot| {
+        grid_snapshot
+            .lines()
+            .iter()
+            .any(|line| line.contains("Tab #1 ●"))
+    });
+    zellij.quit();
+}
+
+#[test]
+fn a_muted_tab_shows_a_dim_mute_mark() {
+    let (mut zellij, _first_terminal) = start_main_session(ATTENTION_ON);
+    zellij.send_stdin(&keys::ctrl('t'));
+    zellij.send_stdin(&keys::key('n'));
+    let second_terminal = zellij.expect_pty_spawn();
+    second_terminal.output(b"$ ");
+    zellij.wait_until("the second tab is open", |grid_snapshot| {
+        tab_bar(grid_snapshot).contains("Tab #2")
+    });
+    zellij.run_cli_action(zellij_utils::cli::CliAction::MuteTab { tab_id: None });
+    let grid_snapshot = zellij.wait_until("the tab shows the mute mark", |grid_snapshot| {
+        tab_bar(grid_snapshot).contains("Tab #2 ⊘")
+    });
+    assert_eq!(
+        grid_snapshot.char_dim_of("⊘"),
+        Some(true),
+        "the mute mark is dim: {}",
+        tab_bar(&grid_snapshot)
+    );
+    zellij.quit();
+}
+
+#[test]
+fn the_indicator_shortens_on_a_narrow_terminal() {
+    let narrow = zellij_integration_tests::Size { cols: 46, rows: 24 };
+    let (background, terminal) = background_session(ATTENTION_ON);
+    terminal.output(&needs_you("Narrow?"));
+    wait_for_counted(background.session_name(), 1);
+    let mut zellij = TestRunner::new(narrow).with_config(ATTENTION_ON).start();
+    let _ = zellij.expect_pty_spawn();
+    let grid_snapshot = zellij.wait_until("the indicator counts the item", |grid_snapshot| {
+        tab_bar(grid_snapshot).contains("● 1")
+    });
+    assert!(
+        !tab_bar(&grid_snapshot).contains("need you"),
+        "the indicator was not shortened: {}",
+        tab_bar(&grid_snapshot)
+    );
+    zellij.quit();
+    let mut simplified = TestRunner::new(narrow)
+        .with_config(&format!("{}\nsimplified_ui true", ATTENTION_ON))
+        .start();
+    let _ = simplified.expect_pty_spawn();
+    simplified.wait_until("the simplified indicator uses letters", |grid_snapshot| {
+        tab_bar(grid_snapshot).contains("! 1")
+    });
+    simplified.quit();
 }

@@ -350,6 +350,12 @@ impl GridSnapshot {
     pub fn row_of_line(&self, needle: &str) -> Option<usize> {
         self.text.lines().position(|line| line.contains(needle))
     }
+    pub fn position_of(&self, needle: &str) -> Option<(usize, usize)> {
+        self.text.lines().enumerate().find_map(|(row, line)| {
+            line.find(needle)
+                .map(|byte_index| (line[..byte_index].chars().count(), row))
+        })
+    }
     pub fn region_has_dim(
         &self,
         x_range: std::ops::Range<usize>,
