@@ -717,18 +717,12 @@ impl State {
         {
             return (self.sessions_hints(false), vec![]);
         }
-        let selected = self.selected_session();
         let mut primary = vec![];
         if let Some(action) = self.enter_action() {
             primary.push(hint("<ENTER>", action.to_lowercase()));
         }
-        let session = selected
-            .as_ref()
-            .map(|(name, running, current)| (name.as_str(), *running, *current));
-        primary.extend(self.window_hints(session, false));
-        if matches!(selected, Some((_, true, false))) {
-            primary.push(hint("<Ctrl ENTER>", "attach, disconnect others"));
-        }
+        let target = self.sessions_open_target();
+        primary.extend(self.open_way_hints(Some(&target), false));
         let mut secondary = vec![
             hint("<↓↑>", "select"),
             hint("<←→>", "tabs and panes"),
@@ -1046,6 +1040,11 @@ impl State {
             self.error = None;
             return true;
         }
+        if let Some(way) = open_way(&key) {
+            if let Some(should_render) = self.handle_open_way(way) {
+                return should_render;
+            }
+        }
         if self.inbox_is_shown() {
             return self.handle_inbox_key(key);
         }
@@ -1260,7 +1259,7 @@ impl State {
                     }
                     should_render = true;
                 },
-                BareKey::Char('x') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
+                BareKey::Char('x') if key.has_only_modifiers(&[KeyModifier::Alt]) => {
                     if !app_panel::is_enabled() {
                         disconnect_other_clients()
                     }
@@ -1478,17 +1477,6 @@ impl State {
                 self.handle_selection();
                 should_render = true;
             },
-            BareKey::Enter if is_disconnecting_enter(&key) => {
-                self.open_disconnecting = true;
-                self.handle_selection();
-                self.open_disconnecting = false;
-                should_render = true;
-            },
-            BareKey::Char(c) if window_key(&key, c).is_some() => {
-                if let Some((new_window, leave)) = window_key(&key, c) {
-                    should_render = self.sessions_window_request(new_window, leave);
-                }
-            },
             BareKey::Down if key.has_no_modifiers() => {
                 self.single_screen_state.move_selection_down();
                 should_render = true;
@@ -1536,11 +1524,6 @@ impl State {
                 }
                 should_render = true;
             },
-            BareKey::Char('x') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
-                if !app_panel::is_enabled() {
-                    disconnect_other_clients();
-                }
-            },
             BareKey::Char('a') if key.has_modifiers(&[KeyModifier::Ctrl]) => {
                 if !self.is_welcome_screen && !app_panel::is_enabled() {
                     if let Err(e) = save_session() {
@@ -1574,11 +1557,6 @@ impl State {
     }
     fn handle_single_screen_layout_key(&mut self, key: KeyWithModifier) -> bool {
         let mut should_render = false;
-        if let BareKey::Char(c) = key.bare_key {
-            if let Some((true, leave)) = window_key(&key, c) {
-                return self.new_session_window_from_layout_list(leave);
-            }
-        }
         match key.bare_key {
             BareKey::Down if key.has_no_modifiers() => {
                 self.single_screen_state.layout_list.move_selection_down();
@@ -2173,25 +2151,38 @@ fn run_window_request(request: SessionWindowRequest) {
     request_session_window(request);
 }
 
-fn window_key(key: &KeyWithModifier, c: char) -> Option<(bool, bool)> {
-    let new_window = match c.to_ascii_lowercase() {
-        'w' => false,
-        'e' => true,
-        _ => return None,
-    };
-    if key.has_only_modifiers(&[KeyModifier::Ctrl]) && c.is_ascii_lowercase() {
-        Some((new_window, false))
-    } else if key.has_only_modifiers(&[KeyModifier::Alt])
-        || key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Shift])
-    {
-        Some((new_window, true))
-    } else {
-        None
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum OpenWay {
+    Window,
+    WindowAndLeave,
+    DisconnectOthers,
+}
+
+fn open_way(key: &KeyWithModifier) -> Option<OpenWay> {
+    if !key.has_only_modifiers(&[KeyModifier::Alt]) {
+        return None;
+    }
+    match key.bare_key {
+        BareKey::Char('w') => Some(OpenWay::Window),
+        BareKey::Char('d') => Some(OpenWay::WindowAndLeave),
+        BareKey::Char('x') => Some(OpenWay::DisconnectOthers),
+        _ => None,
     }
 }
 
-fn is_disconnecting_enter(key: &KeyWithModifier) -> bool {
-    key.has_only_modifiers(&[KeyModifier::Ctrl]) || key.has_only_modifiers(&[KeyModifier::Alt])
+#[derive(Clone, Debug)]
+struct OpenTarget {
+    name: Option<String>,
+    exists: bool,
+    running: bool,
+    current: bool,
+    pane: Option<PaneId>,
+}
+
+impl OpenTarget {
+    fn is_here(&self) -> bool {
+        self.current || self.name.is_none()
+    }
 }
 
 impl State {
@@ -2212,57 +2203,177 @@ impl State {
     fn can_close_this_window(&self) -> bool {
         self.desktop_app_running() && !app_panel::is_enabled()
     }
-    fn sessions_window_target(&self, new_window: bool) -> Result<SessionWindowRequest, String> {
-        if let Some((name, is_running, _)) = self.selected_session() {
-            if !is_running && !new_window {
-                return Err("This session is not running; <Ctrl e> resurrects it in a new window.".to_owned());
-            }
-            return Ok(SessionWindowRequest::existing(&name, None, new_window));
+    fn sessions_open_target(&self) -> OpenTarget {
+        if let Some((name, running, current)) = self.selected_session() {
+            let pane = if running {
+                self.selected_tree_pane(&name)
+            } else {
+                None
+            };
+            return OpenTarget {
+                name: Some(name),
+                exists: true,
+                running,
+                current,
+                pane,
+            };
         }
         let typed = self.single_screen_state.search_term.clone();
-        if self.sessions.has_session(&typed) {
-            return Ok(SessionWindowRequest::existing(&typed, None, new_window));
+        if typed.is_empty() {
+            return OpenTarget {
+                name: None,
+                exists: false,
+                running: false,
+                current: false,
+                pane: None,
+            };
         }
-        if !new_window {
-            return Err("Select a running session first.".to_owned());
+        let running = self.sessions.has_session(&typed);
+        let exists = running || self.resurrectable_sessions.has_session(&typed);
+        let current = running && self.session_name.as_deref() == Some(typed.as_str());
+        OpenTarget {
+            name: Some(typed),
+            exists,
+            running,
+            current,
+            pane: None,
         }
-        if self.resurrectable_sessions.has_session(&typed) {
-            return Ok(SessionWindowRequest::existing(&typed, None, true));
-        }
-        if typed.len() >= 108 {
-            return Err("Session name must be shorter than 108 bytes".to_owned());
-        }
-        if typed.contains('/') {
-            return Err("Session name cannot contain '/'".to_owned());
-        }
-        let name = if typed.is_empty() {
-            None
-        } else {
-            Some(typed.as_str())
-        };
-        Ok(SessionWindowRequest::new_session(
-            name,
-            Some(self.default_layout_info()),
-            self.single_screen_state.new_session_folder.clone(),
-        ))
     }
-    fn sessions_window_request(&mut self, new_window: bool, leave: bool) -> bool {
-        if !self.desktop_app_running() || (leave && !self.can_close_this_window()) {
+    fn inbox_open_target(&self) -> Option<OpenTarget> {
+        self.selected_inbox_target()
+            .map(|(session, pane_id, is_current)| OpenTarget {
+                name: Some(session),
+                exists: true,
+                running: true,
+                current: is_current,
+                pane: Some(pane_id),
+            })
+    }
+    fn selected_tree_pane(&self, session: &str) -> Option<PaneId> {
+        if self.panel.tree.node_session != session {
+            return None;
+        }
+        let session_tree::TreeNode::Pane(tab, pane) = self.panel.tree.node else {
+            return None;
+        };
+        self.panel
+            .tree
+            .children
+            .get(session)
+            .and_then(|tabs| tabs.get(tab))
+            .and_then(|t| t.panes.get(pane))
+            .map(|p| {
+                if p.is_plugin {
+                    PaneId::Plugin(p.id)
+                } else {
+                    PaneId::Terminal(p.id)
+                }
+            })
+    }
+    fn way_available(&self, way: OpenWay, target: &OpenTarget, inbox: bool) -> bool {
+        match way {
+            OpenWay::Window => self.desktop_app_running(),
+            OpenWay::WindowAndLeave => self.can_close_this_window() && !target.current,
+            OpenWay::DisconnectOthers if inbox => !target.current || !app_panel::is_enabled(),
+            OpenWay::DisconnectOthers if target.is_here() => {
+                !app_panel::is_enabled() && !self.is_welcome_screen
+            },
+            OpenWay::DisconnectOthers => target.running,
+        }
+    }
+    fn window_request_for(&self, target: &OpenTarget) -> Result<SessionWindowRequest, String> {
+        match (target.name.as_deref(), target.exists, target.running) {
+            (Some(name), true, true) => Ok(SessionWindowRequest::existing(name, target.pane, false)),
+            (Some(name), true, false) => Ok(SessionWindowRequest::existing(name, None, true)),
+            (name, _, _) => {
+                if let Some(name) = name {
+                    if name.len() >= 108 {
+                        return Err("Session name must be shorter than 108 bytes".to_owned());
+                    }
+                    if name.contains('/') {
+                        return Err("Session name cannot contain '/'".to_owned());
+                    }
+                }
+                Ok(SessionWindowRequest::new_session(
+                    name,
+                    Some(self.default_layout_info()),
+                    self.single_screen_state.new_session_folder.clone(),
+                ))
+            },
+        }
+    }
+    fn handle_open_way(&mut self, way: OpenWay) -> Option<bool> {
+        if self.panel.size == Some(PanelSize::Card) {
+            return None;
+        }
+        if self.inbox_is_shown() {
+            if self.inbox.reply.is_some() {
+                return None;
+            }
+            let Some(target) = self.inbox_open_target() else {
+                return Some(false);
+            };
+            return Some(self.open_another_way(way, target, true));
+        }
+        if self.active_screen != ActiveScreen::SingleScreen
+            || self.renaming_session_name.is_some()
+            || self.show_kill_all_sessions_warning
+            || self.pending_session_stop.is_some()
+        {
+            return None;
+        }
+        match self.single_screen_state.mode {
+            SingleScreenMode::SelectingLayout => Some(match way {
+                OpenWay::Window => self.new_session_window_from_layout_list(false),
+                OpenWay::WindowAndLeave => self.new_session_window_from_layout_list(true),
+                OpenWay::DisconnectOthers => false,
+            }),
+            SingleScreenMode::SearchAndSelect => {
+                if self.panel.size == Some(PanelSize::Manager) && self.on_exited_header() {
+                    return Some(false);
+                }
+                let target = self.sessions_open_target();
+                Some(self.open_another_way(way, target, false))
+            },
+        }
+    }
+    fn open_another_way(&mut self, way: OpenWay, target: OpenTarget, inbox: bool) -> bool {
+        if !self.way_available(way, &target, inbox) {
             return false;
         }
-        if leave && !new_window && matches!(self.selected_session(), Some((_, _, true))) {
-            self.show_error("This is the session you are in; <Alt e> moves it to a new window.");
-            return true;
-        }
-        match self.sessions_window_target(new_window) {
-            Ok(request) => self.dispatch_window_request(PendingWindow {
-                request,
-                leave,
-                from_layout_list: false,
-            }),
-            Err(message) => self.show_error(&message),
+        match way {
+            OpenWay::DisconnectOthers if inbox => {
+                self.inbox_go_disconnecting();
+            },
+            OpenWay::DisconnectOthers => self.sessions_disconnect_others(&target),
+            OpenWay::Window | OpenWay::WindowAndLeave => match self.window_request_for(&target) {
+                Ok(request) => self.dispatch_window_request(PendingWindow {
+                    request,
+                    leave: way == OpenWay::WindowAndLeave,
+                    from_layout_list: false,
+                }),
+                Err(message) => self.show_error(&message),
+            },
         }
         true
+    }
+    fn sessions_disconnect_others(&mut self, target: &OpenTarget) {
+        if target.is_here() {
+            disconnect_other_clients();
+            if !self.open_tree_child() {
+                self.single_screen_state.search_term.clear();
+                self.single_screen_state.selected_index = None;
+                self.panel.size = None;
+                self.panel.report_size();
+                close_self();
+            }
+            return;
+        }
+        self.open_disconnecting = true;
+        if !self.open_tree_child() {
+            self.handle_selection();
+        }
+        self.open_disconnecting = false;
     }
     fn dispatch_window_request(&mut self, pending: PendingWindow) {
         let needs_confirmation = self.remote_client.is_some()
@@ -2404,69 +2515,73 @@ impl State {
         close_self();
         true
     }
-    fn inbox_open_in_window(&mut self, new_window: bool, leave: bool) -> bool {
-        if !self.desktop_app_running() || (leave && !self.can_close_this_window()) {
-            return false;
-        }
-        let Some((session, pane_id, is_current)) = self.selected_inbox_target() else {
-            return false;
-        };
-        if leave && !new_window && is_current {
-            return false;
-        }
-        self.dispatch_window_request(PendingWindow {
-            request: SessionWindowRequest::existing(&session, Some(pane_id), new_window),
-            leave,
-            from_layout_list: false,
-        });
-        true
-    }
     fn refresh_inbox_window_help(&mut self) {
         self.inbox.help_hints = self.inbox_hints(false);
     }
-    fn window_hints(&self, session: Option<(&str, bool, bool)>, inbox: bool) -> Vec<help::Hint> {
+    fn leave_here_text(&self) -> &'static str {
+        if self.is_welcome_screen {
+            return "then leave the welcome screen";
+        }
+        match self.remote_client.as_deref() {
+            None => "then close this window",
+            Some(remote) if remote.starts_with("through the web") => "then detach this browser",
+            Some(_) => "then detach this terminal",
+        }
+    }
+    fn window_label(&self, target: &OpenTarget) -> &'static str {
+        match (target.name.as_deref(), target.exists, target.running) {
+            (Some(name), true, true) if self.selected_has_window(name) => "go to its window",
+            (_, true, true) => "open it in a window",
+            (_, true, false) => "resurrect it in a window",
+            (Some(_), false, _) => "create it in a window",
+            (None, _, _) => "new session in a window",
+        }
+    }
+    fn open_way_hints(&self, target: Option<&OpenTarget>, inbox: bool) -> Vec<help::Hint> {
+        let Some(target) = target else {
+            return vec![];
+        };
         let mut hints = vec![];
-        if !self.desktop_app_running() {
-            return hints;
+        if self.way_available(OpenWay::Window, target, inbox) {
+            hints.push(help::hint("<Alt w>", self.window_label(target)));
         }
-        match session {
-            Some((name, true, _)) => {
-                let has_window = self.selected_has_window(name);
-                hints.push(help::hint(
-                    "<Ctrl w>",
-                    if has_window {
-                        "go to its window"
-                    } else {
-                        "open it in a window"
-                    },
-                ));
-                hints.push(help::hint("<Ctrl e>", "open it in a new window"));
-            },
-            Some((_, false, _)) => {
-                hints.push(help::hint("<Ctrl e>", "resurrect it in a new window"));
-            },
-            None if inbox => {},
-            None => {
-                let typed = &self.single_screen_state.search_term;
-                hints.push(help::hint(
-                    "<Ctrl e>",
-                    if self.sessions.has_session(typed) {
-                        "open it in a new window"
-                    } else if self.resurrectable_sessions.has_session(typed) {
-                        "resurrect it in a new window"
-                    } else if typed.is_empty() {
-                        "new session in a new window"
-                    } else {
-                        "create it in a new window"
-                    },
-                ));
-            },
+        if self.way_available(OpenWay::WindowAndLeave, target, inbox) {
+            hints.push(help::hint(
+                "<Alt d>",
+                format!("same, {}", self.leave_here_text()),
+            ));
         }
-        if !hints.is_empty() && self.can_close_this_window() {
-            hints.push(help::hint("<Alt w/e>", "same, then detach here"));
+        let has_window_hints = !hints.is_empty();
+        if self.way_available(OpenWay::DisconnectOthers, target, inbox) {
+            hints.push(help::hint(
+                "<Alt x>",
+                if inbox {
+                    "go there, disconnect others"
+                } else if target.is_here() {
+                    "disconnect others from this session"
+                } else {
+                    "open here, disconnect others"
+                },
+            ));
         }
-        if !hints.is_empty() && self.remote_client.is_some() {
+        if has_window_hints && self.remote_client.is_some() {
             hints.push(help::hint("(!)", "windows open on the Zellij machine"));
+        }
+        hints
+    }
+    fn layout_window_hints(&self) -> Vec<help::Hint> {
+        let mut hints = vec![];
+        if self.desktop_app_running() {
+            hints.push(help::hint("<Alt w>", "create it in a window"));
+            if self.can_close_this_window() {
+                hints.push(help::hint(
+                    "<Alt d>",
+                    format!("same, {}", self.leave_here_text()),
+                ));
+            }
+            if self.remote_client.is_some() {
+                hints.push(help::hint("(!)", "windows open on the Zellij machine"));
+            }
         }
         hints
     }
@@ -2483,18 +2598,12 @@ impl State {
             hints.push(hint("<ENTER>", "create with this layout"));
             hints.push(hint("<↓↑>", "select a layout"));
             hints.push(hint("<ESC>", "back"));
-            if self.desktop_app_running() {
-                hints.push(hint("<Ctrl e>", "create it in a new window"));
-                if self.can_close_this_window() {
-                    hints.push(hint("<Alt e>", "same, then detach here"));
-                }
-            }
+            hints.extend(self.layout_window_hints());
             hints.push(hint("<type>", "filter layouts"));
             hints.push(hint("<Ctrl f>", "choose a folder"));
             hints.push(hint("<Ctrl c>", "reset the folder"));
             return hints;
         }
-        let selected = self.selected_session();
         if let Some(action) = self.enter_action() {
             hints.push(hint("<ENTER>", action.to_lowercase()));
         }
@@ -2502,20 +2611,14 @@ impl State {
         if !self.is_welcome_screen {
             hints.push(hint("<ESC>", "close"));
         }
-        let session = selected
-            .as_ref()
-            .map(|(name, running, current)| (name.as_str(), *running, *current));
-        hints.extend(self.window_hints(session, false));
-        if matches!(selected, Some((_, true, false))) || all {
-            hints.push(hint("<Ctrl ENTER>", "attach, disconnect others"));
-        }
+        let target = self.sessions_open_target();
+        hints.extend(self.open_way_hints(Some(&target), false));
         hints.push(hint("<type>", "search, or name a new session"));
         hints.push(hint("<←→>", "show tabs and panes"));
         hints.push(hint("<Ctrl l>", "new session with a layout"));
         hints.push(hint("<Ctrl r>", "rename this session"));
         hints.push(hint("<Del>", "stop or delete the selected session"));
         if !app_panel::is_enabled() && !self.is_welcome_screen {
-            hints.push(hint("<Ctrl x>", "disconnect others from this session"));
             hints.push(hint(
                 "<Ctrl a>",
                 format!(
@@ -2536,8 +2639,14 @@ impl State {
     }
     fn inbox_hints(&self, all: bool) -> Vec<help::Hint> {
         use help::hint;
+        let target = self.inbox_open_target();
         if !all {
-            let mut hints = vec![hint("<↓↑>", "select")];
+            let mut hints: Vec<help::Hint> = self
+                .open_way_hints(target.as_ref(), true)
+                .into_iter()
+                .filter(|h| h.key == "<Alt w>")
+                .collect();
+            hints.push(hint("<↓↑>", "select"));
             if self.shows_browser_tabs() {
                 hints.push(hint("<TAB>", "sessions"));
             }
@@ -2556,12 +2665,10 @@ impl State {
             hint("<p>", "show or hide the latest output"),
             hint("<ESC>", "close"),
             hint("<m>", if muted { "unmute" } else { "mute" }),
-            hint("<w>", if watched { "stop watching" } else { "watch" }),
+            hint("<n>", if watched { "stop watching" } else { "watch (notify me)" }),
             hint("<C>", "dismiss everything"),
-            hint("<Ctrl ENTER>", "go there, disconnect others"),
         ];
-        let session = item.map(|i| (i.session.as_str(), true, i.is_current));
-        hints.extend(self.window_hints(session.or(Some(("", true, false))), true));
+        hints.extend(self.open_way_hints(target.as_ref(), true));
         let on_off = |on: bool| if on { "on" } else { "off" };
         hints.push(hint(
             "<f>",
@@ -2955,14 +3062,6 @@ impl State {
                     } else {
                         None
                     }
-                },
-                BareKey::Enter if is_disconnecting_enter(key) => {
-                    self.open_disconnecting = true;
-                    if !self.open_tree_child() {
-                        self.handle_selection();
-                    }
-                    self.open_disconnecting = false;
-                    Some(true)
                 },
                 _ => None,
             }
@@ -3460,14 +3559,6 @@ impl State {
         let plain = key.has_no_modifiers();
         let shift = key.has_only_modifiers(&[KeyModifier::Shift]);
         match key.bare_key {
-            BareKey::Enter if is_disconnecting_enter(&key) => {
-                self.inbox_go_disconnecting();
-            },
-            BareKey::Char(c) if !plain && !shift && window_key(&key, c).is_some() => {
-                if let Some((new_window, leave)) = window_key(&key, c) {
-                    self.inbox_open_in_window(new_window, leave);
-                }
-            },
             BareKey::Esc if plain => self.size_down(),
             BareKey::Tab if plain => self.switch_browser_tab(BrowserTab::Sessions),
             BareKey::Down if plain => {
@@ -3504,7 +3595,7 @@ impl State {
                 self.inbox.toggle_show_quiet();
                 self.after_inbox_selection_change();
             },
-            BareKey::Char('w') if plain => self.inbox.toggle_selected_watch(),
+            BareKey::Char('n') if plain => self.inbox.toggle_selected_watch(),
             _ => return false,
         }
         true

@@ -15,7 +15,6 @@ use zellij_utils::app_control::{
 const LIMIT: Duration = Duration::from_secs(10);
 const QUIET: Duration = Duration::from_millis(700);
 const CONFIG: &str = "session_indicator true\nmouse_mode true";
-const ALT_ENTER: [u8; 2] = [0x1b, b'\r'];
 
 fn fake_desktop_app(windows_on: &[&str]) -> mpsc::Receiver<AppRequest> {
     zellij_integration_tests::test_env::init();
@@ -119,14 +118,14 @@ fn open_window(requests: &mpsc::Receiver<AppRequest>) -> OpenWindowRequest {
 }
 
 #[test]
-fn ctrl_w_from_a_terminal_warns_first_then_asks_the_app_for_the_session_window() {
+fn alt_w_from_a_terminal_warns_first_then_asks_the_app_for_the_session_window() {
     let other = other_session();
     let requests = fake_desktop_app(&[other.session_name()]);
     let mut zellij = main_session();
-    open_sessions_with(&zellij, other.session_name(), "<Ctrl w> go to its window");
+    open_sessions_with(&zellij, other.session_name(), "<Alt w> go to its window");
     let help = zellij.snapshot();
     assert!(help.contains("(!) windows open on the Zellij machine"));
-    zellij.send_stdin(&keys::ctrl('w'));
+    zellij.send_stdin(&keys::alt('w'));
     confirm_warning(&zellij, false);
     let request = open_window(&requests);
     assert_eq!(request.session.as_deref(), Some(other.session_name()));
@@ -139,8 +138,8 @@ fn escape_on_the_warning_sends_nothing() {
     let other = other_session();
     let requests = fake_desktop_app(&[]);
     let mut zellij = main_session();
-    open_sessions_with(&zellij, other.session_name(), "<Ctrl w> open it in a window");
-    zellij.send_stdin(&keys::ctrl('w'));
+    open_sessions_with(&zellij, other.session_name(), "<Alt w> open it in a window");
+    zellij.send_stdin(&keys::alt('w'));
     zellij.wait_until("the warning is shown", |grid_snapshot| {
         grid_snapshot.contains("You are connected from a terminal")
     });
@@ -154,7 +153,7 @@ fn escape_on_the_warning_sends_nothing() {
 }
 
 #[test]
-fn ctrl_e_on_a_typed_name_creates_that_session_in_a_new_window() {
+fn alt_w_on_a_typed_name_creates_that_session_in_a_new_window() {
     let other = other_session();
     let requests = fake_desktop_app(&[]);
     let mut zellij = main_session();
@@ -162,9 +161,9 @@ fn ctrl_e_on_a_typed_name_creates_that_session_in_a_new_window() {
     zellij.send_stdin(b"brand-new");
     zellij.wait_until("the help offers to create it in a window", |grid_snapshot| {
         grid_snapshot.contains("brand-new")
-            && grid_snapshot.contains("<Ctrl e> create it in a new window")
+            && grid_snapshot.contains("<Alt w> create it in a window")
     });
-    zellij.send_stdin(&keys::ctrl('e'));
+    zellij.send_stdin(&keys::alt('w'));
     confirm_warning(&zellij, false);
     let request = open_window(&requests);
     assert_eq!(request.session.as_deref(), Some("brand-new"));
@@ -174,16 +173,16 @@ fn ctrl_e_on_a_typed_name_creates_that_session_in_a_new_window() {
 }
 
 #[test]
-fn alt_w_asks_for_the_window_and_detaches_this_terminal() {
+fn alt_d_asks_for_the_window_and_detaches_this_terminal() {
     let other = other_session();
     let requests = fake_desktop_app(&[other.session_name()]);
     let mut zellij = main_session();
     open_sessions_with(
         &zellij,
         other.session_name(),
-        "<Alt w/e> same, then detach here",
+        "<Alt d> same, then detach this terminal",
     );
-    zellij.send_stdin(&keys::alt('w'));
+    zellij.send_stdin(&keys::alt('d'));
     confirm_warning(&zellij, true);
     let request = open_window(&requests);
     assert_eq!(request.session.as_deref(), Some(other.session_name()));
@@ -191,7 +190,7 @@ fn alt_w_asks_for_the_window_and_detaches_this_terminal() {
 }
 
 #[test]
-fn ctrl_e_in_the_inbox_opens_the_items_pane_in_a_new_window() {
+fn alt_w_in_the_inbox_opens_the_items_pane_in_a_window() {
     let other = TestRunner::new(TERMINAL_SIZE)
         .with_config(CONFIG)
         .skip_concurrency_slot()
@@ -208,11 +207,11 @@ fn ctrl_e_in_the_inbox_opens_the_items_pane_in_a_new_window() {
     zellij.wait_until("the inbox selects the item", |grid_snapshot| {
         grid_snapshot.contains("NEEDS YOU") && grid_snapshot.contains("Deploy now?")
     });
-    zellij.send_stdin(&keys::ctrl('e'));
+    zellij.send_stdin(&keys::alt('w'));
     confirm_warning(&zellij, false);
     let request = open_window(&requests);
     assert_eq!(request.session.as_deref(), Some(other.session_name()));
-    assert!(request.create);
+    assert!(!request.create, "an open window of the session is reused");
     assert_eq!(request.pane_id, Some((terminal.terminal_id(), false)));
     zellij.quit();
 }
@@ -222,8 +221,8 @@ fn without_the_desktop_app_the_window_keys_are_not_offered_and_do_nothing() {
     let other = other_session();
     let mut zellij = main_session();
     open_sessions_with(&zellij, other.session_name(), "<F1> all keys");
-    assert!(!zellij.snapshot().contains("<Ctrl w>"));
-    zellij.send_stdin(&keys::ctrl('w'));
+    assert!(!zellij.snapshot().contains("<Alt w>"));
+    zellij.send_stdin(&keys::alt('w'));
     std::thread::sleep(QUIET);
     assert!(!zellij
         .snapshot()
@@ -232,7 +231,7 @@ fn without_the_desktop_app_the_window_keys_are_not_offered_and_do_nothing() {
 }
 
 #[test]
-fn switching_with_alt_enter_disconnects_the_other_clients_of_the_target() {
+fn switching_with_alt_x_disconnects_the_other_clients_of_the_target() {
     let other = other_session();
     let bystander = other.attach_client(TERMINAL_SIZE);
     bystander.wait_until("the bystander is attached", |grid_snapshot| {
@@ -242,9 +241,9 @@ fn switching_with_alt_enter_disconnects_the_other_clients_of_the_target() {
     open_sessions_with(
         &zellij,
         other.session_name(),
-        "<Ctrl ENTER> attach, disconnect others",
+        "<Alt x> open here, disconnect others",
     );
-    zellij.send_stdin(&ALT_ENTER);
+    zellij.send_stdin(&keys::alt('x'));
     let (switch, _first) = zellij.follow_switch_into(other);
     assert!(switch.disconnects_others());
     let deadline = std::time::Instant::now() + LIMIT;
@@ -297,26 +296,7 @@ fn wait_for_exit(client: &zellij_integration_tests::TestClient, what: &str) {
 }
 
 #[test]
-fn alt_e_opens_the_selected_session_in_a_new_window_and_detaches_this_terminal() {
-    let other = other_session();
-    let requests = fake_desktop_app(&[]);
-    let mut zellij = main_session();
-    open_sessions_with(
-        &zellij,
-        other.session_name(),
-        "<Alt w/e> same, then detach here",
-    );
-    zellij.send_stdin(&keys::alt('e'));
-    confirm_warning(&zellij, true);
-    let request = open_window(&requests);
-    assert_eq!(request.session.as_deref(), Some(other.session_name()));
-    assert!(request.create, "a new window is asked for");
-    assert!(request.layout.is_none(), "an existing session keeps its layout");
-    assert!(zellij.join_main_client().is_none(), "the terminal detached");
-}
-
-#[test]
-fn ctrl_e_in_the_layout_picker_creates_the_named_session_in_a_new_window() {
+fn alt_w_in_the_layout_picker_creates_the_named_session_in_a_new_window() {
     let other = other_session();
     let requests = fake_desktop_app(&[]);
     let mut zellij = main_session();
@@ -329,7 +309,7 @@ fn ctrl_e_in_the_layout_picker_creates_the_named_session_in_a_new_window() {
     zellij.wait_until("the layout picker is shown", |grid_snapshot| {
         grid_snapshot.contains("New session layout:") && grid_snapshot.contains("from-layout")
     });
-    zellij.send_stdin(&keys::ctrl('e'));
+    zellij.send_stdin(&keys::alt('w'));
     confirm_warning(&zellij, false);
     let request = open_window(&requests);
     assert_eq!(request.session.as_deref(), Some("from-layout"));
@@ -340,7 +320,7 @@ fn ctrl_e_in_the_layout_picker_creates_the_named_session_in_a_new_window() {
 }
 
 #[test]
-fn alt_enter_in_the_inbox_switches_to_the_items_pane_and_disconnects_the_other_clients() {
+fn alt_x_in_the_inbox_switches_to_the_items_pane_and_disconnects_the_other_clients() {
     let (other, terminal) = other_session_needing_you("Ship it?");
     let bystander = other.attach_client(TERMINAL_SIZE);
     bystander.wait_until("the bystander is attached", |grid_snapshot| {
@@ -348,7 +328,7 @@ fn alt_enter_in_the_inbox_switches_to_the_items_pane_and_disconnects_the_other_c
     });
     let mut zellij = main_session();
     open_inbox_on(&zellij, "Ship it?");
-    zellij.send_stdin(&ALT_ENTER);
+    zellij.send_stdin(&keys::alt('x'));
     let (switch, _first) = zellij.follow_switch_into(other);
     assert!(switch.disconnects_others());
     assert_eq!(switch.pane_id, Some((terminal.terminal_id(), false)));
@@ -360,7 +340,7 @@ fn alt_enter_in_the_inbox_switches_to_the_items_pane_and_disconnects_the_other_c
 }
 
 #[test]
-fn alt_enter_in_the_inbox_on_this_session_goes_to_the_pane_and_disconnects_the_other_clients() {
+fn alt_x_in_the_inbox_on_this_session_goes_to_the_pane_and_disconnects_the_other_clients() {
     let zellij_runner = TestRunner::new(TERMINAL_SIZE).with_config(CONFIG);
     let mut zellij = zellij_runner.start();
     let first = claim_first_terminal_and_wait_for_prompt(&zellij);
@@ -377,7 +357,7 @@ fn alt_enter_in_the_inbox_on_this_session_goes_to_the_pane_and_disconnects_the_o
     bystander.wait_until("the bystander is attached", |grid_snapshot| {
         grid_snapshot.status_bar_appears()
     });
-    zellij.send_stdin(&ALT_ENTER);
+    zellij.send_stdin(&keys::alt('x'));
     wait_for_exit(&bystander, "the other client was not disconnected");
     let grid_snapshot = zellij.wait_until("this client is on the item's tab", |grid_snapshot| {
         grid_snapshot.status_bar_appears() && !grid_snapshot.contains("<ENTER> go there")
@@ -401,11 +381,11 @@ fn select_on_the_welcome_screen(zellij: &TestSession, other: &str) {
     let listed = zellij.wait_until("the welcome screen lists the other session", |grid_snapshot| {
         grid_snapshot.contains("new session with a random name") && grid_snapshot.contains(other)
     });
-    if !listed.contains("<Ctrl w>") {
+    if !listed.contains("<Alt w> go to its window") {
         zellij.send_stdin(&keys::DOWN);
     }
     zellij.wait_until("the other session is selected with its window keys", |grid_snapshot| {
-        grid_snapshot.contains(other) && grid_snapshot.contains("<Ctrl w>")
+        grid_snapshot.contains(other) && grid_snapshot.contains("<Alt w> go to its window")
     });
 }
 
@@ -414,34 +394,34 @@ fn warning_is_shown(grid_snapshot: &GridSnapshot) -> bool {
 }
 
 #[test]
-fn the_warning_asks_once_for_plain_keys_and_every_time_for_alt_keys() {
+fn the_warning_asks_once_for_alt_w_and_every_time_for_alt_d() {
     let other = other_session();
     let requests = fake_desktop_app(&[other.session_name()]);
     let mut zellij = welcome_screen();
     select_on_the_welcome_screen(&zellij, other.session_name());
-    zellij.send_stdin(&keys::ctrl('w'));
+    zellij.send_stdin(&keys::alt('w'));
     confirm_warning(&zellij, false);
     assert_eq!(
         open_window(&requests).session.as_deref(),
         Some(other.session_name())
     );
     select_on_the_welcome_screen(&zellij, other.session_name());
-    zellij.send_stdin(&keys::ctrl('w'));
+    zellij.send_stdin(&keys::alt('w'));
     let request = open_window(&requests);
     assert_eq!(request.session.as_deref(), Some(other.session_name()));
     assert!(
         !warning_is_shown(&zellij.snapshot()),
-        "a plain key asked a second time"
+        "alt w asked a second time"
     );
     select_on_the_welcome_screen(&zellij, other.session_name());
-    zellij.send_stdin(&keys::alt('w'));
-    zellij.wait_until("an alt key still warns", warning_is_shown);
+    zellij.send_stdin(&keys::alt('d'));
+    zellij.wait_until("alt d still warns", warning_is_shown);
     zellij.send_stdin(&keys::ESC);
     zellij.wait_until("the warning is dismissed", |grid_snapshot| {
         !warning_is_shown(grid_snapshot)
     });
     assert!(requests.recv_timeout(QUIET).is_err());
-    zellij.send_stdin(&keys::alt('w'));
+    zellij.send_stdin(&keys::alt('d'));
     confirm_warning(&zellij, true);
     assert_eq!(
         open_window(&requests).session.as_deref(),
@@ -449,6 +429,6 @@ fn the_warning_asks_once_for_plain_keys_and_every_time_for_alt_keys() {
     );
     assert!(
         zellij.join_main_client().is_none(),
-        "the welcome screen quits after an alt key"
+        "the welcome screen quits after alt d"
     );
 }

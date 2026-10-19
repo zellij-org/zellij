@@ -179,7 +179,7 @@ fn m_mutes_the_selected_pane_and_m_again_unmutes_it() {
 }
 
 #[test]
-fn w_watches_the_selected_pane() {
+fn n_watches_the_selected_pane() {
     let (mut zellij, _) = main_session();
     let (_other, terminal) = background_session_with(ATTENTION_CONFIG);
     failed_command(&terminal, "cargo test", "1");
@@ -188,7 +188,7 @@ fn w_watches_the_selected_pane() {
     zellij.wait_until("the item is selected", |grid_snapshot| {
         is_selected(grid_snapshot, "FAILED")
     });
-    zellij.send_stdin(&keys::key('w'));
+    zellij.send_stdin(&keys::key('n'));
     zellij.wait_until("the item is watched", |grid_snapshot| {
         grid_snapshot
             .lines()

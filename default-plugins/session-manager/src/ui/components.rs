@@ -1230,7 +1230,7 @@ pub fn render_controls_line(
         ActiveScreen::AttachToSession => {
             let rename = colors.shortcuts("<Ctrl r>");
             let rename_text = colors.bold("Rename");
-            let disconnect = colors.shortcuts("<Ctrl x>");
+            let disconnect = colors.shortcuts("<Alt x>");
             let disconnect_text = colors.bold("Disconnect others");
             let kill = colors.shortcuts("<Del>");
             let kill_text = colors.bold("Kill");
@@ -1297,7 +1297,7 @@ pub fn render_controls_line(
             let navigate = colors.bold("Navigate");
             let rename = colors.shortcuts("<Ctrl r>");
             let rename_text = colors.bold("Rename");
-            let disconnect = colors.shortcuts("<Ctrl x>");
+            let disconnect = colors.shortcuts("<Alt x>");
             let disconnect_full_text = colors.bold("Disconnect others");
             let disconnect_short_text = colors.bold("Disconnect");
             let kill = colors.shortcuts("<Del>");
@@ -1330,25 +1330,22 @@ pub fn render_controls_line(
         ActiveScreen::SingleScreen => {
             let rename = colors.shortcuts("<Ctrl r>");
             let rename_text = colors.bold("Rename");
-            let disconnect = colors.shortcuts("<Ctrl x>");
+            let disconnect = colors.shortcuts("<Alt x>");
             let disconnect_full_text = colors.bold("Disconnect others");
             let disconnect_short_text = colors.bold("Disconnect");
             let kill = colors.shortcuts("<Del>");
             let kill_text = colors.bold("Kill/Delete");
 
-            // Full: "Help: <Ctrl r> - Rename, <Ctrl x> - Disconnect others, <Del> - Kill/Delete" = 76 chars
             if max_cols > 76 {
                 print!(
                     "\u{1b}[m\u{1b}[{y};{x}HHelp: {rename} - {rename_text}, {disconnect} - {disconnect_full_text}, {kill} - {kill_text}"
                 );
                 true
-            // Medium: "Help: <Ctrl r> - Rename, <Ctrl x> - Disconnect, <Del> - Kill/Delete" = 69 chars
             } else if max_cols > 69 {
                 print!(
                     "\u{1b}[m\u{1b}[{y};{x}HHelp: {rename} - {rename_text}, {disconnect} - {disconnect_short_text}, {kill} - {kill_text}"
                 );
                 true
-            // Compact: "<Ctrl r>/<Ctrl x>/<Del>" = 23 chars
             } else if max_cols >= 23 {
                 print!("\u{1b}[m\u{1b}[{y};{x}H{rename}/{disconnect}/{kill}");
                 false

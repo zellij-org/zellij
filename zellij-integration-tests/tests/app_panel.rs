@@ -774,7 +774,7 @@ const TALL: zellij_integration_tests::Size = zellij_integration_tests::Size {
 };
 
 #[test]
-fn ctrl_x_and_ctrl_a_are_not_offered_in_the_app_panel() {
+fn alt_x_and_ctrl_a_are_not_offered_in_the_app_panel() {
     let background = TestRunner::new(TERMINAL_SIZE)
         .skip_concurrency_slot()
         .start_in_background();
@@ -787,7 +787,7 @@ fn ctrl_x_and_ctrl_a_are_not_offered_in_the_app_panel() {
         grid_snapshot.contains("All keys") && grid_snapshot.contains("<Ctrl r>")
     });
     assert!(
-        !all_keys.contains("<Ctrl x>") && !all_keys.contains("<Ctrl a>"),
+        !all_keys.contains("disconnect others from this session") && !all_keys.contains("<Ctrl a>"),
         "{}",
         all_keys.text
     );
@@ -816,7 +816,9 @@ fn ctrl_x_and_ctrl_a_are_not_offered_in_the_app_panel() {
         grid_snapshot.contains("All keys") && grid_snapshot.contains("<Ctrl r>")
     });
     assert!(
-        all_keys.contains("<Ctrl x>") && all_keys.contains("<Ctrl a>"),
+        all_keys.contains("<Alt x>")
+            && all_keys.contains("disconnect others from this session")
+            && all_keys.contains("<Ctrl a>"),
         "{}",
         all_keys.text
     );
