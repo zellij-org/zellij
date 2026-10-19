@@ -37,7 +37,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: reattaching to a renamed session on Windows (https://github.com/zellij-org/zellij/pull/5513)
 * fix: replay cached startup events to background plugins (https://github.com/zellij-org/zellij/pull/5706)
 * fix: busy-loop and log spam on dangling symlinks in layout/config folders (https://github.com/zellij-org/zellij/pull/5731)
-
+* fix: don't kill a new session when a connection closes before the first client has initialized it (https://github.com/zellij-org/zellij/pull/5638)
 
 ## [0.45.1] - 2026-08-28
 * fix: nested-session detection over SSH (https://github.com/zellij-org/zellij/pull/5522)
