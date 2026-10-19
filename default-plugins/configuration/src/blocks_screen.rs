@@ -681,6 +681,35 @@ mod tests {
     }
 
     #[test]
+    fn an_alias_form_keeps_spaces_in_config_values() {
+        let entry = AliasKind
+            .from_values(&[
+                FieldValue::Text("mine".to_owned()),
+                FieldValue::Text("/tmp/mine.wasm".to_owned()),
+                FieldValue::Text(String::new()),
+                FieldValue::Pairs(vec![
+                    (" spacer ".to_owned(), " ".to_owned()),
+                    ("label".to_owned(), "tab ".to_owned()),
+                    (" ".to_owned(), "  ".to_owned()),
+                ]),
+            ])
+            .unwrap();
+        assert_eq!(
+            entry.plugin.configuration,
+            vec![
+                ("label".to_owned(), "tab ".to_owned()),
+                ("spacer".to_owned(), " ".to_owned()),
+            ]
+        );
+        let kdl = AliasKind.block_kdl(&[entry]).unwrap();
+        let mut config = zellij_utils::input::config::Config::default();
+        zellij_utils::input::config_blocks::replace_config_blocks(&mut config, &kdl).unwrap();
+        let configuration = config.plugins.aliases["mine"].configuration.inner();
+        assert_eq!(configuration["spacer"], " ");
+        assert_eq!(configuration["label"], "tab ");
+    }
+
+    #[test]
     fn a_separator_can_be_edited_into_an_item_and_back() {
         let kind = MenuKind {
             section: "pane",
