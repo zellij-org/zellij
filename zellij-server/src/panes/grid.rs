@@ -569,8 +569,9 @@ fn bounded_push(
     vec: &mut VecDeque<Row>,
     sixel_grid: &mut SixelGrid,
     kitty_grid: &mut KittyGrid,
-    value: Row,
+    mut value: Row,
 ) -> Option<usize> {
+    value.columns.shrink_to_fit();
     let mut evicted_row_width = None;
     if vec.len() >= *SCROLL_BUFFER_SIZE.get().unwrap() {
         let line = vec.pop_front();

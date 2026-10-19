@@ -10886,3 +10886,35 @@ fn a_preview_keeps_only_the_newest_scrollback_lines() {
     assert!(capped.contains("grid line 59"));
     assert!(capped.lines().count() < everything.lines().count());
 }
+
+fn scrollback_heap_bytes(grid: &Grid) -> usize {
+    grid.lines_above
+        .iter()
+        .map(|row| {
+            row.columns.capacity()
+                * std::mem::size_of::<crate::panes::terminal_character::TerminalCharacter>()
+                + std::mem::size_of::<super::super::Row>()
+        })
+        .sum()
+}
+
+#[test]
+fn scrollback_rows_do_not_keep_room_for_a_full_width_line() {
+    let mut grid = filled_scrollback(5, 200, b"abc", 100);
+    for row in grid.lines_above.iter() {
+        assert_eq!(row.columns.capacity(), row.columns.len());
+    }
+    assert!(
+        scrollback_heap_bytes(&grid)
+            < grid.lines_above.len()
+                * 200
+                * std::mem::size_of::<crate::panes::terminal_character::TerminalCharacter>()
+                / 10,
+        "short lines in scrollback must not cost a full row width each"
+    );
+    grid.change_size(5, 80);
+    assert_eq!(
+        grid.scrollback_position_and_length().1,
+        scrollback_recount(&mut grid)
+    );
+}
