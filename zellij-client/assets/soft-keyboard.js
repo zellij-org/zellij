@@ -222,10 +222,23 @@ export function installSoftKeyboardCapture(term, sendFunction) {
         }
     });
 
+    // Only touch and pen gestures summon the OS keyboard. On a touchscreen laptop a mouse
+    // click must leave focus with xterm.js, which encodes the keys the capture cannot.
+    // `click` is not a PointerEvent in every browser, so it falls back to the type of the
+    // pointerdown that started it.
+    let lastPointerType = "";
+    const isSoftKeyboardGesture = (ev) => {
+        if (ev.type === "touchend") {
+            return true;
+        }
+        const pointerType = ev.pointerType || lastPointerType;
+        return pointerType === "touch" || pointerType === "pen";
+    };
+
     // Mobile browsers honor programmatic focus() only inside a user gesture, so
     // re-focus the capture on every gesture to keep the OS keyboard summoned.
     const ensureCaptureFocused = (ev) => {
-        if (!window.__zjSoftKbdEnabled) {
+        if (!window.__zjSoftKbdEnabled || !isSoftKeyboardGesture(ev)) {
             return;
         }
         const target = ev && ev.target;
@@ -247,10 +260,14 @@ export function installSoftKeyboardCapture(term, sendFunction) {
     };
     window.addEventListener("click", ensureCaptureFocused, { passive: true });
     window.addEventListener("touchend", ensureCaptureFocused, { passive: true });
-    window.addEventListener("pointerdown", ensureCaptureFocused, {
-        capture: true,
-        passive: true,
-    });
+    window.addEventListener(
+        "pointerdown",
+        (ev) => {
+            lastPointerType = ev.pointerType;
+            ensureCaptureFocused(ev);
+        },
+        { capture: true, passive: true }
+    );
 }
 
 // inputmode="none" stops the OS keyboard auto-popping on tap while the textarea
