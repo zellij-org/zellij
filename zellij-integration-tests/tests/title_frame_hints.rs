@@ -19,13 +19,8 @@ fn start_zellij_with_mouse() -> TestSession {
     .start()
 }
 
-fn start_full_frame_zellij_with_mouse(cols: usize) -> TestSession {
-    TestRunner::new(Size { cols, rows: 24 })
-        .with_config(
-            "pane_frame_style \"full\"\nmouse_mode true\nadvanced_mouse_actions true\nmouse_hover_effects true",
-        )
-        .start()
-}
+const FULL_FRAME_CONFIG: &str =
+    "pane_frame_style \"full\"\nmouse_mode true\nadvanced_mouse_actions true\nmouse_hover_effects true";
 
 const TIPS_DISABLED_CONFIG: &str =
     "mouse_mode true\nadvanced_mouse_actions true\nmouse_hover_effects true\nmouse_hover_tips false";
@@ -92,45 +87,24 @@ fn two_pane_session_with_handles() -> (TestSession, FakePtyHandle, FakePtyHandle
     (zellij, left_terminal, right_terminal)
 }
 
-fn two_pane_session() -> TestSession {
-    two_pane_session_with_handles().0
-}
-
 fn full_frame_two_pane_session(cols: usize) -> TestSession {
-    let zellij = start_full_frame_zellij_with_mouse(cols);
-    let left_terminal = zellij.expect_pty_spawn();
-    left_terminal.output(PROMPT);
-    zellij.wait_until("first full-frame pane rendered", |grid_snapshot| {
-        grid_snapshot.status_bar_appears()
-            && grid_snapshot.contains("┌")
-            && grid_snapshot.contains("$ ")
-    });
-    zellij.send_stdin(&keys::ctrl('p'));
-    zellij.send_stdin(&keys::key('r'));
-    let right_terminal = zellij.expect_pty_spawn();
-    right_terminal.output(PROMPT);
-    zellij.wait_until("two full-frame panes rendered", |grid_snapshot| {
-        grid_snapshot.contains("Pane #1")
-            && grid_snapshot.contains("Pane #2")
-            && grid_snapshot.status_bar_appears()
-    });
-    zellij
+    full_frame_two_pane_session_with_handles(cols, FULL_FRAME_CONFIG).0
 }
 
 #[test]
-fn hovering_a_pane_shows_a_hint_on_the_tab_bar() {
-    let mut zellij = two_pane_session();
+fn without_full_frames_hovering_a_pane_shows_no_hint() {
+    let (mut zellij, left_terminal, _right_terminal) = two_pane_session_with_handles();
 
     zellij.send_stdin(&sgr_motion(FOCUSED_PANE_COLUMN, HOVER_LINE));
-    zellij.wait_until(
-        "resize hint shown on the tab bar when hovering the focused pane",
-        |grid_snapshot| tab_bar_line(grid_snapshot).contains("resize"),
-    );
-
     zellij.send_stdin(&sgr_motion(OTHER_PANE_COLUMN, HOVER_LINE));
-    zellij.wait_until(
-        "group hint shown on the tab bar when hovering the other pane",
-        |grid_snapshot| tab_bar_line(grid_snapshot).contains("group"),
+    left_terminal.output(b"HOVER_SYNC_MARKER");
+    let settled = zellij.wait_until("a render settles after hovering both panes", |grid_snapshot| {
+        grid_snapshot.contains("HOVER_SYNC_MARKER")
+    });
+    assert!(
+        !settled.contains("resize") && !settled.contains("group"),
+        "without full frames no pane hint may be shown, not even in the tab bar:\n{}",
+        settled.text
     );
 
     zellij.quit();
@@ -138,7 +112,7 @@ fn hovering_a_pane_shows_a_hint_on_the_tab_bar() {
 
 #[test]
 fn any_input_dismisses_the_hint() {
-    let mut zellij = two_pane_session();
+    let mut zellij = full_frame_two_pane_session(120);
 
     zellij.send_stdin(&sgr_motion(FOCUSED_PANE_COLUMN, HOVER_LINE));
     zellij.wait_until("resize hint shown", |grid_snapshot| {
@@ -155,7 +129,7 @@ fn any_input_dismisses_the_hint() {
 
 #[test]
 fn hint_only_re_fires_when_entering_a_different_pane() {
-    let mut zellij = two_pane_session();
+    let mut zellij = full_frame_two_pane_session(120);
 
     zellij.send_stdin(&sgr_motion(FOCUSED_PANE_COLUMN, HOVER_LINE));
     zellij.wait_until("resize hint shown on first entry", |grid_snapshot| {
@@ -218,53 +192,9 @@ fn full_frame_help_renders_on_the_pane_not_the_tab_bar() {
 }
 
 #[test]
-fn resize_hint_shortens_when_the_tab_bar_narrows() {
-    let mut zellij = two_pane_session();
-
-    zellij.send_stdin(&sgr_motion(FOCUSED_PANE_COLUMN, HOVER_LINE));
-    zellij.wait_until(
-        "full-width tab bar shows the long resize hint",
-        |grid_snapshot| tab_bar_line(grid_snapshot).contains("to resize"),
-    );
-
-    zellij.resize(Size { cols: 68, rows: 24 });
-    zellij.wait_until(
-        "narrowed tab bar shortens the resize hint",
-        |grid_snapshot| {
-            let tab_bar = tab_bar_line(grid_snapshot);
-            tab_bar.contains("drag borders") && !tab_bar.contains("to resize")
-        },
-    );
-
-    zellij.resize(Size { cols: 50, rows: 24 });
-    zellij.wait_until(
-        "very narrow tab bar drops the hint and keeps the tabs",
-        |grid_snapshot| !grid_snapshot.contains("drag borders") && grid_snapshot.tab_bar_appears(),
-    );
-
-    zellij.quit();
-}
-
-#[test]
-fn hint_is_shown_in_the_tab_bar_until_dismissed() {
-    let mut zellij = two_pane_session();
-
-    zellij.send_stdin(&sgr_motion(FOCUSED_PANE_COLUMN, HOVER_LINE));
-    zellij.wait_until("hint shown in the tab bar", |grid_snapshot| {
-        tab_bar_line(grid_snapshot).contains("resize")
-    });
-
-    zellij.send_stdin(b"x");
-    zellij.wait_until("hint dismissed after input", |grid_snapshot| {
-        !tab_bar_line(grid_snapshot).contains("resize")
-    });
-
-    zellij.quit();
-}
-
-#[test]
 fn resize_hint_absent_with_a_single_pane() {
-    let (mut zellij, left_terminal, _right_terminal) = two_pane_session_with_handles();
+    let (mut zellij, left_terminal, _right_terminal) =
+        full_frame_two_pane_session_with_handles(120, FULL_FRAME_CONFIG);
     left_terminal.output(b"LEFT_PANE_MARKER");
     zellij.wait_until("the other pane is populated", |grid_snapshot| {
         grid_snapshot.contains("LEFT_PANE_MARKER")
@@ -372,18 +302,18 @@ fn disabled_tips_suppress_the_full_frame_resize_help() {
 
 #[test]
 fn hints_are_shown_when_mouse_hover_tips_is_absent_from_the_config() {
-    let mut zellij = two_pane_session();
+    let mut zellij = full_frame_two_pane_session(120);
 
     zellij.send_stdin(&sgr_motion(FOCUSED_PANE_COLUMN, HOVER_LINE));
     zellij.wait_until(
-        "resize hint shown by default when the option is absent",
-        |grid_snapshot| tab_bar_line(grid_snapshot).contains("resize"),
+        "resize hint shown on the frame by default when the option is absent",
+        |grid_snapshot| grid_snapshot.contains("resize"),
     );
 
     zellij.send_stdin(&sgr_motion(OTHER_PANE_COLUMN, HOVER_LINE));
     zellij.wait_until(
-        "group hint shown by default when the option is absent",
-        |grid_snapshot| tab_bar_line(grid_snapshot).contains("group"),
+        "group hint shown on the frame by default when the option is absent",
+        |grid_snapshot| grid_snapshot.contains("group"),
     );
 
     zellij.quit();
@@ -391,7 +321,8 @@ fn hints_are_shown_when_mouse_hover_tips_is_absent_from_the_config() {
 
 #[test]
 fn resize_hint_absent_in_fullscreen() {
-    let (mut zellij, _left_terminal, _right_terminal) = two_pane_session_with_handles();
+    let (mut zellij, _left_terminal, _right_terminal) =
+        full_frame_two_pane_session_with_handles(120, FULL_FRAME_CONFIG);
 
     zellij.send_stdin(&keys::ctrl('p'));
     zellij.send_stdin(&keys::key('f'));
