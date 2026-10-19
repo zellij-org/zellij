@@ -99,11 +99,9 @@ impl CliAssets {
             layout.recursively_add_start_suspended(Some(false));
         }
 
-        config_with_merged_layout_opts.themes = config_with_merged_layout_opts
-            .themes
-            .merge(get_default_themes());
-
-        let user_theme_dir = self
+        let mut themes = get_default_themes();
+        themes = themes.merge(config_with_merged_layout_opts.themes);
+        if let Some(i) = self
             .configuration_options
             .as_ref()
             .and_then(|o| o.theme_dir.clone())
@@ -116,11 +114,12 @@ impl CliAssets {
                         get_theme_dir(self.config_dir.clone().or_else(find_default_config_dir))
                     })
                     .filter(|dir| dir.exists())
-            });
-        if let Some(themes) = user_theme_dir.and_then(|u| Themes::from_dir(u).ok()) {
-            config_with_merged_layout_opts.themes =
-                config_with_merged_layout_opts.themes.merge(themes);
+            })
+            .and_then(|u| Themes::from_dir(u).ok())
+        {
+            themes = themes.merge(i);
         }
+        config_with_merged_layout_opts.themes = themes;
 
         (config_with_merged_layout_opts, layout)
     }

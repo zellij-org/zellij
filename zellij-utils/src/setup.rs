@@ -398,15 +398,16 @@ impl Setup {
                 None => config.options.clone(),
             };
 
-            config.themes = config.themes.merge(get_default_themes());
-
-            let user_theme_dir = config_options.theme_dir.clone().or_else(|| {
+            let mut themes = get_default_themes();
+            themes = themes.merge(config.themes.clone());
+            if let Some(user_theme_dir) = config_options.theme_dir.clone().or_else(|| {
                 get_theme_dir(cli_args.config_dir.clone().or_else(find_default_config_dir))
                     .filter(|dir| dir.exists())
-            });
-            if let Some(user_theme_dir) = user_theme_dir {
-                config.themes = config.themes.merge(Themes::from_dir(user_theme_dir)?);
+            }) {
+                themes = themes.merge(Themes::from_dir(user_theme_dir)?);
             }
+            config.themes = themes;
+
             Ok(config_options)
         }
 
