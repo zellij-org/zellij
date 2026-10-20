@@ -118,7 +118,11 @@ impl GlyphAtlas {
         } else {
             COLOR_BUDGET_BYTES
         };
-        Self::sized(channels, ATLAS_WIDTH, INITIAL_HEIGHT, budget)
+        let mut atlas = Self::sized(channels, ATLAS_WIDTH, INITIAL_HEIGHT, budget);
+        if channels != 1 {
+            atlas.release();
+        }
+        atlas
     }
 
     fn sized(channels: u32, side: u32, height: u32, budget: usize) -> Self {
@@ -140,7 +144,24 @@ impl GlyphAtlas {
     }
 
     fn renewed(&self) -> Self {
-        Self::sized(self.channels, self.side, self.initial_height, self.budget)
+        let mut renewed = Self::sized(self.channels, self.side, self.initial_height, self.budget);
+        if self.height == 0 {
+            renewed.release();
+        }
+        renewed
+    }
+
+    fn release(&mut self) {
+        self.height = 0;
+        self.coverage = Vec::new();
+    }
+
+    fn allocate(&mut self) {
+        self.height = self.initial_height;
+        self.coverage = vec![0; (self.side * self.height * self.channels) as usize];
+        self.revision = next_revision();
+        self.reshaped_at = self.revision;
+        self.dirty_log.clear();
     }
 
     pub fn dirty_rows_since(&self, revision: u64) -> Option<(u32, u32)> {
@@ -203,6 +224,10 @@ impl GlyphAtlas {
                 bitmap.width,
                 self.side
             ));
+        }
+
+        if self.height == 0 {
+            self.allocate();
         }
 
         if self.shelf_cursor + bitmap.width + PADDING > self.side {

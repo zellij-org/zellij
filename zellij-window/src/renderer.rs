@@ -1013,6 +1013,7 @@ fn upload_atlas(gl: &glow::Context, target: &mut AtlasTexture, atlas: &GlyphAtla
                     glow::PixelUnpackData::Slice(Some(rows)),
                 );
             },
+            AtlasUpload::Whole if size.1 == 0 => {},
             AtlasUpload::Whole => {
                 gl.bind_texture(glow::TEXTURE_2D, Some(target.texture));
                 gl.tex_image_2d(
