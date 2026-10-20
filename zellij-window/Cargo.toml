@@ -21,6 +21,7 @@ glutin = { workspace = true }
 glutin-winit = { workspace = true }
 libloading = { workspace = true }
 log = { workspace = true }
+memmap2 = { version = "0.9", default-features = false }
 miette = { workspace = true }
 png = { workspace = true }
 serde = { workspace = true }
@@ -45,6 +46,7 @@ web_server_capability = [
 ]
 
 [target.'cfg(unix)'.dependencies]
+libc = { workspace = true }
 signal-hook = { workspace = true }
 
 [target.'cfg(all(unix, not(target_os = "macos"), not(target_os = "android")))'.dependencies]

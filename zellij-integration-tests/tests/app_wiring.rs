@@ -221,19 +221,29 @@ fn detaching_everywhere_detaches_every_client_of_every_listed_session_and_only_t
         first.session_name().to_owned(),
         second.session_name().to_owned(),
     ]);
-    for client in &clients {
-        wait_for("every client of the listed sessions to detach", || {
-            client.has_exited()
+    let deadline = Instant::now() + LIMIT;
+    while !clients.iter().all(|client| client.has_exited()) {
+        if Instant::now() >= deadline {
+            let report: Vec<_> = clients
+                .iter()
+                .enumerate()
+                .filter(|(_, client)| !client.has_exited())
+                .map(|(index, client)| (index, client.received_server_messages()))
+                .collect();
+            panic!(
+                "these clients of the listed sessions never detached (0 and 1 are on the first \
+                 session, 2 on the second): {:?}\n=== zellij log tail ===\n{}",
+                report,
+                zellij_integration_tests::test_env::log_tail(40)
+            );
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    for session in [&first, &second] {
+        wait_for("a detached session to keep answering", || {
+            session_answers(session.session_name(), Duration::from_secs(2))
         });
     }
-    assert!(session_answers(
-        first.session_name(),
-        Duration::from_secs(2)
-    ));
-    assert!(session_answers(
-        second.session_name(),
-        Duration::from_secs(2)
-    ));
     std::thread::sleep(Duration::from_millis(300));
     assert!(
         !kept_client.has_exited(),
