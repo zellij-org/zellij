@@ -4,11 +4,11 @@ use std::path::PathBuf;
 
 use crate::{
     data::{BorderStyleOverride, LineStyle},
-    input::layout::PluginUserConfiguration,
     input::layout::{
         FloatingPaneLayout, Layout, LayoutConstraint, PercentOrFixed, Run, RunPluginOrAlias,
         SplitDirection, SplitSize, SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
     },
+    input::{layout::PluginUserConfiguration, options::StackListOrientation},
     pane_size::{Constraint, PaneGeom},
 };
 
@@ -33,6 +33,7 @@ pub struct TabLayoutManifest {
 #[derive(Default, Debug, Clone)]
 pub struct PaneLayoutManifest {
     pub geom: PaneGeom,
+    pub stack_direction: Option<StackListOrientation>,
     pub run: Option<Run>,
     pub cwd: Option<PathBuf>,
     pub is_borderless: bool,
@@ -159,6 +160,7 @@ fn flatten_nested_stacks(mut layout: TiledPaneLayout) -> TiledPaneLayout {
         let only_child = layout.children.remove(0);
         layout.children = only_child.children;
         layout.external_children_index = only_child.external_children_index;
+        layout.stack_direction = layout.stack_direction.or(only_child.stack_direction);
     }
     if layout.children_are_stacked && layout.children.iter().any(|c| !c.children.is_empty()) {
         layout.children_are_stacked = false;
@@ -446,6 +448,11 @@ fn serialize_tiled_layout_attributes(
         kdl_node
             .entries_mut()
             .push(KdlEntry::new_prop("stacked", KdlValue::Bool(true)));
+        if let Some(direction) = layout.stack_direction {
+            kdl_node
+                .entries_mut()
+                .push(KdlEntry::new_prop("stack_direction", direction.to_string()));
+        }
     }
     if layout.is_expanded_in_stack && is_in_stack {
         kdl_node
@@ -805,6 +812,7 @@ fn stack_layout_from_manifest(
                 .map(|p| tiled_pane_layout_from_manifest(Some(p), None))
                 .collect(),
             children_are_stacked: true,
+            stack_direction: stacked_panes.iter().find_map(|pane| pane.stack_direction),
             ..Default::default()
         })
     }
@@ -963,6 +971,11 @@ fn get_tiled_panes_layout_from_panegeoms(
         split_size,
         children,
         children_are_stacked,
+        stack_direction: if children_are_stacked {
+            geoms.iter().find_map(|pane| pane.stack_direction)
+        } else {
+            None
+        },
         ..Default::default()
     })
 }
@@ -2644,6 +2657,55 @@ mod tests {
     }
 
     #[test]
+    fn stack_directions_survive_a_round_trip() {
+        for direction in [
+            StackListOrientation::Horizontal,
+            StackListOrientation::Vertical,
+        ] {
+            let panes = [
+                round_trip_geom(0, 0, Dimension::fixed(1), Dimension::fixed(10)),
+                round_trip_geom(0, 1, Dimension::fixed(10), Dimension::fixed(10)),
+            ]
+            .into_iter()
+            .map(|mut geom| {
+                geom.stacked = Some(0);
+                PaneLayoutManifest {
+                    geom,
+                    stack_direction: Some(direction),
+                    ..Default::default()
+                }
+            })
+            .collect();
+            let manifest = GlobalLayoutManifest {
+                tabs: vec![(
+                    "stack".to_owned(),
+                    TabLayoutManifest {
+                        tiled_panes: panes,
+                        ..Default::default()
+                    },
+                )],
+                ..Default::default()
+            };
+            let (kdl, layout) = serialize_and_parse(manifest);
+            assert!(
+                kdl.contains(&format!("stack_direction=\"{}\"", direction)),
+                "{}",
+                kdl
+            );
+            let mut directions = HashMap::new();
+            let mut space =
+                round_trip_geom(0, 0, Dimension::percent(100.0), Dimension::percent(100.0));
+            space.rows.set_inner(20);
+            space.cols.set_inner(20);
+            layout.tabs[0]
+                .1
+                .position_panes_in_space(&space, None, false, true, &mut directions)
+                .unwrap();
+            assert_eq!(directions.get(&0), Some(&direction));
+        }
+    }
+
+    #[test]
     fn dollar_signs_in_paths_survive_a_round_trip() {
         use crate::input::command::RunCommand;
         let pane_cwd = PathBuf::from("/tmp/routes/$programId+");
@@ -2690,7 +2752,7 @@ mod tests {
         let default_layout = crate::input::layout::Layout::from_kdl(
             r#"
             layout {
-                pane_template name="stack" stacked=true {
+                pane_template name="stack" stacked=true stack_direction="horizontal" {
                     children
                 }
                 stack {
@@ -2721,6 +2783,16 @@ mod tests {
         let (template_tiled, _) = layout.template.unwrap();
         let stack = &template_tiled.children[0];
         assert!(stack.children_are_stacked, "{}", kdl);
+        assert_eq!(
+            stack.stack_direction,
+            Some(StackListOrientation::Horizontal)
+        );
+        assert_eq!(
+            kdl.matches("stack_direction=\"horizontal\"").count(),
+            2,
+            "{}",
+            kdl
+        );
         assert_eq!(stack.children.len(), 2, "{}", kdl);
         assert!(stack.children.iter().all(|c| c.children.is_empty()));
     }

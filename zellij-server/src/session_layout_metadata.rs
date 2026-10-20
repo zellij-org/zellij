@@ -9,6 +9,7 @@ use zellij_utils::{
     data::{BorderStyleOverride, LayoutMetadata, PaneMetadata, TabMetadata},
     input::command::RunCommand,
     input::layout::{Layout, Run, RunPlugin, RunPluginOrAlias},
+    input::options::StackListOrientation,
     input::plugins::PluginAliases,
     session_serialization::{
         extract_command_and_args, extract_edit_and_line_number, extract_plugin_and_config,
@@ -127,7 +128,13 @@ impl SessionLayoutMetadata {
             })
     }
     pub fn is_dirty(&self) -> bool {
-        if self.has_attention_flags() {
+        if self.has_attention_flags()
+            || self.tabs.iter().any(|tab| {
+                tab.tiled_panes
+                    .iter()
+                    .any(|pane| pane.stack_direction.is_some())
+            })
+        {
             return true;
         }
         // here we check to see if the serialized layout would be different than the base one, and
@@ -553,6 +560,7 @@ impl Into<PaneLayoutManifest> for PaneLayoutMetadata {
     fn into(self) -> PaneLayoutManifest {
         PaneLayoutManifest {
             geom: self.geom,
+            stack_direction: self.stack_direction,
             run: self.run,
             cwd: self.cwd,
             is_borderless: self.is_borderless,
@@ -582,6 +590,7 @@ pub struct TabLayoutMetadata {
 pub struct PaneLayoutMetadata {
     id: PaneId,
     geom: PaneGeom,
+    stack_direction: Option<StackListOrientation>,
     run: Option<Run>,
     cwd: Option<PathBuf>,
     is_borderless: bool,
@@ -613,6 +622,7 @@ impl PaneLayoutMetadata {
         PaneLayoutMetadata {
             id,
             geom,
+            stack_direction: None,
             run,
             cwd: None,
             is_borderless,
@@ -626,6 +636,10 @@ impl PaneLayoutMetadata {
             attention_muted: false,
             ignore_output: false,
         }
+    }
+    pub fn with_stack_direction(mut self, stack_direction: Option<StackListOrientation>) -> Self {
+        self.stack_direction = stack_direction;
+        self
     }
     pub fn with_attention_flags(mut self, attention_muted: bool, ignore_output: bool) -> Self {
         self.attention_muted = attention_muted;

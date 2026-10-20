@@ -1262,7 +1262,7 @@ impl<'a> KdlLayoutParser<'a> {
             );
         } else {
             self.assert_valid_pane_properties(kdl_node)?;
-            // pane properties
+            let stack_direction = self.parse_stack_direction(kdl_node)?;
             let borderless =
                 kdl_get_bool_property_or_child_value_with_error!(kdl_node, "borderless");
             let border_style = self.parse_border_style(kdl_node)?;
@@ -1295,6 +1295,7 @@ impl<'a> KdlLayoutParser<'a> {
                         children: pane_parts,
                         children_are_stacked,
                         is_expanded_in_stack,
+                        stack_direction,
                         ..Default::default()
                     }),
                     kdl_node.clone(),
