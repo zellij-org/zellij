@@ -972,6 +972,9 @@ fn plan_atlas_upload(
     atlas: &GlyphAtlas,
 ) -> AtlasUpload {
     let size = (atlas.width(), atlas.height());
+    if size.1 == 0 {
+        return AtlasUpload::Nothing;
+    }
     let Some(revision) = uploaded_revision else {
         return AtlasUpload::Whole;
     };
@@ -1013,7 +1016,6 @@ fn upload_atlas(gl: &glow::Context, target: &mut AtlasTexture, atlas: &GlyphAtla
                     glow::PixelUnpackData::Slice(Some(rows)),
                 );
             },
-            AtlasUpload::Whole if size.1 == 0 => {},
             AtlasUpload::Whole => {
                 gl.bind_texture(glow::TEXTURE_2D, Some(target.texture));
                 gl.tex_image_2d(
@@ -1202,6 +1204,25 @@ mod tests {
         assert_eq!(
             plan_atlas_upload(Some(revision), size, &atlas),
             AtlasUpload::Whole
+        );
+    }
+
+    #[test]
+    fn an_atlas_with_nothing_in_it_is_never_uploaded() {
+        let empty = GlyphAtlas::new(4);
+        assert_eq!(empty.height(), 0);
+        assert_eq!(
+            plan_atlas_upload(None, (0, 0), &empty),
+            AtlasUpload::Nothing
+        );
+        assert_eq!(
+            plan_atlas_upload(Some(1), (4096, 256), &empty),
+            AtlasUpload::Nothing
+        );
+        assert_eq!(
+            plan_atlas_upload(Some(1), (empty.width(), 0), &empty),
+            AtlasUpload::Nothing,
+            "another cache's empty atlas must not ask for a sub-upload of zero rows"
         );
     }
 
