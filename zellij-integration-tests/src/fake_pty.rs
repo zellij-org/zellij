@@ -263,11 +263,13 @@ impl SharedPtys {
             }
             let now = Instant::now();
             if let Some(tripped) = deadline.tripped(now) {
+                let registry_description = fake_pty_registry.describe_all();
+                drop(fake_pty_registry);
                 panic!(
                     "timed out waiting for: {}\n{}\n{}\n=== zellij log tail ({}) ===\n{}",
                     what,
                     tripped,
-                    fake_pty_registry.describe_all(),
+                    registry_description,
                     crate::test_env::log_file_path().display(),
                     crate::test_env::log_tail(40),
                 );

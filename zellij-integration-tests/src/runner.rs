@@ -258,6 +258,7 @@ impl SessionContext {
             server_thread: self.server_thread,
             main_client,
             _concurrency_slot: self.concurrency_slot,
+            released_concurrency_slot: false,
         }
     }
 }
@@ -644,6 +645,7 @@ pub struct TestSession {
     server_thread: Arc<Mutex<Option<JoinHandle<()>>>>,
     main_client: TestClient,
     _concurrency_slot: Option<test_env::ConcurrencySlot>,
+    released_concurrency_slot: bool,
 }
 
 pub struct CliClientHandle {
@@ -1042,6 +1044,9 @@ impl TestSession {
                 .as_ref()
                 .and_then(|config| config.parent().map(|parent| parent.to_path_buf()));
         }
+        if std::mem::take(&mut self.released_concurrency_slot) {
+            self._concurrency_slot = Some(test_env::acquire_concurrency_slot());
+        }
         let fake_server_os_api = FakeServerOsApi::default();
         let server_thread: Arc<Mutex<Option<JoinHandle<()>>>> = Arc::new(Mutex::new(None));
         let server_spawner = in_process_server_spawner(fake_server_os_api.clone(), &server_thread);
@@ -1249,6 +1254,7 @@ impl TestSession {
         if let Some(server_thread) = self.server_thread.lock().unwrap().take() {
             join_server_thread_with_timeout(server_thread);
         }
+        self.released_concurrency_slot |= self._concurrency_slot.take().is_some();
     }
 
     pub fn kill_session(&mut self) {

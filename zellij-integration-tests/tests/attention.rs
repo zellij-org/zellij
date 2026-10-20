@@ -888,7 +888,13 @@ fn frame_markers_false_hides_every_pane_marker_but_keeps_the_indicator() {
         grid_snapshot.lines()[0].contains("● 1")
     });
     std::thread::sleep(Duration::from_millis(300));
-    assert_eq!(markers_on_screen(&zellij.snapshot().text), "");
+    let grid_snapshot = zellij.snapshot();
+    assert_eq!(
+        markers_on_screen(&grid_snapshot.text),
+        "",
+        "a marker was shown with frame_markers off:\n{}",
+        grid_snapshot.text
+    );
     zellij.quit();
 }
 
