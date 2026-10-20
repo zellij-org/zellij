@@ -8803,6 +8803,45 @@ impl Screen {
             .or(reason_from_tabs)
             .unwrap_or(PaneNotCreatedReason::Unknown)
     }
+    fn apply_pty_bytes(&mut self, pid: u32, vte_bytes: VteBytes) -> Result<Option<VteBytes>> {
+        self.pane_output_activity
+            .insert(PaneId::Terminal(pid), Instant::now());
+        let mut vte_bytes = Some(vte_bytes);
+        let mut title_changed = false;
+        let mut answers_typed_input = false;
+        for tab in self.get_tabs_mut().values_mut() {
+            if tab.has_terminal_pid(pid) {
+                if let Some(bytes) = vte_bytes.take() {
+                    let title_before = tab
+                        .get_pane_with_id(PaneId::Terminal(pid))
+                        .map(|pane| pane.current_title());
+                    tab.handle_pty_bytes(pid, bytes)
+                        .context("failed to process pty bytes")?;
+                    let title_after = tab
+                        .get_pane_with_id(PaneId::Terminal(pid))
+                        .map(|pane| pane.current_title());
+                    title_changed = title_before != title_after;
+                    answers_typed_input = tab.output_answers_typed_input(pid, Instant::now());
+                }
+                break;
+            }
+        }
+        if title_changed {
+            self.generate_and_report_pane_state()
+                .map(|_| ())
+                .non_fatal();
+        }
+        if vte_bytes.is_none() {
+            self.attention_output(pid);
+        }
+        let render_request = if answers_typed_input {
+            BackgroundJob::RenderToClientsNow
+        } else {
+            BackgroundJob::RenderToClients
+        };
+        let _ = self.bus.senders.send_to_background_jobs(render_request);
+        Ok(vte_bytes)
+    }
     fn finish_pane_creation(
         &mut self,
         pid: PaneId,
@@ -8816,7 +8855,14 @@ impl Screen {
             }
             if let Some(pending_events) = pending_events_waiting_for_pane.remove(&pid) {
                 for event in pending_events {
-                    self.bus.senders.send_to_screen(event).non_fatal();
+                    match event {
+                        ScreenInstruction::PtyBytes(terminal_id, vte_bytes) => {
+                            self.apply_pty_bytes(terminal_id, vte_bytes).non_fatal();
+                        },
+                        event => {
+                            self.bus.senders.send_to_screen(event).non_fatal();
+                        },
+                    }
                 }
             }
         } else {
@@ -10474,41 +10520,7 @@ pub(crate) fn screen_thread_main(
 
         match event {
             ScreenInstruction::PtyBytes(pid, vte_bytes) => {
-                screen
-                    .pane_output_activity
-                    .insert(PaneId::Terminal(pid), Instant::now());
-                let all_tabs = screen.get_tabs_mut();
-                let mut vte_bytes = Some(vte_bytes);
-                let mut title_changed = false;
-                let mut answers_typed_input = false;
-                for tab in all_tabs.values_mut() {
-                    if tab.has_terminal_pid(pid) {
-                        if let Some(bytes) = vte_bytes.take() {
-                            let title_before = tab
-                                .get_pane_with_id(PaneId::Terminal(pid))
-                                .map(|pane| pane.current_title());
-                            tab.handle_pty_bytes(pid, bytes)
-                                .context("failed to process pty bytes")?;
-                            let title_after = tab
-                                .get_pane_with_id(PaneId::Terminal(pid))
-                                .map(|pane| pane.current_title());
-                            title_changed = title_before != title_after;
-                            answers_typed_input =
-                                tab.output_answers_typed_input(pid, Instant::now());
-                        }
-                        break;
-                    }
-                }
-                if title_changed {
-                    screen
-                        .generate_and_report_pane_state()
-                        .map(|_| ())
-                        .non_fatal();
-                }
-                if vte_bytes.is_none() {
-                    screen.attention_output(pid);
-                }
-                if let Some(vte_bytes) = vte_bytes {
+                if let Some(vte_bytes) = screen.apply_pty_bytes(pid, vte_bytes)? {
                     if !screen.pane_will_never_be_created(&PaneId::Terminal(pid)) {
                         pending_events_waiting_for_pane
                             .entry(PaneId::Terminal(pid))
@@ -10516,12 +10528,6 @@ pub(crate) fn screen_thread_main(
                             .push(ScreenInstruction::PtyBytes(pid, vte_bytes));
                     }
                 }
-                let render_request = if answers_typed_input {
-                    BackgroundJob::RenderToClientsNow
-                } else {
-                    BackgroundJob::RenderToClients
-                };
-                let _ = screen.bus.senders.send_to_background_jobs(render_request);
             },
             ScreenInstruction::PluginBytes(mut plugin_render_assets) => {
                 for plugin_render_asset in plugin_render_assets.iter_mut() {
