@@ -964,6 +964,7 @@ message TiledPaneLayout {
   optional string pane_initial_contents = 13;
   optional string default_fg = 14;
   optional string default_bg = 15;
+  optional string stack_direction = 16;
   // NOTE: run_instructions_to_ignore is not represented here because it's a field used only inside the server itself and not part of the server/client contract
 }
 

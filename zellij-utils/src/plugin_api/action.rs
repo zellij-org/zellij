@@ -3167,6 +3167,7 @@ impl TryFrom<ProtobufTiledPaneLayout> for TiledPaneLayout {
             run_instructions_to_ignore,
             hide_floating_panes: protobuf.hide_floating_panes,
             pane_initial_contents: protobuf.pane_initial_contents,
+            stack_direction: protobuf.stack_direction.as_deref().and_then(|s| s.parse().ok()),
             default_fg: None,
             default_bg: None,
         })
@@ -3200,6 +3201,7 @@ impl TryFrom<TiledPaneLayout> for ProtobufTiledPaneLayout {
             exclude_from_sync: internal.exclude_from_sync,
             hide_floating_panes: internal.hide_floating_panes,
             pane_initial_contents: internal.pane_initial_contents,
+            stack_direction: internal.stack_direction.map(|d| d.to_string()),
         })
     }
 }

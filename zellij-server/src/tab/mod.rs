@@ -1896,7 +1896,8 @@ impl Tab {
             new_plugin_ids,
             client_id,
         ) {
-            Ok(should_show_floating_panes) => {
+            Ok((should_show_floating_panes, stack_directions)) => {
+                self.stack_list_orientation_memory.extend(stack_directions);
                 if should_show_floating_panes && !self.floating_panes.panes_are_visible() {
                     self.toggle_floating_panes(Some(client_id), None, None)
                         .non_fatal();
@@ -1987,7 +1988,8 @@ impl Tab {
             retain_existing_plugin_panes,
             client_id,
         ) {
-            Ok(should_show_floating_panes) => {
+            Ok((should_show_floating_panes, stack_directions)) => {
+                self.stack_list_orientation_memory.extend(stack_directions);
                 if should_show_floating_panes && !self.floating_panes.panes_are_visible() {
                     self.toggle_floating_panes(Some(client_id), None, None)
                         .non_fatal();
@@ -2116,8 +2118,11 @@ impl Tab {
             .apply_tiled_panes_layout_to_existing_panes(&layout_candidate);
             if application_res.is_err() {
                 self.swap_layouts.set_is_tiled_damaged();
-                application_res.non_fatal();
+            } else if let Ok(stack_directions) = &application_res {
+                self.stack_list_orientation_memory
+                    .extend(stack_directions.clone());
             }
+            application_res.non_fatal();
         } else {
             self.swap_layouts.set_is_tiled_damaged();
         }

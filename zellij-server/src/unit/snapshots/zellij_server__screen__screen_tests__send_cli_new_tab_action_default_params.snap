@@ -1,6 +1,5 @@
 ---
 source: zellij-server/src/./unit/screen_tests.rs
-assertion_line: 3515
 expression: "format!(\"{:#?}\", new_tab_action)"
 ---
 Some(
@@ -23,6 +22,7 @@ Some(
                         external_children_index: None,
                         children_are_stacked: false,
                         is_expanded_in_stack: false,
+                        stack_direction: None,
                         exclude_from_sync: None,
                         run_instructions_to_ignore: [],
                         hide_floating_panes: false,
@@ -41,6 +41,7 @@ Some(
                         external_children_index: None,
                         children_are_stacked: false,
                         is_expanded_in_stack: false,
+                        stack_direction: None,
                         exclude_from_sync: None,
                         run_instructions_to_ignore: [],
                         hide_floating_panes: false,
@@ -56,6 +57,7 @@ Some(
                 external_children_index: None,
                 children_are_stacked: false,
                 is_expanded_in_stack: false,
+                stack_direction: None,
                 exclude_from_sync: None,
                 run_instructions_to_ignore: [],
                 hide_floating_panes: false,

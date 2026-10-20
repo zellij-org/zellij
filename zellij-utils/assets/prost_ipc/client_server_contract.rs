@@ -1642,9 +1642,11 @@ pub struct TiledPaneLayout {
     pub pane_initial_contents: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(string, optional, tag="14")]
     pub default_fg: ::core::option::Option<::prost::alloc::string::String>,
-    /// NOTE: run_instructions_to_ignore is not represented here because it's a field used only inside the server itself and not part of the server/client contract
     #[prost(string, optional, tag="15")]
     pub default_bg: ::core::option::Option<::prost::alloc::string::String>,
+    /// NOTE: run_instructions_to_ignore is not represented here because it's a field used only inside the server itself and not part of the server/client contract
+    #[prost(string, optional, tag="16")]
+    pub stack_direction: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

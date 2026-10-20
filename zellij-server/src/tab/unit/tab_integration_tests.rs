@@ -13415,6 +13415,43 @@ fn stack_member_pane_count(tab: &Tab) -> usize {
 }
 
 #[test]
+fn stack_direction_from_layout_is_restored_when_groupifying() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let base_layout = r#"
+        layout {
+            pane stacked=true stack_direction="horizontal" {
+                pane focus=true
+                pane
+                pane
+            }
+        }
+    "#;
+    let (base_layout, _base_floating_layout) =
+        Layout::from_kdl(base_layout, Some("file_name.kdl".into()), None, None)
+            .unwrap()
+            .template
+            .unwrap();
+    let new_terminal_ids = vec![(1, None), (2, None), (3, None)];
+    let mut tab = create_new_tab_with_stacked_pane_list(
+        size,
+        ModeInfo::default(),
+        true,
+        Some((base_layout, new_terminal_ids)),
+    );
+
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+
+    assert_eq!(stack_member_pane_count(&tab), 3);
+    let orientations: Vec<StackListOrientation> =
+        tab.stack_lists.values().map(|l| l.orientation).collect();
+    assert_eq!(orientations, vec![StackListOrientation::Horizontal]);
+}
+
+#[test]
 fn test_ctrl_scroll_up_merging_stacks_preserves_all_panes() {
     let size = Size {
         cols: 150,

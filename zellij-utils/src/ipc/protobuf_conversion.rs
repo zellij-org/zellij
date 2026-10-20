@@ -4281,6 +4281,7 @@ impl From<crate::input::layout::TiledPaneLayout>
             pane_initial_contents: layout.pane_initial_contents,
             default_fg: layout.default_fg,
             default_bg: layout.default_bg,
+            stack_direction: layout.stack_direction.map(|d| d.to_string()),
         }
     }
 }
@@ -4716,6 +4717,10 @@ impl TryFrom<crate::client_server_contract::client_server_contract::TiledPaneLay
             pane_initial_contents: layout.pane_initial_contents,
             default_fg: layout.default_fg,
             default_bg: layout.default_bg,
+            stack_direction: layout
+                .stack_direction
+                .as_deref()
+                .and_then(|s| s.parse().ok()),
         })
     }
 }

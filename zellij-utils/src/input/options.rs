@@ -127,6 +127,15 @@ pub enum StackListOrientation {
     Horizontal,
 }
 
+impl std::fmt::Display for StackListOrientation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            StackListOrientation::Vertical => write!(f, "vertical"),
+            StackListOrientation::Horizontal => write!(f, "horizontal"),
+        }
+    }
+}
+
 impl FromStr for StackListOrientation {
     type Err = Box<dyn std::error::Error>;
     fn from_str(s: &str) -> Result<Self, Self::Err> {

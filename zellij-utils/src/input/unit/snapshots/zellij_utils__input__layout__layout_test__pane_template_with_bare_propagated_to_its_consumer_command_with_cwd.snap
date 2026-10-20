@@ -1,7 +1,6 @@
 ---
 source: zellij-utils/src/input/./unit/layout_test.rs
-assertion_line: 1686
-expression: "format!(\"{:#?}\", layout)"
+expression: "normalize_layout_debug(format!(\"{:#?}\", layout))"
 ---
 Layout {
     tabs: [
@@ -36,6 +35,7 @@ Layout {
                         external_children_index: None,
                         children_are_stacked: false,
                         is_expanded_in_stack: false,
+                        stack_direction: None,
                         exclude_from_sync: None,
                         run_instructions_to_ignore: [],
                         hide_floating_panes: false,
@@ -55,6 +55,7 @@ Layout {
                 external_children_index: None,
                 children_are_stacked: false,
                 is_expanded_in_stack: false,
+                stack_direction: None,
                 exclude_from_sync: None,
                 run_instructions_to_ignore: [],
                 hide_floating_panes: false,
@@ -97,6 +98,7 @@ Layout {
                         external_children_index: None,
                         children_are_stacked: false,
                         is_expanded_in_stack: false,
+                        stack_direction: None,
                         exclude_from_sync: None,
                         run_instructions_to_ignore: [],
                         hide_floating_panes: false,
@@ -116,6 +118,7 @@ Layout {
                 external_children_index: None,
                 children_are_stacked: false,
                 is_expanded_in_stack: false,
+                stack_direction: None,
                 exclude_from_sync: None,
                 run_instructions_to_ignore: [],
                 hide_floating_panes: false,
