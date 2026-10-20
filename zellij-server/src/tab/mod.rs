@@ -41,7 +41,8 @@ use crate::pty_writer::PtyWriteInstruction;
 use crate::screen::{CopyOptions, GuestModalOutcome, ScreenInstruction, TypedInput};
 use crate::ui::hint_text::{held_hint_variants, HintExitStatus};
 use crate::ui::{
-    loading_indication::LoadingIndication, pane_boundaries_frame::FrameParams,
+    loading_indication::LoadingIndication,
+    pane_boundaries_frame::{FrameParams, StackListEntry},
     pane_contents_and_ui::PaneContentsAndUi,
 };
 use layout_applier::LayoutApplier;
@@ -237,6 +238,13 @@ pub struct StackList {
     pub orientation: StackListOrientation,
 }
 
+struct StackListEntryLayout {
+    member: PaneId,
+    x: usize,
+    label_width: usize,
+    width: usize,
+}
+
 impl StackList {
     pub fn rank_of(&self, pane_id: &PaneId) -> Option<usize> {
         self.members.iter().position(|p| p == pane_id)
@@ -270,10 +278,8 @@ pub(crate) struct Tab {
     stack_lists: HashMap<StackListId, StackList>,
     stack_list_of_member: HashMap<PaneId, StackListId>,
     stack_list_parked_pairs: HashMap<PaneId, PaneId>,
-    // remembers a stack list's orientation across a degroupify->classic->groupify cycle
-    // (e.g. adding a pane to the stack), keyed by the classic in-grid stack id
+    // Classic mutations temporarily dissolve lists, so retain orientation by in-grid stack id.
     stack_list_orientation_memory: HashMap<usize, StackListOrientation>,
-    // config-provided default orientation for newly-formed stack lists
     stacked_pane_list_orientation: StackListOrientation,
     next_stack_list_id: StackListId,
     stack_list_session_is_mirrored: bool,
@@ -1291,8 +1297,6 @@ impl Tab {
                 list.members.get(rank).copied().unwrap_or(pane_id)
             },
             StackListOrientation::Horizontal => {
-                // the tab bar is a single row; the clicked member is decided by the column,
-                // walking the same per-tab widths the renderer lays out.
                 if point.line() != geom.y as isize {
                     return pane_id;
                 }
@@ -1306,16 +1310,10 @@ impl Tab {
                 if column < entry_x {
                     return pane_id;
                 }
-                let mut tab_x = entry_x;
-                for (member, (_, tab_width)) in list
-                    .members
-                    .iter()
-                    .zip(self.stack_list_horizontal_entry_layout(list, entry_cols))
-                {
-                    if column < tab_x + tab_width {
-                        return *member;
+                for entry in self.stack_list_horizontal_entry_layout(list, entry_cols) {
+                    if (entry_x + entry.x..entry_x + entry.x + entry.width).contains(&column) {
+                        return entry.member;
                     }
-                    tab_x += tab_width;
                 }
                 pane_id
             },
@@ -1330,28 +1328,52 @@ impl Tab {
         pane.map(|p| p.stack_list_entry_label().width())
             .unwrap_or(0)
     }
-    // (label width, tab width) per member of a horizontal tab bar: tabs pack left to right
-    // on a single row, each with one blank column of chrome either side of the label, and
-    // the row stops at the pane's right edge. Kept in one place so the click mapping and
-    // the rendering agree.
     fn stack_list_horizontal_entry_layout(
         &self,
         list: &StackList,
         entry_cols: usize,
-    ) -> Vec<(usize, usize)> {
-        const HORIZONTAL_ENTRY_OVERHEAD: usize = 2;
-        let mut tab_x = 0;
-        list.members
+    ) -> Vec<StackListEntryLayout> {
+        let label_widths: Vec<usize> = list
+            .members
             .iter()
             .map(|member| self.stack_list_member_label_width(list, member))
-            .map_while(|label_width| {
-                let tab_width = (label_width + HORIZONTAL_ENTRY_OVERHEAD).min(entry_cols);
-                if tab_x + tab_width > entry_cols {
-                    None
-                } else {
-                    tab_x += tab_width;
-                    Some((label_width, tab_width))
+            .collect();
+        let total_width: usize = label_widths
+            .iter()
+            .map(|width| width + StackListEntry::OVERHEAD)
+            .sum();
+        let gutter = usize::from(total_width > entry_cols && entry_cols > 2);
+        let available = entry_cols - 2 * gutter;
+        let selected = list.rank_of(&list.visible).unwrap_or(0);
+        let mut start = 0;
+        let mut used: usize = label_widths
+            .iter()
+            .take(selected + 1)
+            .map(|width| (width + StackListEntry::OVERHEAD).min(available))
+            .sum();
+        while used > available && start < selected {
+            used -= (label_widths[start] + StackListEntry::OVERHEAD).min(available);
+            start += 1;
+        }
+        let mut x = gutter;
+        list.members
+            .iter()
+            .zip(label_widths)
+            .skip(start)
+            .map_while(|(member, label_width)| {
+                let remaining = entry_cols - gutter - x;
+                if remaining == 0 {
+                    return None;
                 }
+                let width = (label_width + StackListEntry::OVERHEAD).min(remaining);
+                let entry = StackListEntryLayout {
+                    member: *member,
+                    x,
+                    label_width,
+                    width,
+                };
+                x += width;
+                Some(entry)
             })
             .collect()
     }
@@ -1360,6 +1382,20 @@ impl Tab {
             .iter()
             .filter(|(pane_id, _)| self.stack_list_of_member.contains_key(pane_id))
             .map(|(pane_id, (_, pane))| (pane_id, pane))
+    }
+    pub(crate) fn stack_list_orientation_for_serialization(
+        &self,
+        pane_id: &PaneId,
+    ) -> Option<StackListOrientation> {
+        self.stack_list_id_of_member(pane_id)
+            .and_then(|id| self.stack_lists.get(&id))
+            .map(|list| list.orientation)
+            .or_else(|| {
+                self.tiled_panes
+                    .get_pane(*pane_id)
+                    .and_then(|pane| pane.position_and_size().stacked)
+                    .and_then(|id| self.stack_list_orientation_memory.get(&id).copied())
+            })
     }
     pub fn tiled_pane_serialization_geoms(&self) -> HashMap<PaneId, PaneGeom> {
         let expanded_geoms = self
@@ -1416,7 +1452,12 @@ impl Tab {
     }
     pub fn hidden_stack_list_members_for_serialization(
         &self,
-    ) -> Vec<(PaneId, &Box<dyn Pane>, PaneGeom)> {
+    ) -> Vec<(
+        PaneId,
+        &Box<dyn Pane>,
+        PaneGeom,
+        Option<StackListOrientation>,
+    )> {
         let synthetic_geoms = self.tiled_pane_serialization_geoms();
         let mut hidden_members = vec![];
         for list in self.stack_lists.values() {
@@ -1434,7 +1475,7 @@ impl Tab {
                     .filter(|(is_scrollback_editor, _)| *is_scrollback_editor)
                     .or_else(|| self.suppressed_panes.get(member));
                 if let Some((_, pane)) = resolved_pane {
-                    hidden_members.push((pane.pid(), pane, *member_geom));
+                    hidden_members.push((pane.pid(), pane, *member_geom, Some(list.orientation)));
                 }
             }
         }
@@ -1461,8 +1502,6 @@ impl Tab {
         if member_count <= 1 {
             self.dissolve_stack_list(stack_list_id);
         } else {
-            // vertical reserves one row per member plus a padding row; horizontal packs every
-            // tab onto a single row, so it only needs one reserved row for the tab bar.
             let reserved_rows = match orientation {
                 StackListOrientation::Vertical => member_count + 1,
                 StackListOrientation::Horizontal => 1,
@@ -1583,8 +1622,6 @@ impl Tab {
                 Some(l) => l,
                 None => return false,
             };
-            // only intercept the arrow axis that matches how the tabs are laid out, so the
-            // cross-axis arrows still move focus to neighbouring panes as usual.
             if list.orientation != axis {
                 return false;
             }
@@ -1627,7 +1664,6 @@ impl Tab {
             },
             None => return false,
         }
-        // recompute reserved rows and hidden-member geometry for the new layout.
         self.refresh_or_dissolve_stack_list(stack_list_id);
         self.set_force_render();
         self.set_should_clear_display_before_rendering();
@@ -1791,8 +1827,6 @@ impl Tab {
             log::error!("degroupify: could not compute classic stack geoms");
             return;
         }
-        // remember orientation keyed by the classic stack id so a following groupify_all
-        // (e.g. after adding a pane to the stack) can restore it instead of defaulting.
         if let Some(classic_stack_id) = geoms.first().and_then(|g| g.stacked) {
             self.stack_list_orientation_memory
                 .insert(classic_stack_id, orientation);
@@ -1862,7 +1896,6 @@ impl Tab {
             if members.len() < 2 {
                 continue;
             }
-            // restore a remembered orientation for this classic stack id, else default
             let orientation = self
                 .stack_list_orientation_memory
                 .remove(&stack_id)
@@ -1921,7 +1954,6 @@ impl Tab {
             self.refresh_or_dissolve_stack_list(stack_list_id);
             converted_any = true;
         }
-        // drop any stale remembered orientations for stacks that were not re-formed
         self.stack_list_orientation_memory.clear();
         if converted_any {
             self.set_force_render();
@@ -2013,37 +2045,64 @@ impl Tab {
                 .max()
                 .unwrap_or(0);
             let stack_is_focused = active_panes.values().any(|p_id| *p_id == list.visible);
-            let horizontal_entry_layout =
-                self.stack_list_horizontal_entry_layout(&list, entry_cols);
-            let mut horizontal_x = entry_x;
-            for (rank, member) in list.members.iter().enumerate() {
+            let entries = match list.orientation {
+                StackListOrientation::Vertical => list
+                    .members
+                    .iter()
+                    .map(|member| StackListEntryLayout {
+                        member: *member,
+                        x: 0,
+                        label_width: widest_member_title,
+                        width: entry_cols,
+                    })
+                    .collect(),
+                StackListOrientation::Horizontal => {
+                    self.stack_list_horizontal_entry_layout(&list, entry_cols)
+                },
+            };
+            if list.orientation == StackListOrientation::Horizontal {
+                let start = entries.first().map(|entry| entry.x).unwrap_or(0);
+                let end = entries
+                    .last()
+                    .map(|entry| entry.x + entry.width)
+                    .unwrap_or(0);
+                for (x, width) in [(0, start), (end, entry_cols - end)] {
+                    if width == 0 {
+                        continue;
+                    }
+                    let mut row = vec![EMPTY_TERMINAL_CHARACTER; width];
+                    if x == 0 && entries.first().map(|entry| &entry.member) != list.members.first()
+                    {
+                        row[0] = crate::panes::TerminalCharacter::new('‹');
+                    }
+                    if x + width == entry_cols
+                        && entries.last().map(|entry| &entry.member) != list.members.last()
+                    {
+                        row[width - 1] = crate::panes::TerminalCharacter::new('›');
+                    }
+                    output.add_character_chunks_to_multiple_clients(
+                        vec![CharacterChunk::new(row, entry_x + x, rect.y)],
+                        connected_clients.iter().copied(),
+                        None,
+                    )?;
+                }
+            }
+            for (rank, entry) in entries.iter().enumerate() {
                 let mut header_geom = rect;
-                let entry_width = match list.orientation {
-                    StackListOrientation::Vertical => {
-                        header_geom.x = entry_x;
-                        header_geom.cols.set_inner(entry_cols);
-                        header_geom.y = rect.y + rank;
-                        widest_member_title
-                    },
-                    StackListOrientation::Horizontal => {
-                        let Some((member_label_width, tab_width)) =
-                            horizontal_entry_layout.get(rank)
-                        else {
-                            break;
-                        };
-                        header_geom.x = horizontal_x;
-                        header_geom.cols.set_inner(*tab_width);
-                        header_geom.y = rect.y;
-                        horizontal_x += tab_width;
-                        *member_label_width
-                    },
-                };
+                header_geom.x = entry_x + entry.x;
+                header_geom.cols.set_inner(entry.width);
+                header_geom.y = rect.y
+                    + if list.orientation == StackListOrientation::Vertical {
+                        rank
+                    } else {
+                        0
+                    };
                 header_geom.rows = Dimension::fixed(1);
                 header_geom.stacked = None;
-                let pane_box = if *member == list.visible {
-                    self.tiled_panes.get_pane_mut(*member)
+                let pane_box = if entry.member == list.visible {
+                    self.tiled_panes.get_pane_mut(entry.member)
                 } else {
-                    self.suppressed_panes.get_mut(member).map(|(_, p)| p)
+                    self.suppressed_panes.get_mut(&entry.member).map(|(_, p)| p)
                 };
                 let pane_box = match pane_box {
                     Some(p) => p,
@@ -2070,8 +2129,8 @@ impl Tab {
                 );
                 pane_contents_and_ui.set_frame_geom_override(Some(header_geom));
                 pane_contents_and_ui.set_stack_list_entry(
-                    Some(entry_width),
-                    *member == list.visible,
+                    Some(entry.label_width),
+                    entry.member == list.visible,
                     stack_is_focused,
                 );
                 for (client_id, client_mode) in &client_modes {
@@ -2084,8 +2143,6 @@ impl Tab {
                     )?;
                 }
             }
-            // the vertical list draws a padding row below its stacked headers; the horizontal
-            // tab bar is a single row and needs no trailing padding.
             if list.orientation == StackListOrientation::Vertical {
                 let mut padding_row = Vec::with_capacity(entry_cols);
                 for _ in 0..entry_cols {

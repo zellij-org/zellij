@@ -4942,11 +4942,6 @@ fn clear_resurrect_command_wire_roundtrip() {
     });
 }
 
-/// Direct wire-level roundtrip for `stacked_pane_list_orientation` to make sure
-/// the field travels through IPC and survives a `String -> from_str -> enum`
-/// parse on the server side. The struct-level `test_client_roundtrip!` macro
-/// already exercises equality, but a focused check here spells out the
-/// invariant the P0 bug was about and gives a clearer failure message.
 #[test]
 fn stacked_pane_list_orientation_wire_roundtrip() {
     use prost::Message;

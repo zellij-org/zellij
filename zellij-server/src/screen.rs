@@ -493,7 +493,7 @@ pub enum ScreenInstruction {
     ToggleActiveTerminalFullscreen(ClientId, Option<NotificationEnd>),
     ToggleActiveTerminalNoUiFullscreen(ClientId, Option<NotificationEnd>),
     TogglePaneFrames(Option<NotificationEnd>),
-    ToggleStackListOrientation(ClientId),
+    ToggleStackListOrientation(ClientId, Option<NotificationEnd>),
     SetPaneFrameStyle(PaneFrameStyle, Option<NotificationEnd>),
     SetSelectable(PaneId, bool),
     ShowPluginCursor(u32, ClientId, Option<(usize, usize)>),
@@ -10031,6 +10031,7 @@ impl Screen {
                     // when dumping the layout we want the "real" pane and not the
                     // editor pane
                     let geom_override = serialization_geoms.get(pane_id).copied();
+                    let stack_direction = tab.stack_list_orientation_for_serialization(pane_id);
                     let (pane_id, p) = match suppressed_panes.remove(pane_id) {
                         Some((is_scrollback_editor, suppressed_pane)) if *is_scrollback_editor => {
                             (suppressed_pane.pid(), suppressed_pane)
@@ -10041,10 +10042,11 @@ impl Screen {
                         pane_id,
                         p,
                         geom_override.unwrap_or_else(|| p.position_and_size()),
+                        stack_direction,
                     )
                 })
                 .chain(tab.hidden_stack_list_members_for_serialization())
-                .map(|(pane_id, p, geom)| {
+                .map(|(pane_id, p, geom, stack_direction)| {
                     let focused_clients: Vec<ClientId> = active_pane_ids
                         .iter()
                         .filter_map(|(c_id, p_id)| {
@@ -10069,6 +10071,7 @@ impl Screen {
                         default_bg,
                         p.border_style_override(),
                     )
+                    .with_stack_direction(stack_direction)
                     .with_attention_flags(
                         self.attention.pane_is_muted(&pane_id.into()),
                         self.attention.pane_ignores_output(&pane_id.into()),
@@ -12556,10 +12559,14 @@ pub(crate) fn screen_thread_main(
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
             },
-            ScreenInstruction::ToggleStackListOrientation(client_id) => {
-                active_tab!(screen, client_id, |tab: &mut Tab| {
-                    tab.toggle_stack_list_orientation(client_id);
-                });
+            ScreenInstruction::ToggleStackListOrientation(client_id, _completion_tx) => {
+                active_tab_and_connected_client_id!(
+                    screen,
+                    client_id,
+                    |tab: &mut Tab, client_id: ClientId| {
+                        tab.toggle_stack_list_orientation(client_id);
+                    }
+                );
                 screen.render(None)?;
                 screen.log_and_report_session_state()?;
             },

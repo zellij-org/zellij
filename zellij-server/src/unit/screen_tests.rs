@@ -5483,6 +5483,36 @@ pub fn send_cli_set_pane_border_style_action() {
 }
 
 #[test]
+fn cli_stack_orientation_toggle_reports_completion() {
+    let mut mock_screen = MockScreen::new(Size { cols: 80, rows: 10 });
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(Some(TiledPaneLayout::default()), vec![]);
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = std::thread::spawn(move || {
+        while let Ok(instruction) = server_receiver.recv() {
+            if matches!(instruction, (ServerInstruction::KillSession, _)) {
+                break;
+            }
+        }
+    });
+    let result = route_action(
+        Action::ToggleStackListOrientation,
+        999,
+        Some(999),
+        None,
+        session_metadata.senders.clone(),
+        None,
+        None,
+        InputMode::Normal,
+        None,
+        true,
+    );
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+    let (_, completion) = result.unwrap();
+    assert!(completion.is_some());
+}
+
+#[test]
 pub fn set_pane_border_style_reports_an_unknown_pane() {
     let size = Size { cols: 80, rows: 10 };
     let client_id = 10;
@@ -17145,6 +17175,58 @@ fn a_plugin_prompt_for_a_user_who_is_not_attached_fails() {
         )
     });
     assert!(failed);
+}
+
+#[test]
+fn stack_orientation_toggles_survive_session_serialization() {
+    let mut screen = create_new_screen(
+        Size {
+            cols: 121,
+            rows: 20,
+        },
+        true,
+        true,
+    );
+    *screen.stacked_pane_list.borrow_mut() = true;
+    new_tab(&mut screen, 1, 0);
+    screen
+        .get_active_tab_mut(1)
+        .unwrap()
+        .new_pane(
+            PaneId::Terminal(2),
+            None,
+            None,
+            false,
+            false,
+            NewPanePlacement::Stacked {
+                pane_id_to_stack_under: Some(zellij_utils::data::PaneId::Terminal(1)),
+                borderless: None,
+                border_style: None,
+            },
+            None,
+            None,
+        )
+        .unwrap();
+    screen
+        .get_active_tab_mut(1)
+        .unwrap()
+        .sync_stacked_pane_list_mode();
+    for direction in ["horizontal", "vertical"] {
+        assert!(screen
+            .get_active_tab_mut(1)
+            .unwrap()
+            .toggle_stack_list_orientation(1));
+        let metadata = screen.get_layout_metadata(None, None);
+        assert!(metadata.is_dirty());
+        let (kdl, _) =
+            zellij_utils::session_serialization::serialize_session_layout(metadata.into()).unwrap();
+        assert!(
+            kdl.contains(&format!("stack_direction=\"{}\"", direction)),
+            "{}",
+            kdl
+        );
+        Layout::from_kdl(&kdl, None, None, None).unwrap();
+    }
 }
 
 #[test]

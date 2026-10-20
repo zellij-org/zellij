@@ -5003,20 +5003,13 @@ impl Options {
             "// ",
         );
 
-        let orientation_as_str = |orientation: &StackListOrientation| -> &'static str {
-            match orientation {
-                StackListOrientation::Vertical => "vertical",
-                StackListOrientation::Horizontal => "horizontal",
-            }
-        };
-
         let create_node = |node_value: &str| -> KdlNode {
             let mut node = KdlNode::new("stacked_pane_list_orientation");
             node.push(node_value.to_owned());
             node
         };
         if let Some(orientation) = &self.stacked_pane_list_orientation {
-            let mut node = create_node(orientation_as_str(orientation));
+            let mut node = create_node(&orientation.to_string());
             if add_comments {
                 node.set_leading(format!("{}\n", comment_text));
             }

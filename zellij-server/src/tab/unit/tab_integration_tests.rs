@@ -14613,9 +14613,9 @@ fn horizontal_stack_list_member_at_point_follows_tab_widths() {
     let base_layout = r#"
         layout {
             pane stacked=true stack_direction="horizontal" {
-                pane focus=true
-                pane
-                pane
+                pane name="foo" focus=true
+                pane name="terminal"
+                pane name="界"
             }
         }
     "#;
@@ -14646,11 +14646,11 @@ fn horizontal_stack_list_member_at_point_follows_tab_widths() {
         .as_usize()
         .saturating_sub(offset.left + offset.right);
     let entry_layout = tab.stack_list_horizontal_entry_layout(list, entry_cols);
-    let tab_widths: Vec<usize> = entry_layout.iter().map(|(_, w)| *w).collect();
-    assert_eq!(tab_widths.len(), list.members.len());
+    let tab_widths: Vec<usize> = entry_layout.iter().map(|entry| entry.width).collect();
+    assert_eq!(tab_widths, vec![9, 14, 8]);
+    let members = list.members.clone();
 
-    // clicking the second tab's leading column selects the second member
-    let second_tab_start = entry_x + tab_widths[0];
+    let second_tab_start = entry_x + 9;
     let second_member = list.members[1];
     assert_eq!(
         tab.stack_list_member_at_point(
@@ -14659,7 +14659,6 @@ fn horizontal_stack_list_member_at_point_follows_tab_widths() {
         ),
         second_member
     );
-    // a click one row below the tab bar lands in the pane content, not a header
     assert_eq!(
         tab.stack_list_member_at_point(
             visible,
@@ -14667,6 +14666,78 @@ fn horizontal_stack_list_member_at_point_follows_tab_widths() {
         ),
         visible
     );
+
+    let mut instructions = output
+        .serialize()
+        .unwrap()
+        .get(&1)
+        .unwrap()
+        .ansi()
+        .to_owned();
+    let mut redraw = Output::default();
+    tab.render(&mut redraw, None).unwrap();
+    if let Some(payload) = redraw.serialize().unwrap().get(&1) {
+        instructions.push_str(payload.ansi());
+    }
+    let rendered = take_snapshot(&instructions, size.rows, size.cols, Palette::default());
+    for label in ["foo", "terminal", "界"] {
+        assert!(rendered.contains(label), "{}", rendered);
+    }
+
+    for member in &members[1..] {
+        assert!(tab.move_focus_right(1).unwrap());
+        assert_eq!(tab.get_active_pane_id(1), Some(*member));
+    }
+    for member in members[..members.len() - 1].iter().rev() {
+        assert!(tab.move_focus_left(1).unwrap());
+        assert_eq!(tab.get_active_pane_id(1), Some(*member));
+    }
+
+    for member in members {
+        tab.focus_pane_with_id(member, false, false, 1).unwrap();
+        let list = tab.stack_lists.values().next().unwrap();
+        for cols in 0..=32 {
+            let entries = tab.stack_list_horizontal_entry_layout(list, cols);
+            assert_eq!(entries.iter().any(|entry| entry.member == member), cols > 0);
+            for entry in &entries {
+                assert!(entry.width > 0);
+                assert!(entry.x + entry.width <= cols);
+            }
+            for pair in entries.windows(2) {
+                assert!(pair[0].x + pair[0].width <= pair[1].x);
+            }
+        }
+    }
+
+    tab.resize_whole_tab(Size { cols: 20, rows: 20 }).unwrap();
+    tab.focus_pane_with_id(PaneId::Terminal(3), false, false, 1)
+        .unwrap();
+    let mut resized = Output::default();
+    tab.render(&mut resized, None).unwrap();
+    let rendered = take_snapshot(
+        resized.serialize().unwrap().get(&1).unwrap().ansi(),
+        20,
+        20,
+        Palette::default(),
+    );
+    assert!(rendered.contains('‹'), "{}", rendered);
+    assert!(rendered.contains('界'), "{}", rendered);
+    let list = tab.stack_lists.values().next().unwrap();
+    let pane = tab.tiled_panes.get_pane(list.visible).unwrap();
+    let geom = pane.current_geom();
+    let offset = pane.get_content_offset();
+    let cols = geom.cols.as_usize() - offset.left - offset.right;
+    for entry in tab.stack_list_horizontal_entry_layout(list, cols) {
+        for x in entry.x..entry.x + entry.width {
+            assert_eq!(
+                tab.stack_list_member_at_point(
+                    list.visible,
+                    &Position::new(geom.y as i32, (geom.x + offset.left + x) as u16)
+                ),
+                entry.member
+            );
+        }
+    }
 }
 
 #[test]
