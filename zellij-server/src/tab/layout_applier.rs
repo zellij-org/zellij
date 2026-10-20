@@ -122,8 +122,12 @@ impl<'a> LayoutApplier<'a> {
     ) -> Result<(bool, HashMap<usize, StackListOrientation>)> {
         // true => should_show_floating_panes
         let hide_floating_panes = layout.hide_floating_panes;
-        let stack_directions = self
-            .apply_tiled_panes_layout(layout, new_terminal_ids, &mut new_plugin_ids, client_id)?;
+        let stack_directions = self.apply_tiled_panes_layout(
+            layout,
+            new_terminal_ids,
+            &mut new_plugin_ids,
+            client_id,
+        )?;
         let layout_has_floating_panes = self.apply_floating_panes_layout(
             floating_panes_layout,
             new_floating_terminal_ids,
@@ -248,7 +252,8 @@ impl<'a> LayoutApplier<'a> {
         retain_existing_plugin_panes: bool,
         client_id: ClientId,
     ) -> Result<HashMap<usize, StackListOrientation>> {
-        let (positions_in_layout, stack_directions) = self.flatten_layout(tiled_panes_layout, false)?;;
+        let (positions_in_layout, stack_directions) =
+            self.flatten_layout(tiled_panes_layout, false)?;
 
         let mut existing_tab_state = ExistingTabState::new(self.tiled_panes.drain());
 

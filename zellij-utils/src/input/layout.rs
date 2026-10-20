@@ -1984,7 +1984,7 @@ fn split_space(
                 ignore_percent_split_sizes,
                 next_stack_id,
                 stack_directions,
-            )?;;
+            )?;
             // add the only first child to pane_positions only adding the others after all the
             // childfree panes have been added so that the returned vec will be sorted breadth-first
             if !part_positions.is_empty() {

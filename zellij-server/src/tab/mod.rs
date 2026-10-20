@@ -205,7 +205,7 @@ pub(crate) struct Tab {
     // (e.g. adding a pane to the stack), keyed by the classic in-grid stack id
     stack_list_orientation_memory: HashMap<usize, StackListOrientation>,
     // config-provided default orientation for newly-formed stack lists
-    default_stack_list_orientation: StackListOrientation,
+    stack_default_orientation: StackListOrientation,
     next_stack_list_id: StackListId,
     stack_list_session_is_mirrored: bool,
     max_panes: Option<usize>,
@@ -858,7 +858,7 @@ impl Tab {
         character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
         stacked_resize: Rc<RefCell<bool>>,
         stacked_pane_list: Rc<RefCell<bool>>,
-        default_stack_list_orientation: StackListOrientation,
+        stack_default_orientation: StackListOrientation,
         sixel_image_store: Rc<RefCell<SixelImageStore>>,
         kitty_image_store: Rc<RefCell<KittyImageStore>>,
         os_api: Box<dyn ServerOsApi>,
@@ -971,7 +971,7 @@ impl Tab {
             stack_list_of_member: HashMap::new(),
             stack_list_parked_pairs: HashMap::new(),
             stack_list_orientation_memory: HashMap::new(),
-            default_stack_list_orientation,
+            stack_default_orientation,
             next_stack_list_id: 0,
             stack_list_session_is_mirrored: session_is_mirrored,
             name: name.clone(),
@@ -1603,7 +1603,7 @@ impl Tab {
             let orientation = self
                 .stack_list_orientation_memory
                 .remove(&stack_id)
-                .unwrap_or(self.default_stack_list_orientation);
+                .unwrap_or(self.stack_default_orientation);
             members.sort_by_key(|(y, _, _)| *y);
             let representative = members[0].1;
             let rect = match self.tiled_panes.position_and_size_of_stack(&representative) {
@@ -1776,8 +1776,8 @@ impl Tab {
                     StackListOrientation::Horizontal => {
                         // each tab is only as wide as its own label plus chrome, packed left to
                         // right on a single row; stop once we run out of horizontal space.
-                        let tab_width = (member_label_width + horizontal_entry_overhead)
-                            .min(entry_cols);
+                        let tab_width =
+                            (member_label_width + horizontal_entry_overhead).min(entry_cols);
                         if horizontal_x + tab_width > entry_x + entry_cols {
                             break;
                         }
@@ -5458,7 +5458,11 @@ impl Tab {
                 return Ok(self.focus_pane_down_fullscreen(client_id));
             }
             if self.stacked_pane_list_is_active()
-                && self.move_focus_within_stack_list(client_id, true, StackListOrientation::Vertical)
+                && self.move_focus_within_stack_list(
+                    client_id,
+                    true,
+                    StackListOrientation::Vertical,
+                )
             {
                 return Ok(true);
             }

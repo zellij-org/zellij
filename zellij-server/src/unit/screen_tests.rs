@@ -20,8 +20,8 @@ use zellij_utils::input::layout::{
 };
 use zellij_utils::input::mouse::MouseEvent;
 use zellij_utils::input::options::{
-    HostNotificationProtocol, NestedSessionHandling, Options, PaneFrameStyle,
-    StackListOrientation, DEFAULT_WORD_SEPARATORS,
+    HostNotificationProtocol, NestedSessionHandling, Options, PaneFrameStyle, StackListOrientation,
+    DEFAULT_WORD_SEPARATORS,
 };
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};

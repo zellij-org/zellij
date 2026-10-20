@@ -681,8 +681,9 @@ impl<'a> KdlLayoutParser<'a> {
         let children_are_stacked =
             kdl_get_bool_property_or_child_value_with_error!(kdl_node, "stacked")
                 .unwrap_or(pane_template.children_are_stacked);
-        let stack_direction =
-            self.parse_stack_direction(kdl_node)?.or(pane_template.stack_direction);
+        let stack_direction = self
+            .parse_stack_direction(kdl_node)?
+            .or(pane_template.stack_direction);
         let is_expanded_in_stack =
             kdl_get_bool_property_or_child_value_with_error!(kdl_node, "expanded")
                 .unwrap_or(pane_template.children_are_stacked);
