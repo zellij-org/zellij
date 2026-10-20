@@ -5019,6 +5019,7 @@ impl From<crate::input::layout::TiledPaneLayout>
             border_style: layout.border_style.map(|b| b.into()),
             attention_muted: layout.attention_muted,
             ignore_output: layout.ignore_output,
+            stack_direction: layout.stack_direction.map(|d| d.to_string()),
         }
     }
 }
@@ -5464,6 +5465,10 @@ impl TryFrom<crate::client_server_contract::client_server_contract::TiledPaneLay
             border_style: layout.border_style.map(|b| b.into()),
             attention_muted: layout.attention_muted,
             ignore_output: layout.ignore_output,
+            stack_direction: layout
+                .stack_direction
+                .as_deref()
+                .and_then(|s| s.parse().ok()),
         })
     }
 }

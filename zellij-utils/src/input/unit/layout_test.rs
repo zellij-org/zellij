@@ -2040,6 +2040,48 @@ fn can_define_a_stack_with_an_expanded_pane() {
 }
 
 #[test]
+fn can_define_a_stack_with_a_direction() {
+    let kdl_layout = r#"
+        layout {
+           pane stacked=true stack_direction="horizontal" {
+               pane
+               pane
+           }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None).unwrap();
+    assert_snapshot!(normalize_layout_debug(format!("{:#?}", layout)));
+}
+
+#[test]
+fn cannot_define_a_stack_direction_for_a_non_stacked_pane() {
+    let kdl_layout = r#"
+        layout {
+           pane stack_direction="horizontal" {
+               pane
+               pane
+           }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None);
+    assert!(layout.is_err());
+}
+
+#[test]
+fn cannot_define_an_invalid_stack_direction() {
+    let kdl_layout = r#"
+        layout {
+           pane stacked=true stack_direction="diagonal" {
+               pane
+               pane
+           }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, Some("layout_file_name".into()), None, None);
+    assert!(layout.is_err());
+}
+
+#[test]
 fn cannot_define_stacked_panes_for_bare_node() {
     let kdl_layout = r#"
         layout {

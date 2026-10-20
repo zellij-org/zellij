@@ -1500,7 +1500,7 @@ fn test_apply_layout_with_floating_panes() {
         None,
     );
 
-    let should_show_floating = applier
+    let (should_show_floating, _stack_directions) = applier
         .apply_layout(
             tiled_layout,
             floating_layout,
@@ -1704,7 +1704,7 @@ fn test_apply_layout_with_mixed_tiled_and_floating_panes() {
         None,
     );
 
-    let should_show_floating = applier
+    let (should_show_floating, _stack_directions) = applier
         .apply_layout(
             tiled_layout,
             floating_layout,
@@ -3047,7 +3047,7 @@ fn test_override_layout_basic_with_both_tiled_and_floating() {
 
     let retain_existing_terminal_panes = false;
     let retain_existing_plugin_panes = false;
-    let should_show_floating = applier
+    let (should_show_floating, _stack_directions) = applier
         .override_layout(
             override_tiled,
             override_floating,
@@ -3191,7 +3191,7 @@ fn test_override_layout_hide_floating_panes_true() {
 
     let retain_existing_terminal_panes = false;
     let retain_existing_plugin_panes = false;
-    let should_show_floating = applier
+    let (should_show_floating, _stack_directions) = applier
         .override_layout(
             override_tiled,
             override_floating,
@@ -3321,7 +3321,7 @@ fn test_override_layout_show_floating_panes() {
 
     let retain_existing_terminal_panes = false;
     let retain_existing_plugin_panes = false;
-    let should_show_floating = applier
+    let (should_show_floating, _stack_directions) = applier
         .override_layout(
             override_tiled,
             override_floating,
@@ -8015,7 +8015,8 @@ fn test_tiled_panes_that_do_not_fit_a_layout_are_floated_with_a_frame() {
                 .unwrap();
             panes_were_floated = applier
                 .apply_tiled_panes_layout_to_existing_panes(&one_pane_tiled)
-                .unwrap();
+                .unwrap()
+                .0;
         });
     assert!(panes_were_floated);
     assert_eq!(tiled_panes.visible_panes_count(), 1);

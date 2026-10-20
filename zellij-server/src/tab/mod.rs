@@ -2143,7 +2143,8 @@ impl Tab {
             new_plugin_ids,
             client_id,
         ) {
-            Ok(should_show_floating_panes) => {
+            Ok((should_show_floating_panes, stack_directions)) => {
+                self.stack_list_orientation_memory.extend(stack_directions);
                 if should_show_floating_panes
                     && !self.floating_panes.panes_are_visible()
                     && self.floating_panes.has_selectable_panes()
@@ -2238,7 +2239,8 @@ impl Tab {
             retain_existing_plugin_panes,
             client_id,
         ) {
-            Ok(should_show_floating_panes) => {
+            Ok((should_show_floating_panes, stack_directions)) => {
+                self.stack_list_orientation_memory.extend(stack_directions);
                 if should_show_floating_panes
                     && !self.floating_panes.panes_are_visible()
                     && self.floating_panes.has_selectable_panes()
@@ -2406,7 +2408,8 @@ impl Tab {
             .with_grapheme_clusters(self.grapheme_clusters)
             .apply_tiled_panes_layout_to_existing_panes(&layout_candidate);
             match application_res {
-                Ok(panes_were_floated) => {
+                Ok((panes_were_floated, stack_directions)) => {
+                    self.stack_list_orientation_memory.extend(stack_directions);
                     if panes_were_floated {
                         self.swap_layouts.set_is_floating_damaged();
                         self.floating_panes.set_force_render();

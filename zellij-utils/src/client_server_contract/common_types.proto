@@ -1089,6 +1089,7 @@ message TiledPaneLayout {
   optional BorderStyleOverride border_style = 16;
   optional bool attention_muted = 17;
   optional bool ignore_output = 18;
+  optional string stack_direction = 19;
   // NOTE: run_instructions_to_ignore is not represented here because it's a field used only inside the server itself and not part of the server/client contract
 }
 

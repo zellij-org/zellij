@@ -160,6 +160,8 @@ pub struct TiledPaneLayout {
     pub pane_initial_contents: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(message, optional, tag="14")]
     pub border_style: ::core::option::Option<super::style::BorderStyleOverride>,
+    #[prost(string, optional, tag="15")]
+    pub stack_direction: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

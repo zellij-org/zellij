@@ -1862,9 +1862,11 @@ pub struct TiledPaneLayout {
     pub border_style: ::core::option::Option<BorderStyleOverride>,
     #[prost(bool, optional, tag="17")]
     pub attention_muted: ::core::option::Option<bool>,
-    /// NOTE: run_instructions_to_ignore is not represented here because it's a field used only inside the server itself and not part of the server/client contract
     #[prost(bool, optional, tag="18")]
     pub ignore_output: ::core::option::Option<bool>,
+    /// NOTE: run_instructions_to_ignore is not represented here because it's a field used only inside the server itself and not part of the server/client contract
+    #[prost(string, optional, tag="19")]
+    pub stack_direction: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

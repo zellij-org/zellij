@@ -23,6 +23,7 @@ Layout {
                         external_children_index: None,
                         children_are_stacked: false,
                         is_expanded_in_stack: false,
+                        stack_direction: None,
                         exclude_from_sync: Some(
                             true,
                         ),
@@ -43,6 +44,7 @@ Layout {
                 external_children_index: None,
                 children_are_stacked: false,
                 is_expanded_in_stack: false,
+                stack_direction: None,
                 exclude_from_sync: None,
                 run_instructions_to_ignore: [],
                 hide_floating_panes: false,
