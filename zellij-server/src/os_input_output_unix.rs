@@ -88,14 +88,17 @@ impl AsyncReader for RawFdAsyncReader {
         loop {
             let mut guard = async_fd.readable().await?;
             match guard.try_io(|inner| {
-                let mut buf = vec![0u8; max];
+                let mut buf: Vec<u8> = Vec::with_capacity(max);
                 let fd = inner.get_ref().as_raw_fd();
-                let ret =
-                    unsafe { libc::read(fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) };
+                let ret = unsafe {
+                    libc::read(fd, buf.as_mut_ptr() as *mut libc::c_void, buf.capacity())
+                };
                 if ret < 0 {
                     Err(io::Error::last_os_error())
                 } else {
-                    Ok(buf[..ret as usize].to_vec())
+                    unsafe { buf.set_len(ret as usize) };
+                    buf.shrink_to_fit();
+                    Ok(buf)
                 }
             }) {
                 Ok(result) => return result,

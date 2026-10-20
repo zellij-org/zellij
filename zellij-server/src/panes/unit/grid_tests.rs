@@ -10918,3 +10918,70 @@ fn scrollback_rows_do_not_keep_room_for_a_full_width_line() {
         scrollback_recount(&mut grid)
     );
 }
+
+#[test]
+fn cleared_line_endings_are_stored_as_a_count_in_scrollback() {
+    let grid = filled_scrollback(5, 80, b"abc\x1b[K", 20);
+    let finished_rows = grid.lines_above.len() - 1;
+    for row in grid.lines_above.iter().take(finished_rows) {
+        assert_eq!(row.columns.len(), 3);
+        assert_eq!(row.width(), 80);
+    }
+}
+
+#[test]
+fn stored_scrollback_blanks_are_returned_in_pane_contents() {
+    let grid = filled_scrollback(5, 80, b"abc\x1b[K", 20);
+    let contents = grid.pane_contents(true, None);
+    let expected = format!("abc{}", " ".repeat(77));
+    let finished_rows = grid.lines_above.len() - 1;
+    for line in contents.lines_above_viewport.iter().take(finished_rows) {
+        assert_eq!(line, &expected);
+    }
+}
+
+#[test]
+fn stored_scrollback_blanks_come_back_when_scrolled_into_view() {
+    let mut grid = filled_scrollback(5, 80, b"abc\x1b[K", 20);
+    while !grid.lines_above.is_empty() {
+        grid.scroll_up_one_line();
+    }
+    for row in grid.viewport.iter() {
+        assert_eq!(row.columns.len(), 80);
+        assert!(row.columns[3..]
+            .iter()
+            .all(|character| *character
+                == crate::panes::terminal_character::EMPTY_TERMINAL_CHARACTER));
+    }
+    while !grid.lines_below.is_empty() {
+        grid.scroll_down_one_line();
+    }
+    assert_eq!(
+        grid.scrollback_position_and_length().1,
+        scrollback_recount(&mut grid)
+    );
+}
+
+#[test]
+fn styled_line_endings_are_kept_as_cells_in_scrollback() {
+    let grid = filled_scrollback(5, 80, b"\x1b[41mabc\x1b[K\x1b[0m", 20);
+    let finished_rows = grid.lines_above.len() - 1;
+    for row in grid.lines_above.iter().take(finished_rows) {
+        assert_eq!(row.columns.len(), 80);
+    }
+}
+
+#[test]
+fn stored_scrollback_blanks_rewrap_like_cells_on_resize() {
+    let mut grid = filled_scrollback(5, 80, b"abc\x1b[K", 20);
+    grid.change_size(5, 30);
+    assert_eq!(
+        grid.scrollback_position_and_length().1,
+        scrollback_recount(&mut grid)
+    );
+    while !grid.lines_above.is_empty() {
+        grid.scroll_up_one_line();
+    }
+    let texts: Vec<usize> = grid.viewport.iter().map(|row| row.width()).collect();
+    assert_eq!(texts, vec![30, 30, 20, 30, 30]);
+}
