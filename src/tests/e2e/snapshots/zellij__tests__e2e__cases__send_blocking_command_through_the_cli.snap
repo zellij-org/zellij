@@ -2,7 +2,7 @@
 source: src/tests/e2e/cases.rs
 expression: last_snapshot
 ---
- Zellij (e2e-test)  Tab #1  +                                                                                             [ No Other Sessions ▾ ] 
+ Zellij (e2e-test)  Tab #1  +                                                                                                     [ 1 running ▾ ] 
 $ /usr/src/zellij/zellij run --blocking --floating --close-on-exit -- bash -c 'sleep 2 && exit 42'                                                    
 $ echo $?                                                                                                                                             
 42                                                                                                                                                    

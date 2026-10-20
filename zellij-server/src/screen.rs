@@ -14045,7 +14045,8 @@ pub(crate) fn screen_thread_main(
 
                 let creation_time = {
                     // The socket is named by the stable session id, not the display name.
-                    let sock_path = zellij_utils::consts::session_id_socket_path(&screen.session_id);
+                    let sock_path =
+                        zellij_utils::consts::session_id_socket_path(&screen.session_id);
                     std::fs::metadata(&sock_path)
                         .ok()
                         .and_then(|f| f.created().ok().or_else(|| f.modified().ok()))

@@ -1014,8 +1014,12 @@ fn quitting_a_renamed_session_leaves_no_socket_under_either_name() {
     });
     assert!(socket.exists());
     assert!(lock_file_of(&socket).exists());
-    assert!(!zellij_utils::consts::ZELLIJ_SOCK_DIR.join(&old_name).exists());
-    assert!(!zellij_utils::consts::ZELLIJ_SOCK_DIR.join(&new_name).exists());
+    assert!(!zellij_utils::consts::ZELLIJ_SOCK_DIR
+        .join(&old_name)
+        .exists());
+    assert!(!zellij_utils::consts::ZELLIJ_SOCK_DIR
+        .join(&new_name)
+        .exists());
     zellij.quit();
     wait_for_path_to_disappear(&socket, "the renamed session socket");
     wait_for_path_to_disappear(&lock_file_of(&socket), "the renamed session lock");

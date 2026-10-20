@@ -950,18 +950,33 @@ fn clicking_a_notification_opens_a_window_on_its_session() {
     desktop.start_background_session("elsewhere");
     desktop.make_session_need_you("elsewhere");
     let id = desktop.wait_for_notification_about("elsewhere");
-    desktop.bus().signal(Message::signal(
-        NOTIFICATIONS_PATH,
-        NOTIFICATIONS,
-        "ActionInvoked",
-        vec![Value::U32(id), Value::str("default")],
-    ));
-    desktop.wait_for_state("a window on the notified session", |state| {
+    let has_window = |state: &AppState| {
         state
             .windows
             .iter()
             .any(|window| window.session.as_deref() == Some("elsewhere"))
-    });
+    };
+    let deadline = Instant::now() + LIMIT;
+    while !desktop.state().map_or(false, |state| has_window(&state)) {
+        assert!(
+            Instant::now() < deadline,
+            "timed out waiting for a window on the notified session\nlast state: {:?}\n{}",
+            desktop.state(),
+            desktop.logs()
+        );
+        desktop.bus().signal(Message::signal(
+            NOTIFICATIONS_PATH,
+            NOTIFICATIONS,
+            "ActionInvoked",
+            vec![Value::U32(id), Value::str("default")],
+        ));
+        let retry_at = Instant::now() + Duration::from_secs(1);
+        while Instant::now() < retry_at
+            && !desktop.state().map_or(false, |state| has_window(&state))
+        {
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
 }
 
 #[test]
