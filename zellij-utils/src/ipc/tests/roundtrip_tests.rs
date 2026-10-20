@@ -491,7 +491,7 @@ fn test_client_messages() {
                 web_sharing: Some(WebSharing::On),
                 stacked_resize: Some(true),
                 stacked_pane_list: Some(true),
-                stack_default_orientation: Some(StackListOrientation::Horizontal),
+                stacked_pane_list_orientation: Some(StackListOrientation::Horizontal),
                 show_startup_tips: Some(true),
                 show_release_notes: Some(true),
                 advanced_mouse_actions: Some(true),
@@ -4102,23 +4102,23 @@ fn rename_active_pane_wire_roundtrip() {
     assert_eq!(original, roundtrip);
 }
 
-/// Direct wire-level roundtrip for `stack_default_orientation` to make sure
+/// Direct wire-level roundtrip for `stacked_pane_list_orientation` to make sure
 /// the field travels through IPC and survives a `String -> from_str -> enum`
 /// parse on the server side. The struct-level `test_client_roundtrip!` macro
 /// already exercises equality, but a focused check here spells out the
 /// invariant the P0 bug was about and gives a clearer failure message.
 #[test]
-fn stack_default_orientation_wire_roundtrip() {
+fn stacked_pane_list_orientation_wire_roundtrip() {
     use prost::Message;
 
     let original = crate::input::options::Options {
-        stack_default_orientation: Some(StackListOrientation::Horizontal),
+        stacked_pane_list_orientation: Some(StackListOrientation::Horizontal),
         ..Default::default()
     };
 
     let proto: crate::client_server_contract::client_server_contract::Options = original.into();
     assert_eq!(
-        proto.stack_default_orientation.as_deref(),
+        proto.stacked_pane_list_orientation.as_deref(),
         Some("horizontal"),
         "wire encoding should be the lowercase Display form"
     );
@@ -4133,8 +4133,8 @@ fn stack_default_orientation_wire_roundtrip() {
         .expect("Failed to convert decoded protobuf back to Rust");
 
     assert_eq!(
-        roundtrip.stack_default_orientation,
+        roundtrip.stacked_pane_list_orientation,
         Some(StackListOrientation::Horizontal),
-        "stack_default_orientation must survive IPC roundtrip"
+        "stacked_pane_list_orientation must survive IPC roundtrip"
     );
 }

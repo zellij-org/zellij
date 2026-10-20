@@ -276,7 +276,7 @@ web_sharing "disabled"
 //   - vertical (default)
 //   - horizontal
 // 
-// default_stack_list_orientation "vertical"
+// stacked_pane_list_orientation "vertical"
  
 // Whether to show tips on startup
 // Default: true
