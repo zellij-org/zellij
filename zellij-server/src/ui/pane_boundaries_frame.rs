@@ -837,12 +837,15 @@ impl PaneFrame {
     }
     fn render_stack_list_entry(&self, entry: &StackListEntry) -> Vec<TerminalCharacter> {
         let usable_cols = self.geom.cols;
-        // Keep STACK_LIST_ENTRY_OVERHEAD in tab/mod.rs in sync with the side padding.
-        let side_padding = 1;
-        let entry_overhead = 2 * side_padding;
-        let inner_width = entry.width.min(usable_cols.saturating_sub(entry_overhead));
+        let selection_marker = "> ";
+        let marker_width = selection_marker.width();
+        let corner_padding = 1;
+        let corner_overhead = 2 * (1 + corner_padding);
+        let inner_width = entry
+            .width
+            .min(usable_cols.saturating_sub(marker_width + corner_overhead));
         let content = graphemes::truncate_end(&entry.label, inner_width, "…").into_owned();
-        let full_width_entry_length = entry_overhead + inner_width;
+        let full_width_entry_length = marker_width + corner_overhead + inner_width;
         let entry_start = usable_cols.saturating_sub(full_width_entry_length) / 2;
         let left_budget = entry_start;
         let (mut focus_part, focus_length) = self
@@ -863,7 +866,15 @@ impl PaneFrame {
                 dimmed_foreground_color(text, unfocused_color)
             }
         };
-        for _ in 0..side_padding {
+        if entry.is_selected {
+            line.append(&mut foreground_color(selection_marker, None));
+        } else {
+            for _ in 0..marker_width {
+                line.push(EMPTY_TERMINAL_CHARACTER);
+            }
+        }
+        line.append(&mut foreground_color(self.left_vertical(), None));
+        for _ in 0..corner_padding {
             line.push(EMPTY_TERMINAL_CHARACTER);
         }
         line.append(&mut style_entry_text(&content));
@@ -871,9 +882,10 @@ impl PaneFrame {
         for _ in 0..content_padding {
             line.push(EMPTY_TERMINAL_CHARACTER);
         }
-        for _ in 0..side_padding {
+        for _ in 0..corner_padding {
             line.push(EMPTY_TERMINAL_CHARACTER);
         }
+        line.append(&mut foreground_color(self.right_vertical(), None));
         let mut occupied_columns = entry_start + full_width_entry_length;
         let (mut scroll_part, scroll_length) = self
             .bracketed_scroll_indicator(usable_cols.saturating_sub(occupied_columns))
