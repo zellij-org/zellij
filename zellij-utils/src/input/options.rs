@@ -169,8 +169,7 @@ impl FromStr for PaneFrameStyle {
     }
 }
 
-/// Orientation of the tabbed stacked-pane list: `Vertical` draws one title per
-/// row (upstream default), `Horizontal` packs titles onto a single IDE-style tab bar.
+/// Orientation of stacked-pane titles.
 #[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq, Default, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum StackListOrientation {

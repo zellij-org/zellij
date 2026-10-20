@@ -83,6 +83,12 @@ pub struct StackListEntry {
     pub stack_is_focused: bool,
 }
 
+impl StackListEntry {
+    const SELECTION_MARKER: &'static str = "> ";
+    const CORNER_PADDING: usize = 1;
+    pub const OVERHEAD: usize = Self::SELECTION_MARKER.len() + 2 * (1 + Self::CORNER_PADDING);
+}
+
 pub struct FrameParams {
     pub focused_client: Option<ClientId>,
     pub is_main_client: bool, // more accurately: is_focused_for_main_client
@@ -834,10 +840,25 @@ impl PaneFrame {
     }
     fn render_stack_list_entry(&self, entry: &StackListEntry) -> Vec<TerminalCharacter> {
         let usable_cols = self.geom.cols;
-        let selection_marker = "> ";
+        if usable_cols < StackListEntry::OVERHEAD {
+            let marker = if entry.is_selected && usable_cols > 0 {
+                ">"
+            } else {
+                ""
+            };
+            let label = graphemes::truncate_end(&entry.label, usable_cols - marker.len(), "…");
+            let text = format!("{}{}", marker, label);
+            let mut line = foreground_color(&text, self.color);
+            line.extend(
+                std::iter::repeat(EMPTY_TERMINAL_CHARACTER)
+                    .take(usable_cols - graphemes::display_width(&text)),
+            );
+            return line;
+        }
+        let selection_marker = StackListEntry::SELECTION_MARKER;
         let marker_width = selection_marker.width();
-        let corner_padding = 1;
-        let corner_overhead = 2 * (1 + corner_padding);
+        let corner_padding = StackListEntry::CORNER_PADDING;
+        let corner_overhead = StackListEntry::OVERHEAD - marker_width;
         let inner_width = entry
             .width
             .min(usable_cols.saturating_sub(marker_width + corner_overhead));
@@ -1666,6 +1687,32 @@ mod tests {
                 characters_to_string(&cells)
             );
             assert_cells_are_whole_clusters(&cells, CLUSTER_TITLE);
+        }
+    }
+
+    #[test]
+    fn stack_list_entries_fit_the_allocated_width() {
+        for label in ["", "foo", "terminal", "界", CLUSTER_TITLE] {
+            let label_width = graphemes::display_width(label);
+            let natural_width = label_width + StackListEntry::OVERHEAD;
+            for selected in [false, true] {
+                for cols in 0..=natural_width {
+                    let frame = title_frame(label, cols, true);
+                    let entry = StackListEntry {
+                        width: label_width,
+                        label: label.to_owned(),
+                        is_selected: selected,
+                        is_emphasized: false,
+                        stack_is_focused: true,
+                    };
+                    let cells = frame.render_stack_list_entry(&entry);
+                    assert_eq!(cells.iter().map(|cell| cell.width()).sum::<usize>(), cols);
+                    assert_cells_are_whole_clusters(&cells, label);
+                    if cols == natural_width {
+                        assert!(characters_to_string(&cells).contains(label));
+                    }
+                }
+            }
         }
     }
 

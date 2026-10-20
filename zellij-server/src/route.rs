@@ -810,7 +810,10 @@ fn route_action_with_origin(
         },
         Action::ToggleStackListOrientation => {
             senders
-                .send_to_screen(ScreenInstruction::ToggleStackListOrientation(client_id))
+                .send_to_screen(ScreenInstruction::ToggleStackListOrientation(
+                    client_id,
+                    Some(NotificationEnd::new(completion_tx)),
+                ))
                 .with_context(err_context)?;
         },
         Action::SetPaneFrameStyle(pane_frame_style) => {
