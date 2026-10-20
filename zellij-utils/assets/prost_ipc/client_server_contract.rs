@@ -2299,7 +2299,7 @@ pub struct Options {
     #[prost(bool, optional, tag="59")]
     pub mouse_hover_tips: ::core::option::Option<bool>,
     #[prost(string, optional, tag="60")]
-    pub stack_default_orientation: ::core::option::Option<::prost::alloc::string::String>,
+    pub stacked_pane_list_orientation: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(string, optional, tag="67")]
     pub host_notification_protocol: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(bool, optional, tag="68")]

@@ -1167,7 +1167,7 @@ impl From<crate::input::options::Options>
             }),
             stacked_resize: options.stacked_resize,
             stacked_pane_list: options.stacked_pane_list,
-            stack_default_orientation: options.stack_default_orientation.map(|o| o.to_string()),
+            stacked_pane_list_orientation: options.stacked_pane_list_orientation.map(|o| o.to_string()),
             dangerously_enable_paste_buffer_read: options.dangerously_enable_paste_buffer_read,
             session_indicator: options.session_indicator,
             swap_layout_notification: options.swap_layout_notification,
@@ -1330,8 +1330,8 @@ impl TryFrom<crate::client_server_contract::client_server_contract::Options>
                 .transpose()?,
             stacked_resize: options.stacked_resize,
             stacked_pane_list: options.stacked_pane_list,
-            stack_default_orientation: options
-                .stack_default_orientation
+            stacked_pane_list_orientation: options
+                .stacked_pane_list_orientation
                 .map(|s| {
                     s.parse::<crate::input::options::StackListOrientation>()
                         .map_err(|e| {

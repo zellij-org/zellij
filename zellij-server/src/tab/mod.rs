@@ -274,7 +274,7 @@ pub(crate) struct Tab {
     // (e.g. adding a pane to the stack), keyed by the classic in-grid stack id
     stack_list_orientation_memory: HashMap<usize, StackListOrientation>,
     // config-provided default orientation for newly-formed stack lists
-    stack_default_orientation: StackListOrientation,
+    stacked_pane_list_orientation: StackListOrientation,
     next_stack_list_id: StackListId,
     stack_list_session_is_mirrored: bool,
     max_panes: Option<usize>,
@@ -1019,7 +1019,7 @@ impl Tab {
         character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
         stacked_resize: Rc<RefCell<bool>>,
         stacked_pane_list: Rc<RefCell<bool>>,
-        stack_default_orientation: StackListOrientation,
+        stacked_pane_list_orientation: StackListOrientation,
         sixel_image_store: Rc<RefCell<SixelImageStore>>,
         kitty_image_store: Rc<RefCell<KittyImageStore>>,
         os_api: Box<dyn ServerOsApi>,
@@ -1135,7 +1135,7 @@ impl Tab {
             stack_list_of_member: HashMap::new(),
             stack_list_parked_pairs: HashMap::new(),
             stack_list_orientation_memory: HashMap::new(),
-            stack_default_orientation,
+            stacked_pane_list_orientation,
             next_stack_list_id: 0,
             stack_list_session_is_mirrored: session_is_mirrored,
             name: name.clone(),
@@ -1866,7 +1866,7 @@ impl Tab {
             let orientation = self
                 .stack_list_orientation_memory
                 .remove(&stack_id)
-                .unwrap_or(self.stack_default_orientation);
+                .unwrap_or(self.stacked_pane_list_orientation);
             members.sort_by_key(|(y, _, _)| *y);
             let representative = members[0].1;
             let rect = match self.tiled_panes.position_and_size_of_stack(&representative) {
