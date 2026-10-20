@@ -93,12 +93,13 @@ fn a_dead_session_with_a_serialized_layout_resolves_to_a_resurrection_that_opens
     zellij.save_session();
     zellij.wait_for_serialized_session();
     let session_name = zellij.session_name().to_owned();
+    let session_id = zellij.session_id();
     zellij.quit();
 
     match resolved(&named(Some(&session_name))) {
         Ok(ClientInfo::Resurrect(name, layout_path, force_run_commands, cwd)) => {
             assert_eq!(name, session_name);
-            assert_eq!(layout_path, session_layout_cache_file_name(&session_name));
+            assert_eq!(layout_path, session_layout_cache_file_name(&session_id));
             assert!(!force_run_commands);
             assert_eq!(cwd, None);
         },

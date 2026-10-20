@@ -21,6 +21,7 @@ use std::{
     cmp::Ordering,
     collections::{BTreeSet, VecDeque},
     fmt::{self, Debug, Formatter},
+    num::NonZeroU32,
     str,
 };
 
@@ -263,7 +264,7 @@ use crate::panes::hyperlink_tracker::HyperlinkTracker;
 use crate::panes::link_handler::LinkHandler;
 use crate::panes::search::SearchResult;
 use crate::panes::terminal_character::{
-    AnsiCode, CharsetIndex, Cursor, CursorShape, RcCharacterStyles, StandardCharset,
+    AnsiCode, CharsetIndex, Cursor, CursorShape, RcCharacterStyles, StandardCharset, StyleCache,
     TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
 };
 use crate::panes::Selection;
@@ -296,9 +297,13 @@ fn get_lines_above_bottom_canonical_row_and_wraps(rows: &mut VecDeque<Row>) -> V
         }
     }
     match index_of_last_non_canonical_row {
-        Some(index_of_last_non_canonical_row) => {
-            rows.drain(index_of_last_non_canonical_row..).collect()
-        },
+        Some(index_of_last_non_canonical_row) => rows
+            .drain(index_of_last_non_canonical_row..)
+            .map(|mut row| {
+                row.expand_trailing_blanks();
+                row
+            })
+            .collect(),
         None => vec![],
     }
 }
@@ -461,7 +466,8 @@ fn transfer_rows_from_lines_above_to_viewport(
         if next_lines.is_empty() {
             if scrollback_tail_is_wrapped_at(lines_above, viewport, max_viewport_width) {
                 match lines_above.pop_back() {
-                    Some(next_line) => {
+                    Some(mut next_line) => {
+                        next_line.expand_trailing_blanks();
                         viewport.push_front(next_line);
                         lines_added_to_viewport += 1;
                         display_row_delta -= 1;
@@ -569,10 +575,17 @@ fn bounded_push(
     vec: &mut VecDeque<Row>,
     sixel_grid: &mut SixelGrid,
     kitty_grid: &mut KittyGrid,
-    value: Row,
+    mut value: Row,
 ) -> Option<usize> {
+    value.compress_trailing_blanks();
+    if value.columns.capacity() > value.columns.len() {
+        let mut exact = Vec::with_capacity(value.columns.len());
+        exact.append(&mut value.columns);
+        value.columns = exact;
+    }
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get().unwrap();
     let mut evicted_row_width = None;
-    if vec.len() >= *SCROLL_BUFFER_SIZE.get().unwrap() {
+    if vec.len() >= scroll_buffer_size {
         let line = vec.pop_front();
         if let Some(mut line) = line {
             sixel_grid.offset_grid_top();
@@ -590,6 +603,10 @@ fn bounded_push(
             }
             evicted_row_width = Some(line.width_cached());
         }
+    }
+    if vec.len() == vec.capacity() && vec.len() < scroll_buffer_size {
+        let doubled = vec.capacity().max(8);
+        vec.reserve_exact(doubled.min(scroll_buffer_size - vec.len()));
     }
     vec.push_back(value);
     evicted_row_width
@@ -641,6 +658,7 @@ macro_rules! dump_screen {
         let mut buf = String::with_capacity($lines.iter().map(|l| l.len()).sum());
 
         for (index, line) in $lines.iter().enumerate() {
+            let line = line.with_trailing_blanks();
             if line.is_canonical && !is_first {
                 buf.push_str("\n");
             }
@@ -671,6 +689,7 @@ macro_rules! dump_screen_with_ansi {
         let mut last_styles: Option<RcCharacterStyles> = None;
 
         for (index, line) in $lines.iter().enumerate() {
+            let line = line.with_trailing_blanks();
             if line.is_canonical && !is_first {
                 buf.push_str("\n");
                 last_styles = None;
@@ -1009,10 +1028,13 @@ pub struct Grid {
     pub hover_position: Option<Position>, // pane-relative cursor cell; None when outside pane
     pub cached_hover_tooltip: Option<String>,
     osc133_markers_seen: bool,
+    style_cache: StyleCache,
     osc133_command_selection: bool,
     command_output_flash: Option<Selection>,
     word_separators: String,
     pub osc7_payload: Option<String>,
+    pub shell_reports: crate::attention::signals::ShellReportState,
+    unseen_output_mark: Option<(usize, usize)>,
 }
 
 impl Grid {
@@ -1390,10 +1412,13 @@ impl Grid {
             hover_position: None,
             cached_hover_tooltip: None,
             osc133_markers_seen: false,
+            style_cache: StyleCache::default(),
             osc133_command_selection: true,
             command_output_flash: None,
             word_separators: DEFAULT_WORD_SEPARATORS.to_owned(),
             osc7_payload: None,
+            shell_reports: Default::default(),
+            unseen_output_mark: None,
         }
     }
     pub fn set_selection_options(&mut self, osc133_command_selection: bool, word_separators: &str) {
@@ -1747,6 +1772,7 @@ impl Grid {
         }
         if self.lines_below.is_empty() {
             self.is_scrolled = false;
+            self.lines_below.shrink_to_fit();
         }
         found_something
     }
@@ -2108,7 +2134,7 @@ impl Grid {
                 };
                 let mut to_serialize = vec![];
                 for line in self.lines_above.iter().skip(first_index) {
-                    to_serialize.push(line.clone());
+                    to_serialize.push(line.with_trailing_blanks().into_owned());
                 }
                 for line in &self.viewport {
                     to_serialize.push(line.clone())
@@ -2300,6 +2326,49 @@ impl Grid {
         }
         scrollback.push_str(&viewport);
         scrollback
+    }
+    pub fn mark_unseen_output_start(&mut self) {
+        self.unseen_output_mark = Some((self.lines_above.len(), self.cursor.y));
+    }
+    fn last_output_marker_row(&self, rows: &[&Row]) -> Option<usize> {
+        rows.iter().rposition(|row| {
+            row.osc133_markers
+                .iter()
+                .any(|marker| marker.kind == Osc133MarkerKind::Output)
+        })
+    }
+    pub fn preview_with_anchor(
+        &self,
+        anchor: zellij_utils::data::PreviewAnchor,
+        max_scrollback: usize,
+    ) -> (String, Option<usize>) {
+        use zellij_utils::data::PreviewAnchor;
+        let skip = self.lines_above.len().saturating_sub(max_scrollback);
+        let rows: Vec<&Row> = self
+            .lines_above
+            .iter()
+            .skip(skip)
+            .chain(self.viewport.iter())
+            .chain(self.lines_below.iter())
+            .collect();
+        let anchor_row = match anchor {
+            PreviewAnchor::Bottom => None,
+            PreviewAnchor::LastCommandOutput => self.last_output_marker_row(&rows),
+            PreviewAnchor::NewOutputStart => self
+                .unseen_output_mark
+                .map(|(lines_above, cursor_y)| (lines_above + cursor_y).saturating_sub(skip))
+                .filter(|row| *row < rows.len())
+                .or_else(|| self.last_output_marker_row(&rows)),
+        };
+        let anchor_line = anchor_row.map(|row| {
+            rows.iter()
+                .take(row + 1)
+                .skip(1)
+                .filter(|r| r.is_canonical)
+                .count()
+        });
+        let contents: String = dump_screen_with_ansi!(rows);
+        (contents, anchor_line)
     }
     /// Dumps all lines (with ansi) above terminal viewport and the viewport itself to a string
     pub fn dump_screen_with_ansi(&self, full: bool) -> String {
@@ -2842,7 +2911,7 @@ impl Grid {
     }
     fn clear_lines_above(&mut self) {
         self.invalidate_scroll_offset();
-        self.lines_above.clear();
+        self.lines_above = VecDeque::new();
         self.scrollback_display_rows = 0;
     }
 
@@ -3548,12 +3617,15 @@ impl Grid {
             let empty_row = Row::from_columns(vec![EMPTY_TERMINAL_CHARACTER; self.width]);
 
             // get the row from lines_above, viewport, or lines below depending on index
+            let expanded_row;
             let row = if l < 0 && self.lines_above.len() >= l.abs() as usize {
                 let offset_from_end = l.abs();
-                &self.lines_above[self
+                expanded_row = self.lines_above[self
                     .lines_above
                     .len()
                     .saturating_sub(offset_from_end as usize)]
+                .with_trailing_blanks();
+                &*expanded_row
             } else if l >= 0 && (l as usize) < self.viewport.len() {
                 &self.viewport[l as usize]
             } else if (l as usize) < self.height {
@@ -3974,6 +4046,113 @@ impl Grid {
         self.output_buffer.update_all_lines();
         self.mark_for_rerender();
         true
+    }
+
+    fn handle_reported_cwd(&mut self, cwd: zellij_utils::attention::ReportedCwd) {
+        if cwd.is_local {
+            self.pending_osc7_cwd = Some(std::path::PathBuf::from(&cwd.path));
+        }
+        self.shell_reports
+            .push(crate::attention::signals::PaneSignal::Cwd(cwd));
+    }
+
+    fn command_text_from_screen(&self) -> Option<String> {
+        let first_line = -(self.lines_above.len() as isize);
+        let cursor_line = self.cursor.y as isize;
+        let cursor_column = self.cursor.x;
+        for line in (first_line..=cursor_line).rev() {
+            let Some(row) = self.row_at(line) else {
+                continue;
+            };
+            for marker in row.osc133_markers.iter().rev() {
+                if line == cursor_line && marker.column > cursor_column {
+                    continue;
+                }
+                match marker.kind {
+                    Osc133MarkerKind::Input => {
+                        let start = Self::osc133_marker_position(line, marker.column);
+                        let end = Self::osc133_marker_position(cursor_line, cursor_column);
+                        let text = self.text_in_range(start, end)?;
+                        return crate::attention::shell::clean_command_text(&text);
+                    },
+                    _ => return None,
+                }
+            }
+        }
+        None
+    }
+
+    fn handle_shell_mark(&mut self, mark: crate::attention::shell::ShellMark) {
+        use crate::attention::shell::MarkKind;
+        use crate::attention::signals::PaneSignal;
+        if self.shell_reports.is_duplicate(&mark) {
+            return;
+        }
+        let marker = match &mark.kind {
+            MarkKind::PromptStart { .. } => Some(Osc133MarkerKind::Prompt),
+            MarkKind::InputStart => Some(Osc133MarkerKind::Input),
+            MarkKind::CommandStart { .. } => Some(Osc133MarkerKind::Output),
+            MarkKind::CommandEnd { exit_code, .. } => Some(Osc133MarkerKind::End(*exit_code)),
+            _ => None,
+        };
+        let mut signal = None;
+        match &mark.kind {
+            MarkKind::PromptStart { main: true } => {
+                if !self.shell_reports.prompt_open {
+                    self.shell_reports.prompt_open = true;
+                    self.pending_prompt_return = true;
+                    signal = Some(PaneSignal::PromptShown {
+                        aid: mark.options.aid.clone(),
+                    });
+                }
+            },
+            MarkKind::PromptStart { main: false } | MarkKind::FreshLine => {},
+            MarkKind::InputStart => signal = Some(PaneSignal::InputStarted),
+            MarkKind::CommandStart { command } => {
+                self.shell_reports.prompt_open = false;
+                let command = command
+                    .clone()
+                    .or_else(|| self.shell_reports.pending_command_text.take())
+                    .or_else(|| {
+                        self.command_text_from_screen().map(|text| {
+                            zellij_utils::attention::CommandText {
+                                text,
+                                source: zellij_utils::attention::CommandTextSource::Screen,
+                            }
+                        })
+                    });
+                self.shell_reports.pending_command_text = None;
+                signal = Some(PaneSignal::CommandStarted {
+                    command,
+                    aid: mark.options.aid.clone(),
+                });
+            },
+            MarkKind::CommandEnd { exit_code, err } => {
+                self.shell_reports.prompt_open = false;
+                signal = Some(PaneSignal::CommandFinished {
+                    exit_code: *exit_code,
+                    err: err.clone(),
+                    aid: mark.options.aid.clone(),
+                });
+            },
+            MarkKind::CommandText(text) => {
+                self.shell_reports.pending_command_text = Some(text.clone());
+            },
+            MarkKind::Cwd(cwd) => {
+                self.handle_reported_cwd(cwd.clone());
+            },
+        }
+        if let (Some(marker), Some(row)) = (marker, self.viewport.get_mut(self.cursor.y)) {
+            row.add_osc133_marker(self.cursor.x, marker);
+            self.osc133_markers_seen = true;
+        }
+        if marker.is_some() {
+            self.shell_reports.reports_markers = true;
+        }
+        if let Some(signal) = signal {
+            self.shell_reports.push(signal);
+        }
+        self.shell_reports.remember(mark);
     }
 
     #[cfg(test)]
@@ -4649,9 +4828,9 @@ impl Grid {
     }
     pub fn delete_viewport_and_scroll(&mut self) {
         self.invalidate_scroll_offset();
-        self.lines_above.clear();
+        self.lines_above = VecDeque::new();
         self.viewport.clear();
-        self.lines_below.clear();
+        self.lines_below = VecDeque::new();
         self.scrollback_display_rows = 0;
     }
     pub fn reset_cursor_position(&mut self) {
@@ -4735,7 +4914,7 @@ impl Grid {
         let mut contents = if get_full_scrollback {
             let mut lines_above_viewport: Vec<String> = Vec::with_capacity(self.lines_above.len());
             for row in &self.lines_above {
-                lines_above_viewport.push(row_text(row));
+                lines_above_viewport.push(row_text(&row.with_trailing_blanks()));
             }
             // Truncate to last N lines if max specified (Some(0) means "all" — no truncation)
             if let Some(max) = max_scrollback_lines {
@@ -4804,7 +4983,7 @@ impl Grid {
         let mut contents = if get_full_scrollback {
             let mut lines_above_viewport: Vec<String> = Vec::with_capacity(self.lines_above.len());
             for row in &self.lines_above {
-                lines_above_viewport.push(extract_row_with_ansi(row));
+                lines_above_viewport.push(extract_row_with_ansi(&row.with_trailing_blanks()));
             }
             if let Some(max) = max_scrollback_lines {
                 if max > 0 && lines_above_viewport.len() > max {
@@ -4876,6 +5055,8 @@ impl Perform for Grid {
         match byte {
             7 => {
                 self.ring_bell = true;
+                self.shell_reports
+                    .push(crate::attention::signals::PaneSignal::Bell);
             },
             8 => {
                 // backspace
@@ -5000,11 +5181,6 @@ impl Perform for Grid {
             },
 
             b"7" => {
-                if let Some(raw) = params.get(1) {
-                    if let Some(path) = parse_osc7_path(raw) {
-                        self.pending_osc7_cwd = Some(path);
-                    }
-                }
                 // Store the raw URI separately for forwarding to the parent terminal.
                 // Join params[1..] with ";" to preserve semicolons in the URI.
                 if params.len() >= 2 {
@@ -5012,9 +5188,46 @@ impl Perform for Grid {
                         params[1..].iter().map(|x| str::from_utf8(x).ok()).collect();
                     if let Some(segments) = segments {
                         let uri = segments.join(";");
+                        if let Some(cwd) = crate::attention::shell::parse_osc7_uri(&uri) {
+                            self.handle_reported_cwd(cwd);
+                        }
                         if !uri.is_empty() && !uri.chars().any(|c| c.is_control()) {
                             self.osc7_payload = Some(uri);
                         }
+                    }
+                }
+            },
+
+            b"7501" => match crate::attention::program_status::parse(params, bell_terminated) {
+                Some(crate::attention::program_status::ProgramStatusMessage::Query) => {
+                    self.pending_messages_to_pty.push(
+                        crate::attention::program_status::query_reply(bell_terminated),
+                    );
+                },
+                Some(message) => {
+                    self.shell_reports
+                        .push(crate::attention::signals::PaneSignal::ProgramStatus(
+                            message,
+                        ));
+                },
+                None => {},
+            },
+
+            b"633" => {
+                if let Some(mark) = crate::attention::shell::parse_osc633(params) {
+                    self.handle_shell_mark(mark);
+                }
+            },
+
+            b"1337" => {
+                if let Some(raw) = params.get(1).and_then(|p| str::from_utf8(p).ok()) {
+                    if let Some(host) = raw.strip_prefix("RemoteHost=") {
+                        self.shell_reports.iterm_remote_host = Some(host.to_owned());
+                    } else if let Some(cwd) = crate::attention::shell::parse_iterm2_cwd(
+                        raw,
+                        self.shell_reports.iterm_remote_host.as_deref(),
+                    ) {
+                        self.handle_reported_cwd(cwd);
                     }
                 }
             },
@@ -5056,9 +5269,12 @@ impl Perform for Grid {
                 if params.len() < 3 {
                     return;
                 }
-                self.cursor.pending_styles.update(|styles| {
-                    styles.link_anchor = self.link_handler.borrow_mut().dispatch_osc8(params)
-                })
+                let link_anchor = self.link_handler.borrow_mut().dispatch_osc8(params);
+                self.cursor
+                    .pending_styles
+                    .update_shared(&mut self.style_cache, |styles| {
+                        styles.link_anchor = link_anchor
+                    })
             },
 
             // Get/set Foreground (b"10") or background (b"11") colors
@@ -5145,27 +5361,8 @@ impl Perform for Grid {
             },
 
             b"133" => {
-                let marker = params.get(1).and_then(|subcommand| match *subcommand {
-                    b"A" | b"P" => Some(Osc133MarkerKind::Prompt),
-                    b"B" | b"I" => Some(Osc133MarkerKind::Input),
-                    b"C" => Some(Osc133MarkerKind::Output),
-                    b"D" => Some(Osc133MarkerKind::End(
-                        params
-                            .get(2)
-                            .and_then(|exit_code| std::str::from_utf8(exit_code).ok())
-                            .and_then(|exit_code| exit_code.trim().parse::<i32>().ok()),
-                    )),
-                    _ => None,
-                });
-                if matches!(
-                    marker,
-                    Some(Osc133MarkerKind::Prompt) | Some(Osc133MarkerKind::End(_))
-                ) {
-                    self.pending_prompt_return = true;
-                }
-                if let (Some(marker), Some(row)) = (marker, self.viewport.get_mut(self.cursor.y)) {
-                    row.add_osc133_marker(self.cursor.x, marker);
-                    self.osc133_markers_seen = true;
+                if let Some(mark) = crate::attention::shell::parse_osc133(params) {
+                    self.handle_shell_mark(mark);
                 }
             },
 
@@ -5307,6 +5504,17 @@ impl Perform for Grid {
             },
 
             b"9" => {
+                if params.len() > 2 && params[1] == b"9" {
+                    let raw = params[2..]
+                        .iter()
+                        .flat_map(|x| str::from_utf8(x))
+                        .collect::<Vec<&str>>()
+                        .join(";");
+                    if let Some(cwd) = crate::attention::shell::parse_conemu_cwd(&raw) {
+                        self.handle_reported_cwd(cwd);
+                    }
+                    return;
+                }
                 if params.len() > 1 {
                     let is_conemu_subcommand = params.len() > 2
                         && params
@@ -5370,7 +5578,9 @@ impl Perform for Grid {
             if intermediates.is_empty() {
                 self.cursor
                     .pending_styles
-                    .update(|styles| styles.add_style_from_ansi_params(&mut params_iter))
+                    .update_shared(&mut self.style_cache, |styles| {
+                        styles.add_style_from_ansi_params(&mut params_iter)
+                    })
             }
         } else if c == 'C' || c == 'a' {
             // move cursor forward
@@ -5383,7 +5593,9 @@ impl Perform for Grid {
                 if let Some(background_color) = self.cursor.pending_styles.background {
                     char_to_replace
                         .styles
-                        .update(|styles| styles.background = Some(background_color));
+                        .update_shared(&mut self.style_cache, |styles| {
+                            styles.background = Some(background_color)
+                        });
                 }
                 if clear_type == 0 {
                     self.replace_characters_in_line_after_cursor(char_to_replace);
@@ -5399,7 +5611,9 @@ impl Perform for Grid {
             if let Some(background_color) = self.cursor.pending_styles.background {
                 char_to_replace
                     .styles
-                    .update(|styles| styles.background = Some(background_color));
+                    .update_shared(&mut self.style_cache, |styles| {
+                        styles.background = Some(background_color)
+                    });
             }
             if let Some(clear_type) = params_iter.next().map(|param| param[0]) {
                 if clear_type == 0 {
@@ -6091,6 +6305,7 @@ impl Perform for Grid {
             (b'c', None) => {
                 self.reset_terminal_state();
                 self.grapheme_mode = self.grapheme_mode_by_default;
+                self.shell_reports.reset();
             },
             (b'H', None) => {
                 self.set_horizontal_tabstop();
@@ -6175,12 +6390,84 @@ impl AlternateScreenState {
 #[derive(Clone)]
 pub struct Row {
     pub columns: Vec<TerminalCharacter>,
+    osc133_markers: Osc133Markers,
+    width: Option<NonZeroU32>,
+    trailing_blanks: u32,
+    pub bg_color: Option<AnsiCode>,
     pub is_canonical: bool,
     pub may_have_groups: bool,
-    width: Option<usize>,
     only_single_width: bool,
-    pub bg_color: Option<AnsiCode>,
-    osc133_markers: Vec<Osc133Marker>,
+}
+
+#[cfg(target_arch = "x86_64")]
+const _: [(); 48] = [(); std::mem::size_of::<Row>()];
+
+fn encode_width(width: usize) -> Option<NonZeroU32> {
+    u32::try_from(width)
+        .ok()
+        .and_then(|width| width.checked_add(1))
+        .and_then(NonZeroU32::new)
+}
+
+fn decode_width(width: Option<NonZeroU32>) -> Option<usize> {
+    width.map(|width| width.get() as usize - 1)
+}
+
+#[derive(Clone, Default)]
+struct Osc133Markers(Option<Box<Vec<Osc133Marker>>>);
+
+impl Osc133Markers {
+    fn as_slice(&self) -> &[Osc133Marker] {
+        self.0.as_deref().map(Vec::as_slice).unwrap_or(&[])
+    }
+    fn iter(&self) -> std::slice::Iter<'_, Osc133Marker> {
+        self.as_slice().iter()
+    }
+    fn iter_mut(&mut self) -> std::slice::IterMut<'_, Osc133Marker> {
+        match self.0.as_deref_mut() {
+            Some(markers) => markers.iter_mut(),
+            None => [].iter_mut(),
+        }
+    }
+    fn is_empty(&self) -> bool {
+        self.as_slice().is_empty()
+    }
+    fn release_if_empty(&mut self) {
+        if self.0.as_ref().map(|markers| markers.is_empty()) == Some(true) {
+            self.0 = None;
+        }
+    }
+    fn retain(&mut self, f: impl FnMut(&Osc133Marker) -> bool) {
+        if let Some(markers) = self.0.as_mut() {
+            markers.retain(f);
+        }
+        self.release_if_empty();
+    }
+    fn retain_mut(&mut self, f: impl FnMut(&mut Osc133Marker) -> bool) {
+        if let Some(markers) = self.0.as_mut() {
+            markers.retain_mut(f);
+        }
+        self.release_if_empty();
+    }
+    fn clear(&mut self) {
+        self.0 = None;
+    }
+    fn push(&mut self, marker: Osc133Marker) {
+        self.0.get_or_insert_with(Default::default).push(marker);
+    }
+    fn extend(&mut self, markers: impl IntoIterator<Item = Osc133Marker>) {
+        for marker in markers {
+            self.push(marker);
+        }
+    }
+    fn sort_by_key(&mut self, f: impl FnMut(&Osc133Marker) -> usize) {
+        if let Some(markers) = self.0.as_mut() {
+            markers.sort_by_key(f);
+        }
+    }
+    fn take_all(&mut self) -> Vec<Osc133Marker> {
+        self.0.take().map(|markers| *markers).unwrap_or_default()
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -6202,6 +6489,9 @@ impl Debug for Row {
         for character in &self.columns {
             write!(f, "{:?}", character)?;
         }
+        for _ in 0..self.trailing_blanks {
+            write!(f, "{:?}", EMPTY_TERMINAL_CHARACTER)?;
+        }
         Ok(())
     }
 }
@@ -6210,34 +6500,37 @@ impl Row {
     pub fn new() -> Self {
         Row {
             columns: Vec::new(),
+            osc133_markers: Osc133Markers::default(),
+            width: None,
+            trailing_blanks: 0,
+            bg_color: None,
             is_canonical: false,
             may_have_groups: false,
-            width: None,
             only_single_width: false,
-            bg_color: None,
-            osc133_markers: vec![],
         }
     }
     pub fn with_capacity(capacity: usize) -> Self {
         Row {
             columns: Vec::with_capacity(capacity),
+            osc133_markers: Osc133Markers::default(),
+            width: None,
+            trailing_blanks: 0,
+            bg_color: None,
             is_canonical: false,
             may_have_groups: false,
-            width: None,
             only_single_width: false,
-            bg_color: None,
-            osc133_markers: vec![],
         }
     }
     pub fn from_columns(columns: Vec<TerminalCharacter>) -> Self {
         Row {
             columns,
+            osc133_markers: Osc133Markers::default(),
+            width: None,
+            trailing_blanks: 0,
+            bg_color: None,
             is_canonical: false,
             may_have_groups: false,
-            width: None,
             only_single_width: false,
-            bg_color: None,
-            osc133_markers: vec![],
         }
     }
     pub fn from_rows(mut rows: Vec<Row>) -> Self {
@@ -6267,8 +6560,8 @@ impl Row {
         self
     }
     pub fn width_cached(&mut self) -> usize {
-        if self.width.is_some() {
-            self.width.unwrap()
+        if let Some(width) = decode_width(self.width) {
+            width + self.trailing_blanks as usize
         } else {
             let mut width = 0;
             let mut only_single_width = true;
@@ -6277,17 +6570,56 @@ impl Row {
                 width += character_width;
                 only_single_width &= character_width == 1;
             }
-            self.width = Some(width);
+            self.width = encode_width(width);
             self.only_single_width = only_single_width;
-            width
+            width + self.trailing_blanks as usize
         }
     }
     pub fn width(&self) -> usize {
-        let mut width = 0;
+        let mut width = self.trailing_blanks as usize;
         for terminal_character in &self.columns {
             width += terminal_character.width();
         }
         width
+    }
+    pub fn compress_trailing_blanks(&mut self) {
+        let mut kept = self.columns.len();
+        let limit = (u32::MAX - self.trailing_blanks) as usize;
+        while kept > 0
+            && self.columns.len() - kept < limit
+            && self.columns[kept - 1] == EMPTY_TERMINAL_CHARACTER
+        {
+            kept -= 1;
+        }
+        let removed = self.columns.len() - kept;
+        if removed == 0 {
+            return;
+        }
+        let cached_width = decode_width(self.width);
+        self.columns.truncate(kept);
+        self.trailing_blanks += removed as u32;
+        self.width = cached_width.and_then(|width| encode_width(width - removed));
+    }
+    pub fn expand_trailing_blanks(&mut self) {
+        if self.trailing_blanks == 0 {
+            return;
+        }
+        let restored = self.trailing_blanks as usize;
+        let cached_width = decode_width(self.width);
+        self.columns.reserve_exact(restored);
+        self.columns
+            .extend(std::iter::repeat(EMPTY_TERMINAL_CHARACTER).take(restored));
+        self.trailing_blanks = 0;
+        self.width = cached_width.and_then(|width| encode_width(width + restored));
+    }
+    pub fn with_trailing_blanks(&self) -> Cow<'_, Row> {
+        if self.trailing_blanks == 0 {
+            Cow::Borrowed(self)
+        } else {
+            let mut expanded = self.clone();
+            expanded.expand_trailing_blanks();
+            Cow::Owned(expanded)
+        }
     }
     pub fn excess_width(&self) -> usize {
         let mut acc = 0;
@@ -6378,8 +6710,7 @@ impl Row {
     pub fn add_character_at(&mut self, terminal_character: TerminalCharacter, x: usize) {
         match self.width_cached().cmp(&x) {
             Ordering::Equal => {
-                // this is unwrapped because this always happens after self.width_cached()
-                *self.width.as_mut().unwrap() += terminal_character.width();
+                self.width = encode_width(x + terminal_character.width());
                 self.only_single_width &= terminal_character.width() == 1;
                 // adding the character at the end of the current line
                 self.columns.push(terminal_character);
@@ -6474,7 +6805,7 @@ impl Row {
     }
     pub fn insert_character_at(&mut self, terminal_character: TerminalCharacter, x: usize) {
         let character_width = terminal_character.width();
-        for marker in &mut self.osc133_markers {
+        for marker in self.osc133_markers.iter_mut() {
             if marker.column > x {
                 marker.column += character_width;
             }
@@ -6556,16 +6887,24 @@ impl Row {
         self.width = None;
     }
     pub fn append(&mut self, to_append: &mut Row) {
+        self.expand_trailing_blanks();
+        to_append.expand_trailing_blanks();
         if !to_append.osc133_markers.is_empty() {
             let column_offset = self.width_cached();
             self.osc133_markers
-                .extend(to_append.osc133_markers.drain(..).map(|mut marker| {
-                    marker.column += column_offset;
-                    marker
-                }));
+                .extend(
+                    to_append
+                        .osc133_markers
+                        .take_all()
+                        .into_iter()
+                        .map(|mut marker| {
+                            marker.column += column_offset;
+                            marker
+                        }),
+                );
         }
-        let combined_width = match (self.width, to_append.width) {
-            (Some(own), Some(appended)) => Some(own + appended),
+        let combined_width = match (decode_width(self.width), decode_width(to_append.width)) {
+            (Some(own), Some(appended)) => encode_width(own + appended),
             _ => None,
         };
         self.columns.append(&mut to_append.columns);
@@ -6646,12 +6985,13 @@ impl Row {
     pub fn split_to_rows_of_length(&mut self, max_row_length: usize) -> Vec<Row> {
         let drained = Row {
             columns: Vec::new(),
+            osc133_markers: Osc133Markers::default(),
+            width: None,
+            trailing_blanks: 0,
+            bg_color: self.bg_color,
             is_canonical: self.is_canonical,
             may_have_groups: false,
-            width: None,
             only_single_width: false,
-            bg_color: self.bg_color,
-            osc133_markers: Vec::new(),
         };
         Row::rewrap_rows(vec![std::mem::replace(self, drained)], max_row_length)
     }
@@ -6668,7 +7008,7 @@ impl Row {
         let mut current_part_len = 0;
         let mut current_part_width = 0;
         for row in &mut rows {
-            for mut marker in row.osc133_markers.drain(..) {
+            for mut marker in row.osc133_markers.take_all() {
                 marker.column += column_offset;
                 markers.push(marker);
             }

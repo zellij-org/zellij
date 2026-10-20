@@ -94,6 +94,8 @@ impl<'a> KdlLayoutParser<'a> {
             || word == "border_bottom"
             || word == "border_left"
             || word == "rounded_corners"
+            || word == "attention_muted"
+            || word == "ignore_output"
     }
     fn is_a_valid_pane_property(&self, property_name: &str) -> bool {
         property_name == "borderless"
@@ -117,6 +119,8 @@ impl<'a> KdlLayoutParser<'a> {
             || property_name == "contents_file"
             || property_name == "default_fg"
             || property_name == "default_bg"
+            || property_name == "attention_muted"
+            || property_name == "ignore_output"
             || self.is_a_border_style_property(property_name)
     }
     fn is_a_border_style_property(&self, property_name: &str) -> bool {
@@ -176,6 +180,8 @@ impl<'a> KdlLayoutParser<'a> {
             || property_name == "contents_file"
             || property_name == "default_fg"
             || property_name == "default_bg"
+            || property_name == "attention_muted"
+            || property_name == "ignore_output"
             || self.is_a_border_style_property(property_name)
     }
     fn is_a_valid_tab_property(&self, property_name: &str) -> bool {
@@ -189,6 +195,7 @@ impl<'a> KdlLayoutParser<'a> {
             || property_name == "min_panes"
             || property_name == "exact_panes"
             || property_name == "hide_floating_panes"
+            || property_name == "attention_muted"
     }
     pub fn is_a_reserved_plugin_property(property_name: &str) -> bool {
         property_name == "location"
@@ -640,9 +647,15 @@ impl<'a> KdlLayoutParser<'a> {
                 })
         });
         let border_style = self.parse_border_style(kdl_node)?;
+        let attention_muted =
+            kdl_get_bool_property_or_child_value_with_error!(kdl_node, "attention_muted");
+        let ignore_output =
+            kdl_get_bool_property_or_child_value_with_error!(kdl_node, "ignore_output");
         Ok(TiledPaneLayout {
             borderless,
             border_style,
+            attention_muted,
+            ignore_output,
             focus,
             name,
             split_size,
@@ -690,8 +703,14 @@ impl<'a> KdlLayoutParser<'a> {
                 })
         });
         let border_style = self.parse_border_style(kdl_node)?;
+        let attention_muted =
+            kdl_get_bool_property_or_child_value_with_error!(kdl_node, "attention_muted");
+        let ignore_output =
+            kdl_get_bool_property_or_child_value_with_error!(kdl_node, "ignore_output");
         Ok(FloatingPaneLayout {
             name,
+            attention_muted,
+            ignore_output,
             height,
             width,
             x,
@@ -1282,6 +1301,8 @@ impl<'a> KdlLayoutParser<'a> {
         let is_focused = kdl_get_bool_property_or_child_value!(kdl_node, "focus").unwrap_or(false);
         let hide_floating_panes =
             kdl_get_bool_property_or_child_value!(kdl_node, "hide_floating_panes").unwrap_or(false);
+        let tab_attention_muted =
+            kdl_get_bool_property_or_child_value!(kdl_node, "attention_muted");
         let children_split_direction = self.parse_split_direction(kdl_node)?;
         let mut child_floating_panes = vec![];
         let children = match kdl_children_nodes!(kdl_node) {
@@ -1299,6 +1320,7 @@ impl<'a> KdlLayoutParser<'a> {
             children_split_direction,
             children,
             hide_floating_panes,
+            attention_muted: tab_attention_muted,
             ..Default::default()
         };
         if let Some(cwd_prefix) = &self.cwd_prefix(tab_cwd.as_ref())? {
@@ -2588,7 +2610,7 @@ impl<'a> KdlLayoutParser<'a> {
                 )?;
             }
         }
-        if !child_tabs.is_empty() {
+        let mut layout = if !child_tabs.is_empty() {
             // Check if layout_node has tab properties when there are explicit tabs
             let layout_has_tab_name =
                 kdl_get_string_property_or_child_value!(layout_node, "name").is_some();
@@ -2689,6 +2711,10 @@ impl<'a> KdlLayoutParser<'a> {
                 hide_floating_panes,
                 tab_cwd,
             )
-        }
+        }?;
+        layout.session_attention_muted =
+            kdl_get_bool_property_or_child_value!(layout_node, "session_attention_muted")
+                .unwrap_or(false);
+        Ok(layout)
     }
 }

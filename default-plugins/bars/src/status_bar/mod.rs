@@ -2,6 +2,7 @@ mod first_line;
 mod hover;
 mod one_line_ui;
 mod second_line;
+mod session_hints;
 mod tip;
 
 use ansi_term::{
@@ -57,6 +58,39 @@ struct ClientState {
     base_mode_is_locked: bool,
     hovered: Option<Vec<Action>>,
     hover_at: Option<(SlotId, usize)>,
+    history: Option<SessionHistoryInfo>,
+    global: Option<GlobalAttention>,
+    focused_pane: Option<PaneInfo>,
+    panes: Option<PaneManifest>,
+}
+
+impl ClientState {
+    fn session_hints(&self) -> session_hints::SessionHints {
+        let back_keys = session_hints::back_keys_text(&self.mode_info);
+        session_hints::compute_session_hints(
+            self.history.as_ref(),
+            self.global.as_ref(),
+            self.focused_pane.as_ref(),
+            back_keys.as_deref(),
+            session_hints::now_ms(),
+        )
+    }
+    fn refresh_focused_pane(&mut self) {
+        let active_tab = self.tabs.iter().find(|t| t.active).map(|t| t.position);
+        self.focused_pane = match (active_tab, self.panes.as_ref()) {
+            (Some(position), Some(panes)) => panes
+                .panes
+                .get(&position)
+                .and_then(|panes| {
+                    panes
+                        .iter()
+                        .find(|p| p.is_focused && !p.is_plugin && !p.is_floating)
+                        .or_else(|| panes.iter().find(|p| p.is_focused && !p.is_plugin))
+                })
+                .cloned(),
+            _ => None,
+        };
+    }
 }
 
 #[derive(Default)]
@@ -71,6 +105,7 @@ pub struct StatusBar {
     clients: BTreeMap<ClientId, ClientState>,
     slot_clients: BTreeMap<(SlotId, ClientId), SlotClientState>,
     runner: ActionRunner,
+    timer_requests: Vec<f64>,
 }
 
 #[derive(Default)]
@@ -256,6 +291,10 @@ impl StatusBar {
         !self.slots.is_empty()
     }
 
+    pub fn take_timer_requests(&mut self) -> Vec<f64> {
+        std::mem::take(&mut self.timer_requests)
+    }
+
     pub fn slot_added(&mut self, slot: &Slot) {
         let tip_name = get_cached_tip_name();
         let classic_ui = slot
@@ -280,6 +319,9 @@ impl StatusBar {
             EventType::InitialKeybinds,
             EventType::Mouse,
             EventType::ActionComplete,
+            EventType::GlobalAttentionUpdate,
+            EventType::SessionHistoryUpdate,
+            EventType::Timer,
         ]);
     }
 
@@ -378,6 +420,33 @@ impl StatusBar {
                     should_render = true;
                 }
                 client.tabs = tabs.clone();
+                client.refresh_focused_pane();
+            },
+            Event::PaneUpdate(panes) => {
+                client.panes = Some(panes.clone());
+                let before = client.focused_pane.clone();
+                client.refresh_focused_pane();
+                if before != client.focused_pane {
+                    should_render = true;
+                }
+            },
+            Event::GlobalAttentionUpdate(global) => {
+                let before = client.session_hints();
+                client.global = Some(global.clone());
+                should_render = client.session_hints() != before;
+            },
+            Event::SessionHistoryUpdate(history) => {
+                if client.history.as_ref() != Some(history) {
+                    should_render = true;
+                    if history.arrived_from.is_some() {
+                        self.timer_requests
+                            .push(session_hints::SWITCH_HINT_MS as f64 / 1000.0 + 0.2);
+                    }
+                }
+                client.history = Some(history.clone());
+            },
+            Event::Timer(_) => {
+                should_render = client.history.is_some();
             },
             Event::CopyToClipboard(copy_destination) => {
                 let copy_destination = *copy_destination;
@@ -494,17 +563,20 @@ impl StatusBar {
                 PaletteColor::EightBit(color) => format!("\u{1b}[48;5;{}m\u{1b}[0K", color),
             };
             let active_tab = client.tabs.iter().find(|t| t.active);
+            let hints = client.session_hints();
             let render_line = |hovered: Option<Vec<Action>>| {
                 with_hovered(hovered, || {
-                    one_line_ui(
-                        &client.mode_info,
-                        active_tab,
-                        cols,
-                        separator,
-                        client.base_mode_is_locked,
-                        client.text_copy_destination,
-                        client.display_system_clipboard_failure,
-                    )
+                    session_hints::with_session_hints(hints.clone(), || {
+                        one_line_ui(
+                            &client.mode_info,
+                            active_tab,
+                            cols,
+                            separator,
+                            client.base_mode_is_locked,
+                            client.text_copy_destination,
+                            client.display_system_clipboard_failure,
+                        )
+                    })
                 })
             };
             let hover_col = client

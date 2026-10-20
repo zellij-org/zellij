@@ -38,9 +38,7 @@ use crate::background_jobs::BackgroundJob;
 use crate::pane_groups::PaneGroups;
 use crate::pty_writer::PtyWriteInstruction;
 use crate::screen::{CopyOptions, GuestModalOutcome, ScreenInstruction, TypedInput};
-use crate::ui::hint_text::{
-    held_hint_variants, hover_hint_variants, resize_hint_variants, HintExitStatus,
-};
+use crate::ui::hint_text::{held_hint_variants, HintExitStatus};
 use crate::ui::{
     loading_indication::LoadingIndication, pane_boundaries_frame::FrameParams,
     pane_contents_and_ui::PaneContentsAndUi,
@@ -352,6 +350,8 @@ pub(crate) struct Tab {
     web_server_ip: IpAddr,
     web_server_port: u16,
     pub panes_with_pending_bell: HashSet<PaneId>,
+    pub pending_pane_signals: Vec<(PaneId, Vec<crate::attention::PaneSignal>)>,
+    initial_attention_muted: Option<bool>,
     pub tab_has_pending_bell: bool,
     pub tab_bell_flash: bool, // currently in mid-notification-flash
     pub tab_bell_ring: bool,  // need to send ANSI BEL to the controlling terminal
@@ -441,6 +441,14 @@ pub trait Pane {
     fn dump_screen_with_ansi(&self, _full: bool, _client_id: Option<ClientId>) -> String {
         "".to_owned()
     }
+    fn preview_with_anchor(
+        &self,
+        _anchor: zellij_utils::data::PreviewAnchor,
+        _max_scrollback: usize,
+    ) -> (String, Option<usize>) {
+        (self.dump_screen_with_ansi(false, None), None)
+    }
+    fn mark_unseen_output_start(&mut self) {}
     fn scroll_up(&mut self, count: usize, client_id: ClientId);
     fn scroll_down(&mut self, count: usize, client_id: ClientId);
     fn scroll_left(&mut self, count: usize, client_id: ClientId);
@@ -806,6 +814,19 @@ pub trait Pane {
     fn get_bell_notification(&self) -> bool {
         false
     }
+    fn set_attention_marker(
+        &mut self,
+        _marker: Option<crate::attention::FrameMarker>,
+        _enabled: bool,
+    ) {
+    }
+    fn drain_pane_signals(&mut self) -> Vec<crate::attention::PaneSignal> {
+        vec![]
+    }
+    fn set_initial_attention_flags(&mut self, _muted: bool, _ignore_output: bool) {}
+    fn take_initial_attention_flags(&mut self) -> Option<(bool, bool)> {
+        None
+    }
     fn add_red_pane_frame_color_override(&mut self, _error_text: Option<String>);
     fn add_highlight_pane_frame_color_override(
         &mut self,
@@ -1152,6 +1173,8 @@ impl Tab {
             web_server_ip,
             web_server_port,
             panes_with_pending_bell: HashSet::new(),
+            pending_pane_signals: Vec::new(),
+            initial_attention_muted: None,
             tab_has_pending_bell: false,
             tab_bell_flash: false,
             tab_bell_ring: false,
@@ -1909,6 +1932,9 @@ impl Tab {
         client_id: ClientId,
         blocking_terminal: Option<(u32, NotificationEnd)>,
     ) -> Result<()> {
+        if layout.attention_muted.is_some() {
+            self.initial_attention_muted = layout.attention_muted;
+        }
         self.swap_layouts
             .set_base_layout((layout.clone(), floating_panes_layout.clone()));
         match LayoutApplier::new(
@@ -2378,15 +2404,6 @@ impl Tab {
         Ok(())
     }
     fn resolve_hint_text(&self, client_id: ClientId) -> BTreeMap<usize, StyledText> {
-        let focused_pane_id = self.get_active_pane_id(client_id);
-        let hovered_pane_id = self.mouse_hover_pane_id.get(&client_id).copied();
-        if self.mouse_hover_tips {
-            if let Some(hovered_pane_id) = hovered_pane_id {
-                if Some(hovered_pane_id) != focused_pane_id {
-                    return hover_hint_variants();
-                }
-            }
-        }
         if let Some(focused_pane) = self.get_active_pane(client_id) {
             if focused_pane.is_held() {
                 let exited = focused_pane.exited();
@@ -2400,19 +2417,6 @@ impl Tab {
                     None
                 };
                 return held_hint_variants(is_first_run, exit_status);
-            }
-        }
-        let resize_help_visible = self
-            .mouse_help_text_visible
-            .get(&client_id)
-            .copied()
-            .unwrap_or(false);
-        if resize_help_visible && self.mouse_hover_tips {
-            let selectable_pane_count = self.get_selectable_tiled_panes().count()
-                + self.get_selectable_floating_panes().count();
-            if selectable_pane_count > 1 && !self.is_fullscreen_active() {
-                let focused_pane_is_floating = self.floating_panes.panes_are_visible();
-                return resize_hint_variants(focused_pane_is_floating, self.mouse_scroll_resize);
             }
         }
         BTreeMap::new()
@@ -4337,6 +4341,9 @@ impl Tab {
         }
         had_bell
     }
+    pub fn take_initial_attention_muted(&mut self) -> Option<bool> {
+        self.initial_attention_muted.take()
+    }
     pub fn has_terminal_pid(&self, pid: u32) -> bool {
         self.tiled_panes.panes_contain(&PaneId::Terminal(pid))
             || self.floating_panes.panes_contain(&PaneId::Terminal(pid))
@@ -4773,6 +4780,11 @@ impl Tab {
             let desktop_notifications = terminal_output.drain_desktop_notifications();
             let osc7_cwd = terminal_output.drain_osc7_cwd();
             let prompt_returned = terminal_output.drain_prompt_return();
+            let pane_signals = terminal_output.drain_pane_signals();
+            if !pane_signals.is_empty() {
+                self.pending_pane_signals
+                    .push((PaneId::Terminal(pid), pane_signals));
+            }
             for message in messages_to_pty {
                 self.write_to_pane_id_without_preprocessing(message, PaneId::Terminal(pid))
                     .with_context(err_context)?;
@@ -7712,6 +7724,19 @@ impl Tab {
             }
         }
         drop(completion);
+    }
+
+    pub fn floating_plugin_for_location(&self, location: &str) -> Option<u32> {
+        self.floating_panes.get_panes().find_map(|(pane_id, pane)| {
+            match (pane_id, pane.invoked_with()) {
+                (PaneId::Plugin(plugin_id), Some(Run::Plugin(run_plugin_or_alias)))
+                    if run_plugin_or_alias.location_string().contains(location) =>
+                {
+                    Some(*plugin_id)
+                },
+                _ => None,
+            }
+        })
     }
 
     pub fn find_plugin(&self, run_plugin_or_alias: &RunPluginOrAlias) -> Option<PaneId> {

@@ -76,6 +76,10 @@ context_menu {
         item "Rename pane" { StartRenamePaneByPaneId; }
         item "Add to group" { TogglePaneInGroupByPaneId; }
         separator
+        item "Watch this pane" toggled_label="Stop watching" { WatchPaneByPaneId; }
+        item "Ignore output" toggled_label="Report output" { IgnorePaneOutputByPaneId; }
+        item "Mute pane" toggled_label="Unmute pane" { MutePaneByPaneId; }
+        separator
         item "Close pane" { CloseFocusByPaneId; }
     }
     tab {
@@ -85,12 +89,14 @@ context_menu {
         item "Move tab right" { MoveTabByTabId "right"; }
         item "Move tab to start" { MoveTabToPosition "start"; }
         item "Move tab to end" { MoveTabToPosition "end"; }
+        item "Mute tab" toggled_label="Unmute tab" { MuteTabByTabId; }
         separator
         item "Close tab" { CloseTabById; }
     }
     bar {
         item "New pane" { NewPane; }
         item "New tab" { NewTab; }
+        item "Back to {}" { ToggleSession; }
     }
     common {
         item "Settings…" {
@@ -565,11 +571,6 @@ context_menu {
 //
 // mouse_click_through true
 
-// Whether to show a card listing other relevant sessions when a new session starts
-// Default: true
-//
-// session_card false
-
 // Whether to show the other sessions indicator in the tab bar and compact bar
 // Default: true
 //
@@ -756,13 +757,6 @@ web_client {
 //     // including the tab bar, status bar and pane frames, and across pane
 //     // borders.
 //     shift_drag_selects true
-//
-//     // What an OSC 9 or OSC 99 notification from a pane does. "desktop" is
-//     // the default: it hands the notification to the desktop notification
-//     // service, falling back to a window-manager attention request when there
-//     // is no service to hand it to. "attention" only ever asks for attention;
-//     // "none" ignores them.
-//     notifications "desktop"
 //
 //     // How opaque the window is, from 0.0 (invisible) to 1.0 (solid). Needs
 //     // a compositor; without one the window stays solid.

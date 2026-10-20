@@ -22,7 +22,54 @@ struct State {
 }
 
 #[cfg(target_family = "wasm")]
+fn session_pane_command_for_key(character: char) -> &'static str {
+    match character {
+        'j' => "mark_seen",
+        'k' => "mark_all_seen",
+        'l' => "open_window",
+        'm' => "write",
+        'n' => "send_key",
+        'o' => "mute",
+        'p' => "ignore_output",
+        'q' => "watch",
+        _ => "focus",
+    }
+}
+
+#[cfg(target_family = "wasm")]
+fn run_session_pane_command(command: &str, session: &str, pane: PaneId) {
+    match command {
+        "mark_seen" => mark_session_pane_seen(session, pane),
+        "mark_all_seen" => mark_all_seen(Some(session)),
+        "open_window" => open_session_window(session, true),
+        "write" => write_to_session_pane(session, pane, b"typed by the fixture".to_vec()),
+        "send_key" => send_key_to_session_pane(session, pane, KeyWithModifier::new(BareKey::Enter)),
+        "mute" => toggle_session_pane_mute(session, pane),
+        "ignore_output" => toggle_session_pane_ignore_output(session, pane),
+        "watch" => toggle_session_pane_watch(session, pane),
+        "focus" => focus_session_pane(session, pane),
+        _ => {},
+    }
+}
+
+#[cfg(target_family = "wasm")]
 impl State {
+    fn target_session(&self) -> String {
+        self.configuration
+            .get("target_session")
+            .cloned()
+            .unwrap_or_else(|| "other-session".to_owned())
+    }
+
+    fn target_pane(&self) -> PaneId {
+        PaneId::Terminal(
+            self.configuration
+                .get("target_pane")
+                .and_then(|pane| pane.parse().ok())
+                .unwrap_or(1),
+        )
+    }
+
     fn handle_prompt_message(&mut self, name: &str, args: &BTreeMap<String, String>) {
         let request = match name {
             "prompt_confirm" => {
@@ -93,7 +140,11 @@ fn main() {
 #[cfg(target_family = "wasm")]
 impl ZellijPlugin for State {
     fn load(&mut self, configuration: BTreeMap<String, String>) {
-        request_permission(&[
+        let attention_fixture = configuration
+            .get("attention_fixture")
+            .map(|v| v == "true")
+            .unwrap_or(false);
+        let mut permissions = vec![
             PermissionType::ChangeApplicationState,
             PermissionType::ReadApplicationState,
             PermissionType::ReadApplicationState,
@@ -109,7 +160,11 @@ impl ZellijPlugin for State {
             PermissionType::WriteToClipboard,
             PermissionType::RunActionsAsUser,
             PermissionType::ReadSessionEnvironmentVariables,
-        ]);
+        ];
+        if attention_fixture {
+            permissions.push(PermissionType::ReadPaneContents);
+        }
+        request_permission(&permissions);
         let should_subscribe_initial_keybinds = configuration
             .get("subscribe_initial_keybinds")
             .map(|v| v == "true")
@@ -141,6 +196,18 @@ impl ZellijPlugin for State {
         }
         if should_subscribe_mode_update {
             subscribe(&[EventType::ModeUpdate]);
+        }
+        if attention_fixture {
+            subscribe(&[
+                EventType::PaneAttentionChanged,
+                EventType::PromptShown,
+                EventType::CommandStarted,
+                EventType::CommandFinished,
+                EventType::GlobalAttentionUpdate,
+                EventType::SessionHistoryUpdate,
+                EventType::SessionUpdate,
+                EventType::SessionPreview,
+            ]);
         }
         if should_subscribe_nested_session_events {
             subscribe(&[
@@ -689,6 +756,31 @@ impl ZellijPlugin for State {
                 BareKey::Char('i') if key.has_only_modifiers(&[KeyModifier::Super]) => {
                     toggle_floating_panes(Some(2));
                 },
+                BareKey::Char(character @ 'j'..='r')
+                    if key.has_only_modifiers(&[KeyModifier::Super]) =>
+                {
+                    let session = self.target_session();
+                    let pane = self.target_pane();
+                    run_session_pane_command(
+                        session_pane_command_for_key(character),
+                        &session,
+                        pane,
+                    );
+                },
+                BareKey::Char('s') if key.has_only_modifiers(&[KeyModifier::Super]) => {
+                    self.explicit_string_to_render = Some(format!(
+                        "Pane info: {:?}",
+                        get_pane_info(self.target_pane())
+                    ));
+                },
+                BareKey::Char('t') if key.has_only_modifiers(&[KeyModifier::Super]) => {
+                    let session = self.target_session();
+                    get_session_pane_preview(
+                        &session,
+                        self.target_pane(),
+                        PreviewAnchor::LastCommandOutput,
+                    );
+                },
                 BareKey::Char('a')
                     if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Shift]) =>
                 {
@@ -1111,6 +1203,21 @@ impl ZellijPlugin for State {
             );
         } else if name == "message_to_plugin" {
             self.message_to_plugin_payload = payload.clone();
+        } else if name == "session_pane_command" {
+            let args = &pipe_message.args;
+            let session = args
+                .get("session")
+                .cloned()
+                .unwrap_or_else(|| self.target_session());
+            let pane = args
+                .get("pane")
+                .and_then(|pane| pane.parse::<u32>().ok())
+                .map(PaneId::Terminal)
+                .unwrap_or_else(|| self.target_pane());
+            if let Some(command) = args.get("command") {
+                run_session_pane_command(command, &session, pane);
+            }
+            unblock_cli_pipe_input(&input_pipe_id);
         } else if name == "panic_while_handling_pipe" {
             panic!("intentional panic for the pipe-release-on-crash test");
         }

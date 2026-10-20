@@ -303,3 +303,42 @@ fn a_window_setting_and_a_new_theme_reach_the_window_while_the_settings_are_open
     );
     zellij.quit();
 }
+
+#[test]
+fn the_attention_settings_are_listed_and_saved() {
+    let mut zellij = start_zellij();
+    let terminal = claim_first_terminal_and_wait_for_prompt(&zellij);
+    zellij_integration_tests::split_right_and_wait_for_prompt(&zellij);
+    terminal.output(b"\x1b]7501;state=blocked:kind=question\x1b\\");
+    zellij.wait_until("the pane frame shows the status", |grid_snapshot| {
+        grid_snapshot
+            .lines()
+            .iter()
+            .skip(1)
+            .any(|line| line.contains('●'))
+    });
+    let config_file_path = zellij
+        .config_file_path()
+        .expect("the test session has a config file");
+    open_settings(&zellij);
+    focus_setting_by_search(&zellij, "status on pane", "Status on pane frames");
+    zellij.send_stdin(&keys::SPACE);
+    zellij.wait_until("the setting changed", |grid_snapshot| {
+        grid_snapshot.contains("1 unsaved change ")
+    });
+    zellij.send_stdin(&keys::ctrl('a'));
+    zellij_integration_tests::wait_for("the setting to be written", || {
+        let written = std::fs::read_to_string(&config_file_path).unwrap_or_default();
+        written.contains("attention {") && written.contains("frame_markers false")
+    });
+    close_search(&zellij);
+    close_settings(&zellij);
+    zellij.wait_until("the frame marker is gone", |grid_snapshot| {
+        !grid_snapshot
+            .lines()
+            .iter()
+            .skip(1)
+            .any(|line| line.contains('●'))
+    });
+    zellij.quit();
+}

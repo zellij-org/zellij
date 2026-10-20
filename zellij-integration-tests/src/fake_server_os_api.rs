@@ -202,6 +202,25 @@ impl ServerOsApi for FakeServerOsApi {
     fn get_cwd(&self, _pid: u32) -> Option<PathBuf> {
         None
     }
+    fn get_foreground_cmds(
+        &self,
+        panes: &[(u32, u32)],
+        _post_hook: &Option<String>,
+    ) -> HashMap<u32, Vec<String>> {
+        self.shared_ptys.mutate(|registry| {
+            panes
+                .iter()
+                .filter_map(|(terminal_id, _)| {
+                    let state = registry.fake_pty_states.get_mut(terminal_id)?;
+                    if state.foreground.is_empty() {
+                        return None;
+                    }
+                    state.foreground_reported = true;
+                    Some((*terminal_id, state.foreground.clone()))
+                })
+                .collect()
+        })
+    }
     fn write_to_file(&mut self, buf: String, file: Option<String>) -> Result<()> {
         if let Some(file) = file {
             self.fake_filesystem.lock().unwrap().insert(file, buf);

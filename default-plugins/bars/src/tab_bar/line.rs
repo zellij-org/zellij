@@ -344,17 +344,20 @@ pub fn tab_line(
         .filter(|(position, _)| *position > 0)
         .map(|scroll| scroll_status(scroll, palette, dimmed));
     let scroll_len = scroll_part.as_ref().map(|s| s.len + 1).unwrap_or(0);
-    let mut session_indicator_text =
-        match session_indicator.fitting_variant(indicator_budget.saturating_sub(scroll_len)) {
-            Some(text) if scroll_part.is_some() => Some(text),
-            _ => {
-                let text = session_indicator.fitting_variant(indicator_budget);
-                if text.is_some() {
-                    scroll_part = None;
-                }
-                text
-            },
-        };
+    let mut session_indicator_text = match session_indicator.fitting_variant(
+        indicator_budget.saturating_sub(scroll_len),
+        capabilities.arrow_fonts,
+    ) {
+        Some(text) if scroll_part.is_some() => Some(text),
+        _ => {
+            let text =
+                session_indicator.fitting_variant(indicator_budget, capabilities.arrow_fonts);
+            if text.is_some() {
+                scroll_part = None;
+            }
+            text
+        },
+    };
     let mut swap_layout_indicator = match session_indicator_text.as_ref() {
         Some(text) => Some(LinePart {
             part: String::new(),

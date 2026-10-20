@@ -71,9 +71,9 @@ pub use super::generated_api::api::{
         KeybindingSourceKind as ProtobufKeybindingSourceKind,
         KeybindsSelectionSnapshot as ProtobufKeybindsSelectionSnapshot, KillSessionsPayload,
         KillSessionsResponse as ProtobufKillSessionsResponse, LeaderValue as ProtobufLeaderValue,
-        ListTokensResponse, LoadNewPluginPayload, MenuItemEntry as ProtobufMenuItemEntry,
-        MenuSectionEntries as ProtobufMenuSectionEntries, MessageToPluginPayload,
-        MouseTriggerInMode as ProtobufMouseTriggerInMode,
+        ListTokensResponse, LoadNewPluginPayload, MarkAllSeenPayload,
+        MenuItemEntry as ProtobufMenuItemEntry, MenuSectionEntries as ProtobufMenuSectionEntries,
+        MessageToPluginPayload, MouseTriggerInMode as ProtobufMouseTriggerInMode,
         MousebindingEntry as ProtobufMousebindingEntry, MovePaneWithPaneIdInDirectionPayload,
         MovePaneWithPaneIdPayload, MovePayload, NewPluginArgs as ProtobufNewPluginArgs,
         NewTabPayload, NewTabResponse as ProtobufNewTabResponse, NewTabUnfocusedPayload,
@@ -106,7 +106,7 @@ pub use super::generated_api::api::{
         OpenPluginPaneFloatingPayload,
         OpenPluginPaneFloatingResponse as ProtobufOpenPluginPaneFloatingResponse,
         OpenPluginPaneInNewTabPayload as ProtobufOpenPluginPaneInNewTabPayload,
-        OpenPluginPopupPayload, OpenTerminalFloatingNearPluginPayload,
+        OpenPluginPopupPayload, OpenSessionWindowPayload, OpenTerminalFloatingNearPluginPayload,
         OpenTerminalFloatingNearPluginResponse as ProtobufOpenTerminalFloatingNearPluginResponse,
         OpenTerminalFloatingResponse as ProtobufOpenTerminalFloatingResponse,
         OpenTerminalInPlaceOfPluginPayload,
@@ -135,10 +135,10 @@ pub use super::generated_api::api::{
         SaveLayoutPayload, SaveLayoutResponse as ProtobufSaveLayoutResponse, SaveSessionPayload,
         SaveSessionResponse as ProtobufSaveSessionResponse, ScrollDownInPaneIdPayload,
         ScrollToBottomInPaneIdPayload, ScrollToTopInPaneIdPayload, ScrollUpInPaneIdPayload,
-        SessionListSnapshot as ProtobufSessionListSnapshot, SetCliPipeExitCodePayload,
-        SetCollapsedSlotPayload, SetFloatingPanePinnedPayload, SetPaneBorderStylePayload,
-        SetPaneBorderlessPayload, SetPaneColorPayload,
-        SetPaneFrameStylePayload as ProtobufSetPaneFrameStylePayload,
+        SendKeyToSessionPanePayload, SessionListSnapshot as ProtobufSessionListSnapshot,
+        SessionPanePayload, SetCliPipeExitCodePayload, SetCollapsedSlotPayload,
+        SetFloatingPanePinnedPayload, SetPaneBorderStylePayload, SetPaneBorderlessPayload,
+        SetPaneColorPayload, SetPaneFrameStylePayload as ProtobufSetPaneFrameStylePayload,
         SetPaneRegexHighlightsPayload, SetPopupSizePayload, SetSelectableSlotPayload,
         SetSelfCollapsedPayload, SetSelfMouseSelectionSupportPayload,
         SetSoftKeyboardPayload as ProtobufSetSoftKeyboardPayload, SetTimeoutPayload,
@@ -151,6 +151,7 @@ pub use super::generated_api::api::{
         TogglePaneEmbedOrEjectForPaneIdPayload, TogglePaneIdFullscreenPayload, UnsubscribePayload,
         WebRequestPayload, WriteCharsToPaneIdPayload, WriteThemeFilePayload,
         WriteThemeFileResponse as ProtobufWriteThemeFileResponse, WriteToPaneIdPayload,
+        WriteToSessionPanePayload,
     },
     plugin_permission::PermissionType as ProtobufPermissionType,
     resize::ResizeAction as ProtobufResizeAction,
@@ -663,6 +664,38 @@ impl TryFrom<(InputMode, KeyWithModifier)> for KeyToUnbind {
             key: Some(key_to_unbind.1.try_into()?),
         })
     }
+}
+
+fn plugin_switch_context(
+    startup_card: Option<&str>,
+    disconnect_others: Option<bool>,
+) -> Option<crate::session_history::SwitchContext> {
+    crate::session_history::SwitchContext::from_plugin_request(
+        startup_card.and_then(crate::input::attention::StartupCard::from_str),
+        disconnect_others.unwrap_or(false),
+    )
+}
+
+fn session_pane_payload(
+    session_name: String,
+    pane_id: PaneId,
+) -> Result<SessionPanePayload, &'static str> {
+    Ok(SessionPanePayload {
+        session_name,
+        pane_id: Some(pane_id.try_into()?),
+    })
+}
+
+fn session_pane_from_payload(
+    payload: SessionPanePayload,
+) -> Result<(String, PaneId), &'static str> {
+    Ok((
+        payload.session_name,
+        payload
+            .pane_id
+            .ok_or("Missing pane id in session pane payload")?
+            .try_into()?,
+    ))
 }
 
 fn key_to_rebind_to_plugin_command_assets(
@@ -1338,7 +1371,10 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                         pane_id,
                         layout: payload.layout.and_then(|l| l.try_into().ok()),
                         cwd: payload.cwd.map(|c| PathBuf::from(c)),
-                        session_card: payload.session_card,
+                        switch_context: plugin_switch_context(
+                            payload.startup_card.as_deref(),
+                            payload.disconnect_others,
+                        ),
                     }))
                 },
                 _ => Err("Mismatched payload for SwitchSession"),
@@ -2731,7 +2767,10 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                                 pane_id,
                                 layout: payload.layout.and_then(|l| l.try_into().ok()),
                                 cwd: payload.cwd.map(PathBuf::from),
-                                session_card: payload.session_card,
+                                switch_context: plugin_switch_context(
+                                    payload.startup_card.as_deref(),
+                                    payload.disconnect_others,
+                                ),
                             },
                         ))
                     },
@@ -2744,9 +2783,118 @@ impl TryFrom<ProtobufPluginCommand> for PluginCommand {
                         name: payload.name,
                         tab_index: payload.tab_index.map(|t| t as usize),
                         pane_id: payload.pane_id.map(|id| (id, payload.pane_is_plugin)),
+                        anchor: payload
+                            .anchor
+                            .as_deref()
+                            .and_then(crate::data::PreviewAnchor::from_str),
                     })
                 },
                 _ => Err("Mismatched payload for GetSessionPreview"),
+            },
+            Some(CommandName::MarkSessionPaneSeen) => match protobuf_plugin_command.payload {
+                Some(Payload::MarkSessionPaneSeenPayload(payload)) => {
+                    let (session_name, pane_id) = session_pane_from_payload(payload)?;
+                    Ok(PluginCommand::MarkSessionPaneSeen {
+                        session_name,
+                        pane_id,
+                    })
+                },
+                _ => Err("Mismatched payload for MarkSessionPaneSeen"),
+            },
+            Some(CommandName::MarkAllSeen) => match protobuf_plugin_command.payload {
+                Some(Payload::MarkAllSeenPayload(payload)) => Ok(PluginCommand::MarkAllSeen {
+                    session_name: payload.session_name,
+                }),
+                _ => Err("Mismatched payload for MarkAllSeen"),
+            },
+            Some(CommandName::OpenSessionWindow) => match protobuf_plugin_command.payload {
+                Some(Payload::OpenSessionWindowPayload(payload)) => Ok(
+                    PluginCommand::OpenSessionWindow(crate::data::SessionWindowRequest {
+                        session_name: payload.session_name.filter(|n| !n.is_empty()),
+                        new_window: payload.new_window,
+                        pane_id: payload.pane_id.map(|id| {
+                            if payload.pane_is_plugin {
+                                PaneId::Plugin(id)
+                            } else {
+                                PaneId::Terminal(id)
+                            }
+                        }),
+                        layout: payload.layout.and_then(|l| l.try_into().ok()),
+                        cwd: payload.cwd.map(PathBuf::from),
+                    }),
+                ),
+                _ => Err("Mismatched payload for OpenSessionWindow"),
+            },
+            Some(CommandName::WriteToSessionPane) => match protobuf_plugin_command.payload {
+                Some(Payload::WriteToSessionPanePayload(payload)) => {
+                    Ok(PluginCommand::WriteToSessionPane {
+                        session_name: payload.session_name,
+                        pane_id: payload
+                            .pane_id
+                            .ok_or("Missing pane id for WriteToSessionPane")?
+                            .try_into()?,
+                        bytes: payload.bytes_to_write,
+                    })
+                },
+                _ => Err("Mismatched payload for WriteToSessionPane"),
+            },
+            Some(CommandName::SendKeyToSessionPane) => match protobuf_plugin_command.payload {
+                Some(Payload::SendKeyToSessionPanePayload(payload)) => {
+                    Ok(PluginCommand::SendKeyToSessionPane {
+                        session_name: payload.session_name,
+                        pane_id: payload
+                            .pane_id
+                            .ok_or("Missing pane id for SendKeyToSessionPane")?
+                            .try_into()?,
+                        key: payload
+                            .key
+                            .ok_or("Missing key for SendKeyToSessionPane")?
+                            .try_into()?,
+                    })
+                },
+                _ => Err("Mismatched payload for SendKeyToSessionPane"),
+            },
+            Some(CommandName::ToggleSessionPaneMute) => match protobuf_plugin_command.payload {
+                Some(Payload::ToggleSessionPaneMutePayload(payload)) => {
+                    let (session_name, pane_id) = session_pane_from_payload(payload)?;
+                    Ok(PluginCommand::ToggleSessionPaneMute {
+                        session_name,
+                        pane_id,
+                    })
+                },
+                _ => Err("Mismatched payload for ToggleSessionPaneMute"),
+            },
+            Some(CommandName::ToggleSessionPaneIgnoreOutput) => {
+                match protobuf_plugin_command.payload {
+                    Some(Payload::ToggleSessionPaneIgnoreOutputPayload(payload)) => {
+                        let (session_name, pane_id) = session_pane_from_payload(payload)?;
+                        Ok(PluginCommand::ToggleSessionPaneIgnoreOutput {
+                            session_name,
+                            pane_id,
+                        })
+                    },
+                    _ => Err("Mismatched payload for ToggleSessionPaneIgnoreOutput"),
+                }
+            },
+            Some(CommandName::ToggleSessionPaneWatch) => match protobuf_plugin_command.payload {
+                Some(Payload::ToggleSessionPaneWatchPayload(payload)) => {
+                    let (session_name, pane_id) = session_pane_from_payload(payload)?;
+                    Ok(PluginCommand::ToggleSessionPaneWatch {
+                        session_name,
+                        pane_id,
+                    })
+                },
+                _ => Err("Mismatched payload for ToggleSessionPaneWatch"),
+            },
+            Some(CommandName::FocusSessionPane) => match protobuf_plugin_command.payload {
+                Some(Payload::FocusSessionPanePayload(payload)) => {
+                    let (session_name, pane_id) = session_pane_from_payload(payload)?;
+                    Ok(PluginCommand::FocusSessionPane {
+                        session_name,
+                        pane_id,
+                    })
+                },
+                _ => Err("Mismatched payload for FocusSessionPane"),
             },
             Some(CommandName::GetSavedSessionPreview) => match protobuf_plugin_command.payload {
                 Some(Payload::GetSavedSessionPreviewPayload(name)) => {
@@ -3581,13 +3729,16 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
             PluginCommand::SwitchSession(switch_to_session) => Ok(ProtobufPluginCommand {
                 name: CommandName::SwitchSession as i32,
                 payload: Some(Payload::SwitchSessionPayload(SwitchSessionPayload {
+                    startup_card: switch_to_session
+                        .startup_card()
+                        .map(|c| c.as_str().to_owned()),
+                    disconnect_others: switch_to_session.disconnects_others().then_some(true),
                     name: switch_to_session.name,
                     tab_position: switch_to_session.tab_position.map(|t| t as u32),
                     pane_id: switch_to_session.pane_id.map(|p| p.0),
                     pane_id_is_plugin: switch_to_session.pane_id.map(|p| p.1),
                     layout: switch_to_session.layout.and_then(|l| l.try_into().ok()),
                     cwd: switch_to_session.cwd.map(|c| c.display().to_string()),
-                    session_card: switch_to_session.session_card,
                 })),
             }),
             PluginCommand::OpenTerminalInPlace(cwd) => Ok(ProtobufPluginCommand {
@@ -4811,13 +4962,18 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                     name: CommandName::SwitchSessionAndCloseCurrent as i32,
                     payload: Some(Payload::SwitchSessionAndCloseCurrentPayload(
                         SwitchSessionPayload {
+                            startup_card: switch_to_session
+                                .startup_card()
+                                .map(|c| c.as_str().to_owned()),
+                            disconnect_others: switch_to_session
+                                .disconnects_others()
+                                .then_some(true),
                             name: switch_to_session.name,
                             tab_position: switch_to_session.tab_position.map(|t| t as u32),
                             pane_id: switch_to_session.pane_id.map(|p| p.0),
                             pane_id_is_plugin: switch_to_session.pane_id.map(|p| p.1),
                             layout: switch_to_session.layout.and_then(|l| l.try_into().ok()),
                             cwd: switch_to_session.cwd.map(|c| c.display().to_string()),
-                            session_card: switch_to_session.session_card,
                         },
                     )),
                 })
@@ -4826,6 +4982,7 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                 name,
                 tab_index,
                 pane_id,
+                anchor,
             } => Ok(ProtobufPluginCommand {
                 name: CommandName::GetSessionPreview as i32,
                 payload: Some(Payload::GetSessionPreviewPayload(
@@ -4834,8 +4991,106 @@ impl TryFrom<PluginCommand> for ProtobufPluginCommand {
                         tab_index: tab_index.map(|t| t as u32),
                         pane_id: pane_id.map(|(id, _)| id),
                         pane_is_plugin: pane_id.map(|(_, is_plugin)| is_plugin).unwrap_or(false),
+                        anchor: anchor.map(|a| a.as_str().to_owned()),
                     },
                 )),
+            }),
+            PluginCommand::MarkSessionPaneSeen {
+                session_name,
+                pane_id,
+            } => Ok(ProtobufPluginCommand {
+                name: CommandName::MarkSessionPaneSeen as i32,
+                payload: Some(Payload::MarkSessionPaneSeenPayload(session_pane_payload(
+                    session_name,
+                    pane_id,
+                )?)),
+            }),
+            PluginCommand::MarkAllSeen { session_name } => Ok(ProtobufPluginCommand {
+                name: CommandName::MarkAllSeen as i32,
+                payload: Some(Payload::MarkAllSeenPayload(MarkAllSeenPayload {
+                    session_name,
+                })),
+            }),
+            PluginCommand::OpenSessionWindow(request) => Ok(ProtobufPluginCommand {
+                name: CommandName::OpenSessionWindow as i32,
+                payload: Some(Payload::OpenSessionWindowPayload(
+                    OpenSessionWindowPayload {
+                        session_name: request.session_name,
+                        new_window: request.new_window,
+                        pane_id: request.pane_id.map(|p| match p {
+                            PaneId::Terminal(id) | PaneId::Plugin(id) => id,
+                        }),
+                        pane_is_plugin: matches!(request.pane_id, Some(PaneId::Plugin(_))),
+                        layout: request.layout.and_then(|l| l.try_into().ok()),
+                        cwd: request.cwd.map(|c| c.display().to_string()),
+                    },
+                )),
+            }),
+            PluginCommand::WriteToSessionPane {
+                session_name,
+                pane_id,
+                bytes,
+            } => Ok(ProtobufPluginCommand {
+                name: CommandName::WriteToSessionPane as i32,
+                payload: Some(Payload::WriteToSessionPanePayload(
+                    WriteToSessionPanePayload {
+                        session_name,
+                        pane_id: Some(pane_id.try_into()?),
+                        bytes_to_write: bytes,
+                    },
+                )),
+            }),
+            PluginCommand::SendKeyToSessionPane {
+                session_name,
+                pane_id,
+                key,
+            } => Ok(ProtobufPluginCommand {
+                name: CommandName::SendKeyToSessionPane as i32,
+                payload: Some(Payload::SendKeyToSessionPanePayload(
+                    SendKeyToSessionPanePayload {
+                        session_name,
+                        pane_id: Some(pane_id.try_into()?),
+                        key: Some(key.try_into()?),
+                    },
+                )),
+            }),
+            PluginCommand::ToggleSessionPaneMute {
+                session_name,
+                pane_id,
+            } => Ok(ProtobufPluginCommand {
+                name: CommandName::ToggleSessionPaneMute as i32,
+                payload: Some(Payload::ToggleSessionPaneMutePayload(session_pane_payload(
+                    session_name,
+                    pane_id,
+                )?)),
+            }),
+            PluginCommand::ToggleSessionPaneIgnoreOutput {
+                session_name,
+                pane_id,
+            } => Ok(ProtobufPluginCommand {
+                name: CommandName::ToggleSessionPaneIgnoreOutput as i32,
+                payload: Some(Payload::ToggleSessionPaneIgnoreOutputPayload(
+                    session_pane_payload(session_name, pane_id)?,
+                )),
+            }),
+            PluginCommand::ToggleSessionPaneWatch {
+                session_name,
+                pane_id,
+            } => Ok(ProtobufPluginCommand {
+                name: CommandName::ToggleSessionPaneWatch as i32,
+                payload: Some(Payload::ToggleSessionPaneWatchPayload(
+                    session_pane_payload(session_name, pane_id)?,
+                )),
+            }),
+            PluginCommand::FocusSessionPane {
+                session_name,
+                pane_id,
+            } => Ok(ProtobufPluginCommand {
+                name: CommandName::FocusSessionPane as i32,
+                payload: Some(Payload::FocusSessionPanePayload(session_pane_payload(
+                    session_name,
+                    pane_id,
+                )?)),
             }),
             PluginCommand::GetSavedSessionPreview(name) => Ok(ProtobufPluginCommand {
                 name: CommandName::GetSavedSessionPreview as i32,
@@ -6086,6 +6341,7 @@ mod tests {
                 name: "api".to_owned(),
                 tab_index,
                 pane_id,
+                anchor: Some(crate::data::PreviewAnchor::LastCommandOutput),
             };
             let protobuf: ProtobufPluginCommand = original.try_into().expect("encode");
             let decoded_bytes = ProtobufPluginCommand::decode(protobuf.encode_to_vec().as_slice())
@@ -6095,7 +6351,9 @@ mod tests {
                     name,
                     tab_index: decoded_tab,
                     pane_id: decoded_pane,
+                    anchor,
                 } => {
+                    assert_eq!(anchor, Some(crate::data::PreviewAnchor::LastCommandOutput));
                     assert_eq!(name, "api");
                     assert_eq!(decoded_tab, tab_index);
                     assert_eq!(decoded_pane, pane_id);
@@ -6106,7 +6364,9 @@ mod tests {
         let connect = ConnectToSession {
             name: Some("new".to_owned()),
             layout: Some(LayoutInfo::BuiltIn("default".to_owned())),
-            session_card: Some(false),
+            switch_context: Some(crate::session_history::SwitchContext::with_startup_card(
+                crate::input::attention::StartupCard::Never,
+            )),
             ..Default::default()
         };
         let protobuf: ProtobufPluginCommand = PluginCommand::SwitchSession(connect.clone())
@@ -6115,6 +6375,80 @@ mod tests {
         match PluginCommand::try_from(protobuf).expect("decode") {
             PluginCommand::SwitchSession(decoded) => assert_eq!(decoded, connect),
             other => panic!("expected SwitchSession, got {:?}", other),
+        }
+        let connect = ConnectToSession {
+            name: Some("api".to_owned()),
+            switch_context: crate::session_history::SwitchContext::from_plugin_request(None, true),
+            ..Default::default()
+        };
+        let protobuf: ProtobufPluginCommand = PluginCommand::SwitchSession(connect.clone())
+            .try_into()
+            .expect("encode");
+        match PluginCommand::try_from(protobuf).expect("decode") {
+            PluginCommand::SwitchSession(decoded) => {
+                assert!(decoded.disconnects_others());
+                assert_eq!(decoded, connect);
+            },
+            other => panic!("expected SwitchSession, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn session_pane_commands_protobuf_round_trip() {
+        use crate::data::{BareKey, KeyWithModifier, PaneId};
+        let commands = vec![
+            PluginCommand::MarkSessionPaneSeen {
+                session_name: "api".to_owned(),
+                pane_id: PaneId::Terminal(3),
+            },
+            PluginCommand::MarkAllSeen { session_name: None },
+            PluginCommand::OpenSessionWindow(crate::data::SessionWindowRequest::existing(
+                "api", None, true,
+            )),
+            PluginCommand::OpenSessionWindow(crate::data::SessionWindowRequest::existing(
+                "api",
+                Some(PaneId::Plugin(4)),
+                false,
+            )),
+            PluginCommand::OpenSessionWindow(crate::data::SessionWindowRequest::new_session(
+                None,
+                Some(crate::data::LayoutInfo::BuiltIn("compact".to_owned())),
+                Some(PathBuf::from("/tmp")),
+            )),
+            PluginCommand::MarkAllSeen {
+                session_name: Some("api".to_owned()),
+            },
+            PluginCommand::WriteToSessionPane {
+                session_name: "api".to_owned(),
+                pane_id: PaneId::Terminal(3),
+                bytes: b"yes\r".to_vec(),
+            },
+            PluginCommand::SendKeyToSessionPane {
+                session_name: "api".to_owned(),
+                pane_id: PaneId::Terminal(3),
+                key: KeyWithModifier::new(BareKey::Up),
+            },
+            PluginCommand::ToggleSessionPaneMute {
+                session_name: "api".to_owned(),
+                pane_id: PaneId::Terminal(3),
+            },
+            PluginCommand::ToggleSessionPaneIgnoreOutput {
+                session_name: "api".to_owned(),
+                pane_id: PaneId::Terminal(3),
+            },
+            PluginCommand::ToggleSessionPaneWatch {
+                session_name: "api".to_owned(),
+                pane_id: PaneId::Terminal(3),
+            },
+            PluginCommand::FocusSessionPane {
+                session_name: "api".to_owned(),
+                pane_id: PaneId::Terminal(3),
+            },
+        ];
+        for original in commands {
+            let protobuf: ProtobufPluginCommand = original.clone().try_into().expect("encode");
+            let decoded: PluginCommand = protobuf.try_into().expect("decode");
+            assert_eq!(format!("{:?}", decoded), format!("{:?}", original));
         }
     }
 

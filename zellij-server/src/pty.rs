@@ -243,9 +243,10 @@ pub(crate) struct Pty {
     terminal_foreground_cmds: HashMap<u32, Vec<String>>,
     session_context_pane: Option<PaneId>,
     terminals_with_prompt_markers: HashSet<u32>,
+    terminals_with_shell_cwd: HashSet<u32>,
 }
 
-pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
+pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>, session_id: String) -> Result<()> {
     loop {
         let (event, mut err_ctx) = pty.bus.recv().expect("failed to receive event on channel");
         err_ctx.add_call(ContextType::Pty((&event).into()));
@@ -846,7 +847,9 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 }
             },
             PtyInstruction::SaveSessionToDisk {
-                session_name,
+                // The cache is keyed by the server's own session id; the name in
+                // the instruction is no longer needed.
+                session_name: _,
                 session_info,
                 mut session_layout_metadata,
                 completion_tx: _completion_tx, // Dropped at end to signal completion
@@ -856,8 +859,9 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     session_layout_metadata.into(),
                 ) {
                     Ok(kdl_and_files) => {
+                        // Cache is keyed by the stable session id, not the name.
                         write_session_state_to_disk(
-                            session_name,
+                            session_id.clone(),
                             session_info,
                             kdl_and_files.clone(),
                         );
@@ -1002,6 +1006,7 @@ impl Pty {
             terminal_foreground_cmds: HashMap::new(),
             session_context_pane: None,
             terminals_with_prompt_markers: HashSet::new(),
+            terminals_with_shell_cwd: HashSet::new(),
         }
     }
     pub fn get_default_terminal(
@@ -1980,6 +1985,7 @@ impl Pty {
                 self.terminal_cwds.remove(&id);
                 self.terminal_cmds.remove(&id);
                 self.terminal_foreground_cmds.remove(&id);
+                self.terminals_with_shell_cwd.remove(&id);
                 self.origin_pane_ids.remove(&id);
                 self.bus
                     .os_input
@@ -2051,6 +2057,7 @@ impl Pty {
                 let _ = self.id_to_child_pid.remove(&id); // if all is wlel, this shouldn't be here
 
                 let hold_on_close = run_command.hold_on_close;
+                let command_text = run_command.to_string();
                 let originating_plugin = Arc::new(run_command.originating_plugin.clone());
                 let quit_cb = Box::new({
                     let senders = self.bus.senders.clone();
@@ -2118,6 +2125,12 @@ impl Pty {
                     self.id_to_child_pid.insert(id, child_pid);
                     self.capture_initial_cwd(id, child_pid);
                 }
+                let _ = self.bus.senders.send_to_screen(
+                    ScreenInstruction::AttentionCommandPaneStarted(
+                        PaneId::Terminal(id),
+                        Some(command_text),
+                    ),
+                );
                 if let Some(originating_plugin) = self.originating_plugins.get(&id) {
                     self.bus
                         .senders
@@ -2296,6 +2309,7 @@ impl Pty {
             let process_id = self.id_to_child_pid.get(terminal_id);
             let cwd = process_id.and_then(|pid| pids_to_cwds.get(pid));
 
+            let cwd = cwd.filter(|_| !self.terminals_with_shell_cwd.contains(terminal_id));
             if let Some(cwd) = cwd {
                 if self.terminal_cwds.get(terminal_id) != Some(cwd) {
                     let pane_id = PaneId::Terminal(*terminal_id);
@@ -2368,6 +2382,17 @@ impl Pty {
                 } else {
                     (foreground_cmd.clone(), true)
                 };
+                let _ =
+                    self.bus
+                        .senders
+                        .send_to_screen(ScreenInstruction::AttentionForegroundChanged(
+                            pane_id,
+                            if foreground_cmd.is_empty() {
+                                None
+                            } else {
+                                Some(foreground_cmd.join(" "))
+                            },
+                        ));
                 let _ = self
                     .bus
                     .senders
@@ -2400,6 +2425,8 @@ impl Pty {
 
     pub fn notify_cwd_from_osc7(&mut self, terminal_id: u32, path: PathBuf) {
         use std::sync::atomic::Ordering;
+
+        self.terminals_with_shell_cwd.insert(terminal_id);
 
         if self.terminal_cwds.get(&terminal_id) != Some(&path) {
             let pane_id = PaneId::Terminal(terminal_id);

@@ -646,6 +646,74 @@ mod tests {
     }
 
     #[test]
+    fn the_panel_border_lines_every_edge_and_leaves_the_text_area_alone() {
+        let Some(mut gpu) = Headless::exclusive() else {
+            return;
+        };
+        let state = painted(2, 4, |painter| {
+            painter.styled(0, 0, "MMMM", background(1));
+            painter.styled(1, 0, "MMMM", background(1));
+        });
+        let mut cache = GlyphCache::new(FontStack::embedded(DEFAULT_FONT_SIZE).unwrap());
+        let metrics = cache.metrics();
+        let mut retained = crate::retained::RetainedScene::new();
+        retained.refresh(
+            &state,
+            &mut cache,
+            scene::BlinkPhase::On,
+            &color::Paints::default(),
+            scene::CursorOptions::default(),
+            None,
+            None,
+        );
+        let margin = 6u32;
+        let (grid_width, grid_height) = (metrics.width * 4, metrics.height * 2);
+        let target = (grid_width + 2 * margin, grid_height + 2 * margin);
+        let ink = [200, 10, 30];
+        let rects = crate::window::border_rects(ink, 2.0, target, (margin as i32, margin as i32));
+        let image = gpu
+            .get()
+            .render_retained_framed(
+                &retained,
+                cache.atlases(),
+                target,
+                crate::renderer::Frame {
+                    origin: (margin as i32, margin as i32),
+                    margins: &rects,
+                    layer: None,
+                },
+            )
+            .unwrap();
+        let border = [ink[0], ink[1], ink[2], 255];
+        let (right, bottom) = (target.0 - 1, target.1 - 1);
+        for x in [0, 1, target.0 / 2, right - 1, right] {
+            assert_eq!(image.pixel(x, 0), border, "top edge at {}", x);
+            assert_eq!(image.pixel(x, 1), border, "top edge at {}", x);
+            assert_eq!(image.pixel(x, bottom), border, "bottom edge at {}", x);
+        }
+        for y in [0, target.1 / 2, bottom] {
+            assert_eq!(image.pixel(0, y), border, "left edge at {}", y);
+            assert_eq!(image.pixel(right, y), border, "right edge at {}", y);
+        }
+        assert_ne!(
+            image.pixel(2, target.1 / 2),
+            border,
+            "the line is two pixels wide"
+        );
+        for y in margin..margin + grid_height {
+            for x in margin..margin + grid_width {
+                assert_ne!(
+                    image.pixel(x, y),
+                    border,
+                    "the border reached the text at {},{}",
+                    x,
+                    y
+                );
+            }
+        }
+    }
+
+    #[test]
     fn an_empty_grid_renders_as_the_background_color() {
         let Some(mut gpu) = Headless::exclusive() else {
             return;

@@ -155,8 +155,10 @@ pub struct TerminalPane {
     // held on startup and can possibly be used to display some errors
     pane_frame_color_override: Option<(PaletteColor, Option<String>)>,
     has_bell_notification: bool,
+    attention_marker: Option<crate::attention::FrameMarker>,
+    attention_markers_enabled: bool,
+    initial_attention_flags: Option<(bool, bool)>,
     invoked_with: Option<Run>,
-    #[allow(dead_code)]
     arrow_fonts: bool,
     notification_end: Option<NotificationEnd>,
     /// `true` while a host-terminal forward initiated by this pane is
@@ -574,6 +576,7 @@ impl Pane for TerminalPane {
         } else {
             self.current_title()
         };
+        let frame_params_blank_title = frame_params.blank_title;
         let pane_title = if frame_params.blank_title {
             String::new()
         } else if let Some(text_color_override) = self
@@ -597,6 +600,9 @@ impl Pane for TerminalPane {
             frame_params,
         )
         .is_pinned(is_pinned);
+        if !frame_params_blank_title {
+            frame.set_attention_marker(self.frame_attention_marker());
+        }
         if let Some((exit_status, is_first_run, _run_command)) = &self.is_held {
             if *is_first_run {
                 frame.indicate_first_run();
@@ -730,6 +736,16 @@ impl Pane for TerminalPane {
     }
     fn dump_screen_with_ansi(&self, full: bool, _client_id: Option<ClientId>) -> String {
         self.grid.dump_screen_with_ansi(full)
+    }
+    fn preview_with_anchor(
+        &self,
+        anchor: zellij_utils::data::PreviewAnchor,
+        max_scrollback: usize,
+    ) -> (String, Option<usize>) {
+        self.grid.preview_with_anchor(anchor, max_scrollback)
+    }
+    fn mark_unseen_output_start(&mut self) {
+        self.grid.mark_unseen_output_start();
     }
     fn clear_screen(&mut self) {
         self.grid.clear_screen()
@@ -1196,7 +1212,30 @@ impl Pane for TerminalPane {
         }
     }
     fn stack_list_entry_label(&self) -> String {
-        self.title_with_bell_indicator(self.current_title())
+        match self.attention_marker_text() {
+            Some(marker) => format!("{} {}", self.current_title(), marker),
+            None => self.title_with_bell_indicator(self.current_title()),
+        }
+    }
+    fn set_attention_marker(
+        &mut self,
+        marker: Option<crate::attention::FrameMarker>,
+        enabled: bool,
+    ) {
+        if self.attention_marker != marker || self.attention_markers_enabled != enabled {
+            self.attention_marker = marker;
+            self.attention_markers_enabled = enabled;
+            self.set_should_render(true);
+        }
+    }
+    fn drain_pane_signals(&mut self) -> Vec<crate::attention::PaneSignal> {
+        self.grid.shell_reports.drain()
+    }
+    fn set_initial_attention_flags(&mut self, muted: bool, ignore_output: bool) {
+        self.initial_attention_flags = Some((muted, ignore_output));
+    }
+    fn take_initial_attention_flags(&mut self) -> Option<(bool, bool)> {
+        self.initial_attention_flags.take()
     }
     fn custom_title(&self) -> Option<String> {
         if self.pane_name.is_empty() {
@@ -1412,11 +1451,52 @@ impl Pane for TerminalPane {
 
 impl TerminalPane {
     fn title_with_bell_indicator(&self, title: String) -> String {
-        if self.has_bell_notification {
+        if self.has_bell_notification && !self.attention_markers_enabled {
             format!("{} [!]", title)
         } else {
             title
         }
+    }
+    fn attention_marker_text(&self) -> Option<String> {
+        let marker = self.attention_marker.as_ref()?;
+        let symbol = if marker.muted {
+            if self.arrow_fonts {
+                "⊘"
+            } else {
+                "-"
+            }
+        } else {
+            marker.status.marker(!self.arrow_fonts)
+        };
+        if symbol.is_empty() {
+            None
+        } else {
+            Some(symbol.to_owned())
+        }
+    }
+    fn frame_attention_marker(
+        &self,
+    ) -> Option<crate::ui::pane_boundaries_frame::FrameAttentionMarker> {
+        use zellij_utils::attention::AttentionStatus;
+        let text = self.attention_marker_text()?;
+        let marker = self.attention_marker.as_ref()?;
+        let colors = &self.style.colors;
+        let (color, dim) = if marker.muted {
+            (colors.text_unselected.base, true)
+        } else {
+            match marker.status {
+                AttentionStatus::NeedsYou => (colors.text_unselected.emphasis_0, false),
+                AttentionStatus::Failed => (colors.exit_code_error.base, false),
+                AttentionStatus::Done => (colors.exit_code_success.base, false),
+                AttentionStatus::Working => (colors.text_unselected.emphasis_1, false),
+                _ => (colors.text_unselected.base, true),
+            }
+        };
+        Some(crate::ui::pane_boundaries_frame::FrameAttentionMarker {
+            text,
+            color: Some(color),
+            dim,
+        })
     }
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -1485,6 +1565,9 @@ impl TerminalPane {
             banner: None,
             pane_frame_color_override: None,
             has_bell_notification: false,
+            attention_marker: None,
+            attention_markers_enabled: true,
+            initial_attention_flags: None,
             invoked_with,
             arrow_fonts,
             notification_end,

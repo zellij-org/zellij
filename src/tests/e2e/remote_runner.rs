@@ -303,7 +303,7 @@ impl RemoteTerminal {
         self.last_snapshot
             .lock()
             .unwrap()
-            .contains("No Other Sessions")
+            .contains("[ 1 running ▾ ]")
     }
     pub fn snapshot_contains(&self, text: &str) -> bool {
         self.last_snapshot.lock().unwrap().contains(text)

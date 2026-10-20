@@ -19,7 +19,7 @@ Some(
             cwd: Some(
                 "/foo/bar",
             ),
-            session_card: None,
+            switch_context: None,
         },
         1,
         Some(

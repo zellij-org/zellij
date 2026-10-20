@@ -9,6 +9,7 @@ mod os_input_output_windows;
 
 pub mod cli_client;
 mod command_is_executing;
+mod host_status;
 mod input_handler;
 mod keyboard_parser;
 mod nested_reannounce;
@@ -229,6 +230,8 @@ pub(crate) enum ClientInstruction {
     },
     EmitNestedSessionFrame(Vec<u8>),
     OuterGraphemeClusterMode(u8),
+    HostProgramStatus(Option<zellij_utils::attention::HostProgramStatus>),
+    HostProgramStatusSupported,
 }
 
 impl From<ServerToClientMsg> for ClientInstruction {
@@ -275,6 +278,11 @@ impl From<ServerToClientMsg> for ClientInstruction {
             ServerToClientMsg::WindowSettingsChanged { .. } => {
                 ClientInstruction::UnblockInputThread
             },
+            ServerToClientMsg::HostProgramStatus { status } => {
+                ClientInstruction::HostProgramStatus(status)
+            },
+            ServerToClientMsg::SessionAttention { .. } => ClientInstruction::UnblockInputThread,
+            ServerToClientMsg::SessionPreview { .. } => ClientInstruction::UnblockInputThread,
         }
     }
 }
@@ -301,6 +309,10 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::EmitNestedSessionFrame(..) => ClientContext::EmitNestedSessionFrame,
             ClientInstruction::OuterGraphemeClusterMode(..) => {
                 ClientContext::OuterGraphemeClusterMode
+            },
+            ClientInstruction::HostProgramStatus(..) => ClientContext::HostProgramStatus,
+            ClientInstruction::HostProgramStatusSupported => {
+                ClientContext::HostProgramStatusSupported
             },
         }
     }
@@ -412,8 +424,11 @@ fn ipc_pipe_length_error(ipc_pipe: &Path) -> Option<String> {
     ))
 }
 
-fn session_ipc_pipe_length_error(sock_dir: &Path, session_name: &str) -> Option<String> {
-    ipc_pipe_length_error(&sock_dir.join(session_name))
+// Session sockets are named by a fixed-length session id rather than the session name, so
+// only the socket directory's length can push the path past the limit.
+fn sock_dir_ipc_pipe_length_error(sock_dir: &Path) -> Option<String> {
+    let longest_session_id = "0".repeat(zellij_utils::consts::SESSION_ID_LENGTH);
+    ipc_pipe_length_error(&sock_dir.join(longest_session_id))
 }
 
 fn check_ipc_pipe_length(ipc_pipe: &Path) {
@@ -475,8 +490,11 @@ fn spawn_server_error_message(e: io::Error) -> String {
     )
 }
 
-fn create_ipc_pipe(teardown: Option<TerminalTeardown>) -> PathBuf {
-    let mut sock_dir = ZELLIJ_SOCK_DIR.clone();
+/// Ensure the socket directory exists and is private (0700), and is short
+/// enough to hold a session id. On failure, tear down the terminal and exit
+/// with a helpful message.
+fn prepare_sock_dir(teardown: Option<TerminalTeardown>) {
+    let sock_dir = ZELLIJ_SOCK_DIR.clone();
     if let Err(e) = std::fs::create_dir_all(&sock_dir) {
         exit_after_startup_error(
             teardown,
@@ -514,10 +532,47 @@ fn create_ipc_pipe(teardown: Option<TerminalTeardown>) -> PathBuf {
             ),
         );
     }
-    let session_name = envs::get_session_name().unwrap();
-    check_ipc_pipe_length(&sock_dir.join(&session_name));
-    sock_dir.push(session_name);
-    sock_dir
+    if let Some(message) = sock_dir_ipc_pipe_length_error(&sock_dir) {
+        exit_after_startup_error(teardown, message);
+    }
+}
+
+fn prepare_parent_dir(teardown: Option<TerminalTeardown>, path: &Path) {
+    let sock_dir = &*ZELLIJ_SOCK_DIR;
+    if let Some(parent) = path.parent().filter(|parent| *parent != sock_dir.as_path()) {
+        if let Err(e) = zellij_utils::consts::prepare_private_dir(parent) {
+            exit_after_startup_error(
+                teardown,
+                format!(
+                    "Error: failed to create the folder {}: {}",
+                    parent.display(),
+                    e
+                ),
+            );
+        }
+    }
+}
+
+/// IPC pipe path for a NEW session: register it in the session index under a
+/// fresh id and return `ZELLIJ_SOCK_DIR/<id>`. The session name is read from the
+/// environment (set by the caller just before).
+fn create_ipc_pipe(teardown: Option<TerminalTeardown>) -> PathBuf {
+    prepare_sock_dir(teardown);
+    let name = envs::get_session_name().unwrap();
+    let path = zellij_utils::consts::new_session_socket_path_in(&ZELLIJ_SOCK_DIR, &name);
+    prepare_parent_dir(teardown, &path);
+    check_ipc_pipe_length(&path);
+    path
+}
+
+/// IPC pipe path for an EXISTING session: resolve its id via the session index,
+/// falling back to the name-based path of sessions from before ids.
+fn resolve_ipc_pipe(teardown: Option<TerminalTeardown>) -> PathBuf {
+    prepare_sock_dir(teardown);
+    let name = envs::get_session_name().unwrap();
+    let path = zellij_utils::consts::session_socket_path(&name);
+    prepare_parent_dir(teardown, &path);
+    path
 }
 
 #[derive(Debug, Clone)]
@@ -943,7 +998,10 @@ pub fn start_remote_client(
         host_contacted.clone(),
     ))?;
 
-    if host_contacted.load(std::sync::atomic::Ordering::Relaxed) {
+    if says_goodbye_to_host(
+        host_contacted.load(std::sync::atomic::Ordering::Relaxed),
+        reconnect_to_session.is_some(),
+    ) {
         let mut stdout = os_input.get_stdout_writer();
         let _ = stdout.write_all(&nested_session::encode_frame(
             &nested_session::NestedSessionMessage::Bye,
@@ -979,6 +1037,7 @@ pub fn first_message(
     host_terminal_env: std::collections::BTreeMap<String, String>,
     tab_position_to_focus: Option<usize>,
     pane_id_to_focus: Option<(u32, bool)>,
+    switch_context: Option<zellij_utils::session_history::SwitchContext>,
 ) -> Handshake {
     let is_web_client = false;
     let layout_from_cli_args = |config_options: &Options| {
@@ -1022,6 +1081,7 @@ pub fn first_message(
             cwd,
             host_terminal_env: host_terminal_env.clone(),
             initial_panes,
+            switch_context: switch_context.clone(),
         }
     };
 
@@ -1084,6 +1144,10 @@ pub fn first_message(
     }
 }
 
+pub(crate) fn says_goodbye_to_host(host_contacted: bool, switching_sessions: bool) -> bool {
+    host_contacted && !switching_sessions
+}
+
 pub fn start_client(
     mut os_input: Box<dyn ClientOsApi>,
     cli_args: CliArgs,
@@ -1094,6 +1158,7 @@ pub fn start_client(
     pane_id_to_focus: Option<(u32, bool)>, // (pane_id, is_plugin)
     is_a_reconnect: bool,
     start_detached_and_exit: bool,
+    switch_context: Option<zellij_utils::session_history::SwitchContext>,
 ) -> Option<ConnectToSession> {
     if start_detached_and_exit {
         start_server_detached(os_input, cli_args, config, config_options, info);
@@ -1102,7 +1167,7 @@ pub fn start_client(
     info!("Starting Zellij client!");
 
     let own_session_name = info.get_session_name().to_owned();
-    if let Some(message) = session_ipc_pipe_length_error(&ZELLIJ_SOCK_DIR, &own_session_name) {
+    if let Some(message) = sock_dir_ipc_pipe_length_error(&ZELLIJ_SOCK_DIR) {
         eprintln!("{}", message);
         std::process::exit(1);
     }
@@ -1171,11 +1236,17 @@ pub fn start_client(
         host_terminal_env(),
         tab_position_to_focus,
         pane_id_to_focus,
+        switch_context,
     );
 
     envs::set_session_name(own_session_name.clone());
     os_input.update_session_name(own_session_name.clone());
-    let ipc_pipe = create_ipc_pipe(Some(terminal_teardown));
+    // A session we start gets a freshly registered id; an existing one is resolved by name.
+    let ipc_pipe = if starts_server {
+        create_ipc_pipe(Some(terminal_teardown))
+    } else {
+        resolve_ipc_pipe(Some(terminal_teardown))
+    };
 
     if starts_server {
         if let Err(e) = os_input.spawn_server(&*ipc_pipe, cli_args.debug) {
@@ -1208,6 +1279,13 @@ pub fn start_client(
         .write_all(&nested_session::encode_frame(&announce))
         .unwrap();
     let _ = stdout.flush();
+    if is_a_reconnect {
+        for message in os_input.remembered_host_state().replay() {
+            os_input.send_to_server(ClientToServerMsg::NestedSessionFrameFromHost {
+                payload_bytes: nested_session::encode_payload(&message),
+            });
+        }
+    }
     let nested_reannounce = crate::nested_reannounce::NestedReannounce::spawn(
         os_input.clone(),
         own_session_name.clone(),
@@ -1417,6 +1495,7 @@ pub fn start_client(
     };
 
     let mut exit_msg = String::new();
+    let mut host_status_writer = host_status::HostStatusWriter::default();
     let mut synchronised_output = match os_input.env_variable("TERM").as_deref() {
         Some("alacritty") => Some(SyncOutput::DCS),
         _ => None,
@@ -1613,15 +1692,41 @@ pub fn start_client(
                     let _ = out.flush();
                 }
             },
+            ClientInstruction::HostProgramStatus(status) => {
+                if let Some(sequence) = host_status_writer.update(status) {
+                    let mut out = os_input.get_stdout_writer();
+                    let _ = out.write_all(sequence.as_bytes());
+                    let _ = out.flush();
+                }
+            },
+            ClientInstruction::HostProgramStatusSupported => {
+                if let Some(sequence) = host_status_writer.set_supported() {
+                    let mut out = os_input.get_stdout_writer();
+                    let _ = out.write_all(sequence.as_bytes());
+                    let _ = out.flush();
+                }
+            },
             _ => {},
         }
+    }
+
+    if let Some(sequence) = host_status_writer.teardown() {
+        let mut out = os_input.get_stdout_writer();
+        let _ = out.write_all(sequence.as_bytes());
+        let _ = out.flush();
     }
 
     nested_reannounce.stop();
 
     router_thread.join().unwrap();
 
-    if nested_reannounce.host_contacted() {
+    if reconnect_to_session.is_none() {
+        os_input.forget_host_state();
+    }
+    if says_goodbye_to_host(
+        nested_reannounce.host_contacted(),
+        reconnect_to_session.is_some(),
+    ) {
         let mut stdout = os_input.get_stdout_writer();
         let _ = stdout.write_all(&nested_session::encode_frame(
             &nested_session::NestedSessionMessage::Bye,
@@ -1693,6 +1798,7 @@ pub fn start_server_detached(
                 cwd,
                 host_terminal_env: host_terminal_env(),
                 initial_panes: None,
+                switch_context: None,
             };
 
             os_input.update_session_name(name);
@@ -1752,6 +1858,7 @@ pub fn start_server_detached(
                 cwd: layout_cwd,
                 host_terminal_env: host_terminal_env(),
                 initial_panes,
+                switch_context: None,
             };
 
             os_input.update_session_name(name);

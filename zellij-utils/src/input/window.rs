@@ -102,57 +102,6 @@ impl BellMode {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum NotificationMode {
-    Desktop,
-    Attention,
-    None,
-}
-
-impl NotificationMode {
-    pub fn to_desktop(&self) -> bool {
-        matches!(self, NotificationMode::Desktop)
-    }
-
-    pub fn attends(&self) -> bool {
-        matches!(
-            self,
-            NotificationMode::Desktop | NotificationMode::Attention
-        )
-    }
-
-    pub fn from_kdl(kdl: &KdlNode) -> Result<Self, ConfigError> {
-        let named = kdl
-            .entries()
-            .iter()
-            .next()
-            .and_then(|entry| entry.value().as_string());
-        match named.map(str::to_ascii_lowercase).as_deref() {
-            Some("desktop") => Ok(NotificationMode::Desktop),
-            Some("attention") => Ok(NotificationMode::Attention),
-            Some("none") => Ok(NotificationMode::None),
-            _ => Err(ConfigError::new_kdl_error(
-                "notifications must be \"desktop\", \"attention\" or \"none\"".to_owned(),
-                kdl.span().offset(),
-                kdl.span().len(),
-            )),
-        }
-    }
-
-    pub fn to_kdl(&self) -> KdlNode {
-        let mut node = KdlNode::new("notifications");
-        node.push(KdlValue::String(
-            match self {
-                NotificationMode::Desktop => "desktop",
-                NotificationMode::Attention => "attention",
-                NotificationMode::None => "none",
-            }
-            .to_owned(),
-        ));
-        node
-    }
-}
-
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
 pub enum StartupMode {
     Windowed,
@@ -484,7 +433,6 @@ pub struct WindowConfig {
     pub middle_click_paste: Option<bool>,
     pub open_links: Option<bool>,
     pub bell: Option<BellMode>,
-    pub notifications: Option<NotificationMode>,
     pub startup_mode: Option<StartupMode>,
     pub opacity: Option<f32>,
     pub opacity_mode: Option<OpacityMode>,
@@ -566,9 +514,6 @@ impl WindowConfig {
         }
         if let Some(bell) = kdl_get_child!(kdl, "bell") {
             window.bell = Some(BellMode::from_kdl(bell)?);
-        }
-        if let Some(notifications) = kdl_get_child!(kdl, "notifications") {
-            window.notifications = Some(NotificationMode::from_kdl(notifications)?);
         }
         if let Some(startup_mode) = kdl_get_child!(kdl, "startup_mode") {
             window.startup_mode = Some(StartupMode::from_kdl(startup_mode)?);
@@ -735,9 +680,6 @@ impl WindowConfig {
         if let Some(bell) = self.bell {
             children.nodes_mut().push(bell.to_kdl());
         }
-        if let Some(notifications) = self.notifications {
-            children.nodes_mut().push(notifications.to_kdl());
-        }
         if let Some(startup_mode) = self.startup_mode {
             children.nodes_mut().push(startup_mode.to_kdl());
         }
@@ -891,7 +833,6 @@ impl WindowConfig {
         merged.middle_click_paste = other.middle_click_paste.or(merged.middle_click_paste);
         merged.open_links = other.open_links.or(merged.open_links);
         merged.bell = other.bell.or(merged.bell);
-        merged.notifications = other.notifications.or(merged.notifications);
         merged.startup_mode = other.startup_mode.or(merged.startup_mode);
         merged.opacity = other.opacity.or(merged.opacity);
         merged.opacity_mode = other.opacity_mode.or(merged.opacity_mode);
@@ -1294,7 +1235,6 @@ mod tests {
                 middle_click_paste false
                 open_links false
                 bell "both"
-                notifications "desktop"
                 startup_mode "fullscreen"
                 opacity 0.85
                 opacity_mode "everything"
@@ -1349,7 +1289,6 @@ mod tests {
         assert_eq!(parsed.middle_click_paste, Some(false));
         assert_eq!(parsed.open_links, Some(false));
         assert_eq!(parsed.bell, Some(BellMode::Both));
-        assert_eq!(parsed.notifications, Some(NotificationMode::Desktop));
         assert_eq!(parsed.startup_mode, Some(StartupMode::Fullscreen));
         assert_eq!(parsed.opacity, Some(0.85));
         assert_eq!(parsed.opacity_mode, Some(OpacityMode::Everything));
@@ -1551,28 +1490,6 @@ mod tests {
             section("window {\n}").unwrap().bell,
             None,
             "an absent key must stay distinguishable from a refusal to ring"
-        );
-    }
-
-    #[test]
-    fn every_notification_mode_is_named_and_says_what_it_does() {
-        for (text, expected, to_desktop, attends) in [
-            ("desktop", NotificationMode::Desktop, true, true),
-            ("attention", NotificationMode::Attention, false, true),
-            ("none", NotificationMode::None, false, false),
-            ("DESKTOP", NotificationMode::Desktop, true, true),
-        ] {
-            let parsed = section(&format!("window {{\n notifications \"{}\"\n}}", text)).unwrap();
-            assert_eq!(parsed.notifications, Some(expected), "{}", text);
-            assert_eq!(expected.to_desktop(), to_desktop, "{}", text);
-            assert_eq!(expected.attends(), attends, "{}", text);
-        }
-        assert!(section("window {\n notifications \"popup\"\n}").is_err());
-        assert!(section("window {\n notifications\n}").is_err());
-        assert_eq!(
-            section("window {\n}").unwrap().notifications,
-            None,
-            "an absent key must leave the window manager in charge, as it always was"
         );
     }
 

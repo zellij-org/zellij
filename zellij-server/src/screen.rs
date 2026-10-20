@@ -40,6 +40,7 @@ use std::time::{Duration, Instant};
 use crate::route::NotificationEnd;
 use crate::SharedKeybinds;
 
+mod attention;
 mod popups;
 
 use log::{debug, warn};
@@ -73,7 +74,6 @@ use zellij_utils::pane_size::{PaneGeom, Size, SizeInPixels};
 use zellij_utils::shared::{clean_string_from_control_and_linebreak, detect_theme_hue};
 use zellij_utils::structured_render;
 use zellij_utils::{
-    consts::{session_info_folder_for_session, ZELLIJ_SOCK_DIR},
     envs::set_session_name,
     input::command::TerminalAction,
     input::layout::{
@@ -966,7 +966,7 @@ pub enum ScreenInstruction {
         line: usize,
         column: usize,
     },
-    OpenSessionCard(ClientId),
+    OpenSessionCard(ClientId, Option<u64>),
     TerminalInputSubmitted(ClientId),
     TerminalEscapePressed(ClientId),
     ToggleSessionCard(ClientId, Option<NotificationEnd>),
@@ -984,7 +984,41 @@ pub enum ScreenInstruction {
     GetSessionPreview {
         tab_index: Option<usize>,
         pane_id: Option<(u32, bool)>,
+        anchor: Option<zellij_utils::data::PreviewAnchor>,
         response_channel: crossbeam::channel::Sender<zellij_utils::data::SessionPreview>,
+    },
+    GetSessionAttention {
+        include_command_text: bool,
+        response_channel: crossbeam::channel::Sender<zellij_utils::attention::SessionAttention>,
+    },
+    GlobalAttentionUpdate(zellij_utils::attention::GlobalAttention),
+    ClientSessionHistory {
+        client_id: ClientId,
+        history: zellij_utils::session_history::SessionHistory,
+        arrival: Option<zellij_utils::session_history::SessionArrival>,
+        arrived_from: Option<String>,
+    },
+    UpdateClientSessionHistory {
+        client_id: ClientId,
+        history: zellij_utils::session_history::SessionHistory,
+    },
+    GoToNextAttention(ClientId, Option<NotificationEnd>),
+    MarkPaneSeen {
+        session: Option<String>,
+        pane_id: Option<zellij_utils::data::PaneId>,
+        client_id: ClientId,
+        completion: Option<NotificationEnd>,
+    },
+    MarkAllSeen {
+        session: Option<String>,
+        this_session: bool,
+        completion: Option<NotificationEnd>,
+    },
+    SessionPaneCommand {
+        session_name: Option<String>,
+        command: SessionPaneCommand,
+        client_id: ClientId,
+        completion: Option<NotificationEnd>,
     },
     OpenPluginPopup {
         requesting_plugin_id: u32,
@@ -1109,6 +1143,27 @@ pub enum ScreenInstruction {
     FocusHostSession(ClientId, Option<NotificationEnd>),
     FocusGuestSession(ClientId, Option<NotificationEnd>),
     ToggleHostFullscreen(ClientId, Option<NotificationEnd>),
+    AttentionIdleCheck(PaneId),
+    AttentionForegroundChanged(PaneId, Option<String>),
+    MutePane(
+        Option<zellij_utils::data::PaneId>,
+        ClientId,
+        Option<NotificationEnd>,
+    ),
+    IgnorePaneOutput(
+        Option<zellij_utils::data::PaneId>,
+        ClientId,
+        Option<NotificationEnd>,
+    ),
+    WatchPane(
+        Option<zellij_utils::data::PaneId>,
+        ClientId,
+        Option<NotificationEnd>,
+    ),
+    MuteTab(Option<usize>, ClientId, Option<NotificationEnd>),
+    MuteSession(ClientId, Option<NotificationEnd>),
+    AttentionCommandPaneStarted(PaneId, Option<String>),
+    SetAttentionConfig(zellij_utils::input::attention::AttentionConfig),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -1464,6 +1519,16 @@ impl From<&ScreenInstruction> for ScreenContext {
             },
             ScreenInstruction::SetGraphemeClusters(..) => ScreenContext::SetGraphemeClusters,
             ScreenInstruction::GetSessionPreview { .. } => ScreenContext::GetSessionPreview,
+            ScreenInstruction::GetSessionAttention { .. } => ScreenContext::GetSessionAttention,
+            ScreenInstruction::GlobalAttentionUpdate(..) => ScreenContext::GlobalAttentionUpdate,
+            ScreenInstruction::ClientSessionHistory { .. }
+            | ScreenInstruction::UpdateClientSessionHistory { .. } => {
+                ScreenContext::ClientSessionHistory
+            },
+            ScreenInstruction::GoToNextAttention(..) => ScreenContext::GoToNextAttention,
+            ScreenInstruction::MarkPaneSeen { .. } => ScreenContext::MarkPaneSeen,
+            ScreenInstruction::MarkAllSeen { .. } => ScreenContext::MarkAllSeen,
+            ScreenInstruction::SessionPaneCommand { .. } => ScreenContext::SessionPaneCommand,
             ScreenInstruction::AddPopup { .. } => ScreenContext::AddPopup,
             ScreenInstruction::OpenPipePopup { .. } => ScreenContext::OpenPipePopup,
             ScreenInstruction::OpenPromptPopup { .. } => ScreenContext::OpenPromptPopup,
@@ -1577,6 +1642,19 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::FocusHostSession(..) => ScreenContext::FocusHostSession,
             ScreenInstruction::FocusGuestSession(..) => ScreenContext::FocusGuestSession,
             ScreenInstruction::ToggleHostFullscreen(..) => ScreenContext::ToggleHostFullscreen,
+            ScreenInstruction::AttentionIdleCheck(..) => ScreenContext::AttentionIdleCheck,
+            ScreenInstruction::AttentionForegroundChanged(..) => {
+                ScreenContext::AttentionForegroundChanged
+            },
+            ScreenInstruction::MutePane(..) => ScreenContext::MutePane,
+            ScreenInstruction::IgnorePaneOutput(..) => ScreenContext::IgnorePaneOutput,
+            ScreenInstruction::WatchPane(..) => ScreenContext::WatchPane,
+            ScreenInstruction::MuteTab(..) => ScreenContext::MuteTab,
+            ScreenInstruction::MuteSession(..) => ScreenContext::MuteSession,
+            ScreenInstruction::AttentionCommandPaneStarted(..) => {
+                ScreenContext::AttentionCommandPaneStarted
+            },
+            ScreenInstruction::SetAttentionConfig(..) => ScreenContext::SetAttentionConfig,
         }
     }
 }
@@ -1884,6 +1962,8 @@ pub(crate) struct Screen {
     copy_options: CopyOptions,
     debug: bool,
     session_name: String,
+    /// Stable session id (socket/pipe filename), decoupled from `session_name`.
+    session_id: String,
     peer_sessions_cache: BTreeMap<String, SessionInfo>, // String is the session name, can
     // also be this session
     resurrectable_sessions_cache: BTreeMap<String, Duration>, // String is the session name,
@@ -1985,6 +2065,25 @@ pub(crate) struct Screen {
     host_notification_protocol: HostNotificationProtocol,
     client_host_terminal_env: HashMap<ClientId, BTreeMap<String, String>>,
     last_forwarded_osc7: HashMap<ClientId, Option<String>>,
+    pub attention: crate::attention::AttentionTracker,
+    last_session_attention: Option<zellij_utils::attention::SessionAttention>,
+    pub(crate) global_attention: Option<zellij_utils::attention::GlobalAttention>,
+    pub(crate) client_session_histories: HashMap<ClientId, attention::ClientSessionHistory>,
+    last_session_history_infos:
+        HashMap<ClientId, zellij_utils::session_history::SessionHistoryInfo>,
+    remote_actions: crate::session_link::RemoteActions,
+    pub(crate) pending_session_card_away_since: HashMap<ClientId, u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SessionPaneCommand {
+    MarkSeen(zellij_utils::data::PaneId),
+    Write(zellij_utils::data::PaneId, Vec<u8>),
+    Key(zellij_utils::data::PaneId, KeyWithModifier),
+    ToggleMute(zellij_utils::data::PaneId),
+    ToggleIgnoreOutput(zellij_utils::data::PaneId),
+    ToggleWatch(zellij_utils::data::PaneId),
+    Focus(zellij_utils::data::PaneId),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2167,6 +2266,7 @@ impl Screen {
         web_server_ip: IpAddr,
         web_server_port: u16,
         nested_session_handling: NestedSessionHandling,
+        session_id: String,
     ) -> Self {
         let session_name = mode_info.session_name.clone().unwrap_or_default();
         let session_info = SessionInfo::new(session_name.clone());
@@ -2223,6 +2323,7 @@ impl Screen {
             copy_options,
             debug,
             session_name,
+            session_id,
             peer_sessions_cache,
             default_layout,
             default_layout_name,
@@ -2321,7 +2422,24 @@ impl Screen {
             host_notification_protocol: HostNotificationProtocol::default(),
             client_host_terminal_env: HashMap::new(),
             last_forwarded_osc7: HashMap::new(),
+            attention: crate::attention::AttentionTracker::default(),
+            last_session_attention: None,
+            global_attention: None,
+            client_session_histories: HashMap::new(),
+            last_session_history_infos: HashMap::new(),
+            remote_actions: crate::session_link::RemoteActions::default(),
+            pending_session_card_away_since: HashMap::new(),
         }
+    }
+
+    fn client_location(&self, client_id: ClientId) -> Option<String> {
+        let empty = BTreeMap::new();
+        zellij_utils::input::cli_assets::client_location(
+            self.client_host_terminal_env
+                .get(&client_id)
+                .unwrap_or(&empty),
+            self.client_is_web(client_id),
+        )
     }
 
     fn client_is_web(&self, client_id: ClientId) -> bool {
@@ -2754,6 +2872,7 @@ impl Screen {
         let err_context = || format!("failed to close tab at index {tab_id:?}");
 
         let mut tab_to_close = self.tabs.remove(&tab_id).with_context(err_context)?;
+        self.attention.remove_tab(tab_id);
         let popups_of_closed_tab = tab_to_close.drain_popups();
         self.close_popups_of_closed_tab(popups_of_closed_tab);
         let mut pane_ids = tab_to_close.get_all_pane_ids();
@@ -4354,7 +4473,9 @@ impl Screen {
         if is_fresh {
             self.auto_apply_nested_session_handling(pane_id, &connected_client_ids);
         } else {
+            self.reported_guest_fullscreen.remove(&pane_id);
             self.revive_nested_guest(pane_id);
+            self.tell_reannounced_guest_it_has_focus(pane_id, terminal_id);
         }
         let _ = self.render(None);
         if announce_kind != AnnounceKind::Refresh {
@@ -4403,6 +4524,26 @@ impl Screen {
         }
         self.report_upward();
         let _ = self.log_and_report_session_state();
+    }
+
+    fn tell_reannounced_guest_it_has_focus(&self, pane_id: PaneId, terminal_id: u32) {
+        let client_ids: Vec<ClientId> = self.connected_clients.borrow().keys().copied().collect();
+        let controlled = client_ids.into_iter().any(|client_id| {
+            self.get_active_pane_id(&client_id) == Some(pane_id)
+                && self.should_route_keys_to_pane(client_id, pane_id)
+        });
+        if controlled {
+            let _ = self
+                .bus
+                .senders
+                .send_to_pty_writer(PtyWriteInstruction::Write(
+                    nested_session::encode_frame(&NestedSessionMessage::FocusGained {
+                        from_direction: None,
+                    }),
+                    terminal_id,
+                    None,
+                ));
+        }
     }
 
     fn revive_nested_guest(&mut self, pane_id: PaneId) {
@@ -5423,6 +5564,7 @@ impl Screen {
         let has_watchers = !self.watcher_clients.is_empty(); // No change needed
 
         self.sync_structured_client_viewports();
+        self.sync_attention_visibility();
 
         // Track whether non-watcher output was dirty for conditional watcher rendering
         let non_watcher_output_was_dirty;
@@ -5813,6 +5955,7 @@ impl Screen {
         if was_focused == focused {
             return;
         }
+        self.sync_attention_visibility();
         let Some(pane_id) = self.get_active_pane_id(&client_id) else {
             return;
         };
@@ -5840,7 +5983,7 @@ impl Screen {
             })
     }
 
-    fn client_host_is_focused(&self, client_id: &ClientId) -> bool {
+    pub(crate) fn client_host_is_focused(&self, client_id: &ClientId) -> bool {
         self.client_host_focused
             .get(client_id)
             .copied()
@@ -5858,6 +6001,24 @@ impl Screen {
         );
         self.client_host_terminal_env
             .insert(client_id, host_terminal_env);
+        let remote = self.client_location(client_id);
+        self.ensure_client_keybinds(client_id);
+        let mode_info = self
+            .mode_info
+            .entry(client_id)
+            .or_insert_with(|| self.default_mode_info.clone());
+        let updated = if mode_info.remote_client != remote {
+            mode_info.remote_client = remote;
+            Some(mode_info.clone())
+        } else {
+            None
+        };
+        if let Some(mode_info) = updated {
+            for tab in self.tabs.values_mut() {
+                tab.change_mode_info(mode_info.clone(), client_id);
+                let _ = tab.update_input_modes();
+            }
+        }
     }
 
     pub fn set_host_notification_protocol(
@@ -6438,12 +6599,18 @@ impl Screen {
             self.push_sixel_host_support_to_tabs();
         }
         self.tab_history.insert(client_id, tab_history);
+        let mut client_mode_info = self
+            .mode_info
+            .get(&client_id)
+            .cloned()
+            .unwrap_or_else(|| self.default_mode_info.clone());
+        client_mode_info.remote_client = self.client_location(client_id);
         let tab = self
             .tabs
             .get_mut(&tab_index)
             .with_context(|| err_context(tab_index))?;
         let tab_was_empty = tab.has_no_connected_clients();
-        tab.add_client(client_id, None)
+        tab.add_client(client_id, Some(client_mode_info))
             .with_context(|| err_context(tab_index))?;
         if tab_was_empty {
             tab.visible(true).with_context(|| err_context(tab_index))?;
@@ -6669,6 +6836,7 @@ impl Screen {
                     && !self.active_tab_ids.values().any(|i| i == &tab.id),
                 is_flashing_bell: tab.tab_bell_flash
                     && !self.active_tab_ids.values().any(|i| i == &tab.id),
+                attention: self.tab_attention(tab),
             };
             tab_infos_for_screen_state.insert(tab.position, tab_info_for_screen);
         }
@@ -6716,6 +6884,7 @@ impl Screen {
                     tab_id: tab.id,
                     has_bell_notification: tab.tab_has_pending_bell && *active_tab_index != tab.id,
                     is_flashing_bell: tab.tab_bell_flash && *active_tab_index != tab.id,
+                    attention: self.tab_attention(tab),
                 };
                 plugin_tab_updates.push(tab_info_for_plugins);
             }
@@ -6738,7 +6907,9 @@ impl Screen {
     fn generate_and_report_pane_state(&mut self) -> Result<PaneManifest> {
         let mut pane_manifest = PaneManifest::default();
         for tab in self.tabs.values() {
-            pane_manifest.panes.insert(tab.position, tab.pane_infos());
+            let mut pane_infos = tab.pane_infos();
+            self.decorate_pane_infos(&mut pane_infos);
+            pane_manifest.panes.insert(tab.position, pane_infos);
         }
         let mut plugin_updates = vec![];
         let client_ids: Vec<ClientId> = self.active_tab_ids.keys().copied().collect();
@@ -6799,7 +6970,8 @@ impl Screen {
         let mut pane_entries = Vec::new();
 
         for tab in self.tabs.values() {
-            let pane_infos = tab.pane_infos();
+            let mut pane_infos = tab.pane_infos();
+            self.decorate_pane_infos(&mut pane_infos);
 
             for pane_info in pane_infos {
                 if should_include_pane(&pane_info, show_all) {
@@ -6956,7 +7128,8 @@ impl Screen {
         }
         let available_layouts = self.cached_layouts.clone();
         let creation_time = {
-            let sock_path = ZELLIJ_SOCK_DIR.join(&self.session_name);
+            // The socket is named by the stable session id, not the display name.
+            let sock_path = zellij_utils::consts::session_id_socket_path(&self.session_id);
             std::fs::metadata(&sock_path)
                 .ok()
                 .and_then(|f| f.created().ok().or_else(|| f.modified().ok()))
@@ -6986,6 +7159,7 @@ impl Screen {
                 .map(|(k, v)| (*k, v.iter().map(|v| (*v).into()).collect()))
                 .collect(),
             creation_time,
+            attention_muted: self.attention.session_is_muted(),
         };
         self.bus
             .senders
@@ -7618,6 +7792,7 @@ impl Screen {
         if mode_info.session_name.as_ref() != Some(&self.session_name) {
             mode_info.session_name = Some(self.session_name.clone());
         }
+        mode_info.remote_client = self.client_location(client_id);
 
         // If we leave the Search-related modes, we need to clear all previous searches
         let search_related_modes = [InputMode::EnterSearch, InputMode::Search, InputMode::Scroll];
@@ -8628,6 +8803,45 @@ impl Screen {
             .or(reason_from_tabs)
             .unwrap_or(PaneNotCreatedReason::Unknown)
     }
+    fn apply_pty_bytes(&mut self, pid: u32, vte_bytes: VteBytes) -> Result<Option<VteBytes>> {
+        self.pane_output_activity
+            .insert(PaneId::Terminal(pid), Instant::now());
+        let mut vte_bytes = Some(vte_bytes);
+        let mut title_changed = false;
+        let mut answers_typed_input = false;
+        for tab in self.get_tabs_mut().values_mut() {
+            if tab.has_terminal_pid(pid) {
+                if let Some(bytes) = vte_bytes.take() {
+                    let title_before = tab
+                        .get_pane_with_id(PaneId::Terminal(pid))
+                        .map(|pane| pane.current_title());
+                    tab.handle_pty_bytes(pid, bytes)
+                        .context("failed to process pty bytes")?;
+                    let title_after = tab
+                        .get_pane_with_id(PaneId::Terminal(pid))
+                        .map(|pane| pane.current_title());
+                    title_changed = title_before != title_after;
+                    answers_typed_input = tab.output_answers_typed_input(pid, Instant::now());
+                }
+                break;
+            }
+        }
+        if title_changed {
+            self.generate_and_report_pane_state()
+                .map(|_| ())
+                .non_fatal();
+        }
+        if vte_bytes.is_none() {
+            self.attention_output(pid);
+        }
+        let render_request = if answers_typed_input {
+            BackgroundJob::RenderToClientsNow
+        } else {
+            BackgroundJob::RenderToClients
+        };
+        let _ = self.bus.senders.send_to_background_jobs(render_request);
+        Ok(vte_bytes)
+    }
     fn finish_pane_creation(
         &mut self,
         pid: PaneId,
@@ -8641,7 +8855,14 @@ impl Screen {
             }
             if let Some(pending_events) = pending_events_waiting_for_pane.remove(&pid) {
                 for event in pending_events {
-                    self.bus.senders.send_to_screen(event).non_fatal();
+                    match event {
+                        ScreenInstruction::PtyBytes(terminal_id, vte_bytes) => {
+                            self.apply_pty_bytes(terminal_id, vte_bytes).non_fatal();
+                        },
+                        event => {
+                            self.bus.senders.send_to_screen(event).non_fatal();
+                        },
+                    }
                 }
             }
         } else {
@@ -9406,6 +9627,9 @@ impl Screen {
         if let Some(default_shell) = default_shell {
             session_layout_metadata.update_default_shell(default_shell);
         }
+        if tab_index.is_none() {
+            session_layout_metadata.set_session_attention_muted(self.attention.session_is_muted());
+        }
         let first_client_id = self.get_first_client_id();
         let active_tab_index =
             first_client_id.and_then(|client_id| self.active_tab_ids.get(&client_id));
@@ -9490,6 +9714,10 @@ impl Screen {
                         default_bg,
                         p.border_style_override(),
                     )
+                    .with_attention_flags(
+                        self.attention.pane_is_muted(&pane_id.into()),
+                        self.attention.pane_ignores_output(&pane_id.into()),
+                    )
                 })
                 .collect();
             let floating_panes: Vec<PaneLayoutMetadata> = tab
@@ -9532,6 +9760,10 @@ impl Screen {
                         default_bg,
                         p.border_style_override(),
                     )
+                    .with_attention_flags(
+                        self.attention.pane_is_muted(&pane_id.into()),
+                        self.attention.pane_ignores_output(&pane_id.into()),
+                    )
                 })
                 .collect();
             session_layout_metadata.add_tab(
@@ -9541,6 +9773,8 @@ impl Screen {
                 tiled_panes,
                 floating_panes,
             );
+            session_layout_metadata
+                .set_last_tab_attention_muted(self.attention.tab_is_muted(tab.id));
         }
         session_layout_metadata
     }
@@ -9621,7 +9855,9 @@ impl Screen {
         // Search through all tabs to find the pane
         for tab in self.tabs.values() {
             if let Some(pane_info) = tab.get_pane_info(pane_id) {
-                return Some(pane_info);
+                let mut pane_infos = vec![pane_info];
+                self.decorate_pane_infos(&mut pane_infos);
+                return pane_infos.pop();
             }
         }
         None
@@ -9666,6 +9902,7 @@ impl Screen {
                     && !self.active_tab_ids.values().any(|i| i == &tab.id),
                 is_flashing_bell: tab.tab_bell_flash
                     && !self.active_tab_ids.values().any(|i| i == &tab.id),
+                attention: self.tab_attention(tab),
             }
         })
     }
@@ -10060,6 +10297,7 @@ pub(crate) fn screen_thread_main(
     debug: bool,
     default_layout: Box<Layout>,
     default_keybinds: SharedKeybinds,
+    session_id: String,
 ) -> Result<()> {
     // Resolve `theme_dark` / `theme_light` to concrete `Styling` from the
     // bundled themes BEFORE `config.options` is moved out below. These
@@ -10207,6 +10445,7 @@ pub(crate) fn screen_thread_main(
         web_server_ip,
         web_server_port,
         nested_session_handling,
+        session_id,
     );
     screen.default_keybinds = default_keybinds;
     screen.default_context_menu_config = config.context_menu.clone();
@@ -10219,6 +10458,32 @@ pub(crate) fn screen_thread_main(
     screen.update_grapheme_clusters(config_options.grapheme_clusters.unwrap_or(true));
     screen.on_quit = config_options.on_quit.unwrap_or_default();
     screen.set_host_notification_protocol(host_notification_protocol);
+    screen
+        .attention
+        .set_config(config.attention.clone(), crate::attention::now_ms());
+    if screen.default_layout.session_attention_muted {
+        screen
+            .attention
+            .set_session_muted(true, crate::attention::now_ms());
+    }
+    if let Some(session_name) = Some(screen.session_name.clone()).filter(|n| !n.is_empty()) {
+        let session_id = Some(screen.session_id.clone())
+            .filter(|id| !id.is_empty())
+            .unwrap_or_else(|| session_name.clone());
+        let previous_metadata = std::fs::read_to_string(
+            zellij_utils::consts::session_info_cache_file_name(&session_id),
+        )
+        .ok()
+        .and_then(|raw| SessionInfo::from_string(&raw, &session_name).ok());
+        if previous_metadata
+            .map(|m| m.attention_muted)
+            .unwrap_or(false)
+        {
+            screen
+                .attention
+                .set_session_muted(true, crate::attention::now_ms());
+        }
+    }
     if explicit_theme_hue.is_some() {
         screen
             .apply_configured_explicit_theme_hue(explicit_theme_hue)
@@ -10255,38 +10520,7 @@ pub(crate) fn screen_thread_main(
 
         match event {
             ScreenInstruction::PtyBytes(pid, vte_bytes) => {
-                screen
-                    .pane_output_activity
-                    .insert(PaneId::Terminal(pid), Instant::now());
-                let all_tabs = screen.get_tabs_mut();
-                let mut vte_bytes = Some(vte_bytes);
-                let mut title_changed = false;
-                let mut answers_typed_input = false;
-                for tab in all_tabs.values_mut() {
-                    if tab.has_terminal_pid(pid) {
-                        if let Some(bytes) = vte_bytes.take() {
-                            let title_before = tab
-                                .get_pane_with_id(PaneId::Terminal(pid))
-                                .map(|pane| pane.current_title());
-                            tab.handle_pty_bytes(pid, bytes)
-                                .context("failed to process pty bytes")?;
-                            let title_after = tab
-                                .get_pane_with_id(PaneId::Terminal(pid))
-                                .map(|pane| pane.current_title());
-                            title_changed = title_before != title_after;
-                            answers_typed_input =
-                                tab.output_answers_typed_input(pid, Instant::now());
-                        }
-                        break;
-                    }
-                }
-                if title_changed {
-                    screen
-                        .generate_and_report_pane_state()
-                        .map(|_| ())
-                        .non_fatal();
-                }
-                if let Some(vte_bytes) = vte_bytes {
+                if let Some(vte_bytes) = screen.apply_pty_bytes(pid, vte_bytes)? {
                     if !screen.pane_will_never_be_created(&PaneId::Terminal(pid)) {
                         pending_events_waiting_for_pane
                             .entry(PaneId::Terminal(pid))
@@ -10294,12 +10528,6 @@ pub(crate) fn screen_thread_main(
                             .push(ScreenInstruction::PtyBytes(pid, vte_bytes));
                     }
                 }
-                let render_request = if answers_typed_input {
-                    BackgroundJob::RenderToClientsNow
-                } else {
-                    BackgroundJob::RenderToClients
-                };
-                let _ = screen.bus.senders.send_to_background_jobs(render_request);
             },
             ScreenInstruction::PluginBytes(mut plugin_render_assets) => {
                 for plugin_render_asset in plugin_render_assets.iter_mut() {
@@ -10353,6 +10581,14 @@ pub(crate) fn screen_thread_main(
                 set_blocking,
             ) => {
                 completion_tx.as_mut().map(|c| c.set_affected_pane_id(pid));
+                let attention_command = match (&invoked_with, &hold_for_command, pid) {
+                    (Some(Run::Command(run_command)), None, PaneId::Terminal(terminal_id))
+                        if run_command.hold_on_close || run_command.notify =>
+                    {
+                        Some((terminal_id, run_command.to_string(), run_command.notify))
+                    },
+                    _ => None,
+                };
 
                 let (blocking_notification, mut completion_tx) = if set_blocking {
                     (completion_tx, None)
@@ -10529,6 +10765,12 @@ pub(crate) fn screen_thread_main(
                     &mut pending_events_waiting_for_pane,
                 );
                 drop(completion_tx);
+                if let Some((terminal_id, command, notify)) = attention_command {
+                    screen.attention_command_pane_started(terminal_id, Some(command));
+                    if notify {
+                        screen.arm_pane_watch(zellij_utils::data::PaneId::Terminal(terminal_id));
+                    }
+                }
                 screen.log_and_report_session_state()?;
 
                 screen.render(None)?;
@@ -11833,6 +12075,9 @@ pub(crate) fn screen_thread_main(
                         break;
                     }
                 }
+                if found {
+                    screen.attention_pane_exited(id, exit_status);
+                }
                 if !found && screen.pane_ids_never_created.remove(&id) {
                     pending_events_waiting_for_pane.remove(&id);
                 } else if !found {
@@ -12493,9 +12738,15 @@ pub(crate) fn screen_thread_main(
                 if screen.pending_session_card == Some(client_id) {
                     screen.pending_session_card = None;
                 }
+                screen.client_session_histories.remove(&client_id);
+                screen.last_session_history_infos.remove(&client_id);
+                screen.pending_session_card_away_since.remove(&client_id);
+                let was_attached = screen.connected_clients.borrow().contains_key(&client_id);
                 screen.remove_client(client_id).non_fatal();
-                screen.log_and_report_session_state().non_fatal();
-                screen.render(None).non_fatal();
+                if was_attached {
+                    screen.log_and_report_session_state().non_fatal();
+                    screen.render(None).non_fatal();
+                }
             },
             ScreenInstruction::UpdateSearch(
                 c,
@@ -12629,7 +12880,20 @@ pub(crate) fn screen_thread_main(
                 pane_id,
                 notifications,
             } => {
+                let shown: Vec<(String, String)> = notifications
+                    .iter()
+                    .filter(|n| {
+                        !matches!(
+                            n,
+                            crate::panes::grid::PendingNotification::Osc99 { display: None, .. }
+                        )
+                    })
+                    .map(|n| n.title_and_body())
+                    .collect();
                 screen.forward_desktop_notifications(notifications, pane_id);
+                for (title, body) in shown {
+                    screen.attention_notification(pane_id, title, body);
+                }
             },
             ScreenInstruction::PreviousSwapLayout(
                 client_id,
@@ -13786,7 +14050,9 @@ pub(crate) fn screen_thread_main(
                 let available_layouts = vec![];
 
                 let creation_time = {
-                    let sock_path = ZELLIJ_SOCK_DIR.join(&screen.session_name);
+                    // The socket is named by the stable session id, not the display name.
+                    let sock_path =
+                        zellij_utils::consts::session_id_socket_path(&screen.session_id);
                     std::fs::metadata(&sock_path)
                         .ok()
                         .and_then(|f| f.created().ok().or_else(|| f.modified().ok()))
@@ -13816,6 +14082,7 @@ pub(crate) fn screen_thread_main(
                         .map(|(k, v)| (*k, v.iter().map(|v| (*v).into()).collect()))
                         .collect(),
                     creation_time,
+                    attention_muted: screen.attention.session_is_muted(),
                 };
 
                 let session_layout_metadata = if screen.session_serialization {
@@ -13842,7 +14109,17 @@ pub(crate) fn screen_thread_main(
                 _completion_tx, // the action ends here, dropping this will release anything
                                 // waiting for it
             ) => {
-                if screen.peer_sessions_cache.contains_key(&name) {
+                if let Err(error_text) = zellij_utils::sessions::validate_session_name(&name) {
+                    log::error!("{}", error_text);
+                    if let Some(os_input) = &mut screen.bus.os_input {
+                        let _ = os_input.send_to_client(
+                            client_id,
+                            ServerToClientMsg::LogError {
+                                lines: vec![error_text],
+                            },
+                        );
+                    }
+                } else if screen.peer_sessions_cache.contains_key(&name) {
                     let error_text = "A session by this name already exists.";
                     log::error!("{}", error_text);
                     if let Some(os_input) = &mut screen.bus.os_input {
@@ -13879,24 +14156,11 @@ pub(crate) fn screen_thread_main(
                         tab.rename_session(name.clone()).with_context(err_context)?;
                     }
 
-                    // rename socket file
-                    let old_socket_file_path = ZELLIJ_SOCK_DIR.join(&old_session_name);
-                    let new_socket_file_path = ZELLIJ_SOCK_DIR.join(&name);
-                    if let Err(e) = std::fs::rename(old_socket_file_path, new_socket_file_path) {
-                        log::error!("Failed to rename ipc socket: {:?}", e);
-                    }
-
-                    // rename session_info folder (TODO: make this atomic, right now there is a
-                    // chance background_jobs will re-create this folder before it knows the
-                    // session was renamed)
-                    let old_session_info_folder =
-                        session_info_folder_for_session(&old_session_name);
-                    let new_session_info_folder = session_info_folder_for_session(&name);
-                    if let Err(e) =
-                        std::fs::rename(old_session_info_folder, new_session_info_folder)
-                    {
-                        log::error!("Failed to rename session_info folder: {:?}", e);
-                    }
+                    // Record the new name in the session index. Nothing on disk is
+                    // renamed: the socket/pipe and the session-info cache folder
+                    // are both named by the stable session id — which is what makes
+                    // rename work for Windows named pipes (they cannot be renamed).
+                    zellij_utils::sessions::rename_session(&screen.session_id, &name);
 
                     // report
                     screen
@@ -14601,7 +14865,17 @@ pub(crate) fn screen_thread_main(
             } => {
                 screen.open_context_menu_from_plugin(plugin_id, client_id, target, line, column);
             },
-            ScreenInstruction::OpenSessionCard(client_id) => {
+            ScreenInstruction::OpenSessionCard(client_id, away_since_ms) => {
+                match away_since_ms {
+                    Some(away_since_ms) => {
+                        screen
+                            .pending_session_card_away_since
+                            .insert(client_id, away_since_ms);
+                    },
+                    None => {
+                        screen.pending_session_card_away_since.remove(&client_id);
+                    },
+                }
                 screen.open_session_card(client_id);
             },
             ScreenInstruction::TerminalInputSubmitted(client_id) => {
@@ -14637,10 +14911,78 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::GetSessionPreview {
                 tab_index,
                 pane_id,
+                anchor,
                 response_channel,
             } => {
-                let preview = screen.session_preview(tab_index, pane_id);
+                let preview = screen.session_preview(tab_index, pane_id, anchor);
                 let _ = response_channel.send(preview);
+            },
+            ScreenInstruction::GetSessionAttention {
+                include_command_text,
+                response_channel,
+            } => {
+                let attention = screen.session_attention();
+                let attention = if include_command_text {
+                    attention
+                } else {
+                    attention.without_command_text()
+                };
+                let _ = response_channel.send(attention);
+            },
+            ScreenInstruction::GlobalAttentionUpdate(global) => {
+                screen.set_global_attention(global);
+            },
+            ScreenInstruction::ClientSessionHistory {
+                client_id,
+                history,
+                arrival,
+                arrived_from,
+            } => {
+                screen.set_client_session_history(client_id, history, arrival, arrived_from);
+            },
+            ScreenInstruction::UpdateClientSessionHistory { client_id, history } => {
+                screen.update_client_session_history(client_id, history);
+            },
+            ScreenInstruction::GoToNextAttention(client_id, mut completion) => {
+                if !screen.go_to_next_attention(client_id) {
+                    completion.as_mut().map(|c| {
+                        c.set_error_message("Nothing needs attention".to_owned());
+                        c.set_exit_status(2)
+                    });
+                }
+            },
+            ScreenInstruction::MarkPaneSeen {
+                session,
+                pane_id,
+                client_id,
+                mut completion,
+            } => {
+                if !screen.mark_pane_seen(session, pane_id, client_id) {
+                    completion.as_mut().map(|c| {
+                        c.set_error_message("Pane not found".to_owned());
+                        c.set_exit_status(2)
+                    });
+                }
+            },
+            ScreenInstruction::MarkAllSeen {
+                session,
+                this_session,
+                completion: _completion,
+            } => {
+                screen.mark_all_seen(session, this_session);
+            },
+            ScreenInstruction::SessionPaneCommand {
+                session_name,
+                command,
+                client_id,
+                mut completion,
+            } => {
+                if !screen.session_pane_command(session_name, command, client_id) {
+                    completion.as_mut().map(|c| {
+                        c.set_error_message("Pane not found".to_owned());
+                        c.set_exit_status(2)
+                    });
+                }
             },
             ScreenInstruction::OpenPluginPopup {
                 requesting_plugin_id,
@@ -15495,7 +15837,61 @@ pub(crate) fn screen_thread_main(
                     ServerInstruction::EmitNestedSessionFrameToClient(client_id, payload),
                 );
             },
+            ScreenInstruction::AttentionIdleCheck(pane_id) => {
+                screen.attention_idle_check(pane_id.into());
+            },
+            ScreenInstruction::AttentionForegroundChanged(pane_id, command) => {
+                screen.attention_foreground_changed(pane_id.into(), command);
+            },
+            ScreenInstruction::MutePane(pane_id, client_id, mut completion_tx) => {
+                if !screen.toggle_pane_mute(pane_id, client_id) {
+                    completion_tx.as_mut().map(|c| {
+                        c.set_error_message("Pane not found".to_owned());
+                        c.set_exit_status(2)
+                    });
+                }
+                screen.log_and_report_session_state().non_fatal();
+            },
+            ScreenInstruction::IgnorePaneOutput(pane_id, client_id, mut completion_tx) => {
+                if !screen.toggle_pane_ignore_output(pane_id, client_id) {
+                    completion_tx.as_mut().map(|c| {
+                        c.set_error_message("Pane not found".to_owned());
+                        c.set_exit_status(2)
+                    });
+                }
+                screen.log_and_report_session_state().non_fatal();
+            },
+            ScreenInstruction::WatchPane(pane_id, client_id, mut completion_tx) => {
+                if !screen.toggle_pane_watch(pane_id, client_id) {
+                    completion_tx.as_mut().map(|c| {
+                        c.set_error_message("Pane not found".to_owned());
+                        c.set_exit_status(2)
+                    });
+                }
+            },
+            ScreenInstruction::MuteTab(tab_id, client_id, mut completion_tx) => {
+                if !screen.toggle_tab_mute(tab_id, client_id) {
+                    completion_tx.as_mut().map(|c| {
+                        c.set_error_message("Tab not found".to_owned());
+                        c.set_exit_status(2)
+                    });
+                }
+                screen.log_and_report_session_state().non_fatal();
+            },
+            ScreenInstruction::MuteSession(_client_id, _completion_tx) => {
+                screen.toggle_session_mute();
+                screen.log_and_report_session_state().non_fatal();
+            },
+            ScreenInstruction::AttentionCommandPaneStarted(pane_id, command) => {
+                if let PaneId::Terminal(terminal_id) = pane_id {
+                    screen.attention_command_pane_started(terminal_id, command);
+                }
+            },
+            ScreenInstruction::SetAttentionConfig(config) => {
+                screen.reconfigure_attention(config);
+            },
         }
+        screen.process_attention();
     }
     Ok(())
 }

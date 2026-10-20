@@ -794,11 +794,6 @@ load_plugins {
 //
 // mouse_click_through true
 
-// Whether to show a card listing other relevant sessions when a new session starts
-// Default: true
-//
-// session_card false
-
 // Whether to show the other sessions indicator in the tab bar and compact bar
 // Default: true
 //

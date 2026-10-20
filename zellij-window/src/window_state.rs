@@ -165,7 +165,6 @@ impl Startup {
         }
     }
 
-    #[cfg(test)]
     pub fn windowed(rows: usize, cols: usize) -> Self {
         Startup {
             rows,
