@@ -99,12 +99,16 @@ pub enum BackgroundJob {
         session_name: String,
         tab_index: Option<usize>,
         pane_id: Option<(u32, bool)>,
+        anchor: Option<zellij_utils::data::PreviewAnchor>,
     },
+    PeerAttention(crate::attention::peers::PeerAttentionJob),
     SavedSessionPreview {
         plugin_id: PluginId,
         client_id: ClientId,
         session_name: String,
     },
+    AttentionIdleCheck(PaneId, u64),
+    ReportHostProgramStatus(Option<zellij_utils::attention::HostProgramStatus>),
     Exit,
 }
 
@@ -146,6 +150,11 @@ impl From<&BackgroundJob> for BackgroundJobContext {
             BackgroundJob::SessionSuggestions(..) => BackgroundJobContext::SessionSuggestions,
             BackgroundJob::SessionPreview { .. } => BackgroundJobContext::SessionPreview,
             BackgroundJob::SavedSessionPreview { .. } => BackgroundJobContext::SavedSessionPreview,
+            BackgroundJob::PeerAttention(..) => BackgroundJobContext::PeerAttention,
+            BackgroundJob::AttentionIdleCheck(..) => BackgroundJobContext::AttentionIdleCheck,
+            BackgroundJob::ReportHostProgramStatus(..) => {
+                BackgroundJobContext::ReportHostProgramStatus
+            },
             BackgroundJob::Exit => BackgroundJobContext::Exit,
         }
     }
@@ -169,6 +178,7 @@ static PLUGIN_ANIMATION_OFFSET_DURATION_MD: u64 = 500;
 static SESSION_METADATA_WRITE_INTERVAL_MS: u64 = 1000;
 static UPDATE_AND_REPORT_CWDS_INTERVAL_MS: u64 = 1000;
 static DEFAULT_SERIALIZATION_INTERVAL: u64 = 60000;
+const SESSION_SUGGESTIONS_EXIT_WAIT: Duration = Duration::from_secs(3);
 pub const RENDER_QUIET_PERIOD: Duration = Duration::from_millis(1);
 pub const RENDER_MAX_DELAY: Duration = Duration::from_millis(8);
 
@@ -299,6 +309,7 @@ fn spawn_render_scheduler(senders: crate::thread_bus::ThreadSenders) -> SharedRe
 
 static HELP_TEXT_DEBOUNCE_DURATION: u64 = 5000;
 static COMMAND_OUTPUT_FLASH_DURATION_MS: u64 = 400;
+static HOST_PROGRAM_STATUS_INTERVAL_MS: u64 = 500;
 
 #[derive(Clone)]
 pub struct SessionScanState {
@@ -319,6 +330,8 @@ pub(crate) fn background_jobs_main(
     serialization_interval: Option<u64>,
     disable_session_metadata: bool,
     web_server_base_url: String,
+    session_id: String,
+    live_sessions: crate::attention::peers::LiveSessions,
 ) -> Result<()> {
     let err_context = || "failed to write to pty".to_string();
     let mut running_jobs: HashMap<BackgroundJob, Instant> = HashMap::new();
@@ -338,8 +351,17 @@ pub(crate) fn background_jobs_main(
     let serialization_interval = serialization_interval.map(|s| s * 1000); // convert to
                                                                            // milliseconds
     let render_schedule = spawn_render_scheduler(bus.senders.clone());
-    let session_suggestions =
-        crate::session_suggestions::spawn_session_suggestions_service(bus.senders.clone());
+    let (session_suggestions, mut session_suggestions_thread) =
+        crate::session_suggestions::spawn_session_suggestions_service(
+            bus.senders.clone(),
+            live_sessions.clone(),
+        );
+    let peer_attention = crate::attention::peers::spawn_peer_attention_service(
+        bus.senders.clone(),
+        current_session_name.clone(),
+        live_sessions,
+        session_suggestions.clone(),
+    );
     let pending_help_text_clear: Arc<Mutex<HashMap<ClientId, Instant>>> =
         Arc::new(Mutex::new(HashMap::new()));
     let pending_command_output_flash_clear: Arc<Mutex<HashMap<PaneId, Instant>>> =
@@ -348,6 +370,14 @@ pub(crate) fn background_jobs_main(
     let mut flashing_tab_bells: HashMap<usize, Arc<AtomicBool>> = HashMap::new();
     let mut nested_guest_pings: HashMap<PaneId, Arc<AtomicBool>> = HashMap::new();
     let pending_allocator_trim: Arc<Mutex<Option<Instant>>> = Arc::new(Mutex::new(None));
+    let pending_attention_idle_checks: Arc<Mutex<HashMap<PaneId, Instant>>> =
+        Arc::new(Mutex::new(HashMap::new()));
+    let host_program_status: Arc<
+        Mutex<(
+            Option<Instant>,
+            Option<Option<zellij_utils::attention::HostProgramStatus>>,
+        )>,
+    > = Arc::new(Mutex::new((None, None)));
 
     let http_client = HttpClient::builder()
         // TODO: timeout?
@@ -390,10 +420,13 @@ pub(crate) fn background_jobs_main(
         });
     }
 
+    let session_metadata_writer_stopped = Arc::new(Mutex::new(false));
     if !disable_session_metadata {
         let current_session_name = current_session_name.clone();
         let current_session_info = current_session_info.clone();
         let current_session_layout = current_session_layout.clone();
+        let session_id = session_id.clone();
+        let stopped = session_metadata_writer_stopped.clone();
         runtime.spawn(async move {
             let mut ticker = tokio::time::interval(std::time::Duration::from_millis(
                 SESSION_METADATA_WRITE_INTERVAL_MS,
@@ -401,13 +434,23 @@ pub(crate) fn background_jobs_main(
             ticker.tick().await;
             loop {
                 ticker.tick().await;
-                let name = current_session_name.lock().unwrap().clone();
-                if name.is_empty() {
-                    continue;
+                let keep_running = {
+                    let stopped_guard = stopped.lock().unwrap();
+                    if *stopped_guard {
+                        false
+                    } else {
+                        let name = current_session_name.lock().unwrap().clone();
+                        if !name.is_empty() && !session_id.is_empty() {
+                            let info = current_session_info.lock().unwrap().clone();
+                            let layout = current_session_layout.lock().unwrap().clone();
+                            write_session_state_to_disk(session_id.clone(), info, layout);
+                        }
+                        true
+                    }
+                };
+                if !keep_running {
+                    return;
                 }
-                let info = current_session_info.lock().unwrap().clone();
-                let layout = current_session_layout.lock().unwrap().clone();
-                write_session_state_to_disk(name, info, layout);
             }
         });
     }
@@ -738,6 +781,100 @@ pub(crate) fn background_jobs_main(
                     });
                 }
             },
+            BackgroundJob::AttentionIdleCheck(pane_id, delay_ms) => {
+                let should_spawn = {
+                    let mut pending = pending_attention_idle_checks.lock().unwrap();
+                    let deadline = Instant::now() + Duration::from_millis(delay_ms);
+                    let should_spawn = !pending.contains_key(&pane_id);
+                    pending.insert(pane_id, deadline);
+                    should_spawn
+                };
+                if should_spawn {
+                    runtime.spawn({
+                        let senders = bus.senders.clone();
+                        let pending = pending_attention_idle_checks.clone();
+                        async move {
+                            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+                            loop {
+                                let next_sleep_duration = {
+                                    let mut pending = pending.lock().unwrap();
+                                    match pending.get(&pane_id) {
+                                        Some(&deadline) => {
+                                            let now = Instant::now();
+                                            if now >= deadline {
+                                                pending.remove(&pane_id);
+                                                None
+                                            } else {
+                                                Some(deadline.saturating_duration_since(now))
+                                            }
+                                        },
+                                        None => break,
+                                    }
+                                };
+                                match next_sleep_duration {
+                                    Some(duration) => {
+                                        tokio::time::sleep(duration).await;
+                                    },
+                                    None => {
+                                        let _ = senders.send_to_screen(
+                                            ScreenInstruction::AttentionIdleCheck(pane_id),
+                                        );
+                                        break;
+                                    },
+                                }
+                            }
+                        }
+                    });
+                }
+            },
+            BackgroundJob::ReportHostProgramStatus(status) => {
+                let interval = Duration::from_millis(HOST_PROGRAM_STATUS_INTERVAL_MS);
+                let send_now = {
+                    let mut state = host_program_status.lock().unwrap();
+                    let now = Instant::now();
+                    let can_send = state
+                        .0
+                        .map(|last| now.duration_since(last) >= interval)
+                        .unwrap_or(true);
+                    let task_pending = state.1.is_some();
+                    if can_send && !task_pending {
+                        state.0 = Some(now);
+                        Some(status)
+                    } else {
+                        let should_spawn = !task_pending;
+                        state.1 = Some(status);
+                        if should_spawn {
+                            let wait = state
+                                .0
+                                .map(|last| interval.saturating_sub(now.duration_since(last)))
+                                .unwrap_or_default();
+                            runtime.spawn({
+                                let senders = bus.senders.clone();
+                                let state = host_program_status.clone();
+                                async move {
+                                    tokio::time::sleep(wait).await;
+                                    let status = {
+                                        let mut state = state.lock().unwrap();
+                                        state.0 = Some(Instant::now());
+                                        state.1.take()
+                                    };
+                                    if let Some(status) = status {
+                                        let _ = senders.send_to_server(
+                                            ServerInstruction::HostProgramStatus(status),
+                                        );
+                                    }
+                                }
+                            });
+                        }
+                        None
+                    }
+                };
+                if let Some(status) = send_now {
+                    let _ = bus
+                        .senders
+                        .send_to_server(ServerInstruction::HostProgramStatus(status));
+                }
+            },
             BackgroundJob::ClearCommandOutputFlash { pane_id } => {
                 let should_spawn = {
                     let mut pending = pending_command_output_flash_clear.lock().unwrap();
@@ -919,20 +1056,36 @@ pub(crate) fn background_jobs_main(
             BackgroundJob::SessionSuggestions(job) => {
                 let _ = session_suggestions.send(job);
             },
+            BackgroundJob::PeerAttention(job) => {
+                let _ = peer_attention.send(job);
+            },
             BackgroundJob::SessionPreview {
                 plugin_id,
                 client_id,
                 session_name,
                 tab_index,
                 pane_id,
+                anchor,
             } => {
                 let senders = bus.senders.clone();
+                let is_current = *current_session_name.lock().unwrap() == session_name;
                 thread::spawn(move || {
-                    let preview = crate::session_previews::running_session_preview(
-                        &session_name,
-                        tab_index,
-                        pane_id,
-                    );
+                    let preview = if is_current {
+                        crate::session_previews::current_session_preview(
+                            &senders,
+                            &session_name,
+                            tab_index,
+                            pane_id,
+                            anchor,
+                        )
+                    } else {
+                        crate::session_previews::running_session_preview(
+                            &session_name,
+                            tab_index,
+                            pane_id,
+                            anchor,
+                        )
+                    };
                     let _ = senders.send_to_plugin(PluginInstruction::Update(vec![(
                         Some(plugin_id),
                         Some(client_id),
@@ -956,8 +1109,16 @@ pub(crate) fn background_jobs_main(
                 });
             },
             BackgroundJob::Exit => {
+                *session_metadata_writer_stopped.lock().unwrap() = true;
                 let _ = session_suggestions
                     .send(crate::session_suggestions::SessionSuggestionsJob::Exit);
+                if let Some(handle) = session_suggestions_thread.take() {
+                    crate::session_suggestions::join_with_deadline(
+                        handle,
+                        SESSION_SUGGESTIONS_EXIT_WAIT,
+                    );
+                }
+                let _ = peer_attention.send(crate::attention::peers::PeerAttentionJob::Exit);
                 {
                     let (lock, wake) = &*render_schedule;
                     lock.lock().unwrap().exiting = true;
@@ -970,9 +1131,12 @@ pub(crate) fn background_jobs_main(
                     nested_guest_ping.store(false, Ordering::SeqCst);
                 }
 
-                let cache_file_name =
-                    session_info_cache_file_name(&current_session_name.lock().unwrap().to_owned());
-                let _ = std::fs::remove_file(cache_file_name);
+                // Remove the metadata cache file (keyed by session id) so the
+                // session is no longer considered live; the layout file is kept
+                // for resurrection.
+                if !session_id.is_empty() {
+                    let _ = std::fs::remove_file(session_info_cache_file_name(&session_id));
+                }
                 return Ok(());
             },
         }
@@ -1009,31 +1173,29 @@ fn file_content_changed(path: &std::path::Path, new_content: &[u8]) -> bool {
 }
 
 pub fn write_session_state_to_disk(
-    current_session_name: String,
+    session_id: String,
     current_session_info: SessionInfo,
     current_session_layout: (String, BTreeMap<String, String>),
 ) {
-    let metadata_cache_file_name = session_info_cache_file_name(&current_session_name);
+    let metadata_cache_file_name = session_info_cache_file_name(&session_id);
     let (current_session_layout, layout_files_to_write) = current_session_layout;
     let new_metadata = current_session_info.to_string();
     if file_content_changed(&metadata_cache_file_name, new_metadata.as_bytes()) {
-        let _wrote_metadata_file = std::fs::create_dir_all(
-            session_info_folder_for_session(&current_session_name).as_path(),
-        )
-        .and_then(|_| std::fs::File::create(&metadata_cache_file_name))
-        .and_then(|mut f| write!(f, "{}", new_metadata));
+        let _wrote_metadata_file =
+            std::fs::create_dir_all(session_info_folder_for_session(&session_id).as_path())
+                .and_then(|_| std::fs::File::create(&metadata_cache_file_name))
+                .and_then(|mut f| write!(f, "{}", new_metadata));
     }
 
     if !current_session_layout.is_empty() {
-        let layout_cache_file_name = session_layout_cache_file_name(&current_session_name);
+        let layout_cache_file_name = session_layout_cache_file_name(&session_id);
         if file_content_changed(&layout_cache_file_name, current_session_layout.as_bytes()) {
-            let _wrote_layout_file = std::fs::create_dir_all(
-                session_info_folder_for_session(&current_session_name).as_path(),
-            )
-            .and_then(|_| std::fs::File::create(&layout_cache_file_name))
-            .and_then(|mut f| write!(f, "{}", current_session_layout));
+            let _wrote_layout_file =
+                std::fs::create_dir_all(session_info_folder_for_session(&session_id).as_path())
+                    .and_then(|_| std::fs::File::create(&layout_cache_file_name))
+                    .and_then(|mut f| write!(f, "{}", current_session_layout));
         }
-        let session_info_folder = session_info_folder_for_session(&current_session_name);
+        let session_info_folder = session_info_folder_for_session(&session_id);
         for (external_file_name, external_file_contents) in layout_files_to_write {
             let external_file_path = session_info_folder.join(&external_file_name);
             if file_content_changed(&external_file_path, external_file_contents.as_bytes()) {
@@ -1088,6 +1250,9 @@ fn find_resurrectable_sessions(
     session_infos_on_machine: &BTreeMap<String, SessionInfo>,
     session_info_cache_dir: &Path,
 ) -> BTreeMap<String, Duration> {
+    // Cache folders are keyed by session id; map each to its display name so we
+    // can compare against the (name-keyed) live set and report a readable name.
+    let names_by_id = zellij_utils::session_index::session_names_by_id();
     match fs::read_dir(session_info_cache_dir) {
         Ok(files_in_session_info_folder) => {
             let files_that_are_folders = files_in_session_info_folder
@@ -1095,7 +1260,11 @@ fn find_resurrectable_sessions(
                 .filter(|f| f.is_dir());
             files_that_are_folders
                 .filter_map(|folder_name| {
-                    let session_name = folder_name.file_name()?.to_str()?.to_owned();
+                    let id = folder_name.file_name()?.to_str()?.to_owned();
+                    if zellij_utils::consts::is_app_socket_name(&id) {
+                        return None;
+                    }
+                    let session_name = names_by_id.get(&id).cloned().unwrap_or_else(|| id.clone());
                     if session_infos_on_machine.contains_key(&session_name) {
                         // this is not a dead session...
                         return None;
@@ -1270,6 +1439,40 @@ mod tests {
         for name in ["live-a", "live-b", "live-c"] {
             assert!(!resurrectable.contains_key(name));
         }
+    }
+
+    #[test]
+    fn the_hidden_app_sessions_are_neither_live_nor_resurrectable() {
+        let sock_dir = tempdir().unwrap();
+        let info_dir = tempdir().unwrap();
+        let panel = zellij_utils::consts::APP_PANEL_SESSION;
+        let _panel = make_socket(sock_dir.path(), panel);
+        write_metadata(info_dir.path(), panel, &SessionInfo::new(panel.to_string()));
+        write_layout(info_dir.path(), panel);
+        write_layout(info_dir.path(), ".old-app-thing");
+        let _live = make_socket(sock_dir.path(), "visible");
+        write_metadata(
+            info_dir.path(),
+            "visible",
+            &SessionInfo::new("visible".to_string()),
+        );
+        write_layout(info_dir.path(), "exited");
+
+        let (live, resurrectable) = scan_session_list(
+            "me",
+            &[],
+            &BTreeMap::new(),
+            sock_dir.path(),
+            info_dir.path(),
+        );
+        assert_eq!(live.keys().collect::<Vec<_>>(), vec!["visible"]);
+        assert_eq!(resurrectable.keys().collect::<Vec<_>>(), vec!["exited"]);
+        let read = zellij_utils::sessions::read_live_session_states(
+            "me",
+            sock_dir.path(),
+            info_dir.path(),
+        );
+        assert_eq!(read.keys().collect::<Vec<_>>(), vec!["visible"]);
     }
 }
 

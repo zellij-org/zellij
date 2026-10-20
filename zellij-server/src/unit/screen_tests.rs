@@ -400,6 +400,7 @@ fn create_new_screen_with_capture(
         web_server_ip,
         web_server_port,
         NestedSessionHandling::default(),
+        "test-session-id".to_string(),
     );
     (
         seed_first_client_size(screen, size),
@@ -474,6 +475,7 @@ impl MockScreen {
                     debug,
                     Box::new(Layout::default()),
                     default_keybinds,
+                    "test-session-id".to_string(),
                 )
                 .expect("TEST")
             })
@@ -556,6 +558,7 @@ impl MockScreen {
                     false,
                     Box::new(Layout::default()),
                     default_keybinds,
+                    "test-session-id".to_string(),
                 )
                 .expect("TEST")
             })
@@ -594,6 +597,7 @@ impl MockScreen {
                     debug,
                     Box::new(Layout::default()),
                     default_keybinds,
+                    "test-session-id".to_string(),
                 )
                 .expect("TEST")
             })
@@ -770,6 +774,7 @@ impl MockScreen {
             applied_env: self.session_metadata.applied_env.clone(),
             sent_window_settings: self.session_metadata.sent_window_settings.clone(),
             font_families: self.session_metadata.font_families.clone(),
+            live_sessions: self.session_metadata.live_sessions.clone(),
             key_passthrough_clients: self.session_metadata.key_passthrough_clients.clone(),
             popup_clients: self.session_metadata.popup_clients.clone(),
             modal_popup_clients: self.session_metadata.modal_popup_clients.clone(),
@@ -832,6 +837,7 @@ impl MockScreen {
             applied_env: Default::default(),
             sent_window_settings: Default::default(),
             font_families: Default::default(),
+            live_sessions: Default::default(),
             key_passthrough_clients: Default::default(),
             popup_clients: Default::default(),
             modal_popup_clients: Default::default(),
@@ -3640,6 +3646,7 @@ pub fn send_cli_new_pane_action_with_default_parameters() {
         borderless: Some(false),
         tab_id: None,
         border_style: None,
+        notify: Default::default(),
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -3752,6 +3759,7 @@ pub fn send_cli_new_pane_action_with_split_direction() {
         borderless: Some(false),
         tab_id: None,
         border_style: None,
+        notify: Default::default(),
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -3809,6 +3817,7 @@ pub fn send_cli_new_pane_action_with_command_and_cwd() {
         borderless: Some(false),
         tab_id: None,
         border_style: None,
+        notify: Default::default(),
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -3877,6 +3886,7 @@ pub fn send_cli_new_pane_action_with_floating_pane_and_coordinates() {
         borderless: Some(false),
         tab_id: None,
         border_style: None,
+        notify: Default::default(),
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for actions to be
@@ -5785,6 +5795,7 @@ pub fn send_cli_new_pane_in_place_with_close_replaced_pane() {
         borderless: None,
         tab_id: None,
         border_style: None,
+        notify: Default::default(),
     };
     send_cli_action_to_server(&session_metadata, cli_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -5980,6 +5991,7 @@ fn create_new_screen_with_message_capture(
         web_server_ip,
         web_server_port,
         NestedSessionHandling::default(),
+        "test-session-id".to_string(),
     );
     (seed_first_client_size(screen, size), messages)
 }
@@ -8649,6 +8661,7 @@ pub fn send_cli_new_pane_action_with_tab_id() {
         borderless: Some(false),
         tab_id: Some(0),
         border_style: None,
+        notify: Default::default(),
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -8713,6 +8726,7 @@ pub fn send_cli_new_floating_pane_action_with_tab_id() {
         borderless: None,
         tab_id: Some(0),
         border_style: None,
+        notify: Default::default(),
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -8827,6 +8841,7 @@ pub fn send_cli_new_pane_action_with_tab_id_and_direction() {
         borderless: Some(false),
         tab_id: Some(0),
         border_style: None,
+        notify: Default::default(),
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -8890,6 +8905,7 @@ pub fn send_cli_new_pane_action_with_tab_id_and_stacked() {
         borderless: None,
         tab_id: Some(0),
         border_style: None,
+        notify: Default::default(),
     };
     send_cli_action_to_server(&session_metadata, cli_new_pane_action, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -9221,6 +9237,7 @@ fn create_new_screen_with_forward_capture(size: Size) -> (Screen, ForwardCapture
         web_server_ip,
         web_server_port,
         NestedSessionHandling::default(),
+        "test-session-id".to_string(),
     );
     (
         seed_first_client_size(screen, size),
@@ -10121,6 +10138,7 @@ fn create_new_screen_with_theme_capture(size: Size) -> (Screen, ThemeCapture) {
         web_server_ip,
         web_server_port,
         NestedSessionHandling::default(),
+        "test-session-id".to_string(),
     );
     (
         seed_first_client_size(screen, size),
@@ -10945,6 +10963,7 @@ fn create_non_mirrored_screen(size: Size) -> Screen {
         IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
         8080,
         NestedSessionHandling::default(),
+        "test-session-id".to_string(),
     );
     seed_first_client_size(screen, size)
 }
@@ -14686,6 +14705,98 @@ mod nested_hint_reporting {
                 _ => None,
             })
             .collect()
+    }
+
+    fn modal_shown(harness: &Harness) -> bool {
+        harness
+            .screen
+            .tabs
+            .values()
+            .any(|tab| tab.pane_has_guest_modal_for_client(PaneId::Terminal(1), 1))
+    }
+
+    fn announce_session(harness: &mut Harness, session_name: &str) {
+        harness.screen.handle_nested_session_message_from_pane(
+            PaneId::Terminal(1),
+            NestedSessionMessage::Announce {
+                session_name: session_name.to_owned(),
+                capabilities: vec![NestedSessionCapability::NestedControl],
+            },
+        );
+    }
+
+    #[test]
+    fn a_guest_switching_sessions_keeps_the_choice_and_shows_no_dialogue() {
+        let mut harness = Harness::new();
+        announce_session(&mut harness, "inner");
+        assert!(modal_shown(&harness));
+        harness.descend_into_guest();
+        assert!(!modal_shown(&harness));
+        let _ = harness.frames_written_to_guest();
+        announce_session(&mut harness, "other-inner");
+        assert!(!modal_shown(&harness));
+        assert!(
+            harness
+                .frames_written_to_guest()
+                .contains(&NestedSessionMessage::FocusGained {
+                    from_direction: None
+                }),
+            "the client of the new guest session must be told that it has control"
+        );
+        assert_eq!(
+            harness
+                .screen
+                .nested_guest_choices
+                .get(&(1, PaneId::Terminal(1))),
+            Some(&super::super::NestedGuestChoice::Descend)
+        );
+    }
+
+    #[test]
+    fn a_zoomed_guest_switching_sessions_is_told_it_is_still_fullscreen() {
+        let mut harness = Harness::new();
+        announce_session(&mut harness, "inner");
+        harness.screen.handle_guest_modal_choice(
+            1,
+            PaneId::Terminal(1),
+            super::super::GuestModalOutcome::Zoom,
+        );
+        let _ = harness.frames_written_to_guest();
+        announce_session(&mut harness, "other-inner");
+        let frames = harness.frames_written_to_guest();
+        assert!(
+            frames.contains(&NestedSessionMessage::FullscreenState { fullscreen: true }),
+            "{:?}",
+            frames
+        );
+        assert!(frames.contains(&NestedSessionMessage::FocusGained {
+            from_direction: None
+        }));
+    }
+
+    #[test]
+    fn a_reannouncing_guest_that_is_not_controlled_is_not_given_focus() {
+        let mut harness = Harness::new();
+        announce_session(&mut harness, "inner");
+        let _ = harness.frames_written_to_guest();
+        announce_session(&mut harness, "other-inner");
+        assert!(!harness
+            .frames_written_to_guest()
+            .iter()
+            .any(|frame| matches!(frame, NestedSessionMessage::FocusGained { .. })));
+    }
+
+    #[test]
+    fn a_guest_that_left_and_came_back_is_asked_again() {
+        let mut harness = Harness::new();
+        announce_session(&mut harness, "inner");
+        harness.descend_into_guest();
+        harness.screen.handle_nested_session_message_from_pane(
+            PaneId::Terminal(1),
+            NestedSessionMessage::Bye,
+        );
+        announce_session(&mut harness, "inner");
+        assert!(modal_shown(&harness));
     }
 
     #[test]
@@ -19100,12 +19211,12 @@ fn a_session_preview_shows_the_requested_pane_or_falls_back_to_the_focused_one()
         };
         tab.handle_pty_bytes(pid, text.as_bytes().to_vec()).unwrap();
     }
-    let preview = screen.session_preview(Some(0), Some((1, false)));
+    let preview = screen.session_preview(Some(0), Some((1, false)), None);
     assert!(preview.contents.contains("first pane text"));
     assert_eq!(preview.tab_index, Some(0));
-    let fallback = screen.session_preview(Some(1), Some((1, false)));
+    let fallback = screen.session_preview(Some(1), Some((1, false)), None);
     assert!(fallback.contents.contains("second pane text"));
-    let focused = screen.session_preview(None, None);
+    let focused = screen.session_preview(None, None, None);
     assert_eq!(focused.tab_names.len(), 2);
     assert_eq!(focused.tabs.len(), 2);
     assert_eq!(focused.tabs[0].panes.len(), 1);
@@ -19226,6 +19337,107 @@ fn cli_pane_renames_drop_control_characters() {
         tab.get_pane_with_id(pane_id).unwrap().current_title(),
         "a]0;evilbc\u{1F1E9}\u{1F1EA}"
     );
+}
+
+#[test]
+fn closing_a_pane_that_needs_you_updates_the_reported_session_attention() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    screen.render(None).expect("TEST");
+    let blocked = crate::attention::program_status::parse(
+        &[b"7501", b"state=blocked:kind=permission"],
+        false,
+    )
+    .expect("TEST");
+    for tab in screen.tabs.values_mut() {
+        if tab.has_terminal_pid(1) {
+            tab.pending_pane_signals.push((
+                PaneId::Terminal(1),
+                vec![crate::attention::PaneSignal::ProgramStatus(blocked.clone())],
+            ));
+        }
+    }
+    screen.process_attention();
+    let reported_pane_ids = |screen: &Screen| -> Vec<zellij_utils::data::PaneId> {
+        screen
+            .last_session_attention
+            .as_ref()
+            .map(|summary| summary.items.iter().map(|item| item.pane_id).collect())
+            .unwrap_or_default()
+    };
+    assert_eq!(
+        reported_pane_ids(&screen),
+        vec![zellij_utils::data::PaneId::Terminal(1)],
+        "precondition: the blocked pane is reported"
+    );
+    screen.switch_tab_prev(None, true, 1).expect("TEST");
+    screen.render(None).expect("TEST");
+    screen.process_attention();
+    screen.close_tab(1).expect("TEST");
+    screen.sync_attention_visibility();
+    assert!(screen.session_attention().items.is_empty());
+    assert_eq!(
+        reported_pane_ids(&screen),
+        Vec::<zellij_utils::data::PaneId>::new(),
+        "the session still reports the closed pane to peers and to its own global attention"
+    );
+}
+
+#[test]
+fn a_new_tab_does_not_inherit_the_mute_of_a_closed_tab() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size, true, true);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    let muted_tab_id = screen.get_active_tab(1).expect("TEST").id;
+    assert!(screen.toggle_tab_mute(None, 1));
+    assert!(screen.attention.tab_is_muted(muted_tab_id));
+    screen.close_tab(1).expect("TEST");
+    let new_tab_id = screen.get_new_tab_id();
+    assert_eq!(
+        new_tab_id, muted_tab_id,
+        "precondition: the tab id is reused"
+    );
+    new_tab(&mut screen, 3, new_tab_id);
+    screen.render(None).expect("TEST");
+    screen.process_attention();
+    let new_tab = screen.tabs.get(&new_tab_id).expect("TEST");
+    assert!(
+        !screen.tab_attention(new_tab).muted,
+        "a freshly opened tab is reported as muted"
+    );
+}
+
+#[test]
+fn a_session_preview_with_an_anchor_includes_lines_that_scrolled_off_the_pane() {
+    let (mut screen, _plugin_receiver) = screen_capturing_plugin_instructions();
+    let mut output = String::new();
+    for line in 0..60 {
+        output.push_str(&format!("history line {:03}\r\n", line));
+    }
+    for tab in screen.tabs.values_mut() {
+        tab.handle_pty_bytes(1, output.as_bytes().to_vec()).unwrap();
+    }
+    let screen_only = screen.session_preview(None, Some((1, false)), None);
+    assert!(screen_only.contents.contains("history line 059"));
+    assert!(!screen_only.contents.contains("history line 000"));
+    let with_history = screen.session_preview(
+        None,
+        Some((1, false)),
+        Some(zellij_utils::data::PreviewAnchor::Bottom),
+    );
+    assert!(with_history.contents.contains("history line 000"));
+    assert!(with_history.contents.contains("history line 059"));
+    assert_eq!(with_history.anchor_line, None);
+    assert_eq!(with_history.pane_id, Some((1, false)));
 }
 
 mod user_variable_tests {

@@ -684,6 +684,71 @@ impl TryFrom<ProtobufEvent> for Event {
                 },
                 _ => Err("Malformed payload for the ActionComplete Event"),
             },
+            Some(ProtobufEventType::GlobalAttentionUpdate) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::GlobalAttentionUpdatePayload(payload)) => {
+                    Ok(Event::GlobalAttentionUpdate(payload.try_into()?))
+                },
+                _ => Err("Malformed payload for the GlobalAttentionUpdate Event"),
+            },
+            Some(ProtobufEventType::SessionHistoryUpdate) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::SessionHistoryUpdatePayload(payload)) => {
+                    Ok(Event::SessionHistoryUpdate(payload.into()))
+                },
+                _ => Err("Malformed payload for the SessionHistoryUpdate Event"),
+            },
+            Some(ProtobufEventType::PaneAttentionChanged) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::PaneAttentionChangedPayload(payload)) => {
+                    let pane_id: PaneId = payload
+                        .pane_id
+                        .ok_or("Missing pane_id in PaneAttentionChanged payload")?
+                        .try_into()
+                        .map_err(|_| "Failed to convert PaneId in PaneAttentionChanged payload")?;
+                    Ok(Event::PaneAttentionChanged(
+                        pane_id,
+                        payload.attention.map(|a| a.into()).unwrap_or_default(),
+                    ))
+                },
+                _ => Err("Malformed payload for the PaneAttentionChanged Event"),
+            },
+            Some(ProtobufEventType::PromptShown) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::PromptShownPayload(payload)) => {
+                    let pane_id: PaneId = payload
+                        .pane_id
+                        .ok_or("Missing pane_id in PromptShown payload")?
+                        .try_into()
+                        .map_err(|_| "Failed to convert PaneId in PromptShown payload")?;
+                    Ok(Event::PromptShown(pane_id))
+                },
+                _ => Err("Malformed payload for the PromptShown Event"),
+            },
+            Some(ProtobufEventType::CommandStarted) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::CommandStartedPayload(payload)) => {
+                    let pane_id: PaneId = payload
+                        .pane_id
+                        .ok_or("Missing pane_id in CommandStarted payload")?
+                        .try_into()
+                        .map_err(|_| "Failed to convert PaneId in CommandStarted payload")?;
+                    Ok(Event::CommandStarted(
+                        pane_id,
+                        payload.command.map(|c| c.into()),
+                    ))
+                },
+                _ => Err("Malformed payload for the CommandStarted Event"),
+            },
+            Some(ProtobufEventType::CommandFinished) => match protobuf_event.payload {
+                Some(ProtobufEventPayload::CommandFinishedPayload(payload)) => {
+                    let pane_id: PaneId = payload
+                        .pane_id
+                        .ok_or("Missing pane_id in CommandFinished payload")?
+                        .try_into()
+                        .map_err(|_| "Failed to convert PaneId in CommandFinished payload")?;
+                    let outcome = payload
+                        .outcome
+                        .ok_or("Missing outcome in CommandFinished payload")?;
+                    Ok(Event::CommandFinished(pane_id, outcome.into()))
+                },
+                _ => Err("Malformed payload for the CommandFinished Event"),
+            },
             Some(ProtobufEventType::CwdChanged) => match protobuf_event.payload {
                 Some(ProtobufEventPayload::CwdChangedPayload(protobuf_payload)) => {
                     let pane_id: PaneId = protobuf_payload
@@ -823,6 +888,7 @@ impl TryFrom<ProtobufEvent> for Event {
                             entries.push(ContextMenuEntry::Item {
                                 label: entry.label,
                                 actions,
+                                toggled_label: entry.toggled_label,
                             });
                         }
                     }
@@ -1419,6 +1485,61 @@ impl TryFrom<Event> for ProtobufEvent {
                     )),
                 })
             },
+            Event::GlobalAttentionUpdate(global) => Ok(ProtobufEvent {
+                name: ProtobufEventType::GlobalAttentionUpdate as i32,
+                payload: Some(event::Payload::GlobalAttentionUpdatePayload(
+                    global.try_into()?,
+                )),
+            }),
+            Event::SessionHistoryUpdate(info) => Ok(ProtobufEvent {
+                name: ProtobufEventType::SessionHistoryUpdate as i32,
+                payload: Some(event::Payload::SessionHistoryUpdatePayload(info.into())),
+            }),
+            Event::PaneAttentionChanged(pane_id, attention) => {
+                let protobuf_pane_id: ProtobufPaneId = pane_id.try_into()?;
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::PaneAttentionChanged as i32,
+                    payload: Some(event::Payload::PaneAttentionChangedPayload(
+                        PaneAttentionChangedPayload {
+                            pane_id: Some(protobuf_pane_id),
+                            attention: Some(attention.into()),
+                        },
+                    )),
+                })
+            },
+            Event::PromptShown(pane_id) => {
+                let protobuf_pane_id: ProtobufPaneId = pane_id.try_into()?;
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::PromptShown as i32,
+                    payload: Some(event::Payload::PromptShownPayload(PromptShownPayload {
+                        pane_id: Some(protobuf_pane_id),
+                    })),
+                })
+            },
+            Event::CommandStarted(pane_id, command) => {
+                let protobuf_pane_id: ProtobufPaneId = pane_id.try_into()?;
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::CommandStarted as i32,
+                    payload: Some(event::Payload::CommandStartedPayload(
+                        CommandStartedPayload {
+                            pane_id: Some(protobuf_pane_id),
+                            command: command.map(|c| c.into()),
+                        },
+                    )),
+                })
+            },
+            Event::CommandFinished(pane_id, outcome) => {
+                let protobuf_pane_id: ProtobufPaneId = pane_id.try_into()?;
+                Ok(ProtobufEvent {
+                    name: ProtobufEventType::CommandFinished as i32,
+                    payload: Some(event::Payload::CommandFinishedPayload(
+                        CommandFinishedPayload {
+                            pane_id: Some(protobuf_pane_id),
+                            outcome: Some(outcome.into()),
+                        },
+                    )),
+                })
+            },
             Event::CwdChanged(pane_id, new_cwd, focused_client_ids) => {
                 let protobuf_pane_id: ProtobufPaneId = pane_id.try_into()?;
                 let new_cwd_string = new_cwd
@@ -1621,9 +1742,14 @@ impl TryFrom<Event> for ProtobufEvent {
                                 is_separator: true,
                                 label: String::new(),
                                 actions: vec![],
+                                toggled_label: None,
                             });
                         },
-                        ContextMenuEntry::Item { label, actions } => {
+                        ContextMenuEntry::Item {
+                            label,
+                            actions,
+                            toggled_label,
+                        } => {
                             let mut protobuf_actions = vec![];
                             for action in actions {
                                 protobuf_actions.push(ProtobufContextMenuAction::try_from(action)?);
@@ -1632,6 +1758,7 @@ impl TryFrom<Event> for ProtobufEvent {
                                 is_separator: false,
                                 label,
                                 actions: protobuf_actions,
+                                toggled_label,
                             });
                         },
                     }
@@ -1733,6 +1860,7 @@ impl TryFrom<SessionInfo> for ProtobufSessionManifest {
                 .map(|p| ProtobufClientPaneHistory::from(p))
                 .collect(),
             creation_time: session_info.creation_time.as_secs(),
+            attention_muted: session_info.attention_muted,
         })
     }
 }
@@ -1844,6 +1972,7 @@ impl TryFrom<ProtobufSessionManifest> for SessionInfo {
             tab_history,
             pane_history,
             creation_time: Duration::from_secs(protobuf_session_manifest.creation_time),
+            attention_muted: protobuf_session_manifest.attention_muted,
         })
     }
 }
@@ -2312,6 +2441,19 @@ impl TryFrom<ProtobufPaneInfo> for PaneInfo {
             default_fg: protobuf_pane_info.default_fg,
             default_bg: protobuf_pane_info.default_bg,
             nested_session_name: protobuf_pane_info.nested_session_name,
+            attention: protobuf_pane_info
+                .attention
+                .map(|a| a.into())
+                .unwrap_or_default(),
+            command_state: protobuf_pane_info
+                .command_state
+                .map(|c| c.into())
+                .unwrap_or_default(),
+            program_status: protobuf_pane_info
+                .program_status
+                .into_iter()
+                .map(|r| r.into())
+                .collect(),
         })
     }
 }
@@ -2359,6 +2501,13 @@ impl TryFrom<PaneInfo> for ProtobufPaneInfo {
             default_fg: pane_info.default_fg,
             default_bg: pane_info.default_bg,
             nested_session_name: pane_info.nested_session_name,
+            attention: Some(pane_info.attention.into()),
+            command_state: Some(pane_info.command_state.into()),
+            program_status: pane_info
+                .program_status
+                .into_iter()
+                .map(|r| r.into())
+                .collect(),
         })
     }
 }
@@ -2396,6 +2545,10 @@ impl TryFrom<ProtobufTabInfo> for TabInfo {
             tab_id: protobuf_tab_info.tab_id as usize,
             has_bell_notification: protobuf_tab_info.has_bell_notification,
             is_flashing_bell: protobuf_tab_info.is_flashing_bell,
+            attention: protobuf_tab_info
+                .attention
+                .map(|a| a.into())
+                .unwrap_or_default(),
         })
     }
 }
@@ -2432,6 +2585,7 @@ impl TryFrom<TabInfo> for ProtobufTabInfo {
             tab_id: tab_info.tab_id as u32,
             has_bell_notification: tab_info.has_bell_notification,
             is_flashing_bell: tab_info.is_flashing_bell,
+            attention: Some(tab_info.attention.into()),
         })
     }
 }
@@ -2531,6 +2685,7 @@ impl TryFrom<ProtobufModeUpdatePayload> for ModeInfo {
             nested_ascend_keys,
             session_ascended,
             nested_descend_keys,
+            remote_client: protobuf_mode_update_payload.remote_client,
         };
         Ok(mode_info)
     }
@@ -2573,6 +2728,7 @@ impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
             .iter()
             .map(|key| key.to_kdl())
             .collect();
+        let remote_client = mode_info.remote_client;
         let protobuf_input_mode_keybinds = keybinds_to_protobuf(mode_info.keybinds);
         Ok(ProtobufModeUpdatePayload {
             current_mode: current_mode as i32,
@@ -2597,6 +2753,7 @@ impl TryFrom<ModeInfo> for ProtobufModeUpdatePayload {
             nested_ascend_keys,
             session_ascended,
             nested_descend_keys,
+            remote_client,
         })
     }
 }
@@ -2674,6 +2831,12 @@ impl TryFrom<ProtobufEventType> for EventType {
             ProtobufEventType::UserAction => EventType::UserAction,
             ProtobufEventType::ActionComplete => EventType::ActionComplete,
             ProtobufEventType::CwdChanged => EventType::CwdChanged,
+            ProtobufEventType::PaneAttentionChanged => EventType::PaneAttentionChanged,
+            ProtobufEventType::PromptShown => EventType::PromptShown,
+            ProtobufEventType::CommandStarted => EventType::CommandStarted,
+            ProtobufEventType::CommandFinished => EventType::CommandFinished,
+            ProtobufEventType::GlobalAttentionUpdate => EventType::GlobalAttentionUpdate,
+            ProtobufEventType::SessionHistoryUpdate => EventType::SessionHistoryUpdate,
             ProtobufEventType::CommandChanged => EventType::CommandChanged,
             ProtobufEventType::AvailableLayoutInfo => EventType::AvailableLayoutInfo,
             ProtobufEventType::PluginConfigurationChanged => EventType::PluginConfigurationChanged,
@@ -2745,6 +2908,12 @@ impl TryFrom<EventType> for ProtobufEventType {
             EventType::UserAction => ProtobufEventType::UserAction,
             EventType::ActionComplete => ProtobufEventType::ActionComplete,
             EventType::CwdChanged => ProtobufEventType::CwdChanged,
+            EventType::PaneAttentionChanged => ProtobufEventType::PaneAttentionChanged,
+            EventType::PromptShown => ProtobufEventType::PromptShown,
+            EventType::CommandStarted => ProtobufEventType::CommandStarted,
+            EventType::CommandFinished => ProtobufEventType::CommandFinished,
+            EventType::GlobalAttentionUpdate => ProtobufEventType::GlobalAttentionUpdate,
+            EventType::SessionHistoryUpdate => ProtobufEventType::SessionHistoryUpdate,
             EventType::CommandChanged => ProtobufEventType::CommandChanged,
             EventType::AvailableLayoutInfo => ProtobufEventType::AvailableLayoutInfo,
             EventType::PluginConfigurationChanged => ProtobufEventType::PluginConfigurationChanged,
@@ -2989,6 +3158,7 @@ fn serialize_mode_update_event_with_non_default_values() {
             KeyWithModifier::new(BareKey::Char('o')).with_ctrl_modifier(),
             KeyWithModifier::new(BareKey::Down),
         ],
+        remote_client: Some("over SSH from 192.168.1.5".to_owned()),
     });
     let protobuf_event: ProtobufEvent = mode_update_event.clone().try_into().unwrap();
     let serialized_protobuf_event = protobuf_event.encode_to_vec();
@@ -3041,6 +3211,7 @@ fn serialize_tab_update_event_with_non_default_values() {
             tab_id: 0,
             has_bell_notification: false,
             is_flashing_bell: false,
+            attention: Default::default(),
         },
         TabInfo {
             position: 1,
@@ -3063,6 +3234,7 @@ fn serialize_tab_update_event_with_non_default_values() {
             tab_id: 1,
             has_bell_notification: false,
             is_flashing_bell: false,
+            attention: Default::default(),
         },
         TabInfo::default(),
     ]);
@@ -3389,6 +3561,7 @@ fn serialize_session_update_event_with_non_default_values() {
             tab_id: 0,
             has_bell_notification: false,
             is_flashing_bell: false,
+            attention: Default::default(),
         },
         TabInfo {
             position: 1,
@@ -3411,6 +3584,7 @@ fn serialize_session_update_event_with_non_default_values() {
             tab_id: 1,
             has_bell_notification: false,
             is_flashing_bell: false,
+            attention: Default::default(),
         },
         TabInfo::default(),
     ];
@@ -3452,6 +3626,9 @@ fn serialize_session_update_event_with_non_default_values() {
             default_fg: None,
             default_bg: None,
             nested_session_name: None,
+            attention: Default::default(),
+            command_state: Default::default(),
+            program_status: Default::default(),
         },
         PaneInfo {
             id: 1,
@@ -3481,6 +3658,9 @@ fn serialize_session_update_event_with_non_default_values() {
             default_fg: None,
             default_bg: None,
             nested_session_name: None,
+            attention: Default::default(),
+            command_state: Default::default(),
+            program_status: Default::default(),
         },
     ];
     panes.insert(0, panes_list);
@@ -3528,6 +3708,7 @@ fn serialize_session_update_event_with_non_default_values() {
         tab_history,
         pane_history: Default::default(),
         creation_time: Duration::from_secs(100),
+        attention_muted: Default::default(),
     };
     let session_info_2 = SessionInfo {
         name: "session 2".to_owned(),
@@ -3562,6 +3743,7 @@ fn serialize_session_update_event_with_non_default_values() {
         tab_history: Default::default(),
         pane_history: Default::default(),
         creation_time: Duration::from_secs(200),
+        attention_muted: Default::default(),
     };
     let session_infos = vec![session_info_1, session_info_2];
     let resurrectable_sessions = vec![];
@@ -4286,6 +4468,11 @@ impl TryFrom<ProtobufContextMenuAction> for ContextMenuAction {
                         ClickedPaneAction::ToggleInGroup
                     },
                     Ok(ProtobufClickedPaneAction::StartRename) => ClickedPaneAction::StartRename,
+                    Ok(ProtobufClickedPaneAction::ToggleMute) => ClickedPaneAction::ToggleMute,
+                    Ok(ProtobufClickedPaneAction::ToggleIgnoreOutput) => {
+                        ClickedPaneAction::ToggleIgnoreOutput
+                    },
+                    Ok(ProtobufClickedPaneAction::ToggleWatch) => ClickedPaneAction::ToggleWatch,
                     Err(_) => return Err("Unknown clicked pane action in a context menu entry"),
                 };
                 Ok(ContextMenuAction::ClickedPane(action))
@@ -4300,6 +4487,7 @@ impl TryFrom<ProtobufContextMenuAction> for ContextMenuAction {
                     Ok(ProtobufClickedTabAction::MoveRight) => {
                         ClickedTabAction::Move(Direction::Right)
                     },
+                    Ok(ProtobufClickedTabAction::Mute) => ClickedTabAction::Mute,
                     Err(_) => return Err("Unknown clicked tab action in a context menu entry"),
                 };
                 Ok(ContextMenuAction::ClickedTab(action))
@@ -4331,6 +4519,11 @@ impl TryFrom<ContextMenuAction> for ProtobufContextMenuAction {
                     ClickedPaneAction::TogglePinned => ProtobufClickedPaneAction::TogglePinned,
                     ClickedPaneAction::ToggleInGroup => ProtobufClickedPaneAction::ToggleInGroup,
                     ClickedPaneAction::StartRename => ProtobufClickedPaneAction::StartRename,
+                    ClickedPaneAction::ToggleMute => ProtobufClickedPaneAction::ToggleMute,
+                    ClickedPaneAction::ToggleIgnoreOutput => {
+                        ProtobufClickedPaneAction::ToggleIgnoreOutput
+                    },
+                    ClickedPaneAction::ToggleWatch => ProtobufClickedPaneAction::ToggleWatch,
                 };
                 ProtobufContextMenuActionKind::ClickedPane(action as i32)
             },
@@ -4343,6 +4536,7 @@ impl TryFrom<ContextMenuAction> for ProtobufContextMenuAction {
                     ClickedTabAction::StartRename => ProtobufClickedTabAction::StartRename,
                     ClickedTabAction::Move(Direction::Left) => ProtobufClickedTabAction::MoveLeft,
                     ClickedTabAction::Move(Direction::Right) => ProtobufClickedTabAction::MoveRight,
+                    ClickedTabAction::Mute => ProtobufClickedTabAction::Mute,
                     ClickedTabAction::Move(_) => {
                         return Err("Tabs can only be moved left or right")
                     },
@@ -4474,6 +4668,109 @@ mod context_menu_tests {
         let decoded = Event::try_from(protobuf).unwrap();
         assert_eq!(original, decoded);
     }
+
+    #[test]
+    fn a_context_menu_item_keeps_its_alternate_label() {
+        let context = ContextMenuContext {
+            kind: ContextMenuKind::Pane,
+            pane_id: Some(PaneId::Terminal(1)),
+            pane_is_floating: false,
+            tab_index: Some(0),
+            tab_id: Some(0),
+            tab_count: 1,
+            line: 3,
+            column: 4,
+            client_id: 1,
+        };
+        let entries = vec![ContextMenuEntry::Item {
+            label: "Watch this pane".to_owned(),
+            actions: vec![ContextMenuAction::ClickedPane(
+                ClickedPaneAction::ToggleWatch,
+            )],
+            toggled_label: Some("Stop watching".to_owned()),
+        }];
+        let original = Event::ContextMenu(context, entries);
+        let protobuf = ProtobufEvent::try_from(original.clone()).unwrap();
+        let decoded = Event::try_from(protobuf).unwrap();
+        assert_eq!(original, decoded);
+    }
+}
+
+#[cfg(test)]
+mod attention_event_tests {
+    use super::*;
+    use crate::attention::{
+        AttentionStatus, CommandOutcome, CommandResult, CommandText, CommandTextSource,
+        PaneAttention,
+    };
+    use prost::Message;
+
+    fn round_trip(event: Event) {
+        let protobuf = ProtobufEvent::try_from(event.clone()).unwrap();
+        let bytes = protobuf.encode_to_vec();
+        let decoded: ProtobufEvent = Message::decode(bytes.as_slice()).unwrap();
+        assert_eq!(Event::try_from(decoded).unwrap(), event);
+    }
+
+    #[test]
+    fn a_muted_session_is_reported_to_plugins() {
+        let session = SessionInfo {
+            name: "muted".to_owned(),
+            attention_muted: true,
+            ..Default::default()
+        };
+        round_trip(Event::SessionUpdate(vec![session], vec![]));
+    }
+
+    #[test]
+    fn pane_attention_changed_round_trips() {
+        round_trip(Event::PaneAttentionChanged(
+            PaneId::Terminal(3),
+            PaneAttention {
+                status: AttentionStatus::Failed,
+                text: "exited 1".to_owned(),
+                since_ms: 2,
+                changed_ms: 3,
+                ..Default::default()
+            },
+        ));
+    }
+
+    #[test]
+    fn prompt_shown_round_trips() {
+        round_trip(Event::PromptShown(PaneId::Terminal(5)));
+        round_trip(Event::PromptShown(PaneId::Plugin(2)));
+    }
+
+    #[test]
+    fn command_started_round_trips() {
+        round_trip(Event::CommandStarted(PaneId::Terminal(1), None));
+        round_trip(Event::CommandStarted(
+            PaneId::Terminal(1),
+            Some(CommandText {
+                text: "cargo build".to_owned(),
+                source: CommandTextSource::Shell,
+            }),
+        ));
+    }
+
+    #[test]
+    fn command_finished_round_trips() {
+        round_trip(Event::CommandFinished(
+            PaneId::Terminal(4),
+            CommandOutcome {
+                result: CommandResult::Failed,
+                exit_code: Some(1),
+                err: None,
+                duration_ms: Some(1500),
+                ended_ms: 9,
+                command: Some(CommandText {
+                    text: "make".to_owned(),
+                    source: CommandTextSource::Shell,
+                }),
+            },
+        ));
+    }
 }
 
 mod session_suggestion_conversions {
@@ -4598,6 +4895,8 @@ mod session_suggestion_conversions {
                 suggestions: s.suggestions.into_iter().map(Into::into).collect(),
                 command_submitted: s.command_submitted,
                 from_script: s.from_script,
+                desktop_app_running: s.desktop_app_running,
+                desktop_window_sessions: s.desktop_window_sessions,
             }
         }
     }
@@ -4618,6 +4917,8 @@ mod session_suggestion_conversions {
                 suggestions: s.suggestions.into_iter().map(Into::into).collect(),
                 command_submitted: s.command_submitted,
                 from_script: s.from_script,
+                desktop_app_running: s.desktop_app_running,
+                desktop_window_sessions: s.desktop_window_sessions,
             }
         }
     }
@@ -4692,6 +4993,9 @@ mod session_suggestion_conversions {
                             .collect(),
                     })
                     .collect(),
+                pane_id: p.pane_id.map(|(id, _)| id),
+                pane_is_plugin: p.pane_id.map(|(_, is_plugin)| is_plugin).unwrap_or(false),
+                anchor_line: p.anchor_line.map(|l| l as u32),
             }
         }
     }
@@ -4726,6 +5030,8 @@ mod session_suggestion_conversions {
                             .collect(),
                     })
                     .collect(),
+                pane_id: p.pane_id.map(|id| (id, p.pane_is_plugin)),
+                anchor_line: p.anchor_line.map(|l| l as usize),
             }
         }
     }
@@ -4839,6 +5145,8 @@ mod session_suggestion_conversions {
                 }],
                 command_submitted: true,
                 from_script: false,
+                desktop_app_running: true,
+                desktop_window_sessions: vec!["api".to_owned()],
             }));
             round_trip(Event::SessionCountsUpdate(SessionCounts {
                 running: 2,
@@ -4871,6 +5179,8 @@ mod session_suggestion_conversions {
                         contents: Some("$ ls".to_owned()),
                     }],
                 }],
+                pane_id: Some((1, false)),
+                anchor_line: Some(4),
             }));
             round_trip(Event::SavedSessionPreview(SavedSessionPreview {
                 session_name: "s".to_owned(),

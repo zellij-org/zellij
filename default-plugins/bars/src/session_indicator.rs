@@ -28,18 +28,24 @@ impl PanelSize {
 
 #[derive(Debug, Clone, Default)]
 pub struct SessionIndicator {
-    pub counts: SessionCounts,
-    pub counts_received: bool,
-    pub folder_sessions: Option<FolderSessions>,
+    pub global: Option<GlobalAttention>,
+    pub enabled: bool,
     pub panel_size: PanelSize,
     pub manager_plugin_id: Option<u32>,
     pub hovered: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IndicatorColor {
+    Level(usize),
+    Error,
+    Success,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IndicatorText {
     pub text: String,
-    pub emphasis: Option<(usize, std::ops::Range<usize>)>,
+    pub emphasis: Option<(IndicatorColor, std::ops::Range<usize>)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -55,37 +61,108 @@ fn plain(text: String) -> IndicatorText {
     }
 }
 
-fn running_text(running: u32, full_matches: usize, suffix: &str) -> IndicatorText {
-    let count = running.to_string();
-    if full_matches == 0 {
-        return plain(format!("{}{}", count, suffix));
+fn status_color(status: AttentionStatus) -> IndicatorColor {
+    match status {
+        AttentionStatus::NeedsYou => IndicatorColor::Level(0),
+        AttentionStatus::Failed => IndicatorColor::Error,
+        AttentionStatus::Done => IndicatorColor::Success,
+        _ => IndicatorColor::Level(1),
     }
-    let full = full_matches.to_string();
-    let start = count.chars().count() + 1;
-    let end = start + full.chars().count();
-    IndicatorText {
-        text: format!("{}/{}{}", count, full, suffix),
-        emphasis: Some((2, start..end)),
+}
+
+fn status_words(status: AttentionStatus) -> &'static str {
+    match status {
+        AttentionStatus::NeedsYou => "need you",
+        AttentionStatus::Failed => "failed",
+        AttentionStatus::Done => "done",
+        AttentionStatus::Working => "working",
+        _ => "",
+    }
+}
+
+pub fn watch_results(global: &GlobalAttention) -> usize {
+    global
+        .items
+        .iter()
+        .filter(|item| item.item.attention.from_watch && !item.is_muted())
+        .count()
+}
+
+fn watch_variants(count: usize, running: usize, simplified_ui: bool) -> Vec<IndicatorText> {
+    let symbol = if simplified_ui { "@" } else { "◉" };
+    let head = format!("{} {}", symbol, count);
+    let head_len = head.chars().count();
+    let words = if count == 1 {
+        "watch alert"
+    } else {
+        "watch alerts"
+    };
+    let colored = |text: String, end: usize| IndicatorText {
+        text,
+        emphasis: Some((IndicatorColor::Level(1), 0..end)),
+    };
+    vec![
+        colored(
+            format!("{} {} · {} running", head, words, running),
+            head_len + 1 + words.chars().count(),
+        ),
+        colored(
+            format!("{} {}", head, words),
+            head_len + 1 + words.chars().count(),
+        ),
+        colored(format!("{} · {}", head, running), head_len),
+        colored(head.clone(), head_len),
+        colored(symbol.to_owned(), symbol.chars().count()),
+    ]
+}
+
+pub fn indicator_variants(
+    top: Option<(AttentionStatus, usize)>,
+    watch_results: usize,
+    running: usize,
+    simplified_ui: bool,
+) -> Vec<IndicatorText> {
+    if watch_results > 0 {
+        return watch_variants(watch_results, running, simplified_ui);
+    }
+    match top {
+        None => vec![
+            plain(format!("{} running", running)),
+            plain(format!("{}", running)),
+        ],
+        Some((status, count)) => {
+            let symbol = status.marker(simplified_ui);
+            let symbol_len = symbol.chars().count();
+            let head = format!("{} {}", symbol, count);
+            let head_len = head.chars().count();
+            let colored = |text: String, end: usize| IndicatorText {
+                text,
+                emphasis: Some((status_color(status), 0..end)),
+            };
+            vec![
+                colored(
+                    format!("{} {} · {} running", head, status_words(status), running),
+                    head_len + 1 + status_words(status).chars().count(),
+                ),
+                colored(format!("{} · {}", head, running), head_len),
+                colored(head.clone(), head_len),
+                colored(symbol.to_owned(), symbol_len),
+            ]
+        },
     }
 }
 
 impl SessionIndicator {
     pub fn update(&mut self, event: &Event) -> bool {
         match event {
-            Event::SessionCountsUpdate(counts) => {
-                let changed = &self.counts != counts || !self.counts_received;
-                self.counts = *counts;
-                self.counts_received = true;
-                changed
+            Event::GlobalAttentionUpdate(global) => {
+                let changed = self.global.as_ref() != Some(global);
+                self.global = Some(global.clone());
+                changed && self.enabled
             },
-            Event::FolderSessionsUpdate(folder_sessions) => {
-                let new_value = if folder_sessions.total() == 0 {
-                    None
-                } else {
-                    Some(folder_sessions.clone())
-                };
-                let changed = self.folder_sessions != new_value;
-                self.folder_sessions = new_value;
+            Event::SessionCountsUpdate(_) => {
+                let changed = !self.enabled;
+                self.enabled = true;
                 changed
             },
             _ => false,
@@ -101,6 +178,13 @@ impl SessionIndicator {
             .args
             .get("plugin_id")
             .and_then(|id| id.parse::<u32>().ok());
+        let closed_by_another_manager = size == PanelSize::Closed
+            && plugin_id.is_some()
+            && self.manager_plugin_id.is_some()
+            && plugin_id != self.manager_plugin_id;
+        if closed_by_another_manager {
+            return false;
+        }
         let changed = self.panel_size != size || self.manager_plugin_id != plugin_id;
         self.panel_size = size;
         self.manager_plugin_id = if size == PanelSize::Closed {
@@ -112,36 +196,27 @@ impl SessionIndicator {
     }
 
     pub fn is_visible(&self) -> bool {
-        self.counts_received
+        self.enabled && self.global.is_some()
     }
 
+    #[cfg(test)]
     pub fn variants(&self) -> Vec<IndicatorText> {
-        if !self.counts_received {
+        self.variants_for(false)
+    }
+
+    pub fn variants_for(&self, simplified_ui: bool) -> Vec<IndicatorText> {
+        if !self.enabled {
             return vec![];
         }
-        let running = self.counts.running;
-        if running == 0 {
-            return vec![
-                plain("No Other Sessions".to_owned()),
-                plain("No Sessions".to_owned()),
-                plain("0".to_owned()),
-            ];
+        match self.global.as_ref() {
+            Some(global) => indicator_variants(
+                global.top(),
+                watch_results(global),
+                global.running(),
+                simplified_ui,
+            ),
+            None => vec![],
         }
-        let full_matches = self
-            .folder_sessions
-            .as_ref()
-            .map(|f| f.full_match_running.len())
-            .unwrap_or(0);
-        let long = if running == 1 {
-            " running session"
-        } else {
-            " running sessions"
-        };
-        vec![
-            running_text(running, full_matches, long),
-            running_text(running, full_matches, " running"),
-            running_text(running, full_matches, ""),
-        ]
     }
 
     pub fn arrow(&self, simplified_ui: bool) -> &'static str {
@@ -153,8 +228,8 @@ impl SessionIndicator {
         }
     }
 
-    pub fn fitting_variant(&self, max_width: usize) -> Option<IndicatorText> {
-        self.variants()
+    pub fn fitting_variant(&self, max_width: usize, simplified_ui: bool) -> Option<IndicatorText> {
+        self.variants_for(simplified_ui)
             .into_iter()
             .find(|variant| display_width(&variant.text) + DROPDOWN_CHROME_WIDTH <= max_width)
     }
@@ -165,8 +240,12 @@ impl SessionIndicator {
 
     pub fn render(&self, text: &IndicatorText, x: usize, y: usize, simplified_ui: bool) -> String {
         let mut value = Text::from(text.text.clone());
-        if let Some((level, range)) = &text.emphasis {
-            value = value.color_range(*level, range.clone());
+        if let Some((color, range)) = &text.emphasis {
+            value = match color {
+                IndicatorColor::Level(level) => value.color_range(*level, range.clone()),
+                IndicatorColor::Error => value.error_color_range(range.clone()),
+                IndicatorColor::Success => value.success_color_range(range.clone()),
+            };
         }
         let mut dropdown = Dropdown::new("", vec![text.text.clone()])
             .accent_brackets()
@@ -215,7 +294,7 @@ impl SessionIndicator {
                     CARD_WIDTH,
                     CARD_HEIGHT,
                     PopupOptions {
-                        focused: false,
+                        focused: true,
                         corner: Some(PopupCorner::TopRight),
                     },
                 );
@@ -229,86 +308,113 @@ impl SessionIndicator {
 mod tests {
     use super::*;
 
-    fn counts(running: u32, resumable_matching: u32) -> SessionIndicator {
+    fn texts(variants: Vec<IndicatorText>) -> Vec<String> {
+        variants.into_iter().map(|v| v.text).collect()
+    }
+
+    fn indicator(top: Option<(AttentionStatus, usize)>, running: usize) -> SessionIndicator {
+        let mut sessions = vec![];
+        for index in 0..running {
+            let mut attention = SessionAttention::default();
+            if index == 0 {
+                if let Some((status, count)) = top {
+                    for id in 0..count {
+                        let pane = PaneAttention {
+                            status,
+                            ..Default::default()
+                        };
+                        attention.counts.add(&pane);
+                        attention.items.push(AttentionItem {
+                            pane_id: PaneId::Terminal(id as u32),
+                            tab_id: 0,
+                            tab_name: String::new(),
+                            pane_title: String::new(),
+                            attention: pane,
+                        });
+                    }
+                }
+            }
+            sessions.push((format!("s{}", index), attention));
+        }
         SessionIndicator {
-            counts: SessionCounts {
-                running,
-                resumable_matching,
-            },
-            counts_received: true,
+            global: Some(GlobalAttention::build("s0", sessions)),
+            enabled: true,
             ..Default::default()
         }
     }
 
-    fn texts(indicator: &SessionIndicator) -> Vec<String> {
-        indicator.variants().into_iter().map(|v| v.text).collect()
-    }
-
-    fn with_full_matches(mut indicator: SessionIndicator, names: &[&str]) -> SessionIndicator {
-        indicator.folder_sessions = Some(FolderSessions {
-            folder: "/p/".to_owned(),
-            running: names.iter().map(|n| n.to_string()).collect(),
-            resumable: vec![],
-            full_match_running: names.iter().map(|n| n.to_string()).collect(),
-        });
-        indicator
+    #[test]
+    fn calm_shows_only_the_running_count_including_this_session() {
+        assert_eq!(texts(indicator(None, 5).variants()), vec!["5 running", "5"]);
     }
 
     #[test]
-    fn running_sessions_are_counted() {
+    fn attention_shortens_step_by_step() {
         assert_eq!(
-            texts(&counts(2, 1)),
-            vec!["2 running sessions", "2 running", "2"]
+            texts(indicator(Some((AttentionStatus::NeedsYou, 2)), 5).variants()),
+            vec!["● 2 need you · 5 running", "● 2 · 5", "● 2", "●"]
         );
         assert_eq!(
-            texts(&counts(1, 0)),
-            vec!["1 running session", "1 running", "1"]
+            texts(indicator(Some((AttentionStatus::Failed, 1)), 3).variants_for(true)),
+            vec!["x 1 failed · 3 running", "x 1 · 3", "x 1", "x"]
         );
     }
 
     #[test]
-    fn without_other_running_sessions_the_indicator_says_so_and_still_opens_the_card() {
-        for indicator in [counts(0, 0), counts(0, 2)] {
-            assert_eq!(
-                texts(&indicator),
-                vec!["No Other Sessions", "No Sessions", "0"]
-            );
-            assert_eq!(indicator.click_action(), Some(ClickAction::OpenCard));
-        }
-    }
-
-    #[test]
-    fn nothing_is_shown_before_the_counts_arrive() {
-        let indicator = SessionIndicator::default();
-        assert!(texts(&indicator).is_empty());
-        assert_eq!(indicator.click_action(), None);
-        let mut indicator = SessionIndicator::default();
-        assert!(indicator.update(&Event::SessionCountsUpdate(SessionCounts::default())));
-        assert_eq!(texts(&indicator)[0], "No Other Sessions");
-    }
-
-    #[test]
-    fn full_matches_follow_the_count_after_a_slash() {
-        let indicator = with_full_matches(counts(38, 0), &["a", "b", "c", "d", "e", "f", "g"]);
+    fn only_the_top_status_is_counted_and_coloured() {
+        let variants = indicator(Some((AttentionStatus::Done, 3)), 2).variants();
         assert_eq!(
-            texts(&indicator),
-            vec!["38/7 running sessions", "38/7 running", "38/7"]
-        );
-        assert_eq!(
-            indicator.variants()[0].emphasis,
-            Some((2, 3..4)),
-            "the full match count is shown in emphasis_2"
+            variants[0].emphasis,
+            Some((IndicatorColor::Success, 0.."✓ 3 done".chars().count()))
         );
     }
 
     #[test]
-    fn shortening_steps() {
-        let indicator = counts(2, 1);
-        let rendered: Vec<String> = [40, 25, 16, 8, 6]
+    fn a_finished_watch_is_announced_before_anything_else() {
+        let mut indicator = indicator(Some((AttentionStatus::Failed, 1)), 3);
+        let global = indicator.global.as_mut().unwrap();
+        let mut watched = global.items[0].clone();
+        watched.item.pane_id = PaneId::Terminal(9);
+        watched.item.attention = PaneAttention {
+            status: AttentionStatus::NeedsYou,
+            from_watch: true,
+            ..Default::default()
+        };
+        global.items.push(watched);
+        assert_eq!(watch_results(global), 1);
+        let variants = indicator.variants_for(false);
+        assert_eq!(variants[0].text, "◉ 1 watch alert · 3 running");
+        assert_eq!(
+            variants[0].emphasis,
+            Some((
+                IndicatorColor::Level(1),
+                0.."◉ 1 watch alert".chars().count()
+            ))
+        );
+        assert_eq!(
+            indicator.variants_for(true)[0].text,
+            "@ 1 watch alert · 3 running"
+        );
+    }
+
+    #[test]
+    fn the_simplified_ui_uses_letters() {
+        let indicator = indicator(Some((AttentionStatus::NeedsYou, 2)), 5);
+        let variant = indicator.fitting_variant(40, true).unwrap();
+        assert_eq!(
+            indicator.plain_render(&variant, true),
+            "[ ! 2 need you · 5 running v ]"
+        );
+    }
+
+    #[test]
+    fn shortening_steps_by_width() {
+        let indicator = indicator(Some((AttentionStatus::NeedsYou, 2)), 5);
+        let rendered: Vec<String> = [40, 20, 11, 8, 6]
             .iter()
             .map(|width| {
                 indicator
-                    .fitting_variant(*width)
+                    .fitting_variant(*width, false)
                     .map(|v| indicator.plain_render(&v, false))
                     .unwrap_or_else(|| "<hidden>".to_owned())
             })
@@ -316,56 +422,44 @@ mod tests {
         assert_eq!(
             rendered,
             vec![
-                "[ 2 running sessions ▾ ]",
-                "[ 2 running sessions ▾ ]",
-                "[ 2 running ▾ ]",
-                "[ 2 ▾ ]",
+                "[ ● 2 need you · 5 running ▾ ]",
+                "[ ● 2 · 5 ▾ ]",
+                "[ ● 2 ▾ ]",
+                "[ ● ▾ ]",
                 "<hidden>",
             ]
         );
     }
 
     #[test]
-    fn the_arrow_shows_whether_the_card_is_open() {
-        let mut indicator = counts(1, 0);
-        let mut rendered = vec![];
-        for (size, simplified) in [
-            (PanelSize::Closed, false),
-            (PanelSize::Card, false),
-            (PanelSize::Manager, false),
-            (PanelSize::Closed, true),
-            (PanelSize::Card, true),
-        ] {
-            indicator.panel_size = size;
-            let variant = indicator.variants().remove(0);
-            rendered.push(indicator.plain_render(&variant, simplified));
-        }
-        assert_eq!(
-            rendered,
-            vec![
-                "[ 1 running session ▾ ]",
-                "[ 1 running session ▴ ]",
-                "[ 1 running session ▴ ]",
-                "[ 1 running session v ]",
-                "[ 1 running session ^ ]",
-            ]
-        );
+    fn nothing_is_shown_before_attention_arrives_or_while_turned_off() {
+        let empty = SessionIndicator::default();
+        assert!(empty.variants().is_empty());
+        assert_eq!(empty.click_action(), None);
+        let mut turned_off = indicator(None, 2);
+        turned_off.enabled = false;
+        assert!(turned_off.variants().is_empty());
+        assert_eq!(turned_off.click_action(), None);
+        let mut turned_on = SessionIndicator::default();
+        assert!(turned_on.update(&Event::SessionCountsUpdate(SessionCounts::default())));
+        assert!(turned_on.variants().is_empty());
+        assert!(turned_on.update(&Event::GlobalAttentionUpdate(GlobalAttention::default())));
+        assert_eq!(texts(turned_on.variants()), vec!["0 running", "0"]);
     }
 
     #[test]
-    fn clicks_open_the_card_or_close_whatever_is_open() {
-        let mut indicator = counts(1, 0);
+    fn clicks_open_the_browser_or_close_whatever_is_open() {
+        let mut indicator = indicator(None, 1);
         assert_eq!(indicator.click_action(), Some(ClickAction::OpenCard));
         indicator.panel_size = PanelSize::Card;
         assert_eq!(indicator.click_action(), Some(ClickAction::Close));
         indicator.panel_size = PanelSize::Manager;
         assert_eq!(indicator.click_action(), Some(ClickAction::Close));
-        assert_eq!(SessionIndicator::default().click_action(), None);
     }
 
     #[test]
     fn panel_size_pipe_is_tracked() {
-        let mut indicator = counts(1, 0);
+        let mut indicator = indicator(None, 1);
         let mut args = BTreeMap::new();
         args.insert("plugin_id".to_owned(), "7".to_owned());
         let message = PipeMessage {
@@ -385,5 +479,27 @@ mod tests {
         assert!(indicator.handle_pipe(&closed));
         assert_eq!(indicator.panel_size, PanelSize::Closed);
         assert_eq!(indicator.manager_plugin_id, None);
+    }
+
+    #[test]
+    fn a_late_close_from_an_old_manager_does_not_hide_the_new_one() {
+        let mut indicator = indicator(None, 1);
+        let message = |plugin_id: &str, payload: &str| {
+            let mut args = BTreeMap::new();
+            args.insert("plugin_id".to_owned(), plugin_id.to_owned());
+            PipeMessage {
+                source: PipeSource::Plugin(plugin_id.parse().unwrap()),
+                name: PANEL_SIZE_PIPE.to_owned(),
+                payload: Some(payload.to_owned()),
+                args,
+                is_private: false,
+            }
+        };
+        indicator.handle_pipe(&message("8", "manager"));
+        assert!(!indicator.handle_pipe(&message("7", "closed")));
+        assert_eq!(indicator.panel_size, PanelSize::Manager);
+        assert_eq!(indicator.click_action(), Some(ClickAction::Close));
+        assert!(indicator.handle_pipe(&message("8", "closed")));
+        assert_eq!(indicator.click_action(), Some(ClickAction::OpenCard));
     }
 }

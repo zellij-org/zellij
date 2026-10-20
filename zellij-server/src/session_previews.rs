@@ -9,6 +9,7 @@ use zellij_utils::ipc::{
 use zellij_utils::session_index::layout_cwd;
 
 pub const REMOTE_PREVIEW_TIMEOUT: Duration = Duration::from_millis(1000);
+pub const LOCAL_PREVIEW_ANSWER_TIMEOUT: Duration = Duration::from_millis(800);
 
 fn preview_error(session_name: &str, tab_index: Option<usize>, error: String) -> SessionPreview {
     SessionPreview {
@@ -23,8 +24,11 @@ pub fn running_session_preview(
     session_name: &str,
     tab_index: Option<usize>,
     pane_id: Option<(u32, bool)>,
+    anchor: Option<zellij_utils::data::PreviewAnchor>,
 ) -> SessionPreview {
-    let socket_path = ZELLIJ_SOCK_DIR.join(session_name);
+    // Sockets are named by session id; legacy sessions are named after the session.
+    let socket_path = zellij_utils::sessions::resolve_session_socket_path(session_name)
+        .unwrap_or_else(|| ZELLIJ_SOCK_DIR.join(session_name));
     let stream = match zellij_utils::consts::ipc_connect(&socket_path) {
         Ok(stream) => stream,
         Err(e) => return preview_error(session_name, tab_index, e.to_string()),
@@ -38,6 +42,7 @@ pub fn running_session_preview(
     if let Err(e) = sender.send_client_msg(ClientToServerMsg::RequestSessionPreview {
         tab_index: tab_index.map(|t| t as u32),
         pane_id,
+        anchor,
     }) {
         return preview_error(session_name, tab_index, e.to_string());
     }
@@ -49,21 +54,16 @@ pub fn running_session_preview(
     let _ = receiver.set_read_timeout(Some(REMOTE_PREVIEW_TIMEOUT));
     let reply = receiver.try_recv_server_msg();
     match reply {
-        Ok((ServerToClientMsg::Log { lines }, _)) => {
-            match lines
-                .first()
-                .and_then(|line| serde_json::from_str::<SessionPreview>(line).ok())
-            {
-                Some(mut preview) => {
-                    preview.session_name = session_name.to_owned();
-                    preview
-                },
-                None => preview_error(
-                    session_name,
-                    tab_index,
-                    "The session sent an unreadable preview".to_owned(),
-                ),
-            }
+        Ok((ServerToClientMsg::SessionPreview { preview }, _)) => match preview {
+            Some(mut preview) => {
+                preview.session_name = session_name.to_owned();
+                preview
+            },
+            None => preview_error(
+                session_name,
+                tab_index,
+                "The session could not make a preview in time".to_owned(),
+            ),
         },
         Ok(_) => preview_error(
             session_name,
@@ -72,6 +72,54 @@ pub fn running_session_preview(
         ),
         Err(e) => preview_error(session_name, tab_index, e.to_string()),
     }
+}
+
+pub fn current_session_preview(
+    senders: &crate::thread_bus::ThreadSenders,
+    session_name: &str,
+    tab_index: Option<usize>,
+    pane_id: Option<(u32, bool)>,
+    anchor: Option<zellij_utils::data::PreviewAnchor>,
+) -> SessionPreview {
+    let (response_sender, response_receiver) = crossbeam::channel::bounded(1);
+    let sent = senders.send_to_screen(crate::screen::ScreenInstruction::GetSessionPreview {
+        tab_index,
+        pane_id,
+        anchor,
+        response_channel: response_sender,
+    });
+    if sent.is_err() {
+        return preview_error(session_name, tab_index, "The session is closing".to_owned());
+    }
+    match response_receiver.recv_timeout(REMOTE_PREVIEW_TIMEOUT) {
+        Ok(mut preview) => {
+            preview.session_name = session_name.to_owned();
+            preview
+        },
+        Err(e) => preview_error(session_name, tab_index, e.to_string()),
+    }
+}
+
+pub fn answer_preview_request(
+    senders: Option<&crate::thread_bus::ThreadSenders>,
+    tab_index: Option<u32>,
+    pane_id: Option<(u32, bool)>,
+    anchor: Option<zellij_utils::data::PreviewAnchor>,
+) -> Option<SessionPreview> {
+    let senders = senders?;
+    let (response_sender, response_receiver) = crossbeam::channel::bounded(1);
+    let sent = senders.send_to_screen(crate::screen::ScreenInstruction::GetSessionPreview {
+        tab_index: tab_index.map(|t| t as usize),
+        pane_id,
+        anchor,
+        response_channel: response_sender,
+    });
+    if sent.is_err() {
+        return None;
+    }
+    response_receiver
+        .recv_timeout(LOCAL_PREVIEW_ANSWER_TIMEOUT)
+        .ok()
 }
 
 fn command_text(run: &Option<Run>) -> Option<String> {
@@ -182,7 +230,10 @@ pub fn saved_session_preview_from_layout(
 }
 
 pub fn saved_session_preview(session_name: &str) -> SavedSessionPreview {
-    let layout_path = session_layout_cache_file_name(session_name);
+    // The layout cache is keyed by session id (== name for legacy sessions).
+    let session_id = zellij_utils::sessions::resolve_session_id(session_name)
+        .unwrap_or_else(|| session_name.to_owned());
+    let layout_path = session_layout_cache_file_name(&session_id);
     match std::fs::read_to_string(&layout_path) {
         Ok(raw_layout) => {
             saved_session_preview_from_layout(session_name, &raw_layout, Some(layout_path))
@@ -243,7 +294,7 @@ layout {
 
     #[test]
     fn a_missing_session_reports_an_error() {
-        let preview = running_session_preview("no-such-session-for-preview-test", None, None);
+        let preview = running_session_preview("no-such-session-for-preview-test", None, None, None);
         assert!(preview.error.is_some());
     }
 }

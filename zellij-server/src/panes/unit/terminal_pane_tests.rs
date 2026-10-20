@@ -1268,3 +1268,32 @@ fn user_variables_bound_storage_without_discarding_existing_values() {
         Some("Qg==")
     );
 }
+
+#[test]
+fn user_variables_coexist_with_iterm_host_and_directory_reports() {
+    let mut pane = make_terminal_pane_for_bell();
+    pane.handle_pty_bytes(
+        b"\x1b]1337;SetUserVar=project=QQ==\x07\x1b]1337;CurrentDir=/tmp/iterm-project\x07"
+            .to_vec(),
+    );
+    assert_eq!(
+        pane.drain_osc7_cwd(),
+        Some(std::path::PathBuf::from("/tmp/iterm-project"))
+    );
+    pane.handle_pty_bytes(
+        b"\x1b]1337;RemoteHost=me@far-away.example.invalid\x07\x1b]1337;CurrentDir=/srv\x07\x1b]1337;SetUserVar=project=Qg==\x07"
+            .to_vec(),
+    );
+    assert_eq!(
+        pane.grid.shell_reports.iterm_remote_host.as_deref(),
+        Some("me@far-away.example.invalid")
+    );
+    assert_eq!(pane.drain_osc7_cwd(), None);
+    assert_eq!(
+        pane.user_variables()
+            .unwrap()
+            .get("project")
+            .map(String::as_str),
+        Some("Qg==")
+    );
+}

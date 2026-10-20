@@ -1057,3 +1057,27 @@ fn switching_the_preset_updates_the_leader_keys_of_the_mouse_bindings() {
     );
     zellij.kill_session();
 }
+
+#[test]
+fn the_keybindings_screen_lists_the_new_session_actions() {
+    let mut zellij = start_zellij();
+    claim_first_terminal_and_wait_for_prompt(&zellij);
+    open_settings(&zellij);
+    open_page(&zellij, KEYS_PAGE, "Save as a preset");
+    zellij.send_stdin(&keys::key('/'));
+    zellij.wait_until("the keybinding search is focused", |grid_snapshot| {
+        grid_snapshot.contains("search keys and actions")
+    });
+    type_text(&zellij, "nextattention");
+    zellij.wait_until("the next attention key is listed", |grid_snapshot| {
+        grid_snapshot.contains("GoToNextAttention")
+    });
+    for _ in 0.."nextattention".len() {
+        zellij.send_stdin(b"\x7f");
+    }
+    type_text(&zellij, "watch");
+    zellij.wait_until("the watch key is listed", |grid_snapshot| {
+        grid_snapshot.contains("WatchPane")
+    });
+    zellij.quit();
+}

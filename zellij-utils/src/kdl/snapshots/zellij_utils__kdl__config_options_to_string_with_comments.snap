@@ -402,10 +402,6 @@ web_sharing "disabled"
 // 
 // host_notification_protocol "auto"
  
-// Whether to show a card listing other relevant sessions when a new session starts
-// default is true
-// session_card false
- 
 // Whether to show the other sessions indicator in the tab bar and compact bar
 // default is true
 // session_indicator false

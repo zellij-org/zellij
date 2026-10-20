@@ -82,7 +82,7 @@ impl ContextMenuPlugin {
                         item_entry_indices.push(None);
                     }
                 },
-                ContextMenuEntry::Item { label, actions } => {
+                ContextMenuEntry::Item { label, actions, .. } => {
                     let state = item_state(actions, context);
                     if state == ItemState::Hidden {
                         continue;

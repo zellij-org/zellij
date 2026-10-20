@@ -1002,6 +1002,9 @@ fn lines_containing(grid_snapshot: &GridSnapshot, needle: &str) -> usize {
 fn the_pane_name_sits_one_line_below_the_text_and_can_be_left_out() {
     let (mut zellij, terminal) = start_with_terminal();
     rename_pane(&zellij, &terminal, "SENDER-PANE");
+    zellij.wait_until("the renamed pane is drawn", |grid_snapshot| {
+        grid_snapshot.contains("SENDER-PANE")
+    });
     let notice = zellij.run_prompt(&["notify", "With sender"], from(&terminal));
     answered(&notice.wait_for_exit(), 0, "");
     let grid_snapshot = zellij.wait_until("notice with the pane name shown", |grid_snapshot| {
@@ -1020,7 +1023,6 @@ fn the_pane_name_sits_one_line_below_the_text_and_can_be_left_out() {
         "same tab, so no tab line"
     );
     assert!(!grid_snapshot.contains("from: "));
-    let pane_name_lines_before = lines_containing(&grid_snapshot, "SENDER-PANE");
 
     let notice = zellij.run_prompt(
         &["notify", "No sender", "--no-pane-name", "--at", "top-left"],
@@ -1030,10 +1032,20 @@ fn the_pane_name_sits_one_line_below_the_text_and_can_be_left_out() {
     let grid_snapshot = zellij.wait_until("second notice shown", |grid_snapshot| {
         grid_snapshot.contains("No sender")
     });
-    assert_eq!(
-        lines_containing(&grid_snapshot, "SENDER-PANE"),
-        pane_name_lines_before
-    );
+    let (text_row, text_column) = column_of(&grid_snapshot, "No sender").unwrap();
+    let lines = grid_snapshot.lines();
+    for row in text_row + 1..(text_row + 3).min(lines.len()) {
+        let below: String = lines[row]
+            .chars()
+            .skip(text_column.saturating_sub(2))
+            .take("No sender".len() + 4)
+            .collect();
+        assert!(
+            !below.contains("SENDER"),
+            "the pane name was not left out:\n{}",
+            lines.join("\n")
+        );
+    }
     zellij.quit();
 }
 

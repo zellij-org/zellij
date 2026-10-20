@@ -83,7 +83,6 @@ fn every_option_set() -> Options {
         client_async_worker_tasks: Some(8),
         nested_session_handling: Some(NestedSessionHandling::Never),
         dangerously_enable_paste_buffer_read: Some(true),
-        session_card: Some(false),
         session_indicator: Some(false),
         swap_layout_notification: Some(false),
         on_quit: Some(crate::input::options::OnQuit::Detach),
@@ -174,7 +173,6 @@ const EVERY_WINDOW_SETTING_SET: &str = "window {
     scroll_momentum false
     scroll_momentum_friction 4.5
     bell \"both\"
-    notifications \"attention\"
     open_links false
     open_links_with_shift false
     shift_drag_selects false
@@ -251,6 +249,20 @@ pub(crate) fn every_setting_set() -> Config {
             font_size: Some(14),
         },
         window: every_window_setting_set(),
+        attention: crate::input::attention::AttentionConfig {
+            frame_markers: Some(false),
+            host_status: Some(false),
+            idle_rule: Some(crate::input::attention::IdleRuleScope::Watched),
+            done_threshold_secs: Some(30),
+            idle_activity_secs: Some(20),
+            idle_silence_secs: Some(5),
+            startup_card: Some(crate::input::attention::StartupCard::Never),
+            tray_icon: Some(false),
+            desktop_notifications: Some(
+                crate::input::attention::DesktopNotifications::NeedsYouFailedDone,
+            ),
+            notification_details: Some(false),
+        },
         ..Default::default()
     }
 }
@@ -268,13 +280,23 @@ fn kdl_names_in(config: &Config) -> BTreeSet<(SettingSection, String)> {
         "web_client",
         "context_menu",
         "window",
+        "attention",
     ];
     let mut names = BTreeSet::new();
     for node in document.nodes() {
         let name = node.name().value();
         if !blocks.contains(&name) {
             names.insert((SettingSection::TopLevel, name.to_owned()));
-        } else if !["keybinds", "mousebinds", "ui", "web_client", "window"].contains(&name) {
+        } else if ![
+            "keybinds",
+            "mousebinds",
+            "ui",
+            "web_client",
+            "window",
+            "attention",
+        ]
+        .contains(&name)
+        {
             names.insert((SettingSection::Blocks, name.to_owned()));
         }
     }
@@ -295,6 +317,13 @@ fn kdl_names_in(config: &Config) -> BTreeSet<(SettingSection, String)> {
         .unwrap();
     for node in web_client.nodes() {
         names.insert((SettingSection::WebClient, node.name().value().to_owned()));
+    }
+    let attention = document
+        .get("attention")
+        .and_then(|attention| attention.children())
+        .unwrap();
+    for node in attention.nodes() {
+        names.insert((SettingSection::Attention, node.name().value().to_owned()));
     }
     let window = document
         .get("window")

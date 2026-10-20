@@ -1,5 +1,6 @@
 ---
 source: zellij-server/src/plugins/./unit/plugin_tests.rs
+assertion_line: 1367
 expression: "format!(\"{:#?}\", first_new_tab_event)"
 ---
 Some(
@@ -29,6 +30,8 @@ Some(
                         pane_initial_contents: None,
                         default_fg: None,
                         default_bg: None,
+                        attention_muted: None,
+                        ignore_output: None,
                     },
                     TiledPaneLayout {
                         children_split_direction: Horizontal,
@@ -48,6 +51,8 @@ Some(
                         pane_initial_contents: None,
                         default_fg: None,
                         default_bg: None,
+                        attention_muted: None,
+                        ignore_output: None,
                     },
                 ],
                 split_size: None,
@@ -64,6 +69,8 @@ Some(
                 pane_initial_contents: None,
                 default_fg: None,
                 default_bg: None,
+                attention_muted: None,
+                ignore_output: None,
             },
         ),
         [],

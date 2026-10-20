@@ -28,26 +28,9 @@ const CLI_STYLES: Styles = Styles::styled()
     .invalid(ansi(AnsiColor::Yellow));
 
 fn validate_session(name: &str) -> Result<String, String> {
-    #[cfg(unix)]
-    {
-        use crate::consts::ZELLIJ_SOCK_MAX_LENGTH;
-
-        let mut socket_path = crate::consts::ZELLIJ_SOCK_DIR.clone();
-        socket_path.push(name);
-
-        if socket_path.as_os_str().len() >= ZELLIJ_SOCK_MAX_LENGTH {
-            // socket path must be less than 108 bytes
-            let available_length = ZELLIJ_SOCK_MAX_LENGTH
-                .saturating_sub(socket_path.as_os_str().len())
-                .saturating_sub(1);
-
-            return Err(format!(
-                "session name must be less than {} characters",
-                available_length
-            ));
-        };
-    };
-
+    // Socket paths are named by a fixed-length session id, not the session name,
+    // so the name no longer contributes to the socket-path length limit. The
+    // client validates the socket directory's length at startup.
     Ok(name.to_owned())
 }
 
@@ -626,6 +609,33 @@ pub struct WindowArgs {
         help = "Open the window windowed, maximized, fullscreen, or the way the last one was closed (remember), overriding startup_mode in the window section of the configuration"
     )]
     pub startup_mode: Option<crate::input::window::StartupMode>,
+
+    #[clap(
+        long,
+        help = "Open this window on its own instead of handing it to the running desktop app (no tray, no notifications from this process)"
+    )]
+    pub standalone: bool,
+
+    #[clap(
+        long,
+        value_name = "PATH",
+        help = "Use this folder for session sockets instead of the default, so this window, its desktop app and its sessions are separate from every other Zellij (same as setting ZELLIJ_SOCKET_DIR)"
+    )]
+    pub socket_dir: Option<PathBuf>,
+
+    #[clap(
+        long,
+        conflicts_with_all = &["sessions", "standalone", "watch", "headless"],
+        help = "Show or hide the inbox panel of the running desktop app (starting it if needed), for a desktop keyboard shortcut"
+    )]
+    pub inbox: bool,
+
+    #[clap(
+        long,
+        conflicts_with_all = &["standalone", "watch", "headless"],
+        help = "Show or hide the sessions panel of the running desktop app (starting it if needed), for a desktop keyboard shortcut"
+    )]
+    pub sessions: bool,
 }
 
 impl WindowArgs {
@@ -896,6 +906,12 @@ pub enum Sessions {
         /// Start the command suspended, only running after you first presses ENTER
         #[clap(short, long)]
         start_suspended: bool,
+
+        #[clap(
+            long,
+            help = "Watch the pane: notify each time its command finishes or its output goes quiet, until the watch is turned off"
+        )]
+        notify: bool,
 
         /// The x coordinates if the pane is floating as a bare integer (eg. 1) or percent (eg. 10%)
         #[clap(short, long, requires("floating"))]
@@ -1375,6 +1391,12 @@ pub enum CliAction {
         /// Start the command suspended, only running it after the you first press ENTER
         #[clap(short, long, requires("command"))]
         start_suspended: bool,
+        #[clap(
+            long,
+            requires("command"),
+            help = "Watch the pane: notify each time its command finishes or its output goes quiet, until the watch is turned off"
+        )]
+        notify: bool,
         #[clap(long, value_parser)]
         configuration: Option<PluginUserConfiguration>,
         #[clap(long, value_parser)]
@@ -1972,6 +1994,78 @@ tail -f /tmp/my-live-logfile | zellij action pipe --name logs --plugin https://e
         /// Target a specific pane by ID (eg. terminal_1, plugin_2, or 3)
         #[clap(short, long, value_parser)]
         pane_id: Option<String>,
+    },
+    #[clap(about = "Mute or unmute the attention status of a pane (the focused pane by default)")]
+    MutePane {
+        #[clap(
+            short,
+            long,
+            value_parser,
+            help = "Target a specific pane by ID (eg. terminal_1 or 3)"
+        )]
+        pane_id: Option<String>,
+    },
+    #[clap(about = "Stop or start reporting new output of a pane (the focused pane by default)")]
+    IgnorePaneOutput {
+        #[clap(
+            short,
+            long,
+            value_parser,
+            help = "Target a specific pane by ID (eg. terminal_1 or 3)"
+        )]
+        pane_id: Option<String>,
+    },
+    #[clap(
+        about = "Watch a pane: notify each time its command finishes or its output goes quiet, until turned off again (toggles; the focused pane by default)"
+    )]
+    WatchPane {
+        #[clap(
+            short,
+            long,
+            value_parser,
+            help = "Target a specific pane by ID (eg. terminal_1 or 3)"
+        )]
+        pane_id: Option<String>,
+    },
+    #[clap(
+        about = "Mute or unmute the attention status of all panes in a tab (the active tab by default)"
+    )]
+    MuteTab {
+        #[clap(short, long, value_parser, help = "Target a specific tab by its ID")]
+        tab_id: Option<u64>,
+    },
+    #[clap(about = "Mute or unmute the attention status of the whole session")]
+    MuteSession,
+    #[clap(
+        about = "Switch to the session this client was in before (run again to return), or to the next running session if there is none"
+    )]
+    ToggleSession,
+    #[clap(about = "Go back to the previous session in this client's history")]
+    GoToPreviousSession,
+    #[clap(about = "Go forward in this client's session history")]
+    GoToNextSession,
+    #[clap(
+        about = "Jump to the next pane that needs attention in any session, switching session if needed"
+    )]
+    GoToNextAttention,
+    #[clap(
+        about = "Show or hide the desktop app's tray / menu-bar icon until the app restarts (sessions and notifications continue)"
+    )]
+    ToggleTrayIcon,
+    #[clap(about = "Mark a pane as seen, clearing past events (the focused pane by default)")]
+    MarkPaneSeen {
+        #[clap(
+            short,
+            long,
+            value_parser,
+            help = "Target a specific pane by ID (eg. terminal_1 or 3)"
+        )]
+        pane_id: Option<String>,
+    },
+    #[clap(about = "Mark every pane of every running session as seen")]
+    MarkAllSeen {
+        #[clap(long, help = "Only mark the panes of the current session")]
+        this_session: bool,
     },
     /// Stack pane ids
     /// Ids are a space separated list of pane ids.

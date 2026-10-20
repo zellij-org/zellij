@@ -50,6 +50,9 @@ keybinds {
         bind "e" { TogglePaneEmbedOrFloating; SwitchToMode "Locked"; }
         bind "c" { SwitchToMode "RenamePane"; PaneNameInput 0;}
         bind "i" { TogglePanePinned; SwitchToMode "Locked"; }
+        bind "u" { MutePane; SwitchToMode "Locked"; }
+        bind "g" { IgnorePaneOutput; SwitchToMode "Locked"; }
+        bind "v" { WatchPane; SwitchToMode "Locked"; }
     }
     move {
         bind "m" { SwitchToMode "Normal"; }
@@ -83,6 +86,7 @@ keybinds {
         bind "Tab" { ToggleTab; }
         bind "Space" { NextSwapLayout; }
         bind "Shift Space" { PreviousSwapLayout; }
+        bind "u" { MuteTab; SwitchToMode "Locked"; }
     }
     scroll {
         bind "s" { SwitchToMode "Normal"; }
@@ -143,6 +147,11 @@ keybinds {
         bind "]" { FocusHostSession; SwitchToMode "Locked"; }
         bind "[" { FocusGuestSession; SwitchToMode "Locked"; }
         bind "f" { ToggleHostFullscreen; SwitchToMode "Locked"; }
+        bind "u" { MuteSession; SwitchToMode "Locked"; }
+        bind "Tab" { ToggleSession; SwitchToMode "Locked"; }
+        bind "Left" { GoToPreviousSession; SwitchToMode "Locked"; }
+        bind "Right" { GoToNextSession; SwitchToMode "Locked"; }
+        bind "n" { GoToNextAttention; SwitchToMode "Locked"; }
         bind "w" {
             LaunchOrFocusPlugin "session-manager" {
                 floating true

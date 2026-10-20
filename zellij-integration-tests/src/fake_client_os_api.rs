@@ -20,12 +20,12 @@ type ServerSpawner = Box<dyn FnOnce(PathBuf) + Send>;
 fn server_message_name(msg: &ServerToClientMsg) -> String {
     if let ServerToClientMsg::SwitchSession { connect_to_session } = msg {
         return format!(
-            "SwitchSession layout={:?} session_card={:?}",
+            "SwitchSession layout={:?} startup_card={:?}",
             connect_to_session
                 .layout
                 .as_ref()
                 .map(|layout| layout.name().to_owned()),
-            connect_to_session.session_card
+            connect_to_session.startup_card().map(|c| c.as_str())
         );
     }
     match msg {
@@ -49,6 +49,9 @@ fn server_message_name(msg: &ServerToClientMsg) -> String {
         ServerToClientMsg::SubscribedPaneClosed { .. } => "SubscribedPaneClosed",
         ServerToClientMsg::ForwardQueryToHost { .. } => "ForwardQueryToHost",
         ServerToClientMsg::MobileState { .. } => "MobileState",
+        ServerToClientMsg::HostProgramStatus { .. } => "HostProgramStatus",
+        ServerToClientMsg::SessionAttention { .. } => "SessionAttention",
+        ServerToClientMsg::SessionPreview { .. } => "SessionPreview",
         ServerToClientMsg::EmitNestedSessionFrame { .. } => "EmitNestedSessionFrame",
         ServerToClientMsg::HostTerminalThemeChanged { .. } => "HostTerminalThemeChanged",
     }

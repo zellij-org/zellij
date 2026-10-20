@@ -291,3 +291,213 @@ fn the_window_is_described_by_what_it_is_for() {
         help
     );
 }
+
+#[test]
+fn the_window_can_toggle_one_panel_of_the_desktop_app() {
+    assert!(window_args(&["--inbox"]).inbox);
+    assert!(window_args(&["--sessions"]).sessions);
+    for argv in [
+        vec!["--inbox", "--sessions"],
+        vec!["--inbox", "--standalone"],
+        vec!["--sessions", "--watch"],
+    ] {
+        let mut args = vec!["zellij", "window"];
+        args.extend_from_slice(&argv);
+        assert!(
+            try_parse(&args).is_err(),
+            "`zellij window {}` was accepted",
+            argv.join(" ")
+        );
+    }
+}
+
+#[test]
+fn the_window_can_run_on_its_own_in_a_separate_socket_folder() {
+    let args = window_args(&["--standalone", "--socket-dir", "/tmp/elsewhere"]);
+    assert!(args.standalone);
+    assert_eq!(
+        args.socket_dir.as_deref(),
+        Some(std::path::Path::new("/tmp/elsewhere"))
+    );
+    assert!(!window_args(&[]).standalone);
+    assert_eq!(window_args(&[]).socket_dir, None);
+}
+
+#[test]
+fn only_the_window_command_moves_the_socket_folder() {
+    let window = try_parse(&["zellij", "window", "--socket-dir", "/tmp/elsewhere"]).unwrap();
+    assert_eq!(
+        crate::socket_dir_override(&window),
+        Some(std::path::Path::new("/tmp/elsewhere"))
+    );
+    let plain = try_parse(&["zellij", "window"]).unwrap();
+    assert_eq!(crate::socket_dir_override(&plain), None);
+    let other = try_parse(&["zellij", "list-sessions"]).unwrap();
+    assert_eq!(crate::socket_dir_override(&other), None);
+}
+
+#[cfg(unix)]
+fn fake_app(
+    reply: zellij_utils::app_control::AppReply,
+) -> (
+    std::path::PathBuf,
+    std::sync::mpsc::Receiver<zellij_utils::app_control::AppRequest>,
+) {
+    use interprocess::local_socket::prelude::*;
+    let dir = std::env::temp_dir().join(format!(
+        "zellij-fake-app-{}-{:?}",
+        std::process::id(),
+        std::thread::current().id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    let socket = dir.join(zellij_utils::consts::APP_CONTROL_SOCKET_NAME);
+    let _ = std::fs::remove_file(&socket);
+    let listener = zellij_utils::consts::ipc_bind(&socket).unwrap();
+    let (requests, received) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        if let Some(Ok(mut stream)) = listener.incoming().next() {
+            if let Ok(request) = zellij_utils::app_control::read_request(&mut stream) {
+                let _ = requests.send(request);
+            }
+            let _ = zellij_utils::app_control::write_reply(&mut stream, &reply);
+        }
+    });
+    (socket, received)
+}
+
+#[cfg(unix)]
+#[test]
+fn the_cli_toggles_the_tray_icon_by_asking_the_desktop_app() {
+    use zellij_utils::app_control::{AppReply, AppRequest};
+    let (socket, received) = fake_app(AppReply::Done);
+    assert_eq!(crate::commands::toggle_tray_icon_at(&socket), Ok(()));
+    assert_eq!(
+        received
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .unwrap(),
+        AppRequest::ToggleTrayIcon
+    );
+    let _ = std::fs::remove_file(&socket);
+}
+
+#[cfg(unix)]
+#[test]
+fn the_cli_reports_a_refusal_or_a_missing_desktop_app() {
+    use zellij_utils::app_control::AppReply;
+    let (socket, _received) = fake_app(AppReply::Refused("The Zellij app is closing.".to_owned()));
+    assert_eq!(
+        crate::commands::toggle_tray_icon_at(&socket),
+        Err("The Zellij app is closing.".to_owned())
+    );
+    let _ = std::fs::remove_file(&socket);
+    assert_eq!(
+        crate::commands::toggle_tray_icon_at(&socket),
+        Err("The Zellij desktop app is not running.".to_owned())
+    );
+}
+
+fn parse_action(args: &[&str]) -> zellij_utils::cli::CliAction {
+    let mut line = vec!["zellij", "action"];
+    line.extend_from_slice(args);
+    match try_parse(&line) {
+        Ok(CliArgs {
+            command: Some(Command::Action(action)),
+            ..
+        }) => *action,
+        other => panic!("{:?} did not parse as an action: {:?}", args, other),
+    }
+}
+
+#[test]
+fn the_attention_actions_parse_from_the_command_line() {
+    use zellij_utils::cli::CliAction;
+    assert!(matches!(
+        parse_action(&["mute-pane"]),
+        CliAction::MutePane { pane_id: None }
+    ));
+    assert!(matches!(
+        parse_action(&["mute-pane", "-p", "terminal_3"]),
+        CliAction::MutePane { pane_id: Some(id) } if id == "terminal_3"
+    ));
+    assert!(matches!(
+        parse_action(&["ignore-pane-output", "--pane-id", "4"]),
+        CliAction::IgnorePaneOutput { pane_id: Some(id) } if id == "4"
+    ));
+    assert!(matches!(
+        parse_action(&["watch-pane"]),
+        CliAction::WatchPane { pane_id: None }
+    ));
+    assert!(matches!(
+        parse_action(&["mute-tab", "-t", "2"]),
+        CliAction::MuteTab { tab_id: Some(2) }
+    ));
+    assert!(matches!(
+        parse_action(&["mute-session"]),
+        CliAction::MuteSession
+    ));
+    assert!(matches!(
+        parse_action(&["mark-pane-seen", "-p", "terminal_1"]),
+        CliAction::MarkPaneSeen { pane_id: Some(id) } if id == "terminal_1"
+    ));
+    assert!(matches!(
+        parse_action(&["mark-all-seen"]),
+        CliAction::MarkAllSeen {
+            this_session: false
+        }
+    ));
+    assert!(matches!(
+        parse_action(&["mark-all-seen", "--this-session"]),
+        CliAction::MarkAllSeen { this_session: true }
+    ));
+}
+
+#[test]
+fn the_session_switching_actions_parse_from_the_command_line() {
+    use zellij_utils::cli::CliAction;
+    assert!(matches!(
+        parse_action(&["toggle-session"]),
+        CliAction::ToggleSession
+    ));
+    assert!(matches!(
+        parse_action(&["go-to-previous-session"]),
+        CliAction::GoToPreviousSession
+    ));
+    assert!(matches!(
+        parse_action(&["go-to-next-session"]),
+        CliAction::GoToNextSession
+    ));
+    assert!(matches!(
+        parse_action(&["go-to-next-attention"]),
+        CliAction::GoToNextAttention
+    ));
+    assert!(matches!(
+        parse_action(&["toggle-tray-icon"]),
+        CliAction::ToggleTrayIcon
+    ));
+}
+
+#[test]
+fn new_panes_and_runs_can_be_watched_with_notify() {
+    use zellij_utils::cli::CliAction;
+    assert!(matches!(
+        parse_action(&["new-pane", "--notify", "--", "make"]),
+        CliAction::NewPane { notify: true, .. }
+    ));
+    assert!(matches!(
+        parse_action(&["new-pane", "--", "make"]),
+        CliAction::NewPane { notify: false, .. }
+    ));
+    match try_parse(&["zellij", "run", "--notify", "--", "make"]) {
+        Ok(CliArgs {
+            command:
+                Some(Command::Sessions(Sessions::Run {
+                    notify, command, ..
+                })),
+            ..
+        }) => {
+            assert!(notify);
+            assert_eq!(command, vec!["make".to_owned()]);
+        },
+        other => panic!("zellij run --notify did not parse: {:?}", other),
+    }
+}

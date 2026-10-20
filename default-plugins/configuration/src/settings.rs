@@ -251,6 +251,66 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "true",
             Everyone,
         ),
+        SettingKey::AttentionFrameMarkers => info(
+            "Status on pane frames",
+            Appearance,
+            "Show what a pane needs (approval, failure, done) in its frame title",
+            Toggle,
+            "true",
+            Everyone,
+        ),
+        SettingKey::AttentionHostStatus => info(
+            "Status to outer terminal",
+            Sessions,
+            "Tell the terminal Zellij runs in what the session needs (when it supports it)",
+            Toggle,
+            "true",
+            Everyone,
+        ),
+        SettingKey::AttentionIdleRule => info(
+            "Quiet detection",
+            Sessions,
+            "Notice when busy output goes quiet in all panes or only in watched panes",
+            Choice(&["all", "watched"]),
+            "all",
+            Everyone,
+        ),
+        SettingKey::AttentionDoneThresholdSecs => info(
+            "Report finished commands after",
+            Sessions,
+            "Seconds a successful command must run before it is reported as done",
+            Number {
+                min: 0,
+                max: 86400,
+                step: 1,
+            },
+            "10",
+            Everyone,
+        ),
+        SettingKey::AttentionIdleActivitySecs => info(
+            "Busy output for",
+            Sessions,
+            "Seconds of steady output before quiet detection applies",
+            Number {
+                min: 1,
+                max: 3600,
+                step: 1,
+            },
+            "10",
+            Everyone,
+        ),
+        SettingKey::AttentionIdleSilenceSecs => info(
+            "Quiet after",
+            Sessions,
+            "Seconds without output after which busy output counts as quiet",
+            Number {
+                min: 1,
+                max: 3600,
+                step: 1,
+            },
+            "3",
+            Everyone,
+        ),
         SettingKey::StyledUnderlines => info(
             "Styled underlines",
             Appearance,
@@ -571,12 +631,41 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "false",
             Everyone,
         ),
-        SettingKey::SessionCard => info(
-            "Session card",
-            Sessions,
-            "Show other relevant sessions when a new session starts",
+        SettingKey::AttentionTrayIcon => info(
+            "Tray icon",
+            TerminalWindow,
+            "Show the desktop app's icon in the tray or menu bar (sessions and notifications continue when hidden)",
             Toggle,
             "true",
+            OnlyYou,
+        ),
+        SettingKey::AttentionDesktopNotifications => info(
+            "Desktop notifications",
+            TerminalWindow,
+            "Which inbox items the desktop app shows as desktop notifications",
+            Choice(&[
+                "needs_you",
+                "needs_you_failed",
+                "needs_you_failed_done",
+                "none",
+            ]),
+            "needs_you_failed_done",
+            OnlyYou,
+        ),
+        SettingKey::AttentionNotificationDetails => info(
+            "Notification details",
+            TerminalWindow,
+            "Show program and command text in desktop notifications",
+            Toggle,
+            "true",
+            OnlyYou,
+        ),
+        SettingKey::AttentionStartupCard => info(
+            "Inbox card at startup",
+            Sessions,
+            "When to show the inbox card as a session starts or you reattach: when something needs you, always when other sessions run, or never",
+            Choice(&["attention", "always", "never"]),
+            "attention",
             Everyone,
         ),
         SettingKey::SessionIndicator => info(
@@ -1314,14 +1403,6 @@ pub fn describe(key: SettingKey) -> SettingInfo {
             "visual",
             OnlyYou,
         ),
-        SettingKey::WindowNotifications => info(
-            "Notifications",
-            TerminalWindow,
-            "How program notifications are shown",
-            Choice(&["desktop", "attention", "none"]),
-            "desktop",
-            OnlyYou,
-        ),
         SettingKey::WindowOpenLinks => info(
             "Open links",
             TerminalWindow,
@@ -1573,9 +1654,10 @@ pub fn describe(key: SettingKey) -> SettingInfo {
     }
 }
 
-pub const SECTION_ORDER: [&str; 31] = [
+pub const SECTION_ORDER: [&str; 32] = [
     "Theme",
     "Display",
+    "Attention",
     "Text",
     "Frames",
     "Tiled pane borders",
@@ -1615,6 +1697,16 @@ pub fn section(key: SettingKey) -> &'static str {
         DefaultLayout | DefaultCwd => "Starting points",
         DefaultShell | ScrollbackEditor => "Programs",
         SimplifiedUi | PaneFrames | PaneFrameStyle | VisualBell => "Display",
+        AttentionFrameMarkers
+        | AttentionHostStatus
+        | AttentionIdleRule
+        | AttentionDoneThresholdSecs
+        | AttentionIdleActivitySecs
+        | AttentionIdleSilenceSecs
+        | AttentionStartupCard
+        | AttentionTrayIcon
+        | AttentionDesktopNotifications
+        | AttentionNotificationDetails => "Attention",
         StyledUnderlines | Osc8Hyperlinks | GraphemeClusters => "Text",
         FrameRoundedCorners | FrameHideSessionName => "Frames",
         FrameBorderStyle
@@ -1639,8 +1731,9 @@ pub fn section(key: SettingKey) -> &'static str {
         DefaultMode => "New panes",
         AutoLayout | StackedResize | StackedPaneList | SwapLayoutNotification => "Layouts",
         NestedSessionHandling => "Nested sessions",
-        SessionName | AttachToSession | ShowStartupTips | ShowReleaseNotes | SessionCard
-        | SessionIndicator => "Startup",
+        SessionName | AttachToSession | ShowStartupTips | ShowReleaseNotes | SessionIndicator => {
+            "Startup"
+        },
         SessionSerialization
         | SerializePaneViewport
         | ScrollbackLinesToSerialize
@@ -1681,7 +1774,6 @@ pub fn section(key: SettingKey) -> &'static str {
         | WindowScrollMomentum
         | WindowScrollMomentumFriction => "Scrolling",
         WindowBell
-        | WindowNotifications
         | WindowOpenLinks
         | WindowOpenLinksWithShift
         | WindowShiftDragSelects

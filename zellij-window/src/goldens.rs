@@ -854,11 +854,24 @@ mod tests {
             cell: (u32, u32),
             frames: &[Vec<u8>],
         ) -> Vec<u64> {
+            retained_images(headless, rows, cols, cell, frames, |_, image| {
+                fingerprint(&image)
+            })
+        }
+
+        fn retained_images<T>(
+            headless: &mut Headless,
+            rows: usize,
+            cols: usize,
+            cell: (u32, u32),
+            frames: &[Vec<u8>],
+            mut keep: impl FnMut(usize, Image) -> T,
+        ) -> Vec<T> {
             let mut cache = GlyphCache::new(FontStack::embedded(DEFAULT_FONT_SIZE).unwrap());
             let mut state = TerminalState::new(rows, cols);
             state.set_cell_size(cell.0, cell.1);
             let mut retained = RetainedScene::new();
-            let mut prints = Vec::with_capacity(frames.len());
+            let mut kept = Vec::with_capacity(frames.len());
             for frame in frames {
                 let Ok(applied) = state.apply_frame(frame) else {
                     continue;
@@ -868,9 +881,9 @@ mod tests {
                 let image = headless
                     .render_retained(&retained, cache.atlases())
                     .unwrap();
-                prints.push(fingerprint(&image));
+                kept.push(keep(kept.len(), image));
             }
-            prints
+            kept
         }
 
         fn rebuilt_walk(
@@ -880,19 +893,95 @@ mod tests {
             cell: (u32, u32),
             frames: &[Vec<u8>],
         ) -> Vec<u64> {
+            rebuilt_images(headless, rows, cols, cell, frames, |_, image| {
+                fingerprint(&image)
+            })
+        }
+
+        fn rebuilt_images<T>(
+            headless: &mut Headless,
+            rows: usize,
+            cols: usize,
+            cell: (u32, u32),
+            frames: &[Vec<u8>],
+            mut keep: impl FnMut(usize, Image) -> T,
+        ) -> Vec<T> {
             let mut cache = GlyphCache::new(FontStack::embedded(DEFAULT_FONT_SIZE).unwrap());
             let mut state = TerminalState::new(rows, cols);
             state.set_cell_size(cell.0, cell.1);
-            let mut prints = Vec::with_capacity(frames.len());
+            let mut kept = Vec::with_capacity(frames.len());
             for frame in frames {
                 let Ok(_) = state.apply_frame(frame) else {
                     continue;
                 };
                 let built = scene::build(&state, &mut cache);
                 let image = headless.render(&built, cache.atlases()).unwrap();
-                prints.push(fingerprint(&image));
+                kept.push(keep(kept.len(), image));
             }
-            prints
+            kept
+        }
+
+        fn image_at(images: Vec<Option<Image>>, index: usize) -> Image {
+            images
+                .into_iter()
+                .nth(index)
+                .flatten()
+                .expect("the frame that differed is rendered again")
+        }
+
+        fn describe_difference(headless: &mut Headless, fixture: &Path, index: usize) -> String {
+            let (rows, cols, cell, frames) = frames_of(fixture);
+            let keep_one = |at: usize, image: Image| (at == index).then_some(image);
+            let held = image_at(
+                retained_images(headless, rows, cols, cell, &frames, keep_one),
+                index,
+            );
+            let built = image_at(
+                rebuilt_images(headless, rows, cols, cell, &frames, keep_one),
+                index,
+            );
+            let stem = format!(
+                "{}-frame-{}",
+                fixture.file_stem().unwrap_or_default().to_string_lossy(),
+                index
+            );
+            let directory = std::env::temp_dir();
+            let held_path = directory.join(format!("{}-retained.png", stem));
+            let built_path = directory.join(format!("{}-rebuilt.png", stem));
+            let _ = image_io::write(&held_path, &held);
+            let _ = image_io::write(&built_path, &built);
+            let differing: Vec<usize> = held
+                .pixels
+                .chunks_exact(4)
+                .zip(built.pixels.chunks_exact(4))
+                .enumerate()
+                .filter(|(_, (a, b))| a != b)
+                .map(|(pixel, _)| pixel)
+                .collect();
+            let Some(first) = differing.first() else {
+                return format!(
+                    "{:?} frame {} differed once and matched when drawn again, so the GPU \
+                     produced different pixels for the same work",
+                    fixture, index
+                );
+            };
+            let (x, y) = (*first as u32 % held.width, *first as u32 / held.width);
+            format!(
+                "{:?} frame {} draws different pixels when the scene is retained: {} pixels \
+                 differ, the first at ({}, {}) in cell row {} column {}, retained {:?} against \
+                 rebuilt {:?}; both images are in {:?} and {:?}",
+                fixture,
+                index,
+                differing.len(),
+                x,
+                y,
+                y / cell.1.max(1),
+                x / cell.0.max(1),
+                &held.pixels[first * 4..first * 4 + 4],
+                &built.pixels[first * 4..first * 4 + 4],
+                held_path,
+                built_path
+            )
         }
 
         #[test]
@@ -907,13 +996,12 @@ mod tests {
                 let (rows, cols, cell, frames) = frames_of(&fixture);
                 let retained = retained_walk(headless, rows, cols, cell, &frames);
                 let rebuilt = rebuilt_walk(headless, rows, cols, cell, &frames);
-                for (index, (held, built)) in retained.iter().zip(rebuilt.iter()).enumerate() {
-                    if held != built {
-                        failures.push(format!(
-                            "{:?} frame {} draws different pixels when the scene is retained",
-                            fixture, index
-                        ));
-                    }
+                let first_difference = retained
+                    .iter()
+                    .zip(rebuilt.iter())
+                    .position(|(held, built)| held != built);
+                if let Some(index) = first_difference {
+                    failures.push(describe_difference(headless, &fixture, index));
                 }
             }
 

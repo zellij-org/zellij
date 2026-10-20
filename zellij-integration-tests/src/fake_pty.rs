@@ -23,6 +23,8 @@ pub(crate) struct FakePtyState {
     pub exited: bool,
     pub echo: bool,
     pub stdin_tap: Option<crossbeam::channel::Sender<Vec<u8>>>,
+    pub foreground: Vec<String>,
+    pub foreground_reported: bool,
 }
 
 impl FakePtyState {
@@ -130,6 +132,8 @@ impl SharedPtys {
                     exited: false,
                     echo: true,
                     stdin_tap: None,
+                    foreground: Vec::new(),
+                    foreground_reported: false,
                 },
             );
             fake_pty_registry.spawn_queue.push_back(terminal_id);
@@ -259,11 +263,13 @@ impl SharedPtys {
             }
             let now = Instant::now();
             if let Some(tripped) = deadline.tripped(now) {
+                let registry_description = fake_pty_registry.describe_all();
+                drop(fake_pty_registry);
                 panic!(
                     "timed out waiting for: {}\n{}\n{}\n=== zellij log tail ({}) ===\n{}",
                     what,
                     tripped,
-                    fake_pty_registry.describe_all(),
+                    registry_description,
                     crate::test_env::log_file_path().display(),
                     crate::test_env::log_tail(40),
                 );
@@ -356,6 +362,31 @@ impl FakePtyHandle {
                 .unwrap_or_default()
         });
         zellij_server::os_input_output::env_value(&pane_env, name)
+    }
+
+    pub fn set_foreground(&self, command: &[&str]) {
+        self.shared_ptys.mutate(|fake_pty_registry| {
+            if let Some(fake_pty_state) =
+                fake_pty_registry.fake_pty_states.get_mut(&self.terminal_id)
+            {
+                fake_pty_state.foreground = command.iter().map(|part| part.to_string()).collect();
+                fake_pty_state.foreground_reported = false;
+            }
+        });
+    }
+
+    pub fn wait_for_foreground_to_be_seen(&self) {
+        let terminal_id = self.terminal_id;
+        self.shared_ptys.wait_for(
+            "the session to look at the foreground program",
+            |registry| {
+                registry
+                    .fake_pty_states
+                    .get(&terminal_id)
+                    .filter(|state| state.foreground_reported)
+                    .map(|_| ())
+            },
+        );
     }
 
     pub fn disable_echo(&self) {

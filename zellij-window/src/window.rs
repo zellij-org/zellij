@@ -9,14 +9,14 @@ use glutin::display::GetGlDisplay;
 use glutin::prelude::*;
 use glutin::surface::{Surface, SurfaceAttributesBuilder, SwapInterval, WindowSurface};
 use glutin_winit::{DisplayBuilder, GlWindow};
-use winit::application::ApplicationHandler;
 use winit::event::KeyEvent;
 use winit::event::{ElementState, Ime, MouseScrollDelta, TouchPhase, WindowEvent};
-use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
+use winit::event_loop::{ActiveEventLoop, EventLoop, EventLoopProxy};
 use winit::keyboard::{Key, ModifiersState, NamedKey};
 use winit::raw_window_handle::HasWindowHandle;
 use winit::window::{
     CursorIcon, Icon, ImePurpose, UserAttentionType, Window, WindowAttributes, WindowId,
+    WindowLevel,
 };
 use zellij_utils::data::{ConnectToSession, HostTerminalThemeMode};
 use zellij_utils::input::mouse::MouseEvent;
@@ -39,7 +39,6 @@ use crate::links::{self, LinkRun};
 use crate::momentum::{self, Momentum, Touch};
 use crate::mouse::{self, PointerState};
 use crate::notice::Notice;
-use crate::notify;
 use crate::options::{Change, Options};
 use crate::pacing::{Decision, Pacer};
 use crate::palette;
@@ -52,8 +51,14 @@ use crate::selection::Selection;
 use crate::settings::Settings;
 use crate::terminal::{self, FrameError, TerminalState};
 use crate::window_state::{self, Shown, Startup, WindowState};
-use zellij_utils::input::window::{
-    BellMode, NotificationMode, OptionAsAlt, PaddingColor, StartupMode,
+use zellij_utils::input::window::{OptionAsAlt, PaddingColor, StartupMode};
+
+mod conductor;
+mod desktop;
+#[cfg(all(unix, not(target_os = "macos"), not(target_os = "android")))]
+mod wayland_activation;
+pub(crate) use desktop::{
+    Connector, Desktop, DesktopMode, Hosting, PanelConnector, PreparedWindow, WindowMaker,
 };
 
 const BLINK_INTERVAL: Duration = Duration::from_millis(500);
@@ -65,28 +70,67 @@ pub(crate) fn application_id() -> &'static str {
     crate::identity::identity().app_id
 }
 
-#[derive(Debug)]
-enum Wake {
+pub(crate) enum Wake {
+    Window(u64, WindowWake),
+    App(crate::app::AppEvent),
+}
+
+pub(crate) enum WindowWake {
     Frame(Vec<u8>),
     Reconfigured(Settings),
     SettingsPushed(Settings),
     ThemeMode(HostTerminalThemeMode),
     Finished(Ending),
-    #[cfg(windows)]
-    Focus,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Verdict {
+    Keep,
+    Close,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum WindowLook {
+    Terminal,
+    Popup {
+        position: Option<winit::dpi::Position>,
+    },
+}
+
+#[derive(Clone)]
+pub(crate) struct AppPoster(Arc<Mutex<EventLoopProxy<Wake>>>);
+
+impl AppPoster {
+    pub(crate) fn new(proxy: EventLoopProxy<Wake>) -> Self {
+        AppPoster(Arc::new(Mutex::new(proxy)))
+    }
+
+    pub(crate) fn post(&self, event: crate::app::AppEvent) -> bool {
+        match self.0.lock() {
+            Ok(proxy) => proxy.send_event(Wake::App(event)).is_ok(),
+            Err(_) => false,
+        }
+    }
 }
 
 struct ProxySink {
     proxy: EventLoopProxy<Wake>,
+    key: u64,
+}
+
+impl ProxySink {
+    fn send(&self, wake: WindowWake) -> bool {
+        self.proxy.send_event(Wake::Window(self.key, wake)).is_ok()
+    }
 }
 
 impl RenderSink for ProxySink {
     fn frame(&mut self, frame: Vec<u8>) -> bool {
-        self.proxy.send_event(Wake::Frame(frame)).is_ok()
+        self.send(WindowWake::Frame(frame))
     }
 
     fn finished(&mut self, ending: Ending) -> bool {
-        self.proxy.send_event(Wake::Finished(ending)).is_ok()
+        self.send(WindowWake::Finished(ending))
     }
 
     fn acknowledges_frames(&self) -> bool {
@@ -94,17 +138,15 @@ impl RenderSink for ProxySink {
     }
 
     fn reconfigured(&mut self, settings: Settings) -> bool {
-        self.proxy.send_event(Wake::Reconfigured(settings)).is_ok()
+        self.send(WindowWake::Reconfigured(settings))
     }
 
     fn settings_pushed(&mut self, settings: Settings) -> bool {
-        self.proxy
-            .send_event(Wake::SettingsPushed(settings))
-            .is_ok()
+        self.send(WindowWake::SettingsPushed(settings))
     }
 
     fn theme_mode(&mut self, mode: HostTerminalThemeMode) -> bool {
-        self.proxy.send_event(Wake::ThemeMode(mode)).is_ok()
+        self.send(WindowWake::ThemeMode(mode))
     }
 }
 
@@ -119,9 +161,9 @@ struct Surfaces {
     renderer: Renderer,
 }
 
-type Switching = Box<dyn FnMut(&ConnectToSession, Geometry) -> Result<Connection>>;
+pub(crate) type Switching = Box<dyn FnMut(&ConnectToSession, Geometry) -> Result<Connection>>;
 
-struct App {
+pub(crate) struct App {
     state: TerminalState,
     cache: GlyphCache,
     metrics: CellMetrics,
@@ -163,10 +205,12 @@ struct App {
     surfaces: Option<Surfaces>,
     failure: Option<anyhow::Error>,
     leaving: bool,
-    quit_requested: bool,
     session: Option<Session>,
     ring: fn(),
-    notify: fn(NotificationMode, &crate::kitty::Notification) -> bool,
+    key: u64,
+    look: WindowLook,
+    activation_token: Option<String>,
+    border: Option<crate::color::Srgb>,
     transparency_available: bool,
     warned_opaque: bool,
     before_fullscreen: Shown,
@@ -178,11 +222,12 @@ struct App {
     momentum: Momentum,
 }
 
-struct Session {
+pub(crate) struct Session {
     client: Client,
     detacher: Detacher,
     loop_options: LoopOptions,
     proxy: EventLoopProxy<Wake>,
+    key: u64,
     switching: Switching,
     outcomes: Vec<LoopOutcome>,
 }
@@ -267,6 +312,30 @@ impl App {
         {
             self.relayout(size.width, size.height);
         }
+    }
+
+    pub(crate) fn edge_margins(&self) -> Margins {
+        self.padding_px()
+    }
+
+    pub(crate) fn header_is_blank_at(&self, position: winit::dpi::PhysicalPosition<f64>) -> bool {
+        let x = position.x - self.origin.0 as f64;
+        let y = position.y - self.origin.1 as f64;
+        if x < 0.0 || y < 0.0 {
+            return false;
+        }
+        let row = (y / self.metrics.height.max(1) as f64) as usize;
+        let col = (x / self.metrics.width.max(1) as f64) as usize;
+        let size = self.state.size();
+        if row != 0 || col >= size.cols {
+            return false;
+        }
+        let blank = |col: usize| self.state.screen().cell(0, col).character() == ' ';
+        blank(col) && (col == 0 || blank(col - 1)) && (col + 1 >= size.cols || blank(col + 1))
+    }
+
+    pub(crate) fn pointer_back_to_normal(&mut self) {
+        self.refresh_pointer();
     }
 
     fn padding_px(&self) -> Margins {
@@ -628,31 +697,15 @@ impl App {
     }
 
     fn closing(&mut self) -> bool {
-        let quitting = self.role == Role::Participant;
-        let pressed_again = quitting && self.quit_requested;
-        self.quit_requested = quitting;
-        self.leaving = !quitting || pressed_again;
-        let asked = if quitting {
-            self.tell(ClientToServerMsg::Action {
-                action: zellij_utils::input::actions::Action::Quit,
-                terminal_id: None,
-                client_id: None,
-                is_cli_client: false,
-            })
-        } else {
-            self.detach()
-        };
-        match asked {
-            Ok(()) => self.sender.is_none() || pressed_again,
-            Err(e) => {
-                report!(
-                    "the session could not be asked to let the window go, \
-                     so the window closes on its own: {}",
-                    e
-                );
-                true
-            },
+        self.leaving = true;
+        if let Err(e) = self.detach() {
+            report!(
+                "the session could not be asked to let the window go, \
+                 so the window closes on its own: {}",
+                e
+            );
         }
+        true
     }
 
     fn set_title(&mut self, title: String) {
@@ -680,17 +733,11 @@ impl App {
 
     fn attend(&mut self) {
         let rung = self.state.take_bells() > 0;
-        let notifications = self.state.take_notifications();
-        let mut unhandled = false;
-        for notification in &notifications {
-            unhandled |= !(self.notify)(self.options.notifications, notification);
+        let notified = !self.state.take_notifications().is_empty();
+        if !(rung || notified) {
+            return;
         }
-        if asks_for_attention(
-            rung,
-            unhandled,
-            self.options.bell,
-            self.options.notifications,
-        ) {
+        if self.options.bell.attends() {
             if let Some(surfaces) = &self.surfaces {
                 surfaces
                     .window
@@ -963,9 +1010,18 @@ impl App {
             return;
         }
         self.focused = focused;
+        self.report_focus();
         self.retained
             .mark(&Damage::Rows(vec![self.state.cursor_position().0]));
         self.schedule_draw();
+    }
+
+    fn report_focus(&self) {
+        if let Err(e) = self.tell(ClientToServerMsg::HostTerminalFocusChanged {
+            focused: self.focused,
+        }) {
+            report!("failed to report the window focus: {}", e);
+        }
     }
 
     fn toggle_fullscreen(&mut self) {
@@ -1097,7 +1153,6 @@ impl App {
     }
 
     fn press(&mut self, press: input::Press) {
-        self.quit_requested = false;
         let gate = self.composition.gate();
         if gate == Gate::Composing {
             return;
@@ -1304,7 +1359,6 @@ impl App {
 
     fn point<I: IntoIterator<Item = MouseEvent>>(&mut self, events: I) {
         for event in events {
-            self.quit_requested = false;
             if let Err(e) = self.tell(mouse::message(event)) {
                 report!("failed to send a mouse event: {}", e);
             }
@@ -1390,9 +1444,20 @@ impl App {
                 )
             },
         };
+        let mut margins = margins;
+        if let Some(color) = self.border {
+            margins.extend(border_rects(color, self.scale, target, self.origin));
+        }
         let Some(surfaces) = self.surfaces.as_mut() else {
             return;
         };
+        if let Err(e) = surfaces.context.make_current(&surfaces.surface) {
+            report!(
+                "the window's drawing context could not be made current: {}",
+                e
+            );
+            return;
+        }
         surfaces.renderer.draw_retained(
             &self.retained,
             self.cache.atlases(),
@@ -1476,6 +1541,9 @@ impl App {
                         report!("failed to re-declare a color: {}", e);
                     }
                 }
+                if !self.focused {
+                    self.report_focus();
+                }
                 true
             },
             Err(e) => {
@@ -1520,17 +1588,6 @@ impl App {
                 true
             },
         }
-    }
-
-    #[cfg(windows)]
-    fn come_forward(&mut self) {
-        let Some(surfaces) = &self.surfaces else {
-            return;
-        };
-        if surfaces.window.is_minimized() == Some(true) {
-            surfaces.window.set_minimized(false);
-        }
-        surfaces.window.focus_window();
     }
 
     fn close_requested(&mut self) -> bool {
@@ -1615,6 +1672,9 @@ impl App {
 
     fn open_window(&mut self, event_loop: &ActiveEventLoop) -> Result<()> {
         let surfaces = self.bring_up(event_loop)?;
+        if matches!(self.look, WindowLook::Popup { .. }) {
+            square_without_system_border(&surfaces.window);
+        }
         let size = surfaces.window.inner_size();
         let scale = surfaces.window.scale_factor();
         self.surfaces = Some(surfaces);
@@ -1631,26 +1691,24 @@ impl App {
     }
 
     fn bring_up(&mut self, event_loop: &ActiveEventLoop) -> Result<Surfaces> {
-        let attributes = with_option_as_alt(
-            named(startup_attributes(
-                WindowAttributes::default()
-                    .with_title(self.title.clone())
-                    .with_window_icon(window_icon())
-                    .with_transparent(true)
-                    .with_blur(self.options.blur)
-                    .with_inner_size(self.requested_size()),
-                self.startup.mode,
-            )),
-            self.options.option_as_alt,
-        );
+        let base = WindowAttributes::default()
+            .with_title(self.title.clone())
+            .with_window_icon(window_icon())
+            .with_transparent(true)
+            .with_blur(self.options.blur)
+            .with_inner_size(self.requested_size());
+        let base = match self.look {
+            WindowLook::Terminal => startup_attributes(base, self.startup.mode),
+            WindowLook::Popup { position } => popup_attributes(base, position),
+        };
+        let base = with_activation_token(base, self.activation_token.take());
+        let attributes = with_option_as_alt(named(base), self.options.option_as_alt);
 
         let (window, config) = DisplayBuilder::new()
             .with_window_attributes(Some(attributes))
             .build(
                 event_loop,
-                ConfigTemplateBuilder::new()
-                    .with_alpha_size(8)
-                    .with_transparency(requires_transparent_configs(Platform::current())),
+                ConfigTemplateBuilder::new().with_alpha_size(8),
                 pick_config,
             )
             .map_err(|e| anyhow!("failed to create a window: {}", e))?;
@@ -1712,42 +1770,101 @@ impl App {
     }
 }
 
-impl ApplicationHandler<Wake> for App {
-    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+impl App {
+    pub(crate) fn key(&self) -> u64 {
+        self.key
+    }
+
+    pub(crate) fn window_id(&self) -> Option<WindowId> {
+        self.surfaces.as_ref().map(|surfaces| surfaces.window.id())
+    }
+
+    pub(crate) fn window(&self) -> Option<&Window> {
+        self.surfaces.as_ref().map(|surfaces| &surfaces.window)
+    }
+
+    pub(crate) fn session_name(&self) -> Option<&str> {
+        (self.sender.is_some() && !self.session_name.is_empty())
+            .then_some(self.session_name.as_str())
+    }
+
+    pub(crate) fn take_failure(&mut self) -> Option<anyhow::Error> {
+        self.failure.take()
+    }
+
+    pub(crate) fn take_session(&mut self) -> Option<Session> {
+        self.session.take()
+    }
+
+    pub(crate) fn send_action(&self, action: zellij_utils::input::actions::Action) {
+        if let Err(e) = self.tell(ClientToServerMsg::Action {
+            action,
+            terminal_id: None,
+            client_id: None,
+            is_cli_client: false,
+        }) {
+            report!("the window could not pass an action to its session: {}", e);
+        }
+    }
+
+    pub(crate) fn leave(&mut self) {
+        self.remember();
+        self.closing();
+    }
+
+    pub(crate) fn wants_new_window(&self, event: &KeyEvent) -> bool {
+        if !event.state.is_pressed() || event.repeat {
+            return false;
+        }
+        let is_n = matches!(&event.logical_key, Key::Character(c) if c.eq_ignore_ascii_case("n"));
+        let modifiers = self.modifiers;
+        let wanted = match Platform::current() {
+            Platform::MacOs => modifiers.super_key() && !modifiers.control_key(),
+            _ => modifiers.control_key() && modifiers.shift_key() && !modifiers.alt_key(),
+        };
+        is_n && wanted
+    }
+
+    pub(crate) fn modifiers_changed(&mut self, modifiers: winit::event::Modifiers) {
+        self.modifiers = modifiers.state();
+        self.alt_keys = input::AltKeys::of(&modifiers);
+    }
+
+    pub(crate) fn on_resumed(&mut self, event_loop: &ActiveEventLoop) -> Verdict {
         if self.surfaces.is_some() {
-            return;
+            return Verdict::Keep;
         }
         if let Err(e) = self.open_window(event_loop) {
             self.failure = Some(e);
             let _ = self.detach();
-            event_loop.exit();
+            return Verdict::Close;
         }
+        Verdict::Keep
     }
 
-    fn user_event(&mut self, event_loop: &ActiveEventLoop, event: Wake) {
-        match event {
-            Wake::Frame(frame) => self.on_frame(&frame),
-            Wake::Reconfigured(settings) => self.reconfigured(settings),
-            Wake::SettingsPushed(settings) => self.settings_pushed(settings),
-            Wake::ThemeMode(mode) => {
+    pub(crate) fn on_wake(&mut self, wake: WindowWake) -> Verdict {
+        match wake {
+            WindowWake::Frame(frame) => self.on_frame(&frame),
+            WindowWake::Reconfigured(settings) => self.reconfigured(settings),
+            WindowWake::SettingsPushed(settings) => self.settings_pushed(settings),
+            WindowWake::ThemeMode(mode) => {
                 self.theme_mode = Some(mode);
                 self.reapply(false);
             },
-            Wake::Finished(ending) => {
+            WindowWake::Finished(ending) => {
                 if self.session_ended(ending) {
-                    event_loop.exit();
+                    return Verdict::Close;
                 }
             },
-            #[cfg(windows)]
-            Wake::Focus => self.come_forward(),
         }
+        Verdict::Keep
     }
 
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
+    pub(crate) fn on_window_event(&mut self, event: WindowEvent) -> Verdict {
         match event {
             WindowEvent::CloseRequested => {
                 if self.close_requested() {
-                    event_loop.exit();
+                    return Verdict::Close;
                 }
             },
             WindowEvent::Resized(size) => {
@@ -1768,8 +1885,7 @@ impl ApplicationHandler<Wake> for App {
                 self.rescale_keeping_cells(scale_factor, &mut inner_size_writer);
             },
             WindowEvent::ModifiersChanged(modifiers) => {
-                self.modifiers = modifiers.state();
-                self.alt_keys = input::AltKeys::of(&modifiers);
+                self.modifiers_changed(modifiers);
                 self.refresh_pointer();
             },
             WindowEvent::KeyboardInput {
@@ -1780,7 +1896,7 @@ impl ApplicationHandler<Wake> for App {
                 if !is_synthetic && event.state.is_pressed() {
                     if self.sender.is_none() {
                         if self.notice_key(&event.logical_key) {
-                            event_loop.exit();
+                            return Verdict::Close;
                         }
                     } else {
                         self.on_key(&event);
@@ -1804,13 +1920,13 @@ impl ApplicationHandler<Wake> for App {
                 self.on_focus_lost();
             },
             WindowEvent::RedrawRequested => self.draw(),
-            WindowEvent::Destroyed => event_loop.exit(),
+            WindowEvent::Destroyed => return Verdict::Close,
             _ => {},
         }
+        Verdict::Keep
     }
 
-    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        let now = Instant::now();
+    pub(crate) fn wake_deadline(&mut self, now: Instant) -> Option<Instant> {
         let gliding = self.advance_momentum(now);
         self.advance_scroll_animations(now);
         let blinks = self.anything_blinks();
@@ -1833,10 +1949,7 @@ impl ApplicationHandler<Wake> for App {
             },
             Decision::Idle => {},
         }
-        event_loop.set_control_flow(match deadline {
-            Some(at) => ControlFlow::WaitUntil(at),
-            None => ControlFlow::Wait,
-        });
+        deadline
     }
 }
 
@@ -1845,6 +1958,86 @@ pub struct WindowOptions {
     pub settings: Settings,
     pub detacher: Detacher,
     pub startup: Startup,
+}
+
+fn popup_attributes(
+    attributes: WindowAttributes,
+    position: Option<winit::dpi::Position>,
+) -> WindowAttributes {
+    let attributes = attributes
+        .with_decorations(false)
+        .with_resizable(true)
+        .with_window_level(WindowLevel::AlwaysOnTop)
+        .with_title("Zellij");
+    let attributes = skip_taskbar(attributes);
+    match position {
+        Some(position) => attributes.with_position(position),
+        None => attributes,
+    }
+}
+
+#[cfg(windows)]
+fn skip_taskbar(attributes: WindowAttributes) -> WindowAttributes {
+    use winit::platform::windows::WindowAttributesExtWindows;
+    attributes
+        .with_skip_taskbar(true)
+        .with_undecorated_shadow(true)
+}
+
+#[cfg(windows)]
+fn square_without_system_border(window: &Window) {
+    use windows_sys::Win32::Graphics::Dwm::{
+        DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_COLOR_NONE,
+        DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND,
+    };
+    use winit::raw_window_handle::RawWindowHandle;
+    let Ok(handle) = window.window_handle() else {
+        return;
+    };
+    let RawWindowHandle::Win32(handle) = handle.as_raw() else {
+        return;
+    };
+    let hwnd = handle.hwnd.get() as windows_sys::Win32::Foundation::HWND;
+    let corners = DWMWCP_DONOTROUND;
+    let color = DWMWA_COLOR_NONE;
+    unsafe {
+        DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_WINDOW_CORNER_PREFERENCE as u32,
+            &corners as *const _ as *const core::ffi::c_void,
+            std::mem::size_of_val(&corners) as u32,
+        );
+        DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_BORDER_COLOR as u32,
+            &color as *const _ as *const core::ffi::c_void,
+            std::mem::size_of_val(&color) as u32,
+        );
+    }
+}
+
+#[cfg(not(windows))]
+fn square_without_system_border(_window: &Window) {}
+
+#[cfg(not(windows))]
+fn skip_taskbar(attributes: WindowAttributes) -> WindowAttributes {
+    attributes
+}
+
+#[cfg(all(unix, not(target_os = "macos"), not(target_os = "android")))]
+fn with_activation_token(attributes: WindowAttributes, token: Option<String>) -> WindowAttributes {
+    use winit::platform::startup_notify::WindowAttributesExtStartupNotify;
+    match token {
+        Some(token) => {
+            attributes.with_activation_token(winit::window::ActivationToken::from_raw(token))
+        },
+        None => attributes,
+    }
+}
+
+#[cfg(not(all(unix, not(target_os = "macos"), not(target_os = "android"))))]
+fn with_activation_token(attributes: WindowAttributes, _token: Option<String>) -> WindowAttributes {
+    attributes
 }
 
 pub(crate) fn startup_attributes(
@@ -1860,38 +2053,63 @@ pub(crate) fn startup_attributes(
     }
 }
 
-pub fn run(
-    connection: Connection,
-    mut loop_options: LoopOptions,
-    window: WindowOptions,
-    fonts: FontStack,
-    switching: Switching,
-) -> Result<LoopOutcome> {
+pub(crate) struct TerminalWindow {
+    pub connection: Connection,
+    pub loop_options: LoopOptions,
+    pub window: WindowOptions,
+    pub fonts: FontStack,
+    pub switching: Switching,
+    pub clipboard: ClipboardHandle,
+    pub remember: bool,
+}
+
+pub(crate) fn border_rects(
+    color: crate::color::Srgb,
+    scale: f64,
+    (width, height): (u32, u32),
+    (left, top): (i32, i32),
+) -> [scene::Rect; 4] {
+    let line = (scale.round() as u32).max(1);
+    let rect = |x: u32, y: u32, width: u32, height: u32| scene::Rect {
+        x: x as i32 - left,
+        y: y as i32 - top,
+        width,
+        height,
+        color,
+    };
+    [
+        rect(0, 0, width, line),
+        rect(0, height.saturating_sub(line), width, line),
+        rect(0, 0, line, height),
+        rect(width.saturating_sub(line), 0, line, height),
+    ]
+}
+
+pub(crate) fn terminal_app(made: TerminalWindow, key: u64, proxy: EventLoopProxy<Wake>) -> App {
+    let TerminalWindow {
+        connection,
+        mut loop_options,
+        window,
+        fonts,
+        switching,
+        clipboard,
+        remember,
+    } = made;
     let renderer = Rendering::bring_up(&window.options, fonts, window.startup);
-    let windowing = Windowing::bring_up()?;
-    #[cfg(windows)]
-    {
-        let proxy = Mutex::new(windowing.proxy());
-        crate::notify::on_activation(move || {
-            if let Ok(proxy) = proxy.lock() {
-                let _ = proxy.send_event(Wake::Focus);
-            }
-        });
-    }
     let geometry = connection.geometry.clone();
     let role = connection.role;
     let sender = connection.sender.clone();
     let title = window_title(&connection.session_name);
     let session_name = connection.session_name.clone();
-    let clipboard: ClipboardHandle = Arc::new(Mutex::new(Clipboard::open()));
-    let state_path = loop_options.record_path.is_none().then(window_state::path);
+    let state_path = (remember && loop_options.record_path.is_none()).then(window_state::path);
     loop_options.clipboard = Some(clipboard.clone());
 
     let mut session = Session {
         client: Client::placeholder(),
         detacher: window.detacher,
         loop_options,
-        proxy: windowing.proxy(),
+        proxy,
+        key,
         switching,
         outcomes: Vec::new(),
     };
@@ -1906,17 +2124,77 @@ pub fn run(
         clipboard,
         Some(session),
     );
+    app.key = key;
     app.state_path = state_path;
     app.session_name = session_name;
-    let outcome = windowing.drive(&mut app);
-    let mut session = app.session.take();
-    if let Some(session) = session.as_mut() {
+    app
+}
+
+pub(crate) fn as_panel(
+    mut app: App,
+    position: Option<winit::dpi::Position>,
+    border: Option<crate::color::Srgb>,
+) -> App {
+    app.look = WindowLook::Popup { position };
+    app.border = border;
+    app.options.transparency = Transparency::OPAQUE;
+    app.options.blur = false;
+    app
+}
+
+pub(crate) fn with_activation(mut app: App, token: Option<String>) -> App {
+    app.activation_token = token;
+    app
+}
+
+pub fn run(
+    connection: Connection,
+    loop_options: LoopOptions,
+    window: WindowOptions,
+    fonts: FontStack,
+    switching: Switching,
+    listen: bool,
+) -> Result<LoopOutcome> {
+    let windowing = Windowing::bring_up()?;
+    let _listening = if listen {
+        crate::app::standalone::listen(AppPoster::new(windowing.proxy()))
+    } else {
+        None
+    };
+    let clipboard: ClipboardHandle = Arc::new(Mutex::new(Clipboard::open()));
+    let app = terminal_app(
+        TerminalWindow {
+            connection,
+            loop_options,
+            window,
+            fonts,
+            switching,
+            clipboard,
+            remember: true,
+        },
+        0,
+        windowing.proxy(),
+    );
+    let mut desktop = Desktop::new(windowing.proxy(), DesktopMode::Single);
+    desktop.adopt(app);
+    let outcome = windowing.drive(&mut desktop);
+    let mut sessions = desktop.into_sessions();
+    for session in sessions.iter_mut() {
         session.collect();
     }
     outcome?;
-    session
+    sessions
+        .into_iter()
+        .next()
         .map(Session::outcome)
         .unwrap_or_else(|| Err(anyhow!("the window never opened a session")))
+}
+
+pub(crate) fn run_desktop(desktop_mode: DesktopMode, windowing: Windowing) -> Result<()> {
+    let mut desktop = Desktop::new(windowing.proxy(), desktop_mode);
+    let outcome = windowing.drive(&mut desktop);
+    drop(desktop);
+    outcome
 }
 
 pub fn run_notice(
@@ -1945,13 +2223,16 @@ pub fn run_notice(
         None,
     );
     app.show_notice(message);
-    windowing.drive(&mut app)
+    let mut desktop = Desktop::new(windowing.proxy(), DesktopMode::Single);
+    desktop.adopt(app);
+    windowing.drive(&mut desktop)
 }
 
 impl Session {
     fn spawn(&mut self, connection: Connection) {
         let sink = ProxySink {
             proxy: self.proxy.clone(),
+            key: self.key,
         };
         self.client = Client::spawn(connection, self.loop_options.clone(), sink);
     }
@@ -1960,7 +2241,7 @@ impl Session {
         (self.switching)(to, geometry)
     }
 
-    fn collect(&mut self) {
+    pub(crate) fn collect(&mut self) {
         match self.client.take().map(Client::join) {
             Some(Ok(outcome)) => self.outcomes.push(outcome),
             Some(Err(e)) => report!("{}", e),
@@ -2079,10 +2360,12 @@ impl Rendering {
             surfaces: None,
             failure: None,
             leaving: false,
-            quit_requested: false,
             session,
             ring: bell::ring,
-            notify: notify::handled,
+            key: 0,
+            look: WindowLook::Terminal,
+            activation_token: None,
+            border: None,
             transparency_available: true,
             warned_opaque: false,
             before_fullscreen: Shown::Windowed,
@@ -2096,12 +2379,12 @@ impl Rendering {
     }
 }
 
-struct Windowing {
+pub(crate) struct Windowing {
     event_loop: EventLoop<Wake>,
 }
 
 impl Windowing {
-    fn bring_up() -> Result<Self> {
+    pub(crate) fn bring_up() -> Result<Self> {
         Ok(Self {
             event_loop: EventLoop::<Wake>::with_user_event()
                 .build()
@@ -2109,16 +2392,16 @@ impl Windowing {
         })
     }
 
-    fn proxy(&self) -> EventLoopProxy<Wake> {
+    pub(crate) fn proxy(&self) -> EventLoopProxy<Wake> {
         self.event_loop.create_proxy()
     }
 
-    fn drive(self, app: &mut App) -> Result<()> {
+    fn drive(self, desktop: &mut Desktop) -> Result<()> {
         let outcome = self
             .event_loop
-            .run_app(app)
+            .run_app(desktop)
             .context("the windowing event loop failed");
-        match app.failure.take() {
+        match desktop.take_failure() {
             Some(failure) => Err(failure),
             None => outcome,
         }
@@ -2134,11 +2417,15 @@ impl Client {
 
     fn spawn(connection: Connection, options: LoopOptions, mut sink: ProxySink) -> Self {
         let proxy = sink.proxy.clone();
+        let key = sink.key;
         Client(Some(std::thread::spawn(move || {
             guarded(
                 || client_loop::run_with_sink(connection, options, &mut sink),
                 |message| {
-                    let _ = proxy.send_event(Wake::Finished(Ending::Failed(message)));
+                    let _ = proxy.send_event(Wake::Window(
+                        key,
+                        WindowWake::Finished(Ending::Failed(message)),
+                    ));
                 },
             )
         })))
@@ -2181,15 +2468,6 @@ pub(crate) struct GridFit {
 
 fn has_no_area(width: u32, height: u32) -> bool {
     width == 0 || height == 0
-}
-
-fn asks_for_attention(
-    rung: bool,
-    unhandled_notification: bool,
-    bell: BellMode,
-    notifications: NotificationMode,
-) -> bool {
-    (rung && bell.attends()) || (unhandled_notification && notifications.attends())
 }
 
 pub(crate) fn fit_grid(
@@ -2312,10 +2590,6 @@ fn pick_config(configs: Box<dyn Iterator<Item = Config> + '_>) -> Config {
         .expect("the chosen config is one of those offered")
 }
 
-fn requires_transparent_configs(platform: Platform) -> bool {
-    platform != Platform::Windows
-}
-
 fn transparency_available(
     platform: Platform,
     supports_transparency: Option<bool>,
@@ -2395,7 +2669,6 @@ mod tests {
             shift_drag_selects: true,
             copy_keys: crate::options::default_copy_keys(),
             bell: zellij_utils::input::window::BellMode::Visual,
-            notifications: zellij_utils::input::window::NotificationMode::Attention,
             paints: Paints::default(),
             cursor_shape: None,
             cursor_blink: None,
@@ -2515,6 +2788,53 @@ mod tests {
         }
     }
 
+    #[test]
+    fn the_panel_border_is_one_line_on_each_edge_scaled_with_the_display() {
+        let ink = [1, 2, 3];
+        let rect = |x: i32, y: i32, width: u32, height: u32| scene::Rect {
+            x,
+            y,
+            width,
+            height,
+            color: ink,
+        };
+        assert_eq!(
+            border_rects(ink, 1.0, (100, 50), (0, 0)),
+            [
+                rect(0, 0, 100, 1),
+                rect(0, 49, 100, 1),
+                rect(0, 0, 1, 50),
+                rect(99, 0, 1, 50),
+            ]
+        );
+        assert_eq!(
+            border_rects(ink, 2.0, (100, 50), (0, 0)),
+            [
+                rect(0, 0, 100, 2),
+                rect(0, 48, 100, 2),
+                rect(0, 0, 2, 50),
+                rect(98, 0, 2, 50),
+            ]
+        );
+        assert_eq!(
+            border_rects(ink, 0.5, (10, 10), (0, 0))[1],
+            rect(0, 9, 10, 1)
+        );
+        assert_eq!(
+            border_rects(ink, 1.5, (10, 10), (0, 0))[3],
+            rect(8, 0, 2, 10)
+        );
+        assert_eq!(
+            border_rects(ink, 1.0, (100, 50), (8, 10)),
+            [
+                rect(-8, -10, 100, 1),
+                rect(-8, 39, 100, 1),
+                rect(-8, -10, 1, 50),
+                rect(91, -10, 1, 50),
+            ],
+            "the rectangles are drawn relative to the grid, so they are moved back to the window edges"
+        );
+    }
     #[test]
     fn without_padding_the_grid_starts_at_the_corner_and_leftovers_go_right_and_down() {
         let fit = fit_grid((805, 413), (8, 20), Margins::default(), false);
@@ -2799,20 +3119,20 @@ mod tests {
     fn a_watcher_that_asked_to_leave_closes_however_the_session_ends() {
         let mut harness = Harness::new(1, true, "");
         harness.app.role = Role::Watcher;
-        assert!(!harness.app.closing());
+        assert!(harness.app.closing());
         assert!(harness.app.session_ended(Ending::Lost));
         assert!(harness.app.failure.is_none());
     }
 
     #[test]
-    fn a_window_that_asked_to_quit_closes_when_the_session_lets_it_go() {
+    fn a_window_that_was_closed_is_not_troubled_by_the_detach_that_follows() {
         let mut harness = Harness::new(1, true, "");
-        assert!(!harness.app.closing());
+        assert!(harness.app.closing());
         assert!(harness
             .app
-            .session_ended(Ending::Exited(ExitReason::Normal)));
+            .session_ended(Ending::Exited(ExitReason::NormalDetached)));
         assert!(harness.app.failure.is_none());
-        assert_eq!(harness.actions(), vec![Action::Quit]);
+        assert_eq!(harness.actions(), vec![Action::Detach]);
     }
 
     #[test]
@@ -2870,37 +3190,21 @@ mod tests {
     }
 
     #[test]
-    fn a_close_request_sends_quit_and_keeps_the_window_until_the_server_answers() {
+    fn closing_a_window_detaches_and_keeps_the_session_running() {
         let mut harness = Harness::new(1, true, "");
         assert!(
-            !harness.app.closing(),
-            "a window showing a live session waits for the server"
+            harness.app.closing(),
+            "a window closes at once; the session keeps running"
         );
-        assert_eq!(harness.actions(), vec![Action::Quit]);
-    }
-
-    #[test]
-    fn pressing_close_again_closes_the_window_even_if_the_session_does_not_answer() {
-        let mut harness = Harness::new(2, true, "");
-        assert!(!harness.app.closing());
-        assert!(harness.app.closing(), "the second press closes the window");
         assert!(harness.app.leaving);
-        assert_eq!(harness.actions(), vec![Action::Quit, Action::Quit]);
-    }
-
-    #[test]
-    fn typing_after_the_first_close_makes_the_next_press_ask_again() {
-        let mut harness = Harness::new(3, true, "");
-        assert!(!harness.app.closing());
-        harness.press(&Key::Named(NamedKey::Escape));
-        assert!(!harness.app.closing());
+        assert_eq!(harness.actions(), vec![Action::Detach]);
     }
 
     #[test]
     fn a_watcher_leaves_without_quitting() {
         let mut harness = Harness::new(1, true, "");
         harness.app.role = Role::Watcher;
-        assert!(!harness.app.closing());
+        assert!(harness.app.closing());
         assert!(
             matches!(harness.sent()[0], ClientToServerMsg::Key { .. }),
             "a watcher leaves with Esc as before"
@@ -3070,7 +3374,7 @@ mod tests {
 
     #[test]
     fn a_focus_change_turns_the_cursor_hollow_and_redraws_its_row() {
-        let mut harness = Harness::new(0, true, "");
+        let mut harness = Harness::new(3, true, "");
         assert!(harness.app.focused, "a new window counts as focused");
         assert!(!harness.app.cursor_options().hollow);
         harness.app.refresh_scene();
@@ -3086,6 +3390,15 @@ mod tests {
         harness.app.options.cursor_unfocused_hollow = false;
         harness.app.set_focused(false);
         assert!(!harness.app.cursor_options().hollow);
+        let reported: Vec<bool> = harness
+            .sent()
+            .into_iter()
+            .filter_map(|msg| match msg {
+                ClientToServerMsg::HostTerminalFocusChanged { focused } => Some(focused),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(reported, vec![false, true, false]);
     }
 
     #[test]
@@ -3165,18 +3478,9 @@ mod tests {
     }
 
     static RINGS_COUNTED: AtomicUsize = AtomicUsize::new(0);
-    static NOTIFICATIONS_COUNTED: AtomicUsize = AtomicUsize::new(0);
 
     fn count_a_ring() {
         RINGS_COUNTED.fetch_add(1, Ordering::Relaxed);
-    }
-
-    fn count_a_notification(
-        _mode: NotificationMode,
-        _notification: &crate::kitty::Notification,
-    ) -> bool {
-        NOTIFICATIONS_COUNTED.fetch_add(1, Ordering::Relaxed);
-        true
     }
 
     fn frame_with_sideband(rows: usize, cols: usize, seq: u64, sideband: &[u8]) -> Vec<u8> {
@@ -3239,8 +3543,8 @@ mod tests {
         let dir = remembering(&mut harness);
         harness.app.resized(720, 600);
         assert!(
-            !harness.app.close_requested(),
-            "a window showing a live session waits for the server"
+            harness.app.close_requested(),
+            "a window closes at once and leaves the session running"
         );
         assert_eq!(
             remembered(&dir),
@@ -3260,7 +3564,7 @@ mod tests {
         assert!(matches!(
             sent[2],
             ClientToServerMsg::Action {
-                action: Action::Quit,
+                action: Action::Detach,
                 ..
             }
         ));
@@ -3300,7 +3604,7 @@ mod tests {
         harness.app.resized(720, 0);
         harness.app.relayout(0, 0);
         harness.app.resized(720, 600);
-        assert!(!harness.app.close_requested());
+        assert!(harness.app.close_requested());
         let sent = harness.sent();
         assert_eq!(
             sent[0],
@@ -3312,7 +3616,7 @@ mod tests {
             matches!(
                 sent[2],
                 ClientToServerMsg::Action {
-                    action: Action::Quit,
+                    action: Action::Detach,
                     ..
                 }
             ),
@@ -3446,8 +3750,6 @@ mod tests {
     fn a_title_a_bell_and_a_notification_are_all_drained_by_a_frame() {
         let mut harness = Harness::new(1, true, "");
         harness.app.ring = count_a_ring;
-        harness.app.notify = count_a_notification;
-        let offered_before = NOTIFICATIONS_COUNTED.load(Ordering::Relaxed);
         let size = harness.app.state.size();
         let frame = frame_with_sideband(
             size.rows,
@@ -3459,29 +3761,16 @@ mod tests {
         assert_eq!(harness.app.state.take_title(), None);
         assert_eq!(harness.app.state.take_bells(), 0);
         assert!(harness.app.state.take_notifications().is_empty());
-        assert_eq!(
-            NOTIFICATIONS_COUNTED.load(Ordering::Relaxed) - offered_before,
-            0,
-            "this OSC 99 declares d=0, so it is still being assembled and nothing may be offered \
-             to the desktop yet"
-        );
     }
 
     #[test]
-    fn a_completed_notification_is_offered_to_the_desktop_exactly_once() {
+    fn a_completed_notification_is_drained_without_reaching_the_desktop() {
         let mut harness = Harness::new(1, true, "");
         harness.app.ring = count_a_ring;
-        harness.app.notify = count_a_notification;
-        let offered_before = NOTIFICATIONS_COUNTED.load(Ordering::Relaxed);
         let size = harness.app.state.size();
         let frame = frame_with_sideband(size.rows, size.cols, 0, b"\x1b]9;body\x07");
         harness.app.on_frame(&frame);
         assert!(harness.app.state.take_notifications().is_empty());
-        assert_eq!(
-            NOTIFICATIONS_COUNTED.load(Ordering::Relaxed) - offered_before,
-            1,
-            "a completed notification was not offered to the desktop exactly once"
-        );
     }
 
     #[test]
@@ -3924,16 +4213,6 @@ mod tests {
             Some(1)
         );
         assert_eq!(best_config(std::iter::empty()), None);
-    }
-
-    #[test]
-    fn windows_never_requires_a_wgl_transparent_config() {
-        assert!(
-            !requires_transparent_configs(Platform::Windows),
-            "a driver that honors WGL_TRANSPARENT_ARB would offer no config at all"
-        );
-        assert!(requires_transparent_configs(Platform::Linux));
-        assert!(requires_transparent_configs(Platform::MacOs));
     }
 
     #[test]
@@ -4990,43 +5269,6 @@ mod tests {
                 "{:?} rang the host's bell the wrong number of times",
                 mode
             );
-        }
-    }
-
-    #[test]
-    fn a_notification_asks_for_attention_by_its_own_mode_whatever_the_bell_mode() {
-        for bell in [
-            BellMode::Visual,
-            BellMode::Audible,
-            BellMode::Both,
-            BellMode::None,
-        ] {
-            for (notifications, attends) in [
-                (NotificationMode::Desktop, true),
-                (NotificationMode::Attention, true),
-                (NotificationMode::None, false),
-            ] {
-                assert_eq!(
-                    asks_for_attention(false, true, bell, notifications),
-                    attends,
-                    "an unhandled notification under {:?} with bell {:?}",
-                    notifications,
-                    bell
-                );
-                assert!(
-                    !asks_for_attention(false, false, bell, notifications),
-                    "nothing happened, yet {:?} with bell {:?} asked for attention",
-                    notifications,
-                    bell
-                );
-                assert_eq!(
-                    asks_for_attention(true, false, bell, notifications),
-                    bell.attends(),
-                    "a bell under {:?} with notifications {:?}",
-                    bell,
-                    notifications
-                );
-            }
         }
     }
 

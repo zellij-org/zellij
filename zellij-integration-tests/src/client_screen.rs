@@ -30,6 +30,7 @@ pub enum HostTerminal {
     Basic,
     Kitty,
     KittyZlib,
+    ProgramStatus,
     Manual,
     GraphemeClusterAware(u8),
 }
@@ -43,6 +44,8 @@ const KITTY_ZLIB_PROBE_REPLY: &[u8] = b"\x1b_Gi=32;OK\x1b\\";
 const CELL_SIZE_QUERY: &[u8] = b"\x1b[16t";
 const CELL_SIZE_REPLY: &[u8] = b"\x1b[6;21;8t";
 const GRAPHEME_CLUSTER_MODE_QUERY: &[u8] = b"\x1b[?2027$p";
+const PROGRAM_STATUS_QUERY: &[u8] = b"\x1b]7501;?\x1b\\";
+const PROGRAM_STATUS_REPLY: &[u8] = b"\x1b]7501;?\x1b\\";
 
 struct HostResponder {
     host_terminal: HostTerminal,
@@ -66,6 +69,10 @@ impl HostResponder {
                 (KITTY_GRAPHICS_PROBE_PREFIX, KITTY_GRAPHICS_PROBE_REPLY),
                 (KITTY_ZLIB_PROBE_PREFIX, KITTY_ZLIB_PROBE_REPLY),
                 (CELL_SIZE_QUERY, CELL_SIZE_REPLY),
+            ],
+            HostTerminal::ProgramStatus => &[
+                (PROGRAM_STATUS_QUERY, PROGRAM_STATUS_REPLY),
+                (PRIMARY_DA_QUERY, PRIMARY_DA_REPLY),
             ],
             HostTerminal::Manual => &[],
         };
@@ -342,6 +349,12 @@ impl GridSnapshot {
     }
     pub fn row_of_line(&self, needle: &str) -> Option<usize> {
         self.text.lines().position(|line| line.contains(needle))
+    }
+    pub fn position_of(&self, needle: &str) -> Option<(usize, usize)> {
+        self.text.lines().enumerate().find_map(|(row, line)| {
+            line.find(needle)
+                .map(|byte_index| (line[..byte_index].chars().count(), row))
+        })
     }
     pub fn region_has_dim(
         &self,

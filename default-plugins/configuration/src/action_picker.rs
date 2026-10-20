@@ -361,6 +361,45 @@ pub const ACTION_SPECS: &[ActionSpec] = &[
         "ToggleSessionCard",
         "Show, focus or hide the running sessions card",
     ),
+    plain("MutePane", "Mute or unmute what the focused pane reports"),
+    plain(
+        "IgnorePaneOutput",
+        "Stop or start reporting new output of the focused pane",
+    ),
+    plain(
+        "WatchPane",
+        "Watch the focused pane: notify each time it finishes or goes quiet (toggles)",
+    ),
+    plain("MuteTab", "Mute or unmute what the panes of the tab report"),
+    plain(
+        "MuteSession",
+        "Mute or unmute what the whole session reports",
+    ),
+    plain(
+        "ToggleSession",
+        "Switch to the previous session (again returns)",
+    ),
+    plain(
+        "GoToPreviousSession",
+        "Go back in this client's session history",
+    ),
+    plain(
+        "GoToNextSession",
+        "Go forward in this client's session history",
+    ),
+    plain(
+        "GoToNextAttention",
+        "Jump to the next pane that needs attention in any session",
+    ),
+    plain(
+        "ToggleTrayIcon",
+        "Show or hide the desktop app's tray icon until it restarts",
+    ),
+    plain("MarkPaneSeen", "Clear past events of the focused pane"),
+    plain(
+        "MarkAllSeen",
+        "Clear past events of every pane in every session",
+    ),
     plain(
         "OpenContextMenu",
         "Open the right-click menu for the focused pane",
@@ -455,7 +494,19 @@ pub const ACTION_SPECS: &[ActionSpec] = &[
         &[],
     ),
     menu_only("StartRenamePaneByPaneId", "Rename the clicked pane", &[]),
+    menu_only("MutePaneByPaneId", "Mute or unmute the clicked pane", &[]),
+    menu_only(
+        "IgnorePaneOutputByPaneId",
+        "Ignore new output of the clicked pane",
+        &[],
+    ),
+    menu_only(
+        "WatchPaneByPaneId",
+        "Watch the clicked pane: notify each time it finishes (toggles)",
+        &[],
+    ),
     menu_only("CloseTabById", "Close the clicked tab", &[]),
+    menu_only("MuteTabByTabId", "Mute or unmute the clicked tab", &[]),
     menu_only("StartRenameTabByTabId", "Rename the clicked tab", &[]),
     menu_only(
         "MoveTabByTabId",

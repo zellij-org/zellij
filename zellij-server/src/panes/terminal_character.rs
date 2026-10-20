@@ -215,6 +215,59 @@ impl RcCharacterStyles {
         f(&mut styles);
         *self = styles.into();
     }
+
+    pub fn update_shared(
+        &mut self,
+        style_cache: &mut StyleCache,
+        f: impl FnOnce(&mut CharacterStyles),
+    ) {
+        let mut styles: CharacterStyles = **self;
+        f(&mut styles);
+        if styles.is_identical_to(self) {
+            return;
+        }
+        *self = style_cache.share(styles);
+    }
+
+    pub fn ptr_eq(&self, other: &RcCharacterStyles) -> bool {
+        match (self, other) {
+            (RcCharacterStyles::Reset, RcCharacterStyles::Reset) => true,
+            (RcCharacterStyles::Rc(own), RcCharacterStyles::Rc(other)) => Rc::ptr_eq(own, other),
+            _ => false,
+        }
+    }
+}
+
+const STYLE_CACHE_CAPACITY: usize = 64;
+
+#[derive(Debug, Default, Clone)]
+pub struct StyleCache {
+    recent: Vec<Rc<CharacterStyles>>,
+}
+
+impl StyleCache {
+    pub fn share(&mut self, styles: CharacterStyles) -> RcCharacterStyles {
+        if styles == RESET_STYLES {
+            return RcCharacterStyles::Reset;
+        }
+        if let Some(existing) = self
+            .recent
+            .iter()
+            .find(|existing| styles.is_identical_to(existing))
+        {
+            return RcCharacterStyles::Rc(existing.clone());
+        }
+        if self.recent.len() >= STYLE_CACHE_CAPACITY {
+            self.recent
+                .retain(|existing| Rc::strong_count(existing) > 1);
+            if self.recent.len() >= STYLE_CACHE_CAPACITY {
+                self.recent.remove(0);
+            }
+        }
+        let shared = Rc::new(styles);
+        self.recent.push(shared.clone());
+        RcCharacterStyles::Rc(shared)
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -254,6 +307,9 @@ impl PartialEq for CharacterStyles {
 }
 
 impl CharacterStyles {
+    fn is_identical_to(&self, other: &CharacterStyles) -> bool {
+        self == other && self.styled_underlines_enabled == other.styled_underlines_enabled
+    }
     pub fn foreground(mut self, foreground_code: Option<AnsiCode>) -> Self {
         self.foreground = foreground_code;
         self
@@ -973,11 +1029,7 @@ impl PartialEq for TerminalCharacter {
 
 impl TerminalCharacter {
     pub fn shares_styles_with(&self, other: &TerminalCharacter) -> bool {
-        match (&self.styles, &other.styles) {
-            (RcCharacterStyles::Reset, RcCharacterStyles::Reset) => true,
-            (RcCharacterStyles::Rc(own), RcCharacterStyles::Rc(other)) => Rc::ptr_eq(own, other),
-            _ => false,
-        }
+        self.styles.ptr_eq(&other.styles)
     }
     pub fn copy_glyph_from(&mut self, other: &TerminalCharacter) {
         if other.is_tagged() {
