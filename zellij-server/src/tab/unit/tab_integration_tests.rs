@@ -13415,7 +13415,7 @@ fn stack_member_pane_count(tab: &Tab) -> usize {
 }
 
 #[test]
-fn stack_direction_from_layout_is_restored_when_groupifying() {
+fn stack_direction_from_layout_is_applied_to_new_stack_list() {
     let size = Size {
         cols: 121,
         rows: 20,
@@ -13449,6 +13449,181 @@ fn stack_direction_from_layout_is_restored_when_groupifying() {
     let orientations: Vec<StackListOrientation> =
         tab.stack_lists.values().map(|l| l.orientation).collect();
     assert_eq!(orientations, vec![StackListOrientation::Horizontal]);
+}
+
+#[test]
+fn toggle_stack_list_orientation_flips_orientation_and_reserved_rows() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let base_layout = r#"
+        layout {
+            pane stacked=true stack_direction="horizontal" {
+                pane focus=true
+                pane
+                pane
+            }
+        }
+    "#;
+    let (base_layout, _base_floating_layout) =
+        Layout::from_kdl(base_layout, Some("file_name.kdl".into()), None, None)
+            .unwrap()
+            .template
+            .unwrap();
+    let new_terminal_ids = vec![(1, None), (2, None), (3, None)];
+    let mut tab = create_new_tab_with_stacked_pane_list(
+        size,
+        ModeInfo::default(),
+        true,
+        Some((base_layout, new_terminal_ids)),
+    );
+    let client_id = 1;
+
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+
+    let (stack_list_id, list) = tab.stack_lists.iter().next().unwrap();
+    let stack_list_id = *stack_list_id;
+    let visible = list.visible;
+    let member_count = list.members.len();
+    assert_eq!(list.orientation, StackListOrientation::Horizontal);
+    assert_eq!(
+        tab.reserved_top_rows.borrow().get(&visible),
+        Some(&1),
+        "horizontal tab bar reserves a single row"
+    );
+
+    assert!(tab.toggle_stack_list_orientation(client_id));
+    assert_eq!(
+        tab.stack_lists.get(&stack_list_id).unwrap().orientation,
+        StackListOrientation::Vertical
+    );
+    assert_eq!(
+        tab.reserved_top_rows.borrow().get(&visible),
+        Some(&(member_count + 1)),
+        "vertical list reserves one row per member plus a padding row"
+    );
+
+    assert!(tab.toggle_stack_list_orientation(client_id));
+    assert_eq!(
+        tab.stack_lists.get(&stack_list_id).unwrap().orientation,
+        StackListOrientation::Horizontal
+    );
+    assert_eq!(tab.reserved_top_rows.borrow().get(&visible), Some(&1));
+}
+
+#[test]
+fn stack_list_orientation_survives_degroupify_groupify_cycle() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let base_layout = r#"
+        layout {
+            pane stacked=true stack_direction="horizontal" {
+                pane focus=true
+                pane
+                pane
+            }
+        }
+    "#;
+    let (base_layout, _base_floating_layout) =
+        Layout::from_kdl(base_layout, Some("file_name.kdl".into()), None, None)
+            .unwrap()
+            .template
+            .unwrap();
+    let new_terminal_ids = vec![(1, None), (2, None), (3, None)];
+    let mut tab = create_new_tab_with_stacked_pane_list(
+        size,
+        ModeInfo::default(),
+        true,
+        Some((base_layout, new_terminal_ids)),
+    );
+
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+    assert_eq!(stack_member_pane_count(&tab), 3);
+
+    tab.degroupify_all();
+    assert!(
+        tab.stack_lists.is_empty(),
+        "degroupify dissolves the stack list into a classic in-grid stack"
+    );
+
+    tab.groupify_all();
+    let orientations: Vec<StackListOrientation> =
+        tab.stack_lists.values().map(|l| l.orientation).collect();
+    assert_eq!(
+        orientations,
+        vec![StackListOrientation::Horizontal],
+        "groupify restores the remembered orientation instead of defaulting"
+    );
+}
+
+#[test]
+fn horizontal_stack_list_member_at_point_follows_tab_widths() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let base_layout = r#"
+        layout {
+            pane stacked=true stack_direction="horizontal" {
+                pane focus=true
+                pane
+                pane
+            }
+        }
+    "#;
+    let (base_layout, _base_floating_layout) =
+        Layout::from_kdl(base_layout, Some("file_name.kdl".into()), None, None)
+            .unwrap()
+            .template
+            .unwrap();
+    let new_terminal_ids = vec![(1, None), (2, None), (3, None)];
+    let mut tab = create_new_tab_with_stacked_pane_list(
+        size,
+        ModeInfo::default(),
+        true,
+        Some((base_layout, new_terminal_ids)),
+    );
+
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+
+    let list = tab.stack_lists.values().next().unwrap();
+    let visible = list.visible;
+    let pane = tab.tiled_panes.get_pane(visible).unwrap();
+    let geom = pane.current_geom();
+    let offset = pane.get_content_offset();
+    let entry_x = geom.x + offset.left;
+    let entry_cols = geom
+        .cols
+        .as_usize()
+        .saturating_sub(offset.left + offset.right);
+    let entry_layout = tab.stack_list_horizontal_entry_layout(list, entry_cols);
+    let tab_widths: Vec<usize> = entry_layout.iter().map(|(_, w)| *w).collect();
+    assert_eq!(tab_widths.len(), list.members.len());
+
+    // clicking the second tab's leading column selects the second member
+    let second_tab_start = entry_x + tab_widths[0];
+    let second_member = list.members[1];
+    assert_eq!(
+        tab.stack_list_member_at_point(
+            visible,
+            &Position::new(geom.y as i32, second_tab_start as u16)
+        ),
+        second_member
+    );
+    // a click one row below the tab bar lands in the pane content, not a header
+    assert_eq!(
+        tab.stack_list_member_at_point(
+            visible,
+            &Position::new(geom.y as i32 + 1, second_tab_start as u16)
+        ),
+        visible
+    );
 }
 
 #[test]

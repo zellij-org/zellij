@@ -1116,7 +1116,7 @@ impl Tab {
             },
             StackListOrientation::Horizontal => {
                 // the tab bar is a single row; the clicked member is decided by the column,
-                // walking the same per-tab widths render_stack_list_headers lays out.
+                // walking the same per-tab widths the renderer lays out.
                 if point.line() != geom.y as isize {
                     return pane_id;
                 }
@@ -1126,25 +1126,16 @@ impl Tab {
                     .cols
                     .as_usize()
                     .saturating_sub(offset.left + offset.right);
-                // matches render_stack_list_entry chrome: one blank column each side.
-                let horizontal_entry_overhead = 2;
                 let column = point.column();
                 if column < entry_x {
                     return pane_id;
                 }
                 let mut tab_x = entry_x;
-                for member in &list.members {
-                    let label_width = if *member == list.visible {
-                        self.tiled_panes.get_pane(*member).map(|p| &**p)
-                    } else {
-                        self.suppressed_panes.get(member).map(|(_, p)| &**p)
-                    }
-                    .map(|p| p.stack_list_entry_label().width())
-                    .unwrap_or(0);
-                    let tab_width = (label_width + horizontal_entry_overhead).min(entry_cols);
-                    if tab_x + tab_width > entry_x + entry_cols {
-                        break;
-                    }
+                for (member, (_, tab_width)) in list
+                    .members
+                    .iter()
+                    .zip(self.stack_list_horizontal_entry_layout(list, entry_cols))
+                {
                     if column < tab_x + tab_width {
                         return *member;
                     }
@@ -1153,6 +1144,40 @@ impl Tab {
                 pane_id
             },
         }
+    }
+    fn stack_list_member_label_width(&self, list: &StackList, member: &PaneId) -> usize {
+        let pane = if *member == list.visible {
+            self.tiled_panes.get_pane(*member).map(|p| &**p)
+        } else {
+            self.suppressed_panes.get(member).map(|(_, p)| &**p)
+        };
+        pane.map(|p| p.stack_list_entry_label().width())
+            .unwrap_or(0)
+    }
+    // (label width, tab width) per member of a horizontal tab bar: tabs pack left to right
+    // on a single row, each with one blank column of chrome either side of the label, and
+    // the row stops at the pane's right edge. Kept in one place so the click mapping and
+    // the rendering agree.
+    fn stack_list_horizontal_entry_layout(
+        &self,
+        list: &StackList,
+        entry_cols: usize,
+    ) -> Vec<(usize, usize)> {
+        const HORIZONTAL_ENTRY_OVERHEAD: usize = 2;
+        let mut tab_x = 0;
+        list.members
+            .iter()
+            .map(|member| self.stack_list_member_label_width(list, member))
+            .map_while(|label_width| {
+                let tab_width = (label_width + HORIZONTAL_ENTRY_OVERHEAD).min(entry_cols);
+                if tab_x + tab_width > entry_cols {
+                    None
+                } else {
+                    tab_x += tab_width;
+                    Some((label_width, tab_width))
+                }
+            })
+            .collect()
     }
     pub fn suppressed_stack_list_members(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
         self.suppressed_panes
@@ -1742,29 +1767,14 @@ impl Tab {
             let widest_member_title = list
                 .members
                 .iter()
-                .filter_map(|member| {
-                    if *member == list.visible {
-                        self.tiled_panes.get_pane(*member).map(|p| &**p)
-                    } else {
-                        self.suppressed_panes.get(member).map(|(_, p)| &**p)
-                    }
-                })
-                .map(|pane| pane.stack_list_entry_label().width())
+                .map(|member| self.stack_list_member_label_width(&list, member))
                 .max()
                 .unwrap_or(0);
             let stack_is_focused = active_panes.values().any(|p_id| *p_id == list.visible);
-            // must match render_stack_list_entry's per-entry chrome: one blank column of
-            // padding on each side of the label (no marker, no borders).
-            let horizontal_entry_overhead = 2;
+            let horizontal_entry_layout =
+                self.stack_list_horizontal_entry_layout(&list, entry_cols);
             let mut horizontal_x = entry_x;
             for (rank, member) in list.members.iter().enumerate() {
-                let member_label_width = if *member == list.visible {
-                    self.tiled_panes.get_pane(*member).map(|p| &**p)
-                } else {
-                    self.suppressed_panes.get(member).map(|(_, p)| &**p)
-                }
-                .map(|pane| pane.stack_list_entry_label().width())
-                .unwrap_or(0);
                 let mut header_geom = rect;
                 let entry_width = match list.orientation {
                     StackListOrientation::Vertical => {
@@ -1774,18 +1784,16 @@ impl Tab {
                         widest_member_title
                     },
                     StackListOrientation::Horizontal => {
-                        // each tab is only as wide as its own label plus chrome, packed left to
-                        // right on a single row; stop once we run out of horizontal space.
-                        let tab_width =
-                            (member_label_width + horizontal_entry_overhead).min(entry_cols);
-                        if horizontal_x + tab_width > entry_x + entry_cols {
+                        let Some((member_label_width, tab_width)) =
+                            horizontal_entry_layout.get(rank)
+                        else {
                             break;
-                        }
+                        };
                         header_geom.x = horizontal_x;
-                        header_geom.cols.set_inner(tab_width);
+                        header_geom.cols.set_inner(*tab_width);
                         header_geom.y = rect.y;
                         horizontal_x += tab_width;
-                        member_label_width
+                        *member_label_width
                     },
                 };
                 header_geom.rows = Dimension::fixed(1);
