@@ -141,6 +141,53 @@ macro_rules! grant_permissions_and_log_actions_in_thread {
     };
 }
 
+macro_rules! grant_permissions_and_log_actions_until {
+    ( $arc_mutex_log:expr, $receiver:expr, $permission_type:expr, $cache_path:expr, $plugin_thread_sender:expr, $client_id:expr, $is_done:expr ) => {
+        std::thread::Builder::new()
+            .name("fake_screen_thread".to_string())
+            .spawn({
+                let log = $arc_mutex_log.clone();
+                let cache_path = $cache_path.clone();
+                let plugin_thread_sender = $plugin_thread_sender.clone();
+                let is_done = $is_done;
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+                move || loop {
+                    let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+                    let Ok((event, _err_ctx)) = $receiver.recv_timeout(remaining) else {
+                        break;
+                    };
+                    match event {
+                        ScreenInstruction::RequestPluginPermissions(_, plugin_permission) => {
+                            let status = if plugin_permission.permissions.contains($permission_type)
+                            {
+                                PermissionStatus::Granted
+                            } else {
+                                PermissionStatus::Denied
+                            };
+                            let _ = plugin_thread_sender.send(
+                                PluginInstruction::PermissionRequestResult(
+                                    0,
+                                    Some($client_id),
+                                    plugin_permission.permissions,
+                                    status,
+                                    Some(cache_path.clone()),
+                                ),
+                            );
+                        },
+                        event => {
+                            let done = is_done(&event);
+                            log.lock().unwrap().push(event);
+                            if done {
+                                break;
+                            }
+                        },
+                    }
+                }
+            })
+            .unwrap()
+    };
+}
+
 macro_rules! deny_permissions_and_log_actions_in_thread {
     ( $arc_mutex_log:expr, $exit_event:path, $receiver:expr, $exit_after_count:expr, $permission_type:expr, $cache_path:expr, $plugin_thread_sender:expr, $client_id:expr ) => {
         std::thread::Builder::new()
@@ -11547,15 +11594,21 @@ pub fn rename_layout_not_found_plugin_command() {
         create_plugin_thread(Some(plugin_host_folder.clone()), None);
 
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = grant_permissions_and_log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_until!(
         received_screen_instructions,
-        ScreenInstruction::PluginBytes,
         screen_receiver,
-        2,
         &PermissionType::ChangeApplicationState,
         cache_path,
         plugin_thread_sender,
-        1
+        1,
+        |event: &ScreenInstruction| match event {
+            ScreenInstruction::PluginBytes(plugin_render_assets) => {
+                plugin_render_assets.iter().any(|plugin_render_asset| {
+                    String::from_utf8_lossy(&plugin_render_asset.bytes).contains("Rename")
+                })
+            },
+            _ => false,
+        }
     );
 
     let plugin_should_float = Some(false);
