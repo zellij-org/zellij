@@ -14561,7 +14561,7 @@ fn test_ctrl_scroll_down_in_stack_dissolves_stack_lists_before_mutation() {
 }
 
 #[test]
-fn resize_hint_text_tracks_mouse_scroll_resize_updates() {
+fn the_tab_bar_gets_only_the_stopped_command_hint() {
     let size = Size {
         cols: 120,
         rows: 20,
@@ -14571,56 +14571,15 @@ fn resize_hint_text_tracks_mouse_scroll_resize_updates() {
 
     tab.vertical_split(PaneId::Terminal(2), None, client_id, None, None)
         .unwrap();
-    tab.mouse_help_text_visible.insert(client_id, true);
-
-    tab.update_mouse_scroll_resize(false);
-    let disabled_hints = tab.resolve_hint_text(client_id);
-    assert!(!disabled_hints.is_empty());
-    assert!(disabled_hints
-        .values()
-        .all(|hint| !hint.text.contains("MouseScroll")));
-
-    tab.update_mouse_scroll_resize(true);
-    let enabled_hints = tab.resolve_hint_text(client_id);
-    assert!(!enabled_hints.is_empty());
-    assert!(enabled_hints
-        .values()
-        .all(|hint| hint.text.contains("MouseScroll")));
-}
-
-#[test]
-fn hint_text_suppressed_when_mouse_hover_tips_disabled() {
-    let size = Size {
-        cols: 120,
-        rows: 20,
-    };
-    let client_id = 1;
-    let mut tab = create_new_tab(size, ModeInfo::default());
-
-    tab.vertical_split(PaneId::Terminal(2), None, client_id, None, None)
-        .unwrap();
-    tab.mouse_help_text_visible.insert(client_id, true);
-
-    let enabled_resize_hints = tab.resolve_hint_text(client_id);
-    assert!(!enabled_resize_hints.is_empty());
-    assert!(enabled_resize_hints
-        .values()
-        .all(|hint| hint.text.contains("drag borders")));
-
-    tab.update_mouse_hover_tips(false);
-    assert!(tab.resolve_hint_text(client_id).is_empty());
-
-    tab.mouse_hover_pane_id
-        .insert(client_id, PaneId::Terminal(1));
-    assert!(tab.resolve_hint_text(client_id).is_empty());
-
-    tab.update_mouse_hover_tips(true);
-    let hover_hints = tab.resolve_hint_text(client_id);
-    assert!(!hover_hints.is_empty());
-    assert!(hover_hints.values().all(|hint| hint.text.contains("group")));
-
-    tab.update_mouse_hover_tips(false);
-    assert!(tab.resolve_hint_text(client_id).is_empty());
+    for hover_tips in [true, false] {
+        tab.update_mouse_hover_tips(hover_tips);
+        tab.mouse_help_text_visible.insert(client_id, true);
+        assert!(tab.resolve_hint_text(client_id).is_empty());
+        tab.mouse_hover_pane_id
+            .insert(client_id, PaneId::Terminal(1));
+        assert!(tab.resolve_hint_text(client_id).is_empty());
+        tab.mouse_hover_pane_id.remove(&client_id);
+    }
 
     tab.hold_pane(PaneId::Terminal(2), Some(0), false, RunCommand::default());
     let held_hints = tab.resolve_hint_text(client_id);

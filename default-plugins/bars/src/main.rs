@@ -7,6 +7,8 @@ mod session_indicator;
 mod status_bar;
 mod tab_bar;
 mod tab_drag;
+mod tab_marker;
+mod timers;
 
 use std::collections::BTreeMap;
 use zellij_tile::prelude::*;
@@ -16,6 +18,7 @@ use keybinds::{take_keybinds, KeybindStore};
 use link::Link;
 use status_bar::StatusBar;
 use tab_bar::TabBar;
+use timers::{TimerOwner, Timers};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Role {
@@ -67,6 +70,7 @@ struct State {
     compact_bar: CompactBar,
     link: Link,
     keybinds: KeybindStore,
+    timers: Timers,
 }
 
 register_shared_plugin!(State);
@@ -114,6 +118,78 @@ impl State {
                 for client_id in client_ids {
                     self.keybinds.set(client_id, keybinds.clone());
                 }
+            },
+        }
+    }
+
+    fn start_requested_timers(&mut self) {
+        for seconds in self.tab_bar.take_timer_requests() {
+            self.timers.start(TimerOwner::TabBar, seconds);
+        }
+        for seconds in self.status_bar.take_timer_requests() {
+            self.timers.start(TimerOwner::StatusBar, seconds);
+        }
+    }
+
+    fn dispatch_timer(&mut self, event: &Event, context: EventContext) -> RenderResponse {
+        match self.timers.fired() {
+            Some(TimerOwner::TabBar) => {
+                let render = self.tab_bar.update(event, context);
+                if self.tab_bar.has_slots() {
+                    render
+                } else {
+                    RenderResponse::Nothing
+                }
+            },
+            Some(TimerOwner::StatusBar) if self.status_bar.has_slots() => {
+                self.status_bar.update(event, context)
+            },
+            _ => RenderResponse::Nothing,
+        }
+    }
+
+    fn update_bars(&mut self, event: &Event, context: EventContext) -> RenderResponse {
+        match event {
+            Event::Timer(_) => self.dispatch_timer(event, context),
+            Event::Mouse(_) | Event::Key(_) => {
+                let role = context
+                    .slot_id
+                    .and_then(|slot_id| self.slots.get(&slot_id).copied());
+                match role {
+                    Some(Role::TabBar) => self.tab_bar.update(event, context),
+                    Some(Role::StatusBar) => self.status_bar.update(event, context),
+                    Some(Role::CompactBar) => {
+                        self.compact_bar.update(event, context, &mut self.keybinds)
+                    },
+                    _ => RenderResponse::Nothing,
+                }
+            },
+            _ => {
+                let mut render = RenderResponse::Nothing;
+                if !self.any_bar_has_slots() {
+                    if let Some(client_id) = context.client_id {
+                        if matches!(
+                            event,
+                            Event::ModeUpdate(_) | Event::TabUpdate(_) | Event::InitialKeybinds(_)
+                        ) {
+                            self.pending.entry(client_id).or_default().apply(event);
+                        }
+                    }
+                }
+                if self.tab_bar.has_slots() {
+                    render = render.merge(self.tab_bar.update(event, context));
+                }
+                if self.status_bar.has_slots() {
+                    render = render.merge(self.status_bar.update(event, context));
+                }
+                if self.compact_bar.has_slots() {
+                    render =
+                        render.merge(self.compact_bar.update(event, context, &mut self.keybinds));
+                }
+                if self.link.has_slots() {
+                    self.link.update(event);
+                }
+                render
             },
         }
     }
@@ -201,51 +277,9 @@ impl ZellijSharedPlugin for State {
     fn update(&mut self, mut event: Event, context: EventContext) -> RenderResponse {
         self.compact_bar.ensure_toggle_keybinds(context.client_id);
         self.store_keybinds(&mut event, context.client_id);
-        match &event {
-            Event::Mouse(_) | Event::Key(_) => {
-                let role = context
-                    .slot_id
-                    .and_then(|slot_id| self.slots.get(&slot_id).copied());
-                match role {
-                    Some(Role::TabBar) => self.tab_bar.update(&event, context),
-                    Some(Role::StatusBar) => self.status_bar.update(&event, context),
-                    Some(Role::CompactBar) => {
-                        self.compact_bar.update(&event, context, &mut self.keybinds)
-                    },
-                    _ => RenderResponse::Nothing,
-                }
-            },
-            _ => {
-                let mut render = RenderResponse::Nothing;
-                if !self.any_bar_has_slots() {
-                    if let Some(client_id) = context.client_id {
-                        if matches!(
-                            event,
-                            Event::ModeUpdate(_) | Event::TabUpdate(_) | Event::InitialKeybinds(_)
-                        ) {
-                            self.pending.entry(client_id).or_default().apply(&event);
-                        }
-                    }
-                }
-                if self.tab_bar.has_slots() || matches!(event, Event::Timer(_)) {
-                    let tab_bar_render = self.tab_bar.update(&event, context);
-                    if self.tab_bar.has_slots() {
-                        render = render.merge(tab_bar_render);
-                    }
-                }
-                if self.status_bar.has_slots() {
-                    render = render.merge(self.status_bar.update(&event, context));
-                }
-                if self.compact_bar.has_slots() {
-                    render =
-                        render.merge(self.compact_bar.update(&event, context, &mut self.keybinds));
-                }
-                if self.link.has_slots() {
-                    self.link.update(&event);
-                }
-                render
-            },
-        }
+        let render = self.update_bars(&event, context);
+        self.start_requested_timers();
+        render
     }
 
     fn pipe(&mut self, pipe_message: PipeMessage, context: EventContext) -> RenderResponse {

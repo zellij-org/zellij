@@ -63,6 +63,12 @@ pub fn zellij_server_listener(
                 'reconnect_loop: loop {
                     let reconnect_info = reconnect_to_session.take();
                     let initial_layout = reconnect_info.as_ref().and_then(|r| r.layout.clone());
+                    let switch_context =
+                        reconnect_info.as_ref().and_then(|r| r.switch_context.clone());
+                    let focus = (
+                        reconnect_info.as_ref().and_then(|r| r.tab_position),
+                        reconnect_info.as_ref().and_then(|r| r.pane_id),
+                    );
                     let session_name = {
                         let Some(name) = reconnect_info
                             .as_ref()
@@ -120,7 +126,7 @@ pub fn zellij_server_listener(
                     }
 
                     let should_create_new_session = !session_exists;
-                    let first_message = create_first_message(is_read_only, config_file_path.clone(), client_attributes.clone(), config_options.clone(), should_create_new_session, &session_name, initial_layout);
+                    let first_message = create_first_message(is_read_only, config_file_path.clone(), client_attributes.clone(), config_options.clone(), should_create_new_session, &session_name, initial_layout, switch_context, focus);
                     let zellij_ipc_pipe = create_ipc_pipe(&session_name, session_exists);
 
                     session_manager.spawn_session_if_needed(
@@ -279,6 +285,9 @@ pub fn zellij_server_listener(
                             Some(ServerToClientMsg::PaneRenderUpdate { .. }) => {},
                             Some(ServerToClientMsg::SubscribedPaneClosed { .. }) => {},
                             Some(ServerToClientMsg::EmitNestedSessionFrame { .. }) => {},
+                            Some(ServerToClientMsg::HostProgramStatus { .. }) => {},
+                            Some(ServerToClientMsg::SessionAttention { .. }) => {},
+                            Some(ServerToClientMsg::SessionPreview { .. }) => {},
                             Some(ServerToClientMsg::ForwardQueryToHost {
                                 token,
                                 query_bytes,

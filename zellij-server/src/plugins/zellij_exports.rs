@@ -499,6 +499,7 @@ fn get_session_preview(
     name: String,
     tab_index: Option<usize>,
     pane_id: Option<(u32, bool)>,
+    anchor: Option<zellij_utils::data::PreviewAnchor>,
 ) {
     let _ = env
         .senders
@@ -508,7 +509,67 @@ fn get_session_preview(
             session_name: name,
             tab_index,
             pane_id,
+            anchor,
         });
+}
+
+fn session_pane_command(
+    env: &PluginEnv,
+    session_name: Option<String>,
+    command: crate::screen::SessionPaneCommand,
+) {
+    let _ = env
+        .senders
+        .send_to_screen(ScreenInstruction::SessionPaneCommand {
+            session_name,
+            command,
+            client_id: acting_client(env),
+            completion: None,
+        });
+}
+
+fn open_session_window(env: &PluginEnv, request: zellij_utils::data::SessionWindowRequest) {
+    let creates_a_session = request.creates_a_session();
+    let mut layout_holder = ConnectToSession {
+        layout: request.layout.clone(),
+        ..Default::default()
+    };
+    if let Some(layout_dir) = env.layout_dir.clone().or_else(default_layout_dir) {
+        layout_holder.apply_layout_dir(&layout_dir);
+    }
+    let cwd = request
+        .cwd
+        .clone()
+        .map(|c| translate_plugin_path(env, c))
+        .or_else(|| creates_a_session.then(|| env.plugin_cwd.clone()));
+    let _ = std::thread::Builder::new()
+        .name("open_session_window".to_owned())
+        .spawn(move || {
+            let request = zellij_utils::app_control::AppRequest::OpenWindow(
+                zellij_utils::app_control::OpenWindowRequest {
+                    create: request.new_window || request.session_name.is_none(),
+                    session: request.session_name,
+                    pane_id: request.pane_id.map(|p| match p {
+                        zellij_utils::data::PaneId::Terminal(id) => (id, false),
+                        zellij_utils::data::PaneId::Plugin(id) => (id, true),
+                    }),
+                    layout: layout_holder.layout,
+                    cwd,
+                    ..Default::default()
+                },
+            );
+            if let Err(e) = zellij_utils::app_control::send_app_request(&request) {
+                log::info!("The desktop app did not open the session window: {}", e);
+            }
+        });
+}
+
+fn mark_all_seen(env: &PluginEnv, session_name: Option<String>) {
+    let _ = env.senders.send_to_screen(ScreenInstruction::MarkAllSeen {
+        session: session_name,
+        this_session: false,
+        completion: None,
+    });
 }
 
 fn get_saved_session_preview(env: &PluginEnv, name: String) {
@@ -611,9 +672,72 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         name,
                         tab_index,
                         pane_id,
-                    } => {
-                        get_session_preview(env, name, tab_index, pane_id)
+                        anchor,
+                    } => get_session_preview(env, name, tab_index, pane_id, anchor),
+                    PluginCommand::MarkSessionPaneSeen {
+                        session_name,
+                        pane_id,
+                    } => session_pane_command(
+                        env,
+                        Some(session_name),
+                        crate::screen::SessionPaneCommand::MarkSeen(pane_id),
+                    ),
+                    PluginCommand::MarkAllSeen { session_name } => {
+                        mark_all_seen(env, session_name)
                     },
+                    PluginCommand::OpenSessionWindow(request) => {
+                        open_session_window(env, request)
+                    },
+                    PluginCommand::WriteToSessionPane {
+                        session_name,
+                        pane_id,
+                        bytes,
+                    } => session_pane_command(
+                        env,
+                        Some(session_name),
+                        crate::screen::SessionPaneCommand::Write(pane_id, bytes),
+                    ),
+                    PluginCommand::SendKeyToSessionPane {
+                        session_name,
+                        pane_id,
+                        key,
+                    } => session_pane_command(
+                        env,
+                        Some(session_name),
+                        crate::screen::SessionPaneCommand::Key(pane_id, key),
+                    ),
+                    PluginCommand::ToggleSessionPaneMute {
+                        session_name,
+                        pane_id,
+                    } => session_pane_command(
+                        env,
+                        Some(session_name),
+                        crate::screen::SessionPaneCommand::ToggleMute(pane_id),
+                    ),
+                    PluginCommand::ToggleSessionPaneIgnoreOutput {
+                        session_name,
+                        pane_id,
+                    } => session_pane_command(
+                        env,
+                        Some(session_name),
+                        crate::screen::SessionPaneCommand::ToggleIgnoreOutput(pane_id),
+                    ),
+                    PluginCommand::ToggleSessionPaneWatch {
+                        session_name,
+                        pane_id,
+                    } => session_pane_command(
+                        env,
+                        Some(session_name),
+                        crate::screen::SessionPaneCommand::ToggleWatch(pane_id),
+                    ),
+                    PluginCommand::FocusSessionPane {
+                        session_name,
+                        pane_id,
+                    } => session_pane_command(
+                        env,
+                        Some(session_name),
+                        crate::screen::SessionPaneCommand::Focus(pane_id),
+                    ),
                     PluginCommand::GetSavedSessionPreview(name) => {
                         get_saved_session_preview(env, name)
                     },
@@ -906,7 +1030,7 @@ fn host_run_plugin_command(mut caller: Caller<'_, PluginEnv>) {
                         connect_to_session.pane_id,
                         connect_to_session.layout,
                         connect_to_session.cwd,
-                        connect_to_session.session_card,
+                        connect_to_session.switch_context,
                     )?,
                     PluginCommand::DeleteDeadSession(session_name) => {
                         delete_dead_session(session_name)?;
@@ -1620,6 +1744,7 @@ fn open_command_pane_in_new_tab(
             context,
         )),
         use_terminal_title: false,
+        notify: false,
     };
     let initial_panes = Some(vec![CommandOrPlugin::Command(run_command_action)]);
     let action = Action::NewTab {
@@ -2542,6 +2667,7 @@ fn open_command_pane_in_place_of_plugin(
             context,
         )),
         use_terminal_title,
+        notify: false,
     };
     let run_cmd = TerminalAction::RunCommand(run_command_action.into());
 
@@ -2644,6 +2770,7 @@ fn open_command_pane_in_place_of_pane_id(
             context,
         )),
         use_terminal_title,
+        notify: false,
     };
     let run_cmd = TerminalAction::RunCommand(run_command_action.into());
 
@@ -2742,6 +2869,7 @@ fn open_command_pane(
             context,
         )),
         use_terminal_title,
+        notify: false,
     };
     let action = Action::NewTiledPane {
         direction,
@@ -2795,6 +2923,7 @@ fn open_command_pane_near_plugin(
             context,
         )),
         use_terminal_title,
+        notify: false,
     };
     let run_cmd = TerminalAction::RunCommand(run_command_action.into());
 
@@ -2857,6 +2986,7 @@ fn open_command_pane_floating(
             context,
         )),
         use_terminal_title,
+        notify: false,
     };
     let action = Action::NewFloatingPane {
         command: Some(run_command_action),
@@ -2912,6 +3042,7 @@ fn open_command_pane_floating_near_plugin(
             context,
         )),
         use_terminal_title,
+        notify: false,
     };
     let run_cmd = TerminalAction::RunCommand(run_command_action.into());
 
@@ -2977,6 +3108,7 @@ fn open_command_pane_in_place(
             context,
         )),
         use_terminal_title,
+        notify: false,
     };
     let action = Action::NewInPlacePane {
         command: Some(run_command_action),
@@ -3030,6 +3162,7 @@ fn open_command_pane_background(
             context,
         )),
         use_terminal_title,
+        notify: false,
     };
     let run_cmd = TerminalAction::RunCommand(run_command_action.into());
 
@@ -3836,7 +3969,7 @@ fn switch_session(
     pane_id: Option<(u32, bool)>,
     layout: Option<LayoutInfo>,
     cwd: Option<PathBuf>,
-    session_card: Option<bool>,
+    switch_context: Option<zellij_utils::session_history::SwitchContext>,
 ) -> Result<()> {
     // pane_id is (id, is_plugin)
     let err_context = || format!("Failed to switch session");
@@ -3868,7 +4001,12 @@ fn switch_session(
             pane_id,
             layout,
             cwd,
-            session_card,
+            switch_context: switch_context.and_then(|c| {
+                zellij_utils::session_history::SwitchContext::from_plugin_request(
+                    c.startup_card,
+                    c.disconnect_others,
+                )
+            }),
         };
         env.senders
             .send_to_server(ServerInstruction::SwitchSession(
@@ -3918,7 +4056,9 @@ fn delete_all_dead_sessions() -> Result<()> {
         files.for_each(|file| {
             if let Ok(file) = file {
                 if let Ok(file_name) = file.file_name().into_string() {
-                    if is_ipc_socket(&file.file_type().unwrap()) {
+                    if !zellij_utils::consts::is_app_socket_name(&file_name)
+                        && is_ipc_socket(&file.file_type().unwrap())
+                    {
                         live_sessions.push(file_name);
                     }
                 }
@@ -4363,6 +4503,7 @@ fn disconnect_other_clients(env: &PluginEnv) {
         .senders
         .send_to_server(ServerInstruction::DisconnectAllClientsExcept(
             acting_client(env),
+            zellij_utils::ipc::ExitReason::KickedByHost,
         ))
         .context("failed to send disconnect other clients instruction");
 }
@@ -4769,6 +4910,19 @@ fn get_pane_info(env: &PluginEnv, pane_id: zellij_utils::data::PaneId) {
     // Block waiting for response with 100ms timeout
     let pane_info = match response_receiver.recv_timeout(Duration::from_millis(100)) {
         Ok(Some(pane_info)) => {
+            let mut redacted =
+                zellij_utils::data::Event::PaneUpdate(zellij_utils::data::PaneManifest {
+                    panes: [(0, vec![pane_info])].into_iter().collect(),
+                });
+            crate::plugins::wasm_bridge::redact_event_for_plugin(env, &mut redacted);
+            let pane_info = match redacted {
+                zellij_utils::data::Event::PaneUpdate(mut manifest) => manifest
+                    .panes
+                    .remove(&0)
+                    .and_then(|mut infos| infos.pop())
+                    .unwrap_or_default(),
+                _ => Default::default(),
+            };
             // Convert PaneInfo to ProtobufPaneInfo
             match pane_info.try_into() {
                 Ok(protobuf_pane_info) => Some(protobuf_pane_info),
@@ -6440,7 +6594,7 @@ pub fn wasi_read_bytes(plugin_env: &PluginEnv) -> Result<Vec<u8>> {
 }
 
 // TODO: move to permissions?
-fn check_command_permission(
+pub(crate) fn check_command_permission(
     plugin_env: &PluginEnv,
     command: &PluginCommand,
 ) -> (PermissionStatus, Option<PermissionType>) {
@@ -6499,7 +6653,16 @@ fn required_permission(command: &PluginCommand) -> Option<PermissionType> {
         PluginCommand::Write(..)
         | PluginCommand::WriteChars(..)
         | PluginCommand::WriteToPaneId(..)
-        | PluginCommand::WriteCharsToPaneId(..) => PermissionType::WriteToStdin,
+        | PluginCommand::WriteCharsToPaneId(..)
+        | PluginCommand::WriteToSessionPane { .. }
+        | PluginCommand::SendKeyToSessionPane { .. } => PermissionType::WriteToStdin,
+        PluginCommand::MarkSessionPaneSeen { .. }
+        | PluginCommand::MarkAllSeen { .. }
+        | PluginCommand::OpenSessionWindow(..)
+        | PluginCommand::ToggleSessionPaneMute { .. }
+        | PluginCommand::ToggleSessionPaneIgnoreOutput { .. }
+        | PluginCommand::ToggleSessionPaneWatch { .. }
+        | PluginCommand::FocusSessionPane { .. } => PermissionType::ChangeApplicationState,
         PluginCommand::CopyToClipboard(..) => PermissionType::WriteToClipboard,
         PluginCommand::SwitchTabTo(..)
         | PluginCommand::SwitchToMode(..)

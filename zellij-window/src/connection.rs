@@ -4,7 +4,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, bail, Result};
-use zellij_utils::consts::{ipc_connect, ZELLIJ_SOCK_DIR, ZELLIJ_SOCK_MAX_LENGTH};
+use zellij_utils::consts::{ipc_connect, ZELLIJ_SOCK_MAX_LENGTH};
 use zellij_utils::data::{BareKey, KeyWithModifier};
 use zellij_utils::ipc::{
     ClientToServerMsg, IpcReceiveError, IpcReceiverWithContext, IpcSenderWithContext,
@@ -129,17 +129,17 @@ pub enum Role {
 /// The socket of an existing session. Sockets are named by session id, which the session index
 /// maps from the name; sessions from before ids are named after the session itself.
 pub fn socket_path(session_name: &str) -> Result<PathBuf> {
-    let path = zellij_utils::sessions::resolve_session_socket_path(session_name)
-        .unwrap_or_else(|| ZELLIJ_SOCK_DIR.join(session_name));
+    let path = zellij_utils::consts::session_socket_path(session_name);
     checked_socket_path(path)
 }
 
 /// The socket for a new session: registers the session under a fresh id and names the socket by
 /// it.
 pub fn new_session_socket_path(session_name: &str) -> Result<PathBuf> {
-    checked_socket_path(
-        ZELLIJ_SOCK_DIR.join(zellij_utils::sessions::register_session(session_name)),
-    )
+    checked_socket_path(zellij_utils::consts::new_session_socket_path_in(
+        &zellij_utils::consts::ZELLIJ_SOCK_DIR,
+        session_name,
+    ))
 }
 
 fn checked_socket_path(path: PathBuf) -> Result<PathBuf> {
@@ -379,6 +379,7 @@ pub fn test_attach_at(
         crate::spawn::advertised_host_terminal_env(),
         None,
         None,
+        None,
     )
     .message;
     open_at(
@@ -417,6 +418,7 @@ mod tests {
             &Options::default(),
             geometry.size(),
             crate::spawn::advertised_host_terminal_env(),
+            None,
             None,
             None,
         )
@@ -521,7 +523,7 @@ mod tests {
     #[test]
     fn socket_path_joins_the_contract_versioned_socket_dir() {
         let path = socket_path("window-test").unwrap();
-        assert!(path.starts_with(&*ZELLIJ_SOCK_DIR));
+        assert!(path.starts_with(&*zellij_utils::consts::ZELLIJ_SOCK_DIR));
         assert_eq!(path.file_name().unwrap(), "window-test");
     }
 

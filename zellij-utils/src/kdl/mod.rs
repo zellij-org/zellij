@@ -55,73 +55,103 @@ use crate::input::command::RunCommandAction;
 #[macro_export]
 macro_rules! parse_kdl_action_arguments {
     ( $action_name:expr, $action_arguments:expr, $action_node:expr ) => {{
-        if !$action_arguments.is_empty() {
-            Err(ConfigError::new_kdl_error(
-                format!("Action '{}' must have arguments", $action_name),
-                $action_node.span().offset(),
-                $action_node.span().len(),
-            ))
-        } else {
-            match $action_name {
-                "Quit" => Ok(Action::Quit),
-                "FocusNextPane" => Ok(Action::FocusNextPane),
-                "FocusPreviousPane" => Ok(Action::FocusPreviousPane),
-                "FocusLastPane" => Ok(Action::FocusLastPane),
-                "FocusHostSession" => Ok(Action::FocusHostSession),
-                "FocusGuestSession" => Ok(Action::FocusGuestSession),
-                "ToggleHostFullscreen" => Ok(Action::ToggleHostFullscreen),
-                "SwitchFocus" => Ok(Action::SwitchFocus),
-                "EditScrollback" => Ok(Action::EditScrollback { ansi: false }),
-                "ScrollUp" => Ok(Action::ScrollUp),
-                "ScrollDown" => Ok(Action::ScrollDown),
-                "ScrollToBottom" => Ok(Action::ScrollToBottom),
-                "ScrollToTop" => Ok(Action::ScrollToTop),
-                "ScrollToPreviousPrompt" => Ok(Action::ScrollToPreviousPrompt),
-                "ScrollToNextPrompt" => Ok(Action::ScrollToNextPrompt),
-                "SelectCommandAtScrollPosition" => Ok(Action::SelectCommandAtScrollPosition),
-                "CopyLastCommandOutput" => Ok(Action::CopyLastCommandOutput),
-                "PageScrollUp" => Ok(Action::PageScrollUp),
-                "PageScrollDown" => Ok(Action::PageScrollDown),
-                "HalfPageScrollUp" => Ok(Action::HalfPageScrollUp),
-                "HalfPageScrollDown" => Ok(Action::HalfPageScrollDown),
-                "ToggleFocusFullscreen" => Ok(Action::ToggleFocusFullscreen),
-                "ToggleFocusNoUiFullscreen" => Ok(Action::ToggleFocusNoUiFullscreen),
-                "TogglePaneFrames" => Ok(Action::TogglePaneFrames),
-                "ToggleActiveSyncTab" => Ok(Action::ToggleActiveSyncTab),
-                "TogglePaneEmbedOrFloating" => Ok(Action::TogglePaneEmbedOrFloating),
-                "ToggleFloatingPanes" => Ok(Action::ToggleFloatingPanes),
-                "ShowFloatingPanes" => Ok(Action::ShowFloatingPanes { tab_id: None }),
-                "HideFloatingPanes" => Ok(Action::HideFloatingPanes { tab_id: None }),
-                "CloseFocus" => Ok(Action::CloseFocus),
-                "UndoRenamePane" => Ok(Action::UndoRenamePane),
-                "NoOp" => Ok(Action::NoOp),
-                "GoToNextTab" => Ok(Action::GoToNextTab),
-                "GoToPreviousTab" => Ok(Action::GoToPreviousTab),
-                "CloseTab" => Ok(Action::CloseTab),
-                "ToggleTab" => Ok(Action::ToggleTab),
-                "UndoRenameTab" => Ok(Action::UndoRenameTab),
-                "Detach" => Ok(Action::Detach),
-                "SetDarkTheme" => Ok(Action::SetDarkTheme),
-                "SetLightTheme" => Ok(Action::SetLightTheme),
-                "ToggleTheme" => Ok(Action::ToggleTheme),
-                "DismissInfoPopups" => Ok(Action::DismissInfoPopups),
-                "OpenContextMenu" => Ok(Action::OpenContextMenu),
-                "ToggleSessionCard" => Ok(Action::ToggleSessionCard),
-                "Copy" => Ok(Action::Copy),
-                "Confirm" => Ok(Action::Confirm),
-                "Deny" => Ok(Action::Deny),
-                "ToggleMouseMode" => Ok(Action::ToggleMouseMode),
-                "PreviousSwapLayout" => Ok(Action::PreviousSwapLayout),
-                "NextSwapLayout" => Ok(Action::NextSwapLayout),
-                "Clear" => Ok(Action::ClearScreen),
-                _ => Err(ConfigError::new_kdl_error(
-                    format!("Unsupported action: {:?}", $action_name),
-                    $action_node.span().offset(),
-                    $action_node.span().len(),
-                )),
-            }
-        }
+        $crate::kdl::action_without_arguments(
+            $action_name,
+            !$action_arguments.is_empty(),
+            $action_node,
+        )
     }};
+}
+
+#[inline(never)]
+pub fn action_without_arguments(
+    action_name: &str,
+    has_arguments: bool,
+    action_node: &KdlNode,
+) -> Result<Action, ConfigError> {
+    if has_arguments {
+        return Err(ConfigError::new_kdl_error(
+            format!("Action '{}' must have arguments", action_name),
+            action_node.span().offset(),
+            action_node.span().len(),
+        ));
+    }
+    match action_name {
+        "Quit" => Ok(Action::Quit),
+        "FocusNextPane" => Ok(Action::FocusNextPane),
+        "FocusPreviousPane" => Ok(Action::FocusPreviousPane),
+        "FocusLastPane" => Ok(Action::FocusLastPane),
+        "FocusHostSession" => Ok(Action::FocusHostSession),
+        "FocusGuestSession" => Ok(Action::FocusGuestSession),
+        "ToggleHostFullscreen" => Ok(Action::ToggleHostFullscreen),
+        "SwitchFocus" => Ok(Action::SwitchFocus),
+        "EditScrollback" => Ok(Action::EditScrollback { ansi: false }),
+        "ScrollUp" => Ok(Action::ScrollUp),
+        "ScrollDown" => Ok(Action::ScrollDown),
+        "ScrollToBottom" => Ok(Action::ScrollToBottom),
+        "ScrollToTop" => Ok(Action::ScrollToTop),
+        "ScrollToPreviousPrompt" => Ok(Action::ScrollToPreviousPrompt),
+        "ScrollToNextPrompt" => Ok(Action::ScrollToNextPrompt),
+        "SelectCommandAtScrollPosition" => Ok(Action::SelectCommandAtScrollPosition),
+        "CopyLastCommandOutput" => Ok(Action::CopyLastCommandOutput),
+        "PageScrollUp" => Ok(Action::PageScrollUp),
+        "PageScrollDown" => Ok(Action::PageScrollDown),
+        "HalfPageScrollUp" => Ok(Action::HalfPageScrollUp),
+        "HalfPageScrollDown" => Ok(Action::HalfPageScrollDown),
+        "ToggleFocusFullscreen" => Ok(Action::ToggleFocusFullscreen),
+        "ToggleFocusNoUiFullscreen" => Ok(Action::ToggleFocusNoUiFullscreen),
+        "TogglePaneFrames" => Ok(Action::TogglePaneFrames),
+        "ToggleActiveSyncTab" => Ok(Action::ToggleActiveSyncTab),
+        "TogglePaneEmbedOrFloating" => Ok(Action::TogglePaneEmbedOrFloating),
+        "ToggleFloatingPanes" => Ok(Action::ToggleFloatingPanes),
+        "ShowFloatingPanes" => Ok(Action::ShowFloatingPanes { tab_id: None }),
+        "HideFloatingPanes" => Ok(Action::HideFloatingPanes { tab_id: None }),
+        "CloseFocus" => Ok(Action::CloseFocus),
+        "UndoRenamePane" => Ok(Action::UndoRenamePane),
+        "NoOp" => Ok(Action::NoOp),
+        "GoToNextTab" => Ok(Action::GoToNextTab),
+        "GoToPreviousTab" => Ok(Action::GoToPreviousTab),
+        "CloseTab" => Ok(Action::CloseTab),
+        "ToggleTab" => Ok(Action::ToggleTab),
+        "UndoRenameTab" => Ok(Action::UndoRenameTab),
+        "Detach" => Ok(Action::Detach),
+        "SetDarkTheme" => Ok(Action::SetDarkTheme),
+        "SetLightTheme" => Ok(Action::SetLightTheme),
+        "ToggleTheme" => Ok(Action::ToggleTheme),
+        "DismissInfoPopups" => Ok(Action::DismissInfoPopups),
+        "OpenContextMenu" => Ok(Action::OpenContextMenu),
+        "ToggleSessionCard" => Ok(Action::ToggleSessionCard),
+        "MutePane" => Ok(Action::MutePane),
+        "IgnorePaneOutput" => Ok(Action::IgnorePaneOutput),
+        "WatchPane" => Ok(Action::WatchPane),
+        "MuteTab" => Ok(Action::MuteTab),
+        "MuteSession" => Ok(Action::MuteSession),
+        "ToggleSession" => Ok(Action::ToggleSession),
+        "GoToPreviousSession" => Ok(Action::GoToPreviousSession),
+        "GoToNextSession" => Ok(Action::GoToNextSession),
+        "GoToNextAttention" => Ok(Action::GoToNextAttention),
+        "ToggleTrayIcon" => Ok(Action::ToggleTrayIcon),
+        "MarkPaneSeen" => Ok(Action::MarkPaneSeen {
+            session: None,
+            pane_id: None,
+        }),
+        "MarkAllSeen" => Ok(Action::MarkAllSeen {
+            session: None,
+            this_session: false,
+        }),
+        "Copy" => Ok(Action::Copy),
+        "Confirm" => Ok(Action::Confirm),
+        "Deny" => Ok(Action::Deny),
+        "ToggleMouseMode" => Ok(Action::ToggleMouseMode),
+        "PreviousSwapLayout" => Ok(Action::PreviousSwapLayout),
+        "NextSwapLayout" => Ok(Action::NextSwapLayout),
+        "Clear" => Ok(Action::ClearScreen),
+        _ => Err(ConfigError::new_kdl_error(
+            format!("Unsupported action: {:?}", action_name),
+            action_node.span().offset(),
+            action_node.span().len(),
+        )),
+    }
 }
 
 #[macro_export]
@@ -1431,6 +1461,30 @@ impl Action {
             Action::DismissInfoPopups => Some(KdlNode::new("DismissInfoPopups")),
             Action::OpenContextMenu => Some(KdlNode::new("OpenContextMenu")),
             Action::ToggleSessionCard => Some(KdlNode::new("ToggleSessionCard")),
+            Action::MutePane => Some(KdlNode::new("MutePane")),
+            Action::IgnorePaneOutput => Some(KdlNode::new("IgnorePaneOutput")),
+            Action::WatchPane => Some(KdlNode::new("WatchPane")),
+            Action::MuteTab => Some(KdlNode::new("MuteTab")),
+            Action::MuteSession => Some(KdlNode::new("MuteSession")),
+            Action::ToggleSession => Some(KdlNode::new("ToggleSession")),
+            Action::GoToPreviousSession => Some(KdlNode::new("GoToPreviousSession")),
+            Action::GoToNextSession => Some(KdlNode::new("GoToNextSession")),
+            Action::GoToNextAttention => Some(KdlNode::new("GoToNextAttention")),
+            Action::ToggleTrayIcon => Some(KdlNode::new("ToggleTrayIcon")),
+            Action::MarkPaneSeen {
+                session: None,
+                pane_id: None,
+            } => Some(KdlNode::new("MarkPaneSeen")),
+            Action::MarkAllSeen {
+                session: None,
+                this_session,
+            } => {
+                let mut node = KdlNode::new("MarkAllSeen");
+                if *this_session {
+                    node.push(KdlEntry::new_prop("this_session", true));
+                }
+                Some(node)
+            },
             Action::FocusHostSession => Some(KdlNode::new("FocusHostSession")),
             Action::FocusGuestSession => Some(KdlNode::new("FocusGuestSession")),
             Action::ToggleHostFullscreen => Some(KdlNode::new("ToggleHostFullscreen")),
@@ -1439,6 +1493,9 @@ impl Action {
             | Action::TogglePaneEmbedOrFloatingByPaneId { pane_id }
             | Action::TogglePanePinnedByPaneId { pane_id }
             | Action::TogglePaneInGroupByPaneId { pane_id }
+            | Action::MutePaneByPaneId { pane_id }
+            | Action::IgnorePaneOutputByPaneId { pane_id }
+            | Action::WatchPaneByPaneId { pane_id }
             | Action::StartRenamePaneByPaneId { pane_id } => {
                 let name = match self {
                     Action::CloseFocusByPaneId { .. } => "CloseFocusByPaneId",
@@ -1448,15 +1505,21 @@ impl Action {
                     },
                     Action::TogglePanePinnedByPaneId { .. } => "TogglePanePinnedByPaneId",
                     Action::TogglePaneInGroupByPaneId { .. } => "TogglePaneInGroupByPaneId",
+                    Action::MutePaneByPaneId { .. } => "MutePaneByPaneId",
+                    Action::IgnorePaneOutputByPaneId { .. } => "IgnorePaneOutputByPaneId",
+                    Action::WatchPaneByPaneId { .. } => "WatchPaneByPaneId",
                     _ => "StartRenamePaneByPaneId",
                 };
                 let mut node = KdlNode::new(name);
                 node.push(pane_id.to_string());
                 Some(node)
             },
-            Action::CloseTabById { id } | Action::StartRenameTabByTabId { id } => {
+            Action::CloseTabById { id }
+            | Action::StartRenameTabByTabId { id }
+            | Action::MuteTabByTabId { id } => {
                 let name = match self {
                     Action::CloseTabById { .. } => "CloseTabById",
+                    Action::MuteTabByTabId { .. } => "MuteTabByTabId",
                     _ => "StartRenameTabByTabId",
                 };
                 let mut node = KdlNode::new(name);
@@ -1871,8 +1934,28 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
             "OpenContextMenu" => {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
-            "ToggleSessionCard" => {
+            "ToggleSessionCard"
+            | "MutePane"
+            | "IgnorePaneOutput"
+            | "WatchPane"
+            | "MuteTab"
+            | "MuteSession"
+            | "ToggleSession"
+            | "GoToPreviousSession"
+            | "GoToNextSession"
+            | "GoToNextAttention"
+            | "ToggleTrayIcon"
+            | "MarkPaneSeen" => {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
+            },
+            "MarkAllSeen" => {
+                let this_session =
+                    crate::kdl_get_bool_property_or_child_value!(kdl_action, "this_session")
+                        .unwrap_or(false);
+                Ok(Action::MarkAllSeen {
+                    session: None,
+                    this_session,
+                })
             },
             "SwitchSession" => {
                 let name = kdl_get_string_property_or_child_value!(kdl_action, "name")
@@ -2595,6 +2678,9 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
             | "TogglePaneEmbedOrFloatingByPaneId"
             | "TogglePanePinnedByPaneId"
             | "TogglePaneInGroupByPaneId"
+            | "MutePaneByPaneId"
+            | "IgnorePaneOutputByPaneId"
+            | "WatchPaneByPaneId"
             | "StartRenamePaneByPaneId" => {
                 let entry = action_arguments.first().ok_or_else(|| {
                     ConfigError::new_kdl_error(
@@ -2625,10 +2711,13 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     },
                     "TogglePanePinnedByPaneId" => Action::TogglePanePinnedByPaneId { pane_id },
                     "TogglePaneInGroupByPaneId" => Action::TogglePaneInGroupByPaneId { pane_id },
+                    "MutePaneByPaneId" => Action::MutePaneByPaneId { pane_id },
+                    "IgnorePaneOutputByPaneId" => Action::IgnorePaneOutputByPaneId { pane_id },
+                    "WatchPaneByPaneId" => Action::WatchPaneByPaneId { pane_id },
                     _ => Action::StartRenamePaneByPaneId { pane_id },
                 })
             },
-            "CloseTabById" | "StartRenameTabByTabId" => {
+            "CloseTabById" | "StartRenameTabByTabId" | "MuteTabByTabId" => {
                 let entry = action_arguments.first().ok_or_else(|| {
                     ConfigError::new_kdl_error(
                         format!(
@@ -2644,6 +2733,8 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 })? as u64;
                 if action_name == "CloseTabById" {
                     Ok(Action::CloseTabById { id })
+                } else if action_name == "MuteTabByTabId" {
+                    Ok(Action::MuteTabByTabId { id })
                 } else {
                     Ok(Action::StartRenameTabByTabId { id })
                 }
@@ -3364,8 +3455,6 @@ impl Options {
             "dangerously_enable_paste_buffer_read"
         )
         .map(|(v, _)| v);
-        let session_card =
-            kdl_property_first_arg_as_bool_or_error!(kdl_options, "session_card").map(|(v, _)| v);
         let session_indicator =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "session_indicator")
                 .map(|(v, _)| v);
@@ -3448,7 +3537,6 @@ impl Options {
             client_async_worker_tasks,
             nested_session_handling,
             dangerously_enable_paste_buffer_read,
-            session_card,
             session_indicator,
             swap_layout_notification,
             on_quit,
@@ -5332,18 +5420,6 @@ impl Options {
             None
         }
     }
-    fn session_card_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
-        Self::bool_option_to_kdl(
-            "session_card",
-            self.session_card,
-            &[
-                "// Whether to show a card listing other relevant sessions when a new session starts",
-                "// default is true",
-            ],
-            false,
-            add_comments,
-        )
-    }
     fn session_indicator_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         Self::bool_option_to_kdl(
             "session_indicator",
@@ -5607,9 +5683,6 @@ impl Options {
             self.host_notification_protocol_to_kdl(add_comments)
         {
             nodes.push(host_notification_protocol);
-        }
-        if let Some(session_card) = self.session_card_to_kdl(add_comments) {
-            nodes.push(session_card);
         }
         if let Some(session_indicator) = self.session_indicator_to_kdl(add_comments) {
             nodes.push(session_indicator);
@@ -6694,6 +6767,14 @@ impl Config {
                 SessionSuggestionsConfig::from_kdl(&session_suggestions_config)?;
             config.session_suggestions = config.session_suggestions.merge(session_suggestions);
         }
+        for attention_config in kdl_config
+            .nodes()
+            .iter()
+            .filter(|node| node.name().value() == "attention")
+        {
+            let attention = crate::input::attention::AttentionConfig::from_kdl(attention_config)?;
+            config.attention = config.attention.merge(attention);
+        }
         Ok(config)
     }
     pub fn to_string(&self, add_comments: bool) -> String {
@@ -6737,6 +6818,10 @@ impl Config {
 
         if let Some(session_suggestions) = self.session_suggestions.to_kdl() {
             document.nodes_mut().push(session_suggestions);
+        }
+
+        if let Some(attention) = self.attention.to_kdl() {
+            document.nodes_mut().push(attention);
         }
 
         let mut options = self.options.clone();
@@ -6865,9 +6950,14 @@ impl ContextMenuConfig {
                 .iter()
                 .map(|kdl_action| ContextMenuAction::from_kdl(kdl_action, config_options))
                 .collect::<Result<_, _>>()?;
+                let toggled_label = entry_node
+                    .get("toggled_label")
+                    .and_then(|entry| entry.value().as_string())
+                    .map(|label| label.to_owned());
                 Ok(ContextMenuEntry::Item {
                     label: label.to_owned(),
                     actions,
+                    toggled_label,
                 })
             },
             other => Err(ConfigError::new_kdl_error(
@@ -6974,6 +7064,9 @@ impl ContextMenuAction {
                 "StartRenameTabByTabId" => {
                     return Ok(ContextMenuAction::ClickedTab(ClickedTabAction::StartRename))
                 },
+                "MuteTabByTabId" => {
+                    return Ok(ContextMenuAction::ClickedTab(ClickedTabAction::Mute))
+                },
                 _ => {},
             }
         }
@@ -7030,12 +7123,20 @@ impl ContextMenuAction {
 pub fn context_menu_entry_to_kdl(entry: &ContextMenuEntry) -> KdlNode {
     match entry {
         ContextMenuEntry::Separator => KdlNode::new("separator"),
-        ContextMenuEntry::Item { label, actions } => {
+        ContextMenuEntry::Item {
+            label,
+            actions,
+            toggled_label,
+        } => {
             let action_nodes: Vec<KdlNode> = actions
                 .iter()
                 .filter_map(|action| action.to_kdl())
                 .collect();
-            context_menu_item_to_kdl(label, action_nodes)
+            let mut node = context_menu_item_to_kdl(label, action_nodes);
+            if let Some(toggled_label) = toggled_label {
+                node.push(KdlEntry::new_prop("toggled_label", toggled_label.clone()));
+            }
+            node
         },
     }
 }
@@ -7888,6 +7989,11 @@ impl SessionInfo {
             .and_then(|e| e.value().as_i64())
             .map(|c| Duration::from_secs(c as u64))
             .unwrap_or_default();
+        let attention_muted = kdl_document
+            .get("attention_muted")
+            .and_then(|n| n.entries().iter().next())
+            .and_then(|e| e.value().as_bool())
+            .unwrap_or(false);
         Ok(SessionInfo {
             name,
             tabs,
@@ -7901,6 +8007,7 @@ impl SessionInfo {
             tab_history,
             pane_history,
             creation_time,
+            attention_muted,
         })
     }
     pub fn to_string(&self) -> String {
@@ -8008,6 +8115,12 @@ impl SessionInfo {
         creation_time_node.push(self.creation_time.as_secs() as i64);
         kdl_document.nodes_mut().push(creation_time_node);
 
+        if self.attention_muted {
+            let mut attention_muted_node = KdlNode::new("attention_muted");
+            attention_muted_node.push(true);
+            kdl_document.nodes_mut().push(attention_muted_node);
+        }
+
         kdl_document.fmt();
         kdl_document.to_string()
     }
@@ -8113,6 +8226,7 @@ impl TabInfo {
             tab_id,
             has_bell_notification: false,
             is_flashing_bell: false,
+            attention: Default::default(),
         })
     }
     pub fn encode_to_kdl(&self) -> KdlDocument {
@@ -8350,6 +8464,9 @@ impl PaneInfo {
             default_fg: None,
             default_bg: None,
             nested_session_name: None,
+            attention: Default::default(),
+            command_state: Default::default(),
+            program_status: vec![],
         };
         Ok((tab_position, pane_info))
     }
@@ -8502,6 +8619,9 @@ fn serialize_and_deserialize_session_info_with_data() {
             default_fg: None,
             default_bg: None,
             nested_session_name: None,
+            attention: Default::default(),
+            command_state: Default::default(),
+            program_status: Default::default(),
         },
         PaneInfo {
             id: 1,
@@ -8531,6 +8651,9 @@ fn serialize_and_deserialize_session_info_with_data() {
             default_fg: None,
             default_bg: None,
             nested_session_name: None,
+            attention: Default::default(),
+            command_state: Default::default(),
+            program_status: Default::default(),
         },
     ];
     let mut panes = HashMap::new();
@@ -8559,6 +8682,7 @@ fn serialize_and_deserialize_session_info_with_data() {
                 tab_id: 0,
                 is_flashing_bell: false,
                 has_bell_notification: false,
+                attention: Default::default(),
             },
             TabInfo {
                 position: 1,
@@ -8581,6 +8705,7 @@ fn serialize_and_deserialize_session_info_with_data() {
                 tab_id: 1,
                 is_flashing_bell: false,
                 has_bell_notification: false,
+                attention: Default::default(),
             },
         ],
         panes: PaneManifest { panes },
@@ -8597,6 +8722,7 @@ fn serialize_and_deserialize_session_info_with_data() {
         tab_history: Default::default(),
         pane_history: Default::default(),
         creation_time: Duration::from_secs(300),
+        attention_muted: Default::default(),
     };
     let serialized = session_info.to_string();
     let deserealized = SessionInfo::from_string(&serialized, "not this session").unwrap();
@@ -8763,6 +8889,62 @@ fn can_bind_toggle_session_card_and_write_it_back() {
             .map(|node| node.name().value().to_owned()),
         Some("ToggleSessionCard".to_owned())
     );
+}
+
+#[test]
+fn can_bind_the_seen_and_tray_actions_and_write_them_back() {
+    let fake_config = r#"
+        keybinds {
+            normal {
+                bind "Alt 1" { MarkPaneSeen; }
+                bind "Alt 2" { MarkAllSeen; }
+                bind "Alt 3" { MarkAllSeen this_session=true; }
+                bind "Alt 4" { ToggleTrayIcon; }
+            }
+        }"#;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = Keybinds::from_kdl(
+        document.get("keybinds").unwrap(),
+        Default::default(),
+        &Default::default(),
+    )
+    .unwrap();
+    let expected = [
+        (
+            '1',
+            Action::MarkPaneSeen {
+                session: None,
+                pane_id: None,
+            },
+        ),
+        (
+            '2',
+            Action::MarkAllSeen {
+                session: None,
+                this_session: false,
+            },
+        ),
+        (
+            '3',
+            Action::MarkAllSeen {
+                session: None,
+                this_session: true,
+            },
+        ),
+        ('4', Action::ToggleTrayIcon),
+    ];
+    for (character, action) in expected {
+        let key = KeyWithModifier::new(BareKey::Char(character)).with_alt_modifier();
+        assert_eq!(
+            deserialized.get_actions_for_key_in_mode(&InputMode::Normal, &key),
+            Some(&vec![action.clone()]),
+            "Alt {}",
+            character
+        );
+        let written = action.to_kdl().expect("the action is written back");
+        let reparsed = Action::try_from((&written, &Options::default())).unwrap();
+        assert_eq!(reparsed, action);
+    }
 }
 
 #[test]
@@ -9613,14 +9795,12 @@ fn env_vars_to_string() {
 #[test]
 fn session_options_from_kdl() {
     let fake_config = r##"
-        session_card false
         session_indicator true
         swap_layout_notification false
         on_quit "ask_detach"
     "##;
     let document: KdlDocument = fake_config.parse().unwrap();
     let options = Options::from_kdl(&document).unwrap();
-    assert_eq!(options.session_card, Some(false));
     assert_eq!(options.session_indicator, Some(true));
     assert_eq!(options.swap_layout_notification, Some(false));
     assert_eq!(

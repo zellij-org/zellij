@@ -372,11 +372,20 @@ impl InputHandler {
                     .send_client_instructions
                     .send(ClientInstruction::OuterGraphemeClusterMode(value));
             },
+            AnsiStdinInstruction::ProgramStatusSupport => {
+                let _ = self
+                    .send_client_instructions
+                    .send(ClientInstruction::HostProgramStatusSupported);
+            },
         }
     }
     fn handle_nested_session_frame_from_host(&mut self, payload_bytes: Vec<u8>) {
         self.nested_reannounce.note_host_contact();
-        match nested_session::decode_payload(&payload_bytes) {
+        let decoded = nested_session::decode_payload(&payload_bytes);
+        if let Some(message) = decoded.as_ref() {
+            self.os_input.note_host_message(message);
+        }
+        match decoded {
             Some(NestedSessionMessage::Ping) => {
                 self.send_client_instructions
                     .send(ClientInstruction::EmitNestedSessionFrame(

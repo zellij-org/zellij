@@ -1138,6 +1138,17 @@ Config {
                 bare_key: Char(
                     'g',
                 ),
+                key_modifiers: {},
+            }: [
+                IgnorePaneOutput,
+                SwitchToMode {
+                    input_mode: Normal,
+                },
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'g',
+                ),
                 key_modifiers: {
                     Ctrl,
                 },
@@ -1441,6 +1452,28 @@ Config {
             }: [
                 SwitchToMode {
                     input_mode: Tab,
+                },
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'u',
+                ),
+                key_modifiers: {},
+            }: [
+                MutePane,
+                SwitchToMode {
+                    input_mode: Normal,
+                },
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'v',
+                ),
+                key_modifiers: {},
+            }: [
+                WatchPane,
+                SwitchToMode {
+                    input_mode: Normal,
                 },
             ],
             KeyWithModifier {
@@ -2091,6 +2124,17 @@ Config {
                     Ctrl,
                 },
             }: [
+                SwitchToMode {
+                    input_mode: Normal,
+                },
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'u',
+                ),
+                key_modifiers: {},
+            }: [
+                MuteTab,
                 SwitchToMode {
                     input_mode: Normal,
                 },
@@ -4257,6 +4301,15 @@ Config {
         Session: {
             KeyWithModifier {
                 bare_key: Left,
+                key_modifiers: {},
+            }: [
+                GoToPreviousSession,
+                SwitchToMode {
+                    input_mode: Normal,
+                },
+            ],
+            KeyWithModifier {
+                bare_key: Left,
                 key_modifiers: {
                     Alt,
                 },
@@ -4283,6 +4336,15 @@ Config {
             }: [
                 MoveFocus {
                     direction: Up,
+                },
+            ],
+            KeyWithModifier {
+                bare_key: Right,
+                key_modifiers: {},
+            }: [
+                GoToNextSession,
+                SwitchToMode {
+                    input_mode: Normal,
                 },
             ],
             KeyWithModifier {
@@ -4607,6 +4669,17 @@ Config {
                 bare_key: Char(
                     'n',
                 ),
+                key_modifiers: {},
+            }: [
+                GoToNextAttention,
+                SwitchToMode {
+                    input_mode: Normal,
+                },
+            ],
+            KeyWithModifier {
+                bare_key: Char(
+                    'n',
+                ),
                 key_modifiers: {
                     Ctrl,
                 },
@@ -4784,6 +4857,17 @@ Config {
             ],
             KeyWithModifier {
                 bare_key: Char(
+                    'u',
+                ),
+                key_modifiers: {},
+            }: [
+                MuteSession,
+                SwitchToMode {
+                    input_mode: Normal,
+                },
+            ],
+            KeyWithModifier {
+                bare_key: Char(
                     'w',
                 ),
                 key_modifiers: {},
@@ -4808,6 +4892,15 @@ Config {
                     skip_cache: false,
                     tab_id: None,
                 },
+                SwitchToMode {
+                    input_mode: Normal,
+                },
+            ],
+            KeyWithModifier {
+                bare_key: Tab,
+                key_modifiers: {},
+            }: [
+                ToggleSession,
                 SwitchToMode {
                     input_mode: Normal,
                 },
@@ -6302,7 +6395,6 @@ Config {
         client_async_worker_tasks: None,
         nested_session_handling: None,
         dangerously_enable_paste_buffer_read: None,
-        session_card: None,
         session_indicator: None,
         swap_layout_notification: None,
         on_quit: None,
@@ -6534,6 +6626,7 @@ Config {
                         },
                     ),
                 ],
+                toggled_label: None,
             },
             Item {
                 label: "New floating pane",
@@ -6549,6 +6642,7 @@ Config {
                         },
                     ),
                 ],
+                toggled_label: None,
             },
             Separator,
             Item {
@@ -6558,6 +6652,7 @@ Config {
                         ToggleFocusFullscreen,
                     ),
                 ],
+                toggled_label: None,
             },
             Item {
                 label: "Float / Embed",
@@ -6566,6 +6661,7 @@ Config {
                         ToggleEmbedOrFloating,
                     ),
                 ],
+                toggled_label: None,
             },
             Item {
                 label: "Rename pane",
@@ -6574,6 +6670,7 @@ Config {
                         StartRename,
                     ),
                 ],
+                toggled_label: None,
             },
             Item {
                 label: "Add to group",
@@ -6582,6 +6679,41 @@ Config {
                         ToggleInGroup,
                     ),
                 ],
+                toggled_label: None,
+            },
+            Separator,
+            Item {
+                label: "Watch this pane",
+                actions: [
+                    ClickedPane(
+                        ToggleWatch,
+                    ),
+                ],
+                toggled_label: Some(
+                    "Stop watching",
+                ),
+            },
+            Item {
+                label: "Ignore output",
+                actions: [
+                    ClickedPane(
+                        ToggleIgnoreOutput,
+                    ),
+                ],
+                toggled_label: Some(
+                    "Report output",
+                ),
+            },
+            Item {
+                label: "Mute pane",
+                actions: [
+                    ClickedPane(
+                        ToggleMute,
+                    ),
+                ],
+                toggled_label: Some(
+                    "Unmute pane",
+                ),
             },
             Separator,
             Item {
@@ -6591,6 +6723,7 @@ Config {
                         CloseFocus,
                     ),
                 ],
+                toggled_label: None,
             },
         ],
         tab: [
@@ -6611,6 +6744,7 @@ Config {
                         },
                     ),
                 ],
+                toggled_label: None,
             },
             Item {
                 label: "Rename tab",
@@ -6619,6 +6753,7 @@ Config {
                         StartRename,
                     ),
                 ],
+                toggled_label: None,
             },
             Item {
                 label: "Move tab left",
@@ -6629,6 +6764,7 @@ Config {
                         ),
                     ),
                 ],
+                toggled_label: None,
             },
             Item {
                 label: "Move tab right",
@@ -6639,6 +6775,7 @@ Config {
                         ),
                     ),
                 ],
+                toggled_label: None,
             },
             Item {
                 label: "Move tab to start",
@@ -6649,6 +6786,7 @@ Config {
                         ),
                     ),
                 ],
+                toggled_label: None,
             },
             Item {
                 label: "Move tab to end",
@@ -6659,6 +6797,18 @@ Config {
                         ),
                     ),
                 ],
+                toggled_label: None,
+            },
+            Item {
+                label: "Mute tab",
+                actions: [
+                    ClickedTab(
+                        Mute,
+                    ),
+                ],
+                toggled_label: Some(
+                    "Unmute tab",
+                ),
             },
             Separator,
             Item {
@@ -6668,6 +6818,7 @@ Config {
                         Close,
                     ),
                 ],
+                toggled_label: None,
             },
         ],
         bar: [
@@ -6682,6 +6833,7 @@ Config {
                         },
                     ),
                 ],
+                toggled_label: None,
             },
             Item {
                 label: "New tab",
@@ -6700,6 +6852,16 @@ Config {
                         },
                     ),
                 ],
+                toggled_label: None,
+            },
+            Item {
+                label: "Back to {}",
+                actions: [
+                    Action(
+                        ToggleSession,
+                    ),
+                ],
+                toggled_label: None,
             },
         ],
         common: [
@@ -6729,6 +6891,7 @@ Config {
                         },
                     ),
                 ],
+                toggled_label: None,
             },
             Item {
                 label: "Session manager",
@@ -6756,6 +6919,7 @@ Config {
                         },
                     ),
                 ],
+                toggled_label: None,
             },
             Item {
                 label: "Detach",
@@ -6764,6 +6928,7 @@ Config {
                         Detach,
                     ),
                 ],
+                toggled_label: None,
             },
         ],
     },
@@ -10907,7 +11072,6 @@ Config {
         middle_click_paste: None,
         open_links: None,
         bell: None,
-        notifications: None,
         startup_mode: None,
         opacity: None,
         opacity_mode: None,
@@ -10948,5 +11112,17 @@ Config {
         then: None,
         script: None,
         record: None,
+    },
+    attention: AttentionConfig {
+        frame_markers: None,
+        host_status: None,
+        idle_rule: None,
+        done_threshold_secs: None,
+        idle_activity_secs: None,
+        idle_silence_secs: None,
+        startup_card: None,
+        tray_icon: None,
+        desktop_notifications: None,
+        notification_details: None,
     },
 }

@@ -257,7 +257,14 @@ message Action {
     TargetTabIdPayload target_tab_id_payload = 66;
     MoveTabByTabIdPayload move_tab_by_tab_id_payload = 67;
     MoveTabToPositionPayload move_tab_to_position_payload = 68;
+    SessionPanePayload session_pane_payload = 69;
   }
+}
+
+message SessionPanePayload {
+  optional string session = 1;
+  optional PaneId pane_id = 2;
+  bool this_session = 3;
 }
 
 message TargetPaneIdPayload {
@@ -559,6 +566,22 @@ enum ActionName {
     MoveTabToPosition = 127;
     RunInBackground = 128;
     ToggleSessionCard = 129;
+    MutePane = 130;
+    MutePaneByPaneId = 131;
+    IgnorePaneOutput = 132;
+    IgnorePaneOutputByPaneId = 133;
+    WatchPane = 134;
+    WatchPaneByPaneId = 135;
+    MuteTab = 136;
+    MuteTabByTabId = 137;
+    MuteSession = 138;
+    ToggleSession = 139;
+    GoToPreviousSession = 140;
+    GoToNextSession = 141;
+    GoToNextAttention = 142;
+    MarkPaneSeen = 143;
+    MarkAllSeen = 144;
+    ToggleTrayIcon = 145;
 }
 
 message Position {

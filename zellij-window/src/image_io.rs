@@ -1,4 +1,4 @@
-#[cfg(test)]
+#[cfg(any(test, target_os = "macos"))]
 use std::io::BufWriter;
 #[cfg(test)]
 use std::path::Path;
@@ -25,7 +25,7 @@ impl Image {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, target_os = "macos"))]
 pub fn encode(image: &Image) -> Result<Vec<u8>> {
     let mut encoded = Vec::new();
     {

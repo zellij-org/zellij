@@ -175,7 +175,20 @@ mod xdg {
              Terminal=false\n\
              StartupWMClass={id}\n\
              Categories=System;TerminalEmulator;\n\
-             Keywords=terminal;multiplexer;shell;workspace;\n"
+             Keywords=terminal;multiplexer;shell;workspace;\n\
+             Actions=inbox;sessions;new-window;\n\
+             \n\
+             [Desktop Action inbox]\n\
+             Name=Show Inbox\n\
+             Exec={exec} window --inbox\n\
+             \n\
+             [Desktop Action sessions]\n\
+             Name=Show Sessions\n\
+             Exec={exec} window --sessions\n\
+             \n\
+             [Desktop Action new-window]\n\
+             Name=New Window\n\
+             Exec={exec} window\n"
         )
     }
 
@@ -389,6 +402,33 @@ mod xdg {
                 exec_argument("/opt/a$b`c\"d/zellij"),
                 "\"/opt/a\\$b\\`c\\\"d/zellij\""
             );
+        }
+
+        #[test]
+        fn the_entry_offers_inbox_sessions_and_new_window_actions() {
+            let entry = render("/opt/zellij");
+            assert_eq!(value(&entry, "Actions"), "inbox;sessions;new-window;");
+            let section = |name: &str| {
+                let header = format!("[Desktop Action {}]", name);
+                let start = entry
+                    .find(&header)
+                    .unwrap_or_else(|| panic!("{header} is missing:\n{entry}"));
+                entry[start + header.len()..]
+                    .split("\n[")
+                    .next()
+                    .unwrap()
+                    .to_owned()
+            };
+            assert_eq!(
+                value(&section("inbox"), "Exec"),
+                "/opt/zellij window --inbox"
+            );
+            assert_eq!(value(&section("inbox"), "Name"), "Show Inbox");
+            assert_eq!(
+                value(&section("sessions"), "Exec"),
+                "/opt/zellij window --sessions"
+            );
+            assert_eq!(value(&section("new-window"), "Exec"), "/opt/zellij window");
         }
 
         #[test]

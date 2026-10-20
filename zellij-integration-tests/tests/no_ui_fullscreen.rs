@@ -341,6 +341,7 @@ fn new_pane_while_no_ui_fullscreen_breaks_out_and_restores_chrome() {
                 && grid_snapshot.contains("Pane #1")
                 && grid_snapshot.contains("Pane #2")
                 && grid_snapshot.contains("Pane #3")
+                && grid_snapshot.text.matches("$ ").count() >= 3
                 && grid_snapshot.cursor.is_some()
         },
     );

@@ -1013,6 +1013,8 @@ pub struct Grid {
     command_output_flash: Option<Selection>,
     word_separators: String,
     pub osc7_payload: Option<String>,
+    pub shell_reports: crate::attention::signals::ShellReportState,
+    unseen_output_mark: Option<(usize, usize)>,
 }
 
 impl Grid {
@@ -1394,6 +1396,8 @@ impl Grid {
             command_output_flash: None,
             word_separators: DEFAULT_WORD_SEPARATORS.to_owned(),
             osc7_payload: None,
+            shell_reports: Default::default(),
+            unseen_output_mark: None,
         }
     }
     pub fn set_selection_options(&mut self, osc133_command_selection: bool, word_separators: &str) {
@@ -2300,6 +2304,49 @@ impl Grid {
         }
         scrollback.push_str(&viewport);
         scrollback
+    }
+    pub fn mark_unseen_output_start(&mut self) {
+        self.unseen_output_mark = Some((self.lines_above.len(), self.cursor.y));
+    }
+    fn last_output_marker_row(&self, rows: &[&Row]) -> Option<usize> {
+        rows.iter().rposition(|row| {
+            row.osc133_markers
+                .iter()
+                .any(|marker| marker.kind == Osc133MarkerKind::Output)
+        })
+    }
+    pub fn preview_with_anchor(
+        &self,
+        anchor: zellij_utils::data::PreviewAnchor,
+        max_scrollback: usize,
+    ) -> (String, Option<usize>) {
+        use zellij_utils::data::PreviewAnchor;
+        let skip = self.lines_above.len().saturating_sub(max_scrollback);
+        let rows: Vec<&Row> = self
+            .lines_above
+            .iter()
+            .skip(skip)
+            .chain(self.viewport.iter())
+            .chain(self.lines_below.iter())
+            .collect();
+        let anchor_row = match anchor {
+            PreviewAnchor::Bottom => None,
+            PreviewAnchor::LastCommandOutput => self.last_output_marker_row(&rows),
+            PreviewAnchor::NewOutputStart => self
+                .unseen_output_mark
+                .map(|(lines_above, cursor_y)| (lines_above + cursor_y).saturating_sub(skip))
+                .filter(|row| *row < rows.len())
+                .or_else(|| self.last_output_marker_row(&rows)),
+        };
+        let anchor_line = anchor_row.map(|row| {
+            rows.iter()
+                .take(row + 1)
+                .skip(1)
+                .filter(|r| r.is_canonical)
+                .count()
+        });
+        let contents: String = dump_screen_with_ansi!(rows);
+        (contents, anchor_line)
     }
     /// Dumps all lines (with ansi) above terminal viewport and the viewport itself to a string
     pub fn dump_screen_with_ansi(&self, full: bool) -> String {
@@ -3976,6 +4023,113 @@ impl Grid {
         true
     }
 
+    fn handle_reported_cwd(&mut self, cwd: zellij_utils::attention::ReportedCwd) {
+        if cwd.is_local {
+            self.pending_osc7_cwd = Some(std::path::PathBuf::from(&cwd.path));
+        }
+        self.shell_reports
+            .push(crate::attention::signals::PaneSignal::Cwd(cwd));
+    }
+
+    fn command_text_from_screen(&self) -> Option<String> {
+        let first_line = -(self.lines_above.len() as isize);
+        let cursor_line = self.cursor.y as isize;
+        let cursor_column = self.cursor.x;
+        for line in (first_line..=cursor_line).rev() {
+            let Some(row) = self.row_at(line) else {
+                continue;
+            };
+            for marker in row.osc133_markers.iter().rev() {
+                if line == cursor_line && marker.column > cursor_column {
+                    continue;
+                }
+                match marker.kind {
+                    Osc133MarkerKind::Input => {
+                        let start = Self::osc133_marker_position(line, marker.column);
+                        let end = Self::osc133_marker_position(cursor_line, cursor_column);
+                        let text = self.text_in_range(start, end)?;
+                        return crate::attention::shell::clean_command_text(&text);
+                    },
+                    _ => return None,
+                }
+            }
+        }
+        None
+    }
+
+    fn handle_shell_mark(&mut self, mark: crate::attention::shell::ShellMark) {
+        use crate::attention::shell::MarkKind;
+        use crate::attention::signals::PaneSignal;
+        if self.shell_reports.is_duplicate(&mark) {
+            return;
+        }
+        let marker = match &mark.kind {
+            MarkKind::PromptStart { .. } => Some(Osc133MarkerKind::Prompt),
+            MarkKind::InputStart => Some(Osc133MarkerKind::Input),
+            MarkKind::CommandStart { .. } => Some(Osc133MarkerKind::Output),
+            MarkKind::CommandEnd { exit_code, .. } => Some(Osc133MarkerKind::End(*exit_code)),
+            _ => None,
+        };
+        let mut signal = None;
+        match &mark.kind {
+            MarkKind::PromptStart { main: true } => {
+                if !self.shell_reports.prompt_open {
+                    self.shell_reports.prompt_open = true;
+                    self.pending_prompt_return = true;
+                    signal = Some(PaneSignal::PromptShown {
+                        aid: mark.options.aid.clone(),
+                    });
+                }
+            },
+            MarkKind::PromptStart { main: false } | MarkKind::FreshLine => {},
+            MarkKind::InputStart => signal = Some(PaneSignal::InputStarted),
+            MarkKind::CommandStart { command } => {
+                self.shell_reports.prompt_open = false;
+                let command = command
+                    .clone()
+                    .or_else(|| self.shell_reports.pending_command_text.take())
+                    .or_else(|| {
+                        self.command_text_from_screen().map(|text| {
+                            zellij_utils::attention::CommandText {
+                                text,
+                                source: zellij_utils::attention::CommandTextSource::Screen,
+                            }
+                        })
+                    });
+                self.shell_reports.pending_command_text = None;
+                signal = Some(PaneSignal::CommandStarted {
+                    command,
+                    aid: mark.options.aid.clone(),
+                });
+            },
+            MarkKind::CommandEnd { exit_code, err } => {
+                self.shell_reports.prompt_open = false;
+                signal = Some(PaneSignal::CommandFinished {
+                    exit_code: *exit_code,
+                    err: err.clone(),
+                    aid: mark.options.aid.clone(),
+                });
+            },
+            MarkKind::CommandText(text) => {
+                self.shell_reports.pending_command_text = Some(text.clone());
+            },
+            MarkKind::Cwd(cwd) => {
+                self.handle_reported_cwd(cwd.clone());
+            },
+        }
+        if let (Some(marker), Some(row)) = (marker, self.viewport.get_mut(self.cursor.y)) {
+            row.add_osc133_marker(self.cursor.x, marker);
+            self.osc133_markers_seen = true;
+        }
+        if marker.is_some() {
+            self.shell_reports.reports_markers = true;
+        }
+        if let Some(signal) = signal {
+            self.shell_reports.push(signal);
+        }
+        self.shell_reports.remember(mark);
+    }
+
     #[cfg(test)]
     pub fn osc133_end_exit_codes(&self) -> Vec<Option<i32>> {
         let first_line = -(self.lines_above.len() as isize);
@@ -4876,6 +5030,8 @@ impl Perform for Grid {
         match byte {
             7 => {
                 self.ring_bell = true;
+                self.shell_reports
+                    .push(crate::attention::signals::PaneSignal::Bell);
             },
             8 => {
                 // backspace
@@ -5000,11 +5156,6 @@ impl Perform for Grid {
             },
 
             b"7" => {
-                if let Some(raw) = params.get(1) {
-                    if let Some(path) = parse_osc7_path(raw) {
-                        self.pending_osc7_cwd = Some(path);
-                    }
-                }
                 // Store the raw URI separately for forwarding to the parent terminal.
                 // Join params[1..] with ";" to preserve semicolons in the URI.
                 if params.len() >= 2 {
@@ -5012,9 +5163,46 @@ impl Perform for Grid {
                         params[1..].iter().map(|x| str::from_utf8(x).ok()).collect();
                     if let Some(segments) = segments {
                         let uri = segments.join(";");
+                        if let Some(cwd) = crate::attention::shell::parse_osc7_uri(&uri) {
+                            self.handle_reported_cwd(cwd);
+                        }
                         if !uri.is_empty() && !uri.chars().any(|c| c.is_control()) {
                             self.osc7_payload = Some(uri);
                         }
+                    }
+                }
+            },
+
+            b"7501" => match crate::attention::program_status::parse(params, bell_terminated) {
+                Some(crate::attention::program_status::ProgramStatusMessage::Query) => {
+                    self.pending_messages_to_pty.push(
+                        crate::attention::program_status::query_reply(bell_terminated),
+                    );
+                },
+                Some(message) => {
+                    self.shell_reports
+                        .push(crate::attention::signals::PaneSignal::ProgramStatus(
+                            message,
+                        ));
+                },
+                None => {},
+            },
+
+            b"633" => {
+                if let Some(mark) = crate::attention::shell::parse_osc633(params) {
+                    self.handle_shell_mark(mark);
+                }
+            },
+
+            b"1337" => {
+                if let Some(raw) = params.get(1).and_then(|p| str::from_utf8(p).ok()) {
+                    if let Some(host) = raw.strip_prefix("RemoteHost=") {
+                        self.shell_reports.iterm_remote_host = Some(host.to_owned());
+                    } else if let Some(cwd) = crate::attention::shell::parse_iterm2_cwd(
+                        raw,
+                        self.shell_reports.iterm_remote_host.as_deref(),
+                    ) {
+                        self.handle_reported_cwd(cwd);
                     }
                 }
             },
@@ -5145,27 +5333,8 @@ impl Perform for Grid {
             },
 
             b"133" => {
-                let marker = params.get(1).and_then(|subcommand| match *subcommand {
-                    b"A" | b"P" => Some(Osc133MarkerKind::Prompt),
-                    b"B" | b"I" => Some(Osc133MarkerKind::Input),
-                    b"C" => Some(Osc133MarkerKind::Output),
-                    b"D" => Some(Osc133MarkerKind::End(
-                        params
-                            .get(2)
-                            .and_then(|exit_code| std::str::from_utf8(exit_code).ok())
-                            .and_then(|exit_code| exit_code.trim().parse::<i32>().ok()),
-                    )),
-                    _ => None,
-                });
-                if matches!(
-                    marker,
-                    Some(Osc133MarkerKind::Prompt) | Some(Osc133MarkerKind::End(_))
-                ) {
-                    self.pending_prompt_return = true;
-                }
-                if let (Some(marker), Some(row)) = (marker, self.viewport.get_mut(self.cursor.y)) {
-                    row.add_osc133_marker(self.cursor.x, marker);
-                    self.osc133_markers_seen = true;
+                if let Some(mark) = crate::attention::shell::parse_osc133(params) {
+                    self.handle_shell_mark(mark);
                 }
             },
 
@@ -5307,6 +5476,17 @@ impl Perform for Grid {
             },
 
             b"9" => {
+                if params.len() > 2 && params[1] == b"9" {
+                    let raw = params[2..]
+                        .iter()
+                        .flat_map(|x| str::from_utf8(x))
+                        .collect::<Vec<&str>>()
+                        .join(";");
+                    if let Some(cwd) = crate::attention::shell::parse_conemu_cwd(&raw) {
+                        self.handle_reported_cwd(cwd);
+                    }
+                    return;
+                }
                 if params.len() > 1 {
                     let is_conemu_subcommand = params.len() > 2
                         && params
@@ -6091,6 +6271,7 @@ impl Perform for Grid {
             (b'c', None) => {
                 self.reset_terminal_state();
                 self.grapheme_mode = self.grapheme_mode_by_default;
+                self.shell_reports.reset();
             },
             (b'H', None) => {
                 self.set_horizontal_tabstop();

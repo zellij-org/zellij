@@ -409,6 +409,17 @@ pub(crate) fn web_server_status(
     std::process::exit(2);
 }
 
+pub(crate) fn toggle_tray_icon_at(socket: &std::path::Path) -> Result<(), String> {
+    match zellij_utils::app_control::send_app_request_to(
+        socket,
+        &zellij_utils::app_control::AppRequest::ToggleTrayIcon,
+    ) {
+        Ok(zellij_utils::app_control::AppReply::Refused(reason)) => Err(reason),
+        Ok(_) => Ok(()),
+        Err(_) => Err("The Zellij desktop app is not running.".to_owned()),
+    }
+}
+
 /// Client entrypoint for all [`zellij_utils::cli::CliAction`]
 ///
 /// Checks session to send the action to and attaches with client
@@ -417,6 +428,15 @@ pub(crate) fn send_action_to_session(
     requested_session_name: Option<String>,
     config: Option<Config>,
 ) {
+    if matches!(cli_action, zellij_utils::cli::CliAction::ToggleTrayIcon) {
+        match toggle_tray_icon_at(&zellij_utils::consts::app_control_socket()) {
+            Ok(()) => std::process::exit(0),
+            Err(reason) => {
+                eprintln!("{}", reason);
+                std::process::exit(1);
+            },
+        }
+    }
     match get_active_session() {
         ActiveSession::None => {
             eprintln!("There is no active session!");
@@ -651,8 +671,10 @@ pub(crate) fn start_client(opts: CliArgs) {
             config = config_without_layout.clone();
             config_options = config_options_without_layout.clone();
             is_a_reconnect = true;
-            reconnect_to_session.apply_to_options(&mut config_options);
         }
+        let switch_context = reconnect_to_session
+            .as_ref()
+            .and_then(|r| r.switch_context.clone());
 
         let start_client_plan = |session_name: std::string::String| {
             assert_session_ne(&session_name);
@@ -754,6 +776,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                     pane_id_to_focus,
                     is_a_reconnect,
                     should_create_detached,
+                    switch_context.clone(),
                 );
             }
         } else {
@@ -769,6 +792,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                     None,
                     is_a_reconnect,
                     should_create_detached,
+                    switch_context.clone(),
                 );
             } else {
                 if let Some(session_name) = config_options.session_name.as_ref() {
@@ -805,6 +829,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                                 None,
                                 is_a_reconnect,
                                 should_create_detached,
+                                switch_context.clone(),
                             );
                         },
                         _ => {
@@ -824,6 +849,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                                 None,
                                 is_a_reconnect,
                                 should_create_detached,
+                                switch_context.clone(),
                             );
                         },
                     }
@@ -847,6 +873,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                     None,
                     is_a_reconnect,
                     should_create_detached,
+                    switch_context.clone(),
                 );
             }
         }
@@ -920,6 +947,7 @@ pub(crate) fn watch_session(session_name: Option<String>, opts: CliArgs) {
         None,  // pane_id_to_focus
         false, // is_a_reconnect
         false, // should_create_detached
+        None,
     );
 }
 

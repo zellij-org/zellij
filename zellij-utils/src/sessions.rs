@@ -111,7 +111,10 @@ pub fn get_sessions() -> Result<Vec<(String, Duration)>, io::ErrorKind> {
                         .and_then(|d| d.elapsed().ok())
                         .unwrap_or_default();
                     let duration = Duration::from_secs(ctime.as_secs());
-                    if is_ipc_socket(&file.file_type().unwrap()) && assert_socket(&file_name) {
+                    if !crate::consts::is_app_socket_name(&file_name)
+                        && is_ipc_socket(&file.file_type().unwrap())
+                        && assert_socket(&file_name)
+                    {
                         sessions.push((session_name(&names_by_id, file_name), duration));
                     }
                 }
@@ -148,6 +151,9 @@ pub fn get_resurrectable_sessions() -> Vec<(String, Duration)> {
                     let session_id = folder_name
                         .file_name()
                         .map(|f| std::path::PathBuf::from(f).display().to_string())?;
+                    if crate::consts::is_app_socket_name(&session_id) {
+                        return None;
+                    }
                     if std::path::Path::new(&layout_file_name).exists() {
                         Some((session_name(&names_by_id, session_id), elapsed_duration))
                     } else {
@@ -178,7 +184,11 @@ pub fn get_resurrectable_session_names() -> Vec<String> {
                 .filter_map(|folder_name| {
                     let folder = folder_name.display().to_string();
                     let resurrection_layout_file = session_layout_cache_file_name(&folder);
-                    if std::path::Path::new(&resurrection_layout_file).exists() {
+                    let hidden = folder_name
+                        .file_name()
+                        .map(|f| crate::consts::is_app_socket_name(&f.to_string_lossy()))
+                        .unwrap_or(false);
+                    if !hidden && std::path::Path::new(&resurrection_layout_file).exists() {
                         folder_name
                             .file_name()
                             .map(|f| session_name(&names_by_id, f.to_string_lossy().into_owned()))
@@ -208,7 +218,10 @@ pub fn get_sessions_sorted_by_mtime() -> anyhow::Result<Vec<String>> {
                 let file = file?;
                 let file_name = file.file_name().into_string().unwrap();
                 let file_modified_at = file.metadata()?.modified()?;
-                if is_ipc_socket(&file.file_type()?) && assert_socket(&file_name) {
+                if !crate::consts::is_app_socket_name(&file_name)
+                    && is_ipc_socket(&file.file_type()?)
+                    && assert_socket(&file_name)
+                {
                     sessions_with_mtime
                         .push((session_name(&names_by_id, file_name), file_modified_at));
                 }
@@ -696,10 +709,11 @@ pub fn read_live_session_states(
         files.for_each(|file| {
             if let Ok(file) = file {
                 if let Ok(file_name) = file.file_name().into_string() {
-                    if file
-                        .file_type()
-                        .map(|file_type| is_ipc_socket(&file_type))
-                        .unwrap_or(false)
+                    if !crate::consts::is_app_socket_name(&file_name)
+                        && file
+                            .file_type()
+                            .map(|file_type| is_ipc_socket(&file_type))
+                            .unwrap_or(false)
                     {
                         let creation_time = std::fs::metadata(&file.path())
                             .ok()

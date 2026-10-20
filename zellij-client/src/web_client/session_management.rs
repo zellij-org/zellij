@@ -63,6 +63,8 @@ pub fn create_first_message(
     should_create_session: bool,
     session_name: &str,
     initial_layout: Option<LayoutInfo>,
+    switch_context: Option<zellij_utils::session_history::SwitchContext>,
+    focus: (Option<usize>, Option<(u32, bool)>),
 ) -> ClientToServerMsg {
     let resurrection_layout = resurrection_layout(&session_name).ok().flatten();
 
@@ -104,6 +106,7 @@ pub fn create_first_message(
             cwd: None,
             host_terminal_env: Default::default(),
             initial_panes: None,
+            switch_context,
         };
 
         ClientToServerMsg::FirstClientConnected {
@@ -125,13 +128,19 @@ pub fn create_first_message(
             cwd: None,
             host_terminal_env: Default::default(),
             initial_panes: None,
+            switch_context,
         };
         let is_web_client = true;
 
         ClientToServerMsg::AttachClient {
             cli_assets,
-            tab_position_to_focus: None,
-            pane_to_focus: None,
+            tab_position_to_focus: focus.0,
+            pane_to_focus: focus
+                .1
+                .map(|(pane_id, is_plugin)| zellij_utils::ipc::PaneReference {
+                    pane_id,
+                    is_plugin,
+                }),
             is_web_client,
         }
     }

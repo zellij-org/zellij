@@ -68,6 +68,7 @@ pub enum HostReply {
     KittyZlibSupport(bool),
     SixelSupport(bool),
     GraphemeClusterMode(u8),
+    ProgramStatusSupport,
 }
 
 /// Retained alias for the pre-refactor type name used by other modules in
@@ -90,6 +91,9 @@ impl HostReply {
             static ref COLOR_REGISTER_RE: Regex = Regex::new(r"^4;(\d+);(.*)$").unwrap();
         }
         let s = std::str::from_utf8(payload).ok()?;
+        if s == "7501;?" || s.starts_with("7501;?:") {
+            return Some(HostReply::ProgramStatusSupport);
+        }
         if let Some(caps) = BG_RE.captures(s) {
             return Some(HostReply::BackgroundColor(caps[1].to_string()));
         }
