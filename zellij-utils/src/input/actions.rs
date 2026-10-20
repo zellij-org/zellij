@@ -1293,6 +1293,7 @@ impl Action {
                 None => Ok(vec![Action::ToggleFocusNoUiFullscreen]),
             },
             CliAction::TogglePaneFrames => Ok(vec![Action::TogglePaneFrames]),
+            CliAction::ToggleStackListOrientation => Ok(vec![Action::ToggleStackListOrientation]),
             CliAction::SetPaneFrameStyle { style } => Ok(vec![Action::SetPaneFrameStyle(style)]),
             CliAction::ToggleBars { bars } => Ok(vec![Action::ToggleBars { bars }]),
             CliAction::HideBars { bars } => Ok(vec![Action::HideBars { bars }]),
