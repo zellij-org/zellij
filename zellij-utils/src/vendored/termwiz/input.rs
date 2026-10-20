@@ -1691,7 +1691,7 @@ impl InputParser {
                     if let Some(idx) = self.buf.find_subsequence(offset, end_paste) {
                         let pasted =
                             String::from_utf8_lossy(&self.buf.as_slice()[0..idx]).to_string();
-                        self.buf.advance(pasted.len() + end_paste.len());
+                        self.buf.advance(idx + end_paste.len());
                         callback(InputEvent::Paste(pasted), self.buf.len());
                         self.state = InputState::Normal;
                     } else {
@@ -2549,6 +2549,37 @@ mod test {
         p.parse(input2, |e| inputs.push(e), false);
 
         assert_eq!(vec![InputEvent::Paste("12345678".to_owned())], inputs)
+    }
+
+    #[test]
+    fn bracketed_paste_invalid_utf8_does_not_panic() {
+        let mut p = InputParser::new();
+        let input = b"\x1b[200~\xff\x1b[201~";
+        let mut inputs = vec![];
+        p.parse(input, |e| inputs.push(e), false);
+        assert_eq!(inputs, vec![InputEvent::Paste("\u{FFFD}".to_owned())]);
+    }
+
+    #[test]
+    fn bracketed_paste_invalid_utf8_trailing_keys() {
+        let mut p = InputParser::new();
+        let input = b"\x1b[200~\xff\x1b[201~ab";
+        let mut inputs = vec![];
+        p.parse(input, |e| inputs.push(e), false);
+        assert_eq!(
+            inputs,
+            vec![
+                InputEvent::Paste("\u{FFFD}".to_owned()),
+                InputEvent::Key(KeyEvent {
+                    key: KeyCode::Char('a'),
+                    modifiers: Modifiers::NONE,
+                }),
+                InputEvent::Key(KeyEvent {
+                    key: KeyCode::Char('b'),
+                    modifiers: Modifiers::NONE,
+                }),
+            ]
+        );
     }
 
     #[test]
