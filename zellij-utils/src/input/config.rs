@@ -1,27 +1,33 @@
 use crate::data::Styling;
 
 #[cfg(not(target_family = "wasm"))]
-use crate::data::{LayoutInfo, LayoutWithError};
+use crate::data::{KeybindPresetInfo, KeybindPresetWithError, LayoutInfo, LayoutWithError};
 
 use miette::{Diagnostic, LabeledSpan, NamedSource, SourceCode};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 use std::fs::File;
 use std::io::{self, Read};
-#[cfg(not(target_family = "wasm"))]
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 use thiserror::Error;
 
 use std::convert::TryFrom;
 
+use super::attention::AttentionConfig;
+use super::context_menu::ContextMenuConfig;
+use super::keybind_presets::KeybindsLayers;
 use super::keybinds::Keybinds;
 use super::layout::RunPluginOrAlias;
+use super::mousebinds::Mousebinds;
 use super::options::Options;
 use super::plugins::{PluginAliases, PluginsConfigError};
-use super::theme::{Themes, UiConfig};
+use super::session_suggestions::SessionSuggestionsConfig;
+use super::theme::{Theme, Themes, UiConfig};
 use super::web_client::WebClientConfig;
+use super::window::WindowConfig;
 use crate::cli::{CliArgs, Command};
+use crate::consts::{DEFAULT_LIGHT_THEME_NAME, DEFAULT_THEME_NAME};
 use crate::envs::EnvironmentVariables;
 use crate::{home, setup};
 
@@ -32,14 +38,64 @@ type ConfigResult = Result<Config, ConfigError>;
 /// Main configuration.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct Config {
-    pub keybinds: Keybinds,
+    #[serde(with = "shared_keybinds")]
+    pub keybinds: Arc<Keybinds>,
     pub options: Options,
     pub themes: Themes,
     pub plugins: PluginAliases,
     pub ui: UiConfig,
     pub env: EnvironmentVariables,
-    pub background_plugins: HashSet<RunPluginOrAlias>,
+    pub background_plugins: Vec<RunPluginOrAlias>,
     pub web_client: WebClientConfig,
+    #[serde(default)]
+    pub context_menu: ContextMenuConfig,
+    #[serde(default)]
+    pub keybinds_layers: KeybindsLayers,
+    #[serde(default, with = "shared_mousebinds")]
+    pub mousebinds: Arc<Mousebinds>,
+    pub window: WindowConfig,
+    #[serde(default)]
+    pub session_suggestions: SessionSuggestionsConfig,
+    #[serde(default)]
+    pub attention: AttentionConfig,
+}
+
+mod shared_mousebinds {
+    use super::Mousebinds;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use std::sync::Arc;
+
+    pub fn serialize<S: Serializer>(
+        mousebinds: &Arc<Mousebinds>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        mousebinds.as_ref().serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Arc<Mousebinds>, D::Error> {
+        Mousebinds::deserialize(deserializer).map(Arc::new)
+    }
+}
+
+mod shared_keybinds {
+    use super::Keybinds;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use std::sync::Arc;
+
+    pub fn serialize<S: Serializer>(
+        keybinds: &Arc<Keybinds>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        keybinds.as_ref().serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Arc<Keybinds>, D::Error> {
+        Keybinds::deserialize(deserializer).map(Arc::new)
+    }
 }
 
 #[derive(Error, Debug, Serialize, Deserialize)]
@@ -170,6 +226,21 @@ impl TryFrom<&CliArgs> for Config {
     type Error = ConfigError;
 
     fn try_from(opts: &CliArgs) -> ConfigResult {
+        let mut config = Config::from_cli_args_without_keybinds_dir(opts)?;
+        let config_dir = opts
+            .config_dir
+            .clone()
+            .or_else(home::find_default_config_dir);
+        if config.keybinds_layers.config_dir != config_dir {
+            config.keybinds_layers.config_dir = config_dir;
+            config.resolve_keybinds();
+        }
+        Ok(config)
+    }
+}
+
+impl Config {
+    fn from_cli_args_without_keybinds_dir(opts: &CliArgs) -> ConfigResult {
         if let Some(ref path) = opts.config {
             let default_config = Config::from_default_assets()?;
             return Config::from_path(path, Some(default_config));
@@ -202,20 +273,53 @@ impl TryFrom<&CliArgs> for Config {
 
 impl Config {
     pub fn theme_config(&self, theme_name: Option<&String>) -> Option<Styling> {
+        self.theme(theme_name).map(|theme| theme.palette)
+    }
+    pub fn theme(&self, theme_name: Option<&String>) -> Option<Theme> {
         match &theme_name {
-            Some(theme_name) => self.themes.get_theme(theme_name).map(|theme| theme.palette),
-            None => self.themes.get_theme("default").map(|theme| theme.palette),
+            Some(theme_name) => self.themes.get_theme(theme_name).copied(),
+            None => self.themes.get_theme(DEFAULT_THEME_NAME).copied(),
         }
     }
-    /// Gets default configuration from assets
+    pub fn theme_dark(&self) -> Option<Theme> {
+        self.host_theme(self.options.theme_dark.as_ref(), DEFAULT_THEME_NAME)
+    }
+    pub fn theme_light(&self) -> Option<Theme> {
+        self.host_theme(self.options.theme_light.as_ref(), DEFAULT_LIGHT_THEME_NAME)
+    }
+    fn host_theme(&self, configured: Option<&String>, implicit: &str) -> Option<Theme> {
+        match configured {
+            Some(name) => self.themes.get_theme(name).copied(),
+            None if self.options.theme.is_none() => self.themes.get_theme(implicit).copied(),
+            None => None,
+        }
+    }
+    /// Gets default configuration from assets, layered with the configuration bundled by the
+    /// running distribution (if any)
     pub fn from_default_assets() -> ConfigResult {
         let cfg = String::from_utf8(setup::DEFAULT_CONFIG.to_vec())?;
-        match Self::from_kdl(&cfg, None) {
-            Ok(config) => Ok(config),
-            Err(ConfigError::KdlError(kdl_error)) => Err(ConfigError::KdlError(
-                kdl_error.add_src("Default built-in-configuration".into(), cfg),
-            )),
-            Err(e) => Err(e),
+        let config = match Self::from_kdl(&cfg, None) {
+            Ok(config) => config,
+            Err(ConfigError::KdlError(kdl_error)) => {
+                return Err(ConfigError::KdlError(
+                    kdl_error.add_src("Default built-in-configuration".into(), cfg),
+                ))
+            },
+            Err(e) => return Err(e),
+        };
+        let distribution = crate::distribution::distribution();
+        match distribution.config {
+            Some(distribution_config) => match Self::from_kdl(distribution_config, Some(config)) {
+                Ok(config) => Ok(config),
+                Err(ConfigError::KdlError(kdl_error)) => {
+                    Err(ConfigError::KdlError(kdl_error.add_src(
+                        format!("{} bundled configuration", distribution.name),
+                        distribution_config.to_owned(),
+                    )))
+                },
+                Err(e) => Err(e),
+            },
+            None => Ok(config),
         }
     }
     pub fn from_path(path: &PathBuf, default_config: Option<Config>) -> ConfigResult {
@@ -265,11 +369,32 @@ impl Config {
     }
     pub fn merge(&mut self, other: Config) -> Result<(), ConfigError> {
         self.options = self.options.merge(other.options);
-        self.keybinds.merge(other.keybinds.clone());
+        let other_layers = other.keybinds_layers;
+        if !other_layers.user.is_empty()
+            || !other_layers.layout.is_empty()
+            || !other_layers.user_mouse.is_empty()
+            || !other_layers.layout_mouse.is_empty()
+        {
+            self.keybinds_layers.user.merge(other_layers.user);
+            self.keybinds_layers.layout.merge(other_layers.layout);
+            self.keybinds_layers
+                .user_mouse
+                .compose(other_layers.user_mouse);
+            self.keybinds_layers
+                .layout_mouse
+                .compose(other_layers.layout_mouse);
+            self.resolve_keybinds();
+        } else if !other.keybinds.0.is_empty() && !Arc::ptr_eq(&self.keybinds, &other.keybinds) {
+            Arc::make_mut(&mut self.keybinds).merge(Arc::unwrap_or_clone(other.keybinds));
+        }
         self.themes = self.themes.merge(other.themes);
         self.plugins.merge(other.plugins);
         self.ui = self.ui.merge(other.ui);
         self.env = self.env.merge(other.env);
+        self.context_menu = self.context_menu.merge(other.context_menu);
+        self.window = self.window.merge(other.window);
+        self.session_suggestions = self.session_suggestions.merge(other.session_suggestions);
+        self.attention = self.attention.merge(other.attention);
         Ok(())
     }
     pub fn config_file_path(opts: &CliArgs) -> Option<PathBuf> {
@@ -286,51 +411,7 @@ impl Config {
     pub fn default_config_file_path() -> Option<PathBuf> {
         home::find_default_config_dir().map(|config_dir| config_dir.join(DEFAULT_CONFIG_FILE_NAME))
     }
-    pub fn write_config_to_disk(
-        config: String,
-        config_file_path: &PathBuf,
-    ) -> Result<Config, Option<PathBuf>> {
-        // if we fail, try to return the PathBuf of the file we were not able to write to
-        let config_file_path = config_file_path.clone();
-        Config::from_kdl(&config, None)
-            .map_err(|e| {
-                log::error!("Failed to parse config: {}", e);
-                None
-            })
-            .and_then(|parsed_config| {
-                let backed_up_file_name = Config::backup_current_config(&config_file_path)?;
-                let config = match backed_up_file_name {
-                    Some(backed_up_file_name) => {
-                        format!(
-                            "{}{}",
-                            Config::autogen_config_message(backed_up_file_name),
-                            config
-                        )
-                    },
-                    None => config,
-                };
-                std::fs::write(&config_file_path, config.as_bytes()).map_err(|e| {
-                    log::error!("Failed to write config: {}", e);
-                    Some(config_file_path.clone())
-                })?;
-                let written_config = std::fs::read_to_string(&config_file_path).map_err(|e| {
-                    log::error!("Failed to read written config: {}", e);
-                    Some(config_file_path.clone())
-                })?;
-                let parsed_written_config =
-                    Config::from_kdl(&written_config, None).map_err(|e| {
-                        log::error!("Failed to parse written config: {}", e);
-                        None
-                    })?;
-                if parsed_written_config == parsed_config {
-                    Ok(parsed_config)
-                } else {
-                    log::error!("Configuration corrupted when writing to disk");
-                    Err(Some(config_file_path))
-                }
-            })
-    }
-    // returns true if the config was not previouly written to disk and we successfully wrote it
+    // returns true if the config was not previously written to disk and we successfully wrote it
     pub fn write_config_to_disk_if_it_does_not_exist(
         config: String,
         config_file_path: &Option<PathBuf>,
@@ -355,88 +436,42 @@ impl Config {
             }
         }
     }
-    fn find_free_backup_file_name(config_file_path: &PathBuf) -> Option<PathBuf> {
-        let mut backup_config_path = None;
+    pub fn backup_file_path(config_file_path: &Path) -> PathBuf {
         let config_file_name = config_file_path
             .file_name()
             .and_then(|f| f.to_str())
             .unwrap_or_else(|| DEFAULT_CONFIG_FILE_NAME);
-        for i in 0..100 {
-            let new_file_name = if i == 0 {
-                format!("{}.bak", config_file_name)
-            } else {
-                format!("{}.bak.{}", config_file_name, i)
-            };
-            let mut potential_config_path = config_file_path.clone();
-            potential_config_path.set_file_name(new_file_name);
-            if !potential_config_path.exists() {
-                backup_config_path = Some(potential_config_path);
-                break;
-            }
-        }
-        backup_config_path
+        config_file_path.with_file_name(format!("{}.bak", config_file_name))
     }
-    fn backup_config_with_written_content_confirmation(
-        current_config: &str,
-        current_config_file_path: &PathBuf,
-        backup_config_path: &PathBuf,
-    ) -> bool {
-        let _ = std::fs::copy(current_config_file_path, &backup_config_path);
-        match std::fs::read_to_string(&backup_config_path) {
-            Ok(backed_up_config) => current_config == &backed_up_config,
-            Err(e) => {
-                log::error!(
-                    "Failed to back up config file {}: {:?}",
-                    backup_config_path.display(),
-                    e
-                );
-                false
-            },
+}
+
+#[cfg(not(target_family = "wasm"))]
+pub fn load_config_file(config_file_path: &Path, config_dir: Option<&Path>) -> Option<Config> {
+    let mut cli_args = CliArgs::default();
+    cli_args.config = Some(config_file_path.to_path_buf());
+    cli_args.config_dir = config_dir.map(Path::to_path_buf);
+    crate::setup::Setup::from_cli_args(&cli_args)
+        .map(|(config, ..)| config)
+        .map_err(|e| log::error!("Failed to load {}: {}", config_file_path.display(), e))
+        .ok()
+}
+
+#[cfg(not(target_family = "wasm"))]
+#[derive(Default)]
+struct WatcherErrorLog {
+    reported: std::collections::HashSet<String>,
+}
+
+#[cfg(not(target_family = "wasm"))]
+impl WatcherErrorLog {
+    fn report(&mut self, watcher_name: &str, error: &notify::Error) {
+        if self.reported.insert(error.to_string()) {
+            log::warn!(
+                "{} watcher could not read a path, still watching: {}",
+                watcher_name,
+                error
+            );
         }
-    }
-    fn backup_current_config(
-        config_file_path: &PathBuf,
-    ) -> Result<Option<PathBuf>, Option<PathBuf>> {
-        // if we fail, try to return the PathBuf of the file we were not able to write to
-        // if let Some(config_file_path) = Config::config_file_path(&opts) {
-        match std::fs::read_to_string(&config_file_path) {
-            Ok(current_config) => {
-                let Some(backup_config_path) =
-                    Config::find_free_backup_file_name(&config_file_path)
-                else {
-                    log::error!("Failed to find a file name to back up the configuration to, ran out of files.");
-                    return Err(None);
-                };
-                if Config::backup_config_with_written_content_confirmation(
-                    &current_config,
-                    &config_file_path,
-                    &backup_config_path,
-                ) {
-                    Ok(Some(backup_config_path))
-                } else {
-                    log::error!(
-                        "Failed to back up config file: {}",
-                        backup_config_path.display()
-                    );
-                    Err(Some(backup_config_path))
-                }
-            },
-            Err(e) => {
-                if e.kind() == std::io::ErrorKind::NotFound {
-                    Ok(None)
-                } else {
-                    log::error!(
-                        "Failed to read current config {}: {}",
-                        config_file_path.display(),
-                        e
-                    );
-                    Err(Some(config_file_path.clone()))
-                }
-            },
-        }
-    }
-    fn autogen_config_message(backed_up_file_name: PathBuf) -> String {
-        format!("//\n// THIS FILE WAS AUTOGENERATED BY ZELLIJ, THE PREVIOUS FILE AT THIS LOCATION WAS COPIED TO: {}\n//\n\n", backed_up_file_name.display())
     }
 }
 
@@ -471,20 +506,34 @@ pub async fn watch_config_file_changes<F, Fut>(
         cli_args_for_config
     }
 
-    fn load_config_and_theme_dir(
+    fn load_config_and_watched_paths(
         config_file_path: &Path,
         config_dir: Option<&Path>,
-    ) -> Option<(Config, Option<PathBuf>)> {
+    ) -> Option<(Config, Vec<PathBuf>, Option<PathBuf>)> {
         let cli_args_for_config = cli_args_for_config(config_file_path, config_dir);
         Setup::from_cli_args(&cli_args_for_config)
             .map(|(config, _, config_options, _, _)| {
+                let mut watched_paths = vec![];
                 let theme_dir = config_options.theme_dir.or_else(|| {
                     let config_dir = config_dir
                         .map(Path::to_path_buf)
                         .or_else(home::find_default_config_dir);
-                    home::get_theme_dir(config_dir).filter(|dir| dir.exists())
+                    home::get_theme_dir(config_dir)
                 });
-                (config, theme_dir)
+                let missing_theme_dir = theme_dir.clone().filter(|dir| !dir.exists());
+                watched_paths.extend(theme_dir.filter(|dir| dir.exists()));
+                let keybinds_dir = config.keybinds_dir().filter(|dir| dir.exists());
+                if let Some(preset_file) = config.active_keybind_preset_file() {
+                    let is_in_keybinds_dir = keybinds_dir
+                        .as_ref()
+                        .map(|dir| preset_file.starts_with(dir))
+                        .unwrap_or(false);
+                    if !is_in_keybinds_dir && preset_file.exists() {
+                        watched_paths.push(preset_file);
+                    }
+                }
+                watched_paths.extend(keybinds_dir);
+                (config, watched_paths, missing_theme_dir)
             })
             .ok()
     }
@@ -493,16 +542,19 @@ pub async fn watch_config_file_changes<F, Fut>(
         event.paths.iter().any(|path| path == config_file_path)
     }
 
-    fn event_is_in_theme_dir(event: &Event, theme_dir: Option<&Path>) -> bool {
-        theme_dir.map_or(false, |theme_dir| {
-            event.paths.iter().any(|path| path.starts_with(theme_dir))
+    fn event_is_in_watched_paths(event: &Event, watched_paths: &[PathBuf]) -> bool {
+        watched_paths.iter().any(|watched_path| {
+            event
+                .paths
+                .iter()
+                .any(|path| path.starts_with(watched_path))
         })
     }
 
     async fn reload_config_after_change<F, Fut>(
         config_file_path: &Path,
         config_dir: Option<&Path>,
-        watched_theme_dir: Option<&Path>,
+        watched_paths: &[PathBuf],
         on_config_change: &F,
     ) -> Option<bool>
     where
@@ -515,8 +567,8 @@ pub async fn watch_config_file_changes<F, Fut>(
             return None;
         }
 
-        let (new_config, new_theme_dir) =
-            match load_config_and_theme_dir(config_file_path, config_dir) {
+        let (new_config, new_watched_paths, _) =
+            match load_config_and_watched_paths(config_file_path, config_dir) {
                 Some(loaded) => loaded,
                 None => {
                     log::error!("Failed to reload config from {:?}", config_file_path);
@@ -524,14 +576,16 @@ pub async fn watch_config_file_changes<F, Fut>(
                 },
             };
         on_config_change(new_config).await;
-        Some(new_theme_dir.as_deref() != watched_theme_dir)
+        Some(new_watched_paths.as_slice() != watched_paths)
     }
 
+    let mut error_log = WatcherErrorLog::default();
     loop {
         if config_file_path.exists() {
-            let watched_theme_dir =
-                load_config_and_theme_dir(config_file_path.as_path(), config_dir)
-                    .and_then(|(_, theme_dir)| theme_dir);
+            let (watched_paths, missing_theme_dir) =
+                load_config_and_watched_paths(config_file_path.as_path(), config_dir)
+                    .map(|(_, watched_paths, missing_theme_dir)| (watched_paths, missing_theme_dir))
+                    .unwrap_or_default();
             let (tx, mut rx) = mpsc::unbounded_channel();
 
             let mut watcher = match PollWatcher::new(
@@ -552,22 +606,49 @@ pub async fn watch_config_file_changes<F, Fut>(
                 break;
             }
 
-            if let Some(watched_theme_dir) = &watched_theme_dir {
-                if let Err(e) = watcher.watch(watched_theme_dir, RecursiveMode::NonRecursive) {
+            for watched_path in &watched_paths {
+                if let Err(e) = watcher.watch(watched_path, RecursiveMode::NonRecursive) {
                     log::error!(
-                        "Failed to watch theme dir {:?}, continuing without it: {}",
-                        watched_theme_dir,
+                        "Failed to watch {:?}, continuing without it: {}",
+                        watched_path,
                         e,
                     );
                 }
             }
 
-            while let Some(event_result) = rx.recv().await {
+            loop {
+                let event_result = tokio::select! {
+                    received = rx.recv() => match received {
+                        Some(event_result) => event_result,
+                        None => break,
+                    },
+                    _ = tokio::time::sleep(Duration::from_secs(3)), if missing_theme_dir.is_some() => {
+                        let created = missing_theme_dir
+                            .as_ref()
+                            .map(|dir| dir.exists())
+                            .unwrap_or(false);
+                        if created {
+                            reload_config_after_change(
+                                config_file_path.as_path(),
+                                config_dir,
+                                &watched_paths,
+                                &on_config_change,
+                            )
+                            .await;
+                            break;
+                        }
+                        continue;
+                    },
+                };
                 let event = match event_result {
                     Ok(event) => event,
                     Err(e) => {
-                        log::error!("Config watcher event error: {}", e);
-                        break;
+                        if !config_file_path.exists() {
+                            log::error!("Config watcher event error: {}", e);
+                            break;
+                        }
+                        error_log.report("Config", &e);
+                        continue;
                     },
                 };
 
@@ -580,7 +661,7 @@ pub async fn watch_config_file_changes<F, Fut>(
                         if reload_config_after_change(
                             config_file_path.as_path(),
                             config_dir,
-                            watched_theme_dir.as_deref(),
+                            &watched_paths,
                             &on_config_change,
                         )
                         .await
@@ -589,13 +670,13 @@ pub async fn watch_config_file_changes<F, Fut>(
                             break;
                         }
                     }
-                } else if event_is_in_theme_dir(&event, watched_theme_dir.as_deref())
+                } else if event_is_in_watched_paths(&event, &watched_paths)
                     && (event.kind.is_remove() || event.kind.is_create() || event.kind.is_modify())
                 {
                     let should_restart_watcher = reload_config_after_change(
                         config_file_path.as_path(),
                         config_dir,
-                        watched_theme_dir.as_deref(),
+                        &watched_paths,
                         &on_config_change,
                     )
                     .await
@@ -627,6 +708,7 @@ pub async fn watch_layout_dir_changes<F, Fut>(
     use std::time::Duration;
     use tokio::sync::mpsc;
 
+    let mut error_log = WatcherErrorLog::default();
     loop {
         if layout_dir.exists() {
             let (tx, mut rx) = mpsc::unbounded_channel();
@@ -668,13 +750,109 @@ pub async fn watch_layout_dir_changes<F, Fut>(
                             on_layout_change(layouts, layout_errors).await;
                         }
                     },
-                    Err(_) => break,
+                    Err(e) => {
+                        if !layout_dir.exists() {
+                            break;
+                        }
+                        error_log.report("Layout", &e);
+                    },
                 }
             }
         }
 
         while !layout_dir.exists() {
             tokio::time::sleep(Duration::from_secs(3)).await;
+        }
+    }
+}
+
+#[cfg(not(target_family = "wasm"))]
+pub async fn watch_keybinds_dir_changes<F, Fut>(
+    keybinds_dir: PathBuf,
+    stop: Arc<std::sync::atomic::AtomicBool>,
+    on_presets_change: F,
+) where
+    F: Fn(Vec<KeybindPresetInfo>, Vec<KeybindPresetWithError>) -> Fut + Send + 'static,
+    Fut: std::future::Future<Output = ()> + Send,
+{
+    use super::keybind_presets::list_keybind_presets;
+    use notify::{self, Config as WatcherConfig, Event, PollWatcher, RecursiveMode, Watcher};
+    use std::sync::atomic::Ordering;
+    use std::time::Duration;
+    use tokio::sync::mpsc;
+
+    let stopped = || stop.load(Ordering::SeqCst);
+    let mut error_log = WatcherErrorLog::default();
+    while !stopped() {
+        if keybinds_dir.exists() {
+            let (tx, mut rx) = mpsc::unbounded_channel();
+
+            let mut watcher = match PollWatcher::new(
+                move |res: Result<Event, notify::Error>| {
+                    let _ = tx.send(res);
+                },
+                WatcherConfig::default().with_poll_interval(Duration::from_secs(1)),
+            ) {
+                Ok(watcher) => watcher,
+                Err(_) => break,
+            };
+
+            if watcher
+                .watch(&keybinds_dir, RecursiveMode::NonRecursive)
+                .is_err()
+            {
+                break;
+            }
+            let (presets, preset_errors) = list_keybind_presets(Some(&keybinds_dir), &[]);
+            on_presets_change(presets, preset_errors).await;
+
+            loop {
+                if stopped() {
+                    return;
+                }
+                let event_result =
+                    match tokio::time::timeout(Duration::from_millis(250), rx.recv()).await {
+                        Err(_) => continue,
+                        Ok(None) => break,
+                        Ok(Some(event_result)) => event_result,
+                    };
+                match event_result {
+                    Ok(event) => {
+                        if event.kind.is_remove()
+                            || event.kind.is_create()
+                            || event.kind.is_modify()
+                        {
+                            tokio::time::sleep(Duration::from_millis(100)).await;
+
+                            if stopped() {
+                                return;
+                            }
+                            if !keybinds_dir.exists() {
+                                break;
+                            }
+
+                            let (presets, preset_errors) =
+                                list_keybind_presets(Some(&keybinds_dir), &[]);
+                            on_presets_change(presets, preset_errors).await;
+                        }
+                    },
+                    Err(e) => {
+                        if !keybinds_dir.exists() {
+                            break;
+                        }
+                        error_log.report("Keybinds", &e);
+                    },
+                }
+            }
+            if stopped() {
+                return;
+            }
+            let (presets, preset_errors) = list_keybind_presets(None, &[]);
+            on_presets_change(presets, preset_errors).await;
+        }
+
+        while !keybinds_dir.exists() && !stopped() {
+            tokio::time::sleep(Duration::from_millis(250)).await;
         }
     }
 }
@@ -737,7 +915,9 @@ mod config_test {
         let tmp = tempdir().unwrap();
         opts.config_dir = Some(tmp.path().to_path_buf());
         let result = Config::try_from(&opts);
-        assert_eq!(result.unwrap(), Config::from_default_assets().unwrap());
+        let mut expected = Config::from_default_assets().unwrap();
+        expected.keybinds_layers.config_dir = Some(tmp.path().to_path_buf());
+        assert_eq!(result.unwrap(), expected);
     }
 
     #[test]
@@ -908,6 +1088,7 @@ mod config_test {
                 }
                 .into(),
                 sourced_from_external_file: false,
+                terminal_colors: None,
             },
         );
         let expected_themes = Themes::from_data(expected_themes);
@@ -967,6 +1148,7 @@ mod config_test {
                 }
                 .into(),
                 sourced_from_external_file: false,
+                terminal_colors: None,
             },
         );
         expected_themes.insert(
@@ -988,6 +1170,7 @@ mod config_test {
                 }
                 .into(),
                 sourced_from_external_file: false,
+                terminal_colors: None,
             },
         );
         let expected_themes = Themes::from_data(expected_themes);
@@ -1034,6 +1217,7 @@ mod config_test {
                 }
                 .into(),
                 sourced_from_external_file: false,
+                terminal_colors: None,
             },
         );
         let expected_themes = Themes::from_data(expected_themes);
@@ -1155,6 +1339,7 @@ mod config_test {
             "named_theme".into(),
             Theme {
                 sourced_from_external_file: false,
+                terminal_colors: None,
                 palette: Styling {
                     text_unselected: StyleDeclaration {
                         base: PaletteColor::Rgb((220, 215, 186)),
@@ -1321,6 +1506,7 @@ mod config_test {
             "named_theme".into(),
             Theme {
                 sourced_from_external_file: false,
+                terminal_colors: None,
                 palette: Styling {
                     text_unselected: StyleDeclaration {
                         base: PaletteColor::Rgb((220, 215, 186)),
@@ -1330,12 +1516,181 @@ mod config_test {
                         emphasis_3: PaletteColor::Rgb((172, 215, 205)),
                         background: PaletteColor::Rgb((31, 31, 40)),
                     },
+                    frame_unselected: None,
                     ..Default::default()
                 },
             },
         );
         let expected_themes = Themes::from_data(expected_themes);
         assert_eq!(config.themes, expected_themes, "Theme defined in config")
+    }
+
+    #[test]
+    fn a_theme_can_declare_the_sixteen_terminal_colors() {
+        let config_contents = r##"
+            themes {
+                named_theme {
+                    text_unselected {
+                        base "#DCD7BA"
+                        emphasis_0 "#DCD7CD"
+                        emphasis_1 "#DCD8DD"
+                        emphasis_2 "#DCD899"
+                        emphasis_3 "#ACD7CD"
+                        background   "#1F1F28"
+                    }
+                    terminal_colors {
+                        black 1 1 1
+                        red "#ff0000"
+                        green "#0f0"
+                        yellow 4 4 4
+                        blue 5 5 5
+                        magenta 6 6 6
+                        cyan 7 7 7
+                        white 8 8 8
+                        bright_black 9 9 9
+                        bright_red 10 10 10
+                        bright_green 11 11 11
+                        bright_yellow 12 12 12
+                        bright_blue 13 13 13
+                        bright_magenta 14 14 14
+                        bright_cyan 15 15 15
+                        bright_white 16 16 16
+                    }
+                }
+            }
+            "##;
+
+        let config = Config::from_kdl(config_contents, None).unwrap();
+        let table = config
+            .themes
+            .get_theme("named_theme")
+            .unwrap()
+            .terminal_colors
+            .expect("the theme carries no table");
+        assert_eq!(table.declared(), 16);
+        assert_eq!(table.get(0), Some(PaletteColor::Rgb((1, 1, 1))));
+        assert_eq!(table.get(1), Some(PaletteColor::Rgb((255, 0, 0))));
+        assert_eq!(table.get(2), Some(PaletteColor::Rgb((0, 255, 0))));
+        assert_eq!(table.get(15), Some(PaletteColor::Rgb((16, 16, 16))));
+    }
+
+    #[test]
+    fn a_theme_may_declare_only_some_of_the_terminal_colors() {
+        let config_contents = r##"
+            themes {
+                named_theme {
+                    terminal_colors {
+                        red 1 2 3
+                        bright_white 4 5 6
+                    }
+                }
+            }
+            "##;
+
+        let config = Config::from_kdl(config_contents, None).unwrap();
+        let theme = config.themes.get_theme("named_theme").unwrap();
+        let table = theme.terminal_colors.expect("the theme carries no table");
+        assert_eq!(table.declared(), 2);
+        assert_eq!(table.get(1), Some(PaletteColor::Rgb((1, 2, 3))));
+        assert_eq!(table.get(15), Some(PaletteColor::Rgb((4, 5, 6))));
+        assert_eq!(table.get(0), None);
+        assert_eq!(
+            theme.palette,
+            Styling {
+                frame_unselected: None,
+                ..Styling::default()
+            },
+            "a table on its own must not disturb the slots"
+        );
+    }
+
+    #[test]
+    fn a_theme_without_a_terminal_colors_block_carries_no_table() {
+        let config_contents = r##"
+            themes {
+                named_theme {
+                    text_unselected {
+                        base "#DCD7BA"
+                        emphasis_0 "#DCD7CD"
+                        emphasis_1 "#DCD8DD"
+                        emphasis_2 "#DCD899"
+                        emphasis_3 "#ACD7CD"
+                        background   "#1F1F28"
+                    }
+                }
+            }
+            "##;
+
+        let config = Config::from_kdl(config_contents, None).unwrap();
+        assert_eq!(
+            config
+                .themes
+                .get_theme("named_theme")
+                .unwrap()
+                .terminal_colors,
+            None
+        );
+    }
+
+    #[test]
+    fn a_palette_index_is_refused_in_the_terminal_colors_block() {
+        let config_contents = r##"
+            themes {
+                named_theme {
+                    terminal_colors {
+                        red 9
+                    }
+                }
+            }
+            "##;
+
+        let config = Config::from_kdl(config_contents, None);
+        assert!(config.is_err());
+        if let Err(ConfigError::KdlError(KdlError { error_message, .. })) = config {
+            assert_eq!(
+                error_message,
+                "red must be given as rgb or as a hex string: a palette index would resolve \
+                 through the very table it is defining"
+            )
+        } else {
+            panic!("a palette index was accepted: {:?}", config);
+        }
+    }
+
+    #[test]
+    fn a_legacy_palette_theme_can_carry_terminal_colors() {
+        let config_contents = r##"
+            themes {
+                named_theme {
+                    fg 1 1 1
+                    bg 2 2 2
+                    red 3 3 3
+                    green 4 4 4
+                    blue 5 5 5
+                    yellow 6 6 6
+                    magenta 7 7 7
+                    orange 8 8 8
+                    cyan 9 9 9
+                    black 10 10 10
+                    white 11 11 11
+                    terminal_colors {
+                        red 12 12 12
+                    }
+                }
+            }
+            "##;
+
+        let config = Config::from_kdl(config_contents, None).unwrap();
+        let theme = config.themes.get_theme("named_theme").unwrap();
+        assert_eq!(
+            theme.palette.exit_code_error.base,
+            PaletteColor::Rgb((3, 3, 3)),
+            "the legacy palette was not read as a palette"
+        );
+        assert_eq!(
+            theme.terminal_colors.unwrap().get(1),
+            Some(PaletteColor::Rgb((12, 12, 12)))
+        );
     }
 
     #[test]
@@ -1409,6 +1764,7 @@ mod config_test {
             pane_frames: FrameConfig {
                 rounded_corners: true,
                 hide_session_name: true,
+                ..Default::default()
             },
         };
         assert_eq!(config.ui, expected_ui_config, "Ui config defined in config");
@@ -1430,6 +1786,161 @@ mod config_test {
             config.env,
             EnvironmentVariables::from_data(expected_env_config),
             "Env variables defined in config"
+        );
+    }
+
+    #[cfg(unix)]
+    fn add_dangling_symlink(dir: &Path, link_name: &str) {
+        std::os::unix::fs::symlink(dir.join("missing-target"), dir.join(link_name)).unwrap();
+    }
+
+    #[cfg(unix)]
+    async fn wait_for<T>(
+        rx: &mut tokio::sync::mpsc::UnboundedReceiver<T>,
+        matches: impl Fn(&T) -> bool,
+    ) -> bool {
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            while let Some(item) = rx.recv().await {
+                if matches(&item) {
+                    return true;
+                }
+            }
+            false
+        })
+        .await
+        .unwrap_or(false)
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn layout_watcher_reports_changes_despite_dangling_symlink() {
+        let tmp = tempdir().unwrap();
+        let layout_dir = tmp.path().join("layouts");
+        std::fs::create_dir_all(&layout_dir).unwrap();
+        std::fs::write(layout_dir.join("first.kdl"), "layout {\n}\n").unwrap();
+        add_dangling_symlink(&layout_dir, "dangling.kdl");
+
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let watched_dir = layout_dir.clone();
+        let watcher = tokio::spawn(watch_layout_dir_changes(
+            watched_dir,
+            None,
+            move |layouts, _errors| {
+                let tx = tx.clone();
+                async move {
+                    let _ = tx.send(layouts);
+                }
+            },
+        ));
+
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        std::fs::write(layout_dir.join("second.kdl"), "layout {\n}\n").unwrap();
+
+        let reported = wait_for(&mut rx, |layouts: &Vec<LayoutInfo>| {
+            layouts
+                .iter()
+                .any(|layout| matches!(layout, LayoutInfo::File(name, _) if name == "second"))
+        })
+        .await;
+        watcher.abort();
+        assert!(
+            reported,
+            "a new layout should be reported while a dangling symlink is in the layout dir"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn keybinds_watcher_reports_changes_despite_dangling_symlink() {
+        use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+
+        let tmp = tempdir().unwrap();
+        let keybinds_dir = tmp.path().join("keybinds");
+        std::fs::create_dir_all(&keybinds_dir).unwrap();
+        std::fs::write(keybinds_dir.join("first.kdl"), "keybinds {\n}\n").unwrap();
+        add_dangling_symlink(&keybinds_dir, "dangling.kdl");
+
+        let stop = Arc::new(AtomicBool::new(false));
+        let callback_count = Arc::new(AtomicUsize::new(0));
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let counter = callback_count.clone();
+        let watcher = tokio::spawn(watch_keybinds_dir_changes(
+            keybinds_dir.clone(),
+            stop.clone(),
+            move |presets, errors| {
+                counter.fetch_add(1, Ordering::SeqCst);
+                let names: Vec<String> = presets
+                    .into_iter()
+                    .map(|preset| preset.name)
+                    .chain(errors.into_iter().map(|error| error.name))
+                    .collect();
+                let tx = tx.clone();
+                async move {
+                    let _ = tx.send(names);
+                }
+            },
+        ));
+
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        let idle_callbacks = callback_count.load(Ordering::SeqCst);
+        std::fs::write(keybinds_dir.join("second.kdl"), "keybinds {\n}\n").unwrap();
+
+        let reported = wait_for(&mut rx, |names: &Vec<String>| {
+            names.iter().any(|name| name == "second")
+        })
+        .await;
+        stop.store(true, Ordering::SeqCst);
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(2), watcher).await;
+        assert!(
+            idle_callbacks <= 2,
+            "the keybinds watcher should not keep reloading presets while idle, got {} reloads",
+            idle_callbacks
+        );
+        assert!(
+            reported,
+            "a new preset should be reported while a dangling symlink is in the keybinds dir"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn config_watcher_reports_changes_despite_dangling_symlink_in_theme_dir() {
+        let tmp = tempdir().unwrap();
+        let theme_dir = tmp.path().join("themes");
+        std::fs::create_dir_all(&theme_dir).unwrap();
+        add_dangling_symlink(&theme_dir, "dangling");
+        let config_dir: &'static Path = Box::leak(tmp.path().to_path_buf().into_boxed_path());
+        let config_file_path = tmp.path().join("config.kdl");
+        let config_contents = format!("theme_dir \"{}\"\n", theme_dir.display());
+        std::fs::write(&config_file_path, &config_contents).unwrap();
+
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let watcher = tokio::spawn(watch_config_file_changes(
+            config_file_path.clone(),
+            Some(config_dir),
+            move |config: Config| {
+                let tx = tx.clone();
+                async move {
+                    let _ = tx.send(config.options.scroll_buffer_size);
+                }
+            },
+        ));
+
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        std::fs::write(
+            &config_file_path,
+            format!("{}scroll_buffer_size 1234\n", config_contents),
+        )
+        .unwrap();
+
+        let reported = wait_for(&mut rx, |scroll_buffer_size: &Option<usize>| {
+            *scroll_buffer_size == Some(1234)
+        })
+        .await;
+        watcher.abort();
+        assert!(
+            reported,
+            "a config change should be reported while a dangling symlink is in the theme dir"
         );
     }
 }

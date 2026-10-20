@@ -13,7 +13,9 @@ zellij-client = { path = "../zellij-client", version = "0.46.0" }
 zellij-server = { path = "../zellij-server", version = "0.46.0" }
 zellij-utils = { workspace = true }
 anyhow = { workspace = true }
+base64 = { version = "0.22", default-features = false, features = ["std"] }
 async-trait = { workspace = true }
+clap = { workspace = true }
 crossbeam = { version = "0.8", default-features = false, features = ["crossbeam-channel", "std"] }
 interprocess = { workspace = true }
 insta = "1.48"
@@ -23,5 +25,12 @@ tokio = { workspace = true }
 vte = { workspace = true }
 
 [dev-dependencies]
-base64 = { version = "0.22", default-features = false, features = ["std"] }
+flate2 = { version = "1.1.9", default-features = false, features = ["rust_backend"] }
+futures-util = "0.3"
+isahc = { workspace = true }
+serde_json = { workspace = true }
 tempfile = { workspace = true }
+tokio-tungstenite = "0.28"
+zellij-client = { path = "../zellij-client", version = "0.46.0", features = ["web_server_capability"] }
+zellij-server = { path = "../zellij-server", version = "0.46.0", features = ["web_server_capability"] }
+zellij-window = { path = "../zellij-window", version = "0.46.0", features = ["test-support"] }

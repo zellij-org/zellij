@@ -1,10 +1,25 @@
 [Desktop Entry]
 Version=1.0
-Name=Zellij
 Type=Application
+Name=Zellij
+GenericName=Terminal Workspace
 Comment=Manage Your Terminal Applications
-Terminal=true
-Exec=zellij
+Exec=zellij window
 Icon=zellij
-Categories=ConsoleOnly;System;
-GenericName=Terminal Multiplexer
+Terminal=false
+StartupWMClass=zellij
+Categories=System;TerminalEmulator;
+Keywords=terminal;multiplexer;shell;workspace;
+Actions=inbox;sessions;new-window;
+
+[Desktop Action inbox]
+Name=Show Inbox
+Exec=zellij window --inbox
+
+[Desktop Action sessions]
+Name=Show Sessions
+Exec=zellij window --sessions
+
+[Desktop Action new-window]
+Name=New Window
+Exec=zellij window

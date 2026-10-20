@@ -56,3 +56,19 @@ fn single_pane_scroll_shows_on_the_tab_line() {
 
     zellij.quit();
 }
+
+#[test]
+fn an_unscrolled_single_pane_shows_no_scroll_indicator() {
+    let mut zellij = start_zellij();
+    let terminal = fill_pane_past_viewport(&zellij);
+    terminal.output(b"$ ");
+    let grid_snapshot = zellij.wait_until("the pane is at its bottom", |grid_snapshot| {
+        grid_snapshot.contains(LAST_LINE) && grid_snapshot.status_bar_appears()
+    });
+    assert!(
+        !tab_line_shows_scroll(&grid_snapshot),
+        "an unscrolled pane should not show a scroll indicator:\n{}",
+        grid_snapshot.text
+    );
+    zellij.quit();
+}

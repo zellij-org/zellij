@@ -54,11 +54,9 @@ pub fn adjust_to_size(s: &str, rows: usize, columns: usize) -> String {
         .map(|l| {
             let actual_len = ansi_len(l);
             if actual_len > columns {
-                let mut line = String::from(l);
-                line.truncate(columns);
-                line
+                truncate_ansi_line_to_width(l, columns)
             } else {
-                [l, &str::repeat(" ", columns - ansi_len(l))].concat()
+                [l, &str::repeat(" ", columns - actual_len)].concat()
             }
         })
         .chain(iter::repeat(str::repeat(" ", columns)))
@@ -67,14 +65,86 @@ pub fn adjust_to_size(s: &str, rows: usize, columns: usize) -> String {
         .join("\n\r")
 }
 
+fn escape_sequence_len(s: &str) -> usize {
+    let bytes = s.as_bytes();
+    if bytes.len() < 2 {
+        return bytes.len();
+    }
+    match bytes[1] {
+        b'[' => {
+            let mut i = 2;
+            while i < bytes.len() {
+                if (0x40..=0x7e).contains(&bytes[i]) {
+                    return i + 1;
+                }
+                i += 1;
+            }
+            bytes.len()
+        },
+        b']' | b'P' | b'_' | b'^' | b'X' => {
+            let mut i = 2;
+            while i < bytes.len() {
+                if bytes[i] == 0x07 {
+                    return i + 1;
+                }
+                if bytes[i] == 0x1b && bytes.get(i + 1) == Some(&b'\\') {
+                    return i + 2;
+                }
+                i += 1;
+            }
+            bytes.len()
+        },
+        _ => 1 + s[1..].chars().next().map(|c| c.len_utf8()).unwrap_or(0),
+    }
+}
+
+pub fn truncate_ansi_line_to_width(line: &str, columns: usize) -> String {
+    let mut out = String::with_capacity(line.len());
+    let mut used = 0;
+    let mut rest = line;
+    while !rest.is_empty() {
+        if rest.starts_with('\u{1b}') {
+            let len = escape_sequence_len(rest);
+            out.push_str(&rest[..len]);
+            rest = &rest[len..];
+            continue;
+        }
+        let text_end = rest.find('\u{1b}').unwrap_or(rest.len());
+        let text = &rest[..text_end];
+        for (cluster, width) in crate::graphemes::clusters(text) {
+            if used + width > columns {
+                used = columns + 1;
+                break;
+            }
+            used += width;
+            out.push_str(cluster);
+        }
+        rest = &rest[text_end..];
+        if used > columns {
+            while let Some(escape_start) = rest.find('\u{1b}') {
+                rest = &rest[escape_start..];
+                let len = escape_sequence_len(rest);
+                out.push_str(&rest[..len]);
+                rest = &rest[len..];
+            }
+            break;
+        }
+    }
+    out
+}
+
 pub fn make_terminal_title(pane_title: &str) -> String {
+    let pane_title = crate::graphemes::strip_control_characters(pane_title);
     format!(
         "\u{1b}]0;{}{}\u{07}",
         get_session_name()
-            .map(|n| if pane_title.is_empty() {
-                format!("{}", n)
-            } else {
-                format!("{} | ", n)
+            .map(|n| {
+                let n = crate::graphemes::strip_control_characters(&n).into_owned();
+                if pane_title.is_empty() {
+                    format!("{}", n)
+                } else {
+                    format!("{} | ", n)
+                }
             })
             .unwrap_or_default(),
         pane_title
@@ -101,6 +171,30 @@ pub mod colors {
     pub const BROWN: u8 = 215;
 }
 
+pub mod default_theme_colors {
+    pub const BACKGROUND: (u8, u8, u8) = (11, 11, 11);
+    pub const SURFACE: (u8, u8, u8) = (56, 56, 56);
+    pub const SHADOW: (u8, u8, u8) = (32, 32, 32);
+    pub const RIBBON: (u8, u8, u8) = (152, 152, 152);
+    pub const RIBBON_HOVER: (u8, u8, u8) = (220, 220, 220);
+    pub const FOREGROUND: (u8, u8, u8) = (215, 215, 215);
+    pub const MUTED: (u8, u8, u8) = (137, 137, 137);
+    pub const DIM: (u8, u8, u8) = (105, 105, 105);
+    pub const GREEN: (u8, u8, u8) = (150, 220, 90);
+    pub const GOLD: (u8, u8, u8) = (255, 205, 80);
+    pub const BLUE: (u8, u8, u8) = (70, 175, 255);
+    pub const ROSE: (u8, u8, u8) = (255, 95, 110);
+    pub const VIOLET: (u8, u8, u8) = (217, 140, 255);
+    pub const TEAL: (u8, u8, u8) = (60, 215, 200);
+    pub const PINK: (u8, u8, u8) = (255, 130, 200);
+    pub const PURPLE: (u8, u8, u8) = (160, 150, 255);
+    pub const ORANGE: (u8, u8, u8) = (255, 145, 70);
+    pub const SAND: (u8, u8, u8) = (240, 190, 140);
+    pub const WINE: (u8, u8, u8) = (79, 26, 34);
+    pub const NAVY: (u8, u8, u8) = (20, 49, 79);
+    pub const BELL: (u8, u8, u8) = (99, 11, 20);
+}
+
 pub fn _hex_to_rgb(hex: &str) -> (u8, u8, u8) {
     Rgb::from_hex_str(hex)
         .expect("The passed argument must be a valid hex color")
@@ -115,23 +209,23 @@ pub fn default_palette() -> Palette {
     Palette {
         source: PaletteSource::Default,
         theme_hue: ThemeHue::Dark,
-        fg: PaletteColor::EightBit(colors::BRIGHT_GRAY),
-        bg: PaletteColor::EightBit(colors::GRAY),
-        black: PaletteColor::EightBit(colors::BLACK),
-        red: PaletteColor::EightBit(colors::RED),
-        green: PaletteColor::EightBit(colors::GREEN),
-        yellow: PaletteColor::EightBit(colors::YELLOW),
-        blue: PaletteColor::EightBit(colors::BLUE),
-        magenta: PaletteColor::EightBit(colors::MAGENTA),
-        cyan: PaletteColor::EightBit(colors::CYAN),
-        white: PaletteColor::EightBit(colors::WHITE),
-        orange: PaletteColor::EightBit(colors::ORANGE),
-        gray: PaletteColor::EightBit(colors::GRAY),
-        purple: PaletteColor::EightBit(colors::PURPLE),
-        gold: PaletteColor::EightBit(colors::GOLD),
-        silver: PaletteColor::EightBit(colors::SILVER),
-        pink: PaletteColor::EightBit(colors::PINK),
-        brown: PaletteColor::EightBit(colors::BROWN),
+        fg: PaletteColor::Rgb(default_theme_colors::FOREGROUND),
+        bg: PaletteColor::Rgb(default_theme_colors::BACKGROUND),
+        black: PaletteColor::Rgb(default_theme_colors::BACKGROUND),
+        red: PaletteColor::Rgb(default_theme_colors::ROSE),
+        green: PaletteColor::Rgb(default_theme_colors::GREEN),
+        yellow: PaletteColor::Rgb(default_theme_colors::GOLD),
+        blue: PaletteColor::Rgb(default_theme_colors::BLUE),
+        magenta: PaletteColor::Rgb(default_theme_colors::PINK),
+        cyan: PaletteColor::Rgb(default_theme_colors::TEAL),
+        white: PaletteColor::Rgb(default_theme_colors::FOREGROUND),
+        orange: PaletteColor::Rgb(default_theme_colors::ORANGE),
+        gray: PaletteColor::Rgb(default_theme_colors::SURFACE),
+        purple: PaletteColor::Rgb(default_theme_colors::PURPLE),
+        gold: PaletteColor::Rgb(default_theme_colors::GOLD),
+        silver: PaletteColor::Rgb(default_theme_colors::MUTED),
+        pink: PaletteColor::Rgb(default_theme_colors::PINK),
+        brown: PaletteColor::Rgb(default_theme_colors::SAND),
     }
 }
 
@@ -179,17 +273,20 @@ pub fn web_server_base_url(
     web_server_port: u16,
     has_certificate: bool,
     enforce_https_for_localhost: bool,
+    dangerously_allow_web_serving_without_a_certificate: bool,
 ) -> String {
     let is_loopback = match web_server_ip {
         IpAddr::V4(ipv4) => ipv4.is_loopback(),
         IpAddr::V6(ipv6) => ipv6.is_loopback(),
     };
 
-    let url_prefix = if is_loopback && !enforce_https_for_localhost && !has_certificate {
-        "http"
-    } else {
-        "https"
-    };
+    let serves_plain_http = !has_certificate
+        && if is_loopback {
+            !enforce_https_for_localhost
+        } else {
+            dangerously_allow_web_serving_without_a_certificate
+        };
+    let url_prefix = if serves_plain_http { "http" } else { "https" };
     format!("{}://{}:{}", url_prefix, web_server_ip, web_server_port)
 }
 
@@ -201,11 +298,15 @@ pub fn web_server_base_url_from_config(config_options: Options) -> String {
     let has_certificate =
         config_options.web_server_cert.is_some() && config_options.web_server_key.is_some();
     let enforce_https_for_localhost = config_options.enforce_https_for_localhost.unwrap_or(false);
+    let dangerously_allow_web_serving_without_a_certificate = config_options
+        .dangerously_allow_web_serving_without_a_certificate
+        .unwrap_or(false);
     web_server_base_url(
         web_server_ip,
         web_server_port,
         has_certificate,
         enforce_https_for_localhost,
+        dangerously_allow_web_serving_without_a_certificate,
     )
 }
 
@@ -225,4 +326,107 @@ pub fn parse_base_url(url: &str) -> Result<ServerAddress> {
         .ok_or_else(|| anyhow!("No port in URL"))?;
 
     Ok(ServerAddress { ip, port })
+}
+
+#[cfg(test)]
+mod web_server_base_url_tests {
+    use super::*;
+
+    fn remote() -> IpAddr {
+        IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0))
+    }
+
+    fn localhost() -> IpAddr {
+        IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))
+    }
+
+    #[test]
+    fn non_loopback_without_certificate_uses_https_by_default() {
+        assert_eq!(
+            web_server_base_url(remote(), 8082, false, false, false),
+            "https://0.0.0.0:8082"
+        );
+    }
+
+    #[test]
+    fn non_loopback_without_certificate_uses_http_when_dangerously_allowed() {
+        assert_eq!(
+            web_server_base_url(remote(), 8082, false, false, true),
+            "http://0.0.0.0:8082"
+        );
+    }
+
+    #[test]
+    fn non_loopback_with_certificate_uses_https_when_dangerously_allowed() {
+        assert_eq!(
+            web_server_base_url(remote(), 8082, true, false, true),
+            "https://0.0.0.0:8082"
+        );
+    }
+
+    #[test]
+    fn loopback_urls_are_unchanged_by_dangerous_allowance() {
+        assert_eq!(
+            web_server_base_url(localhost(), 8082, false, false, true),
+            "http://127.0.0.1:8082"
+        );
+        assert_eq!(
+            web_server_base_url(localhost(), 8082, false, true, true),
+            "https://127.0.0.1:8082"
+        );
+        assert_eq!(
+            web_server_base_url(localhost(), 8082, true, false, true),
+            "https://127.0.0.1:8082"
+        );
+    }
+
+    #[test]
+    fn base_url_from_config_reads_dangerous_allowance() {
+        let options = Options {
+            web_server_ip: Some(remote()),
+            dangerously_allow_web_serving_without_a_certificate: Some(true),
+            ..Default::default()
+        };
+        assert_eq!(
+            web_server_base_url_from_config(options),
+            "http://0.0.0.0:8082"
+        );
+        let options = Options {
+            web_server_ip: Some(remote()),
+            ..Default::default()
+        };
+        assert_eq!(
+            web_server_base_url_from_config(options),
+            "https://0.0.0.0:8082"
+        );
+    }
+}
+
+#[cfg(test)]
+mod adjust_to_size_tests {
+    use super::*;
+
+    #[test]
+    fn adjust_to_size_cuts_non_ascii_lines_by_width_on_character_boundaries() {
+        let adjusted = adjust_to_size("héllo wörld", 1, 4);
+        assert_eq!(adjusted, "héll");
+        let adjusted = adjust_to_size("你好世界", 1, 5);
+        assert_eq!(adjusted, "你好");
+        let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}";
+        let adjusted = adjust_to_size(&format!("ab{}cd", family), 1, 3);
+        assert_eq!(adjusted, "ab");
+    }
+
+    #[test]
+    fn adjust_to_size_keeps_styles_when_cutting() {
+        let adjusted = adjust_to_size("\u{1b}[31mrédé\u{1b}[0m", 1, 2);
+        assert_eq!(adjusted, "\u{1b}[31mré\u{1b}[0m");
+    }
+
+    #[test]
+    fn terminal_title_has_no_control_characters() {
+        let title = make_terminal_title("a\u{7}b\u{1b}c");
+        assert!(title.ends_with("abc\u{7}"));
+        assert_eq!(title.matches('\u{1b}').count(), 1);
+    }
 }

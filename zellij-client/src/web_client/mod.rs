@@ -101,13 +101,26 @@ pub fn start_web_client(
     let web_server_key = custom_server_key.or_else(|| config.options.web_server_key.clone());
     let has_https_certificate = web_server_cert.is_some() && web_server_key.is_some();
 
-    if let Err(e) = should_use_https(
+    match should_use_https(
         web_server_ip,
         has_https_certificate,
         config.options.enforce_https_for_localhost.unwrap_or(false),
+        config
+            .options
+            .dangerously_allow_web_serving_without_a_certificate
+            .unwrap_or(false),
     ) {
-        eprintln!("{}", e);
-        std::process::exit(2);
+        Ok(false) if !web_server_ip.is_loopback() => {
+            eprintln!(
+                "WARNING: serving the web client on {} over plain HTTP without an SSL certificate (dangerously_allow_web_serving_without_a_certificate is enabled). Traffic, including login tokens, is not encrypted.",
+                web_server_ip
+            );
+        },
+        Ok(_) => {},
+        Err(e) => {
+            eprintln!("{}", e);
+            std::process::exit(2);
+        },
     };
     let (runtime, listener, tls_config) = if run_daemonized {
         daemonize_web_server(
@@ -163,6 +176,7 @@ pub fn start_web_client(
         }
     };
 
+    let config_file_path = config_file_path.or_else(|| Config::default_config_file_path());
     runtime.block_on(serve_web_client(
         config,
         config_options,
@@ -187,11 +201,6 @@ pub async fn serve_web_client(
     web_server_ip: IpAddr,
     web_server_port: u16,
 ) {
-    let Some(config_file_path) = config_file_path.or_else(|| Config::default_config_file_path())
-    else {
-        log::error!("Failed to find default config file path");
-        return;
-    };
     let connection_table = Arc::new(Mutex::new(ConnectionTable::default()));
     let server_handle = Handle::new();
     let session_manager = session_manager.unwrap_or_else(|| Arc::new(RealSessionManager));

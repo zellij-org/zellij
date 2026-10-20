@@ -206,9 +206,7 @@ fn toggle_floating_panes() {
     floating_terminal.output(PROMPT);
 
     let grid_snapshot = zellij.wait_until("floating pane appeared", |grid_snapshot| {
-        grid_snapshot.cursor_is_at(col(33).row(8))
-            && grid_snapshot.contains("STAGGERED")
-            && grid_snapshot.contains("LOCK")
+        grid_snapshot.cursor_is_at(col(33).row(8)) && grid_snapshot.contains("LOCK")
     });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
@@ -410,9 +408,7 @@ fn toggle_pane_embed_or_floating() {
     zellij.send_stdin(&keys::key('e'));
 
     let grid_snapshot = zellij.wait_until("focused pane became floating", |grid_snapshot| {
-        grid_snapshot.contains("STAGGERED")
-            && grid_snapshot.contains("LOCK")
-            && grid_snapshot.cursor_is_at(col(33).row(8))
+        grid_snapshot.contains("LOCK") && grid_snapshot.cursor_is_at(col(33).row(8))
     });
     assert_snapshot!(normalized(&grid_snapshot));
     zellij.quit();
@@ -428,7 +424,7 @@ fn toggle_pane_pinned() {
     let floating_terminal = zellij.expect_pty_spawn();
     floating_terminal.output(PROMPT);
     zellij.wait_until("floating pane appeared", |grid_snapshot| {
-        grid_snapshot.contains("STAGGERED")
+        grid_snapshot.cursor_is_at(col(33).row(8))
     });
 
     zellij.send_stdin(&keys::ctrl('p'));
@@ -674,7 +670,7 @@ fn toggle_frames_with_floating_pane() {
     let floating_terminal = zellij.expect_pty_spawn();
     floating_terminal.output(PROMPT);
     zellij.wait_until("floating pane appeared with a frame", |grid_snapshot| {
-        grid_snapshot.contains("STAGGERED") && grid_snapshot.contains("┌")
+        grid_snapshot.cursor_is_at(col(33).row(8)) && grid_snapshot.contains("┌")
     });
 
     cycle_pane_frames(&zellij);

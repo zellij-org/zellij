@@ -311,6 +311,7 @@ fn breaking_the_visible_member_out_promotes_and_moves_it_to_a_new_tab() {
     zellij.send_stdin(&keys::alt('h'));
     let grid_snapshot = zellij.wait_until("stack shrank to two members", |grid_snapshot| {
         grid_snapshot.status_bar_appears()
+            && grid_snapshot.contains("Tab #2")
             && grid_snapshot.contains("Pane #1")
             && grid_snapshot.contains(&selected_entry("Pane #2"))
             && !grid_snapshot.contains("Pane #3")
@@ -444,6 +445,7 @@ fn entries_share_a_uniform_width_sized_by_the_widest_title() {
     }
     let grid_snapshot = zellij.wait_until("mixed-width entries rendered", |grid_snapshot| {
         grid_snapshot.status_bar_appears()
+            && grid_snapshot.tab_bar_appears()
             && grid_snapshot.contains("member-command")
             && grid_snapshot.contains(&selected_entry("Pane #1"))
             && grid_snapshot.cursor_is_at(col(2).row(4))

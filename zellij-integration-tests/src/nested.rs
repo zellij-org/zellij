@@ -7,6 +7,7 @@ use crossbeam::channel::{Receiver, Sender};
 use zellij_utils::nested_session::{decode_payload, NestedFrameExtractor, NestedSessionMessage};
 
 use crate::client_screen::GridSnapshot;
+use crate::deadline::{ProgressDeadline, NESTED_FRAME_PROGRESS};
 use crate::fake_pty::FakePtyHandle;
 use crate::runner::{GuestResizer, TestRunner, TestSession};
 use crate::Size;
@@ -141,29 +142,34 @@ impl FrameLog {
         what: &str,
         mut matcher: impl FnMut(&NestedSessionMessage) -> bool,
     ) {
-        let deadline = Instant::now() + crate::default_timeout();
+        let mut deadline = ProgressDeadline::starting_now(NESTED_FRAME_PROGRESS);
         let mut messages = self.inner.messages.lock().unwrap();
         loop {
             if messages.iter().skip(since).any(|message| matcher(message)) {
                 return;
             }
             let now = Instant::now();
-            if now >= deadline {
+            if let Some(tripped) = deadline.tripped(now) {
                 panic!(
-                    "timed out waiting for nested frame: {} (after frame index {})\nframes seen: {:?}\n=== zellij log tail ({}) ===\n{}",
+                    "timed out waiting for nested frame: {} (after frame index {})\n{}\nframes seen: {:?}\n=== zellij log tail ({}) ===\n{}",
                     what,
                     since,
+                    tripped,
                     *messages,
                     crate::test_env::log_file_path().display(),
                     crate::test_env::log_tail(40),
                 );
             }
+            let frames_seen = messages.len();
             let (guard, _) = self
                 .inner
                 .signal
-                .wait_timeout(messages, deadline - now)
+                .wait_timeout(messages, deadline.remaining(now))
                 .unwrap();
             messages = guard;
+            if messages.len() != frames_seen {
+                deadline.note_progress(Instant::now());
+            }
         }
     }
 }
@@ -451,6 +457,7 @@ pub struct NestedDepthThreeHarness {
     pub middle_pane: FakePtyHandle,
     pub inner_pane: FakePtyHandle,
     outer_to_middle: FrameLog,
+    middle_to_outer: FrameLog,
     middle_to_inner: FrameLog,
     inner_to_middle: FrameLog,
     _frozen: Arc<AtomicBool>,
@@ -469,6 +476,7 @@ impl NestedDepthThreeHarness {
         let outer_to_middle_bridge = bridge_guest_into_pane_for_host(&middle_pane, frozen.clone());
         let middle = outer_to_middle_bridge.guest;
         let outer_to_middle = outer_to_middle_bridge.host_to_guest;
+        let middle_to_outer = outer_to_middle_bridge.guest_to_host;
 
         middle.wait_for_app_load();
         let inner_pane = middle.expect_pty_spawn();
@@ -488,6 +496,7 @@ impl NestedDepthThreeHarness {
             middle_pane,
             inner_pane,
             outer_to_middle,
+            middle_to_outer,
             middle_to_inner,
             inner_to_middle,
             _frozen: frozen,
@@ -497,6 +506,10 @@ impl NestedDepthThreeHarness {
 
     pub fn outer_to_middle_frames(&self) -> &FrameLog {
         &self.outer_to_middle
+    }
+
+    pub fn middle_to_outer_frames(&self) -> &FrameLog {
+        &self.middle_to_outer
     }
 
     pub fn middle_to_inner_frames(&self) -> &FrameLog {
@@ -571,6 +584,10 @@ impl NestedDepthThreeHarness {
 
     pub fn mark_outer_to_middle(&self) -> usize {
         self.outer_to_middle.mark()
+    }
+
+    pub fn mark_middle_to_outer(&self) -> usize {
+        self.middle_to_outer.mark()
     }
 
     pub fn mark_middle_to_inner(&self) -> usize {

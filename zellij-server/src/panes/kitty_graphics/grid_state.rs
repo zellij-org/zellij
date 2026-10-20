@@ -1,5 +1,5 @@
 use super::parser::{DecodedImage, KittyCommand, KittyError, KittyErrorCode};
-use super::store::{InternalImageId, KittyImageStore};
+use super::store::{InternalImageId, KittyImageStore, ScaledImageKey};
 use crate::panes::sixel::PixelRect;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -18,8 +18,7 @@ pub struct KittyImageChunk {
     pub cell_offset_x: u32,
     pub cell_offset_y: u32,
     pub z_index: i32,
-    pub dest_cells: (u16, u16),
-    pub scaled_px: Option<(usize, usize)>,
+    pub scaled_image: Option<ScaledImageKey>,
     pub placement_uid: u64,
 }
 
@@ -44,6 +43,15 @@ pub struct KittyPlacement {
     pub cell_offset: (u32, u32),
     pub z_index: i32,
     pub vertical_anchor: KittyVerticalAnchor,
+}
+
+impl KittyPlacement {
+    pub fn scaled_image(&self) -> Option<ScaledImageKey> {
+        self.scaled_px.map(|size| ScaledImageKey {
+            source: self.source_rect,
+            size,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -329,6 +337,12 @@ impl KittyGrid {
                 (c, r) => (c * cell.width, r * cell.height, c, r, true),
             };
         let dest_cells = (cols as u16, rows as u16);
+        let source_rect = PixelRect {
+            x: source_x,
+            y: source_y as isize,
+            width: source_w,
+            height: source_h,
+        };
         if is_scaled {
             let scaled_bytes = {
                 let store = self.kitty_image_store.borrow();
@@ -348,7 +362,10 @@ impl KittyGrid {
             };
             self.kitty_image_store.borrow_mut().add_scaled_variant(
                 internal,
-                dest_cells,
+                ScaledImageKey {
+                    source: source_rect,
+                    size: (dst_w, dst_h),
+                },
                 scaled_bytes,
             );
         }
@@ -386,12 +403,7 @@ impl KittyGrid {
             placement_uid,
             internal_id: internal,
             display_rect,
-            source_rect: PixelRect {
-                x: source_x,
-                y: source_y as isize,
-                width: source_w,
-                height: source_h,
-            },
+            source_rect,
             emit_x: 0,
             emit_y: 0,
             scaled_px: if is_scaled {
@@ -830,7 +842,12 @@ impl KittyGrid {
             (self.previous_cell_size, *self.character_cell_size.borrow())
         {
             if previous_cell_size != character_cell_size {
-                let mut regenerations: Vec<(InternalImageId, (u16, u16), PixelRect)> = Vec::new();
+                for internal in self.image_ids.values() {
+                    self.kitty_image_store
+                        .borrow_mut()
+                        .clear_scaled_variants(*internal);
+                }
+                let mut regenerations: Vec<(InternalImageId, ScaledImageKey)> = Vec::new();
                 for placement in self.placements.iter_mut() {
                     placement.display_rect.x = (placement.display_rect.x
                         / previous_cell_size.width)
@@ -846,14 +863,12 @@ impl KittyGrid {
                             Some((placement.display_rect.width, placement.display_rect.height));
                         placement.emit_x = 0;
                         placement.emit_y = 0;
-                        regenerations.push((
-                            placement.internal_id,
-                            placement.dest_cells,
-                            placement.source_rect,
-                        ));
+                        regenerations
+                            .push((placement.internal_id, placement.scaled_image().unwrap()));
                     }
                 }
-                for (internal, dest_cells, source_rect) in regenerations {
+                for (internal, key) in regenerations {
+                    let source_rect = key.source;
                     let scaled_bytes = {
                         let store = self.kitty_image_store.borrow();
                         match store.get(internal) {
@@ -871,8 +886,8 @@ impl KittyGrid {
                                     &cropped,
                                     source_rect.width,
                                     source_rect.height,
-                                    dest_cells.0 as usize * character_cell_size.width,
-                                    dest_cells.1 as usize * character_cell_size.height,
+                                    key.size.0,
+                                    key.size.1,
                                 ))
                             },
                             None => None,
@@ -881,7 +896,7 @@ impl KittyGrid {
                     if let Some(scaled_bytes) = scaled_bytes {
                         self.kitty_image_store.borrow_mut().add_scaled_variant(
                             internal,
-                            dest_cells,
+                            key,
                             scaled_bytes,
                         );
                     }
@@ -1034,8 +1049,14 @@ impl KittyGrid {
                             .saturating_sub(line_index + scrollback_size_in_lines);
                     let cell_y =
                         viewport_y_offset + line_index + image_cell_distance_from_changed_rect_top;
-                    let source_px_x = placement.emit_x;
-                    let source_px_y = placement.emit_y
+                    let (source_x, source_y) = if placement.scaled_px.is_some() {
+                        (0, 0)
+                    } else {
+                        (placement.source_rect.x, placement.source_rect.y as usize)
+                    };
+                    let source_px_x = source_x + placement.emit_x;
+                    let source_px_y = source_y
+                        + placement.emit_y
                         + std::cmp::max(changed_rect_top_edge - image_top_edge, 0) as usize;
                     let source_px_height = std::cmp::min(
                         (std::cmp::min(changed_rect_bottom_edge, image_bottom_edge)
@@ -1062,8 +1083,7 @@ impl KittyGrid {
                             cell_offset_x: placement.cell_offset.0,
                             cell_offset_y: placement.cell_offset.1,
                             z_index: placement.z_index,
-                            dest_cells: placement.dest_cells,
-                            scaled_px: placement.scaled_px,
+                            scaled_image: placement.scaled_image(),
                             placement_uid: placement.placement_uid,
                         });
                     }

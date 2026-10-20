@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
-use unicode_width::UnicodeWidthStr;
 use zellij_utils::data::StyledText;
+use zellij_utils::graphemes::display_width;
 
 pub enum HintLevel {
     Plain,
@@ -191,15 +191,6 @@ pub fn hover_segments(tier: HintTier) -> Vec<HintSegment> {
     }
 }
 
-pub fn hover_hint_variants() -> BTreeMap<usize, StyledText> {
-    let mut variants = BTreeMap::new();
-    for tier in ALL_TIERS {
-        let styled_text = segments_to_styled_text(&hover_segments(tier));
-        variants.insert(styled_text.text.width(), styled_text);
-    }
-    variants
-}
-
 pub fn resize_segments(
     is_floating: bool,
     mouse_scroll_resize: bool,
@@ -321,19 +312,6 @@ pub fn resize_segments(
     }
 }
 
-pub fn resize_hint_variants(
-    is_floating: bool,
-    mouse_scroll_resize: bool,
-) -> BTreeMap<usize, StyledText> {
-    let mut variants = BTreeMap::new();
-    for tier in ALL_TIERS {
-        let styled_text =
-            segments_to_styled_text(&resize_segments(is_floating, mouse_scroll_resize, tier));
-        variants.insert(styled_text.text.width(), styled_text);
-    }
-    variants
-}
-
 pub fn held_hint_variants(
     is_first_run: bool,
     exit_status: Option<HintExitStatus>,
@@ -346,7 +324,7 @@ pub fn held_hint_variants(
         }
         segments.extend(rerun_segments(is_first_run, tier));
         let styled_text = segments_to_styled_text(&segments);
-        variants.insert(styled_text.text.width(), styled_text);
+        variants.insert(display_width(&styled_text.text), styled_text);
     }
     variants
 }
@@ -355,22 +333,34 @@ pub fn held_hint_variants(
 mod tests {
     use super::*;
 
+    fn resize_texts(is_floating: bool, mouse_scroll_resize: bool) -> Vec<String> {
+        ALL_TIERS
+            .into_iter()
+            .map(|tier| {
+                resize_segments(is_floating, mouse_scroll_resize, tier)
+                    .into_iter()
+                    .map(|segment| segment.text)
+                    .collect()
+            })
+            .collect()
+    }
+
     #[test]
-    fn disabled_resize_hint_variants_omit_mouse_scroll_at_every_tier() {
+    fn disabled_resize_hints_omit_mouse_scroll_at_every_tier() {
         for is_floating in [false, true] {
-            for hint in resize_hint_variants(is_floating, false).into_values() {
-                assert!(!hint.text.contains("MouseScroll"));
-                assert!(hint.text.contains("drag borders"));
+            for hint in resize_texts(is_floating, false) {
+                assert!(!hint.contains("MouseScroll"));
+                assert!(hint.contains("drag borders"));
             }
         }
     }
 
     #[test]
-    fn enabled_resize_hint_variants_include_mouse_scroll_at_every_tier() {
+    fn enabled_resize_hints_include_mouse_scroll_at_every_tier() {
         for is_floating in [false, true] {
-            for hint in resize_hint_variants(is_floating, true).into_values() {
-                assert!(hint.text.contains("MouseScroll"));
-                assert!(hint.text.contains("drag borders"));
+            for hint in resize_texts(is_floating, true) {
+                assert!(hint.contains("MouseScroll"));
+                assert!(hint.contains("drag borders"));
             }
         }
     }

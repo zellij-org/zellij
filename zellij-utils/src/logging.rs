@@ -31,7 +31,7 @@ pub fn configure_logger() {
     let roller = FixedWindowRoller::builder()
         .build(
             ZELLIJ_TMP_LOG_DIR
-                .join("zellij.log.old.{}")
+                .join(format!("{}.log.old.{{}}", crate::distribution::name()))
                 .to_str()
                 .unwrap(),
             1,
@@ -78,6 +78,7 @@ pub fn configure_logger() {
                 .appender("logFile")
                 .build("isahc", LevelFilter::Error),
         )
+        .logger(Logger::builder().build("notify", LevelFilter::Error))
         .logger(
             Logger::builder()
                 .appender("logPlugin")
@@ -122,7 +123,11 @@ pub fn atomic_create_dir(dir_name: &Path) -> io::Result<()> {
 pub fn debug_to_file(message: &[u8], terminal_id: i32) -> io::Result<()> {
     let mut path = PathBuf::new();
     path.push(&*ZELLIJ_TMP_LOG_DIR);
-    path.push(format!("zellij-{}.log", terminal_id));
+    path.push(format!(
+        "{}-{}.log",
+        crate::distribution::name(),
+        terminal_id
+    ));
 
     let mut file = fs::OpenOptions::new()
         .append(true)

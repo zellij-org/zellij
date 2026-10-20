@@ -152,12 +152,11 @@ fn spawn_and_read_output() {
         Box::new(|_pane_id, _exit_status, _run_command| {});
 
     let (_terminal_id, mut reader, _child_pid) = server
-        .spawn_terminal(action, quit_cb, None)
+        .spawn_terminal(action, quit_cb, None, &Default::default())
         .expect("spawn_terminal should succeed");
 
     // Read output from the spawned terminal
     let mut output = Vec::new();
-    let mut buf = [0u8; 4096];
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
 
     let rt = tokio::runtime::Builder::new_current_thread()
@@ -170,12 +169,15 @@ fn spawn_and_read_output() {
             if std::time::Instant::now() > deadline {
                 break;
             }
-            match tokio::time::timeout(std::time::Duration::from_millis(500), reader.read(&mut buf))
-                .await
+            match tokio::time::timeout(
+                std::time::Duration::from_millis(500),
+                reader.read_chunk(4096),
+            )
+            .await
             {
-                Ok(Ok(0)) => break,
-                Ok(Ok(n)) => {
-                    output.extend_from_slice(&buf[..n]);
+                Ok(Ok(bytes)) if bytes.is_empty() => break,
+                Ok(Ok(bytes)) => {
+                    output.extend_from_slice(&bytes);
                     let s = String::from_utf8_lossy(&output);
                     if s.contains(test_message) {
                         break;
@@ -202,6 +204,71 @@ fn spawn_and_read_output() {
     );
 }
 
+// Run with this process's stdin redirected to NUL by the test below, the way a server started
+// by the zellij-window launcher runs: a pane's shell must still read the pseudo console.
+#[cfg(windows)]
+#[test]
+#[ignore = "run by a_pane_shell_reads_the_pseudo_console_even_when_the_server_input_is_redirected"]
+fn an_interactive_shell_in_a_pane_waits_for_input() {
+    use crate::panes::PaneId;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+    use zellij_utils::input::command::TerminalAction;
+
+    let server = make_server();
+    let exited = Arc::new(AtomicBool::new(false));
+    let quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send> = Box::new({
+        let exited = exited.clone();
+        move |_pane_id, _exit_status, _run_command| exited.store(true, Ordering::SeqCst)
+    });
+    let cmd = RunCommand {
+        command: PathBuf::from("cmd"),
+        ..Default::default()
+    };
+    let (_terminal_id, _reader, child_pid) = server
+        .spawn_terminal(
+            TerminalAction::RunCommand(cmd),
+            quit_cb,
+            None,
+            &Default::default(),
+        )
+        .expect("spawn_terminal should succeed");
+
+    std::thread::sleep(std::time::Duration::from_secs(2));
+    let still_running = !exited.load(Ordering::SeqCst);
+    if let Some(child_pid) = child_pid {
+        let _ = server.force_kill(child_pid);
+    }
+    assert!(
+        still_running,
+        "the shell exited at once: it read the server's own stdin instead of the pseudo console"
+    );
+}
+
+#[cfg(windows)]
+#[test]
+fn a_pane_shell_reads_the_pseudo_console_even_when_the_server_input_is_redirected() {
+    let module = module_path!()
+        .split_once("::")
+        .map_or(module_path!(), |(_crate, path)| path);
+    let output = Command::new(std::env::current_exe().expect("the test binary has a path"))
+        .args([
+            "--exact",
+            &format!("{}::an_interactive_shell_in_a_pane_waits_for_input", module),
+            "--ignored",
+            "--nocapture",
+        ])
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("failed to run the test binary with its stdin on NUL");
+    assert!(
+        output.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
 #[cfg(unix)]
 #[test]
 fn tcgetpgrp_returns_foreground_group() {
@@ -219,7 +286,12 @@ fn tcgetpgrp_returns_foreground_group() {
     };
     let quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send> = Box::new(|_, _, _| {});
     let (terminal_id, _reader, child_pid) = server
-        .spawn_terminal(TerminalAction::RunCommand(cmd), quit_cb, None)
+        .spawn_terminal(
+            TerminalAction::RunCommand(cmd),
+            quit_cb,
+            None,
+            &Default::default(),
+        )
         .expect("spawn_terminal should succeed");
 
     // poll (bounded to ~2s) for the child to finish setting up its controlling terminal
@@ -254,4 +326,86 @@ fn tcgetpgrp_returns_foreground_group() {
     if let Some(child_pid) = child_pid {
         let _ = server.force_kill(child_pid);
     }
+}
+
+#[test]
+fn client_buffer_refuses_messages_when_limit_is_reached() {
+    let (buffer, receiver) = client_buffer(CLIENT_BUFFER_LIMIT);
+    let msg = || ServerToClientMsg::Exit {
+        exit_reason: ExitReason::Normal,
+    };
+    for _ in 0..CLIENT_BUFFER_LIMIT {
+        assert!(buffer.try_send(msg()).is_ok());
+    }
+    assert!(matches!(buffer.try_send(msg()), Err(TrySendError::Full(_))));
+    assert!(matches!(buffer.try_send(msg()), Err(TrySendError::Full(_))));
+    assert!(receiver.recv().is_some());
+    assert!(buffer.try_send(msg()).is_ok());
+    assert!(matches!(buffer.try_send(msg()), Err(TrySendError::Full(_))));
+}
+
+#[test]
+fn client_buffer_reports_disconnect_when_receiver_is_gone() {
+    let (buffer, receiver) = client_buffer(CLIENT_BUFFER_LIMIT);
+    drop(receiver);
+    let result = buffer.try_send(ServerToClientMsg::Exit {
+        exit_reason: ExitReason::Normal,
+    });
+    assert!(matches!(result, Err(TrySendError::Disconnected(_))));
+    assert_eq!(buffer.queued.load(Ordering::Acquire), 0);
+}
+
+#[cfg(unix)]
+#[test]
+fn the_pane_environment_is_added_to_and_removed_from_the_child_environment() {
+    use crate::os_input_output::PaneEnv;
+    use crate::panes::PaneId;
+    use zellij_utils::input::command::TerminalAction;
+
+    let server = make_server();
+    let cmd = RunCommand {
+        command: PathBuf::from("sh"),
+        args: vec![
+            "-c".to_string(),
+            "echo \"start:${ZELLIJ_PANE_ENV_TEST}:${HOME-unset}:end\"".to_string(),
+        ],
+        ..Default::default()
+    };
+    let mut pane_env = PaneEnv::new();
+    pane_env.insert(
+        "ZELLIJ_PANE_ENV_TEST".to_owned(),
+        Some("from the config".to_owned()),
+    );
+    pane_env.insert("HOME".to_owned(), None);
+    let quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send> = Box::new(|_, _, _| {});
+    let (_terminal_id, mut reader, _child_pid) = server
+        .spawn_terminal(TerminalAction::RunCommand(cmd), quit_cb, None, &pane_env)
+        .expect("spawn_terminal should succeed");
+    let expected = "start:from the config:unset:end";
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let output = rt.block_on(async {
+        let mut output = Vec::new();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while std::time::Instant::now() < deadline
+            && !String::from_utf8_lossy(&output).contains(expected)
+        {
+            match tokio::time::timeout(
+                std::time::Duration::from_millis(500),
+                reader.read_chunk(4096),
+            )
+            .await
+            {
+                Ok(Ok(bytes)) if bytes.is_empty() => break,
+                Ok(Ok(bytes)) => output.extend_from_slice(&bytes),
+                Ok(Err(_)) => break,
+                Err(_) => {},
+            }
+        }
+        String::from_utf8_lossy(&output).to_string()
+    });
+    assert!(output.contains(expected), "got: '{}'", output);
+    assert!(std::env::var("ZELLIJ_PANE_ENV_TEST").is_err());
 }

@@ -10,6 +10,8 @@ use zellij_utils::{
     logging::debug_to_file,
 };
 
+const READ_BUFFER_SIZE: usize = 65536;
+
 pub(crate) struct TerminalBytes {
     terminal_id: u32,
     senders: ThreadSenders,
@@ -50,26 +52,21 @@ impl TerminalBytes {
 
         let mut err_ctx = get_current_ctx();
         err_ctx.add_call(ContextType::AsyncTask);
-        let mut buf = [0u8; 65536];
         loop {
-            match self.async_reader.read(&mut buf).await {
-                Ok(0) => break, // EOF
+            match self.async_reader.read_chunk(READ_BUFFER_SIZE).await {
+                Ok(bytes) if bytes.is_empty() => break,
                 Err(err) => {
                     log::error!("{}", err);
                     break;
                 },
-                Ok(n_bytes) => {
+                Ok(bytes) => {
                     self.activity_flag.store(true, Ordering::Relaxed);
-                    let bytes = &buf[..n_bytes];
                     if self.debug {
-                        let _ = debug_to_file(bytes, self.terminal_id as i32);
+                        let _ = debug_to_file(&bytes, self.terminal_id as i32);
                     }
-                    self.async_send_to_screen(ScreenInstruction::PtyBytes(
-                        self.terminal_id,
-                        bytes.to_vec(),
-                    ))
-                    .await
-                    .with_context(err_context)?;
+                    self.async_send_to_screen(ScreenInstruction::PtyBytes(self.terminal_id, bytes))
+                        .await
+                        .with_context(err_context)?;
                 },
             }
         }

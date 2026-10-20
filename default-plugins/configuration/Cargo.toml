@@ -7,3 +7,5 @@ license.workspace = true
 
 [dependencies]
 zellij-tile = { path = "../../zellij-tile" }
+zellij-utils = { workspace = true }
+kdl = { workspace = true }

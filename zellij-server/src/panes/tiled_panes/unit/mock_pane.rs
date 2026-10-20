@@ -262,7 +262,7 @@ impl Pane for MockPane {
         &mut self,
         _cursor_color: PaletteColor,
         _text_color: PaletteColor,
-    ) -> Option<String> {
+    ) -> Option<crate::output::CharacterChunk> {
         unimplemented!()
     }
     fn render_terminal_title(&mut self, _input_mode: InputMode) -> String {
@@ -307,6 +307,8 @@ impl Pane for MockPane {
     fn scroll_down(&mut self, _count: usize, _client_id: ClientId) {
         unimplemented!()
     }
+    fn scroll_left(&mut self, _count: usize, _client_id: ClientId) {}
+    fn scroll_right(&mut self, _count: usize, _client_id: ClientId) {}
     fn clear_scroll(&mut self) {
         unimplemented!()
     }

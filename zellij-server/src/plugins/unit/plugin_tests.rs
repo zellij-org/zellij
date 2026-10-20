@@ -141,6 +141,53 @@ macro_rules! grant_permissions_and_log_actions_in_thread {
     };
 }
 
+macro_rules! grant_permissions_and_log_actions_until {
+    ( $arc_mutex_log:expr, $receiver:expr, $permission_type:expr, $cache_path:expr, $plugin_thread_sender:expr, $client_id:expr, $is_done:expr ) => {
+        std::thread::Builder::new()
+            .name("fake_screen_thread".to_string())
+            .spawn({
+                let log = $arc_mutex_log.clone();
+                let cache_path = $cache_path.clone();
+                let plugin_thread_sender = $plugin_thread_sender.clone();
+                let is_done = $is_done;
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+                move || loop {
+                    let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+                    let Ok((event, _err_ctx)) = $receiver.recv_timeout(remaining) else {
+                        break;
+                    };
+                    match event {
+                        ScreenInstruction::RequestPluginPermissions(_, plugin_permission) => {
+                            let status = if plugin_permission.permissions.contains($permission_type)
+                            {
+                                PermissionStatus::Granted
+                            } else {
+                                PermissionStatus::Denied
+                            };
+                            let _ = plugin_thread_sender.send(
+                                PluginInstruction::PermissionRequestResult(
+                                    0,
+                                    Some($client_id),
+                                    plugin_permission.permissions,
+                                    status,
+                                    Some(cache_path.clone()),
+                                ),
+                            );
+                        },
+                        event => {
+                            let done = is_done(&event);
+                            log.lock().unwrap().push(event);
+                            if done {
+                                break;
+                            }
+                        },
+                    }
+                }
+            })
+            .unwrap()
+    };
+}
+
 macro_rules! deny_permissions_and_log_actions_in_thread {
     ( $arc_mutex_log:expr, $exit_event:path, $receiver:expr, $exit_after_count:expr, $permission_type:expr, $cache_path:expr, $plugin_thread_sender:expr, $client_id:expr ) => {
         std::thread::Builder::new()
@@ -292,7 +339,7 @@ macro_rules! grant_permissions_and_log_actions_in_thread_struct_variant {
     };
 }
 
-fn create_plugin_thread(
+pub(super) fn create_plugin_thread(
     zellij_cwd: Option<PathBuf>,
     session_env_vars: Option<std::collections::BTreeMap<String, String>>,
 ) -> (
@@ -346,10 +393,8 @@ fn create_plugin_thread(
     plugin_aliases.aliases.insert(
         "fixture_plugin_for_tests".to_owned(),
         RunPlugin::from_url(&format!(
-            "file:{}/../target/e2e-data/plugins/fixture-plugin-for-tests.wasm",
-            std::env::var_os("CARGO_MANIFEST_DIR")
-                .unwrap()
-                .to_string_lossy()
+            "file:{}",
+            e2e_plugin_path("fixture-plugin-for-tests").display()
         ))
         .unwrap(),
     );
@@ -371,7 +416,7 @@ fn create_plugin_thread(
                 default_shell_action,
                 plugin_aliases,
                 InputMode::Normal,
-                Keybinds::default(),
+                Default::default(),
                 Default::default(),
                 initiating_client_id,
             )
@@ -459,7 +504,7 @@ fn create_plugin_thread_with_server_receiver(
                 default_shell_action,
                 PluginAliases::default(),
                 InputMode::Normal,
-                Keybinds::default(),
+                Default::default(),
                 Default::default(),
                 initiating_client_id,
             )
@@ -555,7 +600,7 @@ fn create_plugin_thread_with_pty_receiver(
                 default_shell_action,
                 PluginAliases::default(),
                 InputMode::Normal,
-                Keybinds::default(),
+                Default::default(),
                 Default::default(),
                 initiating_client_id,
             )
@@ -644,7 +689,7 @@ fn create_plugin_thread_with_background_jobs_receiver(
                 default_shell_action,
                 PluginAliases::default(),
                 InputMode::Normal,
-                Keybinds::default(),
+                Default::default(),
                 Default::default(),
                 initiating_client_id,
             )
@@ -671,15 +716,19 @@ fn create_plugin_thread_with_background_jobs_receiver(
     )
 }
 
+pub(crate) fn e2e_plugin_path(name: &str) -> PathBuf {
+    std::env::var_os("CARGO_TARGET_DIR")
+        .filter(|target_dir| !target_dir.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../target"))
+        .join("e2e-data/plugins")
+        .join(format!("{}.wasm", name))
+}
+
 lazy_static! {
-    static ref PLUGIN_FIXTURE: String = format!(
-        // to populate this file, make sure to run the build-e2e CI job
-        // (or compile the fixture plugin and copy the resulting .wasm blob to the below location)
-        "{}/../target/e2e-data/plugins/fixture-plugin-for-tests.wasm",
-        std::env::var_os("CARGO_MANIFEST_DIR")
-            .unwrap()
-            .to_string_lossy()
-    );
+    static ref PLUGIN_FIXTURE: String = e2e_plugin_path("fixture-plugin-for-tests")
+        .display()
+        .to_string();
 }
 
 #[test]
@@ -6684,6 +6733,9 @@ pub fn unblock_input_plugin_command() {
         cwd: None,
         skip_cache: false,
         cli_client_id: client_id,
+        caller_pane_id: None,
+        popup: None,
+        popup_focused: true,
     });
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
@@ -6772,6 +6824,9 @@ pub fn block_input_plugin_command() {
         cwd: None,
         skip_cache: false,
         cli_client_id: client_id,
+        caller_pane_id: None,
+        popup: None,
+        popup_focused: true,
     });
     screen_thread.join().unwrap(); // this might take a while if the cache is cold
     teardown();
@@ -6866,6 +6921,9 @@ pub fn pipe_output_plugin_command() {
         cwd: None,
         skip_cache: false,
         cli_client_id: client_id,
+        caller_pane_id: None,
+        popup: None,
+        popup_focused: true,
     });
     std::thread::sleep(std::time::Duration::from_millis(500));
     teardown();
@@ -6953,6 +7011,9 @@ pub fn pipe_message_to_plugin_plugin_command() {
         cwd: None,
         skip_cache: false,
         cli_client_id: client_id,
+        caller_pane_id: None,
+        popup: None,
+        popup_focused: true,
     });
     std::thread::sleep(std::time::Duration::from_millis(500));
     teardown();
@@ -11533,15 +11594,21 @@ pub fn rename_layout_not_found_plugin_command() {
         create_plugin_thread(Some(plugin_host_folder.clone()), None);
 
     let received_screen_instructions = Arc::new(Mutex::new(vec![]));
-    let screen_thread = grant_permissions_and_log_actions_in_thread!(
+    let screen_thread = grant_permissions_and_log_actions_until!(
         received_screen_instructions,
-        ScreenInstruction::PluginBytes,
         screen_receiver,
-        2,
         &PermissionType::ChangeApplicationState,
         cache_path,
         plugin_thread_sender,
-        1
+        1,
+        |event: &ScreenInstruction| match event {
+            ScreenInstruction::PluginBytes(plugin_render_assets) => {
+                plugin_render_assets.iter().any(|plugin_render_asset| {
+                    String::from_utf8_lossy(&plugin_render_asset.bytes).contains("Rename")
+                })
+            },
+            _ => false,
+        }
     );
 
     let plugin_should_float = Some(false);
@@ -13018,7 +13085,7 @@ pub fn mode_update_payload_is_lightweight_for_opted_in_plugins() {
 
     let _ = plugin_thread_sender.send(PluginInstruction::Reconfigure {
         client_id,
-        keybinds: Some(test_keybinds),
+        keybinds: Some(std::sync::Arc::new(test_keybinds.to_keybinds_vec())),
         default_mode: None,
         default_shell: None,
         layout_dir: None,
@@ -13172,7 +13239,7 @@ pub fn reconfiguration_resends_keybinds_to_opted_in_plugins() {
     // Send Reconfigure
     let _ = plugin_thread_sender.send(PluginInstruction::Reconfigure {
         client_id,
-        keybinds: Some(new_keybinds),
+        keybinds: Some(std::sync::Arc::new(new_keybinds.to_keybinds_vec())),
         default_mode: None,
         default_shell: None,
         layout_dir: None,
@@ -13286,10 +13353,13 @@ pub fn cli_pipe_is_released_when_plugin_panics_while_handling_it() {
         cwd: None,
         skip_cache: false,
         cli_client_id: client_id,
+        caller_pane_id: None,
+        popup: None,
+        popup_focused: true,
     });
     std::thread::sleep(std::time::Duration::from_millis(1000));
     let unblocked = received_server_instruction.lock().unwrap().iter().any(
-        |i| matches!(i, ServerInstruction::UnblockCliPipeInput(pipe_name) if pipe_name == "input_pipe_id"),
+        |i| matches!(i, ServerInstruction::UnblockCliPipeInput(pipe_name, _) if pipe_name == "input_pipe_id"),
     );
     teardown();
     let _ = server_thread.join();
@@ -13297,5 +13367,1224 @@ pub fn cli_pipe_is_released_when_plugin_panics_while_handling_it() {
         unblocked,
         "a plugin panicking while handling a CLI pipe must release that pipe when it crashes, \
          otherwise the `zellij pipe` client stays blocked until the plugin is unloaded"
+    );
+}
+
+enum NestedKeybindsAnswer {
+    Reply(zellij_utils::data::NestedSessionKeybindsResponse),
+    NeverAnswer,
+}
+
+struct NestedKeybindsScenario {
+    rendered: Vec<(u32, String)>,
+    keybinds_requests: usize,
+    request_to_result: Option<std::time::Duration>,
+}
+
+fn run_nested_keybinds_scenario(
+    plugin_configurations: Vec<BTreeMap<String, String>>,
+    answer: NestedKeybindsAnswer,
+    events_to_send: Vec<Event>,
+    result_marker: &'static str,
+) -> NestedKeybindsScenario {
+    let temp_folder = tempdir().unwrap();
+    let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
+    let (plugin_thread_sender, screen_receiver, teardown) =
+        create_plugin_thread(Some(plugin_host_folder), None);
+    let client_id = 1;
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let rendered = Arc::new(Mutex::new(vec![]));
+    let keybinds_requests = Arc::new(Mutex::new(0));
+    let request_to_result = Arc::new(Mutex::new(None));
+    let screen_thread = std::thread::Builder::new()
+        .name("fake_screen_thread".to_string())
+        .spawn({
+            let rendered = rendered.clone();
+            let keybinds_requests = keybinds_requests.clone();
+            let request_to_result = request_to_result.clone();
+            let cache_path = cache_path.clone();
+            let plugin_thread_sender = plugin_thread_sender.clone();
+            move || {
+                let mut unanswered_channels = vec![];
+                let mut request_received_at = None;
+                loop {
+                    let (event, _err_ctx) = screen_receiver
+                        .recv()
+                        .expect("failed to receive event on channel");
+                    match event {
+                        ScreenInstruction::RequestPluginPermissions(
+                            plugin_id,
+                            plugin_permission,
+                        ) => {
+                            let _ = plugin_thread_sender.send(
+                                PluginInstruction::PermissionRequestResult(
+                                    plugin_id,
+                                    Some(client_id),
+                                    plugin_permission.permissions,
+                                    PermissionStatus::Granted,
+                                    Some(cache_path.clone()),
+                                ),
+                            );
+                        },
+                        ScreenInstruction::GetNestedSessionKeybinds {
+                            response_channel, ..
+                        } => {
+                            *keybinds_requests.lock().unwrap() += 1;
+                            request_received_at = Some(std::time::Instant::now());
+                            match &answer {
+                                NestedKeybindsAnswer::Reply(response) => {
+                                    let _ = response_channel.send(response.clone());
+                                },
+                                NestedKeybindsAnswer::NeverAnswer => {
+                                    unanswered_channels.push(response_channel);
+                                },
+                            }
+                        },
+                        ScreenInstruction::PluginBytes(plugin_render_assets) => {
+                            for asset in plugin_render_assets {
+                                let bytes = String::from_utf8_lossy(&asset.bytes).to_string();
+                                if bytes.contains(result_marker) {
+                                    if let Some(received_at) = request_received_at {
+                                        request_to_result
+                                            .lock()
+                                            .unwrap()
+                                            .get_or_insert(received_at.elapsed());
+                                    }
+                                }
+                                rendered.lock().unwrap().push((asset.plugin_id, bytes));
+                            }
+                        },
+                        ScreenInstruction::Exit => {
+                            break;
+                        },
+                        _ => {},
+                    }
+                }
+                drop(unanswered_channels);
+            }
+        })
+        .unwrap();
+
+    let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
+    for (index, configuration) in plugin_configurations.into_iter().enumerate() {
+        let run_plugin = RunPluginOrAlias::RunPlugin(RunPlugin {
+            _allow_exec_host_cmd: false,
+            location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+            configuration: PluginUserConfiguration::new(configuration),
+            ..Default::default()
+        });
+        let _ = plugin_thread_sender.send(PluginInstruction::Load(
+            Some(false),
+            false,
+            false,
+            Some(format!("plugin_{}", index)),
+            run_plugin,
+            Some(1),
+            None,
+            client_id,
+            size,
+            None,
+            None,
+            false,
+            None,
+            None,
+            None,
+        ));
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+    for event in events_to_send {
+        let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
+            None,
+            Some(client_id),
+            event,
+        )]));
+    }
+    std::thread::sleep(std::time::Duration::from_millis(2000));
+    teardown();
+    screen_thread.join().unwrap();
+
+    let rendered = rendered.lock().unwrap().clone();
+    let keybinds_requests = *keybinds_requests.lock().unwrap();
+    let request_to_result = *request_to_result.lock().unwrap();
+    NestedKeybindsScenario {
+        rendered,
+        keybinds_requests,
+        request_to_result,
+    }
+}
+
+fn nested_keybinds_key() -> Event {
+    Event::Key(
+        KeyWithModifier::new(BareKey::Char('m'))
+            .with_ctrl_modifier()
+            .with_alt_modifier(),
+    )
+}
+
+fn sample_nested_session_keybinds() -> zellij_utils::data::NestedSessionKeybinds {
+    zellij_utils::data::NestedSessionKeybinds {
+        session_path: vec!["middle".to_owned(), "inner".to_owned()],
+        mode: InputMode::Pane,
+        base_mode: Some(InputMode::Normal),
+        keybinds: vec![
+            (
+                InputMode::Normal,
+                vec![(
+                    KeyWithModifier::new(BareKey::Char('p')).with_ctrl_modifier(),
+                    vec![Action::SwitchToMode {
+                        input_mode: InputMode::Pane,
+                    }],
+                )],
+            ),
+            (
+                InputMode::Pane,
+                vec![
+                    (
+                        KeyWithModifier::new(BareKey::Char('x')),
+                        vec![Action::CloseFocus],
+                    ),
+                    (
+                        KeyWithModifier::new(BareKey::Esc),
+                        vec![Action::SwitchToMode {
+                            input_mode: InputMode::Normal,
+                        }],
+                    ),
+                ],
+            ),
+        ],
+        keybinds_generation: 7,
+    }
+}
+
+#[test]
+#[ignore]
+pub fn get_nested_session_keybinds_returns_the_answer_to_the_plugin() {
+    let scenario = run_nested_keybinds_scenario(
+        vec![BTreeMap::new()],
+        NestedKeybindsAnswer::Reply(Ok(sample_nested_session_keybinds())),
+        vec![nested_keybinds_key()],
+        "Nested keybinds",
+    );
+    assert_eq!(scenario.keybinds_requests, 1);
+    assert!(
+        scenario.rendered.iter().any(|(_, bytes)| bytes.contains(
+            "Nested keybinds ok: path=[\"middle\", \"inner\"], mode=Pane, base_mode=Some(Normal), generation=7, bindings=3"
+        )),
+        "expected the plugin to render the answer, rendered: {:?}",
+        scenario.rendered
+    );
+}
+
+#[test]
+#[ignore]
+pub fn get_nested_session_keybinds_times_out_when_the_guest_never_answers() {
+    let scenario = run_nested_keybinds_scenario(
+        vec![BTreeMap::new()],
+        NestedKeybindsAnswer::NeverAnswer,
+        vec![nested_keybinds_key()],
+        "Nested keybinds",
+    );
+    assert_eq!(scenario.keybinds_requests, 1);
+    assert!(
+        scenario
+            .rendered
+            .iter()
+            .any(|(_, bytes)| bytes.contains("Nested keybinds error: Timeout")),
+        "expected the plugin to receive a timeout, rendered: {:?}",
+        scenario.rendered
+    );
+    let waited = scenario
+        .request_to_result
+        .expect("the plugin never rendered its result");
+    assert!(
+        waited >= std::time::Duration::from_millis(900),
+        "the plugin gave up after {:?}, before the one second timeout",
+        waited
+    );
+}
+
+#[test]
+#[ignore]
+pub fn get_nested_session_keybinds_passes_errors_to_the_plugin() {
+    let scenario = run_nested_keybinds_scenario(
+        vec![BTreeMap::new()],
+        NestedKeybindsAnswer::Reply(Err(
+            zellij_utils::data::NestedSessionKeybindsError::GuestGone,
+        )),
+        vec![nested_keybinds_key()],
+        "Nested keybinds",
+    );
+    assert_eq!(scenario.keybinds_requests, 1);
+    assert!(
+        scenario
+            .rendered
+            .iter()
+            .any(|(_, bytes)| bytes.contains("Nested keybinds error: GuestGone")),
+        "expected the plugin to receive GuestGone, rendered: {:?}",
+        scenario.rendered
+    );
+}
+
+#[test]
+#[ignore]
+pub fn get_nested_session_keybinds_answers_only_the_plugin_that_asked() {
+    let asking_plugin = BTreeMap::new();
+    let mut other_plugin = BTreeMap::new();
+    other_plugin.insert("skip_nested_keybinds_request".to_owned(), "true".to_owned());
+    other_plugin.insert(
+        "subscribe_nested_session_events".to_owned(),
+        "true".to_owned(),
+    );
+    let scenario = run_nested_keybinds_scenario(
+        vec![asking_plugin, other_plugin],
+        NestedKeybindsAnswer::Reply(Ok(sample_nested_session_keybinds())),
+        vec![nested_keybinds_key()],
+        "Nested keybinds",
+    );
+    assert_eq!(scenario.keybinds_requests, 1);
+    let rendering_plugins: std::collections::HashSet<u32> = scenario
+        .rendered
+        .iter()
+        .map(|(plugin_id, _)| *plugin_id)
+        .collect();
+    assert_eq!(
+        rendering_plugins.len(),
+        2,
+        "expected both plugins to render, rendered: {:?}",
+        scenario.rendered
+    );
+    let plugins_that_got_the_answer: std::collections::HashSet<u32> = scenario
+        .rendered
+        .iter()
+        .filter(|(_, bytes)| bytes.contains("Nested keybinds ok"))
+        .map(|(plugin_id, _)| *plugin_id)
+        .collect();
+    assert_eq!(
+        plugins_that_got_the_answer.len(),
+        1,
+        "expected exactly one plugin to see the answer, rendered: {:?}",
+        scenario.rendered
+    );
+    assert!(
+        !scenario
+            .rendered
+            .iter()
+            .any(|(_, bytes)| bytes.contains("Nested mode update")
+                || bytes.contains("NestedSession")),
+        "no nested session event should reach the plugin that did not ask, rendered: {:?}",
+        scenario.rendered
+    );
+}
+
+#[test]
+#[ignore]
+pub fn nested_session_events_reach_subscribed_plugins() {
+    let mut subscribed = BTreeMap::new();
+    subscribed.insert(
+        "subscribe_nested_session_events".to_owned(),
+        "true".to_owned(),
+    );
+    let scenario = run_nested_keybinds_scenario(
+        vec![subscribed],
+        NestedKeybindsAnswer::NeverAnswer,
+        vec![
+            Event::NestedSessionModeUpdate {
+                pane_id: zellij_utils::data::PaneId::Terminal(1),
+                session_path: vec!["middle".to_owned(), "inner".to_owned()],
+                mode: InputMode::Locked,
+                base_mode: Some(InputMode::Normal),
+                keybinds_generation: 3,
+            },
+            Event::NestedSessionEnded {
+                pane_id: zellij_utils::data::PaneId::Terminal(1),
+                reason: zellij_utils::data::NestedSessionEndReason::Unresponsive,
+            },
+        ],
+        "Nested",
+    );
+    assert_eq!(scenario.keybinds_requests, 0);
+    assert!(
+        scenario.rendered.iter().any(|(_, bytes)| bytes.contains(
+            "Nested mode update: pane=Terminal(1), path=[\"middle\", \"inner\"], mode=Locked, generation=3"
+        )),
+        "expected the mode update to be rendered, rendered: {:?}",
+        scenario.rendered
+    );
+    assert!(
+        scenario.rendered.iter().any(|(_, bytes)| bytes
+            .contains("Nested session ended: pane=Terminal(1), reason=Unresponsive")),
+        "expected the ended event to be rendered, rendered: {:?}",
+        scenario.rendered
+    );
+}
+
+#[test]
+pub fn plugin_unloaded_while_loading_does_not_run_once_loaded() {
+    let temp_folder = tempdir().unwrap();
+    let cache_path = PathBuf::from(temp_folder.path()).join("permissions_test.kdl");
+    let (plugin_thread_sender, screen_receiver, teardown) = create_plugin_thread(None, None);
+    let run_plugin = RunPluginOrAlias::RunPlugin(RunPlugin {
+        _allow_exec_host_cmd: false,
+        location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: Default::default(),
+        ..Default::default()
+    });
+    let client_id = 1;
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
+    let _ = plugin_thread_sender.send(PluginInstruction::Load(
+        Some(false),
+        false,
+        false,
+        Some("test_plugin".to_owned()),
+        run_plugin,
+        Some(1),
+        None,
+        client_id,
+        size,
+        None,
+        None,
+        false,
+        None,
+        None,
+        None,
+    ));
+    let first_plugin_id = 0;
+    let _ = plugin_thread_sender.send(PluginInstruction::Unload(first_plugin_id));
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let mut update_sent = false;
+    let mut rendered_after_unload = false;
+    while std::time::Instant::now() < deadline {
+        if !update_sent && deadline - std::time::Instant::now() < std::time::Duration::from_secs(3)
+        {
+            let _ = plugin_thread_sender.send(PluginInstruction::Update(vec![(
+                None,
+                Some(client_id),
+                Event::InputReceived,
+            )]));
+            update_sent = true;
+        }
+        match screen_receiver.recv_timeout(std::time::Duration::from_millis(100)) {
+            Ok((ScreenInstruction::RequestPluginPermissions(plugin_id, permissions), _)) => {
+                let _ = plugin_thread_sender.send(PluginInstruction::PermissionRequestResult(
+                    plugin_id,
+                    Some(client_id),
+                    permissions.permissions,
+                    PermissionStatus::Granted,
+                    Some(cache_path.clone()),
+                ));
+            },
+            Ok((ScreenInstruction::PluginBytes(plugin_render_assets), _)) => {
+                if plugin_render_assets.iter().any(|asset| {
+                    asset.plugin_id == first_plugin_id
+                        && String::from_utf8_lossy(&asset.bytes).contains("InputReceived")
+                }) {
+                    rendered_after_unload = true;
+                }
+            },
+            _ => {},
+        }
+    }
+    teardown();
+    assert!(
+        !rendered_after_unload,
+        "the plugin keeps running after being unloaded while it was loading"
+    );
+}
+
+fn plugin_env_without_read_pane_contents() -> super::plugin_map::PluginEnv {
+    let stdin_pipe = Arc::new(Mutex::new(std::collections::VecDeque::new()));
+    let stdout_pipe = Arc::new(Mutex::new(std::collections::VecDeque::new()));
+    let dir = std::env::temp_dir();
+    let wasi_ctx = super::plugin_loader::PluginLoader::create_wasi_ctx(
+        &dir,
+        &dir,
+        &dir,
+        &dir,
+        &"file:/tmp/third-party.wasm".to_owned(),
+        1,
+        stdin_pipe.clone(),
+        stdout_pipe.clone(),
+    )
+    .unwrap();
+    let permissions: std::collections::HashSet<PermissionType> =
+        [PermissionType::ReadApplicationState].into_iter().collect();
+    super::plugin_map::PluginEnv {
+        plugin_id: 1,
+        client_id: 1,
+        plugin: zellij_utils::input::plugins::PluginConfig {
+            path: PathBuf::from("/tmp/third-party.wasm"),
+            _allow_exec_host_cmd: false,
+            location: RunPluginLocation::File(PathBuf::from("/tmp/third-party.wasm")),
+            initial_userspace_configuration: PluginUserConfiguration::new(BTreeMap::new()),
+            initial_cwd: None,
+        },
+        permissions: Arc::new(Mutex::new(Some(permissions))),
+        senders: Default::default(),
+        wasi_ctx,
+        plugin_own_data_dir: dir.clone(),
+        plugin_own_cache_dir: dir.clone(),
+        path_to_default_shell: dir.clone(),
+        default_shell: None,
+        layout_dir: None,
+        plugin_cwd: dir.clone(),
+        session_env_vars: BTreeMap::new(),
+        input_pipes_to_unblock: Arc::new(Mutex::new(std::collections::HashSet::new())),
+        input_pipes_to_block: Arc::new(Mutex::new(std::collections::HashSet::new())),
+        default_mode: InputMode::Normal,
+        subscriptions: Arc::new(Mutex::new(std::collections::HashSet::new())),
+        stdin_pipe,
+        stdout_pipe,
+        keybinds: Arc::new(Default::default()),
+        intercepting_key_presses: false,
+        pending_popup_size: None,
+        store_limits: wasmi::StoreLimitsBuilder::new().build(),
+        shared: None,
+    }
+}
+
+fn pane_manifest_with_command_text() -> zellij_utils::data::PaneManifest {
+    use zellij_utils::attention::{
+        AttentionSource, AttentionStatus, CommandPhase, CommandState, CommandText,
+        CommandTextSource, PaneAttention, RunningCommand,
+    };
+    let command = CommandText {
+        text: "deploy --token hunter2".to_owned(),
+        source: CommandTextSource::Shell,
+    };
+    let mut pane_info = zellij_utils::data::PaneInfo::default();
+    pane_info.id = 1;
+    pane_info.attention = PaneAttention {
+        status: AttentionStatus::Working,
+        source: Some(AttentionSource::ShellCommand),
+        text: "running: deploy --token hunter2".to_owned(),
+        detail: zellij_utils::attention::AttentionDetail {
+            command: Some(command.clone()),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    pane_info.command_state = CommandState {
+        phase: CommandPhase::Running,
+        running: Some(RunningCommand {
+            command: Some(command),
+            started_ms: 1,
+        }),
+        ..Default::default()
+    };
+    zellij_utils::data::PaneManifest {
+        panes: [(0, vec![pane_info])].into_iter().collect(),
+    }
+}
+
+fn manifest_leaks_command_text(manifest: &zellij_utils::data::PaneManifest) -> bool {
+    manifest.panes.values().flatten().any(|pane_info| {
+        pane_info.attention.text.contains("hunter2")
+            || pane_info.attention.detail.command.is_some()
+            || pane_info
+                .command_state
+                .running
+                .as_ref()
+                .and_then(|r| r.command.as_ref())
+                .is_some()
+    })
+}
+
+#[test]
+pub fn pane_update_hides_command_text_from_plugins_without_read_pane_contents() {
+    let env = plugin_env_without_read_pane_contents();
+    let mut event = Event::PaneUpdate(pane_manifest_with_command_text());
+    super::wasm_bridge::redact_event_for_plugin(&env, &mut event);
+    let Event::PaneUpdate(manifest) = event else {
+        panic!("event changed kind");
+    };
+    assert!(!manifest_leaks_command_text(&manifest));
+}
+
+#[test]
+pub fn session_update_hides_command_text_from_plugins_without_read_pane_contents() {
+    let env = plugin_env_without_read_pane_contents();
+    let current_session = zellij_utils::data::SessionInfo {
+        name: "here".to_owned(),
+        is_current_session: true,
+        panes: pane_manifest_with_command_text(),
+        ..Default::default()
+    };
+    let mut event = Event::SessionUpdate(vec![current_session], vec![]);
+    super::wasm_bridge::redact_event_for_plugin(&env, &mut event);
+    let Event::SessionUpdate(sessions, _) = event else {
+        panic!("event changed kind");
+    };
+    assert!(
+        !manifest_leaks_command_text(&sessions[0].panes),
+        "SessionUpdate carries command text to a plugin without ReadPaneContents"
+    );
+}
+
+fn plugin_env_with_permissions(granted: &[PermissionType]) -> super::plugin_map::PluginEnv {
+    let env = plugin_env_without_read_pane_contents();
+    *env.permissions.lock().unwrap() = Some(granted.iter().cloned().collect());
+    env
+}
+
+fn session_pane_commands() -> Vec<(zellij_utils::data::PluginCommand, PermissionType)> {
+    use zellij_utils::data::{PaneId, PluginCommand, SessionWindowRequest};
+    let session_name = "other-session".to_owned();
+    let pane_id = PaneId::Terminal(1);
+    vec![
+        (
+            PluginCommand::MarkSessionPaneSeen {
+                session_name: session_name.clone(),
+                pane_id,
+            },
+            PermissionType::ChangeApplicationState,
+        ),
+        (
+            PluginCommand::MarkAllSeen {
+                session_name: Some(session_name.clone()),
+            },
+            PermissionType::ChangeApplicationState,
+        ),
+        (
+            PluginCommand::OpenSessionWindow(SessionWindowRequest::existing(
+                &session_name,
+                None,
+                true,
+            )),
+            PermissionType::ChangeApplicationState,
+        ),
+        (
+            PluginCommand::WriteToSessionPane {
+                session_name: session_name.clone(),
+                pane_id,
+                bytes: b"typed".to_vec(),
+            },
+            PermissionType::WriteToStdin,
+        ),
+        (
+            PluginCommand::SendKeyToSessionPane {
+                session_name: session_name.clone(),
+                pane_id,
+                key: KeyWithModifier::new(BareKey::Enter),
+            },
+            PermissionType::WriteToStdin,
+        ),
+        (
+            PluginCommand::ToggleSessionPaneMute {
+                session_name: session_name.clone(),
+                pane_id,
+            },
+            PermissionType::ChangeApplicationState,
+        ),
+        (
+            PluginCommand::ToggleSessionPaneIgnoreOutput {
+                session_name: session_name.clone(),
+                pane_id,
+            },
+            PermissionType::ChangeApplicationState,
+        ),
+        (
+            PluginCommand::ToggleSessionPaneWatch {
+                session_name: session_name.clone(),
+                pane_id,
+            },
+            PermissionType::ChangeApplicationState,
+        ),
+        (
+            PluginCommand::FocusSessionPane {
+                session_name,
+                pane_id,
+            },
+            PermissionType::ChangeApplicationState,
+        ),
+    ]
+}
+
+const EVERY_PERMISSION: [PermissionType; 6] = [
+    PermissionType::ReadApplicationState,
+    PermissionType::ChangeApplicationState,
+    PermissionType::WriteToStdin,
+    PermissionType::ReadPaneContents,
+    PermissionType::RunCommands,
+    PermissionType::OpenTerminalsOrPlugins,
+];
+
+#[test]
+pub fn session_pane_commands_need_their_permission() {
+    for (command, required) in session_pane_commands() {
+        let granted = plugin_env_with_permissions(&[required.clone()]);
+        assert_eq!(
+            super::zellij_exports::check_command_permission(&granted, &command).0,
+            PermissionStatus::Granted,
+            "{:?} with {:?}",
+            command,
+            required
+        );
+        let everything_else: Vec<PermissionType> = EVERY_PERMISSION
+            .iter()
+            .filter(|permission| **permission != required)
+            .cloned()
+            .collect();
+        let denied = plugin_env_with_permissions(&everything_else);
+        assert_eq!(
+            super::zellij_exports::check_command_permission(&denied, &command),
+            (PermissionStatus::Denied, Some(required.clone())),
+            "{:?} without {:?}",
+            command,
+            required
+        );
+    }
+}
+
+fn attention_with_command_text() -> zellij_utils::attention::PaneAttention {
+    use zellij_utils::attention::{AttentionStatus, CommandText, CommandTextSource};
+    zellij_utils::attention::PaneAttention {
+        status: AttentionStatus::Failed,
+        source: Some(zellij_utils::attention::AttentionSource::ShellCommand),
+        text: "exited 1: deploy --token hunter2".to_owned(),
+        detail: zellij_utils::attention::AttentionDetail {
+            command: Some(CommandText {
+                text: "deploy --token hunter2".to_owned(),
+                source: CommandTextSource::Shell,
+            }),
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+}
+
+fn command_text() -> zellij_utils::attention::CommandText {
+    zellij_utils::attention::CommandText {
+        text: "deploy --token hunter2".to_owned(),
+        source: zellij_utils::attention::CommandTextSource::Shell,
+    }
+}
+
+fn command_outcome() -> zellij_utils::attention::CommandOutcome {
+    zellij_utils::attention::CommandOutcome {
+        result: zellij_utils::attention::CommandResult::Failed,
+        exit_code: Some(1),
+        err: None,
+        duration_ms: Some(10),
+        ended_ms: 20,
+        command: Some(command_text()),
+    }
+}
+
+fn global_attention_with_command_text() -> zellij_utils::attention::GlobalAttention {
+    use zellij_utils::attention::{
+        AttentionCounts, AttentionItem, GlobalAttention, SessionAttention,
+    };
+    let item = AttentionItem {
+        pane_id: zellij_utils::data::PaneId::Terminal(1),
+        tab_id: 0,
+        tab_name: "Tab #1".to_owned(),
+        pane_title: "shell".to_owned(),
+        attention: attention_with_command_text(),
+    };
+    let mut counts = AttentionCounts::default();
+    counts.add(&item.attention);
+    GlobalAttention::build(
+        "here",
+        vec![(
+            "api".to_owned(),
+            SessionAttention {
+                status: item.attention.status,
+                counts,
+                muted: false,
+                top: Some(item.clone()),
+                items: vec![item],
+            },
+        )],
+    )
+}
+
+fn redacted(granted: &[PermissionType], mut event: Event) -> String {
+    let env = plugin_env_with_permissions(granted);
+    super::wasm_bridge::redact_event_for_plugin(&env, &mut event);
+    format!("{:?}", event)
+}
+
+const WITHOUT_PANE_READ: [PermissionType; 1] = [PermissionType::ReadApplicationState];
+const WITH_PANE_READ: [PermissionType; 2] = [
+    PermissionType::ReadApplicationState,
+    PermissionType::ReadPaneContents,
+];
+
+#[test]
+pub fn command_started_and_finished_hide_the_command_without_pane_read_permission() {
+    let started = Event::CommandStarted(
+        zellij_utils::data::PaneId::Terminal(1),
+        Some(command_text()),
+    );
+    let finished =
+        Event::CommandFinished(zellij_utils::data::PaneId::Terminal(1), command_outcome());
+    assert!(!redacted(&WITHOUT_PANE_READ, started.clone()).contains("hunter2"));
+    assert!(!redacted(&WITHOUT_PANE_READ, finished.clone()).contains("hunter2"));
+    assert!(redacted(&WITH_PANE_READ, started).contains("hunter2"));
+    assert!(redacted(&WITH_PANE_READ, finished).contains("hunter2"));
+}
+
+#[test]
+pub fn pane_attention_changed_hides_the_command_text_without_pane_read_permission() {
+    let event = Event::PaneAttentionChanged(
+        zellij_utils::data::PaneId::Terminal(1),
+        attention_with_command_text(),
+    );
+    assert!(!redacted(&WITHOUT_PANE_READ, event.clone()).contains("hunter2"));
+    assert!(redacted(&WITH_PANE_READ, event).contains("hunter2"));
+}
+
+#[test]
+pub fn global_attention_update_hides_the_command_text_without_pane_read_permission() {
+    let event = Event::GlobalAttentionUpdate(global_attention_with_command_text());
+    assert!(!redacted(&WITHOUT_PANE_READ, event.clone()).contains("hunter2"));
+    assert!(redacted(&WITH_PANE_READ, event).contains("hunter2"));
+}
+
+struct FixtureRun {
+    screen: Vec<ScreenInstruction>,
+    background_jobs: Vec<BackgroundJob>,
+}
+
+impl FixtureRun {
+    fn rendered(&self) -> String {
+        let mut rendered = String::new();
+        for instruction in &self.screen {
+            if let ScreenInstruction::PluginBytes(assets) = instruction {
+                for asset in assets {
+                    rendered.push_str(&String::from_utf8_lossy(&asset.bytes));
+                }
+            }
+        }
+        rendered
+    }
+
+    fn session_pane_commands(&self) -> Vec<String> {
+        self.screen
+            .iter()
+            .filter_map(|instruction| match instruction {
+                ScreenInstruction::SessionPaneCommand {
+                    session_name,
+                    command,
+                    ..
+                } => Some(format!("{:?} {:?}", session_name, command)),
+                ScreenInstruction::MarkAllSeen { session, .. } => {
+                    Some(format!("MarkAllSeen {:?}", session))
+                },
+                _ => None,
+            })
+            .collect()
+    }
+}
+
+fn run_attention_fixture(
+    granted: &[PermissionType],
+    drive: impl FnOnce(&SenderWithContext<PluginInstruction>),
+) -> FixtureRun {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let temp_folder = tempdir().unwrap();
+    let plugin_host_folder = PathBuf::from(temp_folder.path());
+    let cache_path = plugin_host_folder.join("permissions_test.kdl");
+    let (plugin_thread_sender, background_jobs_receiver, screen_receiver, teardown) =
+        create_plugin_thread_with_background_jobs_receiver(Some(plugin_host_folder), None);
+    let client_id = 1;
+    let stop = Arc::new(AtomicBool::new(false));
+    let answered = Arc::new(AtomicBool::new(false));
+    let screen_log = Arc::new(Mutex::new(vec![]));
+    let screen_thread = std::thread::Builder::new()
+        .name("fake_screen_thread".to_string())
+        .spawn({
+            let stop = stop.clone();
+            let answered = answered.clone();
+            let screen_log = screen_log.clone();
+            let plugin_thread_sender = plugin_thread_sender.clone();
+            let granted: Vec<PermissionType> = granted.to_vec();
+            move || loop {
+                if stop.load(Ordering::SeqCst) {
+                    break;
+                }
+                let Ok((instruction, _)) =
+                    screen_receiver.recv_timeout(std::time::Duration::from_millis(50))
+                else {
+                    continue;
+                };
+                match instruction {
+                    ScreenInstruction::Exit => break,
+                    ScreenInstruction::RequestPluginPermissions(_, plugin_permission) => {
+                        let allowed: Vec<PermissionType> = plugin_permission
+                            .permissions
+                            .iter()
+                            .filter(|permission| granted.contains(permission))
+                            .cloned()
+                            .collect();
+                        let status = if allowed.is_empty() {
+                            PermissionStatus::Denied
+                        } else {
+                            PermissionStatus::Granted
+                        };
+                        let _ =
+                            plugin_thread_sender.send(PluginInstruction::PermissionRequestResult(
+                                0,
+                                Some(client_id),
+                                allowed,
+                                status,
+                                Some(cache_path.clone()),
+                            ));
+                        answered.store(true, Ordering::SeqCst);
+                    },
+                    ScreenInstruction::GetPaneInfo {
+                        ref response_channel,
+                        ..
+                    } => {
+                        let pane_info = pane_manifest_with_command_text()
+                            .panes
+                            .remove(&0)
+                            .and_then(|mut panes| panes.pop());
+                        let _ = response_channel.send(pane_info);
+                        screen_log.lock().unwrap().push(instruction);
+                    },
+                    other => screen_log.lock().unwrap().push(other),
+                }
+            }
+        })
+        .unwrap();
+    let background_jobs_log = Arc::new(Mutex::new(vec![]));
+    let background_jobs_thread = std::thread::Builder::new()
+        .name("fake_background_jobs_thread".to_string())
+        .spawn({
+            let stop = stop.clone();
+            let background_jobs_log = background_jobs_log.clone();
+            move || loop {
+                if stop.load(Ordering::SeqCst) {
+                    break;
+                }
+                match background_jobs_receiver.recv_timeout(std::time::Duration::from_millis(50)) {
+                    Ok((BackgroundJob::Exit, _)) => break,
+                    Ok((job, _)) => background_jobs_log.lock().unwrap().push(job),
+                    Err(_) => {},
+                }
+            }
+        })
+        .unwrap();
+    let mut configuration = BTreeMap::new();
+    configuration.insert("attention_fixture".to_owned(), "true".to_owned());
+    let run_plugin = RunPluginOrAlias::RunPlugin(RunPlugin {
+        _allow_exec_host_cmd: false,
+        location: RunPluginLocation::File(PathBuf::from(&*PLUGIN_FIXTURE)),
+        configuration: PluginUserConfiguration::new(configuration),
+        ..Default::default()
+    });
+    let size = Size {
+        cols: 400,
+        rows: 20,
+    };
+    let _ = plugin_thread_sender.send(PluginInstruction::AddClient(client_id));
+    let _ = plugin_thread_sender.send(PluginInstruction::Load(
+        Some(false),
+        false,
+        false,
+        Some("test_plugin".to_owned()),
+        run_plugin,
+        Some(1),
+        None,
+        client_id,
+        size,
+        None,
+        None,
+        false,
+        None,
+        None,
+        None,
+    ));
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    while !answered.load(Ordering::SeqCst) && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert!(
+        answered.load(Ordering::SeqCst),
+        "the fixture plugin never asked for its permissions"
+    );
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    drive(&plugin_thread_sender);
+    std::thread::sleep(std::time::Duration::from_millis(1000));
+    stop.store(true, Ordering::SeqCst);
+    let _ = screen_thread.join();
+    let _ = background_jobs_thread.join();
+    teardown();
+    let screen = std::mem::take(&mut *screen_log.lock().unwrap());
+    let background_jobs = std::mem::take(&mut *background_jobs_log.lock().unwrap());
+    FixtureRun {
+        screen,
+        background_jobs,
+    }
+}
+
+fn press_super(sender: &SenderWithContext<PluginInstruction>, character: char) {
+    let _ = sender.send(PluginInstruction::Update(vec![(
+        None,
+        Some(1),
+        Event::Key(KeyWithModifier::new(BareKey::Char(character)).with_super_modifier()),
+    )]));
+}
+
+fn send_event(sender: &SenderWithContext<PluginInstruction>, event: Event) {
+    let _ = sender.send(PluginInstruction::Update(vec![(None, None, event)]));
+}
+
+const SESSION_PANE_KEYS: [(char, &str); 8] = [
+    ('j', "MarkSeen(Terminal(1))"),
+    ('k', "MarkAllSeen Some(\"other-session\")"),
+    ('m', "Write(Terminal(1)"),
+    ('n', "Key(Terminal(1)"),
+    ('o', "ToggleMute(Terminal(1))"),
+    ('p', "ToggleIgnoreOutput(Terminal(1))"),
+    ('q', "ToggleWatch(Terminal(1))"),
+    ('r', "Focus(Terminal(1))"),
+];
+
+#[test]
+#[ignore]
+pub fn session_pane_commands_reach_the_screen_with_their_permissions() {
+    let run = run_attention_fixture(&EVERY_PERMISSION, |sender| {
+        for (key, _) in SESSION_PANE_KEYS {
+            press_super(sender, key);
+        }
+    });
+    let sent = run.session_pane_commands();
+    for (key, expected) in SESSION_PANE_KEYS {
+        assert!(
+            sent.iter().any(|command| command.contains(expected)
+                && (command.starts_with("MarkAllSeen")
+                    || command.starts_with("Some(\"other-session\")"))),
+            "Super {} did not send {}: {:?}",
+            key,
+            expected,
+            sent
+        );
+    }
+}
+
+#[test]
+#[ignore]
+pub fn session_pane_commands_send_nothing_without_their_permissions() {
+    let run = run_attention_fixture(&[PermissionType::ReadApplicationState], |sender| {
+        for (key, _) in SESSION_PANE_KEYS {
+            press_super(sender, key);
+        }
+    });
+    assert_eq!(run.session_pane_commands(), Vec::<String>::new());
+}
+
+#[test]
+#[ignore]
+pub fn writing_to_another_session_needs_write_permission_even_with_every_other_one() {
+    let run = run_attention_fixture(
+        &[
+            PermissionType::ReadApplicationState,
+            PermissionType::ChangeApplicationState,
+        ],
+        |sender| {
+            press_super(sender, 'm');
+            press_super(sender, 'n');
+            press_super(sender, 'o');
+        },
+    );
+    let sent = run.session_pane_commands();
+    assert!(
+        sent.iter().any(|command| command.contains("ToggleMute")),
+        "{:?}",
+        sent
+    );
+    assert!(
+        !sent
+            .iter()
+            .any(|command| command.contains("Write(") || command.contains("Key(")),
+        "{:?}",
+        sent
+    );
+}
+
+#[test]
+#[ignore]
+pub fn get_pane_info_hides_the_command_text_without_pane_read_permission() {
+    let without = run_attention_fixture(&WITHOUT_PANE_READ, |sender| press_super(sender, 's'));
+    let rendered = without.rendered();
+    assert!(rendered.contains("Pane info: Some("), "{}", rendered);
+    assert!(!rendered.contains("hunter2"), "{}", rendered);
+    let with = run_attention_fixture(&WITH_PANE_READ, |sender| press_super(sender, 's'));
+    let rendered = with.rendered();
+    assert!(rendered.contains("hunter2"), "{}", rendered);
+}
+
+#[test]
+#[ignore]
+pub fn pane_attention_changed_reaches_a_subscribed_plugin() {
+    let run = run_attention_fixture(&WITH_PANE_READ, |sender| {
+        send_event(
+            sender,
+            Event::PaneAttentionChanged(
+                zellij_utils::data::PaneId::Terminal(3),
+                attention_with_command_text(),
+            ),
+        )
+    });
+    let rendered = run.rendered();
+    assert!(
+        rendered.contains("PaneAttentionChanged(Terminal(3)") && rendered.contains("Failed"),
+        "{}",
+        rendered
+    );
+}
+
+#[test]
+#[ignore]
+pub fn prompt_shown_reaches_a_subscribed_plugin() {
+    let run = run_attention_fixture(&WITH_PANE_READ, |sender| {
+        send_event(
+            sender,
+            Event::PromptShown(zellij_utils::data::PaneId::Terminal(4)),
+        )
+    });
+    let rendered = run.rendered();
+    assert!(
+        rendered.contains("PromptShown(Terminal(4))"),
+        "{}",
+        rendered
+    );
+}
+
+#[test]
+#[ignore]
+pub fn command_started_reaches_a_subscribed_plugin() {
+    let run = run_attention_fixture(&WITH_PANE_READ, |sender| {
+        send_event(
+            sender,
+            Event::CommandStarted(
+                zellij_utils::data::PaneId::Terminal(5),
+                Some(command_text()),
+            ),
+        )
+    });
+    let rendered = run.rendered();
+    assert!(
+        rendered.contains("CommandStarted(Terminal(5)") && rendered.contains("deploy --token"),
+        "{}",
+        rendered
+    );
+}
+
+#[test]
+#[ignore]
+pub fn command_finished_reaches_a_subscribed_plugin() {
+    let run = run_attention_fixture(&WITH_PANE_READ, |sender| {
+        send_event(
+            sender,
+            Event::CommandFinished(zellij_utils::data::PaneId::Terminal(6), command_outcome()),
+        )
+    });
+    let rendered = run.rendered();
+    assert!(
+        rendered.contains("CommandFinished(Terminal(6)") && rendered.contains("exit_code: Some(1)"),
+        "{}",
+        rendered
+    );
+}
+
+#[test]
+#[ignore]
+pub fn global_attention_update_reaches_a_subscribed_plugin() {
+    let run = run_attention_fixture(&WITH_PANE_READ, |sender| {
+        let _ = sender.send(PluginInstruction::GlobalAttentionUpdate(
+            global_attention_with_command_text(),
+        ));
+    });
+    let rendered = run.rendered();
+    assert!(
+        rendered.contains("GlobalAttentionUpdate(") && rendered.contains("\"api\""),
+        "{}",
+        rendered
+    );
+}
+
+#[test]
+#[ignore]
+pub fn session_history_update_reaches_a_subscribed_plugin() {
+    let run = run_attention_fixture(&WITH_PANE_READ, |sender| {
+        let _ = sender.send(PluginInstruction::SessionHistoryUpdate(
+            1,
+            zellij_utils::session_history::SessionHistoryInfo {
+                current: "here".to_owned(),
+                previous: Some("before".to_owned()),
+                back: vec!["before".to_owned()],
+                forward: vec![],
+                arrived_from: Some("before".to_owned()),
+                arrival: Some(zellij_utils::session_history::SessionArrival::Toggle),
+                arrived_at_ms: 7,
+            },
+        ));
+    });
+    let rendered = run.rendered();
+    assert!(
+        rendered.contains("SessionHistoryUpdate(") && rendered.contains("\"before\""),
+        "{}",
+        rendered
+    );
+}
+
+#[test]
+#[ignore]
+pub fn session_update_reports_a_muted_session() {
+    let run = run_attention_fixture(&WITH_PANE_READ, |sender| {
+        send_event(
+            sender,
+            Event::SessionUpdate(
+                vec![zellij_utils::data::SessionInfo {
+                    name: "muted-session".to_owned(),
+                    is_current_session: true,
+                    attention_muted: true,
+                    ..Default::default()
+                }],
+                vec![],
+            ),
+        )
+    });
+    let rendered = run.rendered();
+    assert!(
+        rendered.contains("muted-session") && rendered.contains("attention_muted: true"),
+        "{}",
+        rendered
+    );
+}
+
+#[test]
+#[ignore]
+pub fn a_session_pane_preview_is_asked_for_with_its_anchor() {
+    let run = run_attention_fixture(&WITH_PANE_READ, |sender| press_super(sender, 't'));
+    let asked = run.background_jobs.iter().any(|job| {
+        matches!(
+            job,
+            BackgroundJob::SessionPreview {
+                session_name,
+                pane_id: Some((1, false)),
+                anchor: Some(zellij_utils::data::PreviewAnchor::LastCommandOutput),
+                ..
+            } if session_name == "other-session"
+        )
+    });
+    assert!(
+        asked,
+        "{:?}",
+        run.background_jobs
+            .iter()
+            .map(|job| format!("{:?}", job))
+            .collect::<Vec<_>>()
     );
 }

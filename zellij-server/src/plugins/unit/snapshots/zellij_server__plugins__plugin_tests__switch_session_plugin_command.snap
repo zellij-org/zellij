@@ -1,5 +1,6 @@
 ---
 source: zellij-server/src/plugins/./unit/plugin_tests.rs
+assertion_line: 7080
 expression: "format!(\"{:#?}\",\nswitch_session_event).replace(&format!(\"{:?}\", temp_folder.path()), \"\\\"CWD\\\"\")"
 ---
 Some(
@@ -14,6 +15,7 @@ Some(
             cwd: Some(
                 "CWD",
             ),
+            switch_context: None,
         },
         1,
         Some(

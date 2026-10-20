@@ -26,6 +26,7 @@ log = { workspace = true }
 miette = { workspace = true }
 percent-encoding = { version = "2.1.0", default-features = false, features = ["std"] }
 prost = { workspace = true }
+regex = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 shellexpand = { version = "3.0.0", default-features = false, features = ["base-0", "tilde"] }
@@ -34,6 +35,7 @@ strum = { workspace = true }
 strum_macros = { workspace = true }
 tempfile = { workspace = true }
 thiserror = { workspace = true }
+unicode-segmentation = { workspace = true }
 unicode-width = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true }
@@ -53,7 +55,7 @@ curl-sys = { version = "0.4", default-features = false, features = ["force-syste
 humantime = { workspace = true }
 suggest = { workspace = true }
 names = { workspace = true }
-rusqlite = { version = "0.30", default-features = false, features = ["bundled"], optional = true }
+rusqlite = { version = "0.30", default-features = false, features = ["bundled"] }
 notify = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
@@ -80,5 +82,5 @@ expect-test = "1.4.1"
 disable_automatic_asset_installation = []
 unstable = []
 plugins_from_target = []
-web_server_capability = ["dep:rusqlite"]
+web_server_capability = []
 vendored_curl = ["isahc/static-curl", "dep:openssl-sys", "dep:curl-sys"]

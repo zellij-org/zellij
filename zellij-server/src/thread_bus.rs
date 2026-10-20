@@ -12,6 +12,7 @@ use zellij_utils::{channels, channels::SenderWithContext, errors::ErrorContext};
 #[derive(Default, Clone)]
 pub struct ThreadSenders {
     pub to_screen: Option<SenderWithContext<ScreenInstruction>>,
+    pub to_screen_priority: Option<SenderWithContext<ScreenInstruction>>,
     pub to_pty: Option<SenderWithContext<PtyInstruction>>,
     pub to_plugin: Option<SenderWithContext<PluginInstruction>>,
     pub to_server: Option<SenderWithContext<ServerInstruction>>,
@@ -23,6 +24,23 @@ pub struct ThreadSenders {
 }
 
 impl ThreadSenders {
+    pub fn send_to_screen_priority(&self, instruction: ScreenInstruction) -> Result<()> {
+        match self.to_screen_priority.as_ref() {
+            Some(sender) => {
+                if self.should_silently_fail {
+                    let _ = sender.send(instruction);
+                    Ok(())
+                } else {
+                    sender
+                        .send(instruction)
+                        .to_anyhow()
+                        .context("failed to send message to screen")
+                }
+            },
+            None => self.send_to_screen(instruction),
+        }
+    }
+
     pub fn send_to_screen(&self, instruction: ScreenInstruction) -> Result<()> {
         if self.should_silently_fail {
             let _ = self
@@ -160,6 +178,7 @@ impl ThreadSenders {
 #[derive(Default)]
 pub(crate) struct Bus<T> {
     receivers: Vec<channels::Receiver<(T, ErrorContext)>>,
+    priority_receiver: Option<channels::Receiver<(T, ErrorContext)>>,
     pub senders: ThreadSenders,
     pub os_input: Option<Box<dyn ServerOsApi>>,
 }
@@ -177,8 +196,10 @@ impl<T> Bus<T> {
     ) -> Self {
         Bus {
             receivers,
+            priority_receiver: None,
             senders: ThreadSenders {
                 to_screen: to_screen.cloned(),
+                to_screen_priority: None,
                 to_pty: to_pty.cloned(),
                 to_plugin: to_plugin.cloned(),
                 to_server: to_server.cloned(),
@@ -200,8 +221,10 @@ impl<T> Bus<T> {
         // this is mostly used for the tests
         Bus {
             receivers: vec![],
+            priority_receiver: None,
             senders: ThreadSenders {
                 to_screen: None,
+                to_screen_priority: None,
                 to_pty: None,
                 to_plugin: None,
                 to_server: None,
@@ -213,14 +236,40 @@ impl<T> Bus<T> {
         }
     }
 
+    pub fn with_priority(
+        mut self,
+        priority_receiver: channels::Receiver<(T, ErrorContext)>,
+        priority_sender: &SenderWithContext<ScreenInstruction>,
+    ) -> Self {
+        self.priority_receiver = Some(priority_receiver);
+        self.senders.to_screen_priority = Some(priority_sender.clone());
+        self
+    }
+
     pub fn recv(&self) -> Result<(T, ErrorContext), channels::RecvError> {
+        let Some(priority_receiver) = self.priority_receiver.as_ref() else {
+            let mut selector = channels::Select::new();
+            self.receivers.iter().for_each(|r| {
+                selector.recv(r);
+            });
+            let oper = selector.select();
+            let idx = oper.index();
+            return oper.recv(&self.receivers[idx]);
+        };
+        if let Ok(message) = priority_receiver.try_recv() {
+            return Ok(message);
+        }
         let mut selector = channels::Select::new();
+        selector.recv(priority_receiver);
         self.receivers.iter().for_each(|r| {
             selector.recv(r);
         });
         let oper = selector.select();
         let idx = oper.index();
-        oper.recv(&self.receivers[idx])
+        match idx {
+            0 => oper.recv(priority_receiver),
+            _ => oper.recv(&self.receivers[idx - 1]),
+        }
     }
 
     pub fn recv_timeout(

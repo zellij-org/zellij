@@ -115,3 +115,4 @@ MIT
 
 ## Sponsored by
 <a href="https://terminaltrove.com/"><img src="https://avatars.githubusercontent.com/u/121595180?s=200&v=4" width="80px"></a>
+<a href="https://github.com/redcathode"><img src="https://avatars.githubusercontent.com/u/75963592?s=200&v=4" width="80px"></a>

@@ -1,0 +1,14 @@
+layout {
+    pane size=1 borderless=true {
+        plugin location="tab-bar"
+    }
+    pane split_direction="vertical" {
+        pane
+        pane size="45%" {
+            plugin location="example-plugin"
+        }
+    }
+    pane size=1 borderless=true {
+        plugin location="status-bar"
+    }
+}

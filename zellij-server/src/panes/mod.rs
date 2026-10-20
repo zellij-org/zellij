@@ -1,4 +1,6 @@
 pub mod alacritty_functions;
+pub mod cluster_table;
+pub mod grapheme_join;
 pub mod grid;
 pub mod hyperlink_tracker;
 pub mod kitty_graphics;
@@ -27,3 +29,5 @@ pub use sixel::*;
 pub(crate) use terminal_character::*;
 pub use terminal_pane::*;
 pub use tiled_panes::*;
+
+pub type ReplacePaneResult = Result<Box<dyn crate::tab::Pane>, Box<dyn crate::tab::Pane>>;

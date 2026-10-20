@@ -59,6 +59,9 @@ impl KittyApcInterceptor {
             overflowed: false,
         }
     }
+    pub fn is_ground(&self) -> bool {
+        self.state == State::Ground
+    }
     pub fn reset(&mut self) {
         self.state = State::Ground;
         self.buffer.clear();

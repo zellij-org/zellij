@@ -47,6 +47,7 @@ impl ServerOsApi for FakeInputOutput {
         _file_to_open: TerminalAction,
         _quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         _default_editor: Option<PathBuf>,
+        _pane_env: &crate::os_input_output::PaneEnv,
     ) -> Result<(u32, Box<dyn AsyncReader>, Option<u32>)> {
         unimplemented!()
     }
@@ -75,19 +76,18 @@ impl ServerOsApi for FakeInputOutput {
         unimplemented!()
     }
 
-    fn new_client(
+    fn register_client(
         &mut self,
         _client_id: ClientId,
-        _stream: LocalSocketStream,
-    ) -> Result<IpcReceiverWithContext<ClientToServerMsg>> {
+        _receiver: &IpcReceiverWithContext<ClientToServerMsg>,
+    ) -> Result<()> {
         unimplemented!()
     }
-    fn new_client_with_reply(
+    fn register_client_with_reply(
         &mut self,
         _client_id: ClientId,
-        _stream: LocalSocketStream,
         _reply_stream: LocalSocketStream,
-    ) -> Result<IpcReceiverWithContext<ClientToServerMsg>> {
+    ) -> Result<()> {
         unimplemented!()
     }
 
@@ -112,6 +112,7 @@ impl ServerOsApi for FakeInputOutput {
         _terminal_id: u32,
         _run_command: RunCommand,
         _quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
+        _pane_env: &crate::os_input_output::PaneEnv,
     ) -> Result<(Box<dyn AsyncReader>, Option<u32>)> {
         unimplemented!()
     }
@@ -199,6 +200,7 @@ fn create_layout_applier_fixtures(
         viewport.clone(),
         connected_clients_set.clone(),
         connected_clients.clone(),
+        Rc::new(RefCell::new(HashMap::new())),
         mode_info.clone(),
         character_cell_size.clone(),
         stacked_resize,
@@ -206,7 +208,7 @@ fn create_layout_applier_fixtures(
         fullscreen_covers_ui.clone(),
         session_is_mirrored,
         draw_pane_frames,
-        default_mode_info.clone(),
+        default_mode_info.mode,
         style.clone(),
         os_api.box_clone(),
         senders.clone(),
@@ -218,12 +220,13 @@ fn create_layout_applier_fixtures(
         viewport.clone(),
         connected_clients_set,
         connected_clients.clone(),
+        Rc::new(RefCell::new(HashMap::new())),
         mode_info,
         character_cell_size.clone(),
         fullscreen_covers_ui,
         draw_pane_frames,
         session_is_mirrored,
-        default_mode_info,
+        default_mode_info.mode,
         style.clone(),
         os_api.box_clone(),
         senders.clone(),
@@ -335,6 +338,7 @@ fn create_layout_applier_fixtures_with_receivers(
         viewport.clone(),
         connected_clients_set.clone(),
         connected_clients.clone(),
+        Rc::new(RefCell::new(HashMap::new())),
         mode_info.clone(),
         character_cell_size.clone(),
         stacked_resize,
@@ -342,7 +346,7 @@ fn create_layout_applier_fixtures_with_receivers(
         fullscreen_covers_ui.clone(),
         session_is_mirrored,
         draw_pane_frames,
-        default_mode_info.clone(),
+        default_mode_info.mode,
         style.clone(),
         os_api.box_clone(),
         senders.clone(),
@@ -354,12 +358,13 @@ fn create_layout_applier_fixtures_with_receivers(
         viewport.clone(),
         connected_clients_set,
         connected_clients.clone(),
+        Rc::new(RefCell::new(HashMap::new())),
         mode_info,
         character_cell_size.clone(),
         fullscreen_covers_ui,
         draw_pane_frames,
         session_is_mirrored,
-        default_mode_info,
+        default_mode_info.mode,
         style.clone(),
         os_api.box_clone(),
         senders.clone(),
@@ -540,7 +545,9 @@ fn collect_close_pane_messages(
 ) -> Vec<PaneId> {
     let mut closed_panes = Vec::new();
     while let Ok((instruction, _)) = pty_receiver.try_recv() {
-        if let PtyInstruction::ClosePane(pane_id, _) = instruction {
+        if let PtyInstruction::ClosePane(pane_id, _)
+        | PtyInstruction::ClosePaneThatWasNotCreated(pane_id, _) = instruction
+        {
             closed_panes.push(pane_id);
         }
     }
@@ -1731,11 +1738,129 @@ fn test_reapply_layout_exact_match() {
             pane command="htop"
             pane command="vim"
             pane
+            pane
+            pane
         }
     "#;
 
     let (tiled_layout, floating_layout) = parse_kdl_layout(initial_kdl);
-    let terminal_ids = vec![(1, None), (2, None), (3, None)];
+    let terminal_ids = vec![(1, None), (2, None), (3, None), (4, None), (5, None)];
+
+    let size = Size {
+        cols: 120,
+        rows: 40,
+    };
+    let (
+        viewport,
+        senders,
+        sixel_image_store,
+        link_handler,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+        character_cell_size,
+        connected_clients,
+        style,
+        display_area,
+        mut tiled_panes,
+        mut floating_panes,
+        draw_pane_frames,
+        mut focus_pane_id,
+        os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        osc8_hyperlinks,
+        explicitly_disable_kitty_keyboard_protocol,
+    ) = create_layout_applier_fixtures(size);
+
+    let mut applier = LayoutApplier::new(
+        &viewport,
+        &senders,
+        &sixel_image_store,
+        &Rc::new(RefCell::new(KittyImageStore::default())),
+        &link_handler,
+        &terminal_emulator_colors,
+        &terminal_emulator_color_codes,
+        &character_cell_size,
+        &connected_clients,
+        &style,
+        &display_area,
+        &mut tiled_panes,
+        &mut floating_panes,
+        draw_pane_frames,
+        &mut focus_pane_id,
+        &os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        osc8_hyperlinks,
+        explicitly_disable_kitty_keyboard_protocol,
+        None,
+    );
+
+    applier
+        .apply_layout(
+            tiled_layout.clone(),
+            floating_layout,
+            terminal_ids,
+            vec![],
+            HashMap::new(),
+            1,
+        )
+        .unwrap();
+
+    // Now reapply with commands in different positions
+    let new_kdl = r#"
+        layout {
+            pane
+            pane
+            pane
+            pane command="htop"
+            pane command="vim"
+        }
+    "#;
+
+    let (new_layout, _) = parse_kdl_layout(new_kdl);
+
+    for layout in [&new_layout, &tiled_layout, &new_layout] {
+        applier
+            .apply_tiled_panes_layout_to_existing_panes(layout)
+            .unwrap();
+    }
+
+    let mut panes = tiled_panes.get_panes().collect::<Vec<_>>();
+    panes.sort_by_key(|(_, pane)| pane.position_and_size().y);
+    assert_eq!(
+        panes.into_iter().map(|(id, _)| *id).collect::<Vec<_>>(),
+        [3, 4, 5, 1, 2].map(PaneId::Terminal),
+        "Exact command matches must preserve the other panes' relative order"
+    );
+
+    let snapshot = take_pane_state_snapshot(
+        &tiled_panes,
+        &floating_panes,
+        &focus_pane_id,
+        &viewport,
+        &display_area,
+    );
+
+    // Snapshot will show panes matched by command and repositioned
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn test_reapply_layout_command_pane_moved_from_last_to_first_preserves_order() {
+    let initial_kdl = r#"
+        layout {
+            pane
+            pane
+            pane
+            pane command="sleep"
+        }
+    "#;
+
+    let (tiled_layout, floating_layout) = parse_kdl_layout(initial_kdl);
+    let terminal_ids = vec![(1, None), (2, None), (3, None), (4, None)];
 
     let size = Size {
         cols: 120,
@@ -1800,31 +1925,27 @@ fn test_reapply_layout_exact_match() {
         )
         .unwrap();
 
-    // Now reapply with commands in different positions
     let new_kdl = r#"
         layout {
+            pane command="sleep"
             pane
-            pane command="htop"
-            pane command="vim"
+            pane
+            pane
         }
     "#;
-
     let (new_layout, _) = parse_kdl_layout(new_kdl);
 
     applier
         .apply_tiled_panes_layout_to_existing_panes(&new_layout)
         .unwrap();
 
-    let snapshot = take_pane_state_snapshot(
-        &tiled_panes,
-        &floating_panes,
-        &focus_pane_id,
-        &viewport,
-        &display_area,
+    let mut panes = tiled_panes.get_panes().collect::<Vec<_>>();
+    panes.sort_by_key(|(_, pane)| pane.position_and_size().y);
+    assert_eq!(
+        panes.into_iter().map(|(id, _)| *id).collect::<Vec<_>>(),
+        [4, 1, 2, 3].map(PaneId::Terminal),
+        "Moving a command pane from last to first must preserve the other panes' relative order"
     );
-
-    // Snapshot will show panes matched by command and repositioned
-    assert_snapshot!(snapshot);
 }
 
 #[test]
@@ -2721,8 +2842,9 @@ fn test_apply_layout_with_missing_plugin_ids() {
         1,
     );
 
-    // This should return an error - missing plugin ID
-    assert!(result.is_err());
+    assert!(result.is_ok());
+    assert!(tiled_panes.panes_contain(&PaneId::Terminal(1)));
+    assert_eq!(tiled_panes.visible_panes_count(), 1);
 }
 
 #[test]
@@ -3086,7 +3208,7 @@ fn test_override_layout_hide_floating_panes_true() {
     assert_eq!(should_show_floating, false);
 
     let closed_panes = collect_close_pane_messages(&pty_receiver);
-    assert_eq!(closed_panes.len(), 0);
+    assert_eq!(closed_panes, vec![PaneId::Terminal(4)]);
 
     // No plugins should be unloaded
     let unloaded_plugins = collect_unload_plugin_messages(&plugin_receiver);
@@ -3731,9 +3853,8 @@ fn test_override_tiled_mixed_some_matches_some_new() {
     // 2 new panes created (vim and new shell)
     // Total pane count is 3
 
-    // Verify close message was not sent for original shell pane (Terminal(2))
     let closed_panes = collect_close_pane_messages(&pty_receiver);
-    assert_eq!(closed_panes.len(), 0);
+    assert_eq!(closed_panes, vec![PaneId::Terminal(4)]);
 
     // No plugins should be unloaded
     let unloaded_plugins = collect_unload_plugin_messages(&plugin_receiver);
@@ -4780,12 +4901,10 @@ fn test_override_floating_focus_handling() {
         )
         .unwrap();
 
-    // Focus should be set on newly created pane (Terminal(4))
-
-    // Verify close messages were sent for Terminal(3)
     let closed_panes = collect_close_pane_messages(&pty_receiver);
-    assert_eq!(closed_panes.len(), 1);
+    assert_eq!(closed_panes.len(), 2);
     assert!(closed_panes.contains(&PaneId::Terminal(3)));
+    assert!(closed_panes.contains(&PaneId::Terminal(4)));
 
     // No plugins should be unloaded
     let unloaded_plugins = collect_unload_plugin_messages(&plugin_receiver);
@@ -7281,4 +7400,792 @@ fn test_override_retain_plugin_but_close_terminal_panes() {
         &viewport,
         &display_area,
     ));
+}
+
+fn viewport_after_applying_layout_with_plugins(
+    kdl_layout: &str,
+    terminal_ids: Vec<(u32, Option<RunCommand>)>,
+    plugin_ids: Vec<(&str, u32)>,
+    size: Size,
+) -> Viewport {
+    let (tiled_layout, floating_layout) = parse_kdl_layout(kdl_layout);
+    let mut new_plugin_ids = HashMap::new();
+    for (location, plugin_id) in plugin_ids {
+        let plugin = RunPluginOrAlias::from_url(location, &None, None, None).unwrap();
+        new_plugin_ids
+            .entry(plugin)
+            .or_insert_with(Vec::new)
+            .push(plugin_id);
+    }
+    let (
+        viewport,
+        senders,
+        sixel_image_store,
+        link_handler,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+        character_cell_size,
+        connected_clients,
+        style,
+        display_area,
+        mut tiled_panes,
+        mut floating_panes,
+        draw_pane_frames,
+        mut focus_pane_id,
+        os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        osc8_hyperlinks,
+        explicitly_disable_kitty_keyboard_protocol,
+    ) = create_layout_applier_fixtures(size);
+    let mut applier = LayoutApplier::new(
+        &viewport,
+        &senders,
+        &sixel_image_store,
+        &Rc::new(RefCell::new(KittyImageStore::default())),
+        &link_handler,
+        &terminal_emulator_colors,
+        &terminal_emulator_color_codes,
+        &character_cell_size,
+        &connected_clients,
+        &style,
+        &display_area,
+        &mut tiled_panes,
+        &mut floating_panes,
+        draw_pane_frames,
+        &mut focus_pane_id,
+        &os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        osc8_hyperlinks,
+        explicitly_disable_kitty_keyboard_protocol,
+        None,
+    );
+    applier
+        .apply_layout(
+            tiled_layout,
+            floating_layout,
+            terminal_ids,
+            vec![],
+            new_plugin_ids,
+            1,
+        )
+        .unwrap();
+    let viewport = *viewport.borrow();
+    viewport
+}
+
+#[test]
+fn test_split_row_of_borderless_plugins_at_top_is_offset_out_of_viewport() {
+    let kdl_layout = r#"
+        layout {
+            pane size=1 split_direction="vertical" {
+                pane size=55 borderless=true {
+                    plugin location="zellij:compact-bar"
+                }
+                pane borderless=true {
+                    plugin location="zellij:status-bar"
+                }
+            }
+            pane
+        }
+    "#;
+    let size = Size {
+        cols: 120,
+        rows: 40,
+    };
+    let viewport = viewport_after_applying_layout_with_plugins(
+        kdl_layout,
+        vec![(1, None)],
+        vec![("zellij:compact-bar", 100), ("zellij:status-bar", 101)],
+        size,
+    );
+    assert_eq!(
+        viewport,
+        Viewport {
+            x: 0,
+            y: 1,
+            rows: 39,
+            cols: 120,
+        }
+    );
+}
+
+#[test]
+fn test_split_rows_of_borderless_plugins_at_top_and_bottom_are_offset_out_of_viewport() {
+    let kdl_layout = r#"
+        layout {
+            pane size=1 split_direction="vertical" {
+                pane size=55 borderless=true {
+                    plugin location="zellij:compact-bar"
+                }
+                pane borderless=true {
+                    plugin location="zellij:status-bar"
+                }
+            }
+            pane
+            pane size=2 split_direction="vertical" {
+                pane borderless=true {
+                    plugin location="zellij:tab-bar"
+                }
+                pane borderless=true {
+                    plugin location="zellij:strider"
+                }
+            }
+        }
+    "#;
+    let size = Size {
+        cols: 120,
+        rows: 40,
+    };
+    let viewport = viewport_after_applying_layout_with_plugins(
+        kdl_layout,
+        vec![(1, None)],
+        vec![
+            ("zellij:compact-bar", 100),
+            ("zellij:status-bar", 101),
+            ("zellij:tab-bar", 102),
+            ("zellij:strider", 103),
+        ],
+        size,
+    );
+    assert_eq!(
+        viewport,
+        Viewport {
+            x: 0,
+            y: 1,
+            rows: 37,
+            cols: 120,
+        }
+    );
+}
+
+#[test]
+fn test_split_row_mixing_borderless_plugin_and_terminal_is_not_offset_out_of_viewport() {
+    let kdl_layout = r#"
+        layout {
+            pane size=1 split_direction="vertical" {
+                pane size=55 borderless=true {
+                    plugin location="zellij:compact-bar"
+                }
+                pane
+            }
+            pane
+        }
+    "#;
+    let size = Size {
+        cols: 120,
+        rows: 40,
+    };
+    let viewport = viewport_after_applying_layout_with_plugins(
+        kdl_layout,
+        vec![(1, None), (2, None)],
+        vec![("zellij:compact-bar", 100)],
+        size,
+    );
+    assert_eq!(
+        viewport,
+        Viewport {
+            x: 0,
+            y: 0,
+            rows: 40,
+            cols: 120,
+        }
+    );
+}
+
+#[test]
+fn test_borderless_plugins_filling_the_screen_leave_a_non_empty_viewport() {
+    let kdl_layout = r#"
+        layout {
+            pane split_direction="vertical" {
+                pane borderless=true {
+                    plugin location="zellij:compact-bar"
+                }
+                pane borderless=true {
+                    plugin location="zellij:status-bar"
+                }
+            }
+        }
+    "#;
+    let size = Size {
+        cols: 120,
+        rows: 40,
+    };
+    let viewport = viewport_after_applying_layout_with_plugins(
+        kdl_layout,
+        vec![],
+        vec![("zellij:compact-bar", 100), ("zellij:status-bar", 101)],
+        size,
+    );
+    assert!(viewport.rows > 0 && viewport.cols > 0, "{:?}", viewport);
+}
+
+#[test]
+fn test_override_tiled_retained_pane_without_room_is_floated() {
+    let initial_kdl = r#"
+        layout {
+            pane command="htop"
+            pane command="vim"
+        }
+    "#;
+    let (initial_tiled, initial_floating) = parse_kdl_layout(initial_kdl);
+    let terminal_ids = vec![(1, None), (2, None)];
+    let size = Size { cols: 10, rows: 10 };
+    let (
+        viewport,
+        senders,
+        sixel_image_store,
+        link_handler,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+        character_cell_size,
+        connected_clients,
+        style,
+        display_area,
+        mut tiled_panes,
+        mut floating_panes,
+        draw_pane_frames,
+        mut focus_pane_id,
+        os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        osc8_hyperlinks,
+        explicitly_disable_kitty_keyboard_protocol,
+        pty_receiver,
+        _plugin_receiver,
+    ) = create_layout_applier_fixtures_with_receivers(size);
+    let mut applier = LayoutApplier::new(
+        &viewport,
+        &senders,
+        &sixel_image_store,
+        &Rc::new(RefCell::new(KittyImageStore::default())),
+        &link_handler,
+        &terminal_emulator_colors,
+        &terminal_emulator_color_codes,
+        &character_cell_size,
+        &connected_clients,
+        &style,
+        &display_area,
+        &mut tiled_panes,
+        &mut floating_panes,
+        draw_pane_frames,
+        &mut focus_pane_id,
+        &os_api,
+        debug,
+        arrow_fonts,
+        styled_underlines,
+        osc8_hyperlinks,
+        explicitly_disable_kitty_keyboard_protocol,
+        None,
+    );
+    applier
+        .apply_layout(
+            initial_tiled,
+            initial_floating,
+            terminal_ids,
+            vec![],
+            HashMap::new(),
+            1,
+        )
+        .unwrap();
+    let override_kdl = r#"
+        layout {
+            pane command="htop"
+        }
+    "#;
+    let (override_tiled, _) = parse_kdl_layout(override_kdl);
+    applier
+        .override_tiled_panes_layout_for_existing_panes(
+            &override_tiled,
+            vec![],
+            &mut HashMap::new(),
+            true,
+            false,
+            1,
+        )
+        .unwrap();
+    drop(applier);
+    assert!(collect_close_pane_messages(&pty_receiver).is_empty());
+    let retained_pane_is_kept = tiled_panes.panes_contain(&PaneId::Terminal(2))
+        || floating_panes.panes_contain(&PaneId::Terminal(2));
+    assert!(retained_pane_is_kept, "the retained pane was not dropped");
+    assert!(floating_panes.panes_contain(&PaneId::Terminal(2)));
+}
+
+fn run_with_layout_applier(
+    size: Size,
+    f: impl FnOnce(&mut LayoutApplier),
+) -> (
+    TiledPanes,
+    FloatingPanes,
+    Receiver<(PtyInstruction, zellij_utils::errors::ErrorContext)>,
+) {
+    run_with_layout_applier_and_viewport(size, |_| {}, f)
+}
+
+fn run_with_layout_applier_and_viewport(
+    size: Size,
+    adjust_viewport: impl FnOnce(&mut Viewport),
+    f: impl FnOnce(&mut LayoutApplier),
+) -> (
+    TiledPanes,
+    FloatingPanes,
+    Receiver<(PtyInstruction, zellij_utils::errors::ErrorContext)>,
+) {
+    let fixtures = create_layout_applier_fixtures_with_receivers(size);
+    adjust_viewport(&mut fixtures.0.borrow_mut());
+    let pty_receiver = fixtures.20;
+    let mut tiled_panes = fixtures.10;
+    let mut floating_panes = fixtures.11;
+    let mut focus_pane_id = fixtures.13;
+    {
+        let mut applier = LayoutApplier::new(
+            &fixtures.0,
+            &fixtures.1,
+            &fixtures.2,
+            &Rc::new(RefCell::new(KittyImageStore::default())),
+            &fixtures.3,
+            &fixtures.4,
+            &fixtures.5,
+            &fixtures.6,
+            &fixtures.7,
+            &fixtures.8,
+            &fixtures.9,
+            &mut tiled_panes,
+            &mut floating_panes,
+            fixtures.12,
+            &mut focus_pane_id,
+            &fixtures.14,
+            fixtures.15,
+            fixtures.16,
+            fixtures.17,
+            fixtures.18,
+            fixtures.19,
+            None,
+        );
+        f(&mut applier);
+    }
+    (tiled_panes, floating_panes, pty_receiver)
+}
+
+fn small_viewport() -> Size {
+    Size { cols: 9, rows: 9 }
+}
+
+fn two_floating_panes_layout() -> (TiledPaneLayout, Vec<FloatingPaneLayout>) {
+    parse_kdl_layout(
+        r#"
+        layout {
+            pane
+            floating_panes {
+                pane
+                pane
+            }
+        }
+    "#,
+    )
+}
+
+fn apply_two_floating_panes_layout(applier: &mut LayoutApplier) {
+    let (initial_tiled, initial_floating) = two_floating_panes_layout();
+    applier
+        .apply_layout(
+            initial_tiled,
+            initial_floating,
+            vec![(1, None)],
+            vec![(2, None), (3, None)],
+            HashMap::new(),
+            1,
+        )
+        .unwrap();
+}
+
+fn floating_focus_is_valid(floating_panes: &FloatingPanes) -> bool {
+    floating_panes
+        .active_pane_id(1)
+        .map(|id| floating_panes.panes_contain(&id))
+        .unwrap_or(true)
+}
+
+#[test]
+fn test_apply_layout_with_floating_panes_in_a_small_viewport_creates_all_panes() {
+    let (_tiled_panes, floating_panes, pty_receiver) =
+        run_with_layout_applier(small_viewport(), |applier| {
+            apply_two_floating_panes_layout(applier);
+        });
+    assert!(collect_close_pane_messages(&pty_receiver).is_empty());
+    assert!(floating_panes.panes_contain(&PaneId::Terminal(2)));
+    assert!(floating_panes.panes_contain(&PaneId::Terminal(3)));
+    assert!(floating_focus_is_valid(&floating_panes));
+}
+
+#[test]
+fn test_reapplying_a_floating_layout_in_a_small_viewport_keeps_all_panes() {
+    let (_tiled_panes, floating_panes, pty_receiver) =
+        run_with_layout_applier(small_viewport(), |applier| {
+            apply_two_floating_panes_layout(applier);
+            applier
+                .apply_floating_panes_layout_to_existing_panes(&vec![FloatingPaneLayout::default()])
+                .unwrap();
+            applier
+                .apply_floating_panes_layout_to_existing_panes(&vec![])
+                .unwrap();
+        });
+    assert!(collect_close_pane_messages(&pty_receiver).is_empty());
+    assert!(floating_panes.panes_contain(&PaneId::Terminal(2)));
+    assert!(floating_panes.panes_contain(&PaneId::Terminal(3)));
+    assert!(floating_focus_is_valid(&floating_panes));
+}
+
+#[test]
+fn test_overriding_a_floating_layout_in_a_small_viewport_keeps_and_creates_panes() {
+    let (override_tiled, override_floating) = parse_kdl_layout(
+        r#"
+        layout {
+            pane
+            floating_panes {
+                pane
+                pane command="htop"
+            }
+        }
+    "#,
+    );
+    let (_tiled_panes, floating_panes, pty_receiver) =
+        run_with_layout_applier(small_viewport(), |applier| {
+            apply_two_floating_panes_layout(applier);
+            applier
+                .override_layout(
+                    override_tiled,
+                    override_floating,
+                    vec![],
+                    vec![(4, None)],
+                    HashMap::new(),
+                    true,
+                    true,
+                    1,
+                )
+                .unwrap();
+        });
+    assert!(collect_close_pane_messages(&pty_receiver).is_empty());
+    assert!(floating_panes.panes_contain(&PaneId::Terminal(2)));
+    assert!(floating_panes.panes_contain(&PaneId::Terminal(3)));
+    assert!(floating_panes.panes_contain(&PaneId::Terminal(4)));
+    assert!(floating_focus_is_valid(&floating_panes));
+}
+
+#[test]
+fn test_unused_new_floating_terminals_are_closed() {
+    let (_tiled_panes, floating_panes, pty_receiver) = run_with_layout_applier(
+        Size {
+            cols: 120,
+            rows: 40,
+        },
+        |applier| {
+            let (initial_tiled, initial_floating) = two_floating_panes_layout();
+            applier
+                .apply_layout(
+                    initial_tiled,
+                    initial_floating,
+                    vec![(1, None)],
+                    vec![(2, None), (3, None), (4, None)],
+                    HashMap::new(),
+                    1,
+                )
+                .unwrap();
+        },
+    );
+    assert_eq!(
+        collect_close_pane_messages(&pty_receiver),
+        vec![PaneId::Terminal(4)]
+    );
+    assert!(floating_panes.panes_contain(&PaneId::Terminal(2)));
+    assert!(floating_panes.panes_contain(&PaneId::Terminal(3)));
+}
+
+#[test]
+fn test_overriding_away_a_fullscreen_floating_pane_leaves_no_fullscreen_or_stale_focus() {
+    let (override_tiled, override_floating) = parse_kdl_layout(
+        r#"
+        layout {
+            pane
+        }
+    "#,
+    );
+    let (_tiled_panes, floating_panes, pty_receiver) = run_with_layout_applier(
+        Size {
+            cols: 120,
+            rows: 40,
+        },
+        |applier| {
+            apply_two_floating_panes_layout(applier);
+        },
+    );
+    drop(pty_receiver);
+    let mut floating_panes = floating_panes;
+    floating_panes.toggle_pane_fullscreen(PaneId::Terminal(3));
+    assert_eq!(
+        floating_panes.fullscreen_pane_id(),
+        Some(PaneId::Terminal(3))
+    );
+    let fixtures = create_layout_applier_fixtures_with_receivers(Size {
+        cols: 120,
+        rows: 40,
+    });
+    let pty_receiver = fixtures.20;
+    let mut tiled_panes = fixtures.10;
+    let mut focus_pane_id = fixtures.13;
+    {
+        let mut applier = LayoutApplier::new(
+            &fixtures.0,
+            &fixtures.1,
+            &fixtures.2,
+            &Rc::new(RefCell::new(KittyImageStore::default())),
+            &fixtures.3,
+            &fixtures.4,
+            &fixtures.5,
+            &fixtures.6,
+            &fixtures.7,
+            &fixtures.8,
+            &fixtures.9,
+            &mut tiled_panes,
+            &mut floating_panes,
+            fixtures.12,
+            &mut focus_pane_id,
+            &fixtures.14,
+            fixtures.15,
+            fixtures.16,
+            fixtures.17,
+            fixtures.18,
+            fixtures.19,
+            None,
+        );
+        applier
+            .override_floating_panes_layout_for_existing_panes(
+                &override_floating,
+                vec![],
+                &mut HashMap::new(),
+                false,
+                false,
+            )
+            .unwrap();
+        drop(override_tiled);
+    }
+    let mut closed_panes = collect_close_pane_messages(&pty_receiver);
+    closed_panes.sort();
+    assert_eq!(closed_panes, vec![PaneId::Terminal(2), PaneId::Terminal(3)]);
+    assert!(!floating_panes.fullscreen_is_active());
+    assert!(floating_panes.active_pane_id(1).is_none());
+}
+
+#[test]
+fn test_tiled_panes_that_do_not_fit_a_layout_are_floated_with_a_frame() {
+    let (two_panes_tiled, _) = parse_kdl_layout(
+        r#"
+        layout {
+            pane split_direction="vertical" {
+                pane
+                pane
+            }
+        }
+    "#,
+    );
+    let (one_pane_tiled, _) = parse_kdl_layout(
+        r#"
+        layout {
+            pane
+        }
+    "#,
+    );
+    let mut panes_were_floated = false;
+    let (tiled_panes, floating_panes, _pty_receiver) =
+        run_with_layout_applier(Size { cols: 9, rows: 9 }, |applier| {
+            applier
+                .apply_layout(
+                    two_panes_tiled,
+                    vec![],
+                    vec![(1, None), (2, None)],
+                    vec![],
+                    HashMap::new(),
+                    1,
+                )
+                .unwrap();
+            (panes_were_floated, _) = applier
+                .apply_tiled_panes_layout_to_existing_panes(&one_pane_tiled)
+                .unwrap();
+        });
+    assert!(panes_were_floated);
+    assert_eq!(tiled_panes.visible_panes_count(), 1);
+    assert_eq!(floating_panes.visible_panes_count(), 1);
+    let floated_pane_id = *floating_panes.pane_ids().next().unwrap();
+    assert_eq!(
+        floating_panes
+            .get_pane(floated_pane_id)
+            .unwrap()
+            .get_content_offset(),
+        zellij_utils::pane_size::Offset::frame(1)
+    );
+    assert!(tiled_panes
+        .get_active_pane_id(1)
+        .map(|id| tiled_panes.panes_contain(&id))
+        .unwrap_or(false));
+}
+
+#[test]
+fn test_fallback_floating_position_respects_the_viewport_offset() {
+    let (_, floating_layout) = two_floating_panes_layout();
+    let (_tiled_panes, floating_panes, _pty_receiver) = run_with_layout_applier_and_viewport(
+        Size { cols: 9, rows: 9 },
+        |viewport| {
+            viewport.y = 1;
+            viewport.rows = 8;
+        },
+        |applier| {
+            applier
+                .override_floating_panes_layout_for_existing_panes(
+                    &floating_layout,
+                    vec![(2, None), (3, None)],
+                    &mut HashMap::new(),
+                    false,
+                    false,
+                )
+                .unwrap();
+        },
+    );
+    for pane_id in [PaneId::Terminal(2), PaneId::Terminal(3)] {
+        let geom = floating_panes
+            .get_pane(pane_id)
+            .unwrap()
+            .position_and_size();
+        assert!(geom.y >= 1, "{:?}", geom);
+        assert!(geom.y + geom.rows.as_usize() <= 9, "{:?}", geom);
+    }
+}
+
+#[test]
+fn test_floating_panes_in_an_empty_viewport_are_not_zero_sized() {
+    let (_, floating_layout) = two_floating_panes_layout();
+    let (_tiled_panes, floating_panes, _pty_receiver) = run_with_layout_applier_and_viewport(
+        Size { cols: 20, rows: 20 },
+        |viewport| {
+            viewport.cols = 0;
+            viewport.rows = 0;
+        },
+        |applier| {
+            applier
+                .override_floating_panes_layout_for_existing_panes(
+                    &floating_layout,
+                    vec![(2, None), (3, None)],
+                    &mut HashMap::new(),
+                    false,
+                    false,
+                )
+                .unwrap();
+        },
+    );
+    for pane_id in [PaneId::Terminal(2), PaneId::Terminal(3)] {
+        let geom = floating_panes
+            .get_pane(pane_id)
+            .unwrap()
+            .position_and_size();
+        assert!(
+            geom.rows.as_usize() >= 5 && geom.cols.as_usize() >= 5,
+            "{:?}",
+            geom
+        );
+    }
+}
+
+#[test]
+fn test_unused_layout_plugin_ids_are_unloaded() {
+    let fixtures = create_layout_applier_fixtures_with_receivers(Size {
+        cols: 120,
+        rows: 40,
+    });
+    let plugin_receiver = fixtures.21;
+    let mut tiled_panes = fixtures.10;
+    let mut floating_panes = fixtures.11;
+    let mut focus_pane_id = fixtures.13;
+    {
+        let mut applier = LayoutApplier::new(
+            &fixtures.0,
+            &fixtures.1,
+            &fixtures.2,
+            &Rc::new(RefCell::new(KittyImageStore::default())),
+            &fixtures.3,
+            &fixtures.4,
+            &fixtures.5,
+            &fixtures.6,
+            &fixtures.7,
+            &fixtures.8,
+            &fixtures.9,
+            &mut tiled_panes,
+            &mut floating_panes,
+            fixtures.12,
+            &mut focus_pane_id,
+            &fixtures.14,
+            fixtures.15,
+            fixtures.16,
+            fixtures.17,
+            fixtures.18,
+            fixtures.19,
+            None,
+        );
+        let mut new_plugin_ids = HashMap::new();
+        new_plugin_ids.insert(
+            RunPluginOrAlias::from_url("file:/path/to/unused/plugin", &None, None, None).unwrap(),
+            vec![7, 8],
+        );
+        let (tiled, floating) = parse_kdl_layout(
+            r#"
+            layout {
+                pane
+            }
+        "#,
+        );
+        applier
+            .apply_layout(tiled, floating, vec![(1, None)], vec![], new_plugin_ids, 1)
+            .unwrap();
+    }
+    let mut unloaded = collect_unload_plugin_messages(&plugin_receiver);
+    unloaded.sort();
+    assert_eq!(unloaded, vec![7, 8]);
+}
+
+#[test]
+fn test_terminals_of_a_tiled_layout_that_fails_are_closed() {
+    let (layout, floating) = parse_kdl_layout(
+        r#"
+        layout {
+            pane size=500
+            pane size=500
+        }
+    "#,
+    );
+    let mut result = Ok((false, HashMap::new()));
+    let (tiled_panes, _floating_panes, pty_receiver) =
+        run_with_layout_applier(Size { cols: 20, rows: 20 }, |applier| {
+            result = applier.apply_layout(
+                layout,
+                floating,
+                vec![(1, None), (2, None)],
+                vec![(3, None)],
+                HashMap::new(),
+                1,
+            );
+        });
+    assert!(result.is_err(), "the layout cannot be applied");
+    let mut closed = collect_close_pane_messages(&pty_receiver);
+    closed.sort();
+    let mut expected: Vec<PaneId> = [1, 2, 3]
+        .into_iter()
+        .map(PaneId::Terminal)
+        .filter(|id| !tiled_panes.panes_contain(id))
+        .collect();
+    expected.sort();
+    assert!(!expected.is_empty());
+    assert_eq!(closed, expected);
 }

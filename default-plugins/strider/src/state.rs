@@ -6,7 +6,6 @@ use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
 };
-use unicode_width::UnicodeWidthStr;
 use zellij_tile::prelude::*;
 
 #[derive(Default)]
@@ -52,7 +51,7 @@ impl State {
         if self.search_term.is_empty() {
             self.descend_to_previous_path();
         } else {
-            self.search_term.pop();
+            zellij_tile::graphemes::pop_cluster(&mut self.search_term);
             if self.search_term.is_empty() {
                 self.is_searching = false;
             }
@@ -323,7 +322,7 @@ impl State {
                 let is_selected = Some(i) == selected_index_in_range;
                 let display_name =
                     Platform::virtual_root_display_name(&entry.get_full_pathbuf(), self.platform);
-                let display_name_width = display_name.width();
+                let display_name_width = zellij_tile::graphemes::display_width(&display_name);
                 let text = if display_name_width < cols {
                     let padding = " ".repeat(cols.saturating_sub(display_name_width));
                     format!("{}{}", display_name, padding)
@@ -331,9 +330,9 @@ impl State {
                     display_name
                 };
                 let mut text_element = if is_selected {
-                    Text::new(text).selected()
+                    Text::from(text).selected()
                 } else {
-                    Text::new(text)
+                    Text::from(text)
                 };
                 text_element = text_element.color_range(0, ..);
                 print_text_with_coordinates(

@@ -22,7 +22,8 @@ use std::rc::Rc;
 use vte;
 use zellij_utils::data::PaneContents;
 use zellij_utils::data::{
-    BareKey, KeyWithModifier, PermissionStatus, PermissionType, PluginPermission,
+    BareKey, BorderStyleOverride, KeyModifier, KeyWithModifier, PermissionStatus, PermissionType,
+    PluginPermission,
 };
 use zellij_utils::pane_size::{Offset, SizeInPixels};
 use zellij_utils::position::Position;
@@ -70,6 +71,7 @@ macro_rules! get_or_create_grid {
                 explicitly_disable_kitty_keyboard_protocol,
             );
             grid.hide_cursor();
+            grid.grapheme_mode = true;
             grid
         })
     }};
@@ -99,6 +101,7 @@ pub(crate) struct PluginPane {
     prev_pane_name: String,
     frame: HashMap<ClientId, PaneFrame>,
     borderless: bool,
+    border_style_override: BorderStyleOverride,
     exclude_from_sync: bool,
     pane_frame_color_override: Option<(PaletteColor, Option<String>)>,
     invoked_with: Option<Run>,
@@ -110,6 +113,7 @@ pub(crate) struct PluginPane {
     should_be_suppressed: bool,
     text_being_pasted: Option<Vec<u8>>,
     supports_mouse_selection: bool,
+    mouse_modifiers: BTreeSet<KeyModifier>,
 }
 
 impl PluginPane {
@@ -146,6 +150,7 @@ impl PluginPane {
             content_offset: Offset::default(),
             pane_title: title,
             borderless: false,
+            border_style_override: BorderStyleOverride::default(),
             pane_name: pane_name.clone(),
             prev_pane_name: pane_name,
             terminal_emulator_colors,
@@ -169,6 +174,7 @@ impl PluginPane {
             should_be_suppressed: false,
             text_being_pasted: None,
             supports_mouse_selection: false,
+            mouse_modifiers: BTreeSet::new(),
         };
         for client_id in currently_connected_clients {
             plugin.handle_plugin_bytes(client_id, initial_loading_message.as_bytes().to_vec());
@@ -507,7 +513,7 @@ impl Pane for PluginPane {
         &mut self,
         _cursor_color: PaletteColor,
         _text_color: PaletteColor,
-    ) -> Option<String> {
+    ) -> Option<crate::output::CharacterChunk> {
         None
     }
     fn render_terminal_title(&mut self, input_mode: InputMode) -> String {
@@ -527,7 +533,7 @@ impl Pane for PluginPane {
             },
             "\u{007F}" | "\u{0008}" => {
                 //delete and backspace keys
-                self.pane_name.pop();
+                zellij_utils::graphemes::pop_cluster(&mut self.pane_name);
             },
             c => {
                 self.pane_name.push_str(c);
@@ -591,6 +597,13 @@ impl Pane for PluginPane {
             .map(|g| g.dump_screen(full))
             .unwrap_or_else(|| "".to_owned())
     }
+    fn dump_screen_with_ansi(&self, full: bool, client_id: Option<ClientId>) -> String {
+        client_id
+            .and_then(|c| self.grids.get(&c))
+            .or_else(|| self.grids.keys().min().and_then(|c| self.grids.get(c)))
+            .map(|g| g.dump_screen_with_ansi(full))
+            .unwrap_or_default()
+    }
     fn scroll_up(&mut self, count: usize, client_id: ClientId) {
         self.send_plugin_instructions
             .send(PluginInstruction::Update(vec![(
@@ -638,21 +651,43 @@ impl Pane for PluginPane {
             grid.set_selection_options(osc133_command_selection, word_separators);
         }
     }
+    fn set_mouse_modifiers(&mut self, modifiers: BTreeSet<KeyModifier>) {
+        self.mouse_modifiers = modifiers;
+    }
     fn start_selection(&mut self, start: &Position, client_id: ClientId) {
+        let modifiers = std::mem::take(&mut self.mouse_modifiers);
         if self.supports_mouse_selection {
             if let Some(grid) = self.grids.get_mut(&client_id) {
                 grid.start_selection(start);
                 self.set_should_render(true);
             }
         } else {
+            let click = Mouse::LeftClick(start.line.0, start.column.0);
+            let event = if modifiers.is_empty() {
+                Event::Mouse(click)
+            } else {
+                Event::MouseWithModifiers(click, modifiers)
+            };
             self.send_plugin_instructions
                 .send(PluginInstruction::Update(vec![(
                     Some(self.pid),
                     Some(client_id),
-                    Event::Mouse(Mouse::LeftClick(start.line.0, start.column.0)),
+                    event,
                 )]))
                 .unwrap();
         }
+    }
+    fn mouse_double_click(&mut self, position: &Position, client_id: ClientId) {
+        if self.supports_mouse_selection {
+            return;
+        }
+        self.send_plugin_instructions
+            .send(PluginInstruction::Update(vec![(
+                Some(self.pid),
+                Some(client_id),
+                Event::Mouse(Mouse::DoubleClick(position.line.0, position.column.0)),
+            )]))
+            .unwrap();
     }
     fn update_selection(&mut self, position: &Position, client_id: ClientId) {
         if self.supports_mouse_selection {
@@ -747,6 +782,14 @@ impl Pane for PluginPane {
     fn borderless(&self) -> bool {
         self.borderless
     }
+    fn set_border_style_override(&mut self, border_style_override: BorderStyleOverride) {
+        self.border_style_override = border_style_override;
+        self.frame.clear();
+        self.set_should_render(true);
+    }
+    fn border_style_override(&self) -> BorderStyleOverride {
+        self.border_style_override
+    }
     fn set_exclude_from_sync(&mut self, exclude_from_sync: bool) {
         self.exclude_from_sync = exclude_from_sync;
     }
@@ -827,7 +870,9 @@ impl Pane for PluginPane {
         }
     }
     fn rename(&mut self, buf: Vec<u8>) {
-        self.pane_name = String::from_utf8_lossy(&buf).to_string();
+        self.pane_name = zellij_utils::shared::clean_string_from_control_and_linebreak(
+            &String::from_utf8_lossy(&buf),
+        );
         self.set_should_render(true);
     }
     fn update_theme(&mut self, theme: Styling) {
@@ -846,6 +891,10 @@ impl Pane for PluginPane {
     fn update_rounded_corners(&mut self, rounded_corners: bool) {
         self.style.rounded_corners = rounded_corners;
         self.frame.clear();
+    }
+    fn invalidate_frame_cache(&mut self) {
+        self.frame.clear();
+        self.set_should_render(true);
     }
     fn set_should_be_suppressed(&mut self, should_be_suppressed: bool) {
         self.should_be_suppressed = should_be_suppressed;
@@ -867,6 +916,15 @@ impl Pane for PluginPane {
                     self.toggle_pinned();
                     return true;
                 }
+            }
+        }
+        false
+    }
+    fn position_is_on_pin_button(&self, position: &Position, client_id: ClientId) -> bool {
+        if self.position_is_on_frame(position) {
+            let relative_position = self.relative_position(position);
+            if let Some(client_frame) = self.frame.get(&client_id) {
+                return client_frame.clicked_on_pinned(relative_position);
             }
         }
         false
@@ -895,7 +953,9 @@ impl Pane for PluginPane {
                     && !event.right
                     && !event.middle
                     && !event.wheel_up
-                    && !event.wheel_down =>
+                    && !event.wheel_down
+                    && !event.wheel_left
+                    && !event.wheel_right =>
             {
                 let _ = self
                     .send_plugin_instructions

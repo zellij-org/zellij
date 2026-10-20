@@ -38,6 +38,13 @@ impl LinkHandler {
                     .split(|&b| b == b':')
                     .find(|kv| kv.starts_with(b"id="))
                     .and_then(|kv| String::from_utf8(kv[3..].to_vec()).ok());
+                if let Some(previous_index) = self.link_index.checked_sub(1) {
+                    if let Some(previous) = self.links.get(&previous_index) {
+                        if previous.id == id && previous.uri == uri {
+                            return LinkAnchor::Start(previous_index);
+                        }
+                    }
+                }
                 let anchor = LinkAnchor::Start(self.link_index);
                 self.links.insert(self.link_index, Link { id, uri });
                 self.link_index += 1;
@@ -60,6 +67,13 @@ impl LinkHandler {
         );
         self.link_index += 1;
         anchor
+    }
+
+    pub fn uri(&self, link_anchor: Option<LinkAnchor>) -> Option<&str> {
+        match link_anchor {
+            Some(LinkAnchor::Start(index)) => self.links.get(&index).map(|link| link.uri.as_str()),
+            _ => None,
+        }
     }
 
     pub fn output_osc8(&self, link_anchor: Option<LinkAnchor>) -> Option<String> {

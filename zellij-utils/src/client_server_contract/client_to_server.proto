@@ -32,6 +32,13 @@ message ClientToServerMsg {
     RequestSessionListMsg request_session_list = 25;
     SetMobileRenderPreferencesMsg set_mobile_render_preferences = 26;
     HostTerminalFocusChangedMsg host_terminal_focus_changed = 27;
+    KittyZlibSupportMsg kitty_zlib_support = 28;
+    StructuredRenderSupportMsg structured_render_support = 29;
+    RenderFrameAckMsg render_frame_ack = 30;
+    RequestSessionPreviewMsg request_session_preview = 31;
+    FontFamiliesMsg font_families = 32;
+    RequestSessionAttentionMsg request_session_attention = 33;
+    PeerAttentionChangedMsg peer_attention_changed = 34;
   }
 }
 
@@ -128,10 +135,6 @@ message HostTerminalThemeChangedMsg {
   HostTerminalThemeIndication mode = 1;
 }
 
-enum HostTerminalThemeIndication {
-  HOST_TERMINAL_THEME_INDICATION_DARK = 0;
-  HOST_TERMINAL_THEME_INDICATION_LIGHT = 1;
-}
 
 message SoftKeyboardVisibilityChangedMsg {
   bool visible = 1;
@@ -147,10 +150,31 @@ message NestedSessionFrameFromHostMsg {
 
 message KittyGraphicsSupportMsg {
   bool supported = 1;
+  bool local_media = 2;
+}
+
+message KittyZlibSupportMsg {
+  bool supported = 1;
 }
 
 message SixelSupportMsg {
   bool supported = 1;
+}
+
+message RequestSessionPreviewMsg {
+  optional uint32 tab_index = 1;
+  optional uint32 pane_id = 2;
+  bool pane_is_plugin = 3;
+  optional PreviewAnchor anchor = 4;
+}
+
+message RequestSessionAttentionMsg {
+  bool include_command_text = 1;
+}
+
+message PeerAttentionChangedMsg {
+  string session_name = 1;
+  optional SessionAttention attention = 2;
 }
 
 message RequestSessionListMsg {
@@ -160,4 +184,16 @@ message RequestSessionListMsg {
 message SetMobileRenderPreferencesMsg {
   bool single_pane = 1;
   bool fit = 2;
+}
+
+message StructuredRenderSupportMsg {
+  bool supported = 1;
+}
+
+message FontFamiliesMsg {
+  repeated string families = 1;
+}
+
+message RenderFrameAckMsg {
+  uint64 seq = 1;
 }

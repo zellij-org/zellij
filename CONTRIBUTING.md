@@ -17,6 +17,9 @@ For those willing to take up such large projects, please check with the maintain
 
 If you're still eager to contribute minor fixes, please note that we might take a long while to get to them.
 
+### LLM Generated Issues/PR Descriptions
+Please avoid using LLMs to generate the description text of issues/PRs. These descriptions tend to be needlessly wordy and force the maintainers to spend time reading large swaths of text that do little aside from describing minor adjustments.
+
 ## Building
 
 To build Zellij, we're using cargo xtask. This is a standalone package shipped
@@ -68,7 +71,7 @@ unaffected, since they embed the plugins from `zellij-utils/assets/plugins`.
 
 ## Packaging Zellij for a distribution
 
-Builtin plugins (`status-bar`, `tab-bar`, ...) are `.wasm` files that are embedded into
+Builtin plugins (`bars`, `strider`, ...) are `.wasm` files that are embedded into
 the Zellij binary at compile time. Pre-built copies live in `zellij-utils/assets/plugins`
 so that `cargo install zellij` works without further tooling. Distributions that forbid
 pre-built binaries in source packages can strip that folder and build the plugins from
@@ -77,9 +80,9 @@ source instead:
 ```sh
 # 1. build the plugins from source (repeat for every plugin, or use `cargo x build --release`)
 cargo build --release --target wasm32-wasip1 \
-  -p status-bar -p tab-bar -p compact-bar -p strider -p session-manager \
+  -p bars -p strider -p session-manager \
   -p configuration -p plugin-manager -p about -p share -p multiple-select \
-  -p layout-manager -p link
+  -p layout-manager
 
 # 2. install the resulting artifacts from <target-dir>/wasm32-wasip1/release/*.wasm
 #    into $PREFIX/share/zellij/plugins/
@@ -133,14 +136,6 @@ log::info!("my variable is: {:?}", my_variable);
 Note that the output is truncated at 100KB. This can be adjusted for the purposes of debugging through the `LOG_MAX_BYTES` constant, at the time of writing here: https://github.com/zellij-org/zellij/blob/main/zellij-utils/src/logging.rs#L24
 
 When running Zellij with the `--debug` flag, Zellij will dump a copy of all bytes received over the pty for each pane in: `/$temp_dir/zellij-<UID>/zellij-log/zellij-<pane_id>.log`. These might be useful when troubleshooting terminal issues.
-
-## Testing plugins
-Zellij allows the use of the singlepass [Winch](https://crates.io/crates/wasmtime-winch) compiler for wasmtime. This can enable great gains in compilation time of plugins at the cost of slower execution and less supported architectures.
-
-To enable the singlepass compiler, use the `singlepass` flag. E.g.:
-```sh
-cargo xtask run --singlepass
-```
 
 ## Toolchain Versions and MSRV
 

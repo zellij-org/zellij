@@ -15,27 +15,47 @@ pub const DEFAULT_SCROLL_BUFFER_SIZE: usize = 10_000;
 pub static SCROLL_BUFFER_SIZE: OnceLock<usize> = OnceLock::new();
 pub static DEBUG_MODE: OnceLock<bool> = OnceLock::new();
 
+/// System-wide configuration directory, named after the running distribution
+/// (`/etc/zellij`, `C:\ProgramData\Zellij`)
 #[cfg(not(windows))]
-pub const SYSTEM_DEFAULT_CONFIG_DIR: &str = "/etc/zellij";
+pub fn system_default_config_dir() -> PathBuf {
+    PathBuf::from("/etc").join(crate::distribution::name())
+}
+
 #[cfg(windows)]
-pub const SYSTEM_DEFAULT_CONFIG_DIR: &str = "C:\\ProgramData\\Zellij";
+pub fn system_default_config_dir() -> PathBuf {
+    PathBuf::from("C:\\ProgramData").join(crate::distribution::display_name())
+}
+
 pub const SYSTEM_DEFAULT_DATA_DIR_PREFIX: &str = system_default_data_dir();
 
 pub static ZELLIJ_DEFAULT_THEMES: Dir = include_dir!("$CARGO_MANIFEST_DIR/assets/themes");
 
+pub const DEFAULT_THEME_NAME: &str = "default";
+pub const DEFAULT_LIGHT_THEME_NAME: &str = "default-light";
+
 pub const CLIENT_SERVER_CONTRACT_VERSION: usize = 1;
 
-pub fn session_info_cache_file_name(session_name: &str) -> PathBuf {
-    session_info_folder_for_session(session_name).join("session-metadata.kdl")
+// The session-info cache is keyed by session id (a short random id for new sessions,
+// or the session name for sessions from before ids), NOT the user-visible
+// display name — so renaming a session never moves its cache folder.
+pub fn session_info_cache_file_name(session_id: &str) -> PathBuf {
+    session_info_folder_for_session(session_id).join("session-metadata.kdl")
 }
 
-pub fn session_layout_cache_file_name(session_name: &str) -> PathBuf {
-    session_info_folder_for_session(session_name).join("session-layout.kdl")
+pub fn session_layout_cache_file_name(session_id: &str) -> PathBuf {
+    session_info_folder_for_session(session_id).join("session-layout.kdl")
 }
 
-pub fn session_info_folder_for_session(session_name: &str) -> PathBuf {
-    ZELLIJ_SESSION_INFO_CACHE_DIR.join(session_name)
+pub fn session_info_folder_for_session(session_id: &str) -> PathBuf {
+    ZELLIJ_SESSION_INFO_CACHE_DIR.join(session_id)
 }
+
+/// Length of a generated session id (hex chars). Kept short so the socket/pipe
+/// path stays within the platform limit (104 bytes on macOS) even under a long
+/// temp dir — a full 36-char UUID would overflow it. The client checks the socket
+/// directory against this length at startup. See `generate_session_id`.
+pub const SESSION_ID_LENGTH: usize = 12;
 
 pub fn create_config_and_cache_folders() {
     if let Err(e) = std::fs::create_dir_all(&ZELLIJ_CACHE_DIR.as_path()) {
@@ -90,11 +110,18 @@ lazy_static! {
     pub static ref CLIENT_SERVER_CONTRACT_DIR: String =
         format!("contract_version_{}", CLIENT_SERVER_CONTRACT_VERSION);
     pub static ref ZELLIJ_PROJ_DIR: ProjectDirs = {
-        if cfg!(windows) {
-            ProjectDirs::from("", "", "Zellij").unwrap()
-        } else {
-            ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap()
-        }
+        let (qualifier, organization, application) =
+            crate::distribution::distribution().project_dirs();
+        ProjectDirs::from(qualifier, organization, application).unwrap_or_else(|| {
+            panic!(
+                "could not determine the platform directories for distribution '{}' \
+                 (qualifier: {:?}, organization: {:?}, application: {:?})",
+                crate::distribution::name(),
+                qualifier,
+                organization,
+                application
+            )
+        })
     };
     pub static ref ZELLIJ_CACHE_DIR: PathBuf = ZELLIJ_PROJ_DIR.cache_dir().to_path_buf();
     pub static ref ZELLIJ_SESSION_CACHE_DIR: PathBuf = ZELLIJ_PROJ_DIR
@@ -115,116 +142,6 @@ pub const FEATURES: &[&str] = &[
     #[cfg(feature = "disable_automatic_asset_installation")]
     "disable_automatic_asset_installation",
 ];
-
-pub const BUILTIN_PLUGIN_NAMES: &[&str] = &[
-    "compact-bar",
-    "status-bar",
-    "tab-bar",
-    "strider",
-    "session-manager",
-    "configuration",
-    "plugin-manager",
-    "about",
-    "share",
-    "multiple-select",
-    "layout-manager",
-    "link",
-];
-
-#[cfg(not(target_family = "wasm"))]
-pub use not_wasm::*;
-
-#[cfg(not(target_family = "wasm"))]
-mod not_wasm {
-    use lazy_static::lazy_static;
-    use std::collections::HashMap;
-    use std::path::PathBuf;
-
-    // Convenience macro to add plugins to the asset map (see `ASSET_MAP`)
-    //
-    // Plugins are taken from:
-    //
-    // - `zellij-utils/assets/plugins`: When building in release mode OR when the
-    //   `plugins_from_target` feature IS NOT set
-    // - `zellij-utils/../target/wasm32-wasip1/debug`: When building in debug mode AND the
-    //   `plugins_from_target` feature IS set
-    //
-    // When the `disable_automatic_asset_installation` feature is set, no plugins are embedded at
-    // all and `ASSET_MAP` is empty. Builtin plugins must then be provided in the plugin directory.
-    #[cfg(not(feature = "disable_automatic_asset_installation"))]
-    macro_rules! add_plugin {
-        ($assets:expr, $plugin:literal) => {
-            $assets.insert(
-                PathBuf::from("plugins").join($plugin),
-                #[cfg(any(not(feature = "plugins_from_target"), not(debug_assertions)))]
-                include_bytes!(concat!(
-                    env!("CARGO_MANIFEST_DIR"),
-                    "/assets/plugins/",
-                    $plugin
-                ))
-                .to_vec(),
-                #[cfg(all(feature = "plugins_from_target", debug_assertions))]
-                include_bytes!(concat!(
-                    env!("CARGO_MANIFEST_DIR"),
-                    "/../target/wasm32-wasip1/debug/",
-                    $plugin
-                ))
-                .to_vec(),
-            );
-        };
-    }
-
-    lazy_static! {
-        // Zellij asset map
-        pub static ref ASSET_MAP: HashMap<PathBuf, Vec<u8>> = {
-            #[allow(unused_mut)]
-            let mut assets: HashMap<PathBuf, Vec<u8>> = std::collections::HashMap::new();
-            #[cfg(not(feature = "disable_automatic_asset_installation"))]
-            {
-                add_plugin!(assets, "compact-bar.wasm");
-                add_plugin!(assets, "status-bar.wasm");
-                add_plugin!(assets, "tab-bar.wasm");
-                add_plugin!(assets, "strider.wasm");
-                add_plugin!(assets, "session-manager.wasm");
-                add_plugin!(assets, "configuration.wasm");
-                add_plugin!(assets, "plugin-manager.wasm");
-                add_plugin!(assets, "about.wasm");
-                add_plugin!(assets, "share.wasm");
-                add_plugin!(assets, "multiple-select.wasm");
-                add_plugin!(assets, "layout-manager.wasm");
-                add_plugin!(assets, "link.wasm");
-            }
-            assets
-        };
-    }
-
-    #[cfg(all(test, not(feature = "disable_automatic_asset_installation")))]
-    mod asset_map_test {
-        use super::ASSET_MAP;
-        use crate::consts::BUILTIN_PLUGIN_NAMES;
-        use std::path::PathBuf;
-
-        #[test]
-        fn asset_map_matches_builtin_plugin_names() {
-            let mut embedded: Vec<String> = ASSET_MAP
-                .keys()
-                .filter_map(|path| {
-                    path.file_stem()
-                        .map(|stem| stem.to_string_lossy().to_string())
-                })
-                .collect();
-            let mut expected: Vec<String> =
-                BUILTIN_PLUGIN_NAMES.iter().map(|s| s.to_string()).collect();
-            embedded.sort();
-            expected.sort();
-            assert_eq!(embedded, expected);
-            for name in BUILTIN_PLUGIN_NAMES {
-                assert!(ASSET_MAP
-                    .contains_key(&PathBuf::from("plugins").join(format!("{}.wasm", name))));
-            }
-        }
-    }
-}
 
 #[cfg(unix)]
 pub fn is_ipc_socket(file_type: &std::fs::FileType) -> bool {
@@ -310,6 +227,69 @@ pub fn ipc_bind_reply(
     ListenerOptions::new().name(ns_name).create_sync()
 }
 
+pub const APP_DIR_NAME: &str = ".desktop-app";
+pub const APP_CONTROL_SOCKET_NAME: &str = "control";
+pub const APP_ATTENTION_SOCKET_NAME: &str = "attention";
+pub const APP_LOCK_FILE_NAME: &str = "lock";
+pub const APP_PANEL_SESSION: &str = ".zellij-app-panel";
+pub const APP_QUIT_REQUEST: &str = ".zellij-app-quit";
+
+pub fn is_app_socket_name(name: &str) -> bool {
+    name.starts_with('.')
+}
+
+pub fn app_dir_in(sock_dir: &std::path::Path) -> PathBuf {
+    sock_dir.join(APP_DIR_NAME)
+}
+
+pub fn app_dir() -> PathBuf {
+    app_dir_in(&ZELLIJ_SOCK_DIR)
+}
+
+pub fn app_control_socket() -> PathBuf {
+    app_dir().join(APP_CONTROL_SOCKET_NAME)
+}
+
+pub fn app_attention_socket() -> PathBuf {
+    app_dir().join(APP_ATTENTION_SOCKET_NAME)
+}
+
+pub fn app_lock_file() -> PathBuf {
+    app_dir().join(APP_LOCK_FILE_NAME)
+}
+
+pub fn session_socket_path_in(sock_dir: &std::path::Path, session_name: &str) -> PathBuf {
+    if session_name == APP_PANEL_SESSION {
+        app_dir_in(sock_dir).join(session_name)
+    } else {
+        sock_dir.join(session_name)
+    }
+}
+
+#[cfg(not(target_family = "wasm"))]
+pub fn session_socket_path(session_name: &str) -> PathBuf {
+    crate::sessions::resolve_session_socket_path(session_name)
+        .unwrap_or_else(|| session_socket_path_in(&ZELLIJ_SOCK_DIR, session_name))
+}
+
+#[cfg(not(target_family = "wasm"))]
+pub fn new_session_socket_path_in(sock_dir: &std::path::Path, session_name: &str) -> PathBuf {
+    if is_app_socket_name(session_name) {
+        session_socket_path_in(sock_dir, session_name)
+    } else {
+        sock_dir.join(crate::sessions::register_session(session_name))
+    }
+}
+
+pub fn session_id_socket_path(session_id: &str) -> PathBuf {
+    session_socket_path_in(&ZELLIJ_SOCK_DIR, session_id)
+}
+
+pub fn prepare_private_dir(dir: &std::path::Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dir)?;
+    crate::shared::set_permissions(dir, 0o700)
+}
+
 #[cfg(unix)]
 pub use unix_only::*;
 
@@ -330,9 +310,12 @@ mod unix_only {
 
     lazy_static! {
         static ref UID: Uid = Uid::current();
-        pub static ref ZELLIJ_TMP_DIR: PathBuf = temp_dir().join(format!("zellij-{}", *UID));
-        pub static ref ZELLIJ_TMP_LOG_DIR: PathBuf = ZELLIJ_TMP_DIR.join("zellij-log");
-        pub static ref ZELLIJ_TMP_LOG_FILE: PathBuf = ZELLIJ_TMP_LOG_DIR.join("zellij.log");
+        pub static ref ZELLIJ_TMP_DIR: PathBuf =
+            temp_dir().join(format!("{}-{}", crate::distribution::name(), *UID));
+        pub static ref ZELLIJ_TMP_LOG_DIR: PathBuf =
+            ZELLIJ_TMP_DIR.join(format!("{}-log", crate::distribution::name()));
+        pub static ref ZELLIJ_TMP_LOG_FILE: PathBuf =
+            ZELLIJ_TMP_LOG_DIR.join(format!("{}.log", crate::distribution::name()));
         pub static ref ZELLIJ_SOCK_DIR: PathBuf = {
             let mut ipc_dir = envs::get_socket_dir().map_or_else(
                 |_| {
@@ -377,10 +360,12 @@ mod not_unix {
     lazy_static! {
         pub static ref ZELLIJ_TMP_DIR: PathBuf = {
             let tmp_dir = canonicalize_path(temp_dir());
-            tmp_dir.join("zellij")
+            tmp_dir.join(crate::distribution::name())
         };
-        pub static ref ZELLIJ_TMP_LOG_DIR: PathBuf = ZELLIJ_TMP_DIR.join("zellij-log");
-        pub static ref ZELLIJ_TMP_LOG_FILE: PathBuf = ZELLIJ_TMP_LOG_DIR.join("zellij.log");
+        pub static ref ZELLIJ_TMP_LOG_DIR: PathBuf =
+            ZELLIJ_TMP_DIR.join(format!("{}-log", crate::distribution::name()));
+        pub static ref ZELLIJ_TMP_LOG_FILE: PathBuf =
+            ZELLIJ_TMP_LOG_DIR.join(format!("{}.log", crate::distribution::name()));
         pub static ref ZELLIJ_SOCK_DIR: PathBuf = {
             let mut ipc_dir = canonicalize_path(envs::get_socket_dir().map_or_else(
                 |_| {
@@ -394,5 +379,59 @@ mod not_unix {
             ipc_dir
         };
         pub static ref WEBSERVER_SOCKET_PATH: PathBuf = ZELLIJ_SOCK_DIR.join("web_server_bus");
+    }
+}
+
+#[cfg(test)]
+mod app_dir_tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn the_desktop_app_files_and_its_panel_session_live_in_their_own_folder() {
+        let sock_dir = Path::new("/run/zellij/contract_version_1");
+        let app = sock_dir.join(APP_DIR_NAME);
+        assert_eq!(app_dir_in(sock_dir), app);
+        assert_eq!(
+            session_socket_path_in(sock_dir, APP_PANEL_SESSION),
+            app.join(APP_PANEL_SESSION)
+        );
+        assert_eq!(
+            session_socket_path_in(sock_dir, "api"),
+            sock_dir.join("api")
+        );
+        for name in [
+            APP_CONTROL_SOCKET_NAME,
+            APP_ATTENTION_SOCKET_NAME,
+            APP_LOCK_FILE_NAME,
+        ] {
+            assert!(!name.contains('/'));
+        }
+    }
+
+    #[test]
+    fn a_session_listing_that_keeps_only_sockets_never_sees_the_app_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        prepare_private_dir(&app_dir_in(dir.path())).unwrap();
+        let listed: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .flatten()
+            .filter(|entry| {
+                entry
+                    .file_type()
+                    .map(|t| is_ipc_socket(&t))
+                    .unwrap_or(false)
+            })
+            .collect();
+        assert!(listed.is_empty());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(app_dir_in(dir.path()))
+                .unwrap()
+                .permissions()
+                .mode();
+            assert_eq!(mode & 0o777, 0o700);
+        }
     }
 }

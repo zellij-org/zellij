@@ -24,11 +24,40 @@ message ServerToClientMsg {
     SetSoftKeyboardMsg set_soft_keyboard = 17;
     EmitNestedSessionFrameMsg emit_nested_session_frame = 18;
     MobileStateMsg mobile_state = 19;
+    RenderFrameMsg render_frame = 20;
+    HostThemeModeMsg host_theme_mode = 21;
+    WindowSettingsMsg window_settings = 22;
+    HostProgramStatusMsg host_program_status = 23;
+    SessionAttentionMsg session_attention = 24;
+    SessionPreviewMsg session_preview = 25;
   }
+}
+
+message SessionPreviewMsg {
+  optional SessionPreview preview = 1;
+}
+
+message SessionAttentionMsg {
+  SessionAttention attention = 1;
+}
+
+message HostProgramStatusMsg {
+  optional HostProgramStatus status = 1;
+}
+
+message HostProgramStatus {
+  string state = 1;
+  optional string kind = 2;
+  optional uint32 progress = 3;
+  string msg = 4;
 }
 
 message RenderMsg {
   string content = 1;
+}
+
+message RenderFrameMsg {
+  bytes frame = 1;
 }
 
 message UnblockInputThreadMsg {
@@ -58,6 +87,7 @@ message SwitchSessionMsg {
 
 message UnblockCliPipeInputMsg {
   string pipe_name = 1;
+  optional int32 exit_code = 2;
 }
 
 message CliPipeOutputMsg {
@@ -79,6 +109,14 @@ message RenamedSessionMsg {
 
 message ConfigFileUpdatedMsg {
   // Empty message
+}
+
+message WindowSettingsMsg {
+  string settings_json = 1;
+}
+
+message HostThemeModeMsg {
+  HostTerminalThemeIndication mode = 1;
 }
 
 message PaneRenderUpdateMsg {

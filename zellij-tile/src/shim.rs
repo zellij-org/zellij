@@ -8,7 +8,10 @@ use zellij_utils::data::*;
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::actions::Action;
 pub use zellij_utils::plugin_api;
-use zellij_utils::plugin_api::event::ProtobufPaneScrollbackResponse;
+use zellij_utils::plugin_api::event::{
+    nested_session_keybinds_response_from_protobuf, ProtobufNestedSessionKeybindsResponse,
+    ProtobufPaneScrollbackResponse,
+};
 use zellij_utils::plugin_api::generated_api::api::plugin_command::{
     hide_floating_panes_response, save_session_response, show_floating_panes_response,
 };
@@ -17,13 +20,13 @@ use zellij_utils::plugin_api::plugin_command::{
     get_pane_cwd_response, get_pane_running_command_response, get_session_list_response,
     parse_layout_response, CreateTokenResponse, ListTokensResponse,
     ProtobufBreakPanesToNewTabResponse, ProtobufBreakPanesToTabWithIdResponse,
-    ProtobufBreakPanesToTabWithIndexResponse, ProtobufCurrentSessionLastSavedTimeResponse,
-    ProtobufDeleteAllDeadSessionsResponse, ProtobufDeleteDeadSessionResponse,
-    ProtobufDeleteLayoutResponse, ProtobufDumpLayoutResponse, ProtobufDumpSessionLayoutResponse,
-    ProtobufEditLayoutResponse, ProtobufFocusOrCreateTabResponse,
-    ProtobufGenerateRandomNameResponse, ProtobufGetFocusedPaneInfoResponse,
-    ProtobufGetLayoutDirResponse, ProtobufGetPaneCwdResponse, ProtobufGetPaneInfoResponse,
-    ProtobufGetPanePidResponse, ProtobufGetPaneRunningCommandResponse,
+    ProtobufBreakPanesToTabWithIndexResponse, ProtobufCopyKeybindPresetResponse,
+    ProtobufCurrentSessionLastSavedTimeResponse, ProtobufDeleteAllDeadSessionsResponse,
+    ProtobufDeleteDeadSessionResponse, ProtobufDeleteLayoutResponse, ProtobufDumpLayoutResponse,
+    ProtobufDumpSessionLayoutResponse, ProtobufEditLayoutResponse,
+    ProtobufFocusOrCreateTabResponse, ProtobufGenerateRandomNameResponse,
+    ProtobufGetFocusedPaneInfoResponse, ProtobufGetLayoutDirResponse, ProtobufGetPaneCwdResponse,
+    ProtobufGetPaneInfoResponse, ProtobufGetPanePidResponse, ProtobufGetPaneRunningCommandResponse,
     ProtobufGetSessionEnvironmentVariablesResponse, ProtobufGetSessionListResponse,
     ProtobufGetTabInfoResponse, ProtobufHideFloatingPanesResponse, ProtobufKillSessionsResponse,
     ProtobufNewTabResponse, ProtobufNewTabUnfocusedResponse, ProtobufNewTabsResponse,
@@ -39,11 +42,13 @@ use zellij_utils::plugin_api::plugin_command::{
     ProtobufOpenTerminalFloatingResponse, ProtobufOpenTerminalInPlaceOfPluginResponse,
     ProtobufOpenTerminalInPlaceResponse, ProtobufOpenTerminalNearPluginResponse,
     ProtobufOpenTerminalPaneInPlaceOfPaneIdResponse, ProtobufOpenTerminalResponse,
-    ProtobufParseLayoutResponse, ProtobufPluginCommand, ProtobufRenameLayoutResponse,
-    ProtobufSaveLayoutResponse, ProtobufSaveSessionResponse, ProtobufShowFloatingPanesResponse,
+    ProtobufParseLayoutResponse, ProtobufPluginCommand, ProtobufReadConfigResponse,
+    ProtobufRenameLayoutResponse, ProtobufSaveLayoutResponse, ProtobufSaveSessionResponse,
+    ProtobufShowFloatingPanesResponse, ProtobufSlotCommandResponse, ProtobufWriteThemeFileResponse,
     RenameWebTokenResponse, RevokeAllWebTokensResponse, RevokeTokenResponse,
 };
 use zellij_utils::plugin_api::plugin_ids::{ProtobufPluginIds, ProtobufZellijVersion};
+use zellij_utils::prompt::{PromptRequest, PromptResult};
 
 pub use super::ui_components::*;
 pub use prost::{self, *};
@@ -87,6 +92,36 @@ pub fn show_cursor(cursor_position: Option<(usize, usize)>) {
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+}
+
+fn run_slot_command(plugin_command: PluginCommand) -> Result<(), String> {
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+    let response =
+        ProtobufSlotCommandResponse::decode(bytes_from_stdin().unwrap().as_slice()).unwrap();
+    response.into()
+}
+
+pub fn set_selectable_slot(slot_id: SlotId, selectable: bool) -> Result<(), String> {
+    run_slot_command(PluginCommand::SetSelectableSlot(slot_id, selectable))
+}
+
+pub fn hide_slot(slot_id: SlotId) -> Result<(), String> {
+    run_slot_command(PluginCommand::HideSlot(slot_id))
+}
+
+pub fn show_slot(slot_id: SlotId, should_float_if_hidden: bool) -> Result<(), String> {
+    run_slot_command(PluginCommand::ShowSlot(slot_id, should_float_if_hidden))
+}
+
+pub fn close_slot(slot_id: SlotId) -> Result<(), String> {
+    run_slot_command(PluginCommand::CloseSlot(slot_id))
+}
+
+/// The slot form of `set_self_collapsed`, for a shared plugin that decides outside of `render`.
+pub fn set_collapsed_slot(slot_id: SlotId, collapsed: bool) -> Result<(), String> {
+    run_slot_command(PluginCommand::SetCollapsedSlot(slot_id, collapsed))
 }
 
 pub fn request_permission(permissions: &[PermissionType]) {
@@ -502,7 +537,7 @@ pub fn open_terminal<P: AsRef<Path>>(path: P) -> Option<PaneId> {
 }
 
 /// Open a new terminal pane to the specified location on the host filesystem
-/// This variant is identical to open_terminal, excpet it opens it near the plugin regardless of
+/// This variant is identical to open_terminal, except it opens it near the plugin regardless of
 /// whether the user was focused on it or not
 pub fn open_terminal_near_plugin<P: AsRef<Path>>(path: P) -> Option<PaneId> {
     let file_to_open = FileToOpen::new(path.as_ref().to_path_buf());
@@ -535,7 +570,7 @@ pub fn open_terminal_floating<P: AsRef<Path>>(
 }
 
 /// Open a new floating terminal pane to the specified location on the host filesystem
-/// This variant is identical to open_terminal_floating, excpet it opens it near the plugin regardless of
+/// This variant is identical to open_terminal_floating, except it opens it near the plugin regardless of
 /// whether the user was focused on it or not
 pub fn open_terminal_floating_near_plugin<P: AsRef<Path>>(
     path: P,
@@ -876,6 +911,228 @@ pub fn web_request<S: AsRef<str>>(
 }
 
 /// Hide the plugin pane (suppress it) from the UI
+pub fn open_context_menu(target: ContextMenuTarget, line: usize, column: usize) {
+    let plugin_command = PluginCommand::OpenContextMenu {
+        target,
+        line,
+        column,
+    };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn open_plugin_popup(
+    plugin_url: impl Into<String>,
+    configuration: BTreeMap<String, String>,
+    line: usize,
+    column: usize,
+    width: usize,
+    height: usize,
+) {
+    open_plugin_popup_with_options(
+        plugin_url,
+        configuration,
+        line,
+        column,
+        width,
+        height,
+        PopupOptions::default(),
+    );
+}
+
+pub fn open_plugin_popup_with_options(
+    plugin_url: impl Into<String>,
+    configuration: BTreeMap<String, String>,
+    line: usize,
+    column: usize,
+    width: usize,
+    height: usize,
+    options: PopupOptions,
+) {
+    let plugin_command = PluginCommand::OpenPluginPopup {
+        plugin_url: plugin_url.into(),
+        configuration,
+        line,
+        column,
+        width,
+        height,
+        options,
+    };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn run_context_menu_item(index: usize) {
+    let plugin_command = PluginCommand::RunContextMenuItem(index);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn set_popup_size(width: usize, height: usize) {
+    let plugin_command = PluginCommand::SetPopupSize { width, height };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+fn run_plugin_command(plugin_command: PluginCommand) {
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn get_session_suggestions(limit: usize) {
+    run_plugin_command(PluginCommand::GetSessionSuggestions { limit });
+}
+
+pub fn set_popup_focused(focused: bool) {
+    run_plugin_command(PluginCommand::SetPopupFocused(focused));
+}
+
+pub fn popup_to_floating_pane(coordinates: Option<FloatingPaneCoordinates>) {
+    run_plugin_command(PluginCommand::PopupToFloatingPane(coordinates));
+}
+
+pub fn switch_session_and_close_current(
+    name: &str,
+    tab_position: Option<usize>,
+    pane_id: Option<(u32, bool)>,
+) {
+    run_plugin_command(PluginCommand::SwitchSessionAndCloseCurrent(
+        ConnectToSession {
+            name: Some(name.to_owned()),
+            tab_position,
+            pane_id,
+            ..Default::default()
+        },
+    ));
+}
+
+pub fn get_session_preview(name: &str, tab_index: Option<usize>, pane_id: Option<(u32, bool)>) {
+    run_plugin_command(PluginCommand::GetSessionPreview {
+        name: name.to_owned(),
+        tab_index,
+        pane_id,
+        anchor: None,
+    });
+}
+
+pub fn get_session_preview_with_history(
+    name: &str,
+    tab_index: Option<usize>,
+    pane_id: Option<(u32, bool)>,
+) {
+    run_plugin_command(PluginCommand::GetSessionPreview {
+        name: name.to_owned(),
+        tab_index,
+        pane_id,
+        anchor: Some(PreviewAnchor::Bottom),
+    });
+}
+
+pub fn get_session_pane_preview(name: &str, pane_id: PaneId, anchor: PreviewAnchor) {
+    let pane_id = match pane_id {
+        PaneId::Terminal(id) => (id, false),
+        PaneId::Plugin(id) => (id, true),
+    };
+    run_plugin_command(PluginCommand::GetSessionPreview {
+        name: name.to_owned(),
+        tab_index: None,
+        pane_id: Some(pane_id),
+        anchor: Some(anchor),
+    });
+}
+
+pub fn mark_session_pane_seen(session_name: &str, pane_id: PaneId) {
+    run_plugin_command(PluginCommand::MarkSessionPaneSeen {
+        session_name: session_name.to_owned(),
+        pane_id,
+    });
+}
+
+pub fn mark_all_seen(session_name: Option<&str>) {
+    run_plugin_command(PluginCommand::MarkAllSeen {
+        session_name: session_name.map(|s| s.to_owned()),
+    });
+}
+
+pub fn open_session_window(session_name: &str, new_window: bool) {
+    run_plugin_command(PluginCommand::OpenSessionWindow(
+        SessionWindowRequest::existing(session_name, None, new_window),
+    ));
+}
+
+pub fn open_session_pane_window(session_name: &str, pane_id: PaneId, new_window: bool) {
+    run_plugin_command(PluginCommand::OpenSessionWindow(
+        SessionWindowRequest::existing(session_name, Some(pane_id), new_window),
+    ));
+}
+
+pub fn request_session_window(request: SessionWindowRequest) {
+    run_plugin_command(PluginCommand::OpenSessionWindow(request));
+}
+
+pub fn open_new_session_window(
+    session_name: Option<&str>,
+    layout: Option<LayoutInfo>,
+    cwd: Option<PathBuf>,
+) {
+    run_plugin_command(PluginCommand::OpenSessionWindow(
+        SessionWindowRequest::new_session(session_name, layout, cwd),
+    ));
+}
+
+pub fn write_to_session_pane(session_name: &str, pane_id: PaneId, bytes: Vec<u8>) {
+    run_plugin_command(PluginCommand::WriteToSessionPane {
+        session_name: session_name.to_owned(),
+        pane_id,
+        bytes,
+    });
+}
+
+pub fn send_key_to_session_pane(session_name: &str, pane_id: PaneId, key: KeyWithModifier) {
+    run_plugin_command(PluginCommand::SendKeyToSessionPane {
+        session_name: session_name.to_owned(),
+        pane_id,
+        key,
+    });
+}
+
+pub fn toggle_session_pane_mute(session_name: &str, pane_id: PaneId) {
+    run_plugin_command(PluginCommand::ToggleSessionPaneMute {
+        session_name: session_name.to_owned(),
+        pane_id,
+    });
+}
+
+pub fn toggle_session_pane_ignore_output(session_name: &str, pane_id: PaneId) {
+    run_plugin_command(PluginCommand::ToggleSessionPaneIgnoreOutput {
+        session_name: session_name.to_owned(),
+        pane_id,
+    });
+}
+
+pub fn toggle_session_pane_watch(session_name: &str, pane_id: PaneId) {
+    run_plugin_command(PluginCommand::ToggleSessionPaneWatch {
+        session_name: session_name.to_owned(),
+        pane_id,
+    });
+}
+
+pub fn focus_session_pane(session_name: &str, pane_id: PaneId) {
+    run_plugin_command(PluginCommand::FocusSessionPane {
+        session_name: session_name.to_owned(),
+        pane_id,
+    });
+}
+
+pub fn get_saved_session_preview(name: &str) {
+    run_plugin_command(PluginCommand::GetSavedSessionPreview(name.to_owned()));
+}
+
 pub fn hide_self() {
     let plugin_command = PluginCommand::HideSelf;
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
@@ -1305,6 +1562,17 @@ pub fn focus_host_session() {
     unsafe { host_run_plugin_command() };
 }
 
+pub fn get_nested_session_keybinds(pane_id: PaneId) -> NestedSessionKeybindsResponse {
+    let plugin_command = PluginCommand::GetNestedSessionKeybinds(pane_id);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+    let response_bytes = bytes_from_stdin().unwrap();
+    let protobuf_response =
+        ProtobufNestedSessionKeybindsResponse::decode(response_bytes.as_slice()).unwrap();
+    nested_session_keybinds_response_from_protobuf(protobuf_response).unwrap()
+}
+
 /// Toggle the UI pane frames on or off
 pub fn toggle_pane_frames() {
     let plugin_command = PluginCommand::TogglePaneFrames;
@@ -1380,7 +1648,7 @@ pub fn undo_rename_tab() {
     unsafe { host_run_plugin_command() };
 }
 
-/// Compeltely quit Zellij for this and all other connected clients
+/// Completely quit Zellij for this and all other connected clients
 pub fn quit_zellij() {
     let plugin_command = PluginCommand::QuitZellij;
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
@@ -1399,6 +1667,24 @@ pub fn previous_swap_layout() {
 /// Change to the next [swap layout](https://zellij.dev/documentation/swap-layouts.html)
 pub fn next_swap_layout() {
     let plugin_command = PluginCommand::NextSwapLayout;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Applies the named tiled [swap layout](https://zellij.dev/documentation/swap-layouts.html)
+/// without changing floating pane visibility or focus. Unknown or incompatible names are a no-op.
+pub fn apply_tiled_swap_layout(layout_name: &str) {
+    let plugin_command = PluginCommand::ApplyTiledSwapLayout(layout_name.to_owned());
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Applies the named floating [swap layout](https://zellij.dev/documentation/swap-layouts.html)
+/// without changing floating pane visibility or focus. Unknown or incompatible names are a no-op.
+pub fn apply_floating_swap_layout(layout_name: &str) {
+    let plugin_command = PluginCommand::ApplyFloatingSwapLayout(layout_name.to_owned());
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
@@ -1555,6 +1841,13 @@ pub fn switch_session_with_layout(name: Option<&str>, layout: LayoutInfo, cwd: O
 }
 
 /// Switch to a session with the given name, create one if no name is given
+pub fn switch_session_with_options(connect_to_session: ConnectToSession) {
+    let plugin_command = PluginCommand::SwitchSession(connect_to_session);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 pub fn switch_session_with_cwd(name: Option<&str>, cwd: Option<PathBuf>) {
     let plugin_command = PluginCommand::SwitchSession(ConnectToSession {
         name: name.map(|n| n.to_string()),
@@ -1649,9 +1942,16 @@ pub fn block_cli_pipe_input(pipe_name: &str) {
     unsafe { host_run_plugin_command() };
 }
 
-/// Send output to the output side of a pipe, ths does not affect the input side of same pipe
+/// Send output to the output side of a pipe, this does not affect the input side of same pipe
 pub fn cli_pipe_output(pipe_name: &str, output: &str) {
     let plugin_command = PluginCommand::CliPipeOutput(pipe_name.to_owned(), output.to_owned());
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn set_cli_pipe_exit_code(pipe_name: &str, exit_code: i32) {
+    let plugin_command = PluginCommand::SetCliPipeExitCode(pipe_name.to_owned(), exit_code);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
@@ -1817,6 +2117,172 @@ pub fn reconfigure(new_config: String, save_configuration_file: bool) {
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
+}
+
+pub fn read_config() -> ConfigSnapshot {
+    let plugin_command = PluginCommand::ReadConfig;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+    bytes_from_stdin()
+        .ok()
+        .and_then(|bytes| ProtobufReadConfigResponse::decode(bytes.as_slice()).ok())
+        .map(ConfigSnapshot::from)
+        .unwrap_or_default()
+}
+
+pub fn revert_config(key: Option<SettingKey>) {
+    let plugin_command = PluginCommand::RevertConfig(key);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn unset_config_setting(key: SettingKey) {
+    let plugin_command = PluginCommand::UnsetConfigSetting(key);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn save_config() {
+    let plugin_command = PluginCommand::SaveConfig;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn overwrite_config_file() {
+    let plugin_command = PluginCommand::OverwriteConfigFile;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn reload_config_file() {
+    let plugin_command = PluginCommand::ReloadConfigFile;
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+thread_local! {
+    static MOUSE_MODIFIERS: std::cell::RefCell<std::collections::BTreeSet<KeyModifier>> =
+        std::cell::RefCell::new(std::collections::BTreeSet::new());
+}
+
+pub fn set_mouse_modifiers(modifiers: std::collections::BTreeSet<KeyModifier>) {
+    MOUSE_MODIFIERS.with(|current| *current.borrow_mut() = modifiers);
+}
+
+pub fn mouse_modifiers() -> std::collections::BTreeSet<KeyModifier> {
+    MOUSE_MODIFIERS.with(|current| current.borrow().clone())
+}
+
+pub fn replace_config_blocks(blocks: String) {
+    let plugin_command = PluginCommand::ReplaceConfigBlocks(blocks);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn reset_keys(keys: Vec<(InputMode, KeyWithModifier)>, write_config_to_disk: bool) {
+    let plugin_command = PluginCommand::ResetKeys {
+        keys,
+        write_config_to_disk,
+    };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn reset_mousebinds(triggers: Vec<(InputMode, MouseTrigger)>, write_config_to_disk: bool) {
+    let plugin_command = PluginCommand::ResetMousebinds {
+        triggers,
+        write_config_to_disk,
+    };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+pub fn save_keybinds_as_preset(new_name: &str) -> Result<String, String> {
+    use zellij_utils::plugin_api::plugin_command::copy_keybind_preset_response::Result as CopyResult;
+    let plugin_command = PluginCommand::SaveKeybindsAsPreset {
+        new_name: new_name.to_owned(),
+    };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+    let response = bytes_from_stdin()
+        .ok()
+        .and_then(|bytes| ProtobufCopyKeybindPresetResponse::decode(bytes.as_slice()).ok());
+    match response.and_then(|response| response.result) {
+        Some(CopyResult::NewName(new_name)) => Ok(new_name),
+        Some(CopyResult::Error(error)) => Err(error),
+        None => Err("No response".to_owned()),
+    }
+}
+
+pub fn write_theme_file(
+    name: &str,
+    copy_from: Option<&str>,
+    colours: &[String],
+) -> Result<String, String> {
+    use zellij_utils::plugin_api::plugin_command::write_theme_file_response::Result as WriteResult;
+    let plugin_command = PluginCommand::WriteThemeFile {
+        name: name.to_owned(),
+        copy_from: copy_from.map(|from| from.to_owned()),
+        colours: colours.to_vec(),
+    };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+    let response = bytes_from_stdin()
+        .ok()
+        .and_then(|bytes| ProtobufWriteThemeFileResponse::decode(bytes.as_slice()).ok());
+    match response.and_then(|response| response.result) {
+        Some(WriteResult::Path(path)) => Ok(path),
+        Some(WriteResult::Error(error)) => Err(error),
+        None => Err("No response".to_owned()),
+    }
+}
+
+pub fn delete_theme_file(name: &str) -> Result<String, String> {
+    use zellij_utils::plugin_api::plugin_command::write_theme_file_response::Result as WriteResult;
+    let plugin_command = PluginCommand::DeleteThemeFile {
+        name: name.to_owned(),
+    };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+    let response = bytes_from_stdin()
+        .ok()
+        .and_then(|bytes| ProtobufWriteThemeFileResponse::decode(bytes.as_slice()).ok());
+    match response.and_then(|response| response.result) {
+        Some(WriteResult::Path(path)) => Ok(path),
+        Some(WriteResult::Error(error)) => Err(error),
+        None => Err("No response".to_owned()),
+    }
+}
+
+pub fn copy_keybind_preset(preset: &str, new_name: &str) -> Result<String, String> {
+    use zellij_utils::plugin_api::plugin_command::copy_keybind_preset_response::Result as CopyResult;
+    let plugin_command = PluginCommand::CopyKeybindPreset {
+        preset: preset.to_owned(),
+        new_name: new_name.to_owned(),
+    };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+    let response = bytes_from_stdin()
+        .ok()
+        .and_then(|bytes| ProtobufCopyKeybindPresetResponse::decode(bytes.as_slice()).ok());
+    match response.and_then(|response| response.result) {
+        Some(CopyResult::NewName(new_name)) => Ok(new_name),
+        Some(CopyResult::Error(error)) => Err(error),
+        None => Err("No response".to_owned()),
+    }
 }
 
 /// Re-run command in pane
@@ -2585,6 +3051,13 @@ pub fn set_pane_borderless(pane_id: PaneId, borderless: bool) {
     unsafe { host_run_plugin_command() };
 }
 
+pub fn set_pane_border_style(pane_id: PaneId, border_style: BorderStyleOverride) {
+    let plugin_command = PluginCommand::SetPaneBorderStyle(pane_id, border_style);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 /// Set the default foreground and/or background color of a pane
 ///
 /// # Arguments
@@ -2682,6 +3155,23 @@ pub fn embed_multiple_panes(pane_ids: Vec<PaneId>) {
 
 pub fn set_self_mouse_selection_support(selection_support: bool) {
     let plugin_command = PluginCommand::SetSelfMouseSelectionSupport(selection_support);
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
+/// Give this plugin's pane back to its neighbors while it has nothing to draw, or take it
+/// again when it does.
+///
+/// Intended for a plugin mounted in a layout as a bar, whose content is sometimes empty: the
+/// row a layout reserves for it stays reserved otherwise, and shows as a blank line. While
+/// collapsed the pane keeps its place in the layout and simply takes no space, so expanding
+/// restores the exact geometry the layout asked for. Calling it with the size the pane is
+/// already at does nothing.
+///
+/// Has no effect on a floating pane, which takes no space from its neighbors to begin with.
+pub fn set_self_collapsed(collapsed: bool) {
+    let plugin_command = PluginCommand::SetSelfCollapsed(collapsed);
     let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
     object_to_stdout(&protobuf_plugin_command.encode_to_vec());
     unsafe { host_run_plugin_command() };
@@ -2867,6 +3357,101 @@ pub fn bytes_from_stdin() -> Result<Vec<u8>> {
 }
 
 #[doc(hidden)]
+pub fn protobuf_bytes_from_stdin() -> Result<Vec<u8>> {
+    let stdin = io::stdin();
+    let mut stdin = stdin.lock();
+    read_json_byte_array_line(&mut stdin)
+        .with_context(|| "failed to deserialize bytes from stdin".to_string())
+}
+
+enum JsonBytesPosition {
+    BeforeArray,
+    InArray,
+    AfterArray,
+}
+
+struct JsonBytesParser {
+    position: JsonBytesPosition,
+    bytes: Vec<u8>,
+    current: Option<u16>,
+}
+
+impl JsonBytesParser {
+    fn feed(&mut self, byte: u8) -> std::result::Result<(), &'static str> {
+        match self.position {
+            JsonBytesPosition::BeforeArray => match byte {
+                b'[' => self.position = JsonBytesPosition::InArray,
+                byte if byte.is_ascii_whitespace() => {},
+                _ => return Err("expected a byte array"),
+            },
+            JsonBytesPosition::InArray => match byte {
+                b'0'..=b'9' => {
+                    let value = self.current.unwrap_or(0) * 10 + (byte - b'0') as u16;
+                    if value > u8::MAX as u16 {
+                        return Err("byte value out of range");
+                    }
+                    self.current = Some(value);
+                },
+                b',' | b']' => {
+                    match self.current.take() {
+                        Some(value) => self.bytes.push(value as u8),
+                        None if byte == b']' && self.bytes.is_empty() => {},
+                        None => return Err("missing byte value"),
+                    }
+                    if byte == b']' {
+                        self.position = JsonBytesPosition::AfterArray;
+                    }
+                },
+                byte if byte.is_ascii_whitespace() && self.current.is_none() => {},
+                _ => return Err("unexpected character in byte array"),
+            },
+            JsonBytesPosition::AfterArray => {
+                if !byte.is_ascii_whitespace() {
+                    return Err("unexpected character after byte array");
+                }
+            },
+        }
+        Ok(())
+    }
+}
+
+fn read_json_byte_array_line(reader: &mut impl io::BufRead) -> Result<Vec<u8>> {
+    let mut parser = JsonBytesParser {
+        position: JsonBytesPosition::BeforeArray,
+        bytes: Vec::new(),
+        current: None,
+    };
+    let mut error: Option<&'static str> = None;
+    loop {
+        let chunk = reader.fill_buf()?;
+        if chunk.is_empty() {
+            break;
+        }
+        let mut consumed = 0;
+        let mut line_ended = false;
+        for byte in chunk {
+            consumed += 1;
+            if *byte == b'\n' {
+                line_ended = true;
+                break;
+            }
+            if error.is_none() {
+                error = parser.feed(*byte).err();
+            }
+        }
+        reader.consume(consumed);
+        if line_ended {
+            break;
+        }
+    }
+    match (error, parser.position) {
+        (Some(error), _) => Err(anyhow!(error)),
+        (None, JsonBytesPosition::AfterArray) => Ok(parser.bytes),
+        (None, _) => Err(anyhow!("incomplete byte array")),
+    }
+}
+
+#[doc(hidden)]
 pub fn object_to_stdout(object: &impl Serialize) {
     // TODO: no crashy
     println!("{}", serde_json::to_string(object).unwrap());
@@ -2978,6 +3563,43 @@ pub fn clear_pane_highlights(pane_id: PaneId) {
     unsafe { host_run_plugin_command() };
 }
 
+thread_local! {
+    static NEXT_PROMPT_REQUEST_ID: std::cell::Cell<u64> = std::cell::Cell::new(1);
+}
+
+/// Ask the user something through the `zellij:prompt` popup and return the id of the request.
+///
+/// The answer arrives later as `Event::PromptResult(id, result)`, sent only to this plugin
+/// instance; subscribe to `EventType::PromptResult` to receive it. An invalid request is
+/// answered at once with `PromptResult::Error` and opens no popup. If this plugin closes or
+/// reloads before the answer, its open prompts close and no result is sent.
+///
+/// Requires `OpenTerminalsOrPlugins` permission.
+pub fn prompt(request: PromptRequest) -> u64 {
+    let request_id = NEXT_PROMPT_REQUEST_ID.with(|next| {
+        let request_id = next.get();
+        next.set(request_id + 1);
+        request_id
+    });
+    let plugin_command = PluginCommand::Prompt {
+        request_id,
+        request,
+    };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+    request_id
+}
+
+/// Answer a request received from `PipeSource::PromptRequest`. Only the built-in
+/// `zellij:prompt` plugin may use this; calls from other plugins are ignored.
+pub fn reply_to_prompt(request_id: u64, result: PromptResult) {
+    let plugin_command = PluginCommand::ReplyToPrompt { request_id, result };
+    let protobuf_plugin_command: ProtobufPluginCommand = plugin_command.try_into().unwrap();
+    object_to_stdout(&protobuf_plugin_command.encode_to_vec());
+    unsafe { host_run_plugin_command() };
+}
+
 #[cfg(target_arch = "wasm32")]
 #[link(wasm_import_module = "zellij")]
 extern "C" {
@@ -2986,3 +3608,47 @@ extern "C" {
 
 #[cfg(not(target_arch = "wasm32"))]
 unsafe fn host_run_plugin_command() {}
+
+#[cfg(test)]
+mod tests {
+    use super::read_json_byte_array_line;
+    use std::io::{BufRead, BufReader, Cursor};
+
+    fn read_all(input: &str, capacity: usize) -> Vec<Result<Vec<u8>, String>> {
+        let mut reader = BufReader::with_capacity(capacity, Cursor::new(input.as_bytes().to_vec()));
+        let mut results = vec![];
+        while !reader.fill_buf().unwrap().is_empty() {
+            results.push(read_json_byte_array_line(&mut reader).map_err(|e| e.to_string()));
+        }
+        results
+    }
+
+    #[test]
+    fn reads_serde_json_byte_arrays_line_by_line() {
+        let first: Vec<u8> = (0..=255).collect();
+        let second: Vec<u8> = vec![];
+        let third: Vec<u8> = vec![7, 42, 255];
+        let input = format!(
+            "{}\r\n{}\r\n{}\r\n",
+            serde_json::to_string(&first).unwrap(),
+            serde_json::to_string(&second).unwrap(),
+            serde_json::to_string(&third).unwrap()
+        );
+        for capacity in [1, 3, 8192] {
+            assert_eq!(
+                read_all(&input, capacity),
+                vec![Ok(first.clone()), Ok(second.clone()), Ok(third.clone())]
+            );
+        }
+    }
+
+    #[test]
+    fn malformed_line_is_consumed_and_reported() {
+        let results = read_all("[1,256]\r\n{\"a\":1}\r\n[1,,2]\r\n[3]\r\n", 4);
+        assert_eq!(results.len(), 4);
+        assert!(results[0].is_err());
+        assert!(results[1].is_err());
+        assert!(results[2].is_err());
+        assert_eq!(results[3], Ok(vec![3]));
+    }
+}

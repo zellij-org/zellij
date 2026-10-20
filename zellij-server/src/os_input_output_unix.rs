@@ -1,4 +1,4 @@
-use crate::os_input_output::{command_exists, AsyncReader};
+use crate::os_input_output::{command_exists, AsyncReader, PaneEnv};
 use crate::panes::PaneId;
 
 use nix::{
@@ -83,18 +83,22 @@ impl RawFdAsyncReader {
 
 #[async_trait]
 impl AsyncReader for RawFdAsyncReader {
-    async fn read(&mut self, buf: &mut [u8]) -> Result<usize, io::Error> {
+    async fn read_chunk(&mut self, max: usize) -> Result<Vec<u8>, io::Error> {
         let async_fd = self.get_async_fd()?;
         loop {
             let mut guard = async_fd.readable().await?;
             match guard.try_io(|inner| {
+                let mut buf: Vec<u8> = Vec::with_capacity(max);
                 let fd = inner.get_ref().as_raw_fd();
-                let ret =
-                    unsafe { libc::read(fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) };
+                let ret = unsafe {
+                    libc::read(fd, buf.as_mut_ptr() as *mut libc::c_void, buf.capacity())
+                };
                 if ret < 0 {
                     Err(io::Error::last_os_error())
                 } else {
-                    Ok(ret as usize)
+                    unsafe { buf.set_len(ret as usize) };
+                    buf.shrink_to_fit();
+                    Ok(buf)
                 }
             }) {
                 Ok(result) => return result,
@@ -188,6 +192,7 @@ fn handle_openpty(
     cmd: RunCommand,
     quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
     terminal_id: u32,
+    pane_env: &PaneEnv,
 ) -> Result<(RawFd, RawFd)> {
     let err_context = |cmd: &RunCommand| {
         format!(
@@ -200,7 +205,7 @@ fn handle_openpty(
     let pid_primary = open_pty_res.master.into_raw_fd();
     let pid_secondary = open_pty_res.slave.into_raw_fd();
 
-    if !command_exists(&cmd) {
+    if !command_exists(&cmd, pane_env) {
         return Err(ZellijError::CommandNotFound {
             terminal_id,
             command: cmd.command.to_string_lossy().to_string(),
@@ -220,6 +225,12 @@ fn handle_openpty(
                     current_dir.display()
                 );
             }
+        }
+        for (name, value) in pane_env {
+            match value {
+                Some(value) => command.env(name, value),
+                None => command.env_remove(name),
+            };
         }
         command
             .args(&cmd.args)
@@ -256,18 +267,24 @@ fn handle_terminal(
     orig_termios: Option<termios::Termios>,
     quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
     terminal_id: u32,
+    pane_env: &PaneEnv,
 ) -> Result<(RawFd, RawFd)> {
     let err_context = || "failed to spawn child terminal".to_string();
 
     // Create a pipe to allow the child the communicate the shell's pid to its
     // parent.
     match openpty(None, &orig_termios) {
-        Ok(open_pty_res) => handle_openpty(open_pty_res, cmd, quit_cb, terminal_id),
+        Ok(open_pty_res) => handle_openpty(open_pty_res, cmd, quit_cb, terminal_id, pane_env),
         Err(e) => match failover_cmd {
-            Some(failover_cmd) => {
-                handle_terminal(failover_cmd, None, orig_termios, quit_cb, terminal_id)
-                    .with_context(err_context)
-            },
+            Some(failover_cmd) => handle_terminal(
+                failover_cmd,
+                None,
+                orig_termios,
+                quit_cb,
+                terminal_id,
+                pane_env,
+            )
+            .with_context(err_context),
             None => Err::<(i32, i32), _>(e)
                 .context("failed to start pty")
                 .with_context(err_context)
@@ -323,6 +340,7 @@ impl UnixPtyBackend {
         failover_cmd: Option<RunCommand>,
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         terminal_id: u32,
+        pane_env: &PaneEnv,
     ) -> Result<(Box<dyn AsyncReader>, RawFd)> {
         let orig_termios = self
             .orig_termios
@@ -335,6 +353,7 @@ impl UnixPtyBackend {
             orig_termios.clone(),
             quit_cb,
             terminal_id,
+            pane_env,
         )?;
         self.terminal_id_to_raw_fd
             .lock()
@@ -469,7 +488,43 @@ mod tests {
     use super::*;
     use nix::fcntl::{fcntl, FcntlArg, OFlag};
     use nix::sys::termios;
-    use std::io::Read;
+    use std::io::{Read, Write};
+
+    #[test]
+    fn raw_fd_reader_returns_exact_bytes_in_order() {
+        let mut fds = [0 as libc::c_int; 2];
+        assert_eq!(unsafe { libc::pipe(fds.as_mut_ptr()) }, 0);
+        let mut writer = unsafe { File::from_raw_fd(fds[1]) };
+        let mut reader = RawFdAsyncReader::new(fds[0]).expect("reader");
+
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        rt.block_on(async {
+            writer.write_all(b"hello").unwrap();
+            let chunk = reader.read_chunk(65536).await.unwrap();
+            assert_eq!(chunk, b"hello");
+            assert_eq!(chunk.capacity(), chunk.len());
+
+            writer.write_all(b"abc").unwrap();
+            writer.write_all(b"def").unwrap();
+            writer.write_all(b"ghij").unwrap();
+            let mut collected = Vec::new();
+            while collected.len() < 10 {
+                let chunk = reader.read_chunk(4).await.unwrap();
+                assert!(!chunk.is_empty() && chunk.len() <= 4);
+                assert_eq!(chunk.capacity(), chunk.len());
+                collected.extend_from_slice(&chunk);
+            }
+            assert_eq!(collected, b"abcdefghij");
+
+            drop(writer);
+            let eof = reader.read_chunk(65536).await.unwrap();
+            assert!(eof.is_empty());
+        });
+    }
 
     /// Verify that `try_write_to_fd` writes as many bytes as the kernel will
     /// accept in one pass and returns a partial count (not an error) when the

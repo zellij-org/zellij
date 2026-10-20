@@ -71,6 +71,40 @@ pub struct Style {
     pub rounded_corners: bool,
     #[prost(bool, tag="3")]
     pub hide_session_name: bool,
+    #[prost(message, optional, tag="4")]
+    pub border_style: ::core::option::Option<BorderStyle>,
+    #[prost(message, optional, tag="5")]
+    pub floating_border_style: ::core::option::Option<BorderStyle>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BorderStyle {
+    #[prost(enumeration="LineStyle", tag="1")]
+    pub top: i32,
+    #[prost(enumeration="LineStyle", tag="2")]
+    pub right: i32,
+    #[prost(enumeration="LineStyle", tag="3")]
+    pub bottom: i32,
+    #[prost(enumeration="LineStyle", tag="4")]
+    pub left: i32,
+    #[prost(bool, tag="5")]
+    pub rounded_corners: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BorderStyleOverride {
+    #[prost(enumeration="LineStyle", optional, tag="1")]
+    pub all: ::core::option::Option<i32>,
+    #[prost(enumeration="LineStyle", optional, tag="2")]
+    pub top: ::core::option::Option<i32>,
+    #[prost(enumeration="LineStyle", optional, tag="3")]
+    pub right: ::core::option::Option<i32>,
+    #[prost(enumeration="LineStyle", optional, tag="4")]
+    pub bottom: ::core::option::Option<i32>,
+    #[prost(enumeration="LineStyle", optional, tag="5")]
+    pub left: ::core::option::Option<i32>,
+    #[prost(bool, optional, tag="6")]
+    pub rounded_corners: ::core::option::Option<bool>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -120,7 +154,7 @@ pub struct RgbColor {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Action {
-    #[prost(oneof="action::ActionType", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152")]
+    #[prost(oneof="action::ActionType", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 156, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 157, 158, 159, 160, 161, 162, 163, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183")]
     pub action_type: ::core::option::Option<action::ActionType>,
 }
 /// Nested message and enum types in `Action`.
@@ -320,6 +354,8 @@ pub mod action {
         TogglePaneBorderless(super::TogglePaneBorderlessAction),
         #[prost(message, tag="96")]
         SetPaneBorderless(super::SetPaneBorderlessAction),
+        #[prost(message, tag="156")]
+        SetPaneBorderStyle(super::SetPaneBorderStyleAction),
         #[prost(message, tag="97")]
         SaveSession(super::SaveSessionAction),
         #[prost(message, tag="98")]
@@ -431,6 +467,64 @@ pub mod action {
         #[prost(message, tag="151")]
         CopyLastCommandOutput(super::CopyLastCommandOutputAction),
         #[prost(message, tag="152")]
+        ApplyTiledSwapLayout(super::ApplyTiledSwapLayoutAction),
+        #[prost(message, tag="153")]
+        ApplyFloatingSwapLayout(super::ApplyFloatingSwapLayoutAction),
+        #[prost(message, tag="154")]
+        ApplyTiledSwapLayoutByTabId(super::ApplyTiledSwapLayoutByTabIdAction),
+        #[prost(message, tag="155")]
+        ApplyFloatingSwapLayoutByTabId(super::ApplyFloatingSwapLayoutByTabIdAction),
+        #[prost(message, tag="157")]
+        TogglePaneInGroupByPaneId(super::TogglePaneInGroupByPaneIdAction),
+        #[prost(message, tag="158")]
+        StartRenamePaneByPaneId(super::StartRenamePaneByPaneIdAction),
+        #[prost(message, tag="159")]
+        StartRenameTabByTabId(super::StartRenameTabByTabIdAction),
+        #[prost(message, tag="160")]
+        DismissInfoPopups(super::DismissInfoPopupsAction),
+        #[prost(message, tag="161")]
+        OpenContextMenu(super::OpenContextMenuAction),
+        #[prost(message, tag="162")]
+        MoveTabToPosition(super::MoveTabToPositionAction),
+        #[prost(message, tag="163")]
+        RunInBackground(super::RunInBackgroundAction),
+        #[prost(message, tag="165")]
+        ToggleSessionCard(super::ToggleSessionCardAction),
+        #[prost(message, tag="166")]
+        MutePane(super::MutePaneAction),
+        #[prost(message, tag="167")]
+        MutePaneByPaneId(super::MutePaneByPaneIdAction),
+        #[prost(message, tag="168")]
+        IgnorePaneOutput(super::IgnorePaneOutputAction),
+        #[prost(message, tag="169")]
+        IgnorePaneOutputByPaneId(super::IgnorePaneOutputByPaneIdAction),
+        #[prost(message, tag="170")]
+        WatchPane(super::WatchPaneAction),
+        #[prost(message, tag="171")]
+        WatchPaneByPaneId(super::WatchPaneByPaneIdAction),
+        #[prost(message, tag="172")]
+        MuteTab(super::MuteTabAction),
+        #[prost(message, tag="173")]
+        MuteTabByTabId(super::MuteTabByTabIdAction),
+        #[prost(message, tag="174")]
+        MuteSession(super::MuteSessionAction),
+        #[prost(message, tag="175")]
+        ToggleSession(super::ToggleSessionAction),
+        #[prost(message, tag="176")]
+        GoToPreviousSession(super::GoToPreviousSessionAction),
+        #[prost(message, tag="177")]
+        GoToNextSession(super::GoToNextSessionAction),
+        #[prost(message, tag="178")]
+        GoToNextAttention(super::GoToNextAttentionAction),
+        #[prost(message, tag="179")]
+        MarkPaneSeen(super::MarkPaneSeenAction),
+        #[prost(message, tag="180")]
+        MarkAllSeen(super::MarkAllSeenAction),
+        #[prost(message, tag="181")]
+        WriteKeyToPaneId(super::WriteKeyToPaneIdAction),
+        #[prost(message, tag="182")]
+        ToggleTrayIcon(super::ToggleTrayIconAction),
+        #[prost(message, tag="183")]
         ToggleStackListOrientation(super::ToggleStackListOrientationAction),
     }
 }
@@ -662,6 +756,18 @@ pub struct PreviousSwapLayoutAction {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct NextSwapLayoutAction {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ApplyTiledSwapLayoutAction {
+    #[prost(string, tag="1")]
+    pub name: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ApplyFloatingSwapLayoutAction {
+    #[prost(string, tag="1")]
+    pub name: ::prost::alloc::string::String,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -935,6 +1041,8 @@ pub struct NewTiledPaneAction {
     pub tab_id: ::core::option::Option<u32>,
     #[prost(bool, tag="10")]
     pub no_focus: bool,
+    #[prost(message, optional, tag="11")]
+    pub border_style: ::core::option::Option<BorderStyleOverride>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1049,6 +1157,12 @@ pub struct RunAction {
     pub near_current_pane: bool,
     #[prost(bool, tag="3")]
     pub no_focus: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RunInBackgroundAction {
+    #[prost(message, optional, tag="1")]
+    pub command: ::core::option::Option<RunCommandAction>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1283,6 +1397,10 @@ pub struct CliPipeAction {
     pub cwd: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(string, optional, tag="12")]
     pub pane_title: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="13")]
+    pub popup: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, tag="14")]
+    pub popup_no_focus: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1352,6 +1470,14 @@ pub struct SetPaneColorAction {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SetPaneBorderStyleAction {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+    #[prost(message, optional, tag="2")]
+    pub border_style: ::core::option::Option<BorderStyleOverride>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Position {
     /// Changed from uint32 to int32 to support negative line numbers
     #[prost(int32, tag="1")]
@@ -1389,6 +1515,8 @@ pub struct CliAssets {
     pub host_terminal_env: ::std::collections::HashMap<::prost::alloc::string::String, ::prost::alloc::string::String>,
     #[prost(message, repeated, tag="13")]
     pub initial_panes: ::prost::alloc::vec::Vec<CommandOrPlugin>,
+    #[prost(message, optional, tag="14")]
+    pub switch_context: ::core::option::Option<SwitchContext>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1454,6 +1582,8 @@ pub struct ConnectToSession {
     pub layout: ::core::option::Option<LayoutInfo>,
     #[prost(string, optional, tag="5")]
     pub cwd: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, optional, tag="7")]
+    pub switch_context: ::core::option::Option<SwitchContext>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1468,6 +1598,8 @@ pub struct SwitchSessionAction {
     pub layout: ::core::option::Option<LayoutInfo>,
     #[prost(string, optional, tag="5")]
     pub cwd: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, tag="6")]
+    pub close_current: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1504,6 +1636,8 @@ pub mod new_pane_placement {
 pub struct NoPreferencePlacement {
     #[prost(bool, optional, tag="1")]
     pub borderless: ::core::option::Option<bool>,
+    #[prost(message, optional, tag="2")]
+    pub border_style: ::core::option::Option<BorderStyleOverride>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1512,6 +1646,8 @@ pub struct TiledPlacement {
     pub direction: ::core::option::Option<i32>,
     #[prost(bool, optional, tag="2")]
     pub borderless: ::core::option::Option<bool>,
+    #[prost(message, optional, tag="3")]
+    pub border_style: ::core::option::Option<BorderStyleOverride>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1520,6 +1656,8 @@ pub struct StackedPlacement {
     pub pane_id_to_stack_under: ::core::option::Option<PaneId>,
     #[prost(bool, optional, tag="2")]
     pub borderless: ::core::option::Option<bool>,
+    #[prost(message, optional, tag="3")]
+    pub border_style: ::core::option::Option<BorderStyleOverride>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1530,6 +1668,8 @@ pub struct NewPanePlacementInPlace {
     pub close_replaced_pane: bool,
     #[prost(bool, optional, tag="3")]
     pub borderless: ::core::option::Option<bool>,
+    #[prost(message, optional, tag="4")]
+    pub border_style: ::core::option::Option<BorderStyleOverride>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1568,6 +1708,8 @@ pub struct FloatingPaneCoordinates {
     pub pinned: ::core::option::Option<bool>,
     #[prost(bool, optional, tag="6")]
     pub borderless: ::core::option::Option<bool>,
+    #[prost(message, optional, tag="7")]
+    pub border_style: ::core::option::Option<BorderStyleOverride>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1610,6 +1752,8 @@ pub struct RunCommandAction {
     /// Added missing use_terminal_title field
     #[prost(bool, tag="8")]
     pub use_terminal_title: bool,
+    #[prost(bool, tag="9")]
+    pub notify: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1644,8 +1788,14 @@ pub struct TiledPaneLayout {
     pub default_fg: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(string, optional, tag="15")]
     pub default_bg: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, optional, tag="16")]
+    pub border_style: ::core::option::Option<BorderStyleOverride>,
+    #[prost(bool, optional, tag="17")]
+    pub attention_muted: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag="18")]
+    pub ignore_output: ::core::option::Option<bool>,
     /// NOTE: run_instructions_to_ignore is not represented here because it's a field used only inside the server itself and not part of the server/client contract
-    #[prost(string, optional, tag="16")]
+    #[prost(string, optional, tag="19")]
     pub stack_direction: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -1679,6 +1829,12 @@ pub struct FloatingPaneLayout {
     pub default_fg: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(string, optional, tag="14")]
     pub default_bg: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, optional, tag="15")]
+    pub border_style: ::core::option::Option<BorderStyleOverride>,
+    #[prost(bool, optional, tag="16")]
+    pub attention_muted: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag="17")]
+    pub ignore_output: ::core::option::Option<bool>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1809,6 +1965,8 @@ pub struct MouseEvent {
     pub wheel_left: bool,
     #[prost(bool, tag="12")]
     pub wheel_right: bool,
+    #[prost(uint32, tag="13")]
+    pub wheel_lines: u32,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -2078,6 +2236,28 @@ pub struct Options {
     pub scroll_mode_sync: ::core::option::Option<bool>,
     #[prost(enumeration="ThemeHue", optional, tag="69")]
     pub explicit_theme_hue: ::core::option::Option<i32>,
+    #[prost(string, optional, tag="70")]
+    pub keybinds_dir: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="71")]
+    pub keybinds_preset: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="72")]
+    pub keybinds_primary: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="73")]
+    pub keybinds_secondary: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="74")]
+    pub keybinds_unlock: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, optional, tag="75")]
+    pub context_menu_enabled: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag="76")]
+    pub dangerously_allow_web_serving_without_a_certificate: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag="78")]
+    pub session_indicator: ::core::option::Option<bool>,
+    #[prost(bool, optional, tag="79")]
+    pub swap_layout_notification: ::core::option::Option<bool>,
+    #[prost(string, optional, tag="81")]
+    pub on_quit: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, optional, tag="82")]
+    pub grapheme_clusters: ::core::option::Option<bool>,
 }
 /// Pane-targeting action messages
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -2247,11 +2427,372 @@ pub struct NextSwapLayoutByTabIdAction {
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ApplyTiledSwapLayoutByTabIdAction {
+    #[prost(uint64, tag="1")]
+    pub id: u64,
+    #[prost(string, tag="2")]
+    pub name: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ApplyFloatingSwapLayoutByTabIdAction {
+    #[prost(uint64, tag="1")]
+    pub id: u64,
+    #[prost(string, tag="2")]
+    pub name: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MoveTabByTabIdAction {
     #[prost(uint64, tag="1")]
     pub id: u64,
     #[prost(enumeration="Direction", tag="2")]
     pub direction: i32,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MoveTabToPositionAction {
+    #[prost(uint64, tag="1")]
+    pub id: u64,
+    #[prost(uint64, tag="2")]
+    pub position: u64,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct TogglePaneInGroupByPaneIdAction {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct StartRenamePaneByPaneIdAction {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct StartRenameTabByTabIdAction {
+    #[prost(uint64, tag="1")]
+    pub id: u64,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct DismissInfoPopupsAction {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenContextMenuAction {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ToggleSessionCardAction {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MutePaneAction {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MutePaneByPaneIdAction {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct IgnorePaneOutputAction {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct IgnorePaneOutputByPaneIdAction {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct WatchPaneAction {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct WatchPaneByPaneIdAction {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MuteTabAction {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MuteTabByTabIdAction {
+    #[prost(uint64, tag="1")]
+    pub id: u64,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MuteSessionAction {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ToggleSessionAction {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GoToPreviousSessionAction {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GoToNextSessionAction {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GoToNextAttentionAction {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ToggleTrayIconAction {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MarkPaneSeenAction {
+    #[prost(string, optional, tag="1")]
+    pub session: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, optional, tag="2")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MarkAllSeenAction {
+    #[prost(string, optional, tag="1")]
+    pub session: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, tag="2")]
+    pub this_session: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct WriteKeyToPaneIdAction {
+    #[prost(message, optional, tag="1")]
+    pub key_with_modifier: ::core::option::Option<KeyWithModifier>,
+    #[prost(message, optional, tag="2")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CommandText {
+    #[prost(string, tag="1")]
+    pub text: ::prost::alloc::string::String,
+    #[prost(enumeration="CommandTextSource", tag="2")]
+    pub source: i32,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AttentionDetail {
+    #[prost(enumeration="BlockedKind", optional, tag="1")]
+    pub kind: ::core::option::Option<i32>,
+    #[prost(uint32, optional, tag="2")]
+    pub progress: ::core::option::Option<u32>,
+    #[prost(string, optional, tag="3")]
+    pub app: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="4")]
+    pub title: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="5")]
+    pub body: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(int32, optional, tag="6")]
+    pub exit_code: ::core::option::Option<i32>,
+    #[prost(uint64, optional, tag="7")]
+    pub duration_ms: ::core::option::Option<u64>,
+    #[prost(message, optional, tag="8")]
+    pub command: ::core::option::Option<CommandText>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PaneAttention {
+    #[prost(enumeration="AttentionStatus", tag="1")]
+    pub status: i32,
+    #[prost(enumeration="AttentionSource", optional, tag="2")]
+    pub source: ::core::option::Option<i32>,
+    #[prost(string, tag="3")]
+    pub text: ::prost::alloc::string::String,
+    #[prost(message, optional, tag="4")]
+    pub detail: ::core::option::Option<AttentionDetail>,
+    #[prost(uint64, tag="5")]
+    pub since_ms: u64,
+    #[prost(uint64, tag="6")]
+    pub changed_ms: u64,
+    #[prost(bool, tag="7")]
+    pub seen: bool,
+    #[prost(enumeration="MuteScope", optional, tag="8")]
+    pub muted: ::core::option::Option<i32>,
+    #[prost(bool, tag="9")]
+    pub ignore_output: bool,
+    #[prost(bool, tag="10")]
+    pub watched: bool,
+    #[prost(bool, tag="11")]
+    pub from_watch: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AttentionCounts {
+    #[prost(uint32, tag="1")]
+    pub needs_you: u32,
+    #[prost(uint32, tag="2")]
+    pub failed: u32,
+    #[prost(uint32, tag="3")]
+    pub done: u32,
+    #[prost(uint32, tag="4")]
+    pub working: u32,
+    #[prost(uint32, tag="5")]
+    pub quiet: u32,
+    #[prost(uint32, tag="6")]
+    pub new_output: u32,
+    #[prost(uint32, tag="7")]
+    pub muted: u32,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AttentionItem {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+    #[prost(uint64, tag="2")]
+    pub tab_id: u64,
+    #[prost(string, tag="3")]
+    pub tab_name: ::prost::alloc::string::String,
+    #[prost(string, tag="4")]
+    pub pane_title: ::prost::alloc::string::String,
+    #[prost(message, optional, tag="5")]
+    pub attention: ::core::option::Option<PaneAttention>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SessionAttention {
+    #[prost(enumeration="AttentionStatus", tag="1")]
+    pub status: i32,
+    #[prost(message, optional, tag="2")]
+    pub counts: ::core::option::Option<AttentionCounts>,
+    #[prost(bool, tag="3")]
+    pub muted: bool,
+    #[prost(message, optional, tag="4")]
+    pub top: ::core::option::Option<AttentionItem>,
+    #[prost(message, repeated, tag="5")]
+    pub items: ::prost::alloc::vec::Vec<AttentionItem>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SessionHistory {
+    #[prost(string, repeated, tag="1")]
+    pub back: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(string, repeated, tag="2")]
+    pub forward: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="3")]
+    pub last: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SwitchArrival {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ToggleArrival {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BackArrival {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ForwardArrival {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AttentionArrival {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SessionArrival {
+    #[prost(oneof="session_arrival::Arrival", tags="1, 2, 3, 4, 5")]
+    pub arrival: ::core::option::Option<session_arrival::Arrival>,
+}
+/// Nested message and enum types in `SessionArrival`.
+pub mod session_arrival {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Arrival {
+        #[prost(message, tag="1")]
+        Switch(super::SwitchArrival),
+        #[prost(message, tag="2")]
+        Toggle(super::ToggleArrival),
+        #[prost(message, tag="3")]
+        Back(super::BackArrival),
+        #[prost(message, tag="4")]
+        Forward(super::ForwardArrival),
+        #[prost(message, tag="5")]
+        Attention(super::AttentionArrival),
+    }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SwitchContext {
+    #[prost(message, optional, tag="1")]
+    pub history: ::core::option::Option<SessionHistory>,
+    #[prost(message, optional, tag="2")]
+    pub arrival: ::core::option::Option<SessionArrival>,
+    #[prost(string, optional, tag="3")]
+    pub from_session: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(enumeration="StartupCard", optional, tag="4")]
+    pub startup_card: ::core::option::Option<i32>,
+    #[prost(bool, tag="5")]
+    pub disconnect_others: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SessionPreviewPane {
+    #[prost(uint32, tag="1")]
+    pub id: u32,
+    #[prost(bool, tag="2")]
+    pub is_plugin: bool,
+    #[prost(string, tag="3")]
+    pub title: ::prost::alloc::string::String,
+    #[prost(bool, tag="4")]
+    pub focused: bool,
+    #[prost(string, optional, tag="5")]
+    pub contents: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SessionPreviewTab {
+    #[prost(string, tag="1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(bool, tag="2")]
+    pub active: bool,
+    #[prost(message, repeated, tag="3")]
+    pub panes: ::prost::alloc::vec::Vec<SessionPreviewPane>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SessionPreview {
+    #[prost(string, tag="1")]
+    pub session_name: ::prost::alloc::string::String,
+    #[prost(uint32, optional, tag="2")]
+    pub tab_index: ::core::option::Option<u32>,
+    #[prost(uint32, optional, tag="3")]
+    pub active_tab_index: ::core::option::Option<u32>,
+    #[prost(string, repeated, tag="4")]
+    pub tab_names: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(string, tag="5")]
+    pub contents: ::prost::alloc::string::String,
+    #[prost(uint32, tag="6")]
+    pub pane_count: u32,
+    #[prost(uint32, tag="7")]
+    pub connected_clients: u32,
+    #[prost(string, optional, tag="8")]
+    pub error: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, repeated, tag="9")]
+    pub tabs: ::prost::alloc::vec::Vec<SessionPreviewTab>,
+    #[prost(message, optional, tag="10")]
+    pub pane_id: ::core::option::Option<PaneIdWithPlugin>,
+    #[prost(uint32, optional, tag="11")]
+    pub anchor_line: ::core::option::Option<u32>,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
@@ -2406,6 +2947,41 @@ impl KeyModifier {
             "KEY_MODIFIER_ALT" => Some(Self::Alt),
             "KEY_MODIFIER_SHIFT" => Some(Self::Shift),
             "KEY_MODIFIER_SUPER" => Some(Self::Super),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum LineStyle {
+    Single = 0,
+    Double = 1,
+    Heavy = 2,
+    Dashed = 3,
+    HeavyDashed = 4,
+}
+impl LineStyle {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            LineStyle::Single => "LINE_STYLE_SINGLE",
+            LineStyle::Double => "LINE_STYLE_DOUBLE",
+            LineStyle::Heavy => "LINE_STYLE_HEAVY",
+            LineStyle::Dashed => "LINE_STYLE_DASHED",
+            LineStyle::HeavyDashed => "LINE_STYLE_HEAVY_DASHED",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "LINE_STYLE_SINGLE" => Some(Self::Single),
+            "LINE_STYLE_DOUBLE" => Some(Self::Double),
+            "LINE_STYLE_HEAVY" => Some(Self::Heavy),
+            "LINE_STYLE_DASHED" => Some(Self::Dashed),
+            "LINE_STYLE_HEAVY_DASHED" => Some(Self::HeavyDashed),
             _ => None,
         }
     }
@@ -3075,10 +3651,466 @@ impl ThemeHue {
         }
     }
 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum HostTerminalThemeIndication {
+    Dark = 0,
+    Light = 1,
+}
+impl HostTerminalThemeIndication {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            HostTerminalThemeIndication::Dark => "HOST_TERMINAL_THEME_INDICATION_DARK",
+            HostTerminalThemeIndication::Light => "HOST_TERMINAL_THEME_INDICATION_LIGHT",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "HOST_TERMINAL_THEME_INDICATION_DARK" => Some(Self::Dark),
+            "HOST_TERMINAL_THEME_INDICATION_LIGHT" => Some(Self::Light),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum AttentionStatus {
+    Idle = 0,
+    Working = 1,
+    NewOutput = 2,
+    Quiet = 3,
+    Done = 4,
+    Failed = 5,
+    NeedsYou = 6,
+}
+impl AttentionStatus {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            AttentionStatus::Idle => "ATTENTION_STATUS_IDLE",
+            AttentionStatus::Working => "ATTENTION_STATUS_WORKING",
+            AttentionStatus::NewOutput => "ATTENTION_STATUS_NEW_OUTPUT",
+            AttentionStatus::Quiet => "ATTENTION_STATUS_QUIET",
+            AttentionStatus::Done => "ATTENTION_STATUS_DONE",
+            AttentionStatus::Failed => "ATTENTION_STATUS_FAILED",
+            AttentionStatus::NeedsYou => "ATTENTION_STATUS_NEEDS_YOU",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "ATTENTION_STATUS_IDLE" => Some(Self::Idle),
+            "ATTENTION_STATUS_WORKING" => Some(Self::Working),
+            "ATTENTION_STATUS_NEW_OUTPUT" => Some(Self::NewOutput),
+            "ATTENTION_STATUS_QUIET" => Some(Self::Quiet),
+            "ATTENTION_STATUS_DONE" => Some(Self::Done),
+            "ATTENTION_STATUS_FAILED" => Some(Self::Failed),
+            "ATTENTION_STATUS_NEEDS_YOU" => Some(Self::NeedsYou),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum AttentionSource {
+    ProgramStatus = 0,
+    Notification = 1,
+    Bell = 2,
+    CommandPane = 3,
+    ShellCommand = 4,
+    ForegroundProcess = 5,
+    IdleRule = 6,
+    Watch = 7,
+    UnseenOutput = 8,
+}
+impl AttentionSource {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            AttentionSource::ProgramStatus => "ATTENTION_SOURCE_PROGRAM_STATUS",
+            AttentionSource::Notification => "ATTENTION_SOURCE_NOTIFICATION",
+            AttentionSource::Bell => "ATTENTION_SOURCE_BELL",
+            AttentionSource::CommandPane => "ATTENTION_SOURCE_COMMAND_PANE",
+            AttentionSource::ShellCommand => "ATTENTION_SOURCE_SHELL_COMMAND",
+            AttentionSource::ForegroundProcess => "ATTENTION_SOURCE_FOREGROUND_PROCESS",
+            AttentionSource::IdleRule => "ATTENTION_SOURCE_IDLE_RULE",
+            AttentionSource::Watch => "ATTENTION_SOURCE_WATCH",
+            AttentionSource::UnseenOutput => "ATTENTION_SOURCE_UNSEEN_OUTPUT",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "ATTENTION_SOURCE_PROGRAM_STATUS" => Some(Self::ProgramStatus),
+            "ATTENTION_SOURCE_NOTIFICATION" => Some(Self::Notification),
+            "ATTENTION_SOURCE_BELL" => Some(Self::Bell),
+            "ATTENTION_SOURCE_COMMAND_PANE" => Some(Self::CommandPane),
+            "ATTENTION_SOURCE_SHELL_COMMAND" => Some(Self::ShellCommand),
+            "ATTENTION_SOURCE_FOREGROUND_PROCESS" => Some(Self::ForegroundProcess),
+            "ATTENTION_SOURCE_IDLE_RULE" => Some(Self::IdleRule),
+            "ATTENTION_SOURCE_WATCH" => Some(Self::Watch),
+            "ATTENTION_SOURCE_UNSEEN_OUTPUT" => Some(Self::UnseenOutput),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum BlockedKind {
+    Permission = 0,
+    Question = 1,
+    Auth = 2,
+}
+impl BlockedKind {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            BlockedKind::Permission => "BLOCKED_KIND_PERMISSION",
+            BlockedKind::Question => "BLOCKED_KIND_QUESTION",
+            BlockedKind::Auth => "BLOCKED_KIND_AUTH",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "BLOCKED_KIND_PERMISSION" => Some(Self::Permission),
+            "BLOCKED_KIND_QUESTION" => Some(Self::Question),
+            "BLOCKED_KIND_AUTH" => Some(Self::Auth),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum MuteScope {
+    Pane = 0,
+    Tab = 1,
+    Session = 2,
+}
+impl MuteScope {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            MuteScope::Pane => "MUTE_SCOPE_PANE",
+            MuteScope::Tab => "MUTE_SCOPE_TAB",
+            MuteScope::Session => "MUTE_SCOPE_SESSION",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "MUTE_SCOPE_PANE" => Some(Self::Pane),
+            "MUTE_SCOPE_TAB" => Some(Self::Tab),
+            "MUTE_SCOPE_SESSION" => Some(Self::Session),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum CommandTextSource {
+    Shell = 0,
+    Screen = 1,
+    Process = 2,
+}
+impl CommandTextSource {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            CommandTextSource::Shell => "COMMAND_TEXT_SOURCE_SHELL",
+            CommandTextSource::Screen => "COMMAND_TEXT_SOURCE_SCREEN",
+            CommandTextSource::Process => "COMMAND_TEXT_SOURCE_PROCESS",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "COMMAND_TEXT_SOURCE_SHELL" => Some(Self::Shell),
+            "COMMAND_TEXT_SOURCE_SCREEN" => Some(Self::Screen),
+            "COMMAND_TEXT_SOURCE_PROCESS" => Some(Self::Process),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum StartupCard {
+    Attention = 0,
+    Always = 1,
+    Never = 2,
+}
+impl StartupCard {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            StartupCard::Attention => "STARTUP_CARD_ATTENTION",
+            StartupCard::Always => "STARTUP_CARD_ALWAYS",
+            StartupCard::Never => "STARTUP_CARD_NEVER",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "STARTUP_CARD_ATTENTION" => Some(Self::Attention),
+            "STARTUP_CARD_ALWAYS" => Some(Self::Always),
+            "STARTUP_CARD_NEVER" => Some(Self::Never),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum PreviewAnchor {
+    Bottom = 0,
+    LastCommandOutput = 1,
+    NewOutputStart = 2,
+}
+impl PreviewAnchor {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            PreviewAnchor::Bottom => "PREVIEW_ANCHOR_BOTTOM",
+            PreviewAnchor::LastCommandOutput => "PREVIEW_ANCHOR_LAST_COMMAND_OUTPUT",
+            PreviewAnchor::NewOutputStart => "PREVIEW_ANCHOR_NEW_OUTPUT_START",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "PREVIEW_ANCHOR_BOTTOM" => Some(Self::Bottom),
+            "PREVIEW_ANCHOR_LAST_COMMAND_OUTPUT" => Some(Self::LastCommandOutput),
+            "PREVIEW_ANCHOR_NEW_OUTPUT_START" => Some(Self::NewOutputStart),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AppControlRequest {
+    #[prost(oneof="app_control_request::Request", tags="1, 2, 3, 4, 5, 6")]
+    pub request: ::core::option::Option<app_control_request::Request>,
+}
+/// Nested message and enum types in `AppControlRequest`.
+pub mod app_control_request {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Request {
+        #[prost(message, tag="1")]
+        OpenWindow(super::AppOpenWindowRequest),
+        #[prost(message, tag="2")]
+        ToggleTrayIcon(super::AppToggleTrayIconRequest),
+        #[prost(message, tag="3")]
+        ShowPopup(super::AppShowPopupRequest),
+        #[prost(message, tag="4")]
+        TogglePanel(super::AppTogglePanelRequest),
+        #[prost(message, tag="5")]
+        Ping(super::AppPingRequest),
+        #[prost(message, tag="6")]
+        Describe(super::AppDescribeRequest),
+    }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AppControlReply {
+    #[prost(oneof="app_control_reply::Reply", tags="1, 2, 3")]
+    pub reply: ::core::option::Option<app_control_reply::Reply>,
+}
+/// Nested message and enum types in `AppControlReply`.
+pub mod app_control_reply {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Reply {
+        #[prost(message, tag="1")]
+        Done(super::AppDoneReply),
+        #[prost(message, tag="2")]
+        Refused(super::AppRefusedReply),
+        #[prost(message, tag="3")]
+        State(super::AppStateReply),
+    }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AppOpenWindowRequest {
+    #[prost(string, optional, tag="1")]
+    pub session: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, tag="2")]
+    pub create: bool,
+    #[prost(message, optional, tag="3")]
+    pub pane_id: ::core::option::Option<PaneIdWithPlugin>,
+    #[prost(string, repeated, tag="4")]
+    pub command: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="5")]
+    pub cwd: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, tag="6")]
+    pub close_on_exit: bool,
+    #[prost(bool, tag="7")]
+    pub start_suspended: bool,
+    #[prost(bool, tag="8")]
+    pub force_run_commands: bool,
+    #[prost(enumeration="AppStartupMode", tag="9")]
+    pub startup_mode: i32,
+    #[prost(message, optional, tag="10")]
+    pub layout: ::core::option::Option<LayoutInfo>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AppToggleTrayIconRequest {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AppShowPopupRequest {
+    #[prost(enumeration="AppPopupView", tag="1")]
+    pub view: i32,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AppTogglePanelRequest {
+    #[prost(enumeration="AppPopupView", tag="1")]
+    pub view: i32,
+    #[prost(string, optional, tag="2")]
+    pub token: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AppPingRequest {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AppDescribeRequest {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AppDoneReply {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AppRefusedReply {
+    #[prost(string, tag="1")]
+    pub reason: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AppStateReply {
+    #[prost(message, repeated, tag="1")]
+    pub windows: ::prost::alloc::vec::Vec<AppWindowState>,
+    #[prost(message, optional, tag="2")]
+    pub panel: ::core::option::Option<AppPanelState>,
+    #[prost(string, repeated, tag="3")]
+    pub live_sessions: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(bool, tag="4")]
+    pub tray_icon: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AppWindowState {
+    #[prost(string, optional, tag="1")]
+    pub session: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AppPanelState {
+    #[prost(enumeration="AppPopupView", tag="1")]
+    pub view: i32,
+    #[prost(bool, tag="2")]
+    pub shown: bool,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum AppPopupView {
+    Unspecified = 0,
+    Inbox = 1,
+    Sessions = 2,
+    Quit = 3,
+}
+impl AppPopupView {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            AppPopupView::Unspecified => "APP_POPUP_VIEW_UNSPECIFIED",
+            AppPopupView::Inbox => "APP_POPUP_VIEW_INBOX",
+            AppPopupView::Sessions => "APP_POPUP_VIEW_SESSIONS",
+            AppPopupView::Quit => "APP_POPUP_VIEW_QUIT",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "APP_POPUP_VIEW_UNSPECIFIED" => Some(Self::Unspecified),
+            "APP_POPUP_VIEW_INBOX" => Some(Self::Inbox),
+            "APP_POPUP_VIEW_SESSIONS" => Some(Self::Sessions),
+            "APP_POPUP_VIEW_QUIT" => Some(Self::Quit),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum AppStartupMode {
+    Unspecified = 0,
+    Windowed = 1,
+    Maximized = 2,
+    Fullscreen = 3,
+    Remember = 4,
+}
+impl AppStartupMode {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            AppStartupMode::Unspecified => "APP_STARTUP_MODE_UNSPECIFIED",
+            AppStartupMode::Windowed => "APP_STARTUP_MODE_WINDOWED",
+            AppStartupMode::Maximized => "APP_STARTUP_MODE_MAXIMIZED",
+            AppStartupMode::Fullscreen => "APP_STARTUP_MODE_FULLSCREEN",
+            AppStartupMode::Remember => "APP_STARTUP_MODE_REMEMBER",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "APP_STARTUP_MODE_UNSPECIFIED" => Some(Self::Unspecified),
+            "APP_STARTUP_MODE_WINDOWED" => Some(Self::Windowed),
+            "APP_STARTUP_MODE_MAXIMIZED" => Some(Self::Maximized),
+            "APP_STARTUP_MODE_FULLSCREEN" => Some(Self::Fullscreen),
+            "APP_STARTUP_MODE_REMEMBER" => Some(Self::Remember),
+            _ => None,
+        }
+    }
+}
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ClientToServerMsg {
-    #[prost(oneof="client_to_server_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27")]
+    #[prost(oneof="client_to_server_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34")]
     pub message: ::core::option::Option<client_to_server_msg::Message>,
 }
 /// Nested message and enum types in `ClientToServerMsg`.
@@ -3140,6 +4172,20 @@ pub mod client_to_server_msg {
         SetMobileRenderPreferences(super::SetMobileRenderPreferencesMsg),
         #[prost(message, tag="27")]
         HostTerminalFocusChanged(super::HostTerminalFocusChangedMsg),
+        #[prost(message, tag="28")]
+        KittyZlibSupport(super::KittyZlibSupportMsg),
+        #[prost(message, tag="29")]
+        StructuredRenderSupport(super::StructuredRenderSupportMsg),
+        #[prost(message, tag="30")]
+        RenderFrameAck(super::RenderFrameAckMsg),
+        #[prost(message, tag="31")]
+        RequestSessionPreview(super::RequestSessionPreviewMsg),
+        #[prost(message, tag="32")]
+        FontFamilies(super::FontFamiliesMsg),
+        #[prost(message, tag="33")]
+        RequestSessionAttention(super::RequestSessionAttentionMsg),
+        #[prost(message, tag="34")]
+        PeerAttentionChanged(super::PeerAttentionChangedMsg),
     }
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -3308,12 +4354,46 @@ pub struct NestedSessionFrameFromHostMsg {
 pub struct KittyGraphicsSupportMsg {
     #[prost(bool, tag="1")]
     pub supported: bool,
+    #[prost(bool, tag="2")]
+    pub local_media: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct KittyZlibSupportMsg {
+    #[prost(bool, tag="1")]
+    pub supported: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SixelSupportMsg {
     #[prost(bool, tag="1")]
     pub supported: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RequestSessionPreviewMsg {
+    #[prost(uint32, optional, tag="1")]
+    pub tab_index: ::core::option::Option<u32>,
+    #[prost(uint32, optional, tag="2")]
+    pub pane_id: ::core::option::Option<u32>,
+    #[prost(bool, tag="3")]
+    pub pane_is_plugin: bool,
+    #[prost(enumeration="PreviewAnchor", optional, tag="4")]
+    pub anchor: ::core::option::Option<i32>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RequestSessionAttentionMsg {
+    #[prost(bool, tag="1")]
+    pub include_command_text: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PeerAttentionChangedMsg {
+    #[prost(string, tag="1")]
+    pub session_name: ::prost::alloc::string::String,
+    #[prost(message, optional, tag="2")]
+    pub attention: ::core::option::Option<SessionAttention>,
 }
 /// Empty message
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -3328,36 +4408,28 @@ pub struct SetMobileRenderPreferencesMsg {
     #[prost(bool, tag="2")]
     pub fit: bool,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
-#[repr(i32)]
-pub enum HostTerminalThemeIndication {
-    Dark = 0,
-    Light = 1,
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct StructuredRenderSupportMsg {
+    #[prost(bool, tag="1")]
+    pub supported: bool,
 }
-impl HostTerminalThemeIndication {
-    /// String value of the enum field names used in the ProtoBuf definition.
-    ///
-    /// The values are not transformed in any way and thus are considered stable
-    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
-    pub fn as_str_name(&self) -> &'static str {
-        match self {
-            HostTerminalThemeIndication::Dark => "HOST_TERMINAL_THEME_INDICATION_DARK",
-            HostTerminalThemeIndication::Light => "HOST_TERMINAL_THEME_INDICATION_LIGHT",
-        }
-    }
-    /// Creates an enum from field names used in the ProtoBuf definition.
-    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
-        match value {
-            "HOST_TERMINAL_THEME_INDICATION_DARK" => Some(Self::Dark),
-            "HOST_TERMINAL_THEME_INDICATION_LIGHT" => Some(Self::Light),
-            _ => None,
-        }
-    }
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct FontFamiliesMsg {
+    #[prost(string, repeated, tag="1")]
+    pub families: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RenderFrameAckMsg {
+    #[prost(uint64, tag="1")]
+    pub seq: u64,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ServerToClientMsg {
-    #[prost(oneof="server_to_client_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19")]
+    #[prost(oneof="server_to_client_msg::Message", tags="1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25")]
     pub message: ::core::option::Option<server_to_client_msg::Message>,
 }
 /// Nested message and enum types in `ServerToClientMsg`.
@@ -3403,13 +4475,61 @@ pub mod server_to_client_msg {
         EmitNestedSessionFrame(super::EmitNestedSessionFrameMsg),
         #[prost(message, tag="19")]
         MobileState(super::MobileStateMsg),
+        #[prost(message, tag="20")]
+        RenderFrame(super::RenderFrameMsg),
+        #[prost(message, tag="21")]
+        HostThemeMode(super::HostThemeModeMsg),
+        #[prost(message, tag="22")]
+        WindowSettings(super::WindowSettingsMsg),
+        #[prost(message, tag="23")]
+        HostProgramStatus(super::HostProgramStatusMsg),
+        #[prost(message, tag="24")]
+        SessionAttention(super::SessionAttentionMsg),
+        #[prost(message, tag="25")]
+        SessionPreview(super::SessionPreviewMsg),
     }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SessionPreviewMsg {
+    #[prost(message, optional, tag="1")]
+    pub preview: ::core::option::Option<SessionPreview>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SessionAttentionMsg {
+    #[prost(message, optional, tag="1")]
+    pub attention: ::core::option::Option<SessionAttention>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct HostProgramStatusMsg {
+    #[prost(message, optional, tag="1")]
+    pub status: ::core::option::Option<HostProgramStatus>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct HostProgramStatus {
+    #[prost(string, tag="1")]
+    pub state: ::prost::alloc::string::String,
+    #[prost(string, optional, tag="2")]
+    pub kind: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(uint32, optional, tag="3")]
+    pub progress: ::core::option::Option<u32>,
+    #[prost(string, tag="4")]
+    pub msg: ::prost::alloc::string::String,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct RenderMsg {
     #[prost(string, tag="1")]
     pub content: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RenderFrameMsg {
+    #[prost(bytes="vec", tag="1")]
+    pub frame: ::prost::alloc::vec::Vec<u8>,
 }
 /// Empty message
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -3452,6 +4572,8 @@ pub struct SwitchSessionMsg {
 pub struct UnblockCliPipeInputMsg {
     #[prost(string, tag="1")]
     pub pipe_name: ::prost::alloc::string::String,
+    #[prost(int32, optional, tag="2")]
+    pub exit_code: ::core::option::Option<i32>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -3481,6 +4603,18 @@ pub struct RenamedSessionMsg {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ConfigFileUpdatedMsg {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct WindowSettingsMsg {
+    #[prost(string, tag="1")]
+    pub settings_json: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct HostThemeModeMsg {
+    #[prost(enumeration="HostTerminalThemeIndication", tag="1")]
+    pub mode: i32,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]

@@ -1,0 +1,79 @@
+[package]
+name = "zellij-window"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Native window client for Zellij sessions"
+
+[dependencies]
+zellij-client = { path = "../zellij-client/", version = "0.46.0" }
+zellij-utils = { workspace = true }
+anyhow = { workspace = true }
+interprocess = { workspace = true }
+arboard = { workspace = true }
+chrono = { workspace = true }
+base64 = { version = "0.22", default-features = false, features = ["std"] }
+clap = { workspace = true }
+glow = { workspace = true }
+glutin = { workspace = true }
+glutin-winit = { workspace = true }
+libloading = { workspace = true }
+log = { workspace = true }
+memmap2 = { version = "0.9", default-features = false }
+miette = { workspace = true }
+png = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sixel-tokenizer = { version = "0.1.0", default-features = false }
+swash = { workspace = true }
+unicode-width = { workspace = true }
+winit = { workspace = true }
+futures-util = { version = "0.3", optional = true }
+tokio = { workspace = true, optional = true }
+tokio-tungstenite = { version = "0.28", optional = true }
+url = { workspace = true, optional = true }
+
+[features]
+test-support = []
+web_server_capability = [
+    "dep:futures-util",
+    "dep:tokio",
+    "dep:tokio-tungstenite",
+    "dep:url",
+    "zellij-client/web_server_capability",
+]
+
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }
+signal-hook = { workspace = true }
+
+[target.'cfg(all(unix, not(target_os = "macos"), not(target_os = "android")))'.dependencies]
+wayland-client = { version = "0.31", features = ["system"] }
+wayland-protocols = { version = "0.32", features = ["client", "staging"] }
+
+[target.'cfg(windows)'.dependencies]
+dunce = "1.0"
+glutin = { workspace = true, features = ["wgl"] }
+glutin-winit = { workspace = true, features = ["wgl"] }
+humantime = { workspace = true }
+windows = { version = "0.62", features = ["Data_Xml_Dom", "Foundation", "UI_Notifications", "Win32_Foundation", "Win32_Storage_EnhancedStorage", "Win32_Storage_FileSystem", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_Variant", "Win32_System_WinRT", "Win32_UI_Shell", "Win32_UI_Shell_PropertiesSystem"] }
+windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_System_Com", "Win32_Security", "Win32_System_Console", "Win32_System_Diagnostics_Debug", "Win32_System_LibraryLoader", "Win32_System_Registry", "Win32_UI_HiDpi", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+block2 = "0.6"
+objc2 = "0.6"
+objc2-app-kit = "0.3"
+objc2-foundation = "0.3"
+objc2-user-notifications = "0.3"
+
+[target.'cfg(any(target_os = "macos", windows))'.dependencies]
+fontdb = { version = "0.23", default-features = false, features = ["std", "fs", "memmap"] }
+
+[dev-dependencies]
+alacritty_terminal = { workspace = true }
+khronos-egl = { workspace = true }
+tempfile = { workspace = true }
+vte = { workspace = true }
+zellij-server = { workspace = true }

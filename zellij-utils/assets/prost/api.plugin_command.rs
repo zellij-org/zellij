@@ -4,7 +4,7 @@
 pub struct PluginCommand {
     #[prost(enumeration="CommandName", tag="1")]
     pub name: i32,
-    #[prost(oneof="plugin_command::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 168, 169, 170, 171")]
+    #[prost(oneof="plugin_command::Payload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216")]
     pub payload: ::core::option::Option<plugin_command::Payload>,
 }
 /// Nested message and enum types in `PluginCommand`.
@@ -320,7 +320,591 @@ pub mod plugin_command {
         SetPaneFrameStylePayload(super::SetPaneFrameStylePayload),
         #[prost(message, tag="171")]
         ToggleFloatingPanesPayload(super::ToggleFloatingPanesPayload),
+        #[prost(string, tag="172")]
+        ApplyTiledSwapLayoutPayload(::prost::alloc::string::String),
+        #[prost(string, tag="173")]
+        ApplyFloatingSwapLayoutPayload(::prost::alloc::string::String),
+        #[prost(message, tag="174")]
+        SetPaneBorderStylePayload(super::SetPaneBorderStylePayload),
+        #[prost(message, tag="175")]
+        GetNestedSessionKeybindsPayload(super::GetNestedSessionKeybindsPayload),
+        #[prost(message, tag="176")]
+        SetSelectableSlotPayload(super::SetSelectableSlotPayload),
+        #[prost(uint32, tag="177")]
+        HideSlotPayload(u32),
+        #[prost(message, tag="178")]
+        ShowSlotPayload(super::ShowSlotPayload),
+        #[prost(uint32, tag="179")]
+        CloseSlotPayload(u32),
+        #[prost(message, tag="180")]
+        OpenContextMenuPayload(super::OpenContextMenuPayload),
+        #[prost(message, tag="181")]
+        OpenPluginPopupPayload(super::OpenPluginPopupPayload),
+        #[prost(message, tag="182")]
+        SetPopupSizePayload(super::SetPopupSizePayload),
+        #[prost(uint32, tag="183")]
+        RunContextMenuItemPayload(u32),
+        #[prost(message, tag="184")]
+        ReadConfigPayload(super::ReadConfigPayload),
+        #[prost(message, tag="185")]
+        RevertConfigPayload(super::RevertConfigPayload),
+        #[prost(string, tag="186")]
+        UnsetConfigSettingPayload(::prost::alloc::string::String),
+        #[prost(message, tag="187")]
+        SaveConfigPayload(super::SaveConfigPayload),
+        #[prost(message, tag="188")]
+        CopyKeybindPresetPayload(super::CopyKeybindPresetPayload),
+        #[prost(message, tag="189")]
+        SetCliPipeExitCodePayload(super::SetCliPipeExitCodePayload),
+        #[prost(message, tag="190")]
+        OverwriteConfigFilePayload(super::SaveConfigPayload),
+        #[prost(message, tag="191")]
+        ReloadConfigFilePayload(super::SaveConfigPayload),
+        #[prost(string, tag="192")]
+        ReplaceConfigBlocksPayload(::prost::alloc::string::String),
+        #[prost(message, tag="193")]
+        ResetKeysPayload(super::ResetKeysPayload),
+        #[prost(message, tag="194")]
+        SaveKeybindsAsPresetPayload(super::SaveKeybindsAsPresetPayload),
+        #[prost(message, tag="195")]
+        PromptPayload(super::PromptPayload),
+        #[prost(message, tag="196")]
+        ReplyToPromptPayload(super::ReplyToPromptPayload),
+        #[prost(message, tag="197")]
+        WriteThemeFilePayload(super::WriteThemeFilePayload),
+        #[prost(string, tag="198")]
+        DeleteThemeFilePayload(::prost::alloc::string::String),
+        #[prost(message, tag="199")]
+        SetSelfCollapsedPayload(super::SetSelfCollapsedPayload),
+        #[prost(message, tag="200")]
+        SetCollapsedSlotPayload(super::SetCollapsedSlotPayload),
+        #[prost(message, tag="201")]
+        ResetMousebindsPayload(super::ResetMousebindsPayload),
+        #[prost(message, tag="202")]
+        GetSessionSuggestionsPayload(super::GetSessionSuggestionsPayload),
+        #[prost(bool, tag="203")]
+        SetPopupFocusedPayload(bool),
+        #[prost(message, tag="204")]
+        PopupToFloatingPanePayload(super::PopupToFloatingPanePayload),
+        #[prost(message, tag="205")]
+        SwitchSessionAndCloseCurrentPayload(super::SwitchSessionPayload),
+        #[prost(message, tag="206")]
+        GetSessionPreviewPayload(super::GetSessionPreviewPayload),
+        #[prost(string, tag="207")]
+        GetSavedSessionPreviewPayload(::prost::alloc::string::String),
+        #[prost(message, tag="208")]
+        MarkSessionPaneSeenPayload(super::SessionPanePayload),
+        #[prost(message, tag="209")]
+        MarkAllSeenPayload(super::MarkAllSeenPayload),
+        #[prost(message, tag="210")]
+        WriteToSessionPanePayload(super::WriteToSessionPanePayload),
+        #[prost(message, tag="211")]
+        ToggleSessionPaneMutePayload(super::SessionPanePayload),
+        #[prost(message, tag="212")]
+        ToggleSessionPaneIgnoreOutputPayload(super::SessionPanePayload),
+        #[prost(message, tag="213")]
+        ToggleSessionPaneWatchPayload(super::SessionPanePayload),
+        #[prost(message, tag="214")]
+        FocusSessionPanePayload(super::SessionPanePayload),
+        #[prost(message, tag="215")]
+        SendKeyToSessionPanePayload(super::SendKeyToSessionPanePayload),
+        #[prost(message, tag="216")]
+        OpenSessionWindowPayload(super::OpenSessionWindowPayload),
     }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetSessionSuggestionsPayload {
+    #[prost(uint32, tag="1")]
+    pub limit: u32,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PopupToFloatingPanePayload {
+    #[prost(message, optional, tag="1")]
+    pub coordinates: ::core::option::Option<FloatingPaneCoordinates>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetSessionPreviewPayload {
+    #[prost(string, tag="1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(uint32, optional, tag="2")]
+    pub tab_index: ::core::option::Option<u32>,
+    #[prost(uint32, optional, tag="3")]
+    pub pane_id: ::core::option::Option<u32>,
+    #[prost(bool, tag="4")]
+    pub pane_is_plugin: bool,
+    #[prost(string, optional, tag="5")]
+    pub anchor: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SessionPanePayload {
+    #[prost(string, tag="1")]
+    pub session_name: ::prost::alloc::string::String,
+    #[prost(message, optional, tag="2")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MarkAllSeenPayload {
+    #[prost(string, optional, tag="1")]
+    pub session_name: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenSessionWindowPayload {
+    #[prost(string, optional, tag="1")]
+    pub session_name: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, tag="2")]
+    pub new_window: bool,
+    #[prost(uint32, optional, tag="3")]
+    pub pane_id: ::core::option::Option<u32>,
+    #[prost(bool, tag="4")]
+    pub pane_is_plugin: bool,
+    #[prost(message, optional, tag="5")]
+    pub layout: ::core::option::Option<super::event::LayoutInfo>,
+    #[prost(string, optional, tag="6")]
+    pub cwd: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct WriteToSessionPanePayload {
+    #[prost(string, tag="1")]
+    pub session_name: ::prost::alloc::string::String,
+    #[prost(message, optional, tag="2")]
+    pub pane_id: ::core::option::Option<PaneId>,
+    #[prost(bytes="vec", tag="3")]
+    pub bytes_to_write: ::prost::alloc::vec::Vec<u8>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SendKeyToSessionPanePayload {
+    #[prost(string, tag="1")]
+    pub session_name: ::prost::alloc::string::String,
+    #[prost(message, optional, tag="2")]
+    pub pane_id: ::core::option::Option<PaneId>,
+    #[prost(message, optional, tag="3")]
+    pub key: ::core::option::Option<super::key::Key>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PromptPayload {
+    #[prost(uint64, tag="1")]
+    pub request_id: u64,
+    #[prost(message, optional, tag="2")]
+    pub request: ::core::option::Option<super::prompt::PromptRequest>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ReplyToPromptPayload {
+    #[prost(uint64, tag="1")]
+    pub request_id: u64,
+    #[prost(message, optional, tag="2")]
+    pub result: ::core::option::Option<super::prompt::PromptResult>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SetCliPipeExitCodePayload {
+    #[prost(string, tag="1")]
+    pub pipe_name: ::prost::alloc::string::String,
+    #[prost(int32, tag="2")]
+    pub exit_code: i32,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CopyKeybindPresetPayload {
+    #[prost(string, tag="1")]
+    pub preset: ::prost::alloc::string::String,
+    #[prost(string, tag="2")]
+    pub new_name: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CopyKeybindPresetResponse {
+    #[prost(oneof="copy_keybind_preset_response::Result", tags="1, 2")]
+    pub result: ::core::option::Option<copy_keybind_preset_response::Result>,
+}
+/// Nested message and enum types in `CopyKeybindPresetResponse`.
+pub mod copy_keybind_preset_response {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Result {
+        #[prost(string, tag="1")]
+        NewName(::prost::alloc::string::String),
+        #[prost(string, tag="2")]
+        Error(::prost::alloc::string::String),
+    }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct WriteThemeFilePayload {
+    #[prost(string, tag="1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(string, optional, tag="2")]
+    pub copy_from: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, repeated, tag="3")]
+    pub colours: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct WriteThemeFileResponse {
+    #[prost(oneof="write_theme_file_response::Result", tags="1, 2")]
+    pub result: ::core::option::Option<write_theme_file_response::Result>,
+}
+/// Nested message and enum types in `WriteThemeFileResponse`.
+pub mod write_theme_file_response {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Result {
+        #[prost(string, tag="1")]
+        Path(::prost::alloc::string::String),
+        #[prost(string, tag="2")]
+        Error(::prost::alloc::string::String),
+    }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct LeaderValue {
+    #[prost(string, tag="1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(string, tag="2")]
+    pub value: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct KeybindsSelectionSnapshot {
+    #[prost(string, optional, tag="1")]
+    pub preset: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="2")]
+    pub primary: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="3")]
+    pub secondary: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="4")]
+    pub unlock: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, tag="5")]
+    pub clears_defaults: bool,
+    #[prost(bool, tag="6")]
+    pub has_own_keybindings: bool,
+    #[prost(message, optional, tag="7")]
+    pub active: ::core::option::Option<super::event::KeybindPresetInfo>,
+    #[prost(message, repeated, tag="8")]
+    pub active_values: ::prost::alloc::vec::Vec<LeaderValue>,
+    #[prost(string, optional, tag="9")]
+    pub error: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, tag="10")]
+    pub set_by_layout: bool,
+    #[prost(enumeration="super::input_mode::InputMode", optional, tag="11")]
+    pub default_mode: ::core::option::Option<i32>,
+    #[prost(bool, tag="12")]
+    pub set_on_command_line: bool,
+    #[prost(bool, tag="13")]
+    pub has_own_mousebindings: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ReadConfigPayload {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RevertConfigPayload {
+    #[prost(string, optional, tag="1")]
+    pub key: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SaveConfigPayload {
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ConfigSettingState {
+    #[prost(string, tag="1")]
+    pub key: ::prost::alloc::string::String,
+    #[prost(string, optional, tag="2")]
+    pub saved_value: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="3")]
+    pub current_value: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, tag="4")]
+    pub set_in_file: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ReadConfigResponse {
+    #[prost(message, repeated, tag="1")]
+    pub settings: ::prost::alloc::vec::Vec<ConfigSettingState>,
+    #[prost(string, optional, tag="2")]
+    pub config_file_path: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="3")]
+    pub backup_file_path: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, repeated, tag="4")]
+    pub pending_restart_settings: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(string, repeated, tag="5")]
+    pub theme_names: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(string, repeated, tag="6")]
+    pub plugin_aliases: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(string, repeated, tag="7")]
+    pub load_plugins: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(string, repeated, tag="8")]
+    pub env_vars: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(string, repeated, tag="9")]
+    pub context_menu_items: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(message, optional, tag="10")]
+    pub keybinds: ::core::option::Option<KeybindsSelectionSnapshot>,
+    #[prost(message, optional, tag="11")]
+    pub blocks: ::core::option::Option<ConfigBlocks>,
+    #[prost(message, optional, tag="12")]
+    pub saved_blocks: ::core::option::Option<ConfigBlocks>,
+    #[prost(message, optional, tag="13")]
+    pub default_blocks: ::core::option::Option<ConfigBlocks>,
+    #[prost(message, repeated, tag="14")]
+    pub keybindings: ::prost::alloc::vec::Vec<KeybindingEntry>,
+    #[prost(message, repeated, tag="15")]
+    pub mousebindings: ::prost::alloc::vec::Vec<MousebindingEntry>,
+    #[prost(string, repeated, tag="16")]
+    pub font_families: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ConfigPair {
+    #[prost(string, tag="1")]
+    pub key: ::prost::alloc::string::String,
+    #[prost(string, tag="2")]
+    pub value: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PluginEntry {
+    #[prost(string, tag="1")]
+    pub location: ::prost::alloc::string::String,
+    #[prost(string, optional, tag="2")]
+    pub cwd: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, repeated, tag="3")]
+    pub configuration: ::prost::alloc::vec::Vec<ConfigPair>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PluginAliasEntry {
+    #[prost(string, tag="1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(message, optional, tag="2")]
+    pub plugin: ::core::option::Option<PluginEntry>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EnvVarEntry {
+    #[prost(string, tag="1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(string, tag="2")]
+    pub value: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MenuItemEntry {
+    #[prost(string, optional, tag="1")]
+    pub label: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, repeated, tag="2")]
+    pub actions: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="3")]
+    pub shortcut: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MenuSectionEntries {
+    #[prost(string, tag="1")]
+    pub section: ::prost::alloc::string::String,
+    #[prost(message, repeated, tag="2")]
+    pub entries: ::prost::alloc::vec::Vec<MenuItemEntry>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ThemeEntry {
+    #[prost(string, tag="1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(enumeration="ThemeSource", tag="2")]
+    pub source: i32,
+    #[prost(string, repeated, tag="3")]
+    pub colours: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="4")]
+    pub file_path: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ConfigBlocks {
+    #[prost(message, repeated, tag="1")]
+    pub plugin_aliases: ::prost::alloc::vec::Vec<PluginAliasEntry>,
+    #[prost(message, repeated, tag="2")]
+    pub load_plugins: ::prost::alloc::vec::Vec<PluginEntry>,
+    #[prost(message, repeated, tag="3")]
+    pub env: ::prost::alloc::vec::Vec<EnvVarEntry>,
+    #[prost(message, repeated, tag="4")]
+    pub context_menu: ::prost::alloc::vec::Vec<MenuSectionEntries>,
+    #[prost(message, repeated, tag="5")]
+    pub themes: ::prost::alloc::vec::Vec<ThemeEntry>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct KeybindingEntry {
+    #[prost(enumeration="super::input_mode::InputMode", tag="1")]
+    pub mode: i32,
+    #[prost(string, tag="2")]
+    pub key: ::prost::alloc::string::String,
+    #[prost(string, repeated, tag="3")]
+    pub actions: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(enumeration="KeybindingSourceKind", tag="4")]
+    pub source: i32,
+    #[prost(string, optional, tag="5")]
+    pub shared_block: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, tag="6")]
+    pub unbound: bool,
+    #[prost(bool, tag="7")]
+    pub has_preset_binding: bool,
+    #[prost(string, repeated, tag="8")]
+    pub preset_actions: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(bool, tag="9")]
+    pub unsaved: bool,
+    #[prost(bool, tag="10")]
+    pub preset_same_as_actions: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MousebindingEntry {
+    #[prost(enumeration="super::input_mode::InputMode", tag="1")]
+    pub mode: i32,
+    #[prost(string, tag="2")]
+    pub trigger: ::prost::alloc::string::String,
+    #[prost(string, tag="3")]
+    pub target: ::prost::alloc::string::String,
+    #[prost(string, repeated, tag="4")]
+    pub actions: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(bool, tag="5")]
+    pub app_first: bool,
+    #[prost(enumeration="KeybindingSourceKind", tag="6")]
+    pub source: i32,
+    #[prost(string, optional, tag="7")]
+    pub shared_block: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, tag="8")]
+    pub unbound: bool,
+    #[prost(bool, tag="9")]
+    pub has_preset_binding: bool,
+    #[prost(string, repeated, tag="10")]
+    pub preset_actions: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(bool, tag="11")]
+    pub unsaved: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MouseTriggerInMode {
+    #[prost(enumeration="super::input_mode::InputMode", tag="1")]
+    pub input_mode: i32,
+    #[prost(string, tag="2")]
+    pub trigger: ::prost::alloc::string::String,
+    #[prost(string, tag="3")]
+    pub target: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ResetMousebindsPayload {
+    #[prost(message, repeated, tag="1")]
+    pub triggers: ::prost::alloc::vec::Vec<MouseTriggerInMode>,
+    #[prost(bool, tag="2")]
+    pub write_config_to_disk: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SaveKeybindsAsPresetPayload {
+    #[prost(string, tag="1")]
+    pub new_name: ::prost::alloc::string::String,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ResetKeysPayload {
+    #[prost(message, repeated, tag="1")]
+    pub keys: ::prost::alloc::vec::Vec<KeyToUnbind>,
+    #[prost(bool, tag="2")]
+    pub write_config_to_disk: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenContextMenuPayload {
+    #[prost(bool, tag="1")]
+    pub target_is_tab: bool,
+    #[prost(uint32, tag="2")]
+    pub tab_index: u32,
+    #[prost(uint32, tag="3")]
+    pub line: u32,
+    #[prost(uint32, tag="4")]
+    pub column: u32,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OpenPluginPopupPayload {
+    #[prost(string, tag="1")]
+    pub plugin_url: ::prost::alloc::string::String,
+    #[prost(message, repeated, tag="2")]
+    pub configuration: ::prost::alloc::vec::Vec<ContextItem>,
+    #[prost(uint32, tag="3")]
+    pub line: u32,
+    #[prost(uint32, tag="4")]
+    pub column: u32,
+    #[prost(uint32, tag="5")]
+    pub width: u32,
+    #[prost(uint32, tag="6")]
+    pub height: u32,
+    #[prost(bool, optional, tag="7")]
+    pub focused: ::core::option::Option<bool>,
+    #[prost(string, optional, tag="8")]
+    pub corner: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SetPopupSizePayload {
+    #[prost(uint32, tag="1")]
+    pub width: u32,
+    #[prost(uint32, tag="2")]
+    pub height: u32,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SetSelectableSlotPayload {
+    #[prost(uint32, tag="1")]
+    pub slot_id: u32,
+    #[prost(bool, tag="2")]
+    pub selectable: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SetCollapsedSlotPayload {
+    #[prost(uint32, tag="1")]
+    pub slot_id: u32,
+    #[prost(bool, tag="2")]
+    pub collapsed: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ShowSlotPayload {
+    #[prost(uint32, tag="1")]
+    pub slot_id: u32,
+    #[prost(bool, tag="2")]
+    pub should_float_if_hidden: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SlotCommandResponse {
+    #[prost(string, optional, tag="1")]
+    pub error: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetNestedSessionKeybindsPayload {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SetSelfCollapsedPayload {
+    #[prost(bool, tag="1")]
+    pub collapsed: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -567,6 +1151,14 @@ pub struct SetPaneBorderlessPayload {
     pub pane_id: ::core::option::Option<PaneId>,
     #[prost(bool, tag="2")]
     pub borderless: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SetPaneBorderStylePayload {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+    #[prost(message, optional, tag="2")]
+    pub border_style: ::core::option::Option<super::style::BorderStyleOverride>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -853,6 +1445,10 @@ pub struct SwitchSessionPayload {
     pub layout: ::core::option::Option<super::event::LayoutInfo>,
     #[prost(string, optional, tag="6")]
     pub cwd: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag="8")]
+    pub startup_card: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bool, optional, tag="9")]
+    pub disconnect_others: ::core::option::Option<bool>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1002,6 +1598,8 @@ pub struct FloatingPaneCoordinates {
     pub pinned: ::core::option::Option<bool>,
     #[prost(bool, optional, tag="6")]
     pub borderless: ::core::option::Option<bool>,
+    #[prost(message, optional, tag="7")]
+    pub border_style: ::core::option::Option<super::style::BorderStyleOverride>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -2227,6 +2825,51 @@ pub enum CommandName {
     NewPane = 226,
     ToggleFocusNoUiFullscreen = 227,
     FocusHostSession = 228,
+    ApplyTiledSwapLayout = 229,
+    ApplyFloatingSwapLayout = 230,
+    SetPaneBorderStyle = 231,
+    GetNestedSessionKeybinds = 232,
+    SetSelectableSlot = 233,
+    HideSlot = 234,
+    ShowSlot = 235,
+    CloseSlot = 236,
+    OpenContextMenu = 237,
+    OpenPluginPopup = 238,
+    SetPopupSize = 239,
+    RunContextMenuItem = 240,
+    ReadConfig = 241,
+    RevertConfig = 242,
+    UnsetConfigSetting = 243,
+    SaveConfig = 244,
+    CopyKeybindPreset = 245,
+    SetCliPipeExitCode = 246,
+    OverwriteConfigFile = 247,
+    ReloadConfigFile = 248,
+    ReplaceConfigBlocks = 249,
+    ResetKeys = 250,
+    SaveKeybindsAsPreset = 251,
+    Prompt = 252,
+    ReplyToPrompt = 253,
+    WriteThemeFile = 254,
+    DeleteThemeFile = 255,
+    SetSelfCollapsed = 256,
+    SetCollapsedSlot = 257,
+    ResetMousebinds = 258,
+    GetSessionSuggestions = 259,
+    SetPopupFocused = 260,
+    PopupToFloatingPane = 261,
+    SwitchSessionAndCloseCurrent = 262,
+    GetSessionPreview = 263,
+    GetSavedSessionPreview = 264,
+    MarkSessionPaneSeen = 265,
+    MarkAllSeen = 266,
+    WriteToSessionPane = 267,
+    SendKeyToSessionPane = 268,
+    ToggleSessionPaneMute = 269,
+    ToggleSessionPaneIgnoreOutput = 270,
+    ToggleSessionPaneWatch = 271,
+    FocusSessionPane = 272,
+    OpenSessionWindow = 273,
 }
 impl CommandName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -2438,6 +3081,51 @@ impl CommandName {
             CommandName::NewPane => "NewPane",
             CommandName::ToggleFocusNoUiFullscreen => "ToggleFocusNoUiFullscreen",
             CommandName::FocusHostSession => "FocusHostSession",
+            CommandName::ApplyTiledSwapLayout => "ApplyTiledSwapLayout",
+            CommandName::ApplyFloatingSwapLayout => "ApplyFloatingSwapLayout",
+            CommandName::SetPaneBorderStyle => "SetPaneBorderStyle",
+            CommandName::GetNestedSessionKeybinds => "GetNestedSessionKeybinds",
+            CommandName::SetSelectableSlot => "SetSelectableSlot",
+            CommandName::HideSlot => "HideSlot",
+            CommandName::ShowSlot => "ShowSlot",
+            CommandName::CloseSlot => "CloseSlot",
+            CommandName::OpenContextMenu => "OpenContextMenu",
+            CommandName::OpenPluginPopup => "OpenPluginPopup",
+            CommandName::SetPopupSize => "SetPopupSize",
+            CommandName::RunContextMenuItem => "RunContextMenuItem",
+            CommandName::ReadConfig => "ReadConfig",
+            CommandName::RevertConfig => "RevertConfig",
+            CommandName::UnsetConfigSetting => "UnsetConfigSetting",
+            CommandName::SaveConfig => "SaveConfig",
+            CommandName::CopyKeybindPreset => "CopyKeybindPreset",
+            CommandName::SetCliPipeExitCode => "SetCliPipeExitCode",
+            CommandName::OverwriteConfigFile => "OverwriteConfigFile",
+            CommandName::ReloadConfigFile => "ReloadConfigFile",
+            CommandName::ReplaceConfigBlocks => "ReplaceConfigBlocks",
+            CommandName::ResetKeys => "ResetKeys",
+            CommandName::SaveKeybindsAsPreset => "SaveKeybindsAsPreset",
+            CommandName::Prompt => "Prompt",
+            CommandName::ReplyToPrompt => "ReplyToPrompt",
+            CommandName::WriteThemeFile => "WriteThemeFile",
+            CommandName::DeleteThemeFile => "DeleteThemeFile",
+            CommandName::SetSelfCollapsed => "SetSelfCollapsed",
+            CommandName::SetCollapsedSlot => "SetCollapsedSlot",
+            CommandName::ResetMousebinds => "ResetMousebinds",
+            CommandName::GetSessionSuggestions => "GetSessionSuggestions",
+            CommandName::SetPopupFocused => "SetPopupFocused",
+            CommandName::PopupToFloatingPane => "PopupToFloatingPane",
+            CommandName::SwitchSessionAndCloseCurrent => "SwitchSessionAndCloseCurrent",
+            CommandName::GetSessionPreview => "GetSessionPreview",
+            CommandName::GetSavedSessionPreview => "GetSavedSessionPreview",
+            CommandName::MarkSessionPaneSeen => "MarkSessionPaneSeen",
+            CommandName::MarkAllSeen => "MarkAllSeen",
+            CommandName::WriteToSessionPane => "WriteToSessionPane",
+            CommandName::SendKeyToSessionPane => "SendKeyToSessionPane",
+            CommandName::ToggleSessionPaneMute => "ToggleSessionPaneMute",
+            CommandName::ToggleSessionPaneIgnoreOutput => "ToggleSessionPaneIgnoreOutput",
+            CommandName::ToggleSessionPaneWatch => "ToggleSessionPaneWatch",
+            CommandName::FocusSessionPane => "FocusSessionPane",
+            CommandName::OpenSessionWindow => "OpenSessionWindow",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -2646,6 +3334,112 @@ impl CommandName {
             "NewPane" => Some(Self::NewPane),
             "ToggleFocusNoUiFullscreen" => Some(Self::ToggleFocusNoUiFullscreen),
             "FocusHostSession" => Some(Self::FocusHostSession),
+            "ApplyTiledSwapLayout" => Some(Self::ApplyTiledSwapLayout),
+            "ApplyFloatingSwapLayout" => Some(Self::ApplyFloatingSwapLayout),
+            "SetPaneBorderStyle" => Some(Self::SetPaneBorderStyle),
+            "GetNestedSessionKeybinds" => Some(Self::GetNestedSessionKeybinds),
+            "SetSelectableSlot" => Some(Self::SetSelectableSlot),
+            "HideSlot" => Some(Self::HideSlot),
+            "ShowSlot" => Some(Self::ShowSlot),
+            "CloseSlot" => Some(Self::CloseSlot),
+            "OpenContextMenu" => Some(Self::OpenContextMenu),
+            "OpenPluginPopup" => Some(Self::OpenPluginPopup),
+            "SetPopupSize" => Some(Self::SetPopupSize),
+            "RunContextMenuItem" => Some(Self::RunContextMenuItem),
+            "ReadConfig" => Some(Self::ReadConfig),
+            "RevertConfig" => Some(Self::RevertConfig),
+            "UnsetConfigSetting" => Some(Self::UnsetConfigSetting),
+            "SaveConfig" => Some(Self::SaveConfig),
+            "CopyKeybindPreset" => Some(Self::CopyKeybindPreset),
+            "SetCliPipeExitCode" => Some(Self::SetCliPipeExitCode),
+            "OverwriteConfigFile" => Some(Self::OverwriteConfigFile),
+            "ReloadConfigFile" => Some(Self::ReloadConfigFile),
+            "ReplaceConfigBlocks" => Some(Self::ReplaceConfigBlocks),
+            "ResetKeys" => Some(Self::ResetKeys),
+            "SaveKeybindsAsPreset" => Some(Self::SaveKeybindsAsPreset),
+            "Prompt" => Some(Self::Prompt),
+            "ReplyToPrompt" => Some(Self::ReplyToPrompt),
+            "WriteThemeFile" => Some(Self::WriteThemeFile),
+            "DeleteThemeFile" => Some(Self::DeleteThemeFile),
+            "SetSelfCollapsed" => Some(Self::SetSelfCollapsed),
+            "SetCollapsedSlot" => Some(Self::SetCollapsedSlot),
+            "ResetMousebinds" => Some(Self::ResetMousebinds),
+            "GetSessionSuggestions" => Some(Self::GetSessionSuggestions),
+            "SetPopupFocused" => Some(Self::SetPopupFocused),
+            "PopupToFloatingPane" => Some(Self::PopupToFloatingPane),
+            "SwitchSessionAndCloseCurrent" => Some(Self::SwitchSessionAndCloseCurrent),
+            "GetSessionPreview" => Some(Self::GetSessionPreview),
+            "GetSavedSessionPreview" => Some(Self::GetSavedSessionPreview),
+            "MarkSessionPaneSeen" => Some(Self::MarkSessionPaneSeen),
+            "MarkAllSeen" => Some(Self::MarkAllSeen),
+            "WriteToSessionPane" => Some(Self::WriteToSessionPane),
+            "SendKeyToSessionPane" => Some(Self::SendKeyToSessionPane),
+            "ToggleSessionPaneMute" => Some(Self::ToggleSessionPaneMute),
+            "ToggleSessionPaneIgnoreOutput" => Some(Self::ToggleSessionPaneIgnoreOutput),
+            "ToggleSessionPaneWatch" => Some(Self::ToggleSessionPaneWatch),
+            "FocusSessionPane" => Some(Self::FocusSessionPane),
+            "OpenSessionWindow" => Some(Self::OpenSessionWindow),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum ThemeSource {
+    BuiltIn = 0,
+    ConfigFile = 1,
+    ThemeFolder = 2,
+}
+impl ThemeSource {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            ThemeSource::BuiltIn => "ThemeSourceBuiltIn",
+            ThemeSource::ConfigFile => "ThemeSourceConfigFile",
+            ThemeSource::ThemeFolder => "ThemeSourceThemeFolder",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "ThemeSourceBuiltIn" => Some(Self::BuiltIn),
+            "ThemeSourceConfigFile" => Some(Self::ConfigFile),
+            "ThemeSourceThemeFolder" => Some(Self::ThemeFolder),
+            _ => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum KeybindingSourceKind {
+    KeybindingSourcePreset = 0,
+    KeybindingSourceUser = 1,
+    KeybindingSourceShared = 2,
+    KeybindingSourceLayout = 3,
+}
+impl KeybindingSourceKind {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            KeybindingSourceKind::KeybindingSourcePreset => "KeybindingSourcePreset",
+            KeybindingSourceKind::KeybindingSourceUser => "KeybindingSourceUser",
+            KeybindingSourceKind::KeybindingSourceShared => "KeybindingSourceShared",
+            KeybindingSourceKind::KeybindingSourceLayout => "KeybindingSourceLayout",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "KeybindingSourcePreset" => Some(Self::KeybindingSourcePreset),
+            "KeybindingSourceUser" => Some(Self::KeybindingSourceUser),
+            "KeybindingSourceShared" => Some(Self::KeybindingSourceShared),
+            "KeybindingSourceLayout" => Some(Self::KeybindingSourceLayout),
             _ => None,
         }
     }

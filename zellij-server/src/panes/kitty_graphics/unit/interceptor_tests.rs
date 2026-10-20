@@ -252,3 +252,73 @@ fn terminal_pane_grid_shows_ab_around_captured_apc() {
     assert_snapshot!(format!("{:?}", terminal_pane.grid));
     assert_eq!(terminal_pane.grid.kitty_commands_handled(), 1);
 }
+
+fn drain_byte_at_a_time(input: &[u8]) -> (Vec<u8>, Vec<Vec<u8>>) {
+    let mut interceptor = KittyApcInterceptor::new();
+    let mut forwarded = Vec::new();
+    let mut captured = Vec::new();
+    for byte in input {
+        match interceptor.advance(*byte) {
+            InterceptorResult::Forward(fwd) => forwarded.extend_from_slice(fwd.as_slice()),
+            InterceptorResult::Swallow => {},
+            InterceptorResult::Captured(cmd) => captured.push(cmd),
+        }
+    }
+    (forwarded, captured)
+}
+
+fn drain_scanning_ahead(input: &[u8]) -> (Vec<u8>, Vec<Vec<u8>>) {
+    let mut interceptor = KittyApcInterceptor::new();
+    let mut forwarded = Vec::new();
+    let mut captured = Vec::new();
+    let mut index = 0;
+    while index < input.len() {
+        if interceptor.is_ground() {
+            let rest = &input[index..];
+            let run = rest
+                .iter()
+                .position(|byte| *byte == 0x1b)
+                .unwrap_or(rest.len());
+            if run > 0 {
+                forwarded.extend_from_slice(&rest[..run]);
+                index += run;
+                continue;
+            }
+        }
+        match interceptor.advance(input[index]) {
+            InterceptorResult::Forward(fwd) => forwarded.extend_from_slice(fwd.as_slice()),
+            InterceptorResult::Swallow => {},
+            InterceptorResult::Captured(cmd) => captured.push(cmd),
+        }
+        index += 1;
+    }
+    (forwarded, captured)
+}
+
+#[test]
+fn scanning_ahead_to_the_next_escape_matches_the_byte_at_a_time_machine() {
+    let cases: Vec<Vec<u8>> = vec![
+        b"".to_vec(),
+        b"plain text with no escapes at all".to_vec(),
+        b"\x1b".to_vec(),
+        b"\x1b\x1b\x1b".to_vec(),
+        b"text\x1b".to_vec(),
+        b"\x1b[31mcoloured\x1b[m".to_vec(),
+        b"\x1b_not-graphics\x1b\\".to_vec(),
+        b"before\x1b_Ga=t,i=1;payload\x1b\\after".to_vec(),
+        b"\x1b_Ga=p,i=1\x1b\\\x1b_Ga=d\x1b\\".to_vec(),
+        b"a\x1b_Ga=t;AAAA\x9cb".to_vec(),
+        b"\x1bPq#0;2;100;0;0!10~\x1b\\tail".to_vec(),
+        b"\x1b_Gunterminated".to_vec(),
+        b"wide \xe4\xbd\xa0\xe5\xa5\xbd bytes\x1b[H".to_vec(),
+        vec![0x1b, 0x5f, 0x47, 0x1b, 0x1b, 0x5c, b'x'],
+    ];
+    for case in cases {
+        assert_eq!(
+            drain_scanning_ahead(&case),
+            drain_byte_at_a_time(&case),
+            "diverged on {:?}",
+            String::from_utf8_lossy(&case)
+        );
+    }
+}

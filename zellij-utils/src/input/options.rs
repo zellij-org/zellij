@@ -49,6 +49,58 @@ impl FromStr for NestedSessionHandling {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Deserialize, Serialize, ValueEnum)]
+pub enum OnQuit {
+    #[serde(alias = "ask_quit")]
+    #[value(name = "ask_quit")]
+    AskQuit,
+    #[serde(alias = "ask_detach")]
+    #[value(name = "ask_detach")]
+    AskDetach,
+    #[serde(alias = "quit")]
+    Quit,
+    #[serde(alias = "detach")]
+    Detach,
+}
+
+impl Default for OnQuit {
+    fn default() -> Self {
+        Self::AskQuit
+    }
+}
+
+impl OnQuit {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            OnQuit::AskQuit => "ask_quit",
+            OnQuit::AskDetach => "ask_detach",
+            OnQuit::Quit => "quit",
+            OnQuit::Detach => "detach",
+        }
+    }
+    pub const ALL: [OnQuit; 4] = [
+        OnQuit::AskQuit,
+        OnQuit::AskDetach,
+        OnQuit::Quit,
+        OnQuit::Detach,
+    ];
+}
+
+impl FromStr for OnQuit {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        OnQuit::ALL
+            .into_iter()
+            .find(|on_quit| on_quit.as_str() == s)
+            .ok_or_else(|| {
+                format!(
+                    "No such on_quit: {} (expected ask_quit, ask_detach, quit or detach)",
+                    s
+                )
+            })
+    }
+}
+
 impl Default for OnForceClose {
     fn default() -> Self {
         Self::Detach
@@ -155,7 +207,7 @@ impl FromStr for StackListOrientation {
 /// Options that can be set either through the config file,
 /// or cli flags - cli flags should take precedence over the config file
 /// TODO: In order to correctly parse boolean flags, this is currently split
-/// into Options and CliOptions, this could be a good canditate for a macro
+/// into Options and CliOptions, this could be a good candidate for a macro
 pub struct Options {
     /// Allow plugins to use a more simplified layout
     /// that is compatible with more fonts (true or false)
@@ -201,6 +253,41 @@ pub struct Options {
     /// subdirectory of config dir
     #[clap(long, value_parser)]
     pub theme_dir: Option<PathBuf>,
+    #[clap(
+        long,
+        value_parser,
+        help = "Set the keybinds_dir, defaults to subdirectory of config dir"
+    )]
+    #[serde(default)]
+    pub keybinds_dir: Option<PathBuf>,
+    #[clap(
+        long,
+        value_parser,
+        help = "Use this keybinding preset for this session: a name from the keybinds folder, a built-in preset, or a path to a preset file"
+    )]
+    #[serde(default)]
+    pub keybinds_preset: Option<String>,
+    #[clap(
+        long,
+        value_parser,
+        help = "The primary leader key for the keybinding preset (for example \"Ctrl\")"
+    )]
+    #[serde(default)]
+    pub keybinds_primary: Option<String>,
+    #[clap(
+        long,
+        value_parser,
+        help = "The secondary leader key for the keybinding preset (for example \"Alt\")"
+    )]
+    #[serde(default)]
+    pub keybinds_secondary: Option<String>,
+    #[clap(
+        long,
+        value_parser,
+        help = "The unlock key for the keybinding preset (for example \"Ctrl g\")"
+    )]
+    #[serde(default)]
+    pub keybinds_unlock: Option<String>,
     #[clap(long, value_parser)]
     #[serde(default)]
     /// Set the handling of mouse events (true or false)
@@ -311,6 +398,17 @@ pub struct Options {
     #[serde(default)]
     pub support_kitty_graphics_protocol: Option<bool>,
 
+    #[clap(
+        long,
+        value_parser,
+        help = "Count each grapheme cluster (an emoji sequence, a letter with its accents) as one \
+                unit of width, as the Unicode standard does (true or false, default true). When \
+                false, widths are counted per code point and programs may still ask for clusters \
+                with mode 2027"
+    )]
+    #[serde(default)]
+    pub grapheme_clusters: Option<bool>,
+
     /// Whether to make sure a local web server is running when a new Zellij session starts.
     /// This web server will allow creating new sessions and attaching to existing ones that have
     /// opted in to being shared in the browser.
@@ -419,6 +517,14 @@ pub struct Options {
     #[serde(default)]
     pub mouse_click_through: Option<bool>,
 
+    #[clap(
+        long,
+        value_parser,
+        help = "Whether a right click opens the right-click menu (true or false), default is true"
+    )]
+    #[serde(default)]
+    pub context_menu_enabled: Option<bool>,
+
     /// Whether triple-clicking inside shell-marked (OSC 133) command output selects the command
     /// and its output rather than the logical line
     /// default is true
@@ -444,6 +550,7 @@ pub struct Options {
     pub web_server_cert: Option<PathBuf>,
     pub web_server_key: Option<PathBuf>,
     pub enforce_https_for_localhost: Option<bool>,
+    pub dangerously_allow_web_serving_without_a_certificate: Option<bool>,
     /// A command to run after the discovery of running commands when serializing, for the purpose
     /// of manipulating the command (eg. with a regex) before it gets serialized
     #[clap(long, value_parser)]
@@ -466,6 +573,30 @@ pub struct Options {
     #[clap(long, value_parser)]
     #[serde(default)]
     pub dangerously_enable_paste_buffer_read: Option<bool>,
+
+    #[clap(
+        long,
+        value_parser,
+        help = "Whether to show the other sessions indicator in the tab bar and compact bar (true or false), default is true"
+    )]
+    #[serde(default)]
+    pub session_indicator: Option<bool>,
+
+    #[clap(
+        long,
+        value_parser,
+        help = "Whether to briefly show the new swap layout name when it is changed (true or false), default is true"
+    )]
+    #[serde(default)]
+    pub swap_layout_notification: Option<bool>,
+
+    #[clap(
+        long,
+        value_enum,
+        help = "What the quit action does: ask_quit (ask, Quit preselected), ask_detach (ask, Detach preselected), quit or detach. Default is ask_quit"
+    )]
+    #[serde(default)]
+    pub on_quit: Option<OnQuit>,
 }
 
 #[derive(ValueEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq)]
@@ -563,6 +694,19 @@ impl Options {
         let default_layout = other.default_layout.or_else(|| self.default_layout.clone());
         let layout_dir = other.layout_dir.or_else(|| self.layout_dir.clone());
         let theme_dir = other.theme_dir.or_else(|| self.theme_dir.clone());
+        let keybinds_dir = other.keybinds_dir.or_else(|| self.keybinds_dir.clone());
+        let keybinds_preset = other
+            .keybinds_preset
+            .or_else(|| self.keybinds_preset.clone());
+        let keybinds_primary = other
+            .keybinds_primary
+            .or_else(|| self.keybinds_primary.clone());
+        let keybinds_secondary = other
+            .keybinds_secondary
+            .or_else(|| self.keybinds_secondary.clone());
+        let keybinds_unlock = other
+            .keybinds_unlock
+            .or_else(|| self.keybinds_unlock.clone());
         let theme = other.theme.or_else(|| self.theme.clone());
         let theme_dark = other.theme_dark.or_else(|| self.theme_dark.clone());
         let theme_light = other.theme_light.or_else(|| self.theme_light.clone());
@@ -598,6 +742,7 @@ impl Options {
         let support_kitty_graphics_protocol = other
             .support_kitty_graphics_protocol
             .or(self.support_kitty_graphics_protocol);
+        let grapheme_clusters = other.grapheme_clusters.or(self.grapheme_clusters);
         let web_server = other.web_server.or(self.web_server);
         let web_sharing = other.web_sharing.or(self.web_sharing);
         let stacked_resize = other.stacked_resize.or(self.stacked_resize);
@@ -615,6 +760,7 @@ impl Options {
         let visual_bell = other.visual_bell.or(self.visual_bell);
         let focus_follows_mouse = other.focus_follows_mouse.or(self.focus_follows_mouse);
         let mouse_click_through = other.mouse_click_through.or(self.mouse_click_through);
+        let context_menu_enabled = other.context_menu_enabled.or(self.context_menu_enabled);
         let osc133_command_selection = other
             .osc133_command_selection
             .or(self.osc133_command_selection);
@@ -633,6 +779,9 @@ impl Options {
         let enforce_https_for_localhost = other
             .enforce_https_for_localhost
             .or(self.enforce_https_for_localhost);
+        let dangerously_allow_web_serving_without_a_certificate = other
+            .dangerously_allow_web_serving_without_a_certificate
+            .or(self.dangerously_allow_web_serving_without_a_certificate);
         let post_command_discovery_hook = other
             .post_command_discovery_hook
             .or(self.post_command_discovery_hook.clone());
@@ -645,6 +794,11 @@ impl Options {
         let dangerously_enable_paste_buffer_read = other
             .dangerously_enable_paste_buffer_read
             .or(self.dangerously_enable_paste_buffer_read);
+        let session_indicator = other.session_indicator.or(self.session_indicator);
+        let swap_layout_notification = other
+            .swap_layout_notification
+            .or(self.swap_layout_notification);
+        let on_quit = other.on_quit.or(self.on_quit);
 
         Options {
             stacked_pane_list_orientation,
@@ -659,6 +813,11 @@ impl Options {
             default_layout,
             layout_dir,
             theme_dir,
+            keybinds_dir,
+            keybinds_preset,
+            keybinds_primary,
+            keybinds_secondary,
+            keybinds_unlock,
             mouse_mode,
             pane_frames,
             pane_frame_style,
@@ -681,6 +840,7 @@ impl Options {
             disable_session_metadata,
             support_kitty_keyboard_protocol,
             support_kitty_graphics_protocol,
+            grapheme_clusters,
             web_server,
             web_sharing,
             stacked_resize,
@@ -695,6 +855,7 @@ impl Options {
             visual_bell,
             focus_follows_mouse,
             mouse_click_through,
+            context_menu_enabled,
             osc133_command_selection,
             word_separators,
             host_notification_protocol,
@@ -703,10 +864,14 @@ impl Options {
             web_server_cert,
             web_server_key,
             enforce_https_for_localhost,
+            dangerously_allow_web_serving_without_a_certificate,
             post_command_discovery_hook,
             client_async_worker_tasks,
             nested_session_handling,
             dangerously_enable_paste_buffer_read,
+            session_indicator,
+            swap_layout_notification,
+            on_quit,
         }
     }
 
@@ -742,6 +907,19 @@ impl Options {
         let default_layout = other.default_layout.or_else(|| self.default_layout.clone());
         let layout_dir = other.layout_dir.or_else(|| self.layout_dir.clone());
         let theme_dir = other.theme_dir.or_else(|| self.theme_dir.clone());
+        let keybinds_dir = other.keybinds_dir.or_else(|| self.keybinds_dir.clone());
+        let keybinds_preset = other
+            .keybinds_preset
+            .or_else(|| self.keybinds_preset.clone());
+        let keybinds_primary = other
+            .keybinds_primary
+            .or_else(|| self.keybinds_primary.clone());
+        let keybinds_secondary = other
+            .keybinds_secondary
+            .or_else(|| self.keybinds_secondary.clone());
+        let keybinds_unlock = other
+            .keybinds_unlock
+            .or_else(|| self.keybinds_unlock.clone());
         let theme = other.theme.or_else(|| self.theme.clone());
         let theme_dark = other.theme_dark.or_else(|| self.theme_dark.clone());
         let theme_light = other.theme_light.or_else(|| self.theme_light.clone());
@@ -773,6 +951,7 @@ impl Options {
         let support_kitty_graphics_protocol = other
             .support_kitty_graphics_protocol
             .or(self.support_kitty_graphics_protocol);
+        let grapheme_clusters = other.grapheme_clusters.or(self.grapheme_clusters);
         let web_server = other.web_server.or(self.web_server);
         let web_sharing = other.web_sharing.or(self.web_sharing);
         let stacked_resize = other.stacked_resize.or(self.stacked_resize);
@@ -790,6 +969,7 @@ impl Options {
         let visual_bell = other.visual_bell.or(self.visual_bell);
         let focus_follows_mouse = merge_bool(other.focus_follows_mouse, self.focus_follows_mouse);
         let mouse_click_through = merge_bool(other.mouse_click_through, self.mouse_click_through);
+        let context_menu_enabled = other.context_menu_enabled.or(self.context_menu_enabled);
         let osc133_command_selection = other
             .osc133_command_selection
             .or(self.osc133_command_selection);
@@ -808,6 +988,9 @@ impl Options {
         let enforce_https_for_localhost = other
             .enforce_https_for_localhost
             .or(self.enforce_https_for_localhost);
+        let dangerously_allow_web_serving_without_a_certificate = other
+            .dangerously_allow_web_serving_without_a_certificate
+            .or(self.dangerously_allow_web_serving_without_a_certificate);
         let post_command_discovery_hook = other
             .post_command_discovery_hook
             .or_else(|| self.post_command_discovery_hook.clone());
@@ -820,6 +1003,12 @@ impl Options {
         let dangerously_enable_paste_buffer_read = other
             .dangerously_enable_paste_buffer_read
             .or(self.dangerously_enable_paste_buffer_read);
+        let session_indicator = merge_bool(other.session_indicator, self.session_indicator);
+        let swap_layout_notification = merge_bool(
+            other.swap_layout_notification,
+            self.swap_layout_notification,
+        );
+        let on_quit = other.on_quit.or(self.on_quit);
 
         Options {
             stacked_pane_list_orientation,
@@ -834,6 +1023,11 @@ impl Options {
             default_layout,
             layout_dir,
             theme_dir,
+            keybinds_dir,
+            keybinds_preset,
+            keybinds_primary,
+            keybinds_secondary,
+            keybinds_unlock,
             mouse_mode,
             pane_frames,
             pane_frame_style,
@@ -856,6 +1050,7 @@ impl Options {
             disable_session_metadata,
             support_kitty_keyboard_protocol,
             support_kitty_graphics_protocol,
+            grapheme_clusters,
             web_server,
             web_sharing,
             stacked_resize,
@@ -870,6 +1065,7 @@ impl Options {
             visual_bell,
             focus_follows_mouse,
             mouse_click_through,
+            context_menu_enabled,
             osc133_command_selection,
             word_separators,
             host_notification_protocol,
@@ -878,10 +1074,14 @@ impl Options {
             web_server_cert,
             web_server_key,
             enforce_https_for_localhost,
+            dangerously_allow_web_serving_without_a_certificate,
             post_command_discovery_hook,
             client_async_worker_tasks,
             nested_session_handling,
             dangerously_enable_paste_buffer_read,
+            session_indicator,
+            swap_layout_notification,
+            on_quit,
         }
     }
 

@@ -1,5 +1,4 @@
 use super::{ErrorScreen, KeyResponse, LayoutListScreen, OptimisticUpdate, Screen};
-use crate::text_input::{InputAction, TextInput};
 use crate::ui::{truncate_with_ellipsis_start, LayoutDetail};
 use crate::DisplayLayout;
 use zellij_tile::prelude::*;
@@ -37,14 +36,10 @@ impl NewLayoutFromCurrentSessionScreen {
     }
 
     fn handle_editing_mode_key(&mut self, key: KeyWithModifier) -> KeyResponse {
-        let action = self.name_input.handle_key(key);
-
-        match action {
-            InputAction::Continue => KeyResponse::render(),
-            InputAction::Submit => self.exit_editing_mode(),
-            InputAction::Cancel => self.exit_editing_mode(),
-            InputAction::Complete => KeyResponse::none(),
-            InputAction::NoAction => KeyResponse::none(),
+        match self.name_input.handle_key(&key) {
+            UiResponse::Changed(_) | UiResponse::Consumed => KeyResponse::render(),
+            UiResponse::Submitted(_) | UiResponse::Cancelled => self.exit_editing_mode(),
+            _ => KeyResponse::none(),
         }
     }
 
@@ -229,7 +224,7 @@ impl NewLayoutFromCurrentSessionScreen {
     }
 
     fn render_title(&self, x: usize, y: usize, width: usize) {
-        let title = Text::new("Save Layout of Current Session").color_all(2);
+        let title = Text::from("Save Layout of Current Session").color_all(2);
         print_text_with_coordinates(title, x, y, Some(width), None);
     }
 
@@ -251,8 +246,8 @@ impl NewLayoutFromCurrentSessionScreen {
         } else {
             self.description_text_short()
         };
-        print_text_with_coordinates(Text::new(line1), x, y, None, None);
-        print_text_with_coordinates(Text::new(line2), x, y + 1, None, None);
+        print_text_with_coordinates(Text::from(line1), x, y, None, None);
+        print_text_with_coordinates(Text::from(line2), x, y + 1, None, None);
     }
     fn max_description_width(&self) -> usize {
         let (line1, line2) = self.description_text_full();
@@ -262,7 +257,7 @@ impl NewLayoutFromCurrentSessionScreen {
     fn save_as_line_text(&self, width: usize) -> (String, usize) {
         // (text, cursor_position_in_line)
         let input_text = self.name_input.get_text();
-        let cursor_pos = self.name_input.get_cursor_position();
+        let cursor_pos = self.name_input.cursor_column();
 
         let display_name = if input_text.is_empty() && !self.editing_name {
             "RANDOM"
@@ -271,20 +266,20 @@ impl NewLayoutFromCurrentSessionScreen {
         };
         let mut text = format!("Save as: {} (<r> Rename)", display_name);
         let mut cursor_position_in_line = 9 + cursor_pos;
-        if text.chars().count() > width {
+        if zellij_tile::graphemes::display_width(&text) > width {
             let truncated_display_name = truncate_with_ellipsis_start(
                 display_name,
                 width.saturating_sub(22), // size of text without the display name
             );
             text = format!("Save as: {} (<r> Rename)", truncated_display_name);
-            let truncated_len = truncated_display_name.chars().count();
+            let truncated_len = zellij_tile::graphemes::display_width(&truncated_display_name);
             cursor_position_in_line = 9 + cursor_pos.min(truncated_len);
         }
         (text, cursor_position_in_line)
     }
     fn render_save_as_line(&self, x: usize, y: usize, width: usize) {
         let (text, _) = self.save_as_line_text(width);
-        let colored = Text::new(&text).color_substring(3, "<r>");
+        let colored = Text::from(text).color_substring(3, "<r>");
 
         print_text_with_coordinates(colored, x, y, None, None);
     }
@@ -306,7 +301,7 @@ impl NewLayoutFromCurrentSessionScreen {
         } else {
             text
         };
-        let colored = Text::new(text)
+        let colored = Text::from(text)
             .color_substring(3, "<Tab>")
             .color_substring(0, "[All Tabs]")
             .color_substring(0, "[All]")
@@ -334,7 +329,7 @@ impl NewLayoutFromCurrentSessionScreen {
         } else {
             self.help_text_full()
         };
-        let mut text = Text::new(text);
+        let mut text = Text::from(text);
         for item in items_to_color {
             text = text.color_substring(3, item)
         }

@@ -18,6 +18,91 @@ struct State {
     configuration: BTreeMap<String, String>,
     message_to_plugin_payload: Option<String>,
     explicit_string_to_render: Option<String>,
+    prompt_result: Option<String>,
+}
+
+#[cfg(target_family = "wasm")]
+fn session_pane_command_for_key(character: char) -> &'static str {
+    match character {
+        'j' => "mark_seen",
+        'k' => "mark_all_seen",
+        'l' => "open_window",
+        'm' => "write",
+        'n' => "send_key",
+        'o' => "mute",
+        'p' => "ignore_output",
+        'q' => "watch",
+        _ => "focus",
+    }
+}
+
+#[cfg(target_family = "wasm")]
+fn run_session_pane_command(command: &str, session: &str, pane: PaneId) {
+    match command {
+        "mark_seen" => mark_session_pane_seen(session, pane),
+        "mark_all_seen" => mark_all_seen(Some(session)),
+        "open_window" => open_session_window(session, true),
+        "write" => write_to_session_pane(session, pane, b"typed by the fixture".to_vec()),
+        "send_key" => send_key_to_session_pane(session, pane, KeyWithModifier::new(BareKey::Enter)),
+        "mute" => toggle_session_pane_mute(session, pane),
+        "ignore_output" => toggle_session_pane_ignore_output(session, pane),
+        "watch" => toggle_session_pane_watch(session, pane),
+        "focus" => focus_session_pane(session, pane),
+        _ => {},
+    }
+}
+
+#[cfg(target_family = "wasm")]
+impl State {
+    fn target_session(&self) -> String {
+        self.configuration
+            .get("target_session")
+            .cloned()
+            .unwrap_or_else(|| "other-session".to_owned())
+    }
+
+    fn target_pane(&self) -> PaneId {
+        PaneId::Terminal(
+            self.configuration
+                .get("target_pane")
+                .and_then(|pane| pane.parse().ok())
+                .unwrap_or(1),
+        )
+    }
+
+    fn handle_prompt_message(&mut self, name: &str, args: &BTreeMap<String, String>) {
+        let request = match name {
+            "prompt_confirm" => {
+                PromptRequest::confirm(Text::from("Delete branch?").color_range(3, 7..13))
+                    .yes("Delete")
+                    .no("Keep")
+            },
+            "prompt_choose_multi" => PromptRequest::choose(vec!["alpha", "beta", "gamma"])
+                .multi()
+                .title("Pick branches"),
+            "prompt_form" => PromptRequest::form(vec![
+                FormField::input("name", "Name").default_value("demo"),
+                FormField::toggle("ci", "Use CI").default_value(true),
+                FormField::number("port", "Port").default_value(8080),
+            ]),
+            "prompt_input_timeout" => {
+                let request =
+                    PromptRequest::input("Name").timeout(std::time::Duration::from_secs(1));
+                match args.get("default") {
+                    Some(default) => request.default(default.clone()),
+                    None => request,
+                }
+            },
+            "prompt_invalid" => PromptRequest::number("Port").min(5).max(1),
+            "close_self" => {
+                close_self();
+                return;
+            },
+            _ => return,
+        };
+        let request_id = prompt(request);
+        self.prompt_result = Some(format!("Prompt {} sent", request_id));
+    }
 }
 
 #[allow(dead_code)] // used when compiled as wasm plugin, not in native test target
@@ -47,10 +132,19 @@ register_plugin!(State);
 #[cfg(target_family = "wasm")]
 register_worker!(TestWorker, test_worker, TEST_WORKER);
 
+#[cfg(not(target_family = "wasm"))]
+fn main() {
+    eprintln!("fixture-plugin-for-tests runs as a wasm plugin, not as a host binary");
+}
+
 #[cfg(target_family = "wasm")]
 impl ZellijPlugin for State {
     fn load(&mut self, configuration: BTreeMap<String, String>) {
-        request_permission(&[
+        let attention_fixture = configuration
+            .get("attention_fixture")
+            .map(|v| v == "true")
+            .unwrap_or(false);
+        let mut permissions = vec![
             PermissionType::ChangeApplicationState,
             PermissionType::ReadApplicationState,
             PermissionType::ReadApplicationState,
@@ -66,13 +160,21 @@ impl ZellijPlugin for State {
             PermissionType::WriteToClipboard,
             PermissionType::RunActionsAsUser,
             PermissionType::ReadSessionEnvironmentVariables,
-        ]);
+        ];
+        if attention_fixture {
+            permissions.push(PermissionType::ReadPaneContents);
+        }
+        request_permission(&permissions);
         let should_subscribe_initial_keybinds = configuration
             .get("subscribe_initial_keybinds")
             .map(|v| v == "true")
             .unwrap_or(false);
         let should_subscribe_mode_update = configuration
             .get("subscribe_mode_update")
+            .map(|v| v == "true")
+            .unwrap_or(false);
+        let should_subscribe_nested_session_events = configuration
+            .get("subscribe_nested_session_events")
             .map(|v| v == "true")
             .unwrap_or(false);
         self.configuration = configuration;
@@ -87,6 +189,7 @@ impl ZellijPlugin for State {
             EventType::BeforeClose,
             EventType::PluginConfigurationChanged,
             EventType::HighlightClicked,
+            EventType::PromptResult,
         ]);
         if should_subscribe_initial_keybinds {
             subscribe(&[EventType::InitialKeybinds, EventType::ModeUpdate]);
@@ -94,10 +197,32 @@ impl ZellijPlugin for State {
         if should_subscribe_mode_update {
             subscribe(&[EventType::ModeUpdate]);
         }
+        if attention_fixture {
+            subscribe(&[
+                EventType::PaneAttentionChanged,
+                EventType::PromptShown,
+                EventType::CommandStarted,
+                EventType::CommandFinished,
+                EventType::GlobalAttentionUpdate,
+                EventType::SessionHistoryUpdate,
+                EventType::SessionUpdate,
+                EventType::SessionPreview,
+            ]);
+        }
+        if should_subscribe_nested_session_events {
+            subscribe(&[
+                EventType::NestedSessionModeUpdate,
+                EventType::NestedSessionEnded,
+            ]);
+        }
         watch_filesystem();
     }
 
     fn update(&mut self, event: Event) -> bool {
+        if let Event::PromptResult(request_id, result) = &event {
+            self.prompt_result = Some(format!("Prompt result {}: {:?}", request_id, result));
+            return true;
+        }
         match &event {
             Event::Key(key) => match key.bare_key {
                 BareKey::Char('a') if key.has_no_modifiers() => {
@@ -631,6 +756,31 @@ impl ZellijPlugin for State {
                 BareKey::Char('i') if key.has_only_modifiers(&[KeyModifier::Super]) => {
                     toggle_floating_panes(Some(2));
                 },
+                BareKey::Char(character @ 'j'..='r')
+                    if key.has_only_modifiers(&[KeyModifier::Super]) =>
+                {
+                    let session = self.target_session();
+                    let pane = self.target_pane();
+                    run_session_pane_command(
+                        session_pane_command_for_key(character),
+                        &session,
+                        pane,
+                    );
+                },
+                BareKey::Char('s') if key.has_only_modifiers(&[KeyModifier::Super]) => {
+                    self.explicit_string_to_render = Some(format!(
+                        "Pane info: {:?}",
+                        get_pane_info(self.target_pane())
+                    ));
+                },
+                BareKey::Char('t') if key.has_only_modifiers(&[KeyModifier::Super]) => {
+                    let session = self.target_session();
+                    get_session_pane_preview(
+                        &session,
+                        self.target_pane(),
+                        PreviewAnchor::LastCommandOutput,
+                    );
+                },
                 BareKey::Char('a')
                     if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Shift]) =>
                 {
@@ -945,7 +1095,52 @@ impl ZellijPlugin for State {
                 {
                     focus_last_pane()
                 },
+                BareKey::Char('m')
+                    if key.has_only_modifiers(&[KeyModifier::Ctrl, KeyModifier::Alt]) =>
+                {
+                    let skip_nested_keybinds = self
+                        .configuration
+                        .get("skip_nested_keybinds_request")
+                        .map(|v| v == "true")
+                        .unwrap_or(false);
+                    if !skip_nested_keybinds {
+                        self.explicit_string_to_render =
+                            Some(match get_nested_session_keybinds(PaneId::Terminal(1)) {
+                                Ok(nested_session_keybinds) => format!(
+                                    "Nested keybinds ok: path={:?}, mode={:?}, base_mode={:?}, generation={}, bindings={}",
+                                    nested_session_keybinds.session_path,
+                                    nested_session_keybinds.mode,
+                                    nested_session_keybinds.base_mode,
+                                    nested_session_keybinds.keybinds_generation,
+                                    nested_session_keybinds
+                                        .keybinds
+                                        .iter()
+                                        .map(|(_mode, bindings)| bindings.len())
+                                        .sum::<usize>()
+                                ),
+                                Err(e) => format!("Nested keybinds error: {:?}", e),
+                            });
+                    }
+                },
                 _ => {},
+            },
+            Event::NestedSessionModeUpdate {
+                pane_id,
+                session_path,
+                mode,
+                keybinds_generation,
+                ..
+            } => {
+                self.explicit_string_to_render = Some(format!(
+                    "Nested mode update: pane={:?}, path={:?}, mode={:?}, generation={}",
+                    pane_id, session_path, mode, keybinds_generation
+                ));
+            },
+            Event::NestedSessionEnded { pane_id, reason } => {
+                self.explicit_string_to_render = Some(format!(
+                    "Nested session ended: pane={:?}, reason={:?}",
+                    pane_id, reason
+                ));
             },
             Event::CustomMessage(message, payload) => {
                 if message == "pong" {
@@ -974,13 +1169,28 @@ impl ZellijPlugin for State {
         should_render
     }
     fn pipe(&mut self, pipe_message: PipeMessage) -> bool {
-        let input_pipe_id = match pipe_message.source {
+        let input_pipe_id = match &pipe_message.source {
             PipeSource::Cli(id) => id.clone(),
             PipeSource::Plugin(id) => format!("{}", id),
             PipeSource::Keybind => format!("keybind"),
+            PipeSource::PromptRequest { request_id, .. } => format!("prompt_{}", request_id),
         };
         let name = pipe_message.name;
         let payload = pipe_message.payload;
+        if name.starts_with("prompt_") || name == "close_self" {
+            if let PipeSource::Cli(pipe_id) = &pipe_message.source {
+                unblock_cli_pipe_input(pipe_id);
+            }
+            let is_for_this_user = pipe_message
+                .args
+                .get("only_client")
+                .map(|client_id| *client_id == get_plugin_ids().client_id.to_string())
+                .unwrap_or(true);
+            if is_for_this_user {
+                self.handle_prompt_message(&name, &pipe_message.args);
+            }
+            return true;
+        }
         if name == "message_name" && payload == Some("message_payload".to_owned()) {
             unblock_cli_pipe_input(&input_pipe_id);
         } else if name == "message_name_block" {
@@ -993,6 +1203,21 @@ impl ZellijPlugin for State {
             );
         } else if name == "message_to_plugin" {
             self.message_to_plugin_payload = payload.clone();
+        } else if name == "session_pane_command" {
+            let args = &pipe_message.args;
+            let session = args
+                .get("session")
+                .cloned()
+                .unwrap_or_else(|| self.target_session());
+            let pane = args
+                .get("pane")
+                .and_then(|pane| pane.parse::<u32>().ok())
+                .map(PaneId::Terminal)
+                .unwrap_or_else(|| self.target_pane());
+            if let Some(command) = args.get("command") {
+                run_session_pane_command(command, &session, pane);
+            }
+            unblock_cli_pipe_input(&input_pipe_id);
         } else if name == "panic_while_handling_pipe" {
             panic!("intentional panic for the pipe-release-on-crash test");
         }
@@ -1001,7 +1226,9 @@ impl ZellijPlugin for State {
     }
 
     fn render(&mut self, rows: usize, cols: usize) {
-        if let Some(payload) = self.received_payload.as_ref() {
+        if let Some(prompt_result) = self.prompt_result.as_ref() {
+            println!("{}", prompt_result);
+        } else if let Some(payload) = self.received_payload.as_ref() {
             println!("Payload from worker: {:?}", payload);
         } else if let Some(payload) = self.message_to_plugin_payload.take() {
             println!("Payload from self: {:?}", payload);

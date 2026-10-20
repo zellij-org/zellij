@@ -1,5 +1,6 @@
 ---
 source: zellij-server/src/plugins/./unit/plugin_tests.rs
+assertion_line: 1368
 expression: "format!(\"{:#?}\", second_new_tab_event)"
 ---
 Some(
@@ -18,6 +19,7 @@ Some(
                         split_size: None,
                         run: None,
                         borderless: None,
+                        border_style: None,
                         focus: None,
                         external_children_index: None,
                         children_are_stacked: false,
@@ -28,6 +30,8 @@ Some(
                         pane_initial_contents: None,
                         default_fg: None,
                         default_bg: None,
+                        attention_muted: None,
+                        ignore_output: None,
                     },
                     TiledPaneLayout {
                         children_split_direction: Horizontal,
@@ -36,6 +40,7 @@ Some(
                         split_size: None,
                         run: None,
                         borderless: None,
+                        border_style: None,
                         focus: None,
                         external_children_index: None,
                         children_are_stacked: false,
@@ -46,11 +51,14 @@ Some(
                         pane_initial_contents: None,
                         default_fg: None,
                         default_bg: None,
+                        attention_muted: None,
+                        ignore_output: None,
                     },
                 ],
                 split_size: None,
                 run: None,
                 borderless: None,
+                border_style: None,
                 focus: None,
                 external_children_index: None,
                 children_are_stacked: false,
@@ -61,6 +69,8 @@ Some(
                 pane_initial_contents: None,
                 default_fg: None,
                 default_bg: None,
+                attention_muted: None,
+                ignore_output: None,
             },
         ),
         [],

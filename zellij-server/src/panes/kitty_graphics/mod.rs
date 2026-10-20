@@ -9,6 +9,12 @@ pub use parser::*;
 pub use replies::*;
 pub use store::*;
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct KittyHostCapability {
+    pub graphics: bool,
+    pub zlib: bool,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum KittyHostSupport {
     Supported,

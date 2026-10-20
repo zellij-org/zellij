@@ -1,24 +1,40 @@
 mod kdl_layout_parser;
+use crate::data::ClientId;
 use crate::data::{
-    BareKey, Direction, FloatingPaneCoordinates, InputMode, KeyWithModifier, LayoutInfo,
-    LayoutMetadata, MultiplayerColors, Palette, PaletteColor, PaneId, PaneInfo, PaneManifest,
-    PermissionType, Resize, SessionInfo, StyleDeclaration, Styling, TabInfo, ThemeHue, WebSharing,
-    DEFAULT_STYLES,
+    BareKey, BorderStyleOverride, Direction, FloatingPaneCoordinates, InputMode, KeyWithModifier,
+    LayoutInfo, LayoutMetadata, LineStyle, MouseTarget, MouseTrigger, MultiplayerColors, Palette,
+    PaletteColor, PaneId, PaneInfo, PaneManifest, PermissionType, Resize, SessionInfo,
+    StyleDeclaration, Styling, TabInfo, ThemeHue, WebSharing, DEFAULT_STYLES,
+};
+use crate::data::{
+    ClickedPaneAction, ClickedTabAction, ContextMenuAction, ContextMenuEntry, TAB_POSITION_END,
 };
 use crate::envs::EnvironmentVariables;
 use crate::home::{find_default_config_dir, get_layout_dir};
 use crate::input::config::{Config, ConfigError, KdlError};
+use crate::input::context_menu::{
+    context_menu_statements_against, merge_context_menu_entries, ContextMenuConfig, MenuPlacement,
+    MenuStatement, CONTEXT_MENU_SECTIONS,
+};
+use crate::input::keybind_presets::{
+    BindChanges, KeybindChanges, KeybindsLayer, KeybindsSelection, MousebindChanges,
+};
 use crate::input::keybinds::Keybinds;
 use crate::input::layout::{
     Layout, PercentOrFixed, PluginUserConfiguration, RunPlugin, RunPluginOrAlias, TabLayoutInfo,
 };
+use crate::input::mousebinds::{MouseBehaviour, MouseBinding, MouseBindingKind};
 use crate::input::options::{
     Clipboard, OnForceClose, Options, PaneFrameStyle, StackListOrientation, DEFAULT_WORD_SEPARATORS,
 };
 use crate::input::permission::{GrantedPermission, PermissionCache};
 use crate::input::plugins::PluginAliases;
-use crate::input::theme::{FrameConfig, Theme, Themes, UiConfig};
+use crate::input::session_suggestions::SessionSuggestionsConfig;
+use crate::input::theme::{
+    FrameConfig, TerminalColors, Theme, Themes, UiConfig, TERMINAL_COLOR_NAMES,
+};
 use crate::input::web_client::WebClientConfig;
+use crate::input::window::WindowConfig;
 use kdl_layout_parser::KdlLayoutParser;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::net::{IpAddr, Ipv4Addr};
@@ -39,71 +55,104 @@ use crate::input::command::RunCommandAction;
 #[macro_export]
 macro_rules! parse_kdl_action_arguments {
     ( $action_name:expr, $action_arguments:expr, $action_node:expr ) => {{
-        if !$action_arguments.is_empty() {
-            Err(ConfigError::new_kdl_error(
-                format!("Action '{}' must have arguments", $action_name),
-                $action_node.span().offset(),
-                $action_node.span().len(),
-            ))
-        } else {
-            match $action_name {
-                "Quit" => Ok(Action::Quit),
-                "FocusNextPane" => Ok(Action::FocusNextPane),
-                "FocusPreviousPane" => Ok(Action::FocusPreviousPane),
-                "FocusLastPane" => Ok(Action::FocusLastPane),
-                "FocusHostSession" => Ok(Action::FocusHostSession),
-                "FocusGuestSession" => Ok(Action::FocusGuestSession),
-                "ToggleHostFullscreen" => Ok(Action::ToggleHostFullscreen),
-                "SwitchFocus" => Ok(Action::SwitchFocus),
-                "EditScrollback" => Ok(Action::EditScrollback { ansi: false }),
-                "ScrollUp" => Ok(Action::ScrollUp),
-                "ScrollDown" => Ok(Action::ScrollDown),
-                "ScrollToBottom" => Ok(Action::ScrollToBottom),
-                "ScrollToTop" => Ok(Action::ScrollToTop),
-                "ScrollToPreviousPrompt" => Ok(Action::ScrollToPreviousPrompt),
-                "ScrollToNextPrompt" => Ok(Action::ScrollToNextPrompt),
-                "SelectCommandAtScrollPosition" => Ok(Action::SelectCommandAtScrollPosition),
-                "CopyLastCommandOutput" => Ok(Action::CopyLastCommandOutput),
-                "PageScrollUp" => Ok(Action::PageScrollUp),
-                "PageScrollDown" => Ok(Action::PageScrollDown),
-                "HalfPageScrollUp" => Ok(Action::HalfPageScrollUp),
-                "HalfPageScrollDown" => Ok(Action::HalfPageScrollDown),
-                "ToggleFocusFullscreen" => Ok(Action::ToggleFocusFullscreen),
-                "ToggleFocusNoUiFullscreen" => Ok(Action::ToggleFocusNoUiFullscreen),
-                "TogglePaneFrames" => Ok(Action::TogglePaneFrames),
-                "ToggleStackListOrientation" => Ok(Action::ToggleStackListOrientation),
-                "ToggleActiveSyncTab" => Ok(Action::ToggleActiveSyncTab),
-                "TogglePaneEmbedOrFloating" => Ok(Action::TogglePaneEmbedOrFloating),
-                "ToggleFloatingPanes" => Ok(Action::ToggleFloatingPanes),
-                "ShowFloatingPanes" => Ok(Action::ShowFloatingPanes { tab_id: None }),
-                "HideFloatingPanes" => Ok(Action::HideFloatingPanes { tab_id: None }),
-                "CloseFocus" => Ok(Action::CloseFocus),
-                "UndoRenamePane" => Ok(Action::UndoRenamePane),
-                "NoOp" => Ok(Action::NoOp),
-                "GoToNextTab" => Ok(Action::GoToNextTab),
-                "GoToPreviousTab" => Ok(Action::GoToPreviousTab),
-                "CloseTab" => Ok(Action::CloseTab),
-                "ToggleTab" => Ok(Action::ToggleTab),
-                "UndoRenameTab" => Ok(Action::UndoRenameTab),
-                "Detach" => Ok(Action::Detach),
-                "SetDarkTheme" => Ok(Action::SetDarkTheme),
-                "SetLightTheme" => Ok(Action::SetLightTheme),
-                "ToggleTheme" => Ok(Action::ToggleTheme),
-                "Copy" => Ok(Action::Copy),
-                "Confirm" => Ok(Action::Confirm),
-                "Deny" => Ok(Action::Deny),
-                "ToggleMouseMode" => Ok(Action::ToggleMouseMode),
-                "PreviousSwapLayout" => Ok(Action::PreviousSwapLayout),
-                "NextSwapLayout" => Ok(Action::NextSwapLayout),
-                "Clear" => Ok(Action::ClearScreen),
-                _ => Err(ConfigError::new_kdl_error(
-                    format!("Unsupported action: {:?}", $action_name),
-                    $action_node.span().offset(),
-                    $action_node.span().len(),
-                )),
-            }
-        }
+        $crate::kdl::action_without_arguments(
+            $action_name,
+            !$action_arguments.is_empty(),
+            $action_node,
+        )
     }};
+}
+
+#[inline(never)]
+pub fn action_without_arguments(
+    action_name: &str,
+    has_arguments: bool,
+    action_node: &KdlNode,
+) -> Result<Action, ConfigError> {
+    if has_arguments {
+        return Err(ConfigError::new_kdl_error(
+            format!("Action '{}' must have arguments", action_name),
+            action_node.span().offset(),
+            action_node.span().len(),
+        ));
+    }
+    match action_name {
+        "Quit" => Ok(Action::Quit),
+        "FocusNextPane" => Ok(Action::FocusNextPane),
+        "FocusPreviousPane" => Ok(Action::FocusPreviousPane),
+        "FocusLastPane" => Ok(Action::FocusLastPane),
+        "FocusHostSession" => Ok(Action::FocusHostSession),
+        "FocusGuestSession" => Ok(Action::FocusGuestSession),
+        "ToggleHostFullscreen" => Ok(Action::ToggleHostFullscreen),
+        "SwitchFocus" => Ok(Action::SwitchFocus),
+        "EditScrollback" => Ok(Action::EditScrollback { ansi: false }),
+        "ScrollUp" => Ok(Action::ScrollUp),
+        "ScrollDown" => Ok(Action::ScrollDown),
+        "ScrollToBottom" => Ok(Action::ScrollToBottom),
+        "ScrollToTop" => Ok(Action::ScrollToTop),
+        "ScrollToPreviousPrompt" => Ok(Action::ScrollToPreviousPrompt),
+        "ScrollToNextPrompt" => Ok(Action::ScrollToNextPrompt),
+        "SelectCommandAtScrollPosition" => Ok(Action::SelectCommandAtScrollPosition),
+        "CopyLastCommandOutput" => Ok(Action::CopyLastCommandOutput),
+        "PageScrollUp" => Ok(Action::PageScrollUp),
+        "PageScrollDown" => Ok(Action::PageScrollDown),
+        "HalfPageScrollUp" => Ok(Action::HalfPageScrollUp),
+        "HalfPageScrollDown" => Ok(Action::HalfPageScrollDown),
+        "ToggleFocusFullscreen" => Ok(Action::ToggleFocusFullscreen),
+        "ToggleFocusNoUiFullscreen" => Ok(Action::ToggleFocusNoUiFullscreen),
+        "TogglePaneFrames" => Ok(Action::TogglePaneFrames),
+        "ToggleStackListOrientation" => Ok(Action::ToggleStackListOrientation),
+        "ToggleActiveSyncTab" => Ok(Action::ToggleActiveSyncTab),
+        "TogglePaneEmbedOrFloating" => Ok(Action::TogglePaneEmbedOrFloating),
+        "ToggleFloatingPanes" => Ok(Action::ToggleFloatingPanes),
+        "ShowFloatingPanes" => Ok(Action::ShowFloatingPanes { tab_id: None }),
+        "HideFloatingPanes" => Ok(Action::HideFloatingPanes { tab_id: None }),
+        "CloseFocus" => Ok(Action::CloseFocus),
+        "UndoRenamePane" => Ok(Action::UndoRenamePane),
+        "NoOp" => Ok(Action::NoOp),
+        "GoToNextTab" => Ok(Action::GoToNextTab),
+        "GoToPreviousTab" => Ok(Action::GoToPreviousTab),
+        "CloseTab" => Ok(Action::CloseTab),
+        "ToggleTab" => Ok(Action::ToggleTab),
+        "UndoRenameTab" => Ok(Action::UndoRenameTab),
+        "Detach" => Ok(Action::Detach),
+        "SetDarkTheme" => Ok(Action::SetDarkTheme),
+        "SetLightTheme" => Ok(Action::SetLightTheme),
+        "ToggleTheme" => Ok(Action::ToggleTheme),
+        "DismissInfoPopups" => Ok(Action::DismissInfoPopups),
+        "OpenContextMenu" => Ok(Action::OpenContextMenu),
+        "ToggleSessionCard" => Ok(Action::ToggleSessionCard),
+        "MutePane" => Ok(Action::MutePane),
+        "IgnorePaneOutput" => Ok(Action::IgnorePaneOutput),
+        "WatchPane" => Ok(Action::WatchPane),
+        "MuteTab" => Ok(Action::MuteTab),
+        "MuteSession" => Ok(Action::MuteSession),
+        "ToggleSession" => Ok(Action::ToggleSession),
+        "GoToPreviousSession" => Ok(Action::GoToPreviousSession),
+        "GoToNextSession" => Ok(Action::GoToNextSession),
+        "GoToNextAttention" => Ok(Action::GoToNextAttention),
+        "ToggleTrayIcon" => Ok(Action::ToggleTrayIcon),
+        "MarkPaneSeen" => Ok(Action::MarkPaneSeen {
+            session: None,
+            pane_id: None,
+        }),
+        "MarkAllSeen" => Ok(Action::MarkAllSeen {
+            session: None,
+            this_session: false,
+        }),
+        "Copy" => Ok(Action::Copy),
+        "Confirm" => Ok(Action::Confirm),
+        "Deny" => Ok(Action::Deny),
+        "ToggleMouseMode" => Ok(Action::ToggleMouseMode),
+        "PreviousSwapLayout" => Ok(Action::PreviousSwapLayout),
+        "NextSwapLayout" => Ok(Action::NextSwapLayout),
+        "Clear" => Ok(Action::ClearScreen),
+        _ => Err(ConfigError::new_kdl_error(
+            format!("Unsupported action: {:?}", action_name),
+            action_node.span().offset(),
+            action_node.span().len(),
+        )),
+    }
 }
 
 #[macro_export]
@@ -465,6 +514,8 @@ impl Action {
     ) -> Result<Self, ConfigError> {
         match action_name {
             "WriteChars" => Ok(Action::WriteChars { chars: string }),
+            "ApplyTiledSwapLayout" => Ok(Action::ApplyTiledSwapLayout { name: string }),
+            "ApplyFloatingSwapLayout" => Ok(Action::ApplyFloatingSwapLayout { name: string }),
             "SetPaneFrameStyle" => {
                 let style = PaneFrameStyle::from_str(string.as_str()).map_err(|e| {
                     ConfigError::new_kdl_error(
@@ -886,6 +937,7 @@ impl Action {
                 pane_name: name,
                 near_current_pane: false,
                 borderless: _,
+                border_style: _,
                 ..
             } => {
                 let mut node = KdlNode::new("Run");
@@ -901,13 +953,13 @@ impl Action {
                         node_children.nodes_mut().push(cwd_node);
                     }
                     if run_command_action.hold_on_start {
-                        let mut hos_node = KdlNode::new("hold_on_start");
+                        let mut hos_node = KdlNode::new("start_suspended");
                         hos_node.push(KdlValue::Bool(true));
                         node_children.nodes_mut().push(hos_node);
                     }
                     if !run_command_action.hold_on_close {
-                        let mut hoc_node = KdlNode::new("hold_on_close");
-                        hoc_node.push(KdlValue::Bool(false));
+                        let mut hoc_node = KdlNode::new("close_on_exit");
+                        hoc_node.push(KdlValue::Bool(true));
                         node_children.nodes_mut().push(hoc_node);
                     }
                 }
@@ -933,6 +985,13 @@ impl Action {
                 Some(node)
             },
             Action::NewFloatingPane {
+                command: None,
+                pane_name: None,
+                coordinates: None,
+                near_current_pane: false,
+                ..
+            } => Some(KdlNode::new("NewFloatingPane")),
+            Action::NewFloatingPane {
                 command: run_command_action,
                 pane_name: name,
                 coordinates: floating_pane_coordinates,
@@ -955,13 +1014,13 @@ impl Action {
                         node_children.nodes_mut().push(cwd_node);
                     }
                     if run_command_action.hold_on_start {
-                        let mut hos_node = KdlNode::new("hold_on_start");
+                        let mut hos_node = KdlNode::new("start_suspended");
                         hos_node.push(KdlValue::Bool(true));
                         node_children.nodes_mut().push(hos_node);
                     }
                     if !run_command_action.hold_on_close {
-                        let mut hoc_node = KdlNode::new("hold_on_close");
-                        hoc_node.push(KdlValue::Bool(false));
+                        let mut hoc_node = KdlNode::new("close_on_exit");
+                        hoc_node.push(KdlValue::Bool(true));
                         node_children.nodes_mut().push(hoc_node);
                     }
                 }
@@ -1049,13 +1108,13 @@ impl Action {
                         node_children.nodes_mut().push(cwd_node);
                     }
                     if run_command_action.hold_on_start {
-                        let mut hos_node = KdlNode::new("hold_on_start");
+                        let mut hos_node = KdlNode::new("start_suspended");
                         hos_node.push(KdlValue::Bool(true));
                         node_children.nodes_mut().push(hos_node);
                     }
                     if !run_command_action.hold_on_close {
-                        let mut hoc_node = KdlNode::new("hold_on_close");
-                        hoc_node.push(KdlValue::Bool(false));
+                        let mut hoc_node = KdlNode::new("close_on_exit");
+                        hoc_node.push(KdlValue::Bool(true));
                         node_children.nodes_mut().push(hoc_node);
                     }
                 }
@@ -1096,13 +1155,13 @@ impl Action {
                         node_children.nodes_mut().push(cwd_node);
                     }
                     if run_command_action.hold_on_start {
-                        let mut hos_node = KdlNode::new("hold_on_start");
+                        let mut hos_node = KdlNode::new("start_suspended");
                         hos_node.push(KdlValue::Bool(true));
                         node_children.nodes_mut().push(hos_node);
                     }
                     if !run_command_action.hold_on_close {
-                        let mut hoc_node = KdlNode::new("hold_on_close");
-                        hoc_node.push(KdlValue::Bool(false));
+                        let mut hoc_node = KdlNode::new("close_on_exit");
+                        hoc_node.push(KdlValue::Bool(true));
                         node_children.nodes_mut().push(hoc_node);
                     }
                     if let Some(name) = name {
@@ -1121,6 +1180,26 @@ impl Action {
                     Some(node)
                 },
             },
+            Action::RunInBackground {
+                command: run_command_action,
+            } => {
+                let mut node = KdlNode::new("Run");
+                let mut node_children = KdlDocument::new();
+                node.push(run_command_action.command.display().to_string());
+                for arg in &run_command_action.args {
+                    node.push(arg.clone());
+                }
+                let mut background_node = KdlNode::new("background");
+                background_node.push(KdlValue::Bool(true));
+                node_children.nodes_mut().push(background_node);
+                if let Some(cwd) = &run_command_action.cwd {
+                    let mut cwd_node = KdlNode::new("cwd");
+                    cwd_node.push(cwd.display().to_string());
+                    node_children.nodes_mut().push(cwd_node);
+                }
+                node.set_children(node_children);
+                Some(node)
+            },
             Action::Detach => Some(KdlNode::new("Detach")),
             Action::SwitchSession {
                 name,
@@ -1128,8 +1207,12 @@ impl Action {
                 pane_id,
                 layout,
                 cwd,
+                close_current,
             } => {
                 let mut node = KdlNode::new("SwitchSession");
+                if *close_current {
+                    node.push(KdlEntry::new_prop("close_current", true));
+                }
                 node.push(KdlEntry::new_prop("name", name.clone()));
                 if let Some(pos) = tab_position {
                     node.push(KdlEntry::new_prop("tab_position", *pos as i64));
@@ -1284,6 +1367,16 @@ impl Action {
             Action::ToggleMouseMode => Some(KdlNode::new("ToggleMouseMode")),
             Action::PreviousSwapLayout => Some(KdlNode::new("PreviousSwapLayout")),
             Action::NextSwapLayout => Some(KdlNode::new("NextSwapLayout")),
+            Action::ApplyTiledSwapLayout { name } => {
+                let mut node = KdlNode::new("ApplyTiledSwapLayout");
+                node.push(name.clone());
+                Some(node)
+            },
+            Action::ApplyFloatingSwapLayout { name } => {
+                let mut node = KdlNode::new("ApplyFloatingSwapLayout");
+                node.push(name.clone());
+                Some(node)
+            },
             Action::BreakPane => Some(KdlNode::new("BreakPane")),
             Action::BreakPaneRight => Some(KdlNode::new("BreakPaneRight")),
             Action::BreakPaneLeft => Some(KdlNode::new("BreakPaneLeft")),
@@ -1367,11 +1460,122 @@ impl Action {
             Action::SetDarkTheme => Some(KdlNode::new("SetDarkTheme")),
             Action::SetLightTheme => Some(KdlNode::new("SetLightTheme")),
             Action::ToggleTheme => Some(KdlNode::new("ToggleTheme")),
+            Action::DismissInfoPopups => Some(KdlNode::new("DismissInfoPopups")),
+            Action::OpenContextMenu => Some(KdlNode::new("OpenContextMenu")),
+            Action::ToggleSessionCard => Some(KdlNode::new("ToggleSessionCard")),
+            Action::MutePane => Some(KdlNode::new("MutePane")),
+            Action::IgnorePaneOutput => Some(KdlNode::new("IgnorePaneOutput")),
+            Action::WatchPane => Some(KdlNode::new("WatchPane")),
+            Action::MuteTab => Some(KdlNode::new("MuteTab")),
+            Action::MuteSession => Some(KdlNode::new("MuteSession")),
+            Action::ToggleSession => Some(KdlNode::new("ToggleSession")),
+            Action::GoToPreviousSession => Some(KdlNode::new("GoToPreviousSession")),
+            Action::GoToNextSession => Some(KdlNode::new("GoToNextSession")),
+            Action::GoToNextAttention => Some(KdlNode::new("GoToNextAttention")),
+            Action::ToggleTrayIcon => Some(KdlNode::new("ToggleTrayIcon")),
+            Action::MarkPaneSeen {
+                session: None,
+                pane_id: None,
+            } => Some(KdlNode::new("MarkPaneSeen")),
+            Action::MarkAllSeen {
+                session: None,
+                this_session,
+            } => {
+                let mut node = KdlNode::new("MarkAllSeen");
+                if *this_session {
+                    node.push(KdlEntry::new_prop("this_session", true));
+                }
+                Some(node)
+            },
             Action::FocusHostSession => Some(KdlNode::new("FocusHostSession")),
             Action::FocusGuestSession => Some(KdlNode::new("FocusGuestSession")),
             Action::ToggleHostFullscreen => Some(KdlNode::new("ToggleHostFullscreen")),
+            Action::CloseFocusByPaneId { pane_id }
+            | Action::ToggleFocusFullscreenByPaneId { pane_id }
+            | Action::TogglePaneEmbedOrFloatingByPaneId { pane_id }
+            | Action::TogglePanePinnedByPaneId { pane_id }
+            | Action::TogglePaneInGroupByPaneId { pane_id }
+            | Action::MutePaneByPaneId { pane_id }
+            | Action::IgnorePaneOutputByPaneId { pane_id }
+            | Action::WatchPaneByPaneId { pane_id }
+            | Action::StartRenamePaneByPaneId { pane_id } => {
+                let name = match self {
+                    Action::CloseFocusByPaneId { .. } => "CloseFocusByPaneId",
+                    Action::ToggleFocusFullscreenByPaneId { .. } => "ToggleFocusFullscreenByPaneId",
+                    Action::TogglePaneEmbedOrFloatingByPaneId { .. } => {
+                        "TogglePaneEmbedOrFloatingByPaneId"
+                    },
+                    Action::TogglePanePinnedByPaneId { .. } => "TogglePanePinnedByPaneId",
+                    Action::TogglePaneInGroupByPaneId { .. } => "TogglePaneInGroupByPaneId",
+                    Action::MutePaneByPaneId { .. } => "MutePaneByPaneId",
+                    Action::IgnorePaneOutputByPaneId { .. } => "IgnorePaneOutputByPaneId",
+                    Action::WatchPaneByPaneId { .. } => "WatchPaneByPaneId",
+                    _ => "StartRenamePaneByPaneId",
+                };
+                let mut node = KdlNode::new(name);
+                node.push(pane_id.to_string());
+                Some(node)
+            },
+            Action::CloseTabById { id }
+            | Action::StartRenameTabByTabId { id }
+            | Action::MuteTabByTabId { id } => {
+                let name = match self {
+                    Action::CloseTabById { .. } => "CloseTabById",
+                    Action::MuteTabByTabId { .. } => "MuteTabByTabId",
+                    _ => "StartRenameTabByTabId",
+                };
+                let mut node = KdlNode::new(name);
+                node.push(KdlValue::Base10(*id as i64));
+                Some(node)
+            },
+            Action::MoveTabByTabId { id, direction } => {
+                let mut node = KdlNode::new("MoveTabByTabId");
+                let direction = match direction {
+                    Direction::Left => "left",
+                    Direction::Right => "right",
+                    Direction::Up => "up",
+                    Direction::Down => "down",
+                };
+                node.push(direction);
+                node.push(KdlValue::Base10(*id as i64));
+                Some(node)
+            },
+            Action::MoveTabToPosition { id, position } => {
+                let mut node = KdlNode::new("MoveTabToPosition");
+                node.push(tab_position_to_kdl_value(*position));
+                node.push(KdlValue::Base10(*id as i64));
+                Some(node)
+            },
             _ => None,
         }
+    }
+}
+
+fn tab_position_to_kdl_value(position: u64) -> KdlValue {
+    if position == 0 {
+        KdlValue::String("start".into())
+    } else if position > i64::MAX as u64 {
+        KdlValue::String("end".into())
+    } else {
+        KdlValue::Base10(position as i64)
+    }
+}
+
+fn tab_position_from_kdl_entry(entry: &KdlEntry) -> Result<u64, ConfigError> {
+    match entry.value() {
+        KdlValue::String(s) if s == "start" => Ok(0),
+        KdlValue::String(s) if s == "end" => Ok(TAB_POSITION_END),
+        value => value
+            .as_i64()
+            .filter(|p| *p >= 0)
+            .map(|p| p as u64)
+            .ok_or_else(|| {
+                kdl_parsing_error!(
+                    "MoveTabToPosition expects \"start\", \"end\" or a position starting from 0"
+                        .into(),
+                    entry
+                )
+            }),
     }
 }
 
@@ -1405,23 +1609,26 @@ impl TryFrom<(&str, &KdlDocument)> for PaletteColor {
             }
         };
         let is_eight_bit = || kdl_first_entry_as_i64!(color).is_some() && entry_count == 1;
+        let out_of_range = || {
+            ConfigError::new_kdl_error(
+                "color values must be numbers from 0 to 255".into(),
+                color.span().offset(),
+                color.span().len(),
+            )
+        };
+        let channel = |value: Option<i64>| -> Result<u8, ConfigError> {
+            let value = value.ok_or(ConfigError::new_kdl_error(
+                format!("invalid rgb color"),
+                color.span().offset(),
+                color.span().len(),
+            ))?;
+            u8::try_from(value).map_err(|_| out_of_range())
+        };
         if is_rgb() {
             let mut channels = kdl_entries_as_i64!(color);
-            let r = channels.next().unwrap().ok_or(ConfigError::new_kdl_error(
-                format!("invalid rgb color"),
-                color.span().offset(),
-                color.span().len(),
-            ))? as u8;
-            let g = channels.next().unwrap().ok_or(ConfigError::new_kdl_error(
-                format!("invalid rgb color"),
-                color.span().offset(),
-                color.span().len(),
-            ))? as u8;
-            let b = channels.next().unwrap().ok_or(ConfigError::new_kdl_error(
-                format!("invalid rgb color"),
-                color.span().offset(),
-                color.span().len(),
-            ))? as u8;
+            let r = channel(channels.next().unwrap())?;
+            let g = channel(channels.next().unwrap())?;
+            let b = channel(channels.next().unwrap())?;
             Ok(PaletteColor::Rgb((r, g, b)))
         } else if is_three_digit_hex() {
             // eg. #fff (hex, will be converted to rgb)
@@ -1481,7 +1688,12 @@ impl TryFrom<(&str, &KdlDocument)> for PaletteColor {
                 color.span().offset(),
                 color.span().len(),
             ))?;
-            Ok(PaletteColor::EightBit(n as u8))
+            Ok(PaletteColor::EightBit(channel(Some(n))?))
+        } else if let Some(colour) = kdl_first_entry_as_string!(color)
+            .filter(|_| entry_count == 1)
+            .and_then(crate::input::config_blocks::parse_colour)
+        {
+            Ok(colour)
         } else {
             Err(ConfigError::new_kdl_error(
                 "Failed to parse color".into(),
@@ -1489,6 +1701,57 @@ impl TryFrom<(&str, &KdlDocument)> for PaletteColor {
                 color.span().len(),
             ))
         }
+    }
+}
+
+pub fn palette_color_refusing_index(
+    color_name: &str,
+    colors: &KdlDocument,
+) -> Result<PaletteColor, ConfigError> {
+    let color = PaletteColor::try_from((color_name, colors))?;
+    if let PaletteColor::EightBit(_) = color {
+        let node = colors.get(color_name);
+        let (offset, len) = node
+            .map(|node| (node.span().offset(), node.span().len()))
+            .unwrap_or((colors.span().offset(), colors.span().len()));
+        return Err(ConfigError::new_kdl_error(
+            format!(
+                "{} must be given as rgb or as a hex string: a palette index would resolve \
+                 through the very table it is defining",
+                color_name
+            ),
+            offset,
+            len,
+        ));
+    }
+    Ok(color)
+}
+
+impl TerminalColors {
+    pub fn from_kdl(kdl: &KdlNode) -> Result<Self, ConfigError> {
+        let mut table = TerminalColors::default();
+        let Some(colors) = kdl.children() else {
+            return Ok(table);
+        };
+        for (slot, name) in TERMINAL_COLOR_NAMES.iter().enumerate() {
+            if colors.get(name).is_none() {
+                continue;
+            }
+            table.set(slot, palette_color_refusing_index(name, colors)?);
+        }
+        Ok(table)
+    }
+
+    pub fn to_kdl(&self) -> KdlNode {
+        let mut node = KdlNode::new("terminal_colors");
+        let mut doc = KdlDocument::new();
+        for (slot, name) in TERMINAL_COLOR_NAMES.iter().enumerate() {
+            if let Some(color) = self.get(slot) {
+                doc.nodes_mut().push(color.to_kdl(name));
+            }
+        }
+        node.set_children(doc);
+        node
     }
 }
 
@@ -1670,6 +1933,35 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
             "ToggleTheme" => {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
+            "DismissInfoPopups" => {
+                parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
+            },
+            "OpenContextMenu" => {
+                parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
+            },
+            "ToggleSessionCard"
+            | "MutePane"
+            | "IgnorePaneOutput"
+            | "WatchPane"
+            | "MuteTab"
+            | "MuteSession"
+            | "ToggleSession"
+            | "GoToPreviousSession"
+            | "GoToNextSession"
+            | "GoToNextAttention"
+            | "ToggleTrayIcon"
+            | "MarkPaneSeen" => {
+                parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
+            },
+            "MarkAllSeen" => {
+                let this_session =
+                    crate::kdl_get_bool_property_or_child_value!(kdl_action, "this_session")
+                        .unwrap_or(false);
+                Ok(Action::MarkAllSeen {
+                    session: None,
+                    this_session,
+                })
+            },
             "SwitchSession" => {
                 let name = kdl_get_string_property_or_child_value!(kdl_action, "name")
                     .map(|s| s.to_string())
@@ -1706,12 +1998,16 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 let cwd =
                     kdl_get_string_property_or_child_value!(kdl_action, "cwd").map(PathBuf::from);
 
+                let close_current =
+                    crate::kdl_get_bool_property_or_child_value!(kdl_action, "close_current")
+                        .unwrap_or(false);
                 Ok(Action::SwitchSession {
                     name,
                     tab_position,
                     pane_id: pane_id_tuple,
                     layout,
                     cwd,
+                    close_current,
                 })
             },
             "Copy" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
@@ -2062,6 +2358,19 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 let stacked = command_metadata
                     .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "stacked"))
                     .unwrap_or(false);
+                let background = command_metadata
+                    .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "background"))
+                    .unwrap_or(false);
+                if background {
+                    return Ok(Action::RunInBackground {
+                        command: RunCommandAction {
+                            command: PathBuf::from(command),
+                            args,
+                            cwd,
+                            ..Default::default()
+                        },
+                    });
+                }
                 let run_command_action = RunCommandAction {
                     command: PathBuf::from(command),
                     args,
@@ -2087,12 +2396,20 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     command_metadata.and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "pinned"));
                 let borderless = command_metadata
                     .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "borderless"));
+                let border_style = match command_metadata {
+                    Some(command_metadata) => {
+                        border_style_override_from_kdl_document(command_metadata, "border")?
+                            .none_if_empty()
+                    },
+                    None => None,
+                };
                 if floating {
                     Ok(Action::NewFloatingPane {
                         command: Some(run_command_action),
                         pane_name: name,
-                        coordinates: FloatingPaneCoordinates::new(
-                            x, y, width, height, pinned, borderless,
+                        coordinates: FloatingPaneCoordinates::merge_border_style(
+                            FloatingPaneCoordinates::new(x, y, width, height, pinned, borderless),
+                            border_style,
                         ),
                         near_current_pane: false,
                         no_focus: false,
@@ -2124,6 +2441,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         near_current_pane: false,
                         no_focus: false,
                         borderless: None,
+                        border_style,
                         tab_id: None,
                     })
                 }
@@ -2238,6 +2556,13 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
             },
             "PreviousSwapLayout" => Ok(Action::PreviousSwapLayout),
             "NextSwapLayout" => Ok(Action::NextSwapLayout),
+            "ApplyTiledSwapLayout" | "ApplyFloatingSwapLayout" => {
+                parse_kdl_action_char_or_string_arguments!(
+                    action_name,
+                    action_arguments,
+                    kdl_action
+                )
+            },
             "BreakPane" => Ok(Action::BreakPane),
             "BreakPaneRight" => Ok(Action::BreakPaneRight),
             "BreakPaneLeft" => Ok(Action::BreakPaneLeft),
@@ -2345,6 +2670,132 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 })
             },
             "TogglePanePinned" => Ok(Action::TogglePanePinned),
+            "NewFloatingPane" => Ok(Action::NewFloatingPane {
+                command: None,
+                pane_name: None,
+                coordinates: None,
+                near_current_pane: false,
+                no_focus: false,
+                tab_id: None,
+            }),
+            "CloseFocusByPaneId"
+            | "ToggleFocusFullscreenByPaneId"
+            | "TogglePaneEmbedOrFloatingByPaneId"
+            | "TogglePanePinnedByPaneId"
+            | "TogglePaneInGroupByPaneId"
+            | "MutePaneByPaneId"
+            | "IgnorePaneOutputByPaneId"
+            | "WatchPaneByPaneId"
+            | "StartRenamePaneByPaneId" => {
+                let entry = action_arguments.first().ok_or_else(|| {
+                    ConfigError::new_kdl_error(
+                        format!(
+                            "{} needs a pane id such as \"terminal_1\" (it can only be left out inside context_menu)",
+                            action_name
+                        ),
+                        kdl_action.span().offset(),
+                        kdl_action.span().len(),
+                    )
+                })?;
+                let pane_id_string = entry.value().as_string().ok_or_else(|| {
+                    kdl_parsing_error!(
+                        format!("{} expects a pane id such as \"terminal_1\"", action_name),
+                        entry
+                    )
+                })?;
+                let pane_id = PaneId::from_str(pane_id_string).map_err(|_| {
+                    kdl_parsing_error!(format!("Malformed pane id: {}", pane_id_string), entry)
+                })?;
+                Ok(match action_name {
+                    "CloseFocusByPaneId" => Action::CloseFocusByPaneId { pane_id },
+                    "ToggleFocusFullscreenByPaneId" => {
+                        Action::ToggleFocusFullscreenByPaneId { pane_id }
+                    },
+                    "TogglePaneEmbedOrFloatingByPaneId" => {
+                        Action::TogglePaneEmbedOrFloatingByPaneId { pane_id }
+                    },
+                    "TogglePanePinnedByPaneId" => Action::TogglePanePinnedByPaneId { pane_id },
+                    "TogglePaneInGroupByPaneId" => Action::TogglePaneInGroupByPaneId { pane_id },
+                    "MutePaneByPaneId" => Action::MutePaneByPaneId { pane_id },
+                    "IgnorePaneOutputByPaneId" => Action::IgnorePaneOutputByPaneId { pane_id },
+                    "WatchPaneByPaneId" => Action::WatchPaneByPaneId { pane_id },
+                    _ => Action::StartRenamePaneByPaneId { pane_id },
+                })
+            },
+            "CloseTabById" | "StartRenameTabByTabId" | "MuteTabByTabId" => {
+                let entry = action_arguments.first().ok_or_else(|| {
+                    ConfigError::new_kdl_error(
+                        format!(
+                            "{} needs a tab id (it can only be left out inside context_menu)",
+                            action_name
+                        ),
+                        kdl_action.span().offset(),
+                        kdl_action.span().len(),
+                    )
+                })?;
+                let id = entry.value().as_i64().ok_or_else(|| {
+                    kdl_parsing_error!(format!("{} expects a tab id", action_name), entry)
+                })? as u64;
+                if action_name == "CloseTabById" {
+                    Ok(Action::CloseTabById { id })
+                } else if action_name == "MuteTabByTabId" {
+                    Ok(Action::MuteTabByTabId { id })
+                } else {
+                    Ok(Action::StartRenameTabByTabId { id })
+                }
+            },
+            "MoveTabByTabId" => {
+                let direction_entry = action_arguments.first().ok_or_else(|| {
+                    ConfigError::new_kdl_error(
+                        "MoveTabByTabId expects a direction".into(),
+                        kdl_action.span().offset(),
+                        kdl_action.span().len(),
+                    )
+                })?;
+                let direction = direction_entry
+                    .value()
+                    .as_string()
+                    .and_then(|d| Direction::from_str(d).ok())
+                    .filter(|d| !d.is_vertical())
+                    .ok_or_else(|| {
+                        kdl_parsing_error!(
+                            "MoveTabByTabId expects \"left\" or \"right\"".into(),
+                            direction_entry
+                        )
+                    })?;
+                let id_entry = action_arguments.get(1).ok_or_else(|| {
+                    ConfigError::new_kdl_error(
+                        "MoveTabByTabId needs a tab id after the direction (it can only be left out inside context_menu)".into(),
+                        kdl_action.span().offset(),
+                        kdl_action.span().len(),
+                    )
+                })?;
+                let id = id_entry.value().as_i64().ok_or_else(|| {
+                    kdl_parsing_error!("MoveTabByTabId expects a tab id".into(), id_entry)
+                })? as u64;
+                Ok(Action::MoveTabByTabId { id, direction })
+            },
+            "MoveTabToPosition" => {
+                let position_entry = action_arguments.first().ok_or_else(|| {
+                    ConfigError::new_kdl_error(
+                        "MoveTabToPosition expects a position".into(),
+                        kdl_action.span().offset(),
+                        kdl_action.span().len(),
+                    )
+                })?;
+                let position = tab_position_from_kdl_entry(position_entry)?;
+                let id_entry = action_arguments.get(1).ok_or_else(|| {
+                    ConfigError::new_kdl_error(
+                        "MoveTabToPosition needs a tab id after the position (it can only be left out inside context_menu)".into(),
+                        kdl_action.span().offset(),
+                        kdl_action.span().len(),
+                    )
+                })?;
+                let id = id_entry.value().as_i64().ok_or_else(|| {
+                    kdl_parsing_error!("MoveTabToPosition expects a tab id".into(), id_entry)
+                })? as u64;
+                Ok(Action::MoveTabToPosition { id, position })
+            },
             "TogglePaneInGroup" => Ok(Action::TogglePaneInGroup),
             "ToggleGroupMarking" => Ok(Action::ToggleGroupMarking),
             _ => Err(ConfigError::new_kdl_error(
@@ -2812,6 +3263,8 @@ impl Options {
             .map(|(string, _entry)| PathBuf::from(string));
         let theme_dir = kdl_property_first_arg_as_string_or_error!(kdl_options, "theme_dir")
             .map(|(string, _entry)| PathBuf::from(string));
+        let keybinds_dir = kdl_property_first_arg_as_string_or_error!(kdl_options, "keybinds_dir")
+            .map(|(string, _entry)| PathBuf::from(string));
         let mouse_mode =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "mouse_mode").map(|(v, _)| v);
         let scroll_buffer_size =
@@ -2872,6 +3325,9 @@ impl Options {
             "support_kitty_graphics_protocol"
         )
         .map(|(v, _)| v);
+        let grapheme_clusters =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "grapheme_clusters")
+                .map(|(v, _)| v);
         let web_server =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "web_server").map(|(v, _)| v);
         let web_sharing =
@@ -2949,6 +3405,12 @@ impl Options {
         let enforce_https_for_localhost =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "enforce_https_for_localhost")
                 .map(|(v, _)| v);
+        let dangerously_allow_web_serving_without_a_certificate =
+            kdl_property_first_arg_as_bool_or_error!(
+                kdl_options,
+                "dangerously_allow_web_serving_without_a_certificate"
+            )
+            .map(|(v, _)| v);
         let post_command_discovery_hook =
             kdl_property_first_arg_as_string_or_error!(kdl_options, "post_command_discovery_hook")
                 .map(|(hook, _entry)| hook.to_string());
@@ -2974,6 +3436,9 @@ impl Options {
                 .map(|(v, _)| v);
         let mouse_click_through =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "mouse_click_through")
+                .map(|(v, _)| v);
+        let context_menu_enabled =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "context_menu_enabled")
                 .map(|(v, _)| v);
         let osc133_command_selection =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "osc133_command_selection")
@@ -3012,6 +3477,19 @@ impl Options {
             "dangerously_enable_paste_buffer_read"
         )
         .map(|(v, _)| v);
+        let session_indicator =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "session_indicator")
+                .map(|(v, _)| v);
+        let swap_layout_notification =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "swap_layout_notification")
+                .map(|(v, _)| v);
+        let on_quit = match kdl_property_first_arg_as_string_or_error!(kdl_options, "on_quit") {
+            Some((value, entry)) => match value.parse::<crate::input::options::OnQuit>() {
+                Ok(v) => Some(v),
+                Err(e) => return Err(kdl_parsing_error!(e, entry)),
+            },
+            None => None,
+        };
 
         Ok(Options {
             simplified_ui,
@@ -3025,6 +3503,11 @@ impl Options {
             default_layout,
             layout_dir,
             theme_dir,
+            keybinds_dir,
+            keybinds_preset: None,
+            keybinds_primary: None,
+            keybinds_secondary: None,
+            keybinds_unlock: None,
             mouse_mode,
             pane_frames,
             pane_frame_style,
@@ -3047,6 +3530,7 @@ impl Options {
             disable_session_metadata,
             support_kitty_keyboard_protocol,
             support_kitty_graphics_protocol,
+            grapheme_clusters,
             web_server,
             web_sharing,
             stacked_resize,
@@ -3062,6 +3546,7 @@ impl Options {
             visual_bell,
             focus_follows_mouse,
             mouse_click_through,
+            context_menu_enabled,
             osc133_command_selection,
             word_separators,
             host_notification_protocol,
@@ -3070,10 +3555,14 @@ impl Options {
             web_server_cert,
             web_server_key,
             enforce_https_for_localhost,
+            dangerously_allow_web_serving_without_a_certificate,
             post_command_discovery_hook,
             client_async_worker_tasks,
             nested_session_handling,
             dangerously_enable_paste_buffer_read,
+            session_indicator,
+            swap_layout_notification,
+            on_quit,
         })
     }
     pub fn from_string(stringified_keybindings: &String) -> Result<Self, ConfigError> {
@@ -3405,6 +3894,31 @@ impl Options {
         };
         if let Some(theme_dir) = &self.theme_dir {
             let mut node = create_node(&theme_dir.display().to_string());
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node("/tmp");
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn keybinds_dir_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}",
+            " ", "// The folder in which Zellij will look for keybinding presets", "// ",
+        );
+
+        let create_node = |node_value: &str| -> KdlNode {
+            let mut node = KdlNode::new("keybinds_dir");
+            node.push(node_value.to_owned());
+            node
+        };
+        if let Some(keybinds_dir) = &self.keybinds_dir {
+            let mut node = create_node(&keybinds_dir.display().to_string());
             if add_comments {
                 node.set_leading(format!("{}\n", comment_text));
             }
@@ -4026,6 +4540,35 @@ impl Options {
             None
         }
     }
+    fn grapheme_clusters_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!("{}\n{}\n{}\n{}\n{}\n{}",
+            " ",
+            "// Count each grapheme cluster (an emoji sequence such as a flag or a skin tone, a letter with its accents) as one unit of width, as the Unicode standard does",
+            "// When false, widths are counted per code point, the way older programs expect; programs can still ask for clusters with mode 2027",
+            "// (Applies to new panes)",
+            "// Default: true",
+            "// ",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("grapheme_clusters");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(grapheme_clusters) = self.grapheme_clusters {
+            let mut node = create_node(grapheme_clusters);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(false);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
     fn support_kitty_graphics_protocol_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!("{}\n{}\n{}\n{}\n{}",
             " ",
@@ -4188,11 +4731,12 @@ impl Options {
     }
     fn enforce_https_for_localhost_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!(
-            "{}\n{}\n{}\n{}\n{}\n{}\n{}",
+            "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
             "/// Whether to enforce https connections to the web server when it is bound to localhost",
             "/// (127.0.0.0/8)",
             "///",
-            "/// Note: https is ALWAYS enforced when bound to non-local interfaces",
+            "/// Note: https is enforced when bound to non-local interfaces, unless",
+            "/// dangerously_allow_web_serving_without_a_certificate is set",
             "///",
             "/// Default: false",
             "// ",
@@ -4205,6 +4749,42 @@ impl Options {
         };
         if let Some(enforce_https_for_localhost) = self.enforce_https_for_localhost {
             let mut node = create_node(enforce_https_for_localhost);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(false);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn dangerously_allow_web_serving_without_a_certificate_to_kdl(
+        &self,
+        add_comments: bool,
+    ) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+            " ",
+            "// DANGEROUS: allow the web server to serve plain, unencrypted HTTP when bound to a",
+            "// non-local interface without web_server_cert and web_server_key.",
+            "// Anyone on the network can read and tamper with the traffic, including login tokens.",
+            "// Only use behind a trusted TLS-terminating proxy or on a fully trusted network.",
+            "// Does not override enforce_https_for_localhost.",
+            "// Default: false",
+            "// (Requires restart)",
+            "//",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("dangerously_allow_web_serving_without_a_certificate");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(value) = self.dangerously_allow_web_serving_without_a_certificate {
+            let mut node = create_node(value);
             if add_comments {
                 node.set_leading(format!("{}\n", comment_text));
             }
@@ -4544,6 +5124,34 @@ impl Options {
             None
         }
     }
+    fn context_menu_enabled_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        let comment_text = format!(
+            "{}\n{}\n{}\n{}",
+            " ",
+            "// Whether a right click opens the right-click menu (when off, right clicks go to the focused pane only)",
+            "// An empty context_menu block opens no menu but keeps this on",
+            "// default is true",
+        );
+
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new("context_menu_enabled");
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(context_menu_enabled) = self.context_menu_enabled {
+            let mut node = create_node(context_menu_enabled);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(false);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
     fn mouse_click_through_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
         let comment_text = format!(
             "{}\n{}\n{}",
@@ -4840,6 +5448,93 @@ impl Options {
             None
         }
     }
+    fn bool_option_to_kdl(
+        name: &str,
+        value: Option<bool>,
+        comment_lines: &[&str],
+        default_value: bool,
+        add_comments: bool,
+    ) -> Option<KdlNode> {
+        let mut comment_text = String::from(" ");
+        for line in comment_lines {
+            comment_text.push('\n');
+            comment_text.push_str(line);
+        }
+        let create_node = |node_value: bool| -> KdlNode {
+            let mut node = KdlNode::new(name);
+            node.push(KdlValue::Bool(node_value));
+            node
+        };
+        if let Some(value) = value {
+            let mut node = create_node(value);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(default_value);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
+    fn session_indicator_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        Self::bool_option_to_kdl(
+            "session_indicator",
+            self.session_indicator,
+            &[
+                "// Whether to show the other sessions indicator in the tab bar and compact bar",
+                "// default is true",
+            ],
+            false,
+            add_comments,
+        )
+    }
+    fn swap_layout_notification_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        Self::bool_option_to_kdl(
+            "swap_layout_notification",
+            self.swap_layout_notification,
+            &[
+                "// Whether to briefly show the name of the new swap layout when it is changed",
+                "// default is true",
+            ],
+            false,
+            add_comments,
+        )
+    }
+    fn on_quit_to_kdl(&self, add_comments: bool) -> Option<KdlNode> {
+        use crate::input::options::OnQuit;
+        let comment_text = [
+            " ",
+            "// What the quit action does",
+            "// Options:",
+            "//   - \"ask_quit\" (Default - ask whether to detach or quit, with quit preselected)",
+            "//   - \"ask_detach\" (ask whether to detach or quit, with detach preselected)",
+            "//   - \"quit\" (quit without asking)",
+            "//   - \"detach\" (detach without asking)",
+            "// ",
+        ]
+        .join("\n");
+        let create_node = |value: OnQuit| -> KdlNode {
+            let mut node = KdlNode::new("on_quit");
+            node.push(KdlValue::String(value.as_str().to_owned()));
+            node
+        };
+        if let Some(value) = self.on_quit {
+            let mut node = create_node(value);
+            if add_comments {
+                node.set_leading(format!("{}\n", comment_text));
+            }
+            Some(node)
+        } else if add_comments {
+            let mut node = create_node(OnQuit::AskQuit);
+            node.set_leading(format!("{}\n// ", comment_text));
+            Some(node)
+        } else {
+            None
+        }
+    }
     pub fn to_kdl(&self, add_comments: bool) -> Vec<KdlNode> {
         let mut nodes = vec![];
         if let Some(simplified_ui_node) = self.simplified_ui_to_kdl(add_comments) {
@@ -4877,6 +5572,9 @@ impl Options {
         }
         if let Some(theme_dir) = self.theme_dir_to_kdl(add_comments) {
             nodes.push(theme_dir);
+        }
+        if let Some(keybinds_dir) = self.keybinds_dir_to_kdl(add_comments) {
+            nodes.push(keybinds_dir);
         }
         if let Some(mouse_mode) = self.mouse_mode_to_kdl(add_comments) {
             nodes.push(mouse_mode);
@@ -4947,6 +5645,9 @@ impl Options {
         {
             nodes.push(support_kitty_graphics_protocol);
         }
+        if let Some(grapheme_clusters) = self.grapheme_clusters_to_kdl(add_comments) {
+            nodes.push(grapheme_clusters);
+        }
         if let Some(web_server) = self.web_server_to_kdl(add_comments) {
             nodes.push(web_server);
         }
@@ -4963,6 +5664,11 @@ impl Options {
             self.enforce_https_for_localhost_to_kdl(add_comments)
         {
             nodes.push(enforce_https_for_localhost);
+        }
+        if let Some(dangerously_allow_web_serving_without_a_certificate) =
+            self.dangerously_allow_web_serving_without_a_certificate_to_kdl(add_comments)
+        {
+            nodes.push(dangerously_allow_web_serving_without_a_certificate);
         }
         if let Some(stacked_resize) = self.stacked_resize_to_kdl(add_comments) {
             nodes.push(stacked_resize);
@@ -5005,6 +5711,9 @@ impl Options {
         if let Some(mouse_click_through) = self.mouse_click_through_to_kdl(add_comments) {
             nodes.push(mouse_click_through);
         }
+        if let Some(context_menu_enabled) = self.context_menu_enabled_to_kdl(add_comments) {
+            nodes.push(context_menu_enabled);
+        }
         if let Some(osc133_command_selection) = self.osc133_command_selection_to_kdl(add_comments) {
             nodes.push(osc133_command_selection);
         }
@@ -5038,6 +5747,15 @@ impl Options {
             self.host_notification_protocol_to_kdl(add_comments)
         {
             nodes.push(host_notification_protocol);
+        }
+        if let Some(session_indicator) = self.session_indicator_to_kdl(add_comments) {
+            nodes.push(session_indicator);
+        }
+        if let Some(swap_layout_notification) = self.swap_layout_notification_to_kdl(add_comments) {
+            nodes.push(swap_layout_notification);
+        }
+        if let Some(on_quit) = self.on_quit_to_kdl(add_comments) {
+            nodes.push(on_quit);
         }
         nodes
     }
@@ -5156,21 +5874,126 @@ impl EnvironmentVariables {
     }
 }
 
-impl Keybinds {
+fn parse_bind_blocks<K: Ord + Clone + std::hash::Hash + Eq, V: Clone>(
+    kdl_bindings: &KdlNode,
+    bind_in_block: &dyn Fn(&KdlNode, InputMode, &mut BindChanges<K, V>) -> Result<(), ConfigError>,
+    global_unbind_keys: &dyn Fn(&KdlNode) -> Result<Vec<K>, ConfigError>,
+) -> Result<BindChanges<K, V>, ConfigError> {
+    let mut changes = BindChanges::default();
+    if kdl_arg_is_truthy!(kdl_bindings, "clear-defaults") {
+        changes.clear_all();
+    }
+    let Some(children) = kdl_bindings.children() else {
+        return Ok(changes);
+    };
+    for block in children.nodes() {
+        if kdl_name!(block) == "shared_except" || kdl_name!(block) == "shared" {
+            let mut modes_to_exclude = vec![];
+            for mode_name in kdl_string_arguments!(block) {
+                modes_to_exclude.push(InputMode::from_str(mode_name).map_err(|_| {
+                    ConfigError::new_kdl_error(
+                        format!("Invalid mode: '{}'", mode_name),
+                        block.name().span().offset(),
+                        block.name().span().len(),
+                    )
+                })?);
+            }
+            for mode in InputMode::iter() {
+                if modes_to_exclude.contains(&mode) {
+                    continue;
+                }
+                bind_in_block(block, mode, &mut changes)?;
+            }
+        }
+        if kdl_name!(block) == "shared_among" {
+            let mut modes_to_include = vec![];
+            for mode_name in kdl_string_arguments!(block) {
+                modes_to_include.push(InputMode::from_str(mode_name)?);
+            }
+            for mode in InputMode::iter() {
+                if !modes_to_include.contains(&mode) {
+                    continue;
+                }
+                bind_in_block(block, mode, &mut changes)?;
+            }
+        }
+    }
+    for mode in children.nodes() {
+        if kdl_name!(mode) == "unbind"
+            || kdl_name!(mode) == "shared_except"
+            || kdl_name!(mode) == "shared_among"
+            || kdl_name!(mode) == "shared"
+        {
+            continue;
+        }
+        let mode_name = kdl_name!(mode);
+        let input_mode = InputMode::from_str(mode_name).map_err(|_| {
+            ConfigError::new_kdl_error(
+                format!("Invalid mode: '{}'", mode_name),
+                mode.name().span().offset(),
+                mode.name().span().len(),
+            )
+        })?;
+        if kdl_arg_is_truthy!(mode, "clear-defaults") {
+            changes.clear_mode(input_mode);
+        }
+        bind_in_block(mode, input_mode, &mut changes)?;
+    }
+    for global_unbind in children
+        .nodes()
+        .iter()
+        .filter(|node| kdl_name!(node) == "unbind")
+    {
+        let keys = global_unbind_keys(global_unbind)?;
+        for mode in InputMode::iter() {
+            for key in &keys {
+                changes.unbind(mode, key.clone());
+            }
+        }
+    }
+    Ok(changes)
+}
+
+impl KeybindChanges {
+    fn keys_with_text(
+        key_block: &KdlNode,
+        key_text: &dyn Fn(&str) -> Result<String, String>,
+    ) -> Result<Vec<KeyWithModifier>, ConfigError> {
+        let mut keys = vec![];
+        for key in kdl_string_arguments!(key_block) {
+            let text = key_text(key).map_err(|e| {
+                ConfigError::new_kdl_error(e, key_block.span().offset(), key_block.span().len())
+            })?;
+            let key_with_modifier = KeyWithModifier::from_str(&text).map_err(|_| {
+                ConfigError::new_kdl_error(
+                    format!("Invalid key: '{}'", text),
+                    key_block.span().offset(),
+                    key_block.span().len(),
+                )
+            })?;
+            keys.push(key_with_modifier);
+        }
+        Ok(keys)
+    }
     fn bind_keys_in_block(
         block: &KdlNode,
-        input_mode_keybinds: &mut HashMap<KeyWithModifier, Vec<Action>>,
+        input_mode: InputMode,
+        changes: &mut KeybindChanges,
         config_options: &Options,
+        key_text: &dyn Fn(&str) -> Result<String, String>,
     ) -> Result<(), ConfigError> {
         let all_nodes = kdl_children_nodes_or_error!(block, "no keybinding block for mode");
-        let bind_nodes = all_nodes.iter().filter(|n| kdl_name!(n) == "bind");
-        let unbind_nodes = all_nodes.iter().filter(|n| kdl_name!(n) == "unbind");
-        for key_block in bind_nodes {
-            Keybinds::bind_actions_for_each_key(key_block, input_mode_keybinds, config_options)?;
+        for key_block in all_nodes.iter().filter(|n| kdl_name!(n) == "bind") {
+            let keys = KeybindChanges::keys_with_text(key_block, key_text)?;
+            let actions: Vec<Action> = actions_from_kdl!(key_block, config_options);
+            for key in keys {
+                changes.bind(input_mode, key, actions.clone());
+            }
         }
-        // we loop a second time so that the unbinds always happen after the binds
-        for key_block in unbind_nodes {
-            Keybinds::unbind_keys(key_block, input_mode_keybinds)?;
+        for key_block in all_nodes.iter().filter(|n| kdl_name!(n) == "unbind") {
+            for key in KeybindChanges::keys_with_text(key_block, key_text)? {
+                changes.unbind(input_mode, key);
+            }
         }
         for key_block in all_nodes {
             if kdl_name!(key_block) != "bind" && kdl_name!(key_block) != "unbind" {
@@ -5185,118 +6008,548 @@ impl Keybinds {
     }
     pub fn from_kdl(
         kdl_keybinds: &KdlNode,
+        config_options: &Options,
+    ) -> Result<KeybindChanges, ConfigError> {
+        KeybindChanges::from_kdl_with_key_text(kdl_keybinds, config_options, &|key: &str| {
+            Ok(key.to_owned())
+        })
+    }
+    pub fn from_kdl_with_key_text(
+        kdl_keybinds: &KdlNode,
+        config_options: &Options,
+        key_text: &dyn Fn(&str) -> Result<String, String>,
+    ) -> Result<KeybindChanges, ConfigError> {
+        parse_bind_blocks(
+            kdl_keybinds,
+            &|block, input_mode, changes| {
+                KeybindChanges::bind_keys_in_block(
+                    block,
+                    input_mode,
+                    changes,
+                    config_options,
+                    key_text,
+                )
+            },
+            &|global_unbind| KeybindChanges::keys_with_text(global_unbind, key_text),
+        )
+    }
+    pub fn to_kdl_children(&self) -> KdlDocument {
+        let mut document = KdlDocument::new();
+        let serializer = Keybinds::default();
+        let mode_name = |mode: &InputMode| format!("{:?}", mode).to_lowercase();
+        let unbind_node = |keys: &BTreeSet<KeyWithModifier>| {
+            let mut node = KdlNode::new("unbind");
+            for key in keys {
+                node.push(key.to_kdl());
+            }
+            node
+        };
+        for (mode, mode_changes) in &self.modes {
+            if !mode_changes.clear_defaults {
+                continue;
+            }
+            let mut node = KdlNode::new(mode_name(mode));
+            node.insert("clear-defaults", true);
+            let mut children = serializer.serialize_mode_keybinds(&mode_changes.bind);
+            if !mode_changes.unbind.is_empty() {
+                children.nodes_mut().push(unbind_node(&mode_changes.unbind));
+            }
+            node.set_children(children);
+            document.nodes_mut().push(node);
+        }
+        let mut bound = Keybinds::default();
+        for (mode, mode_changes) in &self.modes {
+            if !mode_changes.clear_defaults && !mode_changes.bind.is_empty() {
+                bound.0.insert(
+                    *mode,
+                    mode_changes
+                        .bind
+                        .iter()
+                        .map(|(key, actions)| (key.clone(), actions.clone()))
+                        .collect(),
+                );
+            }
+        }
+        if !bound.0.is_empty() {
+            if let Some(children) = bound.to_kdl(false).children() {
+                for node in children.nodes() {
+                    document.nodes_mut().push(node.clone());
+                }
+            }
+        }
+        let mut unbound_everywhere: Option<BTreeSet<KeyWithModifier>> = None;
+        for mode in InputMode::iter() {
+            let unbound_in_mode = match self.modes.get(&mode) {
+                Some(mode_changes) if !mode_changes.clear_defaults => mode_changes.unbind.clone(),
+                _ => BTreeSet::new(),
+            };
+            unbound_everywhere = Some(match unbound_everywhere {
+                Some(so_far) => so_far.intersection(&unbound_in_mode).cloned().collect(),
+                None => unbound_in_mode,
+            });
+        }
+        let unbound_everywhere = unbound_everywhere.unwrap_or_default();
+        for (mode, mode_changes) in &self.modes {
+            if mode_changes.clear_defaults {
+                continue;
+            }
+            let remaining: BTreeSet<KeyWithModifier> = mode_changes
+                .unbind
+                .difference(&unbound_everywhere)
+                .cloned()
+                .collect();
+            if !remaining.is_empty() {
+                let mut node = KdlNode::new(mode_name(mode));
+                let mut children = KdlDocument::new();
+                children.nodes_mut().push(unbind_node(&remaining));
+                node.set_children(children);
+                document.nodes_mut().push(node);
+            }
+        }
+        if !unbound_everywhere.is_empty() {
+            document.nodes_mut().push(unbind_node(&unbound_everywhere));
+        }
+        document
+    }
+}
+
+fn mouse_trigger_target(key_block: &KdlNode) -> Result<MouseTarget, ConfigError> {
+    match key_block.get("on") {
+        Some(entry) => entry
+            .value()
+            .as_string()
+            .and_then(MouseTarget::from_name)
+            .ok_or_else(|| {
+                ConfigError::new_kdl_error(
+                    "'on' must be \"content\", \"frame\" or \"any\"".to_owned(),
+                    entry.span().offset(),
+                    entry.span().len(),
+                )
+            }),
+        None => Ok(MouseTarget::Any),
+    }
+}
+
+fn mouse_triggers_with_text(
+    key_block: &KdlNode,
+    key_text: &dyn Fn(&str) -> Result<String, String>,
+) -> Result<Vec<MouseTrigger>, ConfigError> {
+    let target = mouse_trigger_target(key_block)?;
+    let error = |message: String| {
+        ConfigError::new_kdl_error(message, key_block.span().offset(), key_block.span().len())
+    };
+    let mut triggers = vec![];
+    for entry in key_block.entries().iter().filter(|e| e.name().is_none()) {
+        let text = entry
+            .value()
+            .as_string()
+            .ok_or_else(|| error("A mouse trigger must be a string".to_owned()))?;
+        let substituted = key_text(text).map_err(error)?;
+        match MouseTrigger::parse(&substituted, target) {
+            Ok(trigger) => triggers.push(trigger),
+            Err(_)
+                if text.contains('{')
+                    && substituted
+                        .split_whitespace()
+                        .any(|word| word.eq_ignore_ascii_case("super")) =>
+            {
+                log::warn!(
+                    "Skipping the mouse binding '{}' ('{}'), because terminals do not report Super for mouse events",
+                    text,
+                    substituted
+                );
+            },
+            Err(e) => return Err(error(e)),
+        }
+    }
+    Ok(triggers)
+}
+
+fn mouse_binding_from_kdl(
+    key_block: &KdlNode,
+    config_options: &Options,
+) -> Result<MouseBinding, ConfigError> {
+    let app_first = match key_block.get("app_first") {
+        Some(entry) => Some(entry.value().as_bool().ok_or_else(|| {
+            ConfigError::new_kdl_error(
+                "app_first must be true or false".to_owned(),
+                entry.span().offset(),
+                entry.span().len(),
+            )
+        })?),
+        None => None,
+    };
+    let nodes = kdl_children_nodes_or_error!(key_block, "no actions found for the mouse binding");
+    let is_behaviour = |node: &KdlNode| {
+        let name = kdl_name!(node);
+        MouseBehaviour::is_behaviour_name(name)
+            && !(name == "MovePane" && node.entries().iter().any(|e| e.name().is_none()))
+    };
+    if let Some(behaviour_node) = nodes.iter().find(|node| is_behaviour(node)) {
+        if nodes.len() != 1 {
+            return Err(ConfigError::new_kdl_error(
+                format!(
+                    "{} must be the only item in a mouse binding",
+                    kdl_name!(behaviour_node)
+                ),
+                behaviour_node.span().offset(),
+                behaviour_node.span().len(),
+            ));
+        }
+        let mut arguments = vec![];
+        for entry in behaviour_node
+            .entries()
+            .iter()
+            .filter(|e| e.name().is_none())
+        {
+            match (entry.value().as_string(), entry.value().as_i64()) {
+                (Some(text), _) => arguments.push(text.to_owned()),
+                (None, Some(number)) => arguments.push(number.to_string()),
+                _ => {
+                    return Err(ConfigError::new_kdl_error(
+                        "Mouse behaviour arguments must be strings or numbers".to_owned(),
+                        entry.span().offset(),
+                        entry.span().len(),
+                    ))
+                },
+            }
+        }
+        let behaviour =
+            MouseBehaviour::from_name_and_arguments(kdl_name!(behaviour_node), &arguments)
+                .map_err(|e| {
+                    ConfigError::new_kdl_error(
+                        e,
+                        behaviour_node.span().offset(),
+                        behaviour_node.span().len(),
+                    )
+                })?;
+        return Ok(MouseBinding::behaviour(behaviour).with_app_first(app_first));
+    }
+    let actions: Vec<Action> = actions_from_kdl!(key_block, config_options);
+    Ok(MouseBinding::actions(actions).with_app_first(app_first))
+}
+
+pub fn mouse_binding_node(trigger: &MouseTrigger, binding: &MouseBinding) -> KdlNode {
+    let mut node = KdlNode::new("bind");
+    node.push(trigger.to_kdl());
+    if trigger.target != MouseTarget::Any {
+        node.insert("on", trigger.target.name());
+    }
+    if let Some(app_first) = binding.app_first {
+        node.insert("app_first", app_first);
+    }
+    let mut children = KdlDocument::new();
+    let mut have_children = false;
+    match &binding.kind {
+        MouseBindingKind::Behaviour(behaviour) => {
+            let mut behaviour_node = KdlNode::new(behaviour.name());
+            for argument in behaviour.arguments() {
+                match argument.parse::<i64>() {
+                    Ok(number) => behaviour_node.push(number),
+                    Err(_) => behaviour_node.push(argument),
+                }
+            }
+            children.nodes_mut().push(behaviour_node);
+        },
+        MouseBindingKind::Actions(actions) => {
+            for action in actions {
+                if let Some(kdl_action) = action.to_kdl() {
+                    if kdl_action.children().is_some() {
+                        have_children = true;
+                    }
+                    children.nodes_mut().push(kdl_action);
+                }
+            }
+        },
+    }
+    if !have_children {
+        for child in children.nodes_mut() {
+            child.set_leading("");
+            child.set_trailing("; ");
+        }
+        children.set_leading(" ");
+        children.set_trailing("");
+    }
+    node.set_children(children);
+    node
+}
+
+fn mouse_unbind_nodes(triggers: &BTreeSet<MouseTrigger>) -> Vec<KdlNode> {
+    let mut by_target: BTreeMap<MouseTarget, Vec<&MouseTrigger>> = BTreeMap::new();
+    for trigger in triggers {
+        by_target.entry(trigger.target).or_default().push(trigger);
+    }
+    by_target
+        .into_iter()
+        .map(|(target, triggers)| {
+            let mut node = KdlNode::new("unbind");
+            for trigger in triggers {
+                node.push(trigger.to_kdl());
+            }
+            if target != MouseTarget::Any {
+                node.insert("on", target.name());
+            }
+            node
+        })
+        .collect()
+}
+
+impl MousebindChanges {
+    fn bind_triggers_in_block(
+        block: &KdlNode,
+        input_mode: InputMode,
+        changes: &mut MousebindChanges,
+        config_options: &Options,
+        key_text: &dyn Fn(&str) -> Result<String, String>,
+    ) -> Result<(), ConfigError> {
+        let all_nodes = kdl_children_nodes_or_error!(block, "no mouse binding block for mode");
+        for key_block in all_nodes.iter().filter(|n| kdl_name!(n) == "bind") {
+            let triggers = mouse_triggers_with_text(key_block, key_text)?;
+            let binding = mouse_binding_from_kdl(key_block, config_options)?;
+            if let Some(behaviour) = binding.as_behaviour() {
+                if let Some(trigger) = triggers
+                    .iter()
+                    .find(|trigger| behaviour.needs_wheel() && !trigger.button.is_wheel())
+                {
+                    return Err(ConfigError::new_kdl_error(
+                        format!(
+                            "{} can only be bound to ScrollUp, ScrollDown, ScrollLeft or ScrollRight, not '{}'",
+                            behaviour.name(),
+                            trigger.to_kdl()
+                        ),
+                        key_block.span().offset(),
+                        key_block.span().len(),
+                    ));
+                }
+            }
+            for trigger in triggers {
+                changes.bind(input_mode, trigger, binding.clone());
+            }
+        }
+        for key_block in all_nodes.iter().filter(|n| kdl_name!(n) == "unbind") {
+            for trigger in mouse_triggers_with_text(key_block, key_text)? {
+                changes.unbind(input_mode, trigger);
+            }
+        }
+        for key_block in all_nodes {
+            if kdl_name!(key_block) != "bind" && kdl_name!(key_block) != "unbind" {
+                return Err(ConfigError::new_kdl_error(
+                    format!(
+                        "Unknown mouse binding instruction: '{}'",
+                        kdl_name!(key_block)
+                    ),
+                    key_block.span().offset(),
+                    key_block.span().len(),
+                ));
+            }
+        }
+        Ok(())
+    }
+    pub fn from_kdl(
+        kdl_mousebinds: &KdlNode,
+        config_options: &Options,
+    ) -> Result<MousebindChanges, ConfigError> {
+        MousebindChanges::from_kdl_with_key_text(kdl_mousebinds, config_options, &|key: &str| {
+            Ok(key.to_owned())
+        })
+    }
+    pub fn from_kdl_with_key_text(
+        kdl_mousebinds: &KdlNode,
+        config_options: &Options,
+        key_text: &dyn Fn(&str) -> Result<String, String>,
+    ) -> Result<MousebindChanges, ConfigError> {
+        parse_bind_blocks(
+            kdl_mousebinds,
+            &|block, input_mode, changes| {
+                MousebindChanges::bind_triggers_in_block(
+                    block,
+                    input_mode,
+                    changes,
+                    config_options,
+                    key_text,
+                )
+            },
+            &|global_unbind| mouse_triggers_with_text(global_unbind, key_text),
+        )
+    }
+    pub fn to_kdl_children(&self) -> KdlDocument {
+        let mut document = KdlDocument::new();
+        let title_maker = Keybinds::default();
+        let mode_name = |mode: &InputMode| format!("{:?}", mode).to_lowercase();
+        for (mode, mode_changes) in &self.modes {
+            if !mode_changes.clear_defaults {
+                continue;
+            }
+            let mut node = KdlNode::new(mode_name(mode));
+            node.insert("clear-defaults", true);
+            let mut children = KdlDocument::new();
+            for (trigger, binding) in &mode_changes.bind {
+                children
+                    .nodes_mut()
+                    .push(mouse_binding_node(trigger, binding));
+            }
+            for unbind in mouse_unbind_nodes(&mode_changes.unbind) {
+                children.nodes_mut().push(unbind);
+            }
+            node.set_children(children);
+            document.nodes_mut().push(node);
+        }
+        let mut grouped: Vec<(BTreeSet<InputMode>, MouseTrigger, MouseBinding)> = vec![];
+        for (mode, mode_changes) in &self.modes {
+            if mode_changes.clear_defaults {
+                continue;
+            }
+            for (trigger, binding) in &mode_changes.bind {
+                match grouped
+                    .iter_mut()
+                    .find(|(_, t, b)| t == trigger && b == binding)
+                {
+                    Some((modes, _, _)) => {
+                        modes.insert(*mode);
+                    },
+                    None => {
+                        grouped.push((BTreeSet::from([*mode]), trigger.clone(), binding.clone()))
+                    },
+                }
+            }
+        }
+        let mut blocks: Vec<(BTreeSet<InputMode>, KdlDocument)> = vec![];
+        for (modes, trigger, binding) in grouped {
+            let node = mouse_binding_node(&trigger, &binding);
+            match blocks
+                .iter_mut()
+                .find(|(block_modes, _)| *block_modes == modes)
+            {
+                Some((_, children)) => children.nodes_mut().push(node),
+                None => {
+                    let mut children = KdlDocument::new();
+                    children.nodes_mut().push(node);
+                    blocks.push((modes, children));
+                },
+            }
+        }
+        for (modes, children) in blocks {
+            let mut title = title_maker.serialize_mode_title_node(&modes);
+            title.set_children(children);
+            document.nodes_mut().push(title);
+        }
+        let mut unbound_everywhere: Option<BTreeSet<MouseTrigger>> = None;
+        for mode in InputMode::iter() {
+            let unbound_in_mode = match self.modes.get(&mode) {
+                Some(mode_changes) if !mode_changes.clear_defaults => mode_changes.unbind.clone(),
+                _ => BTreeSet::new(),
+            };
+            unbound_everywhere = Some(match unbound_everywhere {
+                Some(so_far) => so_far.intersection(&unbound_in_mode).cloned().collect(),
+                None => unbound_in_mode,
+            });
+        }
+        let unbound_everywhere = unbound_everywhere.unwrap_or_default();
+        for (mode, mode_changes) in &self.modes {
+            if mode_changes.clear_defaults {
+                continue;
+            }
+            let remaining: BTreeSet<MouseTrigger> = mode_changes
+                .unbind
+                .difference(&unbound_everywhere)
+                .cloned()
+                .collect();
+            if !remaining.is_empty() {
+                let mut node = KdlNode::new(mode_name(mode));
+                let mut children = KdlDocument::new();
+                for unbind in mouse_unbind_nodes(&remaining) {
+                    children.nodes_mut().push(unbind);
+                }
+                node.set_children(children);
+                document.nodes_mut().push(node);
+            }
+        }
+        for unbind in mouse_unbind_nodes(&unbound_everywhere) {
+            document.nodes_mut().push(unbind);
+        }
+        document
+    }
+    pub fn to_kdl(&self) -> Option<KdlNode> {
+        if self.is_empty() {
+            return None;
+        }
+        let mut node = KdlNode::new("mousebinds");
+        if self.clear_defaults {
+            node.insert("clear-defaults", true);
+        }
+        let children = self.to_kdl_children();
+        if !children.nodes().is_empty() {
+            node.set_children(children);
+        }
+        Some(node)
+    }
+}
+
+impl KeybindsSelection {
+    pub fn from_kdl(
+        kdl_keybinds: &KdlNode,
+        config_options: &Options,
+    ) -> Result<KeybindsSelection, ConfigError> {
+        let string_property = |name: &str| -> Result<Option<String>, ConfigError> {
+            match kdl_keybinds.get(name) {
+                Some(entry) => entry
+                    .value()
+                    .as_string()
+                    .map(|value| Some(value.to_owned()))
+                    .ok_or_else(|| {
+                        ConfigError::new_kdl_error(
+                            format!("'{}' must be a string", name),
+                            entry.span().offset(),
+                            entry.span().len(),
+                        )
+                    }),
+                None => Ok(None),
+            }
+        };
+        Ok(KeybindsSelection {
+            preset: string_property("preset")?,
+            primary: string_property("primary")?,
+            secondary: string_property("secondary")?,
+            unlock: string_property("unlock")?,
+            changes: KeybindChanges::from_kdl(kdl_keybinds, config_options)?,
+        })
+    }
+    pub fn to_kdl(&self) -> Option<KdlNode> {
+        if self.is_empty() {
+            return None;
+        }
+        let mut node = KdlNode::new("keybinds");
+        if self.changes.clear_defaults {
+            node.insert("clear-defaults", true);
+        }
+        for (name, value) in [
+            ("preset", &self.preset),
+            ("primary", &self.primary),
+            ("secondary", &self.secondary),
+            ("unlock", &self.unlock),
+        ] {
+            if let Some(value) = value {
+                node.insert(name, value.clone());
+            }
+        }
+        let children = self.changes.to_kdl_children();
+        if !children.nodes().is_empty() {
+            node.set_children(children);
+        }
+        Some(node)
+    }
+}
+
+impl Keybinds {
+    pub fn from_kdl(
+        kdl_keybinds: &KdlNode,
         base_keybinds: Keybinds,
         config_options: &Options,
     ) -> Result<Self, ConfigError> {
-        let clear_defaults = kdl_arg_is_truthy!(kdl_keybinds, "clear-defaults");
-        let mut keybinds_from_config = if clear_defaults {
-            Keybinds::default()
-        } else {
-            base_keybinds
-        };
-        for block in kdl_children_nodes_or_error!(kdl_keybinds, "keybindings with no children") {
-            if kdl_name!(block) == "shared_except" || kdl_name!(block) == "shared" {
-                let mut modes_to_exclude = vec![];
-                for mode_name in kdl_string_arguments!(block) {
-                    modes_to_exclude.push(InputMode::from_str(mode_name).map_err(|_| {
-                        ConfigError::new_kdl_error(
-                            format!("Invalid mode: '{}'", mode_name),
-                            block.name().span().offset(),
-                            block.name().span().len(),
-                        )
-                    })?);
-                }
-                for mode in InputMode::iter() {
-                    if modes_to_exclude.contains(&mode) {
-                        continue;
-                    }
-                    let mut input_mode_keybinds = keybinds_from_config.get_input_mode_mut(&mode);
-                    Keybinds::bind_keys_in_block(block, &mut input_mode_keybinds, config_options)?;
-                }
-            }
-            if kdl_name!(block) == "shared_among" {
-                let mut modes_to_include = vec![];
-                for mode_name in kdl_string_arguments!(block) {
-                    modes_to_include.push(InputMode::from_str(mode_name)?);
-                }
-                for mode in InputMode::iter() {
-                    if !modes_to_include.contains(&mode) {
-                        continue;
-                    }
-                    let mut input_mode_keybinds = keybinds_from_config.get_input_mode_mut(&mode);
-                    Keybinds::bind_keys_in_block(block, &mut input_mode_keybinds, config_options)?;
-                }
-            }
-        }
-        for mode in kdl_children_nodes_or_error!(kdl_keybinds, "keybindings with no children") {
-            if kdl_name!(mode) == "unbind"
-                || kdl_name!(mode) == "shared_except"
-                || kdl_name!(mode) == "shared_among"
-                || kdl_name!(mode) == "shared"
-            {
-                continue;
-            }
-            let mut input_mode_keybinds =
-                Keybinds::input_mode_keybindings(mode, &mut keybinds_from_config)?;
-            Keybinds::bind_keys_in_block(mode, &mut input_mode_keybinds, config_options)?;
-        }
-        if let Some(global_unbind) = kdl_keybinds.children().and_then(|c| c.get("unbind")) {
-            Keybinds::unbind_keys_in_all_modes(global_unbind, &mut keybinds_from_config)?;
-        };
+        let changes = KeybindChanges::from_kdl(kdl_keybinds, config_options)?;
+        let mut keybinds_from_config = base_keybinds;
+        changes.apply(&mut keybinds_from_config);
         Ok(keybinds_from_config)
-    }
-    fn bind_actions_for_each_key(
-        key_block: &KdlNode,
-        input_mode_keybinds: &mut HashMap<KeyWithModifier, Vec<Action>>,
-        config_options: &Options,
-    ) -> Result<(), ConfigError> {
-        let keys: Vec<KeyWithModifier> = keys_from_kdl!(key_block);
-        let actions: Vec<Action> = actions_from_kdl!(key_block, config_options);
-        for key in keys {
-            input_mode_keybinds.insert(key, actions.clone());
-        }
-        Ok(())
-    }
-    fn unbind_keys(
-        key_block: &KdlNode,
-        input_mode_keybinds: &mut HashMap<KeyWithModifier, Vec<Action>>,
-    ) -> Result<(), ConfigError> {
-        let keys: Vec<KeyWithModifier> = keys_from_kdl!(key_block);
-        for key in keys {
-            input_mode_keybinds.remove(&key);
-        }
-        Ok(())
-    }
-    fn unbind_keys_in_all_modes(
-        global_unbind: &KdlNode,
-        keybinds_from_config: &mut Keybinds,
-    ) -> Result<(), ConfigError> {
-        let keys: Vec<KeyWithModifier> = keys_from_kdl!(global_unbind);
-        for mode in keybinds_from_config.0.values_mut() {
-            for key in &keys {
-                mode.remove(&key);
-            }
-        }
-        Ok(())
-    }
-    fn input_mode_keybindings<'a>(
-        mode: &KdlNode,
-        keybinds_from_config: &'a mut Keybinds,
-    ) -> Result<&'a mut HashMap<KeyWithModifier, Vec<Action>>, ConfigError> {
-        let mode_name = kdl_name!(mode);
-        let input_mode = InputMode::from_str(mode_name).map_err(|_| {
-            ConfigError::new_kdl_error(
-                format!("Invalid mode: '{}'", mode_name),
-                mode.name().span().offset(),
-                mode.name().span().len(),
-            )
-        })?;
-        let input_mode_keybinds = keybinds_from_config.get_input_mode_mut(&input_mode);
-        let clear_defaults_for_mode = kdl_arg_is_truthy!(mode, "clear-defaults");
-        if clear_defaults_for_mode {
-            input_mode_keybinds.clear();
-        }
-        Ok(input_mode_keybinds)
     }
     pub fn from_string(
         stringified_keybindings: String,
@@ -5369,7 +6622,7 @@ impl Keybinds {
             node
         }
     }
-    fn serialize_mode_keybinds(
+    pub(crate) fn serialize_mode_keybinds(
         &self,
         keybinds: &BTreeMap<KeyWithModifier, Vec<Action>>,
     ) -> KdlDocument {
@@ -5496,16 +6749,44 @@ impl BareKey {
 
 impl Config {
     pub fn from_kdl(kdl_config: &str, base_config: Option<Config>) -> Result<Config, ConfigError> {
+        Config::from_kdl_for_layer(kdl_config, base_config, KeybindsLayer::User)
+    }
+    pub fn from_layout_kdl(
+        kdl_config: &str,
+        base_config: Option<Config>,
+    ) -> Result<Config, ConfigError> {
+        Config::from_kdl_for_layer(kdl_config, base_config, KeybindsLayer::Layout)
+    }
+    fn from_kdl_for_layer(
+        kdl_config: &str,
+        base_config: Option<Config>,
+        keybinds_layer: KeybindsLayer,
+    ) -> Result<Config, ConfigError> {
+        let base_was_given = base_config.is_some();
         let mut config = base_config.unwrap_or_else(|| Config::default());
         let kdl_config: KdlDocument = kdl_config.parse()?;
 
+        let previous_keybinds_dir = config.options.keybinds_dir.clone();
         let config_options = Options::from_kdl(&kdl_config)?;
+        if let Some(default_mode) = config_options.default_mode {
+            config.keybinds_layers.config_default_mode = Some(default_mode);
+        }
         config.options = config.options.merge(config_options);
+        let mut should_resolve_keybinds =
+            !base_was_given || config.options.keybinds_dir != previous_keybinds_dir;
 
-        // TODO: handle cases where we have more than one of these blocks (eg. two "keybinds")
-        // this should give an informative parsing error
         if let Some(kdl_keybinds) = kdl_config.get("keybinds") {
-            config.keybinds = Keybinds::from_kdl(&kdl_keybinds, config.keybinds, &config.options)?;
+            let selection = KeybindsSelection::from_kdl(&kdl_keybinds, &config.options)?;
+            config.apply_keybinds_selection(keybinds_layer, selection);
+            should_resolve_keybinds = true;
+        }
+        if let Some(kdl_mousebinds) = kdl_config.get("mousebinds") {
+            let changes = MousebindChanges::from_kdl(&kdl_mousebinds, &config.options)?;
+            config
+                .keybinds_layers
+                .mouse_layer_mut(keybinds_layer)
+                .compose(changes);
+            should_resolve_keybinds = true;
         }
         if let Some(kdl_themes) = kdl_config.get("themes") {
             let sourced_from_external_file = false;
@@ -5521,25 +6802,55 @@ impl Config {
             config.background_plugins = load_plugins;
         }
         if let Some(kdl_ui_config) = kdl_config.get("ui") {
-            let config_ui = UiConfig::from_kdl(&kdl_ui_config)?;
-            config.ui = config.ui.merge(config_ui);
+            config.ui = UiConfig::from_kdl_over(&kdl_ui_config, &config.ui)?;
         }
         if let Some(env_config) = kdl_config.get("env") {
             let config_env = EnvironmentVariables::from_kdl(&env_config)?;
             config.env = config.env.merge(config_env);
         }
         if let Some(web_client_config) = kdl_config.get("web_client") {
-            let config_web_client = WebClientConfig::from_kdl(&web_client_config)?;
-            config.web_client = config.web_client.merge(config_web_client);
+            config.web_client =
+                WebClientConfig::from_kdl_over(&web_client_config, &config.web_client)?;
+        }
+        if let Some(context_menu_config) = kdl_config.get("context_menu") {
+            config.context_menu = ContextMenuConfig::from_kdl(
+                context_menu_config,
+                std::mem::take(&mut config.context_menu),
+                &config.options,
+            )?;
+        }
+        if should_resolve_keybinds {
+            config.resolve_keybinds();
+        }
+        if let Some(window_config) = kdl_config.get("window") {
+            let config_window = WindowConfig::from_kdl(&window_config)?;
+            config.window = config.window.merge(config_window);
+        }
+        if let Some(session_suggestions_config) = kdl_config.get("session_suggestions") {
+            let session_suggestions =
+                SessionSuggestionsConfig::from_kdl(&session_suggestions_config)?;
+            config.session_suggestions = config.session_suggestions.merge(session_suggestions);
+        }
+        for attention_config in kdl_config
+            .nodes()
+            .iter()
+            .filter(|node| node.name().value() == "attention")
+        {
+            let attention = crate::input::attention::AttentionConfig::from_kdl(attention_config)?;
+            config.attention = config.attention.merge(attention);
         }
         Ok(config)
     }
     pub fn to_string(&self, add_comments: bool) -> String {
         let mut document = KdlDocument::new();
 
-        let clear_defaults = true;
-        let keybinds = self.keybinds.to_kdl(clear_defaults);
-        document.nodes_mut().push(keybinds);
+        if let Some(keybinds) = self.keybinds_layers.user.to_kdl() {
+            document.nodes_mut().push(keybinds);
+        }
+
+        if let Some(mousebinds) = self.keybinds_layers.user_mouse.to_kdl() {
+            document.nodes_mut().push(mousebinds);
+        }
 
         if let Some(themes) = self.themes.to_kdl() {
             document.nodes_mut().push(themes);
@@ -5561,12 +6872,357 @@ impl Config {
 
         document.nodes_mut().push(self.web_client.to_kdl());
 
+        if let Some(context_menu) = self.context_menu.to_kdl() {
+            document.nodes_mut().push(context_menu);
+        }
+
+        if let Some(window) = self.window.to_kdl() {
+            document.nodes_mut().push(window);
+        }
+
+        if let Some(session_suggestions) = self.session_suggestions.to_kdl() {
+            document.nodes_mut().push(session_suggestions);
+        }
+
+        if let Some(attention) = self.attention.to_kdl() {
+            document.nodes_mut().push(attention);
+        }
+
+        let mut options = self.options.clone();
+        let injected_default_mode = self.keybinds_layers.injected_default_mode;
+        if injected_default_mode.is_some() && options.default_mode == injected_default_mode {
+            options.default_mode = self.keybinds_layers.config_default_mode;
+        }
         document
             .nodes_mut()
-            .append(&mut self.options.to_kdl(add_comments));
+            .append(&mut options.to_kdl(add_comments));
 
         document.to_string()
     }
+}
+
+impl ContextMenuConfig {
+    pub fn from_kdl(
+        kdl_context_menu: &KdlNode,
+        base: ContextMenuConfig,
+        config_options: &Options,
+    ) -> Result<ContextMenuConfig, ConfigError> {
+        let clear_all_defaults = kdl_arg_is_truthy!(kdl_context_menu, "clear-defaults");
+        let mut context_menu = if clear_all_defaults {
+            ContextMenuConfig::default()
+        } else {
+            base
+        };
+        if let Some(sections) = kdl_children_nodes!(kdl_context_menu) {
+            for section_node in sections {
+                let section_name = kdl_name!(section_node);
+                let clear_section_defaults = kdl_arg_is_truthy!(section_node, "clear-defaults");
+                let mut statements = vec![];
+                if let Some(entry_nodes) = kdl_children_nodes!(section_node) {
+                    for entry_node in entry_nodes {
+                        statements.push(Self::statement_from_kdl(entry_node, config_options)?);
+                    }
+                }
+                let section = context_menu.section_mut(section_name).ok_or_else(|| {
+                    ConfigError::new_kdl_error(
+                        format!(
+                            "Unknown context_menu section '{}', expected one of: {}",
+                            section_name,
+                            CONTEXT_MENU_SECTIONS.join(", ")
+                        ),
+                        section_node.span().offset(),
+                        section_node.span().len(),
+                    )
+                })?;
+                if clear_section_defaults {
+                    *section = crate::input::context_menu::context_menu_entries_without_defaults(
+                        statements,
+                    );
+                } else {
+                    *section = merge_context_menu_entries(section, statements);
+                }
+            }
+        }
+        Ok(context_menu)
+    }
+    pub fn statement_from_kdl(
+        entry_node: &KdlNode,
+        config_options: &Options,
+    ) -> Result<crate::input::context_menu::MenuStatement<ContextMenuEntry>, ConfigError> {
+        if kdl_name!(entry_node) == "remove" {
+            let label = entry_node
+                .entries()
+                .iter()
+                .find(|entry| entry.name().is_none())
+                .and_then(|entry| entry.value().as_string())
+                .ok_or_else(|| {
+                    ConfigError::new_kdl_error(
+                        "A context_menu remove needs the label of the item to remove, eg. remove \"Close pane\"".into(),
+                        entry_node.span().offset(),
+                        entry_node.span().len(),
+                    )
+                })?;
+            return Ok(MenuStatement::Remove(label.to_owned()));
+        }
+        let entry = Self::entry_from_kdl(entry_node, config_options)?;
+        let placement_label = |name: &str| -> Result<Option<String>, ConfigError> {
+            match entry_node.get(name) {
+                Some(property) => property
+                    .value()
+                    .as_string()
+                    .map(|label| Some(label.to_owned()))
+                    .ok_or_else(|| {
+                        ConfigError::new_kdl_error(
+                            format!("'{}' must be the label of another context_menu item", name),
+                            property.span().offset(),
+                            property.span().len(),
+                        )
+                    }),
+                None => Ok(None),
+            }
+        };
+        let placement = match (placement_label("after")?, placement_label("before")?) {
+            (Some(label), _) => Some(MenuPlacement::After(label)),
+            (None, Some(label)) => Some(MenuPlacement::Before(label)),
+            (None, None) => None,
+        };
+        Ok(MenuStatement::Entry { entry, placement })
+    }
+    pub fn entry_from_kdl(
+        entry_node: &KdlNode,
+        config_options: &Options,
+    ) -> Result<ContextMenuEntry, ConfigError> {
+        match kdl_name!(entry_node) {
+            "separator" => Ok(ContextMenuEntry::Separator),
+            "item" => {
+                let label = entry_node
+                    .entries()
+                    .iter()
+                    .find(|entry| entry.name().is_none())
+                    .and_then(|entry| entry.value().as_string())
+                    .ok_or_else(|| {
+                        ConfigError::new_kdl_error(
+                            "A context_menu item needs a label, eg. item \"Close pane\" { CloseFocusByPaneId; }".into(),
+                            entry_node.span().offset(),
+                            entry_node.span().len(),
+                        )
+                    })?;
+                let actions: Vec<ContextMenuAction> = kdl_children_nodes_or_error!(
+                    entry_node,
+                    "no actions found for context_menu item"
+                )
+                .iter()
+                .map(|kdl_action| ContextMenuAction::from_kdl(kdl_action, config_options))
+                .collect::<Result<_, _>>()?;
+                let toggled_label = entry_node
+                    .get("toggled_label")
+                    .and_then(|entry| entry.value().as_string())
+                    .map(|label| label.to_owned());
+                Ok(ContextMenuEntry::Item {
+                    label: label.to_owned(),
+                    actions,
+                    toggled_label,
+                })
+            },
+            other => Err(ConfigError::new_kdl_error(
+                format!(
+                    "Unknown context_menu entry '{}', expected 'item', 'separator' or 'remove'",
+                    other
+                ),
+                entry_node.span().offset(),
+                entry_node.span().len(),
+            )),
+        }
+    }
+    pub fn to_kdl(&self) -> Option<KdlNode> {
+        let defaults = &crate::input::config_settings::default_config().context_menu;
+        if self == defaults {
+            return None;
+        }
+        let mut sections = KdlDocument::new();
+        for section_name in CONTEXT_MENU_SECTIONS {
+            let (Some(entries), Some(default_entries)) =
+                (self.section(section_name), defaults.section(section_name))
+            else {
+                continue;
+            };
+            if entries == default_entries {
+                continue;
+            }
+            let mut section_node = KdlNode::new(section_name);
+            let mut section_children = KdlDocument::new();
+            let statements = if entries.is_empty() {
+                None
+            } else {
+                context_menu_statements_against(entries, default_entries)
+            };
+            match statements {
+                Some(statements) => {
+                    for statement in &statements {
+                        section_children
+                            .nodes_mut()
+                            .push(context_menu_statement_to_kdl(statement));
+                    }
+                },
+                None => {
+                    section_node.insert("clear-defaults", true);
+                    for entry in entries {
+                        section_children
+                            .nodes_mut()
+                            .push(context_menu_entry_to_kdl(entry));
+                    }
+                },
+            }
+            section_node.set_children(section_children);
+            sections.nodes_mut().push(section_node);
+        }
+        let mut context_menu_node = KdlNode::new("context_menu");
+        context_menu_node.set_children(sections);
+        Some(context_menu_node)
+    }
+}
+
+pub fn context_menu_statement_to_kdl(statement: &MenuStatement<ContextMenuEntry>) -> KdlNode {
+    match statement {
+        MenuStatement::Remove(label) => {
+            let mut node = KdlNode::new("remove");
+            node.push(KdlEntry::new(KdlValue::String(label.clone())));
+            node
+        },
+        MenuStatement::Entry { entry, placement } => {
+            let mut node = context_menu_entry_to_kdl(entry);
+            match placement {
+                Some(MenuPlacement::After(label)) => {
+                    node.push(KdlEntry::new_prop("after", KdlValue::String(label.clone())))
+                },
+                Some(MenuPlacement::Before(label)) => node.push(KdlEntry::new_prop(
+                    "before",
+                    KdlValue::String(label.clone()),
+                )),
+                None => {},
+            }
+            node
+        },
+    }
+}
+
+impl ContextMenuAction {
+    pub fn from_kdl(
+        kdl_action: &KdlNode,
+        config_options: &Options,
+    ) -> Result<ContextMenuAction, ConfigError> {
+        let action_name = kdl_name!(kdl_action);
+        let arguments: Vec<&KdlEntry> = kdl_action
+            .entries()
+            .iter()
+            .filter(|entry| entry.name().is_none())
+            .collect();
+        if arguments.is_empty() {
+            if let Some(action) = ClickedPaneAction::from_kdl_name(action_name) {
+                return Ok(ContextMenuAction::ClickedPane(action));
+            }
+            match action_name {
+                "CloseTabById" => {
+                    return Ok(ContextMenuAction::ClickedTab(ClickedTabAction::Close))
+                },
+                "StartRenameTabByTabId" => {
+                    return Ok(ContextMenuAction::ClickedTab(ClickedTabAction::StartRename))
+                },
+                "MuteTabByTabId" => {
+                    return Ok(ContextMenuAction::ClickedTab(ClickedTabAction::Mute))
+                },
+                _ => {},
+            }
+        }
+        if action_name == "MoveTabByTabId" && arguments.len() == 1 {
+            let direction = arguments[0]
+                .value()
+                .as_string()
+                .and_then(|d| Direction::from_str(d).ok())
+                .filter(|d| !d.is_vertical())
+                .ok_or_else(|| {
+                    kdl_parsing_error!(
+                        "MoveTabByTabId expects \"left\" or \"right\"".into(),
+                        arguments[0]
+                    )
+                })?;
+            return Ok(ContextMenuAction::ClickedTab(ClickedTabAction::Move(
+                direction,
+            )));
+        }
+        if action_name == "MoveTabToPosition" && arguments.len() == 1 {
+            let position = tab_position_from_kdl_entry(arguments[0])?;
+            return Ok(ContextMenuAction::ClickedTab(
+                ClickedTabAction::MoveToPosition(position),
+            ));
+        }
+        Action::try_from((kdl_action, config_options)).map(ContextMenuAction::Action)
+    }
+    pub fn to_kdl(&self) -> Option<KdlNode> {
+        match self {
+            ContextMenuAction::Action(action) => action.to_kdl(),
+            ContextMenuAction::ClickedPane(action) => Some(KdlNode::new(action.kdl_name())),
+            ContextMenuAction::ClickedTab(action) => {
+                let mut node = KdlNode::new(action.kdl_name());
+                match action {
+                    ClickedTabAction::Move(direction) => {
+                        node.push(match direction {
+                            Direction::Left => "left",
+                            Direction::Right => "right",
+                            Direction::Up => "up",
+                            Direction::Down => "down",
+                        });
+                    },
+                    ClickedTabAction::MoveToPosition(position) => {
+                        node.push(tab_position_to_kdl_value(*position));
+                    },
+                    _ => {},
+                }
+                Some(node)
+            },
+        }
+    }
+}
+
+pub fn context_menu_entry_to_kdl(entry: &ContextMenuEntry) -> KdlNode {
+    match entry {
+        ContextMenuEntry::Separator => KdlNode::new("separator"),
+        ContextMenuEntry::Item {
+            label,
+            actions,
+            toggled_label,
+        } => {
+            let action_nodes: Vec<KdlNode> = actions
+                .iter()
+                .filter_map(|action| action.to_kdl())
+                .collect();
+            let mut node = context_menu_item_to_kdl(label, action_nodes);
+            if let Some(toggled_label) = toggled_label {
+                node.push(KdlEntry::new_prop("toggled_label", toggled_label.clone()));
+            }
+            node
+        },
+    }
+}
+
+pub fn context_menu_item_to_kdl(label: &str, action_nodes: Vec<KdlNode>) -> KdlNode {
+    let mut item_node = KdlNode::new("item");
+    item_node.push(label.to_owned());
+    let mut actions = KdlDocument::new();
+    let actions_have_children = action_nodes.iter().any(|node| node.children().is_some());
+    for action in action_nodes {
+        actions.nodes_mut().push(action);
+    }
+    if !actions_have_children {
+        for action in actions.nodes_mut() {
+            action.set_leading("");
+            action.set_trailing("; ");
+        }
+        actions.set_leading(" ");
+        actions.set_trailing("");
+    }
+    item_node.set_children(actions);
+    item_node
 }
 
 impl PluginAliases {
@@ -5642,10 +7298,7 @@ impl PluginAliases {
     }
 }
 
-pub fn load_plugins_to_kdl(
-    background_plugins: &HashSet<RunPluginOrAlias>,
-    add_comments: bool,
-) -> KdlNode {
+pub fn load_plugins_to_kdl(background_plugins: &[RunPluginOrAlias], add_comments: bool) -> KdlNode {
     let mut load_plugins = KdlNode::new("load_plugins");
     let mut load_plugins_children = KdlDocument::new();
     for run_plugin_or_alias in background_plugins.iter() {
@@ -5708,10 +7361,10 @@ pub fn load_plugins_to_kdl(
     load_plugins
 }
 
-fn load_plugins_from_kdl(
+pub fn load_plugins_from_kdl(
     kdl_load_plugins: &KdlNode,
-) -> Result<HashSet<RunPluginOrAlias>, ConfigError> {
-    let mut load_plugins: HashSet<RunPluginOrAlias> = HashSet::new();
+) -> Result<Vec<RunPluginOrAlias>, ConfigError> {
+    let mut load_plugins: Vec<RunPluginOrAlias> = Vec::new();
     if let Some(kdl_load_plugins) = kdl_children_nodes!(kdl_load_plugins) {
         for plugin_block in kdl_load_plugins {
             let url_node = plugin_block.name();
@@ -5733,24 +7386,128 @@ fn load_plugins_from_kdl(
                 )
             })?
             .with_initial_cwd(cwd);
-            load_plugins.insert(run_plugin_or_alias);
+            if !load_plugins.contains(&run_plugin_or_alias) {
+                load_plugins.push(run_plugin_or_alias);
+            }
         }
     }
     Ok(load_plugins)
 }
 
+pub fn line_style_from_kdl(
+    kdl_document: &KdlDocument,
+    child_name: &str,
+) -> Result<Option<LineStyle>, ConfigError> {
+    let Some(child) = kdl_document.get(child_name) else {
+        return Ok(None);
+    };
+    let value = child
+        .get(0)
+        .and_then(|v| v.value().as_string())
+        .ok_or_else(|| {
+            ConfigError::new_kdl_error(
+                format!("'{}' must have a string value", child_name),
+                child.span().offset(),
+                child.span().len(),
+            )
+        })?;
+    LineStyle::from_str(value)
+        .map(Some)
+        .map_err(|e| ConfigError::new_kdl_error(e, child.span().offset(), child.span().len()))
+}
+
+pub fn border_style_override_from_kdl_document(
+    kdl_document: &KdlDocument,
+    prefix: &str,
+) -> Result<BorderStyleOverride, ConfigError> {
+    let rounded_corners = kdl_document
+        .get(&format!("{}_rounded_corners", prefix))
+        .and_then(|n| n.entries().iter().next())
+        .and_then(|e| e.value().as_bool());
+    Ok(BorderStyleOverride {
+        all: line_style_from_kdl(kdl_document, &format!("{}_style", prefix))?,
+        top: line_style_from_kdl(kdl_document, &format!("{}_top", prefix))?,
+        right: line_style_from_kdl(kdl_document, &format!("{}_right", prefix))?,
+        bottom: line_style_from_kdl(kdl_document, &format!("{}_bottom", prefix))?,
+        left: line_style_from_kdl(kdl_document, &format!("{}_left", prefix))?,
+        rounded_corners,
+    })
+}
+
+pub fn border_style_override_from_kdl_children(
+    kdl_node: &KdlNode,
+    prefix: &str,
+) -> Result<BorderStyleOverride, ConfigError> {
+    match kdl_node.children() {
+        Some(children) => border_style_override_from_kdl_document(children, prefix),
+        None => Ok(BorderStyleOverride::default()),
+    }
+}
+
+pub fn border_style_override_to_kdl_children(
+    border_style_override: &BorderStyleOverride,
+    prefix: &str,
+    children: &mut KdlDocument,
+) -> bool {
+    let mut has_any = false;
+    let mut push = |name: String, line_style: Option<LineStyle>| {
+        if let Some(line_style) = line_style {
+            let mut node = KdlNode::new(name);
+            node.push(KdlValue::String(line_style.to_string()));
+            children.nodes_mut().push(node);
+            has_any = true;
+        }
+    };
+    push(format!("{}_style", prefix), border_style_override.all);
+    push(format!("{}_top", prefix), border_style_override.top);
+    push(format!("{}_right", prefix), border_style_override.right);
+    push(format!("{}_bottom", prefix), border_style_override.bottom);
+    push(format!("{}_left", prefix), border_style_override.left);
+    if let Some(rounded_corners) = border_style_override.rounded_corners {
+        let mut node = KdlNode::new(format!("{}_rounded_corners", prefix));
+        node.push(KdlValue::Bool(rounded_corners));
+        children.nodes_mut().push(node);
+        has_any = true;
+    }
+    has_any
+}
+
 impl UiConfig {
     pub fn from_kdl(kdl_ui_config: &KdlNode) -> Result<UiConfig, ConfigError> {
-        let mut ui_config = UiConfig::default();
+        UiConfig::from_kdl_over(kdl_ui_config, &UiConfig::default())
+    }
+    pub fn from_kdl_over(
+        kdl_ui_config: &KdlNode,
+        base: &UiConfig,
+    ) -> Result<UiConfig, ConfigError> {
+        let mut ui_config = base.clone();
         if let Some(pane_frames) = kdl_get_child!(kdl_ui_config, "pane_frames") {
+            let base_frames = base.pane_frames;
             let rounded_corners =
                 kdl_children_property_first_arg_as_bool!(pane_frames, "rounded_corners")
-                    .unwrap_or(false);
+                    .unwrap_or(base_frames.rounded_corners);
             let hide_session_name =
-                kdl_get_child_entry_bool_value!(pane_frames, "hide_session_name").unwrap_or(false);
+                kdl_get_child_entry_bool_value!(pane_frames, "hide_session_name")
+                    .unwrap_or(base_frames.hide_session_name);
+            let border_style =
+                base_frames
+                    .border_style
+                    .merge(&border_style_override_from_kdl_children(
+                        pane_frames,
+                        "border",
+                    )?);
+            let floating_border_style =
+                base_frames
+                    .floating_border_style
+                    .merge(&border_style_override_from_kdl_children(
+                        pane_frames,
+                        "floating_border",
+                    )?);
             let frame_config = FrameConfig {
                 rounded_corners,
                 hide_session_name,
+                border_style,
+                floating_border_style,
             };
             ui_config.pane_frames = frame_config;
         }
@@ -5773,6 +7530,20 @@ impl UiConfig {
             let mut hide_session_name = KdlNode::new("hide_session_name");
             hide_session_name.push(KdlValue::Bool(true));
             frame_config_children.nodes_mut().push(hide_session_name);
+        }
+        if border_style_override_to_kdl_children(
+            &self.pane_frames.border_style,
+            "border",
+            &mut frame_config_children,
+        ) {
+            has_ui_config = true;
+        }
+        if border_style_override_to_kdl_children(
+            &self.pane_frames.floating_border_style,
+            "floating_border",
+            &mut frame_config_children,
+        ) {
+            has_ui_config = true;
         }
         if has_ui_config {
             frame_config.set_children(frame_config_children);
@@ -5858,11 +7629,21 @@ impl Themes {
                 "fg", "bg", "red", "green", "blue", "yellow", "magenta", "orange", "cyan", "black",
                 "white",
             ]);
-            let theme = if theme_colors
+            let terminal_colors = match kdl_child_with_name!(theme_config, "terminal_colors") {
+                Some(node) => Some(TerminalColors::from_kdl(node)?),
+                None => None,
+            };
+            let declarations: Vec<&KdlNode> = theme_colors
                 .nodes()
                 .iter()
-                .all(|n| palette_color_names.contains(n.name().value()))
-            {
+                .filter(|node| node.name().value() != "terminal_colors")
+                .collect();
+            let looks_like_a_palette = theme_colors.nodes().is_empty()
+                || (!declarations.is_empty()
+                    && declarations
+                        .iter()
+                        .all(|n| palette_color_names.contains(n.name().value())));
+            let theme = if looks_like_a_palette {
                 // Older palette based theme definition
                 let palette = Palette {
                     fg: PaletteColor::try_from(("fg", theme_colors))?,
@@ -5881,6 +7662,7 @@ impl Themes {
                 Theme {
                     palette: palette.into(),
                     sourced_from_external_file,
+                    terminal_colors,
                 }
             } else {
                 // Newer theme definition with named styles
@@ -5962,6 +7744,7 @@ impl Themes {
                 Theme {
                     palette: s,
                     sourced_from_external_file,
+                    terminal_colors,
                 }
             };
             themes.insert(theme_name.into(), theme);
@@ -6024,67 +7807,13 @@ impl Themes {
                 continue;
             }
             has_themes = true;
-            let mut current_theme_node = KdlNode::new(theme_name.clone());
-            let mut current_theme_node_children = KdlDocument::new();
-
-            current_theme_node_children
-                .nodes_mut()
-                .push(theme.palette.text_unselected.to_kdl("text_unselected"));
-            current_theme_node_children
-                .nodes_mut()
-                .push(theme.palette.text_selected.to_kdl("text_selected"));
-            current_theme_node_children
-                .nodes_mut()
-                .push(theme.palette.ribbon_selected.to_kdl("ribbon_selected"));
-            current_theme_node_children
-                .nodes_mut()
-                .push(theme.palette.ribbon_unselected.to_kdl("ribbon_unselected"));
-            current_theme_node_children
-                .nodes_mut()
-                .push(theme.palette.table_title.to_kdl("table_title"));
-            current_theme_node_children.nodes_mut().push(
-                theme
-                    .palette
-                    .table_cell_selected
-                    .to_kdl("table_cell_selected"),
-            );
-            current_theme_node_children.nodes_mut().push(
-                theme
-                    .palette
-                    .table_cell_unselected
-                    .to_kdl("table_cell_unselected"),
-            );
-            current_theme_node_children
-                .nodes_mut()
-                .push(theme.palette.list_selected.to_kdl("list_selected"));
-            current_theme_node_children
-                .nodes_mut()
-                .push(theme.palette.list_unselected.to_kdl("list_unselected"));
-            current_theme_node_children
-                .nodes_mut()
-                .push(theme.palette.frame_selected.to_kdl("frame_selected"));
-
-            match theme.palette.frame_unselected {
-                None => {},
-                Some(frame_unselected_style) => {
-                    current_theme_node_children
-                        .nodes_mut()
-                        .push(frame_unselected_style.to_kdl("frame_unselected"));
-                },
+            let mut current_theme_node = theme_to_kdl(&theme_name, &theme.palette);
+            if let Some(terminal_colors) = theme.terminal_colors {
+                current_theme_node
+                    .ensure_children()
+                    .nodes_mut()
+                    .push(terminal_colors.to_kdl());
             }
-            current_theme_node_children
-                .nodes_mut()
-                .push(theme.palette.frame_highlight.to_kdl("frame_highlight"));
-            current_theme_node_children
-                .nodes_mut()
-                .push(theme.palette.exit_code_success.to_kdl("exit_code_success"));
-            current_theme_node_children
-                .nodes_mut()
-                .push(theme.palette.exit_code_error.to_kdl("exit_code_error"));
-            current_theme_node_children
-                .nodes_mut()
-                .push(theme.palette.multiplayer_user_colors.to_kdl());
-            current_theme_node.set_children(current_theme_node_children);
             themes.nodes_mut().push(current_theme_node);
         }
         if has_themes {
@@ -6094,6 +7823,40 @@ impl Themes {
             None
         }
     }
+}
+
+pub fn theme_to_kdl(theme_name: &str, palette: &Styling) -> KdlNode {
+    let mut theme_node = KdlNode::new(theme_name.to_owned());
+    let mut children = KdlDocument::new();
+    let styles = [
+        ("text_unselected", Some(&palette.text_unselected)),
+        ("text_selected", Some(&palette.text_selected)),
+        ("ribbon_selected", Some(&palette.ribbon_selected)),
+        ("ribbon_unselected", Some(&palette.ribbon_unselected)),
+        ("table_title", Some(&palette.table_title)),
+        ("table_cell_selected", Some(&palette.table_cell_selected)),
+        (
+            "table_cell_unselected",
+            Some(&palette.table_cell_unselected),
+        ),
+        ("list_selected", Some(&palette.list_selected)),
+        ("list_unselected", Some(&palette.list_unselected)),
+        ("frame_selected", Some(&palette.frame_selected)),
+        ("frame_unselected", palette.frame_unselected.as_ref()),
+        ("frame_highlight", Some(&palette.frame_highlight)),
+        ("exit_code_success", Some(&palette.exit_code_success)),
+        ("exit_code_error", Some(&palette.exit_code_error)),
+    ];
+    for (name, style) in styles {
+        if let Some(style) = style {
+            children.nodes_mut().push(style.to_kdl(name));
+        }
+    }
+    children
+        .nodes_mut()
+        .push(palette.multiplayer_user_colors.to_kdl());
+    theme_node.set_children(children);
+    theme_node
 }
 
 impl PermissionCache {
@@ -6236,7 +7999,7 @@ impl SessionInfo {
                             }
                         }
                     }
-                    tab_history.insert(client_id as u16, history);
+                    tab_history.insert(client_id as ClientId, history);
                 }
             }
         }
@@ -6280,7 +8043,7 @@ impl SessionInfo {
                             }
                         }
                     }
-                    pane_history.insert(client_id as u16, history);
+                    pane_history.insert(client_id as ClientId, history);
                 }
             }
         }
@@ -6290,6 +8053,11 @@ impl SessionInfo {
             .and_then(|e| e.value().as_i64())
             .map(|c| Duration::from_secs(c as u64))
             .unwrap_or_default();
+        let attention_muted = kdl_document
+            .get("attention_muted")
+            .and_then(|n| n.entries().iter().next())
+            .and_then(|e| e.value().as_bool())
+            .unwrap_or(false);
         Ok(SessionInfo {
             name,
             tabs,
@@ -6303,6 +8071,7 @@ impl SessionInfo {
             tab_history,
             pane_history,
             creation_time,
+            attention_muted,
         })
     }
     pub fn to_string(&self) -> String {
@@ -6410,6 +8179,12 @@ impl SessionInfo {
         creation_time_node.push(self.creation_time.as_secs() as i64);
         kdl_document.nodes_mut().push(creation_time_node);
 
+        if self.attention_muted {
+            let mut attention_muted_node = KdlNode::new("attention_muted");
+            attention_muted_node.push(true);
+            kdl_document.nodes_mut().push(attention_muted_node);
+        }
+
         kdl_document.fmt();
         kdl_document.to_string()
     }
@@ -6479,7 +8254,7 @@ impl TabInfo {
         {
             for entry in tab_other_focused_clients {
                 if let Some(entry_parsed) = entry.value().as_i64() {
-                    other_focused_clients.push(entry_parsed as u16);
+                    other_focused_clients.push(entry_parsed as ClientId);
                 }
             }
         }
@@ -6503,6 +8278,7 @@ impl TabInfo {
             is_sync_panes_active,
             are_floating_panes_visible,
             other_focused_clients,
+            other_focused_client_slots: vec![],
             active_swap_layout_name,
             is_swap_layout_dirty,
             viewport_rows,
@@ -6514,6 +8290,7 @@ impl TabInfo {
             tab_id,
             has_bell_notification: false,
             is_flashing_bell: false,
+            attention: Default::default(),
         })
     }
     pub fn encode_to_kdl(&self) -> KdlDocument {
@@ -6730,6 +8507,7 @@ impl PaneInfo {
             is_fullscreen,
             is_floating,
             is_suppressed,
+            is_collapsed: false,
             title,
             exited,
             exit_status,
@@ -6749,6 +8527,10 @@ impl PaneInfo {
             index_in_pane_group: Default::default(), // we don't serialize this
             default_fg: None,
             default_bg: None,
+            nested_session_name: None,
+            attention: Default::default(),
+            command_state: Default::default(),
+            program_status: vec![],
         };
         Ok((tab_position, pane_info))
     }
@@ -6880,6 +8662,7 @@ fn serialize_and_deserialize_session_info_with_data() {
             is_fullscreen: true,
             is_floating: false,
             is_suppressed: false,
+            is_collapsed: false,
             title: "pane 1".to_owned(),
             exited: false,
             exit_status: None,
@@ -6899,6 +8682,10 @@ fn serialize_and_deserialize_session_info_with_data() {
             index_in_pane_group: Default::default(), // we don't serialize this
             default_fg: None,
             default_bg: None,
+            nested_session_name: None,
+            attention: Default::default(),
+            command_state: Default::default(),
+            program_status: Default::default(),
         },
         PaneInfo {
             id: 1,
@@ -6907,6 +8694,7 @@ fn serialize_and_deserialize_session_info_with_data() {
             is_fullscreen: true,
             is_floating: false,
             is_suppressed: false,
+            is_collapsed: false,
             title: "pane 1".to_owned(),
             exited: false,
             exit_status: None,
@@ -6926,6 +8714,10 @@ fn serialize_and_deserialize_session_info_with_data() {
             index_in_pane_group: Default::default(), // we don't serialize this
             default_fg: None,
             default_bg: None,
+            nested_session_name: None,
+            attention: Default::default(),
+            command_state: Default::default(),
+            program_status: Default::default(),
         },
     ];
     let mut panes = HashMap::new();
@@ -6942,6 +8734,7 @@ fn serialize_and_deserialize_session_info_with_data() {
                 is_sync_panes_active: false,
                 are_floating_panes_visible: true,
                 other_focused_clients: vec![2, 3],
+                other_focused_client_slots: vec![],
                 active_swap_layout_name: Some("BASE".to_owned()),
                 is_swap_layout_dirty: true,
                 viewport_rows: 10,
@@ -6953,6 +8746,7 @@ fn serialize_and_deserialize_session_info_with_data() {
                 tab_id: 0,
                 is_flashing_bell: false,
                 has_bell_notification: false,
+                attention: Default::default(),
             },
             TabInfo {
                 position: 1,
@@ -6963,6 +8757,7 @@ fn serialize_and_deserialize_session_info_with_data() {
                 is_sync_panes_active: true,
                 are_floating_panes_visible: true,
                 other_focused_clients: vec![2, 3],
+                other_focused_client_slots: vec![],
                 active_swap_layout_name: None,
                 is_swap_layout_dirty: false,
                 viewport_rows: 10,
@@ -6974,6 +8769,7 @@ fn serialize_and_deserialize_session_info_with_data() {
                 tab_id: 1,
                 is_flashing_bell: false,
                 has_bell_notification: false,
+                attention: Default::default(),
             },
         ],
         panes: PaneManifest { panes },
@@ -6990,6 +8786,7 @@ fn serialize_and_deserialize_session_info_with_data() {
         tab_history: Default::default(),
         pane_history: Default::default(),
         creation_time: Duration::from_secs(300),
+        attention_muted: Default::default(),
     };
     let serialized = session_info.to_string();
     let deserealized = SessionInfo::from_string(&serialized, "not this session").unwrap();
@@ -7103,6 +8900,146 @@ fn keybinds_to_string_with_multiple_actions() {
 }
 
 #[test]
+fn can_bind_open_context_menu_and_write_it_back() {
+    let fake_config = r#"
+        keybinds {
+            pane {
+                bind "m" { OpenContextMenu; }
+            }
+        }"#;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = Keybinds::from_kdl(
+        document.get("keybinds").unwrap(),
+        Default::default(),
+        &Default::default(),
+    )
+    .unwrap();
+    let m = KeyWithModifier::new(BareKey::Char('m'));
+    assert_eq!(
+        deserialized.get_actions_for_key_in_mode(&InputMode::Pane, &m),
+        Some(&vec![Action::OpenContextMenu])
+    );
+    assert_eq!(
+        Action::OpenContextMenu
+            .to_kdl()
+            .map(|node| node.name().value().to_owned()),
+        Some("OpenContextMenu".to_owned())
+    );
+}
+
+#[test]
+fn can_bind_toggle_session_card_and_write_it_back() {
+    let fake_config = r#"
+        keybinds {
+            normal {
+                bind "F9" { ToggleSessionCard; }
+            }
+        }"#;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = Keybinds::from_kdl(
+        document.get("keybinds").unwrap(),
+        Default::default(),
+        &Default::default(),
+    )
+    .unwrap();
+    let f9 = KeyWithModifier::new(BareKey::F(9));
+    assert_eq!(
+        deserialized.get_actions_for_key_in_mode(&InputMode::Normal, &f9),
+        Some(&vec![Action::ToggleSessionCard])
+    );
+    assert_eq!(
+        Action::ToggleSessionCard
+            .to_kdl()
+            .map(|node| node.name().value().to_owned()),
+        Some("ToggleSessionCard".to_owned())
+    );
+}
+
+#[test]
+fn can_bind_the_seen_and_tray_actions_and_write_them_back() {
+    let fake_config = r#"
+        keybinds {
+            normal {
+                bind "Alt 1" { MarkPaneSeen; }
+                bind "Alt 2" { MarkAllSeen; }
+                bind "Alt 3" { MarkAllSeen this_session=true; }
+                bind "Alt 4" { ToggleTrayIcon; }
+            }
+        }"#;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = Keybinds::from_kdl(
+        document.get("keybinds").unwrap(),
+        Default::default(),
+        &Default::default(),
+    )
+    .unwrap();
+    let expected = [
+        (
+            '1',
+            Action::MarkPaneSeen {
+                session: None,
+                pane_id: None,
+            },
+        ),
+        (
+            '2',
+            Action::MarkAllSeen {
+                session: None,
+                this_session: false,
+            },
+        ),
+        (
+            '3',
+            Action::MarkAllSeen {
+                session: None,
+                this_session: true,
+            },
+        ),
+        ('4', Action::ToggleTrayIcon),
+    ];
+    for (character, action) in expected {
+        let key = KeyWithModifier::new(BareKey::Char(character)).with_alt_modifier();
+        assert_eq!(
+            deserialized.get_actions_for_key_in_mode(&InputMode::Normal, &key),
+            Some(&vec![action.clone()]),
+            "Alt {}",
+            character
+        );
+        let written = action.to_kdl().expect("the action is written back");
+        let reparsed = Action::try_from((&written, &Options::default())).unwrap();
+        assert_eq!(reparsed, action);
+    }
+}
+
+#[test]
+fn can_bind_dismiss_info_popups_and_write_it_back() {
+    let fake_config = r#"
+        keybinds {
+            normal {
+                bind "Alt x" { DismissInfoPopups; }
+            }
+        }"#;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = Keybinds::from_kdl(
+        document.get("keybinds").unwrap(),
+        Default::default(),
+        &Default::default(),
+    )
+    .unwrap();
+    let alt_x = KeyWithModifier::new(BareKey::Char('x')).with_alt_modifier();
+    assert_eq!(
+        deserialized.get_actions_for_key_in_mode(&InputMode::Normal, &alt_x),
+        Some(&vec![Action::DismissInfoPopups])
+    );
+    assert_eq!(
+        Action::DismissInfoPopups
+            .to_kdl()
+            .map(|node| node.name().value().to_owned()),
+        Some("DismissInfoPopups".to_owned())
+    );
+}
+
+#[test]
 fn can_bind_theme_actions() {
     // Regression test for https://github.com/zellij-org/zellij/issues/5297
     // SetDarkTheme / SetLightTheme / ToggleTheme work via the CLI but used to be
@@ -7138,6 +9075,51 @@ fn can_bind_theme_actions() {
         Some(&vec![Action::SetLightTheme])
     );
     // The bindings must also survive a serialize -> deserialize round-trip.
+    let serialized = Keybinds::to_kdl(&deserialized, true);
+    let deserialized_from_serialized = Keybinds::from_kdl(
+        serialized
+            .to_string()
+            .parse::<KdlDocument>()
+            .unwrap()
+            .get("keybinds")
+            .unwrap(),
+        Default::default(),
+        &Default::default(),
+    )
+    .unwrap();
+    assert_eq!(deserialized, deserialized_from_serialized);
+}
+
+#[test]
+fn can_bind_named_swap_layout_actions() {
+    let fake_config = r#"
+        keybinds {
+            normal {
+                bind "Ctrl t" { ApplyTiledSwapLayout "vertical"; }
+                bind "Ctrl f" { ApplyFloatingSwapLayout "staggered"; }
+            }
+        }"#;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = Keybinds::from_kdl(
+        document.get("keybinds").unwrap(),
+        Default::default(),
+        &Default::default(),
+    )
+    .unwrap();
+    let ctrl_t = KeyWithModifier::new(BareKey::Char('t')).with_ctrl_modifier();
+    assert_eq!(
+        deserialized.get_actions_for_key_in_mode(&InputMode::Normal, &ctrl_t),
+        Some(&vec![Action::ApplyTiledSwapLayout {
+            name: "vertical".to_owned()
+        }])
+    );
+    let ctrl_f = KeyWithModifier::new(BareKey::Char('f')).with_ctrl_modifier();
+    assert_eq!(
+        deserialized.get_actions_for_key_in_mode(&InputMode::Normal, &ctrl_f),
+        Some(&vec![Action::ApplyFloatingSwapLayout {
+            name: "staggered".to_owned()
+        }])
+    );
     let serialized = Keybinds::to_kdl(&deserialized, true);
     let deserialized_from_serialized = Keybinds::from_kdl(
         serialized
@@ -7634,6 +9616,51 @@ fn themes_to_string_with_multiple_theme_definitions() {
 }
 
 #[test]
+fn themes_to_string_with_terminal_colors() {
+    let fake_config = r##"
+        themes {
+           dracula {
+                fg 248 248 242
+                bg 40 42 54
+                black 0 0 0
+                red 255 85 85
+                green 80 250 123
+                yellow 241 250 140
+                blue 98 114 164
+                magenta 255 121 198
+                cyan 139 233 253
+                white 255 255 255
+                orange 255 184 108
+                terminal_colors {
+                    black 33 34 44
+                    red 255 85 85
+                    bright_white "#ffffff"
+                }
+            }
+        }"##;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let sourced_from_external_file = false;
+    let deserialized =
+        Themes::from_kdl(document.get("themes").unwrap(), sourced_from_external_file).unwrap();
+    let serialized = Themes::to_kdl(&deserialized).unwrap();
+    let deserialized_from_serialized = Themes::from_kdl(
+        serialized
+            .to_string()
+            .parse::<KdlDocument>()
+            .unwrap()
+            .get("themes")
+            .unwrap(),
+        sourced_from_external_file,
+    )
+    .unwrap();
+    assert_eq!(
+        deserialized, deserialized_from_serialized,
+        "Deserialized serialized config equals original config"
+    );
+    insta::assert_snapshot!(serialized.to_string());
+}
+
+#[test]
 fn plugins_to_string() {
     let fake_config = r##"
         plugins {
@@ -7725,6 +9752,71 @@ fn ui_config_to_string() {
 }
 
 #[test]
+fn ui_config_with_border_styles_to_string() {
+    let fake_config = r##"
+        ui {
+            pane_frames {
+                rounded_corners true
+                border_style "single"
+                border_top "double"
+                floating_border_style "heavy"
+                floating_border_rounded_corners false
+            }
+        }"##;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let deserialized = UiConfig::from_kdl(document.get("ui").unwrap()).unwrap();
+    assert_eq!(
+        deserialized.pane_frames.border_style,
+        BorderStyleOverride {
+            all: Some(LineStyle::Single),
+            top: Some(LineStyle::Double),
+            ..Default::default()
+        }
+    );
+    assert_eq!(
+        deserialized.pane_frames.floating_border_style,
+        BorderStyleOverride {
+            all: Some(LineStyle::Heavy),
+            rounded_corners: Some(false),
+            ..Default::default()
+        }
+    );
+    let resolved = deserialized.pane_frames.resolved_border_style();
+    assert_eq!(resolved.top, LineStyle::Double);
+    assert_eq!(resolved.bottom, LineStyle::Single);
+    assert!(resolved.rounded_corners);
+    let resolved_floating = deserialized.pane_frames.resolved_floating_border_style();
+    assert_eq!(resolved_floating.top, LineStyle::Heavy);
+    assert!(!resolved_floating.rounded_corners);
+    let serialized = UiConfig::to_kdl(&deserialized).unwrap();
+    let deserialized_from_serialized = UiConfig::from_kdl(
+        serialized
+            .to_string()
+            .parse::<KdlDocument>()
+            .unwrap()
+            .get("ui")
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        deserialized, deserialized_from_serialized,
+        "Deserialized and serialized ui config are the same"
+    );
+}
+
+#[test]
+fn ui_config_with_invalid_border_style_is_an_error() {
+    let fake_config = r##"
+        ui {
+            pane_frames {
+                border_style "squiggly"
+            }
+        }"##;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    assert!(UiConfig::from_kdl(document.get("ui").unwrap()).is_err());
+}
+
+#[test]
 fn ui_config_to_string_with_no_ui_config() {
     let fake_config = r##"
         ui {
@@ -7765,6 +9857,48 @@ fn env_vars_to_string() {
 }
 
 #[test]
+fn session_options_from_kdl() {
+    let fake_config = r##"
+        session_indicator true
+        swap_layout_notification false
+        on_quit "ask_detach"
+    "##;
+    let document: KdlDocument = fake_config.parse().unwrap();
+    let options = Options::from_kdl(&document).unwrap();
+    assert_eq!(options.session_indicator, Some(true));
+    assert_eq!(options.swap_layout_notification, Some(false));
+    assert_eq!(
+        options.on_quit,
+        Some(crate::input::options::OnQuit::AskDetach)
+    );
+    let mut serialized = Options::to_kdl(&options, false);
+    let mut fake_document = KdlDocument::new();
+    fake_document.nodes_mut().append(&mut serialized);
+    let reparsed =
+        Options::from_kdl(&fake_document.to_string().parse::<KdlDocument>().unwrap()).unwrap();
+    assert_eq!(options, reparsed);
+    insta::assert_snapshot!(fake_document.to_string());
+}
+
+#[test]
+fn session_suggestions_to_string() {
+    let fake_config = r##"
+        session_suggestions {
+            fact "project" command="echo $PROJECT" column="project" at="live"
+            match "directory" "git_branch"
+            match "project"
+            then "alphabetical"
+            script "~/.config/zellij/rank.sh" timeout_ms=300 hide_unlisted=false
+            record "~/.config/zellij/record.sh"
+        }"##;
+    let config = Config::from_kdl(fake_config, None).unwrap();
+    let serialized = config.session_suggestions.to_kdl().unwrap();
+    let reparsed = Config::from_kdl(&serialized.to_string(), None).unwrap();
+    assert_eq!(config.session_suggestions, reparsed.session_suggestions);
+    insta::assert_snapshot!(serialized.to_string());
+}
+
+#[test]
 fn env_vars_to_string_with_no_env_vars() {
     let fake_config = r##"
         env {
@@ -7788,6 +9922,52 @@ fn selection_options_from_kdl() {
         Some("[]{}<>():,".to_owned()),
         "word separators are parsed verbatim"
     );
+}
+
+#[test]
+fn context_menu_enabled_is_parsed_merged_and_written_back() {
+    let document: KdlDocument = "context_menu_enabled false".parse().unwrap();
+    let deserialized = Options::from_kdl(&document).unwrap();
+    assert_eq!(deserialized.context_menu_enabled, Some(false));
+    let unset: KdlDocument = "".parse().unwrap();
+    assert_eq!(
+        Options::from_kdl(&unset).unwrap().context_menu_enabled,
+        None
+    );
+    let written: Vec<String> = deserialized
+        .to_kdl(false)
+        .iter()
+        .map(|node| node.to_string().trim().to_owned())
+        .collect();
+    assert!(
+        written.contains(&"context_menu_enabled false".to_owned()),
+        "{:?}",
+        written
+    );
+    let merged = deserialized.merge(Options {
+        context_menu_enabled: Some(true),
+        ..Default::default()
+    });
+    assert_eq!(merged.context_menu_enabled, Some(true));
+    let kept = deserialized.merge(Options::default());
+    assert_eq!(kept.context_menu_enabled, Some(false));
+    let from_cli = deserialized.merge_from_cli(Options {
+        context_menu_enabled: Some(true),
+        ..Default::default()
+    });
+    assert_eq!(from_cli.context_menu_enabled, Some(true));
+}
+
+#[test]
+fn context_menu_enabled_has_a_command_line_flag() {
+    use clap::Parser;
+    #[derive(Parser)]
+    struct OptionsCli {
+        #[clap(flatten)]
+        options: Options,
+    }
+    let parsed = OptionsCli::try_parse_from(["zellij", "--context-menu-enabled", "false"]).unwrap();
+    assert_eq!(parsed.options.context_menu_enabled, Some(false));
 }
 
 #[test]
@@ -7880,6 +10060,48 @@ fn explicit_theme_hue_round_trips_through_kdl() {
         Some(ThemeHue::Dark),
         "explicit_theme_hue survives a serialize/parse round trip"
     );
+}
+
+#[test]
+fn dangerously_allow_web_serving_without_a_certificate_is_parsed_and_round_trips() {
+    for (fake_config, expected) in [
+        (
+            "dangerously_allow_web_serving_without_a_certificate true",
+            Some(true),
+        ),
+        (
+            "dangerously_allow_web_serving_without_a_certificate false",
+            Some(false),
+        ),
+        ("", None),
+    ] {
+        let document: KdlDocument = fake_config.parse().unwrap();
+        let deserialized = Options::from_kdl(&document).unwrap();
+        assert_eq!(
+            deserialized.dangerously_allow_web_serving_without_a_certificate, expected,
+            "parsed from {:?}",
+            fake_config
+        );
+        let mut serialized = Options::to_kdl(&deserialized, false);
+        let mut fake_document = KdlDocument::new();
+        fake_document.nodes_mut().append(&mut serialized);
+        let deserialized_from_serialized =
+            Options::from_kdl(&fake_document.to_string().parse::<KdlDocument>().unwrap()).unwrap();
+        assert_eq!(
+            deserialized_from_serialized.dangerously_allow_web_serving_without_a_certificate,
+            expected,
+            "round trip of {:?}",
+            fake_config
+        );
+    }
+}
+
+#[test]
+fn dangerously_allow_web_serving_without_a_certificate_rejects_non_bool() {
+    let document: KdlDocument = "dangerously_allow_web_serving_without_a_certificate \"yes\""
+        .parse()
+        .unwrap();
+    assert!(Options::from_kdl(&document).is_err());
 }
 
 #[test]
@@ -8102,7 +10324,11 @@ fn config_options_to_string_with_some_options() {
 fn bare_config_from_default_assets_to_string() {
     let fake_config = Config::from_default_assets().unwrap();
     let fake_config_stringified = fake_config.to_string(false);
-    let deserialized_from_serialized = Config::from_kdl(&fake_config_stringified, None).unwrap();
+    let deserialized_from_serialized = Config::from_kdl(
+        &fake_config_stringified,
+        Some(Config::from_default_assets().unwrap()),
+    )
+    .unwrap();
     assert_eq!(
         fake_config, deserialized_from_serialized,
         "Deserialized serialized config equals original config"
@@ -8114,7 +10340,11 @@ fn bare_config_from_default_assets_to_string() {
 fn bare_config_from_default_assets_to_string_with_comments() {
     let fake_config = Config::from_default_assets().unwrap();
     let fake_config_stringified = fake_config.to_string(true);
-    let deserialized_from_serialized = Config::from_kdl(&fake_config_stringified, None).unwrap();
+    let deserialized_from_serialized = Config::from_kdl(
+        &fake_config_stringified,
+        Some(Config::from_default_assets().unwrap()),
+    )
+    .unwrap();
     assert_eq!(
         fake_config, deserialized_from_serialized,
         "Deserialized serialized config equals original config"
@@ -8140,4 +10370,694 @@ fn osc8_hyperlinks_config_parsing() {
     let serialized = config.to_string(false);
     let deserialized = Config::from_kdl(&serialized, None).unwrap();
     assert_eq!(deserialized.options.osc8_hyperlinks, Some(true));
+}
+
+#[test]
+fn grapheme_clusters_config_parsing() {
+    let config = Config::from_kdl("", None).unwrap();
+    assert_eq!(config.options.grapheme_clusters, None);
+
+    let config = Config::from_kdl("grapheme_clusters false", None).unwrap();
+    assert_eq!(config.options.grapheme_clusters, Some(false));
+    let deserialized = Config::from_kdl(&config.to_string(false), None).unwrap();
+    assert_eq!(deserialized.options.grapheme_clusters, Some(false));
+
+    let config = Config::from_kdl("grapheme_clusters true", None).unwrap();
+    assert_eq!(config.options.grapheme_clusters, Some(true));
+}
+
+#[cfg(test)]
+fn context_menu_from(
+    config: &str,
+    base: ContextMenuConfig,
+) -> Result<ContextMenuConfig, ConfigError> {
+    let document: KdlDocument = config.parse().unwrap();
+    ContextMenuConfig::from_kdl(
+        document.get("context_menu").unwrap(),
+        base,
+        &Options::default(),
+    )
+}
+
+#[cfg(test)]
+fn context_menu_base() -> ContextMenuConfig {
+    context_menu_from(
+        r#"
+        context_menu {
+            pane {
+                item "New pane" { NewPane; }
+                separator
+                item "Close pane" { CloseFocusByPaneId; }
+            }
+            tab {
+                item "Close tab" { CloseTabById; }
+            }
+            common {
+                item "Detach" { Detach; }
+            }
+        }"#,
+        ContextMenuConfig::default(),
+    )
+    .unwrap()
+}
+
+#[test]
+fn context_menu_parses_items_separators_and_target_less_actions() {
+    let context_menu = context_menu_base();
+    assert_eq!(
+        context_menu.pane,
+        vec![
+            ContextMenuEntry::item(
+                "New pane",
+                vec![Action::NewPane {
+                    direction: None,
+                    pane_name: None,
+                    start_suppressed: false,
+                }
+                .into()]
+            ),
+            ContextMenuEntry::Separator,
+            ContextMenuEntry::item(
+                "Close pane",
+                vec![ContextMenuAction::ClickedPane(
+                    ClickedPaneAction::CloseFocus
+                )]
+            ),
+        ]
+    );
+    assert_eq!(
+        context_menu.tab,
+        vec![ContextMenuEntry::item(
+            "Close tab",
+            vec![ContextMenuAction::ClickedTab(ClickedTabAction::Close)]
+        )]
+    );
+    assert!(context_menu.bar.is_empty());
+    assert_eq!(
+        context_menu.common,
+        vec![ContextMenuEntry::item(
+            "Detach",
+            vec![Action::Detach.into()]
+        )]
+    );
+}
+
+#[test]
+fn context_menu_parses_explicit_targets_and_new_by_id_actions() {
+    let context_menu = context_menu_from(
+        r#"
+        context_menu {
+            pane {
+                item "a" { ToggleFocusFullscreenByPaneId "terminal_3"; }
+                item "b" { TogglePaneEmbedOrFloatingByPaneId; }
+                item "c" { TogglePanePinnedByPaneId "plugin_2"; }
+                item "d" { TogglePaneInGroupByPaneId; }
+                item "e" { StartRenamePaneByPaneId; }
+                item "f" { NewFloatingPane; }
+            }
+            tab {
+                item "g" { MoveTabByTabId "left"; }
+                item "h" { MoveTabByTabId "right" 4; }
+                item "i" { StartRenameTabByTabId; }
+                item "j" { CloseTabById 2; }
+            }
+        }"#,
+        ContextMenuConfig::default(),
+    )
+    .unwrap();
+    let actions: Vec<Vec<ContextMenuAction>> = context_menu
+        .pane
+        .iter()
+        .chain(context_menu.tab.iter())
+        .filter_map(|entry| match entry {
+            ContextMenuEntry::Item { actions, .. } => Some(actions.clone()),
+            ContextMenuEntry::Separator => None,
+        })
+        .collect();
+    assert_eq!(
+        actions,
+        vec![
+            vec![Action::ToggleFocusFullscreenByPaneId {
+                pane_id: PaneId::Terminal(3)
+            }
+            .into()],
+            vec![ContextMenuAction::ClickedPane(
+                ClickedPaneAction::ToggleEmbedOrFloating
+            )],
+            vec![Action::TogglePanePinnedByPaneId {
+                pane_id: PaneId::Plugin(2)
+            }
+            .into()],
+            vec![ContextMenuAction::ClickedPane(
+                ClickedPaneAction::ToggleInGroup
+            )],
+            vec![ContextMenuAction::ClickedPane(
+                ClickedPaneAction::StartRename
+            )],
+            vec![Action::NewFloatingPane {
+                command: None,
+                pane_name: None,
+                coordinates: None,
+                near_current_pane: false,
+                no_focus: false,
+                tab_id: None,
+            }
+            .into()],
+            vec![ContextMenuAction::ClickedTab(ClickedTabAction::Move(
+                Direction::Left
+            ))],
+            vec![Action::MoveTabByTabId {
+                id: 4,
+                direction: Direction::Right
+            }
+            .into()],
+            vec![ContextMenuAction::ClickedTab(ClickedTabAction::StartRename)],
+            vec![Action::CloseTabById { id: 2 }.into()],
+        ]
+    );
+}
+
+#[test]
+fn every_clicked_pane_or_tab_form_is_written_back_as_it_was_read() {
+    let names = [
+        "CloseFocusByPaneId",
+        "ToggleFocusFullscreenByPaneId",
+        "TogglePaneEmbedOrFloatingByPaneId",
+        "TogglePanePinnedByPaneId",
+        "TogglePaneInGroupByPaneId",
+        "StartRenamePaneByPaneId",
+        "CloseTabById",
+        "StartRenameTabByTabId",
+        "MoveTabByTabId \"left\"",
+        "MoveTabByTabId \"right\"",
+        "CloseFocusByPaneId \"terminal_2\"",
+        "MoveTabByTabId \"left\" 3",
+        "MoveTabToPosition \"start\"",
+        "MoveTabToPosition \"end\"",
+        "MoveTabToPosition 2",
+        "MoveTabToPosition \"end\" 3",
+        "MoveTabToPosition 1 3",
+    ];
+    for text in names {
+        let document: KdlDocument = text.parse().unwrap();
+        let node = document.nodes().first().unwrap();
+        let action = ContextMenuAction::from_kdl(node, &Options::default())
+            .unwrap_or_else(|e| panic!("{} does not parse: {:?}", text, e));
+        let is_clicked_form = !matches!(action, ContextMenuAction::Action(_));
+        assert_eq!(
+            is_clicked_form,
+            !text.contains("terminal_2") && !text.ends_with(" 3")
+        );
+        let written = action.to_kdl().unwrap();
+        let reparsed = ContextMenuAction::from_kdl(&written, &Options::default()).unwrap();
+        assert_eq!(action, reparsed, "{} changed when written back", text);
+    }
+}
+
+#[test]
+fn move_tab_to_position_parses_start_end_and_numbers() {
+    let cases = [
+        (
+            "MoveTabToPosition \"start\"",
+            ContextMenuAction::ClickedTab(ClickedTabAction::MoveToPosition(0)),
+        ),
+        (
+            "MoveTabToPosition \"end\"",
+            ContextMenuAction::ClickedTab(ClickedTabAction::MoveToPosition(TAB_POSITION_END)),
+        ),
+        (
+            "MoveTabToPosition 2",
+            ContextMenuAction::ClickedTab(ClickedTabAction::MoveToPosition(2)),
+        ),
+        (
+            "MoveTabToPosition \"end\" 7",
+            Action::MoveTabToPosition {
+                id: 7,
+                position: TAB_POSITION_END,
+            }
+            .into(),
+        ),
+        (
+            "MoveTabToPosition 1 7",
+            Action::MoveTabToPosition { id: 7, position: 1 }.into(),
+        ),
+    ];
+    for (text, expected) in cases {
+        let document: KdlDocument = text.parse().unwrap();
+        let node = document.nodes().first().unwrap();
+        assert_eq!(
+            ContextMenuAction::from_kdl(node, &Options::default()).unwrap(),
+            expected,
+            "{}",
+            text
+        );
+    }
+    for bad in [
+        "MoveTabToPosition \"middle\"",
+        "MoveTabToPosition -1",
+        "MoveTabToPosition",
+    ] {
+        let document: KdlDocument = bad.parse().unwrap();
+        let node = document.nodes().first().unwrap();
+        assert!(
+            ContextMenuAction::from_kdl(node, &Options::default()).is_err(),
+            "{} should be rejected",
+            bad
+        );
+    }
+}
+
+#[test]
+fn context_menu_rejects_moving_the_clicked_tab_up_or_down() {
+    assert!(context_menu_from(
+        r#"
+        context_menu {
+            tab {
+                item "Up" { MoveTabByTabId "up"; }
+            }
+        }"#,
+        ContextMenuConfig::default()
+    )
+    .is_err());
+}
+
+#[test]
+fn context_menu_user_items_merge_with_defaults() {
+    let context_menu = context_menu_from(
+        r#"
+        context_menu {
+            pane {
+                item "Close pane" { CloseFocus; }
+                item "Clear" { Clear; }
+            }
+        }"#,
+        context_menu_base(),
+    )
+    .unwrap();
+    let labels: Vec<Option<&str>> = context_menu.pane.iter().map(|e| e.label()).collect();
+    assert_eq!(
+        labels,
+        vec![Some("New pane"), None, Some("Close pane"), Some("Clear")]
+    );
+    assert_eq!(
+        context_menu.pane[2],
+        ContextMenuEntry::item("Close pane", vec![Action::CloseFocus.into()])
+    );
+    assert_eq!(context_menu.tab, context_menu_base().tab);
+    assert_eq!(context_menu.common, context_menu_base().common);
+}
+
+#[test]
+fn context_menu_clear_defaults_for_one_section() {
+    let context_menu = context_menu_from(
+        r#"
+        context_menu {
+            pane clear-defaults=true {
+                item "Clear" { Clear; }
+            }
+        }"#,
+        context_menu_base(),
+    )
+    .unwrap();
+    assert_eq!(
+        context_menu.pane,
+        vec![ContextMenuEntry::item(
+            "Clear",
+            vec![Action::ClearScreen.into()]
+        )]
+    );
+    assert_eq!(context_menu.tab, context_menu_base().tab);
+    assert_eq!(context_menu.common, context_menu_base().common);
+}
+
+#[test]
+fn context_menu_clear_defaults_for_whole_block() {
+    let context_menu = context_menu_from(
+        r#"
+        context_menu clear-defaults=true {
+            bar {
+                item "Clear" { Clear; }
+            }
+        }"#,
+        context_menu_base(),
+    )
+    .unwrap();
+    assert!(context_menu.pane.is_empty());
+    assert!(context_menu.tab.is_empty());
+    assert!(context_menu.common.is_empty());
+    assert_eq!(
+        context_menu.bar,
+        vec![ContextMenuEntry::item(
+            "Clear",
+            vec![Action::ClearScreen.into()]
+        )]
+    );
+}
+
+#[test]
+fn context_menu_rejects_unknown_sections_and_entries() {
+    assert!(context_menu_from(
+        r#"
+        context_menu {
+            panes {
+                item "a" { Detach; }
+            }
+        }"#,
+        ContextMenuConfig::default()
+    )
+    .is_err());
+    assert!(context_menu_from(
+        r#"
+        context_menu {
+            pane {
+                entry "a" { Detach; }
+            }
+        }"#,
+        ContextMenuConfig::default()
+    )
+    .is_err());
+    assert!(context_menu_from(
+        r#"
+        context_menu {
+            pane {
+                item "a"
+            }
+        }"#,
+        ContextMenuConfig::default()
+    )
+    .is_err());
+}
+
+#[test]
+fn context_menu_to_kdl_round_trip() {
+    let context_menu = context_menu_from(
+        r#"
+        context_menu {
+            pane {
+                item "New pane" { NewPane; }
+                item "Float" { NewFloatingPane; }
+                separator
+                item "Rename" { StartRenamePaneByPaneId; }
+                item "Close" { CloseFocusByPaneId "terminal_1"; }
+            }
+            tab {
+                item "Left" { MoveTabByTabId "left"; }
+                item "Close" { CloseTabById; }
+            }
+            bar {
+                item "New tab" { NewTab; }
+            }
+            common {
+                item "Settings" {
+                    LaunchOrFocusPlugin "configuration" {
+                        floating true
+                        move_to_focused_tab true
+                    }
+                }
+                item "Detach" { Detach; }
+            }
+        }"#,
+        ContextMenuConfig::default(),
+    )
+    .unwrap();
+    let serialized = context_menu.to_kdl().unwrap().to_string();
+    let reparsed = context_menu_from(&serialized, default_context_menu()).unwrap();
+    assert_eq!(context_menu, reparsed);
+}
+
+#[cfg(test)]
+fn default_context_menu() -> ContextMenuConfig {
+    crate::input::config_settings::default_config()
+        .context_menu
+        .clone()
+}
+
+#[test]
+fn a_changed_context_menu_is_written_as_changes_to_the_default_menu() {
+    let context_menu = context_menu_from(
+        r#"
+        context_menu {
+            pane {
+                remove "New floating pane"
+                item "Clear" after="Rename pane" { Detach; }
+                item "Close pane" { CloseFocus; }
+            }
+            tab {
+                item "First" before="New tab" { Detach; }
+            }
+            bar clear-defaults=true
+        }"#,
+        default_context_menu(),
+    )
+    .unwrap();
+    let serialized = context_menu.to_kdl().unwrap().to_string();
+    assert!(
+        !serialized.contains("context_menu clear-defaults"),
+        "{}",
+        serialized
+    );
+    assert!(
+        serialized.contains("remove \"New floating pane\""),
+        "{}",
+        serialized
+    );
+    assert!(
+        serialized.contains("after=\"Rename pane\""),
+        "{}",
+        serialized
+    );
+    assert!(
+        serialized.contains("bar clear-defaults=true"),
+        "{}",
+        serialized
+    );
+    assert!(!serialized.contains("common"), "{}", serialized);
+    assert!(!serialized.contains("item \"New tab\""), "{}", serialized);
+    let reparsed = Config::from_kdl(&serialized, Some(Config::from_default_assets().unwrap()))
+        .unwrap()
+        .context_menu;
+    assert_eq!(context_menu, reparsed);
+    assert!(reparsed.bar.is_empty());
+}
+
+#[test]
+fn a_first_run_config_has_no_context_menu_block() {
+    let config = Config::from_default_assets().unwrap();
+    assert!(!config.to_string(true).contains("context_menu {"));
+    assert!(!config.to_string(false).contains("context_menu {"));
+}
+
+#[test]
+fn context_menu_merge_statements_remove_and_place_items() {
+    let context_menu = context_menu_from(
+        r#"
+        context_menu {
+            pane {
+                remove "New pane"
+                remove "Not a default item"
+                item "Clear" after="Close pane" { Clear; }
+                item "Close pane" before="Clear" { CloseFocus; }
+                separator before="Close pane"
+                item "Top" before="Missing" { Detach; }
+            }
+            tab {
+                item "First" before="Close tab" { Detach; }
+            }
+        }"#,
+        context_menu_base(),
+    )
+    .unwrap();
+    assert_eq!(
+        context_menu.pane,
+        vec![
+            ContextMenuEntry::Separator,
+            ContextMenuEntry::Separator,
+            ContextMenuEntry::item("Close pane", vec![Action::CloseFocus.into()]),
+            ContextMenuEntry::item("Clear", vec![Action::ClearScreen.into()]),
+            ContextMenuEntry::item("Top", vec![Action::Detach.into()]),
+        ]
+    );
+    assert_eq!(
+        context_menu.tab,
+        vec![
+            ContextMenuEntry::item("First", vec![Action::Detach.into()]),
+            ContextMenuEntry::item(
+                "Close tab",
+                vec![ContextMenuAction::ClickedTab(ClickedTabAction::Close)]
+            ),
+        ]
+    );
+    assert_eq!(context_menu.common, context_menu_base().common);
+}
+
+#[test]
+fn context_menu_remove_needs_a_label() {
+    assert!(context_menu_from(
+        r#"
+        context_menu {
+            pane {
+                remove
+            }
+        }"#,
+        context_menu_base()
+    )
+    .is_err());
+}
+
+#[test]
+fn context_menu_files_without_merge_statements_parse_as_before() {
+    let text = r#"
+        context_menu {
+            pane {
+                item "Close pane" { CloseFocus; }
+                separator
+                item "Clear" { Clear; }
+                item "Clear" { Detach; }
+            }
+            tab clear-defaults=true {
+                item "A" { Detach; }
+                item "A" { Detach; }
+                separator
+            }
+        }"#;
+    let context_menu = context_menu_from(text, context_menu_base()).unwrap();
+    assert_eq!(
+        context_menu.pane,
+        vec![
+            ContextMenuEntry::item(
+                "New pane",
+                vec![Action::NewPane {
+                    direction: None,
+                    pane_name: None,
+                    start_suppressed: false,
+                }
+                .into()]
+            ),
+            ContextMenuEntry::Separator,
+            ContextMenuEntry::item("Close pane", vec![Action::CloseFocus.into()]),
+            ContextMenuEntry::Separator,
+            ContextMenuEntry::item("Clear", vec![Action::Detach.into()]),
+        ]
+    );
+    assert_eq!(
+        context_menu.tab,
+        vec![
+            ContextMenuEntry::item("A", vec![Action::Detach.into()]),
+            ContextMenuEntry::item("A", vec![Action::Detach.into()]),
+            ContextMenuEntry::Separator,
+        ]
+    );
+}
+
+#[test]
+fn an_empty_context_menu_is_written_with_empty_sections() {
+    let serialized = ContextMenuConfig::default().to_kdl().unwrap().to_string();
+    let reparsed = context_menu_from(&serialized, default_context_menu()).unwrap();
+    assert_eq!(reparsed, ContextMenuConfig::default());
+    assert_eq!(default_context_menu().to_kdl(), None);
+}
+
+#[test]
+fn keybinds_reject_by_id_actions_without_a_target() {
+    for action in [
+        "CloseFocusByPaneId",
+        "CloseTabById",
+        "MoveTabByTabId \"left\"",
+    ] {
+        let config = format!(
+            "keybinds {{\n    normal {{\n        bind \"Alt x\" {{ {}; }}\n    }}\n}}",
+            action
+        );
+        assert!(Config::from_kdl(&config, None).is_err(), "{}", action);
+    }
+}
+
+#[test]
+fn keybinds_accept_by_id_actions_with_a_target() {
+    let config = r#"
+        keybinds {
+            normal {
+                bind "Alt x" { CloseFocusByPaneId "terminal_1"; }
+            }
+        }"#;
+    let config = Config::from_kdl(config, None).unwrap();
+    let actions = config
+        .keybinds
+        .0
+        .get(&InputMode::Normal)
+        .and_then(|binds| binds.get(&KeyWithModifier::from_str("Alt x").unwrap()))
+        .cloned();
+    assert_eq!(
+        actions,
+        Some(vec![Action::CloseFocusByPaneId {
+            pane_id: PaneId::Terminal(1)
+        }])
+    );
+}
+
+#[test]
+fn default_config_context_menu_round_trips_through_config_to_string() {
+    let config = Config::from_default_assets().unwrap();
+    let close_pane = config
+        .context_menu
+        .pane
+        .iter()
+        .find(|entry| entry.label() == Some("Close pane"))
+        .cloned();
+    assert_eq!(
+        close_pane,
+        Some(ContextMenuEntry::item(
+            "Close pane",
+            vec![ContextMenuAction::ClickedPane(
+                ClickedPaneAction::CloseFocus
+            )]
+        ))
+    );
+    assert!(!config.context_menu.tab.is_empty());
+    assert!(!config.context_menu.bar.is_empty());
+    assert!(!config.context_menu.common.is_empty());
+    let serialized = config.to_string(false);
+    let reparsed =
+        Config::from_kdl(&serialized, Some(Config::from_default_assets().unwrap())).unwrap();
+    assert_eq!(config.context_menu, reparsed.context_menu);
+}
+
+#[test]
+fn config_merge_takes_non_empty_context_menu_sections_from_the_other_config() {
+    let mut config = Config::default();
+    config.context_menu = context_menu_base();
+    let mut other = Config::default();
+    other.context_menu.bar = vec![ContextMenuEntry::item(
+        "Clear",
+        vec![Action::ClearScreen.into()],
+    )];
+    config.merge(other).unwrap();
+    assert_eq!(config.context_menu.pane, context_menu_base().pane);
+    assert_eq!(
+        config.context_menu.bar,
+        vec![ContextMenuEntry::item(
+            "Clear",
+            vec![Action::ClearScreen.into()]
+        )]
+    );
+}
+
+#[test]
+fn run_with_background_parses_and_is_written_back() {
+    let text = r#"Run "send-scroll" "--direction" "up" { background true; cwd "/tmp"; floating true; name "ignored"; }"#;
+    let document: KdlDocument = text.parse().unwrap();
+    let node = document.nodes().first().unwrap();
+    let action = Action::try_from((node, &Options::default())).unwrap();
+    let expected = Action::RunInBackground {
+        command: RunCommandAction {
+            command: PathBuf::from("send-scroll"),
+            args: vec!["--direction".to_owned(), "up".to_owned()],
+            cwd: Some(PathBuf::from("/tmp")),
+            ..Default::default()
+        },
+    };
+    assert_eq!(action, expected);
+    let written = action.to_kdl().unwrap();
+    let reparsed = Action::try_from((&written, &Options::default())).unwrap();
+    assert_eq!(reparsed, expected);
 }

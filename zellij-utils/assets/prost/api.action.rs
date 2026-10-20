@@ -158,7 +158,9 @@ pub struct TiledPaneLayout {
     pub hide_floating_panes: bool,
     #[prost(string, optional, tag="13")]
     pub pane_initial_contents: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(string, optional, tag="14")]
+    #[prost(message, optional, tag="14")]
+    pub border_style: ::core::option::Option<super::style::BorderStyleOverride>,
+    #[prost(string, optional, tag="15")]
     pub stack_direction: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -188,6 +190,8 @@ pub struct FloatingPaneLayout {
     pub logical_position: ::core::option::Option<u32>,
     #[prost(bool, optional, tag="12")]
     pub borderless: ::core::option::Option<bool>,
+    #[prost(message, optional, tag="13")]
+    pub border_style: ::core::option::Option<super::style::BorderStyleOverride>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -305,7 +309,7 @@ pub struct OverrideLayoutPayload {
 pub struct Action {
     #[prost(enumeration="ActionName", tag="1")]
     pub name: i32,
-    #[prost(oneof="action::OptionalPayload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61")]
+    #[prost(oneof="action::OptionalPayload", tags="2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69")]
     pub optional_payload: ::core::option::Option<action::OptionalPayload>,
 }
 /// Nested message and enum types in `Action`.
@@ -427,7 +431,69 @@ pub mod action {
         AreFloatingPanesVisiblePayload(super::AreFloatingPanesVisiblePayload),
         #[prost(message, tag="61")]
         SetPaneFrameStylePayload(super::SetPaneFrameStylePayload),
+        #[prost(string, tag="62")]
+        ApplyTiledSwapLayoutPayload(::prost::alloc::string::String),
+        #[prost(string, tag="63")]
+        ApplyFloatingSwapLayoutPayload(::prost::alloc::string::String),
+        #[prost(message, tag="64")]
+        SetPaneBorderStylePayload(super::SetPaneBorderStylePayload),
+        #[prost(message, tag="65")]
+        TargetPaneIdPayload(super::TargetPaneIdPayload),
+        #[prost(message, tag="66")]
+        TargetTabIdPayload(super::TargetTabIdPayload),
+        #[prost(message, tag="67")]
+        MoveTabByTabIdPayload(super::MoveTabByTabIdPayload),
+        #[prost(message, tag="68")]
+        MoveTabToPositionPayload(super::MoveTabToPositionPayload),
+        #[prost(message, tag="69")]
+        SessionPanePayload(super::SessionPanePayload),
     }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SessionPanePayload {
+    #[prost(string, optional, tag="1")]
+    pub session: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, optional, tag="2")]
+    pub pane_id: ::core::option::Option<PaneId>,
+    #[prost(bool, tag="3")]
+    pub this_session: bool,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct TargetPaneIdPayload {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct TargetTabIdPayload {
+    #[prost(uint64, tag="1")]
+    pub tab_id: u64,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MoveTabByTabIdPayload {
+    #[prost(uint64, tag="1")]
+    pub tab_id: u64,
+    #[prost(enumeration="MoveTabDirection", tag="2")]
+    pub direction: i32,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MoveTabToPositionPayload {
+    #[prost(uint64, tag="1")]
+    pub tab_id: u64,
+    #[prost(uint64, tag="2")]
+    pub position: u64,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SetPaneBorderStylePayload {
+    #[prost(message, optional, tag="1")]
+    pub pane_id: ::core::option::Option<PaneId>,
+    #[prost(message, optional, tag="2")]
+    pub border_style: ::core::option::Option<super::style::BorderStyleOverride>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -544,6 +610,8 @@ pub struct NewTiledPanePayload {
     pub near_current_pane: bool,
     #[prost(bool, optional, tag="4")]
     pub borderless: ::core::option::Option<bool>,
+    #[prost(message, optional, tag="5")]
+    pub border_style: ::core::option::Option<super::style::BorderStyleOverride>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -707,6 +775,8 @@ pub struct FloatingPaneCoordinates {
     pub pinned: ::core::option::Option<bool>,
     #[prost(bool, optional, tag="6")]
     pub borderless: ::core::option::Option<bool>,
+    #[prost(message, optional, tag="7")]
+    pub border_style: ::core::option::Option<super::style::BorderStyleOverride>,
 }
 /// SetPaneBorderlessPayload specifies the pane and borderless state
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -746,6 +816,8 @@ pub mod new_pane_placement {
 pub struct NoPreferenceOptions {
     #[prost(bool, optional, tag="1")]
     pub borderless: ::core::option::Option<bool>,
+    #[prost(message, optional, tag="2")]
+    pub border_style: ::core::option::Option<super::style::BorderStyleOverride>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -754,6 +826,8 @@ pub struct TiledPlacement {
     pub direction: ::core::option::Option<i32>,
     #[prost(bool, optional, tag="2")]
     pub borderless: ::core::option::Option<bool>,
+    #[prost(message, optional, tag="3")]
+    pub border_style: ::core::option::Option<super::style::BorderStyleOverride>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -770,6 +844,8 @@ pub struct InPlaceConfig {
     pub close_replaced_pane: bool,
     #[prost(bool, optional, tag="3")]
     pub borderless: ::core::option::Option<bool>,
+    #[prost(message, optional, tag="4")]
+    pub border_style: ::core::option::Option<super::style::BorderStyleOverride>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -778,6 +854,8 @@ pub struct StackedPlacement {
     pub pane_id: ::core::option::Option<PaneId>,
     #[prost(bool, optional, tag="2")]
     pub borderless: ::core::option::Option<bool>,
+    #[prost(message, optional, tag="3")]
+    pub border_style: ::core::option::Option<super::style::BorderStyleOverride>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -808,6 +886,8 @@ pub struct MouseEventPayload {
     pub wheel_left: bool,
     #[prost(bool, tag="13")]
     pub wheel_right: bool,
+    #[prost(uint32, tag="14")]
+    pub wheel_lines: u32,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1145,7 +1225,39 @@ pub enum ActionName {
     ScrollToNextPrompt = 111,
     SelectCommandAtScrollPosition = 112,
     CopyLastCommandOutput = 113,
-    ToggleStackListOrientation = 114,
+    ApplyTiledSwapLayout = 114,
+    ApplyFloatingSwapLayout = 115,
+    SetPaneBorderStyle = 116,
+    CloseFocusByPaneId = 117,
+    ToggleFocusFullscreenByPaneId = 118,
+    TogglePaneEmbedOrFloatingByPaneId = 119,
+    TogglePanePinnedByPaneId = 120,
+    TogglePaneInGroupByPaneId = 121,
+    StartRenamePaneByPaneId = 122,
+    MoveTabByTabId = 123,
+    StartRenameTabByTabId = 124,
+    DismissInfoPopups = 125,
+    OpenContextMenu = 126,
+    MoveTabToPosition = 127,
+    RunInBackground = 128,
+    ToggleSessionCard = 129,
+    MutePane = 130,
+    MutePaneByPaneId = 131,
+    IgnorePaneOutput = 132,
+    IgnorePaneOutputByPaneId = 133,
+    WatchPane = 134,
+    WatchPaneByPaneId = 135,
+    MuteTab = 136,
+    MuteTabByTabId = 137,
+    MuteSession = 138,
+    ToggleSession = 139,
+    GoToPreviousSession = 140,
+    GoToNextSession = 141,
+    GoToNextAttention = 142,
+    MarkPaneSeen = 143,
+    MarkAllSeen = 144,
+    ToggleTrayIcon = 145,
+    ToggleStackListOrientation = 146,
 }
 impl ActionName {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1265,6 +1377,38 @@ impl ActionName {
             ActionName::ScrollToNextPrompt => "ScrollToNextPrompt",
             ActionName::SelectCommandAtScrollPosition => "SelectCommandAtScrollPosition",
             ActionName::CopyLastCommandOutput => "CopyLastCommandOutput",
+            ActionName::ApplyTiledSwapLayout => "ApplyTiledSwapLayout",
+            ActionName::ApplyFloatingSwapLayout => "ApplyFloatingSwapLayout",
+            ActionName::SetPaneBorderStyle => "SetPaneBorderStyle",
+            ActionName::CloseFocusByPaneId => "CloseFocusByPaneId",
+            ActionName::ToggleFocusFullscreenByPaneId => "ToggleFocusFullscreenByPaneId",
+            ActionName::TogglePaneEmbedOrFloatingByPaneId => "TogglePaneEmbedOrFloatingByPaneId",
+            ActionName::TogglePanePinnedByPaneId => "TogglePanePinnedByPaneId",
+            ActionName::TogglePaneInGroupByPaneId => "TogglePaneInGroupByPaneId",
+            ActionName::StartRenamePaneByPaneId => "StartRenamePaneByPaneId",
+            ActionName::MoveTabByTabId => "MoveTabByTabId",
+            ActionName::StartRenameTabByTabId => "StartRenameTabByTabId",
+            ActionName::DismissInfoPopups => "DismissInfoPopups",
+            ActionName::OpenContextMenu => "OpenContextMenu",
+            ActionName::MoveTabToPosition => "MoveTabToPosition",
+            ActionName::RunInBackground => "RunInBackground",
+            ActionName::ToggleSessionCard => "ToggleSessionCard",
+            ActionName::MutePane => "MutePane",
+            ActionName::MutePaneByPaneId => "MutePaneByPaneId",
+            ActionName::IgnorePaneOutput => "IgnorePaneOutput",
+            ActionName::IgnorePaneOutputByPaneId => "IgnorePaneOutputByPaneId",
+            ActionName::WatchPane => "WatchPane",
+            ActionName::WatchPaneByPaneId => "WatchPaneByPaneId",
+            ActionName::MuteTab => "MuteTab",
+            ActionName::MuteTabByTabId => "MuteTabByTabId",
+            ActionName::MuteSession => "MuteSession",
+            ActionName::ToggleSession => "ToggleSession",
+            ActionName::GoToPreviousSession => "GoToPreviousSession",
+            ActionName::GoToNextSession => "GoToNextSession",
+            ActionName::GoToNextAttention => "GoToNextAttention",
+            ActionName::MarkPaneSeen => "MarkPaneSeen",
+            ActionName::MarkAllSeen => "MarkAllSeen",
+            ActionName::ToggleTrayIcon => "ToggleTrayIcon",
             ActionName::ToggleStackListOrientation => "ToggleStackListOrientation",
         }
     }
@@ -1382,6 +1526,38 @@ impl ActionName {
             "ScrollToNextPrompt" => Some(Self::ScrollToNextPrompt),
             "SelectCommandAtScrollPosition" => Some(Self::SelectCommandAtScrollPosition),
             "CopyLastCommandOutput" => Some(Self::CopyLastCommandOutput),
+            "ApplyTiledSwapLayout" => Some(Self::ApplyTiledSwapLayout),
+            "ApplyFloatingSwapLayout" => Some(Self::ApplyFloatingSwapLayout),
+            "SetPaneBorderStyle" => Some(Self::SetPaneBorderStyle),
+            "CloseFocusByPaneId" => Some(Self::CloseFocusByPaneId),
+            "ToggleFocusFullscreenByPaneId" => Some(Self::ToggleFocusFullscreenByPaneId),
+            "TogglePaneEmbedOrFloatingByPaneId" => Some(Self::TogglePaneEmbedOrFloatingByPaneId),
+            "TogglePanePinnedByPaneId" => Some(Self::TogglePanePinnedByPaneId),
+            "TogglePaneInGroupByPaneId" => Some(Self::TogglePaneInGroupByPaneId),
+            "StartRenamePaneByPaneId" => Some(Self::StartRenamePaneByPaneId),
+            "MoveTabByTabId" => Some(Self::MoveTabByTabId),
+            "StartRenameTabByTabId" => Some(Self::StartRenameTabByTabId),
+            "DismissInfoPopups" => Some(Self::DismissInfoPopups),
+            "OpenContextMenu" => Some(Self::OpenContextMenu),
+            "MoveTabToPosition" => Some(Self::MoveTabToPosition),
+            "RunInBackground" => Some(Self::RunInBackground),
+            "ToggleSessionCard" => Some(Self::ToggleSessionCard),
+            "MutePane" => Some(Self::MutePane),
+            "MutePaneByPaneId" => Some(Self::MutePaneByPaneId),
+            "IgnorePaneOutput" => Some(Self::IgnorePaneOutput),
+            "IgnorePaneOutputByPaneId" => Some(Self::IgnorePaneOutputByPaneId),
+            "WatchPane" => Some(Self::WatchPane),
+            "WatchPaneByPaneId" => Some(Self::WatchPaneByPaneId),
+            "MuteTab" => Some(Self::MuteTab),
+            "MuteTabByTabId" => Some(Self::MuteTabByTabId),
+            "MuteSession" => Some(Self::MuteSession),
+            "ToggleSession" => Some(Self::ToggleSession),
+            "GoToPreviousSession" => Some(Self::GoToPreviousSession),
+            "GoToNextSession" => Some(Self::GoToNextSession),
+            "GoToNextAttention" => Some(Self::GoToNextAttention),
+            "MarkPaneSeen" => Some(Self::MarkPaneSeen),
+            "MarkAllSeen" => Some(Self::MarkAllSeen),
+            "ToggleTrayIcon" => Some(Self::ToggleTrayIcon),
             "ToggleStackListOrientation" => Some(Self::ToggleStackListOrientation),
             _ => None,
         }

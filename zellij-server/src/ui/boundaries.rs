@@ -3,10 +3,14 @@ use zellij_utils::pane_size::{Offset, Viewport};
 use crate::output::CharacterChunk;
 use crate::panes::terminal_character::{TerminalCharacter, EMPTY_TERMINAL_CHARACTER, RESET_STYLES};
 use crate::tab::Pane;
+use crate::ui::border_glyphs::remap_light_glyph;
 use ansi_term::Colour::{Fixed, RGB};
 use std::collections::HashMap;
 use zellij_utils::errors::prelude::*;
-use zellij_utils::{data::PaletteColor, shared::colors};
+use zellij_utils::{
+    data::{BorderStyle, LineStyle, PaletteColor},
+    shared::colors,
+};
 
 use std::fmt::{Display, Error, Formatter};
 pub mod boundary_type {
@@ -34,6 +38,7 @@ pub struct BoundarySymbol {
     boundary_type: BoundaryType,
     invisible: bool,
     color: Option<(PaletteColor, usize)>, // (color, color_precedence)
+    line_style: Option<LineStyle>,
 }
 
 impl BoundarySymbol {
@@ -42,25 +47,39 @@ impl BoundarySymbol {
             boundary_type,
             invisible: false,
             color: Some((PaletteColor::EightBit(colors::GRAY), 0)),
+            line_style: Some(LineStyle::Single),
         }
     }
     pub fn color(&mut self, color: Option<(PaletteColor, usize)>) -> Self {
         self.color = color;
         *self
     }
-    pub fn as_terminal_character(&self) -> Result<TerminalCharacter> {
+    pub fn line_style(&mut self, line_style: LineStyle) -> Self {
+        self.line_style = Some(line_style);
+        *self
+    }
+    pub fn glyph(&self, fallback_line_style: LineStyle) -> BoundaryType {
+        remap_light_glyph(
+            self.boundary_type,
+            self.line_style.unwrap_or(fallback_line_style),
+        )
+    }
+    pub fn as_terminal_character(
+        &self,
+        fallback_line_style: LineStyle,
+    ) -> Result<TerminalCharacter> {
         let tc = if self.invisible {
             EMPTY_TERMINAL_CHARACTER
         } else {
-            let character = self
-                .boundary_type
+            let glyph = self.glyph(fallback_line_style);
+            let character = glyph
                 .chars()
                 .next()
                 .context("no boundary symbols defined")
                 .with_context(|| {
                     format!(
                         "failed to convert boundary symbol {} into terminal character",
-                        self.boundary_type
+                        glyph
                     )
                 })?;
             TerminalCharacter::new_singlewidth_styled(
@@ -76,18 +95,15 @@ impl BoundarySymbol {
 
 impl Display for BoundarySymbol {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        let glyph = self.glyph(LineStyle::Single);
         match self.invisible {
             true => write!(f, " "),
             false => match self.color {
                 Some(color) => match color.0 {
-                    PaletteColor::Rgb((r, g, b)) => {
-                        write!(f, "{}", RGB(r, g, b).paint(self.boundary_type))
-                    },
-                    PaletteColor::EightBit(color) => {
-                        write!(f, "{}", Fixed(color).paint(self.boundary_type))
-                    },
+                    PaletteColor::Rgb((r, g, b)) => write!(f, "{}", RGB(r, g, b).paint(glyph)),
+                    PaletteColor::EightBit(color) => write!(f, "{}", Fixed(color).paint(glyph)),
                 },
-                None => write!(f, "{}", self.boundary_type),
+                None => write!(f, "{}", glyph),
             },
         }
     }
@@ -110,6 +126,16 @@ fn combine_symbols(
         },
         _ => current_symbol.color.or(next_symbol.color),
     };
+    let line_style = match (current_symbol.line_style, next_symbol.line_style) {
+        (Some(current_line_style), Some(next_line_style)) => {
+            if current_line_style == next_line_style {
+                Some(current_line_style)
+            } else {
+                None
+            }
+        },
+        _ => None,
+    };
     match (current_symbol.boundary_type, next_symbol.boundary_type) {
         (CROSS, _) | (_, CROSS) => {
             // (┼, *) or (*, ┼) => Some(┼)
@@ -118,6 +144,7 @@ fn combine_symbols(
                 boundary_type,
                 invisible,
                 color,
+                line_style,
             })
         },
         (TOP_RIGHT, TOP_RIGHT) => {
@@ -127,6 +154,7 @@ fn combine_symbols(
                 boundary_type,
                 invisible,
                 color,
+                line_style,
             })
         },
         (TOP_RIGHT, VERTICAL) | (TOP_RIGHT, BOTTOM_RIGHT) | (TOP_RIGHT, VERTICAL_LEFT) => {
@@ -138,6 +166,7 @@ fn combine_symbols(
                 boundary_type,
                 invisible,
                 color,
+                line_style,
             })
         },
         (TOP_RIGHT, HORIZONTAL) | (TOP_RIGHT, TOP_LEFT) | (TOP_RIGHT, HORIZONTAL_DOWN) => {
@@ -149,6 +178,7 @@ fn combine_symbols(
                 boundary_type,
                 invisible,
                 color,
+                line_style,
             })
         },
         (TOP_RIGHT, BOTTOM_LEFT) | (TOP_RIGHT, VERTICAL_RIGHT) | (TOP_RIGHT, HORIZONTAL_UP) => {
@@ -160,6 +190,7 @@ fn combine_symbols(
                 boundary_type,
                 invisible,
                 color,
+                line_style,
             })
         },
         (HORIZONTAL, HORIZONTAL) => {
@@ -169,6 +200,7 @@ fn combine_symbols(
                 boundary_type,
                 invisible,
                 color,
+                line_style,
             })
         },
         (HORIZONTAL, VERTICAL) | (HORIZONTAL, VERTICAL_LEFT) | (HORIZONTAL, VERTICAL_RIGHT) => {
@@ -180,6 +212,7 @@ fn combine_symbols(
                 boundary_type,
                 invisible,
                 color,
+                line_style,
             })
         },
         (HORIZONTAL, TOP_LEFT) | (HORIZONTAL, HORIZONTAL_DOWN) => {
@@ -190,6 +223,7 @@ fn combine_symbols(
                 boundary_type,
                 invisible,
                 color,
+                line_style,
             })
         },
         (HORIZONTAL, BOTTOM_RIGHT) | (HORIZONTAL, BOTTOM_LEFT) | (HORIZONTAL, HORIZONTAL_UP) => {
@@ -201,6 +235,7 @@ fn combine_symbols(
                 boundary_type,
                 invisible,
                 color,
+                line_style,
             })
         },
         (VERTICAL, VERTICAL) => {
@@ -210,6 +245,7 @@ fn combine_symbols(
                 boundary_type,
                 invisible,
                 color,
+                line_style,
             })
         },
         (VERTICAL, TOP_LEFT) | (VERTICAL, BOTTOM_LEFT) | (VERTICAL, VERTICAL_RIGHT) => {
@@ -221,6 +257,7 @@ fn combine_symbols(
                 boundary_type,
                 invisible,
                 color,
+                line_style,
             })
         },
         (VERTICAL, BOTTOM_RIGHT) | (VERTICAL, VERTICAL_LEFT) => {
@@ -231,6 +268,7 @@ fn combine_symbols(
                 boundary_type,
                 invisible,
                 color,
+                line_style,
             })
         },
         (VERTICAL, HORIZONTAL_DOWN) | (VERTICAL, HORIZONTAL_UP) => {
@@ -241,6 +279,7 @@ fn combine_symbols(
                 boundary_type,
                 invisible,
                 color,
+                line_style,
             })
         },
         (TOP_LEFT, TOP_LEFT) => {
@@ -250,6 +289,7 @@ fn combine_symbols(
                 boundary_type,
                 invisible,
                 color,
+                line_style,
             })
         },
         (TOP_LEFT, BOTTOM_RIGHT) | (TOP_LEFT, VERTICAL_LEFT) | (TOP_LEFT, HORIZONTAL_UP) => {
@@ -261,6 +301,7 @@ fn combine_symbols(
                 boundary_type,
                 invisible,
                 color,
+                line_style,
             })
         },
         (TOP_LEFT, BOTTOM_LEFT) | (TOP_LEFT, VERTICAL_RIGHT) => {
@@ -271,6 +312,7 @@ fn combine_symbols(
                 boundary_type,
                 invisible,
                 color,
+                line_style,
             })
         },
         (TOP_LEFT, HORIZONTAL_DOWN) => {
@@ -280,6 +322,7 @@ fn combine_symbols(
                 boundary_type,
                 invisible,
                 color,
+                line_style,
             })
         },
         (BOTTOM_RIGHT, BOTTOM_RIGHT) => {
@@ -289,6 +332,7 @@ fn combine_symbols(
                 boundary_type,
                 invisible,
                 color,
+                line_style,
             })
         },
         (BOTTOM_RIGHT, BOTTOM_LEFT) | (BOTTOM_RIGHT, HORIZONTAL_UP) => {
@@ -299,6 +343,7 @@ fn combine_symbols(
                 boundary_type,
                 invisible,
                 color,
+                line_style,
             })
         },
         (BOTTOM_RIGHT, VERTICAL_LEFT) => {
@@ -308,6 +353,7 @@ fn combine_symbols(
                 boundary_type,
                 invisible,
                 color,
+                line_style,
             })
         },
         (BOTTOM_RIGHT, VERTICAL_RIGHT) | (BOTTOM_RIGHT, HORIZONTAL_DOWN) => {
@@ -318,6 +364,7 @@ fn combine_symbols(
                 boundary_type,
                 invisible,
                 color,
+                line_style,
             })
         },
         (BOTTOM_LEFT, BOTTOM_LEFT) => {
@@ -327,6 +374,7 @@ fn combine_symbols(
                 boundary_type,
                 invisible,
                 color,
+                line_style,
             })
         },
         (BOTTOM_LEFT, VERTICAL_LEFT) | (BOTTOM_LEFT, HORIZONTAL_DOWN) => {
@@ -337,6 +385,7 @@ fn combine_symbols(
                 boundary_type,
                 invisible,
                 color,
+                line_style,
             })
         },
         (BOTTOM_LEFT, VERTICAL_RIGHT) => {
@@ -346,6 +395,7 @@ fn combine_symbols(
                 boundary_type,
                 invisible,
                 color,
+                line_style,
             })
         },
         (BOTTOM_LEFT, HORIZONTAL_UP) => {
@@ -355,6 +405,7 @@ fn combine_symbols(
                 boundary_type,
                 invisible,
                 color,
+                line_style,
             })
         },
         (VERTICAL_LEFT, VERTICAL_LEFT) => {
@@ -364,6 +415,7 @@ fn combine_symbols(
                 boundary_type,
                 invisible,
                 color,
+                line_style,
             })
         },
         (VERTICAL_LEFT, VERTICAL_RIGHT)
@@ -377,6 +429,7 @@ fn combine_symbols(
                 boundary_type,
                 invisible,
                 color,
+                line_style,
             })
         },
         (VERTICAL_RIGHT, VERTICAL_RIGHT) => {
@@ -386,6 +439,7 @@ fn combine_symbols(
                 boundary_type,
                 invisible,
                 color,
+                line_style,
             })
         },
         (VERTICAL_RIGHT, HORIZONTAL_DOWN) | (VERTICAL_RIGHT, HORIZONTAL_UP) => {
@@ -396,6 +450,7 @@ fn combine_symbols(
                 boundary_type,
                 invisible,
                 color,
+                line_style,
             })
         },
         (HORIZONTAL_DOWN, HORIZONTAL_DOWN) => {
@@ -405,6 +460,7 @@ fn combine_symbols(
                 boundary_type,
                 invisible,
                 color,
+                line_style,
             })
         },
         (HORIZONTAL_DOWN, HORIZONTAL_UP) => {
@@ -414,6 +470,7 @@ fn combine_symbols(
                 boundary_type,
                 invisible,
                 color,
+                line_style,
             })
         },
         (HORIZONTAL_UP, HORIZONTAL_UP) => {
@@ -423,6 +480,7 @@ fn combine_symbols(
                 boundary_type,
                 invisible,
                 color,
+                line_style,
             })
         },
         (_, _) => combine_symbols(next_symbol, current_symbol),
@@ -443,14 +501,16 @@ impl Coordinates {
 
 pub struct Boundaries {
     viewport: Viewport,
+    fallback_line_style: LineStyle,
     pub boundary_characters: HashMap<Coordinates, BoundarySymbol>,
 }
 
 #[allow(clippy::if_same_then_else)]
 impl Boundaries {
-    pub fn new(viewport: Viewport) -> Self {
+    pub fn new(viewport: Viewport, fallback_line_style: LineStyle) -> Self {
         Boundaries {
             viewport,
+            fallback_line_style,
             boundary_characters: HashMap::new(),
         }
     }
@@ -458,6 +518,7 @@ impl Boundaries {
         &mut self,
         rect: &dyn Pane,
         color: Option<(PaletteColor, usize)>, // (color, color_precedence)
+        border_style: BorderStyle,
         pane_is_on_top_of_stack: bool,
         pane_is_on_bottom_of_stack: bool,
         pane_is_stacked_under: bool,
@@ -479,19 +540,29 @@ impl Boundaries {
                 let coordinates = Coordinates::new(boundary_x_coords, row);
                 let symbol_to_add = if row == first_row_coordinates && row != self.viewport.y {
                     if pane_is_stacked {
-                        BoundarySymbol::new(boundary_type::VERTICAL_RIGHT).color(color)
+                        BoundarySymbol::new(boundary_type::VERTICAL_RIGHT)
+                            .color(color)
+                            .line_style(border_style.left)
                     } else {
-                        BoundarySymbol::new(boundary_type::TOP_LEFT).color(color)
+                        BoundarySymbol::new(boundary_type::TOP_LEFT)
+                            .color(color)
+                            .line_style(border_style.left)
                     }
                 } else if row == first_row_coordinates && pane_is_stacked {
-                    BoundarySymbol::new(boundary_type::TOP_LEFT).color(color)
+                    BoundarySymbol::new(boundary_type::TOP_LEFT)
+                        .color(color)
+                        .line_style(border_style.left)
                 } else if row == last_row_coordinates - 1
                     && row != self.viewport.y + self.viewport.rows - 1
                     && content_offset.bottom > 0
                 {
-                    BoundarySymbol::new(boundary_type::BOTTOM_LEFT).color(color)
+                    BoundarySymbol::new(boundary_type::BOTTOM_LEFT)
+                        .color(color)
+                        .line_style(border_style.left)
                 } else {
-                    BoundarySymbol::new(boundary_type::VERTICAL).color(color)
+                    BoundarySymbol::new(boundary_type::VERTICAL)
+                        .color(color)
+                        .line_style(border_style.left)
                 };
                 let next_symbol = self
                     .boundary_characters
@@ -509,11 +580,17 @@ impl Boundaries {
             for col in first_col_coordinates..last_col_coordinates {
                 let coordinates = Coordinates::new(col, boundary_y_coords);
                 let symbol_to_add = if col == first_col_coordinates && col != self.viewport.x {
-                    BoundarySymbol::new(boundary_type::TOP_LEFT).color(color)
+                    BoundarySymbol::new(boundary_type::TOP_LEFT)
+                        .color(color)
+                        .line_style(border_style.top)
                 } else if col == last_col_coordinates - 1 && col != self.viewport.cols - 1 {
-                    BoundarySymbol::new(boundary_type::TOP_RIGHT).color(color)
+                    BoundarySymbol::new(boundary_type::TOP_RIGHT)
+                        .color(color)
+                        .line_style(border_style.top)
                 } else {
-                    BoundarySymbol::new(boundary_type::HORIZONTAL).color(color)
+                    BoundarySymbol::new(boundary_type::HORIZONTAL)
+                        .color(color)
+                        .line_style(border_style.top)
                 };
                 let next_symbol = self
                     .boundary_characters
@@ -532,20 +609,30 @@ impl Boundaries {
             for row in first_row_coordinates..last_row_coordinates {
                 let coordinates = Coordinates::new(boundary_x_coords, row);
                 let symbol_to_add = if row == first_row_coordinates && pane_is_stacked {
-                    BoundarySymbol::new(boundary_type::VERTICAL_LEFT).color(color)
+                    BoundarySymbol::new(boundary_type::VERTICAL_LEFT)
+                        .color(color)
+                        .line_style(border_style.right)
                 } else if row == first_row_coordinates && row != self.viewport.y {
                     if pane_is_stacked {
-                        BoundarySymbol::new(boundary_type::VERTICAL_LEFT).color(color)
+                        BoundarySymbol::new(boundary_type::VERTICAL_LEFT)
+                            .color(color)
+                            .line_style(border_style.right)
                     } else {
-                        BoundarySymbol::new(boundary_type::TOP_RIGHT).color(color)
+                        BoundarySymbol::new(boundary_type::TOP_RIGHT)
+                            .color(color)
+                            .line_style(border_style.right)
                     }
                 } else if row == last_row_coordinates - 1
                     && row != self.viewport.y + self.viewport.rows - 1
                     && content_offset.bottom > 0
                 {
-                    BoundarySymbol::new(boundary_type::BOTTOM_RIGHT).color(color)
+                    BoundarySymbol::new(boundary_type::BOTTOM_RIGHT)
+                        .color(color)
+                        .line_style(border_style.right)
                 } else {
-                    BoundarySymbol::new(boundary_type::VERTICAL).color(color)
+                    BoundarySymbol::new(boundary_type::VERTICAL)
+                        .color(color)
+                        .line_style(border_style.right)
                 };
                 let next_symbol = self
                     .boundary_characters
@@ -563,11 +650,17 @@ impl Boundaries {
             for col in first_col_coordinates..last_col_coordinates {
                 let coordinates = Coordinates::new(col, boundary_y_coords);
                 let symbol_to_add = if col == first_col_coordinates && col != self.viewport.x {
-                    BoundarySymbol::new(boundary_type::BOTTOM_LEFT).color(color)
+                    BoundarySymbol::new(boundary_type::BOTTOM_LEFT)
+                        .color(color)
+                        .line_style(border_style.bottom)
                 } else if col == last_col_coordinates - 1 && col != self.viewport.cols - 1 {
-                    BoundarySymbol::new(boundary_type::BOTTOM_RIGHT).color(color)
+                    BoundarySymbol::new(boundary_type::BOTTOM_RIGHT)
+                        .color(color)
+                        .line_style(border_style.bottom)
                 } else {
-                    BoundarySymbol::new(boundary_type::HORIZONTAL).color(color)
+                    BoundarySymbol::new(boundary_type::HORIZONTAL)
+                        .color(color)
+                        .line_style(border_style.bottom)
                 };
                 let next_symbol = self
                     .boundary_characters
@@ -584,16 +677,25 @@ impl Boundaries {
     ) -> Result<Vec<CharacterChunk>> {
         let mut character_chunks = vec![];
         for (coordinates, boundary_character) in &self.boundary_characters {
+            let glyph = boundary_character.glyph(self.fallback_line_style);
             let already_on_screen = existing_boundaries_on_screen
                 .and_then(|e| e.boundary_characters.get(coordinates))
-                .map(|e| e == boundary_character)
+                .map(|e| {
+                    e.color == boundary_character.color
+                        && e.invisible == boundary_character.invisible
+                        && e.glyph(
+                            existing_boundaries_on_screen
+                                .map(|b| b.fallback_line_style)
+                                .unwrap_or(LineStyle::Single),
+                        ) == glyph
+                })
                 .unwrap_or(false);
             if already_on_screen {
                 continue;
             }
             character_chunks.push(CharacterChunk::new(
                 vec![boundary_character
-                    .as_terminal_character()
+                    .as_terminal_character(self.fallback_line_style)
                     .context("failed to render as terminal character")?],
                 coordinates.x,
                 coordinates.y,
@@ -651,5 +753,59 @@ impl Boundaries {
             && rect.x() + rect.cols() <= self.viewport.x + self.viewport.cols
             && rect.y() >= self.viewport.y
             && rect.y() + rect.rows() <= self.viewport.y + self.viewport.rows
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn symbol(boundary_type: BoundaryType, line_style: LineStyle) -> BoundarySymbol {
+        BoundarySymbol::new(boundary_type).line_style(line_style)
+    }
+
+    #[test]
+    fn matching_line_styles_are_kept_through_a_junction() {
+        let combined = combine_symbols(
+            symbol(boundary_type::HORIZONTAL, LineStyle::Double),
+            symbol(boundary_type::VERTICAL, LineStyle::Double),
+        )
+        .unwrap();
+        assert_eq!(combined.glyph(LineStyle::Single), "╬");
+    }
+
+    #[test]
+    fn conflicting_line_styles_fall_back_to_the_ambient_style() {
+        let combined = combine_symbols(
+            symbol(boundary_type::HORIZONTAL, LineStyle::Double),
+            symbol(boundary_type::VERTICAL, LineStyle::Heavy),
+        )
+        .unwrap();
+        assert_eq!(combined.glyph(LineStyle::Single), "┼");
+        assert_eq!(combined.glyph(LineStyle::Double), "╬");
+    }
+
+    #[test]
+    fn a_style_without_a_glyph_for_the_junction_falls_back_to_single() {
+        let combined = combine_symbols(
+            symbol(boundary_type::HORIZONTAL, LineStyle::Dashed),
+            symbol(boundary_type::VERTICAL, LineStyle::Dashed),
+        )
+        .unwrap();
+        assert_eq!(combined.glyph(LineStyle::Single), "┼");
+        assert_eq!(
+            symbol(boundary_type::HORIZONTAL, LineStyle::Dashed).glyph(LineStyle::Single),
+            "┄"
+        );
+    }
+
+    #[test]
+    fn heavy_junctions_are_kept() {
+        let combined = combine_symbols(
+            symbol(boundary_type::HORIZONTAL, LineStyle::Heavy),
+            symbol(boundary_type::TOP_LEFT, LineStyle::Heavy),
+        )
+        .unwrap();
+        assert_eq!(combined.glyph(LineStyle::Single), "┳");
     }
 }

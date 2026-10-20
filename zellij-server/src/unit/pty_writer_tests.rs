@@ -75,6 +75,7 @@ impl ServerOsApi for MockServerOsApi {
         _terminal_action: zellij_utils::input::command::TerminalAction,
         _quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         _default_editor: Option<PathBuf>,
+        _pane_env: &crate::os_input_output::PaneEnv,
     ) -> Result<(u32, Box<dyn AsyncReader>, Option<u32>)> {
         unimplemented!()
     }
@@ -129,19 +130,18 @@ impl ServerOsApi for MockServerOsApi {
     fn send_to_client(&self, _client_id: ClientId, _msg: ServerToClientMsg) -> Result<()> {
         Ok(())
     }
-    fn new_client(
+    fn register_client(
         &mut self,
         _client_id: ClientId,
-        _stream: LocalSocketStream,
-    ) -> Result<IpcReceiverWithContext<ClientToServerMsg>> {
+        _receiver: &IpcReceiverWithContext<ClientToServerMsg>,
+    ) -> Result<()> {
         unimplemented!()
     }
-    fn new_client_with_reply(
+    fn register_client_with_reply(
         &mut self,
         _client_id: ClientId,
-        _stream: LocalSocketStream,
         _reply_stream: LocalSocketStream,
-    ) -> Result<IpcReceiverWithContext<ClientToServerMsg>> {
+    ) -> Result<()> {
         unimplemented!()
     }
     fn remove_client(&mut self, _client_id: ClientId) -> Result<()> {
@@ -161,6 +161,7 @@ impl ServerOsApi for MockServerOsApi {
         _terminal_id: u32,
         _run_command: RunCommand,
         _quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
+        _pane_env: &crate::os_input_output::PaneEnv,
     ) -> Result<(Box<dyn AsyncReader>, Option<u32>)> {
         unimplemented!()
     }

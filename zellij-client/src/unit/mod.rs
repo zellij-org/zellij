@@ -4,3 +4,12 @@ mod terminal_loop_tests;
 
 #[cfg(test)]
 mod teardown_tests;
+
+#[cfg(test)]
+mod ipc_pipe_length_tests;
+
+#[cfg(test)]
+mod cli_client_tests;
+
+#[cfg(test)]
+mod input_handler_tests;

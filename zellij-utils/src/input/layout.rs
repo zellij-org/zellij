@@ -11,7 +11,10 @@
 #[cfg(not(target_family = "wasm"))]
 use crate::downloader::Downloader;
 use crate::{
-    data::{Direction, LayoutInfo, LayoutMetadata, LayoutParsingError, LayoutWithError},
+    data::{
+        BorderStyleOverride, Direction, LayoutInfo, LayoutMetadata, LayoutParsingError,
+        LayoutWithError,
+    },
     home::{default_layout_dir, find_default_config_dir},
     input::{
         command::RunCommand,
@@ -196,23 +199,8 @@ impl RunPluginOrAlias {
                 Some(Run::Plugin(RunPluginOrAlias::Alias(run_alias))),
             ) => {
                 self_alias.name == run_alias.name
-                    && self_alias
-                        .configuration
-                        .as_ref()
-                        // we do the is_empty() checks because an empty configuration is the same as no
-                        // configuration (i.e. None)
-                        .and_then(|c| if c.inner().is_empty() { None } else { Some(c) })
-                        == run_alias.configuration.as_ref().and_then(|c| {
-                            let mut to_compare = c.inner().clone();
-                            // caller_cwd is a special attribute given to alias and should not be
-                            // considered when weighing configuration equivalency
-                            to_compare.remove("caller_cwd");
-                            if to_compare.is_empty() {
-                                None
-                            } else {
-                                Some(c)
-                            }
-                        })
+                    && self_alias.configuration_without_caller_cwd()
+                        == run_alias.configuration_without_caller_cwd()
             },
             (
                 RunPluginOrAlias::Alias(self_alias),
@@ -493,6 +481,17 @@ impl PluginAlias {
             ..Default::default()
         }
     }
+    fn configuration_without_caller_cwd(&self) -> Option<BTreeMap<String, String>> {
+        self.configuration.as_ref().and_then(|configuration| {
+            let mut configuration = configuration.inner().clone();
+            configuration.remove("caller_cwd");
+            if configuration.is_empty() {
+                None
+            } else {
+                Some(configuration)
+            }
+        })
+    }
     pub fn set_caller_cwd_if_not_set(&mut self, caller_cwd: Option<PathBuf>) {
         // we do this only for an alias because in all other cases this will be handled by the
         // "cwd" configuration key above
@@ -693,7 +692,7 @@ pub type SwapFloatingLayout = (
     Option<String>,
 ); // Option<String> is the swap layout name
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct Layout {
     pub tabs: Vec<(Option<String>, TiledPaneLayout, Vec<FloatingPaneLayout>)>,
     pub focused_tab_index: Option<usize>,
@@ -701,6 +700,25 @@ pub struct Layout {
     pub swap_layouts: Vec<(TiledPaneLayout, Vec<FloatingPaneLayout>)>,
     pub swap_tiled_layouts: Vec<SwapTiledLayout>,
     pub swap_floating_layouts: Vec<SwapFloatingLayout>,
+    #[serde(default)]
+    pub session_attention_muted: bool,
+}
+
+impl std::fmt::Debug for Layout {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let mut debug_struct = f.debug_struct("Layout");
+        debug_struct
+            .field("tabs", &self.tabs)
+            .field("focused_tab_index", &self.focused_tab_index)
+            .field("template", &self.template)
+            .field("swap_layouts", &self.swap_layouts)
+            .field("swap_tiled_layouts", &self.swap_tiled_layouts)
+            .field("swap_floating_layouts", &self.swap_floating_layouts);
+        if self.session_attention_muted {
+            debug_struct.field("session_attention_muted", &self.session_attention_muted);
+        }
+        debug_struct.finish()
+    }
 }
 
 /// Layout configuration for a single tab in multi-tab override
@@ -790,6 +808,8 @@ pub struct FloatingPaneLayout {
     pub y: Option<PercentOrFixed>,
     pub pinned: Option<bool>,
     pub borderless: Option<bool>,
+    #[serde(default)]
+    pub border_style: Option<BorderStyleOverride>,
     pub run: Option<Run>,
     pub focus: Option<bool>,
     pub already_running: bool,
@@ -797,6 +817,10 @@ pub struct FloatingPaneLayout {
     pub logical_position: Option<usize>,
     pub default_fg: Option<String>,
     pub default_bg: Option<String>,
+    #[serde(default)]
+    pub attention_muted: Option<bool>,
+    #[serde(default)]
+    pub ignore_output: Option<bool>,
 }
 
 impl FloatingPaneLayout {
@@ -809,6 +833,7 @@ impl FloatingPaneLayout {
             y: None,
             pinned: None,
             borderless: None,
+            border_style: None,
             run: None,
             focus: None,
             already_running: false,
@@ -816,6 +841,8 @@ impl FloatingPaneLayout {
             logical_position: None,
             default_fg: None,
             default_bg: None,
+            attention_muted: None,
+            ignore_output: None,
         }
     }
     pub fn add_cwd_to_layout(&mut self, cwd: &PathBuf) {
@@ -839,6 +866,9 @@ impl From<&TiledPaneLayout> for FloatingPaneLayout {
             name: pane_layout.name.clone(),
             run: pane_layout.run.clone(),
             focus: pane_layout.focus,
+            border_style: pane_layout.border_style,
+            attention_muted: pane_layout.attention_muted,
+            ignore_output: pane_layout.ignore_output,
             ..Default::default()
         }
     }
@@ -852,6 +882,8 @@ pub struct TiledPaneLayout {
     pub split_size: Option<SplitSize>,
     pub run: Option<Run>,
     pub borderless: Option<bool>,
+    #[serde(default)]
+    pub border_style: Option<BorderStyleOverride>,
     pub focus: Option<bool>,
     pub external_children_index: Option<usize>,
     pub children_are_stacked: bool,
@@ -863,6 +895,10 @@ pub struct TiledPaneLayout {
     pub pane_initial_contents: Option<String>,
     pub default_fg: Option<String>,
     pub default_bg: Option<String>,
+    #[serde(default)]
+    pub attention_muted: Option<bool>,
+    #[serde(default)]
+    pub ignore_output: Option<bool>,
 }
 
 impl TiledPaneLayout {
@@ -1034,10 +1070,10 @@ impl TiledPaneLayout {
             {
                 if let Some(position) = run_instructions.iter().position(|i| {
                     match i {
-                        // this is because a bare CWD instruction should be overidden by a terminal
+                        // this is because a bare CWD instruction should be overridden by a terminal
                         // in run_instructions_to_ignore (for cases where the cwd for example comes
                         // from a global layout cwd and the pane is actually just a bare pane that
-                        // wants to be overidden)
+                        // wants to be overridden)
                         Some(Run::Cwd(_)) | None => true,
                         _ => false,
                     }
@@ -1411,7 +1447,7 @@ impl Layout {
                 .next()
                 .map(|l| l.recursively_add_start_suspended_including_template(Some(true)));
         }
-        let config = Config::from_kdl(&raw_layout, config)?; // this merges the two config, with
+        let config = Config::from_layout_kdl(&raw_layout, config)?; // this merges the two config, with
         layout.map(|l| (l, config))
     }
     pub fn stringified_from_path_or_default(
@@ -1425,7 +1461,7 @@ impl Layout {
                 // how a path would look for an executable.
                 // See the gh issue for more: https://github.com/zellij-org/zellij/issues/1412#issuecomment-1131559720
                 if layout_path.extension().is_some() || layout_path.components().count() > 1 {
-                    // We look localy!
+                    // We look locally!
                     Layout::stringified_from_path(layout_path)
                 } else {
                     // We look in the default dir
@@ -1477,7 +1513,7 @@ impl Layout {
                 .map(|(r, f)| (r.as_str(), f.as_str())),
             None,
         )?;
-        let config = Config::from_kdl(&raw_layout, Some(config))?; // this merges the two config, with
+        let config = Config::from_layout_kdl(&raw_layout, Some(config))?; // this merges the two config, with
         Ok((layout, config))
     }
     #[cfg(not(target_family = "wasm"))]
@@ -1486,7 +1522,7 @@ impl Layout {
             .map_err(|e| ConfigError::DownloadError(format!("{}", e)))?;
         let mut layout = Layout::from_kdl(&raw_layout, Some(url.into()), None, None)?;
         layout.recursively_add_start_suspended_including_template(Some(true));
-        let config = Config::from_kdl(&raw_layout, Some(config))?; // this merges the two config, with
+        let config = Config::from_layout_kdl(&raw_layout, Some(config))?; // this merges the two config, with
         Ok((layout, config))
     }
     pub fn from_stringified_layout(
@@ -1494,7 +1530,7 @@ impl Layout {
         config: Config,
     ) -> Result<(Layout, Config), ConfigError> {
         let layout = Layout::from_kdl(&stringified_layout, None, None, None)?;
-        let config = Config::from_kdl(&stringified_layout, Some(config))?; // this merges the two config, with
+        let config = Config::from_layout_kdl(&stringified_layout, Some(config))?; // this merges the two config, with
         Ok((layout, config))
     }
     #[cfg(target_family = "wasm")]
@@ -1534,7 +1570,7 @@ impl Layout {
                 .map(|(r, f)| (r.as_str(), f.as_str())),
             None,
         )?;
-        let config = Config::from_kdl(&raw_layout, Some(config))?; // this merges the two config, with
+        let config = Config::from_layout_kdl(&raw_layout, Some(config))?; // this merges the two config, with
         Ok((layout, config))
     }
     pub fn default_layout_asset() -> Layout {
@@ -1611,6 +1647,21 @@ impl Layout {
         // TODO: ideally these should not be hard-coded
         // we should load layouts by name from the config
         // and load them from a hashmap or some such
+        if let Some(layout) = path
+            .to_str()
+            .and_then(|name| crate::distribution::builtin_layout(name))
+        {
+            return Ok((
+                format!("{} layout", layout.name),
+                layout.layout.to_owned(),
+                layout.swap_layout.map(|swap_layout| {
+                    (
+                        format!("{} swap layout", layout.name),
+                        swap_layout.to_owned(),
+                    )
+                }),
+            ));
+        }
         match path.to_str() {
             Some("default") => Ok((
                 "Default layout".into(),

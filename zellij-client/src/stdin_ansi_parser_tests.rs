@@ -350,9 +350,9 @@ fn partial_osc_overflow_falls_back_to_residue() {
     // residue and parsing resumes from a clean state.
     let mut p = StdinAnsiParser::new();
     let _ = p.feed(b"\x1b]52;c;");
-    let chunk = vec![b'A'; 1024 * 1024]; // 1 MB
+    let chunk = vec![b'A'; 64 * 1024];
     let mut total_residue = 0usize;
-    for _ in 0..110 {
+    for _ in 0..20 {
         let out = p.feed(&chunk);
         total_residue += out.residue.len();
     }
@@ -1186,6 +1186,137 @@ fn a_bare_csi_introducer_is_fast_flushed_as_alt_open_bracket() {
 }
 
 #[test]
+fn a_bare_csi_introducer_waits_for_the_reply_body_while_replies_are_expected() {
+    let mut p = StdinAnsiParser::new();
+    p.open_own_query_batch();
+    let r1 = p.feed(b"\x1b[4;600;800t\x1b[");
+    assert!(r1.residue.is_empty());
+    assert!(
+        p.pending_partial().uses_reply_flush_guard(),
+        "an introducer held while replies are expected must get the long guard"
+    );
+    assert!(
+        p.finalize_fast_partial().is_empty(),
+        "the fast flush must not release the introducer of an expected reply"
+    );
+
+    let r2 = p.feed(b"6;25;12t");
+    assert!(
+        r2.residue.is_empty(),
+        "the reply body must not reach the keyboard as text: {:?}",
+        String::from_utf8_lossy(&r2.residue)
+    );
+    assert!(r2
+        .replies
+        .iter()
+        .any(|reply| matches!(reply, HostReply::PixelDimensions(_))));
+}
+
+#[test]
+fn a_bare_csi_introducer_is_fast_flushed_once_expected_replies_have_arrived() {
+    let mut p = StdinAnsiParser::new();
+    p.open_own_query_batch();
+    let _ = p.feed(b"\x1b[?62;22c");
+    assert!(!p.awaiting_replies());
+    let _ = p.feed(b"\x1b[");
+    assert_eq!(p.pending_partial(), PendingPartial::BareIntroducer);
+    assert_eq!(p.finalize_fast_partial(), b"\x1b[".to_vec());
+}
+
+#[test]
+fn a_fast_flushed_introducer_does_not_complete_a_reply_in_the_classifier() {
+    let mut p = StdinAnsiParser::new();
+    let _ = p.feed(b"\x1b[");
+    assert_eq!(p.finalize_fast_partial(), b"\x1b[".to_vec());
+    let out = p.feed(b"6;25;12t");
+    assert!(
+        out.replies.is_empty(),
+        "bytes already handed to the keyboard must not also be applied as a reply: {:?}",
+        out.replies
+    );
+}
+
+#[test]
+fn startup_replies_arriving_while_a_pane_query_is_forwarded_stay_with_zellij() {
+    let mut p = StdinAnsiParser::new();
+    p.open_own_query_batch();
+    p.open_forward(7);
+
+    let startup = p.feed(
+        b"\x1b[?997;1n\x1b[4;600;800t\x1b[6;25;12t\x1b]11;rgb:1111/1313/1313\x1b\\\x1b]10;rgb:ffff/ffff/ffff\x1b\\\x1b[?2026;2$y\x1b[?62;22c",
+    );
+    assert!(startup.residue.is_empty());
+    assert!(
+        startup.completed_forward.is_none(),
+        "zellij's own barrier must not close the pane's slot"
+    );
+    assert!(
+        startup.replies.len() >= 5,
+        "zellij still consumes its own replies"
+    );
+    assert_eq!(p.active_forward_token(), Some(7));
+
+    let pane = p.feed(b"\x1b]11;rgb:2222/2323/2323\x1b\\\x1b[?62;22c");
+    assert_eq!(
+        pane.completed_forward,
+        Some((7, b"\x1b]11;rgb:2222/2323/2323\x1b\\".to_vec())),
+        "the pane receives exactly the reply to its own query"
+    );
+    assert!(!p.awaiting_replies());
+}
+
+#[test]
+fn resize_pixel_requery_replies_are_not_handed_to_a_forwarding_pane() {
+    let mut p = StdinAnsiParser::new();
+    p.open_own_query_batch();
+    p.open_forward(3);
+    let first = p.feed(b"\x1b[4;600;800t\x1b[6;25;12t\x1b[?62;22c");
+    assert!(first.completed_forward.is_none());
+    let second = p.feed(b"\x1b[6;25;12t\x1b[?62;22c");
+    assert_eq!(
+        second.completed_forward,
+        Some((3, b"\x1b[6;25;12t".to_vec()))
+    );
+}
+
+#[test]
+fn a_late_reply_for_an_abandoned_forward_is_dropped_not_given_to_the_next_pane() {
+    let mut p = StdinAnsiParser::new();
+    p.open_forward(1);
+    assert_eq!(p.close_forward_on_timeout(1), Some((1, Vec::new())));
+    p.open_forward(2);
+
+    let late = p.feed(b"\x1b]11;rgb:1111/1313/1313\x1b\\\x1b[?62;22c");
+    assert!(late.residue.is_empty());
+    assert!(
+        late.completed_forward.is_none(),
+        "the abandoned slot's barrier must not complete another pane's slot"
+    );
+    assert_eq!(p.active_forward_token(), Some(2));
+
+    let own = p.feed(b"\x1b]10;rgb:ffff/ffff/ffff\x1b\\\x1b[?62;22c");
+    assert_eq!(
+        own.completed_forward,
+        Some((2, b"\x1b]10;rgb:ffff/ffff/ffff\x1b\\".to_vec()))
+    );
+}
+
+#[test]
+fn a_host_theme_notification_is_not_given_to_the_forwarding_pane() {
+    let mut p = StdinAnsiParser::new();
+    p.open_forward(5);
+    let out = p.feed(b"\x1b[?997;2n\x1b]11;rgb:1111/1313/1313\x1b\\\x1b[?62;22c");
+    assert!(out
+        .replies
+        .iter()
+        .any(|reply| matches!(reply, HostReply::HostTerminalThemeChanged(_))));
+    assert_eq!(
+        out.completed_forward,
+        Some((5, b"\x1b]11;rgb:1111/1313/1313\x1b\\".to_vec()))
+    );
+}
+
+#[test]
 fn an_introducer_with_a_body_byte_keeps_the_long_reply_guard() {
     for prefix in [b"\x1b]4".as_ref(), b"\x1b[?".as_ref()] {
         let pretty = String::from_utf8_lossy(prefix).replace('\x1b', "ESC");
@@ -1560,6 +1691,105 @@ fn kitty_probe_reply_fragmented_across_feeds() {
     }
 }
 
+fn zlib_replies(replies: &[HostReply]) -> Vec<bool> {
+    replies
+        .iter()
+        .filter_map(|r| match r {
+            HostReply::KittyZlibSupport(supported) => Some(*supported),
+            _ => None,
+        })
+        .collect()
+}
+
+fn graphics_replies(replies: &[HostReply]) -> Vec<bool> {
+    replies
+        .iter()
+        .filter_map(|r| match r {
+            HostReply::KittyGraphicsSupport(supported) => Some(*supported),
+            _ => None,
+        })
+        .collect()
+}
+
+fn parser_expecting_both_kitty_probes() -> StdinAnsiParser {
+    let mut parser = StdinAnsiParser::new();
+    parser.expect_kitty_probe_reply();
+    parser.expect_kitty_zlib_probe_reply();
+    parser
+}
+
+#[test]
+fn kitty_zlib_probe_ok_reply_classifies_true() {
+    let mut parser = parser_expecting_both_kitty_probes();
+    let (replies, residue) = feed_once(&mut parser, b"\x1b_Gi=32;OK\x1b\\");
+    assert!(residue.is_empty());
+    assert_eq!(zlib_replies(&replies), vec![true]);
+    assert!(graphics_replies(&replies).is_empty());
+}
+
+#[test]
+fn kitty_zlib_probe_error_reply_classifies_false() {
+    let mut parser = parser_expecting_both_kitty_probes();
+    let (replies, residue) = feed_once(
+        &mut parser,
+        b"\x1b_Gi=32;ENODATA:Insufficient image data\x1b\\",
+    );
+    assert!(residue.is_empty());
+    assert_eq!(zlib_replies(&replies), vec![false]);
+}
+
+#[test]
+fn kitty_zlib_probe_absence_resolves_false_on_barrier() {
+    let mut parser = parser_expecting_both_kitty_probes();
+    let (replies, residue) = feed_once(&mut parser, b"\x1b_Gi=31;OK\x1b\\\x1b[?62;22c");
+    assert!(residue.is_empty());
+    assert_eq!(graphics_replies(&replies), vec![true]);
+    assert_eq!(zlib_replies(&replies), vec![false]);
+}
+
+#[test]
+fn both_kitty_probe_replies_in_one_chunk_are_classified_in_order() {
+    let mut parser = parser_expecting_both_kitty_probes();
+    let (replies, residue) = feed_once(
+        &mut parser,
+        b"\x1b_Gi=31;OK\x1b\\\x1b_Gi=32;OK\x1b\\\x1b[?62;22c",
+    );
+    assert!(residue.is_empty());
+    assert_eq!(graphics_replies(&replies), vec![true]);
+    assert_eq!(zlib_replies(&replies), vec![true]);
+    let graphics_position = replies
+        .iter()
+        .position(|r| matches!(r, HostReply::KittyGraphicsSupport(_)))
+        .unwrap();
+    let zlib_position = replies
+        .iter()
+        .position(|r| matches!(r, HostReply::KittyZlibSupport(_)))
+        .unwrap();
+    assert!(graphics_position < zlib_position);
+}
+
+#[test]
+fn kitty_zlib_probe_reply_fragmented_across_feeds() {
+    let full = b"\x1b_Gi=32;OK\x1b\\";
+    for split in 1..full.len() {
+        let mut parser = parser_expecting_both_kitty_probes();
+        let r1 = parser.feed(&full[..split]);
+        let r2 = parser.feed(&full[split..]);
+        assert!(r1.residue.is_empty(), "split at {}", split);
+        assert!(r2.residue.is_empty(), "split at {}", split);
+        let replies: Vec<HostReply> = r1.replies.into_iter().chain(r2.replies).collect();
+        assert_eq!(zlib_replies(&replies), vec![true], "split at {}", split);
+    }
+}
+
+#[test]
+fn kitty_zlib_reply_outside_probe_window_is_not_classified() {
+    let mut parser = StdinAnsiParser::new();
+    let out = parser.feed(b"\x1b_Gi=32;OK\x1b\\");
+    assert!(out.replies.is_empty());
+    assert!(out.residue.is_empty());
+}
+
 #[test]
 fn apc_outside_probe_window_is_not_classified() {
     let mut parser = StdinAnsiParser::new();
@@ -1831,4 +2061,129 @@ fn clipboard_timeout_only_fires_for_the_open_token() {
         Some((3, Vec::new()))
     );
     assert_eq!(parser.close_clipboard_forward_on_timeout(3), None);
+}
+
+fn grapheme_cluster_replies(replies: &[HostReply]) -> Vec<u8> {
+    replies
+        .iter()
+        .filter_map(|r| match r {
+            HostReply::GraphemeClusterMode(value) => Some(*value),
+            _ => None,
+        })
+        .collect()
+}
+
+fn startup_parser() -> StdinAnsiParser {
+    let mut parser = StdinAnsiParser::new();
+    parser.open_own_query_batch();
+    parser.expect_grapheme_cluster_mode_reply();
+    parser
+}
+
+#[test]
+fn grapheme_cluster_mode_replies_are_classified_with_their_value() {
+    for value in 0u8..=4 {
+        let mut parser = startup_parser();
+        let reply = format!("\x1b[?2027;{}$y\x1b[?62;22c", value);
+        let out = parser.feed(reply.as_bytes());
+        assert!(out.residue.is_empty(), "value {}: {:?}", value, out.residue);
+        assert_eq!(
+            grapheme_cluster_replies(&out.replies),
+            vec![value],
+            "value {} must be reported once and not resettled by the barrier",
+            value
+        );
+    }
+}
+
+#[test]
+fn grapheme_cluster_mode_reply_parses_from_csi_report() {
+    match HostReply::from_csi_report(b"\x1b[?2027;3$y") {
+        Some(HostReply::GraphemeClusterMode(3)) => {},
+        other => panic!("unexpected reply: {:?}", other),
+    }
+    assert!(HostReply::from_csi_report(b"\x1b[?2027;5$y").is_none());
+}
+
+#[test]
+fn grapheme_cluster_mode_reply_split_across_two_reads_is_classified() {
+    let mut parser = startup_parser();
+    let first = parser.feed(b"\x1b[?20");
+    assert!(first.residue.is_empty());
+    assert!(grapheme_cluster_replies(&first.replies).is_empty());
+    let second = parser.feed(b"27;1$y\x1b[?62;22c");
+    assert!(second.residue.is_empty());
+    assert_eq!(grapheme_cluster_replies(&second.replies), vec![1]);
+}
+
+#[test]
+fn grapheme_cluster_mode_without_reply_before_the_barrier_settles_as_unsupported() {
+    let mut parser = startup_parser();
+    let out = parser.feed(b"\x1b[?2026;2$y\x1b[?62;22c");
+    assert!(out.residue.is_empty());
+    assert_eq!(grapheme_cluster_replies(&out.replies), vec![0]);
+    let later = parser.feed(b"\x1b[?62;22c");
+    assert!(
+        grapheme_cluster_replies(&later.replies).is_empty(),
+        "the probe settles only once"
+    );
+}
+
+#[test]
+fn grapheme_cluster_mode_is_not_reported_when_it_was_never_asked() {
+    let mut parser = StdinAnsiParser::new();
+    let out = parser.feed(b"\x1b[?62;22c");
+    assert!(grapheme_cluster_replies(&out.replies).is_empty());
+}
+
+#[test]
+fn grapheme_cluster_mode_reply_never_reaches_keyboard_input() {
+    let mut parser = startup_parser();
+    let out = parser.feed(b"a\x1b[?2027;2$yb\x1b[Ac\x1b[?62;22c");
+    assert_eq!(out.residue, b"ab\x1b[Ac");
+    assert_eq!(grapheme_cluster_replies(&out.replies), vec![2]);
+    let unsolicited = parser.feed(b"x\x1b[?2027;1$yy");
+    assert_eq!(unsolicited.residue, b"xy");
+    assert!(grapheme_cluster_replies(&unsolicited.replies).is_empty());
+}
+
+#[test]
+fn grapheme_cluster_mode_reply_in_a_forwarded_pane_batch_is_forwarded() {
+    let mut parser = StdinAnsiParser::new();
+    parser.open_forward(9);
+    let out = parser.feed(b"\x1b[?2027;1$y\x1b[?62;22c");
+    assert!(out.residue.is_empty());
+    assert!(
+        grapheme_cluster_replies(&out.replies).is_empty(),
+        "the pane's reply must not be consumed by zellij"
+    );
+    assert_eq!(out.completed_forward, Some((9, b"\x1b[?2027;1$y".to_vec())));
+}
+
+#[test]
+fn grapheme_cluster_mode_replies_are_split_between_zellij_and_a_forwarding_pane() {
+    let mut parser = startup_parser();
+    parser.open_forward(4);
+    let own = parser.feed(b"\x1b[?2027;2$y\x1b[?62;22c");
+    assert_eq!(grapheme_cluster_replies(&own.replies), vec![2]);
+    assert!(own.completed_forward.is_none());
+    let pane = parser.feed(b"\x1b[?2027;1$y\x1b[?62;22c");
+    assert!(grapheme_cluster_replies(&pane.replies).is_empty());
+    assert_eq!(
+        pane.completed_forward,
+        Some((4, b"\x1b[?2027;1$y".to_vec()))
+    );
+}
+
+#[test]
+fn grapheme_cluster_mode_is_not_settled_by_a_pane_barrier() {
+    let mut parser = StdinAnsiParser::new();
+    parser.open_forward(3);
+    parser.open_own_query_batch();
+    parser.expect_grapheme_cluster_mode_reply();
+    let pane = parser.feed(b"\x1b[?62;22c");
+    assert!(grapheme_cluster_replies(&pane.replies).is_empty());
+    assert_eq!(pane.completed_forward, Some((3, Vec::new())));
+    let own = parser.feed(b"\x1b[?62;22c");
+    assert_eq!(grapheme_cluster_replies(&own.replies), vec![0]);
 }

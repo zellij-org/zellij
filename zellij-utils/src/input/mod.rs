@@ -1,15 +1,24 @@
 pub mod actions;
+pub mod attention;
 pub mod cli_assets;
 pub mod command;
 pub mod config;
+pub mod config_blocks;
+pub mod config_file_edit;
+pub mod config_settings;
+pub mod context_menu;
+pub mod keybind_presets;
 pub mod keybinds;
 pub mod layout;
 pub mod mouse;
+pub mod mousebinds;
 pub mod options;
 pub mod permission;
 pub mod plugins;
+pub mod session_suggestions;
 pub mod theme;
 pub mod web_client;
+pub mod window;
 
 #[cfg(not(target_family = "wasm"))]
 pub use not_wasm::*;
@@ -61,6 +70,7 @@ mod not_wasm {
             nested_ascend_keys: vec![],
             session_ascended: None,
             nested_descend_keys: vec![],
+            remote_client: None,
         }
     }
 
@@ -323,6 +333,7 @@ mod not_wasm {
             wheel_down,
             wheel_left,
             wheel_right,
+            wheel_lines: 0,
             shift,
             alt,
             ctrl,

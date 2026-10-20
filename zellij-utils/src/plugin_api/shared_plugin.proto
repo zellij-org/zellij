@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+import "action.proto";
+
+package api.shared_plugin;
+
+enum SlotKind {
+  Pane = 0;
+  Background = 1;
+}
+
+message Slot {
+  uint32 id = 1;
+  SlotKind kind = 2;
+  api.action.PluginConfiguration configuration = 3;
+}
+
+message EventContext {
+  optional uint32 slot_id = 1;
+  optional uint32 client_id = 2;
+}
+
+enum RenderKind {
+  Nothing = 0;
+  All = 1;
+  Client = 2;
+  Slots = 3;
+}
+
+message RenderRequest {
+  RenderKind kind = 1;
+  optional uint32 client_id = 2;
+  repeated uint32 slot_ids = 3;
+}

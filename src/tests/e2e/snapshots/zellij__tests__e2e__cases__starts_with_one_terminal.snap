@@ -2,7 +2,7 @@
 source: src/tests/e2e/cases.rs
 expression: last_snapshot
 ---
- Zellij (e2e-test)  Tab #1  + 
+ Zellij (e2e-test)  Tab #1  +                                                                       [ 1 running ▾ ] 
 $ █                                                                                                                     
                                                                                                                         
                                                                                                                         

@@ -25,8 +25,8 @@ use zellij_utils::input::mouse::{MouseEvent, MouseEventType};
 use zellij_utils::pane_size::Offset;
 use zellij_utils::{
     data::{
-        BareKey, InputMode, KeyWithModifier, Palette, PaletteColor, PaneId as ZellijUtilsPaneId,
-        RegexHighlight, Style, Styling,
+        BareKey, BorderStyleOverride, InputMode, KeyWithModifier, Palette, PaletteColor,
+        PaneId as ZellijUtilsPaneId, RegexHighlight, Style, Styling,
     },
     errors::prelude::*,
     input::layout::Run,
@@ -145,6 +145,7 @@ pub struct TerminalPane {
     prev_pane_name: String,
     frame: HashMap<ClientId, PaneFrame>,
     borderless: bool,
+    border_style_override: BorderStyleOverride,
     exclude_from_sync: bool,
     fake_cursor_locations: HashSet<(usize, usize)>, // (x, y) - these hold a record of previous fake cursors which we need to clear on render
     search_term: String,
@@ -154,8 +155,10 @@ pub struct TerminalPane {
     // held on startup and can possibly be used to display some errors
     pane_frame_color_override: Option<(PaletteColor, Option<String>)>,
     has_bell_notification: bool,
+    attention_marker: Option<crate::attention::FrameMarker>,
+    attention_markers_enabled: bool,
+    initial_attention_flags: Option<(bool, bool)>,
     invoked_with: Option<Run>,
-    #[allow(dead_code)]
     arrow_fonts: bool,
     notification_end: Option<NotificationEnd>,
     /// `true` while a host-terminal forward initiated by this pane is
@@ -237,6 +240,19 @@ impl Pane for TerminalPane {
         let mut index = 0;
         let mut capture_started = false;
         while index < bytes.len() {
+            if self.kitty_interceptor.is_ground() {
+                let rest = &bytes[index..];
+                let run = rest
+                    .iter()
+                    .position(|byte| *byte == 0x1b)
+                    .unwrap_or(rest.len());
+                if run > 0 {
+                    capture_started = false;
+                    forwarded.extend_from_slice(&rest[..run]);
+                    index += run;
+                    continue;
+                }
+            }
             let byte = bytes[index];
             index += 1;
             match self.kitty_interceptor.advance(byte) {
@@ -506,7 +522,9 @@ impl Pane for TerminalPane {
             }
             match self.grid.render(content_x, content_y, &self.style) {
                 Ok(rendered_assets) => {
-                    self.set_should_render(false);
+                    if rendered_assets.is_some() {
+                        self.set_should_render(false);
+                    }
                     return Ok(rendered_assets);
                 },
                 e => return e,
@@ -558,6 +576,7 @@ impl Pane for TerminalPane {
         } else {
             self.current_title()
         };
+        let frame_params_blank_title = frame_params.blank_title;
         let pane_title = if frame_params.blank_title {
             String::new()
         } else if let Some(text_color_override) = self
@@ -581,6 +600,9 @@ impl Pane for TerminalPane {
             frame_params,
         )
         .is_pinned(is_pinned);
+        if !frame_params_blank_title {
+            frame.set_attention_marker(self.frame_attention_marker());
+        }
         if let Some((exit_status, is_first_run, _run_command)) = &self.is_held {
             if *is_first_run {
                 frame.indicate_first_run();
@@ -623,29 +645,24 @@ impl Pane for TerminalPane {
         &mut self,
         cursor_color: PaletteColor,
         text_color: PaletteColor,
-    ) -> Option<String> {
-        let mut vte_output = None;
-        if let Some((cursor_x, cursor_y, true)) = self.cursor_coordinates() {
-            let mut character_under_cursor = self
-                .grid
-                .get_character_under_cursor()
-                .unwrap_or(EMPTY_TERMINAL_CHARACTER);
-            character_under_cursor.styles.update(|styles| {
-                styles.background = Some(cursor_color.into());
-                styles.foreground = Some(text_color.into());
-            });
-            // we keep track of these so that we can clear them up later (see render function)
-            self.fake_cursor_locations.insert((cursor_y, cursor_x));
-            let mut fake_cursor = format!(
-                "\u{1b}[{};{}H\u{1b}[m{}",           // goto row column and clear styles
-                self.get_content_y() + cursor_y + 1, // + 1 because goto is 1 indexed
-                self.get_content_x() + cursor_x + 1,
-                &character_under_cursor.styles,
-            );
-            fake_cursor.push(character_under_cursor.character);
-            vte_output = Some(fake_cursor);
-        }
-        vte_output
+    ) -> Option<crate::output::CharacterChunk> {
+        let Some((cursor_x, cursor_y, true)) = self.cursor_coordinates() else {
+            return None;
+        };
+        let mut character_under_cursor = self
+            .grid
+            .get_character_under_cursor()
+            .unwrap_or(EMPTY_TERMINAL_CHARACTER);
+        character_under_cursor.styles.update(|styles| {
+            styles.background = Some(cursor_color.into());
+            styles.foreground = Some(text_color.into());
+        });
+        self.fake_cursor_locations.insert((cursor_y, cursor_x));
+        Some(CharacterChunk::new(
+            vec![character_under_cursor],
+            self.get_content_x() + cursor_x,
+            self.get_content_y() + cursor_y,
+        ))
     }
     fn render_terminal_title(&mut self, input_mode: InputMode) -> String {
         let pane_title = if self.pane_name.is_empty() && input_mode == InputMode::RenamePane {
@@ -663,7 +680,7 @@ impl Pane for TerminalPane {
                 self.pane_name = String::new();
             },
             DELETE_KEY | BACKSPACE_KEY => {
-                self.pane_name.pop();
+                zellij_utils::graphemes::pop_cluster(&mut self.pane_name);
             },
             c => {
                 self.pane_name.push_str(c);
@@ -720,6 +737,16 @@ impl Pane for TerminalPane {
     fn dump_screen_with_ansi(&self, full: bool, _client_id: Option<ClientId>) -> String {
         self.grid.dump_screen_with_ansi(full)
     }
+    fn preview_with_anchor(
+        &self,
+        anchor: zellij_utils::data::PreviewAnchor,
+        max_scrollback: usize,
+    ) -> (String, Option<usize>) {
+        self.grid.preview_with_anchor(anchor, max_scrollback)
+    }
+    fn mark_unseen_output_start(&mut self) {
+        self.grid.mark_unseen_output_start();
+    }
     fn clear_screen(&mut self) {
         self.grid.clear_screen()
     }
@@ -731,6 +758,8 @@ impl Pane for TerminalPane {
         self.grid.move_viewport_down(count);
         self.set_should_render(true);
     }
+    fn scroll_left(&mut self, _count: usize, _client_id: ClientId) {}
+    fn scroll_right(&mut self, _count: usize, _client_id: ClientId) {}
     fn scroll_to_previous_prompt(&mut self, _client_id: ClientId) {
         if self.grid.scroll_to_previous_prompt() {
             self.set_should_render(true);
@@ -909,6 +938,10 @@ impl Pane for TerminalPane {
         self.grid.pending_osc7_cwd.take()
     }
 
+    fn drain_prompt_return(&mut self) -> bool {
+        std::mem::take(&mut self.grid.pending_prompt_return)
+    }
+
     fn set_selection_options(&mut self, osc133_command_selection: bool, word_separators: &str) {
         self.grid
             .set_selection_options(osc133_command_selection, word_separators);
@@ -990,6 +1023,14 @@ impl Pane for TerminalPane {
             self.set_content_offset(Offset::frame(1));
         }
     }
+    fn set_border_style_override(&mut self, border_style_override: BorderStyleOverride) {
+        self.border_style_override = border_style_override;
+        self.frame.clear();
+        self.set_should_render(true);
+    }
+    fn border_style_override(&self) -> BorderStyleOverride {
+        self.border_style_override
+    }
 
     fn set_exclude_from_sync(&mut self, exclude_from_sync: bool) {
         self.exclude_from_sync = exclude_from_sync;
@@ -1027,6 +1068,12 @@ impl Pane for TerminalPane {
     fn mouse_scroll_down(&self, position: &Position) -> Option<String> {
         self.grid.mouse_scroll_down_signal(position)
     }
+    fn mouse_scroll_left(&self, position: &Position) -> Option<String> {
+        self.grid.mouse_scroll_left_signal(position)
+    }
+    fn mouse_scroll_right(&self, position: &Position) -> Option<String> {
+        self.grid.mouse_scroll_right_signal(position)
+    }
     fn focus_event(&self) -> Option<String> {
         self.grid.focus_event()
     }
@@ -1044,7 +1091,7 @@ impl Pane for TerminalPane {
                 self.search_term = String::new();
             },
             DELETE_KEY | BACKSPACE_KEY => {
-                self.search_term.pop();
+                zellij_utils::graphemes::pop_cluster(&mut self.search_term);
             },
             c => {
                 self.search_term.push_str(c);
@@ -1115,6 +1162,9 @@ impl Pane for TerminalPane {
     fn consume_bell(&mut self) {
         self.grid.ring_bell = false;
     }
+    fn osc7_payload(&self) -> Option<&str> {
+        self.grid.osc7_payload()
+    }
     fn set_bell_notification(&mut self, val: bool) {
         self.has_bell_notification = val;
     }
@@ -1144,6 +1194,9 @@ impl Pane for TerminalPane {
     fn invoked_with(&self) -> &Option<Run> {
         &self.invoked_with
     }
+    fn take_notification_end(&mut self) -> Option<NotificationEnd> {
+        self.notification_end.take()
+    }
     fn set_title(&mut self, title: String) {
         self.pane_title = title;
     }
@@ -1159,7 +1212,30 @@ impl Pane for TerminalPane {
         }
     }
     fn stack_list_entry_label(&self) -> String {
-        self.title_with_bell_indicator(self.current_title())
+        match self.attention_marker_text() {
+            Some(marker) => format!("{} {}", self.current_title(), marker),
+            None => self.title_with_bell_indicator(self.current_title()),
+        }
+    }
+    fn set_attention_marker(
+        &mut self,
+        marker: Option<crate::attention::FrameMarker>,
+        enabled: bool,
+    ) {
+        if self.attention_marker != marker || self.attention_markers_enabled != enabled {
+            self.attention_marker = marker;
+            self.attention_markers_enabled = enabled;
+            self.set_should_render(true);
+        }
+    }
+    fn drain_pane_signals(&mut self) -> Vec<crate::attention::PaneSignal> {
+        self.grid.shell_reports.drain()
+    }
+    fn set_initial_attention_flags(&mut self, muted: bool, ignore_output: bool) {
+        self.initial_attention_flags = Some((muted, ignore_output));
+    }
+    fn take_initial_attention_flags(&mut self) -> Option<(bool, bool)> {
+        self.initial_attention_flags.take()
     }
     fn custom_title(&self) -> Option<String> {
         if self.pane_name.is_empty() {
@@ -1173,6 +1249,9 @@ impl Pane for TerminalPane {
     }
     fn scroll_position(&self) -> (usize, usize) {
         self.grid.scrollback_position_and_length()
+    }
+    fn viewport_scroll_state(&self) -> Option<(usize, u64)> {
+        self.grid.viewport_scroll_state()
     }
     fn exit_status(&self) -> Option<i32> {
         self.is_held
@@ -1189,7 +1268,9 @@ impl Pane for TerminalPane {
         }
     }
     fn rename(&mut self, buf: Vec<u8>) {
-        self.pane_name = String::from_utf8_lossy(&buf).to_string();
+        self.pane_name = zellij_utils::shared::clean_string_from_control_and_linebreak(
+            &String::from_utf8_lossy(&buf),
+        );
         self.set_should_render(true);
     }
     fn serialize(&self, scrollback_lines_to_serialize: Option<usize>) -> Option<String> {
@@ -1229,6 +1310,10 @@ impl Pane for TerminalPane {
         self.style.rounded_corners = rounded_corners;
         self.frame.clear();
     }
+    fn invalidate_frame_cache(&mut self) {
+        self.frame.clear();
+        self.set_should_render(true);
+    }
     fn drain_fake_cursors(&mut self) -> Option<HashSet<(usize, usize)>> {
         if !self.fake_cursor_locations.is_empty() {
             for (y, _x) in &self.fake_cursor_locations {
@@ -1257,6 +1342,15 @@ impl Pane for TerminalPane {
                     self.toggle_pinned();
                     return true;
                 }
+            }
+        }
+        false
+    }
+    fn position_is_on_pin_button(&self, position: &Position, client_id: ClientId) -> bool {
+        if self.position_is_on_frame(position) {
+            let relative_position = self.relative_position(position);
+            if let Some(client_frame) = self.frame.get(&client_id) {
+                return client_frame.clicked_on_pinned(relative_position);
             }
         }
         false
@@ -1350,11 +1444,52 @@ impl Pane for TerminalPane {
 
 impl TerminalPane {
     fn title_with_bell_indicator(&self, title: String) -> String {
-        if self.has_bell_notification {
+        if self.has_bell_notification && !self.attention_markers_enabled {
             format!("{} [!]", title)
         } else {
             title
         }
+    }
+    fn attention_marker_text(&self) -> Option<String> {
+        let marker = self.attention_marker.as_ref()?;
+        let symbol = if marker.muted {
+            if self.arrow_fonts {
+                "⊘"
+            } else {
+                "-"
+            }
+        } else {
+            marker.status.marker(!self.arrow_fonts)
+        };
+        if symbol.is_empty() {
+            None
+        } else {
+            Some(symbol.to_owned())
+        }
+    }
+    fn frame_attention_marker(
+        &self,
+    ) -> Option<crate::ui::pane_boundaries_frame::FrameAttentionMarker> {
+        use zellij_utils::attention::AttentionStatus;
+        let text = self.attention_marker_text()?;
+        let marker = self.attention_marker.as_ref()?;
+        let colors = &self.style.colors;
+        let (color, dim) = if marker.muted {
+            (colors.text_unselected.base, true)
+        } else {
+            match marker.status {
+                AttentionStatus::NeedsYou => (colors.text_unselected.emphasis_0, false),
+                AttentionStatus::Failed => (colors.exit_code_error.base, false),
+                AttentionStatus::Done => (colors.exit_code_success.base, false),
+                AttentionStatus::Working => (colors.text_unselected.emphasis_1, false),
+                _ => (colors.text_unselected.base, true),
+            }
+        };
+        Some(crate::ui::pane_boundaries_frame::FrameAttentionMarker {
+            text,
+            color: Some(color),
+            dim,
+        })
     }
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -1415,6 +1550,7 @@ impl TerminalPane {
             pane_name: pane_name.clone(),
             prev_pane_name: pane_name,
             borderless: false,
+            border_style_override: BorderStyleOverride::default(),
             exclude_from_sync: false,
             fake_cursor_locations: HashSet::new(),
             search_term: String::new(),
@@ -1422,6 +1558,9 @@ impl TerminalPane {
             banner: None,
             pane_frame_color_override: None,
             has_bell_notification: false,
+            attention_marker: None,
+            attention_markers_enabled: true,
+            initial_attention_flags: None,
             invoked_with,
             arrow_fonts,
             notification_end,
@@ -1462,12 +1601,16 @@ impl TerminalPane {
     fn reflow_lines(&mut self) {
         let rows = self.get_content_rows();
         let cols = self.get_content_columns();
-        self.grid.force_change_size(rows, cols);
+        self.grid.change_size(rows, cols);
         if self.banner.is_some() {
             self.grid.reset_terminal_state();
             self.render_first_run_banner();
         }
         self.set_should_render(true);
+    }
+    pub fn with_grapheme_clusters(mut self, grapheme_clusters: bool) -> Self {
+        self.grid.set_grapheme_mode_by_default(grapheme_clusters);
+        self
     }
     pub fn read_buffer_as_lines(&self) -> Vec<Vec<TerminalCharacter>> {
         self.grid.as_character_lines()

@@ -19,6 +19,120 @@ use zellij_utils::{
 
 use std::fmt::Write;
 
+#[test]
+fn erase_line_end_pads_wide_characters_to_display_width() {
+    use crate::panes::grid::Row;
+    use crate::panes::terminal_character::{TerminalCharacter, EMPTY_TERMINAL_CHARACTER};
+
+    for (content, from, to, expected) in [
+        ("ab你cd", 2, 6, "ab    "),
+        ("ab你cd", 3, 6, "ab    "),
+        ("你ab好", 3, 6, "你a   "),
+        ("你好", 0, 6, "      "),
+        ("ab", 4, 6, "ab    "),
+    ] {
+        let mut row = Row::from_columns(
+            content
+                .chars()
+                .map(|character| TerminalCharacter::new_styled(character, Default::default()))
+                .collect(),
+        );
+        row.replace_and_pad_end(from, to, EMPTY_TERMINAL_CHARACTER);
+        assert_eq!(row.width_cached(), to, "content={content:?}, from={from}");
+        assert_eq!(
+            row.columns
+                .iter()
+                .map(|cell| cell.character)
+                .collect::<String>(),
+            expected,
+        );
+    }
+}
+
+fn row_from_str(content: &str) -> crate::panes::grid::Row {
+    use crate::panes::terminal_character::TerminalCharacter;
+    crate::panes::grid::Row::from_columns(
+        content
+            .chars()
+            .map(|character| TerminalCharacter::new_styled(character, Default::default()))
+            .collect(),
+    )
+}
+
+fn row_to_string(row: &crate::panes::grid::Row) -> String {
+    row.columns.iter().map(|cell| cell.character).collect()
+}
+
+#[test]
+fn erase_line_end_from_second_half_of_wide_character_before_another_wide_character() {
+    use crate::panes::terminal_character::EMPTY_TERMINAL_CHARACTER;
+
+    for (content, from, to, expected) in [
+        ("ab你c好", 3, 8, "ab      "),
+        ("ab你c好", 2, 8, "ab      "),
+        ("ab你c好", 5, 8, "ab你c   "),
+        ("你好你好", 3, 8, "你      "),
+    ] {
+        let mut row = row_from_str(content);
+        row.replace_and_pad_end(from, to, EMPTY_TERMINAL_CHARACTER);
+        assert_eq!(row.width_cached(), to, "content={content:?}, from={from}");
+        assert_eq!(
+            row_to_string(&row),
+            expected,
+            "content={content:?}, from={from}"
+        );
+    }
+}
+
+#[test]
+fn erase_line_end_past_row_end_styles_only_cells_from_cursor() {
+    use crate::panes::terminal_character::{AnsiCode, EMPTY_TERMINAL_CHARACTER};
+
+    let mut erase_character = EMPTY_TERMINAL_CHARACTER;
+    erase_character
+        .styles
+        .update(|styles| styles.background = Some(AnsiCode::ColorIndex(1)));
+
+    let mut row = row_from_str("ab");
+    row.replace_and_pad_end(4, 6, erase_character.clone());
+
+    assert_eq!(row.width_cached(), 6);
+    assert_eq!(row_to_string(&row), "ab    ");
+    assert!(row.columns[2..4]
+        .iter()
+        .all(|cell| *cell == EMPTY_TERMINAL_CHARACTER));
+    assert!(row.columns[4..6]
+        .iter()
+        .all(|cell| *cell == erase_character));
+}
+
+#[test]
+fn erase_line_start_through_wide_character_keeps_row_width() {
+    use crate::panes::terminal_character::EMPTY_TERMINAL_CHARACTER;
+
+    for (content, to, expected) in [
+        ("ab你c好", 2, "    c好"),
+        ("ab你c好", 3, "    c好"),
+        ("ab你c好", 4, "     好"),
+        ("你好你好", 3, "    你好"),
+        ("ab", 0, " b"),
+    ] {
+        let mut row = row_from_str(content);
+        let original_width = row.width();
+        row.replace_and_pad_beginning(to, EMPTY_TERMINAL_CHARACTER);
+        assert_eq!(
+            row.width_cached(),
+            original_width,
+            "content={content:?}, to={to}"
+        );
+        assert_eq!(
+            row_to_string(&row),
+            expected,
+            "content={content:?}, to={to}"
+        );
+    }
+}
+
 fn read_fixture(fixture_name: &str) -> Vec<u8> {
     let mut path_to_file = std::path::PathBuf::new();
     path_to_file.push("../src");
@@ -3304,6 +3418,51 @@ pub fn sixel_images_are_reaped_when_scrolled_off() {
 }
 
 #[test]
+fn sixel_replacement_reaps_covered_images_without_reusing_live_ids() {
+    let (mut grid, _) = new_kitty_grid(10, 25);
+    let mut parser = vte::Parser::new();
+    for step in 0..18u8 {
+        let width = if step < 12 { 20 } else { 10 + (step % 3) * 10 };
+        if step >= 12 {
+            parser.advance(&mut grid, b"\x1b[3;4H   ");
+        }
+        let bytes = format!(
+            "\u{1b}[3;4H\u{1b}P9;1q\"1;1;{};12#1;2;{};0;0#1!{}~-!{}~\u{1b}\\",
+            width,
+            step * 5,
+            width,
+            width
+        );
+        parser.advance(&mut grid, bytes.as_bytes());
+        grid.read_changes(0, 0);
+        let coordinates: Vec<_> = grid.sixel_grid.image_coordinates().collect();
+        assert_eq!(coordinates.len(), 1, "obsolete image at step {}", step);
+        let (id, rect) = coordinates[0];
+        let mut store = grid.sixel_grid.sixel_image_store.borrow_mut();
+        assert_eq!(store.image_count(), 1, "storage after step {}", step);
+        let serialized = store
+            .serialize_image(id, 0, 0, rect.width, rect.height)
+            .expect("replacement image survives reaping");
+        let decoded = sixel_image::SixelImage::new(serialized.as_bytes()).unwrap();
+        assert!(decoded.pixels.iter().flatten().all(|pixel| {
+            pixel.on
+                && decoded.color_registers[&pixel.color]
+                    == sixel_image::SixelColor::Rgb(step * 5, 0, 0)
+        }));
+    }
+    parser.advance(&mut grid, b"\x1b[3;4H   ");
+    let (_, sixel_chunks, _) = grid.read_changes(0, 0);
+    assert!(
+        sixel_chunks.is_empty(),
+        "erased rasters must not be replayed"
+    );
+    assert_eq!(grid.sixel_grid.sixel_image_store.borrow().image_count(), 0);
+    parser.advance(&mut grid, b"\x1b[3;4H\x1bP0;0q\"1;1;20;12?\x1b\\");
+    let (_, sixel_chunks, _) = grid.read_changes(0, 0);
+    assert_eq!(sixel_chunks.len(), 1);
+}
+
+#[test]
 pub fn sixel_images_are_reaped_when_resetting() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
@@ -5047,6 +5206,69 @@ fn plugin_highlight_at_wrapped_line() {
     assert_eq!(matched_string, "jklm");
 }
 
+const COMBINED_ENTRIES_PATTERN: &str = r"(?:^|\s)((?:abc\.rs|b\.rs)(?:/[A-Za-z0-9_./\-+@%,#=~!\$\{\}\[\]]+)?(?::\d+(?::\d+)?)?)(?::|\s|$)";
+
+#[test]
+fn combined_pattern_highlights_adjacent_entries_separated_by_single_space() {
+    let mut grid = create_grid_with_content("abc.rs b.rs\n");
+    let highlights = vec![create_highlight(
+        COMBINED_ENTRIES_PATTERN,
+        false,
+        false,
+        false,
+        true,
+        HighlightLayer::Hint,
+    )];
+    grid.set_plugin_regex_highlights(1, highlights, &Style::default());
+
+    let first = grid.plugin_highlight_at(&Position::new(0, 0)).unwrap();
+    assert_eq!(first.2, "abc.rs");
+    let second = grid.plugin_highlight_at(&Position::new(0, 8)).unwrap();
+    assert_eq!(second.2, "b.rs");
+    assert!(grid.plugin_highlight_at(&Position::new(0, 6)).is_none());
+    assert_eq!(grid.compute_plugin_highlight_selections().len(), 2);
+}
+
+#[test]
+fn combined_pattern_highlights_entries_on_wrapped_line() {
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let mut grid = Grid::new(
+        5,
+        10,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        sixel_image_store,
+        Rc::new(RefCell::new(KittyImageStore::default())),
+        Style::default(),
+        false,
+        true,
+        true,
+        true,
+        false,
+    );
+    let mut vte_parser = vte::Parser::new();
+    vte_parser.advance(&mut grid, "12345 abc.rs b.rs".as_bytes());
+
+    let highlights = vec![create_highlight(
+        COMBINED_ENTRIES_PATTERN,
+        false,
+        false,
+        false,
+        true,
+        HighlightLayer::Hint,
+    )];
+    grid.set_plugin_regex_highlights(1, highlights, &Style::default());
+
+    let wrapped = grid.plugin_highlight_at(&Position::new(1, 0)).unwrap();
+    assert_eq!(wrapped.2, "abc.rs");
+    let after_wrap = grid.plugin_highlight_at(&Position::new(1, 4)).unwrap();
+    assert_eq!(after_wrap.2, "b.rs");
+    assert_eq!(grid.compute_plugin_highlight_selections().len(), 2);
+}
+
 #[test]
 fn hover_position_triggers_on_hover_highlight() {
     let mut grid = create_grid_with_content("hello link_text bar\n");
@@ -6244,6 +6466,56 @@ fn csi_2026_dollar_p_stays_local() {
 }
 
 #[test]
+fn a_synchronized_update_holds_renders_back_until_the_program_closes_it() {
+    let mut parser = vte::Parser::new();
+    let mut grid = new_grid_for_forwarding_test();
+    parser.advance(&mut grid, b"\x1b[?2026hhello");
+    assert!(grid.is_mid_frame());
+    assert!(
+        grid.render(0, 0, &Style::default()).unwrap().is_none(),
+        "a paint inside a synchronized update must emit nothing for the pane"
+    );
+    parser.advance(&mut grid, b"\x1b[?2026l");
+    assert!(!grid.is_mid_frame());
+    assert!(
+        grid.render(0, 0, &Style::default()).unwrap().is_some(),
+        "the paint after the update closes must carry it"
+    );
+}
+
+#[test]
+fn a_synchronized_update_held_past_the_cap_releases_on_the_next_paint() {
+    let mut parser = vte::Parser::new();
+    let mut grid = new_grid_for_forwarding_test();
+    parser.advance(&mut grid, b"\x1b[?2026hhello");
+    assert!(
+        grid.render(0, 0, &Style::default()).unwrap().is_none(),
+        "the update was opened and is still inside its cap"
+    );
+
+    grid.render_lock_opened_at =
+        Some(std::time::Instant::now() - std::time::Duration::from_millis(200));
+    let rendered = grid
+        .render(0, 0, &Style::default())
+        .unwrap()
+        .expect("a lock held past the cap must release on the next paint");
+    let (chunks, _, _, _) = rendered;
+    assert!(
+        chunks.iter().any(|chunk| chunk
+            .terminal_characters
+            .iter()
+            .map(|character| character.character)
+            .collect::<String>()
+            .contains("hello")),
+        "the released paint must carry what the program wrote before it died"
+    );
+    assert!(
+        !grid.is_mid_frame(),
+        "a released lock must also stop suppressing the cursor"
+    );
+}
+
+#[test]
 fn csi_2031_dollar_p_when_disabled_replies_reset() {
     // DECRQM mode 2031 (Application Theme Reporting) is per-pane state
     // tracked locally by Zellij. With no prior `CSI ? 2031 h`, the mode
@@ -6593,6 +6865,309 @@ fn ui_component_flag_prefixes_parse_order_independently() {
             "prefix {prefix} should parse the same flags as xzd"
         );
     }
+}
+
+fn widget_lines(grid: &Grid) -> Vec<String> {
+    grid.as_character_lines()
+        .iter()
+        .map(|line| {
+            line.iter()
+                .map(|c| c.character)
+                .collect::<String>()
+                .trim_end()
+                .to_owned()
+        })
+        .collect()
+}
+
+fn styled_line(grid: &Grid, line_index: usize) -> String {
+    grid.as_character_lines()
+        .get(line_index)
+        .map(|line| {
+            line.iter()
+                .map(|c| format!("{}{}", *c.styles, c.character))
+                .collect::<String>()
+        })
+        .unwrap_or_default()
+}
+
+fn styles_at(
+    grid: &Grid,
+    line_index: usize,
+    column: usize,
+) -> crate::panes::terminal_character::CharacterStyles {
+    *grid.as_character_lines()[line_index][column].styles
+}
+
+const GRAY_BACKGROUND: &str = "\u{1b}[48;2;56;56;56m";
+const LIGHT_GRAY_BACKGROUND: &str = "\u{1b}[48;2;215;215;215m";
+const GREEN_BACKGROUND: &str = "\u{1b}[48;2;150;220;90m";
+const GREEN_FOREGROUND: &str = "\u{1b}[38;2;150;220;90m";
+const RED_FOREGROUND: &str = "\u{1b}[38;2;255;95;110m";
+
+#[test]
+fn button_ui_component_renders_each_look_in_grays() {
+    use crate::panes::terminal_character::AnsiCode;
+    let label = serialize_text_bytes("Save");
+    let normal = render_ui_component("button", &format!("1/1/8/1;;{}", label));
+    assert_eq!(widget_lines(&normal)[1], " [ Save ]");
+    assert!(!styled_line(&normal, 1).contains(GRAY_BACKGROUND));
+    let hovered = render_ui_component("button", &format!("1/1/8/1;h;{}", label));
+    assert!(styled_line(&hovered, 1).contains(GRAY_BACKGROUND));
+    let focused = render_ui_component("button", &format!("1/1/8/1;f;{}", label));
+    assert!(styled_line(&focused, 1).contains(GRAY_BACKGROUND));
+    assert!(styled_line(&focused, 1).contains(GREEN_FOREGROUND));
+    assert_eq!(styles_at(&focused, 1, 3).bold, Some(AnsiCode::On));
+    let pressed = render_ui_component("button", &format!("1/1/8/1;p;{}", label));
+    assert!(styled_line(&pressed, 1).contains(LIGHT_GRAY_BACKGROUND));
+    let disabled = render_ui_component("button", &format!("1/1/8/1;d;{}", label));
+    assert_eq!(styles_at(&disabled, 1, 3).italic, Some(AnsiCode::On));
+    assert_eq!(styles_at(&disabled, 1, 3).dim, Some(AnsiCode::On));
+    for grid in [&normal, &hovered, &focused, &pressed, &disabled] {
+        assert!(!styled_line(grid, 1).contains(GREEN_BACKGROUND));
+    }
+}
+
+#[test]
+fn toggle_ui_component_renders_on_off_hover_and_dim_disabled() {
+    use crate::panes::terminal_character::AnsiCode;
+    let label = serialize_text_bytes("Wrap");
+    let on = render_ui_component("toggle", &format!("0/0/10/1;f,on,lw=5;{}", label));
+    assert_eq!(widget_lines(&on)[0], "Wrap [on ]");
+    assert!(!styled_line(&on, 0).contains(GRAY_BACKGROUND));
+    assert!(styled_line(&on, 0).contains(GREEN_FOREGROUND));
+    let off = render_ui_component("toggle", &format!("0/0/10/1;lw=5;{}", label));
+    assert_eq!(widget_lines(&off)[0], "Wrap [off]");
+    assert!(!styled_line(&off, 0).contains(GRAY_BACKGROUND));
+    let hovered = render_ui_component("toggle", &format!("0/0/10/1;h,lw=5;{}", label));
+    assert!(styled_line(&hovered, 0).contains(GRAY_BACKGROUND));
+    let disabled = render_ui_component("toggle", &format!("0/0/10/1;d,on,lw=5;{}", label));
+    assert_eq!(widget_lines(&disabled)[0], "Wrap [on ]");
+    assert_eq!(styles_at(&disabled, 0, 6).italic, Some(AnsiCode::On));
+    assert_eq!(styles_at(&disabled, 0, 6).dim, Some(AnsiCode::On));
+    assert!(!styled_line(&disabled, 0).contains(GRAY_BACKGROUND));
+}
+
+#[test]
+fn dropdown_ui_component_pads_the_field_and_truncates_long_values() {
+    let grid = render_ui_component(
+        "dropdown",
+        &format!(
+            "0/0/20/1;f,lw=5;{};{}",
+            serialize_text_bytes("Mode"),
+            serialize_text_bytes("normal")
+        ),
+    );
+    assert_eq!(widget_lines(&grid)[0], "Mode [ normal    ▾ ]");
+    assert!(styled_line(&grid, 0).contains(GREEN_FOREGROUND));
+    assert!(styled_line(&grid, 0).contains(GRAY_BACKGROUND));
+    let long = render_ui_component(
+        "dropdown",
+        &format!(
+            "0/0/16/1;lw=0;;{}",
+            serialize_text_bytes("a very long value indeed")
+        ),
+    );
+    assert_eq!(widget_lines(&long)[0], "[ a very lo… ▾ ]");
+    assert!(!styled_line(&long, 0).contains(GRAY_BACKGROUND));
+    let hovered = render_ui_component(
+        "dropdown",
+        &format!("0/0/16/1;h,lw=0;;{}", serialize_text_bytes("x")),
+    );
+    assert!(styled_line(&hovered, 0).contains(GRAY_BACKGROUND));
+}
+
+#[test]
+fn menu_ui_component_renders_border_separator_shortcut_and_gray_highlight() {
+    use crate::panes::terminal_character::AnsiCode;
+    let rows = format!(
+        "{}:{};-;d{};m{}",
+        serialize_text_bytes("Copy"),
+        serialize_text_bytes("^C"),
+        serialize_text_bytes("Delete"),
+        serialize_text_bytes("Rename")
+    );
+    let grid = render_ui_component("menu", &format!("2/1/16/6;b,f,hl=0;{}", rows));
+    let lines = widget_lines(&grid);
+    assert_eq!(lines[1], "  ┌──────────────┐");
+    assert_eq!(lines[2], "  │   Copy    ^C │");
+    assert_eq!(lines[3], "  ├──────────────┤");
+    assert_eq!(lines[4], "  │   Delete     │");
+    assert_eq!(lines[5], "  │ ● Rename     │");
+    assert_eq!(lines[6], "  └──────────────┘");
+    assert!(styled_line(&grid, 2).contains(GRAY_BACKGROUND));
+    assert!(!styled_line(&grid, 5).contains(GRAY_BACKGROUND));
+    for line in 1..7 {
+        assert!(!styled_line(&grid, line).contains(GREEN_BACKGROUND));
+    }
+    assert_eq!(styles_at(&grid, 4, 6).italic, Some(AnsiCode::On));
+    assert_eq!(styles_at(&grid, 4, 6).dim, Some(AnsiCode::On));
+}
+
+#[test]
+fn menu_ui_component_shows_hidden_row_counts_instead_of_a_bar() {
+    let rows = ["B", "C"]
+        .iter()
+        .map(|r| serialize_text_bytes(r))
+        .collect::<Vec<_>>()
+        .join(";");
+    let bordered = render_ui_component("menu", &format!("0/0/14/4;b,above=1,below=6;{}", rows));
+    let lines = widget_lines(&bordered);
+    assert_eq!(lines[0], "┌─ ↑ [+1] ───┐");
+    assert_eq!(lines[1], "│   B        │");
+    assert_eq!(lines[3], "└─ ↓ [+6] ───┘");
+    assert!(lines.iter().all(|line| !line.contains('┃')));
+    let borderless = render_ui_component("menu", &format!("0/0/12/4;ind,above=0,below=5;{}", rows));
+    let lines = widget_lines(&borderless);
+    assert_eq!(lines[0], "");
+    assert_eq!(lines[1], "   B");
+    assert_eq!(lines[3], " ↓ [+5]");
+}
+
+#[test]
+fn text_input_ui_component_renders_cursor_placeholder_and_error() {
+    use crate::panes::terminal_character::AnsiCode;
+    let grid = render_ui_component(
+        "text_input",
+        &format!(
+            "0/0/14/2;f,err,lw=0,cur=1;;{};{};",
+            serialize_text_bytes("12a"),
+            serialize_text_bytes("digits only")
+        ),
+    );
+    let lines = widget_lines(&grid);
+    assert_eq!(lines[0], "[ 12a        ]");
+    assert_eq!(lines[1], "✗ digits only");
+    assert_eq!(styles_at(&grid, 0, 3).reverse, Some(AnsiCode::On));
+    assert!(styled_line(&grid, 0).contains(RED_FOREGROUND));
+    assert!(styled_line(&grid, 1).contains(RED_FOREGROUND));
+    let placeholder = render_ui_component(
+        "text_input",
+        &format!(
+            "0/0/20/1;ph,lw=5;{};{};;",
+            serialize_text_bytes("Name"),
+            serialize_text_bytes("type here")
+        ),
+    );
+    assert_eq!(widget_lines(&placeholder)[0], "Name [ type here   ]");
+    assert_eq!(styles_at(&placeholder, 0, 7).italic, Some(AnsiCode::On));
+    let search = render_ui_component(
+        "text_input",
+        &format!(
+            "0/0/24/1;h,lw=0;;{};;{}",
+            serialize_text_bytes("ab"),
+            serialize_text_bytes("3 matches")
+        ),
+    );
+    assert_eq!(widget_lines(&search)[0], "[ ab         3 matches ]");
+    assert!(styled_line(&search, 0).contains(GRAY_BACKGROUND));
+}
+
+#[test]
+fn stepper_ui_component_renders_arrows_and_value() {
+    use crate::panes::terminal_character::AnsiCode;
+    let grid = render_ui_component(
+        "stepper",
+        &format!(
+            "0/0/15/1;f,lmin,lw=6;{};{}",
+            serialize_text_bytes("Width"),
+            serialize_text_bytes("10000")
+        ),
+    );
+    assert_eq!(widget_lines(&grid)[0], "Width ‹ 10000 ›");
+    assert_eq!(styles_at(&grid, 0, 6).dim, Some(AnsiCode::On));
+    assert_eq!(styles_at(&grid, 0, 14).bold, Some(AnsiCode::On));
+    let hovered = render_ui_component(
+        "stepper",
+        &format!("0/0/9/1;h,hinc,lw=0;;{}", serialize_text_bytes("10000")),
+    );
+    assert!(styled_line(&hovered, 0).contains(GRAY_BACKGROUND));
+    assert_eq!(styles_at(&hovered, 0, 8).bold, Some(AnsiCode::On));
+}
+
+#[test]
+fn scroll_indicator_ui_component_renders_arrow_counts() {
+    let grid = render_ui_component("scroll_indicator", "3/0/10/4;r,above=4,below=0");
+    let lines = widget_lines(&grid);
+    assert_eq!(lines[0], "      ↑ [+4]");
+    assert_eq!(lines[1], "");
+    assert_eq!(lines[3], "");
+    let both = render_ui_component("scroll_indicator", "0/0/10/3;above=0,below=12,hd");
+    let lines = widget_lines(&both);
+    assert_eq!(lines[0], "");
+    assert_eq!(lines[2], " ↓ [+12]");
+    assert!(styled_line(&both, 2).contains(GRAY_BACKGROUND));
+}
+
+#[test]
+fn scroll_indicator_ui_component_renders_a_bar_with_counts_to_its_right() {
+    let grid = render_ui_component(
+        "scroll_indicator",
+        "10/0/9/4;bar,f,tot=8,off=4,above=4,below=0,hu",
+    );
+    let lines = widget_lines(&grid);
+    assert_eq!(lines[0], "          │ ↑ [+4]");
+    assert_eq!(lines[1], "          │");
+    assert_eq!(lines[2], "          ┃");
+    assert_eq!(lines[3], "          ┃");
+    assert!(styled_line(&grid, 0).contains(GRAY_BACKGROUND));
+    assert!(styled_line(&grid, 2).contains(GREEN_FOREGROUND));
+}
+
+#[test]
+fn side_menu_ui_component_renders_gray_selection_hover_and_indicators() {
+    let items = format!(
+        "{};{}",
+        serialize_text_bytes("General"),
+        serialize_text_bytes("Theme")
+    );
+    let grid = render_ui_component("side_menu", &format!("0/0/10/3;sel=1,hov=0;{}", items));
+    let lines = widget_lines(&grid);
+    assert_eq!(lines[0], " General │");
+    assert_eq!(lines[1], " Theme   │");
+    assert_eq!(lines[2], "         │");
+    assert!(styled_line(&grid, 1).contains(GRAY_BACKGROUND));
+    assert!(styled_line(&grid, 0).contains(GRAY_BACKGROUND));
+    assert!(!styled_line(&grid, 1).contains(GREEN_BACKGROUND));
+    let scrolled = render_ui_component(
+        "side_menu",
+        &format!("0/0/10/4;f,ind,above=2,below=1;{}", items),
+    );
+    let lines = widget_lines(&scrolled);
+    assert_eq!(lines[0], " ↑ [+2]  │");
+    assert_eq!(lines[1], " General │");
+    assert_eq!(lines[3], " ↓ [+1]  │");
+}
+
+#[test]
+fn dialog_ui_component_renders_an_opaque_box_with_bracketed_buttons() {
+    let fields = [
+        serialize_text_bytes("Quit"),
+        serialize_text_bytes("Yes"),
+        serialize_text_bytes("No"),
+        serialize_text_bytes("Really quit?"),
+    ]
+    .join(";");
+    let grid = render_ui_component(
+        "dialog",
+        &format!("0/0/20/6;sel=1,nb=2,bx=3,hb=0;{}", fields),
+    );
+    let lines = widget_lines(&grid);
+    assert_eq!(lines[0], "╭─ Quit ───────────╮");
+    assert_eq!(lines[1], "│                  │");
+    assert_eq!(lines[2], "│ Really quit?     │");
+    assert_eq!(lines[3], "│                  │");
+    assert_eq!(lines[4], "│  [ Yes ]  [ No ] │");
+    assert_eq!(lines[5], "╰──────────────────╯");
+    assert!(styled_line(&grid, 4).contains(GRAY_BACKGROUND));
+    assert!(!styled_line(&grid, 4).contains(GREEN_BACKGROUND));
+    assert!(styled_line(&grid, 0).contains(GREEN_FOREGROUND));
+}
+
+#[test]
+fn widget_ui_components_require_coordinates() {
+    let grid = render_ui_component("button", &format!(";{}", serialize_text_bytes("Save")));
+    assert!(widget_lines(&grid).iter().all(|line| line.is_empty()));
 }
 
 use crate::panes::kitty_graphics::{InterceptorResult, KittyApcInterceptor, KittyHostSupport};
@@ -7250,7 +7825,7 @@ fn kitty_c_r_scaling_produces_exact_cell_rect_and_variant() {
     assert_eq!(
         kitty_image_store
             .borrow()
-            .scaled_variant(internal_id, (3, 2))
+            .scaled_variant(internal_id, placement.scaled_image().unwrap())
             .unwrap()
             .len(),
         30 * 40 * 4
@@ -8156,8 +8731,9 @@ fn kitty_marker_extended_absolute_cell_row(grid: &Grid) -> Option<isize> {
         .map(|row| row as isize)
 }
 
-fn kitty_scrollback_has_merged_wrapped_rows(grid: &Grid) -> bool {
-    grid.lines_above.iter().any(|row| row.width() > grid.width)
+fn kitty_scrollback_holds_wrapped_display_rows(grid: &Grid) -> bool {
+    grid.lines_above.iter().all(|row| row.width() <= grid.width)
+        && grid.lines_above.iter().any(|row| !row.is_canonical)
 }
 
 fn kitty_marker_viewport_row(grid: &Grid) -> Option<usize> {
@@ -8196,7 +8772,10 @@ fn kitty_placement_tracks_text_when_a_wrapped_row_moves_into_the_scrollback() {
     for _ in 0..5 {
         feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\r\nx");
     }
-    assert!(kitty_scrollback_has_merged_wrapped_rows(&grid));
+    assert!(
+        kitty_scrollback_holds_wrapped_display_rows(&grid),
+        "the wrapped line must be held in the scrollback as display rows"
+    );
     assert_eq!(
         Some(kitty_image_absolute_cell_row(&grid)),
         kitty_marker_absolute_cell_row(&grid),
@@ -8245,8 +8824,8 @@ fn kitty_wrapped_scrollback_setup(
         feed_kitty_bytes(&mut grid, &mut vte_parser, &mut interceptor, b"\r\nx");
     }
     assert!(
-        kitty_scrollback_has_merged_wrapped_rows(&grid),
-        "the wrapped line must have been merged into a single scrollback row"
+        kitty_scrollback_holds_wrapped_display_rows(&grid),
+        "the wrapped line must be held in the scrollback as display rows"
     );
     (grid, kitty_image_store, vte_parser, interceptor)
 }
@@ -9122,11 +9701,11 @@ fn a_single_notification_being_assembled_is_bounded() {
 }
 
 fn rendered_row(grid: &Grid, row_index: usize) -> String {
-    grid.viewport[row_index]
-        .columns
-        .iter()
-        .map(|terminal_character| terminal_character.character)
-        .collect()
+    let mut text = String::new();
+    for terminal_character in &grid.viewport[row_index].columns {
+        terminal_character.push_text_to(&mut text);
+    }
+    text
 }
 
 fn cursor_position(grid: &Grid) -> Option<(usize, usize)> {
@@ -9165,8 +9744,9 @@ fn zwj_emoji_sequence_keeps_one_wide_cell_per_emoji() {
     let row = &grid.viewport[0];
     assert_eq!(
         rendered_row(&grid, 0),
-        "\u{1f468}\u{1f469}\u{1f467}\u{1f466}"
+        "\u{1f468}\u{200d}\u{1f469}\u{200d}\u{1f467}\u{200d}\u{1f466}"
     );
+    assert_eq!(row.columns.len(), 4);
     assert_eq!(row.width(), 8);
     assert_eq!(cursor_position(&grid), Some((8, 0)));
 }
@@ -9189,16 +9769,18 @@ fn skin_tone_modifier_occupies_its_own_two_columns() {
 fn variation_selector_and_zero_width_joiner_do_not_advance_the_cursor() {
     let grid = create_grid_with_content("\u{26a0}\u{fe0f}\u{200d}\u{200b}");
 
-    assert_eq!(rendered_row(&grid, 0), "\u{26a0}");
+    assert_eq!(rendered_row(&grid, 0), "\u{26a0}\u{fe0f}\u{200d}\u{200b}");
+    assert_eq!(grid.viewport[0].columns.len(), 1);
     assert_eq!(grid.viewport[0].width(), 1);
     assert_eq!(cursor_position(&grid), Some((1, 0)));
 }
 
 #[test]
-fn combining_marks_are_dropped_and_do_not_advance_the_cursor() {
+fn combining_marks_are_kept_and_do_not_advance_the_cursor() {
     let grid = create_grid_with_content("e\u{301}a\u{300}\u{308}o\u{331}");
 
-    assert_eq!(rendered_row(&grid, 0), "eao");
+    assert_eq!(rendered_row(&grid, 0), "e\u{301}a\u{300}\u{308}o\u{331}");
+    assert_eq!(grid.viewport[0].columns.len(), 3);
     assert_eq!(grid.viewport[0].width(), 3);
     assert_eq!(cursor_position(&grid), Some((3, 0)));
 }
@@ -9330,7 +9912,7 @@ fn yijing_and_trigram_symbols_are_wide_under_the_new_width_tables() {
 fn halfwidth_katakana_sound_marks_are_zero_width_under_the_new_width_tables() {
     let grid = create_grid_with_content("\u{ff76}\u{ff9e}\u{ff8a}\u{ff9f}");
 
-    assert_eq!(rendered_row(&grid, 0), "\u{ff76}\u{ff8a}");
+    assert_eq!(rendered_row(&grid, 0), "\u{ff76}\u{ff9e}\u{ff8a}\u{ff9f}");
     assert_eq!(grid.viewport[0].width(), 2);
     assert_eq!(cursor_position(&grid), Some((2, 0)));
 }
@@ -9339,7 +9921,8 @@ fn halfwidth_katakana_sound_marks_are_zero_width_under_the_new_width_tables() {
 fn soft_hyphen_and_hangul_filler_are_zero_width_under_the_new_width_tables() {
     let grid = create_grid_with_content("a\u{ad}b\u{3164}c");
 
-    assert_eq!(rendered_row(&grid, 0), "abc");
+    assert_eq!(rendered_row(&grid, 0), "a\u{ad}b\u{3164}c");
+    assert_eq!(grid.viewport[0].columns.len(), 3);
     assert_eq!(grid.viewport[0].width(), 3);
     assert_eq!(cursor_position(&grid), Some((3, 0)));
 }
@@ -9353,4 +9936,1052 @@ fn a_character_wider_than_two_columns_advances_the_cursor_by_its_full_width() {
     assert_eq!(row.columns[0].width(), 3);
     assert_eq!(row.width(), 4);
     assert_eq!(cursor_position(&grid), Some((4, 0)));
+}
+
+fn create_sized_grid_with_content(rows: usize, columns: usize, content: &str) -> Grid {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(
+        rows,
+        columns,
+        Rc::new(RefCell::new(Palette::default())),
+        Rc::new(RefCell::new(HashMap::new())),
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        Rc::new(RefCell::new(SixelImageStore::default())),
+        Rc::new(RefCell::new(KittyImageStore::default())),
+        Style::default(),
+        false,
+        true,
+        true,
+        true,
+        false,
+    );
+    vte_parser.advance(&mut grid, content.as_bytes());
+    grid
+}
+
+fn feed(grid: &mut Grid, content: &str) {
+    let mut vte_parser = vte::Parser::new();
+    vte_parser.advance(grid, content.as_bytes());
+}
+
+#[test]
+fn same_size_forced_reflow_keeps_cursor_at_start_of_wrapped_row() {
+    let mut grid = create_sized_grid_with_content(5, 10, "0123456789a\u{8}");
+    assert_eq!(cursor_position(&grid), Some((0, 1)));
+
+    grid.force_change_size(5, 10);
+    assert_eq!(cursor_position(&grid), Some((0, 1)));
+
+    feed(&mut grid, "\rX");
+    assert_eq!(rendered_row(&grid, 0), "0123456789");
+    assert_eq!(rendered_row(&grid, 1), "X");
+}
+
+#[test]
+fn height_only_resize_keeps_cursor_at_start_of_wrapped_row() {
+    let mut grid = create_sized_grid_with_content(5, 10, "0123456789a\u{8}");
+
+    grid.force_change_size(6, 10);
+    assert_eq!(cursor_position(&grid), Some((0, 1)));
+
+    grid.change_size(7, 10);
+    assert_eq!(cursor_position(&grid), Some((0, 1)));
+
+    feed(&mut grid, "\rX");
+    assert_eq!(rendered_row(&grid, 0), "0123456789");
+    assert_eq!(rendered_row(&grid, 1), "X");
+}
+
+#[test]
+fn prompt_redraw_after_same_size_reflow_does_not_duplicate_wrapped_prompt() {
+    let prompt = "> ~/c/zellij-code-2 on main";
+    let mut grid = create_sized_grid_with_content(5, 20, prompt);
+    for _ in 0..3 {
+        feed(&mut grid, "\r");
+        grid.force_change_size(5, 20);
+        feed(&mut grid, "\u{1b}[1A\u{1b}[J");
+        feed(&mut grid, prompt);
+    }
+    assert_eq!(rendered_row(&grid, 0), "> ~/c/zellij-code-2 ");
+    assert_eq!(rendered_row(&grid, 1).trim_end(), "on main");
+    assert_eq!(grid.viewport.len(), 2);
+}
+
+#[test]
+fn saved_cursor_follows_its_own_line_when_wrapped_lines_are_above_it() {
+    let mut grid = create_sized_grid_with_content(
+        6,
+        10,
+        "0123456789abcdefghij\n\rXY\u{1b}7Z\n\rline3\n\rline4",
+    );
+
+    grid.change_size(6, 20);
+    feed(&mut grid, "\u{1b}8Q");
+
+    assert_eq!(rendered_row(&grid, 0), "0123456789abcdefghij");
+    assert_eq!(rendered_row(&grid, 1), "XYQ");
+    assert_eq!(rendered_row(&grid, 2), "line3");
+    assert_eq!(rendered_row(&grid, 3), "line4");
+}
+
+#[test]
+fn shrinking_keeps_cursor_on_its_own_line_when_it_sits_past_the_content() {
+    let mut grid = create_sized_grid_with_content(6, 31, "first\n\r> prompt text here okay \x1b[J");
+    assert_eq!(cursor_position(&grid), Some((24, 1)));
+
+    grid.change_size(6, 23);
+    assert_eq!(cursor_position(&grid), Some((22, 1)));
+
+    feed(&mut grid, "\rX");
+    assert_eq!(rendered_row(&grid, 0), "first");
+    assert_eq!(rendered_row(&grid, 1), "X prompt text here okay");
+    assert_eq!(grid.viewport.len(), 2);
+}
+
+fn row_of(text: &str) -> super::super::Row {
+    super::super::Row::from_columns(
+        text.chars()
+            .map(crate::panes::terminal_character::TerminalCharacter::new)
+            .collect(),
+    )
+}
+
+fn assert_cached_width_is_fresh(row: &mut super::super::Row) {
+    let fresh: usize = row.columns.iter().map(|character| character.width()).sum();
+    assert_eq!(row.width_cached(), fresh);
+    assert_eq!(row.width(), fresh);
+}
+
+#[test]
+fn same_width_overwrite_keeps_the_row_width_cache() {
+    use crate::panes::terminal_character::TerminalCharacter;
+    let mut row = row_of("abcdef");
+    assert_eq!(row.width_cached(), 6);
+    row.add_character_at(TerminalCharacter::new('X'), 2);
+    assert!(row.width.is_some());
+    assert_eq!(row_text(&row), "abXdef");
+    assert_cached_width_is_fresh(&mut row);
+}
+
+#[test]
+fn same_width_wide_overwrite_keeps_the_row_width_cache() {
+    use crate::panes::terminal_character::TerminalCharacter;
+    let mut row = row_of("a中b");
+    assert_eq!(row.width_cached(), 4);
+    row.add_character_at(TerminalCharacter::new('文'), 1);
+    assert!(row.width.is_some());
+    assert_eq!(row_text(&row), "a文b");
+    assert_cached_width_is_fresh(&mut row);
+}
+
+#[test]
+fn wider_overwrite_invalidates_the_row_width_cache() {
+    use crate::panes::terminal_character::TerminalCharacter;
+    let mut row = row_of("abcdef");
+    assert_eq!(row.width_cached(), 6);
+    row.add_character_at(TerminalCharacter::new('中'), 1);
+    assert!(row.width.is_none());
+    assert_eq!(row_text(&row), "a中def");
+    assert_cached_width_is_fresh(&mut row);
+    assert_eq!(row.width_cached(), 6);
+}
+
+#[test]
+fn narrower_overwrite_invalidates_the_row_width_cache() {
+    use crate::panes::terminal_character::TerminalCharacter;
+    let mut row = row_of("a中b");
+    assert_eq!(row.width_cached(), 4);
+    row.add_character_at(TerminalCharacter::new('x'), 1);
+    assert!(row.width.is_none());
+    assert_cached_width_is_fresh(&mut row);
+    assert_eq!(row.width_cached(), 4);
+    let mut row = row_of("a中b");
+    row.width_cached();
+    row.add_character_at(TerminalCharacter::new('y'), 2);
+    assert!(row.width.is_none());
+    assert_cached_width_is_fresh(&mut row);
+    assert_eq!(row.width_cached(), 4);
+}
+
+#[test]
+fn appending_wide_and_zero_width_characters_keeps_the_width_correct() {
+    use crate::panes::terminal_character::TerminalCharacter;
+    let mut row = row_of("ab");
+    assert_eq!(row.width_cached(), 2);
+    row.add_character_at(TerminalCharacter::new('中'), 2);
+    assert_cached_width_is_fresh(&mut row);
+    assert_eq!(row.width_cached(), 4);
+    let zero_width = TerminalCharacter::new('\u{0301}');
+    assert_eq!(zero_width.width(), 0);
+    row.add_character_at(zero_width, 4);
+    assert_cached_width_is_fresh(&mut row);
+    assert_eq!(row.width_cached(), 4);
+    row.add_character_at(TerminalCharacter::new('c'), 4);
+    assert_cached_width_is_fresh(&mut row);
+    assert_eq!(row.width_cached(), 5);
+}
+
+#[test]
+fn overwriting_next_to_a_zero_width_character_keeps_the_width_correct() {
+    use crate::panes::terminal_character::TerminalCharacter;
+    let mut row = row_of("ab");
+    row.columns.push(TerminalCharacter::new('\u{0301}'));
+    row.columns.push(TerminalCharacter::new('c'));
+    assert_eq!(row.width_cached(), 3);
+    row.add_character_at(TerminalCharacter::new('Z'), 2);
+    assert!(row.width.is_some());
+    assert_eq!(row.columns[3].character, 'Z');
+    assert_cached_width_is_fresh(&mut row);
+    assert_eq!(row.width_cached(), 3);
+    row.add_character_at(TerminalCharacter::new('中'), 0);
+    assert_cached_width_is_fresh(&mut row);
+}
+
+#[test]
+fn writing_past_the_end_pads_and_keeps_the_width_correct() {
+    use crate::panes::terminal_character::TerminalCharacter;
+    let mut row = row_of("a中");
+    assert_eq!(row.width_cached(), 3);
+    row.add_character_at(TerminalCharacter::new('z'), 6);
+    assert!(row.width.is_none());
+    assert_cached_width_is_fresh(&mut row);
+    assert_eq!(row.width_cached(), 7);
+}
+
+const WIDE_LINE: &[u8] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXY";
+
+fn viewport_canonical_flags(grid: &Grid) -> Vec<bool> {
+    grid.viewport.iter().map(|row| row.is_canonical).collect()
+}
+
+fn grid_with_wrapped_line_in_scrollback() -> (Grid, Vec<String>, Vec<bool>) {
+    let mut grid = create_grid_with_size_and_raw(5, 10, WIDE_LINE);
+    feed_bytes(&mut grid, b"\r\nA");
+    let texts_before = viewport_texts(&grid);
+    let canonical_before = viewport_canonical_flags(&grid);
+    feed_bytes(&mut grid, b"\r\nB\r\nC\r\nD\r\nE\r\nF");
+    assert_eq!(viewport_texts(&grid), vec!["B", "C", "D", "E", "F"]);
+    (grid, texts_before, canonical_before)
+}
+
+#[test]
+fn wrapped_line_round_trips_through_the_scrollback() {
+    let (mut grid, texts_before, canonical_before) = grid_with_wrapped_line_in_scrollback();
+    assert_eq!(
+        texts_before,
+        vec!["0123456789", "ABCDEFGHIJ", "KLMNOPQRST", "UVWXY", "A"]
+    );
+    assert_eq!(canonical_before, vec![true, false, false, false, true]);
+    grid.move_viewport_up(5);
+    assert_eq!(
+        viewport_texts(&grid),
+        texts_before,
+        "scrolling a wrapped line back in must restore its content"
+    );
+    assert_eq!(
+        viewport_canonical_flags(&grid),
+        canonical_before,
+        "scrolling a wrapped line back in must restore its wrap points"
+    );
+}
+
+#[test]
+fn wrapped_line_in_scrollback_survives_a_resize_round_trip() {
+    let (mut grid, texts_before, canonical_before) = grid_with_wrapped_line_in_scrollback();
+    grid.change_size(5, 5);
+    grid.change_size(5, 10);
+    grid.move_viewport_up(5);
+    assert_eq!(
+        viewport_texts(&grid),
+        texts_before,
+        "a narrower-then-wider resize must reproduce the logical line at the new width"
+    );
+    assert_eq!(
+        viewport_canonical_flags(&grid),
+        canonical_before,
+        "a narrower-then-wider resize must reproduce the original wrap points"
+    );
+}
+
+#[test]
+fn wrapped_line_in_scrollback_reflows_to_a_narrower_width() {
+    let (mut grid, _texts_before, _canonical_before) = grid_with_wrapped_line_in_scrollback();
+    grid.change_size(5, 5);
+    while !grid.lines_above.is_empty() {
+        grid.scroll_up_one_line();
+    }
+    assert_eq!(
+        viewport_texts(&grid),
+        ["01234", "56789", "ABCDE", "FGHIJ", "KLMNO"],
+        "a wrapped line pulled out of the scrollback must be split at the new width"
+    );
+}
+
+fn grid_with_interior_spaces_in_scrollback() -> Grid {
+    let mut grid = create_grid_with_size_and_raw(5, 10, b"ABCDEFGH  IJKL");
+    feed_bytes(&mut grid, b"\r\nM\r\nN\r\nO\r\nP\r\nQ\r\nR");
+    assert!(
+        !grid.lines_above.is_empty(),
+        "the wrapped line must have left the viewport"
+    );
+    grid
+}
+
+#[test]
+fn dump_screen_rejoins_wrapped_scrollback_lines() {
+    let grid = grid_with_interior_spaces_in_scrollback();
+    let dump = grid.dump_screen(true);
+    assert_eq!(
+        dump.lines().next(),
+        Some("ABCDEFGH  IJKL"),
+        "a wrapped scrollback line must dump as one line, spaces at the wrap point included"
+    );
+}
+
+#[test]
+fn dump_screen_with_ansi_rejoins_wrapped_scrollback_lines() {
+    let grid = grid_with_interior_spaces_in_scrollback();
+    let dump = grid.dump_screen_with_ansi(true);
+    assert!(
+        dump.lines().next().unwrap().contains("ABCDEFGH  IJKL"),
+        "a wrapped scrollback line must dump as one line with ansi, spaces at the wrap point included, got {:?}",
+        dump.lines().next()
+    );
+}
+
+#[test]
+fn scrollback_capacity_counts_display_rows() {
+    let mut grid = create_grid_with_size_and_raw(5, 10, b"");
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get().unwrap();
+    let logical_lines = scroll_buffer_size / 2 + 100;
+    let mut content: Vec<u8> = Vec::with_capacity(logical_lines * 17);
+    for _ in 0..logical_lines {
+        content.extend_from_slice(b"012345678901234\r\n");
+    }
+    feed_bytes(&mut grid, &content);
+    assert_eq!(
+        grid.lines_above.len(),
+        scroll_buffer_size,
+        "the scroll buffer bounds display rows, not logical lines"
+    );
+}
+
+fn grid_with_sixel_in_a_wrapped_line() -> (Grid, Rc<RefCell<SixelImageStore>>) {
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let mut grid = Grid::new(
+        10,
+        20,
+        Rc::new(RefCell::new(Palette::default())),
+        Rc::new(RefCell::new(HashMap::new())),
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(Some(SizeInPixels {
+            width: 8,
+            height: 21,
+        }))),
+        sixel_image_store.clone(),
+        Rc::new(RefCell::new(KittyImageStore::default())),
+        Style::default(),
+        false,
+        true,
+        true,
+        true,
+        false,
+    );
+    feed_bytes(&mut grid, &vec![b'A'; 30]);
+    feed_bytes(&mut grid, b"\x1b[2;1H");
+    feed_bytes(&mut grid, &read_fixture("sixel-image-100px.six"));
+    (grid, sixel_image_store)
+}
+
+#[test]
+fn sixel_image_in_a_wrapped_line_survives_a_scrollback_round_trip() {
+    let (mut grid, sixel_image_store) = grid_with_sixel_in_a_wrapped_line();
+    assert_eq!(grid.sixel_image_cell_rows_in_viewport(), vec![1]);
+    for _ in 0..20 {
+        grid.add_canonical_line();
+    }
+    assert!(!grid.lines_above.is_empty());
+    while !grid.lines_above.is_empty() {
+        grid.scroll_up_one_line();
+    }
+    assert_eq!(
+        grid.sixel_image_cell_rows_in_viewport(),
+        vec![1],
+        "a sixel image inside a wrapped line must return to its row after a scrollback round trip"
+    );
+    assert_eq!(sixel_image_store.borrow().image_count(), 1);
+}
+
+#[test]
+fn sixel_image_in_a_wrapped_line_survives_a_resize() {
+    let (mut grid, sixel_image_store) = grid_with_sixel_in_a_wrapped_line();
+    for _ in 0..20 {
+        grid.add_canonical_line();
+    }
+    grid.change_size(10, 10);
+    grid.change_size(10, 20);
+    let _ = grid.read_changes(0, 0);
+    assert_eq!(
+        sixel_image_store.borrow().image_count(),
+        1,
+        "a sixel image inside a wrapped line must survive a resize while in the scrollback"
+    );
+}
+
+#[test]
+fn scrollback_length_counts_display_rows_after_a_narrowing_resize() {
+    let (mut grid, _texts_before, _canonical_before) = grid_with_wrapped_line_in_scrollback();
+    assert_eq!(grid.scrollback_position_and_length().1, 5);
+    grid.change_size(5, 5);
+    assert_eq!(
+        grid.scrollback_position_and_length().1,
+        8,
+        "a 35 character line occupies seven rows at width five, plus the single row line after it"
+    );
+}
+
+#[test]
+fn scrollback_length_stays_exact_while_scrolling_through_a_resized_scrollback() {
+    let (mut grid, _texts_before, _canonical_before) = grid_with_wrapped_line_in_scrollback();
+    grid.change_size(5, 5);
+    let length_before = grid.scrollback_position_and_length().1;
+    let mut scrolled = 0;
+    while !grid.lines_above.is_empty() {
+        grid.scroll_up_one_line();
+        scrolled += 1;
+    }
+    assert_eq!(
+        scrolled, length_before,
+        "scrolling to the top must take exactly as many lines as the reported length"
+    );
+    assert_eq!(grid.scrollback_position_and_length().1, length_before);
+    while grid.scroll_down_one_line() || !grid.lines_below.is_empty() {}
+    assert_eq!(
+        grid.scrollback_position_and_length().1,
+        length_before,
+        "a scroll round trip must not change the reported length"
+    );
+    assert_eq!(grid.lines_above.len(), length_before);
+}
+
+#[test]
+fn scrollback_length_stays_exact_when_stale_rows_are_evicted() {
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let mut grid = create_grid_with_size_and_raw(5, 10, b"");
+    let mut content: Vec<u8> = Vec::new();
+    for _ in 0..(scroll_buffer_size / 2) {
+        content.extend_from_slice(b"012345678901234\r\n");
+    }
+    feed_bytes(&mut grid, &content);
+    grid.change_size(5, 5);
+    let length_after_resize = grid.scrollback_position_and_length().1;
+    assert!(length_after_resize > grid.lines_above.len());
+    let mut more: Vec<u8> = Vec::new();
+    for _ in 0..scroll_buffer_size {
+        more.extend_from_slice(b"x\r\n");
+    }
+    feed_bytes(&mut grid, &more);
+    assert_eq!(grid.lines_above.len(), scroll_buffer_size);
+    assert_eq!(
+        grid.scrollback_position_and_length().1,
+        scroll_buffer_size,
+        "once every stale row has been evicted the length must equal the stored row count"
+    );
+}
+
+fn scrollback_recount(grid: &mut Grid) -> usize {
+    let width = grid.width;
+    super::scrollback_display_row_count(&mut grid.lines_above, width)
+}
+
+fn filled_scrollback(rows: usize, cols: usize, line: &[u8], line_count: usize) -> Grid {
+    let mut grid = create_grid_with_size_and_raw(rows, cols, b"");
+    let mut content: Vec<u8> = Vec::new();
+    for _ in 0..line_count {
+        content.extend_from_slice(line);
+        content.extend_from_slice(b"\r\n");
+    }
+    feed_bytes(&mut grid, &content);
+    grid
+}
+
+fn repeated_lines(line: &[u8], line_count: usize) -> Vec<u8> {
+    let mut content: Vec<u8> = Vec::new();
+    for _ in 0..line_count {
+        content.extend_from_slice(line);
+        content.extend_from_slice(b"\r\n");
+    }
+    content
+}
+
+#[test]
+fn scrollback_length_matches_a_full_recount_while_rows_wrapped_at_another_width_are_evicted() {
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    for new_columns in [7usize, 10, 23] {
+        let mut grid = filled_scrollback(5, 10, b"012345678901234", scroll_buffer_size / 2 + 200);
+        assert_eq!(grid.lines_above.len(), scroll_buffer_size);
+        grid.change_size(5, new_columns);
+        assert_eq!(
+            grid.scrollback_position_and_length().1,
+            scrollback_recount(&mut grid),
+            "the reported length must be exact right after a resize to width {new_columns}"
+        );
+        let batch = repeated_lines(b"abcdefghijklmnopqrst", 400);
+        for round in 0..8 {
+            feed_bytes(&mut grid, &batch);
+            assert_eq!(
+                grid.scrollback_position_and_length().1,
+                scrollback_recount(&mut grid),
+                "the reported length must stay exact at width {new_columns}, round {round}"
+            );
+        }
+    }
+}
+
+#[test]
+fn scrollback_length_matches_a_full_recount_when_long_wrapped_lines_are_evicted() {
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let long_line = vec![b'z'; 95];
+    let mut grid = filled_scrollback(5, 10, &long_line, scroll_buffer_size / 8);
+    assert_eq!(grid.lines_above.len(), scroll_buffer_size);
+    grid.change_size(5, 13);
+    let batch = repeated_lines(&long_line, 200);
+    for round in 0..6 {
+        feed_bytes(&mut grid, &batch);
+        assert_eq!(
+            grid.scrollback_position_and_length().1,
+            scrollback_recount(&mut grid),
+            "a run wider than the viewport must be accounted exactly on eviction, round {round}"
+        );
+    }
+}
+
+#[test]
+fn scrollback_length_matches_a_full_recount_while_a_drag_changes_the_width_under_output() {
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let mut grid = filled_scrollback(5, 20, b"0123456789012345678901234", scroll_buffer_size / 2);
+    let batch = repeated_lines(b"abcdefghijklmnopqrstuvwxy", 200);
+    for step in 0..12usize {
+        let width = 20 - (step % 6);
+        grid.change_size(5, width);
+        feed_bytes(&mut grid, &batch);
+        assert_eq!(
+            grid.scrollback_position_and_length().1,
+            scrollback_recount(&mut grid),
+            "the reported length must stay exact across drag step {step} at width {width}"
+        );
+    }
+}
+
+#[test]
+fn scrollback_length_matches_a_full_recount_across_a_scroll_round_trip_after_a_resize() {
+    let scroll_buffer_size = *SCROLL_BUFFER_SIZE.get_or_init(|| 10_000);
+    let mut grid = filled_scrollback(5, 10, b"012345678901234", scroll_buffer_size / 2 + 50);
+    grid.change_size(5, 6);
+    let length_after_resize = grid.scrollback_position_and_length().1;
+    assert_eq!(length_after_resize, scrollback_recount(&mut grid));
+    for _ in 0..200 {
+        grid.scroll_up_one_line();
+    }
+    assert_eq!(
+        grid.scrollback_position_and_length().1 - grid.lines_below.len(),
+        scrollback_recount(&mut grid),
+        "scrolling into the scrollback must leave the reported length exact"
+    );
+    while grid.scroll_down_one_line() || !grid.lines_below.is_empty() {}
+    assert_eq!(
+        grid.scrollback_position_and_length().1,
+        scrollback_recount(&mut grid),
+        "a scroll round trip must leave the reported length exact"
+    );
+    feed_bytes(&mut grid, &repeated_lines(b"abcdef", 300));
+    assert_eq!(
+        grid.scrollback_position_and_length().1,
+        scrollback_recount(&mut grid),
+        "output after a scroll round trip must keep the reported length exact"
+    );
+}
+
+#[test]
+fn scrolling_down_after_a_resize_always_reaches_the_bottom() {
+    let mut failures = vec![];
+    for line_length in [5usize, 18, 30, 61] {
+        for rows in [5usize, 10] {
+            for cols in [10usize, 20] {
+                for scroll_up_by in [1usize, 3, 7, 15] {
+                    for new_rows in [4usize, 5, 10, 17] {
+                        for new_cols in [7usize, 10, 20, 33] {
+                            let mut content: Vec<u8> = Vec::new();
+                            for index in 0..40 {
+                                content.extend_from_slice(format!("l{:02}", index).as_bytes());
+                                content.extend_from_slice(&vec![b'.'; line_length]);
+                                content.extend_from_slice(b"\r\n");
+                            }
+                            let mut grid = create_grid_with_size_and_raw(rows, cols, &content);
+                            for _ in 0..scroll_up_by {
+                                grid.scroll_up_one_line();
+                            }
+                            if !grid.is_scrolled {
+                                continue;
+                            }
+                            grid.change_size(new_rows, new_cols);
+                            let mut scrolled = 0;
+                            while grid.is_scrolled && scrolled < 5_000 {
+                                grid.scroll_down_one_line();
+                                scrolled += 1;
+                            }
+                            if grid.is_scrolled {
+                                failures.push(format!(
+                                    "line length {} grid {}x{} scrolled up {} resized to {}x{}: viewport {} height {} lines_below {}",
+                                    line_length, rows, cols, scroll_up_by, new_rows, new_cols,
+                                    grid.viewport.len(), grid.height, grid.lines_below.len()
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "{} cases could not be scrolled back to the bottom:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
+}
+
+#[test]
+fn copy_a_wrapped_line_spanning_the_scrollback_boundary() {
+    let mut grid = create_grid_with_size_and_raw(5, 10, WIDE_LINE);
+    feed_bytes(&mut grid, b"\r\nA\r\nB\r\nC");
+    assert_eq!(scrollback_texts(&grid), vec!["0123456789", "ABCDEFGHIJ"]);
+    grid.start_selection(&Position::new(-2, 0));
+    grid.end_selection(&Position::new(2, 1));
+    assert_eq!(
+        grid.get_selected_text().unwrap(),
+        "0123456789ABCDEFGHIJKLMNOPQRSTUVWXY\nA",
+        "a selection crossing the scrollback boundary must rejoin the wrapped line"
+    );
+}
+
+fn attention_signals(content: &str) -> Vec<crate::attention::PaneSignal> {
+    let mut grid = create_grid_with_content(content);
+    grid.shell_reports.drain()
+}
+
+fn finished_commands(
+    signals: &[crate::attention::PaneSignal],
+) -> Vec<(Option<i32>, Option<String>)> {
+    signals
+        .iter()
+        .filter_map(|s| match s {
+            crate::attention::PaneSignal::CommandFinished { exit_code, err, .. } => {
+                Some((*exit_code, err.clone()))
+            },
+            _ => None,
+        })
+        .collect()
+}
+
+fn started_commands(signals: &[crate::attention::PaneSignal]) -> Vec<Option<(String, String)>> {
+    signals
+        .iter()
+        .filter_map(|s| match s {
+            crate::attention::PaneSignal::CommandStarted { command, .. } => Some(
+                command
+                    .as_ref()
+                    .map(|c| (c.text.clone(), c.source.as_str().to_owned())),
+            ),
+            _ => None,
+        })
+        .collect()
+}
+
+fn prompt_count(signals: &[crate::attention::PaneSignal]) -> usize {
+    signals
+        .iter()
+        .filter(|s| matches!(s, crate::attention::PaneSignal::PromptShown { .. }))
+        .count()
+}
+
+#[test]
+fn program_status_query_is_answered_before_the_primary_device_attributes() {
+    let mut grid = create_grid_with_content("\x1b]7501;?\x1b\\\x1b[c");
+    let replies: Vec<String> = grid
+        .pending_messages_to_pty
+        .drain(..)
+        .map(|r| String::from_utf8(r).unwrap())
+        .collect();
+    assert_eq!(replies.len(), 2);
+    assert!(replies[0].starts_with("\x1b]7501;?"));
+    assert!(replies[0].ends_with("\x1b\\"));
+    assert!(replies[1].starts_with("\x1b[?"));
+    let mut grid = create_grid_with_content("\x1b]7501;?\x07");
+    let reply = String::from_utf8(grid.pending_messages_to_pty.remove(0)).unwrap();
+    assert!(reply.ends_with('\x07'));
+}
+
+#[test]
+fn program_status_reports_become_pane_signals() {
+    let signals = attention_signals(
+        "\x1b]7501;state=working:app=claude\x1b\\\x1b]7501;state=bogus\x1b\\\x1b]7501;state=clear\x07",
+    );
+    assert_eq!(signals.len(), 2);
+    assert!(matches!(
+        &signals[0],
+        crate::attention::PaneSignal::ProgramStatus(
+            crate::attention::program_status::ProgramStatusMessage::Set(_)
+        )
+    ));
+    assert!(matches!(
+        &signals[1],
+        crate::attention::PaneSignal::ProgramStatus(
+            crate::attention::program_status::ProgramStatusMessage::Clear { id: None }
+        )
+    ));
+}
+
+#[test]
+fn program_status_reports_are_not_shown_on_screen() {
+    let grid = create_grid_with_content("a\x1b]7501;state=working\x1b\\b");
+    assert!(format!("{:?}", grid).contains("ab"));
+}
+
+#[test]
+fn full_reset_resets_program_status() {
+    let signals = attention_signals("\x1b]7501;state=working\x1b\\\x1bc");
+    assert!(signals.contains(&crate::attention::PaneSignal::Reset));
+    let signals = attention_signals("\x1b]7501;state=working\x1b\\\x1b[!p");
+    assert!(!signals.contains(&crate::attention::PaneSignal::Reset));
+}
+
+#[test]
+fn only_main_prompts_count_as_prompt_returns() {
+    let mut grid = create_grid_with_content("\x1b]133;A;k=s\x07> \x1b]133;P;k=r\x07");
+    assert!(!grid.pending_prompt_return);
+    assert_eq!(prompt_count(&grid.shell_reports.drain()), 0);
+    let grid = create_grid_with_content("\x1b]133;P;k=c\x07");
+    assert!(!grid.pending_prompt_return);
+    let grid = create_grid_with_content("\x1b]133;D;0\x07");
+    assert!(!grid.pending_prompt_return);
+    let mut grid = create_grid_with_content("\x1b]133;A\x07$ ");
+    assert!(grid.pending_prompt_return);
+    assert_eq!(prompt_count(&grid.shell_reports.drain()), 1);
+    let grid = create_grid_with_content("\x1b]133;P;k=i\x07$ ");
+    assert!(grid.pending_prompt_return);
+    let grid = create_grid_with_content("\x1b]133;N\x07$ ");
+    assert!(grid.pending_prompt_return);
+}
+
+#[test]
+fn a_prompt_announced_twice_counts_once() {
+    let signals = attention_signals(
+        "\x1b]133;D\x1b\\\x1b]133;A;cl=m;aid=7\x1b\\\x1b]133;P;k=i\x1b\\$ \x1b]133;B\x1b\\",
+    );
+    assert_eq!(prompt_count(&signals), 1);
+}
+
+#[test]
+fn command_end_variants() {
+    let wrap = |end: &str| {
+        attention_signals(&format!(
+            "\x1b]133;A\x07$ \x1b]133;B\x07x\x1b]133;C\x07\r\n\x1b]133;{}\x07",
+            end
+        ))
+    };
+    assert_eq!(finished_commands(&wrap("D;0")), vec![(Some(0), None)]);
+    assert_eq!(finished_commands(&wrap("D")), vec![(None, None)]);
+    assert_eq!(
+        finished_commands(&wrap("D;1;aid=123")),
+        vec![(Some(1), None)]
+    );
+    assert_eq!(finished_commands(&wrap("D;aid=123")), vec![(None, None)]);
+    assert_eq!(
+        finished_commands(&wrap("D;0;history_id=x")),
+        vec![(Some(0), None)]
+    );
+    assert_eq!(
+        finished_commands(&wrap("D;0;err=CANCEL")),
+        vec![(Some(0), Some("CANCEL".to_owned()))]
+    );
+}
+
+#[test]
+fn command_text_sources() {
+    let shell = |c: &str| {
+        started_commands(&attention_signals(&format!(
+            "\x1b]133;A\x07$ \x1b]133;B\x07typed\x1b]133;{}\x07\r\n",
+            c
+        )))
+    };
+    assert_eq!(
+        shell(r"C;cmdline=ls\ -la"),
+        vec![Some(("ls -la".to_owned(), "shell".to_owned()))]
+    );
+    assert_eq!(
+        shell("C;cmdline_url=cargo%20build"),
+        vec![Some(("cargo build".to_owned(), "shell".to_owned()))]
+    );
+    assert_eq!(
+        shell("C"),
+        vec![Some(("typed".to_owned(), "screen".to_owned()))]
+    );
+    let without_input_marker = started_commands(&attention_signals(
+        "\x1b]133;A\x07$ typed\x1b]133;C\x07\r\n",
+    ));
+    assert_eq!(without_input_marker, vec![None]);
+}
+
+#[test]
+fn vscode_command_text_and_duplicate_markers() {
+    let signals = attention_signals(
+        "\x1b]133;A\x07\x1b]633;A\x07$ \x1b]133;B\x07\x1b]633;B\x07ls\x1b]633;E;ls\\x3b pwd;nonce\x07\x1b]133;C\x07\x1b]633;C\x07\r\n\x1b]133;D;2\x07\x1b]633;D;2\x07",
+    );
+    assert_eq!(prompt_count(&signals), 1);
+    assert_eq!(
+        started_commands(&signals),
+        vec![Some(("ls; pwd".to_owned(), "shell".to_owned()))]
+    );
+    assert_eq!(finished_commands(&signals), vec![(Some(2), None)]);
+}
+
+#[test]
+fn nushell_under_vscode_uses_only_633() {
+    let signals = attention_signals(
+        "\x1b]633;A\x1b\\> \x1b]633;B\x1b\\\x1b]633;E;cargo test\x1b\\\x1b]633;C\x1b\\\r\n\x1b]633;D;101\x1b\\\x1b]633;P;Cwd=/home/u/x\x1b\\",
+    );
+    assert_eq!(
+        started_commands(&signals),
+        vec![Some(("cargo test".to_owned(), "shell".to_owned()))]
+    );
+    assert_eq!(finished_commands(&signals), vec![(Some(101), None)]);
+    assert!(signals.iter().any(|s| matches!(
+        s,
+        crate::attention::PaneSignal::Cwd(cwd) if cwd.path == "/home/u/x"
+    )));
+}
+
+#[test]
+fn fish_and_nushell_prompts() {
+    let fish = attention_signals(
+        "\x1b]133;A;click_events=1\x1b\\$ \x1b]133;B\x1b\\\x1b]133;C;cmdline_url=false\x1b\\\r\n\x1b]133;D;1\x1b\\\x1b]7;file://host/tmp\x07",
+    );
+    assert_eq!(
+        started_commands(&fish),
+        vec![Some(("false".to_owned(), "shell".to_owned()))]
+    );
+    assert_eq!(finished_commands(&fish), vec![(Some(1), None)]);
+    let nushell = attention_signals(
+        "\x1b]133;A;k=i;click_events=1\x1b\\> \x1b]133;P;k=r\x1b\\\x1b]133;B\x1b\\ls\x1b]133;C\x1b\\\r\n\x1b]133;D;0\x1b\\\x1b]133;A;k=s;click_events=1\x1b\\",
+    );
+    assert_eq!(prompt_count(&nushell), 1);
+    assert_eq!(
+        started_commands(&nushell),
+        vec![Some(("ls".to_owned(), "screen".to_owned()))]
+    );
+    assert_eq!(finished_commands(&nushell), vec![(Some(0), None)]);
+}
+
+#[test]
+fn working_directory_sources() {
+    let cwd_of = |content: &str| {
+        let mut grid = create_grid_with_content(content);
+        let signal = grid
+            .shell_reports
+            .drain()
+            .into_iter()
+            .find_map(|s| match s {
+                crate::attention::PaneSignal::Cwd(cwd) => Some(cwd),
+                _ => None,
+            });
+        (signal, grid.pending_osc7_cwd.take())
+    };
+    let (cwd, local) = cwd_of("\x1b]7;file://localhost/a%20b\x1b\\");
+    assert_eq!(cwd.unwrap().path, "/a b");
+    assert_eq!(local, Some(std::path::PathBuf::from("/a b")));
+    let (cwd, local) = cwd_of("\x1b]7;file://user@far-away.example.invalid/srv?machineID=1\x07");
+    let cwd = cwd.unwrap();
+    assert_eq!(cwd.path, "/srv");
+    assert!(!cwd.is_local);
+    assert_eq!(local, None);
+    let (cwd, _) = cwd_of("\x1b]7;kitty-shell-cwd://localhost/raw%20path\x07");
+    assert_eq!(cwd.unwrap().path, "/raw%20path");
+    let (cwd, local) = cwd_of("\x1b]9;9;\"/tmp/x\"\x07");
+    assert_eq!(cwd.unwrap().path, "/tmp/x");
+    assert_eq!(local, Some(std::path::PathBuf::from("/tmp/x")));
+    let (cwd, _) = cwd_of("\x1b]1337;CurrentDir=/opt\x07");
+    assert_eq!(cwd.unwrap().path, "/opt");
+    let (cwd, _) =
+        cwd_of("\x1b]1337;RemoteHost=me@far-away.example.invalid\x07\x1b]1337;CurrentDir=/opt\x07");
+    assert!(!cwd.unwrap().is_local);
+}
+
+#[test]
+fn conemu_cwd_is_not_a_notification_and_progress_is_ignored() {
+    let grid = create_grid_with_content("\x1b]9;9;/tmp\x07\x1b]9;4;1;50\x07");
+    assert!(grid.pending_desktop_notifications.is_empty());
+    let grid = create_grid_with_content("\x1b]9;hello\x07");
+    assert_eq!(grid.pending_desktop_notifications.len(), 1);
+}
+
+#[test]
+fn bell_signal_only_for_real_bells() {
+    let signals = attention_signals("\x1b]0;title\x07");
+    assert!(!signals.contains(&crate::attention::PaneSignal::Bell));
+    let signals = attention_signals("ding\x07");
+    assert!(signals.contains(&crate::attention::PaneSignal::Bell));
+}
+
+#[test]
+fn navigation_markers_still_work_with_new_marker_parsing() {
+    let mut grid = create_grid_with_content(
+        "\x1b]133;A;cl=m;aid=1\x07$ \x1b]133;B\x07echo hi\x1b]133;C;\x07\r\nhi\x1b]133;D;0;aid=1\x07 suffix",
+    );
+    assert_eq!(
+        select_with_click_count(&mut grid, Position::new(1, 0), 3),
+        "echo hi\nhi"
+    );
+    assert_eq!(grid.osc133_end_exit_codes(), vec![Some(0)]);
+}
+
+#[test]
+fn a_preview_anchored_at_the_last_command_output_starts_at_that_output() {
+    let mut content = String::new();
+    for line in 0..30 {
+        content.push_str(&format!("old line {}\r\n", line));
+    }
+    content.push_str("\x1b]133;A\x07$ \x1b]133;B\x07make\x1b]133;C\x07\r\n");
+    for line in 0..5 {
+        content.push_str(&format!("output {}\r\n", line));
+    }
+    let grid = create_grid_with_content(&content);
+    let (contents, anchor_line) =
+        grid.preview_with_anchor(zellij_utils::data::PreviewAnchor::LastCommandOutput, 300);
+    let anchor_line = anchor_line.expect("the last command output is found");
+    let lines: Vec<&str> = contents.lines().collect();
+    assert!(
+        lines[anchor_line].contains("make") || lines[anchor_line].contains("output 0"),
+        "line {} is {:?}",
+        anchor_line,
+        lines.get(anchor_line)
+    );
+    let (_, bottom) = grid.preview_with_anchor(zellij_utils::data::PreviewAnchor::Bottom, 300);
+    assert_eq!(bottom, None);
+}
+
+#[test]
+fn a_preview_keeps_only_the_newest_scrollback_lines() {
+    let mut content = String::new();
+    for line in 0..60 {
+        content.push_str(&format!("grid line {:02}\r\n", line));
+    }
+    let grid = create_grid_with_content(&content);
+    let (everything, _) = grid.preview_with_anchor(zellij_utils::data::PreviewAnchor::Bottom, 300);
+    assert!(everything.contains("grid line 00"));
+    assert!(everything.contains("grid line 59"));
+    let (capped, _) = grid.preview_with_anchor(zellij_utils::data::PreviewAnchor::Bottom, 10);
+    assert!(!capped.contains("grid line 00"));
+    assert!(capped.contains("grid line 59"));
+    assert!(capped.lines().count() < everything.lines().count());
+}
+
+fn scrollback_heap_bytes(grid: &Grid) -> usize {
+    grid.lines_above
+        .iter()
+        .map(|row| {
+            row.columns.capacity()
+                * std::mem::size_of::<crate::panes::terminal_character::TerminalCharacter>()
+                + std::mem::size_of::<super::super::Row>()
+        })
+        .sum()
+}
+
+#[test]
+fn scrollback_rows_do_not_keep_room_for_a_full_width_line() {
+    let mut grid = filled_scrollback(5, 200, b"abc", 100);
+    for row in grid.lines_above.iter() {
+        assert_eq!(row.columns.capacity(), row.columns.len());
+    }
+    assert!(
+        scrollback_heap_bytes(&grid)
+            < grid.lines_above.len()
+                * 200
+                * std::mem::size_of::<crate::panes::terminal_character::TerminalCharacter>()
+                / 10,
+        "short lines in scrollback must not cost a full row width each"
+    );
+    grid.change_size(5, 80);
+    assert_eq!(
+        grid.scrollback_position_and_length().1,
+        scrollback_recount(&mut grid)
+    );
+}
+
+#[test]
+fn cleared_line_endings_are_stored_as_a_count_in_scrollback() {
+    let grid = filled_scrollback(5, 80, b"abc\x1b[K", 20);
+    let finished_rows = grid.lines_above.len() - 1;
+    for row in grid.lines_above.iter().take(finished_rows) {
+        assert_eq!(row.columns.len(), 3);
+        assert_eq!(row.width(), 80);
+    }
+}
+
+#[test]
+fn stored_scrollback_blanks_are_returned_in_pane_contents() {
+    let grid = filled_scrollback(5, 80, b"abc\x1b[K", 20);
+    let contents = grid.pane_contents(true, None);
+    let expected = format!("abc{}", " ".repeat(77));
+    let finished_rows = grid.lines_above.len() - 1;
+    for line in contents.lines_above_viewport.iter().take(finished_rows) {
+        assert_eq!(line, &expected);
+    }
+}
+
+#[test]
+fn stored_scrollback_blanks_come_back_when_scrolled_into_view() {
+    let mut grid = filled_scrollback(5, 80, b"abc\x1b[K", 20);
+    while !grid.lines_above.is_empty() {
+        grid.scroll_up_one_line();
+    }
+    for row in grid.viewport.iter() {
+        assert_eq!(row.columns.len(), 80);
+        assert!(row.columns[3..]
+            .iter()
+            .all(|character| *character
+                == crate::panes::terminal_character::EMPTY_TERMINAL_CHARACTER));
+    }
+    while !grid.lines_below.is_empty() {
+        grid.scroll_down_one_line();
+    }
+    assert_eq!(
+        grid.scrollback_position_and_length().1,
+        scrollback_recount(&mut grid)
+    );
+}
+
+#[test]
+fn styled_line_endings_are_kept_as_cells_in_scrollback() {
+    let grid = filled_scrollback(5, 80, b"\x1b[41mabc\x1b[K\x1b[0m", 20);
+    let finished_rows = grid.lines_above.len() - 1;
+    for row in grid.lines_above.iter().take(finished_rows) {
+        assert_eq!(row.columns.len(), 80);
+    }
+}
+
+#[test]
+fn stored_scrollback_blanks_rewrap_like_cells_on_resize() {
+    let mut grid = filled_scrollback(5, 80, b"abc\x1b[K", 20);
+    grid.change_size(5, 30);
+    assert_eq!(
+        grid.scrollback_position_and_length().1,
+        scrollback_recount(&mut grid)
+    );
+    while !grid.lines_above.is_empty() {
+        grid.scroll_up_one_line();
+    }
+    let texts: Vec<usize> = grid.viewport.iter().map(|row| row.width()).collect();
+    assert_eq!(texts, vec![30, 30, 20, 30, 30]);
 }

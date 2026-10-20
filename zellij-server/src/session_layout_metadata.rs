@@ -6,7 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use zellij_utils::common_path::common_path_all;
 use zellij_utils::pane_size::PaneGeom;
 use zellij_utils::{
-    data::{LayoutMetadata, PaneMetadata, TabMetadata},
+    data::{BorderStyleOverride, LayoutMetadata, PaneMetadata, TabMetadata},
     input::command::RunCommand,
     input::layout::{Layout, Run, RunPlugin, RunPluginOrAlias},
     input::plugins::PluginAliases,
@@ -23,6 +23,7 @@ pub struct SessionLayoutMetadata {
     pub default_shell: Option<PathBuf>,
     pub default_editor: Option<PathBuf>,
     tabs: Vec<TabLayoutMetadata>,
+    session_attention_muted: bool,
 }
 
 impl SessionLayoutMetadata {
@@ -106,7 +107,29 @@ impl SessionLayoutMetadata {
         }
         clients_metadata
     }
+    pub fn set_session_attention_muted(&mut self, session_attention_muted: bool) {
+        self.session_attention_muted = session_attention_muted;
+    }
+    pub fn set_last_tab_attention_muted(&mut self, attention_muted: bool) {
+        if let Some(tab) = self.tabs.last_mut() {
+            tab.attention_muted = attention_muted;
+        }
+    }
+    fn has_attention_flags(&self) -> bool {
+        self.session_attention_muted
+            || self.tabs.iter().any(|tab| {
+                tab.attention_muted
+                    || tab
+                        .tiled_panes
+                        .iter()
+                        .chain(tab.floating_panes.iter())
+                        .any(|p| p.attention_muted || p.ignore_output)
+            })
+    }
     pub fn is_dirty(&self) -> bool {
+        if self.has_attention_flags() {
+            return true;
+        }
         // here we check to see if the serialized layout would be different than the base one, and
         // thus is "dirty". A layout is considered dirty if one of the following is true:
         // 1. The current number of panes is different than the number of panes in the base layout
@@ -179,7 +202,7 @@ impl SessionLayoutMetadata {
             if location_string == "zellij:plugin-manager" {
                 return true;
             }
-            if location_string == "zellij:configuration-manager" {
+            if location_string == "zellij:configuration" {
                 return true;
             }
             if location_string == "zellij:share" {
@@ -217,6 +240,7 @@ impl SessionLayoutMetadata {
             hide_floating_panes,
             tiled_panes,
             floating_panes,
+            attention_muted: false,
         })
     }
     pub fn all_terminal_ids(&self) -> Vec<u32> {
@@ -487,6 +511,7 @@ impl Into<GlobalLayoutManifest> for SessionLayoutMetadata {
                 .into_iter()
                 .map(|t| (t.name.clone().unwrap_or_default(), t.into()))
                 .collect(),
+            session_attention_muted: self.session_attention_muted,
         }
     }
 }
@@ -498,6 +523,7 @@ impl Into<TabLayoutManifest> for TabLayoutMetadata {
             floating_panes: self.floating_panes.into_iter().map(|t| t.into()).collect(),
             is_focused: self.is_focused,
             hide_floating_panes: self.hide_floating_panes,
+            attention_muted: self.attention_muted,
         }
     }
 }
@@ -535,6 +561,9 @@ impl Into<PaneLayoutManifest> for PaneLayoutMetadata {
             pane_contents: self.pane_contents,
             default_fg: self.default_fg,
             default_bg: self.default_bg,
+            border_style: self.border_style.none_if_empty(),
+            attention_muted: self.attention_muted,
+            ignore_output: self.ignore_output,
         }
     }
 }
@@ -546,6 +575,7 @@ pub struct TabLayoutMetadata {
     floating_panes: Vec<PaneLayoutMetadata>,
     is_focused: bool,
     hide_floating_panes: bool,
+    attention_muted: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -561,6 +591,9 @@ pub struct PaneLayoutMetadata {
     focused_clients: Vec<ClientId>,
     default_fg: Option<String>,
     default_bg: Option<String>,
+    border_style: BorderStyleOverride,
+    attention_muted: bool,
+    ignore_output: bool,
 }
 
 impl PaneLayoutMetadata {
@@ -575,6 +608,7 @@ impl PaneLayoutMetadata {
         focused_clients: Vec<ClientId>,
         default_fg: Option<String>,
         default_bg: Option<String>,
+        border_style: BorderStyleOverride,
     ) -> Self {
         PaneLayoutMetadata {
             id,
@@ -588,7 +622,15 @@ impl PaneLayoutMetadata {
             focused_clients,
             default_fg,
             default_bg,
+            border_style,
+            attention_muted: false,
+            ignore_output: false,
         }
+    }
+    pub fn with_attention_flags(mut self, attention_muted: bool, ignore_output: bool) -> Self {
+        self.attention_muted = attention_muted;
+        self.ignore_output = ignore_output;
+        self
     }
     fn to_pane_metadata(&self) -> PaneMetadata {
         // Try to extract a meaningful name from the pane
@@ -664,13 +706,15 @@ impl ClientMetadata {
         default_editor: &Option<PathBuf>,
     ) -> String {
         let mut lines = vec![];
-        lines.push(String::from("CLIENT_ID ZELLIJ_PANE_ID RUNNING_COMMAND"));
+        lines.push(format!(
+            "{0: <10} {1: <14} {2}",
+            "CLIENT_ID", "ZELLIJ_PANE_ID", "RUNNING_COMMAND"
+        ));
 
         for (client_id, client_metadata) in clients_metadata.iter() {
-            // 9 - CLIENT_ID, 14 - ZELLIJ_PANE_ID, 15 - RUNNING_COMMAND
             lines.push(format!(
                 "{} {} {}",
-                format!("{0: <9}", client_id),
+                format!("{0: <10}", client_id),
                 format!("{0: <14}", client_metadata.stringify_pane_id()),
                 format!(
                     "{0: <15}",
@@ -701,6 +745,7 @@ mod tests {
             vec![],
             None,
             None,
+            Default::default(),
         )
     }
 
@@ -720,6 +765,7 @@ mod tests {
             vec![],
             None,
             None,
+            Default::default(),
         )
     }
 

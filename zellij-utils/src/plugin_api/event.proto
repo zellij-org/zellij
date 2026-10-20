@@ -4,6 +4,7 @@ import "input_mode.proto";
 import "key.proto";
 import "style.proto";
 import "action.proto";
+import "prompt.proto";
 
 package api.event;
 
@@ -72,6 +73,25 @@ enum EventType {
     SoftKeyboardVisibilityChanged = 47;
     HintText = 48;
     ActivePaneScroll = 49;
+    NestedSessionModeUpdate = 50;
+    NestedSessionEnded = 51;
+    ContextMenu = 52;
+    ConfigChangesDropped = 53;
+    AvailableKeybindPresets = 54;
+    ConfigFileChangedSinceRead = 55;
+    PromptResult = 56;
+    SessionSuggestions = 57;
+    SessionCountsUpdate = 58;
+    FolderSessionsUpdate = 59;
+    TerminalCommandSubmitted = 60;
+    SessionPreview = 61;
+    SavedSessionPreview = 62;
+    PaneAttentionChanged = 63;
+    PromptShown = 64;
+    CommandStarted = 65;
+    CommandFinished = 66;
+    GlobalAttentionUpdate = 67;
+    SessionHistoryUpdate = 68;
 }
 
 message EventNameList {
@@ -123,25 +143,331 @@ message Event {
     SoftKeyboardVisibilityChangedPayload soft_keyboard_visibility_changed_payload = 41;
     HintTextPayload hint_text_payload = 42;
     ActivePaneScrollPayload active_pane_scroll_payload = 43;
+    NestedSessionModeUpdatePayload nested_session_mode_update_payload = 44;
+    NestedSessionEndedPayload nested_session_ended_payload = 45;
+    ContextMenuPayload context_menu_payload = 46;
+    ConfigChangesDroppedPayload config_changes_dropped_payload = 47;
+    AvailableKeybindPresetsPayload available_keybind_presets_payload = 48;
+    PromptResultPayload prompt_result_payload = 49;
+    SessionSuggestionsPayload session_suggestions_payload = 50;
+    SessionCountsUpdatePayload session_counts_update_payload = 51;
+    FolderSessionsUpdatePayload folder_sessions_update_payload = 52;
+    SessionPreviewPayload session_preview_payload = 53;
+    SavedSessionPreviewPayload saved_session_preview_payload = 54;
+    PaneAttentionChangedPayload pane_attention_changed_payload = 55;
+    PromptShownPayload prompt_shown_payload = 56;
+    CommandStartedPayload command_started_payload = 57;
+    CommandFinishedPayload command_finished_payload = 58;
+    GlobalAttentionUpdatePayload global_attention_update_payload = 59;
+    SessionHistoryUpdatePayload session_history_update_payload = 60;
+  }
+}
+
+message AttentionItem {
+  PaneId pane_id = 1;
+  uint64 tab_id = 2;
+  string tab_name = 3;
+  string pane_title = 4;
+  PaneAttention attention = 5;
+}
+
+message SessionAttention {
+  string status = 1;
+  AttentionCounts counts = 2;
+  bool muted = 3;
+  optional AttentionItem top = 4;
+  repeated AttentionItem items = 5;
+}
+
+message GlobalSessionAttention {
+  string name = 1;
+  SessionAttention attention = 2;
+}
+
+message GlobalAttentionUpdatePayload {
+  string current_session = 1;
+  repeated GlobalSessionAttention sessions = 2;
+}
+
+message SessionHistoryUpdatePayload {
+  string current = 1;
+  optional string previous = 2;
+  repeated string back = 3;
+  repeated string forward = 4;
+  optional string arrived_from = 5;
+  optional SessionArrival arrival = 6;
+  uint64 arrived_at_ms = 7;
+}
+
+message SwitchArrival {}
+message ToggleArrival {}
+message BackArrival {}
+message ForwardArrival {}
+message AttentionArrival {
+  PaneId pane_id = 1;
+}
+
+message SessionArrival {
+  oneof arrival {
+    SwitchArrival switch = 1;
+    ToggleArrival toggle = 2;
+    BackArrival back = 3;
+    ForwardArrival forward = 4;
+    AttentionArrival attention = 5;
+  }
+}
+
+message PaneAttentionChangedPayload {
+  PaneId pane_id = 1;
+  PaneAttention attention = 2;
+}
+
+message PromptShownPayload {
+  PaneId pane_id = 1;
+}
+
+message CommandStartedPayload {
+  PaneId pane_id = 1;
+  optional CommandText command = 2;
+}
+
+message CommandFinishedPayload {
+  PaneId pane_id = 1;
+  CommandOutcome outcome = 2;
+}
+
+message CommandText {
+  string text = 1;
+  string source = 2;
+}
+
+message AttentionDetail {
+  optional string kind = 1;
+  optional uint32 progress = 2;
+  optional string app = 3;
+  optional string title = 4;
+  optional string body = 5;
+  optional int32 exit_code = 6;
+  optional uint64 duration_ms = 7;
+  optional CommandText command = 8;
+}
+
+message PaneAttention {
+  string status = 1;
+  optional string source = 2;
+  string text = 3;
+  AttentionDetail detail = 4;
+  uint64 since_ms = 5;
+  uint64 changed_ms = 6;
+  bool seen = 7;
+  optional string muted = 8;
+  bool ignore_output = 9;
+  bool watched = 10;
+  bool from_watch = 11;
+}
+
+message CommandOutcome {
+  string result = 1;
+  optional int32 exit_code = 2;
+  optional string err = 3;
+  optional uint64 duration_ms = 4;
+  uint64 ended_ms = 5;
+  optional CommandText command = 6;
+}
+
+message RunningCommand {
+  optional CommandText command = 1;
+  uint64 started_ms = 2;
+}
+
+message ReportedCwd {
+  string path = 1;
+  string source = 2;
+  optional string host = 3;
+  bool is_local = 4;
+}
+
+message CommandState {
+  string phase = 1;
+  optional RunningCommand running = 2;
+  optional CommandOutcome last = 3;
+  optional ReportedCwd cwd = 4;
+  bool reports_markers = 5;
+}
+
+message ProgramStatusRecord {
+  optional string id = 1;
+  optional string state = 2;
+  optional string kind = 3;
+  optional uint32 progress = 4;
+  optional string app = 5;
+  optional string title = 6;
+  optional string msg = 7;
+  uint64 updated_ms = 8;
+}
+
+message AttentionCounts {
+  uint32 needs_you = 1;
+  uint32 failed = 2;
+  uint32 done = 3;
+  uint32 working = 4;
+  uint32 quiet = 5;
+  uint32 new_output = 6;
+  uint32 muted = 7;
+}
+
+message TabAttention {
+  string status = 1;
+  AttentionCounts counts = 2;
+  bool muted = 3;
+}
+
+message PromptResultPayload {
+  uint64 request_id = 1;
+  api.prompt.PromptResult result = 2;
+}
+
+enum KeybindPresetSource {
+  BuiltIn = 0;
+  Folder = 1;
+  File = 2;
+}
+
+message KeybindPresetInfo {
+  string name = 1;
+  string display_name = 2;
+  optional string description = 3;
+  KeybindPresetSource source = 4;
+  repeated string placeholders = 5;
+  optional string path = 6;
+  repeated KeybindPresetExample examples = 7;
+}
+
+message KeybindPresetExample {
+  string keys = 1;
+  string text = 2;
+}
+
+message KeybindPresetWithError {
+  string name = 1;
+  string path = 2;
+  string error = 3;
+}
+
+message AvailableKeybindPresetsPayload {
+  repeated KeybindPresetInfo presets = 1;
+  repeated KeybindPresetWithError presets_with_errors = 2;
+}
+
+message ConfigChangesDroppedPayload {
+  repeated string keys = 1;
+}
+
+message NestedSessionModeUpdatePayload {
+  PaneId pane_id = 1;
+  repeated string session_path = 2;
+  input_mode.InputMode mode = 3;
+  optional input_mode.InputMode base_mode = 4;
+  uint64 keybinds_generation = 5;
+}
+
+enum NestedSessionEndReason {
+  NestedSessionExited = 0;
+  NestedSessionUnresponsive = 1;
+}
+
+enum ContextMenuKind {
+  ContextMenuKindPane = 0;
+  ContextMenuKindPaneFrame = 1;
+  ContextMenuKindTab = 2;
+  ContextMenuKindBar = 3;
+}
+
+enum ClickedPaneAction {
+  ClickedPaneActionCloseFocus = 0;
+  ClickedPaneActionToggleFocusFullscreen = 1;
+  ClickedPaneActionToggleEmbedOrFloating = 2;
+  ClickedPaneActionTogglePinned = 3;
+  ClickedPaneActionToggleInGroup = 4;
+  ClickedPaneActionStartRename = 5;
+  ClickedPaneActionToggleMute = 6;
+  ClickedPaneActionToggleIgnoreOutput = 7;
+  ClickedPaneActionToggleWatch = 8;
+}
+
+enum ClickedTabAction {
+  ClickedTabActionClose = 0;
+  ClickedTabActionStartRename = 1;
+  ClickedTabActionMoveLeft = 2;
+  ClickedTabActionMoveRight = 3;
+  ClickedTabActionMute = 4;
+}
+
+message ContextMenuAction {
+  oneof action {
+    action.Action plain = 1;
+    ClickedPaneAction clicked_pane = 2;
+    ClickedTabAction clicked_tab = 3;
+    uint64 clicked_tab_move_to_position = 4;
+  }
+}
+
+message ContextMenuEntry {
+  bool is_separator = 1;
+  string label = 2;
+  repeated ContextMenuAction actions = 3;
+  optional string toggled_label = 4;
+}
+
+message ContextMenuPayload {
+  ContextMenuKind kind = 1;
+  optional PaneId pane_id = 2;
+  bool pane_is_floating = 3;
+  optional uint32 tab_index = 4;
+  optional uint32 tab_id = 5;
+  uint32 tab_count = 6;
+  uint32 line = 7;
+  uint32 column = 8;
+  uint32 client_id = 9;
+  repeated ContextMenuEntry entries = 10;
+}
+
+message NestedSessionEndedPayload {
+  PaneId pane_id = 1;
+  NestedSessionEndReason reason = 2;
+}
+
+enum NestedSessionKeybindsError {
+  NestedKeybindsNotANestedSession = 0;
+  NestedKeybindsNotSupported = 1;
+  NestedKeybindsGuestUnresponsive = 2;
+  NestedKeybindsGuestGone = 3;
+  NestedKeybindsTooLarge = 4;
+  NestedKeybindsTimeout = 5;
+}
+
+message NestedSessionKeybindsResult {
+  repeated string session_path = 1;
+  input_mode.InputMode mode = 2;
+  optional input_mode.InputMode base_mode = 3;
+  repeated InputModeKeybinds keybinds = 4;
+  uint64 keybinds_generation = 5;
+}
+
+message NestedSessionKeybindsResponse {
+  oneof response {
+    NestedSessionKeybindsResult ok = 1;
+    NestedSessionKeybindsError err = 2;
   }
 }
 
 message HintTextPayload {
-  map<uint32, StyledText> hint_text = 1;
+  map<uint32, api.style.StyledText> hint_text = 1;
 }
 
 message ActivePaneScrollPayload {
   optional uint32 position = 1;
   optional uint32 length = 2;
-}
-
-message StyledText {
-  string text = 1;
-  repeated StyledTextIndices indices = 2;
-}
-
-message StyledTextIndices {
-  repeated uint32 indices = 1;
 }
 
 message HostTerminalThemeChangedPayload {
@@ -323,6 +649,9 @@ message MouseEventPayload {
     uint32 line_count = 2;
     action.Position position = 3;
   }
+  bool shift = 4;
+  bool ctrl = 5;
+  bool alt = 6;
 }
 
 enum MouseEventName {
@@ -335,6 +664,7 @@ enum MouseEventName {
     MouseHover = 6;
     MouseScrollLeft = 7;
     MouseScrollRight = 8;
+    MouseDoubleClick = 9;
 }
 
 message TabUpdatePayload {
@@ -363,6 +693,7 @@ message SessionManifest {
   repeated ClientTabHistory tab_history = 10;
   repeated ClientPaneHistory pane_history = 11;
   uint64 creation_time = 12;
+  bool attention_muted = 13;
 }
 
 message ClientTabHistory {
@@ -465,6 +796,11 @@ message PaneInfo {
     repeated IndexInPaneGroup index_in_pane_group = 23;
     optional string default_fg = 24;
     optional string default_bg = 25;
+    optional string nested_session_name = 26;
+    bool is_collapsed = 27;
+    PaneAttention attention = 28;
+    CommandState command_state = 29;
+    repeated ProgramStatusRecord program_status = 30;
 }
 
 message IndexInPaneGroup {
@@ -492,6 +828,8 @@ message TabInfo {
     uint32 tab_id = 17;
     bool has_bell_notification = 18;
     bool is_flashing_bell = 19;
+    repeated uint32 other_focused_client_slots = 20;
+    TabAttention attention = 21;
 }
 
 message ModeUpdatePayload {
@@ -517,6 +855,7 @@ message ModeUpdatePayload {
   repeated string nested_ascend_keys = 20;
   optional bool session_ascended = 21;
   repeated string nested_descend_keys = 22;
+  optional string remote_client = 23;
 }
 
 enum WebSharing {
@@ -598,3 +937,104 @@ message InitialKeybindsPayload {
   repeated InputModeKeybinds keybinds = 1;
 }
 
+
+enum FolderRelation {
+  FolderRelationOther = 0;
+  FolderRelationHere = 1;
+  FolderRelationSubfolder = 2;
+}
+
+message SessionSuggestionColumn {
+  string fact = 1;
+  string title = 2;
+}
+
+message SessionSuggestionItem {
+  string name = 1;
+  bool is_running = 2;
+  uint64 last_used_secs_ago = 3;
+  optional string folder = 4;
+  FolderRelation folder_relation = 5;
+  optional string repo = 6;
+  optional string branch = 7;
+  repeated ContextItem facts = 8;
+  optional uint32 tier = 9;
+  repeated string matching_columns = 10;
+  optional string script_label = 11;
+  uint64 created_secs_ago = 12;
+  repeated SessionPreviewTab tabs = 13;
+  uint32 connected_clients = 14;
+}
+
+message SessionSuggestionsPayload {
+  optional string folder = 1;
+  optional string branch = 2;
+  repeated SessionSuggestionColumn columns = 3;
+  repeated SessionSuggestionItem suggestions = 4;
+  bool command_submitted = 5;
+  bool from_script = 6;
+  bool desktop_app_running = 7;
+  repeated string desktop_window_sessions = 8;
+}
+
+message SessionCountsUpdatePayload {
+  uint32 running = 1;
+  uint32 resumable_matching = 2;
+}
+
+message FolderSessionsUpdatePayload {
+  string folder = 1;
+  repeated string running = 2;
+  repeated string resumable = 3;
+  repeated string full_match_running = 4;
+}
+
+message SessionPreviewPayload {
+  string session_name = 1;
+  optional uint32 tab_index = 2;
+  repeated string tab_names = 3;
+  string contents = 4;
+  optional string error = 5;
+  optional uint32 active_tab_index = 6;
+  uint32 pane_count = 7;
+  uint32 connected_clients = 8;
+  repeated SessionPreviewTab tabs = 9;
+  optional uint32 pane_id = 10;
+  bool pane_is_plugin = 11;
+  optional uint32 anchor_line = 12;
+}
+
+message SessionPreviewPane {
+  uint32 id = 1;
+  bool is_plugin = 2;
+  string title = 3;
+  bool focused = 4;
+  optional string contents = 5;
+}
+
+message SessionPreviewTab {
+  string name = 1;
+  bool active = 2;
+  repeated SessionPreviewPane panes = 3;
+}
+
+message SavedPanePreview {
+  optional string title = 1;
+  optional string command = 2;
+  optional string cwd = 3;
+  optional string contents = 4;
+  bool focused = 5;
+}
+
+message SavedTabPreview {
+  string name = 1;
+  bool focused = 2;
+  repeated SavedPanePreview panes = 3;
+}
+
+message SavedSessionPreviewPayload {
+  string session_name = 1;
+  optional string folder = 2;
+  repeated SavedTabPreview tabs = 3;
+  optional string error = 4;
+}

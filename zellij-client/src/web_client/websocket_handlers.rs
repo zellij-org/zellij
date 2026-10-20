@@ -11,7 +11,7 @@ use crate::web_client::types::{AppState, ControlParams, TerminalParams};
 
 use axum::{
     extract::{
-        ws::{Message, WebSocket, WebSocketUpgrade},
+        ws::{close_code, CloseFrame, Message, WebSocket, WebSocketUpgrade},
         Path as AxumPath, Query, State,
     },
     http::StatusCode,
@@ -19,6 +19,8 @@ use axum::{
 };
 use futures::StreamExt;
 use std::sync::{atomic::AtomicBool, Arc};
+use std::time::Duration;
+use tokio::time::{Instant, Interval, MissedTickBehavior};
 use tokio_util::sync::CancellationToken;
 use zellij_utils::{
     data::PaneId,
@@ -27,6 +29,54 @@ use zellij_utils::{
     ipc::{ClientToServerMsg, PixelDimensions},
     pane_size::{Size, SizeInPixels},
 };
+
+const PING_INTERVAL: Duration = Duration::from_secs(30);
+const PONG_TIMEOUT: Duration = Duration::from_secs(45);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HeartbeatTick {
+    SendPing,
+    TimedOut,
+}
+
+struct Heartbeat {
+    interval: Interval,
+    last_pong: Instant,
+    pong_timeout: Duration,
+}
+
+impl Heartbeat {
+    fn new(ping_interval: Duration, pong_timeout: Duration) -> Self {
+        let now = Instant::now();
+        let mut interval = tokio::time::interval_at(now + ping_interval, ping_interval);
+        interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        Heartbeat {
+            interval,
+            last_pong: now,
+            pong_timeout,
+        }
+    }
+
+    async fn tick(&mut self) -> HeartbeatTick {
+        self.interval.tick().await;
+        if self.last_pong.elapsed() > self.pong_timeout {
+            HeartbeatTick::TimedOut
+        } else {
+            HeartbeatTick::SendPing
+        }
+    }
+
+    fn pong_received(&mut self) {
+        self.last_pong = Instant::now();
+    }
+}
+
+enum TerminalSocketEvent {
+    Frame(Message),
+    Closed,
+    FinalizeIdle,
+    Heartbeat(HeartbeatTick),
+}
 
 pub async fn ws_handler_control(
     ws: WebSocketUpgrade,
@@ -69,6 +119,7 @@ async fn handle_ws_control(socket: WebSocket, params: ControlParams, state: AppS
 
     let (control_channel_tx, control_channel_rx) = tokio::sync::mpsc::unbounded_channel();
     send_control_messages_to_client(control_channel_rx, control_socket_tx);
+    let heartbeat_tx = control_channel_tx.clone();
 
     state
         .connection_table
@@ -76,25 +127,57 @@ async fn handle_ws_control(socket: WebSocket, params: ControlParams, state: AppS
         .unwrap()
         .add_client_control_tx(&web_client_id, control_channel_tx);
 
+    let mut heartbeat = Heartbeat::new(PING_INTERVAL, PONG_TIMEOUT);
+
     let send_message_to_server = |deserialized_msg: WebClientToWebServerControlMessage| {
-        let Some(client_connection) = state
-            .connection_table
-            .lock()
-            .unwrap()
-            .get_client_os_api(&deserialized_msg.web_client_id)
-            .cloned()
-        else {
+        let (client_os_api, is_structured) = {
+            let connection_table = state.connection_table.lock().unwrap();
+            (
+                connection_table
+                    .get_client_os_api(&deserialized_msg.web_client_id)
+                    .cloned(),
+                connection_table.is_client_structured(&deserialized_msg.web_client_id),
+            )
+        };
+        let Some(client_connection) = client_os_api else {
             log::error!("Unknown web_client_id: {}", deserialized_msg.web_client_id);
             return;
         };
-        let Some(client_msg) = control_payload_to_server_msg(deserialized_msg.payload) else {
+        let Some(client_msg) =
+            control_payload_to_server_msg(deserialized_msg.payload, is_structured)
+        else {
             return;
         };
 
         let _ = client_connection.send_to_server(client_msg);
     };
 
-    while let Some(Ok(msg)) = control_socket_rx.next().await {
+    loop {
+        let msg = tokio::select! {
+            msg = control_socket_rx.next() => match msg {
+                Some(Ok(msg)) => msg,
+                _ => break,
+            },
+            tick = heartbeat.tick() => {
+                match tick {
+                    HeartbeatTick::SendPing => {
+                        let _ = heartbeat_tx.send(Message::Ping(Default::default()));
+                    },
+                    HeartbeatTick::TimedOut => {
+                        log::warn!(
+                            "Control WebSocket for web_client_id {} timed out (no Pong received)",
+                            web_client_id
+                        );
+                        let _ = heartbeat_tx.send(Message::Close(Some(CloseFrame {
+                            code: close_code::NORMAL,
+                            reason: "Connection timed out".into(),
+                        })));
+                        break;
+                    },
+                }
+                continue;
+            },
+        };
         match msg {
             Message::Text(msg) => {
                 let deserialized_msg: Result<WebClientToWebServerControlMessage, _> =
@@ -114,6 +197,9 @@ async fn handle_ws_control(socket: WebSocket, params: ControlParams, state: AppS
                         log::error!("Failed to deserialize client msg: {:?}", e);
                     },
                 }
+            },
+            Message::Pong(_) => {
+                heartbeat.pong_received();
             },
             Message::Close(_) => {
                 return;
@@ -146,6 +232,7 @@ async fn handle_ws_terminal(
         }),
         _ => None,
     };
+    let is_structured_client = params.structured.unwrap_or(false);
     let web_client_id = params.web_client_id;
 
     // Verify the session token owns this web_client_id
@@ -162,19 +249,19 @@ async fn handle_ws_terminal(
         return;
     }
 
-    let Some(os_input) = state
-        .connection_table
-        .lock()
-        .unwrap()
-        .get_client_os_api(&web_client_id)
-        .cloned()
-    else {
+    let os_input = {
+        let mut connection_table = state.connection_table.lock().unwrap();
+        connection_table.declare_client_structured(&web_client_id, is_structured_client);
+        connection_table.get_client_os_api(&web_client_id).cloned()
+    };
+    let Some(os_input) = os_input else {
         log::error!("Unknown web_client_id: {}", web_client_id);
         return;
     };
 
     let (client_terminal_channel_tx, mut client_terminal_channel_rx) = socket.split();
     let (stdout_channel_tx, stdout_channel_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (terminal_frame_tx, terminal_frame_rx) = tokio::sync::mpsc::unbounded_channel();
     state
         .connection_table
         .lock()
@@ -189,13 +276,14 @@ async fn handle_ws_terminal(
         session_name.map(|p| p.0),
         state.config.lock().unwrap().clone(),
         state.config_options.clone(),
-        Some(state.config_file_path.clone()),
+        state.config_file_path.clone(),
         web_client_id.clone(),
         state.session_manager.clone(),
         Some(attachment_complete_tx),
         client_size,
         client_pixel_dims,
         state.pending_welcome_sessions.clone(),
+        is_structured_client,
     );
 
     let terminal_channel_cancellation_token = CancellationToken::new();
@@ -207,6 +295,7 @@ async fn handle_ws_terminal(
         .unwrap_or_else(|| Arc::new(AtomicBool::new(false)));
     render_to_client(
         stdout_channel_rx,
+        terminal_frame_rx,
         client_terminal_channel_tx,
         terminal_channel_cancellation_token.clone(),
         should_not_reconnect,
@@ -236,23 +325,42 @@ async fn handle_ws_terminal(
     // split across two WebSocket frames resolves on the second frame.
     let mut stdin_session = StdinSession::new(explicitly_disable_kitty_keyboard_protocol);
     let finalize_idle = std::time::Duration::from_millis(50);
+    let mut heartbeat = Heartbeat::new(PING_INTERVAL, PONG_TIMEOUT);
     loop {
         // When termwiz is holding ambiguous-but-complete events from
         // the previous frame, race the next frame against an idle
         // timeout so the held events still drain if no further frame
         // arrives.
-        let result = if stdin_session.pending_finalize() {
-            tokio::select! {
-                msg = client_terminal_channel_rx.next() => Some(msg),
-                _ = tokio::time::sleep(finalize_idle) => None,
-            }
-        } else {
-            Some(client_terminal_channel_rx.next().await)
+        let event = tokio::select! {
+            msg = client_terminal_channel_rx.next() => match msg {
+                Some(Ok(m)) => TerminalSocketEvent::Frame(m),
+                _ => TerminalSocketEvent::Closed,
+            },
+            _ = tokio::time::sleep(finalize_idle), if stdin_session.pending_finalize() => {
+                TerminalSocketEvent::FinalizeIdle
+            },
+            tick = heartbeat.tick() => TerminalSocketEvent::Heartbeat(tick),
         };
-        let msg = match result {
-            Some(Some(Ok(m))) => m,
-            Some(_) => break,
-            None => {
+        let msg = match event {
+            TerminalSocketEvent::Frame(m) => m,
+            TerminalSocketEvent::Closed => break,
+            TerminalSocketEvent::Heartbeat(HeartbeatTick::SendPing) => {
+                let _ = terminal_frame_tx.send(Message::Ping(Default::default()));
+                continue;
+            },
+            TerminalSocketEvent::Heartbeat(HeartbeatTick::TimedOut) => {
+                log::warn!(
+                    "Terminal WebSocket for web_client_id {} timed out (no Pong received)",
+                    web_client_id
+                );
+                state
+                    .connection_table
+                    .lock()
+                    .unwrap()
+                    .remove_client(&web_client_id);
+                break;
+            },
+            TerminalSocketEvent::FinalizeIdle => {
                 // Idle timeout fired with `pending_finalize` set:
                 // drain any ambiguous-but-complete events termwiz held
                 // back on the previous frame.
@@ -309,6 +417,9 @@ async fn handle_ws_terminal(
                     &mut stdin_session,
                 );
             },
+            Message::Pong(_) => {
+                heartbeat.pong_received();
+            },
             Message::Close(_) => {
                 state
                     .connection_table
@@ -328,7 +439,15 @@ async fn handle_ws_terminal(
 
 fn control_payload_to_server_msg(
     payload: WebClientToWebServerControlMessagePayload,
+    is_structured_client: bool,
 ) -> Option<ClientToServerMsg> {
+    if payload.needs_a_structured_client() && !is_structured_client {
+        log::warn!(
+            "Ignoring a structured-client control message from a client that did not declare \
+             itself one"
+        );
+        return None;
+    }
     let client_msg = match payload {
         WebClientToWebServerControlMessagePayload::TerminalResize(size) => {
             ClientToServerMsg::TerminalResize { new_size: size }
@@ -368,6 +487,7 @@ fn control_payload_to_server_msg(
                     no_focus: false,
                     borderless: None,
                     tab_id: None,
+                    border_style: None,
                 },
                 terminal_id: None,
                 client_id: None,
@@ -394,6 +514,55 @@ fn control_payload_to_server_msg(
             single_pane,
             fit,
         } => ClientToServerMsg::SetMobileRenderPreferences { single_pane, fit },
+        WebClientToWebServerControlMessagePayload::RenderFrameAck { seq } => {
+            ClientToServerMsg::RenderFrameAck { seq }
+        },
+        WebClientToWebServerControlMessagePayload::ForwardedReplyFromHost {
+            token,
+            reply_bytes,
+        } => ClientToServerMsg::ForwardedReplyFromHost { token, reply_bytes },
+        WebClientToWebServerControlMessagePayload::Key {
+            key,
+            raw_bytes,
+            is_kitty_keyboard_protocol,
+        } => ClientToServerMsg::Key {
+            key,
+            raw_bytes,
+            is_kitty_keyboard_protocol,
+        },
+        WebClientToWebServerControlMessagePayload::Mouse { event } => ClientToServerMsg::Action {
+            action: Action::MouseEvent { event },
+            terminal_id: None,
+            client_id: None,
+            is_cli_client: false,
+        },
+        WebClientToWebServerControlMessagePayload::Paste { chars } => ClientToServerMsg::Action {
+            action: Action::Paste {
+                chars,
+                pane_id: None,
+            },
+            terminal_id: None,
+            client_id: None,
+            is_cli_client: false,
+        },
+        WebClientToWebServerControlMessagePayload::Text { chars } => ClientToServerMsg::Action {
+            action: Action::WriteChars { chars },
+            terminal_id: None,
+            client_id: None,
+            is_cli_client: false,
+        },
+        WebClientToWebServerControlMessagePayload::Detach => ClientToServerMsg::Action {
+            action: Action::Detach,
+            terminal_id: None,
+            client_id: None,
+            is_cli_client: false,
+        },
+        WebClientToWebServerControlMessagePayload::Quit => ClientToServerMsg::Action {
+            action: Action::Quit,
+            terminal_id: None,
+            client_id: None,
+            is_cli_client: false,
+        },
         WebClientToWebServerControlMessagePayload::Unknown => {
             log::warn!("Ignoring unknown control message type from web client");
             return None;
@@ -580,6 +749,7 @@ mod tests {
     fn new_pane_in_tab_is_routed_to_the_requesting_client() {
         let client_msg = control_payload_to_server_msg(
             WebClientToWebServerControlMessagePayload::NewPaneInTab { tab_id: 2 },
+            false,
         )
         .expect("message dropped");
         match client_msg {
@@ -601,11 +771,231 @@ mod tests {
         }
     }
 
+    #[tokio::test(start_paused = true)]
+    async fn heartbeat_does_not_ping_before_the_first_interval() {
+        let mut heartbeat = Heartbeat::new(PING_INTERVAL, PONG_TIMEOUT);
+        let early =
+            tokio::time::timeout(PING_INTERVAL - Duration::from_millis(1), heartbeat.tick()).await;
+        assert!(early.is_err(), "no ping may be sent right after connecting");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn heartbeat_pings_on_each_interval_while_pongs_arrive() {
+        let mut heartbeat = Heartbeat::new(PING_INTERVAL, PONG_TIMEOUT);
+        let start = Instant::now();
+        for round in 1..=5u32 {
+            assert_eq!(heartbeat.tick().await, HeartbeatTick::SendPing);
+            assert_eq!(start.elapsed(), PING_INTERVAL * round);
+            heartbeat.pong_received();
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn heartbeat_times_out_when_no_pong_arrives() {
+        let mut heartbeat = Heartbeat::new(PING_INTERVAL, PONG_TIMEOUT);
+        assert_eq!(heartbeat.tick().await, HeartbeatTick::SendPing);
+        assert_eq!(heartbeat.tick().await, HeartbeatTick::TimedOut);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn heartbeat_late_pong_within_the_limit_keeps_the_connection() {
+        let mut heartbeat = Heartbeat::new(PING_INTERVAL, PONG_TIMEOUT);
+        assert_eq!(heartbeat.tick().await, HeartbeatTick::SendPing);
+        tokio::time::sleep(Duration::from_secs(20)).await;
+        heartbeat.pong_received();
+        assert_eq!(heartbeat.tick().await, HeartbeatTick::SendPing);
+        assert_eq!(heartbeat.tick().await, HeartbeatTick::SendPing);
+        assert_eq!(heartbeat.tick().await, HeartbeatTick::TimedOut);
+    }
+
     #[test]
     fn unknown_control_message_is_dropped() {
-        assert!(
-            control_payload_to_server_msg(WebClientToWebServerControlMessagePayload::Unknown)
-                .is_none()
+        assert!(control_payload_to_server_msg(
+            WebClientToWebServerControlMessagePayload::Unknown,
+            false
+        )
+        .is_none());
+    }
+
+    fn structured_input_payloads() -> Vec<WebClientToWebServerControlMessagePayload> {
+        use zellij_utils::data::{BareKey, KeyWithModifier};
+        vec![
+            WebClientToWebServerControlMessagePayload::Key {
+                key: KeyWithModifier::new(BareKey::Char('a')),
+                raw_bytes: b"a".to_vec(),
+                is_kitty_keyboard_protocol: false,
+            },
+            WebClientToWebServerControlMessagePayload::Mouse {
+                event: MouseEvent::new(),
+            },
+            WebClientToWebServerControlMessagePayload::Paste {
+                chars: "text".to_owned(),
+            },
+            WebClientToWebServerControlMessagePayload::Text {
+                chars: "text".to_owned(),
+            },
+            WebClientToWebServerControlMessagePayload::Detach,
+        ]
+    }
+
+    #[test]
+    fn the_typed_input_lane_is_refused_to_a_client_that_did_not_declare_itself_structured() {
+        for payload in structured_input_payloads() {
+            assert!(
+                control_payload_to_server_msg(payload.clone(), false).is_none(),
+                "a browser must not reach the structured client's input lane, got {:?}",
+                payload
+            );
+        }
+    }
+
+    #[test]
+    fn a_structured_client_types_without_its_input_being_re_parsed() {
+        use zellij_utils::data::{BareKey, KeyWithModifier};
+        let key = KeyWithModifier::new(BareKey::Char('a')).with_alt_modifier();
+        let msg = control_payload_to_server_msg(
+            WebClientToWebServerControlMessagePayload::Key {
+                key: key.clone(),
+                raw_bytes: b"\x1ba".to_vec(),
+                is_kitty_keyboard_protocol: false,
+            },
+            true,
+        )
+        .expect("message dropped");
+        assert_eq!(
+            msg,
+            ClientToServerMsg::Key {
+                key,
+                raw_bytes: b"\x1ba".to_vec(),
+                is_kitty_keyboard_protocol: false,
+            }
         );
+    }
+
+    #[test]
+    fn a_structured_clients_mouse_paste_and_detach_become_the_actions_a_local_client_sends() {
+        let mut event = MouseEvent::new();
+        event.wheel_left = true;
+        let mouse = control_payload_to_server_msg(
+            WebClientToWebServerControlMessagePayload::Mouse { event },
+            true,
+        )
+        .expect("message dropped");
+        assert_eq!(
+            mouse,
+            ClientToServerMsg::Action {
+                action: Action::MouseEvent { event },
+                terminal_id: None,
+                client_id: None,
+                is_cli_client: false,
+            },
+            "a typed mouse event keeps the fields an SGR encoding cannot carry"
+        );
+
+        let paste = control_payload_to_server_msg(
+            WebClientToWebServerControlMessagePayload::Paste {
+                chars: "pasted".to_owned(),
+            },
+            true,
+        )
+        .expect("message dropped");
+        assert_eq!(
+            paste,
+            ClientToServerMsg::Action {
+                action: Action::Paste {
+                    chars: "pasted".to_owned(),
+                    pane_id: None,
+                },
+                terminal_id: None,
+                client_id: None,
+                is_cli_client: false,
+            }
+        );
+
+        let detach =
+            control_payload_to_server_msg(WebClientToWebServerControlMessagePayload::Detach, true)
+                .expect("message dropped");
+        assert_eq!(
+            detach,
+            ClientToServerMsg::Action {
+                action: Action::Detach,
+                terminal_id: None,
+                client_id: None,
+                is_cli_client: false,
+            }
+        );
+
+        let confirm =
+            control_payload_to_server_msg(WebClientToWebServerControlMessagePayload::Quit, true)
+                .expect("message dropped");
+        assert_eq!(
+            confirm,
+            ClientToServerMsg::Action {
+                action: Action::Quit,
+                terminal_id: None,
+                client_id: None,
+                is_cli_client: false,
+            }
+        );
+        assert!(control_payload_to_server_msg(
+            WebClientToWebServerControlMessagePayload::Quit,
+            false
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn composed_text_is_typed_rather_than_pasted() {
+        let typed = control_payload_to_server_msg(
+            WebClientToWebServerControlMessagePayload::Text {
+                chars: "你好".to_owned(),
+            },
+            true,
+        )
+        .expect("message dropped");
+        assert_eq!(
+            typed,
+            ClientToServerMsg::Action {
+                action: Action::WriteChars {
+                    chars: "你好".to_owned()
+                },
+                terminal_id: None,
+                client_id: None,
+                is_cli_client: false,
+            },
+            "an IME commit is typed text; the paste path would bracket it"
+        );
+    }
+
+    #[test]
+    fn the_typed_input_lane_round_trips_through_its_json_payload() {
+        let raw = serde_json::json!({
+            "web_client_id": "abc",
+            "payload": {
+                "type": "Mouse",
+                "event": {
+                    "event_type": "Press",
+                    "left": true,
+                    "right": false,
+                    "middle": false,
+                    "wheel_up": false,
+                    "wheel_down": false,
+                    "shift": false,
+                    "alt": false,
+                    "ctrl": false,
+                    "position": { "line": 3, "column": 7 },
+                }
+            }
+        });
+        let parsed: WebClientToWebServerControlMessage =
+            serde_json::from_value(raw).expect("parse");
+        match parsed.payload {
+            WebClientToWebServerControlMessagePayload::Mouse { event } => {
+                assert!(event.left);
+                assert_eq!(event.position.line.0, 3);
+                assert_eq!(event.position.column.0, 7);
+            },
+            other => panic!("expected Mouse, got {:?}", other),
+        }
     }
 }

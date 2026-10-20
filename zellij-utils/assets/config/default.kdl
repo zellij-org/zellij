@@ -1,249 +1,35 @@
-// If you'd like to override the default keybindings completely, be sure to change "keybinds" to "keybinds clear-defaults=true"
-keybinds {
-    normal {
-        // uncomment this and adjust key if using copy_on_select=false
-        // bind "Alt c" { Copy; }
-    }
-    locked {
-        bind "Ctrl g" { SwitchToMode "Normal"; }
-    }
-    resize {
-        bind "Ctrl n" { SwitchToMode "Normal"; }
-        bind "h" "Left" { Resize "Increase Left"; }
-        bind "j" "Down" { Resize "Increase Down"; }
-        bind "k" "Up" { Resize "Increase Up"; }
-        bind "l" "Right" { Resize "Increase Right"; }
-        bind "H" { Resize "Decrease Left"; }
-        bind "J" { Resize "Decrease Down"; }
-        bind "K" { Resize "Decrease Up"; }
-        bind "L" { Resize "Decrease Right"; }
-        bind "=" "+" { Resize "Increase"; }
-        bind "-" { Resize "Decrease"; }
-    }
-    pane {
-        bind "Ctrl p" { SwitchToMode "Normal"; }
-        bind "h" "Left" { MoveFocus "Left"; }
-        bind "l" "Right" { MoveFocus "Right"; }
-        bind "j" "Down" { MoveFocus "Down"; }
-        bind "k" "Up" { MoveFocus "Up"; }
-        bind "p" { SwitchFocus; }
-        bind ";" { FocusLastPane; }
-        bind "n" { NewPane; SwitchToMode "Normal"; }
-        bind "d" { NewPane "Down"; SwitchToMode "Normal"; }
-        bind "r" { NewPane "Right"; SwitchToMode "Normal"; }
-        bind "s" { NewPane "stacked"; SwitchToMode "Normal"; }
-        bind "x" { CloseFocus; SwitchToMode "Normal"; }
-        bind "f" { ToggleFocusFullscreen; SwitchToMode "Normal"; }
-        bind "Shift f" { ToggleFocusNoUiFullscreen; SwitchToMode "Normal"; }
-        bind "z" { TogglePaneFrames; SwitchToMode "Normal"; }
-        bind "w" { ToggleFloatingPanes; SwitchToMode "Normal"; }
-        bind "e" { TogglePaneEmbedOrFloating; SwitchToMode "Normal"; }
-        bind "c" { SwitchToMode "RenamePane"; PaneNameInput 0;}
-        bind "i" { TogglePanePinned; SwitchToMode "Normal"; }
-    }
-    move {
-        bind "Ctrl h" { SwitchToMode "Normal"; }
-        bind "n" "Tab" { MovePane; }
-        bind "p" { MovePaneBackwards; }
-        bind "h" "Left" { MovePane "Left"; }
-        bind "j" "Down" { MovePane "Down"; }
-        bind "k" "Up" { MovePane "Up"; }
-        bind "l" "Right" { MovePane "Right"; }
-    }
-    tab {
-        bind "Ctrl t" { SwitchToMode "Normal"; }
-        bind "r" { SwitchToMode "RenameTab"; TabNameInput 0; }
-        bind "h" "Left" "Up" "k" { GoToPreviousTab; }
-        bind "l" "Right" "Down" "j" { GoToNextTab; }
-        bind "n" { NewTab; SwitchToMode "Normal"; }
-        bind "x" { CloseTab; SwitchToMode "Normal"; }
-        bind "s" { ToggleActiveSyncTab; SwitchToMode "Normal"; }
-        bind "b" { BreakPane; SwitchToMode "Normal"; }
-        bind "]" { BreakPaneRight; SwitchToMode "Normal"; }
-        bind "[" { BreakPaneLeft; SwitchToMode "Normal"; }
-        bind "1" { GoToTab 1; SwitchToMode "Normal"; }
-        bind "2" { GoToTab 2; SwitchToMode "Normal"; }
-        bind "3" { GoToTab 3; SwitchToMode "Normal"; }
-        bind "4" { GoToTab 4; SwitchToMode "Normal"; }
-        bind "5" { GoToTab 5; SwitchToMode "Normal"; }
-        bind "6" { GoToTab 6; SwitchToMode "Normal"; }
-        bind "7" { GoToTab 7; SwitchToMode "Normal"; }
-        bind "8" { GoToTab 8; SwitchToMode "Normal"; }
-        bind "9" { GoToTab 9; SwitchToMode "Normal"; }
-        bind "Tab" { ToggleTab; }
-    }
-    scroll {
-        bind "Ctrl s" { SwitchToMode "Normal"; }
-        bind "e" { EditScrollback; SwitchToMode "Normal"; }
-        bind "s" { SwitchToMode "EnterSearch"; SearchInput 0; }
-        bind "Ctrl c" { ScrollToBottom; SwitchToMode "Normal"; }
-        bind "j" "Down" { ScrollDown; }
-        bind "k" "Up" { ScrollUp; }
-        bind "Ctrl f" "PageDown" "Right" "l" { PageScrollDown; }
-        bind "Ctrl b" "PageUp" "Left" "h" { PageScrollUp; }
-        bind "d" { HalfPageScrollDown; }
-        bind "u" { HalfPageScrollUp; }
-        bind "[" { ScrollToPreviousPrompt; }
-        bind "]" { ScrollToNextPrompt; }
-        bind "m" { SelectCommandAtScrollPosition; }
-        bind "c" { CopyLastCommandOutput; SwitchToMode "Normal"; }
-        // uncomment this and adjust key if using copy_on_select=false
-        // bind "Alt c" { Copy; }
-    }
-    search {
-        bind "Ctrl s" { SwitchToMode "Normal"; }
-        bind "Ctrl c" { ScrollToBottom; SwitchToMode "Normal"; }
-        bind "j" "Down" { ScrollDown; }
-        bind "k" "Up" { ScrollUp; }
-        bind "Ctrl f" "PageDown" "Right" "l" { PageScrollDown; }
-        bind "Ctrl b" "PageUp" "Left" "h" { PageScrollUp; }
-        bind "d" { HalfPageScrollDown; }
-        bind "u" { HalfPageScrollUp; }
-        bind "[" { ScrollToPreviousPrompt; }
-        bind "]" { ScrollToNextPrompt; }
-        bind "m" { SelectCommandAtScrollPosition; }
-        bind "n" { Search "down"; }
-        bind "p" { Search "up"; }
-        bind "c" { SearchToggleOption "CaseSensitivity"; }
-        bind "w" { SearchToggleOption "Wrap"; }
-        bind "o" { SearchToggleOption "WholeWord"; }
-    }
-    entersearch {
-        bind "Ctrl c" "Esc" { SwitchToMode "Scroll"; }
-        bind "Enter" { SwitchToMode "Search"; }
-    }
-    renametab {
-        bind "Ctrl c" { SwitchToMode "Normal"; }
-        bind "Esc" { UndoRenameTab; SwitchToMode "Tab"; }
-    }
-    renamepane {
-        bind "Ctrl c" { SwitchToMode "Normal"; }
-        bind "Esc" { UndoRenamePane; SwitchToMode "Pane"; }
-    }
-    session {
-        bind "Ctrl o" { SwitchToMode "Normal"; }
-        bind "Ctrl s" { SwitchToMode "Scroll"; }
-        bind "d" { Detach; }
-        bind "]" { FocusHostSession; SwitchToMode "Normal"; }
-        bind "[" { FocusGuestSession; SwitchToMode "Normal"; }
-        bind "f" { ToggleHostFullscreen; SwitchToMode "Normal"; }
-        bind "w" {
-            LaunchOrFocusPlugin "session-manager" {
-                floating true
-                move_to_focused_tab true
-            };
-            SwitchToMode "Normal"
-        }
-        bind "c" {
-            LaunchOrFocusPlugin "configuration" {
-                floating true
-                move_to_focused_tab true
-            };
-            SwitchToMode "Normal"
-        }
-        bind "p" {
-            LaunchOrFocusPlugin "plugin-manager" {
-                floating true
-                move_to_focused_tab true
-            };
-            SwitchToMode "Normal"
-        }
-        bind "a" {
-            LaunchOrFocusPlugin "zellij:about" {
-                floating true
-                move_to_focused_tab true
-            };
-            SwitchToMode "Normal"
-        }
-        bind "s" {
-            LaunchOrFocusPlugin "zellij:share" {
-                floating true
-                move_to_focused_tab true
-            };
-            SwitchToMode "Normal"
-        }
-        bind "l" {
-            LaunchOrFocusPlugin "zellij:layout-manager" {
-                floating true
-                move_to_focused_tab true
-            };
-            SwitchToMode "Normal"
-        }
-    }
-    tmux {
-        bind "[" { SwitchToMode "Scroll"; }
-        bind "Ctrl b" { Write 2; SwitchToMode "Normal"; }
-        bind "\"" { NewPane "Down"; SwitchToMode "Normal"; }
-        bind "%" { NewPane "Right"; SwitchToMode "Normal"; }
-        bind "z" { ToggleFocusFullscreen; SwitchToMode "Normal"; }
-        bind "c" { NewTab; SwitchToMode "Normal"; }
-        bind "," { SwitchToMode "RenameTab"; }
-        bind "p" { GoToPreviousTab; SwitchToMode "Normal"; }
-        bind "n" { GoToNextTab; SwitchToMode "Normal"; }
-        bind "Left" { MoveFocus "Left"; SwitchToMode "Normal"; }
-        bind "Right" { MoveFocus "Right"; SwitchToMode "Normal"; }
-        bind "Down" { MoveFocus "Down"; SwitchToMode "Normal"; }
-        bind "Up" { MoveFocus "Up"; SwitchToMode "Normal"; }
-        bind "h" { MoveFocus "Left"; SwitchToMode "Normal"; }
-        bind "l" { MoveFocus "Right"; SwitchToMode "Normal"; }
-        bind "j" { MoveFocus "Down"; SwitchToMode "Normal"; }
-        bind "k" { MoveFocus "Up"; SwitchToMode "Normal"; }
-        bind "o" { FocusNextPane; }
-        bind "d" { Detach; }
-        bind "Space" { NextSwapLayout; }
-        bind "x" { CloseFocus; SwitchToMode "Normal"; }
-    }
-    shared_except "locked" {
-        bind "Ctrl g" { SwitchToMode "Locked"; }
-        bind "Ctrl q" { Quit; }
-        bind "Alt f" { ToggleFloatingPanes; }
-        bind "Alt n" { NewPane; }
-        bind "Alt i" { MoveTab "Left"; }
-        bind "Alt o" { MoveTab "Right"; }
-        bind "Alt h" "Alt Left" { MoveFocusOrTab "Left"; }
-        bind "Alt l" "Alt Right" { MoveFocusOrTab "Right"; }
-        bind "Alt j" "Alt Down" { MoveFocus "Down"; }
-        bind "Alt k" "Alt Up" { MoveFocus "Up"; }
-        bind "Alt =" "Alt +" { Resize "Increase"; }
-        bind "Alt -" { Resize "Decrease"; }
-        bind "Alt [" { PreviousSwapLayout; }
-        bind "Alt ]" { NextSwapLayout; }
-        bind "Alt p" { TogglePaneInGroup; }
-        bind "Alt Shift p" { ToggleGroupMarking; }
-    }
-    shared_except "normal" "locked" {
-        bind "Enter" "Esc" { SwitchToMode "Normal"; }
-    }
-    shared_except "pane" "locked" {
-        bind "Ctrl p" { SwitchToMode "Pane"; }
-    }
-    shared_except "resize" "locked" {
-        bind "Ctrl n" { SwitchToMode "Resize"; }
-    }
-    shared_except "scroll" "locked" {
-        bind "Ctrl s" { SwitchToMode "Scroll"; }
-    }
-    shared_except "session" "locked" {
-        bind "Ctrl o" { SwitchToMode "Session"; }
-    }
-    shared_except "tab" "locked" {
-        bind "Ctrl t" { SwitchToMode "Tab"; }
-    }
-    shared_except "move" "locked" {
-        bind "Ctrl h" { SwitchToMode "Move"; }
-    }
-    shared_except "tmux" "locked" {
-        bind "Ctrl b" { SwitchToMode "Tmux"; }
-    }
-}
+// Keybindings come from a preset: a file in the "keybinds" folder next to this file, or one of
+// the presets built into Zellij ("default" and "unlock-first"). Print a built-in preset with
+// "zellij setup --dump-keybinds <name>".
+// "primary", "secondary" and "unlock" set the leader keys of presets that use them.
+// If a leader key is empty or two of them are equal, Zellij warns and uses the default preset.
+// Keybindings that come from a layout are shown in the settings screen but cannot be edited there.
+// Bindings inside the block are applied on top of the preset. To replace the preset
+// completely, add clear-defaults=true to the block.
+// For a single session, "zellij options --keybinds-preset <name>" (and --keybinds-primary,
+// --keybinds-secondary, --keybinds-unlock) choose a preset without changing this file.
+//
+// keybinds preset="default" primary="Ctrl" secondary="Alt" {
+//     normal {
+//         bind "Alt y" { NewTab; }
+//     }
+// }
 
 // Plugin aliases - can be used to change the implementation of Zellij
 // changing these requires a restart to take effect
+// Built-in aliases cannot be deleted: this block can only add to or override them
+// (removing an override brings back the built-in one)
 plugins {
-    tab-bar location="zellij:tab-bar"
-    status-bar location="zellij:status-bar"
+    tab-bar location="zellij:bars" {
+        role "tab-bar"
+    }
+    status-bar location="zellij:bars" {
+        role "status-bar"
+    }
     strider location="zellij:strider"
-    compact-bar location="zellij:compact-bar"
+    compact-bar location="zellij:bars" {
+        role "compact-bar"
+    }
     session-manager location="zellij:session-manager"
     welcome-screen location="zellij:session-manager" {
         welcome_screen true
@@ -254,13 +40,79 @@ plugins {
     configuration location="zellij:configuration"
     plugin-manager location="zellij:plugin-manager"
     about location="zellij:about"
+    context-menu location="zellij:context-menu"
+    prompt location="zellij:prompt"
 }
 
 // Plugins to load in the background when a new session starts
+// (Requires restart)
 load_plugins {
-    "zellij:link"
+    "zellij:bars" {
+        role "link"
+    }
     // "file:/path/to/my-plugin.wasm"
     // "https://example.com/my-plugin.wasm"
+}
+
+// Right-click menu items, per clicked target: "pane", "tab", "bar" (tab bar or status bar background)
+// "common" items are added to the end of every menu
+// Actions ending in "ByPaneId"/"ById"/"ByTabId" apply to the clicked pane or tab when no id is given
+// Add clear-defaults=true to the block or to a section to replace the default items
+// Without clear-defaults, a section changes the default items:
+//   item "Label" { ... }                     replaces the item with that label, or adds it at the end
+//   item "Label" after="Other" { ... }       places the item after "Other" (before="Other" places it before)
+//   separator after="Other"                  adds a separator after (or before=) "Other"
+//   remove "Label"                           removes the item with that label
+// Unknown labels are ignored by remove and place the item at the end with after/before
+// An empty "context_menu clear-defaults=true {}" leaves the menu empty, so it never opens,
+// but right clicks are still taken by Zellij; use "context_menu_enabled false" to turn the menu off
+context_menu {
+    pane {
+        item "New pane" { NewPane; }
+        item "New floating pane" { NewFloatingPane; }
+        separator
+        item "Fullscreen" { ToggleFocusFullscreenByPaneId; }
+        item "Float / Embed" { TogglePaneEmbedOrFloatingByPaneId; }
+        item "Rename pane" { StartRenamePaneByPaneId; }
+        item "Add to group" { TogglePaneInGroupByPaneId; }
+        separator
+        item "Watch this pane" toggled_label="Stop watching" { WatchPaneByPaneId; }
+        item "Ignore output" toggled_label="Report output" { IgnorePaneOutputByPaneId; }
+        item "Mute pane" toggled_label="Unmute pane" { MutePaneByPaneId; }
+        separator
+        item "Close pane" { CloseFocusByPaneId; }
+    }
+    tab {
+        item "New tab" { NewTab; }
+        item "Rename tab" { StartRenameTabByTabId; }
+        item "Move tab left" { MoveTabByTabId "left"; }
+        item "Move tab right" { MoveTabByTabId "right"; }
+        item "Move tab to start" { MoveTabToPosition "start"; }
+        item "Move tab to end" { MoveTabToPosition "end"; }
+        item "Mute tab" toggled_label="Unmute tab" { MuteTabByTabId; }
+        separator
+        item "Close tab" { CloseTabById; }
+    }
+    bar {
+        item "New pane" { NewPane; }
+        item "New tab" { NewTab; }
+        item "Back to {}" { ToggleSession; }
+    }
+    common {
+        item "Settings…" {
+            LaunchOrFocusPlugin "configuration" {
+                floating true
+                move_to_focused_tab true
+            }
+        }
+        item "Session manager" {
+            LaunchOrFocusPlugin "session-manager" {
+                floating true
+                move_to_focused_tab true
+            }
+        }
+        item "Detach" { Detach; }
+    }
 }
 
 // Choose what to do when zellij receives SIGTERM, SIGINT, SIGQUIT or SIGHUP
@@ -312,6 +164,33 @@ load_plugins {
 //
 // pane_frame_style "titles"
 
+// Configure the look of the pane frame borders
+//
+// ui {
+//     pane_frames {
+//         // round the corners of single-line borders
+//         rounded_corners true
+//         // line style for all four sides of tiled pane frames
+//         // one of: single, double, heavy, dashed, heavy_dashed
+//         border_style "single"
+//         // per-side overrides, eg. a double top border with single sides
+//         border_top "double"
+//         border_right "single"
+//         border_bottom "single"
+//         border_left "single"
+//         // when two neighbouring panes disagree about a shared grid line
+//         // (pane frames off), that line falls back to border_style above
+//         // the same keys prefixed with "floating_" apply to floating panes,
+//         // they default to the values above
+//         floating_border_style "double"
+//         floating_border_top "double"
+//         floating_border_right "double"
+//         floating_border_bottom "double"
+//         floating_border_left "double"
+//         floating_border_rounded_corners false
+//     }
+// }
+
 // Toggle between having Zellij lay out panes according to a predefined set of layouts whenever possible
 // Options:
 //   - true (default)
@@ -345,6 +224,7 @@ load_plugins {
 // Define color themes for Zellij
 // For more examples, see: https://github.com/zellij-org/zellij/tree/main/example/themes
 // Once these themes are defined, one of them should to be selected in the "theme" section of this file
+// Built-in themes and themes from theme_dir are read-only in the settings screen (copy one to edit it)
 //
 // themes {
 //     dracula {
@@ -363,14 +243,18 @@ load_plugins {
 // }
 
 // Choose the theme that is specified in the themes section.
+// Setting this pins the session to one theme and turns off the automatic
+// dark/light switching described below. The theme Zellij used before the
+// "default" and "default-light" pair is bundled as "classic".
 // Default: default
 //
 // theme "default"
 
 // Themes to use when the host terminal reports a dark or light color palette.
-// Both must be set for automatic switching to take place, otherwise `theme`
-// remains authoritative. Until the host terminal reports (or if it never does),
-// the dark theme is used.
+// When neither is set and no `theme` is set either, the bundled "default" and
+// "default-light" themes are used. Setting only one of them pairs it with the
+// matching bundled default. Until the host terminal reports (or if it never
+// does), the dark theme is used.
 //
 // theme_dark "nightfox"
 // theme_light "dayfox"
@@ -388,7 +272,8 @@ load_plugins {
 //
 // default_layout "compact"
 
-// Choose the mode that zellij uses when starting up.
+// Choose the mode that zellij uses when starting up and returns to after actions.
+// Changes apply to the running session without a restart.
 // Default: normal
 //
 // default_mode "locked"
@@ -404,8 +289,9 @@ load_plugins {
 // mouse_mode false
 
 // Configure the scroll back buffer size
-// This is the number of lines zellij stores for each pane in the scroll back
-// buffer. Excess number of lines are discarded in a FIFO fashion.
+// This is the number of display rows zellij stores for each pane in the scroll
+// back buffer. A logical line wider than the pane occupies one row per wrap.
+// Excess rows are discarded in a FIFO fashion.
 // (Requires restart)
 // Valid values: positive integers
 // Default value: 10000
@@ -450,14 +336,19 @@ load_plugins {
 // mirror_session true
 
 // The folder in which Zellij will look for layouts
-// (Requires restart)
 //
 // layout_dir "/path/to/my/layout_dir"
 
 // The folder in which Zellij will look for themes
-// (Requires restart)
+// Changes apply to the running session without a restart.
+// Themes from this folder are read-only in the settings screen (copy one to edit it)
 //
 // theme_dir "/path/to/my/theme_dir"
+
+// The folder in which Zellij will look for keybinding presets
+// Default: a "keybinds" folder in the config directory
+//
+// keybinds_dir "/path/to/my/keybinds_dir"
 
 // Enable or disable the rendering of styled and colored underlines (undercurl).
 // May need to be disabled for certain unsupported terminals
@@ -484,6 +375,13 @@ load_plugins {
 // Default: true (if the host terminal supports it)
 //
 // support_kitty_graphics_protocol false
+
+// Count each grapheme cluster (an emoji sequence such as a flag or a skin tone, a letter with its accents) as one unit of width, as the Unicode standard does
+// When false, widths are counted per code point, the way older programs expect; programs can still ask for clusters with mode 2027
+// (Applies to new panes)
+// Default: true
+//
+// grapheme_clusters false
 
 // Whether to make sure a local web server is running when a new Zellij session starts.
 // This web server will allow creating new sessions and attaching to existing ones that have
@@ -526,22 +424,36 @@ load_plugins {
 
 // A path to a certificate file to be used when setting up the web client to serve the
 // connection over HTTPs
+// (Requires restart)
 //
 // web_server_cert "/path/to/my/cert.pem"
 
 // A path to a key file to be used when setting up the web client to serve the
 // connection over HTTPs
+// (Requires restart)
 //
 // web_server_key "/path/to/my/key.pem"
 
 // Whether to enforce https connections to the web server when it is bound to localhost
 // (127.0.0.0/8)
+// (Requires restart)
 //
-// Note: https is ALWAYS enforced when bound to non-local interfaces
+// Note: https is enforced when bound to non-local interfaces, unless
+// dangerously_allow_web_serving_without_a_certificate is set
 //
 // Default: false
 //
 // enforce_https_for_localhost true
+
+// DANGEROUS: allow the web server to serve plain, unencrypted HTTP when bound to a
+// non-local interface without web_server_cert and web_server_key.
+// Anyone on the network can read and tamper with the traffic, including login tokens.
+// Only use behind a trusted TLS-terminating proxy or on a fully trusted network.
+// Does not override enforce_https_for_localhost.
+// Default: false
+// (Requires restart)
+//
+// dangerously_allow_web_serving_without_a_certificate true
 
 // The port the web server should listen on when it starts
 // Default: 8082
@@ -568,6 +480,7 @@ load_plugins {
 // stacked_pane_list false
 
 // Whether to show release notes on first version run
+// (Requires restart)
 // Default: true
 //
 // show_release_notes false
@@ -610,6 +523,7 @@ load_plugins {
 // word_separators "[]{}<>()"
 
 // Whether to output OSC8 hyperlink sequences
+// (Requires restart)
 // Default: true
 //
 // osc8_hyperlinks false
@@ -623,13 +537,282 @@ load_plugins {
 // post_command_discovery_hook "echo $RESURRECT_COMMAND | sed <your_regex_here>"
 
 // Number of async worker tasks to spawn per active client.
+// (Requires restart)
 //
 // Allocating few tasks may result in resource contention and lags. Small values (around 4) should
 // typically work best. Set to 0 to use the number of (physical) CPU cores.
-// NOTE: This only applies to web clients at the moment."#;
+// NOTE: This only applies to web clients at the moment.
 // client_async_worker_tasks 4
 
+// How often (in seconds) sessions are saved to disk so they can be resurrected
+// (Requires restart)
+// Default: 60
+//
+// serialization_interval 60
 
+// Whether to show a startup tip when a new session starts
+// (Requires restart)
+// Default: true
+//
+// show_startup_tips false
+
+// Whether to flash pane and tab frames (and add a [!] suffix) when a terminal bell rings
+// Default: true
+//
+// visual_bell false
+
+// Whether hovering the mouse over a pane focuses it
+// Default: false
+//
+// focus_follows_mouse true
+
+// Whether the click that focuses a pane is also sent to the program running in it
+// Default: false
+//
+// mouse_click_through true
+
+// Whether to show the other sessions indicator in the tab bar and compact bar
+// Default: true
+//
+// session_indicator false
+
+// Whether to briefly show the name of the new swap layout when it is changed
+// Default: true
+//
+// swap_layout_notification false
+
+// How other sessions are suggested on the session card and in the session manager
+// The first matching rule decides the order; within a rule, running sessions come first,
+// then the most recently used
+// Facts: directory, git_repo, git_branch, git_worktree, hostname, or a custom `fact`
+// fact "project" command="echo $PROJECT" column="project" at="live"
+// script "~/.config/zellij/rank.sh" timeout_ms=300 hide_unlisted=false
+// record "~/.config/zellij/record.sh"
+//
+// session_suggestions {
+//     match "directory" "git_branch"
+//     match "git_repo" "git_branch"
+//     match "directory"
+//     match "git_repo"
+//     then "recent"
+// }
+
+// Whether a right click opens the right-click menu
+// When off, right clicks go to the focused pane only and Alt + right click clears the pane group
+// Plugins can still open the menu through their API
+// Default: true
+//
+// context_menu_enabled false
+
+// How notifications from programs inside Zellij are passed to the outer terminal
+// Options:
+//   - auto (Default - pick the best protocol the terminal supports)
+//   - osc9
+//   - osc99
+//   - bell
+//   - off
+//
+// host_notification_protocol "auto"
+
+// Settings for the web client (font, font_size, cursor_blink, cursor_style, ...)
+// (Requires restart)
 web_client {
     font "monospace"
 }
+
+// Options for zellij's own window (`zellij window`). Every key is optional;
+// with the whole section absent the window behaves exactly as it does with no
+// configuration at all.
+//
+// window {
+//     // Font family to render with, resolved through the system's font
+//     // configuration. An unresolvable family falls back to the built-in font.
+//     font "Iosevka Term"
+//
+//     // Font size in points, as other terminals measure it
+//     font_size 12
+//
+//     // Whether to consult the system's fonts for characters the primary font
+//     // lacks
+//     system_fonts true
+//
+//     // Whether the font's ligatures are formed, so that sequences like -> or
+//     // != are drawn as one shape.
+//     ligatures true
+//
+//     // Weight of the regular face: a number from 100 to 900, or one of
+//     // "thin", "extralight", "light", "regular", "medium", "semibold",
+//     // "bold", "extrabold" or "black". Bold text uses a face 300 heavier,
+//     // up to 900. Variable fonts are set to the exact weight.
+//     font_weight "regular"
+//
+//     // OpenType features to turn on, or off with a leading -, as
+//     // four-character tags. Listing any feature shapes text even with
+//     // ligatures false; then "liga", "calt" and "dlig" stay off unless
+//     // listed here.
+//     font_features "ss01" "zero" "-calt"
+//
+//     // Height of a cell as a multiple of the font's own line height. The
+//     // extra space is shared evenly above and below the text.
+//     line_height 1.0
+//
+//     // Width of a cell as a multiple of the font's own character width.
+//     // Characters keep their shape and are centered in the cell.
+//     cell_width 1.0
+//
+//     // Pixels to move the text down (or up, when negative) inside its cell
+//     baseline_offset 0
+//
+//     // Pixels to move the underline down (or up, when negative), and pixels
+//     // to add to (or remove from) its thickness. Both stay inside the cell.
+//     underline_offset 0
+//     underline_thickness 0
+//
+//     // Empty space around the text, in pixels, scaled with the display but
+//     // not with zoom. `padding` sets every side; padding_top, padding_right,
+//     // padding_bottom and padding_left override one side each.
+//     padding 0
+//     padding_top 0
+//
+//     // Whether the pixels left over when the window is not a whole number of
+//     // cells are shared evenly on all sides instead of all going to the
+//     // right and bottom edges.
+//     padding_balance false
+//
+//     // How the padding is painted: "background" (the default) uses the
+//     // theme background and the window opacity; "extend" continues the
+//     // background of the nearest cell at the edge of the grid.
+//     padding_color "background"
+//
+//     // The cursor shape to draw where the application in the pane has not
+//     // asked for one: "block", "bar" or "underline". An application that does
+//     // ask (with CSI <n> q) still gets the shape it asked for.
+//     cursor_style "block"
+//
+//     // Whether the cursor blinks. Unlike cursor_style, this wins over the
+//     // application: set it to force a blinking or a steady cursor whatever
+//     // the pane asks for. Leave it out to blink exactly when the application
+//     // asks for a blinking cursor.
+//     cursor_blink false
+//
+//     // The chords the window claims for itself to paste. List no
+//     // chords to leave them all to the session.
+//     paste_keys "Ctrl Shift v" "Shift Insert"
+//
+//     // The chords that copy text marked with shift+drag (see
+//     // shift_drag_selects).
+//     copy_keys "Ctrl Shift c"
+//
+//     // The chords that switch the window between fullscreen and the size it
+//     // had before. List no chords to leave them all to the session.
+//     fullscreen_keys "F11"
+//
+//     // Whether the mouse pointer is hidden while typing, until it moves again
+//     hide_pointer_while_typing false
+//
+//     // Whether the cursor is drawn as an outlined block while the window is
+//     // not focused
+//     cursor_unfocused_hollow true
+//
+//     // The lowest allowed contrast ratio between text and its background, from
+//     // 1.0 (off) to 21.0; text colours are adjusted when below it.
+//     minimum_contrast 1.0
+//
+//     // Whether scrolling through a pane's scrollback slides the text to its
+//     // new position instead of jumping. Applies to the mouse wheel, touchpad
+//     // and scroll keys alike.
+//     smooth_scrolling true
+//
+//     // How long one scroll slide takes, in milliseconds, from 1 to 1000.
+//     // Ignored when smooth_scrolling is false.
+//     scroll_animation_duration 100
+//
+//     // Whether a fast two-finger touchpad swipe through a pane's scrollback
+//     // keeps scrolling for a moment after the fingers lift, slowing down
+//     // until it stops. Touching the touchpad again, clicking, typing or
+//     // moving the pointer to another pane stops it at once. Works
+//     // independently of smooth_scrolling. Currently only has an effect on
+//     // Wayland; on X11, Windows and macOS it is ignored (macOS already
+//     // provides its own touchpad momentum).
+//     scroll_momentum true
+//
+//     // How quickly that continued scrolling slows down, from 0.5 to 10.0.
+//     // Higher values stop sooner. Currently only has an effect on Wayland.
+//     scroll_momentum_friction 2.0
+//
+//     // Whether clicking an OSC 8 hyperlink opens it in the platform's default
+//     // handler. A plain left click opens it; over a pane whose program has
+//     // asked for mouse reporting, hold shift instead. Dragging is a selection
+//     // and never opens anything, and the click still reaches the pane either
+//     // way. Only http, https, ftp, ftps, mailto and file URLs are ever handed
+//     // to the opener.
+//     open_links true
+//
+//     // Whether shift+click opens a link in every pane, not only in panes
+//     // whose program has asked for mouse reporting. Has no effect when
+//     // open_links is false.
+//     open_links_with_shift true
+//
+//     // Whether dragging with shift held marks text anywhere in the window,
+//     // including the tab bar, status bar and pane frames, and across pane
+//     // borders.
+//     shift_drag_selects true
+//
+//     // How opaque the window is, from 0.0 (invisible) to 1.0 (solid). Needs
+//     // a compositor; without one the window stays solid.
+//     opacity 1.0
+//
+//     // What the opacity applies to. "background" lets only the default
+//     // background show through and keeps text, colored cells, the cursor and
+//     // images solid. "everything" fades the whole window evenly.
+//     opacity_mode "background"
+//
+//     // Whether to ask the compositor to blur what is behind the window. Only
+//     // visible with an opacity below 1.0; supported on macOS, KDE Plasma and
+//     // Windows 11 22H2 or later, and ignored elsewhere. On Windows it is the
+//     // system's Acrylic material, which shows only while the window is focused.
+//     blur false
+//
+//     // Which Option key acts as Alt on macOS: "left" (the default), "right",
+//     // "both" or "none". The other one keeps typing characters such as å or ˙.
+//     // Ignored on other platforms.
+//     macos_option_as_alt "left"
+//
+//     // How a new window opens: "windowed", "maximized", "fullscreen", or
+//     // "remember" (the default), which reopens at the size, counted in rows
+//     // and columns, and in the state the last window was closed in. With
+//     // nothing remembered yet, "remember" opens windowed at 120x40.
+//     startup_mode "remember"
+//
+//     // The size, in columns and rows, of a window that has no remembered
+//     // size to reopen at. The --cols and --rows arguments still win, and a
+//     // size remembered by "remember" wins over these. A maximized or
+//     // fullscreen window returns to this size when it is restored.
+//     initial_columns 120
+//     initial_rows 40
+//
+//     // Colors the window paints itself. `foreground` and
+//     // `background` default to the active Zellij theme; the sixteen ANSI
+//     // colors have no theme equivalent and default to the standard table.
+//     theme {
+//         foreground "#e5e5e5"
+//         background "#000000"
+//         cursor "#e5e5e5"
+//         black "#000000"
+//         red "#cd0000"
+//         green "#00cd00"
+//         yellow "#cdcd00"
+//         blue "#0000ee"
+//         magenta "#cd00cd"
+//         cyan "#00cdcd"
+//         white "#e5e5e5"
+//         bright_black "#7f7f7f"
+//         bright_red "#ff0000"
+//         bright_green "#00ff00"
+//         bright_yellow "#ffff00"
+//         bright_blue "#5c5cff"
+//         bright_magenta "#ff00ff"
+//         bright_cyan "#00ffff"
+//         bright_white "#ffffff"
+//     }
+// }

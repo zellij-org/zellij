@@ -1,7 +1,7 @@
 use crate::tab::Pane;
 
 use crate::{os_input_output::ServerOsApi, panes::PaneId, ClientId};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 #[derive(Clone)]
 pub struct ActivePanes {
@@ -69,14 +69,36 @@ impl ActivePanes {
         }
         self.active_panes.remove(client_id)
     }
-    pub fn unfocus_all_panes(&self, panes: &mut BTreeMap<PaneId, Box<dyn Pane>>) {
-        for (_client_id, pane_id) in &self.active_panes {
-            self.unfocus_pane(*pane_id, panes);
+    pub fn unfocus_all_panes(
+        &self,
+        panes: &mut BTreeMap<PaneId, Box<dyn Pane>>,
+        connected_clients: &HashSet<ClientId>,
+    ) {
+        for pane_id in self.panes_focused_by(connected_clients) {
+            self.unfocus_pane(pane_id, panes);
         }
     }
-    pub fn focus_all_panes(&self, panes: &mut BTreeMap<PaneId, Box<dyn Pane>>) {
-        for (_client_id, pane_id) in &self.active_panes {
-            self.focus_pane(*pane_id, panes);
+    pub fn focus_all_panes(
+        &self,
+        panes: &mut BTreeMap<PaneId, Box<dyn Pane>>,
+        connected_clients: &HashSet<ClientId>,
+    ) {
+        for pane_id in self.panes_focused_by(connected_clients) {
+            self.focus_pane(pane_id, panes);
+        }
+    }
+    fn panes_focused_by(&self, connected_clients: &HashSet<ClientId>) -> BTreeSet<PaneId> {
+        self.active_panes
+            .iter()
+            .filter(|(client_id, _)| connected_clients.contains(client_id))
+            .map(|(_, pane_id)| *pane_id)
+            .collect()
+    }
+    pub fn retarget_last_pane(&mut self, from_pane_id: PaneId, to_pane_id: PaneId) {
+        for last_pane_id in self.last_panes.values_mut() {
+            if *last_pane_id == from_pane_id {
+                *last_pane_id = to_pane_id;
+            }
         }
     }
     pub fn clone_active_panes(&self) -> HashMap<ClientId, PaneId> {

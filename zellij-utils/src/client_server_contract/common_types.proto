@@ -89,6 +89,33 @@ message Style {
   Styling colors = 1;
   bool rounded_corners = 2;
   bool hide_session_name = 3;
+  BorderStyle border_style = 4;
+  BorderStyle floating_border_style = 5;
+}
+
+enum LineStyle {
+  LINE_STYLE_SINGLE = 0;
+  LINE_STYLE_DOUBLE = 1;
+  LINE_STYLE_HEAVY = 2;
+  LINE_STYLE_DASHED = 3;
+  LINE_STYLE_HEAVY_DASHED = 4;
+}
+
+message BorderStyle {
+  LineStyle top = 1;
+  LineStyle right = 2;
+  LineStyle bottom = 3;
+  LineStyle left = 4;
+  bool rounded_corners = 5;
+}
+
+message BorderStyleOverride {
+  optional LineStyle all = 1;
+  optional LineStyle top = 2;
+  optional LineStyle right = 3;
+  optional LineStyle bottom = 4;
+  optional LineStyle left = 5;
+  optional bool rounded_corners = 6;
 }
 
 message Styling {
@@ -135,7 +162,7 @@ enum AnsiCode {
 }
 
 message Action {
-  reserved 140;
+  reserved 140, 164;
   oneof action_type {
     QuitAction quit = 1;
     WriteAction write = 2;
@@ -233,6 +260,7 @@ message Action {
     OverrideLayoutAction override_layout = 94;
     TogglePaneBorderlessAction toggle_pane_borderless = 95;
     SetPaneBorderlessAction set_pane_borderless = 96;
+    SetPaneBorderStyleAction set_pane_border_style = 156;
     SaveSessionAction save_session = 97;
     ListPanesAction list_panes = 98;
     WriteCharsToPaneIdAction write_chars_to_pane_id = 99;
@@ -289,7 +317,36 @@ message Action {
     ScrollToNextPromptAction scroll_to_next_prompt = 149;
     SelectCommandAtScrollPositionAction select_command_at_scroll_position = 150;
     CopyLastCommandOutputAction copy_last_command_output = 151;
-    ToggleStackListOrientationAction toggle_stack_list_orientation = 152;
+    ApplyTiledSwapLayoutAction apply_tiled_swap_layout = 152;
+    ApplyFloatingSwapLayoutAction apply_floating_swap_layout = 153;
+    ApplyTiledSwapLayoutByTabIdAction apply_tiled_swap_layout_by_tab_id = 154;
+    ApplyFloatingSwapLayoutByTabIdAction apply_floating_swap_layout_by_tab_id = 155;
+    TogglePaneInGroupByPaneIdAction toggle_pane_in_group_by_pane_id = 157;
+    StartRenamePaneByPaneIdAction start_rename_pane_by_pane_id = 158;
+    StartRenameTabByTabIdAction start_rename_tab_by_tab_id = 159;
+    DismissInfoPopupsAction dismiss_info_popups = 160;
+    OpenContextMenuAction open_context_menu = 161;
+    MoveTabToPositionAction move_tab_to_position = 162;
+    RunInBackgroundAction run_in_background = 163;
+    ToggleSessionCardAction toggle_session_card = 165;
+    MutePaneAction mute_pane = 166;
+    MutePaneByPaneIdAction mute_pane_by_pane_id = 167;
+    IgnorePaneOutputAction ignore_pane_output = 168;
+    IgnorePaneOutputByPaneIdAction ignore_pane_output_by_pane_id = 169;
+    WatchPaneAction watch_pane = 170;
+    WatchPaneByPaneIdAction watch_pane_by_pane_id = 171;
+    MuteTabAction mute_tab = 172;
+    MuteTabByTabIdAction mute_tab_by_tab_id = 173;
+    MuteSessionAction mute_session = 174;
+    ToggleSessionAction toggle_session = 175;
+    GoToPreviousSessionAction go_to_previous_session = 176;
+    GoToNextSessionAction go_to_next_session = 177;
+    GoToNextAttentionAction go_to_next_attention = 178;
+    MarkPaneSeenAction mark_pane_seen = 179;
+    MarkAllSeenAction mark_all_seen = 180;
+    WriteKeyToPaneIdAction write_key_to_pane_id = 181;
+    ToggleTrayIconAction toggle_tray_icon = 182;
+    ToggleStackListOrientationAction toggle_stack_list_orientation = 183;
   }
 }
 
@@ -360,6 +417,8 @@ message DenyAction {}
 message ToggleMouseModeAction {}
 message PreviousSwapLayoutAction {}
 message NextSwapLayoutAction {}
+message ApplyTiledSwapLayoutAction { string name = 1; }
+message ApplyFloatingSwapLayoutAction { string name = 1; }
 message TabLayoutInfo {
   uint32 tab_index = 1;
   optional string tab_name = 2;
@@ -507,6 +566,7 @@ message NewTiledPaneAction {
   optional bool borderless = 8;
   optional uint32 tab_id = 9;
   bool no_focus = 10;
+  optional BorderStyleOverride border_style = 11;
 }
 
 message NewInPlacePaneAction {
@@ -574,6 +634,10 @@ message RunAction {
   RunCommandAction command = 1;
   bool near_current_pane = 2;
   bool no_focus = 3;
+}
+
+message RunInBackgroundAction {
+  RunCommandAction command = 1;
 }
 
 message LaunchOrFocusPluginAction {
@@ -714,6 +778,8 @@ message CliPipeAction {
   optional bool in_place = 10;
   optional string cwd = 11;
   optional string pane_title = 12;
+  optional string popup = 13;
+  bool popup_no_focus = 14;
 }
 
 message KeybindPipeAction {
@@ -753,6 +819,11 @@ message SetPaneColorAction {
   PaneId pane_id = 1;
   optional string fg = 2;
   optional string bg = 3;
+}
+
+message SetPaneBorderStyleAction {
+  PaneId pane_id = 1;
+  BorderStyleOverride border_style = 2;
 }
 
 // Supporting enums and messages
@@ -814,6 +885,7 @@ message CliAssets {
   optional string cwd = 11;
   map<string, string> host_terminal_env = 12;
   repeated CommandOrPlugin initial_panes = 13;
+  optional SwitchContext switch_context = 14;
 }
 
 message LayoutInfo {
@@ -850,6 +922,8 @@ message ConnectToSession {
   optional PaneIdWithPlugin pane_id = 3;
   optional LayoutInfo layout = 4;
   optional string cwd = 5;
+  reserved 6;
+  optional SwitchContext switch_context = 7;
 }
 
 message SwitchSessionAction {
@@ -858,6 +932,7 @@ message SwitchSessionAction {
   optional PaneIdWithPlugin pane_id = 3;
   optional LayoutInfo layout = 4;
   optional string cwd = 5;
+  bool close_current = 6;
 }
 
 message NewPanePlacement {
@@ -876,22 +951,26 @@ message NewPanePlacement {
 
 message NoPreferencePlacement {
   optional bool borderless = 1;
+  optional BorderStyleOverride border_style = 2;
 }
 
 message TiledPlacement {
   optional Direction direction = 1;
   optional bool borderless = 2;
+  optional BorderStyleOverride border_style = 3;
 }
 
 message StackedPlacement {
   optional PaneId pane_id_to_stack_under = 1;
   optional bool borderless = 2;
+  optional BorderStyleOverride border_style = 3;
 }
 
 message NewPanePlacementInPlace {
   optional PaneId pane_id_to_replace = 1;
   bool close_replaced_pane = 2;
   optional bool borderless = 3;
+  optional BorderStyleOverride border_style = 4;
 }
 
 message PaneIdWithPlugin {
@@ -928,6 +1007,7 @@ message FloatingPaneCoordinates {
   optional FloatingCoordinate height = 4;
   optional bool pinned = 5;
   optional bool borderless = 6;
+  optional BorderStyleOverride border_style = 7;
 }
 
 message FloatingCoordinate {
@@ -946,6 +1026,7 @@ message RunCommandAction {
   bool hold_on_start = 6;                              // Renumbered
   optional OriginatingPlugin originating_plugin = 7;   // Added missing originating_plugin field
   bool use_terminal_title = 8;                         // Added missing use_terminal_title field
+  bool notify = 9;
 }
 
 message TiledPaneLayout {
@@ -964,7 +1045,10 @@ message TiledPaneLayout {
   optional string pane_initial_contents = 13;
   optional string default_fg = 14;
   optional string default_bg = 15;
-  optional string stack_direction = 16;
+  optional BorderStyleOverride border_style = 16;
+  optional bool attention_muted = 17;
+  optional bool ignore_output = 18;
+  optional string stack_direction = 19;
   // NOTE: run_instructions_to_ignore is not represented here because it's a field used only inside the server itself and not part of the server/client contract
 }
 
@@ -983,6 +1067,9 @@ message FloatingPaneLayout {
   optional bool borderless = 12;
   optional string default_fg = 13;
   optional string default_bg = 14;
+  optional BorderStyleOverride border_style = 15;
+  optional bool attention_muted = 16;
+  optional bool ignore_output = 17;
 }
 
 message SwapTiledLayout {
@@ -1054,6 +1141,7 @@ message MouseEvent {
   Position position = 10;
   bool wheel_left = 11;
   bool wheel_right = 12;
+  uint32 wheel_lines = 13;
 }
 
 enum MouseEventType {
@@ -1230,6 +1318,19 @@ message Options {
   optional string host_notification_protocol = 67;
   optional bool scroll_mode_sync = 68;
   optional ThemeHue explicit_theme_hue = 69;
+  optional string keybinds_dir = 70;
+  optional string keybinds_preset = 71;
+  optional string keybinds_primary = 72;
+  optional string keybinds_secondary = 73;
+  optional string keybinds_unlock = 74;
+  optional bool context_menu_enabled = 75;
+  optional bool dangerously_allow_web_serving_without_a_certificate = 76;
+  reserved 77;
+  optional bool session_indicator = 78;
+  optional bool swap_layout_notification = 79;
+  reserved 80;
+  optional string on_quit = 81;
+  optional bool grapheme_clusters = 82;
 }
 
 enum OnForceClose {
@@ -1304,4 +1405,207 @@ message ToggleActiveSyncTabByTabIdAction { uint64 id = 1; }
 message ToggleFloatingPanesByTabIdAction { uint64 id = 1; }
 message PreviousSwapLayoutByTabIdAction { uint64 id = 1; }
 message NextSwapLayoutByTabIdAction { uint64 id = 1; }
+message ApplyTiledSwapLayoutByTabIdAction { uint64 id = 1; string name = 2; }
+message ApplyFloatingSwapLayoutByTabIdAction { uint64 id = 1; string name = 2; }
 message MoveTabByTabIdAction { uint64 id = 1; Direction direction = 2; }
+message MoveTabToPositionAction { uint64 id = 1; uint64 position = 2; }
+message TogglePaneInGroupByPaneIdAction { PaneId pane_id = 1; }
+message StartRenamePaneByPaneIdAction { PaneId pane_id = 1; }
+message StartRenameTabByTabIdAction { uint64 id = 1; }
+message DismissInfoPopupsAction {}
+message OpenContextMenuAction {}
+message ToggleSessionCardAction {}
+message MutePaneAction {}
+message MutePaneByPaneIdAction { PaneId pane_id = 1; }
+message IgnorePaneOutputAction {}
+message IgnorePaneOutputByPaneIdAction { PaneId pane_id = 1; }
+message WatchPaneAction {}
+message WatchPaneByPaneIdAction { PaneId pane_id = 1; }
+message MuteTabAction {}
+message MuteTabByTabIdAction { uint64 id = 1; }
+message MuteSessionAction {}
+message ToggleSessionAction {}
+message GoToPreviousSessionAction {}
+message GoToNextSessionAction {}
+message GoToNextAttentionAction {}
+message ToggleTrayIconAction {}
+message MarkPaneSeenAction { optional string session = 1; optional PaneId pane_id = 2; }
+message MarkAllSeenAction {
+  optional string session = 1;
+  bool this_session = 2;
+}
+message WriteKeyToPaneIdAction { optional KeyWithModifier key_with_modifier = 1; PaneId pane_id = 2; }
+
+enum HostTerminalThemeIndication {
+  HOST_TERMINAL_THEME_INDICATION_DARK = 0;
+  HOST_TERMINAL_THEME_INDICATION_LIGHT = 1;
+}
+
+enum AttentionStatus {
+  ATTENTION_STATUS_IDLE = 0;
+  ATTENTION_STATUS_WORKING = 1;
+  ATTENTION_STATUS_NEW_OUTPUT = 2;
+  ATTENTION_STATUS_QUIET = 3;
+  ATTENTION_STATUS_DONE = 4;
+  ATTENTION_STATUS_FAILED = 5;
+  ATTENTION_STATUS_NEEDS_YOU = 6;
+}
+
+enum AttentionSource {
+  ATTENTION_SOURCE_PROGRAM_STATUS = 0;
+  ATTENTION_SOURCE_NOTIFICATION = 1;
+  ATTENTION_SOURCE_BELL = 2;
+  ATTENTION_SOURCE_COMMAND_PANE = 3;
+  ATTENTION_SOURCE_SHELL_COMMAND = 4;
+  ATTENTION_SOURCE_FOREGROUND_PROCESS = 5;
+  ATTENTION_SOURCE_IDLE_RULE = 6;
+  ATTENTION_SOURCE_WATCH = 7;
+  ATTENTION_SOURCE_UNSEEN_OUTPUT = 8;
+}
+
+enum BlockedKind {
+  BLOCKED_KIND_PERMISSION = 0;
+  BLOCKED_KIND_QUESTION = 1;
+  BLOCKED_KIND_AUTH = 2;
+}
+
+enum MuteScope {
+  MUTE_SCOPE_PANE = 0;
+  MUTE_SCOPE_TAB = 1;
+  MUTE_SCOPE_SESSION = 2;
+}
+
+enum CommandTextSource {
+  COMMAND_TEXT_SOURCE_SHELL = 0;
+  COMMAND_TEXT_SOURCE_SCREEN = 1;
+  COMMAND_TEXT_SOURCE_PROCESS = 2;
+}
+
+enum StartupCard {
+  STARTUP_CARD_ATTENTION = 0;
+  STARTUP_CARD_ALWAYS = 1;
+  STARTUP_CARD_NEVER = 2;
+}
+
+message CommandText {
+  string text = 1;
+  CommandTextSource source = 2;
+}
+
+message AttentionDetail {
+  optional BlockedKind kind = 1;
+  optional uint32 progress = 2;
+  optional string app = 3;
+  optional string title = 4;
+  optional string body = 5;
+  optional int32 exit_code = 6;
+  optional uint64 duration_ms = 7;
+  optional CommandText command = 8;
+}
+
+message PaneAttention {
+  AttentionStatus status = 1;
+  optional AttentionSource source = 2;
+  string text = 3;
+  AttentionDetail detail = 4;
+  uint64 since_ms = 5;
+  uint64 changed_ms = 6;
+  bool seen = 7;
+  optional MuteScope muted = 8;
+  bool ignore_output = 9;
+  bool watched = 10;
+  bool from_watch = 11;
+}
+
+message AttentionCounts {
+  uint32 needs_you = 1;
+  uint32 failed = 2;
+  uint32 done = 3;
+  uint32 working = 4;
+  uint32 quiet = 5;
+  uint32 new_output = 6;
+  uint32 muted = 7;
+}
+
+message AttentionItem {
+  PaneId pane_id = 1;
+  uint64 tab_id = 2;
+  string tab_name = 3;
+  string pane_title = 4;
+  PaneAttention attention = 5;
+}
+
+message SessionAttention {
+  AttentionStatus status = 1;
+  AttentionCounts counts = 2;
+  bool muted = 3;
+  optional AttentionItem top = 4;
+  repeated AttentionItem items = 5;
+}
+
+message SessionHistory {
+  repeated string back = 1;
+  repeated string forward = 2;
+  optional string last = 3;
+}
+
+message SwitchArrival {}
+message ToggleArrival {}
+message BackArrival {}
+message ForwardArrival {}
+message AttentionArrival {
+  PaneId pane_id = 1;
+}
+
+message SessionArrival {
+  oneof arrival {
+    SwitchArrival switch = 1;
+    ToggleArrival toggle = 2;
+    BackArrival back = 3;
+    ForwardArrival forward = 4;
+    AttentionArrival attention = 5;
+  }
+}
+
+message SwitchContext {
+  SessionHistory history = 1;
+  optional SessionArrival arrival = 2;
+  optional string from_session = 3;
+  optional StartupCard startup_card = 4;
+  bool disconnect_others = 5;
+}
+
+enum PreviewAnchor {
+  PREVIEW_ANCHOR_BOTTOM = 0;
+  PREVIEW_ANCHOR_LAST_COMMAND_OUTPUT = 1;
+  PREVIEW_ANCHOR_NEW_OUTPUT_START = 2;
+}
+
+message SessionPreviewPane {
+  uint32 id = 1;
+  bool is_plugin = 2;
+  string title = 3;
+  bool focused = 4;
+  optional string contents = 5;
+}
+
+message SessionPreviewTab {
+  string name = 1;
+  bool active = 2;
+  repeated SessionPreviewPane panes = 3;
+}
+
+message SessionPreview {
+  string session_name = 1;
+  optional uint32 tab_index = 2;
+  optional uint32 active_tab_index = 3;
+  repeated string tab_names = 4;
+  string contents = 5;
+  uint32 pane_count = 6;
+  uint32 connected_clients = 7;
+  optional string error = 8;
+  repeated SessionPreviewTab tabs = 9;
+  optional PaneIdWithPlugin pane_id = 10;
+  optional uint32 anchor_line = 11;
+}
+

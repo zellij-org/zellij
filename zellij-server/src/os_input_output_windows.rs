@@ -1,4 +1,4 @@
-use crate::os_input_output::{resolve_command, AsyncReader};
+use crate::os_input_output::{resolve_command, AsyncReader, PaneEnv};
 use crate::panes::PaneId;
 
 use std::{
@@ -13,7 +13,6 @@ use std::{
     },
 };
 
-use tokio::io::AsyncReadExt;
 use tokio::net::windows::named_pipe::NamedPipeServer;
 
 use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE, S_OK};
@@ -29,7 +28,7 @@ use windows_sys::Win32::System::Threading::{
     CreateProcessW, DeleteProcThreadAttributeList, GetExitCodeProcess,
     InitializeProcThreadAttributeList, OpenProcess, TerminateProcess, UpdateProcThreadAttribute,
     WaitForSingleObject, CREATE_UNICODE_ENVIRONMENT, EXTENDED_STARTUPINFO_PRESENT, INFINITE,
-    PROCESS_INFORMATION, PROCESS_TERMINATE, STARTUPINFOEXW, STARTUPINFOW,
+    PROCESS_INFORMATION, PROCESS_TERMINATE, STARTF_USESTDHANDLES, STARTUPINFOEXW, STARTUPINFOW,
 };
 
 use zellij_utils::{errors::prelude::*, input::command::RunCommand};
@@ -98,16 +97,30 @@ impl ConPtyAsyncReader {
 
 #[async_trait]
 impl AsyncReader for ConPtyAsyncReader {
-    async fn read(&mut self, buf: &mut [u8]) -> Result<usize, io::Error> {
+    async fn read_chunk(&mut self, max: usize) -> Result<Vec<u8>, io::Error> {
+        let pipe = self.pipe()?;
+        loop {
+            pipe.readable().await?;
+            let mut buf = vec![0u8; max];
+            match pipe.try_read(&mut buf) {
+                Ok(n) => return Ok(buf[..n].to_vec()),
+                Err(e) if e.kind() == io::ErrorKind::WouldBlock => continue,
+                Err(e) => return Err(e),
+            }
+        }
+    }
+}
+
+impl ConPtyAsyncReader {
+    fn pipe(&mut self) -> Result<&mut NamedPipeServer, io::Error> {
         if let Some(handle) = self.pending.take() {
             let pipe = unsafe { NamedPipeServer::from_raw_handle(handle.into_raw_handle()) }?;
             self.pipe = Some(pipe);
         }
-        let pipe = self
+        Ok(self
             .pipe
             .as_mut()
-            .expect("ConPtyAsyncReader used after init");
-        pipe.read(buf).await
+            .expect("ConPtyAsyncReader used after init"))
     }
 }
 
@@ -189,12 +202,18 @@ fn build_command_line(cmd: &RunCommand) -> Vec<u16> {
 /// Build a UTF-16 environment block (each entry `KEY=VALUE\0`, terminated by
 /// an extra `\0`) from the current process environment, adding
 /// `ZELLIJ_PANE_ID`.
-fn build_environment_block(terminal_id: u32) -> Vec<u16> {
-    let mut block: Vec<u16> = Vec::new();
-    for (key, value) in std::env::vars() {
-        if key == "ZELLIJ_PANE_ID" {
-            continue;
+fn build_environment_block(terminal_id: u32, pane_env: &PaneEnv) -> Vec<u16> {
+    let mut variables: BTreeMap<String, String> = std::env::vars()
+        .filter(|(key, _)| !key.eq_ignore_ascii_case("ZELLIJ_PANE_ID"))
+        .collect();
+    for (key, value) in pane_env {
+        variables.retain(|existing, _| !existing.eq_ignore_ascii_case(key));
+        if let Some(value) = value {
+            variables.insert(key.clone(), value.clone());
         }
+    }
+    let mut block: Vec<u16> = Vec::new();
+    for (key, value) in variables {
         let entry = format!("{}={}", key, value);
         block.extend(OsStr::new(&entry).encode_wide());
         block.push(0);
@@ -284,6 +303,7 @@ fn spawn_child_process(
     hpcon: HPCON,
     cmd: &RunCommand,
     terminal_id: u32,
+    pane_env: &PaneEnv,
 ) -> io::Result<(HANDLE, HANDLE, u32)> {
     // --- proc thread attribute list ---
     let mut attr_size: usize = 0;
@@ -321,11 +341,15 @@ fn spawn_child_process(
     // --- startup info ---
     let mut si: STARTUPINFOEXW = unsafe { std::mem::zeroed() };
     si.StartupInfo.cb = std::mem::size_of::<STARTUPINFOEXW>() as u32;
+    // Null standard handles make the child use the pseudo console. Without this flag a child
+    // takes the server's own standard handles whenever those are redirected (as they are when
+    // the server is started without a console), and a shell reading a NUL stdin exits at once.
+    si.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
     si.lpAttributeList = attr_list;
 
     // --- command line & environment ---
     let mut cmd_line = build_command_line(cmd);
-    let env_block = build_environment_block(terminal_id);
+    let env_block = build_environment_block(terminal_id, pane_env);
 
     let cwd: Option<Vec<u16>> = cmd.cwd.as_ref().and_then(|p| {
         if p.exists() && p.is_dir() {
@@ -406,6 +430,7 @@ impl WindowsPtyBackend {
         cmd: RunCommand,
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         terminal_id: u32,
+        pane_env: &PaneEnv,
     ) -> Result<(Box<dyn AsyncReader>, u32)> {
         let err_context = |c: &RunCommand| {
             format!(
@@ -451,7 +476,7 @@ impl WindowsPtyBackend {
 
         // 5. Spawn child process
         let (process_handle, thread_handle, child_pid) =
-            match spawn_child_process(hpcon, &cmd, terminal_id) {
+            match spawn_child_process(hpcon, &cmd, terminal_id, pane_env) {
                 Ok(r) => r,
                 Err(e) => {
                     unsafe {
@@ -509,15 +534,16 @@ impl WindowsPtyBackend {
         failover_cmd: Option<RunCommand>,
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         terminal_id: u32,
+        pane_env: &PaneEnv,
     ) -> Result<(Box<dyn AsyncReader>, u32)> {
-        if let Some(resolved) = resolve_command(&cmd) {
+        if let Some(resolved) = resolve_command(&cmd, pane_env) {
             cmd.command = resolved;
-            return self.do_spawn(cmd, quit_cb, terminal_id);
+            return self.do_spawn(cmd, quit_cb, terminal_id, pane_env);
         }
         if let Some(mut failover) = failover_cmd {
-            if let Some(resolved) = resolve_command(&failover) {
+            if let Some(resolved) = resolve_command(&failover, pane_env) {
                 failover.command = resolved;
-                return self.do_spawn(failover, quit_cb, terminal_id);
+                return self.do_spawn(failover, quit_cb, terminal_id, pane_env);
             }
         }
         Err(ZellijError::CommandNotFound {

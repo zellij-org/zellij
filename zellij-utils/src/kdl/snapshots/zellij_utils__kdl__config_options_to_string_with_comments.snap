@@ -67,6 +67,10 @@ layout_dir "/tmp/layouts"
 // 
 theme_dir "/tmp/themes"
  
+// The folder in which Zellij will look for keybinding presets
+// 
+// keybinds_dir "/tmp"
+ 
 // Toggle enabling the mouse mode.
 // On certain configurations, or terminals this could
 // potentially interfere with copying text.
@@ -215,6 +219,13 @@ support_kitty_keyboard_protocol false
 // Default: true (if the host terminal supports it)
 // 
 // support_kitty_graphics_protocol false
+ 
+// Count each grapheme cluster (an emoji sequence such as a flag or a skin tone, a letter with its accents) as one unit of width, as the Unicode standard does
+// When false, widths are counted per code point, the way older programs expect; programs can still ask for clusters with mode 2027
+// (Applies to new panes)
+// Default: true
+// 
+// grapheme_clusters false
 // Whether to make sure a local web server is running when a new Zellij session starts.
 // This web server will allow creating new sessions and attaching to existing ones that have
 // opted in to being shared in the browser.
@@ -256,11 +267,22 @@ web_sharing "disabled"
 /// Whether to enforce https connections to the web server when it is bound to localhost
 /// (127.0.0.0/8)
 ///
-/// Note: https is ALWAYS enforced when bound to non-local interfaces
+/// Note: https is enforced when bound to non-local interfaces, unless
+/// dangerously_allow_web_serving_without_a_certificate is set
 ///
 /// Default: false
 // 
 // enforce_https_for_localhost false
+ 
+// DANGEROUS: allow the web server to serve plain, unencrypted HTTP when bound to a
+// non-local interface without web_server_cert and web_server_key.
+// Anyone on the network can read and tamper with the traffic, including login tokens.
+// Only use behind a trusted TLS-terminating proxy or on a fully trusted network.
+// Does not override enforce_https_for_localhost.
+// Default: false
+// (Requires restart)
+//
+// dangerously_allow_web_serving_without_a_certificate false
  
 // Whether to stack panes when resizing beyond a certain size
 // Default: true
@@ -319,6 +341,11 @@ web_sharing "disabled"
 // Whether clicking a pane to focus it also sends the click into the pane
 // default is false
 // mouse_click_through false
+ 
+// Whether a right click opens the right-click menu (when off, right clicks go to the focused pane only)
+// An empty context_menu block opens no menu but keeps this on
+// default is true
+// context_menu_enabled false
  
 // Whether triple-clicking inside command output marked by the shell (OSC 133) selects
 // the command and its output instead of the logical line
@@ -380,3 +407,20 @@ web_sharing "disabled"
 //   - "off" (do not forward notifications to the host terminal)
 // 
 // host_notification_protocol "auto"
+ 
+// Whether to show the other sessions indicator in the tab bar and compact bar
+// default is true
+// session_indicator false
+ 
+// Whether to briefly show the name of the new swap layout when it is changed
+// default is true
+// swap_layout_notification false
+ 
+// What the quit action does
+// Options:
+//   - "ask_quit" (Default - ask whether to detach or quit, with quit preselected)
+//   - "ask_detach" (ask whether to detach or quit, with detach preselected)
+//   - "quit" (quit without asking)
+//   - "detach" (detach without asking)
+// 
+// on_quit "ask_quit"
