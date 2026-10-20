@@ -131,6 +131,7 @@ struct ClientState {
     tabs: Vec<TabInfo>,
     active_tab_idx: usize,
     mode_info: ModeInfo,
+    has_mode_info: bool,
     display_area_rows: usize,
     display_area_cols: usize,
     text_copy_destination: Option<CopyDestination>,
@@ -285,6 +286,7 @@ impl CompactBar {
         for (client_id, seed) in seeds {
             let client = self.clients.entry(*client_id).or_default();
             client.mode_info = seed.mode_info.clone();
+            client.has_mode_info |= seed.mode_info != ModeInfo::default();
             update_display_area(client, &seed.tabs);
             if let Some(active_tab_index) = seed.tabs.iter().position(|t| t.active) {
                 client.active_tab_idx = active_tab_index + 1;
@@ -495,7 +497,8 @@ impl CompactBar {
         keybinds: &mut KeybindStore,
     ) -> bool {
         let client = self.clients.entry(client_id).or_default();
-        let should_render = client.mode_info != mode_info;
+        let should_render = client.mode_info != mode_info || !client.has_mode_info;
+        client.has_mode_info = true;
         let old_mode = client.mode_info.mode;
         let new_mode = mode_info.mode;
         let base_mode = mode_info.base_mode.unwrap_or(InputMode::Normal);
@@ -1028,7 +1031,7 @@ impl CompactBar {
             let hint = system_clipboard_error().part;
             render_background_with_text(&client.mode_info, &hint);
         } else {
-            if client.tabs.is_empty() {
+            if client.tabs.is_empty() || !client.has_mode_info {
                 return;
             }
 
@@ -1244,6 +1247,7 @@ mod tests {
                 base_mode: Some(InputMode::Normal),
                 ..Default::default()
             },
+            has_mode_info: true,
             ..Default::default()
         }
     }
@@ -1444,6 +1448,7 @@ mod tests {
                 session_name: session_name.map(|name| name.to_owned()),
                 ..Default::default()
             },
+            has_mode_info: true,
             ..Default::default()
         }
     }

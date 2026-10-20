@@ -102,6 +102,7 @@ struct ClientState {
     tabs: Vec<TabInfo>,
     active_tab_idx: usize,
     mode_info: ModeInfo,
+    has_mode_info: bool,
     active_pane_scroll: Option<(usize, usize)>,
     hovered: Option<TabBarRegion>,
     hover_at: Option<(SlotId, usize)>,
@@ -223,6 +224,7 @@ impl TabBar {
         for (client_id, seed) in seeds {
             let client = self.clients.entry(*client_id).or_default();
             client.mode_info = seed.mode_info.clone();
+            client.has_mode_info |= seed.mode_info != ModeInfo::default();
             if let Some(active_tab_index) = seed.tabs.iter().position(|t| t.active) {
                 client.active_tab_idx = active_tab_index + 1;
                 client.tabs = seed.tabs.clone();
@@ -310,10 +312,11 @@ impl TabBar {
                 should_render = true;
             },
             Event::ModeUpdate(mode_info) => {
-                if &client.mode_info != mode_info {
+                if &client.mode_info != mode_info || !client.has_mode_info {
                     should_render = true;
                 }
                 client.mode_info = mode_info.clone();
+                client.has_mode_info = true;
             },
             Event::TabUpdate(tabs) => {
                 if let Some(active_tab_index) = tabs.iter().position(|t| t.active) {
@@ -524,7 +527,7 @@ impl TabBar {
         hovered: Option<TabBarRegion>,
     ) -> Option<ComposedLine> {
         let client = self.clients.get(&client_id)?;
-        if client.tabs.is_empty() {
+        if client.tabs.is_empty() || !client.has_mode_info {
             return None;
         }
         let dimmed = client.mode_info.session_ascended == Some(true)
@@ -763,6 +766,7 @@ mod tests {
         ClientState {
             active_tab_idx: active + 1,
             tabs,
+            has_mode_info: true,
             ..Default::default()
         }
     }
@@ -911,6 +915,7 @@ mod tests {
                 .map(|(position, name)| named_tab(position, name, position == active))
                 .collect(),
             active_tab_idx: active + 1,
+            has_mode_info: true,
             ..Default::default()
         }
     }
