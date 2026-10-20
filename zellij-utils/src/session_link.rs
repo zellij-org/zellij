@@ -14,6 +14,8 @@ pub const PEER_REPLY_TIMEOUT: Duration = Duration::from_millis(700);
 pub const PEER_ACTION_TIMEOUT: Duration = Duration::from_millis(2000);
 pub const LOCAL_ANSWER_TIMEOUT: Duration = Duration::from_millis(500);
 pub const REMOTE_ACTIONS_IDLE_EXIT: Duration = Duration::from_secs(30);
+const DETACH_CONFIRMATION_TIMEOUT: Duration = Duration::from_secs(2);
+const DETACH_ATTEMPTS: usize = 3;
 
 pub struct SessionLink {
     sender: IpcSenderWithContext<ClientToServerMsg>,
@@ -120,8 +122,25 @@ pub fn stop_session(session_name: &str, timeout: Duration) -> Result<(), String>
 }
 
 pub fn detach_all_clients(session_name: &str) -> Result<(), String> {
+    let mut last_error = String::new();
+    for _ in 0..DETACH_ATTEMPTS {
+        match request_detach_all_clients(session_name) {
+            Ok(()) => return Ok(()),
+            Err(e) => last_error = e,
+        }
+    }
+    Err(last_error)
+}
+
+fn request_detach_all_clients(session_name: &str) -> Result<(), String> {
     let mut link = SessionLink::open(session_name)?;
-    link.send(ClientToServerMsg::DetachSession { client_ids: vec![] })
+    link.send(ClientToServerMsg::DetachSession { client_ids: vec![] })?;
+    loop {
+        match link.recv(DETACH_CONFIRMATION_TIMEOUT)? {
+            ServerToClientMsg::Connected => return Ok(()),
+            _ => continue,
+        }
+    }
 }
 
 pub fn send_actions_to_session(session_name: &str, actions: Vec<Action>) -> Result<(), String> {

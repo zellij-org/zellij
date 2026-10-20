@@ -3369,6 +3369,7 @@ pub(crate) fn route_thread_main(
                                 client_id,
                                 ExitReason::NormalDetached,
                             ));
+                            let _ = to_server.send(ServerInstruction::ConnStatus(client_id));
                             should_break = true;
                         },
                         ClientToServerMsg::DetachSession { client_ids } => {
